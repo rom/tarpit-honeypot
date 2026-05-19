@@ -25,15 +25,29 @@ type Config struct {
 // All fields except ID are optional — a deployment can configure metadata-
 // only honeynets that only show up in DNS forward-resolution.
 type Honeynet struct {
-	ID      string           `yaml:"id"`
-	CIDR    string           `yaml:"cidr"`
-	Gateway string           `yaml:"gateway"`
-	DNS     string           `yaml:"dns"`
-	Domain  string           `yaml:"domain"`
-	Hosts   []HoneynetHost   `yaml:"hosts"`
-	ARP     ARPResponderCfg  `yaml:"arp_responder"`
-	ICMP    ICMPResponderCfg `yaml:"icmp_responder"`
-	TUN     TUNCfg           `yaml:"tun"`
+	ID      string             `yaml:"id"`
+	CIDR    string             `yaml:"cidr"`
+	Gateway string             `yaml:"gateway"`
+	DNS     string             `yaml:"dns"`
+	Domain  string             `yaml:"domain"`
+	Hosts   []HoneynetHost     `yaml:"hosts"`
+	ARP     ARPResponderCfg    `yaml:"arp_responder"`
+	ICMP    ICMPResponderCfg   `yaml:"icmp_responder"`
+	LLDP    LLDPResponderCfg   `yaml:"lldp_responder"`
+	TUN     TUNCfg             `yaml:"tun"`
+}
+
+// LLDPResponderCfg makes virtual hosts appear in `lldpctl` / Cisco
+// `show cdp neighbors` output on the L2 segment. The sensor opens
+// an AF_PACKET socket (Linux + CAP_NET_RAW) and periodically emits
+// LLDP frames (always) and optionally CDP frames (Cisco-specific)
+// per honeynet host. Disabled by default — useful in industrial /
+// enterprise networks where attackers walk LLDP to map the topology.
+type LLDPResponderCfg struct {
+	Enabled    bool   `yaml:"enabled"`
+	Interface  string `yaml:"interface"`
+	IntervalS  int    `yaml:"interval_s"`
+	IncludeCDP bool   `yaml:"include_cdp"`
 }
 
 // TUNCfg opens a Linux TUN device the operator can route the honeynet

@@ -588,6 +588,23 @@ func (s *Sensor) Run(ctx context.Context) error {
 				<-ctx.Done()
 			}()
 		}
+		if hn.LLDP.Enabled {
+			lldpCfg := honeynet.LLDPCfg{
+				Enabled:    true,
+				Interface:  hn.LLDP.Interface,
+				Interval:   hn.LLDP.IntervalS,
+				IncludeCDP: hn.LLDP.IncludeCDP,
+			}
+			netID := hn.ID
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := honeynet.StartLLDPResponder(ctx, lldpCfg, s.honeynet); err != nil {
+					slog.Warn("honeynet lldp responder disabled", "honeynet", netID, "err", err)
+				}
+				<-ctx.Done()
+			}()
+		}
 		if hn.TUN.Enabled {
 			hostIPs := make([]string, 0, len(hn.Hosts))
 			for _, h := range hn.Hosts {
