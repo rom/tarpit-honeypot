@@ -35,9 +35,12 @@ fmt:
 clean:
 	rm -rf bin dist
 
-# Cross-compile targets for v0.1 (linux amd64 + arm64).
-# Wider matrix (armv6/armv7, windows) lands in v0.3 once cgo decisions are final.
+# Cross-compile for the full Linux matrix. Windows is intentionally absent
+# from `cross` until v0.8 — the sniffer and fanotify code paths are
+# linux-only and Windows packaging needs the service installer first.
 cross:
 	mkdir -p dist
-	GOOS=linux  GOARCH=amd64 $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-amd64  $(CMD)
-	GOOS=linux  GOARCH=arm64 $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-arm64  $(CMD)
+	GOOS=linux GOARCH=amd64               $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-amd64  $(CMD)
+	GOOS=linux GOARCH=arm64               $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-arm64  $(CMD)
+	GOOS=linux GOARCH=arm GOARM=7         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv7  $(CMD)
+	GOOS=linux GOARCH=arm GOARM=6         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv6  $(CMD)

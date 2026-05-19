@@ -131,6 +131,40 @@ listeners:
     severity: medium
     read_bytes: 64
 
+  - id: opcua-bait
+    proto: tcp
+    bind: 0.0.0.0:4840
+    mode: banner
+    handler: opcua
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: enip-bait
+    proto: tcp
+    bind: 0.0.0.0:44818
+    mode: banner
+    handler: ethernetip
+    severity: critical
+    read_bytes: 1024
+    read_timeout: 5s
+
+  - id: bacnet-bait
+    proto: udp
+    bind: 0.0.0.0:47808
+    mode: banner
+    handler: bacnet
+    severity: high
+    read_bytes: 1500
+
+  - id: tftp-bait
+    proto: udp
+    bind: 0.0.0.0:69
+    mode: banner
+    handler: tftp
+    severity: high
+    read_bytes: 1500
+
 canaries:
   - id: shared-creds
     path: ./var/canary/passwords.xlsx

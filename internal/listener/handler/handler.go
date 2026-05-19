@@ -66,6 +66,10 @@ func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, 
 		return &iec104{}, nil
 	case "mqtt":
 		return &mqtt{}, nil
+	case "opcua":
+		return &opcua{}, nil
+	case "ethernetip":
+		return &ethernetip{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }

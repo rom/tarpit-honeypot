@@ -7,17 +7,15 @@ what's actually built right now.
 
 ## Status
 
-**v0.6 — UDP handlers (SNMP, NTP) + Twilio / AWS SNS / SNMP-trap sinks.**
-Adds the UDPHandler abstraction so banner-mode UDP listeners can do
-protocol-aware replies. Ships SNMPv1/v2c (captures community + OIDs,
-returns a valid GetResponse) and NTPv4 (mode-3 only — mode-7 / monlist
-deliberately silenced to avoid being used as an amplifier). Three new
-outbound channels: Twilio SMS, AWS SNS (hand-rolled Sigv4, no AWS SDK
-dependency), and SNMP-trap v2c. Linux amd64/arm64.
+**v0.7 — ICS handlers (OPC-UA, EtherNet/IP, BACnet, TFTP) + armv6/armv7.**
+Adds OPC-UA Hello→Acknowledge, EtherNet/IP RegisterSession + ListIdentity
+(advertises a fake Allen-Bradley 1756-L73 ControlLogix), BACnet Who-Is→I-Am
+over UDP, and TFTP RRQ/WRQ capture with Access-Violation reply (no actual
+file serving — avoids becoming an amplifier). Cross-compile matrix expands
+to linux/amd64 + linux/arm64 + linux/armv7 + linux/armv6.
 
 Not yet implemented (planned in later phases per `design.md`):
-SMB + remaining ICS handlers (OPC-UA / BACnet / EthernetIP / TFTP),
-Windows service, listener hot-reload.
+SMB handler, Windows service, listener hot-reload.
 
 ## Build
 
