@@ -55,7 +55,7 @@ func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
 			in:      make(chan *event.Event, sinkQueueDepth),
 			rl:      filter.NewRateLimiter(ch.RateLimitPerMin),
 			minSev:  sev,
-			isLocal: ch.Type == "stdout" || ch.Type == "jsonlog",
+			isLocal: ch.Type == "stdout" || ch.Type == "jsonlog" || ch.Type == "sqlite",
 		}
 	}
 

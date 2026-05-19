@@ -7,18 +7,17 @@ what's actually built right now.
 
 ## Status
 
-**v0.2 — tarpit + bait + canaries + correlator.** Adds tarpit listener
-modes (sticky / trickle / keepalive), built-in protocol handlers for
-SSH / HTTP / HTTPS / Telnet / FTP, filesystem honeyfile watching via
-fsnotify, port-scan + brute-force correlators that emit aggregate
-events, per-sink worker queues with bounded drop, unit tests for the
-trickier logic. Linux amd64/arm64.
+**v0.3 — SQLite + read-only web UI + privilege drop + hot reload.**
+Events get indexed in an embedded SQLite database (pure-Go driver, no
+CGO). A read-only HTML/JSON UI on loopback shows last-24h summaries
+and queryable event tables. Linux uid/gid drop after privileged
+setup. SIGHUP reloads channels, routes, correlator thresholds, and
+allowlist without dropping connections. Linux amd64/arm64.
 
 Not yet implemented (planned in later phases per `design.md`):
 SMB + ICS/OT protocol handlers, DNS/URL token canaries, L2 sniffer,
-SQLite event index, mini-pcap capture, web UI, Windows service,
-Twilio / SNS / SNMP-trap channels, hot reload, privilege drop, and
-read-detection for honeyfiles via fanotify.
+mini-pcap capture, Windows service, Twilio / SNS / SNMP-trap channels,
+listener hot-reload, and read-detection for honeyfiles via fanotify.
 
 ## Build
 
@@ -52,3 +51,21 @@ tarpit-honeypot test-alert     -c <config> [--channel <id>] [--severity high]
 tarpit-honeypot list-events    -c <config> [--since 1h] [--source <ip>] [--rule <id>]
 tarpit-honeypot version
 ```
+
+`run` also responds to `SIGHUP` by reloading the config. Channels,
+routes, allowlist, dedup window, and correlator thresholds get hot-swapped;
+listener or `sensor.*` changes still require a restart and get a warning.
+
+## Web UI
+
+With `ui.enabled: true`, the sensor serves a read-only UI at
+`ui.bind` (default `127.0.0.1:8088`):
+
+- `/` — last-24h summary (events / severity / top rules / top sources)
+- `/events` — table view with `?source=`, `?rule=`, `?since=`, `?limit=`
+- `/events/<id>` — full event detail (banner sent, payload, meta)
+- `/api/events`, `/api/summary` — JSON equivalents
+- `/healthz` — liveness check
+
+Non-loopback binds are refused at validate-time unless both
+`tls_cert+tls_key` and `auth_token_env` are set.

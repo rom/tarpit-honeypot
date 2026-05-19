@@ -4,6 +4,7 @@ import "time"
 
 type Config struct {
 	Sensor    Sensor     `yaml:"sensor"`
+	UI        UI         `yaml:"ui"`
 	Listeners []Listener `yaml:"listeners"`
 	Canaries  []Canary   `yaml:"canaries"`
 	Correlate Correlate  `yaml:"correlate"`
@@ -13,10 +14,20 @@ type Config struct {
 	Routes    []Route    `yaml:"routes"`
 }
 
+type UI struct {
+	Enabled      bool   `yaml:"enabled"`
+	Bind         string `yaml:"bind"`
+	TLSCert      string `yaml:"tls_cert"`
+	TLSKey       string `yaml:"tls_key"`
+	AuthTokenEnv string `yaml:"auth_token_env"`
+}
+
 type Sensor struct {
-	Name    string `yaml:"name"`
-	DataDir string `yaml:"data_dir"`
-	Disk    Disk   `yaml:"disk"`
+	Name      string `yaml:"name"`
+	DataDir   string `yaml:"data_dir"`
+	DropUser  string `yaml:"drop_user"`
+	DropGroup string `yaml:"drop_group"`
+	Disk      Disk   `yaml:"disk"`
 }
 
 type Disk struct {

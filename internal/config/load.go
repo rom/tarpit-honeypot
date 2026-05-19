@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"strings"
@@ -241,7 +242,7 @@ func (c *Config) Validate() error {
 		}
 		chanByID[ch.ID] = true
 		switch ch.Type {
-		case "stdout", "jsonlog":
+		case "stdout", "jsonlog", "sqlite":
 		case "webhook":
 			if ch.URL == "" {
 				return fmt.Errorf("channel %s: webhook needs url", ch.ID)
@@ -267,6 +268,31 @@ func (c *Config) Validate() error {
 		}
 		if _, err := event.ParseSeverity(ch.MinSeverity); err != nil {
 			return fmt.Errorf("channel %s: %w", ch.ID, err)
+		}
+	}
+
+	// UI.
+	if c.UI.Enabled {
+		if c.UI.Bind == "" {
+			return fmt.Errorf("ui.bind is required when ui.enabled")
+		}
+		host, _, err := net.SplitHostPort(c.UI.Bind)
+		if err != nil {
+			return fmt.Errorf("ui.bind: %w", err)
+		}
+		isLoopback := host == "127.0.0.1" || host == "::1" || host == "localhost"
+		hasTLS := c.UI.TLSCert != "" && c.UI.TLSKey != ""
+		hasAuth := c.UI.AuthTokenEnv != ""
+		if !isLoopback && (!hasTLS || !hasAuth) {
+			return fmt.Errorf("ui.bind %q is non-loopback; refusing to start without both ui.tls_cert+ui.tls_key and ui.auth_token_env", c.UI.Bind)
+		}
+		if hasTLS {
+			if _, err := os.Stat(c.UI.TLSCert); err != nil {
+				return fmt.Errorf("ui.tls_cert: %w", err)
+			}
+			if _, err := os.Stat(c.UI.TLSKey); err != nil {
+				return fmt.Errorf("ui.tls_key: %w", err)
+			}
 		}
 	}
 

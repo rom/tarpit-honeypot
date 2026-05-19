@@ -1,10 +1,23 @@
 sensor:
   name: ""                                  # blank = hostname
   data_dir: ./var
+  # On Linux, after privileged setup the sensor will switch to this user/group.
+  # Use with systemd AmbientCapabilities=CAP_NET_BIND_SERVICE to keep
+  # privileged ports working. Leave blank when running unprivileged anyway.
+  drop_user: ""
+  drop_group: ""
   disk:
     json_log_mb: 500
     sqlite_mb: 500
     pcap_mb: 1024
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+  # Non-loopback binds REQUIRE both tls_cert+tls_key AND auth_token_env.
+  # tls_cert: /etc/tarpit-honeypot/ui.crt
+  # tls_key:  /etc/tarpit-honeypot/ui.key
+  # auth_token_env: TARPIT_UI_TOKEN
 
 listeners:
   - id: ssh-bait
@@ -97,7 +110,11 @@ channels:
     type: jsonlog
     min_severity: low
 
+  - id: sqlite
+    type: sqlite
+    min_severity: low
+
 routes:
   - match:
       severity: ">=low"
-    channels: [stdout, jsonlog]
+    channels: [stdout, jsonlog, sqlite]
