@@ -6,6 +6,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
@@ -28,6 +29,7 @@ type BuildArgs struct {
 	Identity    *identity.Identity
 	Jitter      *jitter.Jitterer
 	TLSRotate   int
+	Honeynet    *honeynet.Topology
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -46,9 +48,9 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 	}
 	switch l.Proto {
 	case "tcp":
-		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID)
+		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID, args.Honeynet)
 	case "udp":
-		return newUDP(l, args.SensorName)
+		return newUDP(l, args.SensorName, args.Honeynet)
 	}
 	return nil, errUnknownProto
 }

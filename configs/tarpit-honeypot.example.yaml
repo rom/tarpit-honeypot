@@ -333,6 +333,80 @@ sniffer:
     distinct_ips: 16
     window: 30s
 
+# Artificial networks ("honeynets"). Each honeynet declares one CIDR,
+# a gateway / DNS / domain (free-form metadata), and zero or many
+# virtual hosts. Each host has zero or many services on specific ports.
+#
+# How dispatch works:
+#   1. The OS must route the host IPs to the sensor. On Linux that's
+#      usually `ip addr add 10.99.0.10/24 dev lo` for testing, or a
+#      bridge / NAT / TUN setup in production.
+#   2. The sensor's listeners must bind 0.0.0.0:<port> for every port
+#      any honeynet host serves.
+#   3. On accept(), the listener inspects the destination IP. If it
+#      matches a honeynet host with a service on that port, the sensor
+#      dispatches to a per-host handler instance whose Identity is
+#      derived from sensor.deployment_id + the virtual host id. Each
+#      virtual machine therefore presents a distinct SSH banner / MySQL
+#      version / SMB challenge to scanners.
+#   4. Events get honeynet / honeynet_host / honeynet_hostname /
+#      honeynet_os meta keys for downstream grouping.
+#
+# Zero honeynets is the default — leave the list out (or empty) and
+# everything dispatches through the normal listener.handler config.
+#
+# When at least one honeynet is configured, the DNS canary listener
+# also forward-resolves honeynet hostnames (short name or
+# hostname.domain) to the virtual IP.
+honeynets:
+  - id: corp-lan
+    cidr: 10.99.0.0/24
+    gateway: 10.99.0.1
+    dns: 10.99.0.2
+    domain: corp.example.local
+    hosts:
+      - ip: 10.99.0.10
+        hostname: web-prod-01
+        os: linux
+        services:
+          - { port: 22,  handler: ssh }
+          - { port: 80,  handler: http }
+          - { port: 443, handler: https }
+      - ip: 10.99.0.11
+        hostname: db-prod-01
+        os: linux
+        services:
+          - { port: 22,   handler: ssh }
+          - { port: 3306, handler: mysql }
+          - { port: 5432, handler: postgres }
+      - ip: 10.99.0.20
+        hostname: dc-01
+        os: windows
+        services:
+          - { port: 88,   handler: kerberos }
+          - { port: 135,  handler: dcerpc }
+          - { port: 389,  handler: ldap }
+          - { port: 445,  handler: smb }
+          - { port: 3389, handler: rdp }
+
+  - id: ot-cell-A
+    cidr: 10.99.5.0/24
+    gateway: 10.99.5.1
+    domain: ot-a.example.local
+    hosts:
+      - ip: 10.99.5.50
+        hostname: plc-press-01
+        os: ics
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 502, handler: modbus }
+      - ip: 10.99.5.51
+        hostname: hmi-press-01
+        os: windows
+        services:
+          - { port: 4840, handler: opcua }
+          - { port: 3389, handler: rdp }
+
 correlate:
   port_scan:
     enabled: true

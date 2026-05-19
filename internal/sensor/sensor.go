@@ -15,6 +15,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
@@ -43,6 +44,7 @@ type Sensor struct {
 	captureMgr *capture.Manager
 	identity   *identity.Identity
 	jitter     *jitter.Jitterer
+	honeynet   *honeynet.Topology
 	bus        chan *event.Event
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
@@ -139,6 +141,17 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
+	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days)
+	if err != nil {
+		for _, s := range sinks {
+			_ = s.Close()
+		}
+		if st != nil {
+			_ = st.Close()
+		}
+		return nil, err
+	}
+
 	return &Sensor{
 		cfg:        cfg,
 		name:       name,
@@ -149,10 +162,15 @@ func New(cfg *config.Config) (*Sensor, error) {
 		captureMgr: capMgr,
 		identity:   id,
 		jitter:     jit,
+		honeynet:   topo,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
 }
+
+// Honeynet returns the configured topology, or an empty topology if none.
+// Used by the list-honeynets subcommand and the DNS canary listener.
+func (s *Sensor) Honeynet() *honeynet.Topology { return s.honeynet }
 
 func needsCapture(cfg *config.Config) bool {
 	for _, l := range cfg.Listeners {
@@ -196,6 +214,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		Identity:    s.identity,
 		Jitter:      s.jitter,
 		TLSRotate:   s.cfg.Sensor.TLSRotate.Days,
+		Honeynet:    s.honeynet,
 	})
 	if err != nil {
 		cancel()
@@ -415,10 +434,18 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}()
 	}
 
-	if s.cfg.DNS.Enabled && (len(s.cfg.DNSCanaries) > 0 || s.cfg.DNS.AmplifierDetection.Enabled) {
+	if s.cfg.DNS.Enabled && (len(s.cfg.DNSCanaries) > 0 || s.cfg.DNS.AmplifierDetection.Enabled || !s.honeynet.Empty()) {
 		srv, err := dnscanary.New(s.cfg.DNS.Bind, s.name, s.cfg.DNSCanaries, s.cfg.DNS.AmplifierDetection)
 		if err != nil {
 			return err
+		}
+		if !s.honeynet.Empty() {
+			srv.SetResolver(func(qname string) (string, string, bool) {
+				if h := s.honeynet.HostByName(qname); h != nil {
+					return h.IP, h.Hostname, true
+				}
+				return "", "", false
+			})
 		}
 		wg.Add(1)
 		go func() {

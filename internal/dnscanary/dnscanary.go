@@ -22,12 +22,18 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
+// Resolver lets the dnscanary forward-resolve honeynet hostnames without
+// importing the honeynet package directly (which would create a cycle).
+// The sensor passes a closure that wraps Topology.HostByName.
+type Resolver func(qname string) (ip string, hostname string, ok bool)
+
 type Server struct {
 	bind       string
 	sensorName string
 	canaries   []entry
 	amp        ampConfig
 	ampState   *ampState
+	resolve    Resolver
 }
 
 type ampConfig struct {
@@ -56,6 +62,12 @@ type entry struct {
 	// any subdomain (e.g. "x.foo.bar.example.com"). All canary names are
 	// lowercased + trailing-dot stripped at load time.
 	name string
+}
+
+// SetResolver wires up the honeynet hostname resolver. nil disables
+// forward-resolution; queries return NXDOMAIN as before.
+func (s *Server) SetResolver(r Resolver) {
+	s.resolve = r
 }
 
 func New(bind string, sensorName string, canaries []config.DNSCanary, amp config.DNSAmplifier) (*Server, error) {
@@ -162,8 +174,18 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 		}
 	}
 
-	// Reply with NXDOMAIN so the resolver caches a negative result quickly.
-	reply := buildNXDOMAIN(msg)
+	// Try honeynet forward resolution for A queries; otherwise NXDOMAIN.
+	var reply []byte
+	if qtype == 1 && s.resolve != nil {
+		if ip, hostname, ok := s.resolve(name); ok {
+			reply = buildA(msg, ip)
+			baseEv.Meta["honeynet_resolved"] = hostname
+			baseEv.Meta["honeynet_ip"] = ip
+		}
+	}
+	if reply == nil {
+		reply = buildNXDOMAIN(msg)
+	}
 	if reply != nil {
 		_ = pc.SetWriteDeadline(time.Now().Add(time.Second))
 		_, _ = pc.WriteTo(reply, raddr)
@@ -271,6 +293,54 @@ func (s *Server) checkAmplifier(srcIP string, qtype uint16) *event.Event {
 			"triggered_by_any": isAny,
 		},
 	}
+}
+
+// buildA returns the query echoed back with one A record answer pointing
+// at the supplied IPv4 address. TTL is fixed at 60s. Returns nil if the
+// IP is not parseable as IPv4 or the query is malformed.
+func buildA(query []byte, ipv4 string) []byte {
+	addr, err := net.ResolveIPAddr("ip4", ipv4)
+	if err != nil || addr.IP.To4() == nil {
+		return nil
+	}
+	if len(query) < 12 {
+		return nil
+	}
+	// Walk the question section to find where it ends so we can append the
+	// answer after it.
+	pos := 12
+	for pos < len(query) {
+		l := int(query[pos])
+		pos++
+		if l == 0 {
+			break
+		}
+		if l&0xC0 != 0 {
+			return nil
+		}
+		pos += l
+	}
+	pos += 4 // qtype + qclass
+	if pos > len(query) {
+		return nil
+	}
+	out := append([]byte{}, query[:pos]...)
+	// Flip QR + RA + RCODE=0.
+	rd := out[2] & 0x01
+	out[2] = 0x80 | rd
+	out[3] = 0x80
+	binary.BigEndian.PutUint16(out[6:8], 1) // 1 answer
+	binary.BigEndian.PutUint16(out[8:10], 0)
+	binary.BigEndian.PutUint16(out[10:12], 0)
+
+	// Answer: name=ptr to offset 12, type=A, class=IN, ttl=60, rdlen=4, rdata=ip4
+	out = append(out, 0xC0, 0x0C)
+	out = binary.BigEndian.AppendUint16(out, 1)  // type A
+	out = binary.BigEndian.AppendUint16(out, 1)  // class IN
+	out = binary.BigEndian.AppendUint32(out, 60) // ttl
+	out = binary.BigEndian.AppendUint16(out, 4)  // rdlength
+	out = append(out, addr.IP.To4()...)
+	return out
 }
 
 func isSubdomain(name, suffix string) bool {

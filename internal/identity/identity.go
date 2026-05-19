@@ -74,6 +74,15 @@ func New(seed string) *Identity {
 // Seed returns the raw deployment_id (safe to log).
 func (i *Identity) Seed() string { return i.seed }
 
+// Derive returns a child Identity keyed by label. The deterministic seed
+// mixes the parent seed with the label, so two children produce entirely
+// different banner variants / hostnames / serial numbers. Used by the
+// honeynet to give each artificial host its own stable identity.
+func (i *Identity) Derive(label string) *Identity {
+	mix := sha256.Sum256(append([]byte(label), i.hash[:]...))
+	return &Identity{seed: i.seed + "/" + label, hash: mix}
+}
+
 // deterministicRand returns a *math/rand.Rand seeded with sha256(seed||label),
 // so two calls with the same label produce the same numbers but different
 // deployments diverge from byte 1.

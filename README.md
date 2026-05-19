@@ -25,6 +25,17 @@ phasing decisions.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
   - All four are stable across browser / scanner GREASE shuffling.
+- **Honeynets**: configure zero-to-many artificial networks via the
+  `honeynets:` block. Each has a CIDR + gateway + DNS + domain + a
+  list of virtual hosts; each host has an IP + hostname + OS hint +
+  service list. When a connection arrives at a virtual host's IP+port,
+  the sensor dispatches to a handler instance whose Identity is
+  derived from `sensor.deployment_id` + the virtual host id — so each
+  virtual machine has its own stable but distinct SSH banner / MySQL
+  version / SMB challenge / etc. Events get `honeynet`,
+  `honeynet_host`, `honeynet_hostname`, `honeynet_os` meta keys. The
+  DNS canary listener forward-resolves honeynet hostnames to virtual
+  IPs.
 - **Counter-fingerprinting** (anti-honeypot detection):
   - **Per-deployment uniqueness** via `sensor.deployment_id` — every
     "fixed" string the sensor emits (SSH banner version pool, HTTP
@@ -110,6 +121,14 @@ phasing decisions.
 
 ## Status
 
+**v1.1 — honeynets.** Adds artificial networks of artificial hosts:
+one sensor can present as N distinct virtual machines via the new
+`honeynets:` config block. Each virtual host gets a deterministically-
+derived Identity (so banners / versions / serials differ per host),
+and the DNS canary listener now forward-resolves honeynet hostnames
+to their virtual IPs. New `list-honeynets` subcommand dumps the
+configured topology.
+
 **v1.0 — counter-fingerprinting, advanced detection, lifecycle.** Adds
 per-deployment uniqueness (the `deployment_id` seed derives every
 "fixed" string the sensor emits: SSH banner version, MySQL version,
@@ -171,6 +190,7 @@ tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--do
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
+tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot version
 ```
 
@@ -507,7 +527,107 @@ computes:
 Caveat: HASSH relies on the SSH client sending its KEXINIT before the
 server. OpenSSH does this by default; some scanners don't.
 
-## Counter-fingerprinting
+## Honeynets
+
+One sensor can host an entire artificial network. The `honeynets:`
+config block declares zero or more virtual networks, each with a CIDR,
+gateway, DNS, domain, and a list of virtual hosts. Each host has an
+IP, hostname, OS hint, and a list of `{port, handler}` services.
+
+### How dispatch works
+
+1. The OS must actually route the virtual IPs to the sensor. On Linux
+   that's typically:
+   ```
+   ip addr add 10.99.0.10/24 dev eth0
+   ip addr add 10.99.0.11/24 dev eth0
+   ...
+   ```
+   Or a bridge + NAT or a TUN device. The sensor itself doesn't
+   manipulate interfaces — it expects the kernel to deliver SYNs for
+   the virtual IPs to a real socket it has bound.
+
+2. The sensor's `listeners:` block must bind `0.0.0.0:<port>` for
+   every port any virtual host serves. A single SSH listener bound to
+   `0.0.0.0:22` handles all virtual SSH hosts across all honeynets.
+
+3. On `accept()`, the listener inspects the destination IP and looks
+   it up in the topology. If it matches a virtual host with a service
+   on this port, dispatch goes to a per-host handler instance whose
+   Identity is `sensor.deployment_id` derived through
+   `honeynet/<network_id>/<host_ip>`. That means each virtual machine
+   has its own stable-but-unique banner from the variant pool — two
+   virtual hosts on the same listener present as different OpenSSH
+   versions, different MySQL builds, different SMB session keys, etc.
+
+4. Emitted events carry `honeynet`, `honeynet_host`,
+   `honeynet_hostname`, `honeynet_os` in meta so downstream sinks can
+   group / route by virtual machine identity.
+
+### Example
+
+```yaml
+honeynets:
+  - id: corp-lan
+    cidr: 10.99.0.0/24
+    gateway: 10.99.0.1
+    dns: 10.99.0.2
+    domain: corp.example.local
+    hosts:
+      - ip: 10.99.0.10
+        hostname: web-prod-01
+        os: linux
+        services:
+          - { port: 22,  handler: ssh }
+          - { port: 80,  handler: http }
+          - { port: 443, handler: https }
+      - ip: 10.99.0.20
+        hostname: dc-01
+        os: windows
+        services:
+          - { port: 88,   handler: kerberos }
+          - { port: 389,  handler: ldap }
+          - { port: 445,  handler: smb }
+          - { port: 3389, handler: rdp }
+
+  - id: ot-cell-A
+    cidr: 10.99.5.0/24
+    hosts:
+      - ip: 10.99.5.50
+        hostname: plc-press-01
+        os: ics
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 502, handler: modbus }
+```
+
+`tarpit-honeypot list-honeynets -c cfg.yaml` prints the topology with
+each host's derived identity seed so you can confirm uniqueness:
+
+```
+# corp-lan  cidr=10.99.0.0/24 gateway=10.99.0.1 dns=10.99.0.2 domain=corp.example.local
+  10.99.0.10  hostname=web-prod-01  os=linux  identity=<seed>/honeynet/corp-lan/10.99.0.10
+    :22  handler=ssh
+    :80  handler=http
+    :443 handler=https
+  10.99.0.20  hostname=dc-01        os=windows ...
+```
+
+### DNS forward-resolution
+
+When at least one honeynet is configured AND `dns.enabled: true`, the
+DNS canary listener answers A queries for honeynet hostnames with the
+matching virtual IP. The listener still emits the baseline
+`dnscanary:query` event for every query and the
+`canary:dns:<id>`/`dnscanary:amplifier_probe` events as before — the
+honeynet resolution is layered on top of NXDOMAIN, not instead of it.
+
+```
+$ dig @127.0.0.1 -p 5354 web-prod-01.corp.example.local A +short
+10.99.0.10
+```
+
+### Counter-fingerprinting
 
 Three knobs make the sensor harder to identify as a honeypot:
 

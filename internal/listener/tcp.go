@@ -12,6 +12,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 )
 
@@ -25,18 +26,19 @@ type tcpListener struct {
 	tarpit       *tarpitState
 	captureMgr   *capture.Manager
 	urlCanarySev map[string]event.Severity
+	topo         *honeynet.Topology
 
 	// sema is non-nil when the listener has a max_concurrent cap.
 	// We acquire one slot per accepted connection and release on exit.
 	sema chan struct{}
 }
 
-func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *capture.Manager, urlSevByID map[string]event.Severity) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *capture.Manager, urlSevByID map[string]event.Severity, topo *honeynet.Topology) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID}
+	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID, topo: topo}
 	if l.Mode == "banner" {
 		h, err := handler.Get(l.Handler, deps)
 		if err != nil {
@@ -132,6 +134,17 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
 	start := time.Now()
 
+	// Honeynet override: if the destination IP is part of a configured
+	// honeynet host that serves this port, dispatch to the host-specific
+	// handler instance (which has its own derived Identity, so banner /
+	// version strings differ per virtual host).
+	var hnHost *honeynet.Host
+	hnHandler := t.handler
+	if host, h, _ := t.topo.Lookup(dst.IP, dst.Port); host != nil && h != nil {
+		hnHost = host
+		hnHandler = h
+	}
+
 	eventID := event.NewID()
 	var sess *capture.Session
 	if t.captureMgr != nil && t.cfg.Mode != "drop" {
@@ -162,14 +175,20 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 	switch t.cfg.Mode {
 	case "drop":
 		ev := t.baseEvent(eventID, src, dst, start)
+		if hnHost != nil {
+			tagHoneynet(ev, hnHost)
+		}
 		_ = conn.Close()
 		finish(ev)
 
 	case "banner":
 		ev := t.baseEvent(eventID, src, dst, start)
+		if hnHost != nil {
+			tagHoneynet(ev, hnHost)
+		}
 		var canaryHits []string
-		if t.handler != nil {
-			res, _ := t.handler.Handle(ctx, conn, t.cfg)
+		if hnHandler != nil {
+			res, _ := hnHandler.Handle(ctx, conn, t.cfg)
 			ev.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {
 				ev.PayloadLen = len(res.Payload)
@@ -224,6 +243,9 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			startEv.Meta = map[string]any{}
 		}
 		startEv.Meta["tarpit_strategy"] = t.cfg.Tarpit.Strategy
+		if hnHost != nil {
+			tagHoneynet(startEv, hnHost)
+		}
 		send(ctx, bus, startEv)
 		// runTarpit closes the connection and releases the state slot.
 		// We bypass finish() because the tarpit_end event is emitted from
@@ -250,6 +272,25 @@ func send(ctx context.Context, bus chan<- *event.Event, ev *event.Event) {
 	select {
 	case bus <- ev:
 	case <-ctx.Done():
+	}
+}
+
+// tagHoneynet stamps an event with the artificial host's metadata so
+// downstream sinks can group events by virtual machine identity.
+func tagHoneynet(ev *event.Event, h *honeynet.Host) {
+	if h == nil || ev == nil {
+		return
+	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["honeynet"] = h.NetID
+	ev.Meta["honeynet_host"] = h.IP
+	if h.Hostname != "" {
+		ev.Meta["honeynet_hostname"] = h.Hostname
+	}
+	if h.OS != "" {
+		ev.Meta["honeynet_os"] = h.OS
 	}
 }
 

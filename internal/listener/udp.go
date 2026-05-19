@@ -10,6 +10,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 )
 
@@ -18,14 +19,15 @@ type udpListener struct {
 	sensorName string
 	sev        event.Severity
 	handler    handler.UDPHandler
+	topo       *honeynet.Topology
 }
 
-func newUDP(l config.Listener, sensorName string) (*udpListener, error) {
+func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology) (*udpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev}
+	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev, topo: topo}
 	if l.Mode == "banner" {
 		h, err := handler.GetUDP(l.Handler)
 		if err != nil {
@@ -83,11 +85,18 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			Proto:    "udp",
 			Handler:  u.cfg.Handler,
 		}
+		// Honeynet dispatch (same model as TCP): destination IP may map to
+		// a virtual host; if so, use the host-specific handler instance.
+		activeHandler := u.handler
+		if h, uh, _ := u.topo.LookupUDP(dstHost, dstPort); h != nil && uh != nil {
+			activeHandler = uh
+			tagHoneynet(ev, h)
+		}
 		// Copy out the packet before launching the handler goroutine because
 		// the next ReadFrom will reuse buf.
 		payload := append([]byte(nil), buf[:n]...)
-		if u.handler != nil && u.cfg.Mode == "banner" {
-			res, _ := u.handler.Handle(ctx, payload, raddr, pc, u.cfg)
+		if activeHandler != nil && u.cfg.Mode == "banner" {
+			res, _ := activeHandler.Handle(ctx, payload, raddr, pc, u.cfg)
 			ev.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {
 				ev.PayloadLen = len(res.Payload)

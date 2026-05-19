@@ -12,10 +12,38 @@ type Config struct {
 	DNSCanaries  []DNSCanary  `yaml:"dns_canaries"`
 	Sniffer      Sniffer      `yaml:"sniffer"`
 	Correlate    Correlate    `yaml:"correlate"`
+	Honeynets    []Honeynet   `yaml:"honeynets"`
 	Dedup        Dedup        `yaml:"dedup"`
 	Allowlist    []string     `yaml:"allowlist"`
 	Channels     []Channel    `yaml:"channels"`
 	Routes       []Route      `yaml:"routes"`
+}
+
+// Honeynet describes one artificial network. The sensor needs to actually
+// receive traffic for the host IPs (the OS routes them to the sensor's
+// network namespace, typically via `ip addr add`, NAT, or a TUN device).
+// All fields except ID are optional — a deployment can configure metadata-
+// only honeynets that only show up in DNS forward-resolution.
+type Honeynet struct {
+	ID      string         `yaml:"id"`
+	CIDR    string         `yaml:"cidr"`
+	Gateway string         `yaml:"gateway"`
+	DNS     string         `yaml:"dns"`
+	Domain  string         `yaml:"domain"`
+	Hosts   []HoneynetHost `yaml:"hosts"`
+}
+
+type HoneynetHost struct {
+	IP       string            `yaml:"ip"`
+	Hostname string            `yaml:"hostname"`
+	OS       string            `yaml:"os"`
+	Services []HoneynetService `yaml:"services"`
+}
+
+type HoneynetService struct {
+	Port    int    `yaml:"port"`
+	Handler string `yaml:"handler"`
+	Banner  string `yaml:"banner"`
 }
 
 // DNS is the bind config for the canary DNS listener. The listener only

@@ -309,6 +309,61 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Honeynets.
+	hnID := map[string]bool{}
+	allHostIPs := map[string]bool{}
+	for i, hn := range c.Honeynets {
+		if hn.ID == "" {
+			return fmt.Errorf("honeynets[%d]: id is required", i)
+		}
+		if hnID[hn.ID] {
+			return fmt.Errorf("honeynet id %q duplicated", hn.ID)
+		}
+		hnID[hn.ID] = true
+		if hn.CIDR != "" {
+			if _, err := netip.ParsePrefix(hn.CIDR); err != nil {
+				return fmt.Errorf("honeynet %s: cidr %q: %w", hn.ID, hn.CIDR, err)
+			}
+		}
+		if hn.Gateway != "" {
+			if _, err := netip.ParseAddr(hn.Gateway); err != nil {
+				return fmt.Errorf("honeynet %s: gateway %q: %w", hn.ID, hn.Gateway, err)
+			}
+		}
+		hostName := map[string]bool{}
+		for hi, host := range hn.Hosts {
+			if host.IP == "" {
+				return fmt.Errorf("honeynet %s host[%d]: ip is required", hn.ID, hi)
+			}
+			if _, err := netip.ParseAddr(host.IP); err != nil {
+				return fmt.Errorf("honeynet %s host[%d]: ip %q: %w", hn.ID, hi, host.IP, err)
+			}
+			if allHostIPs[host.IP] {
+				return fmt.Errorf("honeynet %s: ip %s appears more than once across all honeynets", hn.ID, host.IP)
+			}
+			allHostIPs[host.IP] = true
+			if host.Hostname != "" {
+				if hostName[host.Hostname] {
+					return fmt.Errorf("honeynet %s: hostname %q duplicated", hn.ID, host.Hostname)
+				}
+				hostName[host.Hostname] = true
+			}
+			portSeen := map[int]bool{}
+			for si, svc := range host.Services {
+				if svc.Port <= 0 || svc.Port > 65535 {
+					return fmt.Errorf("honeynet %s host %s service[%d]: bad port %d", hn.ID, host.IP, si, svc.Port)
+				}
+				if portSeen[svc.Port] {
+					return fmt.Errorf("honeynet %s host %s: port %d defined more than once", hn.ID, host.IP, svc.Port)
+				}
+				portSeen[svc.Port] = true
+				if svc.Handler == "" {
+					return fmt.Errorf("honeynet %s host %s service[%d]: handler is required", hn.ID, host.IP, si)
+				}
+			}
+		}
+	}
+
 	// Sniffer severity.
 	if c.Sniffer.Enabled {
 		if _, err := event.ParseSeverity(c.Sniffer.Severity); err != nil {

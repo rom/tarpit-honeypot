@@ -21,6 +21,7 @@ func Dispatch(args []string) error {
 		{"list-events", "tail / query events from the local JSON log or sqlite", cmdListEvents},
 		{"gen-token", "print an unguessable canary token (dns | url | hex)", cmdGenToken},
 		{"export-pcap", "copy one event's per-connection pcap out of the captures dir", cmdExportPcap},
+		{"list-honeynets", "print the configured artificial networks + hosts + services", cmdListHoneynets},
 		{"version", "print version info", cmdVersion},
 	}
 
