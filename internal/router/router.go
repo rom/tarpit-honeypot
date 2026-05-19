@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"log/slog"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -11,22 +13,28 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 )
 
-type bound struct {
-	sink     sink.Sink
-	rl       *filter.RateLimiter
-	minSev   event.Severity
-	isLocal  bool // jsonlog + stdout always run, even for allowlisted sources
+const sinkQueueDepth = 256
+const sinkSendTimeout = 10 * time.Second
+
+type worker struct {
+	sink    sink.Sink
+	in      chan *event.Event
+	rl      *filter.RateLimiter
+	minSev  event.Severity
+	isLocal bool
+	dropped atomic.Int64
 }
 
 type Router struct {
-	channels  map[string]*bound
-	routes    []config.Route
-	dedup     *filter.Dedup
-	allow     *filter.Allowlist
+	workers map[string]*worker
+	routes  []config.Route
+	dedup   *filter.Dedup
+	allow   *filter.Allowlist
+	wg      sync.WaitGroup
 }
 
 func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
-	chByID := map[string]*bound{}
+	workers := map[string]*worker{}
 	for _, ch := range cfg.Channels {
 		var s sink.Sink
 		for _, candidate := range sinks {
@@ -42,8 +50,9 @@ func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
 		if err != nil {
 			return nil, err
 		}
-		chByID[ch.ID] = &bound{
+		workers[ch.ID] = &worker{
 			sink:    s,
+			in:      make(chan *event.Event, sinkQueueDepth),
 			rl:      filter.NewRateLimiter(ch.RateLimitPerMin),
 			minSev:  sev,
 			isLocal: ch.Type == "stdout" || ch.Type == "jsonlog",
@@ -56,32 +65,42 @@ func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
 	}
 
 	return &Router{
-		channels: chByID,
-		routes:   cfg.Routes,
-		dedup:    filter.NewDedup(cfg.Dedup.DefaultWindow),
-		allow:    allow,
+		workers: workers,
+		routes:  cfg.Routes,
+		dedup:   filter.NewDedup(cfg.Dedup.DefaultWindow),
+		allow:   allow,
 	}, nil
 }
 
-// Run pulls events from bus and dispatches to configured channels until ctx
-// is cancelled. Sinks are called serially per event; one slow sink will
-// back-pressure others. For v0.1 this is acceptable; v0.2+ will move sink
-// dispatch onto per-sink workers with bounded queues.
-func (r *Router) Run(ctx context.Context, bus <-chan *event.Event) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ev, ok := <-bus:
-			if !ok {
-				return
-			}
-			r.dispatch(ctx, ev)
+// Start spins up one goroutine per sink. Call before any Dispatch.
+func (r *Router) Start(ctx context.Context) {
+	for id, w := range r.workers {
+		r.wg.Add(1)
+		go func(id string, w *worker) {
+			defer r.wg.Done()
+			r.runWorker(ctx, id, w)
+		}(id, w)
+	}
+}
+
+// Stop closes worker channels and waits for them to drain.
+func (r *Router) Stop() {
+	for _, w := range r.workers {
+		close(w.in)
+	}
+	r.wg.Wait()
+	for id, w := range r.workers {
+		if n := w.dropped.Load(); n > 0 {
+			slog.Warn("sink dropped events", "channel", id, "dropped", n)
 		}
 	}
 }
 
-func (r *Router) dispatch(ctx context.Context, ev *event.Event) {
+// Dispatch fans out an event according to the configured routes. Non-local
+// sinks are subject to allowlist, dedup, rate-limit and min-severity. Local
+// sinks (stdout, jsonlog) always receive the event so the local store stays
+// complete.
+func (r *Router) Dispatch(ev *event.Event) {
 	allowlisted := r.allow.Contains(ev.Source.IP)
 	dedupKey := ev.Source.IP + "|" + ev.RuleID
 	deduped := !r.dedup.ShouldSend(dedupKey)
@@ -92,32 +111,38 @@ func (r *Router) dispatch(ctx context.Context, ev *event.Event) {
 			continue
 		}
 		for _, chID := range route.Channels {
-			b := r.channels[chID]
-			if b == nil {
+			w := r.workers[chID]
+			if w == nil {
 				continue
 			}
-			// Local sinks (stdout / jsonlog) bypass dedup and allowlist
-			// so the event store is always complete.
-			if !b.isLocal {
-				if allowlisted {
+			if !w.isLocal {
+				if allowlisted || deduped {
 					continue
 				}
-				if deduped {
-					continue
-				}
-				if !b.rl.Allow() {
-					slog.Warn("rate limit hit", "channel", chID, "rule", ev.RuleID, "src", ev.Source.IP)
+				if !w.rl.Allow() {
+					w.dropped.Add(1)
 					continue
 				}
 			}
-			if ev.Severity < b.minSev {
+			if ev.Severity < w.minSev {
 				continue
 			}
-			sctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			if err := b.sink.Send(sctx, ev); err != nil {
-				slog.Warn("sink error", "channel", chID, "err", err)
+			select {
+			case w.in <- ev:
+			default:
+				w.dropped.Add(1)
+				slog.Warn("sink queue full", "channel", chID, "rule", ev.RuleID)
 			}
-			cancel()
 		}
+	}
+}
+
+func (r *Router) runWorker(ctx context.Context, id string, w *worker) {
+	for ev := range w.in {
+		sctx, cancel := context.WithTimeout(ctx, sinkSendTimeout)
+		if err := w.sink.Send(sctx, ev); err != nil {
+			slog.Warn("sink error", "channel", id, "err", err)
+		}
+		cancel()
 	}
 }

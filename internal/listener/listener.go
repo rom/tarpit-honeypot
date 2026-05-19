@@ -13,13 +13,12 @@ type Listener interface {
 	Start(ctx context.Context, bus chan<- *event.Event) error
 }
 
-func Build(l config.Listener, sensorName string) (Listener, error) {
+func Build(l config.Listener, sensorName, dataDir string) (Listener, error) {
 	switch l.Proto {
 	case "tcp":
-		return newTCP(l, sensorName)
+		return newTCP(l, sensorName, dataDir)
 	case "udp":
 		return newUDP(l, sensorName)
 	}
-	// Validation already rejected this; defensive only.
 	return nil, errUnknownProto
 }

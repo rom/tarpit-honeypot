@@ -60,6 +60,55 @@ func (c *Config) applyDefaults() {
 		if l.ReadTimeout == 0 {
 			l.ReadTimeout = 5 * time.Second
 		}
+		if l.Mode == "tarpit" {
+			t := &l.Tarpit
+			if t.Strategy == "" {
+				t.Strategy = "sticky"
+			}
+			if t.MaxPerSource == 0 {
+				t.MaxPerSource = 4
+			}
+			if t.MaxTotal == 0 {
+				t.MaxTotal = 256
+			}
+			if t.Trickle.ByteInterval == 0 {
+				t.Trickle.ByteInterval = 2 * time.Second
+			}
+			if t.Keepalive.Interval == 0 {
+				t.Keepalive.Interval = 30 * time.Second
+			}
+		}
+	}
+	for i := range c.Canaries {
+		ca := &c.Canaries[i]
+		if ca.Severity == "" {
+			ca.Severity = "critical"
+		}
+		if len(ca.Events) == 0 {
+			ca.Events = []string{"write", "remove", "rename"}
+		}
+	}
+	if c.Correlate.PortScan.Enabled {
+		if c.Correlate.PortScan.DistinctPorts == 0 {
+			c.Correlate.PortScan.DistinctPorts = 5
+		}
+		if c.Correlate.PortScan.Window == 0 {
+			c.Correlate.PortScan.Window = 30 * time.Second
+		}
+		if c.Correlate.PortScan.Severity == "" {
+			c.Correlate.PortScan.Severity = "high"
+		}
+	}
+	if c.Correlate.BruteForce.Enabled {
+		if c.Correlate.BruteForce.Attempts == 0 {
+			c.Correlate.BruteForce.Attempts = 10
+		}
+		if c.Correlate.BruteForce.Window == 0 {
+			c.Correlate.BruteForce.Window = 60 * time.Second
+		}
+		if c.Correlate.BruteForce.Severity == "" {
+			c.Correlate.BruteForce.Severity = "high"
+		}
 	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
@@ -102,17 +151,73 @@ func (c *Config) Validate() error {
 		}
 		seenBind[key] = true
 		switch l.Mode {
-		case "drop", "banner":
-		case "tarpit":
-			return fmt.Errorf("listener %s: tarpit mode is planned for v0.2, not available yet", l.ID)
+		case "drop", "banner", "tarpit":
 		default:
 			return fmt.Errorf("listener %s: unknown mode %q", l.ID, l.Mode)
 		}
-		if l.Mode == "banner" && l.Banner == "" {
-			return fmt.Errorf("listener %s: banner mode requires a banner string", l.ID)
+		switch l.Handler {
+		case "raw", "ssh", "http", "https", "telnet", "ftp":
+		default:
+			return fmt.Errorf("listener %s: unknown handler %q", l.ID, l.Handler)
+		}
+		if l.Handler != "raw" && l.Proto != "tcp" {
+			return fmt.Errorf("listener %s: handler %s is tcp-only", l.ID, l.Handler)
+		}
+		if l.Mode == "banner" && l.Handler == "raw" && l.Banner == "" {
+			return fmt.Errorf("listener %s: banner mode with raw handler requires a banner string", l.ID)
+		}
+		if l.Mode == "tarpit" {
+			if l.Proto != "tcp" {
+				return fmt.Errorf("listener %s: tarpit is tcp-only", l.ID)
+			}
+			switch l.Tarpit.Strategy {
+			case "sticky", "trickle", "keepalive":
+			default:
+				return fmt.Errorf("listener %s: unknown tarpit strategy %q", l.ID, l.Tarpit.Strategy)
+			}
+			if l.Tarpit.Strategy == "trickle" && l.Tarpit.Trickle.Text == "" {
+				return fmt.Errorf("listener %s: trickle strategy requires tarpit.trickle.text", l.ID)
+			}
 		}
 		if _, err := event.ParseSeverity(l.Severity); err != nil {
 			return fmt.Errorf("listener %s: %w", l.ID, err)
+		}
+	}
+
+	// Canaries.
+	canID := map[string]bool{}
+	for i, ca := range c.Canaries {
+		if ca.ID == "" {
+			return fmt.Errorf("canaries[%d]: id is required", i)
+		}
+		if canID[ca.ID] {
+			return fmt.Errorf("canary id %q duplicated", ca.ID)
+		}
+		canID[ca.ID] = true
+		if ca.Path == "" {
+			return fmt.Errorf("canary %s: path is required", ca.ID)
+		}
+		for _, evname := range ca.Events {
+			switch evname {
+			case "write", "remove", "rename", "create", "chmod":
+			default:
+				return fmt.Errorf("canary %s: unknown event %q", ca.ID, evname)
+			}
+		}
+		if _, err := event.ParseSeverity(ca.Severity); err != nil {
+			return fmt.Errorf("canary %s: %w", ca.ID, err)
+		}
+	}
+
+	// Correlator severities.
+	if c.Correlate.PortScan.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.PortScan.Severity); err != nil {
+			return fmt.Errorf("correlate.port_scan: %w", err)
+		}
+	}
+	if c.Correlate.BruteForce.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.BruteForce.Severity); err != nil {
+			return fmt.Errorf("correlate.brute_force: %w", err)
 		}
 	}
 

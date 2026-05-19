@@ -44,13 +44,13 @@ func cmdTestAlert(args []string) error {
 		Meta:     map[string]any{"note": *note},
 	}
 
-	// Drive a single event through the router synchronously.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	bus := make(chan *event.Event, 1)
-	bus <- ev
-	close(bus)
-	s.Router().Run(ctx, bus)
+	s.Router().Start(ctx)
+	s.Router().Dispatch(ev)
+	// Give the per-sink workers a moment to drain before we close their channels.
+	time.Sleep(250 * time.Millisecond)
+	s.Router().Stop()
 
 	fmt.Println("test-alert sent:", ev.ID)
 	return nil

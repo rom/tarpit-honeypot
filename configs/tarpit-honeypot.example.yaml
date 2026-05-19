@@ -11,8 +11,7 @@ listeners:
     proto: tcp
     bind: 0.0.0.0:2222
     mode: banner
-    handler: raw
-    banner: "SSH-2.0-OpenSSH_8.4p1 Debian-5\r\n"
+    handler: ssh
     severity: high
     read_bytes: 1024
     read_timeout: 5s
@@ -21,17 +20,40 @@ listeners:
     proto: tcp
     bind: 0.0.0.0:8000
     mode: banner
-    handler: raw
-    banner: "HTTP/1.1 401 Unauthorized\r\nServer: nginx/1.18.0\r\nWWW-Authenticate: Basic realm=\"admin\"\r\nContent-Length: 0\r\n\r\n"
+    handler: http
     severity: medium
     read_bytes: 4096
     read_timeout: 5s
 
-  - id: drop-any-23
+  - id: https-bait
+    proto: tcp
+    bind: 0.0.0.0:8443
+    mode: banner
+    handler: https
+    severity: high
+    read_bytes: 4096
+    read_timeout: 5s
+    https:
+      hosts: ["honeypot.local"]
+
+  - id: telnet-tarpit
     proto: tcp
     bind: 0.0.0.0:2323
-    mode: drop
+    mode: tarpit
+    severity: high
+    tarpit:
+      strategy: sticky
+      max_per_source: 4
+      max_total: 256
+
+  - id: ftp-bait
+    proto: tcp
+    bind: 0.0.0.0:2121
+    mode: banner
+    handler: ftp
     severity: medium
+    read_bytes: 256
+    read_timeout: 10s
 
   - id: udp-5353
     proto: udp
@@ -39,6 +61,25 @@ listeners:
     mode: drop
     severity: low
     read_bytes: 1500
+
+canaries:
+  - id: shared-creds
+    path: ./var/canary/passwords.xlsx
+    events: [write, remove, rename, chmod]
+    severity: critical
+
+correlate:
+  port_scan:
+    enabled: true
+    distinct_ports: 5
+    window: 30s
+    severity: high
+  brute_force:
+    enabled: true
+    attempts: 10
+    window: 60s
+    per_port: true
+    severity: high
 
 dedup:
   default_window: 5m
@@ -55,34 +96,6 @@ channels:
   - id: jsonlog
     type: jsonlog
     min_severity: low
-
-  # Uncomment and configure to enable outbound channels.
-  #
-  # - id: ops-webhook
-  #   type: webhook
-  #   url: https://hooks.example.com/tarpit
-  #   hmac_secret_env: TARPIT_WEBHOOK_SECRET
-  #   timeout: 5s
-  #   min_severity: medium
-  #   rate_limit_per_min: 60
-  #
-  # - id: ops-smtp
-  #   type: smtp
-  #   host: smtp.example.com
-  #   port: 587
-  #   starttls: true
-  #   username_env: SMTP_USER
-  #   password_env: SMTP_PASS
-  #   from: "tarpit@example.com"
-  #   to: ["secops@example.com"]
-  #   min_severity: high
-  #
-  # - id: siem-syslog
-  #   type: syslog
-  #   network: tcp
-  #   address: siem.example.internal:6514
-  #   tag: tarpit-honeypot
-  #   min_severity: low
 
 routes:
   - match:

@@ -7,15 +7,18 @@ what's actually built right now.
 
 ## Status
 
-**v0.1 — tripwire MVP.** Listeners (drop / banner), JSON + stdout always-on
-sinks, webhook / SMTP / syslog outbound sinks, dedup + rate-limit + allowlist,
-CLI subcommands, systemd unit. Linux amd64/arm64.
+**v0.2 — tarpit + bait + canaries + correlator.** Adds tarpit listener
+modes (sticky / trickle / keepalive), built-in protocol handlers for
+SSH / HTTP / HTTPS / Telnet / FTP, filesystem honeyfile watching via
+fsnotify, port-scan + brute-force correlators that emit aggregate
+events, per-sink worker queues with bounded drop, unit tests for the
+trickier logic. Linux amd64/arm64.
 
-Not yet implemented (planned in later phases per `design.md`): tarpit
-listener modes, ICS protocol handlers, filesystem canaries, DNS/URL tokens,
-L2 sniffer, in-sensor correlator, SQLite event index, mini-pcap capture,
-web UI, Windows service, Twilio / SNS / SNMP-trap channels, hot reload,
-privilege drop.
+Not yet implemented (planned in later phases per `design.md`):
+SMB + ICS/OT protocol handlers, DNS/URL token canaries, L2 sniffer,
+SQLite event index, mini-pcap capture, web UI, Windows service,
+Twilio / SNS / SNMP-trap channels, hot reload, privilege drop, and
+read-detection for honeyfiles via fanotify.
 
 ## Build
 

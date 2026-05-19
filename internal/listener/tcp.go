@@ -5,13 +5,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 )
 
 var errUnknownProto = errors.New("unknown proto")
@@ -20,14 +20,27 @@ type tcpListener struct {
 	cfg        config.Listener
 	sensorName string
 	sev        event.Severity
+	handler    handler.Handler
+	tarpit     *tarpitState
 }
 
-func newTCP(l config.Listener, sensorName string) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName, dataDir string) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	return &tcpListener{cfg: l, sensorName: sensorName, sev: sev}, nil
+	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev}
+	if l.Mode == "banner" {
+		h, err := handler.Get(l.Handler, dataDir)
+		if err != nil {
+			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
+		}
+		t.handler = h
+	}
+	if l.Mode == "tarpit" {
+		t.tarpit = newTarpitState()
+	}
+	return t, nil
 }
 
 func (t *tcpListener) ID() string { return t.cfg.ID }
@@ -38,9 +51,8 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 	if err != nil {
 		return fmt.Errorf("listener %s: listen %s: %w", t.cfg.ID, t.cfg.Bind, err)
 	}
-	slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", t.cfg.Bind, "mode", t.cfg.Mode)
+	slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", t.cfg.Bind, "mode", t.cfg.Mode, "handler", t.cfg.Handler)
 
-	// Close on context cancel so Accept returns.
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -52,7 +64,6 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			if ctx.Err() != nil {
 				return nil
 			}
-			// Transient accept errors shouldn't kill the listener.
 			slog.Warn("accept error", "id", t.cfg.ID, "err", err)
 			continue
 		}
@@ -61,12 +72,60 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 }
 
 func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
-	defer conn.Close()
-
 	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
-	ev := &event.Event{
+	start := time.Now()
+
+	switch t.cfg.Mode {
+	case "drop":
+		ev := t.baseEvent(src, dst, start)
+		_ = conn.Close()
+		send(ctx, bus, ev)
+
+	case "banner":
+		ev := t.baseEvent(src, dst, start)
+		if t.handler != nil {
+			res, _ := t.handler.Handle(ctx, conn, t.cfg)
+			ev.BannerSent = res.BannerSent
+			if len(res.Payload) > 0 {
+				ev.PayloadLen = len(res.Payload)
+				ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
+			}
+			if res.Meta != nil {
+				if ev.Meta == nil {
+					ev.Meta = map[string]any{}
+				}
+				for k, v := range res.Meta {
+					ev.Meta[k] = v
+				}
+			}
+		}
+		_ = conn.Close()
+		send(ctx, bus, ev)
+
+	case "tarpit":
+		maxPS, maxT := tarpitLimits(t.cfg)
+		if !t.tarpit.tryAcquire(src.IP, maxPS, maxT) {
+			t.emitTarpitDrop(ctx, bus, src, dst)
+			_ = conn.Close()
+			return
+		}
+		// Emit a tarpit_start event immediately so operators see who's stuck.
+		startEv := t.baseEvent(src, dst, start)
+		startEv.RuleID = "listener:" + t.cfg.ID + ":tarpit_start"
+		if startEv.Meta == nil {
+			startEv.Meta = map[string]any{}
+		}
+		startEv.Meta["tarpit_strategy"] = t.cfg.Tarpit.Strategy
+		send(ctx, bus, startEv)
+		// runTarpit closes the connection and releases the state slot.
+		t.runTarpit(ctx, conn, bus, start, src, dst)
+	}
+}
+
+func (t *tcpListener) baseEvent(src, dst event.Endpoint, when time.Time) *event.Event {
+	return &event.Event{
 		ID:       event.NewID(),
-		Time:     time.Now().UTC(),
+		Time:     when.UTC(),
 		Sensor:   t.sensorName,
 		RuleID:   "listener:" + t.cfg.ID,
 		Severity: t.sev,
@@ -75,32 +134,9 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		Proto:    "tcp",
 		Handler:  t.cfg.Handler,
 	}
+}
 
-	if t.cfg.Mode == "banner" && t.cfg.Banner != "" {
-		_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-		if _, err := conn.Write([]byte(t.cfg.Banner)); err != nil {
-			ev.Meta = map[string]any{"banner_write_err": err.Error()}
-		}
-		ev.BannerSent = t.cfg.Banner
-	}
-
-	if t.cfg.ReadBytes > 0 && t.cfg.Mode != "drop" {
-		_ = conn.SetReadDeadline(time.Now().Add(t.cfg.ReadTimeout))
-		buf := make([]byte, t.cfg.ReadBytes)
-		n, err := io.ReadFull(conn, buf)
-		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-			// timeout or read error — still useful, just record it
-			if ev.Meta == nil {
-				ev.Meta = map[string]any{}
-			}
-			ev.Meta["read_err"] = err.Error()
-		}
-		if n > 0 {
-			ev.PayloadLen = n
-			ev.PayloadBase64 = base64.StdEncoding.EncodeToString(buf[:n])
-		}
-	}
-
+func send(ctx context.Context, bus chan<- *event.Event, ev *event.Event) {
 	select {
 	case bus <- ev:
 	case <-ctx.Done():
