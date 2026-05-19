@@ -26,6 +26,25 @@ build:
 test:
 	$(GO) test $(GOFLAGS) ./...
 
+# Race-detector run. CGO is required for -race so we override the default
+# CGO_ENABLED=0 just for this target.
+race:
+	CGO_ENABLED=1 $(GO) test $(GOFLAGS) -race ./...
+
+# Coverage: write a profile + a per-function summary, and a best-effort
+# HTML render (which needs the source visible to `go tool cover -html`).
+cover:
+	$(GO) test $(GOFLAGS) -coverprofile=coverage.out ./...
+	-$(GO) tool cover -func=coverage.out > coverage.summary
+	-tail -1 coverage.summary
+	-$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "summary: coverage.summary; HTML: coverage.html (if rendered)"
+
+# Run all FuzzXxx tests for a few seconds each. CI should run a longer
+# pass via `go test -fuzz=^FuzzXxx$ ./internal/<pkg>` per-package.
+fuzz:
+	$(GO) test -run='^$$' -fuzz='Fuzz' -fuzztime=10s ./...
+
 vet:
 	$(GO) vet ./...
 

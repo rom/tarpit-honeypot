@@ -191,7 +191,14 @@ func stripBERHeader(b []byte) (lenBytes int, hdrBytes int, body []byte, ok bool)
 	}
 	first := b[0]
 	if first&0x80 == 0 {
-		return 1, 1, b[1 : 1+int(first)], 1+int(first) <= len(b)
+		// Short form: 1-byte length encoding. Check bounds *before*
+		// slicing — a malicious / fuzzer-generated input can set
+		// length to a value that overflows the available bytes.
+		n := int(first)
+		if 1+n > len(b) {
+			return 0, 0, nil, false
+		}
+		return 1, 1, b[1 : 1+n], true
 	}
 	nbytes := int(first & 0x7F)
 	if nbytes == 0 || nbytes > 4 || 1+nbytes > len(b) {
