@@ -92,6 +92,30 @@ func (c *Config) applyDefaults() {
 			ca.Events = []string{"write", "remove", "rename"}
 		}
 	}
+	for i := range c.URLCanaries {
+		uc := &c.URLCanaries[i]
+		if uc.Severity == "" {
+			uc.Severity = "critical"
+		}
+	}
+	for i := range c.DNSCanaries {
+		dc := &c.DNSCanaries[i]
+		if dc.Severity == "" {
+			dc.Severity = "critical"
+		}
+		dc.Name = strings.ToLower(strings.TrimSuffix(dc.Name, "."))
+	}
+	if c.Sniffer.Enabled {
+		if c.Sniffer.Severity == "" {
+			c.Sniffer.Severity = "high"
+		}
+		if c.Sniffer.ARPScan.DistinctIPs == 0 {
+			c.Sniffer.ARPScan.DistinctIPs = 16
+		}
+		if c.Sniffer.ARPScan.Window == 0 {
+			c.Sniffer.ARPScan.Window = 30 * time.Second
+		}
+	}
 	if c.Correlate.PortScan.Enabled {
 		if c.Correlate.PortScan.DistinctPorts == 0 {
 			c.Correlate.PortScan.DistinctPorts = 5
@@ -211,6 +235,49 @@ func (c *Config) Validate() error {
 		}
 		if _, err := event.ParseSeverity(ca.Severity); err != nil {
 			return fmt.Errorf("canary %s: %w", ca.ID, err)
+		}
+	}
+
+	// URL canaries.
+	urlID := map[string]bool{}
+	for i, uc := range c.URLCanaries {
+		if uc.ID == "" {
+			return fmt.Errorf("url_canaries[%d]: id is required", i)
+		}
+		if urlID[uc.ID] {
+			return fmt.Errorf("url_canary id %q duplicated", uc.ID)
+		}
+		urlID[uc.ID] = true
+		if uc.Path == "" || uc.Path[0] != '/' {
+			return fmt.Errorf("url_canary %s: path must start with '/'", uc.ID)
+		}
+		if _, err := event.ParseSeverity(uc.Severity); err != nil {
+			return fmt.Errorf("url_canary %s: %w", uc.ID, err)
+		}
+	}
+
+	// DNS canaries.
+	dnsID := map[string]bool{}
+	for i, dc := range c.DNSCanaries {
+		if dc.ID == "" {
+			return fmt.Errorf("dns_canaries[%d]: id is required", i)
+		}
+		if dnsID[dc.ID] {
+			return fmt.Errorf("dns_canary id %q duplicated", dc.ID)
+		}
+		dnsID[dc.ID] = true
+		if dc.Name == "" {
+			return fmt.Errorf("dns_canary %s: name is required", dc.ID)
+		}
+		if _, err := event.ParseSeverity(dc.Severity); err != nil {
+			return fmt.Errorf("dns_canary %s: %w", dc.ID, err)
+		}
+	}
+
+	// Sniffer severity.
+	if c.Sniffer.Enabled {
+		if _, err := event.ParseSeverity(c.Sniffer.Severity); err != nil {
+			return fmt.Errorf("sniffer: %w", err)
 		}
 	}
 

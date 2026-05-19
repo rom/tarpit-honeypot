@@ -10,17 +10,21 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-type httpH struct{}
+type httpH struct {
+	urlCanaries []config.URLCanary
+}
 
 func (h *httpH) Name() string { return "http" }
 
 // Plausible nginx-ish 401 response that captures the request line + headers.
 // We read until \r\n\r\n (end of headers) or the read cap, whichever is first.
+// Any request whose path exactly matches a configured URL canary is recorded
+// in res.CanaryHits — the listener turns those into separate critical events.
 func (h *httpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
-	return serveHTTP(conn, cfg)
+	return serveHTTP(conn, cfg, h.urlCanaries)
 }
 
-func serveHTTP(conn net.Conn, cfg config.Listener) (Result, error) {
+func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
@@ -43,7 +47,6 @@ func serveHTTP(conn net.Conn, cfg config.Listener) (Result, error) {
 	}
 	res.Payload = buf.Bytes()
 
-	// Pull out the request line + Host header for the event meta.
 	firstLine := ""
 	host := ""
 	for i, line := range strings.Split(string(buf.Bytes()), "\r\n") {
@@ -53,7 +56,20 @@ func serveHTTP(conn net.Conn, cfg config.Listener) (Result, error) {
 			host = strings.TrimSpace(line[5:])
 		}
 	}
-	res.Meta = map[string]any{"request_line": firstLine, "host": host}
+	if res.Meta == nil {
+		res.Meta = map[string]any{}
+	}
+	res.Meta["request_line"] = firstLine
+	res.Meta["host"] = host
+
+	// URL canary match: parse the path out of the request line.
+	if path := extractPath(firstLine); path != "" {
+		for _, c := range canaries {
+			if c.Path == path {
+				res.CanaryHits = append(res.CanaryHits, c.ID)
+			}
+		}
+	}
 
 	banner := cfg.Banner
 	if banner == "" {
@@ -68,4 +84,19 @@ func serveHTTP(conn net.Conn, cfg config.Listener) (Result, error) {
 	}
 	res.BannerSent = banner
 	return res, nil
+}
+
+// extractPath returns the path portion of an HTTP request line like
+// "GET /admin?x=1 HTTP/1.1". The query string is stripped because canary
+// matching should be path-only.
+func extractPath(reqLine string) string {
+	parts := strings.SplitN(reqLine, " ", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	p := parts[1]
+	if i := strings.IndexByte(p, '?'); i >= 0 {
+		p = p[:i]
+	}
+	return p
 }

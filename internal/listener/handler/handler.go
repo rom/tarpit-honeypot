@@ -22,6 +22,11 @@ type Result struct {
 	BannerSent string
 	Payload    []byte
 	Meta       map[string]any
+	// CanaryHits names any URL canaries (or other token canaries) that fired
+	// while handling this connection. The listener turns each id into a
+	// separate canary:url:<id> event so they correlate with the trap visit
+	// but stand on their own for routing/severity.
+	CanaryHits []string
 }
 
 // Handler is the contract that all banner-mode handlers implement.
@@ -31,18 +36,24 @@ type Handler interface {
 }
 
 // Get returns the handler implementation for the named handler.
-// Caller is expected to have validated the name via config validation;
-// unknown names return an error rather than panic.
-func Get(name string, dataDir string) (Handler, error) {
+// The dataDir is used by handlers that need to persist state (https cert
+// cache). urlCanaries is passed to the http/https handlers for URL token
+// matching; other handlers ignore it.
+func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, error) {
 	switch name {
 	case "raw":
 		return &raw{}, nil
 	case "ssh":
 		return &ssh{}, nil
 	case "http":
-		return &httpH{}, nil
+		return &httpH{urlCanaries: urlCanaries}, nil
 	case "https":
-		return newHTTPS(dataDir)
+		h, err := newHTTPS(dataDir)
+		if err != nil {
+			return nil, err
+		}
+		h.urlCanaries = urlCanaries
+		return h, nil
 	case "telnet":
 		return &telnet{}, nil
 	case "ftp":

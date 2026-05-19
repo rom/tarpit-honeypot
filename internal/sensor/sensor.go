@@ -11,10 +11,12 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
+	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/sink"
+	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -282,7 +284,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}()
 
 	for _, l := range s.cfg.Listeners {
-		ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr)
+		ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr, s.cfg.URLCanaries)
 		if err != nil {
 			return err
 		}
@@ -304,6 +306,35 @@ func (s *Sensor) Run(ctx context.Context) error {
 				slog.Error("canary watcher stopped", "err", err)
 			}
 		}()
+	}
+
+	if s.cfg.DNS.Enabled && len(s.cfg.DNSCanaries) > 0 {
+		srv, err := dnscanary.New(s.cfg.DNS.Bind, s.name, s.cfg.DNSCanaries)
+		if err != nil {
+			return err
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := srv.Run(ctx, s.bus); err != nil {
+				slog.Error("dnscanary stopped", "err", err)
+			}
+		}()
+	}
+
+	if s.cfg.Sniffer.Enabled {
+		sn, err := sniffer.New(s.cfg.Sniffer, s.name)
+		if err != nil {
+			slog.Warn("sniffer disabled", "err", err)
+		} else {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := sn.Run(ctx, s.bus); err != nil {
+					slog.Error("sniffer stopped", "err", err)
+				}
+			}()
+		}
 	}
 
 	<-ctx.Done()

@@ -3,15 +3,56 @@ package config
 import "time"
 
 type Config struct {
-	Sensor    Sensor     `yaml:"sensor"`
-	UI        UI         `yaml:"ui"`
-	Listeners []Listener `yaml:"listeners"`
-	Canaries  []Canary   `yaml:"canaries"`
-	Correlate Correlate  `yaml:"correlate"`
-	Dedup     Dedup      `yaml:"dedup"`
-	Allowlist []string   `yaml:"allowlist"`
-	Channels  []Channel  `yaml:"channels"`
-	Routes    []Route    `yaml:"routes"`
+	Sensor       Sensor       `yaml:"sensor"`
+	UI           UI           `yaml:"ui"`
+	Listeners    []Listener   `yaml:"listeners"`
+	Canaries     []Canary     `yaml:"canaries"`
+	URLCanaries  []URLCanary  `yaml:"url_canaries"`
+	DNS          DNS          `yaml:"dns"`
+	DNSCanaries  []DNSCanary  `yaml:"dns_canaries"`
+	Sniffer      Sniffer      `yaml:"sniffer"`
+	Correlate    Correlate    `yaml:"correlate"`
+	Dedup        Dedup        `yaml:"dedup"`
+	Allowlist    []string     `yaml:"allowlist"`
+	Channels     []Channel    `yaml:"channels"`
+	Routes       []Route      `yaml:"routes"`
+}
+
+// DNS is the bind config for the canary DNS listener. The listener only
+// starts when Enabled and at least one DNSCanary is configured.
+type DNS struct {
+	Enabled bool   `yaml:"enabled"`
+	Bind    string `yaml:"bind"`
+}
+
+// URLCanary fires when any HTTP/HTTPS listener sees a request for the
+// configured path. Use unguessable paths so legitimate scanning misses them.
+type URLCanary struct {
+	ID       string `yaml:"id"`
+	Path     string `yaml:"path"`      // exact path match, e.g. /backup/aws-prod.tar.gz
+	Severity string `yaml:"severity"`
+}
+
+// DNSCanary fires when the DNS listener receives a query for the configured
+// label or any subdomain underneath it. Use long random tokens.
+type DNSCanary struct {
+	ID       string `yaml:"id"`
+	Name     string `yaml:"name"`      // e.g. "abc123.canary.example.com"
+	Severity string `yaml:"severity"`
+}
+
+// Sniffer configures the optional Linux AF_PACKET sniffer that watches for
+// ARP scans and unsolicited replies.
+type Sniffer struct {
+	Enabled   bool          `yaml:"enabled"`
+	Interface string        `yaml:"interface"`   // empty = all
+	ARPScan   ARPScanCfg    `yaml:"arp_scan"`
+	Severity  string        `yaml:"severity"`
+}
+
+type ARPScanCfg struct {
+	DistinctIPs int           `yaml:"distinct_ips"`
+	Window      time.Duration `yaml:"window"`
 }
 
 type UI struct {

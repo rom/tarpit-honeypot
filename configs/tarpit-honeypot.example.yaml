@@ -121,6 +121,38 @@ canaries:
     events: [write, remove, rename, chmod]
     severity: critical
 
+# URL canary tokens — embed these in fake docs / emails / config files.
+# Any HTTP/HTTPS listener request that exactly matches the path fires
+# a canary:url:<id> event in addition to the normal listener event.
+url_canaries:
+  - id: aws-prod-tarball
+    path: /backup/aws-prod.tar.gz
+    severity: critical
+  - id: admin-config
+    path: /admin/db-config.json
+    severity: critical
+
+# DNS canary names — embed these in scripts/configs so any DNS resolution
+# (data exfil-shaped or otherwise) fires a canary:dns:<id> event.
+dns:
+  enabled: true
+  bind: 127.0.0.1:5354     # bind to :53 in production
+dns_canaries:
+  - id: prod-customer-data
+    name: prod-cdb-x7q.canary.example.com
+    severity: critical
+
+# Layer-2 sniffer (Linux only; needs CAP_NET_RAW).
+# Watches the local segment for ARP scans (same MAC, many distinct IPs)
+# and unsolicited ARP replies (potential cache poisoning).
+sniffer:
+  enabled: false
+  interface: ""            # empty = all interfaces
+  severity: high
+  arp_scan:
+    distinct_ips: 16
+    window: 30s
+
 correlate:
   port_scan:
     enabled: true

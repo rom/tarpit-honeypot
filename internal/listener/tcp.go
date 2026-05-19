@@ -18,22 +18,23 @@ import (
 var errUnknownProto = errors.New("unknown proto")
 
 type tcpListener struct {
-	cfg        config.Listener
-	sensorName string
-	sev        event.Severity
-	handler    handler.Handler
-	tarpit     *tarpitState
-	captureMgr *capture.Manager
+	cfg          config.Listener
+	sensorName   string
+	sev          event.Severity
+	handler      handler.Handler
+	tarpit       *tarpitState
+	captureMgr   *capture.Manager
+	urlCanarySev map[string]event.Severity
 }
 
-func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager, urlCanaries []config.URLCanary, urlSevByID map[string]event.Severity) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev}
+	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID}
 	if l.Mode == "banner" {
-		h, err := handler.Get(l.Handler, dataDir)
+		h, err := handler.Get(l.Handler, dataDir, urlCanaries)
 		if err != nil {
 			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 		}
@@ -118,6 +119,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 
 	case "banner":
 		ev := t.baseEvent(eventID, src, dst, start)
+		var canaryHits []string
 		if t.handler != nil {
 			res, _ := t.handler.Handle(ctx, conn, t.cfg)
 			ev.BannerSent = res.BannerSent
@@ -133,9 +135,29 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 					ev.Meta[k] = v
 				}
 			}
+			canaryHits = res.CanaryHits
 		}
 		_ = conn.Close()
 		finish(ev)
+		for _, id := range canaryHits {
+			sev := t.urlCanarySev[id]
+			if sev == 0 {
+				sev = event.SeverityCritical
+			}
+			ce := &event.Event{
+				ID:       event.NewID(),
+				Time:     time.Now().UTC(),
+				Sensor:   t.sensorName,
+				RuleID:   "canary:url:" + id,
+				Severity: sev,
+				Source:   src,
+				Dest:     dst,
+				Proto:    "tcp",
+				Handler:  t.cfg.Handler,
+				Meta:     map[string]any{"trigger_event_id": ev.ID},
+			}
+			send(ctx, bus, ce)
+		}
 
 	case "tarpit":
 		maxPS, maxT := tarpitLimits(t.cfg)

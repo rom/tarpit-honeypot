@@ -21,9 +21,10 @@ import (
 )
 
 type https struct {
-	mu     sync.Mutex
-	cache  map[string]*tls.Certificate
-	dir    string
+	mu          sync.Mutex
+	cache       map[string]*tls.Certificate
+	dir         string
+	urlCanaries []config.URLCanary
 }
 
 func newHTTPS(dataDir string) (*https, error) {
@@ -54,7 +55,7 @@ func (h *https) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		return Result{Meta: map[string]any{"tls_err": err.Error()}}, nil
 	}
 	state := tlsConn.ConnectionState()
-	res, _ := serveHTTP(tlsConn, cfg)
+	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries)
 	if res.Meta == nil {
 		res.Meta = map[string]any{}
 	}

@@ -7,18 +7,20 @@ what's actually built right now.
 
 ## Status
 
-**v0.4 — ICS handlers + per-event pcap capture.** Adds minimal
-fingerprint-grade protocol handlers for Modbus TCP (502), Siemens
-S7comm (102), IEC-104 (2404), and MQTT (1883). Per-listener
-`capture: true` records both directions of every TCP connection and
-writes a synthesized libpcap file Wireshark loads directly — pure Go,
-no raw sockets, no CGO. Linux amd64/arm64.
+**v0.5 — URL + DNS canary tokens, fanotify read-detection, ARP sniffer.**
+HTTP/HTTPS listeners match incoming paths against configured URL canaries
+and fire a separate critical event when an unguessable bait URL is hit.
+A small DNS-style listener resolves canary names with NXDOMAIN while
+firing on any subdomain match. Linux canary watcher now uses fanotify
+when available so plain `cat`/`open` reads of a honeyfile are caught
+(in addition to fsnotify modify/remove/rename). An optional Linux
+AF_PACKET sniffer detects ARP scans (one MAC, many distinct IPs) and
+unsolicited ARP replies. Linux amd64/arm64.
 
 Not yet implemented (planned in later phases per `design.md`):
 SMB + remaining ICS handlers (OPC-UA / BACnet / EthernetIP / SNMP /
-NTP / TFTP), DNS/URL token canaries, L2 sniffer, Windows service,
-Twilio / SNS / SNMP-trap channels, listener hot-reload, and
-read-detection for honeyfiles via fanotify.
+NTP / TFTP), Windows service, Twilio / SNS / SNMP-trap channels,
+listener hot-reload.
 
 ## Build
 

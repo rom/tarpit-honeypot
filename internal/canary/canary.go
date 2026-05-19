@@ -23,15 +23,42 @@ type Watcher struct {
 	sensorName string
 }
 
+// fanotifyTarget is the per-canary view the linux fanotify code needs.
+type fanotifyTarget struct {
+	id   string
+	path string
+	sev  event.Severity
+}
+
 func New(cfg []config.Canary, sensorName string) *Watcher {
 	return &Watcher{cfg: cfg, sensorName: sensorName}
 }
 
+func (w *Watcher) fanotifyTargets() []fanotifyTarget {
+	out := make([]fanotifyTarget, 0, len(w.cfg))
+	for _, c := range w.cfg {
+		sev, err := event.ParseSeverity(c.Severity)
+		if err != nil {
+			continue
+		}
+		out = append(out, fanotifyTarget{id: c.ID, path: c.Path, sev: sev})
+	}
+	return out
+}
+
 // Run sets up the underlying fsnotify watcher, adds every configured canary
 // path, and emits events until ctx is cancelled.
+//
+// On Linux, we also try to start a fanotify reader so OPEN events (i.e.
+// plain reads) are detected. Failure to set up fanotify (no CAP_SYS_ADMIN,
+// old kernel, etc.) is logged at warn level and we continue with fsnotify
+// only — modify/remove/rename/chmod still work.
 func (w *Watcher) Run(ctx context.Context, bus chan<- *event.Event) error {
 	if len(w.cfg) == 0 {
 		return nil
+	}
+	if err := startFanotify(ctx, w.fanotifyTargets(), w.sensorName, bus); err != nil {
+		slog.Warn("canary: fanotify unavailable; OPEN events won't be detected (fsnotify still active)", "err", err)
 	}
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
