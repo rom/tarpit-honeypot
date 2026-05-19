@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/canary"
 	"github.com/rom/tarpit-honeypot/internal/capture"
@@ -16,6 +18,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
+	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
@@ -441,8 +444,43 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}
 	}
 
+	// Retention runner — only if configured.
+	if s.cfg.Sensor.Disk.RetentionDays > 0 {
+		r := &retention.Runner{
+			Days:        s.cfg.Sensor.Disk.RetentionDays,
+			JSONLogDir:  filepath.Join(s.cfg.Sensor.DataDir, "events"),
+			CapturesDir: filepath.Join(s.cfg.Sensor.DataDir, "captures"),
+		}
+		if s.store != nil {
+			r.DB = s.store.DB()
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.Run(ctx)
+		}()
+		slog.Info("retention runner up", "days", s.cfg.Sensor.Disk.RetentionDays)
+	}
+
 	<-ctx.Done()
-	// Cancel any running listeners and wait for them.
+
+	// Graceful drain. We cancel the listener contexts (which closes the
+	// accept sockets so no new connections are accepted) and then wait
+	// up to drain_timeout for already-running handler goroutines to exit
+	// on their own. Each listener's Start() goroutine signals done once
+	// it returns; we don't need a separate handler tracker because
+	// listener.Start blocks until Accept errors out, which it does as
+	// soon as we close the socket — but in-flight handler() goroutines
+	// the listener spawned continue to run on the listener's ctx (which
+	// is the SAME ctx as Accept used). For now we accept that handlers
+	// will see ctx.Done() too; the drain timeout gives them a chance to
+	// finish their reply before we hard-cancel.
+	drainTimeout := s.cfg.Sensor.Shutdown.DrainTimeout
+	if drainTimeout <= 0 {
+		drainTimeout = 10 * time.Second
+	}
+	slog.Info("shutdown: draining", "timeout", drainTimeout)
+
 	s.listenersMu.Lock()
 	handles := make([]*listenerHandle, 0, len(s.listeners))
 	for _, h := range s.listeners {
@@ -450,10 +488,29 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 	s.listeners = map[string]*listenerHandle{}
 	s.listenersMu.Unlock()
+
+	// Cancel each listener so Accept loops exit. handle() goroutines also
+	// see the ctx cancel but can finish their current Write/Read before
+	// returning. wait on all done channels with the drain budget.
 	for _, h := range handles {
 		h.cancel()
-		<-h.done
 	}
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer drainCancel()
+	allDone := make(chan struct{})
+	go func() {
+		for _, h := range handles {
+			<-h.done
+		}
+		close(allDone)
+	}()
+	select {
+	case <-allDone:
+		slog.Info("shutdown: listeners drained")
+	case <-drainCtx.Done():
+		slog.Warn("shutdown: drain timeout reached; some handlers may have been interrupted")
+	}
+
 	close(s.bus)
 	wg.Wait()
 	s.router.Stop()

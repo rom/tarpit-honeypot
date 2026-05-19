@@ -76,6 +76,11 @@ func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) Path() string { return s.path }
 
+// DB returns the underlying *sql.DB so the retention runner can issue
+// DELETE statements without importing this package's full API. The
+// retention package treats this strictly as a write target.
+func (s *Store) DB() *sql.DB { return s.db }
+
 // Insert persists an event. Errors that look transient (busy / locked) are
 // returned so the caller's retry logic (or worker drop) can handle them.
 func (s *Store) Insert(ctx context.Context, ev *event.Event) error {

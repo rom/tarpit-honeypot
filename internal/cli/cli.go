@@ -20,6 +20,7 @@ func Dispatch(args []string) error {
 		{"test-alert", "emit a synthetic event through configured channels", cmdTestAlert},
 		{"list-events", "tail / query events from the local JSON log or sqlite", cmdListEvents},
 		{"gen-token", "print an unguessable canary token (dns | url | hex)", cmdGenToken},
+		{"export-pcap", "copy one event's per-connection pcap out of the captures dir", cmdExportPcap},
 		{"version", "print version info", cmdVersion},
 	}
 
