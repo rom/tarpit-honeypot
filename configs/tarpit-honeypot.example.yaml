@@ -158,6 +158,102 @@ listeners:
     read_bytes: 4096
     read_timeout: 5s
 
+  - id: vnc-bait
+    proto: tcp
+    bind: 0.0.0.0:5900
+    mode: banner
+    handler: vnc
+    severity: high
+    read_timeout: 5s
+
+  - id: smtp25-bait
+    proto: tcp
+    bind: 0.0.0.0:25
+    mode: banner
+    handler: smtp_recv
+    severity: high
+    read_timeout: 15s
+
+  - id: rdp-bait
+    proto: tcp
+    bind: 0.0.0.0:3389
+    mode: banner
+    handler: rdp
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: winrm-bait
+    proto: tcp
+    bind: 0.0.0.0:5985
+    mode: banner
+    handler: winrm
+    severity: high
+    read_bytes: 8192
+    read_timeout: 5s
+
+  - id: dcerpc-bait
+    proto: tcp
+    bind: 0.0.0.0:135
+    mode: banner
+    handler: dcerpc
+    severity: high
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: ldap-bait
+    proto: tcp
+    bind: 0.0.0.0:389
+    mode: banner
+    handler: ldap
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: kerberos-bait
+    proto: tcp
+    bind: 0.0.0.0:88
+    mode: banner
+    handler: kerberos
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: postgres-bait
+    proto: tcp
+    bind: 0.0.0.0:5432
+    mode: banner
+    handler: postgres
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: mysql-bait
+    proto: tcp
+    bind: 0.0.0.0:3306
+    mode: banner
+    handler: mysql
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
+  - id: redis-bait
+    proto: tcp
+    bind: 0.0.0.0:6379
+    mode: banner
+    handler: redis
+    severity: high
+    read_bytes: 1024
+    read_timeout: 5s
+
+  - id: ipmi-bait
+    proto: udp
+    bind: 0.0.0.0:623
+    mode: banner
+    handler: ipmi
+    severity: high
+    read_bytes: 256
+
   - id: bacnet-bait
     proto: udp
     bind: 0.0.0.0:47808

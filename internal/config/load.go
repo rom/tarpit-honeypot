@@ -189,10 +189,13 @@ func (c *Config) Validate() error {
 			"telnet": true, "ftp": true,
 			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 			"opcua": true, "ethernetip": true, "smb": true,
+			"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
+			"dcerpc": true, "ldap": true, "kerberos": true,
+			"postgres": true, "mysql": true, "redis": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
-			"bacnet": true, "tftp": true,
+			"bacnet": true, "tftp": true, "ipmi": true,
 		}
 		switch l.Proto {
 		case "tcp":

@@ -32,6 +32,8 @@ func GetUDP(name string) (UDPHandler, error) {
 		return &bacnet{}, nil
 	case "tftp":
 		return &tftp{}, nil
+	case "ipmi":
+		return &ipmi{}, nil
 	}
 	return nil, fmt.Errorf("unknown udp handler %q", name)
 }

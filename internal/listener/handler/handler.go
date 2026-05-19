@@ -72,6 +72,26 @@ func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, 
 		return &ethernetip{}, nil
 	case "smb":
 		return &smb{}, nil
+	case "vnc":
+		return &vnc{}, nil
+	case "smtp_recv":
+		return &smtpRecv{}, nil
+	case "rdp":
+		return &rdp{}, nil
+	case "winrm":
+		return &winrm{}, nil
+	case "dcerpc":
+		return &dcerpc{}, nil
+	case "ldap":
+		return &ldap{}, nil
+	case "kerberos":
+		return &kerberos{}, nil
+	case "postgres":
+		return &postgres{}, nil
+	case "mysql":
+		return &mysql{}, nil
+	case "redis":
+		return &redis{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }
