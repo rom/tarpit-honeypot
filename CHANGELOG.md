@@ -8,6 +8,89 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Security — panic-trigger + UDP reflection fixes
+- **High**: `modbus` handler — MBAP `length=1` allocated a zero-byte
+  PDU buffer; the subsequent function-code dereference panicked. The
+  goroutine recover-guard contained the damage but the handler died
+  on every connection attempt. Tightened the length check to `>= 2`.
+- **High**: `s7` handler — a COTP CR body of exactly 6 bytes (TPKT
+  length=10) sliced `body[7:]` and panicked. Tightened the guard to
+  `len(body) >= 7` before slicing the parameters.
+- **High**: `radius` handler — attacker-controlled `length` field
+  used to drive `payload[20:length]` which panicked when `length < 20`
+  (low > high) or `length > len(payload)`. Added a bounds check.
+- **High**: `ssdp` + `sip` UDP handlers — attacker-supplied headers
+  (ST, Via, From, To, Call-ID, CSeq) were reflected verbatim into the
+  response. CRLF in any of them gave an off-path attacker a one-shot
+  UDP reflection/amplification primitive against a third party. Every
+  echoed value now goes through `safe.SanitizeHeader`.
+- **Medium**: `rtsp` handler — `CSeq` echoed without sanitization
+  (TCP-only so no UDP spoofing, but a downstream proxy / cache could
+  still be confused). Now `safe.SanitizeHeader(cseq)`.
+- **Medium**: `ssh_interactive` — `xssh.DiscardRequests` and the
+  session-channel request loop were raw `go func()` goroutines. A
+  panic in crypto/ssh request parsing — possible with a malformed
+  payload from a hostile client — would propagate to
+  `runtime.fatalpanic` and kill the sensor process. Both now run
+  inside `safego.Run` with the standard recovery + counter.
+- **Medium**: Central output sanitization gap — `metaToString` (which
+  calls `safe.SanitizeForLog`) only ran for CEF/LEEF. JSON / OCSF
+  marshalled raw `ev.Meta` directly; control characters survived as
+  JSON-escapes (``) but downstream consumers that decoded and
+  rendered to a terminal reconstituted the original ANSI/escape
+  bytes. `safe.SanitizeMetaStrings` now runs at the listener
+  boundary (`tcp.go` + `udp.go`) so every string-typed value is
+  scrubbed once, recursively, before any formatter sees it.
+- **Low**: `ssh_interactive` host-key write error was silently
+  swallowed (`_ = os.WriteFile(...)`); on a read-only filesystem the
+  promised "stable host key fingerprint across restarts" property
+  broke without warning. Now logs at warn level + continues with the
+  in-memory key.
+- **Low**: `https` TLS handshake used `context.Background()` instead
+  of the caller's `ctx`. Slow-handshake drip couldn't be interrupted
+  at sensor shutdown — only when `ReadDeadline` fired. Now uses the
+  caller's context.
+
+### Added — protocol depth improvements
+- **`iec104`** is now a multi-frame session: it loops over the
+  connection, handles STARTDT_ACT / STOPDT_ACT / TESTFR_ACT with the
+  matching CONfirm reply, and responds to General Interrogation
+  requests (ASDU type 100, COT=6) with the full sequence a real RTU
+  emits — activation-confirmation, three M_ME_NB_1 measurement
+  frames at IOAs 0x4001–0x4003, then activation-termination. Also
+  handles Clock-Sync, Read-Command, Single-Command, and Double-
+  Command requests. Every received frame's `asdu_type`, `cot`,
+  `common_addr`, and `ioa` land in `meta.frames`.
+- **`fins`** extended from one to seven Omron command pairs:
+  CPU_UNIT_DATA_READ, CPU_UNIT_STATUS_READ (with RUN/MONITOR mode
+  + zero-error fields), MEMORY_AREA_READ (with believable PV-like
+  data, decoded `mem_area_name`: DM/CIO/WR/HR/AR/EM), CYCLE_TIME_READ,
+  CLOCK_READ, plus generic ACK for everything else. Meta carries
+  `mem_addr` and `mem_count` for memory reads.
+- **`modbus`** extended:
+  - Multi-PDU session loop (was one-shot).
+  - **FC 0x2B / 0x0E (Read Device Identification)** — what nmap's
+    modbus-discover uses for vendor fingerprinting. Now advertises
+    Schneider Electric BMX P34 2020 / Modicon M340 with the full
+    objects-table (vendor, product code, revision, vendor URL,
+    product name, model name, user app name, conformity class).
+  - **FC 0x05 / 0x06 / 0x0F / 0x10 (Write Single/Multiple
+    Coils/Registers)** — captures the values the attacker tried to
+    write into `meta.written_values`. ICS-relevant TTP capture.
+  - Read-register replies (FC 3/4) now return the requested quantity
+    of registers (was always 1) with believable process-value
+    patterns.
+  - Per-PDU `function_name` symbolic decode in meta.
+
+### Documentation
+- `README.md` "Protocol handlers in detail" rewritten as three tables
+  (TCP IT, TCP ICS, UDP) covering all 46 handlers with archetype +
+  identity columns. Each row reflects the actual implementation:
+  multi-frame loops, captured fields, reply shape, vendor IDs
+  advertised, fingerprints computed.
+- Brief feature list updated to "46 built-in protocol handlers" with
+  the correct counts per category.
+
 ### Added — macOS first-class support
 - `darwin/amd64` and `darwin/arm64` build targets in `make cross`.
 - Real `privdrop` implementation on darwin (`internal/privdrop/

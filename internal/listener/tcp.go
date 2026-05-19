@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/safego"
 )
 
@@ -199,6 +200,14 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
 			}
 			if res.Meta != nil {
+				// Sanitize every string-typed value (recursively into
+				// nested maps / slices) before merging into the event.
+				// This is the single enforcement point — every formatter
+				// downstream (JSON, OCSF, CEF, LEEF) sees safe strings
+				// so an attacker-supplied banner / request line / SNI
+				// can't smuggle ANSI escapes / CRLF / NUL into log
+				// lines or SIEM records.
+				safe.SanitizeMetaStrings(res.Meta)
 				if ev.Meta == nil {
 					ev.Meta = map[string]any{}
 				}

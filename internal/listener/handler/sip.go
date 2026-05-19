@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // sip is a UDP SIP receiver (port 5060). SIP is text-based — request
@@ -54,7 +55,13 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 			res.Meta["cseq"] = strings.TrimSpace(line[5:])
 		}
 	}
-	// Reply 200 OK echoing Via/From/To/Call-ID/CSeq.
+	// Reply 200 OK echoing Via/From/To/Call-ID/CSeq. SECURITY: every
+	// echoed value is attacker-controlled (SIP headers from the
+	// request). Without SanitizeHeader, CRLF in any of them lets an
+	// off-path attacker (UDP source-IP-spoofable) inject arbitrary
+	// SIP/HTTP-shaped headers and even a body into a packet sent to
+	// any IP they choose — a reflection / amplification primitive
+	// against a third party. SanitizeHeader strips CR/LF/NUL.
 	reply := fmt.Sprintf("SIP/2.0 200 OK\r\n"+
 		"Via: %s\r\n"+
 		"From: %s\r\n"+
@@ -63,12 +70,12 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 		"CSeq: %s\r\n"+
 		"Server: Asterisk/16.16.2\r\n"+
 		"Content-Length: 0\r\n\r\n",
-		via,
-		valueOr(res.Meta, "from", ""),
-		valueOr(res.Meta, "to", ""),
+		safe.SanitizeHeader(via),
+		safe.SanitizeHeader(valueOr(res.Meta, "from", "")),
+		safe.SanitizeHeader(valueOr(res.Meta, "to", "")),
 		len(payload),
-		valueOr(res.Meta, "call_id", ""),
-		valueOr(res.Meta, "cseq", ""),
+		safe.SanitizeHeader(valueOr(res.Meta, "call_id", "")),
+		safe.SanitizeHeader(valueOr(res.Meta, "cseq", "")),
 	)
 	if _, err := pc.WriteTo([]byte(reply), src); err != nil {
 		res.Meta["write_err"] = err.Error()

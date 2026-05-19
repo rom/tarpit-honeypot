@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // ssdp listens for UPnP discovery (SSDP) requests — UDP port 1900,
@@ -54,6 +55,13 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	location := "http://192.168.1.1:1900/rootDesc.xml"
 	usn := "uuid:tarpit-honeypot-1234::upnp:rootdevice"
 	server := "Linux/3.14 UPnP/1.0 TPLink-Router/2.0"
+	// SECURITY: ST: is taken from the attacker's M-SEARCH request and
+	// reflected verbatim into our reply. Without sanitization, CRLF
+	// in ST: lets an off-path attacker (UDP source-IP-spoofable) inject
+	// arbitrary HTTP-shaped headers + body into a packet sent to any
+	// IP they choose — a one-shot reflection/amplification primitive
+	// against a third party. SanitizeHeader strips CR/LF/NUL.
+	safeST := safe.SanitizeHeader(st)
 	reply := fmt.Sprintf("HTTP/1.1 200 OK\r\n"+
 		"CACHE-CONTROL: max-age=120\r\n"+
 		"DATE: \r\n"+
@@ -62,7 +70,7 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		"SERVER: %s\r\n"+
 		"ST: %s\r\n"+
 		"USN: %s\r\n\r\n",
-		location, server, st, usn)
+		location, server, safeST, usn)
 	if _, err := pc.WriteTo([]byte(reply), src); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}

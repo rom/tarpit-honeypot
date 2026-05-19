@@ -73,7 +73,11 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		Certificates: []tls.Certificate{*cert},
 		MinVersion:   tls.VersionTLS12,
 	})
-	if err := tlsConn.HandshakeContext(context.Background()); err != nil {
+	// Use the caller's ctx (sensor-shutdown + per-listener cancellation
+	// flow through it) instead of Background, so a slow-handshake
+	// drip can be interrupted at process exit rather than burning a
+	// goroutine until the per-conn ReadDeadline fires.
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		meta := map[string]any{"tls_err": err.Error()}
 		if ja3Hash != "" {
 			meta["ja3"] = ja3Hash

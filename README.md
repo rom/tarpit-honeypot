@@ -20,11 +20,11 @@ phasing decisions.
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
   or `tarpit` (sticky / trickle / keepalive).
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **37 built-in protocol handlers**:
-  - Generic: `raw`
-  - IT/TCP: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
-  - ICS/TCP: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
-  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`
+- **46 built-in protocol handlers** (1 generic + 24 IT/TCP + 5 ICS/TCP + 16 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+  - **Generic**: `raw`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
+  - **TCP / ICS**: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
+  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`
 - **29 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
@@ -477,36 +477,70 @@ and `auth_token_env` are configured.
 
 ## Protocol handlers in detail
 
-| Handler | Port | What it does |
-|---|---|---|
-| `raw` | any | Sends literal `banner:`, reads up to `read_bytes`. |
-| `ssh` | 22 | Sends SSH-2.0 banner, reads client banner, sends "Protocol mismatch". Captures client_id. |
-| `http` | 80 | Reads request headers, replies with nginx 401 Unauthorized. Captures request_line + Host + matches URL canaries. |
-| `https` | 443 | Auto-generated self-signed ECDSA cert cached under `<data_dir>/tls/`, then runs the HTTP handler. Captures TLS version + SNI. |
-| `telnet` | 23 | Sends IAC option negotiation + login prompt. Captures up to one line of input. |
-| `ftp` | 21 | 220 banner → USER → 331 → PASS → 530. Captures user + pass lines. |
-| `smb` | 445 | SMB1 Negotiate Protocol Request handler: captures offered dialects, selects NT LM 0.12, replies with a believable Negotiate Response. SMB2 clients get a STATUS_NOT_IMPLEMENTED rejection. |
-| `vnc` | 5900 | RFB 3.8 version exchange + VNC auth challenge. Captures `client_version` + raw DES-encrypted `auth_response_hex` from brute-force tools. Always replies "auth failed". |
-| `smtp_recv` | 25 | ESMTP receive listener. Captures `helo`, `auth_mech`, `auth_user`, `auth_pass` (from AUTH PLAIN / LOGIN), `mail_from`, `rcpt_to`, `message_head`. STARTTLS rejected with 454 so the client falls back to plaintext. |
-| `rdp` | 3389 | X.224 Connection Request parser. Extracts `mstshash` Cookie (often the targeted username) and `RDP_NEG_REQ` flags. Replies CC with PROTOCOL_SSL selected. |
-| `winrm` | 5985 | HTTP 401 Negotiate+Basic challenge. Decodes `Authorization: Basic` credentials into `basic_user` / `basic_pass`. |
-| `dcerpc` | 135 | Endpoint Mapper bind handler. Parses the first abstract interface UUID. Replies bind_ack with NDR transfer syntax. |
-| `ldap` | 389 | Hand-rolled BER decoder for BindRequest. Captures `bind_dn` + cleartext `bind_pw` (simple auth) or `sasl_mechanism`. Replies BindResponse 49 (invalidCredentials). |
-| `kerberos` | 88 | ASN.1 reader for AS-REQ / TGS-REQ. Replies KRB-ERROR KDC_ERR_PREAUTH_REQUIRED. |
-| `postgres` | 5432 | Startup + AuthenticationCleartextPassword + ErrorResponse. Captures `username`, `database`, `password`. Handles SSLRequest / GSSEncRequest fallback. |
-| `mysql` | 3306 | Server-first Handshake (v5.7.42-honeypot). Captures `username`, `auth_response_hex`, optional `database`. Replies ERR_Packet 1045. |
-| `redis` | 6379 | RESP parser (multi-bulk and inline). Captures `auth_password` from AUTH and a short list of issued `commands`. Returns RESP errors. |
-| `ipmi` (UDP) | 623 | RMCP ASF Presence Ping → Pong reply with IPMI 1.5/2.0 entity flag. RMCP+ class logged but not answered (no real keying material). |
-| `modbus` | 502 | MBAP header parser. Captures function_code + unit_id + transaction_id. Plausible success for FC 1/2/3/4/11; Modbus exception for everything else. |
-| `s7` | 102 | TPKT/COTP parser. Replies to Connection Request (0xE0) with Connection Confirm (0xD0) echoing params. |
-| `iec104` | 2404 | BVLC frame parser. Classifies I/S/U-format, replies STARTDT_CON. |
-| `mqtt` | 1883 | CONNECT parser. Captures protocol_name, version, keepalive, client_id, **username, password**. Replies CONNACK accepted. |
-| `opcua` | 4840 | TCP transport layer. Reads HEL, replies ACK. Captures endpoint URL. |
-| `ethernetip` | 44818 | EtherNet/IP encapsulation. Handles RegisterSession + ListIdentity (advertises fake Allen-Bradley 1756-L73). |
-| `snmp` (UDP) | 161 | gosnmp-backed SNMPv1/v2c decoder. Captures **community string** + requested OIDs. Replies GetResponse with Null values. SNMPv3 rejected. |
-| `ntp` (UDP) | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. |
-| `bacnet` (UDP) | 47808 | BVLC + NPDU + APDU parser. Replies only to Who-Is (service 0x08) with an I-Am announcing instance 1234. |
-| `tftp` (UDP) | 69 | RFC 1350 RRQ/WRQ parser. Captures **filename + transfer mode + RFC 2347 options**. Always replies ERROR opcode 5 code 2 (Access violation) — never serves files. |
+Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
+**id** = consumes `identity.Identity` for per-deployment uniqueness.
+
+### TCP — general / IT
+
+| Handler | Port | What it does | arch | id |
+|---|---|---|:-:|:-:|
+| `raw` | any | Sends literal `banner:` field, reads up to `read_bytes`. | — | — |
+| `ssh` | 22 | Sends archetype/identity-shaped SSH-2.0 banner, reads client ID (flags non-printable / non-SSH / overlong as anomalies), computes HASSH from the first binary packet, then sends "Protocol mismatch." | ✓ | ✓ |
+| `ssh_interactive` | 22 | Full `golang.org/x/crypto/ssh` server with persistent ed25519 host key under `<data_dir>/tls/ssh_host_ed25519_key`. Captures every password / pubkey attempt (SHA-256 fingerprint, key type, user, client version), accepts the 3rd credential and drops into `internal/shell.Run` on the session channel. Bounded: `SessionTimeout=5min`, `MaxAuthTries=6`. Also captures non-interactive `ssh host CMD` exec lines + scans them for anomalies. | ✓ | ✓ |
+| `http` | 80 | Routes on method+path. `GET /` serves the archetype's index HTML (Moxa / SCALANCE / S7 device pages or nginx 401). `GET /login` and 12 other login-shaped paths serve a form. `POST /login` parses `application/x-www-form-urlencoded` body (accepts 6 alias names each for user/pass) and captures credentials. Computes JA4H from request line + headers. Flags 8 suspicious-URI anomalies (Log4Shell JNDI, path traversal, WordPress / `.git` / `.env` / Tomcat manager probes). | ✓ | ✓ |
+| `https` | 443 | Peeks the TLS ClientHello for JA3 + JA4 fingerprints before crypto/tls consumes it. Self-signed ECDSA cert cached + rotated per `sensor.tls_rotate.days` under `<data_dir>/tls/`. Then runs the HTTP handler over the decrypted stream. Captures TLS version + SNI + JA3/JA4. | ✓ | ✓ |
+| `telnet` | 23 | IAC WILL ECHO / WILL SGA / DO TERMINAL-TYPE negotiation, archetype-shaped issue banner, captures `user_attempt` + `pass_attempt`, sends "Login incorrect", then drops into the archetype's CLI shell (Linux distros / Moxa / SCALANCE response tables). | ✓ | — |
+| `ftp` | 21 | 220 banner (archetype-shaped) → USER → 331 → PASS → 530 Login incorrect. Captures `user_line` + `pass_line`. | ✓ | — |
+| `smb` | 445 | NBSS framing + SMB1 Negotiate Protocol Request handler: captures all offered dialects, selects `NT LM 0.12`, replies with a believable Negotiate Response (8-byte challenge + 8-byte session key derived from identity). SMB2 connections answered with NEGOTIATE_RESPONSE carrying `STATUS_NOT_IMPLEMENTED`. | — | ✓ |
+| `vnc` | 5900 | RFB 003.008 version exchange. Sends 16-byte VNC auth challenge (identity-derived), captures `client_version` + raw DES-encrypted `auth_response_hex` from brute-force tools. Always replies SecurityResult `auth failed`. | — | ✓ |
+| `smtp_recv` | 25 | ESMTP receive listener. Captures `helo`, `auth_mech`, `auth_user`, `auth_pass` (from AUTH PLAIN / LOGIN), `mail_from`, `rcpt_to`, `message_head`. Archetype-shaped 220 greeting (`Postfix 3.7.11` for debian 12, etc.). STARTTLS replied with 454 so the client falls back to plaintext credentials. | ✓ | ✓ |
+| `rdp` | 3389 | X.224 Connection Request parser. Extracts `mstshash=` Cookie (typically the targeted username from `xfreerdp /u:...`) + `RDP_NEG_REQ` flags. Replies CC with PROTOCOL_SSL selected (so the next-stage scanner enters TLS negotiation we then don't complete). | — | — |
+| `winrm` | 5985 | Reads HTTP POST `/wsman`. Decodes `Authorization: Basic` into `basic_user` / `basic_pass`. Replies HTTP 401 advertising `Negotiate, Basic realm="WSMAN"` so non-Kerberos brute-forcers fall back. | — | — |
+| `dcerpc` | 135 | Endpoint Mapper bind handler. Parses the first abstract interface UUID + version pair. Replies `bind_ack` with NDR transfer syntax. When honeynet topology is available, advertises the configured endpoints. | — | — |
+| `ldap` | 389 | Hand-rolled BER decoder (bounds-checked, fuzz-tested). Captures `bind_dn` + cleartext `bind_pw` for simpleAuth, or `sasl_mechanism` for SASL. Replies BindResponse 49 (invalidCredentials). When honeynet topology is available, advertises computer accounts in search responses. | — | — |
+| `kerberos` | 88 | ASN.1 reader for AS-REQ / TGS-REQ. Extracts the principal name(s) and realm. Replies KRB-ERROR `KDC_ERR_PREAUTH_REQUIRED` — what a real KDC sends to invite a pre-auth attempt (the cleartext-derived `enc-timestamp` that AS-REP-Roasting tools harvest). | — | — |
+| `postgres` | 5432 | Reads StartupMessage (and SSLRequest / GSSEncRequest fallback). Captures `username`, `database`. Sends AuthenticationCleartextPassword, captures the PasswordMessage `password`. Sends FATAL `28P01` Password authentication failed. | — | — |
+| `mysql` | 3306 | Server-first MySQL handshake — archetype-shaped version string (e.g. `10.11.6-MariaDB-0+deb12u1` for debian 12). Captures `username`, `auth_response_hex`, optional `database`. Replies ERR_Packet 1045 Access denied. | ✓ | ✓ |
+| `redis` | 6379 | RESP parser (multi-bulk + inline forms). Captures `auth_password` from `AUTH` / `HELLO ... AUTH`, plus a short list of issued `commands` (with arguments). Returns RESP errors so the client keeps trying. | — | — |
+| `syslog_tcp` | 514 | Reads syslog messages via both octet-counting (`<N> <msg>`) and non-transparent (newline-terminated) framing. Captures first 16 messages with PRI / facility / severity decoded. | — | — |
+| `rtsp` | 554 | Parses RTSP OPTIONS / DESCRIBE request line + headers. Captures `Authorization` (often Digest with the camera password) + `User-Agent`. Replies 401 with a Hikvision-shaped `WWW-Authenticate: Digest`. | — | — |
+| `dockerapi` | 2375 | Unauthenticated-Docker-API mimic. Routes `/_ping`, `/version`, `/info`, `/containers/json` to believable canned JSON. Captures the request line + `Authorization` header on every hit. | — | — |
+| `melsec` | 1025 | Mitsubishi MELSEC 3E frame parser. Reads `0x5000` request header, replies `0xD000` with a fake `Q03UDVCPU` CPU model + serial. | — | — |
+| `xmpp` | 5222 | Reads the client `<stream:stream>` open, extracts `to` / `from` / `xmlns` / `version`. Replies with our own `<stream:stream>` + `<stream:features>` advertising STARTTLS + PLAIN + SCRAM-SHA-1. Captures the follow-up `<auth>` or `<starttls/>` stanza. | — | — |
+| `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |
+| `ipp` | 631 | IPP / CUPS printer over HTTP. Parses Get-Printer-Attributes body, replies HTTP 200 + `application/ipp` with printer-attributes-tag advertising a fake Brother HL-L8260CDW (idle, accepting jobs). | — | — |
+
+### TCP — ICS / OT
+
+| Handler | Port | What it does | arch | id |
+|---|---|---|:-:|:-:|
+| `modbus` | 502 | MBAP header parser. Captures `function_code` + `unit_id` + `transaction_id`. Plausible success replies for FC 1/2/3/4/11/17; Modbus exception (`0x02 ILLEGAL DATA ADDRESS`) for everything else. | — | — |
+| `s7` | 102 | TPKT (RFC 1006) + COTP parser. Replies to ISO-on-TCP Connection Request (TPDU 0xE0) with Connection Confirm (0xD0) echoing the source/destination references and class options. | — | — |
+| `iec104` | 2404 | IEC 60870-5-104 APCI parser. Classifies I/S/U-format frames; replies STARTDT_CON to the standard supervisory probe `0x07`. | — | — |
+| `mqtt` | 1883 | CONNECT parser (varint remaining-length capped at 4 KiB). Captures `protocol_name`, `version`, `keepalive`, `client_id`, **`username`**, **`password`**. Replies CONNACK 0x00 connection accepted. | — | — |
+| `opcua` | 4840 | OPC UA secure-channel transport. Reads HEL message (`endpoint_url`, send/receive buffer sizes), replies ACK with our limits. Captures the endpoint URL the scanner is reaching for. | — | — |
+| `ethernetip` | 44818 | EtherNet/IP encapsulation. Handles RegisterSession (returns session handle) + ListIdentity (advertises a fake Rockwell Allen-Bradley 1756-L73 ControlLogix with identity-shaped serial). | — | ✓ |
+
+### UDP
+
+| Handler | Port | What it does | arch | id |
+|---|---|---|:-:|:-:|
+| `raw` | any | Records the datagram bytes; optionally writes a static reply. | — | — |
+| `snmp` | 161 | gosnmp-backed SNMPv1/v2c decoder. Captures `version`, `community`, requested OID list. When an archetype is set, answers the system group (1.3.6.1.2.1.1.x: sysDescr, sysObjectID, sysName, sysContact, sysLocation, sysServices) and ifTable (1.3.6.1.2.1.2.2.1.x: ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress / ifOperStatus) from the archetype's MIB-2 view. Unknown OIDs return Null. SNMPv3 rejected. | ✓ | — |
+| `ntp` | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp + plausible reference / receive / transmit timestamps. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. | — | — |
+| `bacnet` | 47808 | BVLC + NPDU + APDU parser. Replies only to Who-Is (service 0x08) with an I-Am announcing object instance 1234. Other services captured but unacknowledged. | — | — |
+| `tftp` | 69 | RFC 1350 RRQ/WRQ parser. Captures **filename**, **transfer mode**, and **RFC 2347 options** (blksize, tsize, timeout). Always replies ERROR opcode 5 code 2 (Access violation) — never serves files. | — | — |
+| `ipmi` | 623 | RMCP ASF Presence Ping → Pong reply with IPMI 1.5 + 2.0 supported-entity flag (the classic "is this a BMC" probe). RMCP+ session-open captured but not answered (no real keying material to fake). | — | — |
+| `syslog_udp` | 514 | RFC 3164/5424 datagram parser. Decodes PRI into facility + severity, captures the rest as `message`. | — | — |
+| `radius` | 1812 | RADIUS Access-Request parser. Captures `user_name` + the encrypted `user_password_encrypted_hex`. Replies Access-Reject (code 3) with the original Identifier. | — | — |
+| `sip` | 5060 | SIP-over-UDP. Parses request line + headers, captures `method`, `from`, `to`, `call_id`, `cseq`, `via`, `user_agent`, `authorization`. Replies SIP 200 OK with an Asterisk-shaped Server header. | — | — |
+| `ssdp` | 1900 | UPnP M-SEARCH parser. Captures `st` (search target), `host`, `mx`, `user_agent`. Replies HTTP/1.1 200 with a TP-Link-shaped `LOCATION` + `USN` so the scanner records a router on the segment. | — | — |
+| `cldap` | 389 | CLDAP SearchRequest parser. Replies searchResDone; when honeynet topology is available, advertises the configured Domain Controllers in the meta. | — | — |
+| `llmnr` | 5355 | LLMNR query parser. Replies with our local IP as the A-record — classic poisoning catcher for the common Windows lookup-fallback target `wpad`. | — | — |
+| `nbns` | 137 | NetBIOS Name Service query parser. Decodes the encoded NetBIOS name; replies positive name-query response — catches SMB-relay precursors. | — | — |
+| `fins` | 9600 | Omron FINS UDP frame parser. Replies to MRC/SRC = 0x05/0x01 (CPU_UNIT_DATA_READ) with a `CJ2M-CPU33` model string. | — | — |
+| `coap` | 5683 | RFC 7252 GET parser with bounds-checked option-TLV walker. Extracts `Uri-Path` + token; flags malformed packets. Replies 2.05 Content with a `/.well-known/core` link-format body advertising one fake `/led` resource. | — | — |
+| `knx` | 3671 | KNXnet/IP. Replies to SEARCH_REQUEST (0x0201) with a SEARCH_RESPONSE advertising an "MDT KNX IP Router" device-info DIB + a supported-service-families DIB (CORE, DEV_MGMT, TUNNELLING, ROUTING). DESCRIPTION_REQUEST gets a DESCRIPTION_RESPONSE. CONNECT_REQUEST gets status `0x24` (no more connections) so we look live without opening a tunnel. | — | — |
 
 ## Tarpit strategies
 

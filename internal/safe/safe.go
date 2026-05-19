@@ -247,6 +247,54 @@ func SanitizeEmailSubject(s string) string {
 	return b.String()
 }
 
+// SanitizeMetaStrings walks an event-meta map in place and replaces
+// every string-typed value with its SanitizeForLog form. Nested maps
+// and slices of strings get the same treatment. Used by the listener
+// dispatch to ensure every captured field — request_line, banner,
+// captured credentials, SNI, JA3-raw, SNMP community, anything the
+// handler put in res.Meta — is escape-safe before it reaches a
+// formatter / sink / log line, regardless of which output format
+// the operator picked.
+//
+// This is the central enforcement point so we don't have to remember
+// to call SanitizeForLog on every individual handler's meta write.
+func SanitizeMetaStrings(meta map[string]any) {
+	for k, v := range meta {
+		meta[k] = sanitizeAny(v)
+	}
+}
+
+func sanitizeAny(v any) any {
+	switch t := v.(type) {
+	case string:
+		return SanitizeForLog(t)
+	case []string:
+		out := make([]string, len(t))
+		for i, s := range t {
+			out[i] = SanitizeForLog(s)
+		}
+		return out
+	case []byte:
+		// Render binary as hex string of the first slice; preserves
+		// the data for forensic value without log-injection risk.
+		return SanitizeForLog(string(t))
+	case map[string]any:
+		SanitizeMetaStrings(t)
+		return t
+	case []map[string]any:
+		for _, m := range t {
+			SanitizeMetaStrings(m)
+		}
+		return t
+	case []any:
+		for i, e := range t {
+			t[i] = sanitizeAny(e)
+		}
+		return t
+	}
+	return v
+}
+
 // HexDump renders b as 16-byte-per-line hex with an ASCII gutter,
 // capped at maxBytes. Used by handlers to attach a safe rendering of
 // a malformed packet to its event meta without exposing the raw

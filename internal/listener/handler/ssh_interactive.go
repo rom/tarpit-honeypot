@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
+	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/shell"
 )
 
@@ -140,8 +142,13 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 	}
 	defer srvConn.Close()
 
-	// Discard global requests (keepalives, tcpip-forward).
-	go xssh.DiscardRequests(requests)
+	// Discard global requests (keepalives, tcpip-forward). Wrapped in
+	// safego.Run so a panic in crypto/ssh request parsing — possible
+	// with a malformed payload from a hostile client — doesn't bring
+	// down the whole sensor process.
+	safego.Run("ssh_interactive.discard_requests", func() {
+		xssh.DiscardRequests(requests)
+	})
 
 	for newChan := range channels {
 		if newChan.ChannelType() != "session" {
@@ -165,7 +172,10 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 // the duplex stream to shell.Run for the command-level engagement.
 func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <-chan *xssh.Request, res *Result) {
 	gotShell := make(chan struct{}, 1)
-	go func() {
+	// Same panic-isolation rationale as the global-requests path:
+	// session-channel requests (pty-req / env / exec / subsystem)
+	// carry attacker-supplied payloads we don't fully validate.
+	safego.Run("ssh_interactive.session_reqs", func() {
 		for req := range reqs {
 			switch req.Type {
 			case "pty-req":
@@ -211,7 +221,7 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 				}
 			}
 		}
-	}()
+	})
 
 	// Wait for the "shell" request before driving the shell loop.
 	select {
@@ -299,7 +309,15 @@ func (s *sshInteractive) loadOrGenerateHostKey() (xssh.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = os.WriteFile(path, out, 0o600)
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		// Persistence failed (read-only fs, quota, permission…). The
+		// generated signer is still usable for this session but the
+		// fingerprint won't be stable across restarts — a re-scan
+		// of the honeypot will see a "key changed" warning. Log the
+		// reason so the operator can fix the underlying issue.
+		slog.Warn("ssh_interactive: host key persistence failed; running ephemeral",
+			"path", path, "err", err)
+	}
 	return signer, nil
 }
 

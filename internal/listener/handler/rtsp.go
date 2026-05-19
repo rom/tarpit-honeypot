@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // rtsp implements just enough RTSP (RFC 2326, TCP port 554) to fool an
@@ -66,8 +67,12 @@ func (r *rtsp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		}
 	}
 	res.Meta["method"] = method
+	// CSeq is taken from the attacker's request and reflected into
+	// our 401 — sanitize so a CRLF-laden CSeq value can't smuggle
+	// extra headers (TCP-only so no UDP-style spoofing, but a
+	// downstream proxy / cache could still be confused).
 	resp := "RTSP/1.0 401 Unauthorized\r\n" +
-		"CSeq: " + cseq + "\r\n" +
+		"CSeq: " + safe.SanitizeHeader(cseq) + "\r\n" +
 		"WWW-Authenticate: Digest realm=\"camera\", nonce=\"deadbeefcafebabe\", algorithm=\"MD5\", stale=\"FALSE\"\r\n" +
 		"Server: HikvisionDS-2CD2T46G2-2I/V5.7.3\r\n" +
 		"Content-Length: 0\r\n\r\n"

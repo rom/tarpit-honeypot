@@ -12,6 +12,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 type udpListener struct {
@@ -115,6 +116,10 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 				ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
 			}
 			if res.Meta != nil {
+				// Sanitize attacker-controlled string values
+				// recursively before merging into the event meta —
+				// see tcp.go for the threat-model rationale.
+				safe.SanitizeMetaStrings(res.Meta)
 				if ev.Meta == nil {
 					ev.Meta = map[string]any{}
 				}

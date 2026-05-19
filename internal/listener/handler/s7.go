@@ -48,7 +48,12 @@ func (s *s7) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resu
 	}
 	res.Payload = append(t, body...)
 
-	if len(body) < 6 || body[1] != 0xE0 {
+	// A real COTP CR carries at least 7 bytes (length, type, dst_ref(2),
+	// src_ref(2), class(1)) — additional bytes are variable-length
+	// parameters (TSAPs etc). We need at minimum 7 to slice body[7:]
+	// for the parameter echo; without this tighter guard a body of
+	// exactly 6 bytes (tlen=10) would panic at the slice on line below.
+	if len(body) < 7 || body[1] != 0xE0 {
 		res.Meta = map[string]any{"cotp_type": fmtByte(body[1])}
 		return res, nil
 	}

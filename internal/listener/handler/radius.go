@@ -39,6 +39,14 @@ func (r *radius) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 	if code != 1 { // Access-Request
 		return res, nil
 	}
+	// Bound length against the actual datagram size before slicing.
+	// length is attacker-controlled (the wire-level RADIUS length field);
+	// a value < 20 makes payload[20:length] panic with low > high, and
+	// a value > len(payload) panics with high > len.
+	if int(length) < 20 || int(length) > len(payload) {
+		res.Meta["bad_length"] = length
+		return res, nil
+	}
 	// Walk attribute list.
 	attrs := payload[20:length]
 	for p := 0; p+2 <= len(attrs); {
