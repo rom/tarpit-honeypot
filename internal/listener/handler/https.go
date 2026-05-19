@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 )
 
 type https struct {
@@ -47,12 +48,33 @@ func (h *https) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	if err != nil {
 		return Result{Meta: map[string]any{"cert_err": err.Error()}}, nil
 	}
-	tlsConn := tls.Server(conn, &tls.Config{
+
+	// Peek the first TLS record so we can compute JA3/JA4 from the
+	// ClientHello before crypto/tls consumes it. peekConn replays the
+	// peeked bytes back into the stream for the real handshake.
+	peeker := newPeekConn(conn)
+	ja3Hash, ja4, ja3Raw := "", "", ""
+	if ch, ok := peeker.peekClientHello(); ok {
+		raw, sum := fingerprint.JA3(ch)
+		ja3Hash = sum
+		ja3Raw = raw
+		ja4 = fingerprint.JA4(ch)
+	}
+
+	tlsConn := tls.Server(peeker, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		MinVersion:   tls.VersionTLS12,
 	})
 	if err := tlsConn.HandshakeContext(context.Background()); err != nil {
-		return Result{Meta: map[string]any{"tls_err": err.Error()}}, nil
+		meta := map[string]any{"tls_err": err.Error()}
+		if ja3Hash != "" {
+			meta["ja3"] = ja3Hash
+			meta["ja3_raw"] = ja3Raw
+		}
+		if ja4 != "" {
+			meta["ja4"] = ja4
+		}
+		return Result{Meta: meta}, nil
 	}
 	state := tlsConn.ConnectionState()
 	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries)
@@ -61,6 +83,13 @@ func (h *https) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	}
 	res.Meta["tls_version"] = tlsVersionName(state.Version)
 	res.Meta["sni"] = state.ServerName
+	if ja3Hash != "" {
+		res.Meta["ja3"] = ja3Hash
+		res.Meta["ja3_raw"] = ja3Raw
+	}
+	if ja4 != "" {
+		res.Meta["ja4"] = ja4
+	}
 	return res, nil
 }
 
