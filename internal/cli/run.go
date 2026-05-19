@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,14 +20,26 @@ import (
 
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	cfgPath := fs.String("c", "/etc/tarpit-honeypot/config.yaml", "path to config file")
-	if err := fs.Parse(args); err != nil {
+	var f commonFlags
+	f.register(fs, "/etc/tarpit-honeypot/config.yaml")
+	dryRun := fs.Bool("dry-run", false, "load and validate the config, build sensor, but exit without binding any listeners")
+
+	if err := parseOrUsage(fs, args); err != nil {
+		if err == errHelp {
+			return nil
+		}
 		return err
 	}
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	logCloser, err := f.log.apply()
+	if err != nil {
+		return err
+	}
+	if logCloser != nil {
+		defer logCloser.Close()
+	}
 
-	cfg, err := config.Load(*cfgPath)
+	cfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
 	if err != nil {
 		return err
 	}
@@ -36,10 +49,15 @@ func cmdRun(args []string) error {
 		return err
 	}
 
-	// Privilege drop happens AFTER sensor.New (which opens data_dir and
-	// the store) but BEFORE any listener binds occur (listeners bind in
-	// Run()). Privileged bind-to-low-ports must come from systemd
-	// AmbientCapabilities or external setcap; Drop only changes uid/gid.
+	if *dryRun {
+		slog.Info("dry-run OK: config valid, sensor constructed, listeners not bound",
+			"listeners", len(cfg.Listeners),
+			"channels", len(cfg.Channels),
+			"honeynets", len(cfg.Honeynets),
+		)
+		return nil
+	}
+
 	if err := privdrop.Drop(cfg.Sensor.DropUser, cfg.Sensor.DropGroup); err != nil {
 		return err
 	}
@@ -48,8 +66,6 @@ func cmdRun(args []string) error {
 	defer cancel()
 
 	var wg sync.WaitGroup
-
-	// Sensor.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -58,7 +74,6 @@ func cmdRun(args []string) error {
 		}
 	}()
 
-	// Web UI (if enabled).
 	if cfg.UI.Enabled {
 		srv, err := ui.New(cfg.UI, s.Store())
 		if err != nil {
@@ -76,7 +91,6 @@ func cmdRun(args []string) error {
 		}()
 	}
 
-	// SIGHUP -> reload.
 	hupCh := make(chan os.Signal, 1)
 	signal.Notify(hupCh, syscall.SIGHUP)
 	wg.Add(1)
@@ -88,14 +102,12 @@ func cmdRun(args []string) error {
 				signal.Stop(hupCh)
 				return
 			case <-hupCh:
-				slog.Info("SIGHUP received; reloading config", "path", *cfgPath)
-				newCfg, err := config.Load(*cfgPath)
+				slog.Info("SIGHUP received; reloading config", "path", f.cfgPath)
+				newCfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
 				if err != nil {
 					slog.Error("reload: config invalid; keeping running config", "err", err)
 					continue
 				}
-				// Print the diff to stderr before applying so the operator
-				// has an audit trail in the journal even if Reload errors.
 				diff := config.DiffConfigs(s.Config(), newCfg)
 				if !diff.HasChanges() {
 					slog.Info("reload: no effective changes")
@@ -127,5 +139,6 @@ func cmdRun(args []string) error {
 	)
 	wg.Wait()
 	slog.Info("tarpit-honeypot stopped")
+	_ = fmt.Sprintf
 	return nil
 }

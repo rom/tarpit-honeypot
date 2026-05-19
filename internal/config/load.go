@@ -28,6 +28,23 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
+// LoadDefaultsOnly returns a Config populated with applyDefaults but
+// without running Validate — used by `tarpit-honeypot init` to scaffold
+// a config skeleton (the empty document would fail listener/channel
+// validation otherwise).
+func LoadDefaultsOnly(path string) (*Config, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	var c Config
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	c.applyDefaults()
+	return &c, nil
+}
+
 func (c *Config) applyDefaults() {
 	if c.Sensor.DataDir == "" {
 		c.Sensor.DataDir = "/var/lib/tarpit-honeypot"

@@ -16,11 +16,18 @@ import (
 // instead) so the output is safe to share in tickets and chat.
 func cmdShowConfig(args []string) error {
 	fs := flag.NewFlagSet("show-config", flag.ContinueOnError)
-	cfgPath := fs.String("c", "/etc/tarpit-honeypot/config.yaml", "path to config file")
-	if err := fs.Parse(args); err != nil {
+	var f commonFlags
+	f.register(fs, "/etc/tarpit-honeypot/config.yaml")
+	if err := parseOrUsage(fs, args); err != nil {
+		if err == errHelp {
+			return nil
+		}
 		return err
 	}
-	cfg, err := config.Load(*cfgPath)
+	if c, err := f.log.apply(); err == nil && c != nil {
+		defer c.Close()
+	}
+	cfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
 	if err != nil {
 		return err
 	}
