@@ -230,7 +230,8 @@ func (c *Config) Validate() error {
 		}
 		// Per-protocol handler whitelist.
 		tcpHandlers := map[string]bool{
-			"raw": true, "ssh": true, "http": true, "https": true,
+			"raw": true, "ssh": true, "ssh_interactive": true,
+			"http": true, "https": true,
 			"telnet": true, "ftp": true,
 			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 			"opcua": true, "ethernetip": true, "smb": true,

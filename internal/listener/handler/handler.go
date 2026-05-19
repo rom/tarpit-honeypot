@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -92,6 +93,13 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &raw{}, nil
 	case "ssh":
 		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
+	case "ssh_interactive":
+		return &sshInteractive{
+			id:   deps.Identity,
+			jit:  deps.Jitter,
+			arch: deps.Archetype,
+			dir:  filepath.Join(deps.DataDir, "tls"),
+		}, nil
 	case "http":
 		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "https":
