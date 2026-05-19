@@ -20,9 +20,26 @@ phasing decisions.
   - IT/TCP: `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`
   - ICS/TCP: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
   - UDP: `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`
-- **Client fingerprinting**: JA3 + JA4 from the TLS ClientHello of the
-  HTTPS handler, HASSH from the SSH KEXINIT. Stable across browser /
-  scanner GREASE shuffling.
+- **Client fingerprinting**:
+  - **JA3** + **JA4** from the TLS ClientHello (HTTPS handler).
+  - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
+  - **HASSH** from the SSH KEXINIT.
+  - All four are stable across browser / scanner GREASE shuffling.
+- **Counter-fingerprinting** (anti-honeypot detection):
+  - **Per-deployment uniqueness** via `sensor.deployment_id` — every
+    "fixed" string the sensor emits (SSH banner version pool, HTTP
+    Server header, MySQL version, SMB session key + challenge bytes,
+    EtherNet/IP serial, VNC challenge, SMTP greeting hostname) is
+    deterministically derived from this seed. Two sensors with
+    different seeds present distinct fingerprints to Shodan-class
+    scanners. Auto-generated and persisted on first run.
+  - **Response jitter** via `sensor.jitter` — handlers sleep a random
+    [min_ms, max_ms] before replying, so scanners can't fingerprint on
+    microsecond-identical reply latency.
+  - **TLS cert rotation** via `sensor.tls_rotate.days` — the
+    auto-generated self-signed HTTPS cert is regenerated after the
+    configured age so a long-running sensor doesn't leak a stable SNI
+    cert hash.
 - **Tarpit modes**: `sticky` (hold open), `trickle` (one byte every N
   seconds), `keepalive` (slow null bytes), with per-source and total
   connection caps.
@@ -38,9 +55,19 @@ phasing decisions.
 - **Per-event pcap capture**: optional bidirectional byte capture on TCP
   connections, written as synthesized libpcap files Wireshark loads
   directly. Pure-Go, no raw sockets, no CAP_NET_RAW.
-- **In-sensor correlator**: port-scan (N distinct ports / window) and
-  brute-force (N attempts / window, optionally per-port) elevate aggregate
-  events to higher severity.
+- **In-sensor correlator**:
+  - **Port-scan**: N distinct ports from one source within a short window.
+  - **Brute-force**: N attempts within a window. Aggregate carries the
+    extracted credential pairs (from `auth_user`/`auth_pass`,
+    `bind_dn`/`bind_pw`, MySQL/Postgres `username`, Redis `auth_password`,
+    etc.) so the operator sees what was actually tried.
+  - **Slow-scan**: long-window detector (default 24h, 10 distinct ports).
+    Per-port state ages out individually, so a one-port-per-hour scan
+    accumulates instead of resetting.
+- **DNS amplifier-probe detection**: the DNS canary listener flags
+  any `ANY` (qtype=255) query immediately, or `N` queries from one
+  source within a window, with a separate `dnscanary:amplifier_probe`
+  event.
 - **Embedded SQLite event index** for queryable history, with WAL-mode
   concurrent reads.
 - **Read-only web UI** on loopback: 24h summary + filterable event table
@@ -68,6 +95,13 @@ phasing decisions.
   semaphore acquire on every accept; overflow closes the connection
   and emits a `listener:<id>:accept_cap` event. Stops a SYN flood
   from exhausting goroutines.
+- **Graceful drain on shutdown** via `sensor.shutdown.drain_timeout`:
+  SIGTERM closes accept sockets first, then waits up to the timeout
+  for in-flight handler goroutines to finish before force-cancelling.
+- **Time-based retention** via `sensor.disk.retention_days`: a runner
+  ticks hourly and prunes `<data_dir>/events/*.jsonl`,
+  `<data_dir>/captures/*.pcap`, and SQLite `events` rows older than
+  the cutoff. Complements the existing size caps.
 - **Privilege drop**: `setresuid` / `setresgid` after privileged setup
   (Linux). Refuses uid 0. Pairs with `systemd AmbientCapabilities` for
   privileged port binding.
@@ -76,14 +110,17 @@ phasing decisions.
 
 ## Status
 
-**v0.9 — protocol coverage, fingerprinting, ops polish, Docker.** Adds
-11 new protocol handlers (VNC, SMTP receive, RDP, WinRM, DCE/RPC, LDAP,
-Kerberos, Postgres, MySQL, Redis, IPMI), TLS / SSH client fingerprinting
-(JA3, JA4, HASSH), full listener hot-reload, per-listener accept-rate
-caps, outbound sink retry queue with exponential backoff, diff-on-reload
-audit reporting, four new CLI subcommands (`gen-token`, `show-config`,
-`validate-config --diff`), and a multi-stage Dockerfile producing a
-~14MB scratch image.
+**v1.0 — counter-fingerprinting, advanced detection, lifecycle.** Adds
+per-deployment uniqueness (the `deployment_id` seed derives every
+"fixed" string the sensor emits: SSH banner version, MySQL version,
+HTTP `Server:` header, SMB challenge bytes, EtherNet/IP serial, VNC
+challenge, SMTP greeting hostname), randomized per-reply jitter,
+automatic HTTPS self-signed cert rotation, HTTP/2 client
+fingerprinting (JA4H), credential extraction from the brute-force
+correlator, slow-scan correlation over hour-scale windows, DNS
+amplifier-probe detection, time-based retention pruning, graceful
+shutdown drain with a configurable timeout, and the `export-pcap`
+subcommand.
 
 ## Build
 
@@ -133,7 +170,20 @@ tarpit-honeypot show-config    -c <config>
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
+tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot version
+```
+
+`export-pcap` copies `<data_dir>/captures/<event_id>.pcap` to stdout
+(default) or a file. Read-only; never touches sensor state. Used
+together with `list-events` to grab the per-connection capture for a
+specific event:
+
+```
+tarpit-honeypot list-events  -c cfg.yaml --rule listener:ssh-bait --limit 1
+# ... pick the event id from the output ...
+tarpit-honeypot export-pcap -c cfg.yaml --event 7c0574dd1015ac2c142e30ca -o /tmp/ssh.pcap
+wireshark /tmp/ssh.pcap
 ```
 
 `validate-config --diff` compares two configs and classifies each
@@ -275,7 +325,14 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `correlate:port_scan` — same source touched N distinct ports within a
   configurable window.
 - `correlate:brute_force` — same source touched the same port N times in
-  the window (optionally per-port).
+  the window (optionally per-port). Aggregate meta carries the deduped
+  `credentials` array extracted from the contributing events.
+- `correlate:slow_scan` — long-window scan detector (default 24h /
+  10 distinct ports). Meta includes `first_seen`, `last_seen`,
+  `spread_seconds`, `ports`.
+- `dnscanary:amplifier_probe` — DNS source sent an ANY-type query or
+  exceeded the per-window query threshold. Meta: `queries`,
+  `any_queries`, `triggered_by_any`.
 - `canary:<id>` — file canary (fsnotify path or fanotify-detected read).
 - `canary:url:<id>` — URL canary path matched by an HTTP/HTTPS handler.
 - `canary:dns:<id>` — DNS canary name (or subdomain) queried.
@@ -426,7 +483,7 @@ Coverage includes:
 
 ## Client fingerprinting
 
-Two TLS handshake fingerprints are emitted on every HTTPS connection:
+**TLS** — both fingerprints are emitted on every HTTPS connection:
 
 - `ja3` — md5 of the JA3 string built from version + cipher list + ext
   list + supported_groups + ec_point_formats, with GREASE filtered.
@@ -434,14 +491,58 @@ Two TLS handshake fingerprints are emitted on every HTTPS connection:
   Emitted as `t13d{nC}{nE}{alpn}_{cipherHash}_{extHash}` format.
 - `ja3_raw` — the pre-hash string, for ad-hoc grouping.
 
-For SSH connections, the handler captures one SSH binary packet after
-the banner and computes:
+**HTTP** — both `http` and `https` handlers compute JA4H from the
+request line + sorted-header-list + sorted-cookie-list:
+
+- `ja4h` — first 24 hex of sha256 of the JA4H string.
+- `ja4h_raw` — the JA4H string itself
+  (`t<v>h<method><n_hdrs><c>_<header_hash>_<cookie_field_hash>_<cookie_value_hash>`).
+
+**SSH** — the handler captures one binary packet after the banner and
+computes:
 
 - `hassh` — md5 of `kex_algs;encryption_algs_c2s;mac_algs_c2s;compression_algs_c2s`.
 - `hassh_algorithms` — the unhashed semicolon-joined raw form.
 
 Caveat: HASSH relies on the SSH client sending its KEXINIT before the
 server. OpenSSH does this by default; some scanners don't.
+
+## Counter-fingerprinting
+
+Three knobs make the sensor harder to identify as a honeypot:
+
+### `sensor.deployment_id`
+
+A stable random seed (auto-generated on first run, persisted at
+`<data_dir>/.deployment-id`) that deterministically derives every
+otherwise-fixed string the sensor emits:
+
+| Surface | Without identity (v0.8 default) | With identity |
+|---|---|---|
+| SSH banner | `OpenSSH_8.4p1 Debian-5+deb11u1` | one of 6 variants (8.2/8.4/8.9/9.2/9.6/...) |
+| HTTP `Server:` | `nginx/1.18.0` | one of 6 (nginx/apache/IIS variants) |
+| MySQL version | `5.7.42-honeypot` | one of 5 plausible versions |
+| SMTP hostname | `mail.example.com` | `<prefix>NN.example.internal` |
+| SMB session key | `0xdeadbeef` | 32 random bits |
+| SMB challenge | `11 22 33 44 55 66 77 88` | 8 random bytes |
+| VNC challenge | fixed 16 bytes | 16 random bytes |
+| EtherNet/IP serial | `0xdeadbeef` | random 32-bit |
+
+Two deployments with different seeds present distinct fingerprints to
+Shodan-class scanners. Override via `sensor.deployment_id: "..."` in the
+config or rely on auto-generation.
+
+### `sensor.jitter`
+
+Every handler reply sleeps a random `[min_ms, max_ms]` interval before
+writing. Defeats microsecond-identical-latency scanner heuristics.
+Default disabled; enable with `enabled: true`.
+
+### `sensor.tls_rotate.days`
+
+The auto-generated self-signed HTTPS cert regenerates if older than
+this many days. Stops a long-running sensor from leaking a stable
+SNI cert hash. Default `0` = never rotate (v0.8 behavior).
 
 ## Docker
 
@@ -464,7 +565,7 @@ Privileged ports (53, 88, 102, 110, 135, 161, 389, 445, 502, 623, 636,
 grant; for production, the systemd path with `AmbientCapabilities` is
 usually cleaner.
 
-## What's NOT in v0.9
+## What's NOT in v1.0
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
@@ -472,9 +573,11 @@ usually cleaner.
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
 - **Prometheus `/metrics` endpoint.** Per-channel counters are
-  collected (Stats()) but not exposed yet over HTTP.
+  collected via `Router.Stats()` but not exposed yet over HTTP.
 - **GeoIP / rDNS / ASN enrichment.** Original design included these;
   not wired up.
+- **CEF / LEEF / OCSF output formats.** SIEMs that prefer those
+  formats currently have to transform our JSON.
 
 Everything else from the original design is shipped.
 
