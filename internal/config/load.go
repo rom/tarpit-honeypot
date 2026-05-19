@@ -238,6 +238,7 @@ func (c *Config) Validate() error {
 			"dcerpc": true, "ldap": true, "kerberos": true,
 			"postgres": true, "mysql": true, "redis": true,
 			"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
+			"xmpp": true, "amqp": true, "ipp": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
@@ -245,6 +246,7 @@ func (c *Config) Validate() error {
 			"syslog_udp": true, "radius": true, "sip": true,
 			"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
 			"fins": true,
+			"coap": true, "knx": true,
 		}
 		switch l.Proto {
 		case "tcp":

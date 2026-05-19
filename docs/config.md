@@ -128,9 +128,9 @@ listeners:
 
 ### Handlers
 
-**TCP-only:** `raw`, `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`.
+**TCP-only:** `raw`, `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`.
 
-**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`.
+**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`.
 
 Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`README.md`](../README.md#protocol-handlers-in-detail) for per-handler capture detail.
 

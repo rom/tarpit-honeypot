@@ -228,6 +228,9 @@ By family, with the most common port. All are configurable to any port via `bind
 | `syslog_udp` | 514 | RFC 3164/5424 capture |
 | `rtsp` | 554 | RTSP/1.0 401 Digest |
 | `dockerapi` | 2375 | unauthenticated Docker daemon mimic |
+| `xmpp` | 5222 | stream:features advertising PLAIN/SCRAM-SHA-1 |
+| `amqp` | 5672 | RabbitMQ Connection.Start, captures PLAIN creds |
+| `ipp` | 631 | CUPS Get-Printer-Attributes (Brother HL-shaped) |
 
 **ICS / OT:**
 
@@ -256,6 +259,8 @@ By family, with the most common port. All are configurable to any port via `bind
 | `ntp` | 123 (UDP) | mode-3 → mode-4; mode-7 silenced (no monlist amplifier) |
 | `tftp` | 69 (UDP) | RRQ/WRQ filename capture, ERROR access_violation reply |
 | `ipmi` | 623 (UDP) | RMCP Presence Ping → Pong |
+| `coap` | 5683 (UDP) | RFC 7252 GET parser, /.well-known/core reply |
+| `knx` | 3671 (UDP) | KNXnet/IP SEARCH/DESCRIPTION → MDT IP router |
 
 ### LLMNR + NetBIOS poisoning catcher
 

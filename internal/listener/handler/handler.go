@@ -150,6 +150,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &dockerapi{}, nil
 	case "melsec":
 		return &melsec{}, nil
+	case "xmpp":
+		return &xmpp{}, nil
+	case "amqp":
+		return &amqp{}, nil
+	case "ipp":
+		return &ipp{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }

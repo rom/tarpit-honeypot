@@ -308,6 +308,57 @@ listeners:
     severity: high
     read_bytes: 1500
 
+  # CoAP — UDP/5683. IoT discovery — RFC 7252. Replies to
+  # GET /.well-known/core with a fake LED resource.
+  - id: coap-bait
+    proto: udp
+    bind: 0.0.0.0:5683
+    mode: banner
+    handler: coap
+    severity: high
+    read_bytes: 1500
+
+  # KNXnet/IP — UDP/3671. Building-automation bus tunnel; SEARCH_REQUEST
+  # is the standard discovery probe, we answer as an MDT IP router.
+  - id: knx-bait
+    proto: udp
+    bind: 0.0.0.0:3671
+    mode: banner
+    handler: knx
+    severity: high
+    read_bytes: 1500
+
+  # XMPP — TCP/5222. Replies with stream:features advertising PLAIN +
+  # SCRAM-SHA-1 so the scanner records us as Prosody/ejabberd. Captures
+  # the SASL PLAIN credentials on follow-up.
+  - id: xmpp-bait
+    proto: tcp
+    bind: 0.0.0.0:5222
+    mode: banner
+    handler: xmpp
+    severity: high
+    read_bytes: 4096
+
+  # AMQP — TCP/5672. RabbitMQ-shaped Connection.Start, captures the
+  # PLAIN credentials from Connection.StartOk, replies NOT_ALLOWED.
+  - id: amqp-bait
+    proto: tcp
+    bind: 0.0.0.0:5672
+    mode: banner
+    handler: amqp
+    severity: high
+    read_bytes: 8192
+
+  # IPP / CUPS — TCP/631. Answers Get-Printer-Attributes with a
+  # believable Brother HL printer; standard target for IoT scanners.
+  - id: ipp-bait
+    proto: tcp
+    bind: 0.0.0.0:631
+    mode: banner
+    handler: ipp
+    severity: medium
+    read_bytes: 8192
+
 canaries:
   - id: shared-creds
     path: ./var/canary/passwords.xlsx

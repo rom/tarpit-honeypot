@@ -19,6 +19,17 @@ documented in `docs/`).
   Enterprise Linux 8`–`10`, `Ubuntu 24.04 LTS`, `Ubuntu 26.04 LTS`.
   Override precedence: honeynet-host > listener > sensor > "no
   archetype". `tarpit-honeypot help archetypes` lists them all.
+- **5 new protocol handlers**:
+  - `coap` (UDP/5683) — RFC 7252 IoT discovery, parses option TLVs,
+    replies with `/.well-known/core` link-format.
+  - `knx` (UDP/3671) — KNXnet/IP building automation. Answers
+    SEARCH_REQUEST and DESCRIPTION_REQUEST as an MDT KNX IP Router.
+  - `xmpp` (TCP/5222) — XMPP client stream, advertises PLAIN +
+    SCRAM-SHA-1, captures SASL AUTH attempts.
+  - `amqp` (TCP/5672) — RabbitMQ-shaped Connection.Start, captures
+    PLAIN credentials in Connection.StartOk, replies NOT_ALLOWED.
+  - `ipp` (TCP/631) — IPP/CUPS printer. Answers Get-Printer-Attributes
+    with a fake Brother HL-L8260CDW.
 - `make cover` / `make race` / `make fuzz` targets
 - Fuzz tests for the TLS ClientHello (JA3/JA4), SSH KEXINIT (HASSH),
   HTTP request line (JA4H), LDAP BER decoder, MQTT varint/string
