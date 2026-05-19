@@ -13,6 +13,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
@@ -28,6 +29,11 @@ type Deps struct {
 	DataDir     string
 	URLCanaries []config.URLCanary
 	TLSRotate   int // days; 0 = never rotate
+	// Archetype, if set, pins SSH / HTTP / FTP / Telnet / SMTP /
+	// MySQL banners to values consistent with a stock install of a
+	// specific OS. nil = fall back to the identity-based variant
+	// pool (v1.0 behavior).
+	Archetype *archetype.Profile
 	// HoneynetView is a side-channel for topology-exposing handlers
 	// (snmp / ldap / dcerpc) so they can advertise the honeynet hosts
 	// in their query responses. Avoids importing internal/honeynet
@@ -85,9 +91,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "raw":
 		return &raw{}, nil
 	case "ssh":
-		return &ssh{id: deps.Identity, jit: deps.Jitter}, nil
+		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "http":
-		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter}, nil
+		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "https":
 		h, err := newHTTPS(deps.DataDir, deps.TLSRotate)
 		if err != nil {
@@ -96,11 +102,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		h.urlCanaries = deps.URLCanaries
 		h.id = deps.Identity
 		h.jit = deps.Jitter
+		h.arch = deps.Archetype
 		return h, nil
 	case "telnet":
-		return &telnet{jit: deps.Jitter}, nil
+		return &telnet{jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "ftp":
-		return &ftp{jit: deps.Jitter}, nil
+		return &ftp{jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "modbus":
 		return &modbus{}, nil
 	case "s7":
@@ -118,7 +125,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "vnc":
 		return &vnc{id: deps.Identity}, nil
 	case "smtp_recv":
-		return &smtpRecv{id: deps.Identity, jit: deps.Jitter}, nil
+		return &smtpRecv{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "rdp":
 		return &rdp{}, nil
 	case "winrm":
@@ -132,7 +139,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "postgres":
 		return &postgres{}, nil
 	case "mysql":
-		return &mysql{id: deps.Identity}, nil
+		return &mysql{id: deps.Identity, arch: deps.Archetype}, nil
 	case "redis":
 		return &redis{}, nil
 	case "syslog_tcp":

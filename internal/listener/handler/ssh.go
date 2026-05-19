@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -14,8 +15,9 @@ import (
 )
 
 type ssh struct {
-	id  *identity.Identity
-	jit *jitter.Jitterer
+	id   *identity.Identity
+	jit  *jitter.Jitterer
+	arch *archetype.Profile
 }
 
 func (s *ssh) Name() string { return "ssh" }
@@ -34,9 +36,12 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	s.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
-		if s.id != nil {
+		switch {
+		case s.arch != nil && s.arch.SSHBanner() != "":
+			banner = s.arch.SSHBanner() + "\r\n"
+		case s.id != nil:
 			banner = s.id.SSHBannerVariant() + "\r\n"
-		} else {
+		default:
 			banner = "SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1\r\n"
 		}
 	}

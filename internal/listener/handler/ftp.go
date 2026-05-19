@@ -7,12 +7,14 @@ import (
 	"net"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
 type ftp struct {
-	jit *jitter.Jitterer
+	jit  *jitter.Jitterer
+	arch *archetype.Profile
 }
 
 func (f *ftp) Name() string { return "ftp" }
@@ -24,7 +26,11 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	f.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
-		banner = "220 (vsFTPd 3.0.3)\r\n"
+		if f.arch != nil && f.arch.FTPBanner() != "" {
+			banner = f.arch.FTPBanner() + "\r\n"
+		} else {
+			banner = "220 (vsFTPd 3.0.3)\r\n"
+		}
 	}
 	res := Result{BannerSent: banner}
 	if _, err := conn.Write([]byte(banner)); err != nil {

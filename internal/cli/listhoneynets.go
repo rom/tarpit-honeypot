@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -33,7 +34,8 @@ func cmdListHoneynets(args []string) error {
 	// (deployment_id from the config) so we don't touch the data_dir.
 	id := identity.New(cfg.Sensor.DeploymentID)
 	jit := jitter.New(0, 0)
-	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days)
+	arch := archetype.Lookup(cfg.Sensor.Archetype)
+	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days, arch)
 	if err != nil {
 		return err
 	}

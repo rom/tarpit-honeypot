@@ -5,12 +5,14 @@ import (
 	"context"
 	"net"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
 type telnet struct {
-	jit *jitter.Jitterer
+	jit  *jitter.Jitterer
+	arch *archetype.Profile
 }
 
 func (t *telnet) Name() string { return "telnet" }
@@ -29,7 +31,11 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	t.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
-		banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "
+		if t.arch != nil && t.arch.TelnetBanner() != "" {
+			banner = t.arch.TelnetBanner()
+		} else {
+			banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "
+		}
 	}
 	res := Result{}
 	if _, err := conn.Write(telnetIAC); err != nil {

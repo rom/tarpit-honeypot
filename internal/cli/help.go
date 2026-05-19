@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 )
 
 // cmdHelp prints extensive usage for one subcommand (or all of them if
@@ -25,6 +27,10 @@ func cmdHelp(args []string) error {
 		return nil
 	}
 	topic := fs.Arg(0)
+	if topic == "archetypes" {
+		printArchetypes()
+		return nil
+	}
 	if doc, ok := helpDocs[topic]; ok {
 		fmt.Print(doc)
 		return nil
@@ -32,6 +38,49 @@ func cmdHelp(args []string) error {
 	fmt.Fprintf(os.Stderr, "no help topic %q\n", topic)
 	printAllHelp()
 	return fmt.Errorf("unknown topic")
+}
+
+// printArchetypes lists every shipped archetype and the banner values
+// it pins. Useful as a quick "what do my SSH / HTTP banners look like
+// under sensor.archetype: debian 12" reference.
+func printArchetypes() {
+	fmt.Println(`archetypes — OS-shaped banner profiles
+
+Set sensor.archetype (or listener.archetype, or per-host archetype) to
+one of the names below. Every handler that has an archetype-aware
+banner (SSH, HTTP/HTTPS Server header, FTP 220, Telnet issue, SMTP
+greeting, MySQL handshake version) reports a value consistent with a
+stock install of that OS, so a scanner can't catch the sensor by
+spotting an "OpenSSH version that doesn't match the distro" mismatch.
+
+Without an archetype, banners come from the v1.0 deployment-id-keyed
+variant pool (still unique-per-sensor, just not pinned to a specific
+distribution).
+
+NAMES (case- and separator-insensitive)`)
+	for _, n := range archetype.Names() {
+		fmt.Printf("    %s\n", n)
+	}
+	fmt.Println()
+	fmt.Println(`USAGE
+    sensor:
+      archetype: debian 12
+    listeners:
+      - id: ssh-bait
+        archetype: red hat enterprise linux 9   # overrides sensor
+        proto: tcp
+        bind: 0.0.0.0:22
+        handler: ssh
+    honeynets:
+      - id: corp-prod
+        hosts:
+          - ip: 10.99.1.10
+            archetype: ubuntu 24.04 lts          # overrides listener
+            services:
+              - { port: 22, handler: ssh }
+
+ORDER OF PRECEDENCE (most specific wins)
+    honeynet host > listener > sensor > "no archetype" (identity pool)`)
 }
 
 func printAllHelp() {
@@ -73,7 +122,10 @@ SUBCOMMANDS`)
 		fmt.Printf("    %-18s %s\n", n, strings.TrimPrefix(short, n+" — "))
 	}
 	fmt.Println()
-	fmt.Println("Use `tarpit-honeypot help <subcommand>` for the full topic.")
+	fmt.Println(`TOPICS
+    archetypes         The 15 OS-shaped banner profiles you can pin.
+
+Use ` + "`tarpit-honeypot help <subcommand>`" + ` for the full topic.`)
 }
 
 // helpDocs holds the long-form usage for every subcommand. First line of

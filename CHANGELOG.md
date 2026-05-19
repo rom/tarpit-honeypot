@@ -9,6 +9,16 @@ documented in `docs/`).
 ## [Unreleased]
 
 ### Added
+- **Archetypes** — set `sensor.archetype: "debian 12"` (or
+  `listener.archetype`, or per-honeynet-host `archetype`) and every
+  banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL)
+  reports values consistent with a stock install of that OS, so a
+  scanner can't catch the sensor by spotting a version-vs-distro
+  mismatch. 15 ship archetypes: `centos 5`, `centos 6`, `centos 7`,
+  `centos 8`, `CentOS Stream 10`, `debian 9`–`debian 13`, `Red Hat
+  Enterprise Linux 8`–`10`, `Ubuntu 24.04 LTS`, `Ubuntu 26.04 LTS`.
+  Override precedence: honeynet-host > listener > sensor > "no
+  archetype". `tarpit-honeypot help archetypes` lists them all.
 - `make cover` / `make race` / `make fuzz` targets
 - Fuzz tests for the TLS ClientHello (JA3/JA4), SSH KEXINIT (HASSH),
   HTTP request line (JA4H), LDAP BER decoder, MQTT varint/string

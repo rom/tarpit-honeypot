@@ -5,6 +5,15 @@ sensor:
   # (SSH banner version, SMB challenge bytes, fake device serials, etc).
   # Blank = auto-generate on first run and persist to <data_dir>/.deployment-id.
   deployment_id: ""
+  # OS-shaped banner profile. When set, SSH / HTTP(S) / FTP / Telnet /
+  # SMTP / MySQL handlers report banners consistent with a stock install
+  # of this distribution, so a scanner can't catch the sensor by spotting
+  # version-vs-distro mismatches.
+  #
+  # `tarpit-honeypot help archetypes` lists the 15 valid names.
+  # Per-listener and per-honeynet-host overrides take precedence.
+  # Blank = fall back to the deployment-id-keyed variant pool.
+  archetype: ""                              # e.g. "debian 12", "ubuntu 24.04 lts"
   # On Linux, after privileged setup the sensor will switch to this user/group.
   # Use with systemd AmbientCapabilities=CAP_NET_BIND_SERVICE to keep
   # privileged ports working. Leave blank when running unprivileged anyway.

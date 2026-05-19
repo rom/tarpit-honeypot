@@ -3,6 +3,7 @@ package listener
 import (
 	"context"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -29,6 +30,10 @@ type BuildArgs struct {
 	Identity         *identity.Identity
 	Jitter           *jitter.Jitterer
 	TLSRotate        int
+	// SensorArchetype is the deployment-default OS archetype (nil
+	// for "no default"). A non-empty Listener.Archetype overrides
+	// it on the per-listener level.
+	SensorArchetype  *archetype.Profile
 	Honeynet         *honeynet.Topology
 	HoneynetSnapshot handler.HoneynetSnapshot
 }
@@ -40,12 +45,19 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 			sevByID[c.ID] = s
 		}
 	}
+	arch := args.SensorArchetype
+	if l.Archetype != "" {
+		if p := archetype.Lookup(l.Archetype); p != nil {
+			arch = p
+		}
+	}
 	deps := handler.Deps{
 		Identity:     args.Identity,
 		Jitter:       args.Jitter,
 		DataDir:      args.DataDir,
 		URLCanaries:  args.URLCanaries,
 		TLSRotate:    args.TLSRotate,
+		Archetype:    arch,
 		HoneynetView: args.HoneynetSnapshot,
 	}
 	switch l.Proto {

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
@@ -42,13 +43,14 @@ type Network struct {
 }
 
 type Host struct {
-	NetID    string
-	IP       string
-	Hostname string
-	OS       string        // free-form ("linux", "windows", "cisco-ios", ...)
-	Services []*Service
-	Identity *identity.Identity // derived per-host
-	MAC      [6]byte             // stable per-host, derived from Identity
+	NetID     string
+	IP        string
+	Hostname  string
+	OS        string        // free-form ("linux", "windows", "cisco-ios", ...)
+	Archetype *archetype.Profile // nil = inherit from sensor default
+	Services  []*Service
+	Identity  *identity.Identity // derived per-host
+	MAC       [6]byte             // stable per-host, derived from Identity
 }
 
 // MACString returns the host's MAC in xx:xx:xx:xx:xx:xx form.
@@ -86,7 +88,11 @@ type endpoint struct {
 // Build constructs a Topology from the YAML config and the sensor's root
 // identity + jitter. Returns an empty Topology if no honeynets are
 // configured.
-func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, dataDir string, urlCanaries []config.URLCanary, tlsRotate int) (*Topology, error) {
+//
+// sensorArch is the deployment-default archetype. A non-empty
+// host.Archetype in the config overrides it; otherwise sensorArch flows
+// through to every pre-built handler instance.
+func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, dataDir string, urlCanaries []config.URLCanary, tlsRotate int, sensorArch *archetype.Profile) (*Topology, error) {
 	t := &Topology{
 		hostByIP:    map[string]*Host{},
 		serviceByEP: map[endpoint]*boundService{},
@@ -111,13 +117,20 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 				return nil, fmt.Errorf("honeynet %s: host %s: bad ip %q: %w", ncfg.ID, hcfg.Hostname, hcfg.IP, err)
 			}
 			hostID := id.Derive("honeynet/" + ncfg.ID + "/" + hcfg.IP)
+			hostArch := sensorArch
+			if hcfg.Archetype != "" {
+				if p := archetype.Lookup(hcfg.Archetype); p != nil {
+					hostArch = p
+				}
+			}
 			h := &Host{
-				NetID:    ncfg.ID,
-				IP:       hcfg.IP,
-				Hostname: hcfg.Hostname,
-				OS:       hcfg.OS,
-				Identity: hostID,
-				MAC:      hostID.MAC(),
+				NetID:     ncfg.ID,
+				IP:        hcfg.IP,
+				Hostname:  hcfg.Hostname,
+				OS:        hcfg.OS,
+				Archetype: hostArch,
+				Identity:  hostID,
+				MAC:       hostID.MAC(),
 			}
 			for _, sc := range hcfg.Services {
 				if sc.Port <= 0 || sc.Port > 65535 {
@@ -151,6 +164,7 @@ func buildBoundService(h *Host, s *Service, jit *jitter.Jitterer, dataDir string
 		DataDir:     dataDir,
 		URLCanaries: urlCanaries,
 		TLSRotate:   tlsRotate,
+		Archetype:   h.Archetype,
 	}
 	bs := &boundService{host: h, service: s}
 	if hd, err := handler.Get(s.Handler, deps); err == nil {

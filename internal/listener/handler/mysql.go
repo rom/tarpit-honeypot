@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 type mysql struct {
-	id *identity.Identity
+	id   *identity.Identity
+	arch *archetype.Profile
 }
 
 func (m *mysql) Name() string { return "mysql" }
@@ -36,7 +38,10 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	_, _ = rand.Read(salt2)
 
 	ver := "5.7.42-log"
-	if m.id != nil {
+	switch {
+	case m.arch != nil && m.arch.MySQLVersion() != "":
+		ver = m.arch.MySQLVersion()
+	case m.id != nil:
 		ver = m.id.MySQLVersion()
 	}
 	body := []byte{}

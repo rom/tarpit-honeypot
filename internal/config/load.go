@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"gopkg.in/yaml.v3"
 )
@@ -193,6 +194,13 @@ func (c *Config) applyDefaults() {
 }
 
 func (c *Config) Validate() error {
+	// Sensor archetype: rejected at parse time so typos in the
+	// deployment-default surface immediately rather than producing
+	// the silent fall-back to the identity-based banner pool.
+	if c.Sensor.Archetype != "" && archetype.Lookup(c.Sensor.Archetype) == nil {
+		return fmt.Errorf("sensor.archetype %q is not a known archetype; run `tarpit-honeypot help archetypes` for the list", c.Sensor.Archetype)
+	}
+
 	// Listeners.
 	seenID := map[string]bool{}
 	seenBind := map[string]bool{}
@@ -266,6 +274,9 @@ func (c *Config) Validate() error {
 		}
 		if _, err := event.ParseSeverity(l.Severity); err != nil {
 			return fmt.Errorf("listener %s: %w", l.ID, err)
+		}
+		if l.Archetype != "" && archetype.Lookup(l.Archetype) == nil {
+			return fmt.Errorf("listener %s: archetype %q is not a known archetype", l.ID, l.Archetype)
 		}
 	}
 
@@ -368,6 +379,9 @@ func (c *Config) Validate() error {
 					return fmt.Errorf("honeynet %s: hostname %q duplicated", hn.ID, host.Hostname)
 				}
 				hostName[host.Hostname] = true
+			}
+			if host.Archetype != "" && archetype.Lookup(host.Archetype) == nil {
+				return fmt.Errorf("honeynet %s host %s: archetype %q is not a known archetype", hn.ID, host.IP, host.Archetype)
 			}
 			portSeen := map[int]bool{}
 			for si, svc := range host.Services {

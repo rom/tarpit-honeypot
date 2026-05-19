@@ -32,6 +32,7 @@ sensor:
   name: ""                    # blank = hostname()
   data_dir: /var/lib/tarpit-honeypot
   deployment_id: ""           # blank = auto-generate + persist
+  archetype: ""               # see "archetypes" section / `help archetypes`
   drop_user: ""               # Linux: setresuid/setresgid target after bind
   drop_group: ""
   disk:
@@ -62,6 +63,7 @@ sensor:
 | `name` | Identifies the sensor in every event meta. Blank → hostname. |
 | `data_dir` | Where SQLite, jsonlog, captures, certs, and `.deployment-id` live. |
 | `deployment_id` | Stable random seed feeding every "fixed" handler string. Auto-generated to `<data_dir>/.deployment-id` on first run. Override here to align two sensors that should look identical. |
+| `archetype` | OS-shaped banner profile (e.g. `debian 12`, `Ubuntu 24.04 LTS`, `Red Hat Enterprise Linux 9`). Pins SSH / HTTP / FTP / Telnet / SMTP / MySQL banners to values consistent with a stock install of that distro, so a scanner can't catch the sensor by spotting a version-vs-distro mismatch. Blank = fall back to the deployment-id-keyed variant pool. See `tarpit-honeypot help archetypes` for the list. |
 | `drop_user` / `drop_group` | After privileged setup, drop to this uid/gid. Refuses uid 0. Linux only — non-Linux warns and ignores. |
 | `disk.retention_days` | Hourly runner deletes events / files / DB rows older than this. 0 disables time-based pruning (size caps still apply). |
 | `jitter` | Per-handler-reply sleep `[min_ms, max_ms]`. Defeats microsecond-identical-latency scanner fingerprinting. |
@@ -104,6 +106,7 @@ listeners:
     read_timeout: 5s
     capture: false                      # write per-event pcap of bidirectional bytes
     max_concurrent: 0                   # 0 = unlimited; otherwise SYN-flood guard
+    archetype: ""                       # overrides sensor.archetype for this listener
     banner: ""                          # raw banner string for handler: raw
     https:                              # only for handler: https
       hosts: ["honeypot.local"]
@@ -269,6 +272,7 @@ honeynets:
       - ip: 10.99.0.10
         hostname: web-prod-01
         os: linux
+        archetype: debian 12               # overrides sensor / listener archetype
         services:
           - { port: 22,  handler: ssh }
           - { port: 80,  handler: http }
@@ -283,6 +287,8 @@ honeynets:
 ```
 
 When a connection's destination IP matches a virtual host, the listener dispatches to a handler instance whose Identity is `sensor.deployment_id || "honeynet/" || network_id || "/" || host_ip` — so each virtual machine has its own stable SSH banner, MAC, SMB session key, MySQL version, etc.
+
+Per-host `archetype:` lets a single honeynet host a mix of OS shapes — `web-prod-01` can speak `debian 12`-shaped banners while `db-old-02` next door speaks `centos 7`. If omitted, the host inherits the listener archetype (if set) or the sensor archetype.
 
 Events get `honeynet`, `honeynet_host`, `honeynet_hostname`, `honeynet_os` meta keys; SNMP/LDAP/DCE-RPC handlers additionally advertise the topology in their event meta (`honeynet_neighbors`, `honeynet_computer_accounts`, `honeynet_endpoints`).
 

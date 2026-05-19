@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -30,6 +31,7 @@ type https struct {
 	urlCanaries []config.URLCanary
 	id          *identity.Identity
 	jit         *jitter.Jitterer
+	arch        *archetype.Profile
 	rotateDays  int
 }
 
@@ -83,7 +85,7 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		return Result{Meta: meta}, nil
 	}
 	state := tlsConn.ConnectionState()
-	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id)
+	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch)
 	if res.Meta == nil {
 		res.Meta = map[string]any{}
 	}

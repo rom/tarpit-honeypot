@@ -75,10 +75,11 @@ type ARPResponderCfg struct {
 }
 
 type HoneynetHost struct {
-	IP       string            `yaml:"ip"`
-	Hostname string            `yaml:"hostname"`
-	OS       string            `yaml:"os"`
-	Services []HoneynetService `yaml:"services"`
+	IP        string            `yaml:"ip"`
+	Hostname  string            `yaml:"hostname"`
+	OS        string            `yaml:"os"`
+	Archetype string            `yaml:"archetype"`
+	Services  []HoneynetService `yaml:"services"`
 }
 
 type HoneynetService struct {
@@ -148,6 +149,14 @@ type Sensor struct {
 	DeploymentID string    `yaml:"deployment_id"`
 	DropUser     string    `yaml:"drop_user"`
 	DropGroup    string    `yaml:"drop_group"`
+	// Archetype is a deployment-default OS shape (e.g. "debian 12",
+	// "Ubuntu 24.04 LTS"). When set, every handler that has an
+	// archetype-aware banner (SSH, HTTP, FTP, Telnet, SMTP, MySQL)
+	// reports a banner consistent with a stock install of that OS.
+	// Per-listener archetype overrides this; per-host honeynet
+	// archetype overrides both. Empty = fall back to the v1.0
+	// deployment-id-keyed variant pool.
+	Archetype    string    `yaml:"archetype"`
 	Disk         Disk      `yaml:"disk"`
 	Jitter       Jitter    `yaml:"jitter"`
 	Shutdown     Shutdown  `yaml:"shutdown"`
@@ -212,6 +221,10 @@ type Listener struct {
 	ReadTimeout   time.Duration `yaml:"read_timeout"`
 	Capture       bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	// Archetype overrides sensor.archetype for this listener. Empty
+	// = inherit sensor.archetype. Useful when one sensor serves a
+	// mix of OS-shaped traps on different ports.
+	Archetype     string        `yaml:"archetype"`
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`

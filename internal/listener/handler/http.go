@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -17,6 +18,7 @@ type httpH struct {
 	urlCanaries []config.URLCanary
 	id          *identity.Identity
 	jit         *jitter.Jitterer
+	arch        *archetype.Profile
 }
 
 func (h *httpH) Name() string { return "http" }
@@ -29,10 +31,10 @@ func (h *httpH) Name() string { return "http" }
 // and JA4H is computed over the request line + headers.
 func (h *httpH) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	h.jit.Sleep(ctx)
-	return serveHTTP(conn, cfg, h.urlCanaries, h.id)
+	return serveHTTP(conn, cfg, h.urlCanaries, h.id, h.arch)
 }
 
-func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, id *identity.Identity) (Result, error) {
+func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, id *identity.Identity, arch *archetype.Profile) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
@@ -86,7 +88,10 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 
 	server := "nginx/1.18.0"
-	if id != nil {
+	switch {
+	case arch != nil && arch.HTTPServer() != "":
+		server = arch.HTTPServer()
+	case id != nil:
 		server = id.HTTPServerHeader()
 	}
 	banner := cfg.Banner

@@ -35,12 +35,18 @@ func Dispatch(args []string) error {
 		switch args[0] {
 		case "--version", "-V":
 			return cmdVersion(nil)
-		case "-h", "--help", "help":
+		case "-h", "--help":
 			printUsage(cmds)
+			return nil
+		case "help":
+			// "help" with no arg → short usage; with an arg →
+			// route through cmdHelp so topics like
+			// `help archetypes` work.
 			if len(args) == 1 {
+				printUsage(cmds)
 				return nil
 			}
-			return nil
+			return cmdHelp(args[1:])
 		}
 	}
 

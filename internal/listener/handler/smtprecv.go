@@ -8,14 +8,16 @@ import (
 	"net"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
 type smtpRecv struct {
-	id  *identity.Identity
-	jit *jitter.Jitterer
+	id   *identity.Identity
+	jit  *jitter.Jitterer
+	arch *archetype.Profile
 }
 
 func (s *smtpRecv) Name() string { return "smtp_recv" }
@@ -34,10 +36,16 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	res := Result{Meta: map[string]any{}}
 
 	host := "mail.example.com"
-	if s.id != nil {
+	if s.arch != nil && s.arch.SMTPHost() != "" {
+		host = s.arch.SMTPHost()
+	} else if s.id != nil {
 		host = s.id.HostName()
 	}
-	greet := "220 " + host + " ESMTP Postfix (Debian/GNU)\r\n"
+	product := "Postfix (Debian/GNU)"
+	if s.arch != nil && s.arch.SMTPProduct() != "" {
+		product = s.arch.SMTPProduct()
+	}
+	greet := "220 " + host + " ESMTP " + product + "\r\n"
 	if cfg.Banner != "" {
 		greet = cfg.Banner
 	}

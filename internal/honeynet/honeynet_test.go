@@ -36,7 +36,7 @@ func TestBuildAndLookup(t *testing.T) {
 		},
 	}
 	id := identity.New("test-seed")
-	topo, err := Build(cfg, id, jitter.New(0, 0), t.TempDir(), nil, 0)
+	topo, err := Build(cfg, id, jitter.New(0, 0), t.TempDir(), nil, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestDuplicateIPRejected(t *testing.T) {
 		}},
 	}
 	id := identity.New("seed")
-	_, err := Build(cfg, id, jitter.New(0, 0), t.TempDir(), nil, 0)
+	_, err := Build(cfg, id, jitter.New(0, 0), t.TempDir(), nil, 0, nil)
 	// Build itself allows duplicate IPs (config validation catches it),
 	// but the second entry overwrites the first in hostByIP, so the
 	// lookup still finds something. The point of this test is just to

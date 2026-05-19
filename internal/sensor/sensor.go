@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/canary"
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -48,6 +49,7 @@ type Sensor struct {
 	captureMgr *capture.Manager
 	identity   *identity.Identity
 	jitter     *jitter.Jitterer
+	archetype  *archetype.Profile
 	honeynet   *honeynet.Topology
 	enrich     *enrich.Enricher
 	bus        chan *event.Event
@@ -81,6 +83,10 @@ func New(cfg *config.Config) (*Sensor, error) {
 	if !cfg.Sensor.Jitter.Enabled {
 		jit = jitter.New(0, 0)
 	}
+
+	// Resolve the deployment-default archetype (already validated in
+	// config.Validate, so Lookup returning nil here means empty).
+	arch := archetype.Lookup(cfg.Sensor.Archetype)
 
 	var st *store.Store
 	if needsStore(cfg) {
@@ -146,7 +152,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
-	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days)
+	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days, arch)
 	if err != nil {
 		for _, s := range sinks {
 			_ = s.Close()
@@ -184,6 +190,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		captureMgr: capMgr,
 		identity:   id,
 		jitter:     jit,
+		archetype:  arch,
 		honeynet:   topo,
 		enrich:     enr,
 		bus:        make(chan *event.Event, 1024),
@@ -266,6 +273,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		Identity:         s.identity,
 		Jitter:           s.jitter,
 		TLSRotate:        s.cfg.Sensor.TLSRotate.Days,
+		SensorArchetype:  s.archetype,
 		Honeynet:         s.honeynet,
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
 	})
