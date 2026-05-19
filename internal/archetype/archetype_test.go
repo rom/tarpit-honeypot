@@ -63,7 +63,7 @@ func TestNilProfileSafe(t *testing.T) {
 	}
 }
 
-// All 15 ship archetypes should be registered, every banner field
+// Every shipped archetype should be registered, every banner field
 // populated, and the Names() helper should hand each one back exactly
 // once.
 func TestAllShipArchetypes(t *testing.T) {
@@ -74,6 +74,15 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Red Hat Enterprise Linux 8", "Red Hat Enterprise Linux 9",
 		"Red Hat Enterprise Linux 10",
 		"Ubuntu 24.04 LTS", "Ubuntu 26.04 LTS",
+		// v1.9 additions:
+		"FreeBSD 13", "FreeBSD 14",
+		"OpenBSD 7.5", "OpenBSD 7.6",
+		"Arch Linux",
+		"Rocky Linux 9", "AlmaLinux 9",
+		"Oracle Linux 8", "Oracle Linux 9",
+		"Moxa EDS-208", "Moxa NPort 5210",
+		"Siemens SCALANCE XB-208",
+		"Siemens S7-1200 PLC", "Siemens S7-1500 PLC",
 	}
 	got := Names()
 	if len(got) != len(want) {
@@ -93,10 +102,19 @@ func TestAllShipArchetypes(t *testing.T) {
 	}
 }
 
-// Every registered archetype should populate every banner field so we
-// don't ship one with a silent hole.
+// Every registered distro archetype should populate every banner
+// field so we don't ship one with a silent hole. Device archetypes
+// (Moxa, Siemens SCALANCE/S7) have a deliberately narrower surface —
+// see TestDeviceArchetypeFields for those.
 func TestRegistryComplete(t *testing.T) {
+	distroFamilies := map[string]bool{
+		"debian": true, "ubuntu": true, "rhel": true, "centos": true,
+		"arch": true, "bsd": true,
+	}
 	for _, p := range registry {
+		if !distroFamilies[p.Family] {
+			continue
+		}
 		if p.SSHBanner() == "" {
 			t.Errorf("%s: sshBanner empty", p.Name)
 		}
@@ -112,8 +130,38 @@ func TestRegistryComplete(t *testing.T) {
 		if p.SMTPProduct() == "" {
 			t.Errorf("%s: smtpProduct empty", p.Name)
 		}
-		if p.MySQLVersion() == "" {
-			t.Errorf("%s: mysqlVersion empty", p.Name)
+		// OpenBSD ships without MariaDB/MySQL by default; FreeBSD
+		// has it as an optional port. Only require the
+		// MySQL version for distro families where MariaDB is a
+		// default dependency / commonly installed.
+		switch p.Family {
+		case "debian", "ubuntu", "rhel", "centos", "arch":
+			if p.MySQLVersion() == "" {
+				t.Errorf("%s: mysqlVersion empty", p.Name)
+			}
+		}
+	}
+}
+
+// Device archetypes (Moxa / Siemens) have their own fingerprint set —
+// SNMP identity, MAC OUI, default services — and must populate that
+// instead of the generic SSH/HTTP/FTP/SMTP/MySQL distro surface.
+func TestDeviceArchetypeFields(t *testing.T) {
+	for _, p := range registry {
+		if p.Family != "moxa" && p.Family != "siemens" {
+			continue
+		}
+		if !p.HasMACOUI() {
+			t.Errorf("%s: macOUI not set", p.Name)
+		}
+		if p.SNMPSysDescr() == "" {
+			t.Errorf("%s: snmpSysDescr empty", p.Name)
+		}
+		if p.SNMPSysObjectID() == "" {
+			t.Errorf("%s: snmpSysObjectID empty", p.Name)
+		}
+		if len(p.DefaultServices()) == 0 {
+			t.Errorf("%s: defaultServices empty", p.Name)
 		}
 	}
 }

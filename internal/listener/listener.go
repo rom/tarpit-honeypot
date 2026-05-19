@@ -64,7 +64,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 	case "tcp":
 		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID, args.Honeynet)
 	case "udp":
-		return newUDP(l, args.SensorName, args.Honeynet, args.HoneynetSnapshot)
+		return newUDP(l, args.SensorName, args.Honeynet, args.HoneynetSnapshot, deps)
 	}
 	return nil, errUnknownProto
 }

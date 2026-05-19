@@ -31,9 +31,16 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	t.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
-		if t.arch != nil && t.arch.TelnetBanner() != "" {
+		switch {
+		case t.arch != nil && t.arch.LoginPrompt() != "" && t.arch.TelnetBanner() != "":
+			// Moxa / SCALANCE — the device shows a model/firmware
+			// banner first, then a custom login prompt; archetype
+			// stores both, telnetBanner usually ends with the
+			// custom prompt already.
 			banner = t.arch.TelnetBanner()
-		} else {
+		case t.arch != nil && t.arch.TelnetBanner() != "":
+			banner = t.arch.TelnetBanner()
+		default:
 			banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "
 		}
 	}

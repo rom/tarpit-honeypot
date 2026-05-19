@@ -96,11 +96,25 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	banner := cfg.Banner
 	if banner == "" {
-		banner = "HTTP/1.1 401 Unauthorized\r\n" +
-			"Server: " + server + "\r\n" +
-			"WWW-Authenticate: Basic realm=\"admin\"\r\n" +
-			"Content-Length: 0\r\n" +
-			"Connection: close\r\n\r\n"
+		// Archetypes with a web UI body (Moxa, Siemens, etc.) serve
+		// 200 OK with a believable index page. Distro archetypes
+		// without a configured body fall back to the canonical
+		// nginx-shaped 401.
+		if arch != nil && arch.HTTPBodyHTML() != "" {
+			body := arch.HTTPBodyHTML()
+			banner = "HTTP/1.1 200 OK\r\n" +
+				"Server: " + server + "\r\n" +
+				"Content-Type: text/html; charset=utf-8\r\n" +
+				"Content-Length: " + itoa(len(body)) + "\r\n" +
+				"Connection: close\r\n\r\n" +
+				body
+		} else {
+			banner = "HTTP/1.1 401 Unauthorized\r\n" +
+				"Server: " + server + "\r\n" +
+				"WWW-Authenticate: Basic realm=\"admin\"\r\n" +
+				"Content-Length: 0\r\n" +
+				"Connection: close\r\n\r\n"
+		}
 	}
 	if _, err := conn.Write([]byte(banner)); err != nil {
 		res.Meta["write_err"] = err.Error()

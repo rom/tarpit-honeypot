@@ -23,12 +23,16 @@ type UDPHandler interface {
 // Any handler that wants honeynet topology can implement the optional
 // HoneynetAware interface and the caller can call .SetHoneynetView()
 // after construction.
-func GetUDP(name string) (UDPHandler, error) {
+//
+// deps may be the zero value — handlers that consume archetype info
+// (snmp) treat a nil arch as "no archetype", which keeps behavior
+// identical to the v1.0 path.
+func GetUDP(name string, deps Deps) (UDPHandler, error) {
 	switch name {
 	case "raw":
 		return &rawUDP{}, nil
 	case "snmp":
-		return &snmp{}, nil
+		return &snmp{arch: deps.Archetype}, nil
 	case "ntp":
 		return &ntp{}, nil
 	case "bacnet":

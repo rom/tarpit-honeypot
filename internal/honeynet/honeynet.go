@@ -123,6 +123,10 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 					hostArch = p
 				}
 			}
+			mac := hostID.MAC()
+			if hostArch.HasMACOUI() {
+				mac = hostID.MACWithOUI(hostArch.MACOUI())
+			}
 			h := &Host{
 				NetID:     ncfg.ID,
 				IP:        hcfg.IP,
@@ -130,7 +134,7 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 				OS:        hcfg.OS,
 				Archetype: hostArch,
 				Identity:  hostID,
-				MAC:       hostID.MAC(),
+				MAC:       mac,
 			}
 			for _, sc := range hcfg.Services {
 				if sc.Port <= 0 || sc.Port > 65535 {
@@ -171,7 +175,7 @@ func buildBoundService(h *Host, s *Service, jit *jitter.Jitterer, dataDir string
 		bs.h = hd
 		return bs, nil
 	}
-	if uh, err := handler.GetUDP(s.Handler); err == nil {
+	if uh, err := handler.GetUDP(s.Handler, deps); err == nil {
 		bs.udp = uh
 		return bs, nil
 	}

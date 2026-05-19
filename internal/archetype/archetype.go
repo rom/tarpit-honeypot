@@ -17,6 +17,40 @@ package archetype
 
 import "strings"
 
+// init merges every Profile in deviceArchetypes (FreeBSD / OpenBSD /
+// Arch / Rocky / Alma / Oracle / Moxa / Siemens) into the main
+// registry, then backfills cliPrompt on the original 15 distro
+// archetypes so handlers that consult CLIPrompt always have a value.
+func init() {
+	defaultPrompts := map[string]string{
+		// RHEL family — bash with the standard /etc/bashrc PS1.
+		"centos-5":                   "[root@centos5 ~]# ",
+		"centos-6":                   "[root@centos6 ~]# ",
+		"centos-7":                   "[root@centos7 ~]# ",
+		"centos-8":                   "[root@centos8 ~]# ",
+		"centos-stream-10":           "[root@cs10 ~]# ",
+		"red-hat-enterprise-linux-8": "[root@rhel8 ~]# ",
+		"red-hat-enterprise-linux-9": "[root@rhel9 ~]# ",
+		"red-hat-enterprise-linux-10": "[root@rhel10 ~]# ",
+		// Debian / Ubuntu — root@host:~#
+		"debian-9":            "root@debian9:~# ",
+		"debian-10":           "root@debian10:~# ",
+		"debian-11":           "root@debian11:~# ",
+		"debian-12":           "root@debian12:~# ",
+		"debian-13":           "root@debian13:~# ",
+		"ubuntu-24-04-lts":    "root@ubuntu2404:~# ",
+		"ubuntu-26-04-lts":    "root@ubuntu2604:~# ",
+	}
+	for k, prompt := range defaultPrompts {
+		if p, ok := registry[k]; ok && p.cliPrompt == "" {
+			p.cliPrompt = prompt
+		}
+	}
+	for k, p := range deviceArchetypes {
+		registry[k] = p
+	}
+}
+
 // Profile is the resolved per-deployment / per-listener / per-host
 // archetype. Lookups are functions so callers don't have to handle
 // nil-Profile separately: zero-value Profile returns empty strings,
@@ -24,16 +58,72 @@ import "strings"
 type Profile struct {
 	Name        string // canonical name, e.g. "debian-12"
 	DisplayName string // pretty name, e.g. "Debian 12 (bookworm)"
-	Family      string // "debian" | "ubuntu" | "rhel" | "centos"
+	Family      string // "debian" | "ubuntu" | "rhel" | "centos" | "bsd" | "ics" | "moxa" | "siemens"
 
-	sshBanner     string
-	httpServer    string
-	ftpBanner     string
-	telnetBanner  string
-	smtpHost      string
-	smtpProduct   string
-	mysqlVersion  string
-	// Future: smbVersion, sambaProductName, ipmiVendor, etc.
+	sshBanner    string
+	httpServer   string
+	ftpBanner    string
+	telnetBanner string
+	smtpHost     string
+	smtpProduct  string
+	mysqlVersion string
+
+	// Device / network fingerprint.
+	macOUI       [3]byte // first 3 bytes of MAC, e.g. {0x00,0x90,0xe8} for Moxa
+	cliPrompt    string  // post-login shell prompt for SSH/Telnet sims
+	loginPrompt  string  // overrides telnetBanner when the device wants a specific 1st prompt
+
+	// HTTP body — what the index page looks like for this device. Used
+	// when the operator binds the handler "http" against this archetype.
+	httpTitle    string
+	httpBodyHTML string
+
+	// SNMP MIB-2 identity.
+	snmpSysDescr    string
+	snmpSysObjectID string // dotted OID
+	snmpSysName     string
+	snmpSysContact  string
+	snmpSysLocation string
+	snmpIfTable     []Interface  // ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress
+	lldpNeighbors   []LLDPPeer
+
+	// Default services on this archetype — the listener set the
+	// operator would get out-of-the-box. Used by `tarpit-honeypot
+	// suggest-listeners` / archetype-aware honeynet host expansion.
+	defaultServices []DefaultService
+
+	// Free-form quirk markers. Read by handlers that need archetype-
+	// specific tweaks (e.g. siemens-s7-1500 disables LLDP-MED TLVs;
+	// moxa-nport advertises raw TCP on 4001/4002).
+	quirks []string
+}
+
+// Interface is a single MIB-2 interface entry, used to populate
+// ifTable in the SNMP handler.
+type Interface struct {
+	Index   int
+	Descr   string // ifDescr (e.g. "GigabitEthernet 1/1")
+	Type    int    // ifType: 6 = ethernet, 24 = softwareLoopback, 53 = ppp
+	Speed   uint32 // ifSpeed in bps; 1_000_000_000 = 1 Gbit
+	PhysMAC string // hex MAC string (decorative — actual MAC is from macOUI)
+	OperUp  bool
+}
+
+// LLDPPeer is a single LLDP neighbor advertised in the snmpLLDP TLV or
+// returned by the LLDP responder.
+type LLDPPeer struct {
+	ChassisID  string
+	PortID     string
+	SystemName string
+	PortDescr  string
+}
+
+// DefaultService describes a port + handler that a real instance of
+// this archetype runs out-of-the-box.
+type DefaultService struct {
+	Port    int
+	Handler string
+	Note    string
 }
 
 func (p *Profile) Set() bool {
@@ -80,6 +170,117 @@ func (p *Profile) MySQLVersion() string {
 		return ""
 	}
 	return p.mysqlVersion
+}
+func (p *Profile) MACOUI() [3]byte {
+	if p == nil {
+		return [3]byte{}
+	}
+	return p.macOUI
+}
+
+// HasMACOUI reports whether the archetype pins a specific MAC OUI.
+// When false, callers fall back to identity-derived random MACs.
+func (p *Profile) HasMACOUI() bool {
+	if p == nil {
+		return false
+	}
+	return p.macOUI != [3]byte{}
+}
+
+// CLIPrompt returns the post-login shell prompt this archetype shows.
+// SSH/Telnet handlers in CLI-emulation mode append it after the
+// (rejected) login.
+func (p *Profile) CLIPrompt() string {
+	if p == nil {
+		return ""
+	}
+	return p.cliPrompt
+}
+
+// LoginPrompt overrides the generic /bin/login prompt. Used by Moxa /
+// SCALANCE / Cisco-shaped devices that put a specific string before
+// "login:" or "Username:".
+func (p *Profile) LoginPrompt() string {
+	if p == nil {
+		return ""
+	}
+	return p.loginPrompt
+}
+
+func (p *Profile) HTTPTitle() string {
+	if p == nil {
+		return ""
+	}
+	return p.httpTitle
+}
+func (p *Profile) HTTPBodyHTML() string {
+	if p == nil {
+		return ""
+	}
+	return p.httpBodyHTML
+}
+func (p *Profile) SNMPSysDescr() string {
+	if p == nil {
+		return ""
+	}
+	return p.snmpSysDescr
+}
+func (p *Profile) SNMPSysObjectID() string {
+	if p == nil {
+		return ""
+	}
+	return p.snmpSysObjectID
+}
+func (p *Profile) SNMPSysName() string {
+	if p == nil {
+		return ""
+	}
+	return p.snmpSysName
+}
+func (p *Profile) SNMPSysContact() string {
+	if p == nil {
+		return ""
+	}
+	return p.snmpSysContact
+}
+func (p *Profile) SNMPSysLocation() string {
+	if p == nil {
+		return ""
+	}
+	return p.snmpSysLocation
+}
+func (p *Profile) Interfaces() []Interface {
+	if p == nil {
+		return nil
+	}
+	return p.snmpIfTable
+}
+func (p *Profile) LLDPNeighbors() []LLDPPeer {
+	if p == nil {
+		return nil
+	}
+	return p.lldpNeighbors
+}
+func (p *Profile) DefaultServices() []DefaultService {
+	if p == nil {
+		return nil
+	}
+	return p.defaultServices
+}
+
+// HasQuirk reports whether the archetype carries the named flag.
+// Handlers consult this for archetype-specific deviations from their
+// default behavior.
+func (p *Profile) HasQuirk(name string) bool {
+	if p == nil {
+		return false
+	}
+	for _, q := range p.quirks {
+		if q == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Lookup returns the Profile for the named archetype. Names are matched

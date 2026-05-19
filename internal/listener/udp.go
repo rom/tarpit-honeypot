@@ -22,14 +22,14 @@ type udpListener struct {
 	topo       *honeynet.Topology
 }
 
-func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnView handler.HoneynetSnapshot) (*udpListener, error) {
+func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnView handler.HoneynetSnapshot, deps handler.Deps) (*udpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
 	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev, topo: topo}
 	if l.Mode == "banner" {
-		h, err := handler.GetUDP(l.Handler)
+		h, err := handler.GetUDP(l.Handler, deps)
 		if err != nil {
 			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 		}

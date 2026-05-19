@@ -179,3 +179,16 @@ func (i *Identity) MAC() [6]byte {
 	out[0] = (out[0] | 0x02) & 0xFE // locally-administered, unicast
 	return out
 }
+
+// MACWithOUI returns a MAC whose first 3 bytes are the supplied
+// vendor OUI and last 3 bytes are derived from the identity. This is
+// the path used when an archetype pins a vendor OUI (Moxa, Siemens):
+// every virtual host of that archetype gets a unique-but-vendor-
+// shaped MAC so an arp-scan reports a believable population.
+func (i *Identity) MACWithOUI(oui [3]byte) [6]byte {
+	b := i.Bytes("mac-tail", 3)
+	var out [6]byte
+	out[0], out[1], out[2] = oui[0], oui[1], oui[2]
+	copy(out[3:], b)
+	return out
+}
