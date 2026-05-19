@@ -149,7 +149,7 @@ type Dedup struct {
 
 type Channel struct {
 	ID              string        `yaml:"id"`
-	Type            string        `yaml:"type"` // stdout | jsonlog | webhook | smtp | syslog
+	Type            string        `yaml:"type"` // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
 	MinSeverity     string        `yaml:"min_severity"`
 	RateLimitPerMin int           `yaml:"rate_limit_per_min"`
 
@@ -158,7 +158,7 @@ type Channel struct {
 	HMACSecretEnv string        `yaml:"hmac_secret_env"`
 	Timeout       time.Duration `yaml:"timeout"`
 
-	// smtp
+	// smtp + snmptrap share Host/Port
 	Host        string   `yaml:"host"`
 	Port        int      `yaml:"port"`
 	StartTLS    bool     `yaml:"starttls"`
@@ -171,6 +171,21 @@ type Channel struct {
 	Network string `yaml:"network"` // tcp | udp | unix | local
 	Address string `yaml:"address"`
 	Tag     string `yaml:"tag"`
+
+	// twilio
+	AccountSIDEnv string `yaml:"account_sid_env"`
+	AuthTokenEnv  string `yaml:"auth_token_env"`
+
+	// aws sns
+	TopicARN        string `yaml:"topic_arn"`
+	Region          string `yaml:"region"`
+	AccessKeyEnv    string `yaml:"access_key_env"`
+	SecretKeyEnv    string `yaml:"secret_key_env"`
+	SessionTokenEnv string `yaml:"session_token_env"`
+
+	// snmptrap
+	Community     string `yaml:"community"`
+	EnterpriseOID string `yaml:"enterprise_oid"`
 }
 
 type Route struct {

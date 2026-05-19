@@ -10,12 +10,14 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 )
 
 type udpListener struct {
 	cfg        config.Listener
 	sensorName string
 	sev        event.Severity
+	handler    handler.UDPHandler
 }
 
 func newUDP(l config.Listener, sensorName string) (*udpListener, error) {
@@ -23,7 +25,15 @@ func newUDP(l config.Listener, sensorName string) (*udpListener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	return &udpListener{cfg: l, sensorName: sensorName, sev: sev}, nil
+	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev}
+	if l.Mode == "banner" {
+		h, err := handler.GetUDP(l.Handler)
+		if err != nil {
+			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
+		}
+		u.handler = h
+	}
+	return u, nil
 }
 
 func (u *udpListener) ID() string { return u.cfg.ID }
@@ -34,7 +44,7 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 	if err != nil {
 		return fmt.Errorf("listener %s: listen %s: %w", u.cfg.ID, u.cfg.Bind, err)
 	}
-	slog.Info("listener up", "id", u.cfg.ID, "proto", "udp", "bind", u.cfg.Bind, "mode", u.cfg.Mode)
+	slog.Info("listener up", "id", u.cfg.ID, "proto", "udp", "bind", u.cfg.Bind, "mode", u.cfg.Mode, "handler", u.cfg.Handler)
 	go func() {
 		<-ctx.Done()
 		_ = pc.Close()
@@ -55,7 +65,6 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			if ctx.Err() != nil {
 				return nil
 			}
-			// timeout is expected; keep looping
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
@@ -74,9 +83,27 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			Proto:    "udp",
 			Handler:  u.cfg.Handler,
 		}
-		if n > 0 {
+		// Copy out the packet before launching the handler goroutine because
+		// the next ReadFrom will reuse buf.
+		payload := append([]byte(nil), buf[:n]...)
+		if u.handler != nil && u.cfg.Mode == "banner" {
+			res, _ := u.handler.Handle(ctx, payload, raddr, pc, u.cfg)
+			ev.BannerSent = res.BannerSent
+			if len(res.Payload) > 0 {
+				ev.PayloadLen = len(res.Payload)
+				ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
+			}
+			if res.Meta != nil {
+				if ev.Meta == nil {
+					ev.Meta = map[string]any{}
+				}
+				for k, v := range res.Meta {
+					ev.Meta[k] = v
+				}
+			}
+		} else if n > 0 {
 			ev.PayloadLen = n
-			ev.PayloadBase64 = base64.StdEncoding.EncodeToString(buf[:n])
+			ev.PayloadBase64 = base64.StdEncoding.EncodeToString(payload)
 		}
 		select {
 		case bus <- ev:

@@ -7,20 +7,17 @@ what's actually built right now.
 
 ## Status
 
-**v0.5 — URL + DNS canary tokens, fanotify read-detection, ARP sniffer.**
-HTTP/HTTPS listeners match incoming paths against configured URL canaries
-and fire a separate critical event when an unguessable bait URL is hit.
-A small DNS-style listener resolves canary names with NXDOMAIN while
-firing on any subdomain match. Linux canary watcher now uses fanotify
-when available so plain `cat`/`open` reads of a honeyfile are caught
-(in addition to fsnotify modify/remove/rename). An optional Linux
-AF_PACKET sniffer detects ARP scans (one MAC, many distinct IPs) and
-unsolicited ARP replies. Linux amd64/arm64.
+**v0.6 — UDP handlers (SNMP, NTP) + Twilio / AWS SNS / SNMP-trap sinks.**
+Adds the UDPHandler abstraction so banner-mode UDP listeners can do
+protocol-aware replies. Ships SNMPv1/v2c (captures community + OIDs,
+returns a valid GetResponse) and NTPv4 (mode-3 only — mode-7 / monlist
+deliberately silenced to avoid being used as an amplifier). Three new
+outbound channels: Twilio SMS, AWS SNS (hand-rolled Sigv4, no AWS SDK
+dependency), and SNMP-trap v2c. Linux amd64/arm64.
 
 Not yet implemented (planned in later phases per `design.md`):
-SMB + remaining ICS handlers (OPC-UA / BACnet / EthernetIP / SNMP /
-NTP / TFTP), Windows service, Twilio / SNS / SNMP-trap channels,
-listener hot-reload.
+SMB + remaining ICS handlers (OPC-UA / BACnet / EthernetIP / TFTP),
+Windows service, listener hot-reload.
 
 ## Build
 

@@ -115,6 +115,22 @@ listeners:
     severity: low
     read_bytes: 1500
 
+  - id: snmp-bait
+    proto: udp
+    bind: 0.0.0.0:161
+    mode: banner
+    handler: snmp
+    severity: high
+    read_bytes: 1500
+
+  - id: ntp-bait
+    proto: udp
+    bind: 0.0.0.0:123
+    mode: banner
+    handler: ntp
+    severity: medium
+    read_bytes: 64
+
 canaries:
   - id: shared-creds
     path: ./var/canary/passwords.xlsx
@@ -185,6 +201,39 @@ channels:
   - id: sqlite
     type: sqlite
     min_severity: low
+
+  # Outbound channels (uncomment + fill in env vars to enable):
+  #
+  # - id: ops-webhook
+  #   type: webhook
+  #   url: https://hooks.example.com/tarpit
+  #   hmac_secret_env: TARPIT_WEBHOOK_SECRET
+  #   timeout: 5s
+  #   min_severity: medium
+  #
+  # - id: ops-sms
+  #   type: twilio
+  #   account_sid_env: TWILIO_SID
+  #   auth_token_env:  TWILIO_TOKEN
+  #   from: "+15555550100"
+  #   to: ["+15555550111"]
+  #   min_severity: critical
+  #   rate_limit_per_min: 6
+  #
+  # - id: ops-sns
+  #   type: sns
+  #   topic_arn: arn:aws:sns:us-east-1:123456789012:tarpit-alerts
+  #   access_key_env: AWS_ACCESS_KEY_ID
+  #   secret_key_env: AWS_SECRET_ACCESS_KEY
+  #   min_severity: high
+  #
+  # - id: nms-trap
+  #   type: snmptrap
+  #   host: nms.example.internal
+  #   port: 162
+  #   community: tarpit
+  #   enterprise_oid: "1.3.6.1.4.1.65535"
+  #   min_severity: medium
 
 routes:
   - match:

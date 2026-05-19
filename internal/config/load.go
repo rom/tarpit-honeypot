@@ -183,14 +183,24 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("listener %s: unknown mode %q", l.ID, l.Mode)
 		}
-		switch l.Handler {
-		case "raw", "ssh", "http", "https", "telnet", "ftp",
-			"modbus", "s7", "iec104", "mqtt":
-		default:
-			return fmt.Errorf("listener %s: unknown handler %q", l.ID, l.Handler)
+		// Per-protocol handler whitelist.
+		tcpHandlers := map[string]bool{
+			"raw": true, "ssh": true, "http": true, "https": true,
+			"telnet": true, "ftp": true,
+			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 		}
-		if l.Handler != "raw" && l.Proto != "tcp" {
-			return fmt.Errorf("listener %s: handler %s is tcp-only", l.ID, l.Handler)
+		udpHandlers := map[string]bool{
+			"raw": true, "snmp": true, "ntp": true,
+		}
+		switch l.Proto {
+		case "tcp":
+			if !tcpHandlers[l.Handler] {
+				return fmt.Errorf("listener %s: handler %q is not valid for tcp", l.ID, l.Handler)
+			}
+		case "udp":
+			if !udpHandlers[l.Handler] {
+				return fmt.Errorf("listener %s: handler %q is not valid for udp", l.ID, l.Handler)
+			}
 		}
 		if l.Mode == "banner" && l.Handler == "raw" && l.Banner == "" {
 			return fmt.Errorf("listener %s: banner mode with raw handler requires a banner string", l.ID)
@@ -333,6 +343,24 @@ func (c *Config) Validate() error {
 			}
 			if ch.Network != "local" && ch.Address == "" {
 				return fmt.Errorf("channel %s: syslog network=%s requires address", ch.ID, ch.Network)
+			}
+		case "twilio":
+			if ch.AccountSIDEnv == "" || ch.AuthTokenEnv == "" {
+				return fmt.Errorf("channel %s: twilio needs account_sid_env and auth_token_env", ch.ID)
+			}
+			if ch.From == "" || len(ch.To) == 0 {
+				return fmt.Errorf("channel %s: twilio needs from and to", ch.ID)
+			}
+		case "sns":
+			if ch.TopicARN == "" {
+				return fmt.Errorf("channel %s: sns needs topic_arn", ch.ID)
+			}
+			if ch.AccessKeyEnv == "" || ch.SecretKeyEnv == "" {
+				return fmt.Errorf("channel %s: sns needs access_key_env and secret_key_env", ch.ID)
+			}
+		case "snmptrap":
+			if ch.Host == "" {
+				return fmt.Errorf("channel %s: snmptrap needs host", ch.ID)
 			}
 		default:
 			return fmt.Errorf("channel %s: unknown type %q", ch.ID, ch.Type)

@@ -26,6 +26,12 @@ func Build(ch config.Channel, dataDir string, jsonMB int) (Sink, error) {
 		return newSMTP(ch)
 	case "syslog":
 		return newSyslog(ch)
+	case "twilio":
+		return newTwilio(ch)
+	case "sns":
+		return newSNS(ch)
+	case "snmptrap":
+		return newSNMPTrap(ch)
 	}
 	return nil, fmt.Errorf("sink %s: unknown type %q", ch.ID, ch.Type)
 }
