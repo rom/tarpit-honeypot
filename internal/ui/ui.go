@@ -26,13 +26,38 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
+// StatsProvider lets the UI publish Prometheus-format metrics without
+// importing the router/sensor packages (which would create a cycle).
+// The sensor wires up a closure that pulls Router.Stats() and listener
+// counts and returns them as a flat map of metric name -> samples.
+type StatsProvider func() Metrics
+
+// Metrics is the shape /metrics renders. Each Sample has a name +
+// labels (zero or more) + a numeric value. The renderer emits one
+// HELP+TYPE line per unique name and one numeric line per sample.
+type Metrics struct {
+	Samples []Sample
+}
+
+type Sample struct {
+	Name   string
+	Help   string
+	Type   string // "counter" | "gauge"
+	Labels map[string]string
+	Value  float64
+}
+
 type Server struct {
 	cfg       config.UI
 	store     *store.Store
 	authToken string
 	srv       *http.Server
 	tmpl      *template.Template
+	stats     StatsProvider
 }
+
+// SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
+func (s *Server) SetStatsProvider(p StatsProvider) { s.stats = p }
 
 func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if !cfg.Enabled {
@@ -66,6 +91,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/events/", s.handleEvent)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	s.srv = &http.Server{

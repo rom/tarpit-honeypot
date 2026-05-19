@@ -473,19 +473,30 @@ func (s *Sensor) Run(ctx context.Context) error {
 
 	// One ARP responder per honeynet (each can pin to its own interface).
 	for _, hn := range s.cfg.Honeynets {
-		if !hn.ARP.Enabled {
-			continue
+		if hn.ARP.Enabled {
+			ifaceName := hn.ARP.Interface
+			netID := hn.ID
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := s.honeynet.StartARPResponder(ctx, ifaceName); err != nil {
+					slog.Warn("honeynet arp responder disabled", "honeynet", netID, "err", err)
+				}
+				<-ctx.Done()
+			}()
 		}
-		ifaceName := hn.ARP.Interface
-		netID := hn.ID
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := s.honeynet.StartARPResponder(ctx, ifaceName); err != nil {
-				slog.Warn("honeynet arp responder disabled", "honeynet", netID, "err", err)
-			}
-			<-ctx.Done()
-		}()
+		if hn.ICMP.Enabled {
+			ifaceName := hn.ICMP.Interface
+			netID := hn.ID
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := s.honeynet.StartICMPResponder(ctx, ifaceName); err != nil {
+					slog.Warn("honeynet icmp responder disabled", "honeynet", netID, "err", err)
+				}
+				<-ctx.Done()
+			}()
+		}
 	}
 
 	// Retention runner — only if configured.

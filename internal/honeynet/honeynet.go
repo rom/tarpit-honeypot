@@ -253,3 +253,10 @@ func (t *Topology) Empty() bool {
 func (t *Topology) StartARPResponder(ctx context.Context, iface string) error {
 	return startARPResponder(ctx, iface, t)
 }
+
+// StartICMPResponder launches an L3 ICMP echo responder for the named
+// interface. Virtual hosts respond to ping with a proper echo reply
+// sourced from their IP + MAC. Linux-only.
+func (t *Topology) StartICMPResponder(ctx context.Context, iface string) error {
+	return startICMPResponder(ctx, iface, t)
+}

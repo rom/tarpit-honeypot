@@ -374,6 +374,14 @@ honeynets:
     arp_responder:
       enabled: false
       interface: ""
+    # Linux only. When enabled, the sensor answers ICMP echo requests
+    # (ping) addressed to any virtual host IP with a proper echo reply
+    # sourced from the host's derived MAC + IP. Same CAP_NET_RAW
+    # requirement as the ARP responder; pair them so virtual hosts
+    # both show up in arp-scan and respond to ping.
+    icmp_responder:
+      enabled: false
+      interface: ""
     hosts:
       - ip: 10.99.0.10
         hostname: web-prod-01

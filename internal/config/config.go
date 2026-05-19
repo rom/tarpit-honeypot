@@ -25,13 +25,22 @@ type Config struct {
 // All fields except ID are optional — a deployment can configure metadata-
 // only honeynets that only show up in DNS forward-resolution.
 type Honeynet struct {
-	ID      string          `yaml:"id"`
-	CIDR    string          `yaml:"cidr"`
-	Gateway string          `yaml:"gateway"`
-	DNS     string          `yaml:"dns"`
-	Domain  string          `yaml:"domain"`
-	Hosts   []HoneynetHost  `yaml:"hosts"`
-	ARP     ARPResponderCfg `yaml:"arp_responder"`
+	ID      string           `yaml:"id"`
+	CIDR    string           `yaml:"cidr"`
+	Gateway string           `yaml:"gateway"`
+	DNS     string           `yaml:"dns"`
+	Domain  string           `yaml:"domain"`
+	Hosts   []HoneynetHost   `yaml:"hosts"`
+	ARP     ARPResponderCfg  `yaml:"arp_responder"`
+	ICMP    ICMPResponderCfg `yaml:"icmp_responder"`
+}
+
+// ICMPResponderCfg makes virtual hosts respond to ICMP echo requests (ping)
+// without `ip addr add`. Same Linux + AF_PACKET + CAP_NET_RAW constraints
+// as the ARP responder; reuses the same MAC table.
+type ICMPResponderCfg struct {
+	Enabled   bool   `yaml:"enabled"`
+	Interface string `yaml:"interface"`
 }
 
 // ARPResponderCfg makes the artificial network discoverable on the L2

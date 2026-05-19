@@ -121,6 +121,13 @@ phasing decisions.
 
 ## Status
 
+**v1.3 — honeynet ICMP + Prometheus metrics.** Virtual hosts now
+respond to ping via an opt-in Linux AF_PACKET ICMP echo responder
+(same model as the v1.2 ARP responder; reuses the per-host
+deterministic MAC). The web UI exposes a Prometheus-format
+`/metrics` endpoint with per-channel retry counters, honeynet
+topology gauges, and the SQLite store size.
+
 **v1.2 — honeynet L2 + routing.** Adds an opt-in Linux ARP responder
 so virtual networks are discoverable without `ip addr add` (each
 virtual host advertises a stable deterministic MAC derived from
@@ -658,6 +665,32 @@ operator still needs `ip addr add` or iptables redirection (or a
 TUN-based adapter — planned for v1.3). Without that, scanners running
 `arp-scan` see a populated network but TCP probes get nowhere.
 
+### ICMP echo responder (Linux)
+
+Pair `arp_responder.enabled: true` with `icmp_responder.enabled:
+true` and the virtual hosts respond to ping as well as showing up in
+`arp-scan`. Same AF_PACKET pattern + `CAP_NET_RAW` requirement.
+
+```yaml
+honeynets:
+  - id: corp-lan
+    cidr: 10.99.0.0/24
+    arp_responder:
+      enabled: true
+      interface: eth0
+    icmp_responder:
+      enabled: true
+      interface: eth0       # empty = first non-loopback up iface
+    hosts: [...]
+```
+
+The reply is built at L2 with the virtual host's deterministic MAC
+as source, the virtual host IP as the source IP, and the same
+ICMP identifier+sequence as the request so the requester's `ping`
+matches up. Same caveat as the ARP responder: this makes the host
+visible to scanners, but TCP/UDP traffic for the virtual IP still
+needs `ip addr add` or iptables redirection.
+
 ### Per-honeynet routing
 
 Routes can match on event meta as well as severity. Use this to fan
@@ -757,19 +790,64 @@ Privileged ports (53, 88, 102, 110, 135, 161, 389, 445, 502, 623, 636,
 grant; for production, the systemd path with `AmbientCapabilities` is
 usually cleaner.
 
-## What's NOT in v1.0
+## Prometheus metrics
+
+With `ui.enabled: true` the web UI exposes `/metrics` in Prometheus
+text-format (v0.0.4). Same auth model as the rest of the UI: bearer
+token if `auth_token_env` is set, loopback-only otherwise.
+
+Exposed metrics:
+
+```
+# HELP tarpit_sink_dropped_total Events dropped because the sink in-channel was full
+# TYPE tarpit_sink_dropped_total counter
+tarpit_sink_dropped_total{channel="ops-webhook"} 0
+tarpit_sink_dropped_total{channel="jsonlog"} 0
+
+# HELP tarpit_sink_failed_total Events that exhausted the retry backlog and were lost
+# TYPE tarpit_sink_failed_total counter
+tarpit_sink_failed_total{channel="ops-webhook"} 0
+
+# HELP tarpit_sink_retried_total Events delivered on retry after a transient sink error
+# TYPE tarpit_sink_retried_total counter
+tarpit_sink_retried_total{channel="ops-webhook"} 0
+
+# HELP tarpit_honeynet_networks Number of configured honeynets
+# TYPE tarpit_honeynet_networks gauge
+tarpit_honeynet_networks 2
+
+# HELP tarpit_honeynet_hosts Number of configured virtual hosts across all honeynets
+# TYPE tarpit_honeynet_hosts gauge
+tarpit_honeynet_hosts 8
+
+# HELP tarpit_store_db_bytes On-disk size of the SQLite events.db
+# TYPE tarpit_store_db_bytes gauge
+tarpit_store_db_bytes 32768
+```
+
+Sample Prometheus scrape:
+
+```yaml
+- job_name: tarpit-honeypot
+  bearer_token_file: /etc/secrets/tarpit-ui-token
+  scrape_interval: 30s
+  static_configs:
+    - targets: ['sensor.example.internal:8088']
+```
+
+## What's NOT in v1.3
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
-- **Prometheus `/metrics` endpoint.** Per-channel counters are
-  collected via `Router.Stats()` but not exposed yet over HTTP.
-- **GeoIP / rDNS / ASN enrichment.** Original design included these;
-  not wired up.
-- **CEF / LEEF / OCSF output formats.** SIEMs that prefer those
-  formats currently have to transform our JSON.
+- **TUN-based honeynet adapter.** ARP + ICMP responders make virtual
+  hosts discoverable, but routing TCP/UDP for the virtual IPs to the
+  sensor still requires `ip addr add` or iptables. A pure-userspace
+  TUN device with a small TCP stack would close that gap.
+- **GeoIP / rDNS / ASN enrichment.**
+- **CEF / LEEF / OCSF output formats.**
 
 Everything else from the original design is shipped.
 
