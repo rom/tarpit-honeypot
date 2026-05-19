@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"net"
+	"net/url"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -12,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 type httpH struct {
@@ -59,12 +62,42 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 
 	firstLine := ""
 	host := ""
+	contentLen := 0
+	contentType := ""
 	for i, line := range strings.Split(string(buf.Bytes()), "\r\n") {
 		if i == 0 {
 			firstLine = line
-		} else if strings.HasPrefix(strings.ToLower(line), "host:") {
-			host = strings.TrimSpace(line[5:])
+			continue
 		}
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, "host:"):
+			host = strings.TrimSpace(line[5:])
+		case strings.HasPrefix(lower, "content-length:"):
+			n := 0
+			for _, c := range strings.TrimSpace(line[15:]) {
+				if c < '0' || c > '9' {
+					break
+				}
+				n = n*10 + int(c-'0')
+				if n > 1<<20 { // 1 MiB cap on body
+					n = 1 << 20
+					break
+				}
+			}
+			contentLen = n
+		case strings.HasPrefix(lower, "content-type:"):
+			contentType = strings.TrimSpace(line[13:])
+		}
+	}
+	// Read the request body (capped) so POSTed login-form credentials
+	// land in res.Meta.
+	var body []byte
+	if contentLen > 0 && contentLen <= cap {
+		body = make([]byte, contentLen)
+		// Best-effort read; we don't care if it short-reads.
+		_, _ = io.ReadFull(br, body)
+		res.Payload = append(res.Payload, body...)
 	}
 	if res.Meta == nil {
 		res.Meta = map[string]any{}
@@ -114,18 +147,30 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	banner := cfg.Banner
 	if banner == "" {
-		// Archetypes with a web UI body (Moxa, Siemens, etc.) serve
-		// 200 OK with a believable index page. Distro archetypes
-		// without a configured body fall back to the canonical
-		// nginx-shaped 401.
-		if arch != nil && arch.HTTPBodyHTML() != "" {
-			body := arch.HTTPBodyHTML()
-			banner = "HTTP/1.1 200 OK\r\n" +
-				"Server: " + server + "\r\n" +
-				"Content-Type: text/html; charset=utf-8\r\n" +
-				"Content-Length: " + itoa(len(body)) + "\r\n" +
-				"Connection: close\r\n\r\n" +
-				body
+		method := extractMethod(firstLine)
+		path := extractPath(firstLine)
+		// POST to a login-shaped path is the credential-capture
+		// hotspot — extract user/pass and serve an "auth failed"
+		// page so the scanner records us as a real device.
+		if method == "POST" && isLoginPath(path) && isFormBody(contentType) {
+			user, pass := parseLoginForm(body)
+			if user != "" || pass != "" {
+				res.Meta["http_login_user"] = safe.SanitizeForLog(user)
+				res.Meta["http_login_pass"] = safe.SanitizeForLog(pass)
+				flagAnomaly(&res, "http-login-attempt")
+			}
+			banner = renderHTTPResponse(server, 401, "text/html; charset=utf-8",
+				loginRetryPage(arch))
+		} else if arch != nil && method == "GET" && isLoginPath(path) {
+			// GET on a login path returns an archetype-shaped
+			// login form so an unauth scanner sees the field
+			// names + form action it would expect.
+			banner = renderHTTPResponse(server, 200, "text/html; charset=utf-8",
+				loginFormPage(arch))
+		} else if arch != nil && arch.HTTPBodyHTML() != "" {
+			// Default: archetype's index page.
+			banner = renderHTTPResponse(server, 200, "text/html; charset=utf-8",
+				arch.HTTPBodyHTML())
 		} else {
 			banner = "HTTP/1.1 401 Unauthorized\r\n" +
 				"Server: " + server + "\r\n" +
@@ -139,6 +184,119 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	res.BannerSent = banner
 	return res, nil
+}
+
+// renderHTTPResponse builds a complete HTTP response with the given
+// status, body, and Server header. The Server header value is run
+// through safe.SanitizeHeader as defense-in-depth.
+func renderHTTPResponse(server string, status int, contentType, body string) string {
+	statusLine := ""
+	switch status {
+	case 200:
+		statusLine = "200 OK"
+	case 401:
+		statusLine = "401 Unauthorized"
+	case 403:
+		statusLine = "403 Forbidden"
+	case 404:
+		statusLine = "404 Not Found"
+	default:
+		statusLine = "200 OK"
+	}
+	return "HTTP/1.1 " + statusLine + "\r\n" +
+		"Server: " + safe.SanitizeHeader(server) + "\r\n" +
+		"Content-Type: " + safe.SanitizeHeader(contentType) + "\r\n" +
+		"Content-Length: " + itoa(len(body)) + "\r\n" +
+		"Connection: close\r\n\r\n" +
+		body
+}
+
+// isLoginPath returns true when the request path matches any of the
+// well-known login URIs used by the archetype family or generic
+// web-admin software. The set is intentionally broad so a scanner
+// that pokes "/admin/login.php" gets credentials-captured the same
+// way a Moxa-aware scanner poking "/main.htm" does.
+func isLoginPath(p string) bool {
+	switch p {
+	case "/", "/login", "/login.html", "/login.htm", "/login.php",
+		"/admin", "/admin/", "/admin/login", "/admin/login.php",
+		"/main.htm", "/main.html",
+		"/cgi-bin/luci", "/cgi-bin/login",
+		"/Portal/Login.html", "/Portal/Portal.mwsl",
+		"/wp-login.php",
+		"/manager/html",
+		"/users/sign_in":
+		return true
+	}
+	return false
+}
+
+// isFormBody reports whether the Content-Type indicates a urlencoded
+// or multipart form (the two shapes login pages submit).
+func isFormBody(ct string) bool {
+	lower := strings.ToLower(ct)
+	return strings.HasPrefix(lower, "application/x-www-form-urlencoded") ||
+		strings.HasPrefix(lower, "multipart/form-data")
+}
+
+// parseLoginForm extracts the user / pass fields from a urlencoded
+// form body. We accept the common names (username/user/login/name and
+// password/pass/passwd). Returns ("","") when the body doesn't look
+// like a form.
+func parseLoginForm(body []byte) (user, pass string) {
+	if len(body) == 0 {
+		return "", ""
+	}
+	values, err := url.ParseQuery(string(body))
+	if err != nil {
+		return "", ""
+	}
+	for _, k := range []string{"username", "user", "login", "name", "uname", "u"} {
+		if v := values.Get(k); v != "" {
+			user = v
+			break
+		}
+	}
+	for _, k := range []string{"password", "pass", "passwd", "pwd", "p"} {
+		if v := values.Get(k); v != "" {
+			pass = v
+			break
+		}
+	}
+	return user, pass
+}
+
+// loginFormPage returns the archetype's login HTML body, falling
+// back to a generic form. Used for GET on a login path.
+func loginFormPage(arch *archetype.Profile) string {
+	if arch != nil && arch.HTTPBodyHTML() != "" {
+		// The default index page already contains a login form for
+		// Moxa / SCALANCE / S7. Just serve it.
+		return arch.HTTPBodyHTML()
+	}
+	return `<html><head><title>Login</title></head><body>` +
+		`<h2>Sign in</h2>` +
+		`<form method="POST" action="/login">` +
+		`<label>Username: <input name="username"></label><br>` +
+		`<label>Password: <input type="password" name="password"></label><br>` +
+		`<input type="submit" value="Login"></form></body></html>`
+}
+
+// loginRetryPage is what we show after a failed credential POST. A
+// real device wouldn't tell the scanner WHY auth failed — it'd just
+// re-render the form with a generic "wrong credentials" line.
+func loginRetryPage(arch *archetype.Profile) string {
+	title := "Login"
+	if arch != nil && arch.HTTPTitle() != "" {
+		title = arch.HTTPTitle()
+	}
+	return `<html><head><title>` + safe.SanitizeForLog(title) + `</title></head><body>` +
+		`<h2>` + safe.SanitizeForLog(title) + `</h2>` +
+		`<p style="color:red">Authentication failed. Please try again.</p>` +
+		`<form method="POST" action="/login">` +
+		`<label>Username: <input name="username"></label><br>` +
+		`<label>Password: <input type="password" name="password"></label><br>` +
+		`<input type="submit" value="Login"></form></body></html>`
 }
 
 // extractPath returns the path portion of an HTTP request line like

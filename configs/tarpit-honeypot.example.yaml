@@ -69,6 +69,22 @@ listeners:
     read_timeout: 5s
     capture: true
 
+  # ssh_interactive runs a full crypto/ssh server with a persistent
+  # ed25519 host key (under <data_dir>/tls/ssh_host_ed25519_key) and
+  # drops into the archetype's shell.Run loop after the 3rd auth
+  # attempt. Captures every password / pubkey / typed command.
+  # Note: uses CPU + memory per session; rate-limit with
+  # max_concurrent for production deployments.
+  - id: ssh-engage
+    proto: tcp
+    bind: 0.0.0.0:2223
+    mode: banner
+    handler: ssh_interactive
+    severity: high
+    read_timeout: 30s
+    capture: true
+    max_concurrent: 16
+
   - id: modbus-bait
     proto: tcp
     bind: 0.0.0.0:502

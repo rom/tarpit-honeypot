@@ -8,6 +8,48 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — v1.10 attacker engagement
+- **Interactive CLI shell** (`internal/shell`) — post-login command-
+  line emulation. After a fake "Login incorrect" first attempt, the
+  attacker is dropped into the archetype's shell where every command
+  they type is captured and scanned against a 14-marker ATT&CK-
+  aligned TTP catalog (reverse shells, persistence, recon, defense
+  evasion, log-cleaning, crypto-miners, encoded payloads, etc.).
+  Wired into:
+  - `telnet` handler (after fake login).
+  - New `ssh_interactive` handler running a full
+    `golang.org/x/crypto/ssh` server: persists an ed25519 host key
+    under `<data_dir>/tls/`, captures every password / pubkey
+    attempt (incl. SHA-256 key fingerprints), accepts the 3rd
+    credential and drops into shell.Run on the session channel.
+  Bounded at MaxCommands=32, MaxBytesPerCommand=8KiB,
+  IdleTimeout=60s, SessionTimeout=5min.
+- **LLDP / CDP active responder** — each honeynet host now appears
+  in `lldpctl` / Cisco `show cdp neighbors` output on the L2 segment,
+  advertising the archetype-shaped MAC, hostname, system description,
+  and family-tuned LLDP capabilities (bridge/router for switches +
+  PLCs, station-only for hosts). Linux-only (AF_PACKET + CAP_NET_RAW).
+  Config:
+  ```yaml
+  honeynets:
+    - id: factory
+      lldp_responder:
+        enabled: true
+        interface: eth1
+        interval_s: 30
+        include_cdp: true
+  ```
+- **Multi-page web UI + credential capture** — the http handler now
+  routes on path + method:
+  - `GET /` (and any archetype index): serves the archetype's HTML.
+  - `GET /login`, `/admin`, `/Portal/Login.html`,
+    `/cgi-bin/luci`, `/wp-login.php`, `/manager/html`, etc.: serves
+    a login form.
+  - `POST /login` (any of the above): parses the urlencoded body
+    (accepts `username`/`user`/`login`/`name`/`uname`/`u` and
+    `password`/`pass`/`passwd`/`pwd`/`p` aliases) and emits an
+    `http-login-attempt` anomaly with the captured credentials.
+
 ### Added — v1.9 deception+detection upgrades
 - **14 new archetypes** for full-fleet deception coverage:
   FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux, Rocky Linux 9,
