@@ -98,8 +98,17 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 		// Copy out the packet before launching the handler goroutine because
 		// the next ReadFrom will reuse buf.
 		payload := append([]byte(nil), buf[:n]...)
+		var res handler.Result
 		if activeHandler != nil && u.cfg.Mode == "banner" {
-			res, _ := activeHandler.Handle(ctx, payload, raddr, pc, u.cfg)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("udp handler panic recovered",
+							"listener", u.cfg.ID, "panic", r)
+					}
+				}()
+				res, _ = activeHandler.Handle(ctx, payload, raddr, pc, u.cfg)
+			}()
 			ev.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {
 				ev.PayloadLen = len(res.Payload)

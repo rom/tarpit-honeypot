@@ -3,10 +3,15 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
 	"github.com/rom/tarpit-honeypot/internal/ui"
+	"github.com/rom/tarpit-honeypot/internal/version"
 )
+
+var sensorStarted = time.Now()
 
 // buildStatsProvider returns a ui.StatsProvider closure that snapshots the
 // router + sensor state into a Prometheus-format Metrics struct.
@@ -81,6 +86,37 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 					Value: float64(info.Size()),
 				})
 			}
+		}
+		// Process metrics.
+		out.Samples = append(out.Samples,
+			ui.Sample{
+				Name:   "tarpit_build_info",
+				Help:   "Build info (always 1; labels carry version/commit)",
+				Type:   "gauge",
+				Labels: map[string]string{"version": version.Version, "commit": version.Commit},
+				Value:  1,
+			},
+			ui.Sample{
+				Name:  "tarpit_uptime_seconds",
+				Help:  "Process uptime in seconds since first /metrics call",
+				Type:  "gauge",
+				Value: time.Since(sensorStarted).Seconds(),
+			},
+			ui.Sample{
+				Name:  "tarpit_panic_recoveries_total",
+				Help:  "Total recovered panics across all goroutines wrapped by safego",
+				Type:  "counter",
+				Value: float64(safego.PanicCount()),
+			},
+		)
+		for name, n := range safego.PanicCountByName() {
+			out.Samples = append(out.Samples, ui.Sample{
+				Name:   "tarpit_panic_recoveries_by_name_total",
+				Help:   "Recovered panics partitioned by the safego name",
+				Type:   "counter",
+				Labels: map[string]string{"name": name},
+				Value:  float64(n),
+			})
 		}
 		return out
 	}

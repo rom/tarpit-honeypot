@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/safego"
 )
 
 var errUnknownProto = errors.New("unknown proto")
@@ -98,14 +99,14 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 				continue
 			}
 		}
-		go func(c net.Conn) {
+		safego.RunWithEvent("listener.tcp.handle/"+t.cfg.ID, bus, t.sensorName, func() {
 			defer func() {
 				if t.sema != nil {
 					<-t.sema
 				}
 			}()
-			t.handle(ctx, c, bus)
-		}(conn)
+			t.handle(ctx, conn, bus)
+		})
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
+	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -461,19 +462,28 @@ func (s *Sensor) Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// Bus loop runs under a panic guard: a malformed handler result
+		// or a correlator bug shouldn't take down event flow for the
+		// whole sensor. The guard logs + emits a high-severity panic
+		// event before continuing with the next event.
 		for ev := range s.bus {
-			// Enrich first so the correlator's aggregate events inherit
-			// geo / asn / rdns from the contributing source IPs without
-			// extra MaxMind lookups.
-			s.enrich.Decorate(ev)
-			for _, out := range s.correlator.Observe(ev) {
-				if out != ev {
-					s.enrich.Decorate(out)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("bus loop panic recovered", "panic", r, "event_id", ev.ID)
+					}
+				}()
+				s.enrich.Decorate(ev)
+				for _, out := range s.correlator.Observe(ev) {
+					if out != ev {
+						s.enrich.Decorate(out)
+					}
+					s.router.Dispatch(out)
 				}
-				s.router.Dispatch(out)
-			}
+			}()
 		}
 	}()
+	_ = safego.PanicCount // keep import alive when sensor body has no other safego use yet
 
 	slog.Info("sensor identity", "deployment_id", s.identity.Seed(), "jitter", s.jitter.Enabled())
 	for _, l := range s.cfg.Listeners {
