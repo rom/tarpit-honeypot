@@ -149,6 +149,15 @@ listeners:
     read_bytes: 1024
     read_timeout: 5s
 
+  - id: smb-bait
+    proto: tcp
+    bind: 0.0.0.0:445
+    mode: banner
+    handler: smb
+    severity: critical
+    read_bytes: 4096
+    read_timeout: 5s
+
   - id: bacnet-bait
     proto: udp
     bind: 0.0.0.0:47808

@@ -1,28 +1,81 @@
 # tarpit-honeypot
 
-Tripwire + tarpit deception sensor.
+A single static Go binary that runs a low-to-medium-interaction deception
+sensor: protocol-shaped honeypots on configurable ports, file/URL/DNS
+canary tokens, network sweep detection, port-scan / brute-force
+correlation, per-event pcap capture, and pluggable outbound alerting.
 
-See [`design.md`](design.md) for the full design. This README only covers
-what's actually built right now.
+CGO-free. Linux amd64 / arm64 / armv7 / armv6 static builds.
+
+See [`design.md`](design.md) for the full design conversation and
+phasing decisions.
+
+## Features at a glance
+
+- **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
+  or `tarpit` (sticky / trickle / keepalive).
+- **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
+- **Built-in protocol handlers** (12 IT + 8 ICS/IoT):
+  - IT/TCP: `raw`, `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`
+  - ICS/TCP: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
+  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`
+- **Tarpit modes**: `sticky` (hold open), `trickle` (one byte every N
+  seconds), `keepalive` (slow null bytes), with per-source and total
+  connection caps.
+- **Canary tokens**:
+  - **File canaries** via fsnotify (modify/remove/rename/chmod) plus
+    Linux fanotify (open/read detection — catches plain `cat`).
+  - **URL canaries**: any HTTP/HTTPS listener that sees a configured
+    unguessable path fires a separate critical event.
+  - **DNS canaries**: a minimal UDP DNS listener that replies NXDOMAIN
+    but fires on any subdomain of a registered name.
+- **ARP sniffer** (Linux AF_PACKET): detects ARP scans (one MAC asking
+  about many distinct IPs) and unsolicited replies (ARP-cache poisoning).
+- **Per-event pcap capture**: optional bidirectional byte capture on TCP
+  connections, written as synthesized libpcap files Wireshark loads
+  directly. Pure-Go, no raw sockets, no CAP_NET_RAW.
+- **In-sensor correlator**: port-scan (N distinct ports / window) and
+  brute-force (N attempts / window, optionally per-port) elevate aggregate
+  events to higher severity.
+- **Embedded SQLite event index** for queryable history, with WAL-mode
+  concurrent reads.
+- **Read-only web UI** on loopback: 24h summary + filterable event table
+  + per-event detail. Non-loopback binds refused without TLS + auth token.
+- **Routing**: per-channel rate-limit, min-severity gate, severity-match
+  route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
+  (outbound-only — local sinks always receive).
+- **Outbound channels**: `webhook` (HMAC-SHA256), `smtp` (STARTTLS),
+  `syslog` (RFC 5424 over local/tcp/udp/unix), `twilio` (SMS), `sns`
+  (AWS SNS via hand-rolled Sigv4 — no AWS SDK dependency), `snmptrap`
+  (SNMPv2c via gosnmp).
+- **Local sinks**: `stdout`, `jsonlog` (rotated JSONL), `sqlite`. These
+  always receive every event so the local record stays complete even
+  when an attacker matches the allowlist.
+- **Hot reload**: `SIGHUP` rebuilds channels, routes, allowlist, dedup
+  window, and correlator thresholds without dropping connections.
+- **Privilege drop**: `setresuid` / `setresgid` after privileged setup
+  (Linux). Refuses uid 0. Pairs with `systemd AmbientCapabilities` for
+  privileged port binding.
+- **Static cross-compile** for `linux/amd64`, `linux/arm64`, `linux/armv7`,
+  `linux/armv6`. CGO never required.
 
 ## Status
 
-**v0.7 — ICS handlers (OPC-UA, EtherNet/IP, BACnet, TFTP) + armv6/armv7.**
-Adds OPC-UA Hello→Acknowledge, EtherNet/IP RegisterSession + ListIdentity
-(advertises a fake Allen-Bradley 1756-L73 ControlLogix), BACnet Who-Is→I-Am
-over UDP, and TFTP RRQ/WRQ capture with Access-Violation reply (no actual
-file serving — avoids becoming an amplifier). Cross-compile matrix expands
-to linux/amd64 + linux/arm64 + linux/armv7 + linux/armv6.
-
-Not yet implemented (planned in later phases per `design.md`):
-SMB handler, Windows service, listener hot-reload.
+**v0.8 — design surface complete.** Adds SMB1/2 negotiate handler. The
+final remaining v1 items are listener hot-reload (currently
+restart-required) and Windows service registration; everything else from
+the original design is shipped.
 
 ## Build
 
 ```
-make build
-./bin/tarpit-honeypot version
+make build         # native binary in bin/
+make cross         # all four linux ELF binaries in dist/
+make test          # full unit test suite
 ```
+
+The binary is statically linked and uses no CGO. Final size is ~14 MB,
+mostly the pure-Go SQLite engine.
 
 ## Try it locally
 
@@ -31,39 +84,315 @@ make build
 ./bin/tarpit-honeypot run            -c configs/tarpit-honeypot.example.yaml
 ```
 
-In another shell:
+In another shell, generate some events:
 
 ```
-nc -v localhost 2222           # hits the SSH-banner listener in the sample config
-echo hello | nc -u localhost 5353   # hits a UDP listener
-```
+# Banner-mode listeners
+nc -v localhost 2222                              # SSH handler
+printf 'GET / HTTP/1.0\r\n\r\n' | nc -v localhost 8000   # HTTP handler
 
-Events stream to stdout (foreground) and the JSON log under `data_dir`.
+# ICS handlers (need privileged port redirect or change the bind)
+printf '\x00\x01\x00\x00\x00\x06\x11\x03\x00\x00\x00\x02' | nc -u localhost 502
+echo 'evil' | nc -u localhost 161                 # SNMP scan
+
+# Tarpit — connection will be held forever (or until you Ctrl-C)
+nc -v localhost 2323
+
+# Canary — modify the bait file
+echo dropped >> ./var/canary/passwords.xlsx
+
+# Web UI
+open http://127.0.0.1:8088
+```
 
 ## Subcommands
 
 ```
 tarpit-honeypot run            -c <config>
 tarpit-honeypot validate-config -c <config>
-tarpit-honeypot test-alert     -c <config> [--channel <id>] [--severity high]
-tarpit-honeypot list-events    -c <config> [--since 1h] [--source <ip>] [--rule <id>]
+tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
+tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot version
 ```
 
-`run` also responds to `SIGHUP` by reloading the config. Channels,
-routes, allowlist, dedup window, and correlator thresholds get hot-swapped;
-listener or `sensor.*` changes still require a restart and get a warning.
+`run` responds to `SIGHUP` by reloading the config. Channels, routes,
+allowlist, dedup window, and correlator thresholds get hot-swapped;
+listener or `sensor.*` changes log a warning and require a restart.
+
+`test-alert` injects a synthetic event through the routing pipeline so
+you can validate outbound channels end-to-end without waiting for a real
+trigger.
+
+`list-events` reads from the SQLite store when one exists, falling back
+to the rotating JSONL log for tripwire-only configs.
+
+## Configuration
+
+The full schema is documented inline in
+`configs/tarpit-honeypot.example.yaml`. Key sections:
+
+### `listeners`
+
+Each listener has `id`, `proto` (`tcp` or `udp`), `bind`, and a `mode`:
+
+| Mode | What it does |
+|---|---|
+| `drop` | Accept and immediately close. Logs source. |
+| `banner` | Run the configured `handler:` and capture both sides. |
+| `tarpit` | Hold the connection per the `tarpit.strategy:` setting. |
+
+Per-listener `capture: true` writes a synthesized pcap of the
+bidirectional bytes under `<data_dir>/captures/<event_id>.pcap`.
+
+### `canaries`, `url_canaries`, `dns` + `dns_canaries`
+
+File canaries watch real filesystem paths. URL canaries match exact paths
+against incoming HTTP/HTTPS requests. DNS canaries fire when any
+subdomain of a registered name is queried at the UDP DNS listener.
+
+### `sniffer`
+
+Optional Linux-only AF_PACKET sniffer. Needs `CAP_NET_RAW`. Detects ARP
+scans and unsolicited replies. Off by default.
+
+### `correlate.port_scan` + `correlate.brute_force`
+
+In-memory windowed counters. Emit higher-severity aggregate events when
+thresholds are crossed. Aggregate events are deduped within the window
+so a sustained scan doesn't flood sinks.
+
+### `channels` and `routes`
+
+Channels are sinks; routes wire severity-match expressions to lists of
+channel ids. Local sinks (`stdout`, `jsonlog`, `sqlite`) always receive;
+outbound sinks honor allowlist + dedup + per-channel rate limit +
+min-severity gate.
+
+### `sensor.drop_user` / `sensor.drop_group`
+
+Linux uid/gid to switch to after privileged setup (binding low ports,
+opening data dirs). Refuses uid 0. On non-Linux platforms the setting is
+logged as ignored.
+
+### `ui`
+
+Read-only HTML/JSON web UI. Default `bind: 127.0.0.1:8088`. Non-loopback
+binds are rejected at validate-time unless both `tls_cert` + `tls_key`
+and `auth_token_env` are configured.
+
+## Protocol handlers in detail
+
+| Handler | Port | What it does |
+|---|---|---|
+| `raw` | any | Sends literal `banner:`, reads up to `read_bytes`. |
+| `ssh` | 22 | Sends SSH-2.0 banner, reads client banner, sends "Protocol mismatch". Captures client_id. |
+| `http` | 80 | Reads request headers, replies with nginx 401 Unauthorized. Captures request_line + Host + matches URL canaries. |
+| `https` | 443 | Auto-generated self-signed ECDSA cert cached under `<data_dir>/tls/`, then runs the HTTP handler. Captures TLS version + SNI. |
+| `telnet` | 23 | Sends IAC option negotiation + login prompt. Captures up to one line of input. |
+| `ftp` | 21 | 220 banner → USER → 331 → PASS → 530. Captures user + pass lines. |
+| `smb` | 445 | SMB1 Negotiate Protocol Request handler: captures offered dialects, selects NT LM 0.12, replies with a believable Negotiate Response. SMB2 clients get a STATUS_NOT_IMPLEMENTED rejection. |
+| `modbus` | 502 | MBAP header parser. Captures function_code + unit_id + transaction_id. Plausible success for FC 1/2/3/4/11; Modbus exception for everything else. |
+| `s7` | 102 | TPKT/COTP parser. Replies to Connection Request (0xE0) with Connection Confirm (0xD0) echoing params. |
+| `iec104` | 2404 | BVLC frame parser. Classifies I/S/U-format, replies STARTDT_CON. |
+| `mqtt` | 1883 | CONNECT parser. Captures protocol_name, version, keepalive, client_id, **username, password**. Replies CONNACK accepted. |
+| `opcua` | 4840 | TCP transport layer. Reads HEL, replies ACK. Captures endpoint URL. |
+| `ethernetip` | 44818 | EtherNet/IP encapsulation. Handles RegisterSession + ListIdentity (advertises fake Allen-Bradley 1756-L73). |
+| `snmp` (UDP) | 161 | gosnmp-backed SNMPv1/v2c decoder. Captures **community string** + requested OIDs. Replies GetResponse with Null values. SNMPv3 rejected. |
+| `ntp` (UDP) | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. |
+| `bacnet` (UDP) | 47808 | BVLC + NPDU + APDU parser. Replies only to Who-Is (service 0x08) with an I-Am announcing instance 1234. |
+| `tftp` (UDP) | 69 | RFC 1350 RRQ/WRQ parser. Captures **filename + transfer mode + RFC 2347 options**. Always replies ERROR opcode 5 code 2 (Access violation) — never serves files. |
+
+## Tarpit strategies
+
+| Strategy | Behavior |
+|---|---|
+| `sticky` | Accept and never read/write. Kernel TCP keepalive will eventually notice dead peers. |
+| `trickle` | Write one byte of the configured `tarpit.trickle.text` every `byte_interval`. Cycles the string forever. |
+| `keepalive` | Write a NUL byte every `tarpit.keepalive.interval`. Cheapest option. |
+
+All tarpit modes emit a `*:tarpit_start` event (at the listener's
+configured severity) when the slot is acquired, and a `*:tarpit_end`
+event (at `low` severity, with `duration_ms` in meta) when the
+connection terminates. When the per-source or total cap is hit, a
+`*:tarpit_drop` event fires instead.
+
+## Detection coverage
+
+Beyond per-listener events, the sensor fires aggregate / token events:
+
+- `correlate:port_scan` — same source touched N distinct ports within a
+  configurable window.
+- `correlate:brute_force` — same source touched the same port N times in
+  the window (optionally per-port).
+- `canary:<id>` — file canary (fsnotify path or fanotify-detected read).
+- `canary:url:<id>` — URL canary path matched by an HTTP/HTTPS handler.
+- `canary:dns:<id>` — DNS canary name (or subdomain) queried.
+- `dnscanary:query` — every DNS query received (baseline noise floor).
+- `sniffer:arp_scan` — ARP request flood from one MAC.
+- `sniffer:arp_reply_unsolicited` — ARP reply with no preceding request
+  (possible cache poisoning).
+- `listener:*:tarpit_start|tarpit_end|tarpit_drop` — tarpit lifecycle.
+
+## Outbound channels
+
+| Type | Notes |
+|---|---|
+| `stdout` | JSON-per-line. Always-on. Local. |
+| `jsonlog` | Rotated JSONL under `<data_dir>/events/`. Total size capped via `disk.json_log_mb`. Local. |
+| `sqlite` | Embedded SQLite at `<data_dir>/events.db`. WAL mode. Powers `list-events` and the web UI. Local. |
+| `webhook` | POST JSON event. Optional HMAC-SHA256 signature via `hmac_secret_env`. Configurable timeout. |
+| `smtp` | Submits via STARTTLS with PLAIN auth. One mail per event. |
+| `syslog` | RFC 5424 over `local`, `tcp`, `udp`, or `unix` (path). |
+| `twilio` | SMS via Twilio REST. One SMS per recipient; failures don't block others. Body capped at 1500 chars. |
+| `sns` | AWS SNS Publish via hand-rolled Sigv4 (no AWS SDK). Supports STS session tokens. Region inferred from topic ARN if not set. |
+| `snmptrap` | SNMPv2c trap via gosnmp. Five custom OIDs under a configurable enterprise prefix carry event_id / rule_id / severity / source / sensor. |
+
+Local sinks always receive events (so the on-disk record stays complete
+even for allowlisted sources). Outbound sinks are gated by allowlist,
+dedup, per-channel rate limit, and min-severity.
+
+## Per-event pcap capture
+
+Set `capture: true` on any TCP listener (`drop` mode excluded; nothing to
+capture). Each completed connection produces
+`<data_dir>/captures/<event_id>.pcap`. The pcap uses DLT_RAW (link-type
+101) with synthesized IPv4 + TCP headers and tracked sequence numbers,
+so Wireshark's "Follow TCP" reconstructs the application-layer stream.
+
+We do NOT touch raw sockets — every byte comes from a tee'd `net.Conn`
+in the application-layer goroutine. That means we miss SYN/FIN handshakes
+and retransmits, but we don't need `CAP_NET_RAW` and the binary stays CGO-free.
+
+Two size caps prevent runaway disk use:
+- `sensor.disk.capture_kb` — per-session truncation threshold (default 64 KB).
+- `sensor.disk.pcap_mb` — total captures directory cap with oldest-first
+  rotation (default 1024 MB).
+
+Captures truncated at the per-session cap get `capture_truncated: true`
+in event meta.
 
 ## Web UI
 
-With `ui.enabled: true`, the sensor serves a read-only UI at
-`ui.bind` (default `127.0.0.1:8088`):
+Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`.
 
-- `/` — last-24h summary (events / severity / top rules / top sources)
-- `/events` — table view with `?source=`, `?rule=`, `?since=`, `?limit=`
-- `/events/<id>` — full event detail (banner sent, payload, meta)
-- `/api/events`, `/api/summary` — JSON equivalents
-- `/healthz` — liveness check
+Endpoints:
 
-Non-loopback binds are refused at validate-time unless both
-`tls_cert+tls_key` and `auth_token_env` are set.
+- `/` — last-24h summary: total + by severity + top rules + top sources.
+- `/events` — filterable table: `?source=`, `?rule=`, `?since=24h`,
+  `?severity=high`, `?limit=N`.
+- `/events/<id>` — full event detail with banner sent, base64 payload,
+  meta table.
+- `/api/events`, `/api/summary` — JSON equivalents.
+- `/healthz` — auth-bypass liveness check.
+
+Security headers (`Content-Security-Policy: default-src 'none'`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`) are set on
+every response. Bearer-token auth via `auth_token_env`. Non-loopback
+binds are rejected at validate-time without both TLS and auth.
+
+## systemd integration
+
+A hardened unit lives at `packaging/systemd/tarpit-honeypot.service`. It
+runs as user `tarpit:tarpit` with `AmbientCapabilities=CAP_NET_BIND_SERVICE
+CAP_NET_RAW`, `NoNewPrivileges=true`, `ProtectSystem=strict`,
+`ProtectHome=true`, `PrivateTmp/Devices=true`, and
+`RestrictNamespaces=true`. `ExecReload=/bin/kill -HUP $MAINPID` ties into
+the hot-reload path.
+
+Install pattern:
+
+```
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin tarpit
+sudo install -o root -g root -m 0755 bin/tarpit-honeypot /usr/local/bin/
+sudo install -d -o tarpit -g tarpit -m 0750 /var/lib/tarpit-honeypot
+sudo install -d -o root  -g root  -m 0755 /etc/tarpit-honeypot
+sudo install -o root -g root -m 0640 configs/tarpit-honeypot.example.yaml /etc/tarpit-honeypot/config.yaml
+sudo install -o root -g root -m 0644 packaging/systemd/tarpit-honeypot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tarpit-honeypot
+```
+
+## Operating model
+
+- Single static binary, no daemons-of-daemons.
+- Internal channels for the event bus; per-sink worker goroutines with
+  bounded queues (depth 256). One slow sink can't back-pressure the
+  listeners.
+- All durable state lives under `sensor.data_dir`:
+  ```
+  <data_dir>/
+    events.db                # SQLite index (if sqlite sink or UI enabled)
+    events/events-*.jsonl    # rotated JSON-lines (if jsonlog sink enabled)
+    captures/<event_id>.pcap # per-event pcaps (if any listener has capture: true)
+    tls/<sni>.crt|.key       # cached self-signed HTTPS certs
+  ```
+- Allowlisted source IPs short-circuit outbound dispatch but local sinks
+  still record — you keep a complete forensic trail without paging your
+  on-call for every internal scanner.
+
+## Dependencies
+
+External dependencies, all pure-Go:
+
+- `gopkg.in/yaml.v3` — config parsing
+- `github.com/fsnotify/fsnotify` — filesystem canaries
+- `modernc.org/sqlite` — pure-Go SQLite (no CGO)
+- `github.com/gosnmp/gosnmp` — SNMP encode/decode for the handler + trap sink
+- `golang.org/x/sys/unix` — AF_PACKET sniffer and fanotify
+
+No CGO. No `libpcap`. No AWS SDK. No Twilio SDK.
+
+## Tests
+
+```
+make test
+```
+
+Coverage includes:
+
+- `event`: severity JSON round-trip + numeric tolerance.
+- `filter`: allowlist CIDR/IP matching, dedup window expiration, token-
+  bucket rate-limit burst + refill.
+- `config`: `SeverityMatches` operator parsing; UI loopback / non-loopback
+  validation.
+- `correlate`: port-scan threshold + window reset + aggregate dedup,
+  brute-force per-port, disabled-correlator no-op.
+- `router`: local-vs-outbound dispatch, allowlist outbound-only, dedup
+  outbound-only, min-severity gate, severity-match routing.
+- `store`: insert/query round-trip with all filters, Get, Summary
+  breakdown.
+- `capture`: pcap header bytes + record count + total-directory rotation.
+- `handlers`: SSH banner echo, HTTP request capture + URL canary hit/miss,
+  Modbus read-holding-registers + exception path, MQTT CONNECT with creds,
+  S7 connection-confirm, IEC-104 STARTDT_CON, NTP mode-3 echo + mode-7
+  silence, SNMP v2c GetRequest round-trip, OPC-UA HEL→ACK with endpoint
+  capture, EtherNet/IP RegisterSession + ListIdentity, BACnet Who-Is →
+  I-Am + non-Who-Is silence, TFTP RRQ → ERROR with filename capture,
+  SMB1 Negotiate roundtrip + SMB2 STATUS_NOT_IMPLEMENTED rejection.
+- `dnscanary`: name + qtype parsing, NXDOMAIN shape, subdomain matcher.
+- `sink/awssns`: Sigv4 determinism + body-sensitivity + region extraction.
+
+## What's NOT in v0.8
+
+- **Listener hot-reload.** SIGHUP currently warns when listener config
+  has changed and requires a restart. Channels / routes / allowlist /
+  correlator thresholds are hot-swapped.
+- **Windows service registration.** The binary will run on Windows but
+  there's no SCM integration yet.
+- **fanotify on Windows.** ETW-based read detection would be the
+  equivalent path.
+- **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
+
+Everything else from the original design is shipped.
+
+## Getting help / reporting issues
+
+Files of interest if you're debugging:
+
+- `<data_dir>/events.db` — open with any SQLite client; the schema is in
+  `internal/store/store.go`.
+- `<data_dir>/events/events-*.jsonl` — one JSON event per line.
+- `<data_dir>/captures/<event_id>.pcap` — Wireshark loads these directly.
+- systemd journal (`journalctl -u tarpit-honeypot -f`) — structured `slog`
+  output covering listener startup, sink errors, rate-limit drops,
+  reload events, and capture failures.

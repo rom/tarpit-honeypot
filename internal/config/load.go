@@ -188,7 +188,7 @@ func (c *Config) Validate() error {
 			"raw": true, "ssh": true, "http": true, "https": true,
 			"telnet": true, "ftp": true,
 			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
-			"opcua": true, "ethernetip": true,
+			"opcua": true, "ethernetip": true, "smb": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
