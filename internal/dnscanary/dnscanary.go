@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -25,6 +26,27 @@ type Server struct {
 	bind       string
 	sensorName string
 	canaries   []entry
+	amp        ampConfig
+	ampState   *ampState
+}
+
+type ampConfig struct {
+	enabled  bool
+	window   time.Duration
+	threshold int
+	sev      event.Severity
+}
+
+type ampState struct {
+	mu      sync.Mutex
+	sources map[string]*ampSrc
+}
+
+type ampSrc struct {
+	since     time.Time
+	count     int
+	anyCount  int // qtype=ANY (255) — classic amplifier probe
+	lastFired time.Time
 }
 
 type entry struct {
@@ -36,7 +58,7 @@ type entry struct {
 	name string
 }
 
-func New(bind string, sensorName string, canaries []config.DNSCanary) (*Server, error) {
+func New(bind string, sensorName string, canaries []config.DNSCanary, amp config.DNSAmplifier) (*Server, error) {
 	if bind == "" {
 		return nil, fmt.Errorf("dnscanary: bind required")
 	}
@@ -47,6 +69,14 @@ func New(bind string, sensorName string, canaries []config.DNSCanary) (*Server, 
 			return nil, fmt.Errorf("dnscanary %s: %w", c.ID, err)
 		}
 		s.canaries = append(s.canaries, entry{id: c.ID, sev: sev, name: c.Name})
+	}
+	if amp.Enabled {
+		sev, err := event.ParseSeverity(amp.Severity)
+		if err != nil {
+			return nil, fmt.Errorf("dnscanary amplifier: %w", err)
+		}
+		s.amp = ampConfig{enabled: true, window: amp.Window, threshold: amp.Queries, sev: sev}
+		s.ampState = &ampState{sources: map[string]*ampSrc{}}
 	}
 	return s, nil
 }
@@ -125,6 +155,13 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 		}
 	}
 
+	if s.amp.enabled {
+		if ev := s.checkAmplifier(src.IP, qtype); ev != nil {
+			ev.Sensor = s.sensorName
+			send(ctx, bus, ev)
+		}
+	}
+
 	// Reply with NXDOMAIN so the resolver caches a negative result quickly.
 	reply := buildNXDOMAIN(msg)
 	if reply != nil {
@@ -190,6 +227,50 @@ func buildNXDOMAIN(query []byte) []byte {
 	binary.BigEndian.PutUint16(out[8:10], 0)
 	binary.BigEndian.PutUint16(out[10:12], 0)
 	return out
+}
+
+// checkAmplifier returns a non-nil event when the source's recent traffic
+// looks like amplifier reconnaissance (high query rate, ANY-type queries).
+func (s *Server) checkAmplifier(srcIP string, qtype uint16) *event.Event {
+	st := s.ampState
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	now := time.Now()
+	cur, ok := st.sources[srcIP]
+	if !ok || now.Sub(cur.since) > s.amp.window {
+		cur = &ampSrc{since: now}
+		st.sources[srcIP] = cur
+	}
+	cur.count++
+	// qtype=255 is ANY; qtype=46/48 (RRSIG/DNSKEY) and 16 (TXT) also have
+	// high amplification factors. We flag ANY explicitly and use it as a
+	// fast-path: even a single ANY query is suspicious.
+	isAny := qtype == 255
+	if isAny {
+		cur.anyCount++
+	}
+	trigger := isAny || cur.count >= s.amp.threshold
+	if !trigger {
+		return nil
+	}
+	if now.Sub(cur.lastFired) < s.amp.window {
+		return nil
+	}
+	cur.lastFired = now
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now.UTC(),
+		RuleID:   "dnscanary:amplifier_probe",
+		Severity: s.amp.sev,
+		Source:   event.Endpoint{IP: srcIP},
+		Proto:    "udp",
+		Meta: map[string]any{
+			"queries":     cur.count,
+			"any_queries": cur.anyCount,
+			"window_s":    int(s.amp.window.Seconds()),
+			"triggered_by_any": isAny,
+		},
+	}
 }
 
 func isSubdomain(name, suffix string) bool {

@@ -19,10 +19,20 @@ type Config struct {
 }
 
 // DNS is the bind config for the canary DNS listener. The listener only
-// starts when Enabled and at least one DNSCanary is configured.
+// starts when Enabled and at least one DNSCanary is configured (or
+// AmplifierDetection is on).
 type DNS struct {
-	Enabled bool   `yaml:"enabled"`
-	Bind    string `yaml:"bind"`
+	Enabled            bool             `yaml:"enabled"`
+	Bind               string           `yaml:"bind"`
+	AmplifierDetection DNSAmplifier     `yaml:"amplifier_detection"`
+}
+
+// DNSAmplifier flags traffic shaped like amplifier reconnaissance.
+type DNSAmplifier struct {
+	Enabled  bool          `yaml:"enabled"`
+	Window   time.Duration `yaml:"window"`
+	Queries  int           `yaml:"queries"`   // per-source threshold
+	Severity string        `yaml:"severity"`
 }
 
 // URLCanary fires when any HTTP/HTTPS listener sees a request for the
@@ -151,6 +161,17 @@ type Canary struct {
 type Correlate struct {
 	PortScan   CorrPortScan   `yaml:"port_scan"`
 	BruteForce CorrBruteForce `yaml:"brute_force"`
+	SlowScan   CorrSlowScan   `yaml:"slow_scan"`
+}
+
+// CorrSlowScan detects scanning over long windows. Default thresholds
+// (10 distinct ports in 24h) flag a "one port per hour"-style scan that
+// the regular fixed-window port_scan correlator cannot.
+type CorrSlowScan struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctPorts int           `yaml:"distinct_ports"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
 }
 
 type CorrPortScan struct {

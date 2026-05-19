@@ -412,8 +412,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}()
 	}
 
-	if s.cfg.DNS.Enabled && len(s.cfg.DNSCanaries) > 0 {
-		srv, err := dnscanary.New(s.cfg.DNS.Bind, s.name, s.cfg.DNSCanaries)
+	if s.cfg.DNS.Enabled && (len(s.cfg.DNSCanaries) > 0 || s.cfg.DNS.AmplifierDetection.Enabled) {
+		srv, err := dnscanary.New(s.cfg.DNS.Bind, s.name, s.cfg.DNSCanaries, s.cfg.DNS.AmplifierDetection)
 		if err != nil {
 			return err
 		}

@@ -147,6 +147,17 @@ func (c *Config) applyDefaults() {
 			c.Correlate.BruteForce.Severity = "high"
 		}
 	}
+	if c.Correlate.SlowScan.Enabled {
+		if c.Correlate.SlowScan.DistinctPorts == 0 {
+			c.Correlate.SlowScan.DistinctPorts = 10
+		}
+		if c.Correlate.SlowScan.Window == 0 {
+			c.Correlate.SlowScan.Window = 24 * time.Hour
+		}
+		if c.Correlate.SlowScan.Severity == "" {
+			c.Correlate.SlowScan.Severity = "high"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {
@@ -316,6 +327,11 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("correlate.brute_force: %w", err)
 		}
 	}
+	if c.Correlate.SlowScan.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.SlowScan.Severity); err != nil {
+			return fmt.Errorf("correlate.slow_scan: %w", err)
+		}
+	}
 
 	// Allowlist.
 	for i, s := range c.Allowlist {
@@ -381,6 +397,19 @@ func (c *Config) Validate() error {
 		}
 		if _, err := event.ParseSeverity(ch.MinSeverity); err != nil {
 			return fmt.Errorf("channel %s: %w", ch.ID, err)
+		}
+	}
+
+	// DNS amplifier detection defaults.
+	if c.DNS.AmplifierDetection.Enabled {
+		if c.DNS.AmplifierDetection.Window == 0 {
+			c.DNS.AmplifierDetection.Window = 60 * time.Second
+		}
+		if c.DNS.AmplifierDetection.Queries == 0 {
+			c.DNS.AmplifierDetection.Queries = 20
+		}
+		if c.DNS.AmplifierDetection.Severity == "" {
+			c.DNS.AmplifierDetection.Severity = "high"
 		}
 	}
 

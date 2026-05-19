@@ -1,10 +1,9 @@
 // Package correlate maintains short-lived in-memory state across events to
-// detect port-scans and brute-force attempts from a single source.
+// detect port-scans, brute-force attempts (with credential extraction),
+// and long-window slow scans from a single source.
 //
 // Each call to Observe returns the original event plus any aggregate events
-// that fired as a result. v0.1 of this package is single-threaded behind a
-// per-source mutex; that's fine for typical sensor volumes. A later phase
-// may want to shard or move counters into a streaming structure.
+// that fired as a result. Concurrent-safe via a single per-correlator mutex.
 package correlate
 
 import (
@@ -17,16 +16,16 @@ import (
 )
 
 type Correlator struct {
-	cfg       config.Correlate
-	scanSev   event.Severity
-	bruteSev  event.Severity
+	cfg      config.Correlate
+	scanSev  event.Severity
+	bruteSev event.Severity
+	slowSev  event.Severity
 
-	mu     sync.Mutex
-	scan   map[string]*scanState   // key: source IP
-	brute  map[string]*bruteState  // key: source IP (+ ":<port>" if PerPort)
-
-	// dedup of aggregate events so a sustained scan/brute doesn't spam.
-	emitted map[string]time.Time
+	mu       sync.Mutex
+	scan     map[string]*scanState   // key: source IP
+	brute    map[string]*bruteState  // key: source IP (+ ":<port>" if PerPort)
+	slow     map[string]*slowState   // key: source IP
+	emitted  map[string]time.Time    // dedup of aggregate emission
 }
 
 type scanState struct {
@@ -37,6 +36,15 @@ type scanState struct {
 type bruteState struct {
 	since time.Time
 	count int
+	// creds is a per-source set of unique credential pairs seen. Capped at
+	// 50 to avoid unbounded growth under a long brute-force.
+	creds map[string]struct{}
+}
+
+type slowState struct {
+	firstSeen time.Time
+	lastSeen  time.Time
+	ports     map[int]time.Time // port -> first-seen
 }
 
 func New(cfg config.Correlate) (*Correlator, error) {
@@ -44,6 +52,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		cfg:     cfg,
 		scan:    map[string]*scanState{},
 		brute:   map[string]*bruteState{},
+		slow:    map[string]*slowState{},
 		emitted: map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -60,6 +69,13 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		}
 		c.bruteSev = s
 	}
+	if cfg.SlowScan.Enabled {
+		s, err := event.ParseSeverity(cfg.SlowScan.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.slowSev = s
+	}
 	return c, nil
 }
 
@@ -67,8 +83,6 @@ func New(cfg config.Correlate) (*Correlator, error) {
 // fired. Always returns at least one event (the original).
 func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out := []*event.Event{ev}
-
-	// Only correlate network listener events.
 	if ev.Source.IP == "" || ev.Dest.Port == 0 {
 		return out
 	}
@@ -91,6 +105,11 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 			out = append(out, extra)
 		}
 	}
+	if c.cfg.SlowScan.Enabled {
+		if extra := c.checkSlowScan(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
 	return out
 }
 
@@ -105,7 +124,7 @@ func (c *Correlator) checkScan(ev *event.Event, now time.Time) *event.Event {
 	if len(st.ports) < cfg.DistinctPorts {
 		return nil
 	}
-	if !c.shouldEmit("scan|" + ev.Source.IP, cfg.Window) {
+	if !c.shouldEmit("scan|"+ev.Source.IP, cfg.Window) {
 		return nil
 	}
 	ports := make([]int, 0, len(st.ports))
@@ -136,19 +155,32 @@ func (c *Correlator) checkBrute(ev *event.Event, now time.Time) *event.Event {
 	}
 	st, ok := c.brute[key]
 	if !ok || now.Sub(st.since) > cfg.Window {
-		st = &bruteState{since: now}
+		st = &bruteState{since: now, creds: map[string]struct{}{}}
 		c.brute[key] = st
 	}
 	st.count++
+	if pair := extractCreds(ev); pair != "" {
+		if len(st.creds) < 50 {
+			st.creds[pair] = struct{}{}
+		}
+	}
 	if st.count < cfg.Attempts {
 		return nil
 	}
 	if !c.shouldEmit("brute|"+key, cfg.Window) {
 		return nil
 	}
+	credList := make([]string, 0, len(st.creds))
+	for k := range st.creds {
+		credList = append(credList, k)
+	}
 	meta := map[string]any{
-		"attempts": st.count,
-		"window_s": int(cfg.Window.Seconds()),
+		"attempts":      st.count,
+		"window_s":      int(cfg.Window.Seconds()),
+		"unique_creds":  len(credList),
+	}
+	if len(credList) > 0 {
+		meta["credentials"] = credList
 	}
 	if cfg.PerPort {
 		meta["port"] = ev.Dest.Port
@@ -164,6 +196,122 @@ func (c *Correlator) checkBrute(ev *event.Event, now time.Time) *event.Event {
 		Proto:    ev.Proto,
 		Meta:     meta,
 	}
+}
+
+// checkSlowScan tracks port-touches over a long window (default 24h).
+// Unlike port_scan, this state is NOT reset on each new event — it
+// only ages out per-port entries older than the window so a one-port-
+// per-hour scan accumulates over the day.
+func (c *Correlator) checkSlowScan(ev *event.Event, now time.Time) *event.Event {
+	cfg := c.cfg.SlowScan
+	st, ok := c.slow[ev.Source.IP]
+	if !ok {
+		st = &slowState{firstSeen: now, ports: map[int]time.Time{}}
+		c.slow[ev.Source.IP] = st
+	}
+	st.lastSeen = now
+	if _, seen := st.ports[ev.Dest.Port]; !seen {
+		st.ports[ev.Dest.Port] = now
+	}
+	// Age out old ports.
+	cutoff := now.Add(-cfg.Window)
+	for p, t := range st.ports {
+		if t.Before(cutoff) {
+			delete(st.ports, p)
+		}
+	}
+	if len(st.ports) < cfg.DistinctPorts {
+		return nil
+	}
+	if !c.shouldEmit("slow|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	ports := make([]int, 0, len(st.ports))
+	for p := range st.ports {
+		ports = append(ports, p)
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:slow_scan",
+		Severity: c.slowSev,
+		Source:   ev.Source,
+		Proto:    "tcp",
+		Meta: map[string]any{
+			"distinct_ports":   len(ports),
+			"window_hours":     int(cfg.Window.Hours()),
+			"first_seen":       st.firstSeen.Format(time.RFC3339),
+			"last_seen":        st.lastSeen.Format(time.RFC3339),
+			"ports":            ports,
+			"spread_seconds":   int(st.lastSeen.Sub(st.firstSeen).Seconds()),
+		},
+	}
+}
+
+// extractCreds pulls a credential pair out of well-known event meta keys.
+// Returns "" when no credentials are present.
+//
+// Recognized meta layout:
+//   ssh handlers don't capture passwords, but client_id is unique-ish
+//   ftp -> user_line / pass_line
+//   smtp_recv -> auth_user / auth_pass
+//   mqtt -> username / password
+//   ldap -> bind_dn / bind_pw
+//   postgres -> startup_params[user] / password
+//   mysql -> username / (auth_response_hex used as "the hashed password")
+//   redis -> auth_password (no username)
+//   vnc -> auth_response_hex (the DES-encrypted password)
+//   winrm -> basic_user / basic_pass
+func extractCreds(ev *event.Event) string {
+	if ev.Meta == nil {
+		return ""
+	}
+	get := func(k string) string {
+		if v, ok := ev.Meta[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	// User + pass pairs.
+	pairs := [][2]string{
+		{"auth_user", "auth_pass"},
+		{"username", "password"},
+		{"basic_user", "basic_pass"},
+		{"bind_dn", "bind_pw"},
+		{"user_line", "pass_line"},
+	}
+	for _, p := range pairs {
+		u := get(p[0])
+		pw := get(p[1])
+		if u != "" || pw != "" {
+			return u + ":" + pw
+		}
+	}
+	// Postgres: startup_params has the user, password is a separate meta key.
+	if pwd := get("password"); pwd != "" {
+		if params, ok := ev.Meta["startup_params"].(map[string]string); ok {
+			return params["user"] + ":" + pwd
+		}
+		return ":" + pwd
+	}
+	// MySQL: only the auth response is exposed (it's a hash).
+	if u := get("username"); u != "" {
+		if h := get("auth_response_hex"); h != "" {
+			return u + ":hash=" + h
+		}
+	}
+	// Redis: AUTH leaks just the password.
+	if pwd := get("auth_password"); pwd != "" {
+		return ":" + pwd
+	}
+	// VNC: auth response is opaque.
+	if h := get("auth_response_hex"); h != "" {
+		return ":hash=" + h
+	}
+	return ""
 }
 
 // shouldEmit collapses repeated aggregate events for the same key within
