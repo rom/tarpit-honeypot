@@ -20,11 +20,13 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
+	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/tunnet"
 )
 
 // listenerHandle wraps a running listener so we can stop it individually
@@ -192,6 +194,35 @@ func New(cfg *config.Config) (*Sensor, error) {
 // Used by the list-honeynets subcommand and the DNS canary listener.
 func (s *Sensor) Honeynet() *honeynet.Topology { return s.honeynet }
 
+// honeynetSnapshot converts a Topology to the handler-friendly view that
+// SNMP / LDAP / DCE-RPC use to advertise the honeynet hosts in their
+// query responses. Caller passes the result via listener.BuildArgs.
+func honeynetSnapshot(t *honeynet.Topology) handler.HoneynetSnapshot {
+	if t == nil {
+		return handler.HoneynetSnapshot{}
+	}
+	src := t.SnapshotForHandlers()
+	if len(src) == 0 {
+		return handler.HoneynetSnapshot{}
+	}
+	out := make([]handler.HoneynetHost, 0, len(src))
+	for _, h := range src {
+		services := make([]handler.HoneynetService, 0, len(h.Services))
+		for _, s := range h.Services {
+			services = append(services, handler.HoneynetService{Port: s.Port, Handler: s.Handler})
+		}
+		out = append(out, handler.HoneynetHost{
+			NetID:    h.NetID,
+			IP:       h.IP,
+			Hostname: h.Hostname,
+			OS:       h.OS,
+			MAC:      h.MAC,
+			Services: services,
+		})
+	}
+	return handler.HoneynetSnapshot{Hosts: out}
+}
+
 func needsCapture(cfg *config.Config) bool {
 	for _, l := range cfg.Listeners {
 		if l.Capture {
@@ -227,14 +258,15 @@ func (s *Sensor) startListener(l config.Listener) error {
 	}
 	ctx, cancel := context.WithCancel(s.rootCtx)
 	ln, err := listener.Build(l, listener.BuildArgs{
-		SensorName:  s.name,
-		DataDir:     s.cfg.Sensor.DataDir,
-		CaptureMgr:  s.captureMgr,
-		URLCanaries: s.cfg.URLCanaries,
-		Identity:    s.identity,
-		Jitter:      s.jitter,
-		TLSRotate:   s.cfg.Sensor.TLSRotate.Days,
-		Honeynet:    s.honeynet,
+		SensorName:       s.name,
+		DataDir:          s.cfg.Sensor.DataDir,
+		CaptureMgr:       s.captureMgr,
+		URLCanaries:      s.cfg.URLCanaries,
+		Identity:         s.identity,
+		Jitter:           s.jitter,
+		TLSRotate:        s.cfg.Sensor.TLSRotate.Days,
+		Honeynet:         s.honeynet,
+		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
 	})
 	if err != nil {
 		cancel()
@@ -522,6 +554,33 @@ func (s *Sensor) Run(ctx context.Context) error {
 					slog.Warn("honeynet icmp responder disabled", "honeynet", netID, "err", err)
 				}
 				<-ctx.Done()
+			}()
+		}
+		if hn.TUN.Enabled {
+			hostIPs := make([]string, 0, len(hn.Hosts))
+			for _, h := range hn.Hosts {
+				hostIPs = append(hostIPs, h.IP)
+			}
+			cidrs := []string{hn.CIDR}
+			tunCfg := tunnet.Config{
+				DeviceName: hn.TUN.Device,
+				CIDRs:      cidrs,
+				HostIPs:    hostIPs,
+				MTU:        hn.TUN.MTU,
+			}
+			netID := hn.ID
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				adapter, err := tunnet.New(tunCfg)
+				if err != nil {
+					slog.Warn("honeynet tun adapter disabled", "honeynet", netID, "err", err)
+					return
+				}
+				if err := adapter.Run(ctx); err != nil {
+					slog.Error("honeynet tun adapter stopped", "honeynet", netID, "err", err)
+				}
+				_ = adapter.Close()
 			}()
 		}
 	}

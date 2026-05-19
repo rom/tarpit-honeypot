@@ -9,9 +9,15 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-type dcerpc struct{}
+type dcerpc struct {
+	hosts []HoneynetHost
+}
 
 func (d *dcerpc) Name() string { return "dcerpc" }
+
+// SetHoneynetView installs the honeynet topology so the handler can
+// advertise virtual endpoint entries in the event meta.
+func (d *dcerpc) SetHoneynetView(v HoneynetSnapshot) { d.hosts = v.Hosts }
 
 // DCE/RPC over TCP (port 135). The very first PDU from any client is a
 // "bind" (PDU type 0x0B). PDU layout:
@@ -96,6 +102,22 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = "dcerpc bind_ack"
+	// Advertise the honeynet's virtual endpoints if any. Real EPM
+	// implementations return them via Lookup RPCs; we surface them in
+	// meta so the operator's pipeline at least sees what topology was
+	// available at lookup time.
+	if len(d.hosts) > 0 {
+		endpoints := make([]map[string]any, 0, len(d.hosts))
+		for _, h := range d.hosts {
+			for _, sv := range h.Services {
+				endpoints = append(endpoints, map[string]any{
+					"hostname": h.Hostname, "ip": h.IP,
+					"port": sv.Port, "service": sv.Handler,
+				})
+			}
+		}
+		res.Meta["honeynet_endpoints"] = endpoints
+	}
 	return res, nil
 }
 

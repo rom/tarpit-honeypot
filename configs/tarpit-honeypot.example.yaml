@@ -393,6 +393,15 @@ honeynets:
     icmp_responder:
       enabled: false
       interface: ""
+    # Linux-only L3 adapter. Opens a TUN device; operator routes the
+    # honeynet CIDR through it. Sensor answers ICMP/ICMPv6 echo for
+    # virtual host IPs and sends TCP RST for unbound ports — so
+    # `nmap -sS` reports the host as alive without `ip addr add`.
+    # CAP_NET_ADMIN required.
+    tun:
+      enabled: false
+      device: ""           # blank = kernel-chosen (e.g. tun0)
+      mtu: 1500
     hosts:
       - ip: 10.99.0.10
         hostname: web-prod-01

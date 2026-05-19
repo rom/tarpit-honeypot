@@ -8,9 +8,15 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-type ldap struct{}
+type ldap struct {
+	hosts []HoneynetHost
+}
 
 func (l *ldap) Name() string { return "ldap" }
+
+// SetHoneynetView installs the honeynet topology so the handler can
+// advertise virtual computer accounts in BindResponse meta.
+func (l *ldap) SetHoneynetView(v HoneynetSnapshot) { l.hosts = v.Hosts }
 
 // LDAP (port 389). Every protocol message is BER-encoded:
 //
@@ -56,6 +62,20 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		}
 		if mech != "" {
 			res.Meta["sasl_mechanism"] = mech
+		}
+		// If we have a honeynet, advertise the virtual AD computer
+		// inventory in meta so the operator can correlate "this scanner
+		// asked the AD; here's what they would have seen if our AD
+		// search handler were complete."
+		if len(l.hosts) > 0 {
+			computers := make([]map[string]string, 0, len(l.hosts))
+			for _, h := range l.hosts {
+				dn := "cn=" + h.Hostname + ",ou=Computers"
+				computers = append(computers, map[string]string{
+					"dn": dn, "hostname": h.Hostname, "ip": h.IP, "os": h.OS,
+				})
+			}
+			res.Meta["honeynet_computer_accounts"] = computers
 		}
 		reply := buildLDAPBindResponse(messageID, 49) // invalidCredentials
 		if _, err := conn.Write(reply); err != nil {

@@ -254,6 +254,47 @@ func (t *Topology) StartARPResponder(ctx context.Context, iface string) error {
 	return startARPResponder(ctx, iface, t)
 }
 
+// SnapshotForHandlers builds a serializable view of every honeynet host
+// so handlers (snmp / ldap / dcerpc) can advertise the topology without
+// importing this package. Returns nil when the topology is empty.
+type HostInfo struct {
+	NetID    string
+	IP       string
+	Hostname string
+	OS       string
+	MAC      string
+	Services []ServiceInfo
+}
+
+type ServiceInfo struct {
+	Port    int
+	Handler string
+}
+
+func (t *Topology) SnapshotForHandlers() []HostInfo {
+	if t == nil || len(t.nets) == 0 {
+		return nil
+	}
+	var out []HostInfo
+	for _, n := range t.nets {
+		for _, h := range n.Hosts {
+			services := make([]ServiceInfo, 0, len(h.Services))
+			for _, s := range h.Services {
+				services = append(services, ServiceInfo{Port: s.Port, Handler: s.Handler})
+			}
+			out = append(out, HostInfo{
+				NetID:    n.ID,
+				IP:       h.IP,
+				Hostname: h.Hostname,
+				OS:       h.OS,
+				MAC:      h.MACString(),
+				Services: services,
+			})
+		}
+	}
+	return out
+}
+
 // StartICMPResponder launches an L3 ICMP echo responder for the named
 // interface. Virtual hosts respond to ping with a proper echo reply
 // sourced from their IP + MAC. Linux-only.

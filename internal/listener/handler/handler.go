@@ -28,6 +28,34 @@ type Deps struct {
 	DataDir     string
 	URLCanaries []config.URLCanary
 	TLSRotate   int // days; 0 = never rotate
+	// HoneynetView is a side-channel for topology-exposing handlers
+	// (snmp / ldap / dcerpc) so they can advertise the honeynet hosts
+	// in their query responses. Avoids importing internal/honeynet
+	// directly (which would create a build cycle with the listener
+	// dispatch path).
+	HoneynetView HoneynetSnapshot
+}
+
+// HoneynetSnapshot is a flat read-only view of every honeynet host. The
+// sensor populates it from internal/honeynet.Topology at New time. It's
+// safe to share by value because the underlying slices are owned by the
+// snapshot itself.
+type HoneynetSnapshot struct {
+	Hosts []HoneynetHost
+}
+
+type HoneynetHost struct {
+	NetID    string
+	IP       string
+	Hostname string
+	OS       string
+	MAC      string
+	Services []HoneynetService
+}
+
+type HoneynetService struct {
+	Port    int
+	Handler string
 }
 
 // Result is what a handler returns after a single connection interaction.

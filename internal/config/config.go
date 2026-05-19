@@ -33,6 +33,21 @@ type Honeynet struct {
 	Hosts   []HoneynetHost   `yaml:"hosts"`
 	ARP     ARPResponderCfg  `yaml:"arp_responder"`
 	ICMP    ICMPResponderCfg `yaml:"icmp_responder"`
+	TUN     TUNCfg           `yaml:"tun"`
+}
+
+// TUNCfg opens a Linux TUN device the operator can route the honeynet
+// CIDR into. The sensor responds to ICMP/ICMPv6 echo for any virtual
+// host IP and sends TCP RST for unbound ports — making `nmap`-style
+// reconnaissance see the network as alive without `ip addr add`.
+//
+// For real TCP termination through the TUN we still need a userspace
+// TCP stack — see "What's NOT in v1.5" in the README. Today this is
+// L3 discovery only.
+type TUNCfg struct {
+	Enabled bool   `yaml:"enabled"`
+	Device  string `yaml:"device"`
+	MTU     int    `yaml:"mtu"`
 }
 
 // ICMPResponderCfg makes virtual hosts respond to ICMP echo requests (ping)

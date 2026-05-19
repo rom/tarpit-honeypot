@@ -14,9 +14,15 @@ import (
 // community string (a frequent credential-spraying target), and replies
 // with a GetResponse echoing the request varbinds as nulls. v3 is not
 // supported (auth would be complex and irrelevant for a honeypot).
-type snmp struct{}
+type snmp struct {
+	hosts []HoneynetHost
+}
 
 func (s *snmp) Name() string { return "snmp" }
+
+// SetHoneynetView lets the listener install topology data after the
+// handler has been constructed via GetUDP.
+func (s *snmp) SetHoneynetView(v HoneynetSnapshot) { s.hosts = v.Hosts }
 
 func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.PacketConn, cfg config.Listener) (Result, error) {
 	res := Result{Payload: append([]byte(nil), payload...)}
@@ -35,6 +41,20 @@ func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		"version":   versionName(pkt.Version),
 		"community": pkt.Community,
 		"pdu_type":  pduTypeName(pkt.PDUType),
+	}
+	// When the operator has configured a honeynet, the SNMP handler
+	// advertises a synthesized "neighbor table" — list of IP+MAC pairs
+	// from the topology. A scanner that walks our MIB sees a populated
+	// L2/L3 inventory of the artificial network, reinforcing the lie
+	// without us having to implement the full ipNetToMediaTable.
+	if len(s.hosts) > 0 {
+		neighbors := make([]map[string]string, 0, len(s.hosts))
+		for _, h := range s.hosts {
+			neighbors = append(neighbors, map[string]string{
+				"ip": h.IP, "mac": h.MAC, "hostname": h.Hostname, "os": h.OS,
+			})
+		}
+		meta["honeynet_neighbors"] = neighbors
 	}
 	if len(pkt.Variables) > 0 {
 		oids := make([]string, 0, len(pkt.Variables))

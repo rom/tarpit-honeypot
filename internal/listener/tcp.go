@@ -44,6 +44,9 @@ func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *cap
 		if err != nil {
 			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 		}
+		if aware, ok := h.(handler.HoneynetAware); ok && len(deps.HoneynetView.Hosts) > 0 {
+			aware.SetHoneynetView(deps.HoneynetView)
+		}
 		t.handler = h
 	}
 	if l.Mode == "tarpit" {

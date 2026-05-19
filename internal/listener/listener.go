@@ -22,14 +22,15 @@ type Listener interface {
 // construction time. Keeps Build's signature stable as we add deployment
 // identity, jitter, retry-queue stats, etc.
 type BuildArgs struct {
-	SensorName  string
-	DataDir     string
-	CaptureMgr  *capture.Manager
-	URLCanaries []config.URLCanary
-	Identity    *identity.Identity
-	Jitter      *jitter.Jitterer
-	TLSRotate   int
-	Honeynet    *honeynet.Topology
+	SensorName       string
+	DataDir          string
+	CaptureMgr       *capture.Manager
+	URLCanaries      []config.URLCanary
+	Identity         *identity.Identity
+	Jitter           *jitter.Jitterer
+	TLSRotate        int
+	Honeynet         *honeynet.Topology
+	HoneynetSnapshot handler.HoneynetSnapshot
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -40,17 +41,18 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		}
 	}
 	deps := handler.Deps{
-		Identity:    args.Identity,
-		Jitter:      args.Jitter,
-		DataDir:     args.DataDir,
-		URLCanaries: args.URLCanaries,
-		TLSRotate:   args.TLSRotate,
+		Identity:     args.Identity,
+		Jitter:       args.Jitter,
+		DataDir:      args.DataDir,
+		URLCanaries:  args.URLCanaries,
+		TLSRotate:    args.TLSRotate,
+		HoneynetView: args.HoneynetSnapshot,
 	}
 	switch l.Proto {
 	case "tcp":
 		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID, args.Honeynet)
 	case "udp":
-		return newUDP(l, args.SensorName, args.Honeynet)
+		return newUDP(l, args.SensorName, args.Honeynet, args.HoneynetSnapshot)
 	}
 	return nil, errUnknownProto
 }

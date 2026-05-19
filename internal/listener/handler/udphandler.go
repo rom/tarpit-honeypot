@@ -20,6 +20,9 @@ type UDPHandler interface {
 }
 
 // GetUDP returns the UDP handler for a configured listener.handler name.
+// Any handler that wants honeynet topology can implement the optional
+// HoneynetAware interface and the caller can call .SetHoneynetView()
+// after construction.
 func GetUDP(name string) (UDPHandler, error) {
 	switch name {
 	case "raw":
@@ -36,6 +39,13 @@ func GetUDP(name string) (UDPHandler, error) {
 		return &ipmi{}, nil
 	}
 	return nil, fmt.Errorf("unknown udp handler %q", name)
+}
+
+// HoneynetAware is implemented by handlers that want the topology
+// snapshot. SetHoneynetView is called immediately after construction
+// (Get / GetUDP) when honeynets are configured.
+type HoneynetAware interface {
+	SetHoneynetView(HoneynetSnapshot)
 }
 
 // rawUDP records the packet bytes and optionally writes a static banner back.

@@ -119,7 +119,27 @@ phasing decisions.
 - **Static cross-compile** for `linux/amd64`, `linux/arm64`, `linux/armv7`,
   `linux/armv6`. CGO never required.
 
+## Documentation
+
+In-tree:
+
+- [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
+- [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
+- [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
+- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
+
 ## Status
+
+**v1.5 — TUN adapter, IPv6, SNMP/LDAP/DCE-RPC topology exposure, docs.**
+Each honeynet can open a Linux TUN device (`CAP_NET_ADMIN`) that
+answers ICMP/ICMPv6 echo for any virtual host IP and TCP-RST for
+unbound ports without `ip addr add`. IPv4 + IPv6 honeynet hosts and
+listener binds work uniformly. The SNMP, LDAP, and DCE-RPC handlers
+now include the honeynet topology in their event meta
+(`honeynet_neighbors`, `honeynet_computer_accounts`,
+`honeynet_endpoints`) so a scanner walking those services sees an
+inventory of the virtual network. New `docs/` directory with three
+substantial guides.
 
 **v1.4 — SIEM enrichment + output formats.** Adds GeoIP / ASN /
 reverse-DNS enrichment that decorates every event's meta from
@@ -930,22 +950,23 @@ Sample Prometheus scrape:
     - targets: ['sensor.example.internal:8088']
 ```
 
-## What's NOT in v1.4
+## What's NOT in v1.5
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
-- **TUN-based honeynet adapter.** ARP + ICMP responders (v1.2 / v1.3)
-  make virtual hosts discoverable, but routing TCP/UDP for the
-  virtual IPs to the sensor still requires `ip addr add` or
-  iptables. A pure-userspace TUN device with a small TCP stack
-  (most likely via `gvisor.dev/gvisor/pkg/tcpip`) would close that
-  gap. Headline target for v1.5.
-- **SNMP / LDAP / DCE-RPC topology exposure.** Handlers don't yet
-  return honeynet ARP/IF tables / computer accounts on relevant
-  queries.
+- **Full TCP termination over TUN.** The v1.5 TUN adapter is an L3
+  responder — it answers ICMP/ICMPv6 echo and TCP RST so the network
+  appears alive. Real TCP termination would need a pure-userspace TCP
+  stack (gvisor's netstack would be the natural fit, but their module
+  ships Bazel-only files Go's build can't handle today). For actual
+  protocol interaction with virtual host services, the operator still
+  needs `ip addr add` or iptables alongside the TUN.
+- **MIB-walkable SNMP topology.** SNMP topology is currently exposed
+  via event meta (`honeynet_neighbors`); a real `ipNetToMediaTable`
+  walk would need GetNext support over the full MIB-2 tree.
 
 Everything else from the original design is shipped.
 
