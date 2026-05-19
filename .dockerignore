@@ -1,0 +1,9 @@
+.git
+.gitignore
+bin/
+dist/
+var/
+local.yaml
+local-*.yaml
+*.test
+*.out

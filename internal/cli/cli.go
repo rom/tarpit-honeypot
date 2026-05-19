@@ -15,9 +15,11 @@ type command struct {
 func Dispatch(args []string) error {
 	cmds := []command{
 		{"run", "start the sensor (listeners + sinks)", cmdRun},
-		{"validate-config", "parse and validate a config file", cmdValidate},
+		{"validate-config", "parse and validate a config file (with optional --diff)", cmdValidate},
+		{"show-config", "print the effective post-defaults config as YAML", cmdShowConfig},
 		{"test-alert", "emit a synthetic event through configured channels", cmdTestAlert},
-		{"list-events", "tail / query events from the local JSON log", cmdListEvents},
+		{"list-events", "tail / query events from the local JSON log or sqlite", cmdListEvents},
+		{"gen-token", "print an unguessable canary token (dns | url | hex)", cmdGenToken},
 		{"version", "print version info", cmdVersion},
 	}
 
