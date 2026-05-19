@@ -121,6 +121,9 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 				for k, v := range res.Meta {
 					ev.Meta[k] = v
 				}
+				if anoms, ok := res.Meta["anomalies"].([]string); ok {
+					ev.Anomalies = append(ev.Anomalies, anoms...)
+				}
 			}
 		} else if n > 0 {
 			ev.PayloadLen = n

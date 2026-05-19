@@ -11,6 +11,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/filter"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 )
 
@@ -117,6 +118,14 @@ func (r *Router) Stop() {
 // sinks (stdout, jsonlog, sqlite) always receive the event so the local
 // store stays complete.
 func (r *Router) Dispatch(ev *event.Event) {
+	// Stamp ATT&CK metadata before anything else — every downstream
+	// (SIEM, MQTT, webhook, jsonlog) consumes the same techniques /
+	// tactics view of the event.
+	if len(ev.MitreTechniques) == 0 {
+		tag := mitre.Lookup(ev.RuleID, ev.Handler)
+		ev.MitreTechniques = tag.Techniques
+		ev.MitreTactics = tag.Tactics
+	}
 	allowlisted := r.allow.Contains(ev.Source.IP)
 	dedupKey := ev.Source.IP + "|" + ev.RuleID
 	deduped := !r.dedup.ShouldSend(dedupKey)

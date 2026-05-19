@@ -8,7 +8,44 @@ documented in `docs/`).
 
 ## [Unreleased]
 
-### Added
+### Added — v1.9 deception+detection upgrades
+- **14 new archetypes** for full-fleet deception coverage:
+  FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux, Rocky Linux 9,
+  AlmaLinux 9, Oracle Linux 8/9, Moxa EDS-208, Moxa NPort 5210,
+  Siemens SCALANCE XB-208, Siemens S7-1200 PLC, Siemens S7-1500 PLC.
+  Each carries the full fingerprint surface needed to fool a scanner:
+  vendor MAC OUI, SNMP sysDescr/sysObjectID/interface table, default
+  service list, web-UI HTML body, SSH/Telnet CLI prompt, LLDP
+  neighbors, and per-archetype protocol quirks.
+- **MITRE ATT&CK tagging** — every event the sensor emits is
+  decorated with `mitre_techniques` (e.g. ["T1110.001","T1078"]) and
+  `mitre_tactics` (e.g. ["credential-access","initial-access"]) via
+  the new `internal/mitre` package. Mapping is rule_id + handler-aware
+  so listener:ssh-bait gets brute-force / valid-accounts technique
+  IDs, while listener:http-bait gets exploit-public-facing-app.
+- **Storyline correlator** (`storyline:multi_stage`) — fires when a
+  single source IP touches 3+ distinct ATT&CK tactics inside a
+  30-minute window. The event meta carries the kill-chain-ordered
+  stage list and a "->"-joined chain summary
+  ("discovery -> credential-access -> lateral-movement"), so the SOC
+  sees one timeline instead of dozens of independent listener hits.
+- **Protocol anomaly detection** — handlers flag deviations from
+  expected protocol shape into a first-class `event.anomalies` array
+  that SIEM rules can match on directly. SSH flags non-printable /
+  non-SSH / overlong identification strings; HTTP flags unknown
+  methods + suspicious URIs (path traversal, Log4Shell JNDI,
+  WordPress probes, secret-file probes, .git leakage, mgmt-endpoint
+  scans).
+- **Defensive hardening** — new `internal/safe` package centralizes
+  hostile-input handling: bounds-checked slice/string/alloc helpers
+  with a 32 KiB universal cap, plus SanitizeForLog /
+  SanitizeUTF8ForLog / SanitizeHeader / SanitizeEmailSubject for
+  output paths. CEF/LEEF/OCSF formatters now escape every control
+  byte (not just CRLF), and the SMTP sink runs the Subject + every
+  header through the sanitizer so a stolen credential or scanner
+  banner can't inject extra MIME headers.
+
+### Added — v1.8
 - **Archetypes** — set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL)

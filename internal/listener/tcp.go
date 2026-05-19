@@ -205,6 +205,12 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				for k, v := range res.Meta {
 					ev.Meta[k] = v
 				}
+				// Promote anomalies into a first-class event
+				// field so SIEM routing rules can match on it
+				// without re-parsing meta.
+				if anoms, ok := res.Meta["anomalies"].([]string); ok {
+					ev.Anomalies = append(ev.Anomalies, anoms...)
+				}
 			}
 			canaryHits = res.CanaryHits
 		}

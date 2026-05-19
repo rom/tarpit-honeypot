@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -55,6 +56,18 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	if err == nil && line != "" {
 		res.Payload = []byte(line)
 		res.Meta = map[string]any{"client_id": line}
+		// SSH identification strings are ASCII per RFC 4253 §4.2 —
+		// non-printable bytes mean someone's fuzzing or running a
+		// non-SSH scanner against the port.
+		if hasNonPrintable(line) {
+			flagAnomaly(&res, "ssh-id-non-printable")
+		}
+		if len(line) > 255 {
+			flagAnomaly(&res, "ssh-id-overlong")
+		}
+		if !strings.HasPrefix(line, "SSH-") {
+			flagAnomaly(&res, "ssh-id-not-ssh")
+		}
 	} else if err != nil {
 		res.Meta = map[string]any{"read_err": err.Error()}
 	}

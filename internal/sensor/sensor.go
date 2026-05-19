@@ -22,6 +22,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/safego"
@@ -482,9 +483,22 @@ func (s *Sensor) Run(ctx context.Context) error {
 					}
 				}()
 				s.enrich.Decorate(ev)
+				// ATT&CK-tag the event before correlation so the
+				// storyline correlator can build its tactic chain
+				// from the same techniques every downstream sees.
+				if len(ev.MitreTechniques) == 0 {
+					tag := mitre.Lookup(ev.RuleID, ev.Handler)
+					ev.MitreTechniques = tag.Techniques
+					ev.MitreTactics = tag.Tactics
+				}
 				for _, out := range s.correlator.Observe(ev) {
 					if out != ev {
 						s.enrich.Decorate(out)
+						if len(out.MitreTechniques) == 0 {
+							tag := mitre.Lookup(out.RuleID, out.Handler)
+							out.MitreTechniques = tag.Techniques
+							out.MitreTactics = tag.Tactics
+						}
 					}
 					s.router.Dispatch(out)
 				}

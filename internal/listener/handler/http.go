@@ -85,6 +85,24 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 				res.CanaryHits = append(res.CanaryHits, c.ID)
 			}
 		}
+		if marker := suspiciousURI(path); marker != "" {
+			flagAnomaly(&res, marker)
+		}
+	}
+	// Also scan the full request line — Log4Shell / RCE payloads
+	// frequently live in the query string, which extractPath
+	// strips off.
+	if marker := suspiciousURI(firstLine); marker != "" {
+		flagAnomaly(&res, marker)
+	}
+
+	// Method-level anomaly: legit clients use a small set; everything
+	// else (binary blobs, "ATTACK", junk) is a worth-tagging.
+	if method := extractMethod(firstLine); method != "" && !isKnownHTTPMethod(method) {
+		flagAnomaly(&res, "http-method-unknown")
+	}
+	if hasNonPrintable(firstLine) {
+		flagAnomaly(&res, "http-request-line-non-printable")
 	}
 
 	server := "nginx/1.18.0"
@@ -136,4 +154,15 @@ func extractPath(reqLine string) string {
 		p = p[:i]
 	}
 	return p
+}
+
+// extractMethod returns the first whitespace-separated token of the
+// request line. The HTTP spec restricts method tokens to a small
+// printable set; the anomaly detector flags anything outside our
+// known list.
+func extractMethod(reqLine string) string {
+	if i := strings.IndexByte(reqLine, ' '); i > 0 {
+		return reqLine[:i]
+	}
+	return ""
 }

@@ -88,6 +88,22 @@ type Event struct {
 	PayloadBase64 string         `json:"payload_b64,omitempty"`
 	PayloadLen    int            `json:"payload_len,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
+
+	// MitreTechniques lists the MITRE ATT&CK technique IDs (e.g.
+	// "T1190", "T1110.001") attributable to the activity that
+	// produced this event. Set by the router from a rule_id ->
+	// techniques mapping; downstream sinks include the IDs verbatim
+	// for SIEM-side ATT&CK pivot.
+	MitreTechniques []string `json:"mitre_techniques,omitempty"`
+	// MitreTactics lists the high-level tactic names (e.g.
+	// "discovery", "initial-access", "credential-access") that the
+	// techniques fall under. Used by the storyline correlator to
+	// detect tactic-transition sequences from a single source.
+	MitreTactics []string `json:"mitre_tactics,omitempty"`
+	// Anomalies lists protocol-misuse markers the handler flagged
+	// (e.g. "ssh-banner-non-printable", "http-method-unknown") so a
+	// SIEM rule can route them separately from normal triggers.
+	Anomalies []string `json:"anomalies,omitempty"`
 }
 
 func NewID() string {

@@ -22,10 +22,11 @@ type Correlator struct {
 	slowSev  event.Severity
 
 	mu       sync.Mutex
-	scan     map[string]*scanState   // key: source IP
-	brute    map[string]*bruteState  // key: source IP (+ ":<port>" if PerPort)
-	slow     map[string]*slowState   // key: source IP
-	emitted  map[string]time.Time    // dedup of aggregate emission
+	scan     map[string]*scanState      // key: source IP
+	brute    map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
+	slow     map[string]*slowState      // key: source IP
+	story    map[string]*storylineState // key: source IP
+	emitted  map[string]time.Time       // dedup of aggregate emission
 }
 
 type scanState struct {
@@ -53,6 +54,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		scan:    map[string]*scanState{},
 		brute:   map[string]*bruteState{},
 		slow:    map[string]*slowState{},
+		story:   map[string]*storylineState{},
 		emitted: map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -109,6 +111,9 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 		if extra := c.checkSlowScan(ev, now); extra != nil {
 			out = append(out, extra)
 		}
+	}
+	if extra := c.observeStoryline(ev, now); extra != nil {
+		out = append(out, extra)
 	}
 	return out
 }
