@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // sortedMetaKeys returns the meta map's keys in stable order so the same
@@ -23,13 +25,16 @@ func sortedMetaKeys(m map[string]any) []string {
 
 // metaToString collapses an arbitrary meta value to a single-line string
 // suitable for CEF/LEEF extension values. Maps and slices get rendered
-// as compact JSON.
+// as compact JSON. All string-typed leaves are passed through
+// safe.SanitizeForLog so attacker-supplied control characters / ANSI
+// escapes / log-injection newlines can't impersonate trusted log lines
+// once the event reaches a syslog or webhook sink.
 func metaToString(v any) string {
 	switch t := v.(type) {
 	case nil:
 		return ""
 	case string:
-		return t
+		return safe.SanitizeForLog(t)
 	case bool:
 		if t {
 			return "true"
@@ -42,5 +47,8 @@ func metaToString(v any) string {
 	if err != nil {
 		return fmt.Sprintf("%v", v)
 	}
-	return string(b)
+	// JSON-marshalled compounds are safe by construction (json.Marshal
+	// escapes control chars) but truncate so a single huge value
+	// doesn't fill the SIEM record.
+	return safe.SanitizeForLog(string(b))
 }

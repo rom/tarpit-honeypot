@@ -1,6 +1,7 @@
 package format
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -134,11 +135,33 @@ func cefEscapeHeader(s string) string {
 }
 
 // cefEscapeValue escapes characters that are special in the extension
-// key=value portion: backslash, equals, and newline (which we strip).
+// key=value portion: backslash, equals, and any control character.
+// We don't just translate \r\n to "\n" / "\r" sequences because an
+// attacker-supplied banner could still contain raw escape sequences
+// (\x1b[...), NUL bytes, or other terminal-jacking content. Anything
+// outside printable ASCII is replaced with a literal \xHH so the
+// output is safe to pipe into a log file or `tail -f` window.
 func cefEscapeValue(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `=`, `\=`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	return s
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\':
+			b.WriteString(`\\`)
+		case c == '=':
+			b.WriteString(`\=`)
+		case c == '\n':
+			b.WriteString(`\n`)
+		case c == '\r':
+			b.WriteString(`\r`)
+		case c == '\t':
+			b.WriteString(`\t`)
+		case c < 0x20 || c == 0x7F:
+			fmt.Fprintf(&b, `\x%02x`, c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }

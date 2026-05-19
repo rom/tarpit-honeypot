@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/format"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 type smtpSink struct {
@@ -109,15 +110,20 @@ func (s *smtpSink) formatBody(ev *event.Event) string {
 		b, _ := s.formatter.Format(ev)
 		body = string(b)
 	}
-	subject := fmt.Sprintf("[tarpit-honeypot %s] %s from %s", ev.Severity, ev.RuleID, ev.Source.IP)
+	// Every field that flows into a header has to be safe.
+	// SanitizeHeader strips CR/LF/NUL so an attacker who somehow lands
+	// a CRLF in an event field can't break MIME structure or inject a
+	// hidden Bcc: header.
+	subject := safe.SanitizeEmailSubject(fmt.Sprintf("[tarpit-honeypot %s] %s from %s",
+		ev.Severity, safe.SanitizeHeader(ev.RuleID), safe.SanitizeHeader(ev.Source.IP)))
 	headers := []string{
-		"From: " + s.from,
-		"To: " + strings.Join(s.to, ", "),
+		"From: " + safe.SanitizeHeader(s.from),
+		"To: " + safe.SanitizeHeader(strings.Join(s.to, ", ")),
 		"Subject: " + subject,
-		"X-Tarpit-Event-ID: " + ev.ID,
-		"X-Tarpit-Severity: " + ev.Severity.String(),
-		"X-Tarpit-Format: " + s.formatter.Name(),
-		"Content-Type: " + s.formatter.ContentType(),
+		"X-Tarpit-Event-ID: " + safe.SanitizeHeader(ev.ID),
+		"X-Tarpit-Severity: " + safe.SanitizeHeader(ev.Severity.String()),
+		"X-Tarpit-Format: " + safe.SanitizeHeader(s.formatter.Name()),
+		"Content-Type: " + safe.SanitizeHeader(s.formatter.ContentType()),
 		"MIME-Version: 1.0",
 	}
 	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body + "\r\n"

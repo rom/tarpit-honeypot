@@ -1,6 +1,7 @@
 package format
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -77,11 +78,30 @@ func leefEscapeHeader(s string) string {
 	return s
 }
 
+// leefEscapeValue escapes every byte that could disturb LEEF parsing:
+// our tab delimiter, the backslash escape char, line terminators, and
+// any control character below 0x20. ANSI escapes / NUL / bell would
+// otherwise survive a syslog hop and risk impersonating a different
+// log line.
 func leefEscapeValue(s string) string {
-	// Tab is our delimiter; escape it inside values. Newlines also out.
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, "\t", `\t`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	return s
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\':
+			b.WriteString(`\\`)
+		case c == '\t':
+			b.WriteString(`\t`)
+		case c == '\n':
+			b.WriteString(`\n`)
+		case c == '\r':
+			b.WriteString(`\r`)
+		case c < 0x20 || c == 0x7F:
+			fmt.Fprintf(&b, `\x%02x`, c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
