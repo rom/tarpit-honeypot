@@ -25,12 +25,29 @@ type Config struct {
 // All fields except ID are optional — a deployment can configure metadata-
 // only honeynets that only show up in DNS forward-resolution.
 type Honeynet struct {
-	ID      string         `yaml:"id"`
-	CIDR    string         `yaml:"cidr"`
-	Gateway string         `yaml:"gateway"`
-	DNS     string         `yaml:"dns"`
-	Domain  string         `yaml:"domain"`
-	Hosts   []HoneynetHost `yaml:"hosts"`
+	ID      string          `yaml:"id"`
+	CIDR    string          `yaml:"cidr"`
+	Gateway string          `yaml:"gateway"`
+	DNS     string          `yaml:"dns"`
+	Domain  string          `yaml:"domain"`
+	Hosts   []HoneynetHost  `yaml:"hosts"`
+	ARP     ARPResponderCfg `yaml:"arp_responder"`
+}
+
+// ARPResponderCfg makes the artificial network discoverable on the L2
+// segment. When enabled (Linux only), the sensor opens an AF_PACKET socket
+// on the named interface and replies to ARP requests for any virtual host
+// IP with that host's derived MAC. Scanners running `arp-scan` see the
+// network as fully populated without the operator running `ip addr add`
+// for each virtual IP.
+//
+// Note: ARP responding alone does NOT route TCP / UDP traffic to the
+// sensor. For the L4 dispatch you still need either `ip addr add`,
+// iptables redirection, or a TUN-based adapter (the sensor only handles
+// connections that actually arrive at one of its real sockets).
+type ARPResponderCfg struct {
+	Enabled   bool   `yaml:"enabled"`
+	Interface string `yaml:"interface"`
 }
 
 type HoneynetHost struct {
@@ -267,6 +284,12 @@ type Route struct {
 	Channels []string `yaml:"channels"`
 }
 
+// Match is the route predicate. All non-empty fields must hold for the
+// route to fire on a given event. Fields are AND-ed together; configure
+// multiple routes for OR semantics.
 type Match struct {
-	Severity string `yaml:"severity"` // ">=low", "<high", "=critical"
+	Severity  string `yaml:"severity"`         // ">=low", "<high", "=critical"
+	Honeynet  string `yaml:"honeynet"`         // exact match on event.meta.honeynet (the network id)
+	HoneynetOS string `yaml:"honeynet_os"`     // exact match on event.meta.honeynet_os
+	RuleID    string `yaml:"rule_id"`          // exact match on event.rule_id
 }

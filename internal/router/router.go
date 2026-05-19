@@ -122,8 +122,7 @@ func (r *Router) Dispatch(ev *event.Event) {
 	deduped := !r.dedup.ShouldSend(dedupKey)
 
 	for _, route := range r.routes {
-		ok, err := config.SeverityMatches(route.Match.Severity, ev.Severity)
-		if err != nil || !ok {
+		if !matchEvent(route.Match, ev) {
 			continue
 		}
 		for _, chID := range route.Channels {
@@ -244,6 +243,49 @@ func (r *Router) runWorker(ctx context.Context, id string, w *worker) {
 			}
 		}
 	}
+}
+
+// matchEvent applies all non-empty fields of m against ev. All set fields
+// must match for the route to fire (AND semantics).
+func matchEvent(m config.Match, ev *event.Event) bool {
+	if m.Severity != "" {
+		ok, err := config.SeverityMatches(m.Severity, ev.Severity)
+		if err != nil || !ok {
+			return false
+		}
+	}
+	if m.RuleID != "" && m.RuleID != ev.RuleID {
+		return false
+	}
+	if m.Honeynet != "" {
+		if !metaEquals(ev, "honeynet", m.Honeynet) {
+			return false
+		}
+	}
+	if m.HoneynetOS != "" {
+		if !metaEquals(ev, "honeynet_os", m.HoneynetOS) {
+			return false
+		}
+	}
+	return true
+}
+
+// metaEquals reports whether ev.Meta[key] is the given string. Returns
+// false for missing keys or non-string values — meta is freeform, so we
+// don't try to coerce.
+func metaEquals(ev *event.Event, key, want string) bool {
+	if ev.Meta == nil {
+		return false
+	}
+	v, ok := ev.Meta[key]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return s == want
 }
 
 func flushBacklog(backlog *[]*event.Event, tryOne func(*event.Event) error, w *worker) {

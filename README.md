@@ -121,6 +121,13 @@ phasing decisions.
 
 ## Status
 
+**v1.2 — honeynet L2 + routing.** Adds an opt-in Linux ARP responder
+so virtual networks are discoverable without `ip addr add` (each
+virtual host advertises a stable deterministic MAC derived from
+`sensor.deployment_id`), and extends the routing predicate so events
+from a specific honeynet, OS family, or rule id can fan out to their
+own channels.
+
 **v1.1 — honeynets.** Adds artificial networks of artificial hosts:
 one sensor can present as N distinct virtual machines via the new
 `honeynets:` config block. Each virtual host gets a deterministically-
@@ -612,6 +619,71 @@ each host's derived identity seed so you can confirm uniqueness:
     :443 handler=https
   10.99.0.20  hostname=dc-01        os=windows ...
 ```
+
+### ARP responder (Linux)
+
+Enable per-honeynet `arp_responder.enabled: true` to make the virtual
+network discoverable on the L2 segment without `ip addr add`. The
+sensor opens an AF_PACKET socket on the configured interface
+(`arp_responder.interface`; empty = first non-loopback interface),
+filters for ARP requests, and replies with the requested virtual
+host's deterministic MAC.
+
+```yaml
+honeynets:
+  - id: corp-lan
+    cidr: 10.99.0.0/24
+    arp_responder:
+      enabled: true
+      interface: eth0
+    hosts:
+      - { ip: 10.99.0.10, hostname: web-prod-01, ... }
+      - { ip: 10.99.0.20, hostname: dc-01, ... }
+```
+
+Each host's MAC is `sha256(deployment_id || "mac" || host_seed)[:6]`
+with the locally-administered bit set (`0x02`) and the multicast bit
+cleared. `tarpit-honeypot list-honeynets` prints the MAC alongside
+the IP so an operator can confirm uniqueness:
+
+```
+# corp-lan  cidr=10.99.0.0/24 ...
+  10.99.0.10  mac=3e:04:45:bb:fb:79  hostname=web-prod-01  os=linux ...
+  10.99.0.20  mac=5e:1f:7d:3d:8b:08  hostname=dc-01        os=windows ...
+```
+
+**Limitation:** ARP responding alone is L2 discovery. To route TCP /
+UDP traffic for the virtual IPs into the sensor's real sockets, the
+operator still needs `ip addr add` or iptables redirection (or a
+TUN-based adapter — planned for v1.3). Without that, scanners running
+`arp-scan` see a populated network but TCP probes get nowhere.
+
+### Per-honeynet routing
+
+Routes can match on event meta as well as severity. Use this to fan
+out per-virtual-network, per-OS-family, or per-rule-id channels:
+
+```yaml
+channels:
+  - id: ot-pagerduty
+    type: webhook
+    url: https://events.pagerduty.com/...
+  - id: corp-soc
+    type: smtp
+    ...
+
+routes:
+  - match: { severity: ">=critical", honeynet: "ot-cell-A" }
+    channels: [ot-pagerduty]
+  - match: { severity: ">=high", honeynet_os: "windows" }
+    channels: [corp-soc]
+  - match: { severity: ">=low" }
+    channels: [stdout, jsonlog, sqlite]
+```
+
+`Match` fields are AND-ed. Add multiple routes for OR semantics. The
+recognized fields are `severity`, `honeynet`, `honeynet_os`, and
+`rule_id`.
 
 ### DNS forward-resolution
 

@@ -364,6 +364,16 @@ honeynets:
     gateway: 10.99.0.1
     dns: 10.99.0.2
     domain: corp.example.local
+    # Linux only. When enabled, the sensor opens an AF_PACKET socket on
+    # `interface` (empty = first non-loopback up iface) and replies to ARP
+    # requests for any virtual host IP with that host's deterministic MAC.
+    # Makes the network discoverable on the L2 segment without `ip addr add`.
+    # NOTE: ARP responding alone is L2 discovery; TCP/UDP traffic still
+    # needs `ip addr add` or iptables redirection to reach the sensor's
+    # real sockets.
+    arp_responder:
+      enabled: false
+      interface: ""
     hosts:
       - ip: 10.99.0.10
         hostname: web-prod-01

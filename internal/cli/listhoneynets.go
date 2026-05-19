@@ -41,8 +41,8 @@ func cmdListHoneynets(args []string) error {
 		fmt.Printf("# %s  cidr=%s gateway=%s dns=%s domain=%s\n",
 			n.ID, n.CIDR, n.Gateway, n.DNS, n.Domain)
 		for _, h := range topo.HostsInNetwork(n.ID) {
-			fmt.Printf("  %s  hostname=%-24s os=%-8s identity=%s\n",
-				h.IP, h.Hostname, h.OS, h.Identity.Seed())
+			fmt.Printf("  %s  mac=%s  hostname=%-24s os=%-8s identity=%s\n",
+				h.IP, h.MACString(), h.Hostname, h.OS, h.Identity.Seed())
 			for _, s := range h.Services {
 				fmt.Printf("    :%d  handler=%s\n", s.Port, s.Handler)
 			}

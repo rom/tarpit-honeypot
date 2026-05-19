@@ -10,6 +10,7 @@
 package honeynet
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -47,6 +48,21 @@ type Host struct {
 	OS       string        // free-form ("linux", "windows", "cisco-ios", ...)
 	Services []*Service
 	Identity *identity.Identity // derived per-host
+	MAC      [6]byte             // stable per-host, derived from Identity
+}
+
+// MACString returns the host's MAC in xx:xx:xx:xx:xx:xx form.
+func (h *Host) MACString() string {
+	const hex = "0123456789abcdef"
+	out := make([]byte, 17)
+	for i, b := range h.MAC {
+		out[i*3] = hex[b>>4]
+		out[i*3+1] = hex[b&0x0F]
+		if i < 5 {
+			out[i*3+2] = ':'
+		}
+	}
+	return string(out[:17])
 }
 
 type Service struct {
@@ -94,12 +110,14 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 			if _, err := netip.ParseAddr(hcfg.IP); err != nil {
 				return nil, fmt.Errorf("honeynet %s: host %s: bad ip %q: %w", ncfg.ID, hcfg.Hostname, hcfg.IP, err)
 			}
+			hostID := id.Derive("honeynet/" + ncfg.ID + "/" + hcfg.IP)
 			h := &Host{
 				NetID:    ncfg.ID,
 				IP:       hcfg.IP,
 				Hostname: hcfg.Hostname,
 				OS:       hcfg.OS,
-				Identity: id.Derive("honeynet/" + ncfg.ID + "/" + hcfg.IP),
+				Identity: hostID,
+				MAC:      hostID.MAC(),
 			}
 			for _, sc := range hcfg.Services {
 				if sc.Port <= 0 || sc.Port > 65535 {
@@ -226,4 +244,12 @@ func (t *Topology) HostsInNetwork(id string) []*Host {
 // for the sensor's "should we enable honeynet dispatch?" check.
 func (t *Topology) Empty() bool {
 	return t == nil || len(t.nets) == 0
+}
+
+// StartARPResponder launches an L2 ARP responder for the named interface
+// (empty = first non-loopback up interface). Linux-only; on other
+// platforms it returns an error and the caller should log + continue.
+// Returns when ctx is cancelled.
+func (t *Topology) StartARPResponder(ctx context.Context, iface string) error {
+	return startARPResponder(ctx, iface, t)
 }

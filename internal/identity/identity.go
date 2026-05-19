@@ -166,3 +166,16 @@ func (i *Identity) SerialNumber() uint32 {
 	_ = bi
 	return i.Uint32("device-serial") | 0x10000000
 }
+
+// MAC returns a stable 48-bit MAC address derived from the deployment_id.
+// The locally-administered bit (0x02) is set on the first byte and the
+// multicast bit (0x01) is cleared so the address is valid as a unicast
+// MAC on the same L2 segment. Used by the honeynet ARP responder so each
+// virtual host advertises a distinct hardware address.
+func (i *Identity) MAC() [6]byte {
+	b := i.Bytes("mac", 6)
+	var out [6]byte
+	copy(out[:], b)
+	out[0] = (out[0] | 0x02) & 0xFE // locally-administered, unicast
+	return out
+}
