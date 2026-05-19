@@ -16,7 +16,7 @@ CMD          := ./cmd/$(BIN)
 # When v0.3 adds libpcap on the pcap-capture path, we'll flip this per-target.
 export CGO_ENABLED := 0
 
-.PHONY: all build test vet fmt clean cross install-dev
+.PHONY: all build test vet fmt clean cross install-dev deb rpm
 
 all: build
 
@@ -63,3 +63,11 @@ cross:
 	GOOS=linux GOARCH=arm64               $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-arm64  $(CMD)
 	GOOS=linux GOARCH=arm GOARM=7         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv7  $(CMD)
 	GOOS=linux GOARCH=arm GOARM=6         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv6  $(CMD)
+
+# Build a .deb. Requires dpkg-deb on the host.
+deb:
+	ARCH=$${ARCH:-amd64} packaging/debian/build.sh
+
+# Build an .rpm. Requires rpmbuild on the host.
+rpm:
+	ARCH=$${ARCH:-amd64} packaging/rpm/build.sh

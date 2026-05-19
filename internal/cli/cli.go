@@ -26,6 +26,7 @@ func Dispatch(args []string) error {
 		{"list-honeynets", "print the configured artificial networks + hosts + services", cmdListHoneynets},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},
 		{"completion", "print shell-completion script (bash | zsh | fish)", cmdCompletion},
+		{"help", "long-form help for a subcommand or topic", cmdHelp},
 		{"version", "print version info", cmdVersion},
 	}
 

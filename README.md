@@ -126,6 +126,7 @@ In-tree:
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
+- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
 ## Status

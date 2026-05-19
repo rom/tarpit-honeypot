@@ -37,6 +37,22 @@ func GetUDP(name string) (UDPHandler, error) {
 		return &tftp{}, nil
 	case "ipmi":
 		return &ipmi{}, nil
+	case "syslog_udp":
+		return &syslogUDP{}, nil
+	case "radius":
+		return &radius{}, nil
+	case "sip":
+		return &sipUDP{}, nil
+	case "ssdp":
+		return &ssdp{}, nil
+	case "cldap":
+		return &cldap{}, nil
+	case "llmnr":
+		return &llmnr{}, nil
+	case "nbns":
+		return &nbns{}, nil
+	case "fins":
+		return &fins{}, nil
 	}
 	return nil, fmt.Errorf("unknown udp handler %q", name)
 }

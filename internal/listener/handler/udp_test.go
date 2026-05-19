@@ -12,10 +12,13 @@ import (
 )
 
 // fakePacketConn captures writes so tests can inspect server replies.
+// laddr is optional — when set, LocalAddr() returns it (used by the
+// LLMNR / NBNS responder tests which need a non-nil local IP).
 type fakePacketConn struct {
 	net.PacketConn
 	written [][]byte
 	to      []net.Addr
+	laddr   net.Addr
 }
 
 func (f *fakePacketConn) WriteTo(p []byte, a net.Addr) (int, error) {
@@ -24,7 +27,12 @@ func (f *fakePacketConn) WriteTo(p []byte, a net.Addr) (int, error) {
 	return len(p), nil
 }
 func (f *fakePacketConn) Close() error               { return nil }
-func (f *fakePacketConn) LocalAddr() net.Addr        { return &net.UDPAddr{} }
+func (f *fakePacketConn) LocalAddr() net.Addr {
+	if f.laddr != nil {
+		return f.laddr
+	}
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 5355}
+}
 func (f *fakePacketConn) SetDeadline(time.Time) error      { return nil }
 func (f *fakePacketConn) SetReadDeadline(time.Time) error  { return nil }
 func (f *fakePacketConn) SetWriteDeadline(time.Time) error { return nil }

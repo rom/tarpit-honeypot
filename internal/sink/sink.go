@@ -37,6 +37,8 @@ func Build(ch config.Channel, dataDir string, jsonMB int) (Sink, error) {
 		return newSNS(ch)
 	case "snmptrap":
 		return newSNMPTrap(ch)
+	case "mqtt":
+		return newMQTT(ch, f)
 	}
 	return nil, fmt.Errorf("sink %s: unknown type %q", ch.ID, ch.Type)
 }

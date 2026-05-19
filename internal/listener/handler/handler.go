@@ -135,6 +135,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &mysql{id: deps.Identity}, nil
 	case "redis":
 		return &redis{}, nil
+	case "syslog_tcp":
+		return &syslogTCP{}, nil
+	case "rtsp":
+		return &rtsp{}, nil
+	case "dockerapi":
+		return &dockerapi{}, nil
+	case "melsec":
+		return &melsec{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }

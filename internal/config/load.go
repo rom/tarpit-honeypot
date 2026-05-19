@@ -229,10 +229,14 @@ func (c *Config) Validate() error {
 			"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
 			"dcerpc": true, "ldap": true, "kerberos": true,
 			"postgres": true, "mysql": true, "redis": true,
+			"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
 			"bacnet": true, "tftp": true, "ipmi": true,
+			"syslog_udp": true, "radius": true, "sip": true,
+			"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
+			"fins": true,
 		}
 		switch l.Proto {
 		case "tcp":
@@ -463,6 +467,13 @@ func (c *Config) Validate() error {
 		case "snmptrap":
 			if ch.Host == "" {
 				return fmt.Errorf("channel %s: snmptrap needs host", ch.ID)
+			}
+		case "mqtt":
+			if ch.URL == "" {
+				return fmt.Errorf("channel %s: mqtt needs url (e.g. tcp://broker:1883)", ch.ID)
+			}
+			if ch.QoS < 0 || ch.QoS > 2 {
+				return fmt.Errorf("channel %s: mqtt qos must be 0|1|2", ch.ID)
 			}
 		default:
 			return fmt.Errorf("channel %s: unknown type %q", ch.ID, ch.Type)

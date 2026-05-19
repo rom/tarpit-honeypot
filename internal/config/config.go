@@ -321,6 +321,11 @@ type Channel struct {
 	// snmptrap
 	Community     string `yaml:"community"`
 	EnterpriseOID string `yaml:"enterprise_oid"`
+
+	// mqtt
+	Topic  string `yaml:"topic"`
+	QoS    int    `yaml:"qos"`
+	Retain bool   `yaml:"retain"`
 }
 
 type Route struct {
