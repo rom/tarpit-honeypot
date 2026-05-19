@@ -1,0 +1,88 @@
+# OT / ICS environment — substation, factory cell, water-treatment plant.
+# Pretends to be a Modbus/S7/IEC-104 control network. Aggressive
+# correlator thresholds because actual operational networks rarely see
+# random scans; anything probing here is suspicious immediately.
+sensor:
+  name: ot-cell-A-decoy-01
+  data_dir: /var/lib/tarpit
+  drop_user: tarpit
+  drop_group: tarpit
+  jitter:
+    enabled: true
+    min_ms: 5
+    max_ms: 30
+  disk:
+    json_log_mb: 256
+    sqlite_mb: 1024
+    pcap_mb: 2048
+    capture_kb: 128
+    retention_days: 365   # OT investigations span long windows
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # Real OT services we mimic.
+  - { id: modbus-bait, proto: tcp, bind: 0.0.0.0:502,  mode: banner, handler: modbus,  severity: critical, capture: true }
+  - { id: s7-bait,     proto: tcp, bind: 0.0.0.0:102,  mode: banner, handler: s7,      severity: critical, capture: true }
+  - { id: iec104-bait, proto: tcp, bind: 0.0.0.0:2404, mode: banner, handler: iec104,  severity: critical, capture: true }
+  - { id: enip-bait,   proto: tcp, bind: 0.0.0.0:44818, mode: banner, handler: ethernetip, severity: critical, capture: true }
+  - { id: opcua-bait,  proto: tcp, bind: 0.0.0.0:4840, mode: banner, handler: opcua,   severity: critical, capture: true }
+  - { id: bacnet-bait, proto: udp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet, severity: critical }
+  - { id: snmp-bait,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,    severity: high }
+  # Engineering-workstation surface — anyone reaching this from the OT
+  # cell shouldn't exist.
+  - { id: rdp-bait,    proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,     severity: critical, capture: true }
+  - { id: ssh-bait,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,     severity: critical, capture: true }
+
+# Honeynet of virtual ICS devices on a flat L2 segment, with ARP+ICMP
+# responders so an arp-scan / ping sweep finds them.
+honeynets:
+  - id: ot-cell-A
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 192.0.2.10, hostname: plc-press-01,  os: ics, services: [
+            {port: 102, handler: s7}, {port: 502, handler: modbus}] }
+      - { ip: 192.0.2.11, hostname: plc-conveyor-1, os: ics, services: [
+            {port: 502, handler: modbus}] }
+      - { ip: 192.0.2.20, hostname: hmi-press-01,  os: windows, services: [
+            {port: 3389, handler: rdp}, {port: 4840, handler: opcua}] }
+      - { ip: 192.0.2.30, hostname: rtu-feeder-01, os: ics, services: [
+            {port: 2404, handler: iec104}] }
+
+correlate:
+  # An OT network has almost zero baseline noise. Anything more than 2
+  # distinct ports in 60s from one source is real.
+  port_scan:   { enabled: true, distinct_ports: 2, window: 60s,  severity: critical }
+  brute_force: { enabled: true, attempts: 3,       window: 300s, per_port: true, severity: critical }
+  slow_scan:   { enabled: true, distinct_ports: 5, window: 24h,  severity: critical }
+
+allowlist:
+  - 10.20.30.0/24   # the cell's known-good engineering workstation subnet
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: ot-soc-trap
+    type: snmptrap
+    host: nms.ot.example.internal
+    port: 162
+    community: tarpit
+    enterprise_oid: "1.3.6.1.4.1.65535.2"
+    min_severity: high
+  - id: ot-soc-syslog
+    type: syslog
+    network: tcp
+    address: siem.ot.example.internal:6514
+    tag: ot-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=critical" }, channels: [ot-soc-trap, ot-soc-syslog, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },      channels: [jsonlog, sqlite, stdout] }

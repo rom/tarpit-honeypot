@@ -1,0 +1,47 @@
+# Minimal IoT / embedded sensor — Raspberry Pi Zero, OpenWrt router,
+# small VM. Tripwire mode: low resource use, no SQLite, no web UI,
+# events stream out via webhook.
+#
+# Cross-compile with: make cross  -> dist/tarpit-honeypot-linux-armv6
+# (Pi Zero W). For Pi 3/4/5 use linux-arm64 instead.
+sensor:
+  name: ""   # blank -> hostname
+  data_dir: /var/lib/tarpit
+  jitter:
+    enabled: true
+    min_ms: 20
+    max_ms: 120
+  disk:
+    json_log_mb: 32
+    pcap_mb: 64
+    capture_kb: 16
+    retention_days: 7
+
+# UI off — embedded sensor doesn't expose a dashboard.
+
+listeners:
+  - { id: ssh-bait,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,    severity: high }
+  - { id: telnet-bait, proto: tcp, bind: 0.0.0.0:23,   mode: tarpit, handler: raw,    severity: high,
+       tarpit: { strategy: keepalive, max_per_source: 2, max_total: 16,
+                 keepalive: { interval: 60s } } }
+  - { id: http-bait,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,   severity: medium }
+  - { id: ftp-bait,    proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,    severity: high }
+  - { id: snmp-bait,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,   severity: high }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 3, window: 20s, severity: high }
+  brute_force: { enabled: true, attempts: 5,        window: 60s, per_port: true, severity: high }
+
+channels:
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - id: hub
+    type: webhook
+    url: https://hub.example.com/ingest/tarpit
+    hmac_secret_env: TARPIT_WEBHOOK_SECRET
+    timeout: 5s
+    min_severity: medium
+    rate_limit_per_min: 120
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog] }
+  - { match: { severity: ">=medium" }, channels: [hub] }

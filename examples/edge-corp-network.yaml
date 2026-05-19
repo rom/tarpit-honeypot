@@ -1,0 +1,112 @@
+# Corporate edge sensor: IT honeypots on common scanned ports + an
+# Active-Directory-shaped honeynet, alerts to SIEM via syslog/CEF.
+#
+# Deploy on a single VM at the office-network edge. The OS routes the
+# honeynet CIDR through this host (either `ip addr add` for each
+# virtual IP, or a NAT / bridge rule). Bare-metal install via the
+# packaging/systemd unit.
+sensor:
+  name: edge-honeypot-01
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  jitter:
+    enabled: true
+    min_ms: 10
+    max_ms: 60
+  shutdown:
+    drain_timeout: 15s
+  tls_rotate:
+    days: 30
+  disk:
+    json_log_mb: 1024
+    sqlite_mb: 2048
+    pcap_mb: 4096
+    retention_days: 90
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: ssh-bait,   proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,   severity: high,     capture: true,  max_concurrent: 64 }
+  - { id: http-bait,  proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,  severity: medium,   capture: true }
+  - { id: https-bait, proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https, severity: high,     capture: true,
+      https: { hosts: ["edge.corp.example.com"] } }
+  - { id: telnet-tar, proto: tcp, bind: 0.0.0.0:23,   mode: tarpit, handler: raw,   severity: high,
+      tarpit: { strategy: sticky, max_per_source: 4 } }
+  - { id: ldap-bait,  proto: tcp, bind: 0.0.0.0:389,  mode: banner, handler: ldap,  severity: critical, capture: true }
+  - { id: smb-bait,   proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,   severity: critical, capture: true }
+  - { id: rdp-bait,   proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,   severity: critical, capture: true }
+  - { id: krb-bait,   proto: tcp, bind: 0.0.0.0:88,   mode: banner, handler: kerberos, severity: critical }
+
+canaries:
+  - id: shared-creds
+    path: /srv/shared/credentials.xlsx
+    events: [write, remove, rename, chmod]
+    severity: critical
+
+url_canaries:
+  # Generate with: tarpit-honeypot gen-token --type=url --label=backup
+  - { id: backup-aws-tarball, path: /backup/aws-prod.tar.gz, severity: critical }
+
+dns:
+  enabled: true
+  bind: 0.0.0.0:53
+  amplifier_detection:
+    enabled: true
+    window: 60s
+    queries: 30
+    severity: high
+
+honeynets:
+  - id: corp-ad
+    cidr: 10.99.0.0/24
+    gateway: 10.99.0.1
+    dns: 10.99.0.2
+    domain: corp.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.99.0.10, hostname: dc-01,        os: windows, services: [
+            {port: 88, handler: kerberos}, {port: 389, handler: ldap},
+            {port: 445, handler: smb},     {port: 3389, handler: rdp}] }
+      - { ip: 10.99.0.20, hostname: file-01,      os: windows, services: [{port: 445, handler: smb}] }
+      - { ip: 10.99.0.30, hostname: ws-finance-1, os: windows, services: [{port: 3389, handler: rdp}] }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force: { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  slow_scan:   { enabled: true, distinct_ports: 10, window: 24h,  severity: high }
+
+dedup:
+  default_window: 5m
+
+allowlist:
+  - 10.0.0.0/8        # internal scanning
+  - 192.168.0.0/16
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: siem
+    type: syslog
+    network: tcp
+    address: siem.corp.example.com:6514
+    tag: tarpit-honeypot
+    format: cef
+    min_severity: medium
+  - id: sms
+    type: twilio
+    account_sid_env: TWILIO_SID
+    auth_token_env: TWILIO_TOKEN
+    from: "+15555550100"
+    to:   ["+15555550199"]
+    min_severity: critical
+    rate_limit_per_min: 6
+
+routes:
+  - { match: { severity: ">=critical" }, channels: [sms, siem, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=high", honeynet_os: "windows" }, channels: [siem, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

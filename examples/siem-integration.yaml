@@ -1,0 +1,84 @@
+# Output-format showcase. Every event is fanned out simultaneously to:
+#   - jsonlog (local, JSON)
+#   - syslog (ArcSight, CEF)
+#   - syslog (QRadar, LEEF)
+#   - webhook (Snowflake / Athena / AWS Security Lake, OCSF)
+#   - SNS (AWS, plain channel-specific payload)
+#   - SNMP trap (NMS, SNMPv2c)
+#
+# Useful for: bench-testing each SIEM's parser, validating field
+# mappings during onboarding, demonstrating per-channel routing to a
+# stakeholder.
+sensor:
+  name: siem-showcase
+  data_dir: ./var
+  jitter:
+    enabled: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # One representative listener per protocol family so each SIEM gets
+  # variety in the test events it ingests.
+  - { id: ssh-bait,   proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,   severity: high }
+  - { id: http-bait,  proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,  severity: medium }
+  - { id: smb-bait,   proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,   severity: critical }
+  - { id: modbus-bait, proto: tcp, bind: 0.0.0.0:502, mode: banner, handler: modbus, severity: critical }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10,       window: 60s, severity: high }
+
+channels:
+  # --- Local sinks (always receive every event) ---
+  - { id: jsonlog,  type: jsonlog,  format: json,  min_severity: low }
+  - { id: sqlite,   type: sqlite,                  min_severity: low }
+  - { id: stdout,   type: stdout,   format: json,  min_severity: low }
+
+  # --- Per-SIEM outbound ---
+  - id: arcsight
+    type: syslog
+    network: tcp
+    address: arcsight.example.com:514
+    tag: tarpit-honeypot
+    format: cef
+    min_severity: medium
+
+  - id: qradar
+    type: syslog
+    network: tcp
+    address: qradar.example.com:514
+    tag: tarpit-honeypot
+    format: leef
+    min_severity: medium
+
+  - id: aws-security-lake
+    type: webhook
+    url: https://lake-ingest.example.com/v1/events
+    format: ocsf
+    hmac_secret_env: LAKE_HMAC_SECRET
+    timeout: 10s
+    min_severity: low
+
+  - id: sns-pager
+    type: sns
+    topic_arn: arn:aws:sns:us-east-1:123456789012:tarpit-critical
+    access_key_env: AWS_ACCESS_KEY_ID
+    secret_key_env: AWS_SECRET_ACCESS_KEY
+    min_severity: critical
+
+  - id: nms
+    type: snmptrap
+    host: nms.example.internal
+    port: 162
+    community: tarpit
+    enterprise_oid: "1.3.6.1.4.1.65535"
+    min_severity: high
+
+routes:
+  - { match: { severity: ">=low" },       channels: [jsonlog, sqlite, stdout, aws-security-lake] }
+  - { match: { severity: ">=medium" },    channels: [arcsight, qradar] }
+  - { match: { severity: ">=high" },      channels: [nms] }
+  - { match: { severity: ">=critical" },  channels: [sns-pager] }
