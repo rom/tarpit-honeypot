@@ -15,10 +15,14 @@ phasing decisions.
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
   or `tarpit` (sticky / trickle / keepalive).
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **Built-in protocol handlers** (12 IT + 8 ICS/IoT):
-  - IT/TCP: `raw`, `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`
+- **Built-in protocol handlers** (28 in total):
+  - Generic: `raw`
+  - IT/TCP: `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`
   - ICS/TCP: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
-  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`
+  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`
+- **Client fingerprinting**: JA3 + JA4 from the TLS ClientHello of the
+  HTTPS handler, HASSH from the SSH KEXINIT. Stable across browser /
+  scanner GREASE shuffling.
 - **Tarpit modes**: `sticky` (hold open), `trickle` (one byte every N
   seconds), `keepalive` (slow null bytes), with per-source and total
   connection caps.
@@ -51,8 +55,19 @@ phasing decisions.
 - **Local sinks**: `stdout`, `jsonlog` (rotated JSONL), `sqlite`. These
   always receive every event so the local record stays complete even
   when an attacker matches the allowlist.
-- **Hot reload**: `SIGHUP` rebuilds channels, routes, allowlist, dedup
-  window, and correlator thresholds without dropping connections.
+- **Full hot reload**: `SIGHUP` diffs old vs new config, hot-swaps
+  channels / routes / allowlist / dedup window / correlator / canary
+  lists, and per-listener restarts (added / removed / modified
+  individually) without taking the rest of the sensor down. A
+  `sensor:reload` event with the change list is emitted into the bus.
+- **Outbound retry queue**: each sink has a bounded backlog (default
+  64) with exponential backoff (1s → 60s) when Send returns a
+  transient error. Per-channel Dropped / Failed / Retried counters
+  exposed via `Router.Stats()` and the final-stats log line on Stop.
+- **Per-listener accept-rate caps** (`max_concurrent`): non-blocking
+  semaphore acquire on every accept; overflow closes the connection
+  and emits a `listener:<id>:accept_cap` event. Stops a SYN flood
+  from exhausting goroutines.
 - **Privilege drop**: `setresuid` / `setresgid` after privileged setup
   (Linux). Refuses uid 0. Pairs with `systemd AmbientCapabilities` for
   privileged port binding.
@@ -61,10 +76,14 @@ phasing decisions.
 
 ## Status
 
-**v0.8 — design surface complete.** Adds SMB1/2 negotiate handler. The
-final remaining v1 items are listener hot-reload (currently
-restart-required) and Windows service registration; everything else from
-the original design is shipped.
+**v0.9 — protocol coverage, fingerprinting, ops polish, Docker.** Adds
+11 new protocol handlers (VNC, SMTP receive, RDP, WinRM, DCE/RPC, LDAP,
+Kerberos, Postgres, MySQL, Redis, IPMI), TLS / SSH client fingerprinting
+(JA3, JA4, HASSH), full listener hot-reload, per-listener accept-rate
+caps, outbound sink retry queue with exponential backoff, diff-on-reload
+audit reporting, four new CLI subcommands (`gen-token`, `show-config`,
+`validate-config --diff`), and a multi-stage Dockerfile producing a
+~14MB scratch image.
 
 ## Build
 
@@ -109,10 +128,32 @@ open http://127.0.0.1:8088
 
 ```
 tarpit-honeypot run            -c <config>
-tarpit-honeypot validate-config -c <config>
+tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
+tarpit-honeypot show-config    -c <config>
+tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot version
+```
+
+`validate-config --diff` compares two configs and classifies each
+change as hot-reloadable (channels, routes, allowlist, dedup,
+correlator, canary lists) vs restart-required (sensor.*, ui, dns,
+sniffer). Listeners now hot-reload too, but the diff still surfaces
+them so operators see what will be restarted.
+
+`show-config` prints the post-defaults effective YAML. Secrets stay
+as env-var names (`auth_token_env: TARPIT_UI_TOKEN`) rather than
+expanded values, so the output is safe to paste in tickets.
+
+`gen-token` prints unguessable canary tokens shaped for the three
+common bait surfaces:
+```
+$ tarpit-honeypot gen-token --type=dns --label=prod
+6c50957e8e94f661-prod.canary.example.com
+
+$ tarpit-honeypot gen-token --type=url --bits=128
+/__canary__/8ed2a49c8ef9639a1234567890abcdef
 ```
 
 `run` responds to `SIGHUP` by reloading the config. Channels, routes,
@@ -191,6 +232,17 @@ and `auth_token_env` are configured.
 | `telnet` | 23 | Sends IAC option negotiation + login prompt. Captures up to one line of input. |
 | `ftp` | 21 | 220 banner → USER → 331 → PASS → 530. Captures user + pass lines. |
 | `smb` | 445 | SMB1 Negotiate Protocol Request handler: captures offered dialects, selects NT LM 0.12, replies with a believable Negotiate Response. SMB2 clients get a STATUS_NOT_IMPLEMENTED rejection. |
+| `vnc` | 5900 | RFB 3.8 version exchange + VNC auth challenge. Captures `client_version` + raw DES-encrypted `auth_response_hex` from brute-force tools. Always replies "auth failed". |
+| `smtp_recv` | 25 | ESMTP receive listener. Captures `helo`, `auth_mech`, `auth_user`, `auth_pass` (from AUTH PLAIN / LOGIN), `mail_from`, `rcpt_to`, `message_head`. STARTTLS rejected with 454 so the client falls back to plaintext. |
+| `rdp` | 3389 | X.224 Connection Request parser. Extracts `mstshash` Cookie (often the targeted username) and `RDP_NEG_REQ` flags. Replies CC with PROTOCOL_SSL selected. |
+| `winrm` | 5985 | HTTP 401 Negotiate+Basic challenge. Decodes `Authorization: Basic` credentials into `basic_user` / `basic_pass`. |
+| `dcerpc` | 135 | Endpoint Mapper bind handler. Parses the first abstract interface UUID. Replies bind_ack with NDR transfer syntax. |
+| `ldap` | 389 | Hand-rolled BER decoder for BindRequest. Captures `bind_dn` + cleartext `bind_pw` (simple auth) or `sasl_mechanism`. Replies BindResponse 49 (invalidCredentials). |
+| `kerberos` | 88 | ASN.1 reader for AS-REQ / TGS-REQ. Replies KRB-ERROR KDC_ERR_PREAUTH_REQUIRED. |
+| `postgres` | 5432 | Startup + AuthenticationCleartextPassword + ErrorResponse. Captures `username`, `database`, `password`. Handles SSLRequest / GSSEncRequest fallback. |
+| `mysql` | 3306 | Server-first Handshake (v5.7.42-honeypot). Captures `username`, `auth_response_hex`, optional `database`. Replies ERR_Packet 1045. |
+| `redis` | 6379 | RESP parser (multi-bulk and inline). Captures `auth_password` from AUTH and a short list of issued `commands`. Returns RESP errors. |
+| `ipmi` (UDP) | 623 | RMCP ASF Presence Ping → Pong reply with IPMI 1.5/2.0 entity flag. RMCP+ class logged but not answered (no real keying material). |
 | `modbus` | 502 | MBAP header parser. Captures function_code + unit_id + transaction_id. Plausible success for FC 1/2/3/4/11; Modbus exception for everything else. |
 | `s7` | 102 | TPKT/COTP parser. Replies to Connection Request (0xE0) with Connection Confirm (0xD0) echoing params. |
 | `iec104` | 2404 | BVLC frame parser. Classifies I/S/U-format, replies STARTDT_CON. |
@@ -372,16 +424,57 @@ Coverage includes:
 - `dnscanary`: name + qtype parsing, NXDOMAIN shape, subdomain matcher.
 - `sink/awssns`: Sigv4 determinism + body-sensitivity + region extraction.
 
-## What's NOT in v0.8
+## Client fingerprinting
 
-- **Listener hot-reload.** SIGHUP currently warns when listener config
-  has changed and requires a restart. Channels / routes / allowlist /
-  correlator thresholds are hot-swapped.
+Two TLS handshake fingerprints are emitted on every HTTPS connection:
+
+- `ja3` — md5 of the JA3 string built from version + cipher list + ext
+  list + supported_groups + ec_point_formats, with GREASE filtered.
+- `ja4` — newer variant designed to survive extension shuffling.
+  Emitted as `t13d{nC}{nE}{alpn}_{cipherHash}_{extHash}` format.
+- `ja3_raw` — the pre-hash string, for ad-hoc grouping.
+
+For SSH connections, the handler captures one SSH binary packet after
+the banner and computes:
+
+- `hassh` — md5 of `kex_algs;encryption_algs_c2s;mac_algs_c2s;compression_algs_c2s`.
+- `hassh_algorithms` — the unhashed semicolon-joined raw form.
+
+Caveat: HASSH relies on the SSH client sending its KEXINIT before the
+server. OpenSSH does this by default; some scanners don't.
+
+## Docker
+
+```
+docker build -t tarpit-honeypot:latest .
+docker run --rm \
+  -p 2222:2222 -p 8000:8000 -p 8088:8088 \
+  -v $PWD/var:/var/lib/tarpit-honeypot \
+  -v $PWD/configs/tarpit-honeypot.example.yaml:/etc/tarpit-honeypot/config.yaml:ro \
+  tarpit-honeypot:latest
+```
+
+Final image is a `scratch` base + the static binary + ca-certificates +
+a non-root user (uid 65532). About 14 MB total. The container's binary
+is built with the same `CGO_ENABLED=0` and `-trimpath` as the host
+`make build`.
+
+Privileged ports (53, 88, 102, 110, 135, 161, 389, 445, 502, 623, 636,
+2049, 5432, ...) still need either `--user 0` or a host capability
+grant; for production, the systemd path with `AmbientCapabilities` is
+usually cleaner.
+
+## What's NOT in v0.9
+
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
+- **Prometheus `/metrics` endpoint.** Per-channel counters are
+  collected (Stats()) but not exposed yet over HTTP.
+- **GeoIP / rDNS / ASN enrichment.** Original design included these;
+  not wired up.
 
 Everything else from the original design is shipped.
 
