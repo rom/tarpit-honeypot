@@ -93,6 +93,23 @@ func cmdRun(args []string) error {
 					slog.Error("reload: config invalid; keeping running config", "err", err)
 					continue
 				}
+				// Print the diff to stderr before applying so the operator
+				// has an audit trail in the journal even if Reload errors.
+				diff := config.DiffConfigs(s.Config(), newCfg)
+				if !diff.HasChanges() {
+					slog.Info("reload: no effective changes")
+					continue
+				}
+				slog.Info("reload: change summary",
+					"hot_reloadable", len(diff.HotReloadable),
+					"restart_needed", len(diff.RestartNeeded),
+				)
+				for _, c := range diff.HotReloadable {
+					slog.Info("reload diff", "kind", "hot", "change", c.String())
+				}
+				for _, c := range diff.RestartNeeded {
+					slog.Info("reload diff", "kind", "restart-or-listener-swap", "change", c.String())
+				}
 				if err := s.Reload(newCfg); err != nil {
 					slog.Error("reload failed", "err", err)
 				}

@@ -20,6 +20,14 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
+// listenerHandle wraps a running listener so we can stop it individually
+// (hot reload) without affecting the rest of the sensor.
+type listenerHandle struct {
+	cfg    config.Listener
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 type Sensor struct {
 	cfg        *config.Config
 	name       string
@@ -29,6 +37,11 @@ type Sensor struct {
 	store      *store.Store
 	captureMgr *capture.Manager
 	bus        chan *event.Event
+
+	rootCtx context.Context // parent ctx for listener-specific child contexts
+
+	listenersMu sync.Mutex
+	listeners   map[string]*listenerHandle
 }
 
 func New(cfg *config.Config) (*Sensor, error) {
@@ -46,7 +59,6 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, fmt.Errorf("data_dir %s: %w", cfg.Sensor.DataDir, err)
 	}
 
-	// Open the store once if any sqlite sink is configured OR the UI is on.
 	var st *store.Store
 	if needsStore(cfg) {
 		s, err := store.Open(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB)
@@ -56,7 +68,6 @@ func New(cfg *config.Config) (*Sensor, error) {
 		st = s
 	}
 
-	// Capture manager — created only if any listener requests capture.
 	var capMgr *capture.Manager
 	if needsCapture(cfg) {
 		mgr, err := capture.NewManager(cfg.Sensor.DataDir, cfg.Sensor.Disk.CaptureKB, cfg.Sensor.Disk.PcapMB)
@@ -121,6 +132,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		store:      st,
 		captureMgr: capMgr,
 		bus:        make(chan *event.Event, 1024),
+		listeners:  map[string]*listenerHandle{},
 	}, nil
 }
 
@@ -145,25 +157,66 @@ func needsStore(cfg *config.Config) bool {
 	return false
 }
 
-func (s *Sensor) Name() string { return s.name }
-
-// Router exposes the router for callers like `test-alert`.
-func (s *Sensor) Router() *router.Router { return s.router }
-
-// Correlator exposes the correlator for callers like `test-alert`.
+func (s *Sensor) Name() string                      { return s.name }
+func (s *Sensor) Router() *router.Router            { return s.router }
 func (s *Sensor) Correlator() *correlate.Correlator { return s.correlator }
+func (s *Sensor) Store() *store.Store               { return s.store }
+func (s *Sensor) Config() *config.Config            { return s.cfg }
 
-// Store returns the SQLite event store, or nil if not configured.
-func (s *Sensor) Store() *store.Store { return s.store }
+// startListener builds and launches a single listener. It uses the sensor's
+// rootCtx (set in Run) as the parent so global shutdown still cascades.
+func (s *Sensor) startListener(l config.Listener) error {
+	if s.rootCtx == nil {
+		return fmt.Errorf("startListener called before Run()")
+	}
+	ctx, cancel := context.WithCancel(s.rootCtx)
+	ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr, s.cfg.URLCanaries)
+	if err != nil {
+		cancel()
+		return err
+	}
+	h := &listenerHandle{cfg: l, cancel: cancel, done: make(chan struct{})}
+	go func() {
+		defer close(h.done)
+		if err := ln.Start(ctx, s.bus); err != nil {
+			slog.Error("listener stopped", "id", ln.ID(), "err", err)
+		}
+	}()
+	s.listenersMu.Lock()
+	s.listeners[l.ID] = h
+	s.listenersMu.Unlock()
+	return nil
+}
 
-// Config returns the active configuration.
-func (s *Sensor) Config() *config.Config { return s.cfg }
+// stopListener cancels a single listener and waits for its goroutine to
+// exit. Safe to call with an unknown id (no-op).
+func (s *Sensor) stopListener(id string) {
+	s.listenersMu.Lock()
+	h, ok := s.listeners[id]
+	if ok {
+		delete(s.listeners, id)
+	}
+	s.listenersMu.Unlock()
+	if !ok {
+		return
+	}
+	h.cancel()
+	<-h.done
+}
 
-// Reload swaps the router + correlator + canary watcher with a freshly built
-// set from the new config. Listener and sensor.* changes require restart and
-// are logged as a warning if they differ from the running set.
+// Reload swaps router + correlator + listeners + canary-watcher set with a
+// freshly-built version. SIGHUP-tolerant changes are applied; restart-only
+// changes (sensor.*, dns listener, sniffer) log a clear warning per item.
+//
+// Listener hot-reload semantics:
+//   - listeners added in newCfg: built + started with the new ctx.
+//   - listeners removed in newCfg: cancelled + drained.
+//   - listeners modified in newCfg (anything other than the id is equivalent
+//     to "removed then added"): stopped, then a new instance is started.
 func (s *Sensor) Reload(newCfg *config.Config) error {
-	// What we can hot-swap.
+	diff := config.DiffConfigs(s.cfg, newCfg)
+
+	// Sinks + router + correlator first; if either fails we keep the old set.
 	var newSinks []sink.Sink
 	for _, ch := range newCfg.Channels {
 		var sk sink.Sink
@@ -177,6 +230,9 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 			sk, err = sink.Build(ch, newCfg.Sensor.DataDir, newCfg.Sensor.Disk.JSONLogMB)
 		}
 		if err != nil {
+			for _, b := range newSinks {
+				_ = b.Close()
+			}
 			return fmt.Errorf("reload: %w", err)
 		}
 		newSinks = append(newSinks, sk)
@@ -196,22 +252,54 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 		return err
 	}
 
-	// Listener changes need restart.
-	if listenersChanged(s.cfg.Listeners, newCfg.Listeners) {
-		slog.Warn("reload: listener config changed; the new listener set requires a full restart (current listeners stay as-is)")
+	// Log restart-only deltas explicitly so the operator knows what was left
+	// untouched (other than listeners; we hot-reload those now).
+	for _, c := range diff.RestartNeeded {
+		if c.Section == "listeners" {
+			continue
+		}
+		slog.Warn("reload: change requires restart, ignored", "change", c.String())
 	}
-	if s.cfg.Sensor.DataDir != newCfg.Sensor.DataDir {
-		slog.Warn("reload: sensor.data_dir changed; ignored (requires restart)")
-	}
-	// canaries can be reloaded only if the new path set is identical — for v0.3
-	// we keep things simple and ignore canary path changes.
-	if canariesChanged(s.cfg.Canaries, newCfg.Canaries) {
-		slog.Warn("reload: canary config changed; ignored (requires restart)")
+	for _, c := range diff.HotReloadable {
+		slog.Info("reload: applying", "change", c.String())
 	}
 
-	// Hot-swap router and correlator atomically-ish: stop old workers, then
-	// install the new ones. The bus loop briefly sees no router, but the
-	// channel is buffered, so events queue up rather than being lost.
+	// Apply listener diff. We do removes first so freed ports can be reused
+	// by the adds.
+	listenerDiffs := diff.RestartNeeded
+	oldIDs := map[string]config.Listener{}
+	for _, l := range s.cfg.Listeners {
+		oldIDs[l.ID] = l
+	}
+	newIDs := map[string]config.Listener{}
+	for _, l := range newCfg.Listeners {
+		newIDs[l.ID] = l
+	}
+	for _, c := range listenerDiffs {
+		if c.Section != "listeners" {
+			continue
+		}
+		switch c.Action {
+		case "removed":
+			s.stopListener(c.ID)
+			slog.Info("listener stopped", "id", c.ID)
+		case "modified":
+			s.stopListener(c.ID)
+			if err := s.startListener(newIDs[c.ID]); err != nil {
+				slog.Error("listener restart failed", "id", c.ID, "err", err)
+			} else {
+				slog.Info("listener restarted", "id", c.ID)
+			}
+		case "added":
+			if err := s.startListener(newIDs[c.ID]); err != nil {
+				slog.Error("listener start failed", "id", c.ID, "err", err)
+			} else {
+				slog.Info("listener started", "id", c.ID)
+			}
+		}
+	}
+
+	// Hot-swap router + correlator.
 	oldRouter := s.router
 	oldSinks := s.sinks
 	s.router = newRouter
@@ -219,56 +307,56 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	s.sinks = newSinks
 	s.cfg = newCfg
 
-	newRouter.Start(context.Background())
-	// Don't drain the old worker queues; the new sinks pick up from here.
+	newRouter.Start(s.rootCtx)
 	oldRouter.Stop()
 	for _, sk := range oldSinks {
 		_ = sk.Close()
 	}
-	slog.Info("reload complete", "channels", len(newCfg.Channels), "routes", len(newCfg.Routes))
+
+	// Emit a synthetic reload event so the operator's downstream pipeline
+	// can correlate config changes with detection-signal changes.
+	s.emitReloadEvent(diff)
+
+	slog.Info("reload complete",
+		"hot_reloadable_changes", len(diff.HotReloadable),
+		"restart_needed_changes", len(diff.RestartNeeded),
+		"channels", len(newCfg.Channels),
+		"listeners", len(newCfg.Listeners),
+	)
+	_ = oldIDs
 	return nil
 }
 
-func listenersChanged(a, b []config.Listener) bool {
-	if len(a) != len(b) {
-		return true
+func (s *Sensor) emitReloadEvent(diff config.Diff) {
+	changes := make([]string, 0, len(diff.HotReloadable)+len(diff.RestartNeeded))
+	for _, c := range diff.HotReloadable {
+		changes = append(changes, "hot:"+c.String())
 	}
-	idx := map[string]config.Listener{}
-	for _, l := range a {
-		idx[l.ID] = l
+	for _, c := range diff.RestartNeeded {
+		changes = append(changes, "restart:"+c.String())
 	}
-	for _, l := range b {
-		other, ok := idx[l.ID]
-		if !ok {
-			return true
-		}
-		if other.Proto != l.Proto || other.Bind != l.Bind || other.Mode != l.Mode || other.Handler != l.Handler {
-			return true
-		}
+	ev := &event.Event{
+		ID:       event.NewID(),
+		Time:     timeNow(),
+		Sensor:   s.name,
+		RuleID:   "sensor:reload",
+		Severity: event.SeverityLow,
+		Meta: map[string]any{
+			"hot_reloadable": len(diff.HotReloadable),
+			"restart_needed": len(diff.RestartNeeded),
+			"changes":        changes,
+		},
 	}
-	return false
+	select {
+	case s.bus <- ev:
+	default:
+	}
 }
 
-func canariesChanged(a, b []config.Canary) bool {
-	if len(a) != len(b) {
-		return true
-	}
-	idx := map[string]config.Canary{}
-	for _, c := range a {
-		idx[c.ID] = c
-	}
-	for _, c := range b {
-		other, ok := idx[c.ID]
-		if !ok || other.Path != c.Path || other.Recursive != c.Recursive {
-			return true
-		}
-	}
-	return false
-}
-
-// Run starts listeners, canaries, router workers, and the dispatch loop.
+// Run starts the bus consumer, listeners, canaries, dnscanary, and sniffer.
 // Blocks until ctx is cancelled.
 func (s *Sensor) Run(ctx context.Context) error {
+	s.rootCtx = ctx
 	var wg sync.WaitGroup
 
 	s.router.Start(ctx)
@@ -284,17 +372,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}()
 
 	for _, l := range s.cfg.Listeners {
-		ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr, s.cfg.URLCanaries)
-		if err != nil {
+		if err := s.startListener(l); err != nil {
 			return err
 		}
-		wg.Add(1)
-		go func(ln listener.Listener) {
-			defer wg.Done()
-			if err := ln.Start(ctx, s.bus); err != nil {
-				slog.Error("listener stopped", "id", ln.ID(), "err", err)
-			}
-		}(ln)
 	}
 
 	if len(s.cfg.Canaries) > 0 {
@@ -338,6 +418,18 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 
 	<-ctx.Done()
+	// Cancel any running listeners and wait for them.
+	s.listenersMu.Lock()
+	handles := make([]*listenerHandle, 0, len(s.listeners))
+	for _, h := range s.listeners {
+		handles = append(handles, h)
+	}
+	s.listeners = map[string]*listenerHandle{}
+	s.listenersMu.Unlock()
+	for _, h := range handles {
+		h.cancel()
+		<-h.done
+	}
 	close(s.bus)
 	wg.Wait()
 	s.router.Stop()

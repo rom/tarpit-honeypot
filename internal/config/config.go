@@ -86,9 +86,10 @@ type Listener struct {
 	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
 	Banner      string        `yaml:"banner"`
 	Severity    string        `yaml:"severity"`
-	ReadBytes   int           `yaml:"read_bytes"`
-	ReadTimeout time.Duration `yaml:"read_timeout"`
-	Capture     bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
+	ReadBytes     int           `yaml:"read_bytes"`
+	ReadTimeout   time.Duration `yaml:"read_timeout"`
+	Capture       bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
+	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`

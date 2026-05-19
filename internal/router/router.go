@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -13,8 +14,13 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 )
 
-const sinkQueueDepth = 256
-const sinkSendTimeout = 10 * time.Second
+const (
+	sinkQueueDepth   = 256
+	sinkSendTimeout  = 10 * time.Second
+	maxRetryBacklog  = 64
+	initialRetryWait = 1 * time.Second
+	maxRetryWait     = 60 * time.Second
+)
 
 type worker struct {
 	sink    sink.Sink
@@ -22,7 +28,9 @@ type worker struct {
 	rl      *filter.RateLimiter
 	minSev  event.Severity
 	isLocal bool
-	dropped atomic.Int64
+	dropped atomic.Int64 // events dropped because the in-channel was full
+	failed  atomic.Int64 // events that failed Send (after retry exhaustion)
+	retried atomic.Int64 // events successfully delivered on retry
 }
 
 type Router struct {
@@ -90,16 +98,24 @@ func (r *Router) Stop() {
 	}
 	r.wg.Wait()
 	for id, w := range r.workers {
-		if n := w.dropped.Load(); n > 0 {
-			slog.Warn("sink dropped events", "channel", id, "dropped", n)
+		dropped := w.dropped.Load()
+		failed := w.failed.Load()
+		retried := w.retried.Load()
+		if dropped > 0 || failed > 0 || retried > 0 {
+			slog.Warn("sink final stats",
+				"channel", id,
+				"queue_drops", dropped,
+				"send_failures", failed,
+				"retry_recoveries", retried,
+			)
 		}
 	}
 }
 
 // Dispatch fans out an event according to the configured routes. Non-local
 // sinks are subject to allowlist, dedup, rate-limit and min-severity. Local
-// sinks (stdout, jsonlog) always receive the event so the local store stays
-// complete.
+// sinks (stdout, jsonlog, sqlite) always receive the event so the local
+// store stays complete.
 func (r *Router) Dispatch(ev *event.Event) {
 	allowlisted := r.allow.Contains(ev.Source.IP)
 	dedupKey := ev.Source.IP + "|" + ev.RuleID
@@ -137,12 +153,138 @@ func (r *Router) Dispatch(ev *event.Event) {
 	}
 }
 
+// runWorker pulls events off the in-channel and tries to Send them. On
+// transient failure (any non-nil error) the event is queued in an in-memory
+// backlog and retried with exponential backoff up to maxRetryWait. The
+// backlog itself is bounded; events older than the bound are dropped with
+// the "failed" counter incremented so the operator can see loss in the
+// final stats line.
+//
+// Local sinks (jsonlog, sqlite, stdout) get the same retry treatment as
+// remote ones — a flapping local disk shouldn't lose events any more than
+// a flapping webhook would.
 func (r *Router) runWorker(ctx context.Context, id string, w *worker) {
-	for ev := range w.in {
-		sctx, cancel := context.WithTimeout(ctx, sinkSendTimeout)
-		if err := w.sink.Send(sctx, ev); err != nil {
-			slog.Warn("sink error", "channel", id, "err", err)
-		}
-		cancel()
+	var backlog []*event.Event
+	retryTimer := time.NewTimer(time.Hour)
+	if !retryTimer.Stop() {
+		<-retryTimer.C
 	}
+	currentBackoff := initialRetryWait
+	closed := false
+
+	tryOne := func(ev *event.Event) error {
+		sctx, cancel := context.WithTimeout(ctx, sinkSendTimeout)
+		defer cancel()
+		return w.sink.Send(sctx, ev)
+	}
+
+	enqueue := func(ev *event.Event) {
+		if len(backlog) >= maxRetryBacklog {
+			w.failed.Add(1)
+			// Drop oldest so we make space for the new event — losing recent
+			// data is usually less useful than retaining the older context.
+			backlog = backlog[1:]
+		}
+		if len(backlog) == 0 {
+			retryTimer.Reset(currentBackoff)
+		}
+		backlog = append(backlog, ev)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok := <-w.in:
+			if !ok {
+				closed = true
+				// flush whatever we can before exiting
+				flushBacklog(&backlog, tryOne, w)
+				return
+			}
+			if err := tryOne(ev); err != nil {
+				if !shouldRetry(err) {
+					w.failed.Add(1)
+					slog.Warn("sink permanent error", "channel", id, "err", err)
+					continue
+				}
+				slog.Warn("sink error; queued for retry", "channel", id, "err", err, "backlog_len", len(backlog)+1)
+				enqueue(ev)
+			}
+		case <-retryTimer.C:
+			delivered := 0
+			remaining := backlog[:0]
+			for _, ev := range backlog {
+				if err := tryOne(ev); err != nil {
+					if !shouldRetry(err) {
+						w.failed.Add(1)
+						continue
+					}
+					remaining = append(remaining, ev)
+				} else {
+					delivered++
+				}
+			}
+			backlog = remaining
+			if delivered > 0 {
+				w.retried.Add(int64(delivered))
+			}
+			if len(backlog) > 0 {
+				currentBackoff *= 2
+				if currentBackoff > maxRetryWait {
+					currentBackoff = maxRetryWait
+				}
+				if !closed {
+					retryTimer.Reset(currentBackoff)
+				}
+				slog.Debug("retry partial drain", "channel", id, "delivered", delivered, "remaining", len(backlog), "next_wait", currentBackoff)
+			} else {
+				currentBackoff = initialRetryWait
+				slog.Info("sink backlog drained", "channel", id, "recovered", delivered)
+			}
+		}
+	}
+}
+
+func flushBacklog(backlog *[]*event.Event, tryOne func(*event.Event) error, w *worker) {
+	for _, ev := range *backlog {
+		if err := tryOne(ev); err != nil {
+			w.failed.Add(1)
+		} else {
+			w.retried.Add(1)
+		}
+	}
+	*backlog = nil
+}
+
+// shouldRetry classifies a sink Send error. Transient (network, busy, timeout)
+// errors get retried; programmer / config errors don't. We're permissive by
+// default — assume retryable unless context.Canceled.
+func shouldRetry(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	return true
+}
+
+// Stats returns a per-channel snapshot (used by future /metrics endpoint).
+type Stat struct {
+	Dropped int64
+	Failed  int64
+	Retried int64
+}
+
+func (r *Router) Stats() map[string]Stat {
+	out := map[string]Stat{}
+	for id, w := range r.workers {
+		out[id] = Stat{
+			Dropped: w.dropped.Load(),
+			Failed:  w.failed.Load(),
+			Retried: w.retried.Load(),
+		}
+	}
+	return out
 }

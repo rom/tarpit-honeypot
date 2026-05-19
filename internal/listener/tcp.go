@@ -25,6 +25,10 @@ type tcpListener struct {
 	tarpit       *tarpitState
 	captureMgr   *capture.Manager
 	urlCanarySev map[string]event.Severity
+
+	// sema is non-nil when the listener has a max_concurrent cap.
+	// We acquire one slot per accepted connection and release on exit.
+	sema chan struct{}
 }
 
 func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager, urlCanaries []config.URLCanary, urlSevByID map[string]event.Severity) (*tcpListener, error) {
@@ -48,6 +52,9 @@ func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manag
 			return nil, fmt.Errorf("listener %s: capture requested but capture manager unavailable", l.ID)
 		}
 		t.captureMgr = capMgr
+	}
+	if l.MaxConcurrent > 0 {
+		t.sema = make(chan struct{}, l.MaxConcurrent)
 	}
 	return t, nil
 }
@@ -76,8 +83,49 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			slog.Warn("accept error", "id", t.cfg.ID, "err", err)
 			continue
 		}
-		go t.handle(ctx, conn, bus)
+		if t.sema != nil {
+			select {
+			case t.sema <- struct{}{}:
+				// Acquired a slot. handle() will release on exit.
+			default:
+				// Cap exceeded. Drop with a low-severity event and close.
+				go t.emitAcceptCap(ctx, conn, bus)
+				continue
+			}
+		}
+		go func(c net.Conn) {
+			defer func() {
+				if t.sema != nil {
+					<-t.sema
+				}
+			}()
+			t.handle(ctx, c, bus)
+		}(conn)
 	}
+}
+
+// emitAcceptCap records that we refused a connection because the per-listener
+// max_concurrent cap was hit. We emit at low severity — the operator likely
+// already has a port_scan or brute_force aggregate for the source.
+func (t *tcpListener) emitAcceptCap(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
+	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
+	_ = conn.Close()
+	ev := &event.Event{
+		ID:       event.NewID(),
+		Time:     time.Now().UTC(),
+		Sensor:   t.sensorName,
+		RuleID:   "listener:" + t.cfg.ID + ":accept_cap",
+		Severity: event.SeverityLow,
+		Source:   src,
+		Dest:     dst,
+		Proto:    "tcp",
+		Handler:  t.cfg.Handler,
+		Meta: map[string]any{
+			"reason":         "max_concurrent_reached",
+			"max_concurrent": t.cfg.MaxConcurrent,
+		},
+	}
+	send(ctx, bus, ev)
 }
 
 func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
