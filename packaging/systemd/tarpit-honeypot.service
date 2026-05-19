@@ -1,0 +1,36 @@
+[Unit]
+Description=tarpit-honeypot deception sensor
+Documentation=https://github.com/rom/tarpit-honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tarpit
+Group=tarpit
+ExecStart=/usr/local/bin/tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Grant the capabilities the sensor needs even after privilege drop.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=true
+
+# Hardening.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tarpit-honeypot /var/log/tarpit-honeypot
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

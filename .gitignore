@@ -1,0 +1,9 @@
+/bin/
+/dist/
+*.test
+*.out
+.vscode/
+.idea/
+*.swp
+local.yaml
+local-*.yaml
