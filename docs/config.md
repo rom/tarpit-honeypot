@@ -128,11 +128,20 @@ listeners:
 
 ### Handlers
 
-**TCP-only:** `raw`, `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`.
+**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`.
 
 **UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`.
 
-Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`README.md`](../README.md#protocol-handlers-in-detail) for per-handler capture detail.
+Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`docs/INTEGRATIONS.md`](INTEGRATIONS.md#protocol-handler-catalog) for per-handler defaults and behavior.
+
+**`ssh_interactive` vs `ssh`:** The plain `ssh` handler does the
+banner-grab + HASSH-fingerprint exchange and closes. `ssh_interactive`
+runs the full `golang.org/x/crypto/ssh` server with a persistent
+ed25519 host key (under `<data_dir>/tls/ssh_host_ed25519_key`),
+captures every password + public-key attempt, accepts the third
+credential, and drops into the archetype's shell on the session
+channel. Use `ssh_interactive` when post-auth TTP capture matters;
+use the lighter `ssh` when only credentials and fingerprints do.
 
 ### Tarpit strategies
 
@@ -262,6 +271,12 @@ honeynets:
     icmp_responder:               # answer ICMP echo for virtual IPs (Linux, CAP_NET_RAW)
       enabled: false
       interface: ""
+
+    lldp_responder:               # advertise hosts as LLDP/CDP neighbors (Linux, CAP_NET_RAW)
+      enabled: false              # see "Platform support" — Linux only today
+      interface: ""
+      interval_s: 30
+      include_cdp: false          # also emit Cisco CDP frames
 
     tun:                          # open a Linux TUN, route the CIDR through it
       enabled: false              # CAP_NET_ADMIN required

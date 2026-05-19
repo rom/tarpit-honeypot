@@ -8,6 +8,40 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — macOS first-class support
+- `darwin/amd64` and `darwin/arm64` build targets in `make cross`.
+- Real `privdrop` implementation on darwin (`internal/privdrop/
+  privdrop_darwin.go`): `setgid`/`setuid` with the same "refuse uid
+  0" guard as the Linux path. On darwin `setuid` also drops the
+  saved-uid so a later `setuid(0)` regain attempt fails — same
+  posture as Linux's `setresuid`.
+- Platform-aware error messages on every Linux-only subsystem (ARP /
+  ICMP / LLDP responders, AF_PACKET sniffer, fanotify OPEN events,
+  Linux TUN). Each now mentions the runtime GOOS and the documented
+  macOS workaround (`ifconfig <iface> alias <ip>` for L2/L3 presence,
+  fsnotify for non-OPEN file canaries).
+- Comprehensive platform-support matrix in `docs/usage.md` §12 and
+  `README.md`. New launchd plist example in `docs/INTEGRATIONS.md`.
+
+### Documentation
+- `README.md` rewritten: 37 handlers (was 28), 29 archetypes,
+  ATT&CK / storyline / anomaly / hardening / engagement sections,
+  full platform support matrix, status blocks for v1.6–v1.10.
+- `docs/usage.md` extended with three new top-level sections:
+  Archetypes (§9), Interactive engagement (§10), ATT&CK / storyline /
+  anomaly (§11), Platform support (§12). Troubleshooting table
+  refreshed with macOS-specific entries.
+- `docs/cli.md` adds Common flags table, config-layering description,
+  `init` / `completion` / `help` subcommand sections, `--version` /
+  `-V` flag forms, macOS privileged-setup notes.
+- `docs/config.md` documents `ssh_interactive` vs `ssh`, adds
+  `honeynets[].lldp_responder` block, updates handler lists.
+- `docs/INTEGRATIONS.md` adds §3a (ATT&CK/storyline/anomaly SIEM
+  rules), industrial-OT honeynet recipe, launchd deployment pattern,
+  macOS `ifconfig alias` workaround note.
+- `internal/cli/help.go` archetypes topic enumerates every
+  fingerprint surface the archetype controls.
+
 ### Added — v1.10 attacker engagement
 - **Interactive CLI shell** (`internal/shell`) — post-login command-
   line emulation. After a fake "Login incorrect" first attempt, the

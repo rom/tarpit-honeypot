@@ -1,11 +1,16 @@
 # tarpit-honeypot
 
-A single static Go binary that runs a low-to-medium-interaction deception
-sensor: protocol-shaped honeypots on configurable ports, file/URL/DNS
-canary tokens, network sweep detection, port-scan / brute-force
-correlation, per-event pcap capture, and pluggable outbound alerting.
+A single static Go binary that runs a deception **and** detection sensor:
+protocol-shaped honeypots on configurable ports, OS-archetype-aware
+banners and CLI emulation, interactive SSH/Telnet engagement that captures
+every command an attacker types, MITRE ATT&CK-tagged events, cross-
+protocol attack-storyline correlation, protocol-anomaly detection, file
+/ URL / DNS canary tokens, port-scan / brute-force / slow-scan
+detectors, per-event pcap capture, hostile-input hardening + output
+sanitization, and pluggable outbound alerting.
 
-CGO-free. Linux amd64 / arm64 / armv7 / armv6 static builds.
+CGO-free. Static builds for `linux/amd64`, `linux/arm64`, `linux/armv7`,
+`linux/armv6`, `darwin/amd64`, `darwin/arm64`.
 
 See [`design.md`](design.md) for the full design conversation and
 phasing decisions.
@@ -15,11 +20,35 @@ phasing decisions.
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
   or `tarpit` (sticky / trickle / keepalive).
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **Built-in protocol handlers** (28 in total):
+- **37 built-in protocol handlers**:
   - Generic: `raw`
-  - IT/TCP: `ssh`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`
+  - IT/TCP: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - ICS/TCP: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
-  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`
+  - UDP: `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`
+- **29 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+  `listener.archetype`, or per-honeynet-host `archetype`) and every
+  banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
+  SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
+  and Web UI body report values consistent with a stock install of that
+  OS. Ship list: CentOS 5/6/7/8 + Stream 10, Debian 9–13, RHEL 8/9/10,
+  Ubuntu 24.04/26.04 LTS, FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux,
+  Rocky Linux 9, AlmaLinux 9, Oracle Linux 8/9, Moxa EDS-208, Moxa
+  NPort 5210, Siemens SCALANCE XB-208, Siemens S7-1200 PLC, Siemens
+  S7-1500 PLC. `tarpit-honeypot help archetypes` lists them all.
+- **Interactive CLI shell engagement**: after a fake "Login incorrect"
+  the attacker is dropped into the archetype's shell (telnet) or a
+  full `crypto/ssh` session (`ssh_interactive`). Every typed command
+  is captured and the new `internal/shell` anomaly scanner flags 14
+  ATT&CK-aligned TTPs (reverse shells, ingress tool transfer, SSH-key
+  persistence, cron/systemd persistence, /etc/shadow reads, SUID/sudo
+  abuse, history/log cleaning, crypto-miners, network recon, firewall
+  disable, base64-encoded payloads). `ssh_interactive` persists an
+  ed25519 host key so its fingerprint is stable across restarts.
+- **Multi-page archetype web UI**: HTTP handler routes on method +
+  path. `GET /` serves the archetype's index (Moxa / SCALANCE / S7
+  device summaries); GETs on login-shaped paths serve a form; POSTs
+  parse the form body (6 alias names each for user/pass), capture
+  credentials, and emit `http-login-attempt`.
 - **Client fingerprinting**:
   - **JA3** + **JA4** from the TLS ClientHello (HTTPS handler).
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
@@ -63,6 +92,37 @@ phasing decisions.
     but fires on any subdomain of a registered name.
 - **ARP sniffer** (Linux AF_PACKET): detects ARP scans (one MAC asking
   about many distinct IPs) and unsolicited replies (ARP-cache poisoning).
+- **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host
+  advertises itself in `lldpctl` / Cisco `show cdp neighbors` output
+  with archetype-shaped MAC, hostname, system description, and
+  family-tuned LLDP capabilities (bridge/router for switches + PLCs,
+  station-only for hosts). Pairs naturally with the Moxa / SCALANCE
+  / S7 archetypes for industrial deception.
+- **MITRE ATT&CK tagging**: every event the sensor emits is decorated
+  with `mitre_techniques` (e.g. `["T1110.001","T1078"]`) and
+  `mitre_tactics` (e.g. `["credential-access","initial-access"]`)
+  via the `internal/mitre` rule-id + handler-aware mapping. SIEMs
+  pivot on these IDs directly.
+- **Attack-storyline correlator** (`storyline:multi_stage`): fires
+  when a single source IP touches 3+ distinct ATT&CK tactics inside
+  a 30-minute window. The emitted event carries the kill-chain-
+  ordered stages plus a "->"-joined chain summary
+  ("discovery -> credential-access -> lateral-movement"), so the SOC
+  sees one timeline instead of dozens of independent listener hits.
+- **Protocol-anomaly detection** (`event.Anomalies`): handlers flag
+  deviations from expected protocol shape — SSH banner with non-
+  printable bytes / overlong / non-SSH; HTTP unknown methods;
+  suspicious URIs (path traversal, Log4Shell JNDI, WordPress probes,
+  .git / .env leakage, mgmt-endpoint scans).
+- **Defensive hardening + output sanitization**: `internal/safe`
+  package centralizes hostile-input handling — bounds-checked
+  Slice / BoundedString / AllocBytes (capped at 32 KiB), plus
+  SanitizeForLog / SanitizeUTF8ForLog / SanitizeHeader /
+  SanitizeEmailSubject for output paths. CEF/LEEF/OCSF formatters
+  escape every control byte (not just CRLF); SMTP sink scrubs
+  every header. Prevents log injection, terminal-jacking via ANSI
+  escapes, RLO filename spoofing, and HTTP/SMTP header smuggling
+  from attacker-supplied banners and captured credentials.
 - **Per-event pcap capture**: optional bidirectional byte capture on TCP
   connections, written as synthesized libpcap files Wireshark loads
   directly. Pure-Go, no raw sockets, no CAP_NET_RAW.
@@ -114,10 +174,30 @@ phasing decisions.
   `<data_dir>/captures/*.pcap`, and SQLite `events` rows older than
   the cutoff. Complements the existing size caps.
 - **Privilege drop**: `setresuid` / `setresgid` after privileged setup
-  (Linux). Refuses uid 0. Pairs with `systemd AmbientCapabilities` for
-  privileged port binding.
-- **Static cross-compile** for `linux/amd64`, `linux/arm64`, `linux/armv7`,
-  `linux/armv6`. CGO never required.
+  on Linux; `setuid` / `setgid` on macOS. Refuses uid 0. Pairs with
+  `systemd AmbientCapabilities` (Linux) or launchd's port-binding
+  helpers (macOS) for privileged port binding.
+- **Static cross-compile** for `linux/{amd64,arm64,armv7,armv6}` and
+  `darwin/{amd64,arm64}`. CGO never required.
+
+### Platform support
+
+| Subsystem | Linux | macOS | Notes |
+|---|---|---|---|
+| All TCP/UDP protocol handlers | yes | yes | pure Go |
+| Archetypes, ATT&CK, storyline, anomaly | yes | yes | pure Go |
+| Interactive shell + `ssh_interactive` | yes | yes | crypto/ssh, pure Go |
+| File canaries (write/remove/rename/chmod) | yes | yes | fsnotify (inotify on Linux, kqueue on darwin) |
+| File canaries (read/OPEN events) | yes | — | linux-only, needs fanotify |
+| URL canaries, DNS canaries, DNS amplifier detection | yes | yes | pure Go |
+| Per-event pcap capture | yes | yes | synthesized libpcap, no raw sockets |
+| Outbound channels (webhook/smtp/syslog/twilio/sns/snmptrap/mqtt) | yes | yes | pure Go |
+| Privilege drop | yes | yes | `setresuid` on Linux, `setuid` on darwin |
+| ARP responder | yes | — | needs AF_PACKET; on macOS use `ifconfig <iface> alias <ip>` |
+| ICMP responder | yes | — | needs AF_PACKET; aliased IPs answer ICMP echo natively |
+| LLDP / CDP responder | yes | — | needs AF_PACKET; `/dev/bpf` backend planned |
+| AF_PACKET ARP-scan sniffer | yes | — | `/dev/bpf` backend planned |
+| TUN adapter for honeynet L3 | yes | — | utun backend planned; use `ifconfig alias` as workaround |
 
 ## Documentation
 
@@ -130,6 +210,67 @@ In-tree:
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
 ## Status
+
+**Current — macOS first-class.** `darwin/amd64` and `darwin/arm64`
+ship via `make cross`. Every feature except the four Linux-kernel-
+specific ones (AF_PACKET raw sockets, fanotify OPEN events,
+Linux TUN/TAP, `setresuid`) runs natively on macOS; the Linux-only
+subsystems return clean errors with platform-specific workarounds
+documented in [`docs/usage.md`](docs/usage.md#platform-support).
+
+**v1.10 — attacker engagement.** Interactive CLI shell engagement
+(`internal/shell`) wired into both the existing `telnet` handler
+and a new `ssh_interactive` handler running a full
+`golang.org/x/crypto/ssh` server with persistent ed25519 host key.
+Per-archetype response tables (Linux distros / Moxa CLI / SCALANCE
+CLI) + 14-marker ATT&CK-aligned anomaly scanner on every typed
+command (reverse shells, persistence, recon, defense evasion,
+crypto-miners, encoded payloads). LLDP / CDP active responder makes
+honeynet hosts appear in `lldpctl` / `show cdp neighbors` on the L2
+segment with archetype-shaped MAC + system description. Multi-page
+archetype web UI with credential-capturing POST handler for
+login-shaped paths.
+
+**v1.9 — deception+detection sensor.** Adds MITRE ATT&CK technique +
+tactic tags to every emitted event, a cross-protocol storyline
+correlator that fires `storyline:multi_stage` when a source touches
+3+ kill-chain tactics in 30 minutes (emitting an ordered chain
+summary), and protocol-anomaly detection on the SSH and HTTP
+handlers. New `internal/safe` package hardens input parsing and
+sanitizes attacker-supplied strings before they touch any log /
+SIEM / email / webhook path. 14 new archetypes (FreeBSD 13/14,
+OpenBSD 7.5/7.6, Arch, Rocky 9, AlmaLinux 9, Oracle 8/9, Moxa
+EDS-208 / NPort 5210, Siemens SCALANCE XB-208, S7-1200, S7-1500)
+with the deeper fingerprint surface those devices need: MAC OUI,
+SNMP MIB-2 identity, CLI prompt, web-UI body, LLDP neighbors,
+default services, protocol quirks. SNMP/HTTP/Telnet handlers
+consume the new fields.
+
+**v1.8 — archetypes + 5 new protocols.** Sensor-level
+`sensor.archetype` (overridable at listener and per-honeynet-host
+level) pins SSH / HTTP / FTP / Telnet / SMTP / MySQL banners to
+values consistent with a stock install of 15 ship distributions
+(CentOS 5–8 + Stream 10, Debian 9–13, RHEL 8–10, Ubuntu 24.04 / 26.04
+LTS). 5 new protocol handlers: CoAP (UDP/5683), KNXnet/IP (UDP/3671),
+XMPP (TCP/5222), AMQP (TCP/5672), IPP/CUPS (TCP/631).
+
+**v1.7 — 10 new protocols + MQTT sink + .deb / .rpm packaging.**
+syslog_tcp, syslog_udp, radius, sip, ssdp, cldap, llmnr, nbns, fins,
+rtsp, dockerapi, melsec. Outbound MQTT client. Debian + RPM
+packages with shell completions, systemd unit, and `tarpit-honeypot
+help` long-form subcommand docs.
+
+**v1.6 — CLI ergonomics + testing infrastructure + lifecycle.**
+Global `--version` / `-V`, per-subcommand `--help`, shared logging
+flags (`--log-level`, `--log-format=json|text`, `--log-file`,
+`--quiet`, `--verbose`), `--set key=value` overrides, `TARPIT_*`
+env-var overrides, `conf.d/*.yaml` includes deep-merged in lexical
+order, `run --dry-run`, `init` skeleton subcommand, shell
+completions (bash / zsh / fish). Panic recovery wrapper around every
+handler goroutine. Fuzz tests for the TLS ClientHello (JA3/JA4),
+SSH KEXINIT (HASSH), HTTP request line (JA4H), LDAP BER decoder,
+MQTT varint parser, DNS query parser; `make cover` / `make race`
+/ `make fuzz` targets.
 
 **v1.5 — TUN adapter, IPv6, SNMP/LDAP/DCE-RPC topology exposure, docs.**
 Each honeynet can open a Linux TUN device (`CAP_NET_ADMIN`) that

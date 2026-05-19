@@ -54,15 +54,22 @@ fmt:
 clean:
 	rm -rf bin dist
 
-# Cross-compile for the full Linux matrix. Windows is intentionally absent
-# from `cross` until v0.8 — the sniffer and fanotify code paths are
-# linux-only and Windows packaging needs the service installer first.
+# Cross-compile for Linux (full matrix) + macOS. The macOS builds carry
+# every feature except the raw-L2 layers: ARP/ICMP/LLDP responders,
+# AF_PACKET sniffer, fanotify OPEN-event detection, and Linux TUN
+# adapter are linux-only. See docs/usage.md "Platform support" for
+# the workarounds (mostly `ifconfig alias` for L2 presence + relying
+# on fsnotify for file canaries on macOS). Windows is intentionally
+# absent — the network-discovery deception layers need a separate
+# backend there.
 cross:
 	mkdir -p dist
-	GOOS=linux GOARCH=amd64               $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-amd64  $(CMD)
-	GOOS=linux GOARCH=arm64               $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-arm64  $(CMD)
-	GOOS=linux GOARCH=arm GOARM=7         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv7  $(CMD)
-	GOOS=linux GOARCH=arm GOARM=6         $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv6  $(CMD)
+	GOOS=linux  GOARCH=amd64       $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-amd64   $(CMD)
+	GOOS=linux  GOARCH=arm64       $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-arm64   $(CMD)
+	GOOS=linux  GOARCH=arm GOARM=7 $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv7   $(CMD)
+	GOOS=linux  GOARCH=arm GOARM=6 $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-linux-armv6   $(CMD)
+	GOOS=darwin GOARCH=amd64       $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-darwin-amd64  $(CMD)
+	GOOS=darwin GOARCH=arm64       $(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/$(BIN)-darwin-arm64  $(CMD)
 
 # Build a .deb. Requires dpkg-deb on the host.
 deb:

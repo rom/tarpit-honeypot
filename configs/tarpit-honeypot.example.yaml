@@ -466,14 +466,28 @@ honeynets:
     # sourced from the host's derived MAC + IP. Same CAP_NET_RAW
     # requirement as the ARP responder; pair them so virtual hosts
     # both show up in arp-scan and respond to ping.
+    # On macOS / BSD use `ifconfig <iface> alias <ip>` per host — the
+    # kernel answers ARP / ICMP echo natively for the alias.
     icmp_responder:
       enabled: false
       interface: ""
+    # Linux only. When enabled, the sensor periodically emits LLDP
+    # frames (and optionally CDP frames) so every virtual host appears
+    # in `lldpctl` / Cisco `show cdp neighbors` output. The advertised
+    # MAC + system description come from the host's archetype, so a
+    # Moxa-archetype host advertises a Moxa-OUI MAC + Moxa system
+    # description. CAP_NET_RAW required.
+    lldp_responder:
+      enabled: false
+      interface: ""
+      interval_s: 30
+      include_cdp: false   # also emit Cisco CDP frames for cdp-aware scanners
     # Linux-only L3 adapter. Opens a TUN device; operator routes the
     # honeynet CIDR through it. Sensor answers ICMP/ICMPv6 echo for
     # virtual host IPs and sends TCP RST for unbound ports — so
     # `nmap -sS` reports the host as alive without `ip addr add`.
-    # CAP_NET_ADMIN required.
+    # CAP_NET_ADMIN required. macOS supports utun but no native
+    # backend yet — use `ifconfig alias` as a workaround.
     tun:
       enabled: false
       device: ""           # blank = kernel-chosen (e.g. tun0)

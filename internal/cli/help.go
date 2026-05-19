@@ -44,14 +44,22 @@ func cmdHelp(args []string) error {
 // it pins. Useful as a quick "what do my SSH / HTTP banners look like
 // under sensor.archetype: debian 12" reference.
 func printArchetypes() {
-	fmt.Println(`archetypes — OS-shaped banner profiles
+	fmt.Println(`archetypes — OS / device-shaped fingerprint profiles
 
 Set sensor.archetype (or listener.archetype, or per-host archetype) to
-one of the names below. Every handler that has an archetype-aware
-banner (SSH, HTTP/HTTPS Server header, FTP 220, Telnet issue, SMTP
-greeting, MySQL handshake version) reports a value consistent with a
-stock install of that OS, so a scanner can't catch the sensor by
-spotting an "OpenSSH version that doesn't match the distro" mismatch.
+one of the names below. Every fingerprint-bearing handler reports
+values consistent with a stock install / device-default config of
+that OS / device, so a scanner can't catch the sensor by spotting
+mismatches.
+
+What each archetype controls:
+  - SSH / HTTP / FTP / Telnet / SMTP / MySQL banner strings
+  - SNMP MIB-2 identity (sysDescr / sysObjectID / sysName / ifTable)
+  - MAC vendor OUI (Moxa 00:90:E8, Siemens 28:63:36, ...)
+  - CLI prompt + login prompt for the post-login shell engagement
+  - Web UI title + body for the HTTP handler
+  - LLDP system-description / capabilities advertised on the segment
+  - Default service list (informational)
 
 Without an archetype, banners come from the v1.0 deployment-id-keyed
 variant pool (still unique-per-sensor, just not pinned to a specific

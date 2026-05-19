@@ -94,13 +94,16 @@ A *honeynet* is a configured artificial network with virtual hosts. One sensor c
 
 The base mode (v1.1+) is **destination-IP dispatch**: when an incoming connection's destination matches a configured virtual host IP, the listener dispatches to a per-host handler instance. That requires the OS to actually route the virtual IPs to the sensor — typically via `ip addr add 10.99.0.10/24 dev eth0` or iptables DNAT.
 
-Three optional Linux-only adapters make the honeynet more discoverable **without** that OS plumbing:
+Four optional Linux-only adapters make the honeynet more discoverable **without** that OS plumbing:
 
 - **`arp_responder`** (v1.2): the sensor opens an AF_PACKET socket and answers ARP requests for every virtual host IP. `arp-scan` sees the network as populated.
 - **`icmp_responder`** (v1.3): the sensor answers IPv4 ICMP echo (ping) for every virtual host IP via the same AF_PACKET path.
 - **`tun`** (v1.5): the sensor opens a Linux TUN device. The operator routes the honeynet CIDR into the TUN. The sensor answers ICMP/ICMPv6 echo and sends TCP RST for unbound ports. `nmap -sS` reports the host as up.
+- **`lldp_responder`** (v1.10): the sensor emits LLDP (and optionally CDP) frames so every honeynet host appears in `lldpctl` / Cisco `show cdp neighbors` output with archetype-shaped MAC + system description + family-tuned LLDP capabilities. Pairs naturally with the Moxa / SCALANCE / S7 archetypes for industrial deception.
 
 None of these adapters provide a full userspace TCP stack — real protocol termination still goes through real sockets. For "scanner sees the network as populated" they are sufficient.
+
+On macOS the AF_PACKET-based adapters are not available; see [Platform support](#10-platform-support) below for the `ifconfig alias` workaround.
 
 ### Pattern A — virtual hosts behind one listener (the simplest setup)
 
@@ -255,7 +258,196 @@ For Prometheus, scrape `/metrics`:
     - targets: ['sensor.example.internal:8088']
 ```
 
-## 9. Troubleshooting
+## 9. Archetypes
+
+An **archetype** is an OS-shaped fingerprint pack: setting one makes every
+banner-aware handler report values consistent with a stock install of
+that OS, so a scanner can't catch the sensor by spotting a "Debian 12
+host running OpenSSH 8.4p1 (Debian 11's version)" mismatch.
+
+```yaml
+sensor:
+  archetype: debian 12              # or "ubuntu 24.04 lts", "centos 7", ...
+
+listeners:
+  - id: ssh-bait
+    archetype: red hat enterprise linux 9   # overrides sensor for this listener
+    proto: tcp
+    bind: 0.0.0.0:22
+    handler: ssh
+
+honeynets:
+  - id: factory
+    hosts:
+      - ip: 10.99.1.10
+        archetype: moxa eds-208                # overrides listener for this host
+        services: [{ port: 23, handler: telnet }]
+```
+
+**Precedence** (most specific wins): honeynet host > listener > sensor > no archetype (the v1.0 identity-pool fallback).
+
+**Names are case- and separator-insensitive**: `"Debian 12"`, `"debian-12"`, `"debian_12"`, `"DEBIAN.12"` all resolve.
+
+**Ship list (`tarpit-honeypot help archetypes`):**
+
+| Family | Profiles |
+|---|---|
+| Debian | Debian 9 (stretch) → Debian 13 (trixie) |
+| Ubuntu | Ubuntu 24.04 LTS, Ubuntu 26.04 LTS |
+| RHEL / clones | RHEL 8/9/10, CentOS 5/6/7/8 + Stream 10, Rocky 9, AlmaLinux 9, Oracle 8/9 |
+| BSD | FreeBSD 13/14, OpenBSD 7.5/7.6 |
+| Other Linux | Arch Linux |
+| Industrial network | Moxa EDS-208, Moxa NPort 5210, Siemens SCALANCE XB-208 |
+| Industrial controller | Siemens S7-1200 PLC, Siemens S7-1500 PLC |
+
+**Each archetype carries:** SSH / HTTP / FTP / Telnet / SMTP / MySQL
+banner strings; MAC vendor OUI (Moxa 00:90:E8, Siemens 28:63:36); CLI
+prompt for shell engagement; SNMP MIB-2 identity (sysDescr,
+sysObjectID, sysName, ifTable); LLDP neighbor TLVs; default-service
+list; web-UI HTML body; per-archetype protocol quirks.
+
+## 10. Interactive engagement (post-login shell + web login capture)
+
+The v1.10 engagement layer keeps the attacker on the wire after the
+banner-grab phase so the sensor captures the full TTP trail instead of
+just "scanner touched port 22".
+
+### SSH interactive (`handler: ssh_interactive`)
+
+Runs a full `golang.org/x/crypto/ssh` server. Captures every password +
+public-key authentication attempt (with SHA-256 fingerprint for keys),
+accepts the third credential, and drops into the archetype's shell on
+the session channel.
+
+```yaml
+listeners:
+  - id: ssh-engage
+    proto: tcp
+    bind: 0.0.0.0:2223
+    mode: banner
+    handler: ssh_interactive
+    severity: high
+    read_timeout: 30s
+    capture: true
+    max_concurrent: 16     # rate-limit; engagements consume more CPU than banner-grab
+```
+
+The host key is an ed25519 keypair persisted under
+`<data_dir>/tls/ssh_host_ed25519_key`. Same fingerprint across
+restarts so a scanner that re-touches the sensor doesn't see a
+"key changed" warning.
+
+### Telnet (`handler: telnet`)
+
+After a fake "Login incorrect" first attempt, accepts the second one
+and drops into the same archetype shell. Plaintext, simpler — useful
+for the Moxa / SCALANCE archetypes where telnet is the documented
+device CLI.
+
+### What the shell captures
+
+Per-command capture lands in `event.meta.shell_commands` (a list).
+Each line is also scanned against a 14-marker ATT&CK-aligned anomaly
+catalog and any hits flow into `event.anomalies` for SIEM-side
+routing:
+
+| Marker | ATT&CK |
+|---|---|
+| `shell-reverse-shell` | T1059 / T1071 |
+| `shell-download-tool` | T1105 |
+| `shell-persistence-ssh-key` | T1098.004 |
+| `shell-persistence-cron` | T1053.003 |
+| `shell-persistence-systemd` | T1543.002 |
+| `shell-shadow-read` | T1003.008 |
+| `shell-passwd-read` / `shell-passwd-write` | T1003 |
+| `shell-priv-esc-suid` | T1548.001 |
+| `shell-priv-esc-sudo` | T1548.003 |
+| `shell-defense-evade-history` | T1070.003 |
+| `shell-defense-evade-logclean` | T1070.002 |
+| `shell-disable-fw` | T1562.004 |
+| `shell-living-off-the-land` | T1059.004 |
+| `shell-coin-miner` | T1496 |
+| `shell-network-recon` | T1018 |
+| `shell-encoded-payload` | T1027 |
+| `shell-creds-file-access` | T1552.001 |
+
+Bounded: `MaxCommands=32`, `MaxBytesPerCommand=8 KiB`, `IdleTimeout=60s`, `SessionTimeout=5min`.
+
+### Web login capture (`handler: http` / `https`)
+
+The HTTP handler routes on method + path. `GET /` serves the
+archetype's index page; GET on a login path (`/login`, `/admin`,
+`/Portal/Login.html`, `/cgi-bin/luci`, `/wp-login.php`,
+`/manager/html`, etc.) serves a login form; POST with
+`application/x-www-form-urlencoded` body extracts user + password
+(accepts `username`/`user`/`login`/`name`/`uname`/`u` and
+`password`/`pass`/`passwd`/`pwd`/`p`), emits the
+`http-login-attempt` anomaly, and re-renders the form with an
+"auth failed" line.
+
+## 11. ATT&CK tagging, storyline correlation, anomaly detection
+
+Every event the sensor emits carries `mitre_techniques` (e.g.
+`["T1110.001","T1078"]`) and `mitre_tactics` (e.g.
+`["credential-access","initial-access"]`). The mapping is
+rule_id + handler-aware: listener:ssh-bait gets brute-force +
+valid-accounts; listener:http-bait gets exploit-public-facing-app;
+listener:modbus-bait gets the ICS-matrix equivalents.
+
+The **storyline correlator** (`storyline:multi_stage`) fires when a
+single source IP touches 3+ distinct ATT&CK tactics inside a 30-minute
+window. The emitted event meta carries:
+
+- `stages`: tactics in kill-chain order
+- `chain`: human-readable arrow-joined ("discovery -> credential-access -> lateral-movement")
+- `hit_count`, `dest_ports`, `handlers`, `distinct_rules`
+
+So the SOC sees one timeline instead of dozens of independent
+listener hits.
+
+**Protocol-anomaly markers** (`event.anomalies`) flagged today:
+
+- SSH: `ssh-id-non-printable`, `ssh-id-overlong`, `ssh-id-not-ssh`
+- HTTP: `http-method-unknown`, `http-request-line-non-printable`,
+  `uri-path-traversal`, `uri-log4shell-jndi`, `uri-wordpress-probe`,
+  `uri-source-leak-probe`, `uri-mgmt-endpoint-probe`,
+  `uri-secret-file-probe`, `uri-xss-or-rce-payload`,
+  `http-login-attempt`
+- All shell-* markers listed in §10
+
+## 12. Platform support
+
+The sensor builds and runs on Linux (amd64 / arm64 / armv7 / armv6) and
+macOS (amd64 / arm64). Every protocol handler, archetype, ATT&CK
+tagging, storyline, anomaly detector, interactive shell engagement,
+file canary (write/remove/rename/chmod), URL canary, DNS canary, and
+outbound channel runs natively on both.
+
+The Linux-only subsystems all need raw-L2/L3 kernel APIs that macOS
+doesn't expose the same way. Each returns a clear error on non-Linux
+with a workaround:
+
+| Feature | Linux | macOS workaround |
+|---|---|---|
+| `arp_responder` | AF_PACKET ✓ | `ifconfig <iface> alias <ip>` per honeynet host — the kernel answers ARP for the alias |
+| `icmp_responder` | AF_PACKET ✓ | Same `ifconfig alias` — the kernel answers ICMP echo natively |
+| `lldp_responder` (LLDP/CDP advertise) | AF_PACKET ✓ | Unavailable; the rest of the deception still works |
+| AF_PACKET sniffer (ARP-scan detection) | ✓ | Unavailable; protocol-level brute-force / port-scan correlators still work |
+| File canary OPEN events (read detection) | fanotify ✓ | Unavailable; fsnotify still catches write/remove/rename/chmod |
+| TUN/utun adapter | TUN ✓ | Use `ifconfig <iface> alias <ip>` to attract L4 traffic for virtual hosts |
+| Privilege drop | `setresuid` ✓ | `setuid` ✓ (saved-uid also dropped on darwin) |
+
+For macOS deployments where the honeynet's L2/L3 presence matters
+(typical: industrial-segment deception with the Moxa / SCALANCE / S7
+archetypes), the recommended pattern is to run the sensor on a small
+Linux box that already sees the segment, and use macOS workstations
+as the SIEM / dashboard consumers via the outbound channels.
+
+For macOS deployments where only the protocol handlers + archetype
+deception matter (typical: dev/research workstation, cloud-instance
+honeypot exposed via service mesh), the sensor is fully featured.
+
+## 13. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -263,6 +455,11 @@ For Prometheus, scrape `/metrics`:
 | `sensor stopped: listen 0.0.0.0:53: bind: address already in use` | systemd-resolved owns :53 | Either disable systemd-resolved DNSStubListener (`/etc/systemd/resolved.conf`: `DNSStubListener=no`) or use a non-standard port and NAT. |
 | Listener events fire but `correlate:brute_force` never does | per-rule dedup window covers the burst | Lower `dedup.default_window` or set `correlate.brute_force.window` shorter. |
 | `arp_responder disabled: need CAP_NET_RAW` | running as a non-privileged user without the cap | Pair `User=tarpit` with `AmbientCapabilities=CAP_NET_RAW` in the unit. |
+| `arp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | See §12 — use `ifconfig alias` per honeynet host or run the responder on a Linux gateway. |
+| `lldp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | LLDP advertising is unavailable on macOS today; the rest of the deception still works. |
 | TUN listener fails with `open /dev/net/tun: no such file` | running inside an unprivileged container | `docker run --device=/dev/net/tun --cap-add=NET_ADMIN ...` |
+| `tunnet: TUN/utun adapter not implemented on darwin` | running on macOS | macOS supports utun but no native backend yet; use `ifconfig alias` per virtual host. |
 | Prometheus `/metrics` returns 503 | UI started before sensor finished construction | wait a second after startup; the sensor lazily registers stats once it's fully up. |
 | `validate-config` rejects `format: cef` on `sqlite` channel | structured-row sinks can't take text formats | Use the format on `stdout`/`jsonlog`/`webhook`/`smtp`/`syslog` instead. |
+| `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (29 entries). |
+| `ssh_interactive` engagements piling up | crypto/ssh handshakes are CPU-heavier than banner-grab | Set `max_concurrent: 16` (or lower) on the listener to cap parallel sessions. |

@@ -317,8 +317,53 @@ Captures legitimate syslog feeds that someone misconfigured to point at our IP �
 See [`usage.md`](usage.md#3-honeynets) for the dispatch model and YAML patterns. Quick integration recipes:
 
 - **Cloud VM with a single public IP**: enable `arp_responder` + `icmp_responder` on the public-facing interface, use `bind: 0.0.0.0:<port>` for the real listeners, and the honeynet host IPs are loopback aliases (`ip addr add 10.99.0.10/24 dev lo`).
-- **Bare-metal sensor on a corporate LAN**: same, but `interface: eth0`. The ARP/ICMP responders make the honeynet IPs answer `arp-scan` and `ping` from any host on the segment.
+- **Bare-metal sensor on a corporate LAN**: same, but `interface: eth0`. The ARP/ICMP responders make the honeynet IPs answer `arp-scan` and `ping` from any host on the segment. Add `lldp_responder.enabled: true` (and `include_cdp: true` if Cisco-aware scanners walk the segment) to make each host appear in `lldpctl` and `show cdp neighbors` output.
+- **Industrial / OT segment**: combine Moxa / SCALANCE / S7 archetypes with `arp_responder` + `lldp_responder` (with `include_cdp: true`). `lldpctl` against the segment reports a believable mix of industrial switches and PLCs with the correct vendor OUIs.
 - **TUN-based isolation**: enable per-honeynet `tun.enabled: true`, route the CIDR through the TUN, and run the operator's L4 dispatcher in NAT mode forwarding back to the sensor's real sockets.
+- **macOS host (no AF_PACKET)**: skip `arp_responder` / `icmp_responder` / `lldp_responder` / `tun`. Use `sudo ifconfig <iface> alias 10.99.0.10 255.255.255.0` per virtual host — the kernel handles ARP / ICMP / L4 routing natively. The protocol handlers + archetypes + interactive shell + URL/DNS canaries all run normally.
+
+---
+
+## 3a. ATT&CK / storyline / anomaly — SIEM-side integration
+
+Every event the sensor emits carries:
+
+- `mitre_techniques` — list of MITRE ATT&CK technique IDs (e.g. `["T1110.001","T1078"]`)
+- `mitre_tactics` — kill-chain tactics (e.g. `["credential-access","initial-access"]`)
+- `anomalies` — protocol-misuse markers (e.g. `["http-method-unknown","uri-log4shell-jndi"]`)
+
+Plus when a cross-protocol attack chain emerges:
+
+- `rule_id: storyline:multi_stage` with `meta.stages` (kill-chain ordered) + `meta.chain` (arrow-joined string)
+
+**SIEM rule shapes:**
+
+```sql
+-- Splunk: every event tagged with credential-access AND from a new source
+search index=tarpit `mitre_tactics`="credential-access"
+| stats values(source.ip) as src by mitre_techniques
+| where mvcount(src) > 0
+
+-- Sentinel KQL: any event with an anomaly marker
+TarpitEvents
+| where array_length(anomalies) > 0
+| project Time, Source=source.ip, RuleId=rule_id, Anomalies=anomalies, Techniques=mitre_techniques
+
+-- Elasticsearch: storyline alerts in last hour
+GET /tarpit-*/_search
+{
+  "query": { "bool": {
+    "must": [
+      {"term": {"rule_id": "storyline:multi_stage"}},
+      {"range": {"time": {"gte": "now-1h"}}}
+    ]}}
+}
+```
+
+The `storyline:multi_stage` event is the highest-value SIEM hook: one
+record summarizes a multi-step attack instead of dozens of independent
+listener hits. Routes typically wire it to the same on-call channel
+the operator uses for `correlate:brute_force` / `correlate:port_scan`.
 
 ---
 
@@ -347,6 +392,48 @@ spec:
 ### Read-only root filesystem
 
 Set the systemd unit's `ProtectSystem=strict` (it's there by default) and use `ReadWritePaths=/var/lib/tarpit-honeypot`. The sensor never writes anywhere else.
+
+### macOS deployment (launchd)
+
+The `darwin/{amd64,arm64}` binaries support every feature except the
+four Linux-kernel-specific ones (AF_PACKET, fanotify, Linux TUN,
+setresuid) — see [`usage.md` §12](usage.md#12-platform-support). A
+minimal launchd plist:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>             <string>com.example.tarpit-honeypot</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/tarpit-honeypot</string>
+        <string>run</string>
+        <string>-c</string>
+        <string>/etc/tarpit-honeypot/config.yaml</string>
+    </array>
+    <key>RunAtLoad</key>         <true/>
+    <key>KeepAlive</key>         <true/>
+    <key>UserName</key>          <string>tarpit</string>
+    <key>WorkingDirectory</key>  <string>/var/lib/tarpit-honeypot</string>
+    <key>StandardOutPath</key>   <string>/var/log/tarpit-honeypot.log</string>
+    <key>StandardErrorPath</key> <string>/var/log/tarpit-honeypot.err</string>
+</dict>
+</plist>
+```
+
+Drop into `/Library/LaunchDaemons/com.example.tarpit-honeypot.plist`,
+`sudo launchctl load -w /Library/LaunchDaemons/com.example.tarpit-honeypot.plist`,
+and `sudo launchctl kickstart system/com.example.tarpit-honeypot`.
+
+For privileged port binding (ports < 1024) the simplest path is to
+start as root and let `sensor.drop_user: tarpit` drop privilege after
+bind — the `setuid` darwin path also drops the saved-uid so a later
+`setuid(0)` regain attempt fails (same posture as Linux's
+`setresuid`).
+
+Hot reload via `kill -HUP <pid>` or `sudo launchctl kill HUP system/com.example.tarpit-honeypot`.
 
 ### Multi-tenant / per-customer deployments
 

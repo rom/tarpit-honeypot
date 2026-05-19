@@ -3,7 +3,7 @@
 The binary is a single static executable. Invoke it as `tarpit-honeypot <subcommand> [flags]`. See [`docs/usage.md`](usage.md) for higher-level scenarios and [`docs/config.md`](config.md) for the YAML schema each `-c` flag points at.
 
 ```
-tarpit-honeypot run            -c <config>
+tarpit-honeypot run            -c <config> [--dry-run] [common flags]
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
@@ -11,10 +11,46 @@ tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
+tarpit-honeypot init           [-o file]
+tarpit-honeypot completion     bash | zsh | fish
+tarpit-honeypot help           [subcommand | topic]
 tarpit-honeypot version
+tarpit-honeypot --version | -V
 ```
 
 All subcommands exit 0 on success and 1 on error. Errors are written to stderr; data goes to stdout.
+
+### Common flags
+
+Most subcommands accept the shared logging + config-override set:
+
+| Flag | Meaning |
+|---|---|
+| `-c <path>` | Config file (default `/etc/tarpit-honeypot/config.yaml`). |
+| `--set key.path=value` | Override a single YAML key. Repeatable; values are auto-typed (bool/int/float/string). Applied last, after env-var overrides. |
+| `--log-level debug\|info\|warn\|error` | Slog level (default `info`). |
+| `--log-format text\|json` | Slog handler format (default `text`). |
+| `--log-file <path>` | Redirect logs to file (default stderr). |
+| `--quiet` | Shortcut for `--log-level=error`. |
+| `--verbose` | Shortcut for `--log-level=debug`. |
+| `--help`, `-h` | Per-subcommand flag listing. |
+
+### Config layering (applied in order)
+
+1. Base YAML from `-c`.
+2. Sibling `conf.d/*.yaml` deep-merged in lexical order.
+3. `TARPIT_<KEY_PATH>` env vars (e.g. `TARPIT_SENSOR_NAME=foo`). Use `__` to escape a real underscore inside a key segment.
+4. `--set key.path=value` (wins).
+
+### Help topics
+
+`tarpit-honeypot help <topic>` prints the long-form per-subcommand
+docs (the same content as this file, distilled). Beyond the
+subcommands above, the following non-subcommand topics are
+available:
+
+- `tarpit-honeypot help archetypes` — list of the 29 OS / device
+  archetypes with usage examples + precedence rules.
 
 ---
 
@@ -29,8 +65,10 @@ tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
 | Flag | Default | Meaning |
 |---|---|---|
 | `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file path. |
+| `--dry-run` | off | Load + validate config, construct the sensor end-to-end, exit before binding any listener. CI-friendly. |
+| Common flags | — | See "Common flags" at the top. |
 
-The sensor brings up, in order: SQLite store + retention pruner; capture manager (when any listener has `capture: true`); sinks; router workers; correlator; per-listener accept loops (with hot-reload tracking); canary watchers (with fanotify on Linux); DNS canary listener; ARP / ICMP / TUN responders per honeynet; AF_PACKET sniffer; Web UI + `/metrics` endpoint.
+The sensor brings up, in order: SQLite store + retention pruner; capture manager (when any listener has `capture: true`); sinks; router workers; correlator (port-scan / brute-force / slow-scan + storyline); per-listener accept loops (with hot-reload tracking); canary watchers (fanotify on Linux for OPEN events, fsnotify everywhere else for write/remove/rename/chmod); DNS canary listener; ARP / ICMP / LLDP / TUN responders per honeynet (Linux only); AF_PACKET sniffer (Linux only); Web UI + `/metrics` endpoint.
 
 ### Signals
 
@@ -45,10 +83,12 @@ Privileged setup happens **before** `drop_user`/`drop_group` takes effect:
 
 1. Bind low-numbered listener ports (needs `CAP_NET_BIND_SERVICE` post-drop)
 2. Open data_dir (root-writable in most deployments)
-3. Open ARP / ICMP responder sockets (needs `CAP_NET_RAW` post-drop)
+3. Open ARP / ICMP / LLDP responder sockets (needs `CAP_NET_RAW` post-drop)
 4. Open TUN device (needs `CAP_NET_ADMIN` post-drop)
 
 The systemd unit pre-grants the necessary `AmbientCapabilities` so the drop is safe.
+
+On **macOS**, the AF_PACKET/TUN steps are no-ops (Linux-only — see [`docs/usage.md` §12](usage.md#12-platform-support)). Privileged port binding works as on any BSD-derived system: bind as root, then `setuid` to the configured `drop_user` (uses `syscall.Setuid`, which on darwin also drops the saved-uid so a later `setuid(0)` regain attempt fails). launchd's `<SoftResourceLimits>` and `<UserName>` keys can replace `AmbientCapabilities`.
 
 ---
 
@@ -223,16 +263,69 @@ Confirms each host's identity seed is distinct (so banner / version / serial val
 
 ---
 
+## `init`
+
+Write a defaulted YAML skeleton suitable as a scaffolding starting
+point. Defaults match what `validate-config` produces internally
+(applyDefaults), so the output is immediately usable.
+
+```
+tarpit-honeypot init > /etc/tarpit-honeypot/config.yaml
+tarpit-honeypot init -o cfg.yaml
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-o <path>` | `-` (stdout) | Output file path. |
+
+---
+
+## `completion`
+
+Print a shell-completion script. Supports `bash`, `zsh`, and `fish`.
+
+```
+tarpit-honeypot completion bash > /etc/bash_completion.d/tarpit-honeypot
+tarpit-honeypot completion zsh  > "${fpath[1]}/_tarpit-honeypot"
+tarpit-honeypot completion fish > ~/.config/fish/completions/tarpit-honeypot.fish
+```
+
+The `.deb` and `.rpm` packages drop the completions into the right
+location automatically.
+
+---
+
+## `help`
+
+Print the long-form usage for one subcommand or topic. The same
+content as this reference, distilled.
+
+```
+tarpit-honeypot help                  # subcommand index
+tarpit-honeypot help run              # per-subcommand topic
+tarpit-honeypot help list-events
+tarpit-honeypot help archetypes       # non-subcommand topic
+```
+
+Without an argument, prints the subcommand index + common-flag
+table. Unknown topics exit 1 with a usage listing on stderr.
+
+---
+
 ## `version`
 
 Print version + build commit + build date. Used by ops tooling to confirm the binary in use.
 
 ```
 tarpit-honeypot version
-# tarpit-honeypot 1.5 (commit a1b2c3d, built 2026-05-19T18:30:00Z)
+# tarpit-honeypot 1.10 (commit a1b2c3d, built 2026-05-19T18:30:00Z)
+
+tarpit-honeypot --version
+tarpit-honeypot -V
 ```
 
-No flags.
+The two flag forms (`--version`, `-V`) and the subcommand form all
+print the same single-line summary.
 
 ---
 
