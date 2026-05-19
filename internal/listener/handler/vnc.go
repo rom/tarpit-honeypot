@@ -6,9 +6,12 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
-type vnc struct{}
+type vnc struct {
+	id *identity.Identity
+}
 
 func (v *vnc) Name() string { return "vnc" }
 
@@ -59,9 +62,15 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		return res, nil
 	}
 
-	// Send 16-byte challenge.
-	challenge := []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-		0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00}
+	// Send 16-byte challenge. Per-deployment when an Identity is set so
+	// scanners can't fingerprint on the fixed v0.8 challenge bytes.
+	var challenge []byte
+	if v.id != nil {
+		challenge = v.id.Bytes("vnc-challenge", 16)
+	} else {
+		challenge = []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+			0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00}
+	}
 	if _, err := conn.Write(challenge); err != nil {
 		res.Meta["write_err"] = err.Error()
 		return res, nil

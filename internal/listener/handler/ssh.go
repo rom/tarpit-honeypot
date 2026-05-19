@@ -9,9 +9,14 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
-type ssh struct{}
+type ssh struct {
+	id  *identity.Identity
+	jit *jitter.Jitterer
+}
 
 func (s *ssh) Name() string { return "ssh" }
 
@@ -19,11 +24,21 @@ func (s *ssh) Name() string { return "ssh" }
 // read the client's identification line, then (optionally) read one
 // SSH_MSG_KEXINIT packet so we can compute the HASSH fingerprint, then
 // send a fake "Protocol mismatch" and close.
-func (s *ssh) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+//
+// The banner picks from a deployment-unique variant pool when an Identity
+// is supplied — two sensors with different deployment_id values present
+// distinct SSH versions to a scanner, so they don't cluster on the same
+// JA3/HASSH-style banner-grab fingerprint.
+func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	s.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
-		banner = "SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1\r\n"
+		if s.id != nil {
+			banner = s.id.SSHBannerVariant() + "\r\n"
+		} else {
+			banner = "SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1\r\n"
+		}
 	}
 	res := Result{BannerSent: banner}
 	if _, err := conn.Write([]byte(banner)); err != nil {

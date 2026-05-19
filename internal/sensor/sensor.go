@@ -13,6 +13,8 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/sink"
@@ -36,6 +38,8 @@ type Sensor struct {
 	correlator *correlate.Correlator
 	store      *store.Store
 	captureMgr *capture.Manager
+	identity   *identity.Identity
+	jitter     *jitter.Jitterer
 	bus        chan *event.Event
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
@@ -57,6 +61,15 @@ func New(cfg *config.Config) (*Sensor, error) {
 
 	if err := os.MkdirAll(cfg.Sensor.DataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("data_dir %s: %w", cfg.Sensor.DataDir, err)
+	}
+
+	id, err := identity.Load(cfg.Sensor.DataDir, cfg.Sensor.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	jit := jitter.New(cfg.Sensor.Jitter.MinMS, cfg.Sensor.Jitter.MaxMS)
+	if !cfg.Sensor.Jitter.Enabled {
+		jit = jitter.New(0, 0)
 	}
 
 	var st *store.Store
@@ -131,6 +144,8 @@ func New(cfg *config.Config) (*Sensor, error) {
 		correlator: cor,
 		store:      st,
 		captureMgr: capMgr,
+		identity:   id,
+		jitter:     jit,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -170,7 +185,15 @@ func (s *Sensor) startListener(l config.Listener) error {
 		return fmt.Errorf("startListener called before Run()")
 	}
 	ctx, cancel := context.WithCancel(s.rootCtx)
-	ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr, s.cfg.URLCanaries)
+	ln, err := listener.Build(l, listener.BuildArgs{
+		SensorName:  s.name,
+		DataDir:     s.cfg.Sensor.DataDir,
+		CaptureMgr:  s.captureMgr,
+		URLCanaries: s.cfg.URLCanaries,
+		Identity:    s.identity,
+		Jitter:      s.jitter,
+		TLSRotate:   s.cfg.Sensor.TLSRotate.Days,
+	})
 	if err != nil {
 		cancel()
 		return err
@@ -371,6 +394,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}
 	}()
 
+	slog.Info("sensor identity", "deployment_id", s.identity.Seed(), "jitter", s.jitter.Enabled())
 	for _, l := range s.cfg.Listeners {
 		if err := s.startListener(l); err != nil {
 			return err

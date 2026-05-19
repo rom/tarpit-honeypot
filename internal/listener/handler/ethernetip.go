@@ -7,9 +7,12 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
-type ethernetip struct{}
+type ethernetip struct {
+	id *identity.Identity
+}
 
 func (e *ethernetip) Name() string { return "ethernetip" }
 
@@ -86,7 +89,11 @@ func (e *ethernetip) Handle(_ context.Context, conn net.Conn, cfg config.Listene
 		identity = binary.LittleEndian.AppendUint16(identity, 0x0036) // product code
 		identity = append(identity, 0x14, 0x0B)                         // revision (major/minor)
 		identity = binary.LittleEndian.AppendUint16(identity, 0x0040) // status
-		identity = binary.LittleEndian.AppendUint32(identity, 0xdeadbeef) // serial
+		var serial uint32 = 0xdeadbeef
+		if e.id != nil {
+			serial = e.id.SerialNumber()
+		}
+		identity = binary.LittleEndian.AppendUint32(identity, serial) // serial (per-deployment)
 		identity = append(identity, byte(len(productName)))             // product name length
 		identity = append(identity, productName...)
 		identity = append(identity, 0xFF)                               // state

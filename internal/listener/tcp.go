@@ -31,14 +31,14 @@ type tcpListener struct {
 	sema chan struct{}
 }
 
-func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager, urlCanaries []config.URLCanary, urlSevByID map[string]event.Severity) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *capture.Manager, urlSevByID map[string]event.Severity) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
 	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID}
 	if l.Mode == "banner" {
-		h, err := handler.Get(l.Handler, dataDir, urlCanaries)
+		h, err := handler.Get(l.Handler, deps)
 		if err != nil {
 			return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 		}

@@ -19,6 +19,8 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
 type https struct {
@@ -26,20 +28,24 @@ type https struct {
 	cache       map[string]*tls.Certificate
 	dir         string
 	urlCanaries []config.URLCanary
+	id          *identity.Identity
+	jit         *jitter.Jitterer
+	rotateDays  int
 }
 
-func newHTTPS(dataDir string) (*https, error) {
+func newHTTPS(dataDir string, rotateDays int) (*https, error) {
 	dir := filepath.Join(dataDir, "tls")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("https: mkdir %s: %w", dir, err)
 	}
-	return &https{cache: map[string]*tls.Certificate{}, dir: dir}, nil
+	return &https{cache: map[string]*tls.Certificate{}, dir: dir, rotateDays: rotateDays}, nil
 }
 
 func (h *https) Name() string { return "https" }
 
-func (h *https) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	h.jit.Sleep(ctx)
 	hosts := cfg.HTTPS.Hosts
 	if len(hosts) == 0 {
 		hosts = []string{"localhost"}
@@ -77,7 +83,7 @@ func (h *https) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		return Result{Meta: meta}, nil
 	}
 	state := tlsConn.ConnectionState()
-	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries)
+	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id)
 	if res.Meta == nil {
 		res.Meta = map[string]any{}
 	}
@@ -100,13 +106,14 @@ func (h *https) certFor(hosts []string) (*tls.Certificate, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if c, ok := h.cache[key]; ok {
+	if c, ok := h.cache[key]; ok && !h.shouldRotate(c) {
 		return c, nil
 	}
-	// Try to load from disk first.
+	// Try to load from disk first — and rotate if the on-disk cert is
+	// older than the configured window.
 	certPath := filepath.Join(h.dir, safeFilename(key)+".crt")
 	keyPath := filepath.Join(h.dir, safeFilename(key)+".key")
-	if c, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil {
+	if c, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && !h.shouldRotate(&c) {
 		h.cache[key] = &c
 		return &c, nil
 	}
@@ -119,6 +126,27 @@ func (h *https) certFor(hosts []string) (*tls.Certificate, error) {
 	}
 	h.cache[key] = c
 	return c, nil
+}
+
+// shouldRotate reports whether the cert is older than the configured
+// rotateDays. The check uses NotBefore so it doesn't depend on the
+// far-future NotAfter.
+func (h *https) shouldRotate(c *tls.Certificate) bool {
+	if h.rotateDays <= 0 || c == nil {
+		return false
+	}
+	if c.Leaf == nil && len(c.Certificate) > 0 {
+		parsed, err := x509.ParseCertificate(c.Certificate[0])
+		if err != nil {
+			return false
+		}
+		c.Leaf = parsed
+	}
+	if c.Leaf == nil {
+		return false
+	}
+	age := time.Since(c.Leaf.NotBefore)
+	return age > time.Duration(h.rotateDays)*24*time.Hour
 }
 
 func generateSelfSigned(hosts []string) (*tls.Certificate, error) {

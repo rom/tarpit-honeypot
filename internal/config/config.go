@@ -64,18 +64,42 @@ type UI struct {
 }
 
 type Sensor struct {
-	Name      string `yaml:"name"`
-	DataDir   string `yaml:"data_dir"`
-	DropUser  string `yaml:"drop_user"`
-	DropGroup string `yaml:"drop_group"`
-	Disk      Disk   `yaml:"disk"`
+	Name         string `yaml:"name"`
+	DataDir      string `yaml:"data_dir"`
+	DeploymentID string `yaml:"deployment_id"`
+	DropUser     string `yaml:"drop_user"`
+	DropGroup    string `yaml:"drop_group"`
+	Disk         Disk   `yaml:"disk"`
+	Jitter       Jitter `yaml:"jitter"`
+	Shutdown     Shutdown `yaml:"shutdown"`
+	TLSRotate    TLSRotate `yaml:"tls_rotate"`
+}
+
+// Jitter randomizes the latency of handler replies. min=max=0 disables.
+type Jitter struct {
+	Enabled bool `yaml:"enabled"`
+	MinMS   int  `yaml:"min_ms"`
+	MaxMS   int  `yaml:"max_ms"`
+}
+
+// Shutdown controls SIGTERM behavior. drain_timeout caps how long the
+// sensor will wait for in-flight handlers before force-cancelling.
+type Shutdown struct {
+	DrainTimeout time.Duration `yaml:"drain_timeout"`
+}
+
+// TLSRotate controls automatic regeneration of the self-signed HTTPS
+// handler certificate. 0 = never rotate (the v0.8 behavior).
+type TLSRotate struct {
+	Days int `yaml:"days"`
 }
 
 type Disk struct {
-	JSONLogMB int `yaml:"json_log_mb"`
-	SQLiteMB  int `yaml:"sqlite_mb"`
-	PcapMB    int `yaml:"pcap_mb"`     // total cap for the captures directory
-	CaptureKB int `yaml:"capture_kb"`  // per-session cap before truncation
+	JSONLogMB     int `yaml:"json_log_mb"`
+	SQLiteMB      int `yaml:"sqlite_mb"`
+	PcapMB        int `yaml:"pcap_mb"`        // total cap for the captures directory
+	CaptureKB     int `yaml:"capture_kb"`     // per-session cap before truncation
+	RetentionDays int `yaml:"retention_days"` // 0 = no time-based retention; otherwise events/files older than this are pruned
 }
 
 type Listener struct {

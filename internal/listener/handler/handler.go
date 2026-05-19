@@ -4,8 +4,7 @@
 // attacker sent.
 //
 // Handlers are intentionally minimal: enough to fool a banner-grab tool,
-// not enough to support a real protocol session. Full ICS / DB protocol
-// handshakes are planned for v0.3.
+// not enough to support a real protocol session.
 package handler
 
 import (
@@ -15,7 +14,21 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
+
+// Deps carries the cross-cutting dependencies handlers need: deployment
+// identity (for per-deployment uniqueness in fixed strings), jitter for
+// response timing noise, dataDir for cert / state persistence, and the
+// URL canary list for HTTP/HTTPS matching.
+type Deps struct {
+	Identity    *identity.Identity
+	Jitter      *jitter.Jitterer
+	DataDir     string
+	URLCanaries []config.URLCanary
+	TLSRotate   int // days; 0 = never rotate
+}
 
 // Result is what a handler returns after a single connection interaction.
 type Result struct {
@@ -35,29 +48,31 @@ type Handler interface {
 	Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error)
 }
 
-// Get returns the handler implementation for the named handler.
-// The dataDir is used by handlers that need to persist state (https cert
-// cache). urlCanaries is passed to the http/https handlers for URL token
-// matching; other handlers ignore it.
-func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, error) {
+// Get returns the handler implementation for the named handler. Pass a
+// Deps struct so handlers can use identity / jitter / URL canaries.
+// nil-safe: handlers degrade to the static defaults when Deps fields
+// are nil.
+func Get(name string, deps Deps) (Handler, error) {
 	switch name {
 	case "raw":
 		return &raw{}, nil
 	case "ssh":
-		return &ssh{}, nil
+		return &ssh{id: deps.Identity, jit: deps.Jitter}, nil
 	case "http":
-		return &httpH{urlCanaries: urlCanaries}, nil
+		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter}, nil
 	case "https":
-		h, err := newHTTPS(dataDir)
+		h, err := newHTTPS(deps.DataDir, deps.TLSRotate)
 		if err != nil {
 			return nil, err
 		}
-		h.urlCanaries = urlCanaries
+		h.urlCanaries = deps.URLCanaries
+		h.id = deps.Identity
+		h.jit = deps.Jitter
 		return h, nil
 	case "telnet":
-		return &telnet{}, nil
+		return &telnet{jit: deps.Jitter}, nil
 	case "ftp":
-		return &ftp{}, nil
+		return &ftp{jit: deps.Jitter}, nil
 	case "modbus":
 		return &modbus{}, nil
 	case "s7":
@@ -69,13 +84,13 @@ func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, 
 	case "opcua":
 		return &opcua{}, nil
 	case "ethernetip":
-		return &ethernetip{}, nil
+		return &ethernetip{id: deps.Identity}, nil
 	case "smb":
-		return &smb{}, nil
+		return &smb{id: deps.Identity}, nil
 	case "vnc":
-		return &vnc{}, nil
+		return &vnc{id: deps.Identity}, nil
 	case "smtp_recv":
-		return &smtpRecv{}, nil
+		return &smtpRecv{id: deps.Identity, jit: deps.Jitter}, nil
 	case "rdp":
 		return &rdp{}, nil
 	case "winrm":
@@ -89,7 +104,7 @@ func Get(name string, dataDir string, urlCanaries []config.URLCanary) (Handler, 
 	case "postgres":
 		return &postgres{}, nil
 	case "mysql":
-		return &mysql{}, nil
+		return &mysql{id: deps.Identity}, nil
 	case "redis":
 		return &redis{}, nil
 	}

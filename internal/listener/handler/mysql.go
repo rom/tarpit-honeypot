@@ -8,9 +8,12 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
-type mysql struct{}
+type mysql struct {
+	id *identity.Identity
+}
 
 func (m *mysql) Name() string { return "mysql" }
 
@@ -32,9 +35,13 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	_, _ = rand.Read(salt1)
 	_, _ = rand.Read(salt2)
 
+	ver := "5.7.42-log"
+	if m.id != nil {
+		ver = m.id.MySQLVersion()
+	}
 	body := []byte{}
-	body = append(body, 0x0a)                          // protocol version 10
-	body = append(body, []byte("5.7.42-honeypot")...)  // server version
+	body = append(body, 0x0a)               // protocol version 10
+	body = append(body, []byte(ver)...)     // server version (per-deployment)
 	body = append(body, 0)
 	body = binary.LittleEndian.AppendUint32(body, 1)   // connection id
 	body = append(body, salt1...)                       // auth_plugin_data_part_1
@@ -60,7 +67,7 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		res.Meta["write_err"] = err.Error()
 		return res, nil
 	}
-	res.BannerSent = "mysql handshake (5.7.42-honeypot)"
+	res.BannerSent = "mysql handshake (" + ver + ")"
 
 	// Read client handshake response.
 	hdr := make([]byte, 4)

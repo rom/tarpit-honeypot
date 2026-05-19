@@ -44,6 +44,15 @@ func (c *Config) applyDefaults() {
 	if c.Sensor.Disk.CaptureKB == 0 {
 		c.Sensor.Disk.CaptureKB = 64
 	}
+	if c.Sensor.Shutdown.DrainTimeout == 0 {
+		c.Sensor.Shutdown.DrainTimeout = 10 * time.Second
+	}
+	if c.Sensor.Jitter.Enabled && c.Sensor.Jitter.MaxMS == 0 {
+		c.Sensor.Jitter.MaxMS = 50
+	}
+	if c.Sensor.Jitter.Enabled && c.Sensor.Jitter.MinMS == 0 {
+		c.Sensor.Jitter.MinMS = 5
+	}
 	if c.Dedup.DefaultWindow == 0 {
 		c.Dedup.DefaultWindow = 5 * time.Minute
 	}

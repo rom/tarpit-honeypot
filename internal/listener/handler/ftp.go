@@ -8,16 +8,20 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
-type ftp struct{}
+type ftp struct {
+	jit *jitter.Jitterer
+}
 
 func (f *ftp) Name() string { return "ftp" }
 
 // Minimal FTP login flow: 220 banner -> read USER -> 331 -> read PASS ->
 // 530 incorrect, close. Captures username and password attempts.
-func (f *ftp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	f.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
 		banner = "220 (vsFTPd 3.0.3)\r\n"

@@ -6,9 +6,12 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
-type telnet struct{}
+type telnet struct {
+	jit *jitter.Jitterer
+}
 
 func (t *telnet) Name() string { return "telnet" }
 
@@ -21,8 +24,9 @@ var telnetIAC = []byte{
 	0xff, 0xfd, 0x18, // IAC DO TERMINAL-TYPE
 }
 
-func (t *telnet) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	t.jit.Sleep(ctx)
 	banner := cfg.Banner
 	if banner == "" {
 		banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "

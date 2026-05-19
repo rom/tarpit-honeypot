@@ -8,10 +8,15 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
 type httpH struct {
 	urlCanaries []config.URLCanary
+	id          *identity.Identity
+	jit         *jitter.Jitterer
 }
 
 func (h *httpH) Name() string { return "http" }
@@ -20,11 +25,14 @@ func (h *httpH) Name() string { return "http" }
 // We read until \r\n\r\n (end of headers) or the read cap, whichever is first.
 // Any request whose path exactly matches a configured URL canary is recorded
 // in res.CanaryHits — the listener turns those into separate critical events.
-func (h *httpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
-	return serveHTTP(conn, cfg, h.urlCanaries)
+// The Server: header is randomized per-deployment to defeat banner clustering,
+// and JA4H is computed over the request line + headers.
+func (h *httpH) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+	h.jit.Sleep(ctx)
+	return serveHTTP(conn, cfg, h.urlCanaries, h.id)
 }
 
-func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary) (Result, error) {
+func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, id *identity.Identity) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
@@ -62,6 +70,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary) 
 	res.Meta["request_line"] = firstLine
 	res.Meta["host"] = host
 
+	// JA4H fingerprint over method+version+header order/values.
+	if raw, hash := fingerprint.JA4H(buf.Bytes()); hash != "" {
+		res.Meta["ja4h"] = hash
+		res.Meta["ja4h_raw"] = raw
+	}
+
 	// URL canary match: parse the path out of the request line.
 	if path := extractPath(firstLine); path != "" {
 		for _, c := range canaries {
@@ -71,10 +85,14 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary) 
 		}
 	}
 
+	server := "nginx/1.18.0"
+	if id != nil {
+		server = id.HTTPServerHeader()
+	}
 	banner := cfg.Banner
 	if banner == "" {
 		banner = "HTTP/1.1 401 Unauthorized\r\n" +
-			"Server: nginx/1.18.0\r\n" +
+			"Server: " + server + "\r\n" +
 			"WWW-Authenticate: Basic realm=\"admin\"\r\n" +
 			"Content-Length: 0\r\n" +
 			"Connection: close\r\n\r\n"

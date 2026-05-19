@@ -9,9 +9,14 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/jitter"
 )
 
-type smtpRecv struct{}
+type smtpRecv struct {
+	id  *identity.Identity
+	jit *jitter.Jitterer
+}
 
 func (s *smtpRecv) Name() string { return "smtp_recv" }
 
@@ -23,11 +28,16 @@ func (s *smtpRecv) Name() string { return "smtp_recv" }
 //
 // Captured fields land in meta: helo, auth_mech, auth_user, auth_pass,
 // mail_from, rcpt_to, message_head.
-func (s *smtpRecv) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	s.jit.Sleep(ctx)
 	res := Result{Meta: map[string]any{}}
 
-	greet := "220 mail.example.com ESMTP Postfix (Debian/GNU)\r\n"
+	host := "mail.example.com"
+	if s.id != nil {
+		host = s.id.HostName()
+	}
+	greet := "220 " + host + " ESMTP Postfix (Debian/GNU)\r\n"
 	if cfg.Banner != "" {
 		greet = cfg.Banner
 	}

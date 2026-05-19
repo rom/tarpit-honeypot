@@ -8,9 +8,12 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
-type smb struct{}
+type smb struct {
+	id *identity.Identity
+}
 
 func (s *smb) Name() string { return "smb" }
 
@@ -133,7 +136,7 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		return res, nil
 	}
 
-	out := smb1NegotiateResponse(body, uint16(chosen))
+	out := smb1NegotiateResponse(body, uint16(chosen), s.id)
 	if _, err := conn.Write(out); err != nil {
 		res.Meta["write_err"] = err.Error()
 	} else {
@@ -146,7 +149,17 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 // smb1NegotiateResponse builds a NBSS+SMB1+payload response selecting the
 // given dialect index. The challenge is a fixed 8 bytes; servername is
 // "WORKGROUP\0" UTF-16LE.
-func smb1NegotiateResponse(req []byte, dialectIndex uint16) []byte {
+func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identity) []byte {
+	// Per-deployment unique session key + challenge bytes. Without an
+	// Identity we fall back to the fixed v0.8 values so existing tests
+	// keep passing.
+	var sessionKey uint32 = 0xdeadbeef
+	challenge := []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
+	if id != nil {
+		sessionKey = id.Uint32("smb-session-key")
+		challenge = id.Bytes("smb-challenge", 8)
+	}
+
 	// Word data fields (NT LM 0.12 response, no extended security).
 	wordData := make([]byte, 0, 34)
 	wordData = binary.LittleEndian.AppendUint16(wordData, dialectIndex)
@@ -155,15 +168,15 @@ func smb1NegotiateResponse(req []byte, dialectIndex uint16) []byte {
 	wordData = binary.LittleEndian.AppendUint16(wordData, 1)                   // MaxNumberVcs
 	wordData = binary.LittleEndian.AppendUint32(wordData, 16644)               // MaxBufferSize
 	wordData = binary.LittleEndian.AppendUint32(wordData, 65536)               // MaxRawSize
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0xdeadbeef)          // SessionKey
+	wordData = binary.LittleEndian.AppendUint32(wordData, sessionKey)          // SessionKey (per-deployment)
 	wordData = binary.LittleEndian.AppendUint32(wordData, 0x8001f3fd)          // Capabilities (UNICODE+...)
 	wordData = binary.LittleEndian.AppendUint32(wordData, 0)                   // SystemTime low
 	wordData = binary.LittleEndian.AppendUint32(wordData, 0)                   // SystemTime high
 	wordData = binary.LittleEndian.AppendUint16(wordData, 0)                   // ServerTimeZone
 	wordData = append(wordData, 0x08)                                          // EncryptionKeyLength = 8
 
-	// Byte data: 8-byte challenge + UTF-16LE "WORKGROUP\0"
-	bytesField := []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
+	// Byte data: 8-byte challenge (per-deployment) + UTF-16LE "WORKGROUP\0"
+	bytesField := append([]byte{}, challenge...)
 	wg := []byte("W\x00O\x00R\x00K\x00G\x00R\x00O\x00U\x00P\x00\x00\x00")
 	bytesField = append(bytesField, wg...)
 
