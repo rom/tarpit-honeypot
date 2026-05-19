@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,20 +13,23 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/format"
 )
 
 type webhookSink struct {
-	id     string
-	url    string
-	secret []byte
-	client *http.Client
+	id        string
+	url       string
+	secret    []byte
+	client    *http.Client
+	formatter format.Formatter
 }
 
-func newWebhook(ch config.Channel) (*webhookSink, error) {
+func newWebhook(ch config.Channel, f format.Formatter) (*webhookSink, error) {
 	w := &webhookSink{
-		id:     ch.ID,
-		url:    ch.URL,
-		client: &http.Client{Timeout: ch.Timeout},
+		id:        ch.ID,
+		url:       ch.URL,
+		client:    &http.Client{Timeout: ch.Timeout},
+		formatter: f,
 	}
 	if ch.HMACSecretEnv != "" {
 		secret := os.Getenv(ch.HMACSecretEnv)
@@ -42,7 +44,7 @@ func newWebhook(ch config.Channel) (*webhookSink, error) {
 func (w *webhookSink) ID() string { return w.id }
 
 func (w *webhookSink) Send(ctx context.Context, ev *event.Event) error {
-	body, err := json.Marshal(ev)
+	body, err := w.formatter.Format(ev)
 	if err != nil {
 		return err
 	}
@@ -50,10 +52,11 @@ func (w *webhookSink) Send(ctx context.Context, ev *event.Event) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "tarpit-honeypot/0.1")
+	req.Header.Set("Content-Type", w.formatter.ContentType())
+	req.Header.Set("User-Agent", "tarpit-honeypot/1.4")
 	req.Header.Set("X-Tarpit-Event-ID", ev.ID)
 	req.Header.Set("X-Tarpit-Time", ev.Time.Format(time.RFC3339Nano))
+	req.Header.Set("X-Tarpit-Format", w.formatter.Name())
 	if len(w.secret) > 0 {
 		mac := hmac.New(sha256.New, w.secret)
 		mac.Write(body)

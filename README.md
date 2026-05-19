@@ -121,6 +121,14 @@ phasing decisions.
 
 ## Status
 
+**v1.4 — SIEM enrichment + output formats.** Adds GeoIP / ASN /
+reverse-DNS enrichment that decorates every event's meta from
+operator-supplied MaxMind GeoLite2 databases plus a bounded
+synchronous rDNS resolver. Each sink can now emit in JSON (default),
+CEF (ArcSight), LEEF (QRadar), or OCSF (cloud SIEMs like Snowflake,
+Athena, AWS Security Lake) — pick per-channel via the new `format:`
+field.
+
 **v1.3 — honeynet ICMP + Prometheus metrics.** Virtual hosts now
 respond to ping via an opt-in Linux AF_PACKET ICMP echo responder
 (same model as the v1.2 ARP responder; reuses the per-host
@@ -790,6 +798,93 @@ Privileged ports (53, 88, 102, 110, 135, 161, 389, 445, 502, 623, 636,
 grant; for production, the systemd path with `AmbientCapabilities` is
 usually cleaner.
 
+## Output formats
+
+Every event-shaped sink (`stdout`, `jsonlog`, `webhook`, `smtp`, `syslog`)
+accepts an optional `format:` field. The default is `json` (legacy
+behavior). Three SIEM-friendly alternatives ship:
+
+| Format | Use for | Wire shape |
+|---|---|---|
+| `json` | Generic JSON consumers, web UI / `list-events` | Full event JSON |
+| `cef` | ArcSight | `CEF:0\|tarpit-honeypot\|tarpit\|1.4\|<rule_id>\|<name>\|<sev0-10>\|<ext>` |
+| `leef` | QRadar | `LEEF:2.0\|tarpit-honeypot\|tarpit\|1.4\|<rule_id>\|<tab><k=v>...` |
+| `ocsf` | Snowflake, Athena, AWS Security Lake | JSON shaped as OCSF Network Activity (class_uid=4001) |
+
+Example:
+
+```yaml
+channels:
+  - id: jsonlog
+    type: jsonlog
+    format: json              # default — also writes to events-*.jsonl
+  - id: siem-arcsight
+    type: syslog
+    network: tcp
+    address: arcsight:514
+    format: cef
+  - id: siem-qradar
+    type: syslog
+    network: tcp
+    address: qradar:514
+    format: leef
+  - id: lake-aws
+    type: webhook
+    url: https://lake.example.com/ingest
+    format: ocsf
+```
+
+CEF severity maps low=2, medium=5, high=7, critical=10. OCSF
+severity maps low=2, medium=3, high=4, critical=5 (Informational(1) is
+unused). Meta keys flow into:
+
+- CEF: `cs1..cs6` slots with their original key in `cs1Label..cs6Label`.
+- LEEF: `meta_<key>=<value>` extension keys.
+- OCSF: the `unmapped` object (catch-all for honeynet / fingerprint /
+  handler-specific keys without a dedicated OCSF slot).
+
+Sinks that aren't event-shaped — `sqlite` (structured rows), `twilio`
+(SMS body), `sns` (AWS Publish), `snmptrap` (PDU) — reject non-json
+`format:` at validate time.
+
+## Enrichment
+
+When configured, the sensor decorates every event's meta with
+location and identity hints for the **source IP** before the
+correlator runs. Aggregate events (port_scan / brute_force / slow_scan)
+inherit the enrichment without extra lookups.
+
+```yaml
+sensor:
+  geoip:
+    city_db: /var/lib/GeoLite2-City.mmdb
+    asn_db:  /var/lib/GeoLite2-ASN.mmdb
+  rdns:
+    enabled: true
+    timeout: 500ms
+    cache_size: 1024
+```
+
+Both GeoIP paths are optional — configure one or both. The .mmdb files
+must be supplied by the operator (MaxMind's GeoLite2 license restricts
+redistribution).
+
+Loopback, link-local, and RFC 1918 / RFC 4193 private addresses are
+**not** enriched — they don't have meaningful geolocation, and the
+rDNS lookup would either hang or return an unhelpful internal name.
+
+Enrichment keys added to event meta:
+
+| Key | From | Example |
+|---|---|---|
+| `geo_country` | city db | `RU` |
+| `geo_country_name` | city db | `Russia` |
+| `geo_city` | city db | `Moscow` |
+| `geo_lat`, `geo_lon` | city db | `55.7522, 37.6156` |
+| `asn` | asn db | `13335` |
+| `asn_org` | asn db | `Cloudflare, Inc.` |
+| `rdns` | resolver | `host.example.adsl.com` |
+
 ## Prometheus metrics
 
 With `ui.enabled: true` the web UI exposes `/metrics` in Prometheus
@@ -835,19 +930,22 @@ Sample Prometheus scrape:
     - targets: ['sensor.example.internal:8088']
 ```
 
-## What's NOT in v1.3
+## What's NOT in v1.4
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
-- **TUN-based honeynet adapter.** ARP + ICMP responders make virtual
-  hosts discoverable, but routing TCP/UDP for the virtual IPs to the
-  sensor still requires `ip addr add` or iptables. A pure-userspace
-  TUN device with a small TCP stack would close that gap.
-- **GeoIP / rDNS / ASN enrichment.**
-- **CEF / LEEF / OCSF output formats.**
+- **TUN-based honeynet adapter.** ARP + ICMP responders (v1.2 / v1.3)
+  make virtual hosts discoverable, but routing TCP/UDP for the
+  virtual IPs to the sensor still requires `ip addr add` or
+  iptables. A pure-userspace TUN device with a small TCP stack
+  (most likely via `gvisor.dev/gvisor/pkg/tcpip`) would close that
+  gap. Headline target for v1.5.
+- **SNMP / LDAP / DCE-RPC topology exposure.** Handlers don't yet
+  return honeynet ARP/IF tables / computer accounts on relevant
+  queries.
 
 Everything else from the original design is shipped.
 

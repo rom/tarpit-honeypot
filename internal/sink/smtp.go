@@ -13,27 +13,30 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/format"
 )
 
 type smtpSink struct {
-	id       string
-	host     string
-	port     int
-	starttls bool
-	from     string
-	to       []string
-	user     string
-	pass     string
+	id        string
+	host      string
+	port      int
+	starttls  bool
+	from      string
+	to        []string
+	user      string
+	pass      string
+	formatter format.Formatter
 }
 
-func newSMTP(ch config.Channel) (*smtpSink, error) {
+func newSMTP(ch config.Channel, f format.Formatter) (*smtpSink, error) {
 	s := &smtpSink{
-		id:       ch.ID,
-		host:     ch.Host,
-		port:     ch.Port,
-		starttls: ch.StartTLS,
-		from:     ch.From,
-		to:       ch.To,
+		id:        ch.ID,
+		host:      ch.Host,
+		port:      ch.Port,
+		starttls:  ch.StartTLS,
+		from:      ch.From,
+		to:        ch.To,
+		formatter: f,
 	}
 	if ch.UsernameEnv != "" {
 		s.user = os.Getenv(ch.UsernameEnv)
@@ -97,7 +100,15 @@ func (s *smtpSink) Send(ctx context.Context, ev *event.Event) error {
 func (s *smtpSink) Close() error { return nil }
 
 func (s *smtpSink) formatBody(ev *event.Event) string {
-	pretty, _ := json.MarshalIndent(ev, "", "  ")
+	var body string
+	if s.formatter.Name() == "json" {
+		// JSON body looks better pretty-printed in an email client.
+		pretty, _ := json.MarshalIndent(ev, "", "  ")
+		body = string(pretty)
+	} else {
+		b, _ := s.formatter.Format(ev)
+		body = string(b)
+	}
 	subject := fmt.Sprintf("[tarpit-honeypot %s] %s from %s", ev.Severity, ev.RuleID, ev.Source.IP)
 	headers := []string{
 		"From: " + s.from,
@@ -105,8 +116,9 @@ func (s *smtpSink) formatBody(ev *event.Event) string {
 		"Subject: " + subject,
 		"X-Tarpit-Event-ID: " + ev.ID,
 		"X-Tarpit-Severity: " + ev.Severity.String(),
-		"Content-Type: text/plain; charset=utf-8",
+		"X-Tarpit-Format: " + s.formatter.Name(),
+		"Content-Type: " + s.formatter.ContentType(),
 		"MIME-Version: 1.0",
 	}
-	return strings.Join(headers, "\r\n") + "\r\n\r\n" + string(pretty) + "\r\n"
+	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body + "\r\n"
 }

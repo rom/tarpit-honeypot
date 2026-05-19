@@ -453,6 +453,20 @@ func (c *Config) Validate() error {
 		if _, err := event.ParseSeverity(ch.MinSeverity); err != nil {
 			return fmt.Errorf("channel %s: %w", ch.ID, err)
 		}
+		switch ch.Format {
+		case "", "json", "cef", "leef", "ocsf":
+		default:
+			return fmt.Errorf("channel %s: unknown format %q (want json | cef | leef | ocsf)", ch.ID, ch.Format)
+		}
+		if ch.Format != "" && ch.Format != "json" {
+			switch ch.Type {
+			case "jsonlog", "syslog", "webhook", "smtp", "stdout":
+			case "sqlite":
+				return fmt.Errorf("channel %s: format=%q not valid for sqlite (sqlite always stores structured rows)", ch.ID, ch.Format)
+			case "twilio", "sns", "snmptrap":
+				return fmt.Errorf("channel %s: format=%q not valid for %s (channel-specific payload)", ch.ID, ch.Format, ch.Type)
+			}
+		}
 	}
 
 	// DNS amplifier detection defaults.

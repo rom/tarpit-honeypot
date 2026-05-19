@@ -6,12 +6,11 @@ import (
 	"errors"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/format"
 )
 
-// Stdlib log/syslog is Unix-only. Windows support lands in v0.3 alongside
-// the service installer; until then a syslog channel is a config error on
-// Windows rather than a silent no-op.
+// Stdlib log/syslog is Unix-only.
 
-func newSyslog(_ config.Channel) (Sink, error) {
-	return nil, errors.New("syslog channel not supported on windows (planned for v0.3)")
+func newSyslog(_ config.Channel, _ format.Formatter) (Sink, error) {
+	return nil, errors.New("syslog channel not supported on windows")
 }

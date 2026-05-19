@@ -2,7 +2,6 @@ package sink
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,32 +10,46 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/format"
 )
 
-// jsonLogSink writes events as JSON-lines to events-YYYYMMDD-NN.jsonl,
-// rotating by file size and pruning oldest files when totalCapBytes is exceeded.
+// jsonLogSink writes events as one-record-per-line to events-YYYYMMDD-NN.<ext>,
+// where the line format and file extension follow the configured format
+// (json => .jsonl, cef/leef => .log, ocsf => .jsonl). Rotates by file
+// size and prunes oldest files when totalCapBytes is exceeded.
 type jsonLogSink struct {
 	id            string
 	dir           string
 	totalCapBytes int64
 	perFileBytes  int64
+	formatter     format.Formatter
+	ext           string
 
 	mu      sync.Mutex
 	file    *os.File
 	written int64
 }
 
-func newJSONLog(id, dataDir string, jsonMB int) (*jsonLogSink, error) {
+func newJSONLog(id, dataDir string, jsonMB int, f format.Formatter) (*jsonLogSink, error) {
 	dir := filepath.Join(dataDir, "events")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("jsonlog: mkdir %s: %w", dir, err)
 	}
 	cap := int64(jsonMB) * 1024 * 1024
+	ext := "jsonl"
+	if f != nil {
+		switch f.Name() {
+		case "cef", "leef":
+			ext = "log"
+		}
+	}
 	return &jsonLogSink{
 		id:            id,
 		dir:           dir,
 		totalCapBytes: cap,
 		perFileBytes:  cap / 10, // 10 rotation slots
+		formatter:     f,
+		ext:           ext,
 	}, nil
 }
 
@@ -49,7 +62,7 @@ func (j *jsonLogSink) Send(_ context.Context, ev *event.Event) error {
 	if err := j.ensureFile(); err != nil {
 		return err
 	}
-	b, err := json.Marshal(ev)
+	b, err := j.formatter.Format(ev)
 	if err != nil {
 		return err
 	}
@@ -85,7 +98,7 @@ func (j *jsonLogSink) ensureFile() error {
 	if j.file != nil {
 		return nil
 	}
-	name := fmt.Sprintf("events-%s-%d.jsonl", time.Now().UTC().Format("20060102"), time.Now().UnixNano())
+	name := fmt.Sprintf("events-%s-%d.%s", time.Now().UTC().Format("20060102"), time.Now().UnixNano(), j.ext)
 	path := filepath.Join(j.dir, name)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {

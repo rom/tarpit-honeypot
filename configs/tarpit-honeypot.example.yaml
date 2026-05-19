@@ -29,6 +29,17 @@ sensor:
     pcap_mb: 1024       # total cap for the captures directory
     capture_kb: 64      # per-session cap before truncation
     retention_days: 0   # 0 = no time-based retention; otherwise events / files / db rows older than this are pruned hourly
+  # Source-IP enrichment. Each event's meta gets geo_country / geo_city /
+  # asn / asn_org / rdns when configured. Loopback + RFC 1918 / RFC 4193
+  # private sources are not enriched. The .mmdb files must be supplied by
+  # the operator (MaxMind GeoLite2 license restricts redistribution).
+  geoip:
+    city_db: ""          # e.g. /var/lib/GeoLite2-City.mmdb
+    asn_db:  ""          # e.g. /var/lib/GeoLite2-ASN.mmdb
+  rdns:
+    enabled: false
+    timeout: 500ms       # bounded so a stalled resolver can't back up the bus
+    cache_size: 1024     # LRU cache size
 
 ui:
   enabled: true

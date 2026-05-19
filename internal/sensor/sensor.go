@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
+	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -45,6 +46,7 @@ type Sensor struct {
 	identity   *identity.Identity
 	jitter     *jitter.Jitterer
 	honeynet   *honeynet.Topology
+	enrich     *enrich.Enricher
 	bus        chan *event.Event
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
@@ -152,6 +154,23 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
+	enr, err := enrich.New(enrich.Config{
+		CityDB:      cfg.Sensor.GeoIP.CityDB,
+		ASNDB:       cfg.Sensor.GeoIP.ASNDB,
+		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
+		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
+		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
+	})
+	if err != nil {
+		for _, s := range sinks {
+			_ = s.Close()
+		}
+		if st != nil {
+			_ = st.Close()
+		}
+		return nil, err
+	}
+
 	return &Sensor{
 		cfg:        cfg,
 		name:       name,
@@ -163,6 +182,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		identity:   id,
 		jitter:     jit,
 		honeynet:   topo,
+		enrich:     enr,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -410,7 +430,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		for ev := range s.bus {
+			// Enrich first so the correlator's aggregate events inherit
+			// geo / asn / rdns from the contributing source IPs without
+			// extra MaxMind lookups.
+			s.enrich.Decorate(ev)
 			for _, out := range s.correlator.Observe(ev) {
+				if out != ev {
+					s.enrich.Decorate(out)
+				}
 				s.router.Dispatch(out)
 			}
 		}
@@ -574,6 +601,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 	if s.store != nil {
 		_ = s.store.Close()
+	}
+	if s.enrich != nil {
+		_ = s.enrich.Close()
 	}
 	return nil
 }

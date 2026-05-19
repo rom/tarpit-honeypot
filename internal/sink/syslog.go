@@ -4,19 +4,20 @@ package sink
 
 import (
 	"context"
-	"encoding/json"
 	"log/syslog"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/format"
 )
 
 type syslogSink struct {
-	id string
-	w  *syslog.Writer
+	id        string
+	w         *syslog.Writer
+	formatter format.Formatter
 }
 
-func newSyslog(ch config.Channel) (*syslogSink, error) {
+func newSyslog(ch config.Channel, f format.Formatter) (*syslogSink, error) {
 	var w *syslog.Writer
 	var err error
 	priority := syslog.LOG_INFO | syslog.LOG_DAEMON
@@ -29,25 +30,26 @@ func newSyslog(ch config.Channel) (*syslogSink, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &syslogSink{id: ch.ID, w: w}, nil
+	return &syslogSink{id: ch.ID, w: w, formatter: f}, nil
 }
 
 func (s *syslogSink) ID() string { return s.id }
 
 func (s *syslogSink) Send(_ context.Context, ev *event.Event) error {
-	b, err := json.Marshal(ev)
+	b, err := s.formatter.Format(ev)
 	if err != nil {
 		return err
 	}
+	msg := string(b)
 	switch ev.Severity {
 	case event.SeverityCritical:
-		return s.w.Crit(string(b))
+		return s.w.Crit(msg)
 	case event.SeverityHigh:
-		return s.w.Err(string(b))
+		return s.w.Err(msg)
 	case event.SeverityMedium:
-		return s.w.Warning(string(b))
+		return s.w.Warning(msg)
 	default:
-		return s.w.Info(string(b))
+		return s.w.Info(msg)
 	}
 }
 

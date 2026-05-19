@@ -128,15 +128,34 @@ type UI struct {
 }
 
 type Sensor struct {
-	Name         string `yaml:"name"`
-	DataDir      string `yaml:"data_dir"`
-	DeploymentID string `yaml:"deployment_id"`
-	DropUser     string `yaml:"drop_user"`
-	DropGroup    string `yaml:"drop_group"`
-	Disk         Disk   `yaml:"disk"`
-	Jitter       Jitter `yaml:"jitter"`
-	Shutdown     Shutdown `yaml:"shutdown"`
+	Name         string    `yaml:"name"`
+	DataDir      string    `yaml:"data_dir"`
+	DeploymentID string    `yaml:"deployment_id"`
+	DropUser     string    `yaml:"drop_user"`
+	DropGroup    string    `yaml:"drop_group"`
+	Disk         Disk      `yaml:"disk"`
+	Jitter       Jitter    `yaml:"jitter"`
+	Shutdown     Shutdown  `yaml:"shutdown"`
 	TLSRotate    TLSRotate `yaml:"tls_rotate"`
+	GeoIP        GeoIP     `yaml:"geoip"`
+	RDNS         RDNS      `yaml:"rdns"`
+}
+
+// GeoIP turns on country/city/ASN enrichment of source IPs using
+// operator-supplied MaxMind GeoLite2 .mmdb files. Both paths optional —
+// configure one or both. Loopback and RFC 1918 sources are not enriched.
+type GeoIP struct {
+	CityDB string `yaml:"city_db"`
+	ASNDB  string `yaml:"asn_db"`
+}
+
+// RDNS enables synchronous reverse-DNS enrichment of source IPs with an
+// LRU cache. The lookup is bounded by Timeout so a stalled resolver
+// doesn't back up the bus.
+type RDNS struct {
+	Enabled   bool          `yaml:"enabled"`
+	Timeout   time.Duration `yaml:"timeout"`
+	CacheSize int           `yaml:"cache_size"`
 }
 
 // Jitter randomizes the latency of handler replies. min=max=0 disables.
@@ -249,7 +268,8 @@ type Dedup struct {
 
 type Channel struct {
 	ID              string        `yaml:"id"`
-	Type            string        `yaml:"type"` // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+	Type            string        `yaml:"type"`   // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+	Format          string        `yaml:"format"` // json (default) | cef | leef | ocsf
 	MinSeverity     string        `yaml:"min_severity"`
 	RateLimitPerMin int           `yaml:"rate_limit_per_min"`
 
