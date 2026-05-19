@@ -9,6 +9,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
@@ -22,9 +23,10 @@ type tcpListener struct {
 	sev        event.Severity
 	handler    handler.Handler
 	tarpit     *tarpitState
+	captureMgr *capture.Manager
 }
 
-func newTCP(l config.Listener, sensorName, dataDir string) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
@@ -40,6 +42,12 @@ func newTCP(l config.Listener, sensorName, dataDir string) (*tcpListener, error)
 	if l.Mode == "tarpit" {
 		t.tarpit = newTarpitState()
 	}
+	if l.Capture {
+		if capMgr == nil {
+			return nil, fmt.Errorf("listener %s: capture requested but capture manager unavailable", l.ID)
+		}
+		t.captureMgr = capMgr
+	}
 	return t, nil
 }
 
@@ -51,7 +59,7 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 	if err != nil {
 		return fmt.Errorf("listener %s: listen %s: %w", t.cfg.ID, t.cfg.Bind, err)
 	}
-	slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", t.cfg.Bind, "mode", t.cfg.Mode, "handler", t.cfg.Handler)
+	slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", t.cfg.Bind, "mode", t.cfg.Mode, "handler", t.cfg.Handler, "capture", t.captureMgr != nil)
 
 	go func() {
 		<-ctx.Done()
@@ -75,14 +83,41 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
 	start := time.Now()
 
+	eventID := event.NewID()
+	var sess *capture.Session
+	if t.captureMgr != nil && t.cfg.Mode != "drop" {
+		// drop mode never reads/writes, so capturing it produces empty pcaps
+		// — skip it. Tarpit and banner modes both benefit.
+		sess = t.captureMgr.Begin(eventID, conn.RemoteAddr(), conn.LocalAddr())
+		conn = &capture.Conn{Conn: conn, Sess: sess}
+	}
+
+	finish := func(ev *event.Event) {
+		if sess != nil {
+			path, truncated, err := sess.End()
+			if err != nil {
+				slog.Warn("capture end failed", "id", t.cfg.ID, "err", err)
+			} else if path != "" {
+				if ev.Meta == nil {
+					ev.Meta = map[string]any{}
+				}
+				ev.Meta["capture_path"] = path
+				if truncated {
+					ev.Meta["capture_truncated"] = true
+				}
+			}
+		}
+		send(ctx, bus, ev)
+	}
+
 	switch t.cfg.Mode {
 	case "drop":
-		ev := t.baseEvent(src, dst, start)
+		ev := t.baseEvent(eventID, src, dst, start)
 		_ = conn.Close()
-		send(ctx, bus, ev)
+		finish(ev)
 
 	case "banner":
-		ev := t.baseEvent(src, dst, start)
+		ev := t.baseEvent(eventID, src, dst, start)
 		if t.handler != nil {
 			res, _ := t.handler.Handle(ctx, conn, t.cfg)
 			ev.BannerSent = res.BannerSent
@@ -100,17 +135,20 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			}
 		}
 		_ = conn.Close()
-		send(ctx, bus, ev)
+		finish(ev)
 
 	case "tarpit":
 		maxPS, maxT := tarpitLimits(t.cfg)
 		if !t.tarpit.tryAcquire(src.IP, maxPS, maxT) {
 			t.emitTarpitDrop(ctx, bus, src, dst)
 			_ = conn.Close()
+			if sess != nil {
+				_, _, _ = sess.End()
+			}
 			return
 		}
 		// Emit a tarpit_start event immediately so operators see who's stuck.
-		startEv := t.baseEvent(src, dst, start)
+		startEv := t.baseEvent(eventID, src, dst, start)
 		startEv.RuleID = "listener:" + t.cfg.ID + ":tarpit_start"
 		if startEv.Meta == nil {
 			startEv.Meta = map[string]any{}
@@ -118,13 +156,15 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		startEv.Meta["tarpit_strategy"] = t.cfg.Tarpit.Strategy
 		send(ctx, bus, startEv)
 		// runTarpit closes the connection and releases the state slot.
-		t.runTarpit(ctx, conn, bus, start, src, dst)
+		// We bypass finish() because the tarpit_end event is emitted from
+		// runTarpit itself; the capture write happens there.
+		t.runTarpitWithCapture(ctx, conn, bus, start, src, dst, sess)
 	}
 }
 
-func (t *tcpListener) baseEvent(src, dst event.Endpoint, when time.Time) *event.Event {
+func (t *tcpListener) baseEvent(id string, src, dst event.Endpoint, when time.Time) *event.Event {
 	return &event.Event{
-		ID:       event.NewID(),
+		ID:       id,
 		Time:     when.UTC(),
 		Sensor:   t.sensorName,
 		RuleID:   "listener:" + t.cfg.ID,

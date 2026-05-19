@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/rom/tarpit-honeypot/internal/canary"
+	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -24,6 +25,7 @@ type Sensor struct {
 	router     *router.Router
 	correlator *correlate.Correlator
 	store      *store.Store
+	captureMgr *capture.Manager
 	bus        chan *event.Event
 }
 
@@ -50,6 +52,19 @@ func New(cfg *config.Config) (*Sensor, error) {
 			return nil, err
 		}
 		st = s
+	}
+
+	// Capture manager — created only if any listener requests capture.
+	var capMgr *capture.Manager
+	if needsCapture(cfg) {
+		mgr, err := capture.NewManager(cfg.Sensor.DataDir, cfg.Sensor.Disk.CaptureKB, cfg.Sensor.Disk.PcapMB)
+		if err != nil {
+			if st != nil {
+				_ = st.Close()
+			}
+			return nil, err
+		}
+		capMgr = mgr
 	}
 
 	var sinks []sink.Sink
@@ -102,8 +117,18 @@ func New(cfg *config.Config) (*Sensor, error) {
 		router:     r,
 		correlator: cor,
 		store:      st,
+		captureMgr: capMgr,
 		bus:        make(chan *event.Event, 1024),
 	}, nil
+}
+
+func needsCapture(cfg *config.Config) bool {
+	for _, l := range cfg.Listeners {
+		if l.Capture {
+			return true
+		}
+	}
+	return false
 }
 
 func needsStore(cfg *config.Config) bool {
@@ -257,7 +282,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}()
 
 	for _, l := range s.cfg.Listeners {
-		ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir)
+		ln, err := listener.Build(l, s.name, s.cfg.Sensor.DataDir, s.captureMgr)
 		if err != nil {
 			return err
 		}

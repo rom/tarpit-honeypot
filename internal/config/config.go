@@ -33,7 +33,8 @@ type Sensor struct {
 type Disk struct {
 	JSONLogMB int `yaml:"json_log_mb"`
 	SQLiteMB  int `yaml:"sqlite_mb"`
-	PcapMB    int `yaml:"pcap_mb"`
+	PcapMB    int `yaml:"pcap_mb"`     // total cap for the captures directory
+	CaptureKB int `yaml:"capture_kb"`  // per-session cap before truncation
 }
 
 type Listener struct {
@@ -41,11 +42,12 @@ type Listener struct {
 	Proto       string        `yaml:"proto"`   // tcp | udp
 	Bind        string        `yaml:"bind"`    // host:port
 	Mode        string        `yaml:"mode"`    // drop | banner | tarpit
-	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp
+	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
 	Banner      string        `yaml:"banner"`
 	Severity    string        `yaml:"severity"`
 	ReadBytes   int           `yaml:"read_bytes"`
 	ReadTimeout time.Duration `yaml:"read_timeout"`
+	Capture     bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`

@@ -3,6 +3,7 @@ package listener
 import (
 	"context"
 
+	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
@@ -13,10 +14,10 @@ type Listener interface {
 	Start(ctx context.Context, bus chan<- *event.Event) error
 }
 
-func Build(l config.Listener, sensorName, dataDir string) (Listener, error) {
+func Build(l config.Listener, sensorName, dataDir string, capMgr *capture.Manager) (Listener, error) {
 	switch l.Proto {
 	case "tcp":
-		return newTCP(l, sensorName, dataDir)
+		return newTCP(l, sensorName, dataDir, capMgr)
 	case "udp":
 		return newUDP(l, sensorName)
 	}

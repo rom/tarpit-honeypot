@@ -41,6 +41,9 @@ func (c *Config) applyDefaults() {
 	if c.Sensor.Disk.PcapMB == 0 {
 		c.Sensor.Disk.PcapMB = 1024
 	}
+	if c.Sensor.Disk.CaptureKB == 0 {
+		c.Sensor.Disk.CaptureKB = 64
+	}
 	if c.Dedup.DefaultWindow == 0 {
 		c.Dedup.DefaultWindow = 5 * time.Minute
 	}
@@ -157,7 +160,8 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("listener %s: unknown mode %q", l.ID, l.Mode)
 		}
 		switch l.Handler {
-		case "raw", "ssh", "http", "https", "telnet", "ftp":
+		case "raw", "ssh", "http", "https", "telnet", "ftp",
+			"modbus", "s7", "iec104", "mqtt":
 		default:
 			return fmt.Errorf("listener %s: unknown handler %q", l.ID, l.Handler)
 		}

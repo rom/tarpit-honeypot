@@ -7,17 +7,18 @@ what's actually built right now.
 
 ## Status
 
-**v0.3 — SQLite + read-only web UI + privilege drop + hot reload.**
-Events get indexed in an embedded SQLite database (pure-Go driver, no
-CGO). A read-only HTML/JSON UI on loopback shows last-24h summaries
-and queryable event tables. Linux uid/gid drop after privileged
-setup. SIGHUP reloads channels, routes, correlator thresholds, and
-allowlist without dropping connections. Linux amd64/arm64.
+**v0.4 — ICS handlers + per-event pcap capture.** Adds minimal
+fingerprint-grade protocol handlers for Modbus TCP (502), Siemens
+S7comm (102), IEC-104 (2404), and MQTT (1883). Per-listener
+`capture: true` records both directions of every TCP connection and
+writes a synthesized libpcap file Wireshark loads directly — pure Go,
+no raw sockets, no CGO. Linux amd64/arm64.
 
 Not yet implemented (planned in later phases per `design.md`):
-SMB + ICS/OT protocol handlers, DNS/URL token canaries, L2 sniffer,
-mini-pcap capture, Windows service, Twilio / SNS / SNMP-trap channels,
-listener hot-reload, and read-detection for honeyfiles via fanotify.
+SMB + remaining ICS handlers (OPC-UA / BACnet / EthernetIP / SNMP /
+NTP / TFTP), DNS/URL token canaries, L2 sniffer, Windows service,
+Twilio / SNS / SNMP-trap channels, listener hot-reload, and
+read-detection for honeyfiles via fanotify.
 
 ## Build
 

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
@@ -52,10 +53,16 @@ func (s *tarpitState) release(srcIP string) {
 	s.total.Add(-1)
 }
 
+// runTarpitWithCapture is the capture-aware entry point. The connection
+// has already been wrapped in a capture.Conn by handle() when sess != nil.
+func (t *tcpListener) runTarpitWithCapture(ctx context.Context, conn net.Conn, bus chan<- *event.Event, startTime time.Time, src, dst event.Endpoint, sess *capture.Session) {
+	t.runTarpit(ctx, conn, bus, startTime, src, dst, sess)
+}
+
 // runTarpit holds the connection per the configured strategy until ctx
 // cancels or the remote disconnects.
 // It emits a "tarpit_end" event with duration metadata on completion.
-func (t *tcpListener) runTarpit(ctx context.Context, conn net.Conn, bus chan<- *event.Event, startTime time.Time, src, dst event.Endpoint) {
+func (t *tcpListener) runTarpit(ctx context.Context, conn net.Conn, bus chan<- *event.Event, startTime time.Time, src, dst event.Endpoint, sess *capture.Session) {
 	defer conn.Close()
 	defer t.tarpit.release(src.IP)
 
@@ -101,6 +108,14 @@ func (t *tcpListener) runTarpit(ctx context.Context, conn net.Conn, bus chan<- *
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		endEv.Meta["end_reason"] = err.Error()
+	}
+	if sess != nil {
+		if path, truncated, serr := sess.End(); serr == nil && path != "" {
+			endEv.Meta["capture_path"] = path
+			if truncated {
+				endEv.Meta["capture_truncated"] = true
+			}
+		}
 	}
 	select {
 	case bus <- endEv:

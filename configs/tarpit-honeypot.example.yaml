@@ -9,7 +9,8 @@ sensor:
   disk:
     json_log_mb: 500
     sqlite_mb: 500
-    pcap_mb: 1024
+    pcap_mb: 1024       # total cap for the captures directory
+    capture_kb: 64      # per-session cap before truncation
 
 ui:
   enabled: true
@@ -25,6 +26,45 @@ listeners:
     bind: 0.0.0.0:2222
     mode: banner
     handler: ssh
+    severity: high
+    read_bytes: 1024
+    read_timeout: 5s
+    capture: true
+
+  - id: modbus-bait
+    proto: tcp
+    bind: 0.0.0.0:502
+    mode: banner
+    handler: modbus
+    severity: critical
+    read_bytes: 260
+    read_timeout: 5s
+    capture: true
+
+  - id: s7-bait
+    proto: tcp
+    bind: 0.0.0.0:102
+    mode: banner
+    handler: s7
+    severity: critical
+    read_bytes: 256
+    read_timeout: 5s
+    capture: true
+
+  - id: iec104-bait
+    proto: tcp
+    bind: 0.0.0.0:2404
+    mode: banner
+    handler: iec104
+    severity: critical
+    read_bytes: 256
+    read_timeout: 5s
+
+  - id: mqtt-bait
+    proto: tcp
+    bind: 0.0.0.0:1883
+    mode: banner
+    handler: mqtt
     severity: high
     read_bytes: 1024
     read_timeout: 5s

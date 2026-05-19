@@ -47,6 +47,14 @@ func Get(name string, dataDir string) (Handler, error) {
 		return &telnet{}, nil
 	case "ftp":
 		return &ftp{}, nil
+	case "modbus":
+		return &modbus{}, nil
+	case "s7":
+		return &s7{}, nil
+	case "iec104":
+		return &iec104{}, nil
+	case "mqtt":
+		return &mqtt{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }
