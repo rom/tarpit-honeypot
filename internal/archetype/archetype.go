@@ -24,22 +24,22 @@ import "strings"
 func init() {
 	defaultPrompts := map[string]string{
 		// RHEL family — bash with the standard /etc/bashrc PS1.
-		"centos-5":                   "[root@centos5 ~]# ",
-		"centos-6":                   "[root@centos6 ~]# ",
-		"centos-7":                   "[root@centos7 ~]# ",
-		"centos-8":                   "[root@centos8 ~]# ",
-		"centos-stream-10":           "[root@cs10 ~]# ",
-		"red-hat-enterprise-linux-8": "[root@rhel8 ~]# ",
-		"red-hat-enterprise-linux-9": "[root@rhel9 ~]# ",
+		"centos-5":                    "[root@centos5 ~]# ",
+		"centos-6":                    "[root@centos6 ~]# ",
+		"centos-7":                    "[root@centos7 ~]# ",
+		"centos-8":                    "[root@centos8 ~]# ",
+		"centos-stream-10":            "[root@cs10 ~]# ",
+		"red-hat-enterprise-linux-8":  "[root@rhel8 ~]# ",
+		"red-hat-enterprise-linux-9":  "[root@rhel9 ~]# ",
 		"red-hat-enterprise-linux-10": "[root@rhel10 ~]# ",
 		// Debian / Ubuntu — root@host:~#
-		"debian-9":            "root@debian9:~# ",
-		"debian-10":           "root@debian10:~# ",
-		"debian-11":           "root@debian11:~# ",
-		"debian-12":           "root@debian12:~# ",
-		"debian-13":           "root@debian13:~# ",
-		"ubuntu-24-04-lts":    "root@ubuntu2404:~# ",
-		"ubuntu-26-04-lts":    "root@ubuntu2604:~# ",
+		"debian-9":         "root@debian9:~# ",
+		"debian-10":        "root@debian10:~# ",
+		"debian-11":        "root@debian11:~# ",
+		"debian-12":        "root@debian12:~# ",
+		"debian-13":        "root@debian13:~# ",
+		"ubuntu-24-04-lts": "root@ubuntu2404:~# ",
+		"ubuntu-26-04-lts": "root@ubuntu2604:~# ",
 	}
 	for k, prompt := range defaultPrompts {
 		if p, ok := registry[k]; ok && p.cliPrompt == "" {
@@ -47,6 +47,9 @@ func init() {
 		}
 	}
 	for k, p := range deviceArchetypes {
+		registry[k] = p
+	}
+	for k, p := range windowsArchetypes {
 		registry[k] = p
 	}
 }
@@ -69,9 +72,9 @@ type Profile struct {
 	mysqlVersion string
 
 	// Device / network fingerprint.
-	macOUI       [3]byte // first 3 bytes of MAC, e.g. {0x00,0x90,0xe8} for Moxa
-	cliPrompt    string  // post-login shell prompt for SSH/Telnet sims
-	loginPrompt  string  // overrides telnetBanner when the device wants a specific 1st prompt
+	macOUI      [3]byte // first 3 bytes of MAC, e.g. {0x00,0x90,0xe8} for Moxa
+	cliPrompt   string  // post-login shell prompt for SSH/Telnet sims
+	loginPrompt string  // overrides telnetBanner when the device wants a specific 1st prompt
 
 	// HTTP body — what the index page looks like for this device. Used
 	// when the operator binds the handler "http" against this archetype.
@@ -84,7 +87,7 @@ type Profile struct {
 	snmpSysName     string
 	snmpSysContact  string
 	snmpSysLocation string
-	snmpIfTable     []Interface  // ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress
+	snmpIfTable     []Interface // ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress
 	lldpNeighbors   []LLDPPeer
 
 	// Default services on this archetype — the listener set the
@@ -92,10 +95,81 @@ type Profile struct {
 	// suggest-listeners` / archetype-aware honeynet host expansion.
 	defaultServices []DefaultService
 
+	// TLS posture. Older archetypes deliberately advertise weak/old
+	// TLS so the honeypot is internally consistent: a "Windows Server
+	// 2008" box that negotiates TLS 1.3 with modern ciphers is an
+	// obvious tell. Zero value = modern defaults (TLS 1.2+).
+	tls TLSPosture
+
+	// ICMP personality. The initial IP TTL a host stamps on its
+	// replies is OS-characteristic (Linux/BSD 64, Windows 128,
+	// many routers/switches 255) and is the basis of passive OS
+	// fingerprinting + traceroute hop-distance estimation. 0 = pick
+	// a family default.
+	icmpTTL int
+
+	// Switch / OT topology props — exposed by the snmp + web handlers
+	// for switch-class archetypes so a scanner walking the device sees
+	// a believable ring / PROFINET tree / VLAN / HMI inventory.
+	mrpRings        []MRPRing
+	profinetDevices []PROFINETDevice
+	vlans           []VLAN
+	hmis            []HMI
+
 	// Free-form quirk markers. Read by handlers that need archetype-
 	// specific tweaks (e.g. siemens-s7-1500 disables LLDP-MED TLVs;
 	// moxa-nport advertises raw TCP on 4001/4002).
 	quirks []string
+}
+
+// TLSPosture describes the TLS version + cipher posture an archetype
+// presents. Used by the https handler to make an old device negotiate
+// old protocols (consistency with its ancient firmware banner).
+type TLSPosture struct {
+	// MinVersion as a crypto/tls constant (0 = unset -> handler
+	// default of TLS 1.2). e.g. tls.VersionTLS10 for legacy gear.
+	MinVersion uint16
+	// MaxVersion caps negotiation (0 = unset -> handler default). An
+	// old box that can't do TLS 1.3 sets this to tls.VersionTLS12 (or
+	// lower) so a modern client's ClientHello downgrades — exactly
+	// what a real legacy device does.
+	MaxVersion uint16
+	// WeakCiphers enables the legacy cipher suites (CBC/3DES/RC4-era)
+	// that Go normally hides. Pairs with low MaxVersion.
+	WeakCiphers bool
+}
+
+// MRPRing is one Media Redundancy Protocol ring a switch participates
+// in (IEC 62439-2). Exposed in the switch web UI / SNMP.
+type MRPRing struct {
+	Name  string
+	Role  string // "manager" | "client"
+	Ports []int
+	State string // "closed" | "open"
+}
+
+// PROFINETDevice is one node in the fake PROFINET device tree a
+// SCALANCE-class switch advertises (station name + IP + role).
+type PROFINETDevice struct {
+	StationName string
+	IP          string
+	Role        string // "io-controller" | "io-device"
+	Vendor      string
+}
+
+// VLAN is one 802.1Q VLAN entry shown in the switch's config.
+type VLAN struct {
+	ID    int
+	Name  string
+	Ports []int
+}
+
+// HMI is a fake human-machine-interface panel reachable behind the
+// switch (advertised in the web UI's "connected devices" view).
+type HMI struct {
+	Name string
+	IP   string
+	Type string
 }
 
 // Interface is a single MIB-2 interface entry, used to populate
@@ -281,6 +355,59 @@ func (p *Profile) HasQuirk(name string) bool {
 		}
 	}
 	return false
+}
+
+// TLS returns the archetype's TLS posture (zero value = modern
+// defaults). Used by the https handler to downgrade old archetypes.
+func (p *Profile) TLS() TLSPosture {
+	if p == nil {
+		return TLSPosture{}
+	}
+	return p.tls
+}
+
+// ICMPTTL returns the initial IP TTL this archetype stamps on replies.
+// Falls back to a family default when unset: 255 for network/OT gear
+// (moxa/siemens), 128 for Windows, 64 for everything else (Linux/BSD).
+func (p *Profile) ICMPTTL() int {
+	if p == nil {
+		return 64
+	}
+	if p.icmpTTL != 0 {
+		return p.icmpTTL
+	}
+	switch p.Family {
+	case "moxa", "siemens", "ics":
+		return 255
+	case "windows":
+		return 128
+	}
+	return 64
+}
+
+func (p *Profile) MRPRings() []MRPRing {
+	if p == nil {
+		return nil
+	}
+	return p.mrpRings
+}
+func (p *Profile) PROFINETDevices() []PROFINETDevice {
+	if p == nil {
+		return nil
+	}
+	return p.profinetDevices
+}
+func (p *Profile) VLANs() []VLAN {
+	if p == nil {
+		return nil
+	}
+	return p.vlans
+}
+func (p *Profile) HMIs() []HMI {
+	if p == nil {
+		return nil
+	}
+	return p.hmis
 }
 
 // Lookup returns the Profile for the named archetype. Names are matched

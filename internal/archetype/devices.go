@@ -13,15 +13,15 @@ var deviceArchetypes = map[string]*Profile{
 	// ---- BSD family ----
 	"freebsd-13": {
 		Name: "freebsd-13", DisplayName: "FreeBSD 13", Family: "bsd",
-		sshBanner:    "SSH-2.0-OpenSSH_8.8 FreeBSD-20211221",
-		httpServer:   "Apache/2.4.62 (FreeBSD)",
-		ftpBanner:    "220 ProFTPD 1.3.7e Server (FreeBSD) [::ffff:127.0.0.1]",
-		telnetBanner: "\r\nFreeBSD/amd64 (host.example.com) (ttyu0)\r\n\r\nlogin: ",
-		smtpProduct:  "Sendmail 8.16.1/8.16.1",
-		mysqlVersion: "10.6.16-MariaDB",
-		cliPrompt:    "host% ",
-		httpTitle:    "FreeBSD Web Console",
-		httpBodyHTML: "<html><body><h1>It works! (FreeBSD)</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_8.8 FreeBSD-20211221",
+		httpServer:      "Apache/2.4.62 (FreeBSD)",
+		ftpBanner:       "220 ProFTPD 1.3.7e Server (FreeBSD) [::ffff:127.0.0.1]",
+		telnetBanner:    "\r\nFreeBSD/amd64 (host.example.com) (ttyu0)\r\n\r\nlogin: ",
+		smtpProduct:     "Sendmail 8.16.1/8.16.1",
+		mysqlVersion:    "10.6.16-MariaDB",
+		cliPrompt:       "host% ",
+		httpTitle:       "FreeBSD Web Console",
+		httpBodyHTML:    "<html><body><h1>It works! (FreeBSD)</h1></body></html>",
 		snmpSysDescr:    "FreeBSD host.example.com 13.3-RELEASE FreeBSD 13.3-RELEASE GENERIC amd64",
 		snmpSysObjectID: ".1.3.6.1.4.1.2238.1.0",
 		snmpSysName:     "freebsd13",
@@ -32,15 +32,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"freebsd-14": {
 		Name: "freebsd-14", DisplayName: "FreeBSD 14", Family: "bsd",
-		sshBanner:    "SSH-2.0-OpenSSH_9.5 FreeBSD-20231004",
-		httpServer:   "Apache/2.4.62 (FreeBSD)",
-		ftpBanner:    "220 ProFTPD Server (FreeBSD)",
-		telnetBanner: "\r\nFreeBSD/amd64 (host.example.com) (ttyu0)\r\n\r\nlogin: ",
-		smtpProduct:  "Sendmail 8.17.2/8.17.2",
-		mysqlVersion: "10.11.6-MariaDB",
-		cliPrompt:    "host% ",
-		httpTitle:    "FreeBSD Web Console",
-		httpBodyHTML: "<html><body><h1>It works! (FreeBSD)</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_9.5 FreeBSD-20231004",
+		httpServer:      "Apache/2.4.62 (FreeBSD)",
+		ftpBanner:       "220 ProFTPD Server (FreeBSD)",
+		telnetBanner:    "\r\nFreeBSD/amd64 (host.example.com) (ttyu0)\r\n\r\nlogin: ",
+		smtpProduct:     "Sendmail 8.17.2/8.17.2",
+		mysqlVersion:    "10.11.6-MariaDB",
+		cliPrompt:       "host% ",
+		httpTitle:       "FreeBSD Web Console",
+		httpBodyHTML:    "<html><body><h1>It works! (FreeBSD)</h1></body></html>",
 		snmpSysDescr:    "FreeBSD host.example.com 14.1-RELEASE FreeBSD 14.1-RELEASE GENERIC amd64",
 		snmpSysObjectID: ".1.3.6.1.4.1.2238.1.0",
 		snmpSysName:     "freebsd14",
@@ -50,15 +50,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"openbsd-7-5": {
 		Name: "openbsd-7.5", DisplayName: "OpenBSD 7.5", Family: "bsd",
-		sshBanner:    "SSH-2.0-OpenSSH_9.7",
-		httpServer:   "OpenBSD httpd",
-		ftpBanner:    "220 OpenBSD ftpd ready",
-		telnetBanner: "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
-		smtpProduct:  "OpenSMTPD",
-		mysqlVersion: "",
-		cliPrompt:    "obsd$ ",
-		httpTitle:    "OpenBSD httpd",
-		httpBodyHTML: "<html><body><pre>It works.</pre></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_9.7",
+		httpServer:      "OpenBSD httpd",
+		ftpBanner:       "220 OpenBSD ftpd ready",
+		telnetBanner:    "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
+		smtpProduct:     "OpenSMTPD",
+		mysqlVersion:    "",
+		cliPrompt:       "obsd$ ",
+		httpTitle:       "OpenBSD httpd",
+		httpBodyHTML:    "<html><body><pre>It works.</pre></body></html>",
 		snmpSysDescr:    "OpenBSD obsd.example.com 7.5 GENERIC#10 amd64",
 		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
 		snmpSysName:     "obsd75",
@@ -69,14 +69,14 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"openbsd-7-6": {
 		Name: "openbsd-7.6", DisplayName: "OpenBSD 7.6", Family: "bsd",
-		sshBanner:    "SSH-2.0-OpenSSH_9.8",
-		httpServer:   "OpenBSD httpd",
-		ftpBanner:    "220 OpenBSD ftpd ready",
-		telnetBanner: "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
-		smtpProduct:  "OpenSMTPD",
-		cliPrompt:    "obsd$ ",
-		httpTitle:    "OpenBSD httpd",
-		httpBodyHTML: "<html><body><pre>It works.</pre></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_9.8",
+		httpServer:      "OpenBSD httpd",
+		ftpBanner:       "220 OpenBSD ftpd ready",
+		telnetBanner:    "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
+		smtpProduct:     "OpenSMTPD",
+		cliPrompt:       "obsd$ ",
+		httpTitle:       "OpenBSD httpd",
+		httpBodyHTML:    "<html><body><pre>It works.</pre></body></html>",
 		snmpSysDescr:    "OpenBSD obsd.example.com 7.6 GENERIC#10 amd64",
 		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
 		snmpSysName:     "obsd76",
@@ -86,15 +86,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"arch-linux": {
 		Name: "arch-linux", DisplayName: "Arch Linux", Family: "arch",
-		sshBanner:    "SSH-2.0-OpenSSH_9.9",
-		httpServer:   "nginx/1.27.3",
-		ftpBanner:    "220 (vsFTPd 3.0.5)",
-		telnetBanner: "\r\nArch Linux \\r (\\l)\r\n\r\narch login: ",
-		smtpProduct:  "Postfix 3.9.0",
-		mysqlVersion: "11.4.3-MariaDB",
-		cliPrompt:    "[user@arch ~]$ ",
-		httpTitle:    "Welcome to nginx",
-		httpBodyHTML: "<html><body><h1>Welcome to nginx!</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_9.9",
+		httpServer:      "nginx/1.27.3",
+		ftpBanner:       "220 (vsFTPd 3.0.5)",
+		telnetBanner:    "\r\nArch Linux \\r (\\l)\r\n\r\narch login: ",
+		smtpProduct:     "Postfix 3.9.0",
+		mysqlVersion:    "11.4.3-MariaDB",
+		cliPrompt:       "[user@arch ~]$ ",
+		httpTitle:       "Welcome to nginx",
+		httpBodyHTML:    "<html><body><h1>Welcome to nginx!</h1></body></html>",
 		snmpSysDescr:    "Linux arch 6.10.10-arch1-1 #1 SMP PREEMPT_DYNAMIC x86_64",
 		snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
 		snmpSysName:     "arch",
@@ -106,15 +106,15 @@ var deviceArchetypes = map[string]*Profile{
 	// ---- Rocky / Alma / Oracle (RHEL ABI clones) ----
 	"rocky-linux-9": {
 		Name: "rocky-9", DisplayName: "Rocky Linux 9", Family: "rhel",
-		sshBanner:    "SSH-2.0-OpenSSH_8.7",
-		httpServer:   "Apache/2.4.62 (Rocky Linux)",
-		ftpBanner:    "220 (vsFTPd 3.0.5)",
-		telnetBanner: "\r\nRocky Linux release 9.4 (Blue Onyx)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
-		smtpProduct:  "Postfix 3.5.25",
-		mysqlVersion: "10.5.22-MariaDB",
-		cliPrompt:    "[root@rocky9 ~]# ",
-		httpTitle:    "HTTP Server Test Page",
-		httpBodyHTML: "<html><body><h1>Rocky Linux Test Page</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_8.7",
+		httpServer:      "Apache/2.4.62 (Rocky Linux)",
+		ftpBanner:       "220 (vsFTPd 3.0.5)",
+		telnetBanner:    "\r\nRocky Linux release 9.4 (Blue Onyx)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.5.25",
+		mysqlVersion:    "10.5.22-MariaDB",
+		cliPrompt:       "[root@rocky9 ~]# ",
+		httpTitle:       "HTTP Server Test Page",
+		httpBodyHTML:    "<html><body><h1>Rocky Linux Test Page</h1></body></html>",
 		snmpSysDescr:    "Linux rocky9 5.14.0-427.31.1.el9_4.x86_64 #1 SMP PREEMPT_DYNAMIC Tue Aug 13 x86_64",
 		snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
 		snmpSysName:     "rocky9",
@@ -124,15 +124,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"almalinux-9": {
 		Name: "almalinux-9", DisplayName: "AlmaLinux 9", Family: "rhel",
-		sshBanner:    "SSH-2.0-OpenSSH_8.7",
-		httpServer:   "Apache/2.4.62 (AlmaLinux)",
-		ftpBanner:    "220 (vsFTPd 3.0.5)",
-		telnetBanner: "\r\nAlmaLinux release 9.4 (Seafoam Ocelot)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
-		smtpProduct:  "Postfix 3.5.25",
-		mysqlVersion: "10.5.22-MariaDB",
-		cliPrompt:    "[root@alma9 ~]# ",
-		httpTitle:    "HTTP Server Test Page",
-		httpBodyHTML: "<html><body><h1>AlmaLinux Test Page</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_8.7",
+		httpServer:      "Apache/2.4.62 (AlmaLinux)",
+		ftpBanner:       "220 (vsFTPd 3.0.5)",
+		telnetBanner:    "\r\nAlmaLinux release 9.4 (Seafoam Ocelot)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.5.25",
+		mysqlVersion:    "10.5.22-MariaDB",
+		cliPrompt:       "[root@alma9 ~]# ",
+		httpTitle:       "HTTP Server Test Page",
+		httpBodyHTML:    "<html><body><h1>AlmaLinux Test Page</h1></body></html>",
 		snmpSysDescr:    "Linux alma9 5.14.0-427.31.1.el9_4.x86_64 #1 SMP PREEMPT_DYNAMIC Mon Aug 12 x86_64",
 		snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
 		snmpSysName:     "alma9",
@@ -142,15 +142,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"oracle-linux-8": {
 		Name: "oracle-linux-8", DisplayName: "Oracle Linux 8", Family: "rhel",
-		sshBanner:    "SSH-2.0-OpenSSH_8.0",
-		httpServer:   "Apache/2.4.37 (Oracle Linux Server)",
-		ftpBanner:    "220 (vsFTPd 3.0.3)",
-		telnetBanner: "\r\nOracle Linux Server release 8.10\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
-		smtpProduct:  "Postfix 3.5.8",
-		mysqlVersion: "8.0.36-commercial",
-		cliPrompt:    "[root@oracle8 ~]# ",
-		httpTitle:    "Oracle Linux HTTP Server Test Page",
-		httpBodyHTML: "<html><body><h1>Oracle Linux Test Page</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_8.0",
+		httpServer:      "Apache/2.4.37 (Oracle Linux Server)",
+		ftpBanner:       "220 (vsFTPd 3.0.3)",
+		telnetBanner:    "\r\nOracle Linux Server release 8.10\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.5.8",
+		mysqlVersion:    "8.0.36-commercial",
+		cliPrompt:       "[root@oracle8 ~]# ",
+		httpTitle:       "Oracle Linux HTTP Server Test Page",
+		httpBodyHTML:    "<html><body><h1>Oracle Linux Test Page</h1></body></html>",
 		snmpSysDescr:    "Linux oracle8 4.18.0-553.16.1.el8_10.x86_64 #1 SMP Mon Aug 19 x86_64",
 		snmpSysObjectID: ".1.3.6.1.4.1.111.1.1",
 		snmpSysName:     "oracle8",
@@ -160,15 +160,15 @@ var deviceArchetypes = map[string]*Profile{
 	},
 	"oracle-linux-9": {
 		Name: "oracle-linux-9", DisplayName: "Oracle Linux 9", Family: "rhel",
-		sshBanner:    "SSH-2.0-OpenSSH_8.7",
-		httpServer:   "Apache/2.4.62 (Oracle Linux Server)",
-		ftpBanner:    "220 (vsFTPd 3.0.5)",
-		telnetBanner: "\r\nOracle Linux Server release 9.4\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
-		smtpProduct:  "Postfix 3.5.25",
-		mysqlVersion: "8.0.36-commercial",
-		cliPrompt:    "[root@oracle9 ~]# ",
-		httpTitle:    "Oracle Linux HTTP Server Test Page",
-		httpBodyHTML: "<html><body><h1>Oracle Linux 9 Test Page</h1></body></html>",
+		sshBanner:       "SSH-2.0-OpenSSH_8.7",
+		httpServer:      "Apache/2.4.62 (Oracle Linux Server)",
+		ftpBanner:       "220 (vsFTPd 3.0.5)",
+		telnetBanner:    "\r\nOracle Linux Server release 9.4\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.5.25",
+		mysqlVersion:    "8.0.36-commercial",
+		cliPrompt:       "[root@oracle9 ~]# ",
+		httpTitle:       "Oracle Linux HTTP Server Test Page",
+		httpBodyHTML:    "<html><body><h1>Oracle Linux 9 Test Page</h1></body></html>",
 		snmpSysDescr:    "Linux oracle9 5.14.0-427.31.1.el9_4.x86_64 #1 SMP PREEMPT_DYNAMIC Tue Aug 13 x86_64",
 		snmpSysObjectID: ".1.3.6.1.4.1.111.1.1",
 		snmpSysName:     "oracle9",
@@ -265,8 +265,22 @@ var deviceArchetypes = map[string]*Profile{
 		snmpSysContact:  "ops@example.com",
 		snmpSysLocation: "Factory floor / Cell 3",
 		snmpIfTable:     mockSwitchInterfaces(8, "Ethernet"),
+		tls:             TLSPosture{MaxVersion: tlsVersionTLS12, WeakCiphers: true},
 		lldpNeighbors: []LLDPPeer{
 			{ChassisID: "28:63:36:00:11:22", PortID: "1", SystemName: "scalance-xb208-uplink", PortDescr: "Port 1"},
+			{ChassisID: "28:63:36:00:33:44", PortID: "2", SystemName: "s7-1500-cell3", PortDescr: "Port 2"},
+		},
+		mrpRings: []MRPRing{
+			{Name: "Ring1", Role: "client", Ports: []int{1, 2}, State: "closed"},
+		},
+		profinetDevices: scalanceProfinetTree,
+		vlans: []VLAN{
+			{ID: 1, Name: "default", Ports: []int{1, 2, 3, 4}},
+			{ID: 10, Name: "PROFINET", Ports: []int{5, 6}},
+			{ID: 20, Name: "Management", Ports: []int{7, 8}},
+		},
+		hmis: []HMI{
+			{Name: "HMI-Press-01", IP: "192.168.0.50", Type: "SIMATIC HMI TP700 Comfort"},
 		},
 		defaultServices: []DefaultService{
 			{Port: 22, Handler: "ssh", Note: "SCALANCE CLI"},
@@ -276,6 +290,76 @@ var deviceArchetypes = map[string]*Profile{
 			{Port: 161, Handler: "snmp"},
 		},
 		quirks: []string{"siemens-lldp-med-disabled"},
+	},
+
+	// ---- Siemens SCALANCE S615 (industrial security router / firewall) ----
+	"siemens-scalance-s615": {
+		Name: "siemens-scalance-s615", DisplayName: "Siemens SCALANCE S615", Family: "siemens",
+		macOUI:       [3]byte{0x28, 0x63, 0x36},
+		sshBanner:    "SSH-2.0-SCALANCE_S615_v07.02",
+		httpServer:   "Siemens Web Server",
+		telnetBanner: "Welcome to SCALANCE S615\r\nFirmware: V07.02.00\r\n\r\nlogin: ",
+		loginPrompt:  "login: ",
+		cliPrompt:    "scalance-s615# ",
+		httpTitle:    "SCALANCE S615",
+		httpBodyHTML: `<html><head><title>SCALANCE S615</title></head><body>` +
+			`<h2>SIMATIC NET SCALANCE S615</h2>` +
+			`<p>Industrial Security Router / Firewall</p>` +
+			`<p>Firmware V07.02.00 / HW: 6GK5615-0AA00-2AA2</p>` +
+			`<form><label>Name: <input name=u></label><br>` +
+			`<label>Password: <input type=password name=p></label><br>` +
+			`<input type=submit value=Login></form></body></html>`,
+		snmpSysDescr:    "Siemens, SIMATIC NET, SCALANCE S615, 6GK5615-0AA00-2AA2, HW: 2, FW: V07.02.00",
+		snmpSysObjectID: ".1.3.6.1.4.1.4196.1.1.5.2.42",
+		snmpSysName:     "scalance-s615",
+		snmpSysContact:  "ops@example.com",
+		snmpSysLocation: "Cell gateway",
+		snmpIfTable:     mockSwitchInterfaces(5, "vlan"),
+		tls:             TLSPosture{MaxVersion: tlsVersionTLS12, WeakCiphers: true},
+		vlans: []VLAN{
+			{ID: 1, Name: "INT", Ports: []int{1, 2, 3, 4}},
+			{ID: 100, Name: "EXT", Ports: []int{5}},
+		},
+		profinetDevices: scalanceProfinetTree,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 443, Handler: "https"}, {Port: 161, Handler: "snmp"},
+			{Port: 500, Handler: "raw", Note: "IKE / IPsec VPN"},
+		},
+		quirks: []string{"siemens-firewall"},
+	},
+
+	// ---- Siemens SCALANCE SC-600 (next-gen industrial firewall) ----
+	"siemens-scalance-sc-600": {
+		Name: "siemens-scalance-sc-600", DisplayName: "Siemens SCALANCE SC-600", Family: "siemens",
+		macOUI:       [3]byte{0x28, 0x63, 0x36},
+		sshBanner:    "SSH-2.0-SCALANCE_SC600_v02.03",
+		httpServer:   "Siemens Web Server",
+		telnetBanner: "Welcome to SCALANCE SC636-2C\r\nFirmware: V02.03.02\r\n\r\nlogin: ",
+		loginPrompt:  "login: ",
+		cliPrompt:    "scalance-sc636# ",
+		httpTitle:    "SCALANCE SC-600",
+		httpBodyHTML: `<html><head><title>SCALANCE SC636-2C</title></head><body>` +
+			`<h2>SIMATIC NET SCALANCE SC636-2C</h2>` +
+			`<p>Industrial Security Appliance</p>` +
+			`<p>Firmware V02.03.02 / HW: 6GK5636-2GS00-2AC2</p>` +
+			`<form><label>Name: <input name=u></label><br>` +
+			`<label>Password: <input type=password name=p></label><br>` +
+			`<input type=submit value=Login></form></body></html>`,
+		snmpSysDescr:    "Siemens, SIMATIC NET, SCALANCE SC636-2C, 6GK5636-2GS00-2AC2, HW: 1, FW: V02.03.02",
+		snmpSysObjectID: ".1.3.6.1.4.1.4196.1.1.5.2.55",
+		snmpSysName:     "scalance-sc636",
+		snmpSysContact:  "ops@example.com",
+		snmpSysLocation: "Plant DMZ",
+		snmpIfTable:     mockSwitchInterfaces(6, "P"),
+		tls:             TLSPosture{}, // SC-600 line supports modern TLS
+		vlans: []VLAN{
+			{ID: 1, Name: "internal", Ports: []int{1, 2, 3, 4}},
+			{ID: 200, Name: "dmz", Ports: []int{5, 6}},
+		},
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 443, Handler: "https"}, {Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"siemens-firewall"},
 	},
 
 	// ---- Siemens S7-1200 PLC ----
@@ -379,4 +463,18 @@ func itoaShort(n int) string {
 		n /= 10
 	}
 	return string(buf[idx:])
+}
+
+// tlsVersionTLS12 mirrors crypto/tls.VersionTLS12 (0x0303) without
+// importing crypto/tls into this data-only file.
+const tlsVersionTLS12 = 0x0303
+
+// scalanceProfinetTree is the fake PROFINET device tree a SCALANCE
+// switch advertises — one IO-controller (the PLC) plus a couple of
+// IO-devices (drives / remote IO) on the cell network. Shared by the
+// SCALANCE archetypes.
+var scalanceProfinetTree = []PROFINETDevice{
+	{StationName: "plc-cell3", IP: "192.168.0.10", Role: "io-controller", Vendor: "Siemens"},
+	{StationName: "et200sp-01", IP: "192.168.0.21", Role: "io-device", Vendor: "Siemens"},
+	{StationName: "sinamics-g120-01", IP: "192.168.0.31", Role: "io-device", Vendor: "Siemens"},
 }

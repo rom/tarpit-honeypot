@@ -83,6 +83,11 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Moxa EDS-208", "Moxa NPort 5210",
 		"Siemens SCALANCE XB-208",
 		"Siemens S7-1200 PLC", "Siemens S7-1500 PLC",
+		// later additions:
+		"Siemens SCALANCE S615", "Siemens SCALANCE SC-600",
+		"Windows 7", "Windows 8", "Windows 10", "Windows 11",
+		"Windows Server 2008", "Windows Server 2012", "Windows Server 2012 R2",
+		"Windows Server 2016", "Windows Server 2019", "Windows Server 2022",
 	}
 	got := Names()
 	if len(got) != len(want) {

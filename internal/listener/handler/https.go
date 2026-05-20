@@ -68,10 +68,18 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		ja4 = fingerprint.JA4(ch)
 	}
 
-	tlsConn := tls.Server(peeker, &tls.Config{
+	// TLS posture: an old archetype (Windows Server 2008, legacy
+	// SCALANCE) deliberately negotiates old protocols + weak ciphers
+	// so the handshake matches its ancient-firmware banner. Without an
+	// archetype we keep the modern TLS 1.2+ default.
+	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		MinVersion:   tls.VersionTLS12,
-	})
+	}
+	if h.arch != nil {
+		applyTLSPosture(tlsCfg, h.arch.TLS())
+	}
+	tlsConn := tls.Server(peeker, tlsCfg)
 	// Use the caller's ctx (sensor-shutdown + per-listener cancellation
 	// flow through it) instead of Background, so a slow-handshake
 	// drip can be interrupted at process exit rather than burning a
@@ -295,6 +303,40 @@ func generateSelfSignedProfile(prof certProfile, id *identity.Identity) (*tls.Ce
 	}
 	c.Leaf, _ = x509.ParseCertificate(der)
 	return c, nil
+}
+
+// applyTLSPosture downgrades a tls.Config to match an archetype's
+// declared posture. WeakCiphers re-enables the legacy CBC/3DES/RC4-era
+// suites Go normally hides, so an old device negotiates the old
+// ciphers a real one would. MinVersion is lowered to TLS 1.0 when
+// weak ciphers are requested (those suites don't exist in TLS 1.3).
+func applyTLSPosture(cfg *tls.Config, p archetype.TLSPosture) {
+	if p.MaxVersion != 0 {
+		cfg.MaxVersion = p.MaxVersion
+	}
+	if p.MinVersion != 0 {
+		cfg.MinVersion = p.MinVersion
+	}
+	if p.WeakCiphers {
+		if cfg.MinVersion == 0 || cfg.MinVersion > tls.VersionTLS10 {
+			cfg.MinVersion = tls.VersionTLS10
+		}
+		if cfg.MaxVersion == 0 || cfg.MaxVersion > tls.VersionTLS12 {
+			cfg.MaxVersion = tls.VersionTLS12
+		}
+		// Offer the legacy suites (incl. the insecure ones Go gates
+		// behind CipherSuites explicitly) so a scanner sees the weak
+		// posture an old box would present.
+		cfg.CipherSuites = []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		}
+	}
 }
 
 func writeCert(certPath, keyPath string, c *tls.Certificate) error {
