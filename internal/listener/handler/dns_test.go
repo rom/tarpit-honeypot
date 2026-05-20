@@ -73,6 +73,21 @@ func TestDNSAnswerARecord(t *testing.T) {
 	}
 }
 
+func TestDNSFakeIPv4AvoidsReserved(t *testing.T) {
+	d := &dnsHandler{}
+	for i := 0; i < 2000; i++ {
+		ip := d.fakeIPv4("host-" + itoa(i) + ".example.com")
+		switch {
+		case ip[0] == 0 || ip[0] == 10 || ip[0] == 127 || ip[0] == 169 || ip[0] == 100 || ip[0] >= 224:
+			t.Fatalf("reserved first octet %v", net.IP(ip[:]))
+		case ip[0] == 192 && ip[1] == 168:
+			t.Fatalf("RFC1918 192.168 %v", net.IP(ip[:]))
+		case ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31:
+			t.Fatalf("RFC1918 172.16/12 %v", net.IP(ip[:]))
+		}
+	}
+}
+
 func TestDNSDeterministicPerName(t *testing.T) {
 	d := &dnsHandler{}
 	a := d.fakeIPv4("host.example.org")

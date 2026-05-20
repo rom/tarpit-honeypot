@@ -29,13 +29,10 @@ type Record struct {
 	// Service is the handler name this CVE applies to ("http", "smb",
 	// "https", "fortinet", …). "http" records also match https.
 	Service string
-	// Affects lists version substrings that, when present in a banner,
-	// mean "this build is vulnerable". Used for fake-vulnerable-banner
-	// selection (advisory only).
-	Affects []string
-	// Signatures are case-insensitive substrings whose presence in an
-	// attacker's request payload indicates an attempt to exploit this
-	// CVE. High-signal only.
+	// Signatures are substrings whose presence in an attacker's request
+	// payload indicates an attempt to exploit this CVE. Matched
+	// case-insensitively; normalized to lowercase once at package init.
+	// High-signal only.
 	Signatures []string
 	// Technique is the ATT&CK technique the exploit attempt maps to.
 	Technique string
@@ -114,30 +111,21 @@ var catalog = []Record{
 	},
 	{
 		ID: "CVE-2017-0144", Name: "EternalBlue", CVSS: 8.1, Service: "smb",
-		// SMB1 trans2 / large-NT-trans markers; matched at byte level by
-		// the smb handler, kept here for the catalog + banner advisory.
-		Signatures: []string{"\\PIPE\\", "smbghost"},
+		// The "\PIPE\" tree-connect path appears as ASCII in the SMB1
+		// request the EternalBlue toolchain sends; matched by the smb
+		// handler against the captured request bytes.
+		Signatures: []string{"\\pipe\\", "\\pipe\\srvsvc"},
 		Technique:  "T1210", Tactic: "lateral-movement",
 		Description: "Microsoft SMBv1 remote code execution (MS17-010).",
 	},
 	{
-		ID: "CVE-2020-0796", Name: "SMBGhost", CVSS: 10.0, Service: "smb",
-		Signatures: []string{"smbghost", "smb3.1.1", "compression"},
-		Technique:  "T1210", Tactic: "lateral-movement",
-		Description: "Microsoft SMBv3.1.1 compression remote code execution.",
-	},
-	{
 		ID: "CVE-2019-0708", Name: "BlueKeep", CVSS: 9.8, Service: "rdp",
-		Signatures: []string{"mst120", "ms_t120"},
+		// The rogue "MS_T120" virtual-channel name appears as ASCII in
+		// the RDP MCS Connect-Initial PDU the exploit sends; matched by
+		// the rdp handler against the captured request bytes.
+		Signatures: []string{"ms_t120"},
 		Technique:  "T1210", Tactic: "lateral-movement",
 		Description: "Microsoft RDP pre-auth use-after-free RCE.",
-	},
-	{
-		ID: "CVE-2014-0160", Name: "Heartbleed", CVSS: 7.5, Service: "https",
-		// Detected at the TLS record layer by the https handler.
-		Signatures: []string{"heartbeat"},
-		Technique:  "T1190", Tactic: "initial-access",
-		Description: "OpenSSL TLS heartbeat over-read memory disclosure.",
 	},
 	{
 		ID: "CVE-2021-34473", Name: "ProxyShell", CVSS: 9.8, Service: "http",
@@ -177,6 +165,16 @@ var catalog = []Record{
 	},
 }
 
+// init normalizes every catalog signature to lowercase once, so
+// MatchPayload (called on every request) only lowercases the payload.
+func init() {
+	for i := range catalog {
+		for j, s := range catalog[i].Signatures {
+			catalog[i].Signatures[j] = strings.ToLower(s)
+		}
+	}
+}
+
 // MatchPayload returns the catalog records whose exploit signature
 // appears in payload for the given handler. handler "https" also matches
 // "http"-service records (HTTP-layer exploits arrive over TLS too).
@@ -190,8 +188,8 @@ func MatchPayload(handler, payload string) []Record {
 		if !serviceMatches(r.Service, handler) {
 			continue
 		}
-		for _, sig := range r.Signatures {
-			if strings.Contains(low, strings.ToLower(sig)) {
+		for _, sig := range r.Signatures { // sigs are already lowercase
+			if strings.Contains(low, sig) {
 				out = append(out, r)
 				break
 			}

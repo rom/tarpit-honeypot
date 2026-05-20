@@ -104,6 +104,7 @@ func ClassifyPayload(payload []byte, handlerName string) PayloadVerdict {
 type Tracker struct {
 	window time.Duration
 	srcs   map[string]*srcState
+	lastGC time.Time
 }
 
 type srcState struct {
@@ -166,6 +167,17 @@ func (t *Tracker) Observe(o Observation) *Result {
 	now := o.Time
 	if now.IsZero() {
 		now = time.Now()
+	}
+	// Evict idle sources (no activity within the window) so the map
+	// doesn't grow unbounded under many distinct/spoofed source IPs.
+	// Throttled to once per window to bound the sweep cost.
+	if now.Sub(t.lastGC) > t.window {
+		for ip, st := range t.srcs {
+			if now.Sub(st.last) > t.window {
+				delete(t.srcs, ip)
+			}
+		}
+		t.lastGC = now
 	}
 	st, ok := t.srcs[o.SourceIP]
 	if !ok || now.Sub(st.last) > t.window {

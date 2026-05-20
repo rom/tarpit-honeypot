@@ -8,6 +8,36 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — code-quality review pass
+- **seccomp now covers all threads**: the filter is installed with
+  `SECCOMP_FILTER_FLAG_TSYNC`, so it confines every OS thread of the Go
+  runtime (previously only the calling thread); added a cross-thread
+  regression test + an 8-bit BPF jump-offset guard.
+- **Landlock scope documented honestly**: it confines the calling thread +
+  threads created afterward (no TSYNC equivalent); docs now point to
+  AppArmor/SELinux/systemd for full-process FS confinement.
+- **Unbounded memory fixed**: the correlator (scan/brute/slow/sweep/story/
+  emitted) and the scananalysis Tracker now evict idle per-source state, so
+  the maps don't grow without bound under many distinct source IPs.
+- **D3FEND defenses centralized** in `router.Dispatch`, so synthesized
+  events (device:new, malware:capture, scananalysis:profile, test-alert)
+  also carry `mitre_defenses`.
+- **CVE catalog made honest**: removed records that can't be substring-
+  detected (Heartbleed, SMBGhost); wired EternalBlue/BlueKeep into the
+  smb/rdp handlers (their ASCII signatures genuinely appear); fixed the
+  conflated EternalBlue signature + misleading comments; signatures are
+  lowercased once at init.
+- **DNS fake A records never land in reserved space**: first octet is now
+  drawn from a curated public set (no RFC1918/loopback/link-local/CGNAT).
+- **Payload harvesting**: tightened the shellcode heuristic (>=32 bytes,
+  >=0.45 non-printable, >=3 opcode sigs) to avoid false positives on binary
+  protocol frames; magic-confirmed binaries stay Critical, heuristic hits
+  drop to High; now also harvests URLs/droppers from interactive-shell
+  command lines; payload is base64-decoded once and shared; artifact bytes
+  are only copied when persistence is enabled.
+- Removed the dead `cve.Record.Affects` field; fixed `cmd ver` output
+  (`extractWinVersion`); single-pass `extractURLs`.
+
 ### Added — kernel self-confinement + docs
 - **seccomp + Landlock self-confinement** (`internal/sandbox`,
   `sensor.sandbox`): pure-Go, CGO-free, Linux-only, applied after privilege

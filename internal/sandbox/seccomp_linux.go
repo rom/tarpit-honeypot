@@ -10,29 +10,46 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// maxBlockedSyscalls bounds the denylist so every conditional BPF jump
+// offset (which is 8-bit) still reaches the deny instruction. With the
+// current layout the largest offset is denyIdx-1 = len(blocked)+3, so
+// any list well under 252 is safe; we guard with margin.
+const maxBlockedSyscalls = 240
+
 // applySeccomp installs a seccomp-bpf filter that DENIES (EPERM) a small
 // set of syscalls the honeypot never legitimately makes. A denylist
 // (default-allow) is deliberate: it cannot crash the Go runtime on an
 // unforeseen libc path the way a tight allowlist can, while still
 // neutralizing the things that matter most for a target host — spawning
 // a shell, debugging another process, loading a kernel module, mounting
-// a filesystem, or rebooting the box. The filter is a one-way ratchet
-// installed after PR_SET_NO_NEW_PRIVS so it works without privilege.
+// a filesystem, or rebooting the box.
+//
+// The filter is installed with SECCOMP_FILTER_FLAG_TSYNC so it is
+// synchronized to ALL threads of the process (Go is multi-threaded; a
+// filter set on only the calling thread would leave goroutines scheduled
+// onto other OS threads unfiltered). It is a one-way ratchet installed
+// after PR_SET_NO_NEW_PRIVS so it works without privilege.
 func applySeccomp() error {
 	arch, ok := auditArch()
 	if !ok {
 		return fmt.Errorf("seccomp: unsupported GOARCH %q", runtime.GOARCH)
 	}
-	filter := buildSeccompProgram(arch, blockedSyscalls())
+	blocked := blockedSyscalls()
+	if len(blocked) > maxBlockedSyscalls {
+		return fmt.Errorf("seccomp: denylist of %d exceeds 8-bit BPF jump limit (%d)", len(blocked), maxBlockedSyscalls)
+	}
+	filter := buildSeccompProgram(arch, blocked)
 
 	// Required for an unprivileged process to install a filter.
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("seccomp: PR_SET_NO_NEW_PRIVS: %w", err)
 	}
 	prog := unix.SockFprog{Len: uint16(len(filter)), Filter: &filter[0]}
+	// TSYNC: apply to every thread in the thread group, not just this one.
 	if _, _, errno := unix.Syscall(unix.SYS_SECCOMP,
-		uintptr(unix.SECCOMP_SET_MODE_FILTER), 0, uintptr(unsafe.Pointer(&prog))); errno != 0 {
-		return fmt.Errorf("seccomp: SECCOMP_SET_MODE_FILTER: %w", errno)
+		uintptr(unix.SECCOMP_SET_MODE_FILTER), uintptr(unix.SECCOMP_FILTER_FLAG_TSYNC),
+		uintptr(unsafe.Pointer(&prog))); errno != 0 {
+		return fmt.Errorf("seccomp: SECCOMP_SET_MODE_FILTER (tsync): %w", errno)
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
@@ -65,6 +66,13 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		return res, nil
 	}
 	res.Payload = append(nbss, body...)
+
+	// CVE exploit-attempt recognition (EternalBlue's "\PIPE\" tree path
+	// appears as ASCII in the request). Detection only.
+	for _, rec := range cve.MatchPayload("smb", string(res.Payload)) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(&res, "cve:"+rec.ID)
+	}
 
 	if len(body) < 4 {
 		return res, nil

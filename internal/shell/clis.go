@@ -77,14 +77,35 @@ func winDir(argv []string) string {
 	return " Volume in drive C has no label.\r\n Volume Serial Number is 1234-5678\r\n\r\n Directory of C:\\Users\\Administrator\r\n\r\n05/19/2025  02:14 PM    <DIR>          .\r\n05/19/2025  02:14 PM    <DIR>          ..\r\n05/19/2025  02:14 PM    <DIR>          Desktop\r\n05/19/2025  02:14 PM    <DIR>          Documents\r\n05/19/2025  02:14 PM             1,024 notes.txt\r\n               1 File(s)          1,024 bytes\r\n"
 }
 
+// extractWinVersion turns an SNMP sysDescr like
+// "... Software: Windows Version 10.0 (Build 19045 Multiprocessor Free)"
+// into the cmd.exe `ver` form "Version 10.0.19045".
 func extractWinVersion(descr string) string {
-	if i := strings.Index(descr, "Windows Version "); i >= 0 {
-		rest := descr[i+len("Windows Version "):]
-		if j := strings.IndexByte(rest, ')'); j >= 0 {
-			return "Version " + strings.TrimSuffix(strings.TrimSpace(rest[:j]), " (")
+	const def = "Version 10.0.19045.3693"
+	i := strings.Index(descr, "Windows Version ")
+	if i < 0 {
+		return def
+	}
+	rest := descr[i+len("Windows Version "):]
+	ver := rest
+	if sp := strings.IndexByte(ver, ' '); sp >= 0 {
+		ver = ver[:sp] // "10.0"
+	}
+	if ver == "" {
+		return def
+	}
+	out := "Version " + ver
+	if b := strings.Index(rest, "Build "); b >= 0 {
+		bs := rest[b+len("Build "):]
+		n := 0
+		for n < len(bs) && bs[n] >= '0' && bs[n] <= '9' {
+			n++
+		}
+		if n > 0 {
+			out += "." + bs[:n] // "10.0.19045"
 		}
 	}
-	return "Version 10.0.19045.3693"
+	return out
 }
 
 // ---- PowerShell (incl. Active Directory cmdlets) ----

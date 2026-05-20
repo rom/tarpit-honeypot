@@ -251,20 +251,12 @@ func (s *Sensor) Devices() *devices.Registry { return s.devices }
 // confidence threshold (timing template + scope + probe variety). Only
 // per-connection listener events are interesting; aggregate / canary /
 // internal events are skipped.
-func (s *Sensor) observeScan(ev *event.Event) *event.Event {
+func (s *Sensor) observeScan(ev *event.Event, payload []byte) *event.Event {
 	if s.scanTrack == nil || ev == nil || ev.Source.IP == "" {
 		return nil
 	}
 	if !strings.HasPrefix(ev.RuleID, "listener:") {
 		return nil
-	}
-	// Reconstruct the payload verdict from the event meta where the
-	// handler recorded it; fall back to a port-only observation.
-	var payload []byte
-	if ev.PayloadBase64 != "" {
-		if b, err := base64.StdEncoding.DecodeString(ev.PayloadBase64); err == nil {
-			payload = b
-		}
 	}
 	verdict := scananalysis.ClassifyPayload(payload, ev.Handler)
 	osHint := false
@@ -316,18 +308,18 @@ func (s *Sensor) observeScan(ev *event.Event) *event.Event {
 // harvesting is enabled, and returns a malware:capture event when an
 // executable-class artifact was found. Detection + collection only —
 // nothing is executed or fetched.
-func (s *Sensor) observePayload(ev *event.Event) *event.Event {
+func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 	if ev == nil || ev.RuleID == "malware:capture" {
 		return nil
 	}
-	if ev.PayloadBase64 == "" {
-		return nil
+	keep := s.payloads != nil
+	f := payload.Scan(data, keep)
+	// Also harvest IOCs from interactive-shell command lines: URLs and
+	// base64 droppers typed into the emulated shell aren't in the
+	// connection payload, so scan each captured command too.
+	for _, cmd := range shellCommandText(ev) {
+		f = f.Merge(payload.Scan([]byte(cmd), keep))
 	}
-	data, err := base64.StdEncoding.DecodeString(ev.PayloadBase64)
-	if err != nil || len(data) == 0 {
-		return nil
-	}
-	f := payload.Scan(data)
 	if f.Empty() {
 		return nil
 	}
@@ -353,8 +345,11 @@ func (s *Sensor) observePayload(ev *event.Event) *event.Event {
 			}
 		}
 		descs = append(descs, d)
+		// Only a magic-confirmed executable warrants Critical; the
+		// shellcode/script/archive heuristics stay High to avoid
+		// alert-fatigue on the occasional binary-protocol false positive.
 		switch a.Kind {
-		case payload.KindELF, payload.KindPE, payload.KindMachO, payload.KindShellcode:
+		case payload.KindELF, payload.KindPE, payload.KindMachO:
 			worst = event.SeverityCritical
 		}
 	}
@@ -381,6 +376,24 @@ func (s *Sensor) observePayload(ev *event.Event) *event.Event {
 			"markers":          f.Markers,
 		},
 	}
+}
+
+// shellCommandText returns the attacker's interactive-shell input from an
+// event's meta (the ssh_interactive / telnet handlers store typed lines
+// in "shell_commands" and one-shot exec lines in "exec_command"), so the
+// payload harvester can pull URLs / droppers out of them.
+func shellCommandText(ev *event.Event) []string {
+	if ev.Meta == nil {
+		return nil
+	}
+	var out []string
+	if cmds, ok := ev.Meta["shell_commands"].([]string); ok {
+		out = append(out, cmds...)
+	}
+	if c, ok := ev.Meta["exec_command"].(string); ok && c != "" {
+		out = append(out, c)
+	}
+	return out
 }
 
 // appendUniqueStr appends s to list only if absent.
@@ -745,15 +758,21 @@ func (s *Sensor) Run(ctx context.Context) error {
 				}()
 				s.enrich.Decorate(ev)
 				// ATT&CK-tag the event before correlation so the
-				// storyline correlator can build its tactic chain
-				// from the same techniques every downstream sees.
+				// storyline correlator can build its tactic chain from
+				// the same techniques every downstream sees. D3FEND
+				// defenses are stamped centrally by router.Dispatch.
 				if len(ev.MitreTechniques) == 0 {
 					tag := mitre.Lookup(ev.RuleID, ev.Handler)
 					ev.MitreTechniques = tag.Techniques
 					ev.MitreTactics = tag.Tactics
 				}
-				if len(ev.MitreDefenses) == 0 {
-					ev.MitreDefenses = mitre.DefensesFor(ev.MitreTechniques)
+				// Decode the captured payload once; share it with the
+				// payload harvester and scan-analysis (both need the bytes).
+				var payloadBytes []byte
+				if ev.PayloadBase64 != "" {
+					if b, err := base64.StdEncoding.DecodeString(ev.PayloadBase64); err == nil {
+						payloadBytes = b
+					}
 				}
 				// Device learning: feed the source/MAC/hostname into
 				// the registry and emit device:new for never-before-
@@ -764,25 +783,19 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// Payload harvesting: extract malware / shellcode /
 				// ingress URLs from the captured bytes; persist
 				// artifacts and emit malware:capture when one is found.
-				if mw := s.observePayload(ev); mw != nil {
+				if mw := s.observePayload(ev, payloadBytes); mw != nil {
 					s.router.Dispatch(mw)
 				}
 				// Scan analysis: feed listener events into the
 				// per-source Tracker; emit scananalysis:profile when a
 				// source's timing / scope / probe variety crosses the
 				// confidence threshold.
-				if scanEv := s.observeScan(ev); scanEv != nil {
+				if scanEv := s.observeScan(ev, payloadBytes); scanEv != nil {
 					s.router.Dispatch(scanEv)
 				}
 				for _, out := range s.correlator.Observe(ev) {
 					if out != ev {
 						s.enrich.Decorate(out)
-						if len(out.MitreTechniques) == 0 {
-							tag := mitre.Lookup(out.RuleID, out.Handler)
-							out.MitreTechniques = tag.Techniques
-							out.MitreTactics = tag.Tactics
-							out.MitreDefenses = mitre.DefensesFor(out.MitreTechniques)
-						}
 					}
 					s.router.Dispatch(out)
 				}

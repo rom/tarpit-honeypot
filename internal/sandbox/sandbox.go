@@ -1,16 +1,23 @@
-// Package sandbox applies best-effort kernel self-confinement to the
-// running honeypot: a seccomp-bpf syscall filter and a Landlock
-// filesystem restriction. It is defense-in-depth — the sensor is itself
-// a target, so even if an attacker finds a parser bug, a seccomp filter
-// that denies execve means they can't spawn a shell, and a Landlock
-// policy that makes everything but data_dir read-only means they can't
-// drop persistence on the host.
+// Package sandbox applies kernel self-confinement to the running
+// honeypot: a seccomp-bpf syscall filter and a Landlock filesystem
+// restriction. It is defense-in-depth — the sensor is itself a target,
+// so even if an attacker finds a parser bug, a seccomp filter that
+// denies execve means they can't spawn a shell.
 //
-// Both mechanisms are Linux-only and best-effort: an unsupported kernel
-// (Landlock needs 5.13+) or a denied capability logs a warning and the
-// sensor keeps running. Apply must be called AFTER privileged setup
-// (binding low ports), data-dir creation, and privilege drop — it is a
-// one-way ratchet that only ever removes capability.
+// Scope differs by mechanism:
+//   - seccomp is applied with TSYNC, so it covers every thread of the
+//     process (full-process syscall confinement).
+//   - Landlock applies to the calling thread + threads created after it;
+//     the Go runtime's pre-existing threads are not retroactively
+//     confined (no Landlock TSYNC equivalent), so it is best-effort. Use
+//     AppArmor / SELinux / systemd for kernel-enforced full-process
+//     filesystem confinement — see docs/hardening.md.
+//
+// Both mechanisms are Linux-only and best-effort about availability: an
+// unsupported kernel (Landlock needs 5.13+) or a denied capability logs
+// a warning and the sensor keeps running. Apply must be called AFTER
+// privileged setup (binding low ports), data-dir creation, and privilege
+// drop — it is a one-way ratchet that only ever removes capability.
 package sandbox
 
 import "log/slog"

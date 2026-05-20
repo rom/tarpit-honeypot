@@ -58,14 +58,20 @@ sensor:
 `kexec_load`, `pivot_root`/`chroot`, `setns`/`unshare`, `reboot`,
 `swapon`/`swapoff`, `bpf`, `perf_event_open`. A denylist is deliberate:
 it cannot crash the Go runtime on an unforeseen path the way a tight
-allowlist can, while still delivering the headline guarantee — **even a
-parser 0-day cannot spawn a shell or tamper with the kernel.**
+allowlist can. The filter is installed with `SECCOMP_FILTER_FLAG_TSYNC`,
+so it covers **every thread** of the process — delivering the headline
+guarantee that **even a parser 0-day cannot spawn a shell or tamper with
+the kernel.**
 
-**Landlock** (Linux 5.13+) makes the filesystem read-only everywhere and
-writable only under `data_dir` (plus any `write_paths`), so an attacker
-who lands code execution can't drop persistence outside the sensor's own
-state directory or tamper with system binaries. The access mask adapts to
-the kernel's Landlock ABI version.
+**Landlock** (Linux 5.13+) restricts the filesystem to read-only
+everywhere and writable only under `data_dir` (plus any `write_paths`).
+**Caveat:** unlike seccomp, Landlock has no TSYNC flag — `restrict_self`
+applies to the calling thread and threads created after it, so OS threads
+the Go runtime had already started are not retroactively confined, and a
+goroutine scheduled onto one can still write outside `data_dir`. Treat
+Landlock here as a best-effort layer; for kernel-enforced **full-process**
+filesystem confinement use the AppArmor / SELinux profiles or the systemd
+unit below. The access mask adapts to the kernel's Landlock ABI version.
 
 Confirm what actually applied:
 

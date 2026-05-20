@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 )
 
 type rdp struct{}
@@ -49,6 +50,13 @@ func (r *rdp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		return res, nil
 	}
 	res.Payload = append(tpkt, body...)
+
+	// CVE exploit-attempt recognition (BlueKeep's rogue "MS_T120"
+	// channel name appears as ASCII in the MCS Connect PDU). Detection only.
+	for _, rec := range cve.MatchPayload("rdp", string(res.Payload)) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(&res, "cve:"+rec.ID)
+	}
 
 	if len(body) < 6 || body[1] != 0xE0 {
 		res.Meta = map[string]any{"cotp_type": body[1]}

@@ -126,7 +126,10 @@ What turns interaction into signal:
 - **CVE exploit-attempt recognition** (`internal/cve`). A curated catalog
   of high-signal exploit signatures (Log4Shell, Shellshock, Spring4Shell,
   ProxyLogon/Shell, FortiOS/Pulse/Citrix traversals, Apache 2.4.49,
-  EternalBlue/SMBGhost, BlueKeep, …) → CVSS-scaled `cve:<id>` events.
+  EternalBlue via the smb handler, BlueKeep via the rdp handler, …) →
+  CVSS-scaled `cve:<id>` events. Only substring-detectable signatures are
+  catalogued (TLS-record-layer CVEs like Heartbleed are out of scope
+  since the https handler sees the decrypted stream).
 - **Scan analysis** (`internal/scananalysis`). Per-source nmap profiling:
   timing template (`-T0`..`-T5`), `-A`/`-O`/`-sV`, NSE + service-probe
   matching, connect scans → `scananalysis:profile`. Half-open / frag /
@@ -200,11 +203,14 @@ composable:
    honeypot never makes — execve/execveat, ptrace, process_vm_*, module
    load/unload, mount, kexec, pivot_root/chroot, setns/unshare, reboot,
    swap, bpf, perf_event_open. Default-allow so it can't crash the Go
-   runtime; the headline guarantee is "a parser 0-day can't spawn a
-   shell".
-3. **Landlock** (`sensor.sandbox.landlock`, Linux 5.13+). Filesystem
-   becomes read-only everywhere, writable only under `data_dir` (+
-   configured `write_paths`). ABI-version-aware, best-effort.
+   runtime; installed with TSYNC so it covers every thread. The headline
+   guarantee is "a parser 0-day can't spawn a shell".
+3. **Landlock** (`sensor.sandbox.landlock`, Linux 5.13+). Restricts the
+   filesystem to read-only except `data_dir` (+ configured `write_paths`).
+   ABI-version-aware. Best-effort: Landlock has no TSYNC, so it confines
+   the calling thread + threads created afterward but not the Go runtime's
+   pre-existing threads — use AppArmor / SELinux / systemd for
+   kernel-enforced full-process FS confinement.
 4. **AppArmor** (`packaging/apparmor/`) and **SELinux**
    (`packaging/selinux/`) profiles for operators who enforce a host LSM —
    same intent as the in-process sandbox, enforced by the kernel from

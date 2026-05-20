@@ -47,6 +47,27 @@ func TestMatchPayloadNoFalsePositive(t *testing.T) {
 	}
 }
 
+func TestMatchPayloadSMBAndRDP(t *testing.T) {
+	// EternalBlue: the "\PIPE\" tree path appears as ASCII in the SMB1
+	// request (case-insensitive match against the lowercased signature).
+	smb := "\xffSMB" + "....\\PIPE\\srvsvc...."
+	if hits := MatchPayload("smb", smb); len(hits) == 0 || hits[0].ID != "CVE-2017-0144" {
+		t.Errorf("expected EternalBlue on smb; got %+v", hits)
+	}
+	// BlueKeep: the rogue MS_T120 channel name in the MCS Connect PDU.
+	rdp := "\x03\x00....MS_T120\x00...."
+	if hits := MatchPayload("rdp", rdp); len(hits) == 0 || hits[0].ID != "CVE-2019-0708" {
+		t.Errorf("expected BlueKeep on rdp; got %+v", hits)
+	}
+	// Removed records must not resurface.
+	if _, ok := Lookup("CVE-2014-0160"); ok {
+		t.Error("Heartbleed should have been removed (not detectable post-TLS-decrypt)")
+	}
+	if _, ok := Lookup("CVE-2020-0796"); ok {
+		t.Error("SMBGhost should have been removed (not substring-detectable)")
+	}
+}
+
 func TestForServiceAndLookup(t *testing.T) {
 	if recs := ForService("http"); len(recs) == 0 {
 		t.Error("expected http CVEs")

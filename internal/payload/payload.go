@@ -55,12 +55,15 @@ func (f Finding) Empty() bool {
 // upload, …) and returns harvestable artifacts + ingress URLs. It also
 // decodes embedded base64 blobs and re-scans them, so an
 // `echo <b64> | base64 -d > x; chmod +x x` dropper is caught.
-func Scan(data []byte) Finding {
+// keepBytes controls whether harvested artifacts retain a copy of their
+// bytes (needed only when the caller will persist them). Pass false to
+// avoid a full copy when payload harvesting is disabled.
+func Scan(data []byte, keepBytes bool) Finding {
 	var f Finding
 	if len(data) == 0 {
 		return f
 	}
-	classifyInto(&f, data, false)
+	classifyInto(&f, data, false, keepBytes)
 
 	// Harvest ingress URLs from the textual view.
 	text := string(data)
@@ -85,7 +88,7 @@ func Scan(data []byte) Finding {
 		}
 		decoded++
 		before := len(f.Artifacts)
-		classifyInto(&f, raw, true)
+		classifyInto(&f, raw, true, keepBytes)
 		if len(f.Artifacts) > before {
 			f.Markers = appendUnique(f.Markers, "payload-base64-wrapped")
 		}
@@ -93,10 +96,25 @@ func Scan(data []byte) Finding {
 	return f
 }
 
+// Merge folds other into f (dedup markers + URLs, append artifacts).
+// Used to combine a connection-payload scan with scans of the
+// interactive-shell command lines.
+func (f Finding) Merge(other Finding) Finding {
+	for _, m := range other.Markers {
+		f.Markers = appendUnique(f.Markers, m)
+	}
+	for _, u := range other.URLs {
+		f.URLs = appendUnique(f.URLs, u)
+	}
+	f.Artifacts = append(f.Artifacts, other.Artifacts...)
+	return f
+}
+
 // classifyInto adds an artifact + marker for data when it matches a
 // known binary magic or the shellcode heuristic. fromB64 marks that the
-// bytes came from a decoded base64 blob (for the artifact detail).
-func classifyInto(f *Finding, data []byte, fromB64 bool) {
+// bytes came from a decoded base64 blob (for the artifact detail);
+// keepBytes controls whether the artifact retains a copy of the bytes.
+func classifyInto(f *Finding, data []byte, fromB64, keepBytes bool) {
 	kind, detail := classify(data)
 	if kind == "" {
 		return
@@ -106,7 +124,9 @@ func classifyInto(f *Finding, data []byte, fromB64 bool) {
 		SHA256: sha256Hex(data),
 		Size:   len(data),
 		Detail: detail,
-		Bytes:  append([]byte(nil), data...),
+	}
+	if keepBytes {
+		art.Bytes = append([]byte(nil), data...)
 	}
 	if fromB64 {
 		if art.Detail != "" {
@@ -162,16 +182,20 @@ func shebang(b []byte) string {
 	return strings.TrimSpace(line)
 }
 
-// looksLikeShellcode applies conservative heuristics: a long NOP sled,
-// or a buffer that is mostly non-printable AND carries several
-// characteristic x86/x64 stager opcodes (GetPC, syscall, int 0x80,
-// xor-zero, jmp/call-pop). Requires both signals so ordinary binary
-// protocol payloads don't false-trigger.
+// looksLikeShellcode applies deliberately conservative heuristics so it
+// does NOT fire on ordinary binary-protocol payloads (SMB, RDP, modbus,
+// TLS records): either a long NOP sled, or a buffer that is mostly
+// non-printable AND carries several distinct x86/x64 stager opcodes
+// (GetPC, syscall, int 0x80, xor-zero, execve setup, "/bin/"). The
+// thresholds (length, entropy floor, and >=3 distinct opcode hits) are
+// tuned to keep the false-positive rate near zero on benign binary
+// traffic — a stray 2-of-N opcode coincidence is common in random bytes,
+// 3-of-N with high entropy is not.
 func looksLikeShellcode(b []byte) bool {
-	if len(b) < 24 {
+	if len(b) < 32 {
 		return false
 	}
-	// NOP sled: >= 16 consecutive 0x90.
+	// NOP sled: >= 16 consecutive 0x90 is a strong standalone signal.
 	run := 0
 	for _, c := range b {
 		if c == 0x90 {
@@ -190,8 +214,7 @@ func looksLikeShellcode(b []byte) bool {
 			nonPrint++
 		}
 	}
-	ratio := float64(nonPrint) / float64(len(b))
-	if ratio < 0.30 {
+	if float64(nonPrint)/float64(len(b)) < 0.45 {
 		return false
 	}
 	sigs := [][]byte{
@@ -210,18 +233,20 @@ func looksLikeShellcode(b []byte) bool {
 			hits++
 		}
 	}
-	return hits >= 2
+	return hits >= 3
 }
 
 // extractURLs pulls http(s)/ftp/tftp URLs out of text (download cradles,
-// wget/curl args, PowerShell DownloadString targets).
+// wget/curl args, PowerShell DownloadString targets). The text is
+// lowercased once for scheme matching; matches are sliced from the
+// original to preserve URL case.
 func extractURLs(s string) []string {
+	low := strings.ToLower(s)
 	var out []string
-	low := s
 	for _, scheme := range []string{"http://", "https://", "ftp://", "tftp://"} {
 		from := 0
-		for {
-			i := indexFold(low[from:], scheme)
+		for from < len(low) {
+			i := strings.Index(low[from:], scheme)
 			if i < 0 {
 				break
 			}
@@ -230,14 +255,10 @@ func extractURLs(s string) []string {
 			for end < len(s) && !isURLTerminator(s[end]) {
 				end++
 			}
-			u := s[start:end]
-			if len(u) > len(scheme)+2 && len(u) <= 2048 {
+			if u := s[start:end]; len(u) > len(scheme)+2 && len(u) <= 2048 {
 				out = appendUnique(out, u)
 			}
 			from = end
-			if from >= len(low) {
-				break
-			}
 		}
 	}
 	return out
@@ -284,10 +305,6 @@ func containsBytes(haystack, needle []byte) bool {
 		}
 	}
 	return false
-}
-
-func indexFold(s, sub string) int {
-	return strings.Index(strings.ToLower(s), strings.ToLower(sub))
 }
 
 func sha256Hex(b []byte) string {

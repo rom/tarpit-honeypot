@@ -18,11 +18,17 @@ const landlockCreateRulesetVersion = 1
 // compiled out). Treated as best-effort by the caller.
 var errLandlockUnsupported = errors.New("landlock: unsupported by kernel")
 
-// applyLandlock confines the process's filesystem access: read+traverse
-// allowed under ReadPaths (default "/"), and write/create/remove allowed
-// only under DataDir + WritePaths. Everything else becomes read-only, so
-// an attacker who lands code execution can't drop persistence, tamper
-// with system binaries, or write outside the honeypot's own state dir.
+// applyLandlock confines filesystem access: read+traverse allowed under
+// ReadPaths (default "/"), and write/create/remove allowed only under
+// DataDir + WritePaths.
+//
+// Caveat: landlock_restrict_self() applies to the CALLING thread and is
+// inherited by threads created afterward; unlike seccomp it has no TSYNC
+// flag, so OS threads the Go runtime already started are not retroactively
+// confined, and a goroutine scheduled onto one of those can still write
+// outside DataDir. This makes Landlock here a best-effort hardening layer.
+// For kernel-enforced full-process filesystem confinement use the shipped
+// AppArmor / SELinux profiles or the systemd unit (see docs/hardening.md).
 func applyLandlock(cfg Config) error {
 	abi := landlockABI()
 	if abi < 1 {

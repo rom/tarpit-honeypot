@@ -29,6 +29,7 @@ type Correlator struct {
 	sweep   map[string]*sweepState     // key: source IP
 	story   map[string]*storylineState // key: source IP
 	emitted map[string]time.Time       // dedup of aggregate emission
+	lastGC  time.Time                  // last idle-state sweep
 }
 
 type scanState struct {
@@ -111,6 +112,7 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	c.gc(now)
 
 	// ICMP sweep is checked first because ICMP events carry no dest
 	// port — they'd be dropped by the port-requiring guard below.
@@ -410,4 +412,56 @@ func (c *Correlator) shouldEmit(key string, window time.Duration) bool {
 	}
 	c.emitted[key] = now
 	return true
+}
+
+// corrGCInterval throttles the idle-state sweep so it costs O(entries)
+// at most once per interval rather than on every event.
+const corrGCInterval = 5 * time.Minute
+
+// gc evicts per-source state whose last activity is older than the
+// relevant detector window, so the maps don't grow unbounded under many
+// distinct/spoofed source IPs over a long-running sensor. Called with
+// c.mu held.
+func (c *Correlator) gc(now time.Time) {
+	if !c.lastGC.IsZero() && now.Sub(c.lastGC) < corrGCInterval {
+		return
+	}
+	c.lastGC = now
+	for ip, st := range c.scan {
+		if now.Sub(st.since) > effWindow(c.cfg.PortScan.Window, 30*time.Second) {
+			delete(c.scan, ip)
+		}
+	}
+	for k, st := range c.brute {
+		if now.Sub(st.since) > effWindow(c.cfg.BruteForce.Window, time.Minute) {
+			delete(c.brute, k)
+		}
+	}
+	for ip, st := range c.slow {
+		if now.Sub(st.lastSeen) > effWindow(c.cfg.SlowScan.Window, 24*time.Hour) {
+			delete(c.slow, ip)
+		}
+	}
+	for ip, st := range c.sweep {
+		if now.Sub(st.since) > effWindow(c.cfg.ICMPSweep.Window, time.Minute) {
+			delete(c.sweep, ip)
+		}
+	}
+	for ip, st := range c.story {
+		if now.Sub(st.lastSeen) > StoryWindow {
+			delete(c.story, ip)
+		}
+	}
+	for key, t := range c.emitted {
+		if now.Sub(t) > 24*time.Hour {
+			delete(c.emitted, key)
+		}
+	}
+}
+
+func effWindow(d, def time.Duration) time.Duration {
+	if d <= 0 {
+		return def
+	}
+	return d
 }

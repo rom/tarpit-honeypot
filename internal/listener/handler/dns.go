@@ -202,9 +202,17 @@ func (d *dnsHandler) nsRecordType(rrtype uint16, host string) []byte {
 	return out
 }
 
-// fakeIPv4 returns a deterministic, plausible-looking public-ish IPv4
-// for a name (stable per deployment). Avoids RFC1918 / loopback so the
-// answer looks like a real internet host.
+// publicFirstOctets is a curated set of first octets that fall in
+// globally-routable space — deliberately excluding RFC1918 (10/172/192),
+// loopback (127), link-local (169), CGNAT (100), "this network" (0), and
+// multicast/reserved (>=224). Picking ip[0] from this set guarantees the
+// fabricated A record looks like a real internet host regardless of name.
+var publicFirstOctets = []byte{23, 34, 45, 52, 66, 72, 88, 93, 104, 128, 134, 142, 151, 162, 173, 185, 199, 203, 208, 216}
+
+// fakeIPv4 returns a deterministic, plausible-looking public IPv4 for a
+// name (stable per deployment). The first octet is chosen from a curated
+// public set so the answer never lands in RFC1918 / loopback / link-local
+// / CGNAT / multicast space.
 func (d *dnsHandler) fakeIPv4(name string) [4]byte {
 	var seed uint32
 	if d.id != nil {
@@ -215,10 +223,7 @@ func (d *dnsHandler) fakeIPv4(name string) [4]byte {
 		}
 	}
 	var ip [4]byte
-	ip[0] = byte(20 + seed%190) // 20..209, skips 0/10/127/multicast-ish
-	if ip[0] == 127 {
-		ip[0] = 203
-	}
+	ip[0] = publicFirstOctets[seed%uint32(len(publicFirstOctets))]
 	ip[1] = byte(seed >> 8)
 	ip[2] = byte(seed >> 16)
 	ip[3] = byte(seed>>24)%254 + 1

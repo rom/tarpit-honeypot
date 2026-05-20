@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -48,16 +49,32 @@ func TestAuditArchKnown(t *testing.T) {
 }
 
 // TestSeccompBlocksExecve installs the real filter in a subprocess and
-// confirms execve is denied with EPERM (the headline guarantee: a parser
-// 0-day can't spawn a shell).
+// confirms execve is denied with EPERM — crucially, from an OS thread
+// that existed BEFORE the filter was installed. Without
+// SECCOMP_FILTER_FLAG_TSYNC the filter would only cover the calling
+// thread and this pre-existing thread's execve would resolve the path
+// (ENOENT for our bogus target) instead of being denied (EPERM), so this
+// is a regression test for the TSYNC fix.
 func TestSeccompBlocksExecve(t *testing.T) {
 	if os.Getenv("SANDBOX_SECCOMP_CHILD") == "1" {
+		const bogus = "/nonexistent/tarpit-seccomp-probe"
+		ready := make(chan struct{})
+		attempt := make(chan struct{})
+		result := make(chan error, 1)
+		go func() {
+			runtime.LockOSThread() // pin to a dedicated OS thread
+			close(ready)
+			<-attempt
+			// Exec only returns on failure. With the filter synced to
+			// this thread we get EPERM; unfiltered we'd get ENOENT.
+			result <- unix.Exec(bogus, []string{"x"}, os.Environ())
+		}()
+		<-ready // the worker thread now exists; filter must reach it
 		if err := applySeccomp(); err != nil {
 			os.Exit(childSkip)
 		}
-		err := unix.Exec(os.Args[0], []string{"x"}, os.Environ())
-		// Exec only returns on failure; we want EPERM from seccomp.
-		if errors.Is(err, unix.EPERM) {
+		close(attempt)
+		if errors.Is(<-result, unix.EPERM) {
 			os.Exit(0)
 		}
 		os.Exit(4)

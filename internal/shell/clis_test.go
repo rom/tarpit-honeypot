@@ -91,6 +91,23 @@ func TestPowerShellTTPAnomalies(t *testing.T) {
 	}
 }
 
+func TestExtractWinVersion(t *testing.T) {
+	cases := map[string]string{
+		"Hardware: Intel64 - Software: Windows Version 10.0 (Build 19045 Multiprocessor Free)": "Version 10.0.19045",
+		"Software: Windows Version 6.1 (Build 7601 Multiprocessor Free)":                       "Version 6.1.7601",
+		"no version here": "Version 10.0.19045.3693",
+	}
+	for descr, want := range cases {
+		if got := extractWinVersion(descr); got != want {
+			t.Errorf("extractWinVersion(%q) = %q; want %q", descr, got, want)
+		}
+		// Never produce an unbalanced parenthesis or stray "Build".
+		if strings.ContainsAny(extractWinVersion(descr), "()") || strings.Contains(extractWinVersion(descr), "Build") {
+			t.Errorf("extractWinVersion(%q) malformed: %q", descr, extractWinVersion(descr))
+		}
+	}
+}
+
 func hasMarker(list []string, want string) bool {
 	for _, m := range list {
 		if m == want {
