@@ -88,6 +88,9 @@ var exactRules = map[string]Tag{
 	// vantage (the device is doing the discovering).
 	"device:new":           {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	// Harvested malware / shellcode / dropper = ingress tool transfer
+	// (+ obfuscated payload when base64-wrapped).
+	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
 }
 
 // handlerTags is the listener-handler -> ATT&CK lookup. Handlers

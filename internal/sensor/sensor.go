@@ -26,6 +26,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/mitre"
+	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/safego"
@@ -59,6 +60,7 @@ type Sensor struct {
 	enrich     *enrich.Enricher
 	devices    *devices.Registry
 	scanTrack  *scananalysis.Tracker
+	payloads   *payload.Store
 	deviceSev  event.Severity
 	bus        chan *event.Event
 
@@ -203,6 +205,17 @@ func New(cfg *config.Config) (*Sensor, error) {
 		}
 	}
 
+	var payloadStore *payload.Store
+	if cfg.Sensor.Payloads.Enabled {
+		ps, err := payload.NewStore(filepath.Join(cfg.Sensor.DataDir, "payloads"),
+			cfg.Sensor.Payloads.MaxBytes, cfg.Sensor.Payloads.MaxTotalMB)
+		if err != nil {
+			slog.Warn("payload harvesting disabled: cannot create store", "err", err)
+		} else {
+			payloadStore = ps
+		}
+	}
+
 	return &Sensor{
 		cfg:        cfg,
 		name:       name,
@@ -219,6 +232,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		devices:    devReg,
 		deviceSev:  devSev,
 		scanTrack:  scananalysis.NewTracker(5 * time.Minute),
+		payloads:   payloadStore,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -293,6 +307,90 @@ func (s *Sensor) observeScan(ev *event.Event) *event.Event {
 		Proto:    "tcp",
 		Meta:     meta,
 	}
+}
+
+// observePayload harvests malware / shellcode / ingress URLs from an
+// event's captured bytes. It enriches the event in place (anomaly
+// markers + harvested_urls / payload_artifacts meta), persists any
+// binary / script / shellcode artifact to <data_dir>/payloads/ when
+// harvesting is enabled, and returns a malware:capture event when an
+// executable-class artifact was found. Detection + collection only —
+// nothing is executed or fetched.
+func (s *Sensor) observePayload(ev *event.Event) *event.Event {
+	if ev == nil || ev.RuleID == "malware:capture" {
+		return nil
+	}
+	if ev.PayloadBase64 == "" {
+		return nil
+	}
+	data, err := base64.StdEncoding.DecodeString(ev.PayloadBase64)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	f := payload.Scan(data)
+	if f.Empty() {
+		return nil
+	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	for _, m := range f.Markers {
+		ev.Anomalies = appendUniqueStr(ev.Anomalies, m)
+	}
+	if len(f.URLs) > 0 {
+		ev.Meta["harvested_urls"] = f.URLs
+	}
+
+	// Persist artifacts + build a compact descriptor list for the meta.
+	var descs []string
+	worst := event.SeverityHigh
+	for i := range f.Artifacts {
+		a := f.Artifacts[i]
+		d := a.Kind + ":" + a.SHA256
+		if s.payloads != nil {
+			if path, perr := s.payloads.Persist(a); perr == nil && path != "" {
+				d += " -> " + filepath.Base(path)
+			}
+		}
+		descs = append(descs, d)
+		switch a.Kind {
+		case payload.KindELF, payload.KindPE, payload.KindMachO, payload.KindShellcode:
+			worst = event.SeverityCritical
+		}
+	}
+	if len(descs) == 0 {
+		// URLs / markers only — enrich the event but don't emit a
+		// separate malware event.
+		return nil
+	}
+	ev.Meta["payload_artifacts"] = descs
+
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     ev.Time,
+		Sensor:   s.name,
+		RuleID:   "malware:capture",
+		Severity: worst,
+		Source:   ev.Source,
+		Dest:     ev.Dest,
+		Proto:    ev.Proto,
+		Handler:  ev.Handler,
+		Meta: map[string]any{
+			"trigger_event_id": ev.ID,
+			"artifacts":        descs,
+			"markers":          f.Markers,
+		},
+	}
+}
+
+// appendUniqueStr appends s to list only if absent.
+func appendUniqueStr(list []string, s string) []string {
+	for _, e := range list {
+		if e == s {
+			return list
+		}
+	}
+	return append(list, s)
 }
 
 // observeDevice extracts host identity from an event and feeds it into
@@ -662,6 +760,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// seen, non-allow-listed hosts.
 				if devNew := s.observeDevice(ev); devNew != nil {
 					s.router.Dispatch(devNew)
+				}
+				// Payload harvesting: extract malware / shellcode /
+				// ingress URLs from the captured bytes; persist
+				// artifacts and emit malware:capture when one is found.
+				if mw := s.observePayload(ev); mw != nil {
+					s.router.Dispatch(mw)
 				}
 				// Scan analysis: feed listener events into the
 				// per-source Tracker; emit scananalysis:profile when a
