@@ -191,6 +191,14 @@ rationale covering the current implementation.
   family-tuned LLDP capabilities (bridge/router for switches + PLCs,
   station-only for hosts). Pairs naturally with the Moxa / SCALANCE
   / S7 archetypes for industrial deception.
+- **PROFINET-DCP responder** (Linux AF_PACKET, `profinet_responder`):
+  answers PROFINET DCP **Identify** requests (L2, EtherType 0x8892) for
+  industrial hosts so a PROFINET scan (Siemens PRONETA / TIA Portal / nmap)
+  enumerates the cell — NameOfStation, DeviceVendor, Device ID, Device
+  Role, IP parameters per station, sourced from the archetype's PROFINET
+  device tree. A received Identify is itself ICS recon, so each one raises
+  `honeynet:profinet_dcp_identify` (ATT&CK T0846). (OPC-DA over
+  DCOM/MSRPC is out of scope.)
 - **MITRE ATT&CK + D3FEND tagging**: every event is decorated with
   `mitre_techniques` (e.g. `["T1110.001","T1078"]`), `mitre_tactics`
   (e.g. `["credential-access","initial-access"]`), and `mitre_defenses`

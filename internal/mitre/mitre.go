@@ -88,9 +88,11 @@ var exactRules = map[string]Tag{
 	"sniffer:tcp_xmas_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:tcp_ack_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:ip_fragmented": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"dnscanary:hit":         {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier":   {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":      {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
+	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"dnscanary:hit":                  {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier":            {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":               {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
@@ -246,6 +248,7 @@ var d3fend = map[string][]string{
 	"T1610": {"D3-NTA", "D3-ITF"},          // deploy container
 	"T0814": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: denial of service
 	"T0888": {"D3-NTA", "D3-DNR"},          // ICS: remote system info discovery
+	"T0846": {"D3-NTA", "D3-DNR"},          // ICS: remote system discovery (PROFINET-DCP)
 	"T0830": {"D3-NTA"},                    // ICS: adversary-in-the-middle
 }
 

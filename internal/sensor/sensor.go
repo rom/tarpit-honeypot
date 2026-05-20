@@ -960,6 +960,45 @@ func (s *Sensor) Run(ctx context.Context) error {
 				<-ctx.Done()
 			}()
 		}
+		if hn.PROFINET.Enabled {
+			pnCfg := honeynet.ProfinetCfg{
+				Enabled:   true,
+				Interface: hn.PROFINET.Interface,
+			}
+			sev := event.SeverityHigh
+			if s, err := event.ParseSeverity(hn.PROFINET.Severity); err == nil {
+				sev = s
+			}
+			netID := hn.ID
+			onProbe := func(srcMAC string, meta map[string]any) {
+				if meta == nil {
+					meta = map[string]any{}
+				}
+				meta["src_mac"] = srcMAC
+				meta["honeynet"] = netID
+				ev := &event.Event{
+					ID:       event.NewID(),
+					Time:     timeNow(),
+					Sensor:   s.name,
+					RuleID:   "honeynet:profinet_dcp_identify",
+					Severity: sev,
+					Proto:    "profinet",
+					Meta:     meta,
+				}
+				select {
+				case s.bus <- ev:
+				default:
+				}
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := honeynet.StartProfinetDCP(ctx, pnCfg, s.honeynet, onProbe); err != nil {
+					slog.Warn("honeynet profinet responder disabled", "honeynet", netID, "err", err)
+				}
+				<-ctx.Done()
+			}()
+		}
 		if hn.TUN.Enabled {
 			hostIPs := make([]string, 0, len(hn.Hosts))
 			personas := make(map[string]int, len(hn.Hosts))

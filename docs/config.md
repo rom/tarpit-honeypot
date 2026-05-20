@@ -334,6 +334,11 @@ honeynets:
       interval_s: 30
       include_cdp: false          # also emit Cisco CDP frames
 
+    profinet_responder:           # answer PROFINET-DCP Identify (L2, Linux, CAP_NET_RAW)
+      enabled: false              # for industrial hosts (siemens/moxa/ics archetypes)
+      interface: ""
+      severity: high              # severity of honeynet:profinet_dcp_identify
+
     tun:                          # open a Linux TUN, route the CIDR through it
       enabled: false              # CAP_NET_ADMIN required
       device: ""

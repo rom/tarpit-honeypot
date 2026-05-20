@@ -43,16 +43,30 @@ type Devices struct {
 // All fields except ID are optional — a deployment can configure metadata-
 // only honeynets that only show up in DNS forward-resolution.
 type Honeynet struct {
-	ID      string           `yaml:"id"`
-	CIDR    string           `yaml:"cidr"`
-	Gateway string           `yaml:"gateway"`
-	DNS     string           `yaml:"dns"`
-	Domain  string           `yaml:"domain"`
-	Hosts   []HoneynetHost   `yaml:"hosts"`
-	ARP     ARPResponderCfg  `yaml:"arp_responder"`
-	ICMP    ICMPResponderCfg `yaml:"icmp_responder"`
-	LLDP    LLDPResponderCfg `yaml:"lldp_responder"`
-	TUN     TUNCfg           `yaml:"tun"`
+	ID       string               `yaml:"id"`
+	CIDR     string               `yaml:"cidr"`
+	Gateway  string               `yaml:"gateway"`
+	DNS      string               `yaml:"dns"`
+	Domain   string               `yaml:"domain"`
+	Hosts    []HoneynetHost       `yaml:"hosts"`
+	ARP      ARPResponderCfg      `yaml:"arp_responder"`
+	ICMP     ICMPResponderCfg     `yaml:"icmp_responder"`
+	LLDP     LLDPResponderCfg     `yaml:"lldp_responder"`
+	TUN      TUNCfg               `yaml:"tun"`
+	PROFINET ProfinetResponderCfg `yaml:"profinet_responder"`
+}
+
+// ProfinetResponderCfg makes virtual industrial hosts answer PROFINET-DCP
+// Identify requests (EtherType 0x8892) so a PROFINET discovery scan
+// (Siemens PRONETA / TIA Portal / nmap) enumerates the cell — and raises
+// honeynet:profinet_dcp_identify on every request observed (ICS recon).
+// Linux + CAP_NET_RAW only. Stations come from each host's archetype
+// PROFINET device tree (SCALANCE-class), or the host itself for industrial
+// archetypes without an explicit tree.
+type ProfinetResponderCfg struct {
+	Enabled   bool   `yaml:"enabled"`
+	Interface string `yaml:"interface"`
+	Severity  string `yaml:"severity"`
 }
 
 // LLDPResponderCfg makes virtual hosts appear in `lldpctl` / Cisco

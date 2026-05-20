@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — PROFINET-DCP responder (L2 ICS discovery)
+- **`honeynets[].profinet_responder`** (`internal/honeynet`): answers
+  PROFINET Discovery and Configuration Protocol (DCP) **Identify** requests
+  on the raw L2 segment (EtherType 0x8892) for virtual industrial hosts, so
+  a PROFINET scan (Siemens PRONETA / TIA Portal / nmap) enumerates a
+  populated cell — NameOfStation, DeviceVendor, Device ID, Device Role, and
+  IP parameters per station. Stations come from each host's archetype
+  PROFINET device tree (SCALANCE-class) or the host itself for industrial
+  archetypes. Because a DCP Identify is itself strong ICS reconnaissance,
+  every request raises `honeynet:profinet_dcp_identify` (ATT&CK **T0846**,
+  ICS Remote System Discovery). Linux + CAP_NET_RAW; identify-all and
+  name-filtered requests both handled. (OPC-DA over DCOM/MSRPC remains out
+  of scope.)
+
 ### Added — TCP/IP stack personality (TUN responder)
 - The honeynet TUN adapter (`internal/tunnet`) now stamps each virtual
   host's synthesized **ICMP echo replies and closed-port RSTs** with the

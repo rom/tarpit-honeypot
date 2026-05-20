@@ -729,6 +729,10 @@ honeynets:
     arp_responder:  { enabled: true, interface: eth0 }
     icmp_responder: { enabled: true, interface: eth0 }
     lldp_responder: { enabled: true, interface: eth0, interval_s: 30, include_cdp: true }
+    # Answer PROFINET-DCP Identify (L2, EtherType 0x8892) for industrial
+    # hosts so a PROFINET scan enumerates the cell; raises
+    # honeynet:profinet_dcp_identify on every probe. Linux + CAP_NET_RAW.
+    profinet_responder: { enabled: true, interface: eth0, severity: high }
     tun:            { enabled: false, device: "", mtu: 1500 }
     hosts:
       - ip: 10.99.0.10
