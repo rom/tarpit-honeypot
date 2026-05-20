@@ -139,7 +139,10 @@ func readVarint(br *bufio.Reader) (int, error) {
 }
 
 func readMQTTString(b []byte, idx int) (string, int, bool) {
-	if idx+2 > len(b) {
+	// Guard a negative or out-of-range idx (and the idx+2 overflow it could
+	// cause) before slicing. idx > len(b)-2 also rejects a huge idx whose
+	// idx+2 would overflow negative.
+	if idx < 0 || idx > len(b)-2 {
 		return "", idx, false
 	}
 	n := int(binary.BigEndian.Uint16(b[idx : idx+2]))

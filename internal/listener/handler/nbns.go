@@ -52,7 +52,7 @@ func (n *nbns) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 // parseNBNSQuery extracts the NetBIOS-encoded label and the decoded
 // 16-byte name + service byte.
 func parseNBNSQuery(msg []byte) (encoded, decoded string, qtype uint16, ok bool) {
-	if len(msg) < 12 {
+	if len(msg) < 13 { // 12-byte header + the first label-length byte at [12]
 		return "", "", 0, false
 	}
 	if msg[12] != 32 { // first label length is always 32 for NetBIOS

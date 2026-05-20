@@ -25,6 +25,23 @@ func FuzzJA3(f *testing.F) {
 	})
 }
 
+// FuzzJA3S exercises the ServerHello parser (server-side TLS fingerprint).
+// Must never panic on a malformed / truncated ServerHello.
+func FuzzJA3S(f *testing.F) {
+	f.Add(buildServerHello(0x0303, 0xc02f, []uint16{0xff01, 0x0000, 0x0010}))
+	f.Add([]byte{})
+	f.Add([]byte{0x02, 0, 0, 0}) // handshake header only
+	f.Add([]byte{0x02, 0xff, 0xff, 0xff})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("JA3S panicked: %v", r)
+			}
+		}()
+		_, _ = JA3S(data)
+	})
+}
+
 // FuzzHASSH feeds arbitrary bytes through the SSH KEXINIT parser.
 func FuzzHASSH(f *testing.F) {
 	f.Add([]byte{0x14}) // bare type byte, no cookie

@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — end-to-end handler fuzzing (+ 2 parser bugs fixed)
+- `FuzzTCPHandlers` / `FuzzUDPHandlers` drive every registered protocol
+  handler's `Handle()` end-to-end with arbitrary bytes via an in-memory
+  conn/packet-conn (selector byte multiplexes the ~50 TCP + 24 UDP
+  handlers). Added `FuzzJA3S` for the new ServerHello parser. ~3M+ execs
+  across the suite found two off-by-one slice panics, now fixed with the
+  crashers committed as regression seeds:
+  - **nbns** (UDP 137): `parseNBNSQuery` guarded `len < 12` but indexed
+    `msg[12]` — a 12-byte datagram panicked the handler.
+  - **mqtt** `readMQTTString`: no negative/overflow guard on the offset →
+    `slice bounds out of range [:-N]`.
+  (Both were recovered per-packet in production, but are now hard-fixed.)
+
 ### Fixed — security audit, round 2 (concurrency + secret hygiene)
 - **Reload data race**: `Reload()` hot-swapped `cfg`/`router`/`correlator`/
   `sinks` with no lock while the bus loop, save ticker, shutdown, and the
