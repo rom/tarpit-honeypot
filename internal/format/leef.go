@@ -15,7 +15,7 @@ func (l *leefF) ContentType() string { return "text/plain; charset=utf-8" }
 
 // LEEF: IBM Log Event Extended Format v2.0.
 //
-//   LEEF:2.0|Vendor|Product|Version|EventID|DelimChar|Extension
+//	LEEF:2.0|Vendor|Product|Version|EventID|DelimChar|Extension
 //
 // We declare the extension delimiter explicitly as a tab character (0x09)
 // in the prefix so QRadar parses key=value pairs predictably even when

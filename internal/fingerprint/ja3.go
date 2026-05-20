@@ -18,7 +18,8 @@ import (
 // protocol message starting with type=0x01).
 //
 // JA3 string layout:
-//   SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat
+//
+//	SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat
 //
 // Returns ("", "") on parse failure rather than an error so callers can
 // silently skip when input is short / garbled.
@@ -42,7 +43,7 @@ func JA3(handshake []byte) (raw, hash string) {
 // JA4 produces the newer JA4 fingerprint from the same ClientHello. JA4 is
 // designed to survive client randomization (extension shuffling). Format:
 //
-//   t13d{n}{n}_{cipher_hash}_{ext_hash}
+//	t13d{n}{n}_{cipher_hash}_{ext_hash}
 //
 // where t13 = TLS 1.3 transport, d = direction (we always observe inbound),
 // the two digit groups encode #ciphers and #extensions, and the two hashes
@@ -98,13 +99,13 @@ func JA4(handshake []byte) (raw string) {
 
 // clientHello is the subset of fields JA3 / JA4 need.
 type clientHello struct {
-	Version          uint16
-	CipherSuites     []uint16
-	ExtensionTypes   []uint16
-	SupportedGroups  []uint16
-	ECPointFormats   []uint8
-	HasSNI           bool
-	ALPNFirst        []byte
+	Version         uint16
+	CipherSuites    []uint16
+	ExtensionTypes  []uint16
+	SupportedGroups []uint16
+	ECPointFormats  []uint8
+	HasSNI          bool
+	ALPNFirst       []byte
 }
 
 // parseClientHello walks the bytes from the start of the Handshake message.

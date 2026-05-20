@@ -132,8 +132,8 @@ func (w *Watcher) Run(ctx context.Context, bus chan<- *event.Event) error {
 				Severity: sevByID[id],
 				Proto:    "file",
 				Meta: map[string]any{
-					"path":   fev.Name,
-					"op":     fev.Op.String(),
+					"path": fev.Name,
+					"op":   fev.Op.String(),
 				},
 			}
 			select {

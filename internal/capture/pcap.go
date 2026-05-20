@@ -86,14 +86,14 @@ func buildIPv4TCP(src, dst net.IP, srcPort, dstPort int, seq, ack uint32, payloa
 	pkt := make([]byte, ipLen)
 
 	// IPv4 header.
-	pkt[0] = 0x45                                       // version=4, IHL=5 (20 bytes)
-	pkt[1] = 0x00                                       // DSCP/ECN
-	binary.BigEndian.PutUint16(pkt[2:], uint16(ipLen))  // total length
-	binary.BigEndian.PutUint16(pkt[4:], 0)              // identification
-	binary.BigEndian.PutUint16(pkt[6:], 0x4000)         // flags=DF, frag=0
-	pkt[8] = 64                                         // TTL
-	pkt[9] = 6                                          // protocol = TCP
-	binary.BigEndian.PutUint16(pkt[10:], 0)             // checksum (filled below)
+	pkt[0] = 0x45                                      // version=4, IHL=5 (20 bytes)
+	pkt[1] = 0x00                                      // DSCP/ECN
+	binary.BigEndian.PutUint16(pkt[2:], uint16(ipLen)) // total length
+	binary.BigEndian.PutUint16(pkt[4:], 0)             // identification
+	binary.BigEndian.PutUint16(pkt[6:], 0x4000)        // flags=DF, frag=0
+	pkt[8] = 64                                        // TTL
+	pkt[9] = 6                                         // protocol = TCP
+	binary.BigEndian.PutUint16(pkt[10:], 0)            // checksum (filled below)
 	copy(pkt[12:16], src4)
 	copy(pkt[16:20], dst4)
 	binary.BigEndian.PutUint16(pkt[10:], ipChecksum(pkt[:20]))
@@ -104,11 +104,11 @@ func buildIPv4TCP(src, dst net.IP, srcPort, dstPort int, seq, ack uint32, payloa
 	binary.BigEndian.PutUint16(pkt[off+2:], uint16(dstPort))
 	binary.BigEndian.PutUint32(pkt[off+4:], seq)
 	binary.BigEndian.PutUint32(pkt[off+8:], ack)
-	pkt[off+12] = 0x50                                  // data offset=5 (20 bytes)
-	pkt[off+13] = 0x18                                  // PSH+ACK
-	binary.BigEndian.PutUint16(pkt[off+14:], 0xffff)    // window
-	binary.BigEndian.PutUint16(pkt[off+16:], 0)         // checksum
-	binary.BigEndian.PutUint16(pkt[off+18:], 0)         // urgent
+	pkt[off+12] = 0x50                               // data offset=5 (20 bytes)
+	pkt[off+13] = 0x18                               // PSH+ACK
+	binary.BigEndian.PutUint16(pkt[off+14:], 0xffff) // window
+	binary.BigEndian.PutUint16(pkt[off+16:], 0)      // checksum
+	binary.BigEndian.PutUint16(pkt[off+18:], 0)      // urgent
 
 	copy(pkt[off+20:], payload)
 

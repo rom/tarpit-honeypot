@@ -21,9 +21,9 @@ import (
 )
 
 type Store struct {
-	db     *sql.DB
-	path   string
-	capMB  int
+	db    *sql.DB
+	path  string
+	capMB int
 }
 
 const schema = `
@@ -207,8 +207,8 @@ type rowScanner interface {
 func scanRow(r rowScanner) (*event.Event, error) {
 	var (
 		id, sensor, ruleID, srcIP, dstIP, proto, handler, banner, payloadB64, metaJSON string
-		timeNS                                                                          int64
-		sev, srcPort, dstPort, payloadLen                                               int
+		timeNS                                                                         int64
+		sev, srcPort, dstPort, payloadLen                                              int
 	)
 	if err := r.Scan(&id, &timeNS, &sensor, &ruleID, &sev,
 		&srcIP, &srcPort, &dstIP, &dstPort,
@@ -237,11 +237,11 @@ func scanRow(r rowScanner) (*event.Event, error) {
 
 // Summary is a small dashboard payload for the UI's index page.
 type Summary struct {
-	Since       time.Time      `json:"since"`
-	Total       int            `json:"total"`
-	BySeverity  map[string]int `json:"by_severity"`
-	ByRule      map[string]int `json:"by_rule"`
-	TopSources  []SourceCount  `json:"top_sources"`
+	Since      time.Time      `json:"since"`
+	Total      int            `json:"total"`
+	BySeverity map[string]int `json:"by_severity"`
+	ByRule     map[string]int `json:"by_rule"`
+	TopSources []SourceCount  `json:"top_sources"`
 }
 
 type SourceCount struct {

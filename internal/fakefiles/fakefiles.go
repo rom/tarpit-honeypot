@@ -75,10 +75,10 @@ func Default(id *identity.Identity) *Set {
 		{Name: "README.txt", Size: sz("readme", 200, 800), ModTime: mt(120), body: func() []byte {
 			return []byte("Internal file server. Authorized personnel only.\r\nContact: it-ops@example.internal\r\n")
 		}},
-		{Name: "backup", Size: 4096, ModTime: mt(30)},          // directory
-		{Name: "documents", Size: 4096, ModTime: mt(45)},       // directory
-		{Name: "incoming", Size: 4096, ModTime: mt(2)},         // directory
-		{Name: "database_dump.sql", Size: sz("sql", 1 << 20, 8 << 20), ModTime: mt(7), Bait: true, body: func() []byte {
+		{Name: "backup", Size: 4096, ModTime: mt(30)},    // directory
+		{Name: "documents", Size: 4096, ModTime: mt(45)}, // directory
+		{Name: "incoming", Size: 4096, ModTime: mt(2)},   // directory
+		{Name: "database_dump.sql", Size: sz("sql", 1<<20, 8<<20), ModTime: mt(7), Bait: true, body: func() []byte {
 			return []byte("-- MySQL dump 10.13\n-- Host: db01    Database: prod\n-- ------------------------------------------------------\nCREATE TABLE `users` (`id` int, `email` varchar(255), `pwhash` varchar(60));\n-- (truncated)\n")
 		}},
 		{Name: "id_rsa", Size: 2602, ModTime: mt(200), Bait: true, body: func() []byte {

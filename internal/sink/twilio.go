@@ -15,13 +15,13 @@ import (
 )
 
 type twilioSink struct {
-	id      string
+	id       string
 	endpoint string
-	authSID string
-	authTok string
-	from    string
-	to      []string
-	client  *http.Client
+	authSID  string
+	authTok  string
+	from     string
+	to       []string
+	client   *http.Client
 }
 
 func newTwilio(ch config.Channel) (Sink, error) {

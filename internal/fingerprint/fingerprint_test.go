@@ -13,7 +13,7 @@ func buildClientHello(ciphers []uint16, exts []uint16, supportedGroups []uint16,
 	hello := []byte{}
 	hello = binary.BigEndian.AppendUint16(hello, tlsVersion) // legacy_version
 	hello = append(hello, make([]byte, 32)...)               // random
-	hello = append(hello, 0)                                  // session_id length = 0
+	hello = append(hello, 0)                                 // session_id length = 0
 
 	// cipher suites
 	hello = binary.BigEndian.AppendUint16(hello, uint16(len(ciphers)*2))
@@ -33,9 +33,9 @@ func buildClientHello(ciphers []uint16, exts []uint16, supportedGroups []uint16,
 				continue
 			}
 			sni := []byte("example.com")
-			edata = append(edata, 0x00)                                            // name_type host_name
-			edata = append([]byte{0, byte(len(sni) + 3)}, edata...)                // server_name_list length
-			edata = append(edata, 0)                                               // name_type=host_name
+			edata = append(edata, 0x00)                             // name_type host_name
+			edata = append([]byte{0, byte(len(sni) + 3)}, edata...) // server_name_list length
+			edata = append(edata, 0)                                // name_type=host_name
 			edata = binary.BigEndian.AppendUint16(edata, uint16(len(sni)))
 			edata = append(edata, sni...)
 		case 0x0010: // ALPN
@@ -130,16 +130,16 @@ func TestHASSH(t *testing.T) {
 	pkt = append(pkt, make([]byte, 16)...) // cookie
 	// 10 name-lists. The 4 we care about are at indices 0, 2, 4, 6.
 	names := []string{
-		"curve25519-sha256,ecdh-sha2-nistp256",  // kex
-		"ssh-ed25519,ecdsa-sha2-nistp256",       // server_host_key
-		"chacha20-poly1305@openssh.com",          // encryption_c2s
-		"chacha20-poly1305@openssh.com",          // encryption_s2c
-		"umac-64-etm@openssh.com",                // mac_c2s
-		"umac-64-etm@openssh.com",                // mac_s2c
-		"none,zlib@openssh.com",                  // compression_c2s
-		"none",                                   // compression_s2c
-		"",                                       // languages_c2s
-		"",                                       // languages_s2c
+		"curve25519-sha256,ecdh-sha2-nistp256", // kex
+		"ssh-ed25519,ecdsa-sha2-nistp256",      // server_host_key
+		"chacha20-poly1305@openssh.com",        // encryption_c2s
+		"chacha20-poly1305@openssh.com",        // encryption_s2c
+		"umac-64-etm@openssh.com",              // mac_c2s
+		"umac-64-etm@openssh.com",              // mac_s2c
+		"none,zlib@openssh.com",                // compression_c2s
+		"none",                                 // compression_s2c
+		"",                                     // languages_c2s
+		"",                                     // languages_s2c
 	}
 	for _, n := range names {
 		l := uint32(len(n))

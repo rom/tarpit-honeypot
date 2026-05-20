@@ -26,8 +26,8 @@ import (
 )
 
 type Config struct {
-	CityDB     string        // path to GeoLite2-City.mmdb
-	ASNDB      string        // path to GeoLite2-ASN.mmdb
+	CityDB      string // path to GeoLite2-City.mmdb
+	ASNDB       string // path to GeoLite2-ASN.mmdb
 	RDNSEnabled bool
 	RDNSTimeout time.Duration
 	RDNSCache   int
@@ -137,8 +137,8 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	}
 	if e.asnDB != nil {
 		var rec struct {
-			ASN       uint32 `maxminddb:"autonomous_system_number"`
-			ASNOrg    string `maxminddb:"autonomous_system_organization"`
+			ASN    uint32 `maxminddb:"autonomous_system_number"`
+			ASNOrg string `maxminddb:"autonomous_system_organization"`
 		}
 		if err := e.asnDB.Lookup(net.ParseIP(ev.Source.IP), &rec); err == nil {
 			if rec.ASN != 0 {

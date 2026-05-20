@@ -15,7 +15,7 @@ func (c *cefF) ContentType() string { return "text/plain; charset=utf-8" }
 
 // CEF: ArcSight Common Event Format v0.
 //
-//   CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extension
+//	CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extension
 //
 // Pipes in the prefix fields are backslash-escaped; equals and
 // backslashes in the extension key=value pairs are backslash-escaped.

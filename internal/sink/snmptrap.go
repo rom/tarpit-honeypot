@@ -84,7 +84,7 @@ func (s *snmpTrapSink) Send(ctx context.Context, ev *event.Event) error {
 		{Name: s.oid + ".5", Type: g.OctetString, Value: ev.Sensor},
 	}
 	trap := g.SnmpTrap{
-		Variables: pdus,
+		Variables:  pdus,
 		Enterprise: s.oid,
 	}
 	if _, err := client.SendTrap(trap); err != nil {

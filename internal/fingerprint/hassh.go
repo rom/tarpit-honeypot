@@ -11,12 +11,13 @@ import (
 // whose first byte is the SSH_MSG_KEXINIT (0x14). HASSH is a comma-joined
 // MD5 of five client-side algorithm lists:
 //
-//   kex_algs;encryption_algs_c2s;mac_algs_c2s;compression_algs_c2s
+//	kex_algs;encryption_algs_c2s;mac_algs_c2s;compression_algs_c2s
 //
 // Empty / malformed input returns ("", "").
 //
 // SSH binary packet protocol prefix (RFC 4253 §6):
-//   packet_length (4)  padding_length (1)  payload(packet_length-padding-1)  padding
+//
+//	packet_length (4)  padding_length (1)  payload(packet_length-padding-1)  padding
 //
 // We accept either the raw payload starting with 0x14 (caller already
 // stripped the framing) or the full binary packet.

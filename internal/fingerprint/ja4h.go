@@ -13,17 +13,18 @@ import (
 //
 // Format (per the upstream spec):
 //
-//   t<v>h<m1><m2><n_headers><c>_<header_hash>_<cookie_field_hash>_<cookie_value_hash>
+//	t<v>h<m1><m2><n_headers><c>_<header_hash>_<cookie_field_hash>_<cookie_value_hash>
 //
 // Where:
-//   v = http version digits (10, 11, 20)
-//   m1m2 = first 2 chars of the lowercased method
-//   n_headers = count of headers (excluding Cookie and Referer)
-//   c = "c" if Cookie present, else "n"
-//   header_hash = first 12 hex of sha256 over the header-name list (sorted,
-//                 lowercase, Cookie+Referer excluded)
-//   cookie_field_hash = first 12 hex of sha256 over the sorted cookie names
-//   cookie_value_hash = first 12 hex of sha256 over the sorted cookie name=value pairs
+//
+//	v = http version digits (10, 11, 20)
+//	m1m2 = first 2 chars of the lowercased method
+//	n_headers = count of headers (excluding Cookie and Referer)
+//	c = "c" if Cookie present, else "n"
+//	header_hash = first 12 hex of sha256 over the header-name list (sorted,
+//	              lowercase, Cookie+Referer excluded)
+//	cookie_field_hash = first 12 hex of sha256 over the sorted cookie names
+//	cookie_value_hash = first 12 hex of sha256 over the sorted cookie name=value pairs
 //
 // Returns ("", "") on parse failure so callers can silently skip.
 func JA4H(raw []byte) (full, hash string) {

@@ -8,14 +8,14 @@ func TestAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]bool{
-		"10.0.0.1":     true,
+		"10.0.0.1":       true,
 		"10.255.255.255": true,
-		"192.168.1.5":  true,
-		"192.168.1.6":  false,
-		"172.16.0.1":   false,
-		"::1":          true,
-		"::2":          false,
-		"not-an-ip":    false,
+		"192.168.1.5":    true,
+		"192.168.1.6":    false,
+		"172.16.0.1":     false,
+		"::1":            true,
+		"::2":            false,
+		"not-an-ip":      false,
 	}
 	for ip, want := range cases {
 		if got := a.Contains(ip); got != want {

@@ -179,12 +179,12 @@ func TestShellMaxCommandsCap(t *testing.T) {
 func TestShellSplitArgv(t *testing.T) {
 	cases := map[string][]string{
 		`ls -la /root`:                {"ls", "-la", "/root"},
-		`echo "hello world"`:           {"echo", "hello world"},
-		`echo 'a b' c d`:               {"echo", "a b", "c", "d"},
-		`wget http://x.y/z -O /tmp/x`:  {"wget", "http://x.y/z", "-O", "/tmp/x"},
-		``:                             nil,
-		`   `:                          nil,
-		`cmd "esc\"d" tail`:            {"cmd", `esc"d`, "tail"},
+		`echo "hello world"`:          {"echo", "hello world"},
+		`echo 'a b' c d`:              {"echo", "a b", "c", "d"},
+		`wget http://x.y/z -O /tmp/x`: {"wget", "http://x.y/z", "-O", "/tmp/x"},
+		``:                            nil,
+		`   `:                         nil,
+		`cmd "esc\"d" tail`:           {"cmd", `esc"d`, "tail"},
 	}
 	for in, want := range cases {
 		got := splitArgv(in)

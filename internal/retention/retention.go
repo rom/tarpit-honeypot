@@ -16,10 +16,10 @@ import (
 // Runner holds the configured age cap + pointers to the on-disk locations
 // we manage. Any nil/empty field is skipped.
 type Runner struct {
-	Days         int
-	JSONLogDir   string
-	CapturesDir  string
-	DB           *sql.DB
+	Days        int
+	JSONLogDir  string
+	CapturesDir string
+	DB          *sql.DB
 }
 
 // Run starts the periodic prune. Returns when ctx is cancelled.

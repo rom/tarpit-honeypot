@@ -17,8 +17,8 @@ func (o *ocsfF) ContentType() string { return "application/json" }
 // AWS Security Lake, Snowflake, and the new generation of cloud SIEMs
 // consume natively. Required fields per OCSF v1.0:
 //
-//   class_uid, category_uid, activity_id, type_uid,
-//   severity_id, time, metadata
+//	class_uid, category_uid, activity_id, type_uid,
+//	severity_id, time, metadata
 //
 // We additionally populate src_endpoint, dst_endpoint, connection_info,
 // observables, and unmapped (the catch-all for handler/honeynet meta).

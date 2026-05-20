@@ -59,11 +59,11 @@ func TestSigv4ChangesOnBody(t *testing.T) {
 
 func TestRegionFromARN(t *testing.T) {
 	cases := map[string]string{
-		"arn:aws:sns:us-east-1:123:t":     "us-east-1",
-		"arn:aws:sns:eu-west-2:456:foo":   "eu-west-2",
-		"":                                 "",
-		"not-an-arn":                       "",
-		"arn:aws:sns":                      "",
+		"arn:aws:sns:us-east-1:123:t":   "us-east-1",
+		"arn:aws:sns:eu-west-2:456:foo": "eu-west-2",
+		"":                              "",
+		"not-an-arn":                    "",
+		"arn:aws:sns":                   "",
 	}
 	for in, want := range cases {
 		if got := regionFromARN(in); got != want {

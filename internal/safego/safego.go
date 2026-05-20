@@ -4,11 +4,11 @@
 //
 // Two flavors:
 //
-//   safego.Run(name, fn)                — fire-and-forget
-//   safego.RunWithEvent(name, bus, fn)  — same, but emits a tarpit
-//                                          panic:<name> event on the
-//                                          bus so the operator sees it
-//                                          in the regular sink path.
+//	safego.Run(name, fn)                — fire-and-forget
+//	safego.RunWithEvent(name, bus, fn)  — same, but emits a tarpit
+//	                                       panic:<name> event on the
+//	                                       bus so the operator sees it
+//	                                       in the regular sink path.
 //
 // The recover handler logs the panic value + a goroutine stack trace at
 // error level and increments a process-wide counter retrievable via

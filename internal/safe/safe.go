@@ -179,9 +179,9 @@ func SanitizeUTF8ForLog(s string) string {
 		case unicode.IsControl(r):
 			fmt.Fprintf(&b, `\u%04x`, r)
 		case r >= 0x2066 && r <= 0x2069, // bidi isolates
-			r >= 0x202a && r <= 0x202e,  // bidi overrides / embeds
-			r >= 0x200b && r <= 0x200f,  // zero-width
-			r == 0xfeff:                 // BOM / zero-width no-break
+			r >= 0x202a && r <= 0x202e, // bidi overrides / embeds
+			r >= 0x200b && r <= 0x200f, // zero-width
+			r == 0xfeff:                // BOM / zero-width no-break
 			fmt.Fprintf(&b, `\u%04x`, r)
 		default:
 			b.WriteRune(r)

@@ -17,20 +17,20 @@ import (
 //
 // macOS differs from Linux in two important ways:
 //
-//   1. There is no setresuid — only setuid / setreuid. We use Setuid
-//      which on darwin maps to pthread_setugid_np / setuid(2) and
-//      affects the whole process (Go pre-empts the thread-locked
-//      goroutine and re-issues on the new identity). After Setuid the
-//      saved-uid is also dropped to the target, so a later regain of
-//      root via setuid(0) won't work — same security posture as
-//      Linux's setresuid path.
+//  1. There is no setresuid — only setuid / setreuid. We use Setuid
+//     which on darwin maps to pthread_setugid_np / setuid(2) and
+//     affects the whole process (Go pre-empts the thread-locked
+//     goroutine and re-issues on the new identity). After Setuid the
+//     saved-uid is also dropped to the target, so a later regain of
+//     root via setuid(0) won't work — same security posture as
+//     Linux's setresuid path.
 //
-//   2. macOS doesn't support the same fine-grained capability model
-//      as Linux (no CAP_NET_BIND_SERVICE). The operator typically
-//      binds privileged ports as root and then drops; alternatively,
-//      pf rules can redirect low ports to a high port the unpriv
-//      user opens. We don't enforce that here — the operator's
-//      systemd / launchd config decides.
+//  2. macOS doesn't support the same fine-grained capability model
+//     as Linux (no CAP_NET_BIND_SERVICE). The operator typically
+//     binds privileged ports as root and then drops; alternatively,
+//     pf rules can redirect low ports to a high port the unpriv
+//     user opens. We don't enforce that here — the operator's
+//     systemd / launchd config decides.
 //
 // We refuse to drop to uid 0; that's almost always a misconfiguration.
 func Drop(usr, grp string) error {
