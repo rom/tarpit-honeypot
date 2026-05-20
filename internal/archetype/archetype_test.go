@@ -91,6 +91,8 @@ func TestAllShipArchetypes(t *testing.T) {
 		// Active Directory DC (registered under several aliases that
 		// collapse to one display name).
 		"Active Directory (Windows Server 2019 DC)",
+		// Cisco IOS switch.
+		"Cisco Catalyst 2960 (IOS 15)",
 	}
 	got := Names()
 	if len(got) != len(want) {

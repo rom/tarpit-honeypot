@@ -61,6 +61,7 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 	cap := Captured{}
 	prompt := promptFor(arch)
 	responses := responseTable(arch)
+	fold := foldCommands(arch)
 
 	br := bufio.NewReader(r)
 	deadline := time.NewTimer(IdleTimeout)
@@ -94,6 +95,9 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 			continue
 		}
 		cmd := argv[0]
+		if fold {
+			cmd = strings.ToLower(cmd)
+		}
 
 		if cmd == "exit" || cmd == "logout" || cmd == "quit" {
 			_, _ = io.WriteString(w, "logout\r\n")

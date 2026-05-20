@@ -25,10 +25,33 @@ func responseTable(p *archetype.Profile) map[string]response {
 	case "moxa":
 		return moxaResponses(p)
 	case "siemens":
+		if isPLCProfile(p) {
+			return plcResponses(p)
+		}
 		return siemensResponses(p)
+	case "cisco":
+		return ciscoResponses(p)
+	case "windows":
+		if isPowerShellProfile(p) {
+			return powershellResponses(p)
+		}
+		return cmdResponses(p)
 	default:
 		return posixResponses(p)
 	}
+}
+
+// isPowerShellProfile reports whether the archetype's shell should be
+// PowerShell rather than cmd.exe (AD DCs + anything with a PS prompt).
+func isPowerShellProfile(p *archetype.Profile) bool {
+	return p != nil && (strings.HasPrefix(p.CLIPrompt(), "PS") || p.HasQuirk("powershell"))
+}
+
+// isPLCProfile reports whether a siemens-family archetype is a PLC (S7)
+// rather than a SCALANCE switch — they get the PLC console, not the
+// switch CLI.
+func isPLCProfile(p *archetype.Profile) bool {
+	return p != nil && (strings.Contains(p.Name, "s7") || p.HasQuirk("plc"))
 }
 
 // lookupResponse returns the canned output for argv[0]. Unknown
@@ -114,34 +137,36 @@ admin:x:1000:1000:admin,,,:/home/admin:/bin/bash
 		"shutdown":  {static: "Failed to set wall message, ignoring: Interactive authentication required.\r\nFailed to shut down system via logind: Interactive authentication required.\r\n"},
 		"systemctl": {static: "Failed to list units: Interactive authentication required.\r\n"},
 		"service":   {static: "Unit not found.\r\n"},
-		"wget":      {dyn: func(a []string) string { return "--2025-05-19 14:23:01--  " + lastArg(a) + "\r\nResolving host... failed: Temporary failure in name resolution.\r\n" }},
-		"curl":      {dyn: func(a []string) string { return "curl: (6) Could not resolve host: " + lastArg(a) + "\r\n" }},
-		"nc":        {static: ""}, // silent — most reverse shell tests pipe input, so nothing back looks like a stuck listener
-		"ncat":      {static: ""},
-		"python":    {static: "Python 3.11.2 (main, May 18 2023, 11:38:21) [GCC 12.2.0] on linux\r\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\r\n>>> "},
-		"python3":   {static: "Python 3.11.2 (main, May 18 2023, 11:38:21) [GCC 12.2.0] on linux\r\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\r\n>>> "},
-		"perl":      {static: ""},
-		"bash":      {static: ""},
-		"sh":        {static: ""},
-		"chmod":     {static: ""},
-		"chown":     {static: ""},
-		"rm":        {static: ""},
-		"mv":        {static: ""},
-		"cp":        {static: ""},
-		"mkdir":     {static: ""},
-		"touch":     {static: ""},
-		"vi":        {static: ""},
-		"vim":       {static: ""},
-		"nano":      {static: ""},
-		"crontab":   {dyn: func(a []string) string {
+		"wget": {dyn: func(a []string) string {
+			return "--2025-05-19 14:23:01--  " + lastArg(a) + "\r\nResolving host... failed: Temporary failure in name resolution.\r\n"
+		}},
+		"curl":    {dyn: func(a []string) string { return "curl: (6) Could not resolve host: " + lastArg(a) + "\r\n" }},
+		"nc":      {static: ""}, // silent — most reverse shell tests pipe input, so nothing back looks like a stuck listener
+		"ncat":    {static: ""},
+		"python":  {static: "Python 3.11.2 (main, May 18 2023, 11:38:21) [GCC 12.2.0] on linux\r\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\r\n>>> "},
+		"python3": {static: "Python 3.11.2 (main, May 18 2023, 11:38:21) [GCC 12.2.0] on linux\r\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\r\n>>> "},
+		"perl":    {static: ""},
+		"bash":    {static: ""},
+		"sh":      {static: ""},
+		"chmod":   {static: ""},
+		"chown":   {static: ""},
+		"rm":      {static: ""},
+		"mv":      {static: ""},
+		"cp":      {static: ""},
+		"mkdir":   {static: ""},
+		"touch":   {static: ""},
+		"vi":      {static: ""},
+		"vim":     {static: ""},
+		"nano":    {static: ""},
+		"crontab": {dyn: func(a []string) string {
 			if len(a) > 1 && (a[1] == "-l" || a[1] == "--list") {
 				return "no crontab for root\r\n"
 			}
 			return ""
 		}},
-		"ssh":       {static: "Could not resolve hostname: Name or service not known\r\n"},
-		"scp":       {static: "Could not resolve hostname: Name or service not known\r\n"},
-		"ftp":       {static: ""},
+		"ssh": {static: "Could not resolve hostname: Name or service not known\r\n"},
+		"scp": {static: "Could not resolve hostname: Name or service not known\r\n"},
+		"ftp": {static: ""},
 	}
 }
 
@@ -159,8 +184,8 @@ func moxaResponses(p *archetype.Profile) map[string]response {
 		}
 	}
 	return map[string]response{
-		"?":         {static: "Available commands: show, get, set, enable, exit\r\n"},
-		"help":      {static: "Available commands: show, get, set, enable, exit\r\n"},
+		"?":    {static: "Available commands: show, get, set, enable, exit\r\n"},
+		"help": {static: "Available commands: show, get, set, enable, exit\r\n"},
 		"show": {dyn: func(a []string) string {
 			if len(a) < 2 {
 				return "Usage: show {version|config|interface|running-config|mac-address-table}\r\n"
@@ -177,10 +202,10 @@ func moxaResponses(p *archetype.Profile) map[string]response {
 			}
 			return "Unknown subcommand\r\n"
 		}},
-		"enable":   {static: "Password: "},
-		"get":      {static: ""},
-		"set":      {static: ""},
-		"ping":     {dyn: func(a []string) string { return "PING " + lastArg(a) + ": Request timeout.\r\n" }},
+		"enable": {static: "Password: "},
+		"get":    {static: ""},
+		"set":    {static: ""},
+		"ping":   {dyn: func(a []string) string { return "PING " + lastArg(a) + ": Request timeout.\r\n" }},
 	}
 }
 
@@ -193,8 +218,8 @@ func siemensResponses(p *archetype.Profile) map[string]response {
 		}
 	}
 	return map[string]response{
-		"?":       {static: "Available commands: show, configure, exit\r\n"},
-		"help":    {static: "Available commands: show, configure, exit\r\n"},
+		"?":    {static: "Available commands: show, configure, exit\r\n"},
+		"help": {static: "Available commands: show, configure, exit\r\n"},
 		"show": {dyn: func(a []string) string {
 			if len(a) < 2 {
 				return "show {device|version|ip-route|interface|users}\r\n"
@@ -214,7 +239,7 @@ func siemensResponses(p *archetype.Profile) map[string]response {
 			return "Unknown subcommand\r\n"
 		}},
 		"configure": {static: "% Authentication required.\r\n"},
-		"ping":     {dyn: func(a []string) string { return "PING " + lastArg(a) + " - timeout\r\n" }},
+		"ping":      {dyn: func(a []string) string { return "PING " + lastArg(a) + " - timeout\r\n" }},
 	}
 }
 

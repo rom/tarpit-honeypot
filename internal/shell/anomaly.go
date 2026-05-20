@@ -15,21 +15,21 @@ func ScanAnomalies(line string) []string {
 // in a honeypot context only mean "interesting attacker behavior",
 // not "broken response". Each marker maps to an ATT&CK technique:
 //
-//   shell-reverse-shell        T1059 / T1071  (execution + C2)
-//   shell-download-tool        T1105          (ingress tool transfer)
-//   shell-persistence-ssh-key  T1098.004      (account manipulation)
-//   shell-persistence-cron     T1053.003      (cron job)
-//   shell-shadow-read          T1003.008      (credential access from /etc/shadow)
-//   shell-passwd-read          T1003          (OS credential dumping)
-//   shell-priv-esc-suid        T1548.001      (setuid abuse)
-//   shell-priv-esc-sudo        T1548.003      (sudo abuse)
-//   shell-defense-evade-history T1070.003     (clear command history)
-//   shell-defense-evade-logclean T1070.002    (clear logs)
-//   shell-living-off-the-land  T1059.004      (lol-bin abuse)
-//   shell-coin-miner           T1496          (resource hijacking)
-//   shell-network-recon        T1018          (remote system discovery)
-//   shell-disable-fw           T1562.004      (disable firewall)
-//   shell-encoded-payload      T1027          (obfuscated payload)
+//	shell-reverse-shell        T1059 / T1071  (execution + C2)
+//	shell-download-tool        T1105          (ingress tool transfer)
+//	shell-persistence-ssh-key  T1098.004      (account manipulation)
+//	shell-persistence-cron     T1053.003      (cron job)
+//	shell-shadow-read          T1003.008      (credential access from /etc/shadow)
+//	shell-passwd-read          T1003          (OS credential dumping)
+//	shell-priv-esc-suid        T1548.001      (setuid abuse)
+//	shell-priv-esc-sudo        T1548.003      (sudo abuse)
+//	shell-defense-evade-history T1070.003     (clear command history)
+//	shell-defense-evade-logclean T1070.002    (clear logs)
+//	shell-living-off-the-land  T1059.004      (lol-bin abuse)
+//	shell-coin-miner           T1496          (resource hijacking)
+//	shell-network-recon        T1018          (remote system discovery)
+//	shell-disable-fw           T1562.004      (disable firewall)
+//	shell-encoded-payload      T1027          (obfuscated payload)
 func scanAnomalies(line string) []string {
 	low := strings.ToLower(line)
 	var out []string
@@ -145,6 +145,48 @@ func scanAnomalies(line string) []string {
 	if strings.HasPrefix(low, "nmap ") || strings.Contains(low, "masscan ") ||
 		strings.HasPrefix(low, "arp-scan ") || strings.HasPrefix(low, "rustscan ") {
 		add("shell-network-recon")
+	}
+
+	// ---- Windows / PowerShell TTPs ----
+
+	// PowerShell download-cradle / fileless execution (T1059.001 + T1105).
+	if strings.Contains(low, "downloadstring") || strings.Contains(low, "downloadfile") ||
+		strings.Contains(low, "net.webclient") || strings.Contains(low, "invoke-webrequest") ||
+		strings.Contains(low, "start-bitstransfer") ||
+		((strings.Contains(low, "iex ") || strings.Contains(low, "invoke-expression")) &&
+			(strings.Contains(low, "http") || strings.Contains(low, "(new-object"))) {
+		add("shell-ps-download-exec")
+	}
+	// Encoded PowerShell command (T1027 / T1059.001).
+	if strings.Contains(low, "-encodedcommand") || strings.Contains(low, "-enc ") ||
+		strings.Contains(low, "frombase64string") || strings.Contains(low, "-e jab") {
+		add("shell-ps-encoded")
+	}
+	// Credential dumping (T1003): LSASS / SAM / NTDS / mimikatz.
+	if strings.Contains(low, "mimikatz") || strings.Contains(low, "sekurlsa") ||
+		strings.Contains(low, "invoke-mimikatz") || strings.Contains(low, "comsvcs.dll, minidump") ||
+		strings.Contains(low, "lsass") || strings.Contains(low, "ntds.dit") ||
+		(strings.Contains(low, "reg save") && (strings.Contains(low, "hklm\\sam") || strings.Contains(low, "hklm\\system"))) {
+		add("shell-credential-dump")
+	}
+	// Active Directory enumeration (T1087.002 / T1018 / T1482).
+	if strings.Contains(low, "get-aduser") || strings.Contains(low, "get-adcomputer") ||
+		strings.Contains(low, "get-addomain") || strings.Contains(low, "get-adgroupmember") ||
+		strings.Contains(low, "nltest") || strings.Contains(low, "dsquery") ||
+		strings.Contains(low, "net group \"domain admins\"") || strings.Contains(low, "adsisearcher") {
+		add("shell-ad-recon")
+	}
+	// Defender / AMSI tamper (T1562.001).
+	if strings.Contains(low, "set-mppreference -disable") || strings.Contains(low, "add-mppreference -exclusionpath") ||
+		strings.Contains(low, "amsiutils") || strings.Contains(low, "amsiinitfailed") ||
+		strings.Contains(low, "sc stop windefend") || strings.Contains(low, "uninstall-windowsfeature windows-defender") {
+		add("shell-defender-tamper")
+	}
+	// Windows persistence: registry Run key / scheduled task / service (T1547.001 / T1053.005 / T1543.003).
+	if (strings.Contains(low, "reg add") && strings.Contains(low, "currentversion\\run")) ||
+		strings.Contains(low, "schtasks /create") || strings.Contains(low, "new-scheduledtask") ||
+		(strings.Contains(low, "new-service") || strings.Contains(low, "sc create")) {
+		add("shell-persistence-windows")
 	}
 
 	// Encoded payloads — long base64 / hex / url-encoded blobs in a
