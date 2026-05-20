@@ -1,3 +1,13 @@
+# tarpit-honeypot — annotated reference config (canonical default values).
+#
+# Sibling examples in this directory:
+#   tarpit-honeypot.example-FULL.yaml         every handler + feature ON (smoke-test reference)
+#   tarpit-honeypot.example-SMALL-OT.yaml     one small industrial cell
+#   tarpit-honeypot.example-ADVANCED-OT.yaml  multi-cell plant (DMZ + 3 cells)
+#
+# Validate any of them with:
+#   tarpit-honeypot validate-config -c <file>
+
 sensor:
   name: ""                                  # blank = hostname
   data_dir: ./var
@@ -317,6 +327,57 @@ listeners:
     handler: redis
     severity: high
     read_bytes: 1024
+    read_timeout: 5s
+
+  # MSSQL — TDS PRELOGIN exchange; advertises SQL Server 15.0, captures
+  # the LOGIN7 username.
+  - id: mssql-bait
+    proto: tcp
+    bind: 0.0.0.0:1433
+    mode: banner
+    handler: mssql
+    severity: high
+    read_timeout: 5s
+
+  # Oracle Net (TNS) — captures the connect descriptor (SERVICE_NAME /
+  # SID), replies REFUSE ORA-12514.
+  - id: oracle-bait
+    proto: tcp
+    bind: 0.0.0.0:1521
+    mode: banner
+    handler: oracle_tns
+    severity: high
+    read_timeout: 5s
+
+  # Intel AMT / vPro out-of-band management (CVE-2017-5689 surface) —
+  # HTTP 401 Digest with the distinctive AMT Server header.
+  - id: intel-amt-bait
+    proto: tcp
+    bind: 0.0.0.0:16992
+    mode: banner
+    handler: intel_amt
+    severity: critical
+    read_bytes: 2048
+    read_timeout: 5s
+
+  # Dell iDRAC out-of-band management — Basic-auth realm, captures
+  # default-credential attempts (root/calvin).
+  - id: idrac-bait
+    proto: tcp
+    bind: 0.0.0.0:9443
+    mode: banner
+    handler: idrac
+    severity: critical
+    read_bytes: 2048
+    read_timeout: 5s
+
+  # OpenVPN control channel — HARD_RESET exchange.
+  - id: openvpn-bait
+    proto: tcp
+    bind: 0.0.0.0:1194
+    mode: banner
+    handler: openvpn
+    severity: high
     read_timeout: 5s
 
   - id: ipmi-bait

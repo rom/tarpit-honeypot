@@ -1,0 +1,305 @@
+# tarpit-honeypot — ADVANCED OT environment example
+#
+# Models a multi-cell plant network: a Purdue-ish layout with a DMZ
+# segment, an enterprise/IT segment, and three process cells, each a
+# separate honeynet. Exercises the full ICS protocol set (S7, Modbus,
+# IEC-104, EtherNet/IP, OPC-UA, BACnet, FINS, MELSEC, PROFINET via
+# SCALANCE topology), Siemens + Moxa + Rockwell device archetypes,
+# Windows engineering workstations / historians, ICMP topology
+# simulation, LLDP/CDP advertising, and the full detection stack
+# (port-scan, brute-force, slow-scan, ICMP sweep, storyline, device
+# learning, anomalies).
+#
+# Outbound alerts go to syslog (for a SIEM) + a webhook + the local
+# stores. Critical ICS events also page via the route fan-out.
+
+sensor:
+  name: plant-ot-sensor
+  data_dir: ./var
+  jitter:
+    enabled: true
+    min_ms: 5
+    max_ms: 60
+  tls_rotate:
+    days: 30
+  disk:
+    json_log_mb: 1000
+    sqlite_mb: 1000
+    pcap_mb: 2048
+    retention_days: 90
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Sensor-IP listeners catch wide scans before cell dispatch.
+listeners:
+  - id: s7-bait
+    proto: tcp
+    bind: 0.0.0.0:102
+    mode: banner
+    handler: s7
+    severity: critical
+    capture: true
+  - id: modbus-bait
+    proto: tcp
+    bind: 0.0.0.0:502
+    mode: banner
+    handler: modbus
+    severity: critical
+    capture: true
+  - id: enip-bait
+    proto: tcp
+    bind: 0.0.0.0:44818
+    mode: banner
+    handler: ethernetip
+    severity: critical
+  - id: opcua-bait
+    proto: tcp
+    bind: 0.0.0.0:4840
+    mode: banner
+    handler: opcua
+    severity: high
+  - id: iec104-bait
+    proto: tcp
+    bind: 0.0.0.0:2404
+    mode: banner
+    handler: iec104
+    severity: critical
+    capture: true
+  - id: dnp-modbus-tarpit
+    # Tarpit a noisy scanner on an unused ICS port to burn its time.
+    proto: tcp
+    bind: 0.0.0.0:20000
+    mode: tarpit
+    handler: raw
+    severity: medium
+    tarpit:
+      strategy: trickle
+      trickle: { text: "DNP3\r\n", byte_interval: 3s }
+  - id: bacnet-bait
+    proto: udp
+    bind: 0.0.0.0:47808
+    mode: banner
+    handler: bacnet
+    severity: high
+    read_bytes: 1500
+  - id: fins-bait
+    proto: udp
+    bind: 0.0.0.0:9600
+    mode: banner
+    handler: fins
+    severity: high
+    read_bytes: 1500
+  - id: profinet-coap
+    proto: udp
+    bind: 0.0.0.0:5683
+    mode: banner
+    handler: coap
+    severity: medium
+    read_bytes: 1500
+  - id: knx-bait
+    proto: udp
+    bind: 0.0.0.0:3671
+    mode: banner
+    handler: knx
+    severity: high
+    read_bytes: 1500
+  - id: dhcp-observer
+    proto: udp
+    bind: 0.0.0.0:67
+    mode: banner
+    handler: dhcp
+    severity: low
+    read_bytes: 1500
+
+sniffer:
+  enabled: true
+  interface: eth0
+  severity: high
+  arp_scan:
+    distinct_ips: 16
+    window: 30s
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 6, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 8, window: 60s, severity: high }
+  slow_scan:   { enabled: true, distinct_ports: 12, window: 24h, severity: high }
+  icmp_sweep:  { enabled: true, distinct_ips: 8, window: 30s, severity: high }
+
+devices:
+  enabled: true
+  learn: true              # learn the baseline on first run, then alert on new
+  severity: critical
+  allow:
+    - 10.0.0.0/8
+    - 192.168.0.0/16
+    - 127.0.0.1
+
+honeynets:
+  # ---- DMZ: jump host + historian + patch server ----
+  - id: dmz
+    cidr: 10.20.0.0/24
+    gateway: 10.20.0.1
+    domain: dmz.plant.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - ip: 10.20.0.10
+        hostname: jump01
+        os: windows
+        archetype: windows server 2019
+        services:
+          - { port: 3389, handler: rdp }
+          - { port: 445,  handler: smb }
+          - { port: 5985, handler: winrm }
+          - { port: 22,   handler: ssh }
+      - ip: 10.20.0.20
+        hostname: historian01
+        os: windows
+        archetype: windows server 2016
+        services:
+          - { port: 1433, handler: mssql }
+          - { port: 445,  handler: smb }
+          - { port: 80,   handler: http }
+      - ip: 10.20.0.30
+        hostname: patch-wsus
+        os: windows
+        archetype: windows server 2012 r2
+        services:
+          - { port: 8530, handler: http }
+          - { port: 445,  handler: smb }
+
+  # ---- Cell A: Siemens line (SCALANCE switch + S7 PLCs + HMI) ----
+  - id: cell-a
+    cidr: 10.30.1.0/24
+    gateway: 10.30.1.1
+    domain: cella.plant.local
+    arp_responder:  { enabled: true, interface: eth1 }
+    icmp_responder: { enabled: true, interface: eth1 }
+    lldp_responder: { enabled: true, interface: eth1, interval_s: 30, include_cdp: true }
+    hosts:
+      - ip: 10.30.1.2
+        hostname: sw-cella
+        os: ics
+        archetype: siemens scalance xb-208
+        services:
+          - { port: 22, handler: ssh }
+          - { port: 443, handler: https }
+          - { port: 161, handler: snmp }
+      - ip: 10.30.1.10
+        hostname: plc-a-main
+        os: ics
+        archetype: siemens s7-1500
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 80,  handler: http }
+          - { port: 4840, handler: opcua }
+          - { port: 161, handler: snmp }
+      - ip: 10.30.1.11
+        hostname: plc-a-aux
+        os: ics
+        archetype: siemens s7-1200
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 80,  handler: http }
+      - ip: 10.30.1.50
+        hostname: hmi-a
+        os: windows
+        archetype: windows 10
+        services:
+          - { port: 3389, handler: rdp }
+          - { port: 445,  handler: smb }
+
+  # ---- Cell B: Rockwell / mixed-vendor line ----
+  - id: cell-b
+    cidr: 10.30.2.0/24
+    gateway: 10.30.2.1
+    domain: cellb.plant.local
+    arp_responder:  { enabled: true, interface: eth1 }
+    icmp_responder: { enabled: true, interface: eth1 }
+    hosts:
+      - ip: 10.30.2.2
+        hostname: sw-cellb
+        os: ics
+        archetype: moxa eds-208
+        services:
+          - { port: 23,  handler: telnet }
+          - { port: 80,  handler: http }
+          - { port: 161, handler: snmp }
+      - ip: 10.30.2.10
+        hostname: plc-b-clx
+        os: ics
+        services:
+          - { port: 44818, handler: ethernetip }
+          - { port: 80,    handler: http }
+      - ip: 10.30.2.20
+        hostname: serial-gw-b
+        os: ics
+        archetype: moxa nport 5210
+        services:
+          - { port: 23,   handler: telnet }
+          - { port: 4001, handler: raw }
+          - { port: 4002, handler: raw }
+
+  # ---- Cell C: Omron / building-automation mix ----
+  - id: cell-c
+    cidr: 10.30.3.0/24
+    gateway: 10.30.3.1
+    domain: cellc.plant.local
+    arp_responder:  { enabled: true, interface: eth1 }
+    icmp_responder: { enabled: true, interface: eth1 }
+    hosts:
+      - ip: 10.30.3.10
+        hostname: plc-c-omron
+        os: ics
+        services:
+          - { port: 9600, handler: fins }
+          - { port: 80,   handler: http }
+      - ip: 10.30.3.20
+        hostname: bms-controller
+        os: ics
+        services:
+          - { port: 47808, handler: bacnet }
+          - { port: 80,    handler: http }
+      - ip: 10.30.3.30
+        hostname: knx-gw
+        os: ics
+        services:
+          - { port: 3671, handler: knx }
+
+dedup:
+  default_window: 5m
+
+allowlist:
+  - 127.0.0.1/32
+  - ::1/128
+
+channels:
+  - id: console
+    type: stdout
+  - id: db
+    type: sqlite
+  - id: log
+    type: jsonlog
+  - id: siem
+    type: syslog
+    network: udp
+    address: siem.plant.local:514
+    format: cef
+  - id: soc-webhook
+    type: webhook
+    url: https://soc.plant.local/hooks/tarpit
+    hmac_secret_env: TARPIT_WEBHOOK_SECRET
+    min_severity: high
+
+routes:
+  # Everything to the local stores + SIEM.
+  - match: {}
+    channels: [db, log, siem]
+  # High+ to the console + webhook.
+  - match: { severity: ">=high" }
+    channels: [console, soc-webhook]
+  # Any ICS-cell critical also pages the SOC webhook regardless.
+  - match: { severity: "=critical" }
+    channels: [soc-webhook]

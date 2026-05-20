@@ -1,0 +1,612 @@
+# tarpit-honeypot — FULL example: every handler + every feature ON.
+#
+# This config is a reference / smoke-test artifact: it binds ONE
+# listener per protocol handler (TCP + UDP) on sequential high ports
+# starting at 20000 (so nothing collides), and turns on every
+# detection + intelligence subsystem. It is NOT a recommended
+# production layout — use the standard example.yaml or the OT examples
+# for real deployments. Validate it with:
+#   tarpit-honeypot validate-config -c tarpit-honeypot.example-FULL.yaml
+#
+# Generated listener block below covers all 47 TCP + 17 UDP handlers.
+
+sensor:
+  name: full-example-sensor
+  data_dir: ./var
+  archetype: debian 12
+  jitter:    { enabled: true, min_ms: 5, max_ms: 50 }
+  tls_rotate: { days: 30 }
+  shutdown:  { drain_timeout: 10s }
+  disk:
+    json_log_mb: 500
+    sqlite_mb: 500
+    pcap_mb: 1024
+    capture_kb: 64
+    retention_days: 30
+  geoip:
+    city_db: ""
+    asn_db:  ""
+  rdns:
+    enabled: false
+    timeout: 500ms
+    cache_size: 1024
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - id: tcp-raw
+    proto: tcp
+    bind: 0.0.0.0:20000
+    mode: banner
+    handler: raw
+    severity: medium
+    read_timeout: 10s
+    banner: "hello\r\n"
+  - id: tcp-ssh
+    proto: tcp
+    bind: 0.0.0.0:20001
+    mode: banner
+    handler: ssh
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ssh_interactive
+    proto: tcp
+    bind: 0.0.0.0:20002
+    mode: banner
+    handler: ssh_interactive
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-http
+    proto: tcp
+    bind: 0.0.0.0:20003
+    mode: banner
+    handler: http
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-https
+    proto: tcp
+    bind: 0.0.0.0:20004
+    mode: banner
+    handler: https
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-telnet
+    proto: tcp
+    bind: 0.0.0.0:20005
+    mode: banner
+    handler: telnet
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ftp
+    proto: tcp
+    bind: 0.0.0.0:20006
+    mode: banner
+    handler: ftp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ftp_files
+    proto: tcp
+    bind: 0.0.0.0:20007
+    mode: banner
+    handler: ftp_files
+    severity: medium
+    read_timeout: 10s
+    accept_creds: defaults
+  - id: tcp-smb
+    proto: tcp
+    bind: 0.0.0.0:20008
+    mode: banner
+    handler: smb
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-vnc
+    proto: tcp
+    bind: 0.0.0.0:20009
+    mode: banner
+    handler: vnc
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-smtp_recv
+    proto: tcp
+    bind: 0.0.0.0:20010
+    mode: banner
+    handler: smtp_recv
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-rdp
+    proto: tcp
+    bind: 0.0.0.0:20011
+    mode: banner
+    handler: rdp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-winrm
+    proto: tcp
+    bind: 0.0.0.0:20012
+    mode: banner
+    handler: winrm
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-dcerpc
+    proto: tcp
+    bind: 0.0.0.0:20013
+    mode: banner
+    handler: dcerpc
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ldap
+    proto: tcp
+    bind: 0.0.0.0:20014
+    mode: banner
+    handler: ldap
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-kerberos
+    proto: tcp
+    bind: 0.0.0.0:20015
+    mode: banner
+    handler: kerberos
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-postgres
+    proto: tcp
+    bind: 0.0.0.0:20016
+    mode: banner
+    handler: postgres
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-mysql
+    proto: tcp
+    bind: 0.0.0.0:20017
+    mode: banner
+    handler: mysql
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-redis
+    proto: tcp
+    bind: 0.0.0.0:20018
+    mode: banner
+    handler: redis
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-syslog_tcp
+    proto: tcp
+    bind: 0.0.0.0:20019
+    mode: banner
+    handler: syslog_tcp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-rtsp
+    proto: tcp
+    bind: 0.0.0.0:20020
+    mode: banner
+    handler: rtsp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-dockerapi
+    proto: tcp
+    bind: 0.0.0.0:20021
+    mode: banner
+    handler: dockerapi
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-melsec
+    proto: tcp
+    bind: 0.0.0.0:20022
+    mode: banner
+    handler: melsec
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-xmpp
+    proto: tcp
+    bind: 0.0.0.0:20023
+    mode: banner
+    handler: xmpp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-amqp
+    proto: tcp
+    bind: 0.0.0.0:20024
+    mode: banner
+    handler: amqp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ipp
+    proto: tcp
+    bind: 0.0.0.0:20025
+    mode: banner
+    handler: ipp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-mssql
+    proto: tcp
+    bind: 0.0.0.0:20026
+    mode: banner
+    handler: mssql
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-oracle_tns
+    proto: tcp
+    bind: 0.0.0.0:20027
+    mode: banner
+    handler: oracle_tns
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-teamviewer
+    proto: tcp
+    bind: 0.0.0.0:20028
+    mode: banner
+    handler: teamviewer
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-anydesk
+    proto: tcp
+    bind: 0.0.0.0:20029
+    mode: banner
+    handler: anydesk
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-openvpn
+    proto: tcp
+    bind: 0.0.0.0:20030
+    mode: banner
+    handler: openvpn
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-citrix_ica
+    proto: tcp
+    bind: 0.0.0.0:20031
+    mode: banner
+    handler: citrix_ica
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-intel_amt
+    proto: tcp
+    bind: 0.0.0.0:20032
+    mode: banner
+    handler: intel_amt
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ilo
+    proto: tcp
+    bind: 0.0.0.0:20033
+    mode: banner
+    handler: ilo
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-idrac
+    proto: tcp
+    bind: 0.0.0.0:20034
+    mode: banner
+    handler: idrac
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-esxi
+    proto: tcp
+    bind: 0.0.0.0:20035
+    mode: banner
+    handler: esxi
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-fortinet
+    proto: tcp
+    bind: 0.0.0.0:20036
+    mode: banner
+    handler: fortinet
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-pulse
+    proto: tcp
+    bind: 0.0.0.0:20037
+    mode: banner
+    handler: pulse
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-citrix_gateway
+    proto: tcp
+    bind: 0.0.0.0:20038
+    mode: banner
+    handler: citrix_gateway
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-horizon
+    proto: tcp
+    bind: 0.0.0.0:20039
+    mode: banner
+    handler: horizon
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-moxa_mgmt
+    proto: tcp
+    bind: 0.0.0.0:20040
+    mode: banner
+    handler: moxa_mgmt
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-modbus
+    proto: tcp
+    bind: 0.0.0.0:20041
+    mode: banner
+    handler: modbus
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-s7
+    proto: tcp
+    bind: 0.0.0.0:20042
+    mode: banner
+    handler: s7
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-iec104
+    proto: tcp
+    bind: 0.0.0.0:20043
+    mode: banner
+    handler: iec104
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-mqtt
+    proto: tcp
+    bind: 0.0.0.0:20044
+    mode: banner
+    handler: mqtt
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-opcua
+    proto: tcp
+    bind: 0.0.0.0:20045
+    mode: banner
+    handler: opcua
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ethernetip
+    proto: tcp
+    bind: 0.0.0.0:20046
+    mode: banner
+    handler: ethernetip
+    severity: medium
+    read_timeout: 10s
+  - id: udp-raw
+    proto: udp
+    bind: 0.0.0.0:20047
+    mode: banner
+    handler: raw
+    severity: medium
+    read_timeout: 10s
+    banner: "hello\r\n"
+  - id: udp-snmp
+    proto: udp
+    bind: 0.0.0.0:20048
+    mode: banner
+    handler: snmp
+    severity: medium
+    read_timeout: 10s
+  - id: udp-ntp
+    proto: udp
+    bind: 0.0.0.0:20049
+    mode: banner
+    handler: ntp
+    severity: medium
+    read_timeout: 10s
+  - id: udp-bacnet
+    proto: udp
+    bind: 0.0.0.0:20050
+    mode: banner
+    handler: bacnet
+    severity: medium
+    read_timeout: 10s
+  - id: udp-tftp
+    proto: udp
+    bind: 0.0.0.0:20051
+    mode: banner
+    handler: tftp
+    severity: medium
+    read_timeout: 10s
+  - id: udp-ipmi
+    proto: udp
+    bind: 0.0.0.0:20052
+    mode: banner
+    handler: ipmi
+    severity: medium
+    read_timeout: 10s
+  - id: udp-syslog_udp
+    proto: udp
+    bind: 0.0.0.0:20053
+    mode: banner
+    handler: syslog_udp
+    severity: medium
+    read_timeout: 10s
+  - id: udp-radius
+    proto: udp
+    bind: 0.0.0.0:20054
+    mode: banner
+    handler: radius
+    severity: medium
+    read_timeout: 10s
+  - id: udp-sip
+    proto: udp
+    bind: 0.0.0.0:20055
+    mode: banner
+    handler: sip
+    severity: medium
+    read_timeout: 10s
+  - id: udp-ssdp
+    proto: udp
+    bind: 0.0.0.0:20056
+    mode: banner
+    handler: ssdp
+    severity: medium
+    read_timeout: 10s
+  - id: udp-cldap
+    proto: udp
+    bind: 0.0.0.0:20057
+    mode: banner
+    handler: cldap
+    severity: medium
+    read_timeout: 10s
+  - id: udp-llmnr
+    proto: udp
+    bind: 0.0.0.0:20058
+    mode: banner
+    handler: llmnr
+    severity: medium
+    read_timeout: 10s
+  - id: udp-nbns
+    proto: udp
+    bind: 0.0.0.0:20059
+    mode: banner
+    handler: nbns
+    severity: medium
+    read_timeout: 10s
+  - id: udp-fins
+    proto: udp
+    bind: 0.0.0.0:20060
+    mode: banner
+    handler: fins
+    severity: medium
+    read_timeout: 10s
+  - id: udp-coap
+    proto: udp
+    bind: 0.0.0.0:20061
+    mode: banner
+    handler: coap
+    severity: medium
+    read_timeout: 10s
+  - id: udp-knx
+    proto: udp
+    bind: 0.0.0.0:20062
+    mode: banner
+    handler: knx
+    severity: medium
+    read_timeout: 10s
+  - id: udp-dhcp
+    proto: udp
+    bind: 0.0.0.0:20063
+    mode: banner
+    handler: dhcp
+    severity: medium
+    read_timeout: 10s
+
+
+canaries:
+  - id: shared-creds
+    path: ./var/canary/passwords.xlsx
+    events: [write, remove, rename, chmod]
+    severity: critical
+
+url_canaries:
+  - id: aws-backup
+    path: /backup/aws-prod.tar.gz
+    severity: critical
+
+dns:
+  enabled: true
+  bind: 0.0.0.0:5354
+  amplifier_detection:
+    enabled: true
+    window: 60s
+    queries: 20
+    severity: high
+
+dns_canaries:
+  - id: prod-cdb
+    name: prod-cdb-x7q.canary.example.com
+    severity: critical
+
+sniffer:
+  enabled: true
+  interface: eth0
+  severity: high
+  arp_scan: { distinct_ips: 16, window: 30s }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10, window: 60s, severity: high }
+  slow_scan:   { enabled: true, distinct_ports: 10, window: 24h, severity: high }
+  icmp_sweep:  { enabled: true, distinct_ips: 10, window: 30s, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: high
+  allow:
+    - 127.0.0.1
+    - ::1
+
+honeynets:
+  - id: corp
+    cidr: 10.99.0.0/24
+    gateway: 10.99.0.1
+    dns: 10.99.0.2
+    domain: corp.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    lldp_responder: { enabled: true, interface: eth0, interval_s: 30, include_cdp: true }
+    tun:            { enabled: false, device: "", mtu: 1500 }
+    hosts:
+      - ip: 10.99.0.10
+        hostname: web-prod-01
+        os: linux
+        archetype: ubuntu 24.04 lts
+        services:
+          - { port: 22,  handler: ssh }
+          - { port: 80,  handler: http }
+          - { port: 443, handler: https }
+      - ip: 10.99.0.20
+        hostname: dc-01
+        os: windows
+        archetype: windows server 2019
+        services:
+          - { port: 88,  handler: kerberos }
+          - { port: 389, handler: ldap }
+          - { port: 445, handler: smb }
+          - { port: 3389, handler: rdp }
+      - ip: 10.99.0.30
+        hostname: plc-01
+        os: ics
+        archetype: siemens s7-1500
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 80,  handler: http }
+
+dedup:
+  default_window: 5m
+
+allowlist:
+  - 127.0.0.1/32
+  - ::1/128
+
+channels:
+  - id: console
+    type: stdout
+  - id: db
+    type: sqlite
+  - id: log
+    type: jsonlog
+  - id: cef-syslog
+    type: syslog
+    network: udp
+    address: 127.0.0.1:5514
+    format: cef
+  - id: leef-syslog
+    type: syslog
+    network: udp
+    address: 127.0.0.1:5515
+    format: leef
+  - id: webhook
+    type: webhook
+    url: https://example.invalid/hook
+    hmac_secret_env: TARPIT_WEBHOOK_SECRET
+    min_severity: high
+  - id: mqtt-out
+    type: mqtt
+    url: tcp://127.0.0.1:1883
+    topic: tarpit/events
+    qos: 1
+
+routes:
+  - match: {}
+    channels: [db, log]
+  - match: { severity: ">=high" }
+    channels: [console, cef-syslog, leef-syslog, webhook, mqtt-out]

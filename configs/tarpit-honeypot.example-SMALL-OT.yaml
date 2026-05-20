@@ -1,0 +1,153 @@
+# tarpit-honeypot — SMALL OT segment example
+#
+# Models a single small industrial cell as one honeynet: a SCALANCE
+# managed switch, two Siemens PLCs, a Moxa serial gateway, and an HMI,
+# all on 192.168.10.0/24. One sensor presents as all of them via the
+# honeynet destination-IP dispatch. Device tracking + ICMP sweep
+# detection are on so a contractor laptop or rogue device on the cell
+# raises an alert.
+#
+# Deploy: route 192.168.10.0/24 to the sensor (ip addr add per host, or
+# the arp/icmp responders on a Linux box that sits on the segment).
+#   tarpit-honeypot run -c tarpit-honeypot.example-SMALL-OT.yaml
+
+sensor:
+  name: ot-cell-sensor
+  data_dir: ./var
+  # Cell-wide default archetype; per-host archetypes override it.
+  archetype: siemens scalance xb-208
+  jitter:
+    enabled: true
+    min_ms: 5
+    max_ms: 40
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# A couple of real listeners on the sensor's own IP catch broad scans
+# of the segment before they reach the honeynet hosts.
+listeners:
+  - id: s7-bait
+    proto: tcp
+    bind: 0.0.0.0:102
+    mode: banner
+    handler: s7
+    severity: critical
+    capture: true
+  - id: modbus-bait
+    proto: tcp
+    bind: 0.0.0.0:502
+    mode: banner
+    handler: modbus
+    severity: critical
+    capture: true
+  - id: snmp-bait
+    proto: udp
+    bind: 0.0.0.0:161
+    mode: banner
+    handler: snmp
+    severity: high
+    read_bytes: 1500
+  # Passive DHCP + device discovery on the cell.
+  - id: dhcp-observer
+    proto: udp
+    bind: 0.0.0.0:67
+    mode: banner
+    handler: dhcp
+    severity: low
+    read_bytes: 1500
+
+correlate:
+  port_scan:
+    enabled: true
+    distinct_ports: 5
+    window: 30s
+    severity: high
+  icmp_sweep:
+    enabled: true
+    distinct_ips: 6
+    window: 30s
+    severity: high
+
+# Learned-device inventory: in a stable OT cell the device set rarely
+# changes, so strict mode (learn:false) alerts on anything not in the
+# allow-list. Review with `tarpit-honeypot list-devices`.
+devices:
+  enabled: true
+  learn: false
+  severity: critical
+  allow:
+    - 192.168.10.0/24    # the cell range itself (the honeynet hosts)
+    - 127.0.0.1
+
+honeynets:
+  - id: cell-1
+    cidr: 192.168.10.0/24
+    gateway: 192.168.10.1
+    domain: cell1.plant.local
+    # L2/L3 presence on the segment (Linux + CAP_NET_RAW). On macOS use
+    # `ifconfig <iface> alias <ip>` per host instead.
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    lldp_responder: { enabled: true, interface: eth0, interval_s: 30, include_cdp: false }
+    hosts:
+      - ip: 192.168.10.2
+        hostname: sw-cell1
+        os: ics
+        archetype: siemens scalance xb-208
+        services:
+          - { port: 22,  handler: ssh }
+          - { port: 80,  handler: http }
+          - { port: 443, handler: https }
+          - { port: 161, handler: snmp }
+      - ip: 192.168.10.10
+        hostname: plc-press
+        os: ics
+        archetype: siemens s7-1500
+        services:
+          - { port: 102,  handler: s7 }
+          - { port: 80,   handler: http }
+          - { port: 161,  handler: snmp }
+      - ip: 192.168.10.11
+        hostname: plc-conveyor
+        os: ics
+        archetype: siemens s7-1200
+        services:
+          - { port: 102, handler: s7 }
+          - { port: 80,  handler: http }
+      - ip: 192.168.10.20
+        hostname: serial-gw
+        os: ics
+        archetype: moxa nport 5210
+        services:
+          - { port: 23,   handler: telnet }
+          - { port: 80,   handler: http }
+          - { port: 4001, handler: raw }
+      - ip: 192.168.10.50
+        hostname: hmi-press
+        os: windows
+        archetype: windows 10
+        services:
+          - { port: 3389, handler: rdp }
+          - { port: 445,  handler: smb }
+
+dedup:
+  default_window: 5m
+
+allowlist:
+  - 127.0.0.1/32
+
+channels:
+  - id: console
+    type: stdout
+  - id: db
+    type: sqlite
+  - id: log
+    type: jsonlog
+
+routes:
+  - match: { severity: ">=high" }
+    channels: [console, db, log]
+  - match: { severity: "<high" }
+    channels: [db, log]
