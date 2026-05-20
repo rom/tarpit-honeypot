@@ -988,6 +988,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `malware:capture` — a binary / script / shellcode / base64 dropper was
   harvested from captured bytes. Meta: `artifacts` (kind:sha256), markers;
   the artifact is persisted to `<data_dir>/payloads/`. Tagged T1105+T1027.
+- `webshell-access-attempt` / `webshell-command` — the HTTP handler saw a
+  request for a known web-shell filename (c99/r57/wso/b374k/China-Chopper)
+  or a command parameter (`?cmd=`, POST `cmd=`). The submitted command is
+  captured (`webshell_cmd` meta) and TTP-scanned. With `vuln_emulation` on
+  the handler serves a believable fake shell (canned output, never
+  executed) so the attacker reveals recon commands.
 - `protocol_anomaly` / `event.anomalies` — handler-flagged protocol
   misuse (SSH non-printable / overlong banners, HTTP unknown methods +
   suspicious URIs, DNS tunneling shapes, ICMP abnormal payloads, the

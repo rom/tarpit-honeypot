@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fake web shells + new device archetypes
+- **Fake web shells** (`internal/listener/handler/webshell.go`): the HTTP
+  handler now recognizes web-shell activity — known shell filenames
+  (c99/r57/wso/b374k/China-Chopper-style) and command parameters
+  (`?cmd=`, POST `cmd=`, ...) — and always captures + flags it
+  (`webshell-access-attempt`, `webshell-command`, `webshell_cmd` meta).
+  When `vuln_emulation` is on it actively serves a believable fake shell
+  whose command output comes from the canned shell emulator
+  (`shell.OneShot`, archetype-aware) — never executed. TTP markers from
+  the command (wget/reverse-shell/shadow-read) are flagged too.
+- **New archetypes**: Cisco Catalyst switch (2960 + Catalyst-9300), MikroTik
+  RouterOS, Teltonika RUT240 — see the archetype table in the README.
+
 ### Added — PROFINET-DCP responder (L2 ICS discovery)
 - **`honeynets[].profinet_responder`** (`internal/honeynet`): answers
   PROFINET Discovery and Configuration Protocol (DCP) **Identify** requests

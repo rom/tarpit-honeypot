@@ -202,10 +202,18 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if banner == "" {
 		method := extractMethod(firstLine)
 		path := extractPath(firstLine)
-		// POST to a login-shaped path is the credential-capture
-		// hotspot — extract user/pass and serve an "auth failed"
-		// page so the scanner records us as a real device.
-		if method == "POST" && isLoginPath(path) && isFormBody(contentType) {
+		// Fake web shell: detect c99/r57/wso/China-Chopper-style paths and
+		// command parameters. Always capture + flag; serve a working-looking
+		// shell (canned output, never executed) only when vuln emulation is
+		// on — active deception is opt-in and loud by design.
+		if wsHit, wsCmd := detectWebshell(extractTarget(firstLine), body, contentType); wsHit {
+			if page := handleWebshell(&res, arch, wsCmd, vuln); page != "" {
+				banner = renderHTTPResponse(server, 200, "text/html; charset=utf-8", page)
+			}
+		}
+		if banner != "" {
+			// served the fake shell above
+		} else if method == "POST" && isLoginPath(path) && isFormBody(contentType) {
 			user, pass := parseLoginForm(body)
 			if user != "" || pass != "" {
 				res.Meta["http_login_user"] = safe.SanitizeForLog(user)
@@ -397,6 +405,17 @@ func extractPath(reqLine string) string {
 // request line. The HTTP spec restricts method tokens to a small
 // printable set; the anomaly detector flags anything outside our
 // known list.
+// extractTarget returns the request target (path + query) — unlike
+// extractPath it keeps the query string, which web-shell command
+// parameters live in.
+func extractTarget(reqLine string) string {
+	parts := strings.SplitN(reqLine, " ", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
+}
+
 func extractMethod(reqLine string) string {
 	if i := strings.IndexByte(reqLine, ' '); i > 0 {
 		return reqLine[:i]

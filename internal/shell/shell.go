@@ -127,6 +127,30 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 	return cap
 }
 
+// OneShot evaluates a single command line against the archetype's canned
+// response table and returns the output plus any TTP anomaly markers,
+// without an interactive loop. Used by the fake web-shell HTTP behavior:
+// an attacker's submitted command is scanned + answered with believable
+// canned output, but is never executed.
+func OneShot(arch *archetype.Profile, line string) (output string, anomalies []string) {
+	line = strings.TrimRight(line, "\r\n")
+	if line == "" {
+		return "", nil
+	}
+	for _, a := range scanAnomalies(line) {
+		anomalies = appendUnique(anomalies, a)
+	}
+	argv := splitArgv(line)
+	if len(argv) == 0 {
+		return "", anomalies
+	}
+	cmd := argv[0]
+	if foldCommands(arch) {
+		cmd = strings.ToLower(cmd)
+	}
+	return lookupResponse(responseTable(arch), cmd, argv), anomalies
+}
+
 // readBoundedLine reads up to max bytes or until '\n', whichever
 // comes first. The returned string is the line as read (may include
 // the terminating '\n'); when the buffer fills before '\n' we discard
