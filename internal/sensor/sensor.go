@@ -31,6 +31,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
+	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -61,6 +62,7 @@ type Sensor struct {
 	devices    *devices.Registry
 	scanTrack  *scananalysis.Tracker
 	payloads   *payload.Store
+	sessionRec *sessionrec.Store
 	deviceSev  event.Severity
 	bus        chan *event.Event
 
@@ -212,6 +214,17 @@ func New(cfg *config.Config) (*Sensor, error) {
 		}
 	}
 
+	var sessRec *sessionrec.Store
+	if cfg.Sensor.SessionRecording.Enabled {
+		sr, err := sessionrec.NewStore(filepath.Join(cfg.Sensor.DataDir, "sessions"),
+			cfg.Sensor.SessionRecording.MaxBytes, cfg.Sensor.SessionRecording.MaxTotalMB)
+		if err != nil {
+			slog.Warn("session recording disabled: cannot create store", "err", err)
+		} else {
+			sessRec = sr
+		}
+	}
+
 	var payloadStore *payload.Store
 	if cfg.Sensor.Payloads.Enabled {
 		ps, err := payload.NewStore(filepath.Join(cfg.Sensor.DataDir, "payloads"),
@@ -240,6 +253,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		deviceSev:  devSev,
 		scanTrack:  scananalysis.NewTracker(5 * time.Minute),
 		payloads:   payloadStore,
+		sessionRec: sessRec,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -564,6 +578,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		Honeynet:         s.honeynet,
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
 		VulnEmulation:    s.cfg.Sensor.VulnEmulation,
+		SessionRec:       s.sessionRec,
 	})
 	if err != nil {
 		cancel()

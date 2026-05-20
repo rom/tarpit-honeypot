@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/safego"
+	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 	"github.com/rom/tarpit-honeypot/internal/shell"
 )
 
@@ -50,6 +52,7 @@ type sshInteractive struct {
 	jit  *jitter.Jitterer
 	arch *archetype.Profile
 	dir  string
+	rec  *sessionrec.Store
 
 	hostKeyOnce sync.Once
 	hostKey     xssh.Signer
@@ -159,7 +162,7 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 		if err != nil {
 			continue
 		}
-		s.runSession(ctx, ch, chReqs, &res)
+		s.runSession(ctx, ch, chReqs, &res, hostFromAddr(conn.RemoteAddr()))
 		// Only run one session per engagement; clean up.
 		_ = ch.Close()
 		break
@@ -170,7 +173,7 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 // runSession handles one xssh.Channel: walks the session-channel
 // requests (pty-req / env / shell / exec / window-change), then hands
 // the duplex stream to shell.Run for the command-level engagement.
-func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <-chan *xssh.Request, res *Result) {
+func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <-chan *xssh.Request, res *Result, peer string) {
 	gotShell := make(chan struct{}, 1)
 	// Same panic-isolation rationale as the global-requests path:
 	// session-channel requests (pty-req / env / exec / subsystem)
@@ -235,7 +238,16 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 	// "Last login" greeting line — what a real distro shows.
 	_, _ = ch.Write([]byte("Last login: Mon May 19 13:01:22 from 10.0.0.5\r\n"))
 
-	captured := shell.Run(ctx, ch, ch, s.arch)
+	var inR io.Reader = ch
+	var outW io.Writer = ch
+	if s.rec != nil {
+		if rc, name, err := s.rec.Begin(peer); err == nil {
+			defer rc.Close()
+			inR, outW = rc.Reader(ch), rc.Writer(ch)
+			res.Meta["session_cast"] = name
+		}
+	}
+	captured := shell.Run(ctx, inR, outW, s.arch)
 	if len(captured.Commands) > 0 {
 		res.Meta["shell_commands"] = captured.Commands
 	}

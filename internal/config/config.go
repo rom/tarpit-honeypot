@@ -209,6 +209,19 @@ type Sensor struct {
 	// filter + Landlock filesystem restriction). Off by default; no-ops
 	// on non-Linux.
 	Sandbox Sandbox `yaml:"sandbox"`
+	// SessionRecording records interactive shell sessions (telnet /
+	// ssh_interactive) as asciinema v2 casts under <data_dir>/sessions/.
+	SessionRecording SessionRecording `yaml:"session_recording"`
+}
+
+// SessionRecording configures interactive-session capture. Off by default.
+type SessionRecording struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxBytes caps a single cast (default 1 MiB).
+	MaxBytes int `yaml:"max_bytes"`
+	// MaxTotalMB caps the sessions directory with oldest-first rotation
+	// (default 256 MB).
+	MaxTotalMB int `yaml:"max_total_mb"`
 }
 
 // Sandbox configures kernel-enforced self-confinement applied after

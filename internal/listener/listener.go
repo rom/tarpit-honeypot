@@ -11,6 +11,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 )
 
 // Listener is something that emits events to the bus until ctx is cancelled.
@@ -39,6 +40,8 @@ type BuildArgs struct {
 	// VulnEmulation is the sensor-level default for vulnerable-banner
 	// emulation. A non-nil Listener.VulnEmulation overrides it.
 	VulnEmulation bool
+	// SessionRec records interactive shell sessions (nil = disabled).
+	SessionRec *sessionrec.Store
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -69,6 +72,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		HoneynetView:  args.HoneynetSnapshot,
 		VulnEmulation: vuln,
 		Script:        l.Script,
+		SessionRec:    args.SessionRec,
 	}
 	switch l.Proto {
 	case "tcp":

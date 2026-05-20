@@ -20,6 +20,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/luaengine"
+	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 )
 
 // Deps carries the cross-cutting dependencies handlers need: deployment
@@ -55,6 +56,9 @@ type Deps struct {
 	VulnEmulation bool
 	// Script is the path to a Lua dynamic-response script (handler "lua").
 	Script string
+	// SessionRec records interactive shell sessions (telnet /
+	// ssh_interactive) as asciinema casts. nil = recording disabled.
+	SessionRec *sessionrec.Store
 }
 
 // HoneynetSnapshot is a flat read-only view of every honeynet host. The
@@ -146,6 +150,7 @@ func Get(name string, deps Deps) (Handler, error) {
 			jit:  deps.Jitter,
 			arch: deps.Archetype,
 			dir:  filepath.Join(deps.DataDir, "tls"),
+			rec:  deps.SessionRec,
 		}, nil
 	case "http":
 		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
@@ -161,7 +166,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		h.vuln = deps.VulnEmulation
 		return h, nil
 	case "telnet":
-		return &telnet{jit: deps.Jitter, arch: deps.Archetype}, nil
+		return &telnet{jit: deps.Jitter, arch: deps.Archetype, rec: deps.SessionRec}, nil
 	case "ftp":
 		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity}, nil
 	case "ftp_files":

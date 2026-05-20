@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"context"
+	"io"
 	"net"
 	"strings"
 
@@ -10,12 +11,14 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
+	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 	"github.com/rom/tarpit-honeypot/internal/shell"
 )
 
 type telnet struct {
 	jit  *jitter.Jitterer
 	arch *archetype.Profile
+	rec  *sessionrec.Store
 }
 
 func (t *telnet) Name() string { return "telnet" }
@@ -110,8 +113,18 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		// "Welcome" line — the kind every distro / device shows.
 		_, _ = conn.Write([]byte("\r\nLast login: Mon May 19 13:01:22 from 10.0.0.5\r\n"))
 
-		// Drive the shell loop until exit / timeout / EOF.
-		captured := shell.Run(ctx, br, conn, t.arch)
+		// Drive the shell loop until exit / timeout / EOF, recording the
+		// session as an asciinema cast when enabled.
+		var inR io.Reader = br
+		var outW io.Writer = conn
+		if t.rec != nil {
+			if rc, name, err := t.rec.Begin(hostFromAddr(conn.RemoteAddr())); err == nil {
+				defer rc.Close()
+				inR, outW = rc.Reader(br), rc.Writer(conn)
+				res.Meta["session_cast"] = name
+			}
+		}
+		captured := shell.Run(ctx, inR, outW, t.arch)
 		if len(captured.Commands) > 0 {
 			res.Meta["shell_commands"] = captured.Commands
 		}
