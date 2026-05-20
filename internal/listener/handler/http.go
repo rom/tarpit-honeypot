@@ -15,6 +15,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 type httpH struct {
@@ -62,6 +63,8 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 
 	firstLine := ""
 	host := ""
+	userAgent := ""
+	var headerKeys []string
 	contentLen := 0
 	contentType := ""
 	for i, line := range strings.Split(string(buf.Bytes()), "\r\n") {
@@ -70,9 +73,14 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			continue
 		}
 		lower := strings.ToLower(line)
+		if k := strings.IndexByte(lower, ':'); k > 0 {
+			headerKeys = append(headerKeys, lower[:k])
+		}
 		switch {
 		case strings.HasPrefix(lower, "host:"):
 			host = strings.TrimSpace(line[5:])
+		case strings.HasPrefix(lower, "user-agent:"):
+			userAgent = strings.TrimSpace(line[11:])
 		case strings.HasPrefix(lower, "content-length:"):
 			n := 0
 			for _, c := range strings.TrimSpace(line[15:]) {
@@ -104,6 +112,26 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	res.Meta["request_line"] = firstLine
 	res.Meta["host"] = host
+	if userAgent != "" {
+		res.Meta["user_agent"] = safe.SanitizeForLog(userAgent)
+	}
+
+	// Tool fingerprinting + human-vs-automation heuristic.
+	verdict := toolfp.IdentifyHTTP(toolfp.HTTPSignals{
+		Method:     extractMethod(firstLine),
+		Path:       extractPath(firstLine),
+		UserAgent:  userAgent,
+		HeaderKeys: headerKeys,
+	})
+	if len(verdict.Tools) > 0 {
+		res.Meta["tools"] = verdict.Tools
+		flagAnomaly(&res, "tool:"+verdict.Tools[0])
+	}
+	res.Meta["automation"] = verdict.Automation
+	res.Meta["automation_reason"] = verdict.Reason
+	if verdict.Automation {
+		flagAnomaly(&res, "automation-client")
+	}
 
 	// JA4H fingerprint over method+version+header order/values.
 	if raw, hash := fingerprint.JA4H(buf.Bytes()); hash != "" {
