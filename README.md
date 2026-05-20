@@ -31,19 +31,17 @@ rationale covering the current implementation.
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
-- **43 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+  - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
+- **46 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
   TLS posture, ICMP TTL personality, and Web UI body report values
-  consistent with a stock install of that OS. Ship list: CentOS 5/6/7/8
-  + Stream 10, Debian 9–13, RHEL 8/9/10, Ubuntu 24.04/26.04 LTS,
-  FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux, Rocky Linux 9,
-  AlmaLinux 9, Oracle Linux 8/9, Windows 7/8/10/11, Windows Server
-  2008/2012/2012R2/2016/2019/2022, **Active Directory (Server 2019 DC)**,
-  **Cisco Catalyst (IOS 15)**, Moxa EDS-208, Moxa NPort 5210,
-  Siemens SCALANCE XB-208 / S615 / SC-600, Siemens S7-1200 / S7-1500
-  PLC. `tarpit-honeypot help archetypes` lists them all.
+  consistent with a stock install of that OS. Spans Linux distros, *BSD,
+  Windows client + server, Active Directory, Cisco Catalyst (IOS / IOS-XE),
+  MikroTik RouterOS, Teltonika RUT240, and Moxa / Siemens OT gear — see
+  the full [OS / device archetypes](#os--device-archetypes) table.
+  `tarpit-honeypot help archetypes` lists them all.
 - **CVE emulation + exploit-attempt capture** (`internal/cve`): the
   http/https/appliance handlers recognize known exploit signatures
   (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell, FortiOS /
@@ -712,6 +710,69 @@ Zero-to-many artificial networks of virtual hosts (CIDR + gateway + DNS +
 domain + per-host `{ip, hostname, os, archetype, services}`), each with
 optional `arp_responder` / `icmp_responder` / `lldp_responder` / `tun`.
 See [Honeynets](#honeynets) for the dispatch model and examples.
+
+## OS / device archetypes
+
+Set `sensor.archetype`, `listener.archetype`, or a per-honeynet-host
+`archetype` to any **config name** below (names are matched
+case-insensitively with flexible separators — `"Cisco Catalyst Switch"`,
+`cisco-catalyst-switch`, and `cisco_catalyst_switch` all resolve). The
+archetype then drives every banner-aware handler (SSH/HTTP(S)/FTP/Telnet/
+SMTP/MySQL), the SNMP MIB-2 identity (sysDescr/sysObjectID/ifTable), MAC
+OUI, interactive-shell CLI, TLS posture, and the initial IP TTL so the
+host is internally consistent end to end. `tarpit-honeypot help archetypes`
+prints the live list.
+
+| Category | Archetype | Config name(s) | Family | Init TTL | Signature highlights |
+|---|---|---|---|---|---|
+| Linux | Debian 9 (stretch) | `debian-9` | debian | 64 | OpenSSH 7.4 / Apache 2.4.25 / vsFTPd / Postfix / MariaDB |
+| Linux | Debian 10 (buster) | `debian-10` | debian | 64 | OpenSSH 7.9 / Apache 2.4.38 |
+| Linux | Debian 11 (bullseye) | `debian-11` | debian | 64 | OpenSSH 8.4 / Apache 2.4.62 |
+| Linux | Debian 12 (bookworm) | `debian-12` | debian | 64 | OpenSSH 9.2 / Apache 2.4.x |
+| Linux | Debian 13 (trixie) | `debian-13` | debian | 64 | current Debian banners |
+| Linux | Ubuntu 24.04 LTS | `ubuntu-24-04-lts` | ubuntu | 64 | OpenSSH 9.x (Ubuntu) / nginx |
+| Linux | Ubuntu 26.04 LTS | `ubuntu-26-04-lts` | ubuntu | 64 | current Ubuntu banners |
+| Linux | CentOS 5 | `centos-5` | rhel | 64 | OpenSSH 4.3 / Apache 2.2.3 (legacy) |
+| Linux | CentOS 6 | `centos-6` | rhel | 64 | OpenSSH 5.3 / Apache 2.2.15 |
+| Linux | CentOS 7 | `centos-7` | rhel | 64 | OpenSSH 7.4 / Apache 2.4.6 |
+| Linux | CentOS 8 | `centos-8` | rhel | 64 | OpenSSH 8.0 / Apache 2.4.37 |
+| Linux | CentOS Stream 10 | `centos-stream-10` | rhel | 64 | OpenSSH 9.9 |
+| Linux | RHEL 8 | `red-hat-enterprise-linux-8` | rhel | 64 | RHEL banners |
+| Linux | RHEL 9 | `red-hat-enterprise-linux-9` | rhel | 64 | RHEL banners |
+| Linux | RHEL 10 | `red-hat-enterprise-linux-10` | rhel | 64 | RHEL banners |
+| Linux | Rocky Linux 9 | `rocky-linux-9` | rhel | 64 | RHEL-compatible |
+| Linux | AlmaLinux 9 | `almalinux-9` | rhel | 64 | RHEL-compatible |
+| Linux | Oracle Linux 8 | `oracle-linux-8` | rhel | 64 | RHEL-compatible |
+| Linux | Oracle Linux 9 | `oracle-linux-9` | rhel | 64 | RHEL-compatible |
+| Linux | Arch Linux | `arch-linux` | arch | 64 | rolling-release banners |
+| BSD | FreeBSD 13 | `freebsd-13` | bsd | 64 | OpenSSH / FreeBSD web console |
+| BSD | FreeBSD 14 | `freebsd-14` | bsd | 64 | OpenSSH / FreeBSD web console |
+| BSD | OpenBSD 7.5 | `openbsd-7-5` | bsd | 64 | OpenSSH / httpd |
+| BSD | OpenBSD 7.6 | `openbsd-7-6` | bsd | 64 | OpenSSH / httpd |
+| Windows | Windows 7 | `windows-7` | windows | 128 | legacy SMB/RDP, weak TLS |
+| Windows | Windows 8 | `windows-8` | windows | 128 | legacy posture |
+| Windows | Windows 10 | `windows-10` | windows | 128 | modern client |
+| Windows | Windows 11 | `windows-11` | windows | 128 | modern client |
+| Windows | Windows Server 2008 | `windows-server-2008` | windows | 128 | TLS 1.0, legacy ciphers |
+| Windows | Windows Server 2012 | `windows-server-2012` | windows | 128 | legacy server |
+| Windows | Windows Server 2012 R2 | `windows-server-2012-r2` | windows | 128 | legacy server |
+| Windows | Windows Server 2016 | `windows-server-2016` | windows | 128 | server |
+| Windows | Windows Server 2019 | `windows-server-2019` | windows | 128 | server |
+| Windows | Windows Server 2022 | `windows-server-2022` | windows | 128 | server |
+| Windows | Active Directory (Server 2019 DC) | `active-directory`, `domain-controller`, `windows-server-2019-dc` | windows | 128 | PowerShell shell + full AD protocol mix; pre-rollup patch level (ZeroLogon/PrintNightmare/ProxyLogon advisory) |
+| Network | Cisco Catalyst 2960 (IOS 15) | `cisco-ios`, `cisco-catalyst-2960` | cisco | 255 | IOS CLI emulator, SSH-2.0-Cisco, SNMP ifTable/VLAN/LLDP, weak TLS, CVE-2018-0171 (Smart Install) |
+| Network | Cisco Catalyst 9300 (IOS-XE 17) | `cisco-catalyst-switch`, `cisco-catalyst-9300` | cisco | 255 | IOS-XE identity, cat9k sysObjectID |
+| Network | MikroTik RouterOS | `mikrotik-router`, `mikrotik-routeros`, `mikrotik-routerboard` | mikrotik | 64 | SSH-2.0-ROSSSH, webfig, Winbox/API ports, RouterOS CLI emulator, MikroTik SNMP OID |
+| Network | Teltonika RUT240 | `teltonika-rut240`, `teltonika-router` | teltonika | 64 | RutOS/OpenWrt, Dropbear SSH, lighttpd, LTE wwan0, Teltonika SNMP OID |
+| ICS/OT | Moxa EDS-208 | `moxa-eds-208` | moxa | 255 | industrial switch CLI, Moxa OUI/SNMP |
+| ICS/OT | Moxa NPort 5210 | `moxa-nport-5210` | moxa | 255 | serial device server, raw TCP 4001/4002 |
+| ICS/OT | Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 255 | SCALANCE CLI, MRP ring / PROFINET tree / VLAN exposure |
+| ICS/OT | Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 255 | industrial security router |
+| ICS/OT | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 255 | industrial firewall |
+| ICS/OT | Siemens S7-1200 PLC | `siemens-s7-1200` | siemens | 255 | S7 PLC console, S7comm |
+| ICS/OT | Siemens S7-1500 PLC | `siemens-s7-1500` | siemens | 255 | S7 PLC console, S7comm-Plus |
+
+---
 
 ## Protocol handlers in detail
 
