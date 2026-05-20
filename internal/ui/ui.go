@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -48,16 +50,23 @@ type Sample struct {
 }
 
 type Server struct {
-	cfg       config.UI
-	store     *store.Store
-	authToken string
-	srv       *http.Server
-	tmpl      *template.Template
-	stats     StatsProvider
+	cfg        config.UI
+	store      *store.Store
+	authToken  string
+	srv        *http.Server
+	tmpl       *template.Template
+	stats      StatsProvider
+	fullConfig *config.Config
 }
 
 // SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
 func (s *Server) SetStatsProvider(p StatsProvider) { s.stats = p }
+
+// SetConfig wires the effective (post-defaults) config so the /config
+// tab can render it. Secrets stay as env-var names because the config
+// model only ever stores *_env references, never expanded values, so
+// the rendered YAML is safe to display.
+func (s *Server) SetConfig(c *config.Config) { s.fullConfig = c }
 
 func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if !cfg.Enabled {
@@ -75,7 +84,13 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 	}
 	t, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
-		"join":    func(s []int) string { var p []string; for _, n := range s { p = append(p, strconv.Itoa(n)) }; return strings.Join(p, ", ") },
+		"join": func(s []int) string {
+			var p []string
+			for _, n := range s {
+				p = append(p, strconv.Itoa(n))
+			}
+			return strings.Join(p, ", ")
+		},
 	}).Parse(tmpls)
 	if err != nil {
 		return nil, err
@@ -89,8 +104,10 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/events/", s.handleEvent)
+	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
+	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
@@ -240,6 +257,41 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sum)
+}
+
+// handleConfig renders the effective config as YAML in a read-only
+// page. Secrets are env-var names (never expanded values), so the
+// output is safe to display.
+func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
+	yamlStr := s.configYAML()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "config", configPage{YAML: yamlStr}); err != nil {
+		slog.Warn("ui: render config", "err", err)
+	}
+}
+
+// handleAPIConfig returns the effective config as raw YAML for tooling
+// (curl / config drift checks).
+func (s *Server) handleAPIConfig(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml")
+	_, _ = w.Write([]byte(s.configYAML()))
+}
+
+// configYAML marshals the effective config to YAML, or returns a
+// placeholder when no config was wired (e.g. UI started standalone).
+func (s *Server) configYAML() string {
+	if s.fullConfig == nil {
+		return "# config not available\n"
+	}
+	b, err := yaml.Marshal(s.fullConfig)
+	if err != nil {
+		return "# config render error: " + err.Error() + "\n"
+	}
+	return string(b)
+}
+
+type configPage struct {
+	YAML string
 }
 
 func parseFilter(r *http.Request) store.Filter {

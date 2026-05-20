@@ -24,7 +24,7 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .note { color: #666; font-size: 12px; margin-top: .5rem; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/config">config</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -93,5 +93,13 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 {{ if .Meta }}<h2>meta</h2><table>
 {{ range $k, $v := .Meta }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "config" }}{{ template "head" . }}
+<h1>effective configuration</h1>
+<p class="note">Post-defaults config the sensor is running with. Secrets are shown
+as their environment-variable names (<code>*_env</code>), never expanded values,
+so this is safe to copy into a ticket. Raw YAML also at <a href="/api/config">/api/config</a>.</p>
+<div class="kv">{{ .YAML }}</div>
 {{ template "foot" . }}{{ end }}
 `

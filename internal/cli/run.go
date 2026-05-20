@@ -82,6 +82,7 @@ func cmdRun(args []string) error {
 			return err
 		}
 		srv.SetStatsProvider(buildStatsProvider(s))
+		srv.SetConfig(cfg)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
