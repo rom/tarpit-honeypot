@@ -94,12 +94,13 @@ A *honeynet* is a configured artificial network with virtual hosts. One sensor c
 
 The base mode (v1.1+) is **destination-IP dispatch**: when an incoming connection's destination matches a configured virtual host IP, the listener dispatches to a per-host handler instance. That requires the OS to actually route the virtual IPs to the sensor — typically via `ip addr add 10.99.0.10/24 dev eth0` or iptables DNAT.
 
-Four optional Linux-only adapters make the honeynet more discoverable **without** that OS plumbing:
+Five optional Linux-only adapters make the honeynet more discoverable **without** that OS plumbing:
 
 - **`arp_responder`** (v1.2): the sensor opens an AF_PACKET socket and answers ARP requests for every virtual host IP. `arp-scan` sees the network as populated.
 - **`icmp_responder`** (v1.3): the sensor answers IPv4 ICMP echo (ping) for every virtual host IP via the same AF_PACKET path.
-- **`tun`** (v1.5): the sensor opens a Linux TUN device. The operator routes the honeynet CIDR into the TUN. The sensor answers ICMP/ICMPv6 echo and sends TCP RST for unbound ports. `nmap -sS` reports the host as up.
+- **`tun`** (v1.5): the sensor opens a Linux TUN device. The operator routes the honeynet CIDR into the TUN. The sensor answers ICMP/ICMPv6 echo and sends TCP RST for unbound ports. `nmap -sS` reports the host as up. Synthesized replies carry each host's archetype **TTL personality** (255 OT / 128 Windows / 64 Linux), so `nmap -O` + traceroute hop-distance match the claimed OS.
 - **`lldp_responder`** (v1.10): the sensor emits LLDP (and optionally CDP) frames so every honeynet host appears in `lldpctl` / Cisco `show cdp neighbors` output with archetype-shaped MAC + system description + family-tuned LLDP capabilities. Pairs naturally with the Moxa / SCALANCE / S7 archetypes for industrial deception.
+- **`profinet_responder`**: the sensor answers PROFINET-DCP Identify requests (L2, EtherType 0x8892) for industrial hosts, so a PROFINET scan (Siemens PRONETA / TIA Portal / nmap) enumerates the cell. Each request also raises `honeynet:profinet_dcp_identify` (ATT&CK T0846) — a strong ICS-recon signal.
 
 None of these adapters provide a full userspace TCP stack — real protocol termination still goes through real sockets. For "scanner sees the network as populated" they are sufficient.
 
@@ -442,7 +443,8 @@ with a workaround:
 | `arp_responder` | AF_PACKET ✓ | `ifconfig <iface> alias <ip>` per honeynet host — the kernel answers ARP for the alias |
 | `icmp_responder` | AF_PACKET ✓ | Same `ifconfig alias` — the kernel answers ICMP echo natively |
 | `lldp_responder` (LLDP/CDP advertise) | AF_PACKET ✓ | Unavailable; the rest of the deception still works |
-| AF_PACKET sniffer (ARP-scan detection) | ✓ | Unavailable; protocol-level brute-force / port-scan correlators still work |
+| `profinet_responder` (PROFINET-DCP) | AF_PACKET ✓ | Unavailable; the rest of the deception still works |
+| AF_PACKET sniffer (ARP + TCP scan detection) | ✓ | Unavailable; protocol-level brute-force / port-scan correlators still work |
 | File canary OPEN events (read detection) | fanotify ✓ | Unavailable; fsnotify still catches write/remove/rename/chmod |
 | TUN/utun adapter | TUN ✓ | Use `ifconfig <iface> alias <ip>` to attract L4 traffic for virtual hosts |
 | Privilege drop | `setresuid` ✓ | `setuid` ✓ (saved-uid also dropped on darwin) |

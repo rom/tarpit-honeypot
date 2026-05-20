@@ -37,7 +37,10 @@ recipes see [`INTEGRATIONS.md`](INTEGRATIONS.md).
 - Distributed collector with a hosted control plane. Sensors are
   standalone; they forward to remote sinks, but the collector tier is
   not built.
-- Plugin system / embedded scripting. Handlers and channels are built-in.
+- General plugin runtime / pluggable channels. Handlers and channels are
+  built-in. (The `lua` handler is a deliberate, narrow exception: a
+  *sandboxed* per-service response-scripting VM — no io/os, bounded — not
+  a general plugin system that can load Go code or new channels.)
 - Active response (blocking, firewalling, retaliating). Detect, deceive,
   delay, and alert only.
 - *Real* code execution. The interactive shells, PLC/CLI consoles, and
@@ -51,8 +54,8 @@ goroutines with bounded queues. No external broker.
 
 ```
                      ┌──────────────────────────── sensor ────────────────────────────┐
-  TCP/UDP connects ─►│ listeners ─► handlers (76: IT/OT/mgmt/small-svc/dns) ─┐         │
-  ICMP / ARP ───────►│ AF_PACKET responders + ARP-scan sniffer ─────────────┤         │
+  TCP/UDP connects ─►│ listeners ─► handlers (81: IT/OT/mgmt/small-svc/dns) ─┐         │
+  ICMP/ARP/L2/L3 ───►│ AF_PACKET responders + ARP/TCP-scan + PROFINET-DCP ───┤         │
   fs/url/dns tokens ►│ canaries ────────────────────────────────────────────┤         │
                      │                                                       ▼         │
                      │  per-conn capture + payload harvest        ┌──► enrich (geoip/rdns)
@@ -113,26 +116,37 @@ What makes the sensor *look real*:
   virtual hosts; each host has its own derived Identity (distinct
   banners/serials) and answers on its own IP/MAC. Optional Linux
   AF_PACKET ARP / ICMP / LLDP+CDP responders make the network
-  discoverable; an optional TUN device answers ICMP + TCP-RST for
-  unbound ports.
+  discoverable; a **PROFINET-DCP** responder answers DCP Identify (L2,
+  EtherType 0x8892) for industrial hosts so a PROFINET scan enumerates the
+  cell; an optional TUN device answers ICMP + TCP-RST for unbound ports.
+- **TCP/IP stack personality.** The TUN responder stamps each virtual
+  host's synthesized ICMP echo replies + closed-port RSTs with the initial
+  IP TTL of its archetype (255 OT / 128 Windows / 64 Linux-BSD) instead of
+  echoing the prober's, so `nmap -O` + traceroute hop-distance are
+  consistent with the claimed OS. Open-port SYN-ACKs still come from the
+  host kernel (a full userspace TCP/IP stack is out of scope).
 
 ## 5. Detection layer
 
 What turns interaction into signal:
 
-- **76 protocol handlers** (1 generic + 52 TCP + 23 UDP; IT, remote-access
+- **81 protocol handlers** (1 generic + 57 TCP + 23 UDP; IT, remote-access
   / OOB-management personas, ICS/OT, discovery/UDP, a resolving DNS
-  server, RFC small services). Each captures the application-layer
-  exchange (credentials, requested objects, fingerprints) and replies
-  credibly. See README "Protocol handlers in detail".
+  server, RFC small services, plus the scriptable `lua` handler). Each
+  captures the application-layer exchange (credentials, requested objects,
+  fingerprints) and replies credibly. ICS/OT coverage includes Modbus, S7
+  + **S7comm-Plus**, IEC-104, **DNP3**, EtherNet/IP, **GE-SRTP**,
+  **CODESYS**, OPC-UA, BACnet (incl. WriteProperty), MELSEC, FINS. See
+  README "Protocol handlers in detail".
 - **Protocol-anomaly detection** (`event.anomalies`). Per-handler markers
   for malformed / smuggled / hostile input (non-printable SSH banners,
   unknown HTTP methods + suspicious URIs, DNS tunneling shapes, abnormal
   ICMP payloads, UDP amplifier probes, shell TTPs).
-- **Client fingerprinting** (`internal/fingerprint`, `internal/toolfp`):
-  JA3 + JA4 (TLS), JA4H (HTTP), HASSH (SSH), plus tool/scanner
-  identification (nmap/masscan/sqlmap/…/Mirai) and a
-  human-vs-automation verdict.
+- **TLS / client fingerprinting** (`internal/fingerprint`, `internal/toolfp`):
+  JA3 + JA4 (client TLS ClientHello), **JA3S** (server-side TLS — the
+  ServerHello we send back; the `(ja3, ja3s)` pair is the threat-intel
+  tuple), JA4H (HTTP), HASSH (SSH), plus tool/scanner identification
+  (nmap/masscan/sqlmap/…/Mirai) and a human-vs-automation verdict.
 - **CVE exploit-attempt recognition** (`internal/cve`). A curated catalog
   of high-signal exploit signatures (Log4Shell, Shellshock, Spring4Shell,
   ProxyLogon/Shell, FortiOS/Pulse/Citrix traversals, Apache 2.4.49,
@@ -142,11 +156,19 @@ What turns interaction into signal:
   since the https handler sees the decrypted stream).
 - **Scan analysis** (`internal/scananalysis`). Per-source nmap profiling:
   timing template (`-T0`..`-T5`), `-A`/`-O`/`-sV`, NSE + service-probe
-  matching, connect scans → `scananalysis:profile`. Half-open / frag /
-  decoy scans are honestly scoped to the AF_PACKET layer.
+  matching, connect scans → `scananalysis:profile`.
+- **Packet-capture scan-detection layer** (`internal/sniffer`, opt-in,
+  Linux AF_PACKET). A second socket classifies inbound IPv4 TCP by flags
+  and reports scans that never establish a session — **NULL/FIN/Xmas**
+  stealth probes, **SYN/ACK** scans (by volume), and fragmented probes —
+  emitting `sniffer:tcp_{syn,null,fin,xmas,ack}_scan` / `sniffer:ip_fragmented`.
+  This is the closed-port / dropped-stealth visibility the connection
+  layer can't have. (Decoy detection is still out of scope.)
 - **In-sensor correlators** (`internal/correlate`): port-scan,
   brute-force (with extracted credential pairs), slow-scan (hour-scale),
-  ICMP ping-sweep.
+  ICMP ping-sweep. The PROFINET-DCP responder also emits a detection
+  event (`honeynet:profinet_dcp_identify`, ATT&CK T0846) for every DCP
+  Identify it observes — ICS reconnaissance on the segment.
 - **Attack-storyline correlator** (`storyline:multi_stage`). Joins a
   source's events across ATT&CK tactics; tracks CVE exploits / captured
   malware / tools, flags `objective_reached`, and scales severity to
@@ -284,9 +306,14 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   alerting tabs; seccomp + Landlock self-confinement + AppArmor/SELinux;
   topology-coherent DNS (SRV/PTR/HINFO/LOC/SOA); web UI sortable/filterable
   + errors view.
-- **current (v1.13)** — Lua dynamic-response engine (`handler: lua`);
-  attacker session recording (asciinema casts); persistent + reload-durable
+- **v1.13** — Lua dynamic-response engine (`handler: lua`); attacker
+  session recording (asciinema casts); persistent + reload-durable
   correlator state.
+- **current (v1.14)** — more ICS/OT protocols (DNP3, S7comm-Plus, GE-SRTP,
+  CODESYS, BACnet WriteProperty); **JA3S** server-side TLS fingerprint;
+  packet-capture TCP scan-detection layer (NULL/FIN/Xmas/SYN/ACK/frag);
+  TCP/IP stack personality (per-archetype TTL on TUN responses);
+  **PROFINET-DCP** L2 responder + ICS-discovery detection.
 
 ## 14. Open risks
 
@@ -301,13 +328,26 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
 - **seccomp/Landlock are best-effort.** Old kernels / restrictive
   containers may not apply them; the sensor logs and runs on, so confirm
   enforcement (`journalctl`) where it matters.
-- **Detection vs. capture gaps.** Half-open/fragmented/decoy scans and
-  raw ICMP need the AF_PACKET layer; the connection layer honestly marks
-  these as needing packet capture rather than guessing.
+- **Detection vs. capture gaps.** Half-open/fragmented/stealth scans are
+  now caught by the opt-in AF_PACKET packet-capture layer (`sniffer.tcp_scan`),
+  which needs CAP_NET_RAW; **decoy** scans remain out of scope (one real
+  source among many spoofed is hard to disambiguate passively). Without the
+  sniffer enabled, the connection layer still only sees scans that reach a
+  listener.
 
 ## 15. Out of scope (unless re-scoped)
 
 - Active blocking / firewall hooks / retaliation.
-- Plugin runtime / embedded scripting.
+- General plugin runtime / pluggable channels (the sandboxed `lua`
+  response-scripting handler is the only scripting surface).
 - Hosted SaaS control plane.
 - Real code execution in any emulated service.
+- **Full userspace TCP/IP stack.** The TUN responder controls TTL on
+  synthesized RST/ICMP, but open-port SYN-ACK quirks (window/options/ISN)
+  come from the host kernel — a complete `nmap -O` match would need a
+  userspace stack.
+- **OPC-DA (classic, DCOM/MSRPC).** OPC-UA is supported (`opcua`); the
+  legacy DCOM-based OPC-DA is not. A future minimal approach would extend
+  the `dcerpc` endpoint-mapper to advertise the OPCEnum interface UUID
+  rather than implement the full DCOM marshaling.
+- **Decoy-scan attribution.** See "Open risks".
