@@ -8,6 +8,47 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — protocol breadth + archetype consistency + fingerprinting
+- **15 new protocol emulators**: `mssql` (TDS PRELOGIN), `oracle_tns`
+  (TNS connect/refuse), `teamviewer`, `anydesk`, `openvpn`,
+  `citrix_ica`, and the management-web personas `intel_amt`, `ilo`,
+  `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`,
+  `moxa_mgmt`. VNC handler now varies its RFB version (3.3 / 3.7 / 3.8
+  / 4.1 / Apple ARD) per deployment. (63 handlers total.)
+- **11 Windows archetypes** (7/8/10/11, Server 2008/2012/2012R2/2016/
+  2019/2022) with version-matched IIS Server header + default page,
+  Microsoft SNMP sysObjectID, TTL 128, and era-correct **TLS posture**
+  (Server 2008 caps TLS 1.0 + legacy CBC ciphers, 2012/R2 TLS 1.2).
+  3 new Siemens archetypes (SCALANCE S615 / SC-600; XB-208 enriched).
+- **Archetype consistency**: new Profile fields for TLS posture
+  (min/max version + weak-cipher flag, applied by the https handler),
+  per-host **ICMP TTL personality** (255 OT / 128 Windows / 64
+  Linux-BSD, stamped by the ICMP responder), and switch/OT topology
+  (MRP rings, PROFINET device tree, VLANs, HMIs).
+- **Switch web-UI topology exposure**: SCALANCE archetypes serve their
+  MRP / PROFINET / VLAN / HMI / LLDP inventory from the http handler's
+  device-info paths (`/topology`, `/status`, `/vlan`, …).
+- **Tool fingerprinting + human-vs-automation** (`internal/toolfp`):
+  UA + path signatures for nmap / masscan / sqlmap / nikto / hydra /
+  nuclei / metasploit / gobuster / zgrab / censys / curl / wget /
+  python / Mirai + router-exploit probes, plus a browser-vs-script
+  verdict. Surfaced as `meta.tools` / `meta.automation` +
+  `tool:<name>` / `automation-client` anomalies.
+- **Abnormal-payload detection**: ICMP (`internal/icmp.Anomalies` —
+  oversize / non-filler-entropy payload, fragmentation abuse,
+  overlapping-fragment evasion) and DNS (tunneling fingerprint —
+  overlong qname / label, high-entropy encoded label, NULL/TXT
+  tunneling qtypes, oversize query).
+- **Web UI config tab** (`/config` + `/api/config`) — view the
+  effective config (secrets shown as `*_env` names).
+- **Default credentials + fake files + `ftp_files` handler**, **device
+  intelligence** (DHCP discovery + learned-device registry +
+  `device:new` alerts + `list-devices`), **ICMP message library** +
+  `correlate:icmp_sweep`, and **cross-handler default-credential
+  detection** (redis dangerous commands, smtp open-relay / VRFY-EXPN).
+- Example configs: refreshed `tarpit-honeypot.example.yaml` + new
+  `-FULL`, `-SMALL-OT`, `-ADVANCED-OT` sibling configs.
+
 ### Added — deception depth + network intelligence
 - **Default-credential corpus** (`internal/creds`) — curated vendor
   defaults (router/camera/BMC/database/ICS/generic). Every

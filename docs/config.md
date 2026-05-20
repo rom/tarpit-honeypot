@@ -128,9 +128,11 @@ listeners:
 
 ### Handlers
 
-**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`.
+**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`.
 
-**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`.
+**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`.
+
+**Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 
 Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`docs/INTEGRATIONS.md`](INTEGRATIONS.md#protocol-handler-catalog) for per-handler defaults and behavior.
 
@@ -246,11 +248,36 @@ correlate:
     distinct_ports: 10
     window: 24h
     severity: high
+  icmp_sweep:
+    enabled: false
+    distinct_ips: 10
+    window: 30s
+    severity: high
 ```
 
 - **port_scan**: same source touched N distinct ports within window → `correlate:port_scan` with the port list in meta.
 - **brute_force**: N attempts in window. Captures deduped credential pairs (`auth_user/auth_pass`, `bind_dn/bind_pw`, etc.) from contributing events.
 - **slow_scan**: long-window scan detector; per-port state ages individually so a 1-port-per-hour scan accumulates.
+- **icmp_sweep**: one source touching N distinct *destination IPs* via ICMP within window → `correlate:icmp_sweep` (a ping-sweep / live-host-mapping precursor). Keys on dest IP, not port, so it also runs for portless ICMP events.
+
+Beyond these, the sensor always emits a cross-protocol **`storyline:multi_stage`** event when one source touches 3+ distinct ATT&CK tactics inside 30 minutes (no config — it's driven by the `mitre_tactics` tags every event carries).
+
+---
+
+## `devices:` — learned-device inventory + new-device alerts
+
+```yaml
+devices:
+  enabled: false
+  learn: true            # true: seed a baseline on first run, then alert on new
+                         # false: strict allow-list — every non-allowed device alerts
+  severity: high
+  allow:                 # IPs, CIDRs, and MACs that never alert
+    - 10.0.0.0/8
+    - aa:bb:cc:dd:ee:ff
+```
+
+When enabled the sensor records every host it observes — from the `dhcp` handler (MAC + hostname + DHCP fingerprint), the ARP sniffer, and the source IP of every handled connection — into `<data_dir>/devices.json`, and raises a `device:new` event for hosts that are neither allow-listed nor part of the learned baseline. Review with `tarpit-honeypot list-devices`.
 
 ---
 

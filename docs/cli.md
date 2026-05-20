@@ -11,6 +11,7 @@ tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
+tarpit-honeypot list-devices   -c <config> [--json]
 tarpit-honeypot init           [-o file]
 tarpit-honeypot completion     bash | zsh | fish
 tarpit-honeypot help           [subcommand | topic]
@@ -260,6 +261,32 @@ Output:
 ```
 
 Confirms each host's identity seed is distinct (so banner / version / serial values differ per virtual machine) and its MAC has the locally-administered bit set (`0x02` on the first byte).
+
+---
+
+## `list-devices`
+
+Print the learned-device inventory the running sensor persisted to
+`<data_dir>/devices.json` (see the `devices:` config block). Read-only;
+applies the configured allow-list. Use `--json` to snapshot a baseline.
+
+```
+tarpit-honeypot list-devices -c cfg.yaml
+tarpit-honeypot list-devices -c cfg.yaml --json > baseline.json
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file. |
+| `--json` | off | Emit the inventory as JSON instead of a table. |
+
+Output:
+
+```
+IP               MAC                VENDOR                 HOSTNAME             SOURCE    LAST SEEN
+10.0.0.10        00:90:e8:11:22:33  Moxa                   plc-press            dhcp      2025-05-19 14:03
+10.0.0.50        -                  -                      -                    conn      2025-05-19 14:05
+```
 
 ---
 

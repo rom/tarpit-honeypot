@@ -20,21 +20,39 @@ phasing decisions.
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
   or `tarpit` (sticky / trickle / keepalive).
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **46 built-in protocol handlers** (1 generic + 24 IT/TCP + 5 ICS/TCP + 16 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **63 built-in protocol handlers** (1 generic + 46 TCP + 17 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
+  - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
-  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`
-- **29 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`
+- **41 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
-  and Web UI body report values consistent with a stock install of that
-  OS. Ship list: CentOS 5/6/7/8 + Stream 10, Debian 9–13, RHEL 8/9/10,
-  Ubuntu 24.04/26.04 LTS, FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux,
-  Rocky Linux 9, AlmaLinux 9, Oracle Linux 8/9, Moxa EDS-208, Moxa
-  NPort 5210, Siemens SCALANCE XB-208, Siemens S7-1200 PLC, Siemens
-  S7-1500 PLC. `tarpit-honeypot help archetypes` lists them all.
+  TLS posture, ICMP TTL personality, and Web UI body report values
+  consistent with a stock install of that OS. Ship list: CentOS 5/6/7/8
+  + Stream 10, Debian 9–13, RHEL 8/9/10, Ubuntu 24.04/26.04 LTS,
+  FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux, Rocky Linux 9,
+  AlmaLinux 9, Oracle Linux 8/9, Windows 7/8/10/11, Windows Server
+  2008/2012/2012R2/2016/2019/2022, Moxa EDS-208, Moxa NPort 5210,
+  Siemens SCALANCE XB-208 / S615 / SC-600, Siemens S7-1200 / S7-1500
+  PLC. `tarpit-honeypot help archetypes` lists them all.
+- **Archetype consistency**: each archetype keeps its firmware era,
+  banners, SNMP identity, MAC OUI, login pages, ICMP TTL, **and TLS
+  posture** aligned — e.g. a "Windows Server 2008" archetype caps TLS
+  at 1.0 with legacy CBC ciphers and an IIS 7.0 splash, so a scanner
+  can't catch a TLS-1.3-with-modern-ciphers tell on an ancient box.
+- **Switch archetypes expose OT topology**: SCALANCE-class archetypes
+  serve MRP rings, a PROFINET device tree, VLANs, connected HMIs, and
+  LLDP neighbors from their web UI (`/topology`, `/status`, `/vlan`, …)
+  + advertise LLDP/CDP on the segment.
+- **Tool fingerprinting + human-vs-automation**: the HTTP handler
+  identifies the scanner/tool (nmap, masscan, sqlmap, nikto, hydra,
+  nuclei, metasploit, gobuster, zgrab, censys, curl/wget/python, Mirai
+  + router-exploit probe paths) and tags each request `automation` vs
+  browser-like. Surfaced as `meta.tools` / `meta.automation` +
+  `tool:<name>` / `automation-client` anomalies.
 - **Interactive CLI shell engagement**: after a fake "Login incorrect"
   the attacker is dropped into the archetype's shell (telnet) or a
   full `crypto/ssh` session (`ssh_interactive`). Every typed command
@@ -499,8 +517,11 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `dcerpc` | 135 | Endpoint Mapper bind handler. Parses the first abstract interface UUID + version pair. Replies `bind_ack` with NDR transfer syntax. When honeynet topology is available, advertises the configured endpoints. | — | — |
 | `ldap` | 389 | Hand-rolled BER decoder (bounds-checked, fuzz-tested). Captures `bind_dn` + cleartext `bind_pw` for simpleAuth, or `sasl_mechanism` for SASL. Replies BindResponse 49 (invalidCredentials). When honeynet topology is available, advertises computer accounts in search responses. | — | — |
 | `kerberos` | 88 | ASN.1 reader for AS-REQ / TGS-REQ. Extracts the principal name(s) and realm. Replies KRB-ERROR `KDC_ERR_PREAUTH_REQUIRED` — what a real KDC sends to invite a pre-auth attempt (the cleartext-derived `enc-timestamp` that AS-REP-Roasting tools harvest). | — | — |
-| `postgres` | 5432 | Reads StartupMessage (and SSLRequest / GSSEncRequest fallback). Captures `username`, `database`. Sends AuthenticationCleartextPassword, captures the PasswordMessage `password`. Sends FATAL `28P01` Password authentication failed. | — | — |
+| `postgres` | 5432 | Reads StartupMessage (and SSLRequest / GSSEncRequest fallback). Captures `username`, `database`. Sends AuthenticationCleartextPassword, captures the PasswordMessage `password` (flags `default-credential-attempt`). Sends FATAL `28P01`. | — | — |
 | `mysql` | 3306 | Server-first MySQL handshake — archetype-shaped version string (e.g. `10.11.6-MariaDB-0+deb12u1` for debian 12). Captures `username`, `auth_response_hex`, optional `database`. Replies ERR_Packet 1045 Access denied. | ✓ | ✓ |
+| `mssql` | 1433 | TDS PRELOGIN exchange — advertises a SQL Server 15.0 version token + ENCRYPT_NOT_SUP, captures the LOGIN7 username, replies with an 18456 login-failed error token. | — | ✓ |
+| `oracle_tns` | 1521 | Oracle Net (TNS) listener. Captures the connect descriptor (SERVICE_NAME / SID recon) and replies REFUSE ORA-12514. | — | — |
+| `ftp_files` | 21 | Medium-interaction FTP: anonymous / `accept_creds` login, full PASV browse + RETR over a deterministic decoy tree. Flags `honeyfile-download` on bait-file retrieval + `default-credential-attempt`. | ✓ | ✓ |
 | `redis` | 6379 | RESP parser (multi-bulk + inline forms). Captures `auth_password` from `AUTH` / `HELLO ... AUTH`, plus a short list of issued `commands` (with arguments). Returns RESP errors so the client keeps trying. | — | — |
 | `syslog_tcp` | 514 | Reads syslog messages via both octet-counting (`<N> <msg>`) and non-transparent (newline-terminated) framing. Captures first 16 messages with PRI / facility / severity decoded. | — | — |
 | `rtsp` | 554 | Parses RTSP OPTIONS / DESCRIBE request line + headers. Captures `Authorization` (often Digest with the camera password) + `User-Agent`. Replies 401 with a Hikvision-shaped `WWW-Authenticate: Digest`. | — | — |
@@ -509,6 +530,30 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `xmpp` | 5222 | Reads the client `<stream:stream>` open, extracts `to` / `from` / `xmlns` / `version`. Replies with our own `<stream:stream>` + `<stream:features>` advertising STARTTLS + PLAIN + SCRAM-SHA-1. Captures the follow-up `<auth>` or `<starttls/>` stanza. | — | — |
 | `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |
 | `ipp` | 631 | IPP / CUPS printer over HTTP. Parses Get-Printer-Attributes body, replies HTTP 200 + `application/ipp` with printer-attributes-tag advertising a fake Brother HL-L8260CDW (idle, accepting jobs). | — | — |
+
+### TCP — remote access / out-of-band management
+
+These personas reproduce the distinctive Server header + auth realm +
+landing page that fingerprints the appliance, capture Basic-auth /
+login-form credentials (flagging `<kind>-login-attempt` +
+`default-credential-attempt`), and answer the protocol's discovery
+handshake where it isn't HTTP.
+
+| Handler | Port | What it does | arch | id |
+|---|---|---|:-:|:-:|
+| `teamviewer` | 5938 | TeamViewer relay hello — reads the client's first frame, replies with the `17 24 …TeamViewer` framing. | — | — |
+| `anydesk` | 7070 | AnyDesk relay discovery reply (`ad.anynet.relay <ver>`). | — | — |
+| `openvpn` | 1194 | OpenVPN TCP control channel — reads the `P_CONTROL_HARD_RESET_CLIENT` and replies `HARD_RESET_SERVER`; flags `openvpn-probe`. | — | — |
+| `citrix_ica` | 1494 | Citrix ICA browser hello (`7f 7f ICA …`). | — | — |
+| `intel_amt` | 16992 | Intel AMT / vPro web UI (CVE-2017-5689 surface): HTTP 401 Digest with the `Intel(R) Active Management Technology` Server header. | — | — |
+| `ilo` | 443 | HP iLO 5 — `HP-iLO-Server/1.30` Server header + iLO realm. | — | — |
+| `idrac` | 443 | Dell iDRAC 9 — `Mbedthis-Appweb` Server header + iDRAC realm (captures the `root/calvin` default). | — | — |
+| `esxi` | 443 | VMware ESXi 7.0 host management — `VMware ESXi/7.0.3 Reverse Proxy` + `/ui/` + `/sdk` links. | — | — |
+| `fortinet` | 10443 | FortiGate SSL-VPN portal (`/remote/logincheck` form). | — | — |
+| `pulse` | 443 | Pulse Secure / Ivanti Connect Secure (`/dana-na/auth/...` form). | — | — |
+| `citrix_gateway` | 443 | Citrix Gateway / NetScaler (`/cgi/login` form). | — | — |
+| `horizon` | 443 | VMware Horizon view portal (`/portal/webclient/`). | — | — |
+| `moxa_mgmt` | 80 | Moxa device web console (`MoxaHttp/1.0`, `/Login.asp` form). | — | — |
 
 ### TCP — ICS / OT
 
@@ -538,9 +583,10 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `cldap` | 389 | CLDAP SearchRequest parser. Replies searchResDone; when honeynet topology is available, advertises the configured Domain Controllers in the meta. | — | — |
 | `llmnr` | 5355 | LLMNR query parser. Replies with our local IP as the A-record — classic poisoning catcher for the common Windows lookup-fallback target `wpad`. | — | — |
 | `nbns` | 137 | NetBIOS Name Service query parser. Decodes the encoded NetBIOS name; replies positive name-query response — catches SMB-relay precursors. | — | — |
-| `fins` | 9600 | Omron FINS UDP frame parser. Replies to MRC/SRC = 0x05/0x01 (CPU_UNIT_DATA_READ) with a `CJ2M-CPU33` model string. | — | — |
+| `fins` | 9600 | Omron FINS UDP frame parser. Answers CPU-data-read (`CJ2M-CPU33`), CPU-status-read (RUN/MONITOR), memory-area-read (with decoded area name + believable PV data), cycle-time-read, clock-read; generic ACK otherwise. | — | — |
 | `coap` | 5683 | RFC 7252 GET parser with bounds-checked option-TLV walker. Extracts `Uri-Path` + token; flags malformed packets. Replies 2.05 Content with a `/.well-known/core` link-format body advertising one fake `/led` resource. | — | — |
 | `knx` | 3671 | KNXnet/IP. Replies to SEARCH_REQUEST (0x0201) with a SEARCH_RESPONSE advertising an "MDT KNX IP Router" device-info DIB + a supported-service-families DIB (CORE, DEV_MGMT, TUNNELLING, ROUTING). DESCRIPTION_REQUEST gets a DESCRIPTION_RESPONSE. CONNECT_REQUEST gets status `0x24` (no more connections) so we look live without opening a tunnel. | — | — |
+| `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
 
 ## Tarpit strategies
 
