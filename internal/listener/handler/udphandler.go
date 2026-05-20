@@ -64,7 +64,7 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 	case "dhcp":
 		return &dhcp{}, nil
 	case "dns":
-		return &dnsHandler{id: deps.Identity}, nil
+		return &dnsHandler{id: deps.Identity, topo: deps.HoneynetView}, nil
 	case "echo":
 		return &echoUDP{}, nil
 	case "discard":

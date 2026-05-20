@@ -11,20 +11,25 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
-// dnsResolver is a UDP DNS handler that ANSWERS queries with fabricated
-// records — distinct from the dnscanary listener (which fires on
-// pre-registered canary names and otherwise NXDOMAINs). This one makes
-// the sensor look like a real, recursive-ish resolver / authoritative
-// server: A / AAAA / MX / TXT / NS / CNAME queries get a believable
-// fake answer so a scanner enumerating DNS sees a live, populated
-// server. Every query is captured + run through the same tunneling /
-// abnormal-payload detection the canary listener uses.
+// dnsHandler is a UDP DNS handler that answers queries coherently with
+// the configured honeynet topology — distinct from the dnscanary
+// listener (which fires on pre-registered canary names and otherwise
+// NXDOMAINs). When a query matches a virtual host (by FQDN, or by reverse
+// address for PTR) it returns that host's real virtual IP, an
+// archetype-derived HINFO, and topology-consistent SRV / NS / SOA / MX
+// records for the host's domain (so e.g. an AD SRV lookup resolves to the
+// virtual Domain Controller). Names outside the topology get a
+// deterministic fabricated answer so a scanner enumerating the resolver
+// still sees a live, populated server. Every query is captured + run
+// through the same tunneling / abnormal-payload detection the canary
+// listener uses.
 //
-// The fabricated A address is deterministic per (deployment, qname) so
-// the same name always resolves to the same fake IP within a sensor —
-// a re-query is consistent, but two deployments differ.
+// Supported qtypes: A, NS, CNAME, SOA, PTR, HINFO, MX, TXT, AAAA, LOC,
+// SRV. Fabricated answers are deterministic per (deployment, name) so a
+// re-query is consistent and two deployments differ.
 type dnsHandler struct {
-	id *identity.Identity
+	id   *identity.Identity
+	topo HoneynetSnapshot
 }
 
 func (d *dnsHandler) Name() string { return "dns" }
@@ -104,44 +109,87 @@ func parseDNSQuery(msg []byte) (dnsQuery, bool) {
 	return dnsQuery{name: strings.ToLower(strings.Join(labels, ".")), qtype: qtype, questionEnd: pos}, true
 }
 
-// buildAnswer constructs a DNS response with a fabricated answer for
-// the supported qtypes, echoing the question section. Unsupported
-// qtypes get NOERROR with zero answers (a believable "no such record").
+// buildAnswer constructs a DNS response, preferring topology-coherent
+// answers (real virtual host IPs, the domain's DC/NS/mail) and falling
+// back to deterministic fabricated records for names outside the
+// topology. Unsupported qtypes get NOERROR with zero answers.
 func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery) []byte {
 	if q.questionEnd > len(query) || q.questionEnd < 12 {
 		return nil
 	}
-	// Response header: copy ID, set QR=1, RA=1, RCODE=0.
+	// Response header: copy ID, set QR=1, RA=1, RCODE=0. AA=1 when the
+	// answer comes from our own (authoritative) topology.
 	resp := make([]byte, q.questionEnd)
 	copy(resp, query[:q.questionEnd])
 	resp[2] = 0x81                           // QR=1, Opcode=0, AA=0, TC=0, RD=1
 	resp[3] = 0x80                           // RA=1, RCODE=0
 	binary.BigEndian.PutUint16(resp[4:6], 1) // QDCOUNT = 1
 
+	host, _, isHost := d.lookupFQDN(q.name)
+	dom := d.domainFor(q.name)
+	if isHost || dom != "" {
+		resp[2] |= 0x04 // AA: authoritative for our topology
+	}
+
 	var rdata []byte
 	var ancount uint16
 	switch q.qtype {
 	case 1: // A
-		ip := d.fakeIPv4(q.name)
-		rdata = d.aRecord(1, ip[:])
-		ancount = 1
+		if isHost {
+			if v4 := net.ParseIP(host.IP).To4(); v4 != nil {
+				rdata = answerRR(1, v4)
+				ancount = 1
+			}
+		}
+		if ancount == 0 {
+			ip := d.fakeIPv4(q.name)
+			rdata = answerRR(1, ip[:])
+			ancount = 1
+		}
 	case 28: // AAAA
-		ip := d.fakeIPv6(q.name)
-		rdata = d.aRecord(28, ip[:])
-		ancount = 1
-	case 16: // TXT
-		txt := "v=spf1 include:_spf." + topDomain(q.name) + " ~all"
-		rdata = d.txtRecord(txt)
-		ancount = 1
-	case 15: // MX
-		rdata = d.mxRecord(10, "mail."+topDomain(q.name))
-		ancount = 1
+		if isHost {
+			if v6 := net.ParseIP(host.IP); v6 != nil && v6.To4() == nil {
+				rdata = answerRR(28, v6.To16())
+				ancount = 1
+			}
+			// v4-only virtual host: NODATA for AAAA (realistic).
+		} else {
+			ip := d.fakeIPv6(q.name)
+			rdata = answerRR(28, ip[:])
+			ancount = 1
+		}
 	case 2: // NS
-		rdata = d.nsRecord("ns1." + topDomain(q.name))
+		rdata = answerRR(2, encodeDNSName(d.nsName(dom)))
 		ancount = 1
 	case 5: // CNAME
-		rdata = d.nsRecordType(5, "www."+topDomain(q.name))
+		rdata = answerRR(5, encodeDNSName("www."+orDefault(dom)))
 		ancount = 1
+	case 6: // SOA
+		rdata = answerRR(6, d.soaData(orDefault(dom)))
+		ancount = 1
+	case 12: // PTR
+		if name, ok := d.reverseLookup(q.name); ok {
+			rdata = answerRR(12, encodeDNSName(name))
+			ancount = 1
+		}
+	case 13: // HINFO
+		cpu, os := hinfoFor(host, isHost)
+		rdata = answerRR(13, append(charString(cpu), charString(os)...))
+		ancount = 1
+	case 15: // MX
+		rdata = answerRR(15, mxData(10, d.mailName(dom)))
+		ancount = 1
+	case 16: // TXT
+		rdata = answerRR(16, charString("v=spf1 include:_spf."+orDefault(dom)+" ~all"))
+		ancount = 1
+	case 29: // LOC
+		rdata = answerRR(29, locData())
+		ancount = 1
+	case 33: // SRV
+		if target, prio, weight, port, ok := d.resolveSRV(q.name); ok {
+			rdata = answerRR(33, srvData(prio, weight, port, target))
+			ancount = 1
+		}
 	default:
 		ancount = 0
 	}
@@ -154,52 +202,281 @@ func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery) []byte {
 	return resp
 }
 
-// aRecord builds an answer RR for A/AAAA with a name-compression
-// pointer to the question (0xC00C) + the supplied rdata bytes.
-func (d *dnsHandler) aRecord(rrtype uint16, ip []byte) []byte {
-	out := []byte{0xC0, 0x0C} // pointer to QNAME at offset 12
+// answerRR builds an RR whose owner is a name-compression pointer to the
+// question (0xC00C) — valid because every answer is about q.name.
+func answerRR(rrtype uint16, rdata []byte) []byte {
+	out := []byte{0xC0, 0x0C}
 	out = binary.BigEndian.AppendUint16(out, rrtype)
 	out = binary.BigEndian.AppendUint16(out, 1)   // class IN
 	out = binary.BigEndian.AppendUint32(out, 300) // TTL 5m
-	out = binary.BigEndian.AppendUint16(out, uint16(len(ip)))
-	out = append(out, ip...)
-	return out
+	out = binary.BigEndian.AppendUint16(out, uint16(len(rdata)))
+	return append(out, rdata...)
 }
 
-func (d *dnsHandler) txtRecord(s string) []byte {
-	out := []byte{0xC0, 0x0C}
-	out = binary.BigEndian.AppendUint16(out, 16)
-	out = binary.BigEndian.AppendUint16(out, 1)
-	out = binary.BigEndian.AppendUint32(out, 300)
-	// RDATA: 1-byte length-prefixed string.
-	rd := append([]byte{byte(len(s))}, []byte(s)...)
-	out = binary.BigEndian.AppendUint16(out, uint16(len(rd)))
-	out = append(out, rd...)
-	return out
+// charString encodes a DNS character-string (1-byte length prefix).
+func charString(s string) []byte {
+	if len(s) > 255 {
+		s = s[:255]
+	}
+	return append([]byte{byte(len(s))}, []byte(s)...)
 }
 
-func (d *dnsHandler) mxRecord(pref uint16, host string) []byte {
-	out := []byte{0xC0, 0x0C}
-	out = binary.BigEndian.AppendUint16(out, 15)
-	out = binary.BigEndian.AppendUint16(out, 1)
-	out = binary.BigEndian.AppendUint32(out, 300)
+func mxData(pref uint16, host string) []byte {
 	rd := binary.BigEndian.AppendUint16(nil, pref)
-	rd = append(rd, encodeDNSName(host)...)
-	out = binary.BigEndian.AppendUint16(out, uint16(len(rd)))
-	out = append(out, rd...)
+	return append(rd, encodeDNSName(host)...)
+}
+
+func srvData(prio, weight, port uint16, target string) []byte {
+	rd := binary.BigEndian.AppendUint16(nil, prio)
+	rd = binary.BigEndian.AppendUint16(rd, weight)
+	rd = binary.BigEndian.AppendUint16(rd, port)
+	return append(rd, encodeDNSName(target)...)
+}
+
+// locData encodes a fixed, plausible LOC record (a generic datacenter
+// location): version 0, size/precision defaults, lat/lon ~ 0,0, 10m alt.
+func locData() []byte {
+	const base = uint32(1) << 31 // 0 degrees offset
+	out := []byte{0x00, 0x12, 0x16, 0x13}
+	out = binary.BigEndian.AppendUint32(out, base)            // latitude
+	out = binary.BigEndian.AppendUint32(out, base)            // longitude
+	out = binary.BigEndian.AppendUint32(out, 10000000+10*100) // altitude
 	return out
 }
 
-func (d *dnsHandler) nsRecord(host string) []byte { return d.nsRecordType(2, host) }
-func (d *dnsHandler) nsRecordType(rrtype uint16, host string) []byte {
-	out := []byte{0xC0, 0x0C}
-	out = binary.BigEndian.AppendUint16(out, rrtype)
-	out = binary.BigEndian.AppendUint16(out, 1)
-	out = binary.BigEndian.AppendUint32(out, 300)
-	rd := encodeDNSName(host)
-	out = binary.BigEndian.AppendUint16(out, uint16(len(rd)))
-	out = append(out, rd...)
-	return out
+func (d *dnsHandler) soaData(dom string) []byte {
+	rd := encodeDNSName(d.nsName(dom))
+	rd = append(rd, encodeDNSName("hostmaster."+dom)...)
+	serial := uint32(2024010101)
+	if d.id != nil {
+		serial = 2024010100 + d.id.Uint32("dns-soa/"+dom)%99 + 1
+	}
+	rd = binary.BigEndian.AppendUint32(rd, serial)
+	rd = binary.BigEndian.AppendUint32(rd, 3600)   // refresh
+	rd = binary.BigEndian.AppendUint32(rd, 600)    // retry
+	rd = binary.BigEndian.AppendUint32(rd, 604800) // expire
+	rd = binary.BigEndian.AppendUint32(rd, 300)    // minimum
+	return rd
+}
+
+// ---- topology resolution ----
+
+// lookupFQDN finds the virtual host whose FQDN (hostname[.domain]) equals
+// name, returning the host + its network.
+func (d *dnsHandler) lookupFQDN(name string) (HoneynetHost, HoneynetNetwork, bool) {
+	for _, h := range d.topo.Hosts {
+		if h.Hostname == "" {
+			continue
+		}
+		netw := d.networkByID(h.NetID)
+		fqdn := h.Hostname
+		if netw.Domain != "" {
+			fqdn = h.Hostname + "." + netw.Domain
+		}
+		if strings.EqualFold(name, fqdn) || strings.EqualFold(name, h.Hostname) {
+			return h, netw, true
+		}
+	}
+	return HoneynetHost{}, HoneynetNetwork{}, false
+}
+
+func (d *dnsHandler) networkByID(id string) HoneynetNetwork {
+	for _, n := range d.topo.Networks {
+		if n.ID == id {
+			return n
+		}
+	}
+	return HoneynetNetwork{}
+}
+
+// domainFor returns the configured honeynet domain that is a suffix of
+// name (the longest match), or "" if none.
+func (d *dnsHandler) domainFor(name string) string {
+	best := ""
+	for _, n := range d.topo.Networks {
+		if n.Domain == "" {
+			continue
+		}
+		if name == n.Domain || strings.HasSuffix(name, "."+n.Domain) {
+			if len(n.Domain) > len(best) {
+				best = n.Domain
+			}
+		}
+	}
+	return best
+}
+
+// nsName / mailName pick the network's resolver / a mail host when the
+// topology defines one, else a believable default under the domain.
+func (d *dnsHandler) nsName(dom string) string {
+	if dom != "" {
+		for _, n := range d.topo.Networks {
+			if n.Domain == dom && n.DNS != "" {
+				if h := d.hostByIP(n.DNS); h.Hostname != "" {
+					return h.Hostname + "." + dom
+				}
+			}
+		}
+	}
+	return "ns1." + orDefault(dom)
+}
+
+func (d *dnsHandler) mailName(dom string) string {
+	if h := d.hostWithHandler(dom, "smtp_recv"); h.Hostname != "" {
+		return h.Hostname + "." + dom
+	}
+	return "mail." + orDefault(dom)
+}
+
+// reverseLookup resolves an in-addr.arpa PTR query to a virtual host's
+// FQDN when the address matches; else fabricates a believable reverse
+// name so the zone looks populated.
+func (d *dnsHandler) reverseLookup(name string) (string, bool) {
+	ip, ok := reverseToIP(name)
+	if !ok {
+		return "", false
+	}
+	if h := d.hostByIP(ip); h.Hostname != "" {
+		netw := d.networkByID(h.NetID)
+		if netw.Domain != "" {
+			return h.Hostname + "." + netw.Domain, true
+		}
+		return h.Hostname, true
+	}
+	return "host-" + strings.ReplaceAll(ip, ".", "-") + ".in-addr.arpa", true
+}
+
+func (d *dnsHandler) hostByIP(ip string) HoneynetHost {
+	for _, h := range d.topo.Hosts {
+		if h.IP == ip {
+			return h
+		}
+	}
+	return HoneynetHost{}
+}
+
+func (d *dnsHandler) hostWithHandler(dom, handler string) HoneynetHost {
+	for _, h := range d.topo.Hosts {
+		if dom != "" && d.networkByID(h.NetID).Domain != dom {
+			continue
+		}
+		for _, s := range h.Services {
+			if s.Handler == handler {
+				return h
+			}
+		}
+	}
+	return HoneynetHost{}
+}
+
+// resolveSRV maps an "_service._proto.<...>.<domain>" query to a virtual
+// host offering the corresponding service in that domain. Returns the
+// SRV target FQDN + port (priority 0, weight 100).
+func (d *dnsHandler) resolveSRV(name string) (target string, prio, weight, port uint16, ok bool) {
+	labels := strings.Split(name, ".")
+	if len(labels) < 3 || !strings.HasPrefix(labels[0], "_") {
+		return "", 0, 0, 0, false
+	}
+	handler, defPort := srvServiceHandler(labels[0])
+	if handler == "" {
+		return "", 0, 0, 0, false
+	}
+	dom := d.domainFor(name)
+	for _, h := range d.topo.Hosts {
+		netw := d.networkByID(h.NetID)
+		if dom != "" && netw.Domain != dom {
+			continue
+		}
+		for _, s := range h.Services {
+			if s.Handler == handler {
+				fqdn := h.Hostname
+				if netw.Domain != "" {
+					fqdn = h.Hostname + "." + netw.Domain
+				}
+				p := uint16(s.Port)
+				if p == 0 {
+					p = defPort
+				}
+				return fqdn, 0, 100, p, true
+			}
+		}
+	}
+	return "", 0, 0, 0, false
+}
+
+// srvServiceHandler maps an SRV service label to the handler that backs
+// it (and its default port) so an AD/service SRV lookup resolves to the
+// right virtual host.
+func srvServiceHandler(label string) (handler string, port uint16) {
+	switch label {
+	case "_ldap", "_gc":
+		return "ldap", 389
+	case "_kerberos", "_kerberos-master":
+		return "kerberos", 88
+	case "_ldaps":
+		return "https", 636
+	case "_http":
+		return "http", 80
+	case "_https":
+		return "https", 443
+	case "_ssh":
+		return "ssh", 22
+	case "_smtp", "_submission":
+		return "smtp_recv", 25
+	case "_sip":
+		return "sip", 5060
+	case "_xmpp-client", "_xmpp-server":
+		return "xmpp", 5222
+	case "_rdp":
+		return "rdp", 3389
+	case "_vnc":
+		return "vnc", 5900
+	case "_mqtt":
+		return "mqtt", 1883
+	}
+	return "", 0
+}
+
+// hinfoFor returns the (CPU, OS) HINFO strings for a host (from its OS /
+// archetype family) or a generic pair for unknown names.
+func hinfoFor(h HoneynetHost, isHost bool) (cpu, os string) {
+	if !isHost {
+		return "x86_64", "Linux"
+	}
+	switch strings.ToLower(h.OS) {
+	case "windows":
+		return "Intel64 Family 6", "Windows Server 2019"
+	case "ics", "plc", "ot":
+		return "ARM", "VxWorks"
+	case "cisco":
+		return "MIPS", "Cisco IOS"
+	case "bsd", "freebsd", "openbsd":
+		return "amd64", "BSD"
+	case "", "linux":
+		return "x86_64", "Linux"
+	}
+	return "x86_64", h.OS
+}
+
+// reverseToIP turns "20.0.0.10.in-addr.arpa" into "10.0.0.20".
+func reverseToIP(name string) (string, bool) {
+	const suffix = ".in-addr.arpa"
+	n := strings.TrimSuffix(name, ".")
+	if !strings.HasSuffix(n, suffix) {
+		return "", false
+	}
+	rev := strings.Split(strings.TrimSuffix(n, suffix), ".")
+	if len(rev) != 4 {
+		return "", false
+	}
+	return rev[3] + "." + rev[2] + "." + rev[1] + "." + rev[0], true
+}
+
+func orDefault(dom string) string {
+	if dom == "" {
+		return "example.com"
+	}
+	return dom
 }
 
 // publicFirstOctets is a curated set of first octets that fall in
@@ -262,17 +539,6 @@ func encodeDNSName(name string) []byte {
 	return out
 }
 
-func topDomain(name string) string {
-	parts := strings.Split(name, ".")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], ".")
-	}
-	if name == "" {
-		return "example.com"
-	}
-	return name
-}
-
 func dnsTypeName(t uint16) string {
 	switch t {
 	case 1:
@@ -285,12 +551,16 @@ func dnsTypeName(t uint16) string {
 		return "SOA"
 	case 12:
 		return "PTR"
+	case 13:
+		return "HINFO"
 	case 15:
 		return "MX"
 	case 16:
 		return "TXT"
 	case 28:
 		return "AAAA"
+	case 29:
+		return "LOC"
 	case 33:
 		return "SRV"
 	case 255:

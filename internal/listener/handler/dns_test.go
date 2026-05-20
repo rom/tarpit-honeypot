@@ -150,7 +150,7 @@ func TestDNSAnswerMXAndTXT(t *testing.T) {
 func TestDNSUnsupportedTypeNoAnswer(t *testing.T) {
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 1, 1, 1), Port: 5300}
-	q := buildDNSQuery("example.com", 6) // SOA: supported as a name, not answered
+	q := buildDNSQuery("example.com", 99) // SPF (legacy/unsupported) -> NOERROR/0
 	if _, err := (&dnsHandler{}).Handle(context.Background(), q, src, pc, config.Listener{}); err != nil {
 		t.Fatal(err)
 	}

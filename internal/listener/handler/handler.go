@@ -58,7 +58,18 @@ type Deps struct {
 // safe to share by value because the underlying slices are owned by the
 // snapshot itself.
 type HoneynetSnapshot struct {
-	Hosts []HoneynetHost
+	Hosts    []HoneynetHost
+	Networks []HoneynetNetwork
+}
+
+// HoneynetNetwork carries the per-network metadata the DNS handler needs
+// to answer coherently (domain for SRV/NS/SOA, the resolver/gateway IPs).
+type HoneynetNetwork struct {
+	ID      string
+	CIDR    string
+	Domain  string
+	DNS     string
+	Gateway string
 }
 
 type HoneynetHost struct {

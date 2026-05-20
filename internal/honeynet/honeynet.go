@@ -289,6 +289,30 @@ type ServiceInfo struct {
 	Handler string
 }
 
+// NetworkInfo is a serializable per-network view (domain / resolver /
+// gateway) for handlers that need topology metadata, e.g. the DNS
+// handler answering SRV / NS / SOA / PTR coherently.
+type NetworkInfo struct {
+	ID      string
+	CIDR    string
+	Domain  string
+	DNS     string
+	Gateway string
+}
+
+// NetworkSnapshot returns the per-network metadata. Returns nil when the
+// topology is empty.
+func (t *Topology) NetworkSnapshot() []NetworkInfo {
+	if t == nil || len(t.nets) == 0 {
+		return nil
+	}
+	out := make([]NetworkInfo, 0, len(t.nets))
+	for _, n := range t.nets {
+		out = append(out, NetworkInfo{ID: n.ID, CIDR: n.CIDR, Domain: n.Domain, DNS: n.DNS, Gateway: n.Gateway})
+	}
+	return out
+}
+
 func (t *Topology) SnapshotForHandlers() []HostInfo {
 	if t == nil || len(t.nets) == 0 {
 		return nil

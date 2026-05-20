@@ -502,7 +502,13 @@ func honeynetSnapshot(t *honeynet.Topology) handler.HoneynetSnapshot {
 			Services: services,
 		})
 	}
-	return handler.HoneynetSnapshot{Hosts: out}
+	var nets []handler.HoneynetNetwork
+	for _, n := range t.NetworkSnapshot() {
+		nets = append(nets, handler.HoneynetNetwork{
+			ID: n.ID, CIDR: n.CIDR, Domain: n.Domain, DNS: n.DNS, Gateway: n.Gateway,
+		})
+	}
+	return handler.HoneynetSnapshot{Hosts: out, Networks: nets}
 }
 
 func needsCapture(cfg *config.Config) bool {
