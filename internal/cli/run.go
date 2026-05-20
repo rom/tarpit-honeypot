@@ -14,6 +14,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/privdrop"
+	"github.com/rom/tarpit-honeypot/internal/sandbox"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
 	"github.com/rom/tarpit-honeypot/internal/ui"
 )
@@ -60,6 +61,21 @@ func cmdRun(args []string) error {
 
 	if err := privdrop.Drop(cfg.Sensor.DropUser, cfg.Sensor.DropGroup); err != nil {
 		return err
+	}
+
+	// Self-confine after privileged setup + privilege drop: seccomp
+	// denies shell-spawn / module-load / debug syscalls, Landlock makes
+	// everything but data_dir read-only. Best-effort (Linux-only).
+	if sb := cfg.Sensor.Sandbox; sb.Seccomp || sb.Landlock {
+		if err := sandbox.Apply(sandbox.Config{
+			Seccomp:    sb.Seccomp,
+			Landlock:   sb.Landlock,
+			DataDir:    cfg.Sensor.DataDir,
+			ReadPaths:  sb.ReadPaths,
+			WritePaths: sb.WritePaths,
+		}, slog.Default()); err != nil {
+			slog.Warn("sandbox: confinement incomplete", "err", err)
+		}
 	}
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

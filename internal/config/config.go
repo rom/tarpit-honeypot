@@ -205,6 +205,29 @@ type Sensor struct {
 	VulnEmulation bool `yaml:"vuln_emulation"`
 	// Payloads configures malware / shellcode / payload harvesting.
 	Payloads Payloads `yaml:"payloads"`
+	// Sandbox configures Linux kernel self-confinement (seccomp syscall
+	// filter + Landlock filesystem restriction). Off by default; no-ops
+	// on non-Linux.
+	Sandbox Sandbox `yaml:"sandbox"`
+}
+
+// Sandbox configures kernel-enforced self-confinement applied after
+// privileged setup + privilege drop. Linux-only; ignored elsewhere.
+type Sandbox struct {
+	// Seccomp installs a seccomp-bpf filter that denies syscalls the
+	// honeypot never legitimately makes (execve/execveat, ptrace,
+	// module loading, mount, kexec, process_vm_*, etc.) so a parser
+	// 0-day can't spawn a shell or tamper with the kernel.
+	Seccomp bool `yaml:"seccomp"`
+	// Landlock restricts the process's filesystem access (Linux 5.13+):
+	// read-only everywhere, writable only under data_dir + WritePaths.
+	Landlock bool `yaml:"landlock"`
+	// ReadPaths overrides the read-allowed roots (default ["/"]). Set
+	// when you want to also deny reads outside an explicit list.
+	ReadPaths []string `yaml:"read_paths"`
+	// WritePaths grants write access to paths beyond data_dir (e.g. a
+	// log file or socket dir outside the data directory).
+	WritePaths []string `yaml:"write_paths"`
 }
 
 // Payloads configures capture of attacker-supplied binaries, shellcode,
