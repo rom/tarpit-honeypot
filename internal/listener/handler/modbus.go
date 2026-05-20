@@ -77,6 +77,14 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		rpdu := m.respondPDU(pduBuf, entry)
 		pdus = append(pdus, entry)
 
+		// Writing to a "PLC" (coils/registers/file records) is an attacker
+		// manipulating the control process, not a benign scan — flag it
+		// (maps to ATT&CK for ICS T0836 Modify Parameter / T0831
+		// Manipulation of Control).
+		if fcv, ok := entry["function_code"].(byte); ok && modbusIsWrite(fcv) {
+			flagAnomaly(&res, "modbus-write-attempt")
+		}
+
 		if rpdu != nil {
 			rlen := uint16(len(rpdu) + 1)
 			resp := make([]byte, 0, 7+len(rpdu))
@@ -204,6 +212,32 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 			return append([]byte{fc}, pdu[1:5]...) // echo addr + quantity
 		}
 		return []byte{fc | 0x80, 0x03}
+	case 0x16: // Mask Write Register
+		if len(pdu) >= 7 {
+			meta["reg_addr"] = binary.BigEndian.Uint16(pdu[1:3])
+			meta["and_mask"] = binary.BigEndian.Uint16(pdu[3:5])
+			meta["or_mask"] = binary.BigEndian.Uint16(pdu[5:7])
+			out := make([]byte, len(pdu))
+			copy(out, pdu) // echo request
+			return out
+		}
+		return []byte{fc | 0x80, 0x03}
+	case 0x17: // Read/Write Multiple Registers
+		if len(pdu) >= 10 {
+			readQty := binary.BigEndian.Uint16(pdu[3:5])
+			meta["read_qty"] = readQty
+			meta["write_addr"] = binary.BigEndian.Uint16(pdu[5:7])
+			meta["write_qty"] = binary.BigEndian.Uint16(pdu[7:9])
+			if readQty == 0 || readQty > 125 {
+				return []byte{fc | 0x80, 0x03}
+			}
+			out := append([]byte{fc, byte(readQty * 2)}, make([]byte, readQty*2)...)
+			for i := uint16(0); i < readQty; i++ {
+				binary.BigEndian.PutUint16(out[2+2*i:4+2*i], 1000+(i*173)%500)
+			}
+			return out
+		}
+		return []byte{fc | 0x80, 0x03}
 	case 0x11: // Report Server ID
 		// vendor: "MX3 " + run-status 0xff (running).
 		return []byte{0x11, 0x05, 0x4d, 0x58, 0x33, 0x20, 0xff}
@@ -301,6 +335,17 @@ func modbusReadDeviceID(deviceID, objID byte) []byte {
 		body = append(body, []byte(o.data)...)
 	}
 	return append([]byte{0x2B}, body...)
+}
+
+// modbusIsWrite reports whether a function code mutates PLC state (coils,
+// registers, or file records) — the writes worth flagging as control-system
+// manipulation rather than reconnaissance.
+func modbusIsWrite(fc byte) bool {
+	switch fc {
+	case 0x05, 0x06, 0x0F, 0x10, 0x15, 0x16, 0x17:
+		return true
+	}
+	return false
 }
 
 // modbusFCName returns the symbolic function-code name for the meta

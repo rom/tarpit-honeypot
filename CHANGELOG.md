@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added/Changed — richer existing-protocol support
+- **SSH server `KEXINIT` + HASSH-server** (`ssh_kex.go`): the `ssh` handler
+  now pipelines its own `SSH_MSG_KEXINIT` right after the banner, exactly as
+  real OpenSSH does. The advertised algorithm set is derived from the
+  version banner (modern OpenSSH / legacy / Dropbear) so the **server
+  HASSH** is realistic and version-consistent — previously "banner then
+  silence" was a honeypot tell. Recorded as `hassh_server`; the bogus
+  "Protocol mismatch." trailer was dropped.
+- **Modbus write detection + fuller function set**: write function codes
+  (5/6/0F/10/15/16/17) now raise the `modbus-write-attempt` anomaly
+  (control-process manipulation, ATT&CK for ICS T0836/T0831). Added
+  believable responses for FC 0x16 (Mask Write Register) and 0x17
+  (Read/Write Multiple Registers) so the Modicon persona supports its real
+  function set.
+
 ### Added — declarative fake-protocol handler (`scripted`)
 - **`handler: scripted`** (`internal/listener/handler/scripted.go`): stand up
   a believable custom TCP service entirely in YAML — no Lua. The `scripted:`

@@ -24,10 +24,11 @@ type ssh struct {
 
 func (s *ssh) Name() string { return "ssh" }
 
-// SSH identification string per RFC 4253 §4.2. We send a believable banner,
-// read the client's identification line, then (optionally) read one
-// SSH_MSG_KEXINIT packet so we can compute the HASSH fingerprint, then
-// send a fake "Protocol mismatch" and close.
+// SSH identification string per RFC 4253 §4.2. We send a believable banner
+// immediately followed by our own SSH_MSG_KEXINIT (so the server HASSH is
+// realistic and version-consistent), read the client's identification line,
+// then read one client SSH_MSG_KEXINIT packet to compute the client HASSH
+// fingerprint, and drop the connection.
 //
 // The banner picks from a deployment-unique variant pool when an Identity
 // is supplied — two sensors with different deployment_id values present
@@ -49,16 +50,30 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 			banner = "SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1\r\n"
 		}
 	}
-	res := Result{BannerSent: banner}
-	if _, err := conn.Write([]byte(banner)); err != nil {
-		res.Meta = map[string]any{"write_err": err.Error()}
+	res := Result{BannerSent: banner, Meta: map[string]any{}}
+	// Send the banner immediately followed by our own SSH_MSG_KEXINIT,
+	// exactly as a real OpenSSH server pipelines them. Without this a
+	// scanner computing the *server* HASSH sees "banner then silence",
+	// which is a honeypot tell; with it, the advertised algorithm set is
+	// consistent with the version banner (derived from it). One write
+	// keeps the net.Pipe path (and real clients) from stalling.
+	out := []byte(banner)
+	if strings.HasPrefix(banner, "SSH-") {
+		kexPayload := buildKEXINITPayload(sshAlgosForBanner(banner))
+		out = append(out, frameSSHPacket(kexPayload)...)
+		if _, sum := fingerprint.HASSH(kexPayload); sum != "" {
+			res.Meta["hassh_server"] = sum
+		}
+	}
+	if _, err := conn.Write(out); err != nil {
+		res.Meta["write_err"] = err.Error()
 		return res, nil
 	}
 	br := bufio.NewReader(conn)
 	line, err := br.ReadString('\n')
 	if err == nil && line != "" {
 		res.Payload = []byte(line)
-		res.Meta = map[string]any{"client_id": line}
+		res.Meta["client_id"] = line
 		// SSH identification strings are ASCII per RFC 4253 §4.2 —
 		// non-printable bytes mean someone's fuzzing or running a
 		// non-SSH scanner against the port.
@@ -72,19 +87,16 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 			flagAnomaly(&res, "ssh-id-not-ssh")
 		}
 	} else if err != nil {
-		res.Meta = map[string]any{"read_err": err.Error()}
+		res.Meta["read_err"] = err.Error()
 	}
 
-	// Try to read one binary-packet (likely SSH_MSG_KEXINIT) for HASSH.
+	// Try to read one binary-packet (the client's SSH_MSG_KEXINIT) for the
+	// client HASSH fingerprint, then drop the connection (we never carry
+	// the key exchange through).
 	if hashRaw, hashSum, ok := readHASSH(br); ok {
-		if res.Meta == nil {
-			res.Meta = map[string]any{}
-		}
 		res.Meta["hassh"] = hashSum
 		res.Meta["hassh_algorithms"] = hashRaw
 	}
-
-	_, _ = conn.Write([]byte("Protocol mismatch.\r\n"))
 	return res, nil
 }
 

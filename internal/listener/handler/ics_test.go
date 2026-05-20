@@ -57,6 +57,36 @@ func TestModbusReadHoldingRegisters(t *testing.T) {
 	}
 }
 
+// Writing to a holding register must raise the modbus-write-attempt
+// anomaly (control-process manipulation) and capture the written value.
+func TestModbusWriteAttemptAnomaly(t *testing.T) {
+	client, server := pipePair(t)
+	cfg := config.Listener{Handler: "modbus", ReadBytes: 260, ReadTimeout: time.Second}
+	// Write Single Register: txid=3, len=6, unit=1, fc=0x06, addr=0x0001, value=0x1234
+	req := []byte{0, 3, 0, 0, 0, 6, 0x01, 0x06, 0x00, 0x01, 0x12, 0x34}
+	done := make(chan struct{})
+	var res Result
+	go func() { defer close(done); res, _ = (&modbus{}).Handle(context.Background(), server, cfg) }()
+	if _, err := client.Write(req); err != nil {
+		t.Fatal(err)
+	}
+	resp := make([]byte, 12) // header 7 + echo pdu 5
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := io.ReadFull(client, resp); err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+	<-done
+	anoms, _ := res.Meta["anomalies"].([]string)
+	if !containsStr(anoms, "modbus-write-attempt") {
+		t.Errorf("anomalies = %v; want modbus-write-attempt", anoms)
+	}
+	pdus, _ := res.Meta["pdus"].([]map[string]any)
+	if len(pdus) == 0 || pdus[0]["reg_value"] != uint16(0x1234) {
+		t.Errorf("captured reg_value = %v; want 0x1234", res.Meta["pdus"])
+	}
+}
+
 func TestModbusException(t *testing.T) {
 	client, server := pipePair(t)
 	cfg := config.Listener{Handler: "modbus", ReadBytes: 260, ReadTimeout: time.Second}
