@@ -12,9 +12,9 @@ import (
 // shaped per the --type flag so the operator can paste it directly into
 // a config or a bait artifact.
 //
-//   dns  - "<hex>-<label>.<base-domain>"
-//   url  - "/__canary__/<hex>-<label>"
-//   hex  - just the hex string
+//	dns  - "<hex>-<label>.<base-domain>"
+//	url  - "/__canary__/<hex>-<label>"
+//	hex  - just the hex string
 //
 // Tokens default to 64 bits of entropy. That's overkill for guess-prevention
 // but short enough to fit cleanly in subdomains, paths, and filenames.

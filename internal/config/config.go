@@ -242,6 +242,15 @@ type Sensor struct {
 	// SessionRecording records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema v2 casts under <data_dir>/sessions/.
 	SessionRecording SessionRecording `yaml:"session_recording"`
+	// Interfaces names the network interface(s) the sensor should use.
+	// It supplies the default interface for the AF_PACKET layer — the
+	// sniffer and the honeynet ARP/ICMP/LLDP/PROFINET responders — when
+	// those sections don't set their own `interface`. Listeners that bind
+	// to a wildcard host (0.0.0.0 / :: / empty) are expanded to bind on
+	// each named interface's IP addresses. Empty = all interfaces.
+	// Settable on the CLI with -i/--interface (repeatable), which
+	// overrides this list.
+	Interfaces []string `yaml:"interfaces"`
 }
 
 // SessionRecording configures interactive-session capture. Off by default.

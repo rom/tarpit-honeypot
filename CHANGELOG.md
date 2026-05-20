@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — interface selection + multiple config files
+- **`sensor.interfaces`** (+ `-i`/`--interface` CLI, repeatable): name the
+  network interface(s) the sensor uses. It supplies the default interface
+  for the AF_PACKET layer (sniffer + honeynet ARP/ICMP/LLDP/PROFINET
+  responders) when those sections don't set their own, and pins
+  wildcard-bound listeners (`0.0.0.0`/`::`) to the first interface's
+  primary IP. `-i` overrides the config list.
+- **Multiple `-c` config files**: `run`, `validate-config`, and
+  `show-config` accept `-c` repeatedly and COMBINE the files — top-level
+  lists (listeners, honeynets, channels, ...) are appended so every host
+  across all files is used, while scalar config takes the later file's
+  value (`config.LoadManyWithOverrides`). A single `-c` is unchanged;
+  per-file `conf.d/` keeps its override (replace-lists) semantics.
+
 ### Added — OPC-DA emulation (dcerpc / OPCEnum)
 - The `dcerpc` handler now recognizes the OPC-DA (classic, DCOM) interface
   family — OPCEnum, IOPCServerList(2), IOPCServer/Browse/ItemMgt — plus the

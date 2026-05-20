@@ -9,15 +9,22 @@ import (
 
 func cmdValidate(args []string) error {
 	fs := flag.NewFlagSet("validate-config", flag.ContinueOnError)
-	cfgPath := fs.String("c", "/etc/tarpit-honeypot/config.yaml", "path to config file")
+	var f commonFlags
+	f.register(fs, "/etc/tarpit-honeypot/config.yaml")
 	diffPath := fs.String("diff", "", "compare against this other config file and classify changes as hot-reloadable vs restart-required")
-	if err := fs.Parse(args); err != nil {
+	if err := parseOrUsage(fs, args); err != nil {
+		if err == errHelp {
+			return nil
+		}
 		return err
 	}
-	cfg, err := config.Load(*cfgPath)
+	// Validate the effective config (base file(s) + conf.d + env + --set);
+	// multiple -c are combined exactly as `run` would combine them.
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
 	if err != nil {
 		return err
 	}
+	f.applyIfaceOverride(cfg)
 	fmt.Printf("config OK: %d listeners, %d channels, %d routes, %d canaries, %d url canaries, %d dns canaries\n",
 		len(cfg.Listeners), len(cfg.Channels), len(cfg.Routes),
 		len(cfg.Canaries), len(cfg.URLCanaries), len(cfg.DNSCanaries))
@@ -30,7 +37,7 @@ func cmdValidate(args []string) error {
 	}
 	diff := config.DiffConfigs(cfg, other)
 	if !diff.HasChanges() {
-		fmt.Printf("\nno effective differences between %s and %s\n", *cfgPath, *diffPath)
+		fmt.Printf("\nno effective differences between %v and %s\n", f.paths(), *diffPath)
 		return nil
 	}
 	fmt.Printf("\nchanges that would hot-reload on SIGHUP (%d):\n", len(diff.HotReloadable))

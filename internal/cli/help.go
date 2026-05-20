@@ -104,6 +104,13 @@ GLOBAL FLAGS
 
 COMMON FLAGS (most subcommands)
     -c <path>            Config file (default /etc/tarpit-honeypot/config.yaml).
+                         Repeatable: pass -c twice+ to COMBINE files (every
+                         listener/honeynet across all files is used; scalar
+                         config takes the last file's value). run / validate-
+                         config / show-config.
+    -i, --interface <if> Network interface to use (repeatable). Overrides
+                         sensor.interfaces: default for the AF_PACKET layer +
+                         pins wildcard listener binds to the interface IP.
     --set key.path=val   Override one YAML key (repeatable). Booleans /
                          ints / floats / strings auto-detected.
     --log-level          debug | info | warn | error (default info).

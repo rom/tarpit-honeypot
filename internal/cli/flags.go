@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
 // stringList is a flag.Value collecting repeated --set arguments. Each
@@ -21,25 +23,62 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
+// plainList is a repeatable flag.Value that accepts any value (no
+// key=value constraint) — used for -c (config paths) and -i (interfaces).
+type plainList []string
+
+func (s *plainList) String() string { return strings.Join(*s, ",") }
+func (s *plainList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
 // commonFlags is what almost every subcommand exposes: -c for config
-// path, --set for overrides, and the loggingFlags block.
+// path(s), -i for network interface(s), --set for overrides, and the
+// loggingFlags block.
 type commonFlags struct {
-	cfgPath string
-	sets    stringList
-	log     loggingFlags
+	cfgPaths   plainList
+	cfgDefault string
+	ifaces     plainList
+	sets       stringList
+	log        loggingFlags
 }
 
 // register wires up the standard flags on fs. cfgDefault is the default
-// config path; pass "" for subcommands that don't take a config.
+// config path; pass "" for subcommands that don't take a config. `-c` is
+// repeatable — pass it multiple times to combine config files (all hosts
+// across all files are used).
 func (c *commonFlags) register(fs *flag.FlagSet, cfgDefault string) {
 	if cfgDefault != "" {
-		fs.StringVar(&c.cfgPath, "c", cfgDefault, "path to config file")
+		c.cfgDefault = cfgDefault
+		fs.Var(&c.cfgPaths, "c", "path to config file (repeatable: combine multiple files)")
 	}
+	fs.Var(&c.ifaces, "i", "network interface to use (repeatable; overrides sensor.interfaces)")
+	fs.Var(&c.ifaces, "interface", "alias for -i")
 	fs.Var(&c.sets, "set", "override one YAML key as `key.path=value` (repeatable)")
 	c.log.register(
 		func(p *string, name, def, usage string) { fs.StringVar(p, name, def, usage) },
 		func(p *bool, name string, def bool, usage string) { fs.BoolVar(p, name, def, usage) },
 	)
+}
+
+// paths returns the config paths to load: the repeated -c values, or the
+// single default when none were given.
+func (c *commonFlags) paths() []string {
+	if len(c.cfgPaths) > 0 {
+		return c.cfgPaths
+	}
+	if c.cfgDefault != "" {
+		return []string{c.cfgDefault}
+	}
+	return nil
+}
+
+// applyIfaceOverride lets -i / --interface override sensor.interfaces.
+func (c *commonFlags) applyIfaceOverride(cfg *config.Config) {
+	if len(c.ifaces) > 0 {
+		cfg.Sensor.Interfaces = append([]string(nil), c.ifaces...)
+	}
 }
 
 // parseOrUsage runs fs.Parse but treats `-h`/`--help` as a clean exit

@@ -2,13 +2,13 @@
 //
 // LoadWithOverrides drives a 4-step pipeline:
 //
-//   1. Read the base YAML file into a generic map.
-//   2. If a sibling conf.d/ directory exists, merge every *.yaml /
-//      *.yml file in lexical order over the base (later wins).
-//   3. Apply environment-variable overrides — anything matching
-//      TARPIT_<KEY_PATH> (uppercase, dots and dashes -> underscores)
-//      gets injected into the map.
-//   4. Apply --set key.path=value overrides.
+//  1. Read the base YAML file into a generic map.
+//  2. If a sibling conf.d/ directory exists, merge every *.yaml /
+//     *.yml file in lexical order over the base (later wins).
+//  3. Apply environment-variable overrides — anything matching
+//     TARPIT_<KEY_PATH> (uppercase, dots and dashes -> underscores)
+//     gets injected into the map.
+//  4. Apply --set key.path=value overrides.
 //
 // Then the merged map is re-marshalled and decoded into the Config
 // struct so applyDefaults() + Validate() see the final shape.
@@ -28,33 +28,78 @@ import (
 // LoadWithOverrides loads `path`, layers any sibling conf.d/*.yaml, then
 // applies environment-variable overrides and the CLI `--set` slice.
 func LoadWithOverrides(path string, sets []string) (*Config, error) {
+	base, err := readBaseWithConfd(path)
+	if err != nil {
+		return nil, err
+	}
+	return finalizeConfig(base, sets)
+}
+
+// LoadManyWithOverrides loads several base config files and COMBINES them:
+// top-level lists (listeners, honeynets, channels, ...) are appended so a
+// host defined in any file is used, and maps are deep-merged (later file
+// wins for scalar leaves). Each file's own sibling conf.d/ is applied to
+// that file first (conf.d keeps its replace-lists semantics — it overrides
+// one config; multiple -c files combine). Env + --set apply last. With a
+// single path it is identical to LoadWithOverrides.
+func LoadManyWithOverrides(paths []string, sets []string) (*Config, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no config path provided")
+	}
+	if len(paths) == 1 {
+		return LoadWithOverrides(paths[0], sets)
+	}
+	var combined map[string]any
+	for _, p := range paths {
+		m, err := readBaseWithConfd(p)
+		if err != nil {
+			return nil, err
+		}
+		if combined == nil {
+			combined = m
+		} else {
+			combined = combineMaps(combined, m)
+		}
+	}
+	return finalizeConfig(combined, sets)
+}
+
+// readBaseWithConfd reads one base file and deep-merges any sibling
+// conf.d/*.yaml over it (lexical order, later wins, lists replaced).
+func readBaseWithConfd(path string) (map[string]any, error) {
 	base, err := readYAMLMap(path)
 	if err != nil {
 		return nil, err
 	}
-	// conf.d sibling, if any.
 	dir := filepath.Join(filepath.Dir(path), "conf.d")
-	if entries, err := os.ReadDir(dir); err == nil {
-		names := []string{}
-		for _, e := range entries {
-			n := e.Name()
-			if e.IsDir() {
-				continue
-			}
-			if strings.HasSuffix(n, ".yaml") || strings.HasSuffix(n, ".yml") {
-				names = append(names, n)
-			}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return base, nil // no conf.d sibling
+	}
+	names := []string{}
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() {
+			continue
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			extra, err := readYAMLMap(filepath.Join(dir, n))
-			if err != nil {
-				return nil, fmt.Errorf("conf.d/%s: %w", n, err)
-			}
-			base = mergeMaps(base, extra)
+		if strings.HasSuffix(n, ".yaml") || strings.HasSuffix(n, ".yml") {
+			names = append(names, n)
 		}
 	}
-	// Environment-variable overrides.
+	sort.Strings(names)
+	for _, n := range names {
+		extra, err := readYAMLMap(filepath.Join(dir, n))
+		if err != nil {
+			return nil, fmt.Errorf("conf.d/%s: %w", n, err)
+		}
+		base = mergeMaps(base, extra)
+	}
+	return base, nil
+}
+
+// finalizeConfig applies env + --set overrides to the merged map, then
+// decodes it into a validated Config.
+func finalizeConfig(base map[string]any, sets []string) (*Config, error) {
 	for _, env := range os.Environ() {
 		if !strings.HasPrefix(env, "TARPIT_") {
 			continue
@@ -66,7 +111,6 @@ func LoadWithOverrides(path string, sets []string) (*Config, error) {
 		k, v := env[7:i], env[i+1:]
 		applyDot(base, envKeyToPath(k), parseScalar(v))
 	}
-	// --set overrides.
 	for _, s := range sets {
 		i := strings.IndexByte(s, '=')
 		if i < 0 {
@@ -74,7 +118,6 @@ func LoadWithOverrides(path string, sets []string) (*Config, error) {
 		}
 		applyDot(base, strings.Split(s[:i], "."), parseScalar(s[i+1:]))
 	}
-	// Round-trip back through YAML so Config tags map cleanly.
 	out, err := yaml.Marshal(base)
 	if err != nil {
 		return nil, err
@@ -152,6 +195,38 @@ func mergeMaps(a, b map[string]any) map[string]any {
 		if aok && bok {
 			a[k] = mergeMaps(amap, bmap)
 			continue
+		}
+		a[k] = bv
+	}
+	return a
+}
+
+// combineMaps deep-merges b into a like mergeMaps, except that when both
+// values are lists it APPENDS (a then b) instead of replacing. This is the
+// "combine multiple -c files" semantics: every listener / honeynet / host
+// across all files is kept, while scalar config (sensor.*, ui, ...) takes
+// the later file's value.
+func combineMaps(a, b map[string]any) map[string]any {
+	if a == nil {
+		return b
+	}
+	for k, bv := range b {
+		av, ok := a[k]
+		if !ok {
+			a[k] = bv
+			continue
+		}
+		if am, aok := av.(map[string]any); aok {
+			if bm, bok := bv.(map[string]any); bok {
+				a[k] = combineMaps(am, bm)
+				continue
+			}
+		}
+		if al, aok := av.([]any); aok {
+			if bl, bok := bv.([]any); bok {
+				a[k] = append(al, bl...)
+				continue
+			}
 		}
 		a[k] = bv
 	}

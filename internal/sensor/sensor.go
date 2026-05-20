@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -559,6 +560,81 @@ func (s *Sensor) Correlator() *correlate.Correlator { return s.correlator }
 func (s *Sensor) Store() *store.Store               { return s.store }
 func (s *Sensor) Config() *config.Config            { return s.cfg }
 
+// effIface returns sectionIface if set, else the sensor's first configured
+// interface, else "" — the AF_PACKET default-interface fallback.
+func (s *Sensor) effIface(sectionIface string) string {
+	if sectionIface != "" {
+		return sectionIface
+	}
+	if len(s.cfg.Sensor.Interfaces) > 0 {
+		return s.cfg.Sensor.Interfaces[0]
+	}
+	return ""
+}
+
+// bindForInterfaces rewrites a wildcard bind host to the primary IP of the
+// first configured interface so sensor.interfaces constrains where
+// listeners bind. Non-wildcard binds and the no-interfaces case pass
+// through unchanged; if the interface has no usable IP we warn and keep
+// the wildcard so the sensor still starts.
+func (s *Sensor) bindForInterfaces(bind string) string {
+	if len(s.cfg.Sensor.Interfaces) == 0 {
+		return bind
+	}
+	host, port, err := net.SplitHostPort(bind)
+	if err != nil || !isWildcardHost(host) {
+		return bind
+	}
+	ip := ifacePrimaryIP(s.cfg.Sensor.Interfaces[0])
+	if ip == "" {
+		slog.Warn("interface has no usable IP; leaving bind wildcard",
+			"interface", s.cfg.Sensor.Interfaces[0], "bind", bind)
+		return bind
+	}
+	return net.JoinHostPort(ip, port)
+}
+
+func isWildcardHost(h string) bool {
+	switch h {
+	case "", "0.0.0.0", "::", "*":
+		return true
+	}
+	return false
+}
+
+// ifacePrimaryIP returns the interface's primary global-unicast IP,
+// preferring IPv4. Returns "" if the interface is unknown / has none.
+func ifacePrimaryIP(name string) string {
+	ifi, err := net.InterfaceByName(name)
+	if err != nil {
+		return ""
+	}
+	addrs, err := ifi.Addrs()
+	if err != nil {
+		return ""
+	}
+	var v6 string
+	for _, a := range addrs {
+		var ip net.IP
+		switch v := a.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		if ip.To4() != nil {
+			return ip.String()
+		}
+		if v6 == "" {
+			v6 = ip.String()
+		}
+	}
+	return v6
+}
+
 // startListener builds and launches a single listener. It uses the sensor's
 // rootCtx (set in Run) as the parent so global shutdown still cascades.
 func (s *Sensor) startListener(l config.Listener) error {
@@ -566,6 +642,8 @@ func (s *Sensor) startListener(l config.Listener) error {
 		return fmt.Errorf("startListener called before Run()")
 	}
 	ctx, cancel := context.WithCancel(s.rootCtx)
+	// sensor.interfaces constrains where wildcard listeners bind.
+	l.Bind = s.bindForInterfaces(l.Bind)
 	ln, err := listener.Build(l, listener.BuildArgs{
 		SensorName:       s.name,
 		DataDir:          s.cfg.Sensor.DataDir,
@@ -903,7 +981,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 
 	if s.cfg.Sniffer.Enabled {
-		sn, err := sniffer.New(s.cfg.Sniffer, s.name)
+		snCfg := s.cfg.Sniffer
+		snCfg.Interface = s.effIface(snCfg.Interface)
+		sn, err := sniffer.New(snCfg, s.name)
 		if err != nil {
 			slog.Warn("sniffer disabled", "err", err)
 		} else {
@@ -920,7 +1000,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	// One ARP responder per honeynet (each can pin to its own interface).
 	for _, hn := range s.cfg.Honeynets {
 		if hn.ARP.Enabled {
-			ifaceName := hn.ARP.Interface
+			ifaceName := s.effIface(hn.ARP.Interface)
 			netID := hn.ID
 			wg.Add(1)
 			go func() {
@@ -932,7 +1012,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 			}()
 		}
 		if hn.ICMP.Enabled {
-			ifaceName := hn.ICMP.Interface
+			ifaceName := s.effIface(hn.ICMP.Interface)
 			netID := hn.ID
 			wg.Add(1)
 			go func() {
@@ -946,7 +1026,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 		if hn.LLDP.Enabled {
 			lldpCfg := honeynet.LLDPCfg{
 				Enabled:    true,
-				Interface:  hn.LLDP.Interface,
+				Interface:  s.effIface(hn.LLDP.Interface),
 				Interval:   hn.LLDP.IntervalS,
 				IncludeCDP: hn.LLDP.IncludeCDP,
 			}
@@ -963,7 +1043,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 		if hn.PROFINET.Enabled {
 			pnCfg := honeynet.ProfinetCfg{
 				Enabled:   true,
-				Interface: hn.PROFINET.Interface,
+				Interface: s.effIface(hn.PROFINET.Interface),
 			}
 			sev := event.SeverityHigh
 			if s, err := event.ParseSeverity(hn.PROFINET.Severity); err == nil {

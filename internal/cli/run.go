@@ -40,10 +40,11 @@ func cmdRun(args []string) error {
 		defer logCloser.Close()
 	}
 
-	cfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
 	if err != nil {
 		return err
 	}
+	f.applyIfaceOverride(cfg)
 
 	s, err := sensor.New(cfg)
 	if err != nil {
@@ -134,12 +135,13 @@ func cmdRun(args []string) error {
 				signal.Stop(hupCh)
 				return
 			case <-hupCh:
-				slog.Info("SIGHUP received; reloading config", "path", f.cfgPath)
-				newCfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
+				slog.Info("SIGHUP received; reloading config", "paths", f.paths())
+				newCfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
 				if err != nil {
 					slog.Error("reload: config invalid; keeping running config", "err", err)
 					continue
 				}
+				f.applyIfaceOverride(newCfg)
 				diff := config.DiffConfigs(s.Config(), newCfg)
 				if !diff.HasChanges() {
 					slog.Info("reload: no effective changes")

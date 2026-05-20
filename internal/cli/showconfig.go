@@ -27,10 +27,11 @@ func cmdShowConfig(args []string) error {
 	if c, err := f.log.apply(); err == nil && c != nil {
 		defer c.Close()
 	}
-	cfg, err := config.LoadWithOverrides(f.cfgPath, f.sets)
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
 	if err != nil {
 		return err
 	}
+	f.applyIfaceOverride(cfg)
 	enc := yaml.NewEncoder(os.Stdout)
 	enc.SetIndent(2)
 	if err := enc.Encode(cfg); err != nil {

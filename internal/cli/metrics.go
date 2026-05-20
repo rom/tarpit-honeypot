@@ -17,18 +17,19 @@ var sensorStarted = time.Now()
 // router + sensor state into a Prometheus-format Metrics struct.
 //
 // Exposed metrics:
-//   tarpit_sink_dropped_total{channel=...}     - events dropped at the
-//     in-channel cap (queue full).
-//   tarpit_sink_failed_total{channel=...}      - events that exhausted the
-//     retry backlog and were lost.
-//   tarpit_sink_retried_total{channel=...}     - events delivered on retry
-//     after a transient sink error.
-//   tarpit_honeynet_hosts                      - count of configured
-//     virtual hosts across all honeynets.
-//   tarpit_honeynet_networks                   - count of configured
-//     honeynets.
-//   tarpit_store_db_bytes                      - on-disk size of the
-//     SQLite events.db (0 if no store configured).
+//
+//	tarpit_sink_dropped_total{channel=...}     - events dropped at the
+//	  in-channel cap (queue full).
+//	tarpit_sink_failed_total{channel=...}      - events that exhausted the
+//	  retry backlog and were lost.
+//	tarpit_sink_retried_total{channel=...}     - events delivered on retry
+//	  after a transient sink error.
+//	tarpit_honeynet_hosts                      - count of configured
+//	  virtual hosts across all honeynets.
+//	tarpit_honeynet_networks                   - count of configured
+//	  honeynets.
+//	tarpit_store_db_bytes                      - on-disk size of the
+//	  SQLite events.db (0 if no store configured).
 func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 	return func() ui.Metrics {
 		out := ui.Metrics{}
