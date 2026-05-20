@@ -1,0 +1,39 @@
+# Edge decoy — MikroTik RouterOS router.
+#
+# MikroTik gear is among the most-attacked edge hardware on the internet
+# (Winbox CVEs, default creds, botnet recruitment). This decoy presents a
+# believable RouterOS fingerprint: ROSSSH, webfig, Winbox/API ports, and
+# the RouterOS CLI emulator on SSH/Telnet so a botnet's login attempts are
+# captured.
+#
+#   tarpit-honeypot validate-config -c examples/edge/mikrotik-router.yaml
+sensor:
+  name: mikrotik-edge-decoy
+  data_dir: /var/lib/tarpit
+  archetype: mikrotik-router
+  drop_user: tarpit
+  drop_group: tarpit
+  session_recording: { enabled: true }
+  disk: { json_log_mb: 128, sqlite_mb: 512, pcap_mb: 1024, capture_kb: 64, retention_days: 180 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh_interactive, severity: high, capture: true }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: telnet,          severity: high, capture: true }
+  - { id: webfig, proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,            severity: medium }
+  - { id: ftp,    proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,             severity: medium }
+  - { id: winbox, proto: tcp, bind: 0.0.0.0:8291, mode: drop, handler: raw,              severity: high }
+  - { id: api,    proto: tcp, bind: 0.0.0.0:8728, mode: drop, handler: raw,              severity: high }
+  - { id: snmp,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,            severity: medium }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force: { enabled: true, attempts: 8,        window: 60s,  severity: high }
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }

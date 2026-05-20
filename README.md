@@ -338,6 +338,7 @@ In-tree:
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
+- [`EXAMPLES.md`](EXAMPLES.md) — walkthrough of every example config (OT Purdue-model decoys + edge + IT), how to adapt and combine them.
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
 ## Status

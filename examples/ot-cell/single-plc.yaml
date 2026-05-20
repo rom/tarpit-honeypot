@@ -1,0 +1,41 @@
+# Simple single-PLC setup.
+#
+# The smallest useful OT decoy: one Siemens S7-1500-class PLC exposed on its
+# real control ports. No honeynet, no virtual hosts — the sensor *is* the
+# PLC. Drop this on a spare IP in a cell and any touch is an incident: a
+# real PLC is only ever spoken to by its engineering workstation and SCADA.
+#
+#   tarpit-honeypot validate-config -c examples/ot-cell/single-plc.yaml
+sensor:
+  name: plc-cell3-decoy
+  data_dir: /var/lib/tarpit
+  archetype: siemens-s7-1500     # S7 PLC console, S7comm-Plus, TTL 255
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]             # bind + AF_PACKET layer use eth0
+  vuln_emulation: false
+  disk: { json_log_mb: 128, sqlite_mb: 512, pcap_mb: 1024, capture_kb: 128, retention_days: 365 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: s7,      proto: tcp, bind: 0.0.0.0:102,   mode: banner, handler: s7comm_plus, severity: critical, capture: true }
+  - { id: modbus,  proto: tcp, bind: 0.0.0.0:502,   mode: banner, handler: modbus,      severity: critical, capture: true }
+  - { id: http,    proto: tcp, bind: 0.0.0.0:80,    mode: banner, handler: http,        severity: high }
+  - { id: snmp,    proto: udp, bind: 0.0.0.0:161,   mode: banner, handler: snmp,        severity: high }
+  - { id: profinet-rt, proto: udp, bind: 0.0.0.0:34964, mode: drop, handler: raw,       severity: high }
+
+correlate:
+  # A PLC has essentially zero scan baseline — trip immediately.
+  port_scan:   { enabled: true, distinct_ports: 2, window: 60s,  severity: critical }
+  brute_force: { enabled: true, attempts: 3,       window: 300s, severity: critical }
+
+allowlist:
+  - 10.20.30.5     # the cell's engineering workstation (known good)
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }

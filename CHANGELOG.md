@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — categorized example configs + EXAMPLES.md
+- New example configs under categorized `examples/` subdirectories mapped to
+  the OT Purdue model: `ot-cell/single-plc.yaml`,
+  `ot-client-network/operator-and-engineering-ws.yaml`,
+  `ot-server-network/historian-appservers-ad-fileserver.yaml`,
+  `ot-dmz/dmz-historian-fileserver-jumphosts.yaml`, plus
+  `edge/mikrotik-router.yaml` and `edge/teltonika-rut240.yaml` showcasing
+  the new archetypes. Each is a complete, validated config.
+- **`EXAMPLES.md`**: an extensive walkthrough of every example — what it
+  models, the Purdue-level mapping, per-file adaptation notes, and how to
+  combine configs (`-c` × N), use `conf.d/`, pick an interface (`-i`), and
+  `--set`/env overrides.
+
 ### Added — web UI pcap / session retrieval
 - The web UI can now download recorded artifacts: `/pcap/<event-id>` serves
   the per-connection capture, `/session/<event-id>` serves the asciinema

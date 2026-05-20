@@ -1,0 +1,73 @@
+# Relatively simple OT DMZ (IDMZ — Purdue level 3.5).
+#
+# The brokered zone between enterprise IT and the OT network. Classic IDMZ
+# hosts: a replicated/forward historian (the only DB IT is allowed to read),
+# a file-transfer server (patches/AV definitions in, reports out), and RDP
+# jump servers that are the *only* sanctioned path into OT. The IDMZ is the
+# attacker's stepping stone, so brute force against the jump hosts and any
+# scan of the segment are high-signal.
+#
+#   tarpit-honeypot validate-config -c examples/ot-dmz/dmz-historian-fileserver-jumphosts.yaml
+sensor:
+  name: ot-dmz-decoy
+  data_dir: /var/lib/tarpit
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  session_recording: { enabled: true }   # capture what attackers do on the jump hosts
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, capture_kb: 256, retention_days: 730 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: rdp,        proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,              severity: critical, capture: true }
+  - { id: ssh-jump,   proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh_interactive, severity: critical, capture: true }
+  - { id: mssql,      proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,            severity: critical, capture: true }
+  - { id: https,      proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,            severity: high,     capture: true }
+  - { id: smb,        proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,              severity: critical, capture: true }
+  - { id: ftp,        proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files,        severity: high,     capture: true }
+  - { id: winrm,      proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,            severity: high }
+
+honeynets:
+  - id: ot-dmz
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: dmz.plant.local
+    arp_responder:  { enabled: true }
+    icmp_responder: { enabled: true }
+    hosts:
+      # RDP jump servers — the sanctioned (and most-attacked) way into OT.
+      - { ip: 192.0.2.71, hostname: jump-01, os: windows, archetype: windows-server-2019, services: [
+            {port: 3389, handler: rdp}, {port: 22, handler: ssh_interactive}, {port: 5985, handler: winrm} ] }
+      - { ip: 192.0.2.72, hostname: jump-02, os: windows, archetype: windows-server-2019, services: [
+            {port: 3389, handler: rdp}, {port: 22, handler: ssh_interactive} ] }
+      # Forward/replica historian readable from the enterprise side.
+      - { ip: 192.0.2.80, hostname: historian-dmz, os: windows, archetype: windows-server-2016, services: [
+            {port: 1433, handler: mssql}, {port: 443, handler: https} ] }
+      # File-transfer server (patch/AV in, reports out) — fake bait files.
+      - { ip: 192.0.2.81, hostname: ft-dmz-01, os: windows, archetype: windows-server-2016, services: [
+            {port: 445, handler: smb}, {port: 21, handler: ftp_files} ] }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 3, window: 60s,  severity: critical }
+  brute_force: { enabled: true, attempts: 4,       window: 300s, severity: critical }
+  slow_scan:   { enabled: true, distinct_ports: 6, window: 24h,  severity: high }
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: dmz-soc-syslog
+    type: syslog
+    network: tcp
+    address: siem.example.internal:6514
+    tag: dmz-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [dmz-soc-syslog, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

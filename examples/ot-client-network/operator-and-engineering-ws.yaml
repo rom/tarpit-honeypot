@@ -1,0 +1,60 @@
+# Relatively simple OT client network.
+#
+# The "level 2" client side of a Purdue-model OT network: a handful of
+# operator workstations running the HMI/SCADA client, plus one engineering
+# workstation (the box that actually programs the PLCs — TIA Portal /
+# Studio 5000). On a real OT client VLAN these talk north to the SCADA
+# servers and south to the controllers; lateral RDP/SMB between
+# workstations, or anyone scanning the subnet, is the tell.
+#
+#   tarpit-honeypot validate-config -c examples/ot-client-network/operator-and-engineering-ws.yaml
+sensor:
+  name: ot-clients-decoy
+  data_dir: /var/lib/tarpit
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  disk: { json_log_mb: 256, sqlite_mb: 1024, pcap_mb: 2048, capture_kb: 128, retention_days: 365 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Listener set is union of the services across the virtual hosts; the
+# honeynet dispatches each virtual IP+port to its own handler instance.
+listeners:
+  - { id: rdp,  proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,  severity: critical, capture: true }
+  - { id: smb,  proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,  severity: critical, capture: true }
+  - { id: winrm, proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm, severity: high }
+  - { id: ssh,  proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,  severity: critical, capture: true }
+  - { id: vnc,  proto: tcp, bind: 0.0.0.0:5900, mode: banner, handler: vnc,  severity: critical, capture: true }
+
+honeynets:
+  - id: ot-clients
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: plant.local
+    arp_responder:  { enabled: true }
+    icmp_responder: { enabled: true }
+    hosts:
+      # Operator workstations — HMI clients. RDP + SMB is the realistic surface.
+      - { ip: 192.0.2.51, hostname: hmi-op-01, os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 192.0.2.52, hostname: hmi-op-02, os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 192.0.2.53, hostname: hmi-op-03, os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 192.0.2.54, hostname: hmi-op-04, os: windows, archetype: windows-10, services: [ {port: 5900, handler: vnc}, {port: 445, handler: smb} ] }
+      # The one engineering workstation: extra remote-mgmt + an SSH path it
+      # uses to reach controllers. The crown jewel of an OT client VLAN.
+      - { ip: 192.0.2.60, hostname: eng-ws-01, os: windows, archetype: windows-server-2019, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb}, {port: 5985, handler: winrm}, {port: 22, handler: ssh} ] }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 3, window: 60s,  severity: critical }
+  brute_force: { enabled: true, attempts: 5,       window: 300s, severity: critical }
+  slow_scan:   { enabled: true, distinct_ports: 6, window: 24h,  severity: high }
+
+allowlist:
+  - 192.0.2.1      # the gateway / SCADA servers north of here
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }

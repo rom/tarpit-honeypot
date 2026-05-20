@@ -1,0 +1,83 @@
+# Relatively simple OT server network (Purdue level 3 / site operations).
+#
+# The server tier that sits between the OT client/control network and the
+# enterprise: a process historian (SQL database), application servers, an
+# OT-side Active Directory domain controller, and a file server. These talk
+# to each other constantly, so the signal here is an *external* source
+# touching them, brute-forcing the historian DB, or enumerating the DC.
+#
+#   tarpit-honeypot validate-config -c examples/ot-server-network/historian-appservers-ad-fileserver.yaml
+sensor:
+  name: ot-servers-decoy
+  data_dir: /var/lib/tarpit
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true            # OT servers are notoriously unpatched; advertise it
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, capture_kb: 128, retention_days: 730 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: mssql,    proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,    severity: critical, capture: true }
+  - { id: http,     proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,     severity: high }
+  - { id: https,    proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,    severity: high,     capture: true }
+  - { id: smb,      proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,      severity: critical, capture: true }
+  - { id: rdp,      proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,      severity: critical, capture: true }
+  - { id: ldap,     proto: tcp, bind: 0.0.0.0:389,  mode: banner, handler: ldap,     severity: high }
+  - { id: kerberos, proto: tcp, bind: 0.0.0.0:88,   mode: banner, handler: kerberos, severity: high }
+  - { id: dcerpc,   proto: tcp, bind: 0.0.0.0:135,  mode: banner, handler: dcerpc,   severity: high }
+  - { id: winrm,    proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,    severity: high }
+  - { id: ftp,      proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,      severity: high }
+  - { id: dns,      proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,      severity: medium }
+
+honeynets:
+  - id: ot-servers
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: ot.plant.local
+    dns: 192.0.2.10
+    arp_responder:  { enabled: true }
+    icmp_responder: { enabled: true }
+    hosts:
+      # OT-side Active Directory domain controller.
+      - { ip: 192.0.2.10, hostname: ot-dc-01, os: windows, archetype: active-directory, services: [
+            {port: 53, handler: dns}, {port: 88, handler: kerberos}, {port: 135, handler: dcerpc},
+            {port: 389, handler: ldap}, {port: 445, handler: smb}, {port: 3389, handler: rdp}, {port: 5985, handler: winrm} ] }
+      # Process historian — the SQL database every SCADA write lands in.
+      - { ip: 192.0.2.20, hostname: historian-01, os: windows, archetype: windows-server-2016, services: [
+            {port: 1433, handler: mssql}, {port: 80, handler: http}, {port: 443, handler: https}, {port: 3389, handler: rdp} ] }
+      # Application servers (SCADA / batch / reporting).
+      - { ip: 192.0.2.21, hostname: app-scada-01, os: windows, archetype: windows-server-2019, services: [
+            {port: 80, handler: http}, {port: 443, handler: https}, {port: 3389, handler: rdp} ] }
+      - { ip: 192.0.2.22, hostname: app-batch-01, os: windows, archetype: windows-server-2019, services: [
+            {port: 80, handler: http}, {port: 443, handler: https} ] }
+      # File server.
+      - { ip: 192.0.2.30, hostname: fileserver-01, os: windows, archetype: windows-server-2016, services: [
+            {port: 445, handler: smb}, {port: 21, handler: ftp} ] }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 4, window: 60s,  severity: critical }
+  brute_force: { enabled: true, attempts: 5,       window: 300s, severity: critical }
+  slow_scan:   { enabled: true, distinct_ports: 8, window: 24h,  severity: high }
+
+allowlist:
+  - 192.0.2.0/24   # intra-server-tier traffic is expected; alert on outsiders
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: ot-soc-syslog
+    type: syslog
+    network: tcp
+    address: siem.ot.example.internal:6514
+    tag: ot-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [ot-soc-syslog, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }
