@@ -69,6 +69,30 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 	}
 
 	apduType := payload[apduStart] >> 4
+	// 0x0 = Confirmed-Request (WriteProperty / ReadProperty / ...). For an
+	// unsegmented confirmed request the layout is byte0(type|flags)
+	// byte1(max-segs/resp) byte2(invoke-id) byte3(service-choice). We
+	// acknowledge WriteProperty with a SimpleACK + flag the write attempt
+	// (a real value-change attempt against a control point is notable).
+	if apduType == 0x0 {
+		if apduStart+3 >= len(payload) {
+			return res, nil
+		}
+		invokeID := payload[apduStart+2]
+		csvc := payload[apduStart+3]
+		res.Meta["apdu_service"] = bacnetConfirmedName(csvc)
+		if csvc == 0x0F { // WriteProperty
+			flagAnomaly(&res, "bacnet-write-attempt")
+			ack := buildSimpleACK(invokeID, csvc)
+			if _, err := pc.WriteTo(ack, src); err != nil {
+				res.Meta["write_err"] = err.Error()
+			} else {
+				res.BannerSent = "bacnet SimpleACK (WriteProperty)"
+			}
+		}
+		_ = cfg
+		return res, nil
+	}
 	// 0x1 = Unconfirmed-Request. Service code is next byte.
 	if apduType != 0x1 {
 		return res, nil
@@ -133,6 +157,35 @@ func buildIAm(instance uint32, maxAPDU uint16, segmentation byte, vendorID uint1
 	binary.BigEndian.PutUint16(frame[2:4], uint16(total))
 	frame = append(frame, body...)
 	return frame
+}
+
+// buildSimpleACK builds a BVLC+NPDU+SimpleACK frame for a confirmed
+// service (APDU type 2). Used to acknowledge a WriteProperty so a
+// scanner's write appears to succeed against the decoy point.
+func buildSimpleACK(invokeID, service byte) []byte {
+	apdu := []byte{0x20, invokeID, service} // type 2 (SimpleACK), invoke-id, service-choice
+	body := append([]byte{0x01, 0x00}, apdu...)
+	total := 4 + len(body)
+	frame := make([]byte, 4, total)
+	frame[0] = 0x81
+	frame[1] = 0x0A // Original-Unicast-NPDU
+	binary.BigEndian.PutUint16(frame[2:4], uint16(total))
+	return append(frame, body...)
+}
+
+// bacnetConfirmedName maps a confirmed-service choice to its name.
+func bacnetConfirmedName(s byte) string {
+	switch s {
+	case 0x0C:
+		return "ReadProperty"
+	case 0x0E:
+		return "ReadPropertyMultiple"
+	case 0x0F:
+		return "WriteProperty"
+	case 0x10:
+		return "WritePropertyMultiple"
+	}
+	return "confirmed-" + itoa(int(s))
 }
 
 func bvlcFuncName(f byte) string {

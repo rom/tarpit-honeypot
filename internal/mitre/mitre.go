@@ -156,15 +156,19 @@ var handlerTags = map[string]Tag{
 	// matrix (S0599 mapped techniques live there). We keep these
 	// Enterprise-matrix equivalents for the SIEM that expects a
 	// consistent ID space.
-	"modbus":     {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
-	"s7":         {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
-	"iec104":     {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
-	"mqtt":       {Techniques: []string{"T1110.001", "T0830"}, Tactics: []string{"credential-access", "lateral-movement"}},
-	"opcua":      {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
-	"ethernetip": {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
-	"bacnet":     {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
-	"fins":       {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
-	"melsec":     {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"modbus":      {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
+	"s7":          {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
+	"iec104":      {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"mqtt":        {Techniques: []string{"T1110.001", "T0830"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"opcua":       {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"ethernetip":  {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
+	"bacnet":      {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"fins":        {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"melsec":      {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"dnp3":        {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
+	"s7comm_plus": {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
+	"ge_srtp":     {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"codesys":     {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
 }
 
 // Tactics returns the canonical list of ATT&CK Enterprise tactics in

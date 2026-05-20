@@ -387,6 +387,34 @@ listeners:
     handler: ethernetip
     severity: medium
     read_timeout: 10s
+  - id: tcp-dnp3
+    proto: tcp
+    bind: 0.0.0.0:20079
+    mode: banner
+    handler: dnp3
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-s7comm-plus
+    proto: tcp
+    bind: 0.0.0.0:20080
+    mode: banner
+    handler: s7comm_plus
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-ge-srtp
+    proto: tcp
+    bind: 0.0.0.0:20081
+    mode: banner
+    handler: ge_srtp
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-codesys
+    proto: tcp
+    bind: 0.0.0.0:20082
+    mode: banner
+    handler: codesys
+    severity: medium
+    read_timeout: 10s
   - id: udp-raw
     proto: udp
     bind: 0.0.0.0:20047

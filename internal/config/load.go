@@ -234,6 +234,7 @@ func (c *Config) Validate() error {
 			"http": true, "https": true,
 			"telnet": true, "ftp": true, "ftp_files": true,
 			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
+			"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
 			"opcua": true, "ethernetip": true, "smb": true,
 			"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
 			"dcerpc": true, "ldap": true, "kerberos": true,

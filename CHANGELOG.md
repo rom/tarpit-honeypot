@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — more ICS/OT protocols
+- New handlers: **DNP3** (TCP 20000, link-status responder with valid DNP3
+  CRC), **S7comm-Plus** (TCP 102, S7-1200/1500 over TPKT/COTP, classifies
+  S7comm-Plus vs classic S7comm), **GE-SRTP** (TCP 18245, GE/Emerson
+  PACSystems), **CODESYS** (TCP 1217 V3 gateway). **BACnet WriteProperty**
+  is now acknowledged (SimpleACK) and flagged (`bacnet-write-attempt`).
+  ATT&CK-tagged (T0814/T0888). (PROFINET-DCP (L2) and OPC-DA still pending.)
+
 ### Added — Lua dynamic responses + session recording + durable correlator
 - **Lua dynamic-response engine** (`handler: lua`, `internal/luaengine`):
   operator scripts drive a service in a sandboxed pure-Go gopher-lua VM

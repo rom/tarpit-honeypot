@@ -175,6 +175,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &modbus{}, nil
 	case "s7":
 		return &s7{}, nil
+	case "s7comm_plus":
+		return &s7commPlus{}, nil
+	case "dnp3":
+		return &dnp3{}, nil
+	case "ge_srtp":
+		return &geSRTP{}, nil
+	case "codesys":
+		return &codesys{}, nil
 	case "iec104":
 		return &iec104{}, nil
 	case "mqtt":

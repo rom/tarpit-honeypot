@@ -23,11 +23,11 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **77 built-in protocol handlers** (1 generic + 53 TCP + 23 UDP), including a scriptable `lua` handler for dynamic responses. See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **81 built-in protocol handlers** (1 generic + 57 TCP + 23 UDP), including a scriptable `lua` handler for dynamic responses. See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
-  - **TCP / ICS**: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
@@ -759,6 +759,10 @@ handshake where it isn't HTTP.
 | `mqtt` | 1883 | CONNECT parser (varint remaining-length capped at 4 KiB). Captures `protocol_name`, `version`, `keepalive`, `client_id`, **`username`**, **`password`**. Replies CONNACK 0x00 connection accepted. | — | — |
 | `opcua` | 4840 | OPC UA secure-channel transport. Reads HEL message (`endpoint_url`, send/receive buffer sizes), replies ACK with our limits. Captures the endpoint URL the scanner is reaching for. | — | — |
 | `ethernetip` | 44818 | EtherNet/IP encapsulation. Handles RegisterSession (returns session handle) + ListIdentity (advertises a fake Rockwell Allen-Bradley 1756-L73 ControlLogix with identity-shaped serial). | — | ✓ |
+| `s7comm_plus` | 102 | S7-1200/1500 S7comm-Plus over TPKT/COTP. Answers the COTP Connection Request with a Connection Confirm, then captures + classifies the first data PDU (S7comm-Plus `0x72` vs classic S7comm `0x32`). | — | — |
+| `dnp3` | 20000 | DNP3 (IEEE 1815) data-link responder. Parses the frame (start `05 64`, control function, src/dest) and replies with a LINK_STATUS frame (correct DNP3 CRC) so a scanner records a live outstation. | — | — |
+| `ge_srtp` | 18245 | GE-SRTP (GE / Emerson PACSystems / Series 90). Captures the 56-byte request and returns a believable success response; flags the probe. Fingerprint-grade. | — | — |
+| `codesys` | 1217 | CODESYS V3 gateway/runtime (WAGO / Beckhoff / Schneider / ABB soft-PLCs). Captures the request + returns a minimal channel ack; flags the probe. Fingerprint-grade. | — | — |
 
 ### UDP
 
@@ -767,7 +771,7 @@ handshake where it isn't HTTP.
 | `raw` | any | Records the datagram bytes; optionally writes a static reply. | — | — |
 | `snmp` | 161 | gosnmp-backed SNMPv1/v2c decoder. Captures `version`, `community`, requested OID list. When an archetype is set, answers the system group (1.3.6.1.2.1.1.x: sysDescr, sysObjectID, sysName, sysContact, sysLocation, sysServices) and ifTable (1.3.6.1.2.1.2.2.1.x: ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress / ifOperStatus) from the archetype's MIB-2 view. Unknown OIDs return Null. SNMPv3 rejected. | ✓ | — |
 | `ntp` | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp + plausible reference / receive / transmit timestamps. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. | — | — |
-| `bacnet` | 47808 | BVLC + NPDU + APDU parser. Replies only to Who-Is (service 0x08) with an I-Am announcing object instance 1234. Other services captured but unacknowledged. | — | — |
+| `bacnet` | 47808 | BVLC + NPDU + APDU parser. Replies to Who-Is (service 0x08) with an I-Am (object instance 1234), and to a confirmed **WriteProperty** with a SimpleACK while flagging `bacnet-write-attempt` (a value-change against a control point). Other services captured but unacknowledged. | — | — |
 | `tftp` | 69 | RFC 1350 RRQ/WRQ parser. Captures **filename**, **transfer mode**, and **RFC 2347 options** (blksize, tsize, timeout). Always replies ERROR opcode 5 code 2 (Access violation) — never serves files. | — | — |
 | `ipmi` | 623 | RMCP ASF Presence Ping → Pong reply with IPMI 1.5 + 2.0 supported-entity flag (the classic "is this a BMC" probe). RMCP+ session-open captured but not answered (no real keying material to fake). | — | — |
 | `syslog_udp` | 514 | RFC 3164/5424 datagram parser. Decodes PRI into facility + severity, captures the rest as `message`. | — | — |
