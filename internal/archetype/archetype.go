@@ -61,6 +61,9 @@ func init() {
 	for k, p := range networkDeviceArchetypes {
 		registry[k] = p
 	}
+	for k, p := range applianceArchetypes {
+		registry[k] = p
+	}
 }
 
 // Profile is the resolved per-deployment / per-listener / per-host
@@ -80,6 +83,16 @@ type Profile struct {
 	smtpProduct  string
 	mysqlVersion string
 
+	// Service capability advertisements that fingerprint the specific
+	// daemon behind a port, beyond its version banner:
+	//   ftpFeatures    – FTP FEAT lines (RFC 2389); vsftpd / ProFTPD / a
+	//                    NAS's FTP expose distinct sets.
+	//   smtpExtensions – ESMTP keywords in the EHLO reply; Postfix,
+	//                    Exchange and sendmail differ here.
+	// Empty => the handler's built-in default.
+	ftpFeatures    []string
+	smtpExtensions []string
+
 	// Device / network fingerprint.
 	macOUI      [3]byte // first 3 bytes of MAC, e.g. {0x00,0x90,0xe8} for Moxa
 	cliPrompt   string  // post-login shell prompt for SSH/Telnet sims
@@ -89,6 +102,10 @@ type Profile struct {
 	// when the operator binds the handler "http" against this archetype.
 	httpTitle    string
 	httpBodyHTML string
+	// httpHeaders are extra HTTP response headers this device sends beyond
+	// Server/Content-* (e.g. X-Powered-By, a vendor Set-Cookie, a custom
+	// WWW-Authenticate realm) — a strong per-archetype fingerprint.
+	httpHeaders map[string]string
 
 	// SNMP MIB-2 identity.
 	snmpSysDescr    string
@@ -264,6 +281,24 @@ func (p *Profile) MySQLVersion() string {
 	}
 	return p.mysqlVersion
 }
+
+// FTPFeatures returns the FTP FEAT capability lines this archetype's FTP
+// daemon advertises (nil => the ftp handler's vsftpd-style default).
+func (p *Profile) FTPFeatures() []string {
+	if p == nil {
+		return nil
+	}
+	return p.ftpFeatures
+}
+
+// SMTPExtensions returns the ESMTP keywords this archetype advertises in
+// its EHLO reply (nil => the smtp handler's Postfix-style default).
+func (p *Profile) SMTPExtensions() []string {
+	if p == nil {
+		return nil
+	}
+	return p.smtpExtensions
+}
 func (p *Profile) MACOUI() [3]byte {
 	if p == nil {
 		return [3]byte{}
@@ -311,6 +346,14 @@ func (p *Profile) HTTPBodyHTML() string {
 		return ""
 	}
 	return p.httpBodyHTML
+}
+
+// HTTPHeaders returns extra HTTP response headers this archetype sends.
+func (p *Profile) HTTPHeaders() map[string]string {
+	if p == nil {
+		return nil
+	}
+	return p.httpHeaders
 }
 func (p *Profile) SNMPSysDescr() string {
 	if p == nil {

@@ -97,6 +97,20 @@ func TestAllShipArchetypes(t *testing.T) {
 		// Edge / SOHO networking gear.
 		"MikroTik RouterOS (RB750Gr3, 6.49.10)",
 		"Teltonika RUT240 (RutOS, LTE router)",
+		// Appliances: firewalls, NAS, IP cameras, more PLC vendors,
+		// network printer, VoIP PBX.
+		"pfSense (Netgate firewall)",
+		"Fortinet FortiGate (FortiOS)",
+		"Synology DiskStation (DSM)",
+		"QNAP Turbo NAS (QTS)",
+		"Hikvision IP camera",
+		"Axis network camera",
+		"Ubiquiti EdgeRouter (EdgeOS)",
+		"Allen-Bradley ControlLogix (Rockwell)",
+		"Schneider Modicon M340 PLC",
+		"Omron PLC (FINS)",
+		"HP LaserJet (network printer)",
+		"Asterisk PBX (VoIP)",
 	}
 	got := Names()
 	if len(got) != len(want) {
@@ -180,6 +194,34 @@ func TestDeviceArchetypeFields(t *testing.T) {
 		}
 		if len(p.DefaultServices()) == 0 {
 			t.Errorf("%s: defaultServices empty", p.Name)
+		}
+	}
+}
+
+// Appliance archetypes (firewalls / NAS / cameras / non-Siemens PLCs /
+// printer / PBX) carry their own fingerprint surface. Each must declare a
+// family distinct from the distro/device families, an SNMP description, at
+// least one default service, and at least one identifying banner so a
+// scanner has something to key on.
+func TestApplianceArchetypeFields(t *testing.T) {
+	for name, p := range applianceArchetypes {
+		if p.DisplayName == "" {
+			t.Errorf("%s: DisplayName empty", name)
+		}
+		if p.Family == "" {
+			t.Errorf("%s: Family empty", name)
+		}
+		if p.SNMPSysDescr() == "" {
+			t.Errorf("%s: snmpSysDescr empty", name)
+		}
+		if len(p.DefaultServices()) == 0 {
+			t.Errorf("%s: defaultServices empty", name)
+		}
+		if p.HTTPServer() == "" && p.SSHBanner() == "" {
+			t.Errorf("%s: no identifying banner (httpServer/sshBanner both empty)", name)
+		}
+		if Lookup(name) == nil {
+			t.Errorf("%s: not resolvable via Lookup", name)
 		}
 	}
 }

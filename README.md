@@ -32,15 +32,18 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **46 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **58 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
   TLS posture, ICMP TTL personality, and Web UI body report values
   consistent with a stock install of that OS. Spans Linux distros, *BSD,
   Windows client + server, Active Directory, Cisco Catalyst (IOS / IOS-XE),
-  MikroTik RouterOS, Teltonika RUT240, and Moxa / Siemens OT gear — see
-  the full [OS / device archetypes](#os--device-archetypes) table.
+  MikroTik RouterOS, Teltonika RUT240, Moxa / Siemens OT gear, more PLC
+  vendors (Allen-Bradley / Schneider / Omron), firewalls (pfSense /
+  FortiGate), NAS (Synology / QNAP), IP cameras (Hikvision / Axis), a
+  network printer, and a VoIP PBX — see the full
+  [OS / device archetypes](#os--device-archetypes) table.
   `tarpit-honeypot help archetypes` lists them all.
 - **CVE emulation + exploit-attempt capture** (`internal/cve`): the
   http/https/appliance handlers recognize known exploit signatures
@@ -607,7 +610,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, and **ICMP TTL** to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 41. |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 58. |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -774,6 +777,18 @@ prints the live list.
 | ICS/OT | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 255 | industrial firewall |
 | ICS/OT | Siemens S7-1200 PLC | `siemens-s7-1200` | siemens | 255 | S7 PLC console, S7comm |
 | ICS/OT | Siemens S7-1500 PLC | `siemens-s7-1500` | siemens | 255 | S7 PLC console, S7comm-Plus |
+| ICS/OT | Allen-Bradley ControlLogix | `rockwell-controllogix` | ics | 64 | EtherNet/IP (CIP) 44818, Allen-Bradley web, Rockwell OUI |
+| ICS/OT | Schneider Modicon M340 | `schneider-modicon` | ics | 64 | Modbus/TCP 502 + EtherNet/IP, Schneider-WEB, Schneider OUI |
+| ICS/OT | Omron PLC (FINS) | `omron-plc` | ics | 64 | FINS 9600 + EtherNet/IP, Omron OUI |
+| Firewall | pfSense (Netgate) | `pfsense` | pfsense | 64 | nginx, FreeBSD OpenSSH, pfSense login page, X-Frame-Options |
+| Firewall | Fortinet FortiGate | `fortigate` | fortios | 255 | SSL-VPN `SVPNCOOKIE`, weak TLS, Fortinet OUI, CVE-2018-13379 (advisory) |
+| NAS | Synology DiskStation | `synology-dsm` | synology | 64 | DSM web 5000/5001, MLST/MLSD FTP FEAT, Synology OUI/OID |
+| NAS | QNAP Turbo NAS | `qnap-qts` | qnap | 64 | QTS web 8080, FTP FEAT, QNAP OUI/OID |
+| Camera | Hikvision IP camera | `hikvision-camera` | hikvision | 64 | `App-webs/` Server, RTSP 554, Digest "IP Camera", CVE-2017-7921 (advisory) |
+| Camera | Axis network camera | `axis-camera` | axis | 64 | VAPIX, RTSP 554, Digest realm `AXIS_*`, Axis OUI |
+| Network | Ubiquiti EdgeRouter | `ubiquiti-edgerouter` | ubiquiti | 64 | EdgeOS lighttpd, Ubiquiti OUI/OID |
+| Printer | HP LaserJet | `hp-printer` | printer | 64 | HP HTTP Server, JetDirect 9100, IPP 631, HP OUI/OID |
+| VoIP | Asterisk PBX | `asterisk-voip` | voip | 64 | SIP 5060, FreePBX web, `Asterisk/18.x` Server header |
 
 ---
 
@@ -792,10 +807,10 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `http` | 80 | Routes on method+path. `GET /` serves the archetype's index HTML (Moxa / SCALANCE / S7 device pages or nginx 401). `GET /login` and 12 other login-shaped paths serve a form. `POST /login` parses `application/x-www-form-urlencoded` body (accepts 6 alias names each for user/pass) and captures credentials. Computes JA4H from request line + headers. Flags 8 suspicious-URI anomalies (Log4Shell JNDI, path traversal, WordPress / `.git` / `.env` / Tomcat manager probes). | ✓ | ✓ |
 | `https` | 443 | Peeks the TLS ClientHello for JA3 + JA4 fingerprints before crypto/tls consumes it. Self-signed ECDSA cert cached + rotated per `sensor.tls_rotate.days` under `<data_dir>/tls/`. Then runs the HTTP handler over the decrypted stream. Captures TLS version + SNI + JA3/JA4. | ✓ | ✓ |
 | `telnet` | 23 | IAC WILL ECHO / WILL SGA / DO TERMINAL-TYPE negotiation, archetype-shaped issue banner, captures `user_attempt` + `pass_attempt`, sends "Login incorrect", then drops into the archetype's CLI shell (Linux distros / Moxa / SCALANCE response tables). | ✓ | — |
-| `ftp` | 21 | 220 banner (archetype-shaped) → USER → 331 → PASS → 530 Login incorrect. Captures `user_line` + `pass_line`. | ✓ | — |
+| `ftp` | 21 | 220 banner (archetype-shaped), then a bounded command loop: answers `FEAT` with the archetype's daemon-specific feature set (vsFTPd default; Synology/QNAP expose MLST/MLSD), `SYST` with `215 UNIX Type: L8`, USER → 331, PASS → 530 Login incorrect. Captures `user_line` + `pass_line` and flags `default-credential-attempt`. | ✓ | — |
 | `smb` | 445 | NBSS framing + SMB1 Negotiate Protocol Request handler: captures all offered dialects, selects `NT LM 0.12`, replies with a believable Negotiate Response (8-byte challenge + 8-byte session key derived from identity). SMB2 connections answered with NEGOTIATE_RESPONSE carrying `STATUS_NOT_IMPLEMENTED`. | — | ✓ |
 | `vnc` | 5900 | RFB 003.008 version exchange. Sends 16-byte VNC auth challenge (identity-derived), captures `client_version` + raw DES-encrypted `auth_response_hex` from brute-force tools. Always replies SecurityResult `auth failed`. | — | ✓ |
-| `smtp_recv` | 25 | ESMTP receive listener. Captures `helo`, `auth_mech`, `auth_user`, `auth_pass` (from AUTH PLAIN / LOGIN), `mail_from`, `rcpt_to`, `message_head`. Archetype-shaped 220 greeting (`Postfix 3.7.11` for debian 12, etc.). STARTTLS replied with 454 so the client falls back to plaintext credentials. | ✓ | ✓ |
+| `smtp_recv` | 25 | ESMTP receive listener. Captures `helo`, `auth_mech`, `auth_user`, `auth_pass` (from AUTH PLAIN / LOGIN), `mail_from`, `rcpt_to`, `message_head`. Archetype-shaped 220 greeting (`Postfix 3.7.11` for debian 12, etc.); multiline `EHLO` advertises an archetype-specific extension set (`SMTPExtensions`, Postfix-style default) using the same host as the greeting. STARTTLS replied with 454 so the client falls back to plaintext credentials. | ✓ | ✓ |
 | `rdp` | 3389 | X.224 Connection Request parser. Extracts `mstshash=` Cookie (typically the targeted username from `xfreerdp /u:...`) + `RDP_NEG_REQ` flags. Replies CC with PROTOCOL_SSL selected (so the next-stage scanner enters TLS negotiation we then don't complete). | — | — |
 | `winrm` | 5985 | Reads HTTP POST `/wsman`. Decodes `Authorization: Basic` into `basic_user` / `basic_pass`. Replies HTTP 401 advertising `Negotiate, Basic realm="WSMAN"` so non-Kerberos brute-forcers fall back. | — | — |
 | `dcerpc` | 135 | Endpoint Mapper bind handler. Parses the first abstract interface UUID + version pair. Replies `bind_ack` with NDR transfer syntax. When honeynet topology is available, advertises the configured endpoints. | — | — |

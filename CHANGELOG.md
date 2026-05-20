@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 12 appliance archetypes + richer per-archetype service params
+- **12 new archetypes** (`internal/archetype/appliances.go`), bringing the
+  ship total to **58**: pfSense + FortiGate firewalls, Synology + QNAP NAS,
+  Hikvision + Axis IP cameras, Ubiquiti EdgeRouter, Allen-Bradley
+  ControlLogix / Schneider Modicon / Omron PLCs, an HP LaserJet, and an
+  Asterisk/FreePBX VoIP box. Each carries the vendor `Server` banner, SSH
+  banner, SNMP identity, MAC OUI, ICMP TTL, and default-service map a
+  scanner keys on; FortiGate + Hikvision present their signature CVEs
+  (CVE-2018-13379 / CVE-2017-7921) as advisory unpatched markers.
+- **Richer per-archetype service fingerprints** (consumed by handlers):
+  - `httpHeaders` — extra HTTP response headers (vendor `Set-Cookie`,
+    custom `WWW-Authenticate` realm, `X-Powered-By`, …) injected by the
+    `http`/`https` handler.
+  - `ftpFeatures` — the FTP `FEAT` set; the `ftp` handler now answers
+    `FEAT`/`SYST` in a bounded command loop (vsFTPd default; Synology/QNAP
+    expose MLST/MLSD).
+  - `smtpExtensions` — ESMTP keywords in the multiline `EHLO` reply
+    (Postfix-style default). Also fixed a consistency tell: `EHLO` echoed a
+    hardcoded `mail.example.com` regardless of the greeting host.
+
 ### Added — operational alarms (lifecycle / health / first-seen / digest)
 - `sensor:started` / `sensor:stopped` lifecycle events; `sensor:health`
   (data_dir disk usage past `disk_warn_percent` with hysteresis, and sink

@@ -266,11 +266,38 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			}
 		}
 	}
+	// Inject the archetype's extra response headers (X-Powered-By, vendor
+	// Set-Cookie, custom realm, ...) into responses we generated, so each
+	// device presents its distinctive header set.
+	if arch != nil {
+		banner = applyArchHeaders(banner, arch.HTTPHeaders())
+	}
 	if _, err := conn.Write([]byte(banner)); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = banner
 	return res, nil
+}
+
+// applyArchHeaders inserts extra headers into an HTTP response before the
+// blank-line body separator. No-op when there are no headers, the response
+// isn't one we generated (HTTP/...), or it has no header/body boundary.
+func applyArchHeaders(resp string, headers map[string]string) string {
+	if len(headers) == 0 || !strings.HasPrefix(resp, "HTTP/") {
+		return resp
+	}
+	sep := strings.Index(resp, "\r\n\r\n")
+	if sep < 0 {
+		return resp
+	}
+	var b strings.Builder
+	for k, v := range headers {
+		b.WriteString(safe.SanitizeHeader(k))
+		b.WriteString(": ")
+		b.WriteString(safe.SanitizeHeader(v))
+		b.WriteString("\r\n")
+	}
+	return resp[:sep+2] + b.String() + resp[sep+2:]
 }
 
 // renderHTTPResponse builds a complete HTTP response with the given

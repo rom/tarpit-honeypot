@@ -45,6 +45,10 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	if s.arch != nil && s.arch.SMTPProduct() != "" {
 		product = s.arch.SMTPProduct()
 	}
+	exts := s.arch.SMTPExtensions()
+	if len(exts) == 0 {
+		exts = defaultSMTPExtensions
+	}
 	greet := "220 " + host + " ESMTP " + product + "\r\n"
 	if cfg.Banner != "" {
 		greet = cfg.Banner
@@ -69,7 +73,11 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		switch cmd {
 		case "EHLO", "HELO":
 			res.Meta["helo"] = arg
-			fmt.Fprintf(conn, "250-mail.example.com\r\n250-PIPELINING\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n")
+			if cmd == "HELO" {
+				fmt.Fprintf(conn, "250 %s\r\n", host)
+			} else {
+				_, _ = conn.Write([]byte(buildSMTPEHLO(host, exts)))
+			}
 		case "AUTH":
 			s.handleAuth(arg, br, conn, res.Meta)
 			if u, _ := res.Meta["auth_user"].(string); u != "" {
@@ -153,6 +161,36 @@ func isExternalAddr(addr string) bool {
 		return false
 	}
 	return true
+}
+
+// defaultSMTPExtensions is the ESMTP keyword set a stock Postfix advertises
+// in EHLO. We list only capabilities the handler actually honours (or that
+// are purely declarative) so advertising stays consistent with behaviour —
+// no STARTTLS, since we never negotiate TLS. Archetypes whose MTA differs
+// (Exchange, sendmail) override via Profile.smtpExtensions.
+var defaultSMTPExtensions = []string{
+	"PIPELINING", "SIZE 10240000", "VRFY", "AUTH PLAIN LOGIN",
+	"ENHANCEDSTATUSCODES", "8BITMIME", "DSN",
+}
+
+// buildSMTPEHLO renders a multiline 250 EHLO reply: the greeting host on
+// the first line, then one extension per line, with the final line using
+// the "250 " (space) continuation terminator per RFC 5321 §4.2.1.
+func buildSMTPEHLO(host string, exts []string) string {
+	lines := make([]string, 0, len(exts)+1)
+	lines = append(lines, host)
+	lines = append(lines, exts...)
+	var b strings.Builder
+	for i, l := range lines {
+		if i == len(lines)-1 {
+			b.WriteString("250 ")
+		} else {
+			b.WriteString("250-")
+		}
+		b.WriteString(l)
+		b.WriteString("\r\n")
+	}
+	return b.String()
 }
 
 func splitSMTPCmd(line string) (string, string) {

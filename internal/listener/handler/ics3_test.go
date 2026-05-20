@@ -64,7 +64,8 @@ func TestSMTPRecvAUTHLogin(t *testing.T) {
 	br := readLines(client)
 	<-br
 	_, _ = client.Write([]byte("EHLO scanner.example\r\n"))
-	for i := 0; i < 4; i++ {
+	// EHLO reply = host line + len(defaultSMTPExtensions) extension lines.
+	for i := 0; i < 1+len(defaultSMTPExtensions); i++ {
 		<-br
 	}
 	_, _ = client.Write([]byte("AUTH LOGIN\r\n"))

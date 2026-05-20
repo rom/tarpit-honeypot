@@ -10,6 +10,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // SSH handler should advertise the archetype-supplied banner verbatim
@@ -196,5 +197,83 @@ func TestSSHNoArchetypeFallback(t *testing.T) {
 	<-done
 	if !strings.HasPrefix(line, "SSH-2.0-") {
 		t.Errorf("fallback SSH banner missing: %q", line)
+	}
+}
+
+// FTP handler should answer FEAT with the archetype's daemon-specific
+// feature set (Synology exposes MLSD/MLST, which stock vsftpd does not).
+func TestFTPFeatFromArchetype(t *testing.T) {
+	arch := archetype.Lookup("synology-dsm")
+	if arch == nil {
+		t.Fatal("synology-dsm archetype missing")
+	}
+	client, server := pipePair(t)
+	cfg := config.Listener{Handler: "ftp", ReadBytes: 256, ReadTimeout: time.Second}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = (&ftp{arch: arch}).Handle(context.Background(), server, cfg)
+	}()
+	br := bufio.NewReader(client)
+	_, _ = br.ReadString('\n') // 220 banner
+	_, _ = client.Write([]byte("FEAT\r\n"))
+	var feat strings.Builder
+	for {
+		line, err := br.ReadString('\n')
+		feat.WriteString(line)
+		if err != nil || strings.HasPrefix(line, "211 ") {
+			break
+		}
+	}
+	_, _ = client.Write([]byte("QUIT\r\n"))
+	client.Close()
+	<-done
+	got := feat.String()
+	if !strings.Contains(got, "211-Features:") || !strings.Contains(got, "211 End") {
+		t.Errorf("FEAT reply malformed: %q", got)
+	}
+	if !strings.Contains(got, "MLSD") {
+		t.Errorf("FEAT reply missing archetype feature MLSD: %q", got)
+	}
+}
+
+// EHLO must echo the same host as the 220 greeting (it used to be
+// hardcoded "mail.example.com" regardless of identity/archetype) and emit
+// a well-formed multiline 250 reply terminated by a "250 " line.
+func TestSMTPEHLOHostConsistency(t *testing.T) {
+	id := identity.New("ehlo-seed")
+	client, server := pipePair(t)
+	cfg := config.Listener{Handler: "smtp_recv", ReadTimeout: time.Second}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = (&smtpRecv{id: id}).Handle(context.Background(), server, cfg)
+	}()
+	br := bufio.NewReader(client)
+	greet, _ := br.ReadString('\n')
+	_, _ = client.Write([]byte("EHLO probe\r\n"))
+	var ehlo []string
+	for i := 0; i < 1+len(defaultSMTPExtensions); i++ {
+		l, _ := br.ReadString('\n')
+		ehlo = append(ehlo, strings.TrimRight(l, "\r\n"))
+	}
+	_, _ = client.Write([]byte("QUIT\r\n"))
+	client.Close()
+	<-done
+	host := id.HostName()
+	if !strings.Contains(greet, host) {
+		t.Fatalf("greeting %q lacks identity host %q", greet, host)
+	}
+	if ehlo[0] != "250-"+host {
+		t.Errorf("EHLO host line = %q; want %q", ehlo[0], "250-"+host)
+	}
+	if last := ehlo[len(ehlo)-1]; !strings.HasPrefix(last, "250 ") {
+		t.Errorf("EHLO terminator line = %q; want a \"250 \" prefix", last)
+	}
+	joined := strings.Join(ehlo, "\n")
+	for _, want := range []string{"PIPELINING", "AUTH PLAIN LOGIN"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("EHLO missing extension %q in %q", want, joined)
+		}
 	}
 }
