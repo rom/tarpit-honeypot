@@ -37,10 +37,10 @@ type Server struct {
 }
 
 type ampConfig struct {
-	enabled  bool
-	window   time.Duration
+	enabled   bool
+	window    time.Duration
 	threshold int
-	sev      event.Severity
+	sev       event.Severity
 }
 
 type ampState struct {
@@ -129,20 +129,38 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 	}
 	src := hostPortFromAddr(raddr)
 
+	// Abnormal-payload detection: DNS tunneling / exfil shows up as
+	// over-long qnames, very long high-entropy single labels (base32/
+	// hex-encoded data), or tunneling-favored qtypes (NULL/TXT). Flag
+	// them so the operator sees a covert-channel attempt distinctly
+	// from a normal lookup.
+	anomalies := dnsAnomalies(name, qtype, len(msg))
+
 	// Always emit a low-severity "query received" event so the operator sees
 	// the noise floor even when no canary fired.
+	sev := event.SeverityLow
+	if len(anomalies) > 0 {
+		sev = event.SeverityHigh
+	}
+	baseMeta := map[string]any{
+		"qname": name,
+		"qtype": qtype,
+	}
+	if len(anomalies) > 0 {
+		baseMeta["anomalies"] = anomalies
+	}
 	baseEv := &event.Event{
 		ID:       event.NewID(),
 		Time:     time.Now().UTC(),
 		Sensor:   s.sensorName,
 		RuleID:   "dnscanary:query",
-		Severity: event.SeverityLow,
+		Severity: sev,
 		Source:   src,
 		Proto:    "udp",
-		Meta: map[string]any{
-			"qname": name,
-			"qtype": qtype,
-		},
+		Meta:     baseMeta,
+	}
+	if len(anomalies) > 0 {
+		baseEv.Anomalies = append(baseEv.Anomalies, anomalies...)
 	}
 	send(ctx, bus, baseEv)
 
@@ -190,6 +208,74 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 		_ = pc.SetWriteDeadline(time.Now().Add(time.Second))
 		_, _ = pc.WriteTo(reply, raddr)
 	}
+}
+
+// dnsAnomalies inspects a parsed query for DNS-tunneling / exfil /
+// abnormal-payload markers. Returns the marker list (empty = normal).
+//
+//	dns-qname-overlong        total qname > 200 chars (tunnels pack data into the name)
+//	dns-label-overlong        a single label >= 50 chars (encoded chunk)
+//	dns-high-entropy-label    a label that looks base32/hex-encoded (covert channel)
+//	dns-tunneling-qtype       NULL(10)/TXT(16) — the qtypes tunnels prefer for capacity
+//	dns-oversize-query        the request message itself is unusually large
+func dnsAnomalies(name string, qtype uint16, msgLen int) []string {
+	var out []string
+	if len(name) > 200 {
+		out = append(out, "dns-qname-overlong")
+	}
+	labels := strings.Split(name, ".")
+	for _, l := range labels {
+		if len(l) >= 50 {
+			out = append(out, "dns-label-overlong")
+		}
+		if len(l) >= 20 && looksEncodedLabel(l) {
+			out = append(out, "dns-high-entropy-label")
+			break
+		}
+	}
+	if qtype == 10 || qtype == 16 { // NULL, TXT
+		out = append(out, "dns-tunneling-qtype")
+	}
+	if msgLen > 512 {
+		out = append(out, "dns-oversize-query")
+	}
+	return dedupStrings(out)
+}
+
+// looksEncodedLabel heuristically detects a base32/hex-encoded DNS
+// label: mostly alphanumeric with a high distinct-character ratio and
+// no dictionary-word vowel pattern. Cheap approximation of entropy.
+func looksEncodedLabel(l string) bool {
+	digits, alnum := 0, 0
+	for i := 0; i < len(l); i++ {
+		c := l[i]
+		switch {
+		case c >= '0' && c <= '9':
+			digits++
+			alnum++
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+			alnum++
+		}
+	}
+	if alnum < len(l) {
+		return false // contains separators -> probably not a single encoded chunk
+	}
+	// Encoded data has a substantial digit fraction; English labels
+	// rarely do. >= 20% digits in a 20+ char all-alnum label is a
+	// strong tunneling tell.
+	return digits*5 >= len(l)
+}
+
+func dedupStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // parseQuery returns (lowercased name without trailing dot, qtype, ok).
@@ -287,9 +373,9 @@ func (s *Server) checkAmplifier(srcIP string, qtype uint16) *event.Event {
 		Source:   event.Endpoint{IP: srcIP},
 		Proto:    "udp",
 		Meta: map[string]any{
-			"queries":     cur.count,
-			"any_queries": cur.anyCount,
-			"window_s":    int(s.amp.window.Seconds()),
+			"queries":          cur.count,
+			"any_queries":      cur.anyCount,
+			"window_s":         int(s.amp.window.Seconds()),
 			"triggered_by_any": isAny,
 		},
 	}

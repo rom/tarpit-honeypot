@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
@@ -147,6 +148,98 @@ func defaultIndexPage(flavor webFlavor, server string) (string, string) {
 			"<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n", "text/html"
 	}
 	return "<html><body><h1>It works!</h1></body></html>\n", "text/html"
+}
+
+// isSwitchInfoPath matches the device-info / status / topology paths a
+// managed switch's web UI exposes.
+func isSwitchInfoPath(p string) bool {
+	switch p {
+	case "/topology", "/status", "/info", "/device", "/device-info",
+		"/lldp", "/vlan", "/mrp", "/profinet", "/network":
+		return true
+	}
+	return false
+}
+
+// hasSwitchTopology reports whether the archetype carries any
+// switch/OT topology data worth rendering.
+func hasSwitchTopology(p *archetype.Profile) bool {
+	return p != nil && (len(p.MRPRings()) > 0 || len(p.PROFINETDevices()) > 0 ||
+		len(p.VLANs()) > 0 || len(p.HMIs()) > 0 || len(p.LLDPNeighbors()) > 0)
+}
+
+// switchTopologyHTML renders the archetype's MRP / PROFINET / VLAN /
+// HMI / LLDP inventory as an industrial-switch status page. This is
+// what makes a scanner walking the device's web UI see a believable
+// cell topology rather than an empty page.
+func switchTopologyHTML(p *archetype.Profile) string {
+	var b strings.Builder
+	b.WriteString("<html><head><title>")
+	b.WriteString(htmlEscape(p.HTTPTitle()))
+	b.WriteString(" — Network</title></head><body>")
+	b.WriteString("<h2>" + htmlEscape(p.SNMPSysName()) + " — Network Status</h2>")
+
+	if rings := p.MRPRings(); len(rings) > 0 {
+		b.WriteString("<h3>Media Redundancy (MRP)</h3><table border=1><tr><th>Ring</th><th>Role</th><th>Ports</th><th>State</th></tr>")
+		for _, r := range rings {
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+				htmlEscape(r.Name), htmlEscape(r.Role), intsJoin(r.Ports), htmlEscape(r.State))
+		}
+		b.WriteString("</table>")
+	}
+	if vlans := p.VLANs(); len(vlans) > 0 {
+		b.WriteString("<h3>VLANs</h3><table border=1><tr><th>ID</th><th>Name</th><th>Ports</th></tr>")
+		for _, v := range vlans {
+			fmt.Fprintf(&b, "<tr><td>%d</td><td>%s</td><td>%s</td></tr>",
+				v.ID, htmlEscape(v.Name), intsJoin(v.Ports))
+		}
+		b.WriteString("</table>")
+	}
+	if pds := p.PROFINETDevices(); len(pds) > 0 {
+		b.WriteString("<h3>PROFINET Devices</h3><table border=1><tr><th>Station</th><th>IP</th><th>Role</th><th>Vendor</th></tr>")
+		for _, d := range pds {
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+				htmlEscape(d.StationName), htmlEscape(d.IP), htmlEscape(d.Role), htmlEscape(d.Vendor))
+		}
+		b.WriteString("</table>")
+	}
+	if peers := p.LLDPNeighbors(); len(peers) > 0 {
+		b.WriteString("<h3>LLDP Neighbors</h3><table border=1><tr><th>Port</th><th>Chassis</th><th>System</th></tr>")
+		for _, n := range peers {
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
+				htmlEscape(n.PortID), htmlEscape(n.ChassisID), htmlEscape(n.SystemName))
+		}
+		b.WriteString("</table>")
+	}
+	if hmis := p.HMIs(); len(hmis) > 0 {
+		b.WriteString("<h3>Connected HMIs</h3><table border=1><tr><th>Name</th><th>IP</th><th>Type</th></tr>")
+		for _, h := range hmis {
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
+				htmlEscape(h.Name), htmlEscape(h.IP), htmlEscape(h.Type))
+		}
+		b.WriteString("</table>")
+	}
+	b.WriteString("</body></html>")
+	return b.String()
+}
+
+// htmlEscape is a minimal HTML-attribute/text escaper for the
+// archetype-supplied (operator-controlled, but defense-in-depth)
+// topology strings.
+func htmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;")
+	return r.Replace(s)
+}
+
+func intsJoin(xs []int) string {
+	var b strings.Builder
+	for i, x := range xs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(itoa(x))
+	}
+	return b.String()
 }
 
 func statusText(status int) string {

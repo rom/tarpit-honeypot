@@ -189,6 +189,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			}
 			banner = renderHTTPResponse(server, 401, "text/html; charset=utf-8",
 				loginRetryPage(arch))
+		} else if arch != nil && method == "GET" && isSwitchInfoPath(path) && hasSwitchTopology(arch) {
+			// Switch-class archetypes expose an OT topology view
+			// (MRP rings / PROFINET device tree / VLANs / HMIs) on
+			// the device-info / status paths their web UI uses.
+			banner = renderHTTPResponse(server, 200, "text/html; charset=utf-8",
+				switchTopologyHTML(arch))
 		} else if arch != nil && method == "GET" && isLoginPath(path) {
 			// GET on a login path returns an archetype-shaped
 			// login form so an unauth scanner sees the field
