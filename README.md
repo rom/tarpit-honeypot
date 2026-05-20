@@ -221,12 +221,14 @@ rationale covering the current implementation.
   event.
 - **Embedded SQLite event index** for queryable history, with WAL-mode
   concurrent reads.
-- **Read-only web UI** on loopback: 24h summary + filterable event table
-  + per-event detail, plus a **topology** tab (the virtual networks /
-  hosts / services the sensor presents), a **config** tab (effective
-  running config, secrets shown as env-var names), and a **docs** tab
-  (built-in reference reflecting this deployment). JSON at
-  `/api/events`, `/api/summary`, `/api/config`, `/api/topology`.
+- **Read-only web UI** on loopback: 24h summary + a filterable,
+  **sortable** event table (click any column to sort/reverse) + per-event
+  detail, plus **hosts** (learned IPv4/IPv6/MAC inventory, filterable),
+  **topology** (the virtual networks / hosts / services presented),
+  **alerting** (how events forward), **errors** (operational/health
+  events — listener or canary-watcher stopped, accept-cap overflow),
+  **config**, and **docs** tabs. JSON at `/api/events`, `/api/summary`,
+  `/api/config`, `/api/topology`, `/api/hosts`, `/api/alerting`.
   Non-loopback binds refused without TLS + auth token.
 - **Routing**: per-channel rate-limit, min-severity gate, severity-match
   route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
@@ -931,17 +933,24 @@ Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`.
 Endpoints:
 
 - `/` — last-24h summary: total + by severity + top rules + top sources.
-- `/events` — filterable table: `?source=`, `?rule=`, `?since=24h`,
-  `?severity=high`, `?limit=N`.
+- `/events` — filterable table: `?source=`, `?rule=`, `?severity=high`,
+  `?since=24h`, `?limit=N`. Click a column header (time / severity / rule
+  / source / handler) to sort; click again to reverse (`?sort=&order=`).
 - `/events/<id>` — full event detail with banner sent, base64 payload,
   meta table.
+- `/hosts?q=&status=` — learned hosts (IPv4/IPv6/MAC), filterable by
+  substring + allow/seen status.
 - `/topology` — the virtual networks / hosts / services the sensor
   presents (rendered from the resolved honeynet topology).
+- `/alerting` — how events are forwarded (channels + destinations,
+  routes, allowlist).
+- `/errors?since=` — operational / health events (listener or
+  canary-watcher stopped, listener start error, accept-cap overflow).
 - `/config` — the effective post-defaults config (secrets shown as
   `*_env` names, never expanded values).
 - `/docs` — built-in reference that reflects the running deployment.
-- `/api/events`, `/api/summary`, `/api/config`, `/api/topology` — JSON
-  equivalents.
+- `/api/events`, `/api/summary`, `/api/config`, `/api/topology`,
+  `/api/hosts`, `/api/alerting` — JSON equivalents.
 - `/metrics` — Prometheus text-format (see [Prometheus metrics](#prometheus-metrics)).
 - `/healthz` — auth-bypass liveness check.
 

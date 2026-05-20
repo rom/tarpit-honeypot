@@ -567,6 +567,9 @@ func (s *Sensor) startListener(l config.Listener) error {
 		defer close(h.done)
 		if err := ln.Start(ctx, s.bus); err != nil {
 			slog.Error("listener stopped", "id", ln.ID(), "err", err)
+			s.emitOpEvent("sensor:listener_stopped", event.SeverityMedium, map[string]any{
+				"listener": ln.ID(), "error": err.Error(),
+			})
 		}
 	}()
 	s.listenersMu.Lock()
@@ -674,12 +677,14 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 			s.stopListener(c.ID)
 			if err := s.startListener(newIDs[c.ID]); err != nil {
 				slog.Error("listener restart failed", "id", c.ID, "err", err)
+				s.emitOpEvent("sensor:listener_error", event.SeverityHigh, map[string]any{"listener": c.ID, "phase": "restart", "error": err.Error()})
 			} else {
 				slog.Info("listener restarted", "id", c.ID)
 			}
 		case "added":
 			if err := s.startListener(newIDs[c.ID]); err != nil {
 				slog.Error("listener start failed", "id", c.ID, "err", err)
+				s.emitOpEvent("sensor:listener_error", event.SeverityHigh, map[string]any{"listener": c.ID, "phase": "start", "error": err.Error()})
 			} else {
 				slog.Info("listener started", "id", c.ID)
 			}
@@ -712,6 +717,25 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	)
 	_ = oldIDs
 	return nil
+}
+
+// emitOpEvent pushes an operational/health event (listener stopped,
+// canary watcher stopped, listener start error, …) onto the bus so it is
+// stored + routed and surfaces in the web UI's /errors view. Non-blocking
+// so a full bus during shutdown can't deadlock the caller.
+func (s *Sensor) emitOpEvent(ruleID string, sev event.Severity, meta map[string]any) {
+	ev := &event.Event{
+		ID:       event.NewID(),
+		Time:     timeNow(),
+		Sensor:   s.name,
+		RuleID:   ruleID,
+		Severity: sev,
+		Meta:     meta,
+	}
+	select {
+	case s.bus <- ev:
+	default:
+	}
 }
 
 func (s *Sensor) emitReloadEvent(diff config.Diff) {
@@ -824,6 +848,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 			defer wg.Done()
 			if err := w.Run(ctx, s.bus); err != nil {
 				slog.Error("canary watcher stopped", "err", err)
+				s.emitOpEvent("sensor:canary_stopped", event.SeverityMedium, map[string]any{"error": err.Error()})
 			}
 		}()
 	}

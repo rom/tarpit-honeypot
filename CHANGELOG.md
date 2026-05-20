@@ -8,6 +8,22 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — topology-coherent DNS + web UI sorting/filtering/errors view
+- **DNS resolver answers in correspondence with the topology**: a query
+  matching a virtual host's FQDN (or reverse address) returns that host's
+  real virtual IP; SRV (`_ldap`/`_kerberos`/`_gc`/… incl. AD `_msdcs`)
+  resolves to the virtual host offering the service with its real port;
+  HINFO is derived from the host's archetype; NS/MX/SOA point at the
+  domain's resolver/mail/authoritative server. Added PTR, HINFO, LOC,
+  SOA, SRV record types. Names outside the topology keep the deterministic
+  fabricated answer.
+- **Web UI**: sortable event columns (time / severity / rule / source /
+  handler, click to sort, click again to reverse) + a severity filter;
+  a substring/status filter on the hosts view; a new **/errors** view
+  surfacing operational/health events. The sensor now emits
+  `sensor:listener_stopped`, `sensor:listener_error`, and
+  `sensor:canary_stopped` events that feed it.
+
 ### Fixed — code-quality review pass
 - **seccomp now covers all threads**: the filter is installed with
   `SECCOMP_FILTER_FLAG_TSYNC`, so it confines every OS thread of the Go

@@ -16,7 +16,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -138,6 +140,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/topology", s.handleTopology)
 	mux.HandleFunc("/hosts", s.handleHosts)
 	mux.HandleFunc("/alerting", s.handleAlerting)
+	mux.HandleFunc("/errors", s.handleErrors)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
@@ -227,8 +230,28 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type colHeader struct {
+	Label string
+	Href  string
+	Arrow string // ▲ / ▼ when this column is the active sort key
+}
+
+type eventsPage struct {
+	Events      []*event.Event
+	Filter      store.Filter
+	SeverityStr string
+	SinceStr    string
+	Headers     map[string]colHeader
+}
+
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	f := parseFilter(r)
+	q := r.URL.Query()
+	sortKey := q.Get("sort")
+	order := q.Get("order")
+	if order != "asc" {
+		order = "desc"
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	evs, err := s.store.Query(ctx, f)
@@ -236,14 +259,129 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	sortEvents(evs, sortKey, order)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := struct {
-		Events []*event.Event
-		Filter store.Filter
-	}{evs, f}
-	if err := s.tmpl.ExecuteTemplate(w, "events", data); err != nil {
+	page := eventsPage{
+		Events:      evs,
+		Filter:      f,
+		SeverityStr: q.Get("severity"),
+		SinceStr:    q.Get("since"),
+		Headers:     buildSortHeaders("/events", q, sortKey, order),
+	}
+	if err := s.tmpl.ExecuteTemplate(w, "events", page); err != nil {
 		slog.Warn("ui: render events", "err", err)
 	}
+}
+
+// sortEvents orders events in place by the requested column (empty key
+// keeps the store's time-descending order). order is "asc" or "desc".
+func sortEvents(evs []*event.Event, key, order string) {
+	if key == "" {
+		return
+	}
+	var less func(a, b *event.Event) bool
+	switch key {
+	case "severity":
+		less = func(a, b *event.Event) bool { return a.Severity < b.Severity }
+	case "time":
+		less = func(a, b *event.Event) bool { return a.Time.Before(b.Time) }
+	case "source":
+		less = func(a, b *event.Event) bool { return a.Source.IP < b.Source.IP }
+	case "rule":
+		less = func(a, b *event.Event) bool { return a.RuleID < b.RuleID }
+	case "handler":
+		less = func(a, b *event.Event) bool { return a.Handler < b.Handler }
+	default:
+		return
+	}
+	sort.SliceStable(evs, func(i, j int) bool { return less(evs[i], evs[j]) })
+	if order == "desc" {
+		for i, j := 0, len(evs)-1; i < j; i, j = i+1, j-1 {
+			evs[i], evs[j] = evs[j], evs[i]
+		}
+	}
+}
+
+// buildSortHeaders builds clickable column headers that preserve the
+// current filters and toggle asc/desc on the active column. Sortable
+// columns: time, severity, source, rule, handler.
+func buildSortHeaders(path string, q url.Values, sortKey, order string) map[string]colHeader {
+	carry := url.Values{}
+	for _, k := range []string{"source", "rule", "since", "limit", "severity"} {
+		if v := q.Get(k); v != "" {
+			carry.Set(k, v)
+		}
+	}
+	out := map[string]colHeader{}
+	for _, col := range []string{"time", "severity", "source", "rule", "handler"} {
+		next := "asc"
+		arrow := ""
+		if sortKey == col {
+			if order == "asc" {
+				next, arrow = "desc", " ▲"
+			} else {
+				next, arrow = "asc", " ▼"
+			}
+		}
+		v := url.Values{}
+		for k, vs := range carry {
+			v[k] = vs
+		}
+		v.Set("sort", col)
+		v.Set("order", next)
+		out[col] = colHeader{Label: col, Href: path + "?" + v.Encode(), Arrow: arrow}
+	}
+	return out
+}
+
+type errorsPage struct {
+	Events   []*event.Event
+	SinceStr string
+}
+
+// handleErrors surfaces operational / health events — listener stopped,
+// listener start error, canary watcher stopped, accept-cap overflow,
+// recovered panics — filtered out of the normal detection stream.
+func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
+	since := 7 * 24 * time.Hour
+	if v := r.URL.Query().Get("since"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			since = d
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-since), Limit: 1000})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ops := make([]*event.Event, 0, 32)
+	for _, ev := range evs {
+		if isOperationalEvent(ev.RuleID) {
+			ops = append(ops, ev)
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "errors", errorsPage{Events: ops, SinceStr: r.URL.Query().Get("since")}); err != nil {
+		slog.Warn("ui: render errors", "err", err)
+	}
+}
+
+// isOperationalEvent reports whether a rule_id is a sensor-health /
+// operational-error event (as opposed to an attacker-interaction event).
+func isOperationalEvent(rule string) bool {
+	switch {
+	case rule == "sensor:reload":
+		return false // audit, not an error
+	case strings.HasPrefix(rule, "sensor:"):
+		return true
+	case strings.Contains(rule, "panic"):
+		return true
+	case strings.HasSuffix(rule, ":accept_cap"):
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
@@ -407,14 +545,49 @@ func (s *Server) hostsView() []HostView {
 type hostsPage struct {
 	Hosts   []HostView
 	Enabled bool
+	Query   string // substring filter (ip/mac/hostname/vendor/source)
+	Status  string // "" | "seen" | "allow"
 }
 
-func (s *Server) handleHosts(w http.ResponseWriter, _ *http.Request) {
-	p := hostsPage{Hosts: s.hostsView(), Enabled: s.fullConfig != nil && s.fullConfig.Devices.Enabled}
+func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	status := r.URL.Query().Get("status")
+	hosts := filterHosts(s.hostsView(), q, status)
+	p := hostsPage{
+		Hosts:   hosts,
+		Enabled: s.fullConfig != nil && s.fullConfig.Devices.Enabled,
+		Query:   r.URL.Query().Get("q"),
+		Status:  status,
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "hosts", p); err != nil {
 		slog.Warn("ui: render hosts", "err", err)
 	}
+}
+
+// filterHosts applies a case-insensitive substring filter over the host
+// fields plus an allow/seen status filter.
+func filterHosts(in []HostView, q, status string) []HostView {
+	if q == "" && status == "" {
+		return in
+	}
+	out := make([]HostView, 0, len(in))
+	for _, h := range in {
+		if status == "allow" && !h.Allowed {
+			continue
+		}
+		if status == "seen" && h.Allowed {
+			continue
+		}
+		if q != "" {
+			hay := strings.ToLower(h.IP + " " + h.MAC + " " + h.Hostname + " " + h.Vendor + " " + h.Source)
+			if !strings.Contains(hay, q) {
+				continue
+			}
+		}
+		out = append(out, h)
+	}
+	return out
 }
 
 func (s *Server) handleAPIHosts(w http.ResponseWriter, _ *http.Request) {

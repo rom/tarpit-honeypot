@@ -36,7 +36,7 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -66,13 +66,23 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 <form method="get" action="/events">
   source: <input type="text" name="source" value="{{ .Filter.SourceIP }}" size="15">
   rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="25">
-  since: <input type="text" name="since" placeholder="24h" size="6">
+  severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
   limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="1000" size="5">
   <button type="submit">filter</button>
   <a href="/events">reset</a>
 </form>
+<p class="note">Click a column header to sort; click again to reverse.</p>
 <table>
-  <tr><th>time (utc)</th><th>severity</th><th>rule</th><th>source</th><th>dest</th><th>handler</th><th></th></tr>
+  <tr>
+    <th><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
+    <th><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
+    <th><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
+    <th><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
+    <th>dest</th>
+    <th><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
+    <th></th>
+  </tr>
   {{ range .Events }}
   <tr>
     <td>{{ fmtTime .Time }}</td>
@@ -152,6 +162,16 @@ IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</
 {{ if not .Enabled }}<p class="note">Device tracking is disabled. Set
 <code>devices.enabled: true</code> to learn hosts from DHCP, the ARP sniffer,
 and connection source IPs.</p>{{ end }}
+<form method="get" action="/hosts">
+  filter: <input type="text" name="q" value="{{ .Query }}" placeholder="ip / mac / hostname / vendor" size="28">
+  status: <select name="status">
+    <option value=""{{ if eq .Status "" }} selected{{ end }}>all</option>
+    <option value="seen"{{ if eq .Status "seen" }} selected{{ end }}>seen</option>
+    <option value="allow"{{ if eq .Status "allow" }} selected{{ end }}>allow-listed</option>
+  </select>
+  <button type="submit">filter</button>
+  <a href="/hosts">reset</a>
+</form>
 {{ if not .Hosts }}
 <p class="note">No hosts learned yet. JSON at <a href="/api/hosts">/api/hosts</a>.</p>
 {{ else }}
@@ -217,6 +237,33 @@ device allow-list (won't raise <code>device:new</code>). JSON at <a href="/api/h
 {{ end }}</div>{{ end }}
 {{ template "foot" . }}{{ end }}
 
+{{ define "errors" }}{{ template "head" . }}
+<h1>operational errors &amp; health</h1>
+<p class="note">Sensor-side problems (listener stopped, listener start error,
+canary watcher stopped, accept-cap overflow, recovered panics) — separated
+from attacker-interaction events. JSON for all events at <a href="/api/events">/api/events</a>.</p>
+<form method="get" action="/errors">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="168h" size="6">
+  <button type="submit">filter</button>
+  <a href="/errors">reset</a>
+</form>
+{{ if not .Events }}
+<p class="note">No operational errors in the window. The sensor is healthy.</p>
+{{ else }}
+<table>
+  <tr><th>time (utc)</th><th>severity</th><th>rule</th><th>detail</th></tr>
+  {{ range .Events }}
+  <tr>
+    <td>{{ fmtTime .Time }}</td>
+    <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+    <td>{{ .RuleID }}</td>
+    <td><a href="/events/{{ .ID }}">details</a></td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
 {{ define "docs" }}{{ template "head" . }}
 <div class="docs">
 <h1>tarpit-honeypot — documentation</h1>
@@ -239,6 +286,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <li><a href="/hosts">hosts</a> — learned / seen / allow-listed hosts (IPv4 / IPv6 / MAC).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
+<li><a href="/errors">errors</a> — operational / health events (listener or canary-watcher stopped, accept-cap overflow).</li>
 <li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>
 </ul>
 
