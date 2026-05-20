@@ -58,6 +58,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		URLCanaries:  args.URLCanaries,
 		TLSRotate:    args.TLSRotate,
 		Archetype:    arch,
+		AcceptCreds:  l.AcceptCreds,
 		HoneynetView: args.HoneynetSnapshot,
 	}
 	switch l.Proto {

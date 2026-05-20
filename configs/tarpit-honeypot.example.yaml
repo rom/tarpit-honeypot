@@ -162,6 +162,25 @@ listeners:
     read_bytes: 256
     read_timeout: 10s
 
+  # ftp_files is the medium-interaction FTP server: allows anonymous
+  # login (or a default-credential accept policy), serves a tree of
+  # decoy files via PASV, and flags downloads of the bait files
+  # (id_rsa, credentials.txt, database_dump.sql, config.bak) as the
+  # honeyfile-download anomaly. accept_creds:
+  #   none      -> capture only, reject every login (default)
+  #   defaults  -> accept known vendor-default credentials
+  #   any       -> accept anything (maximum engagement)
+  - id: ftp-files-bait
+    proto: tcp
+    bind: 0.0.0.0:21
+    mode: banner
+    handler: ftp_files
+    severity: high
+    read_timeout: 30s
+    capture: true
+    accept_creds: defaults
+    max_concurrent: 32
+
   - id: udp-5353
     proto: udp
     bind: 0.0.0.0:5353

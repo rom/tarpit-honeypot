@@ -239,6 +239,12 @@ type Listener struct {
 	// = inherit sensor.archetype. Useful when one sensor serves a
 	// mix of OS-shaped traps on different ports.
 	Archetype     string        `yaml:"archetype"`
+	// AcceptCreds controls which login attempts a credential-capturing
+	// handler (ftp_files, ...) treats as a success:
+	//   ""/"none"  -> never accept (pure capture; default)
+	//   "defaults" -> accept any known vendor-default credential
+	//   "any"      -> accept anything (max engagement)
+	AcceptCreds   string        `yaml:"accept_creds"`
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`

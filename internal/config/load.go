@@ -232,7 +232,7 @@ func (c *Config) Validate() error {
 		tcpHandlers := map[string]bool{
 			"raw": true, "ssh": true, "ssh_interactive": true,
 			"http": true, "https": true,
-			"telnet": true, "ftp": true,
+			"telnet": true, "ftp": true, "ftp_files": true,
 			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 			"opcua": true, "ethernetip": true, "smb": true,
 			"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
@@ -280,6 +280,11 @@ func (c *Config) Validate() error {
 		}
 		if l.Archetype != "" && archetype.Lookup(l.Archetype) == nil {
 			return fmt.Errorf("listener %s: archetype %q is not a known archetype", l.ID, l.Archetype)
+		}
+		switch l.AcceptCreds {
+		case "", "none", "defaults", "any":
+		default:
+			return fmt.Errorf("listener %s: accept_creds must be none|defaults|any (got %q)", l.ID, l.AcceptCreds)
 		}
 	}
 

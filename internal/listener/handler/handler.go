@@ -35,6 +35,10 @@ type Deps struct {
 	// specific OS. nil = fall back to the identity-based variant
 	// pool (v1.0 behavior).
 	Archetype *archetype.Profile
+	// AcceptCreds is the credential accept-policy for handlers that
+	// can let an attacker "in" (ftp_files). One of "" / "none" /
+	// "defaults" / "any".
+	AcceptCreds string
 	// HoneynetView is a side-channel for topology-exposing handlers
 	// (snmp / ldap / dcerpc) so they can advertise the honeynet hosts
 	// in their query responses. Avoids importing internal/honeynet
@@ -116,6 +120,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &telnet{jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "ftp":
 		return &ftp{jit: deps.Jitter, arch: deps.Archetype}, nil
+	case "ftp_files":
+		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds}, nil
 	case "modbus":
 		return &modbus{}, nil
 	case "s7":
