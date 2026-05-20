@@ -24,6 +24,12 @@ sensor:
   # actually exploitable. CVE exploit-attempt detection (cve:<id> events)
   # runs regardless of this flag. Override per-listener with vuln_emulation.
   vuln_emulation: true
+  # Operational alarms. sensor:started/stopped + sensor:health (disk +
+  # sink drops) are always on; first_seen + digest are opt-in here.
+  alerts:
+    first_seen: true          # source:first_seen on a source's first >= medium event
+    digest_interval: 24h      # sensor:digest summary every 24h (0 = off)
+    disk_warn_percent: 90     # sensor:health when data_dir crosses this
   # Malware / shellcode / payload harvesting to <data_dir>/payloads/.
   # Captured artifacts (uploaded binaries, base64 droppers, shellcode) are
   # classified + persisted; ingress URLs are harvested. Collection only.

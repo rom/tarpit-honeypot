@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — operational alarms (lifecycle / health / first-seen / digest)
+- `sensor:started` / `sensor:stopped` lifecycle events; `sensor:health`
+  (data_dir disk usage past `disk_warn_percent` with hysteresis, and sink
+  drop counts) — both always on. Opt-in `source:first_seen` (a source's
+  first >= medium event, deduped + capped) and `sensor:digest` (periodic
+  summary: totals by severity, top rules, top risk sources). Config under
+  `sensor.alerts`.
+
 ### Added — per-source risk scoring
 - **`risk:`** (`internal/risk`): a decaying per-source threat score. Every
   event adds severity- and category-weighted points to its source (CVE /

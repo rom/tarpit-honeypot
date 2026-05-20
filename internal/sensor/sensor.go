@@ -38,6 +38,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/tunnet"
+	"github.com/rom/tarpit-honeypot/internal/version"
 )
 
 // listenerHandle wraps a running listener so we can stop it individually
@@ -49,25 +50,26 @@ type listenerHandle struct {
 }
 
 type Sensor struct {
-	cfg        *config.Config
-	name       string
-	sinks      []sink.Sink
-	router     *router.Router
-	correlator *correlate.Correlator
-	store      *store.Store
-	captureMgr *capture.Manager
-	identity   *identity.Identity
-	jitter     *jitter.Jitterer
-	archetype  *archetype.Profile
-	honeynet   *honeynet.Topology
-	enrich     *enrich.Enricher
-	devices    *devices.Registry
-	scanTrack  *scananalysis.Tracker
-	payloads   *payload.Store
-	sessionRec *sessionrec.Store
-	risk       *risk.Scorer
-	deviceSev  event.Severity
-	bus        chan *event.Event
+	cfg         *config.Config
+	name        string
+	sinks       []sink.Sink
+	router      *router.Router
+	correlator  *correlate.Correlator
+	store       *store.Store
+	captureMgr  *capture.Manager
+	identity    *identity.Identity
+	jitter      *jitter.Jitterer
+	archetype   *archetype.Profile
+	honeynet    *honeynet.Topology
+	enrich      *enrich.Enricher
+	devices     *devices.Registry
+	scanTrack   *scananalysis.Tracker
+	payloads    *payload.Store
+	sessionRec  *sessionrec.Store
+	risk        *risk.Scorer
+	deviceSev   event.Severity
+	seenSources map[string]struct{} // bus-loop-only: source:first_seen dedup
+	bus         chan *event.Event
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
@@ -272,26 +274,27 @@ func New(cfg *config.Config) (*Sensor, error) {
 	}
 
 	return &Sensor{
-		cfg:        cfg,
-		name:       name,
-		sinks:      sinks,
-		router:     r,
-		correlator: cor,
-		store:      st,
-		captureMgr: capMgr,
-		identity:   id,
-		jitter:     jit,
-		archetype:  arch,
-		honeynet:   topo,
-		enrich:     enr,
-		devices:    devReg,
-		deviceSev:  devSev,
-		scanTrack:  scananalysis.NewTracker(5 * time.Minute),
-		payloads:   payloadStore,
-		sessionRec: sessRec,
-		risk:       newRiskScorer(cfg.Risk),
-		bus:        make(chan *event.Event, 1024),
-		listeners:  map[string]*listenerHandle{},
+		cfg:         cfg,
+		name:        name,
+		sinks:       sinks,
+		router:      r,
+		correlator:  cor,
+		store:       st,
+		captureMgr:  capMgr,
+		identity:    id,
+		jitter:      jit,
+		archetype:   arch,
+		honeynet:    topo,
+		enrich:      enr,
+		devices:     devReg,
+		deviceSev:   devSev,
+		scanTrack:   scananalysis.NewTracker(5 * time.Minute),
+		payloads:    payloadStore,
+		sessionRec:  sessRec,
+		risk:        newRiskScorer(cfg.Risk),
+		seenSources: map[string]struct{}{},
+		bus:         make(chan *event.Event, 1024),
+		listeners:   map[string]*listenerHandle{},
 	}, nil
 }
 
@@ -998,6 +1001,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.MitreTechniques = tag.Techniques
 					ev.MitreTactics = tag.Tactics
 				}
+				// First-seen: emit source:first_seen the first time a source
+				// produces a >= medium event (opt-in, low-noise).
+				if fs := s.observeFirstSeen(ev); fs != nil {
+					rt.Dispatch(fs)
+					s.scoreRisk(rt, fs)
+				}
 				// Decode the captured payload once; share it with the
 				// payload harvester and scan-analysis (both need the bytes).
 				var payloadBytes []byte
@@ -1045,6 +1054,18 @@ func (s *Sensor) Run(ctx context.Context) error {
 		if err := s.startListener(l); err != nil {
 			return err
 		}
+	}
+
+	// Sensor lifecycle + health/digest operational events.
+	s.emitOpEvent("sensor:started", event.SeverityMedium, map[string]any{
+		"listeners": len(s.cfg.Listeners), "channels": len(s.curConfig().Channels),
+		"honeynets": len(s.cfg.Honeynets), "version": version.Version,
+	})
+	wg.Add(1)
+	go func() { defer wg.Done(); s.runHealthMonitor(ctx) }()
+	if s.cfg.Sensor.Alerts.DigestInterval > 0 && s.store != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.runDigest(ctx) }()
 	}
 
 	if len(s.cfg.Canaries) > 0 {
@@ -1329,6 +1350,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 	case <-drainCtx.Done():
 		slog.Warn("shutdown: drain timeout reached; some handlers may have been interrupted")
 	}
+
+	// Final lifecycle event before the bus closes (still drained downstream).
+	s.emitOpEvent("sensor:stopped", event.SeverityMedium, map[string]any{"sensor": s.name})
 
 	close(s.bus)
 	wg.Wait()

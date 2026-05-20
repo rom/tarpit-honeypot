@@ -21,6 +21,21 @@ type Config struct {
 	Risk        RiskScoring `yaml:"risk"`
 }
 
+// AlertsConfig configures operational alarms/notifications. Lifecycle
+// (sensor:started/stopped) and health (sensor:health) are always on with
+// sane defaults; first-seen and digests are opt-in.
+type AlertsConfig struct {
+	// FirstSeen emits source:first_seen the first time a source produces a
+	// >= medium-severity event in this run (gated to keep it low-noise).
+	FirstSeen bool `yaml:"first_seen"`
+	// DigestInterval emits a periodic sensor:digest summary (top sources /
+	// rules over the window). 0 = off.
+	DigestInterval time.Duration `yaml:"digest_interval"`
+	// DiskWarnPercent is the data_dir usage % above which sensor:health
+	// warns. 0 -> default 90.
+	DiskWarnPercent int `yaml:"disk_warn_percent"`
+}
+
 // RiskScoring configures the decaying per-source threat score. When
 // enabled, every event adds severity/category-weighted points to its
 // source; crossing a threshold emits risk:elevated / risk:high /
@@ -255,6 +270,9 @@ type Sensor struct {
 	// SessionRecording records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema v2 casts under <data_dir>/sessions/.
 	SessionRecording SessionRecording `yaml:"session_recording"`
+	// Alerts configures sensor lifecycle / health / first-seen / digest
+	// operational events (separate from per-connection detection events).
+	Alerts AlertsConfig `yaml:"alerts"`
 	// Interfaces names the network interface(s) the sensor should use.
 	// It supplies the default interface for the AF_PACKET layer — the
 	// sniffer and the honeynet ARP/ICMP/LLDP/PROFINET responders — when

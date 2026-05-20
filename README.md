@@ -979,6 +979,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   heaviest); the score halves over `half_life` of silence so quiet sources
   cool off. Meta carries `score` + `trigger_rule`; the top scorers surface
   in the web UI's `/risk` view. Fires once per escalation.
+- **Operational alarms** (`sensor.alerts`): `sensor:started` / `sensor:stopped`
+  (lifecycle, always on), `sensor:health` (data_dir disk crossing
+  `disk_warn_percent` with hysteresis, or sinks dropping events — always
+  on), `source:first_seen` (a source's first ≥ medium event, opt-in,
+  deduped), and `sensor:digest` (periodic summary of totals by severity +
+  top rules + top risk sources, opt-in via `digest_interval`).
 - `correlate:slow_scan` — long-window scan detector (default 24h /
   10 distinct ports). Meta includes `first_seen`, `last_seen`,
   `spread_seconds`, `ports`.
