@@ -31,7 +31,7 @@ phasing decisions.
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
-- **41 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **43 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -40,9 +40,30 @@ phasing decisions.
   + Stream 10, Debian 9–13, RHEL 8/9/10, Ubuntu 24.04/26.04 LTS,
   FreeBSD 13/14, OpenBSD 7.5/7.6, Arch Linux, Rocky Linux 9,
   AlmaLinux 9, Oracle Linux 8/9, Windows 7/8/10/11, Windows Server
-  2008/2012/2012R2/2016/2019/2022, Moxa EDS-208, Moxa NPort 5210,
+  2008/2012/2012R2/2016/2019/2022, **Active Directory (Server 2019 DC)**,
+  **Cisco Catalyst (IOS 15)**, Moxa EDS-208, Moxa NPort 5210,
   Siemens SCALANCE XB-208 / S615 / SC-600, Siemens S7-1200 / S7-1500
   PLC. `tarpit-honeypot help archetypes` lists them all.
+- **CVE emulation + exploit-attempt capture** (`internal/cve`): the
+  http/https/appliance handlers recognize known exploit signatures
+  (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell, FortiOS /
+  Pulse / Citrix traversals, Apache 2.4.49, EternalBlue, …) and emit a
+  CVSS-scaled `cve:<id>` event without ever being exploitable. With
+  `sensor.vuln_emulation` (per-listener overridable) a banner-aware
+  handler advertises the archetype's deliberately-unpatched version +
+  **fake patch level** so a version scanner records an exploitable box.
+- **Command emulation per device family**: believable POSIX shells, plus
+  **PowerShell** (incl. Active Directory cmdlets), **Windows cmd.exe**,
+  **Cisco IOS** (enable + show version/run/vlan/cdp), the **Moxa** and
+  **SCALANCE** switch CLIs, and the **Siemens S7 PLC** console — routed
+  by the archetype. The shell anomaly scanner flags Linux *and*
+  Windows/PowerShell TTPs (download cradles, encoded commands,
+  credential dumping, AD recon, Defender/AMSI tamper, persistence).
+- **Malware capture + shellcode extraction + payload harvesting**
+  (`internal/payload`): classifies captured bytes (ELF / PE / Mach-O /
+  archive / script magic + x86 shellcode heuristics), decodes
+  base64-wrapped droppers, harvests ingress URLs, and persists artifacts
+  to `<data_dir>/payloads/` (size-capped). Emits `malware:capture`.
 - **Archetype consistency**: each archetype keeps its firmware era,
   banners, SNMP identity, MAC OUI, login pages, ICMP TTL, **and TLS
   posture** aligned — e.g. a "Windows Server 2008" archetype caps TLS
@@ -136,11 +157,12 @@ phasing decisions.
   family-tuned LLDP capabilities (bridge/router for switches + PLCs,
   station-only for hosts). Pairs naturally with the Moxa / SCALANCE
   / S7 archetypes for industrial deception.
-- **MITRE ATT&CK tagging**: every event the sensor emits is decorated
-  with `mitre_techniques` (e.g. `["T1110.001","T1078"]`) and
-  `mitre_tactics` (e.g. `["credential-access","initial-access"]`)
-  via the `internal/mitre` rule-id + handler-aware mapping. SIEMs
-  pivot on these IDs directly.
+- **MITRE ATT&CK + D3FEND tagging**: every event is decorated with
+  `mitre_techniques` (e.g. `["T1110.001","T1078"]`), `mitre_tactics`
+  (e.g. `["credential-access","initial-access"]`), and `mitre_defenses`
+  — the MITRE **D3FEND** countermeasures (e.g. `["D3-MFA","D3-DE"]`)
+  that answer those techniques — via the `internal/mitre` rule-id +
+  handler-aware mapping. SIEMs pivot on these IDs directly.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-
@@ -528,6 +550,8 @@ Global identity + behavior. All optional; sane defaults apply.
 | `geoip` / `rdns` | Source-IP enrichment (GeoIP city/ASN + bounded rDNS). See [Enrichment](#enrichment). |
 | `disk` | Size caps + `retention_days` for events / captures / SQLite. See [pcap](#per-event-pcap-capture). |
 | `shutdown.drain_timeout` | Grace period for in-flight handlers after SIGTERM. |
+| `vuln_emulation` | Advertise the archetype's deliberately-unpatched banner + fake patch level (per-listener `vuln_emulation` overrides). CVE exploit-attempt detection runs regardless. Never makes the service exploitable. |
+| `payloads` | `{enabled, max_bytes, max_total_mb}` — harvest malware/shellcode/droppers to `<data_dir>/payloads/`. |
 | `drop_user` / `drop_group` | uid/gid to switch to after privileged setup (refuses uid 0). |
 
 ### `listeners`
@@ -827,6 +851,13 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   the segment (learned-device registry). Meta: `device_ip`,
   `device_mac`, `device_vendor` (MAC-OUI lookup), `device_hostname`.
   Tagged `T1018`. See [`devices`](#devices) config.
+- `cve:<id>` — a known-CVE exploit signature appeared in a request
+  (e.g. `cve:CVE-2021-44228`). CVSS-scaled severity (>=9.0 → critical);
+  meta carries `cve_name`, `cvss`, `description`. Detection only — the
+  service is never actually exploitable.
+- `malware:capture` — a binary / script / shellcode / base64 dropper was
+  harvested from captured bytes. Meta: `artifacts` (kind:sha256), markers;
+  the artifact is persisted to `<data_dir>/payloads/`. Tagged T1105+T1027.
 - `protocol_anomaly` / `event.anomalies` — handler-flagged protocol
   misuse (SSH non-printable / overlong banners, HTTP unknown methods +
   suspicious URIs, DNS tunneling shapes, ICMP abnormal payloads, the

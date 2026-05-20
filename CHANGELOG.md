@@ -8,6 +8,36 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CVE emulation, command emulation, malware capture, D3FEND, AD/Cisco
+- **CVE catalog + emulation** (`internal/cve`): curated high-signal exploit
+  signatures (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell,
+  FortiOS/Pulse/Citrix traversals, Apache 2.4.49, EternalBlue/SMBGhost,
+  BlueKeep, …). http/https/appliance handlers recognize exploit attempts and
+  emit CVSS-scaled `cve:<id>` events. `sensor.vuln_emulation` (per-listener
+  overridable) makes banner-aware handlers advertise a known-vulnerable
+  version / fake patch level. The service is never actually exploitable.
+- **ATT&CK + D3FEND mappings**: `cve:<id>` rule mapping; MITRE **D3FEND**
+  defensive countermeasures stamped on every event (`mitre_defenses`).
+- **Active Directory + Cisco archetypes**: a Windows Server 2019 DC (Kerberos/
+  LDAP/SMB/DNS/WinRM/DCERPC/Global-Catalog + PowerShell shell + pre-2021 patch
+  level) and a Cisco IOS switch. Archetypes gain vulnerable-banner / patch-
+  level fields.
+- **Command emulation**: PowerShell (incl. AD cmdlets), Windows cmd.exe, Cisco
+  IOS, and the Siemens S7 PLC console, routed by archetype family; the shell
+  anomaly scanner gains Windows/PowerShell TTP markers (download cradle,
+  encoded command, credential dumping, AD recon, Defender/AMSI tamper,
+  registry/schtask/service persistence).
+- **Malware capture / shellcode extraction / payload harvesting**
+  (`internal/payload`): classifies captured bytes (ELF/PE/Mach-O/archive/script
+  + x86 shellcode heuristics), decodes base64-wrapped droppers, harvests
+  ingress URLs, and persists artifacts to `<data_dir>/payloads/` with size
+  caps (`sensor.payloads`). Emits `malware:capture` (T1105+T1027).
+- **Storyline correlator** now tracks CVE exploits / captured malware /
+  fingerprinted tools, flags `objective_reached` (impact/exfil), scales
+  severity to Critical, and carries D3FEND defenses.
+- **Web UI**: new **hosts** tab (known/seen/allow-listed IPv4/IPv6/MAC) and
+  **alerting** tab (syslog/email/webhook/SMS/SNMP forwarding + routes).
+
 ### Added — scan analysis + small services + DNS resolver + tarpit emulation + UI tabs
 - **Scan analysis / nmap fingerprinting** (`internal/scananalysis`,
   `scananalysis:profile` event): stateless per-payload classification

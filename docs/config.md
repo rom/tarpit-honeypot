@@ -72,6 +72,8 @@ sensor:
 | `geoip.city_db` | MaxMind GeoLite2-City.mmdb path. Decorates events with `geo_country`, `geo_city`, etc. |
 | `geoip.asn_db` | MaxMind GeoLite2-ASN.mmdb path. Decorates events with `asn`, `asn_org`. |
 | `rdns.*` | Bounded synchronous reverse-DNS with LRU cache. Loopback/private addresses are skipped. |
+| `vuln_emulation` | `true` makes banner-aware handlers advertise the archetype's deliberately-unpatched version + fake patch level (e.g. `debian 12` → Apache 2.4.49 / OpenSSH 7.2 / vsFTPd 2.3.4). Per-listener `vuln_emulation` overrides it. CVE exploit-attempt detection (`cve:<id>` events) runs regardless. The service never becomes actually exploitable. |
+| `payloads` | `{enabled, max_bytes, max_total_mb}` — harvest attacker-supplied malware / shellcode / droppers to `<data_dir>/payloads/`. Classified (ELF/PE/script/shellcode), base64 droppers decoded, ingress URLs extracted; emits `malware:capture`. Collection only — nothing is executed. |
 
 ---
 

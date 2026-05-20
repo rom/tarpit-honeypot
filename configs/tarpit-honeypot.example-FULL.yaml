@@ -17,6 +17,20 @@ sensor:
   jitter:    { enabled: true, min_ms: 5, max_ms: 50 }
   tls_rotate: { days: 30 }
   shutdown:  { drain_timeout: 10s }
+  # Vulnerable-banner / fake-patch-level emulation. When on, banner-aware
+  # handlers advertise the archetype's deliberately-unpatched version
+  # (e.g. debian 12 -> Apache 2.4.49 / OpenSSH 7.2 / vsFTPd 2.3.4) so a
+  # version scanner records an exploitable box. The service is NEVER
+  # actually exploitable. CVE exploit-attempt detection (cve:<id> events)
+  # runs regardless of this flag. Override per-listener with vuln_emulation.
+  vuln_emulation: true
+  # Malware / shellcode / payload harvesting to <data_dir>/payloads/.
+  # Captured artifacts (uploaded binaries, base64 droppers, shellcode) are
+  # classified + persisted; ingress URLs are harvested. Collection only.
+  payloads:
+    enabled: true
+    max_bytes: 1048576      # 1 MiB per artifact
+    max_total_mb: 256       # directory cap, oldest-first rotation
   disk:
     json_log_mb: 500
     sqlite_mb: 500
@@ -672,12 +686,19 @@ honeynets:
       - ip: 10.99.0.20
         hostname: dc-01
         os: windows
-        archetype: windows server 2019
+        # Active Directory DC archetype: PowerShell shell + the full AD
+        # protocol mix + a pre-2021-rollup patch level (ZeroLogon /
+        # PrintNightmare / ProxyLogon advisory).
+        archetype: active directory
         services:
-          - { port: 88,  handler: kerberos }
-          - { port: 389, handler: ldap }
-          - { port: 445, handler: smb }
+          - { port: 53,   handler: dns }
+          - { port: 88,   handler: kerberos }
+          - { port: 135,  handler: dcerpc }
+          - { port: 389,  handler: ldap }
+          - { port: 445,  handler: smb }
+          - { port: 3268, handler: ldap }     # Global Catalog
           - { port: 3389, handler: rdp }
+          - { port: 5985, handler: winrm }
       - ip: 10.99.0.30
         hostname: plc-01
         os: ics
@@ -685,6 +706,16 @@ honeynets:
         services:
           - { port: 102, handler: s7 }
           - { port: 80,  handler: http }
+      - ip: 10.99.0.40
+        hostname: sw-core-01
+        os: cisco
+        # Cisco IOS switch: routes the shell to the Cisco CLI emulator
+        # (enable + show version/run/vlan/cdp).
+        archetype: cisco-ios
+        services:
+          - { port: 22,  handler: ssh }
+          - { port: 23,  handler: telnet }
+          - { port: 161, handler: snmp }
 
 dedup:
   default_window: 5m
