@@ -115,6 +115,21 @@ phasing decisions.
     but fires on any subdomain of a registered name.
 - **ARP sniffer** (Linux AF_PACKET): detects ARP scans (one MAC asking
   about many distinct IPs) and unsolicited replies (ARP-cache poisoning).
+- **ICMP responder + personality + anomaly detection**: virtual hosts
+  answer echo / timestamp / address-mask requests (Linux AF_PACKET),
+  each stamped with the archetype's **initial-TTL personality** (255 OT
+  / 128 Windows / 64 Linux-BSD) so OS fingerprinting + traceroute
+  hop-distance stay consistent. The `internal/icmp` toolkit builds the
+  full message family — Dest-Unreachable, Frag-Needed-with-MTU (PMTUD),
+  Time-Exceeded (traceroute), Redirect, Param-Problem, IPv6 NDP — and
+  `internal/icmp.Anomalies` flags ICMP tunneling, oversize payloads, and
+  teardrop / overlapping-fragment evasion.
+- **Device learning + "new device" alerts**: an opt-in learned-device
+  registry (`devices.enabled`) records every host seen via DHCP (MAC +
+  hostname + DHCP fingerprint), the ARP sniffer, and connection source
+  IPs, does MAC-OUI vendor lookup, and raises `device:new` for
+  never-before-seen, non-allow-listed hosts (learn-baseline or strict
+  allow-list mode). Inspect with `list-devices`.
 - **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host
   advertises itself in `lldpctl` / Cisco `show cdp neighbors` output
   with archetype-shaped MAC, hostname, system description, and
@@ -158,6 +173,8 @@ phasing decisions.
   - **Slow-scan**: long-window detector (default 24h, 10 distinct ports).
     Per-port state ages out individually, so a one-port-per-hour scan
     accumulates instead of resetting.
+  - **ICMP sweep**: one source pinging N distinct virtual host IPs
+    within a window (`correlate:icmp_sweep`, T1018).
 - **Scan analysis / nmap fingerprinting** (`scananalysis:profile`):
   per-source profiling of an active scan. Estimates the nmap timing
   template (`-T0` paranoid .. `-T5` insane) from inter-connection
@@ -256,6 +273,31 @@ specific ones (AF_PACKET raw sockets, fanotify OPEN events,
 Linux TUN/TAP, `setresuid`) runs natively on macOS; the Linux-only
 subsystems return clean errors with platform-specific workarounds
 documented in [`docs/usage.md`](docs/usage.md#platform-support).
+
+**v1.12 — scan analysis + service breadth + UI tabs.** Per-source nmap
+scan profiling (`scananalysis:profile`: timing template `-T0`..`-T5`,
+`-A`/`-O`/`-sV`, NSE + service-probe matching, connect scans). inetd
+"small services" (echo / discard / daytime / qotd / chargen / time over
+TCP **and** UDP) that are reflection-safe by construction. A resolving
+`dns` handler that answers A/AAAA/MX/TXT/NS/CNAME with
+deterministic-per-deployment fake records and runs every query through
+tunneling/exfil detection. Emulate-then-tarpit (`tarpit.emulate`) turns
+any protocol emulator into a tarpit. Two new read-only web-UI tabs
+(topology + docs). 76 protocol handlers total.
+
+**v1.11 — archetype depth + device intelligence + fingerprinting.** 15
+new protocol emulators (mssql, oracle_tns, and the remote-access /
+out-of-band-mgmt personas: teamviewer, anydesk, openvpn, citrix_ica,
+intel_amt, ilo, idrac, esxi, fortinet, pulse, citrix_gateway, horizon,
+moxa_mgmt) + per-deployment VNC version variety. 11 Windows + 3 Siemens
+SCALANCE archetypes with era-correct **TLS posture** and per-host
+**ICMP TTL personality**; switch archetypes expose MRP / PROFINET /
+VLAN / HMI / LLDP topology from their web UI + the L2 segment. Tool
+fingerprinting + human-vs-automation heuristics (`internal/toolfp`).
+Abnormal-payload detection for ICMP (tunneling / frag abuse) and DNS
+(exfil shapes). Learned-device registry with `device:new` alerts +
+MAC-OUI vendor lookup. Default-credential corpus, fake-files tree, and
+the medium-interaction `ftp_files` handler. ICMP ping-sweep correlation.
 
 **v1.10 — attacker engagement.** Interactive CLI shell engagement
 (`internal/shell`) wired into both the existing `telnet` handler
@@ -414,6 +456,10 @@ tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
+tarpit-honeypot list-devices   -c <config>
+tarpit-honeypot init           [-o <config>]
+tarpit-honeypot completion     bash|zsh|fish
+tarpit-honeypot help           [subcommand|topic]
 tarpit-honeypot version
 ```
 
@@ -462,8 +508,27 @@ to the rotating JSONL log for tripwire-only configs.
 
 ## Configuration
 
-The full schema is documented inline in
-`configs/tarpit-honeypot.example.yaml`. Key sections:
+The full annotated schema lives in
+[`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml)
+(plus the `-FULL` / `-SMALL-OT` / `-ADVANCED-OT` variants in `configs/`),
+with a per-section reference in [`docs/config.md`](docs/config.md). Key
+sections:
+
+### `sensor`
+
+Global identity + behavior. All optional; sane defaults apply.
+
+| Field | Purpose |
+|---|---|
+| `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, and **ICMP TTL** to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 41. |
+| `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
+| `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
+| `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
+| `geoip` / `rdns` | Source-IP enrichment (GeoIP city/ASN + bounded rDNS). See [Enrichment](#enrichment). |
+| `disk` | Size caps + `retention_days` for events / captures / SQLite. See [pcap](#per-event-pcap-capture). |
+| `shutdown.drain_timeout` | Grace period for in-flight handlers after SIGTERM. |
+| `drop_user` / `drop_group` | uid/gid to switch to after privileged setup (refuses uid 0). |
 
 ### `listeners`
 
@@ -489,11 +554,40 @@ subdomain of a registered name is queried at the UDP DNS listener.
 Optional Linux-only AF_PACKET sniffer. Needs `CAP_NET_RAW`. Detects ARP
 scans and unsolicited replies. Off by default.
 
-### `correlate.port_scan` + `correlate.brute_force`
+### `correlate`
 
-In-memory windowed counters. Emit higher-severity aggregate events when
-thresholds are crossed. Aggregate events are deduped within the window
-so a sustained scan doesn't flood sinks.
+In-memory windowed counters that emit higher-severity aggregate events
+when thresholds are crossed. Aggregate events are deduped within the
+window so a sustained scan doesn't flood sinks. Four detectors, each
+independently toggled:
+
+| Block | Fires | Key knobs |
+|---|---|---|
+| `correlate.port_scan` | `correlate:port_scan` — N distinct ports from one source in a short window. | `distinct_ports`, `window` |
+| `correlate.brute_force` | `correlate:brute_force` — N attempts on a port in the window (carries the extracted credential pairs). | `attempts`, `window`, `per_port` |
+| `correlate.slow_scan` | `correlate:slow_scan` — long-window scan (per-port state ages out individually). | `distinct_ports`, `window` (default 24h) |
+| `correlate.icmp_sweep` | `correlate:icmp_sweep` — one source pinged N distinct virtual IPs. | `distinct_ips`, `window`, `severity` |
+
+Per-source scan **profiling** (nmap `-T`/`-A`/`-O`/`-sV`/NSE
+fingerprinting → `scananalysis:profile`) and the cross-protocol
+`storyline:multi_stage` correlator are always-on and need no config.
+
+### `devices`
+
+Learned-device inventory + "new device" alerting. When
+`devices.enabled: true` the sensor records every host it sees (from the
+`dhcp` handler's MAC + hostname + DHCP fingerprint, the ARP sniffer, and
+the source IP of every handled connection) into
+`<data_dir>/devices.json`, and raises a `device:new` event for hosts
+that are neither allow-listed nor part of the learned baseline.
+
+| Field | Meaning |
+|---|---|
+| `learn` | `true` = first run silently records a baseline, later unseen hosts alert; `false` = strict allow-list mode (every non-allowed host alerts on first sight). |
+| `allow` | IPs / CIDRs / MACs that never alert. |
+| `severity` | Severity of the `device:new` event (default `high`). |
+
+Review with `tarpit-honeypot list-devices`.
 
 ### `channels` and `routes`
 
@@ -512,7 +606,23 @@ logged as ignored.
 
 Read-only HTML/JSON web UI. Default `bind: 127.0.0.1:8088`. Non-loopback
 binds are rejected at validate-time unless both `tls_cert` + `tls_key`
-and `auth_token_env` are configured.
+and `auth_token_env` are configured. Tabs: summary, events, **topology**,
+**config**, **docs** — see [Web UI](#web-ui).
+
+### `dedup` + `allowlist`
+
+`dedup.default_window` collapses repeat events with the same
+`(rule_id, source)` within the window before they reach **outbound**
+sinks (local sinks always get the full stream). `allowlist` is a list of
+IPs / CIDRs whose events skip outbound dispatch but are still recorded
+locally — keep a forensic trail without paging on internal scanners.
+
+### `honeynets`
+
+Zero-to-many artificial networks of virtual hosts (CIDR + gateway + DNS +
+domain + per-host `{ip, hostname, os, archetype, services}`), each with
+optional `arp_responder` / `icmp_responder` / `lldp_responder` / `tun`.
+See [Honeynets](#honeynets) for the dispatch model and examples.
 
 ## Protocol handlers in detail
 
@@ -626,13 +736,54 @@ bounded datagram and `echo` never returns more than it received.
 | `chargen` | 19 | Sends **exactly one** bounded 72-char line + CRLF and stops (a real chargen streams forever — we don't). The UDP probe is flagged `udp-amplifier-probe`. |
 | `time` | 37 | Sends the RFC 868 4-byte seconds-since-1900 timestamp. |
 
+### ICMP (responder + detection)
+
+ICMP isn't a bind-mode listener (the kernel owns raw ICMP), so it's
+handled by a Linux AF_PACKET **responder** plus a protocol-anomaly
+layer rather than a `handler:` you wire to a port. Enable it per
+honeynet with `icmp_responder.enabled: true` (needs `CAP_NET_RAW`).
+
+| Capability | What it does |
+|---|---|
+| Echo / timestamp / address-mask responder | Answers type 8→0 (echo), 13→14 (timestamp), 17→18 (address-mask) for every virtual host IP, sourced from that host's deterministic MAC + IP so `ping` / `nmap -sn` see a populated network. |
+| **Per-host ICMP TTL personality** | Each reply is stamped with the host archetype's characteristic initial IP TTL — **255** (OT / network gear), **128** (Windows), **64** (Linux/BSD) — so passive OS fingerprinting and traceroute hop-distance estimation stay consistent with the rest of the host's fingerprint. |
+| Full ICMP message family (`internal/icmp`) | Builders + tests for Destination-Unreachable, **Fragmentation-Needed with next-hop MTU** (PMTUD), **Time-Exceeded** (traceroute hops), Parameter-Problem, Redirect, plus IPv6 Echo / Neighbor-Advertisement / Router-Advertisement (NDP) — the toolkit the responder and TUN adapter draw on. |
+| Abnormal-payload detection (`internal/icmp.Anomalies`) | Flags `icmp-oversize-payload`, `icmp-payload-nonzero-entropy` (tunneling — e.g. Loki / icmpsh), `icmp-frag-abuse` (teardrop / overlapping-fragment IDS evasion), and `icmp-frag-tiny`. Windows-ping filler (the `abcdef…` pattern) is recognized as benign. |
+| Ping-sweep correlation | `correlate.icmp_sweep` fires `correlate:icmp_sweep` when one source pings N distinct virtual IPs inside a window — see [Detection coverage](#detection-coverage). |
+
+> **Note:** the abnormal-payload markers are evaluated in the responder
+> and logged to the structured `slog` stream; the bus-level
+> `correlate:icmp_sweep` event keys off ICMP echo observations. Raw
+> half-open / fragmented ICMP that never reaches the responder still
+> needs the AF_PACKET sniffer.
+
 ## Tarpit strategies
 
-| Strategy | Behavior |
-|---|---|
-| `sticky` | Accept and never read/write. Kernel TCP keepalive will eventually notice dead peers. |
-| `trickle` | Write one byte of the configured `tarpit.trickle.text` every `byte_interval`. Cycles the string forever. |
-| `keepalive` | Write a NUL byte every `tarpit.keepalive.interval`. Cheapest option. |
+| Strategy | Behavior | Knobs |
+|---|---|---|
+| `sticky` | Accept and never read/write. Kernel TCP keepalive will eventually notice dead peers. | — |
+| `trickle` | Write one byte of the configured `tarpit.trickle.text` every `byte_interval`. Cycles the string forever. | `trickle.text`, `trickle.byte_interval` |
+| `keepalive` | Write a NUL byte every `tarpit.keepalive.interval`. Cheapest option. | `keepalive.interval` |
+
+Connection caps bound resource use: `tarpit.max_per_source` limits
+concurrent held connections from one IP and `tarpit.max_total` caps the
+global tarpit slot pool.
+
+```yaml
+listeners:
+  - id: ssh-tarpit
+    proto: tcp
+    bind: 0.0.0.0:2222
+    mode: tarpit
+    severity: high
+    tarpit:
+      strategy: trickle          # sticky | trickle | keepalive
+      max_per_source: 4
+      max_total: 256
+      emulate: false             # true = run handler: first, then tarpit
+      trickle: { text: "Loading...\n", byte_interval: 2s }
+      keepalive: { interval: 30s }
+```
 
 All tarpit modes emit a `*:tarpit_start` event (at the listener's
 configured severity) when the slot is acquired, and a `*:tarpit_end`
@@ -660,11 +811,27 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `correlate:slow_scan` — long-window scan detector (default 24h /
   10 distinct ports). Meta includes `first_seen`, `last_seen`,
   `spread_seconds`, `ports`.
+- `correlate:icmp_sweep` — one source pinged N distinct virtual host
+  IPs inside `correlate.icmp_sweep.window`. Tagged `T1018` (remote
+  system discovery).
 - `scananalysis:profile` — per-source nmap fingerprint once a source
   crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
   `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),
   `os_scan` (`-O`), `aggressive` (`-A`), `nse_scripts`. Tagged
   `T1595` (active scanning) + `T1046` (network-service discovery).
+- `storyline:multi_stage` — one source touched 3+ distinct ATT&CK
+  tactics in a 30-minute window. Meta carries the kill-chain-ordered
+  stage list + a `"->"`-joined chain summary, so the SOC sees one
+  timeline instead of dozens of independent listener hits.
+- `device:new` — a previously-unseen, non-allow-listed host appeared on
+  the segment (learned-device registry). Meta: `device_ip`,
+  `device_mac`, `device_vendor` (MAC-OUI lookup), `device_hostname`.
+  Tagged `T1018`. See [`devices`](#devices) config.
+- `protocol_anomaly` / `event.anomalies` — handler-flagged protocol
+  misuse (SSH non-printable / overlong banners, HTTP unknown methods +
+  suspicious URIs, DNS tunneling shapes, ICMP abnormal payloads, the
+  14-marker interactive-shell TTP scanner). Routed separately so a SIEM
+  rule can pivot on the marker.
 - `dnscanary:amplifier_probe` — DNS source sent an ANY-type query or
   exceeded the per-window query threshold. Meta: `queries`,
   `any_queries`, `triggered_by_any`.
@@ -726,7 +893,14 @@ Endpoints:
   `?severity=high`, `?limit=N`.
 - `/events/<id>` — full event detail with banner sent, base64 payload,
   meta table.
-- `/api/events`, `/api/summary` — JSON equivalents.
+- `/topology` — the virtual networks / hosts / services the sensor
+  presents (rendered from the resolved honeynet topology).
+- `/config` — the effective post-defaults config (secrets shown as
+  `*_env` names, never expanded values).
+- `/docs` — built-in reference that reflects the running deployment.
+- `/api/events`, `/api/summary`, `/api/config`, `/api/topology` — JSON
+  equivalents.
+- `/metrics` — Prometheus text-format (see [Prometheus metrics](#prometheus-metrics)).
 - `/healthz` — auth-bypass liveness check.
 
 Security headers (`Content-Security-Policy: default-src 'none'`,
@@ -841,6 +1015,20 @@ computes:
 
 Caveat: HASSH relies on the SSH client sending its KEXINIT before the
 server. OpenSSH does this by default; some scanners don't.
+
+**Tool / scanner identification** (`internal/toolfp`) — beyond the
+cryptographic fingerprints above, the HTTP/HTTPS handlers classify the
+*tool* behind a request:
+
+- `meta.tools` — names matched from User-Agent + request-path
+  signatures: nmap, masscan, sqlmap, nikto, hydra, nuclei, metasploit,
+  gobuster, zgrab, censys, curl, wget, python (requests/urllib), and
+  Mirai-style + router-exploit probe paths. A JA3 hash can also map to a
+  known scanner via `IdentifyTLS`.
+- `meta.automation` — a browser-vs-script verdict from header shape
+  (missing `Accept`/`Accept-Language`, scripted ordering, etc.).
+- Surfaced as `tool:<name>` and `automation-client` anomalies so a SIEM
+  can separate hand-driven probes from mass scanners.
 
 ## Honeynets
 
