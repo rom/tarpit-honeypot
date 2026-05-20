@@ -16,7 +16,7 @@ func (m *modbus) Name() string { return "modbus" }
 
 // Modbus TCP (port 502). Per Modbus Messaging on TCP/IP (MBAP):
 //
-//   transaction_id (2) | protocol_id (2) | length (2) | unit_id (1) | data...
+//	transaction_id (2) | protocol_id (2) | length (2) | unit_id (1) | data...
 //
 // Handles a multi-PDU session (real scanners send a sequence like
 // 0x2B → 0x03 → 0x06 — vendor probe, register read, register write).
@@ -234,9 +234,9 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 // (Read Device Identification). The exact format per Modbus
 // Application Protocol §6.21:
 //
-//   MEI subfunction(1) read_dev_id_code(1) conformity(1)
-//   more_follows(1) next_id(1) num_objects(1)
-//   { object_id(1) object_len(1) object_data(*) } * num_objects
+//	MEI subfunction(1) read_dev_id_code(1) conformity(1)
+//	more_follows(1) next_id(1) num_objects(1)
+//	{ object_id(1) object_len(1) object_data(*) } * num_objects
 //
 // We advertise as a plausible commercial PLC — vendor "Schneider
 // Electric", product "BMX P34 2020" — which is what an attacker
@@ -250,9 +250,9 @@ func modbusReadDeviceID(deviceID, objID byte) []byte {
 	// Regular adds 3..6.
 	// Extended adds 7..0x7F (vendor-specific).
 	objects := []obj{
-		{0x00, "Schneider Electric"},                // VendorName
-		{0x01, "BMX P34 2020"},                       // ProductCode
-		{0x02, "V2.70"},                              // MajorMinorRevision
+		{0x00, "Schneider Electric"}, // VendorName
+		{0x01, "BMX P34 2020"},       // ProductCode
+		{0x02, "V2.70"},              // MajorMinorRevision
 	}
 	if deviceID >= 0x02 {
 		objects = append(objects,
@@ -273,12 +273,12 @@ func modbusReadDeviceID(deviceID, objID byte) []byte {
 		for _, o := range objects {
 			if o.id == objID {
 				body := []byte{
-					0x0E,       // MEI subfunction
-					0x04,       // device_id_code (specific)
-					0x83,       // conformity (extended + r/w)
-					0x00,       // more follows
-					0x00,       // next id
-					0x01,       // number of objects
+					0x0E, // MEI subfunction
+					0x04, // device_id_code (specific)
+					0x83, // conformity (extended + r/w)
+					0x00, // more follows
+					0x00, // next id
+					0x01, // number of objects
 					o.id, byte(len(o.data)),
 				}
 				body = append(body, []byte(o.data)...)
@@ -289,12 +289,12 @@ func modbusReadDeviceID(deviceID, objID byte) []byte {
 	}
 
 	body := []byte{
-		0x0E,                   // MEI subfunction
-		deviceID,               // echoed device_id_code
-		0x83,                   // conformity (extended + r/w)
-		0x00,                   // more follows
-		0x00,                   // next id
-		byte(len(objects)),     // number of objects
+		0x0E,               // MEI subfunction
+		deviceID,           // echoed device_id_code
+		0x83,               // conformity (extended + r/w)
+		0x00,               // more follows
+		0x00,               // next id
+		byte(len(objects)), // number of objects
 	}
 	for _, o := range objects {
 		body = append(body, o.id, byte(len(o.data)))

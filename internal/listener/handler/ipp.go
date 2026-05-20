@@ -26,21 +26,21 @@ type ipp struct{}
 func (i *ipp) Name() string { return "ipp" }
 
 const (
-	ippVersion   uint16 = 0x0200 // 2.0
-	ippOpGetAttr uint16 = 0x000B
-	ippStatusOK  uint16 = 0x0000
-	ippTagOpAttr        = 0x01
-	ippTagPrinter       = 0x04
-	ippTagEnd           = 0x03
-	ippTagCharset       = 0x47
-	ippTagLang          = 0x48
-	ippTagURI           = 0x45
-	ippTagKeyword       = 0x44
-	ippTagEnum          = 0x23
-	ippTagInt           = 0x21
-	ippTagBool          = 0x22
-	ippTagName          = 0x42
-	ippTagText          = 0x41
+	ippVersion    uint16 = 0x0200 // 2.0
+	ippOpGetAttr  uint16 = 0x000B
+	ippStatusOK   uint16 = 0x0000
+	ippTagOpAttr         = 0x01
+	ippTagPrinter        = 0x04
+	ippTagEnd            = 0x03
+	ippTagCharset        = 0x47
+	ippTagLang           = 0x48
+	ippTagURI            = 0x45
+	ippTagKeyword        = 0x44
+	ippTagEnum           = 0x23
+	ippTagInt            = 0x21
+	ippTagBool           = 0x22
+	ippTagName           = 0x42
+	ippTagText           = 0x41
 )
 
 func (i *ipp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {

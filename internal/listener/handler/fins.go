@@ -11,16 +11,16 @@ import (
 // fins is the Omron FINS (Factory Interface Network Service) UDP
 // receiver (default port 9600). FINS frame layout:
 //
-//   ICF(1) RSV(1) GCT(1) DNA(1) DA1(1) DA2(1) SNA(1) SA1(1) SA2(1)
-//   SID(1) MRC(1) SRC(1) <data>
+//	ICF(1) RSV(1) GCT(1) DNA(1) DA1(1) DA2(1) SNA(1) SA1(1) SA2(1)
+//	SID(1) MRC(1) SRC(1) <data>
 //
 // We capture the command + reply with plausible data for the four
 // MRC/SRC pairs a scanner usually emits:
 //
-//   0x05 / 0x01  CPU_UNIT_DATA_READ      -> 20-byte model + 20-byte version
-//   0x06 / 0x01  CPU_UNIT_STATUS_READ    -> RUN mode + no fatal errors
-//   0x01 / 0x01  MEMORY_AREA_READ        -> N words of plausible PV data
-//   0x07 / 0x01  CYCLE_TIME_READ         -> 1ms avg / 5ms peak
+//	0x05 / 0x01  CPU_UNIT_DATA_READ      -> 20-byte model + 20-byte version
+//	0x06 / 0x01  CPU_UNIT_STATUS_READ    -> RUN mode + no fatal errors
+//	0x01 / 0x01  MEMORY_AREA_READ        -> N words of plausible PV data
+//	0x07 / 0x01  CYCLE_TIME_READ         -> 1ms avg / 5ms peak
 //
 // All other commands get a generic END=0x0000 acknowledge. Unknown
 // MRC pairs aren't silently dropped because that distinguishes a
@@ -101,9 +101,9 @@ func (f *fins) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	case mrc == 0x07 && src_ == 0x01: // CYCLE_TIME_READ
 		// END(2) + avg(4 LE) + max(4 LE) + min(4 LE), in 0.1ms units.
 		extra = append(extra, 0x00, 0x00)
-		extra = binary.LittleEndian.AppendUint32(extra, 10)  // 1.0ms avg
-		extra = binary.LittleEndian.AppendUint32(extra, 50)  // 5.0ms max
-		extra = binary.LittleEndian.AppendUint32(extra, 8)   // 0.8ms min
+		extra = binary.LittleEndian.AppendUint32(extra, 10) // 1.0ms avg
+		extra = binary.LittleEndian.AppendUint32(extra, 50) // 5.0ms max
+		extra = binary.LittleEndian.AppendUint32(extra, 8)  // 0.8ms min
 	case mrc == 0x09 && src_ == 0x20: // CLOCK_READ
 		// END + year(1 BCD) + month + day + hour + min + sec + dayOfWeek.
 		extra = []byte{0x00, 0x00, 0x25, 0x05, 0x19, 0x14, 0x30, 0x00, 0x01}

@@ -13,7 +13,8 @@ type bacnet struct{}
 func (b *bacnet) Name() string { return "bacnet" }
 
 // BACnet/IP (port 47808 UDP). Frame:
-//   BVLC: type(1)=0x81 | function(1) | length(2) | NPDU/APDU...
+//
+//	BVLC: type(1)=0x81 | function(1) | length(2) | NPDU/APDU...
 //
 // Scanners typically send Who-Is broadcast (BVLC function 0x0B,
 // "Original-Broadcast-NPDU"). A real device replies with I-Am
@@ -96,10 +97,11 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 // buildIAm constructs a full BVLC+NPDU+APDU I-Am frame.
 //
 // APDU (I-Am, service 0x00):
-//   0x10 0x00  | uint context-tagged BACnetObjectIdentifier(device, instance)
-//              | uint Max APDU Length Accepted
-//              | enum Segmentation
-//              | uint Vendor ID
+//
+//	0x10 0x00  | uint context-tagged BACnetObjectIdentifier(device, instance)
+//	           | uint Max APDU Length Accepted
+//	           | enum Segmentation
+//	           | uint Vendor ID
 func buildIAm(instance uint32, maxAPDU uint16, segmentation byte, vendorID uint16) []byte {
 	// Application-encoded BACnet primitives:
 	// BACnetObjectIdentifier tag = application tag 12 (0xC4 indicates app

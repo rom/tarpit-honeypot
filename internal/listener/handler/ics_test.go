@@ -186,11 +186,11 @@ func TestMQTTConnectParse(t *testing.T) {
 	// CONNECT: type=0x10, remlen calculated, MQTT v3.1.1 with user+pass.
 	body := []byte{
 		0, 4, 'M', 'Q', 'T', 'T', // protocol name
-		0x04,                // level 4
-		0xc0,                // flags: user+pass
-		0, 60,               // keepalive
-		0, 5, 'h', 'e', 'l', 'l', 'o',     // ClientID
-		0, 5, 'a', 'd', 'm', 'i', 'n',     // username
+		0x04,  // level 4
+		0xc0,  // flags: user+pass
+		0, 60, // keepalive
+		0, 5, 'h', 'e', 'l', 'l', 'o', // ClientID
+		0, 5, 'a', 'd', 'm', 'i', 'n', // username
 		0, 6, 's', 'e', 'c', 'r', 'e', 't', // password
 	}
 	pkt := []byte{0x10, byte(len(body))}

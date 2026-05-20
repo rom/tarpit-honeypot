@@ -100,12 +100,12 @@ func TestFlagAnomalyIdempotent(t *testing.T) {
 // unencoded forms.
 func TestSuspiciousURI(t *testing.T) {
 	cases := map[string]string{
-		"/etc/../etc/passwd":      "uri-path-traversal",
-		"/etc/..%2fpasswd":        "uri-path-traversal",
+		"/etc/../etc/passwd":       "uri-path-traversal",
+		"/etc/..%2fpasswd":         "uri-path-traversal",
 		"/wp-admin/admin-ajax.php": "uri-wordpress-probe",
-		"/.git/config":            "uri-source-leak-probe",
-		"/manager/html":           "uri-mgmt-endpoint-probe",
-		"/.env":                   "uri-secret-file-probe",
+		"/.git/config":             "uri-source-leak-probe",
+		"/manager/html":            "uri-mgmt-endpoint-probe",
+		"/.env":                    "uri-secret-file-probe",
 	}
 	for in, want := range cases {
 		if got := suspiciousURI(in); got != want {

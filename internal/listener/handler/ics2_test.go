@@ -17,12 +17,12 @@ func TestOPCUAHelloAck(t *testing.T) {
 
 	endpoint := "opc.tcp://target.example/UA/MyServer"
 	body := make([]byte, 24+len(endpoint))
-	binary.LittleEndian.PutUint32(body[0:4], 0)                          // version
-	binary.LittleEndian.PutUint32(body[4:8], 65536)                      // rx buf
-	binary.LittleEndian.PutUint32(body[8:12], 65536)                     // tx buf
-	binary.LittleEndian.PutUint32(body[12:16], 16777216)                 // max msg
-	binary.LittleEndian.PutUint32(body[16:20], 0)                        // max chunk
-	binary.LittleEndian.PutUint32(body[20:24], uint32(len(endpoint)))    // endpoint len
+	binary.LittleEndian.PutUint32(body[0:4], 0)                       // version
+	binary.LittleEndian.PutUint32(body[4:8], 65536)                   // rx buf
+	binary.LittleEndian.PutUint32(body[8:12], 65536)                  // tx buf
+	binary.LittleEndian.PutUint32(body[12:16], 16777216)              // max msg
+	binary.LittleEndian.PutUint32(body[16:20], 0)                     // max chunk
+	binary.LittleEndian.PutUint32(body[20:24], uint32(len(endpoint))) // endpoint len
 	copy(body[24:], endpoint)
 
 	hdr := make([]byte, 8)
@@ -147,8 +147,8 @@ func TestBACnetIgnoresNonWhoIs(t *testing.T) {
 func TestTFTPRRQReturnsError(t *testing.T) {
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 12345}
-	pkt := []byte{0x00, 0x01}                                   // opcode RRQ
-	pkt = append(pkt, []byte("config/router.cfg")...)           // filename
+	pkt := []byte{0x00, 0x01}                         // opcode RRQ
+	pkt = append(pkt, []byte("config/router.cfg")...) // filename
 	pkt = append(pkt, 0)
 	pkt = append(pkt, []byte("octet")...)
 	pkt = append(pkt, 0)

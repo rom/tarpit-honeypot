@@ -17,9 +17,9 @@ func (p *postgres) Name() string { return "postgres" }
 // PostgreSQL frontend/backend protocol (port 5432). The first message from
 // any client is one of:
 //
-//   StartupMessage  - length(4) + protocol(4) + null-terminated key/value pairs
-//   SSLRequest      - length(8) + 0x04D2162F (we reply 'N' so the client falls back to plain)
-//   GSSEncRequest   - similar; we just close
+//	StartupMessage  - length(4) + protocol(4) + null-terminated key/value pairs
+//	SSLRequest      - length(8) + 0x04D2162F (we reply 'N' so the client falls back to plain)
+//	GSSEncRequest   - similar; we just close
 //
 // After StartupMessage we send an AuthenticationCleartextPassword
 // request (R + length=8 + 3) which makes the client send its password
@@ -62,12 +62,14 @@ func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 		}
 
 		// Otherwise treat as StartupMessage.
+		pgUser := ""
 		if len(body) >= 4 {
 			proto := binary.BigEndian.Uint32(body[0:4])
 			res.Meta["protocol_version"] = proto
 			params := parsePgParams(body[4:])
 			if len(params) > 0 {
 				res.Meta["startup_params"] = params
+				pgUser = params["user"]
 			}
 		}
 
@@ -86,6 +88,7 @@ func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 				if _, err := io.ReadFull(conn, pw); err == nil {
 					pw = bytesTrimNull(pw)
 					res.Meta["password"] = string(pw)
+					flagDefaultCred(&res, pgUser, string(pw))
 				}
 			}
 		}

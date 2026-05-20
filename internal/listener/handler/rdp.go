@@ -15,9 +15,9 @@ func (r *rdp) Name() string { return "rdp" }
 
 // Microsoft RDP (port 3389). The handshake opens with X.224 / TPKT:
 //
-//   TPKT (4 bytes): version=3, reserved=0, length(big-endian)
-//   X.224 Connection Request: length(1), code=0xE0, dst_ref(2), src_ref(2),
-//                             class(1), then optional Cookie/RDP_NEG_REQ
+//	TPKT (4 bytes): version=3, reserved=0, length(big-endian)
+//	X.224 Connection Request: length(1), code=0xE0, dst_ref(2), src_ref(2),
+//	                          class(1), then optional Cookie/RDP_NEG_REQ
 //
 // Inside the variable part the client puts a "Cookie: mstshc=<user>\r\n"
 // line and/or an RDP_NEG_REQ TLV announcing supported security protocols
@@ -73,10 +73,10 @@ func (r *rdp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 
 	// Build X.224 Connection Confirm with RDP_NEG_RSP selecting PROTOCOL_SSL.
 	cc := []byte{
-		0x0E, 0xD0,                                       // length, type=CC
-		0x00, 0x00,                                       // dst ref echoes server-chosen
-		byte(srcRef >> 8), byte(srcRef & 0xFF),           // mirror src
-		0x00,                                             // class 0
+		0x0E, 0xD0, // length, type=CC
+		0x00, 0x00, // dst ref echoes server-chosen
+		byte(srcRef >> 8), byte(srcRef & 0xFF), // mirror src
+		0x00, // class 0
 		// RDP_NEG_RSP TLV: type=0x02, flags=0x00, length(2)=0x0008, selected_protocol(4)
 		0x02, 0x00, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00,
 	}

@@ -154,11 +154,11 @@ func (k *knx) buildDescriptionResponse() []byte {
 // but doesn't open a tunnel.
 func (k *knx) buildConnectError() []byte {
 	body := []byte{
-		0x00,             // communication channel id
-		0x24,             // status: no more connections
-		0x08, 0x01,       // HPAI len + proto
-		0, 0, 0, 0,       // ip 0.0.0.0 (filled below)
-		0, 0,             // port 0
+		0x00,       // communication channel id
+		0x24,       // status: no more connections
+		0x08, 0x01, // HPAI len + proto
+		0, 0, 0, 0, // ip 0.0.0.0 (filled below)
+		0, 0, // port 0
 		0x04, 0x04, 0x02, 0x00, // CRD for TUNNEL_CONNECTION
 	}
 	return k.frame(knxSvcConnectResponse, body)

@@ -72,12 +72,33 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			fmt.Fprintf(conn, "250-mail.example.com\r\n250-PIPELINING\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n")
 		case "AUTH":
 			s.handleAuth(arg, br, conn, res.Meta)
+			if u, _ := res.Meta["auth_user"].(string); u != "" {
+				p, _ := res.Meta["auth_pass"].(string)
+				flagDefaultCred(&res, u, p)
+			}
 		case "MAIL":
 			res.Meta["mail_from"] = stripPrefixCI(arg, "FROM:")
 			fmt.Fprintf(conn, "250 OK\r\n")
 		case "RCPT":
-			rcpt = append(rcpt, stripPrefixCI(arg, "TO:"))
+			to := stripPrefixCI(arg, "TO:")
+			rcpt = append(rcpt, to)
+			// Open-relay probe: MAIL FROM and RCPT TO both reference
+			// external domains (relaying mail for a third party). A
+			// spammer testing whether we'll relay lands here.
+			if from, _ := res.Meta["mail_from"].(string); isExternalAddr(from) && isExternalAddr(to) {
+				flagAnomaly(&res, "smtp-open-relay-probe")
+			}
 			fmt.Fprintf(conn, "250 OK\r\n")
+		case "VRFY":
+			// User enumeration: VRFY <user> asks the server to confirm
+			// a mailbox exists.
+			res.Meta["vrfy_user"] = arg
+			flagAnomaly(&res, "smtp-user-enumeration")
+			fmt.Fprintf(conn, "252 Cannot VRFY user\r\n")
+		case "EXPN":
+			res.Meta["expn_list"] = arg
+			flagAnomaly(&res, "smtp-user-enumeration")
+			fmt.Fprintf(conn, "252 Cannot EXPN list\r\n")
 		case "DATA":
 			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 			head, ended := readDATAUntilDot(br, 4096)
@@ -106,6 +127,32 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		res.Meta["rcpt_to"] = rcpt
 	}
 	return res, nil
+}
+
+// isExternalAddr reports whether an SMTP path (<user@domain>) names a
+// domain other than the ones we pretend to be authoritative for. Used
+// to detect open-relay probes: a relayer sends mail FROM and TO
+// addresses both outside our domain. We treat example.com/.internal/
+// localhost as "ours"; everything else is external.
+func isExternalAddr(addr string) bool {
+	at := strings.LastIndexByte(addr, '@')
+	if at < 0 {
+		return false
+	}
+	domain := addr[at+1:]
+	domain = strings.TrimRight(domain, ">")
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return false
+	}
+	switch {
+	case strings.HasSuffix(domain, "example.com"),
+		strings.HasSuffix(domain, ".internal"),
+		strings.HasSuffix(domain, "localhost"),
+		strings.HasSuffix(domain, ".local"):
+		return false
+	}
+	return true
 }
 
 func splitSMTPCmd(line string) (string, string) {

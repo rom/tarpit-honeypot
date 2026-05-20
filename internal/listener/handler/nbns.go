@@ -110,8 +110,8 @@ func buildNBNSAnswer(query []byte, ipv4 string) []byte {
 	if pos+1 > len(query) {
 		return nil
 	}
-	pos++                                  // null terminator
-	pos += 4                                // qtype + qclass
+	pos++    // null terminator
+	pos += 4 // qtype + qclass
 	if pos > len(query) {
 		return nil
 	}

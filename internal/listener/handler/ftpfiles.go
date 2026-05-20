@@ -66,13 +66,13 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	br := bufio.NewReader(conn)
 
 	var (
-		user        string
-		authed      bool
-		cwd         = "/"
-		commands    []string
-		retrieved   []string
-		listenAddr  string
-		dataLn      net.Listener
+		user       string
+		authed     bool
+		cwd        = "/"
+		commands   []string
+		retrieved  []string
+		listenAddr string
+		dataLn     net.Listener
 	)
 	defer func() {
 		if dataLn != nil {

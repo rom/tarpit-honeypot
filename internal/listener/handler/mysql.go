@@ -45,20 +45,20 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		ver = m.id.MySQLVersion()
 	}
 	body := []byte{}
-	body = append(body, 0x0a)               // protocol version 10
-	body = append(body, []byte(ver)...)     // server version (per-deployment)
+	body = append(body, 0x0a)           // protocol version 10
+	body = append(body, []byte(ver)...) // server version (per-deployment)
 	body = append(body, 0)
-	body = binary.LittleEndian.AppendUint32(body, 1)   // connection id
-	body = append(body, salt1...)                       // auth_plugin_data_part_1
-	body = append(body, 0)                              // filler
-	body = append(body, 0xff, 0xf7)                     // capability flags low
-	body = append(body, 0x21)                           // utf8_general_ci
-	body = append(body, 0x02, 0x00)                     // status flags
-	body = append(body, 0xff, 0x81)                     // capability flags high (CLIENT_PLUGIN_AUTH)
-	body = append(body, 0x15)                           // length of auth-plugin-data = 21
-	body = append(body, make([]byte, 10)...)            // reserved 10 bytes of 0
-	body = append(body, salt2...)                       // auth_plugin_data_part_2
-	body = append(body, 0)                              // null terminator
+	body = binary.LittleEndian.AppendUint32(body, 1) // connection id
+	body = append(body, salt1...)                    // auth_plugin_data_part_1
+	body = append(body, 0)                           // filler
+	body = append(body, 0xff, 0xf7)                  // capability flags low
+	body = append(body, 0x21)                        // utf8_general_ci
+	body = append(body, 0x02, 0x00)                  // status flags
+	body = append(body, 0xff, 0x81)                  // capability flags high (CLIENT_PLUGIN_AUTH)
+	body = append(body, 0x15)                        // length of auth-plugin-data = 21
+	body = append(body, make([]byte, 10)...)         // reserved 10 bytes of 0
+	body = append(body, salt2...)                    // auth_plugin_data_part_2
+	body = append(body, 0)                           // null terminator
 	body = append(body, []byte("mysql_native_password")...)
 	body = append(body, 0)
 
@@ -123,11 +123,11 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 
 	// Send ERR_Packet 1045 Access denied. Sequence id = 2.
 	errBody := []byte{}
-	errBody = append(errBody, 0xff)                                   // ERR_Packet marker
-	errBody = binary.LittleEndian.AppendUint16(errBody, 1045)         // error code
+	errBody = append(errBody, 0xff)                           // ERR_Packet marker
+	errBody = binary.LittleEndian.AppendUint16(errBody, 1045) // error code
 	errBody = append(errBody, '#')
-	errBody = append(errBody, []byte("28000")...)                     // SQL state
-	errBody = append(errBody, []byte("Access denied for user")...)    // message
+	errBody = append(errBody, []byte("28000")...)                  // SQL state
+	errBody = append(errBody, []byte("Access denied for user")...) // message
 	errPkt := make([]byte, 4+len(errBody))
 	errPkt[0] = byte(len(errBody))
 	errPkt[1] = byte(len(errBody) >> 8)

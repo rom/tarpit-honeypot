@@ -56,9 +56,9 @@ func TestSecS7SixByteBodyPanic(t *testing.T) {
 	// only the mandatory fields and no parameter bytes.
 	_, _ = client.Write([]byte{
 		0x03, 0x00, 0x00, 0x0a, // TPKT
-		0x05, 0xE0,             // COTP length=5, type CR
-		0x00, 0x00,             // dst_ref
-		0x00, 0x01,             // src_ref
+		0x05, 0xE0, // COTP length=5, type CR
+		0x00, 0x00, // dst_ref
+		0x00, 0x01, // src_ref
 		// no class byte, no params — totaling 6 body bytes.
 	})
 	client.Close()
@@ -71,10 +71,10 @@ func TestSecRadiusShortLengthPanic(t *testing.T) {
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1812}
 	pkt := make([]byte, 20)
-	pkt[0] = 1     // code=Access-Request
-	pkt[1] = 1     // identifier
-	pkt[2] = 0     // length high byte
-	pkt[3] = 5     // length=5 (invalid; < 20)
+	pkt[0] = 1 // code=Access-Request
+	pkt[1] = 1 // identifier
+	pkt[2] = 0 // length high byte
+	pkt[3] = 5 // length=5 (invalid; < 20)
 	// authenticator: 16 bytes of 0
 	defer func() {
 		if r := recover(); r != nil {

@@ -12,8 +12,8 @@ import (
 // melsec is a Mitsubishi MELSEC (MC protocol, 3E frame) TCP receiver
 // (port 1025 / 5007 / 5006 / depending on model). 3E request frame:
 //
-//   subhdr(2)=0x5000  network(1)  PC(1)  module_io(2)  module_station(1)
-//   data_len(2)  cpu_timer(2)  command(2)  subcommand(2)  ...
+//	subhdr(2)=0x5000  network(1)  PC(1)  module_io(2)  module_station(1)
+//	data_len(2)  cpu_timer(2)  command(2)  subcommand(2)  ...
 //
 // Common scanner request: 0x0101 / 0x0000 (read CPU model). We reply
 // with a synthesized "Q03UDV CPU" string so the scanner classifies us

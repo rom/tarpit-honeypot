@@ -10,7 +10,8 @@ import (
 // target prevents the regression.
 //
 // Run for longer in CI:
-//   go test -run='^$' -fuzz=FuzzLDAPParseMessage -fuzztime=60s ./internal/listener/handler
+//
+//	go test -run='^$' -fuzz=FuzzLDAPParseMessage -fuzztime=60s ./internal/listener/handler
 func FuzzLDAPParseMessage(f *testing.F) {
 	// Seed corpus: the bind request we know is valid.
 	f.Add(buildLDAPBindFixture("admin", "hunter2"))

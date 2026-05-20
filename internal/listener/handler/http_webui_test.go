@@ -147,11 +147,11 @@ func TestParseLoginFormAliases(t *testing.T) {
 	cases := map[string]struct {
 		user, pass string
 	}{
-		"username=a&password=b":         {"a", "b"},
-		"user=a&pass=b":                 {"a", "b"},
-		"login=a&passwd=b":              {"a", "b"},
-		"name=a&pwd=b":                  {"a", "b"},
-		"u=root&p=toor":                 {"root", "toor"},
+		"username=a&password=b": {"a", "b"},
+		"user=a&pass=b":         {"a", "b"},
+		"login=a&passwd=b":      {"a", "b"},
+		"name=a&pwd=b":          {"a", "b"},
+		"u=root&p=toor":         {"root", "toor"},
 	}
 	for body, want := range cases {
 		u, p := parseLoginForm([]byte(body))

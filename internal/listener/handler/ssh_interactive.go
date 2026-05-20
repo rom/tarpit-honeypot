@@ -112,11 +112,11 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 			authMu.Lock()
 			defer authMu.Unlock()
 			authAttempts = append(authAttempts, map[string]any{
-				"method":      "publickey",
-				"user":        safe.SanitizeForLog(c.User()),
-				"key_type":    key.Type(),
+				"method":        "publickey",
+				"user":          safe.SanitizeForLog(c.User()),
+				"key_type":      key.Type(),
 				"key_fp_sha256": xssh.FingerprintSHA256(key),
-				"client":      safe.SanitizeForLog(string(c.ClientVersion())),
+				"client":        safe.SanitizeForLog(string(c.ClientVersion())),
 			})
 			// Pubkey never works on this honeypot; force them to
 			// fall back to password.

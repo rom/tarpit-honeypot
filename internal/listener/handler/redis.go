@@ -43,10 +43,23 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		}
 		res.Payload = append(res.Payload, []byte(strings.Join(cmd, " ")+"\n")...)
 		commands = append(commands, strings.Join(cmd, " "))
+		// Dangerous-command detection: the redis-rogue-server abuse
+		// chain (CONFIG SET dir/dbfilename to drop a webshell or cron
+		// job, SLAVEOF/REPLICAOF + MODULE LOAD for RCE, FLUSHALL to
+		// wipe). Flagging the command class is high-signal.
+		if marker := redisDangerousCommand(cmd); marker != "" {
+			flagAnomaly(&res, marker)
+		}
 		switch strings.ToUpper(cmd[0]) {
 		case "AUTH":
 			if len(cmd) >= 2 {
-				res.Meta["auth_password"] = cmd[len(cmd)-1] // ACL: "AUTH user pass"
+				pw := cmd[len(cmd)-1] // ACL form: "AUTH user pass"
+				res.Meta["auth_password"] = pw
+				user := "default"
+				if len(cmd) >= 3 {
+					user = cmd[1]
+				}
+				flagDefaultCred(&res, user, pw)
 			}
 			_, _ = conn.Write([]byte("-WRONGPASS invalid username-password pair or user is disabled.\r\n"))
 		case "PING":
@@ -64,6 +77,35 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	}
 	res.BannerSent = "redis RESP errors"
 	return res, nil
+}
+
+// redisDangerousCommand classifies a redis command into an anomaly
+// marker for the well-known abuse primitives, or "" for benign ones.
+func redisDangerousCommand(cmd []string) string {
+	if len(cmd) == 0 {
+		return ""
+	}
+	switch strings.ToUpper(cmd[0]) {
+	case "CONFIG":
+		// CONFIG SET dir / dbfilename is the webshell/cron drop vector.
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "SET") {
+			return "redis-config-set"
+		}
+	case "SLAVEOF", "REPLICAOF":
+		// Rogue-master replication -> module-load RCE.
+		return "redis-replication-takeover"
+	case "MODULE":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "LOAD") {
+			return "redis-module-load"
+		}
+	case "FLUSHALL", "FLUSHDB":
+		return "redis-flush"
+	case "SAVE", "BGSAVE":
+		return "redis-save" // pairs with CONFIG SET in the drop chain
+	case "EVAL", "EVALSHA", "FUNCTION":
+		return "redis-script-exec"
+	}
+	return ""
 }
 
 // readRESPCommand parses one Redis command from br as a list of strings.

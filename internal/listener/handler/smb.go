@@ -20,16 +20,16 @@ func (s *smb) Name() string { return "smb" }
 // SMB1 over direct TCP (port 445). The first message any client sends is a
 // Negotiate Protocol Request (command 0x72). The wire format is:
 //
-//   NBSS header (4 bytes)
-//     type(1) = 0x00 (session message), reserved(1) = 0x00, length(2, big-endian)
-//   SMB1 header (32 bytes)
-//     magic(4) = "\xFFSMB", command(1) = 0x72, status(4),
-//     flags(1), flags2(2), pid_high(2), security_features(8),
-//     reserved(2), tid(2), pid_low(2), uid(2), mid(2)
-//   Negotiate payload
-//     word_count(1) = 0
-//     byte_count(2) = total payload bytes
-//     dialects = repeated: 0x02 + null-terminated dialect string
+//	NBSS header (4 bytes)
+//	  type(1) = 0x00 (session message), reserved(1) = 0x00, length(2, big-endian)
+//	SMB1 header (32 bytes)
+//	  magic(4) = "\xFFSMB", command(1) = 0x72, status(4),
+//	  flags(1), flags2(2), pid_high(2), security_features(8),
+//	  reserved(2), tid(2), pid_low(2), uid(2), mid(2)
+//	Negotiate payload
+//	  word_count(1) = 0
+//	  byte_count(2) = total payload bytes
+//	  dialects = repeated: 0x02 + null-terminated dialect string
 //
 // We capture the offered dialects + signing flag and reply selecting the
 // "NT LM 0.12" dialect with extended security disabled, a fixed 8-byte
@@ -163,17 +163,17 @@ func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identit
 	// Word data fields (NT LM 0.12 response, no extended security).
 	wordData := make([]byte, 0, 34)
 	wordData = binary.LittleEndian.AppendUint16(wordData, dialectIndex)
-	wordData = append(wordData, 0x03)                                          // SecurityMode: user-level + plaintext
-	wordData = binary.LittleEndian.AppendUint16(wordData, 50)                  // MaxMpxCount
-	wordData = binary.LittleEndian.AppendUint16(wordData, 1)                   // MaxNumberVcs
-	wordData = binary.LittleEndian.AppendUint32(wordData, 16644)               // MaxBufferSize
-	wordData = binary.LittleEndian.AppendUint32(wordData, 65536)               // MaxRawSize
-	wordData = binary.LittleEndian.AppendUint32(wordData, sessionKey)          // SessionKey (per-deployment)
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0x8001f3fd)          // Capabilities (UNICODE+...)
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0)                   // SystemTime low
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0)                   // SystemTime high
-	wordData = binary.LittleEndian.AppendUint16(wordData, 0)                   // ServerTimeZone
-	wordData = append(wordData, 0x08)                                          // EncryptionKeyLength = 8
+	wordData = append(wordData, 0x03)                                 // SecurityMode: user-level + plaintext
+	wordData = binary.LittleEndian.AppendUint16(wordData, 50)         // MaxMpxCount
+	wordData = binary.LittleEndian.AppendUint16(wordData, 1)          // MaxNumberVcs
+	wordData = binary.LittleEndian.AppendUint32(wordData, 16644)      // MaxBufferSize
+	wordData = binary.LittleEndian.AppendUint32(wordData, 65536)      // MaxRawSize
+	wordData = binary.LittleEndian.AppendUint32(wordData, sessionKey) // SessionKey (per-deployment)
+	wordData = binary.LittleEndian.AppendUint32(wordData, 0x8001f3fd) // Capabilities (UNICODE+...)
+	wordData = binary.LittleEndian.AppendUint32(wordData, 0)          // SystemTime low
+	wordData = binary.LittleEndian.AppendUint32(wordData, 0)          // SystemTime high
+	wordData = binary.LittleEndian.AppendUint16(wordData, 0)          // ServerTimeZone
+	wordData = append(wordData, 0x08)                                 // EncryptionKeyLength = 8
 
 	// Byte data: 8-byte challenge (per-deployment) + UTF-16LE "WORKGROUP\0"
 	bytesField := append([]byte{}, challenge...)
@@ -185,10 +185,10 @@ func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identit
 	smb1Header[1] = 'S'
 	smb1Header[2] = 'M'
 	smb1Header[3] = 'B'
-	smb1Header[4] = 0x72                                       // command = Negotiate
+	smb1Header[4] = 0x72 // command = Negotiate
 	// status = 0 (success); flags / flags2 mirror common defaults
-	smb1Header[9] = 0x88                                       // flags = response
-	binary.LittleEndian.PutUint16(smb1Header[10:12], 0xc003)   // flags2 = unicode + nt status + etc
+	smb1Header[9] = 0x88                                     // flags = response
+	binary.LittleEndian.PutUint16(smb1Header[10:12], 0xc003) // flags2 = unicode + nt status + etc
 	// pid, tid, uid, mid: copy from the request so the client correlates.
 	copy(smb1Header[12:14], req[12:14])
 	copy(smb1Header[24:28], req[24:28])

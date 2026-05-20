@@ -14,11 +14,11 @@ import (
 // HTTP-over-UDP. Scanners typically send M-SEARCH multicasts that
 // look like:
 //
-//   M-SEARCH * HTTP/1.1
-//   HOST: 239.255.255.250:1900
-//   MAN: "ssdp:discover"
-//   MX: 1
-//   ST: upnp:rootdevice
+//	M-SEARCH * HTTP/1.1
+//	HOST: 239.255.255.250:1900
+//	MAN: "ssdp:discover"
+//	MX: 1
+//	ST: upnp:rootdevice
 //
 // We reply with a fake-but-plausible NOTIFY referencing a router-shaped
 // USN so IoT scanners think they've discovered a Cisco / TP-Link / etc.

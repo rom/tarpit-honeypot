@@ -80,6 +80,10 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		"pass_attempt": safe.SanitizeForLog(pass),
 	}
 	res.Payload = []byte(user + "\n" + pass)
+	flagDefaultCred(&res, user, pass)
+	if hasNonPrintable(user) || hasNonPrintable(pass) {
+		flagAnomaly(&res, "telnet-credential-non-printable")
+	}
 
 	// First attempt always "fails" — most scanners give up after one,
 	// the few that retry get a second login prompt and a second

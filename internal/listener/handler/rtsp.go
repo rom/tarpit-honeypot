@@ -14,8 +14,8 @@ import (
 // rtsp implements just enough RTSP (RFC 2326, TCP port 554) to fool an
 // IP-camera scanner. Common scan flow:
 //
-//   OPTIONS rtsp://host/cam SDP RTSP/1.0
-//   CSeq: 1
+//	OPTIONS rtsp://host/cam SDP RTSP/1.0
+//	CSeq: 1
 //
 // We reply 401 with a Digest challenge so the scanner records the
 // host as an authenticating RTSP server and (often) sends credentials

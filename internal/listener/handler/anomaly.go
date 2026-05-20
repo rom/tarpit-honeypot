@@ -1,6 +1,29 @@
 package handler
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/rom/tarpit-honeypot/internal/creds"
+)
+
+// flagDefaultCred checks a captured (user, pass) against the
+// default-credential corpus and, on a match, raises the
+// default-credential-attempt anomaly + records the device category.
+// Every auth-capturing handler calls this so a default-credential
+// sweep is detected uniformly regardless of protocol. Returns true on
+// a match.
+func flagDefaultCred(res *Result, user, pass string) bool {
+	c, ok := creds.Match(user, pass)
+	if !ok {
+		return false
+	}
+	flagAnomaly(res, "default-credential-attempt")
+	if res.Meta == nil {
+		res.Meta = map[string]any{}
+	}
+	res.Meta["default_cred_category"] = c.Category
+	return true
+}
 
 // flagAnomaly appends an anomaly marker to a handler's Result if the
 // marker isn't already present. Handlers use this for protocol-misuse

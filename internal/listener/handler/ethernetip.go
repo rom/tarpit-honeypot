@@ -19,8 +19,8 @@ func (e *ethernetip) Name() string { return "ethernetip" }
 // EtherNet/IP (Rockwell / Allen-Bradley, port 44818). Encapsulation header
 // is 24 bytes:
 //
-//   command(2) | length(2) | session_handle(4) | status(4) |
-//   sender_context(8) | options(4)
+//	command(2) | length(2) | session_handle(4) | status(4) |
+//	sender_context(8) | options(4)
 //
 // Followed by command-specific data. The two commands a scanner cares
 // about are RegisterSession (0x0065) and ListIdentity (0x0063). We answer
@@ -81,26 +81,26 @@ func (e *ethernetip) Handle(_ context.Context, conn net.Conn, cfg config.Listene
 		// item_count(2) + item_type(2)=0x000C + item_length(2) + identity data
 		productName := []byte("1756-L73/B LOGIX5573")
 		identity := make([]byte, 0, 64)
-		identity = binary.LittleEndian.AppendUint16(identity, 1)      // protocol version
-		identity = append(identity, make([]byte, 16)...)              // socket_address (16 bytes, zero)
+		identity = binary.LittleEndian.AppendUint16(identity, 1) // protocol version
+		identity = append(identity, make([]byte, 16)...)         // socket_address (16 bytes, zero)
 		// Real devices put sa_family + port + addr here; zeros are fine.
 		identity = binary.LittleEndian.AppendUint16(identity, 0x0001) // vendor id (Rockwell)
 		identity = binary.LittleEndian.AppendUint16(identity, 0x000E) // device type
 		identity = binary.LittleEndian.AppendUint16(identity, 0x0036) // product code
-		identity = append(identity, 0x14, 0x0B)                         // revision (major/minor)
+		identity = append(identity, 0x14, 0x0B)                       // revision (major/minor)
 		identity = binary.LittleEndian.AppendUint16(identity, 0x0040) // status
 		var serial uint32 = 0xdeadbeef
 		if e.id != nil {
 			serial = e.id.SerialNumber()
 		}
 		identity = binary.LittleEndian.AppendUint32(identity, serial) // serial (per-deployment)
-		identity = append(identity, byte(len(productName)))             // product name length
+		identity = append(identity, byte(len(productName)))           // product name length
 		identity = append(identity, productName...)
-		identity = append(identity, 0xFF)                               // state
+		identity = append(identity, 0xFF) // state
 
 		respBody := make([]byte, 0, 8+len(identity))
-		respBody = binary.LittleEndian.AppendUint16(respBody, 1)                    // item count
-		respBody = binary.LittleEndian.AppendUint16(respBody, 0x000C)               // item type CIP_ITEM_LISTIDENTITY_RESPONSE
+		respBody = binary.LittleEndian.AppendUint16(respBody, 1)      // item count
+		respBody = binary.LittleEndian.AppendUint16(respBody, 0x000C) // item type CIP_ITEM_LISTIDENTITY_RESPONSE
 		respBody = binary.LittleEndian.AppendUint16(respBody, uint16(len(identity)))
 		respBody = append(respBody, identity...)
 

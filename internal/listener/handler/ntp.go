@@ -51,9 +51,9 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 
 	resp := make([]byte, 48)
 	resp[0] = byte((0)<<6 | (ver&0x07)<<3 | 4) // LI=0, version echoed, mode=4 (server)
-	resp[1] = 2                                  // stratum 2
-	resp[2] = 4                                  // poll interval (16s)
-	resp[3] = 0xeb                               // precision ~ -21 (~0.5us)
+	resp[1] = 2                                // stratum 2
+	resp[2] = 4                                // poll interval (16s)
+	resp[3] = 0xeb                             // precision ~ -21 (~0.5us)
 	// root delay + dispersion: small positive constants
 	binary.BigEndian.PutUint32(resp[4:8], 0x00000010)
 	binary.BigEndian.PutUint32(resp[8:12], 0x00000010)

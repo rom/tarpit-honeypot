@@ -251,13 +251,13 @@ func TestMySQLHandshakeCapturesUsername(t *testing.T) {
 	// a 20-byte auth response.
 	respBody := make([]byte, 0, 64)
 	respBody = binary.LittleEndian.AppendUint32(respBody, 0xa68f0001) // client caps
-	respBody = binary.LittleEndian.AppendUint32(respBody, 16777216)    // max packet
-	respBody = append(respBody, 0x21)                                  // charset
-	respBody = append(respBody, make([]byte, 23)...)                   // reserved
+	respBody = binary.LittleEndian.AppendUint32(respBody, 16777216)   // max packet
+	respBody = append(respBody, 0x21)                                 // charset
+	respBody = append(respBody, make([]byte, 23)...)                  // reserved
 	respBody = append(respBody, []byte("rootscanner")...)
-	respBody = append(respBody, 0)                                     // username NUL
-	respBody = append(respBody, 20)                                    // auth-response length
-	respBody = append(respBody, make([]byte, 20)...)                   // 20 bytes of fake auth
+	respBody = append(respBody, 0)                   // username NUL
+	respBody = append(respBody, 20)                  // auth-response length
+	respBody = append(respBody, make([]byte, 20)...) // 20 bytes of fake auth
 
 	respPkt := make([]byte, 4+len(respBody))
 	respPkt[0] = byte(len(respBody))
@@ -281,10 +281,10 @@ func TestIPMIPresencePongReply(t *testing.T) {
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 12345}
 	// Build RMCP Presence Ping.
 	pkt := []byte{
-		0x06, 0x00, 0xff, 0x06,                  // RMCP: ver, reserved, seq, class=ASF
-		0x00, 0x00, 0x11, 0xbe,                  // IANA = 4542
-		0x80, 0x42,                               // msg_type=PingMsg=0x80, tag=0x42
-		0x00, 0x00,                               // reserved, data_len
+		0x06, 0x00, 0xff, 0x06, // RMCP: ver, reserved, seq, class=ASF
+		0x00, 0x00, 0x11, 0xbe, // IANA = 4542
+		0x80, 0x42, // msg_type=PingMsg=0x80, tag=0x42
+		0x00, 0x00, // reserved, data_len
 	}
 	res, _ := (&ipmi{}).Handle(context.Background(), pkt, src, pc, config.Listener{})
 	if len(pc.written) != 1 {

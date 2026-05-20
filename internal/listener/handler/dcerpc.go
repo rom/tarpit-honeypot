@@ -22,10 +22,10 @@ func (d *dcerpc) SetHoneynetView(v HoneynetSnapshot) { d.hosts = v.Hosts }
 // DCE/RPC over TCP (port 135). The very first PDU from any client is a
 // "bind" (PDU type 0x0B). PDU layout:
 //
-//   rpc_vers(1)=5   rpc_vers_minor(1)   ptype(1)   pfc_flags(1)
-//   packed_drep(4)  frag_length(2)      auth_length(2)  call_id(4)
-//   max_xmit(2)     max_recv(2)         assoc_group(4)
-//   p_context_elem(1) ... rest is context list with abstract+transfer UUIDs
+//	rpc_vers(1)=5   rpc_vers_minor(1)   ptype(1)   pfc_flags(1)
+//	packed_drep(4)  frag_length(2)      auth_length(2)  call_id(4)
+//	max_xmit(2)     max_recv(2)         assoc_group(4)
+//	p_context_elem(1) ... rest is context list with abstract+transfer UUIDs
 //
 // We parse just the header + first abstract UUID (the interface the
 // scanner cares about) and reply with a bind_ack that grants context 0.
@@ -76,8 +76,8 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	// Build bind_ack (ptype=0x0C). Minimal but valid: echo call_id, advertise
 	// 1 context result = accept, no negotiated transfer syntax dance.
 	resp := make([]byte, 0, 64)
-	resp = append(resp, 5, 0, 0x0C, 0x03) // ver, ver_minor, ptype=bind_ack, flags=first|last
-	resp = append(resp, 0x10, 0, 0, 0)    // drep little-endian
+	resp = append(resp, 5, 0, 0x0C, 0x03)             // ver, ver_minor, ptype=bind_ack, flags=first|last
+	resp = append(resp, 0x10, 0, 0, 0)                // drep little-endian
 	resp = binary.LittleEndian.AppendUint16(resp, 60) // frag_length (will fix below)
 	resp = binary.LittleEndian.AppendUint16(resp, 0)  // auth_length
 	resp = binary.LittleEndian.AppendUint32(resp, callID)

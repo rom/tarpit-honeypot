@@ -26,7 +26,7 @@ func (f *fakePacketConn) WriteTo(p []byte, a net.Addr) (int, error) {
 	f.to = append(f.to, a)
 	return len(p), nil
 }
-func (f *fakePacketConn) Close() error               { return nil }
+func (f *fakePacketConn) Close() error { return nil }
 func (f *fakePacketConn) LocalAddr() net.Addr {
 	if f.laddr != nil {
 		return f.laddr

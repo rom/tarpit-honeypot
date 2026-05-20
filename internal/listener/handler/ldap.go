@@ -20,10 +20,10 @@ func (l *ldap) SetHoneynetView(v HoneynetSnapshot) { l.hosts = v.Hosts }
 
 // LDAP (port 389). Every protocol message is BER-encoded:
 //
-//   LDAPMessage ::= SEQUENCE {
-//     messageID INTEGER,
-//     protocolOp CHOICE { bindRequest [APPLICATION 0] ..., ... }
-//   }
+//	LDAPMessage ::= SEQUENCE {
+//	  messageID INTEGER,
+//	  protocolOp CHOICE { bindRequest [APPLICATION 0] ..., ... }
+//	}
 //
 // A BindRequest carries version, bindDN, and authentication choice.
 // Authentication choice 0x80 = simple (cleartext password). That's the

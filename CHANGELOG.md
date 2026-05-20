@@ -8,6 +8,48 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — deception depth + network intelligence
+- **Default-credential corpus** (`internal/creds`) — curated vendor
+  defaults (router/camera/BMC/database/ICS/generic). Every
+  auth-capturing handler (ftp, ftp_files, telnet, smtp_recv, redis,
+  postgres) now flags `default-credential-attempt` (+ device
+  category) when a captured pair is a known default.
+- **Fake-file registry** (`internal/fakefiles`) — deterministic decoy
+  tree per deployment with bait files (id_rsa, credentials.txt,
+  config.bak, database_dump.sql, ...).
+- **`ftp_files` handler** (TCP/21) — medium-interaction FTP: anonymous
+  / accept_creds login, full PASV browse + RETR, flags
+  `honeyfile-download` on bait retrieval. Listener `accept_creds`:
+  none | defaults | any.
+- **Apache / nginx web emulation** — http handler serves the real
+  "It works!" / "Welcome to nginx!" index + version-appropriate
+  flavored 404 (Apache `<address>...Server at host Port N</address>`
+  footer / nginx centered page) matching the Server header.
+- **Expanded `deployment_id` surfaces** — ApacheVersion(+modules),
+  NginxVersion, FTPBannerVariant, DNSServerVersion, NTPRefID,
+  ETagSeed, SMTPGreetingProduct, SSHCookie.
+- **Per-service X.509 certs** — distinct self-signed cert per listener
+  (subject CN/O/OU, ecdsa|rsa key type, per-service validity jitter,
+  independent serials) so each TLS service is a unique endpoint.
+- **Device intelligence** — `internal/devices` learned-host registry
+  (IP/MAC/hostname/vendor-OUI/source), persisted to devices.json.
+  New `dhcp` handler (UDP/67, passive) captures client MAC / hostname
+  / vendor-class / option-55 DHCP fingerprint. Sensor feeds every
+  observed host into the registry and raises `device:new` for
+  non-allow-listed / never-seen hosts. New `list-devices` subcommand
+  (table or `--json` baseline). config.Devices block.
+- **ICMP message library** (`internal/icmp`) — portable builders for
+  ICMPv4 Echo/Dest-Unreachable(0/1/3/4/13)/Redirect/Time-Exceeded/
+  Param-Problem/Timestamp/Address-Mask and ICMPv6 Echo/Neighbor-
+  Advert/Router-Advert. Honeynet ICMP responder now answers echo +
+  timestamp + address-mask.
+- **ICMP sweep correlator** (`correlate:icmp_sweep`) — one source
+  touching N distinct destination IPs via ICMP in a window.
+- **More protocol anomalies** — redis dangerous commands
+  (config-set / replication-takeover / module-load / flush /
+  script-exec), smtp open-relay probe + VRFY/EXPN user enumeration,
+  telnet non-printable credentials, dhcp-client-observed.
+
 ### Security — panic-trigger + UDP reflection fixes
 - **High**: `modbus` handler — MBAP `length=1` allocated a zero-byte
   PDU buffer; the subsequent function-code dereference panicked. The

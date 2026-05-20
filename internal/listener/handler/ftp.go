@@ -54,6 +54,7 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		"pass_line": strings.TrimSpace(pass),
 	}
 	res.Payload = []byte(user + "\n" + pass)
+	flagDefaultCred(&res, strings.TrimSpace(user), strings.TrimSpace(pass))
 	return res, nil
 }
 

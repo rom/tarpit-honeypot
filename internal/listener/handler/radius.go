@@ -11,7 +11,7 @@ import (
 // radius parses RADIUS Access-Request packets (RFC 2865, UDP port
 // 1812). Packet structure:
 //
-//   code(1) | identifier(1) | length(2) | authenticator(16) | attrs...
+//	code(1) | identifier(1) | length(2) | authenticator(16) | attrs...
 //
 // We capture the client's User-Name (attr type 1) and the
 // User-Password (attr type 2 — RC4-XORed against MD5(secret||auth),
@@ -32,9 +32,9 @@ func (r *radius) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 	id := payload[1]
 	length := binary.BigEndian.Uint16(payload[2:4])
 	res.Meta = map[string]any{
-		"code":      radiusCodeName(code),
+		"code":       radiusCodeName(code),
 		"identifier": id,
-		"length":    length,
+		"length":     length,
 	}
 	if code != 1 { // Access-Request
 		return res, nil

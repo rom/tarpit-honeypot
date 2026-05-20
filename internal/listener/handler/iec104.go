@@ -18,15 +18,15 @@ func (i *iec104) Name() string { return "iec104" }
 // control bytes (CTR1..CTR4); I-format frames carry an ASDU body.
 // Real scanners:
 //
-//   1. Send STARTDT_ACT (U-format 0x07 0x00 0x00 0x00) and wait for
-//      STARTDT_CON (0x0b 0x00 0x00 0x00).
-//   2. Optionally send TESTFR_ACT and wait for TESTFR_CON.
-//   3. Send a General Interrogation request — I-format ASDU type
-//      100 (C_IC_NA_1) with COT=6 (activation). A real RTU replies
-//      with an ASDU 100 with COT=7 (activation confirmation),
-//      streams a batch of M_ME_NB_1 / M_SP_NA_1 measurement /
-//      single-point objects, then ASDU 100 with COT=10 (activation
-//      termination).
+//  1. Send STARTDT_ACT (U-format 0x07 0x00 0x00 0x00) and wait for
+//     STARTDT_CON (0x0b 0x00 0x00 0x00).
+//  2. Optionally send TESTFR_ACT and wait for TESTFR_CON.
+//  3. Send a General Interrogation request — I-format ASDU type
+//     100 (C_IC_NA_1) with COT=6 (activation). A real RTU replies
+//     with an ASDU 100 with COT=7 (activation confirmation),
+//     streams a batch of M_ME_NB_1 / M_SP_NA_1 measurement /
+//     single-point objects, then ASDU 100 with COT=10 (activation
+//     termination).
 //
 // Our handler runs the connection as a loop until the peer closes
 // (or `ReadTimeout` expires), captures every received frame's type
@@ -191,7 +191,7 @@ func (i *iec104) streamFakeMeasurements(conn net.Conn) {
 		val  int16
 		qual byte
 	}{
-		{0x4001, 4711, 0x00},  // good quality, value 4711
+		{0x4001, 4711, 0x00}, // good quality, value 4711
 		{0x4002, -120, 0x00},
 		{0x4003, 32000, 0x40}, // bit 6 = blocked
 	}
