@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — detection coverage: password spraying + credential reuse
+- **`correlate:password_spray`** (`correlate.password_spray`): one source
+  trying many DISTINCT usernames within a window — the breadth signal,
+  complementing brute_force's depth. ATT&CK T1110.003.
+- **`correlate:credential_reuse`** (`correlate.credential_reuse`): the same
+  credential pair attempted from many DISTINCT source IPs — a shared
+  credential list / botnet (credential stuffing). ATT&CK T1110.004. The
+  emitted event reports the username + source count but never the password.
+- Both reuse the existing credential extraction across handlers (HTTP/SSH/
+  FTP/LDAP/DB/...), are windowed + deduped like the other correlators, and
+  cap their per-key sets to bound memory.
+
 ### Added — categorized example configs + EXAMPLES.md
 - New example configs under categorized `examples/` subdirectories mapped to
   the OT Purdue model: `ot-cell/single-plc.yaml`,

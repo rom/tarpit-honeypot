@@ -187,6 +187,28 @@ func (c *Config) applyDefaults() {
 			c.Correlate.SlowScan.Severity = "high"
 		}
 	}
+	if c.Correlate.PasswordSpray.Enabled {
+		if c.Correlate.PasswordSpray.DistinctUsers == 0 {
+			c.Correlate.PasswordSpray.DistinctUsers = 5
+		}
+		if c.Correlate.PasswordSpray.Window == 0 {
+			c.Correlate.PasswordSpray.Window = 300 * time.Second
+		}
+		if c.Correlate.PasswordSpray.Severity == "" {
+			c.Correlate.PasswordSpray.Severity = "high"
+		}
+	}
+	if c.Correlate.CredReuse.Enabled {
+		if c.Correlate.CredReuse.DistinctSources == 0 {
+			c.Correlate.CredReuse.DistinctSources = 3
+		}
+		if c.Correlate.CredReuse.Window == 0 {
+			c.Correlate.CredReuse.Window = time.Hour
+		}
+		if c.Correlate.CredReuse.Severity == "" {
+			c.Correlate.CredReuse.Severity = "high"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {

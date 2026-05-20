@@ -71,9 +71,11 @@ func Lookup(ruleID, handler string) Tag {
 
 // exactRules covers fully-qualified non-listener rule_ids.
 var exactRules = map[string]Tag{
-	"correlate:port_scan":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"correlate:brute_force": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
-	"correlate:slow_scan":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:port_scan":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:brute_force":      {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"correlate:slow_scan":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:password_spray":   {Techniques: []string{"T1110.003"}, Tactics: []string{"credential-access"}},
+	"correlate:credential_reuse": {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.

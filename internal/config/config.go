@@ -426,10 +426,32 @@ type Canary struct {
 }
 
 type Correlate struct {
-	PortScan   CorrPortScan   `yaml:"port_scan"`
-	BruteForce CorrBruteForce `yaml:"brute_force"`
-	SlowScan   CorrSlowScan   `yaml:"slow_scan"`
-	ICMPSweep  CorrICMPSweep  `yaml:"icmp_sweep"`
+	PortScan      CorrPortScan      `yaml:"port_scan"`
+	BruteForce    CorrBruteForce    `yaml:"brute_force"`
+	SlowScan      CorrSlowScan      `yaml:"slow_scan"`
+	ICMPSweep     CorrICMPSweep     `yaml:"icmp_sweep"`
+	PasswordSpray CorrPasswordSpray `yaml:"password_spray"`
+	CredReuse     CorrCredReuse     `yaml:"credential_reuse"`
+}
+
+// CorrPasswordSpray detects password spraying: one source trying many
+// DISTINCT usernames (low attempts each) within a window — the inverse of
+// brute force (many attempts against one account).
+type CorrPasswordSpray struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctUsers int           `yaml:"distinct_users"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
+}
+
+// CorrCredReuse detects the same credential pair attempted from many
+// DISTINCT source IPs within a window — a shared credential list / botnet
+// (credential stuffing).
+type CorrCredReuse struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctSources int           `yaml:"distinct_sources"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
 }
 
 // CorrICMPSweep detects an ICMP ping sweep: one source touching N

@@ -711,6 +711,12 @@ correlate:
   brute_force: { enabled: true, attempts: 10, window: 60s, severity: high }
   slow_scan:   { enabled: true, distinct_ports: 10, window: 24h, severity: high }
   icmp_sweep:  { enabled: true, distinct_ips: 10, window: 30s, severity: high }
+  # Password spraying: one source trying many DISTINCT usernames (the
+  # breadth signal — the inverse of brute_force's depth).
+  password_spray:   { enabled: true, distinct_users: 5, window: 300s, severity: high }
+  # Credential reuse: the same user+pass tried from many DISTINCT sources
+  # (a shared credential list / botnet — credential stuffing).
+  credential_reuse: { enabled: true, distinct_sources: 3, window: 1h, severity: high }
 
 devices:
   enabled: true

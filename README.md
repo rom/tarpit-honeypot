@@ -655,6 +655,8 @@ independently toggled:
 | `correlate.brute_force` | `correlate:brute_force` — N attempts on a port in the window (carries the extracted credential pairs). | `attempts`, `window`, `per_port` |
 | `correlate.slow_scan` | `correlate:slow_scan` — long-window scan (per-port state ages out individually). | `distinct_ports`, `window` (default 24h) |
 | `correlate.icmp_sweep` | `correlate:icmp_sweep` — one source pinged N distinct virtual IPs. | `distinct_ips`, `window`, `severity` |
+| `correlate.password_spray` | `correlate:password_spray` — one source tried N distinct usernames in the window (breadth, vs brute-force depth). | `distinct_users`, `window`, `severity` |
+| `correlate.credential_reuse` | `correlate:credential_reuse` — the same credential pair came from N distinct sources (credential stuffing); password never logged. | `distinct_sources`, `window`, `severity` |
 
 Per-source scan **profiling** (nmap `-T`/`-A`/`-O`/`-sV`/NSE
 fingerprinting → `scananalysis:profile`) and the cross-protocol
@@ -963,6 +965,14 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `correlate:brute_force` — same source touched the same port N times in
   the window (optionally per-port). Aggregate meta carries the deduped
   `credentials` array extracted from the contributing events.
+- `correlate:password_spray` — same source tried N **distinct usernames**
+  in the window (low attempts each): the breadth signal, the inverse of
+  brute force. Meta carries `usernames` + `distinct_users`. Tagged
+  `T1110.003`.
+- `correlate:credential_reuse` — the **same** credential pair was tried
+  from N **distinct source IPs** in the window — a shared credential list /
+  botnet (credential stuffing). Meta carries `username` + `distinct_sources`
+  + `sources`; the password is never logged. Tagged `T1110.004`.
 - `correlate:slow_scan` — long-window scan detector (default 24h /
   10 distinct ports). Meta includes `first_seen`, `last_seen`,
   `spread_seconds`, `ports`.

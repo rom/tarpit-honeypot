@@ -284,12 +284,24 @@ correlate:
     distinct_ips: 10
     window: 30s
     severity: high
+  password_spray:
+    enabled: false
+    distinct_users: 5
+    window: 300s
+    severity: high
+  credential_reuse:
+    enabled: false
+    distinct_sources: 3
+    window: 1h
+    severity: high
 ```
 
 - **port_scan**: same source touched N distinct ports within window → `correlate:port_scan` with the port list in meta.
 - **brute_force**: N attempts in window. Captures deduped credential pairs (`auth_user/auth_pass`, `bind_dn/bind_pw`, etc.) from contributing events.
 - **slow_scan**: long-window scan detector; per-port state ages individually so a 1-port-per-hour scan accumulates.
 - **icmp_sweep**: one source touching N distinct *destination IPs* via ICMP within window → `correlate:icmp_sweep` (a ping-sweep / live-host-mapping precursor). Keys on dest IP, not port, so it also runs for portless ICMP events.
+- **password_spray**: one source trying N **distinct usernames** within window → `correlate:password_spray` (the breadth signal — the inverse of brute force, which is depth against one account). Tagged `T1110.003`.
+- **credential_reuse**: the **same** credential pair attempted from N **distinct source IPs** within window → `correlate:credential_reuse` (a shared credential list / botnet — credential stuffing). The event reports the username + source count; the password is never logged. Tagged `T1110.004`.
 
 Beyond these, the sensor always emits a cross-protocol **`storyline:multi_stage`** event when one source touches 3+ distinct ATT&CK tactics inside 30 minutes (no config — it's driven by the `mitre_tactics` tags every event carries).
 

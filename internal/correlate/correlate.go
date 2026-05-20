@@ -8,6 +8,7 @@ package correlate
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,16 +22,36 @@ type Correlator struct {
 	bruteSev event.Severity
 	slowSev  event.Severity
 	sweepSev event.Severity
+	spraySev event.Severity
+	reuseSev event.Severity
 
 	mu      sync.Mutex
 	scan    map[string]*scanState      // key: source IP
 	brute   map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
 	slow    map[string]*slowState      // key: source IP
 	sweep   map[string]*sweepState     // key: source IP
+	spray   map[string]*sprayState     // key: source IP
+	reuse   map[string]*reuseState     // key: credential pair
 	story   map[string]*storylineState // key: source IP
 	emitted map[string]time.Time       // dedup of aggregate emission
 	lastGC  time.Time                  // last idle-state sweep
 }
+
+// sprayState tracks the distinct usernames one source has tried (password
+// spraying). reuseState tracks the distinct source IPs that have tried one
+// credential pair (credential stuffing). Both sets are capped to bound
+// memory under sustained abuse.
+type sprayState struct {
+	since time.Time
+	users map[string]struct{}
+}
+
+type reuseState struct {
+	since   time.Time
+	sources map[string]struct{}
+}
+
+const corrSetCap = 256
 
 type scanState struct {
 	since time.Time
@@ -63,6 +84,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		brute:   map[string]*bruteState{},
 		slow:    map[string]*slowState{},
 		sweep:   map[string]*sweepState{},
+		spray:   map[string]*sprayState{},
+		reuse:   map[string]*reuseState{},
 		story:   map[string]*storylineState{},
 		emitted: map[string]time.Time{},
 	}
@@ -93,6 +116,20 @@ func New(cfg config.Correlate) (*Correlator, error) {
 			return nil, err
 		}
 		c.sweepSev = s
+	}
+	if cfg.PasswordSpray.Enabled {
+		s, err := event.ParseSeverity(cfg.PasswordSpray.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.spraySev = s
+	}
+	if cfg.CredReuse.Enabled {
+		s, err := event.ParseSeverity(cfg.CredReuse.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.reuseSev = s
 	}
 	return c, nil
 }
@@ -139,6 +176,16 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.BruteForce.Enabled {
 		if extra := c.checkBrute(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.PasswordSpray.Enabled {
+		if extra := c.checkSpray(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.CredReuse.Enabled {
+		if extra := c.checkReuse(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -284,6 +331,110 @@ func (c *Correlator) checkBrute(ev *event.Event, now time.Time) *event.Event {
 		Proto:    ev.Proto,
 		Meta:     meta,
 	}
+}
+
+// checkSpray detects password spraying: one source trying many DISTINCT
+// usernames within the window (the breadth signal, vs brute force's depth).
+func (c *Correlator) checkSpray(ev *event.Event, now time.Time) *event.Event {
+	cfg := c.cfg.PasswordSpray
+	user := extractUser(ev)
+	if user == "" {
+		return nil
+	}
+	st, ok := c.spray[ev.Source.IP]
+	if !ok || now.Sub(st.since) > cfg.Window {
+		st = &sprayState{since: now, users: map[string]struct{}{}}
+		c.spray[ev.Source.IP] = st
+	}
+	if len(st.users) < corrSetCap {
+		st.users[user] = struct{}{}
+	}
+	if len(st.users) < cfg.DistinctUsers {
+		return nil
+	}
+	if !c.shouldEmit("spray|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	users := make([]string, 0, len(st.users))
+	for u := range st.users {
+		users = append(users, u)
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:password_spray",
+		Severity: c.spraySev,
+		Source:   ev.Source,
+		Dest:     ev.Dest,
+		Proto:    ev.Proto,
+		Meta: map[string]any{
+			"distinct_users": len(users),
+			"usernames":      users,
+			"window_s":       int(cfg.Window.Seconds()),
+		},
+	}
+}
+
+// checkReuse detects the same credential pair attempted from many DISTINCT
+// source IPs within the window — a shared credential list / botnet. The
+// emitted event reports the username + source count but never the password.
+func (c *Correlator) checkReuse(ev *event.Event, now time.Time) *event.Event {
+	cfg := c.cfg.CredReuse
+	cred := extractCreds(ev)
+	if cred == "" || cred == ":" {
+		return nil
+	}
+	st, ok := c.reuse[cred]
+	if !ok || now.Sub(st.since) > cfg.Window {
+		st = &reuseState{since: now, sources: map[string]struct{}{}}
+		c.reuse[cred] = st
+	}
+	if len(st.sources) < corrSetCap {
+		st.sources[ev.Source.IP] = struct{}{}
+	}
+	if len(st.sources) < cfg.DistinctSources {
+		return nil
+	}
+	if !c.shouldEmit("reuse|"+cred, cfg.Window) {
+		return nil
+	}
+	srcs := make([]string, 0, len(st.sources))
+	for s := range st.sources {
+		srcs = append(srcs, s)
+	}
+	user := cred
+	if i := strings.IndexByte(cred, ':'); i >= 0 {
+		user = cred[:i]
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:credential_reuse",
+		Severity: c.reuseSev,
+		Source:   ev.Source,
+		Dest:     ev.Dest,
+		Proto:    ev.Proto,
+		Meta: map[string]any{
+			"username":         user, // password deliberately omitted
+			"distinct_sources": len(srcs),
+			"sources":          srcs,
+			"window_s":         int(cfg.Window.Seconds()),
+		},
+	}
+}
+
+// extractUser returns the username portion of the credential pair, or "".
+func extractUser(ev *event.Event) string {
+	cred := extractCreds(ev)
+	if cred == "" {
+		return ""
+	}
+	if i := strings.IndexByte(cred, ':'); i >= 0 {
+		return cred[:i]
+	}
+	return cred
 }
 
 // checkSlowScan tracks port-touches over a long window (default 24h).
@@ -445,6 +596,16 @@ func (c *Correlator) gc(now time.Time) {
 	for ip, st := range c.sweep {
 		if now.Sub(st.since) > effWindow(c.cfg.ICMPSweep.Window, time.Minute) {
 			delete(c.sweep, ip)
+		}
+	}
+	for ip, st := range c.spray {
+		if now.Sub(st.since) > effWindow(c.cfg.PasswordSpray.Window, 5*time.Minute) {
+			delete(c.spray, ip)
+		}
+	}
+	for k, st := range c.reuse {
+		if now.Sub(st.since) > effWindow(c.cfg.CredReuse.Window, time.Hour) {
+			delete(c.reuse, k)
 		}
 	}
 	for ip, st := range c.story {
