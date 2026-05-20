@@ -73,6 +73,11 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
   <a href="/events">reset</a>
 </form>
 <p class="note">Click a column header to sort; click again to reverse.</p>
+<p class="note">Download recorded artifacts for this filter (ZIP):
+  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=all">pcaps + sessions</a> ·
+  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=pcap">pcaps</a> ·
+  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=session">sessions</a>
+</p>
 <table>
   <tr>
     <th><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
@@ -109,6 +114,13 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
   <tr><th>proto</th><td>{{ .Proto }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
 </table>
+
+<h2>downloads</h2>
+<ul>
+  <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
+  {{ if index .Meta "session_cast" }}<li><a href="/session/{{ .ID }}">session recording</a> (asciinema cast)</li>{{ end }}
+  {{ if .Source.IP }}<li><a href="/download?source={{ .Source.IP }}&amp;since=720h">all pcaps + sessions from {{ .Source.IP }}</a> (ZIP, last 30d)</li>{{ end }}
+</ul>
 
 {{ if .BannerSent }}<h2>banner sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
 {{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes, base64)</h2><div class="kv">{{ .PayloadBase64 }}</div>{{ end }}

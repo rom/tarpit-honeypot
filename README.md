@@ -1060,7 +1060,14 @@ Endpoints:
   `?since=24h`, `?limit=N`. Click a column header (time / severity / rule
   / source / handler) to sort; click again to reverse (`?sort=&order=`).
 - `/events/<id>` — full event detail with banner sent, base64 payload,
-  meta table.
+  meta table, plus download links for the connection **pcap**, the
+  **session recording** (asciinema cast, when present), and an "all pcaps +
+  sessions from this source IP" ZIP.
+- `/pcap/<id>` / `/session/<id>` — download one event's recorded capture /
+  session cast.
+- `/download?source=&rule=&since=&what=pcap|session|all` — stream a ZIP of
+  every matching event's pcaps and/or session casts (e.g. everything from a
+  single source IP). The events list links the current filter to it.
 - `/hosts?q=&status=` — learned hosts (IPv4/IPv6/MAC), filterable by
   substring + allow/seen status.
 - `/topology` — the virtual networks / hosts / services the sensor

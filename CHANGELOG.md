@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI pcap / session retrieval
+- The web UI can now download recorded artifacts: `/pcap/<event-id>` serves
+  the per-connection capture, `/session/<event-id>` serves the asciinema
+  session cast, and `/download?source=<ip>&rule=&since=&what=pcap|session|all`
+  streams a ZIP of every matching event's pcaps + casts — so "all attacks
+  from 198.51.100.42" is one click. The event-detail page links its pcap +
+  session and an "all from this IP" bundle; the events list links a
+  filter-scoped bundle. Paths are validated (hex event ids, basename-only
+  cast names) against traversal; routes go through the existing UI auth.
+
 ### Added — interface selection + multiple config files
 - **`sensor.interfaces`** (+ `-i`/`--interface` CLI, repeatable): name the
   network interface(s) the sensor uses. It supplies the default interface

@@ -62,6 +62,7 @@ type Server struct {
 	fullConfig *config.Config
 	topo       *honeynet.Topology
 	hosts      HostsProvider
+	dataDir    string
 }
 
 // SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
@@ -136,6 +137,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/events/", s.handleEvent)
+	mux.HandleFunc("/pcap/", s.handlePcap)
+	mux.HandleFunc("/session/", s.handleSession)
+	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/topology", s.handleTopology)
 	mux.HandleFunc("/hosts", s.handleHosts)
