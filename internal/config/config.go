@@ -154,17 +154,33 @@ type DNSCanary struct {
 }
 
 // Sniffer configures the optional Linux AF_PACKET sniffer that watches for
-// ARP scans and unsolicited replies.
+// ARP scans / unsolicited replies (L2) and, when TCPScan is enabled, TCP
+// stealth scans seen on the wire (L3/L4) that never reach a listener.
 type Sniffer struct {
 	Enabled   bool       `yaml:"enabled"`
 	Interface string     `yaml:"interface"` // empty = all
 	ARPScan   ARPScanCfg `yaml:"arp_scan"`
+	TCPScan   TCPScanCfg `yaml:"tcp_scan"`
 	Severity  string     `yaml:"severity"`
 }
 
 type ARPScanCfg struct {
 	DistinctIPs int           `yaml:"distinct_ips"`
 	Window      time.Duration `yaml:"window"`
+}
+
+// TCPScanCfg controls the packet-capture scan-detection layer. It opens a
+// second AF_PACKET socket for inbound IPv4 and classifies TCP segments by
+// flags: NULL/FIN/Xmas (stealth, flagged at StealthPorts distinct ports),
+// SYN/ACK floods (flagged at DistinctPorts), and IP fragmentation. This
+// catches scans the connection-level correlator never sees because no
+// session is ever established (closed ports, dropped stealth probes).
+type TCPScanCfg struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctPorts   int           `yaml:"distinct_ports"` // SYN/ACK volume threshold
+	StealthPorts    int           `yaml:"stealth_ports"`  // NULL/FIN/Xmas threshold
+	Window          time.Duration `yaml:"window"`
+	DetectFragments bool          `yaml:"detect_fragments"`
 }
 
 type UI struct {

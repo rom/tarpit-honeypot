@@ -26,6 +26,9 @@ type linuxSniffer struct {
 
 	mu    sync.Mutex
 	state map[string]*scanState // key: source MAC string
+
+	tcp  *scanTracker // nil unless TCPScan enabled
+	frag *rateLimiter // nil unless TCPScan enabled
 }
 
 type scanState struct {
@@ -40,16 +43,22 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &linuxSniffer{
+	s := &linuxSniffer{
 		cfg:        cfg,
 		sensorName: sensorName,
 		sev:        sev,
 		state:      map[string]*scanState{},
-	}, nil
+	}
+	if cfg.TCPScan.Enabled {
+		s.tcp = newScanTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts, cfg.TCPScan.StealthPorts)
+		s.frag = newRateLimiter(cfg.TCPScan.Window)
+	}
+	return s, nil
 }
 
 const (
 	ethPARP    = 0x0806
+	ethPIP     = 0x0800
 	ethPALL    = 0x0003
 	arpRequest = 1
 	arpReply   = 2
@@ -90,6 +99,12 @@ func (s *linuxSniffer) Run(ctx context.Context, bus chan<- *event.Event) error {
 		_ = unix.Shutdown(fd, unix.SHUT_RDWR)
 		_ = unix.Close(fd)
 	}()
+
+	// Packet-capture scan-detection layer (TCP stealth/volume scans),
+	// on its own AF_PACKET socket so the ARP path is unaffected.
+	if s.tcp != nil {
+		go s.runIPCapture(ctx, bus)
+	}
 
 	buf := make([]byte, 2048)
 	for {
@@ -183,6 +198,130 @@ func (s *linuxSniffer) newEvent(ruleID string, sev event.Severity, srcMAC, srcIP
 		Meta: map[string]any{
 			"src_mac": srcMAC,
 		},
+	}
+}
+
+// runIPCapture opens a second AF_PACKET socket filtered to inbound IPv4
+// and classifies TCP segments into scan events. Runs until ctx cancels.
+func (s *linuxSniffer) runIPCapture(ctx context.Context, bus chan<- *event.Event) {
+	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(htons(ethPALL)))
+	if err != nil {
+		slog.Warn("sniffer: tcp-scan socket (need CAP_NET_RAW)", "err", err)
+		return
+	}
+	defer unix.Close(fd)
+
+	ifaceIdx := 0
+	if s.cfg.Interface != "" {
+		if iface, err := net.InterfaceByName(s.cfg.Interface); err == nil {
+			ifaceIdx = iface.Index
+		}
+	}
+	if err := unix.Bind(fd, &unix.SockaddrLinklayer{
+		Protocol: htons(ethPIP),
+		Ifindex:  ifaceIdx,
+	}); err != nil {
+		slog.Warn("sniffer: tcp-scan bind", "err", err)
+		return
+	}
+	slog.Info("sniffer: tcp-scan up",
+		"distinct_ports", s.cfg.TCPScan.DistinctPorts,
+		"stealth_ports", s.cfg.TCPScan.StealthPorts,
+		"window", s.cfg.TCPScan.Window,
+		"detect_fragments", s.cfg.TCPScan.DetectFragments)
+
+	go func() {
+		<-ctx.Done()
+		_ = unix.Shutdown(fd, unix.SHUT_RDWR)
+		_ = unix.Close(fd)
+	}()
+
+	// Periodic GC keeps the per-source state bounded.
+	go func() {
+		t := time.NewTicker(s.cfg.TCPScan.Window)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				s.tcp.gc(now)
+			}
+		}
+	}()
+
+	buf := make([]byte, 2048)
+	for {
+		n, from, err := unix.Recvfrom(fd, buf, 0)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if errors.Is(err, syscall.EBADF) || errors.Is(err, syscall.EINTR) {
+				return
+			}
+			slog.Warn("sniffer: tcp-scan recvfrom", "err", err)
+			continue
+		}
+		// Only inbound frames — never classify our own replies.
+		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
+			continue
+		}
+		s.handleIPFrame(ctx, buf[:n], bus)
+	}
+}
+
+// handleIPFrame classifies one captured IPv4 frame and emits a scan event
+// when a per-source threshold trips.
+func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan<- *event.Event) {
+	info, ok := parseIPv4(frame)
+	if !ok {
+		return
+	}
+	now := time.Now()
+
+	if info.fragmented {
+		if s.cfg.TCPScan.DetectFragments && s.frag.allow(info.srcIP, now) {
+			ev := s.newIPEvent("sniffer:ip_fragmented", event.SeverityMedium, info.srcIP, "ip")
+			ev.Meta["ip_proto"] = int(info.proto)
+			send(ctx, bus, ev)
+		}
+		// Non-initial fragments carry no usable L4 header.
+		return
+	}
+	if info.proto != 6 { // TCP only
+		return
+	}
+	port, flags, ok := parseTCP(info.payload)
+	if !ok {
+		return
+	}
+	kind := classifyTCP(flags)
+	if kind == scanNone {
+		return
+	}
+	count, fire := s.tcp.observe(info.srcIP, port, kind, now)
+	if !fire {
+		return
+	}
+	ev := s.newIPEvent(kind.ruleID(), s.sev, info.srcIP, "tcp")
+	ev.Meta["distinct_ports"] = count
+	ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+	ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
+	send(ctx, bus, ev)
+}
+
+// newIPEvent builds a layer-3/4 sniffer event (no MAC, caller sets proto).
+func (s *linuxSniffer) newIPEvent(ruleID string, sev event.Severity, srcIP, proto string) *event.Event {
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     time.Now().UTC(),
+		Sensor:   s.sensorName,
+		RuleID:   ruleID,
+		Severity: sev,
+		Source:   event.Endpoint{IP: srcIP},
+		Proto:    proto,
+		Meta:     map[string]any{},
 	}
 }
 

@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — packet-capture scan-detection layer
+- **`sniffer.tcp_scan`** (`internal/sniffer`): a second AF_PACKET socket
+  (inbound IPv4) classifies TCP segments by flags and detects scans that
+  never establish a session — **NULL/FIN/Xmas** stealth probes (flagged at
+  a low distinct-port threshold), **SYN/ACK** scans (flagged by volume),
+  and fragmented probes. New events `sniffer:tcp_{syn,null,fin,xmas,ack}_scan`
+  and `sniffer:ip_fragmented`, ATT&CK-tagged T1046 / T1595.001. Opt-in,
+  needs CAP_NET_RAW; the ARP path is unchanged. (Decoy-scan detection is
+  out of scope; ICMP sweeps remain handled by `correlate:icmp_sweep`.)
+
 ### Added — server-side TLS fingerprint (JA3S)
 - **JA3S** (`internal/fingerprint`): the HTTPS handler now captures the
   ServerHello it sends and emits the server-side TLS fingerprint in event

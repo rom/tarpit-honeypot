@@ -80,9 +80,17 @@ var exactRules = map[string]Tag{
 	"scananalysis:profile":          {Techniques: []string{"T1595", "T1046"}, Tactics: []string{"reconnaissance", "discovery"}},
 	"sniffer:arp_scan":              {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"sniffer:arp_reply_unsolicited": {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
-	"dnscanary:hit":                 {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier":           {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":              {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	// Packet-capture scan-detection layer: stealth + volume TCP scans
+	// observed on the wire that never establish a session.
+	"sniffer:tcp_syn_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_null_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_fin_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_xmas_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_ack_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:ip_fragmented": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dnscanary:hit":         {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier":   {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":      {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).

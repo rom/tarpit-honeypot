@@ -14,7 +14,7 @@ canaries:      [ ... ]     # filesystem honeyfiles
 url_canaries:  [ ... ]     # tokens matched by http / https handlers
 dns:           { ... }     # DNS canary listener
 dns_canaries:  [ ... ]     # DNS-side canary names
-sniffer:       { ... }     # AF_PACKET ARP scan detector (linux only)
+sniffer:       { ... }     # AF_PACKET ARP + TCP scan detector (linux only)
 correlate:     { ... }     # port-scan / brute-force / slow-scan
 honeynets:     [ ... ]     # artificial networks of virtual hosts
 dedup:         { ... }     # event dedup window
@@ -225,7 +225,7 @@ The listener:
 
 ---
 
-## `sniffer:` — Linux AF_PACKET ARP detector
+## `sniffer:` — Linux AF_PACKET packet-capture detector
 
 ```yaml
 sniffer:
@@ -235,9 +235,25 @@ sniffer:
   arp_scan:
     distinct_ips: 16
     window: 30s
+  tcp_scan:                     # L3/L4 scan-detection layer (opt-in)
+    enabled: false
+    distinct_ports: 16          # SYN/ACK volume threshold per source/window
+    stealth_ports: 3            # NULL/FIN/Xmas threshold (lower — always hostile)
+    window: 30s
+    detect_fragments: true      # flag fragmented inbound probes
 ```
 
-Watches the local segment. Emits `sniffer:arp_scan` when one MAC asks about `distinct_ips` distinct IPs within `window`, and `sniffer:arp_reply_unsolicited` for ARP replies with no corresponding request (potential cache poisoning).
+Watches the local segment (needs `CAP_NET_RAW`).
+
+**L2 (`arp_scan`)** — emits `sniffer:arp_scan` when one MAC asks about `distinct_ips` distinct IPs within `window`, and `sniffer:arp_reply_unsolicited` for ARP replies with no corresponding request (potential cache poisoning).
+
+**L3/L4 (`tcp_scan`)** — a second AF_PACKET socket classifies inbound IPv4 TCP by flags and reports scans that never establish a session:
+
+- `sniffer:tcp_null_scan` / `tcp_fin_scan` / `tcp_xmas_scan` — stealth probes (`nmap -sN/-sF/-sX`), flagged once a source hits `stealth_ports` distinct ports in `window`.
+- `sniffer:tcp_syn_scan` / `tcp_ack_scan` — SYN/ACK scans, flagged at `distinct_ports` (volume).
+- `sniffer:ip_fragmented` — fragmented inbound probes (when `detect_fragments`), one event per source per window.
+
+This complements `correlate:port_scan` (which sees only connections that reach a listener) by catching closed-port and dropped-stealth traffic. IPv4 only; decoy-scan detection is out of scope; ICMP sweeps are handled by `correlate:icmp_sweep`.
 
 ---
 

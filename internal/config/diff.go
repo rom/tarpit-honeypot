@@ -87,12 +87,16 @@ func DiffConfigs(old, new *Config) Diff {
 		})
 	}
 
-	// Sniffer: enable/disable + interface change need restart.
-	if old.Sniffer.Enabled != new.Sniffer.Enabled || old.Sniffer.Interface != new.Sniffer.Interface {
+	// Sniffer: enable/disable + interface + tcp_scan toggle need restart
+	// (the sockets + trackers are set up once at sniffer construction).
+	if old.Sniffer.Enabled != new.Sniffer.Enabled ||
+		old.Sniffer.Interface != new.Sniffer.Interface ||
+		old.Sniffer.TCPScan.Enabled != new.Sniffer.TCPScan.Enabled {
 		d.RestartNeeded = append(d.RestartNeeded, Change{
 			Section: "sniffer", Action: "modified",
-			Detail: fmt.Sprintf("enabled=%v iface=%q -> enabled=%v iface=%q",
-				old.Sniffer.Enabled, old.Sniffer.Interface, new.Sniffer.Enabled, new.Sniffer.Interface),
+			Detail: fmt.Sprintf("enabled=%v iface=%q tcp_scan=%v -> enabled=%v iface=%q tcp_scan=%v",
+				old.Sniffer.Enabled, old.Sniffer.Interface, old.Sniffer.TCPScan.Enabled,
+				new.Sniffer.Enabled, new.Sniffer.Interface, new.Sniffer.TCPScan.Enabled),
 		})
 	}
 

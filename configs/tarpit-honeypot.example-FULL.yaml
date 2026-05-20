@@ -695,6 +695,16 @@ sniffer:
   interface: eth0
   severity: high
   arp_scan: { distinct_ips: 16, window: 30s }
+  # Packet-capture scan-detection layer (L3/L4). Catches TCP scans that
+  # never establish a session — closed-port SYN floods, ACK scans, and
+  # NULL/FIN/Xmas stealth probes the kernel silently drops. Needs
+  # CAP_NET_RAW (same as the ARP sniffer). Emits sniffer:tcp_*_scan.
+  tcp_scan:
+    enabled: true
+    distinct_ports: 16     # SYN/ACK volume threshold per source/window
+    stealth_ports: 3       # NULL/FIN/Xmas threshold (lower — always hostile)
+    window: 30s
+    detect_fragments: true # flag fragmented inbound probes (evasion)
 
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }

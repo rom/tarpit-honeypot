@@ -142,6 +142,17 @@ func (c *Config) applyDefaults() {
 		if c.Sniffer.ARPScan.Window == 0 {
 			c.Sniffer.ARPScan.Window = 30 * time.Second
 		}
+		if c.Sniffer.TCPScan.Enabled {
+			if c.Sniffer.TCPScan.DistinctPorts == 0 {
+				c.Sniffer.TCPScan.DistinctPorts = 16
+			}
+			if c.Sniffer.TCPScan.StealthPorts == 0 {
+				c.Sniffer.TCPScan.StealthPorts = 3
+			}
+			if c.Sniffer.TCPScan.Window == 0 {
+				c.Sniffer.TCPScan.Window = 30 * time.Second
+			}
+		}
 	}
 	if c.Correlate.PortScan.Enabled {
 		if c.Correlate.PortScan.DistinctPorts == 0 {

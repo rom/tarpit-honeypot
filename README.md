@@ -152,8 +152,19 @@ rationale covering the current implementation.
     unguessable path fires a separate critical event.
   - **DNS canaries**: a minimal UDP DNS listener that replies NXDOMAIN
     but fires on any subdomain of a registered name.
-- **ARP sniffer** (Linux AF_PACKET): detects ARP scans (one MAC asking
-  about many distinct IPs) and unsolicited replies (ARP-cache poisoning).
+- **Packet-capture sniffer** (Linux AF_PACKET, opt-in, needs CAP_NET_RAW):
+  - **L2** — ARP scans (one MAC asking about many distinct IPs) and
+    unsolicited replies (ARP-cache poisoning).
+  - **L3/L4** (`sniffer.tcp_scan`) — a scan-detection layer that classifies
+    inbound TCP by flags on the wire: **NULL / FIN / Xmas** stealth probes
+    (`-sN`/`-sF`/`-sX`), **SYN** and **ACK** scans by volume, and
+    fragmented probes. This catches reconnaissance the connection-level
+    correlator never sees because no session is ever established — closed
+    ports that only get a RST, and stealth probes the kernel silently
+    drops. Emits `sniffer:tcp_{syn,null,fin,xmas,ack}_scan` and
+    `sniffer:ip_fragmented`, ATT&CK-tagged T1046 / T1595.001. (IPv4 +
+    decoy detection is out of scope; ICMP sweeps are handled by the
+    correlator's `icmp_sweep`.)
 - **ICMP responder + personality + anomaly detection**: virtual hosts
   answer echo / timestamp / address-mask requests (Linux AF_PACKET),
   each stamped with the archetype's **initial-TTL personality** (255 OT
