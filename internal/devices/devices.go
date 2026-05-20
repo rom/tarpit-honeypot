@@ -219,6 +219,14 @@ func (r *Registry) isAllowed(d *Device) bool {
 	return false
 }
 
+// IsAllowed reports whether a device matches the operator allow-list.
+// Safe for external callers (takes r.mu); used by the web UI hosts view.
+func (r *Registry) IsAllowed(d Device) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.isAllowed(&d)
+}
+
 // List returns a snapshot of all known devices, sorted by IP then MAC.
 func (r *Registry) List() []Device {
 	r.mu.Lock()

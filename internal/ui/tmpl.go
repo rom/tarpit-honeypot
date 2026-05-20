@@ -36,7 +36,7 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/topology">topology</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -147,6 +147,76 @@ IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
+{{ define "hosts" }}{{ template "head" . }}
+<h1>known / seen hosts</h1>
+{{ if not .Enabled }}<p class="note">Device tracking is disabled. Set
+<code>devices.enabled: true</code> to learn hosts from DHCP, the ARP sniffer,
+and connection source IPs.</p>{{ end }}
+{{ if not .Hosts }}
+<p class="note">No hosts learned yet. JSON at <a href="/api/hosts">/api/hosts</a>.</p>
+{{ else }}
+<p class="note">Hosts the sensor has observed (IPv4 / IPv6 / MAC). "allow" = on the
+device allow-list (won't raise <code>device:new</code>). JSON at <a href="/api/hosts">/api/hosts</a>.</p>
+<table>
+  <tr><th>ip</th><th>mac</th><th>hostname</th><th>vendor</th><th>source</th><th>status</th><th>first seen</th><th>last seen</th><th>count</th></tr>
+  {{ range .Hosts }}
+  <tr>
+    <td>{{ .IP }}</td>
+    <td>{{ .MAC }}</td>
+    <td>{{ .Hostname }}</td>
+    <td>{{ .Vendor }}</td>
+    <td>{{ .Source }}</td>
+    <td>{{ if .Allowed }}allow{{ else }}seen{{ end }}</td>
+    <td>{{ fmtTime .FirstSeen }}</td>
+    <td>{{ fmtTime .LastSeen }}</td>
+    <td>{{ .Count }}</td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "alerting" }}{{ template "head" . }}
+<h1>alerting &amp; event forwarding</h1>
+<p class="note">How this sensor forwards events. Secrets show as their
+<code>*_env</code> names. JSON at <a href="/api/alerting">/api/alerting</a>.</p>
+<div class="depl">
+  syslog: {{ if .HasSyslog }}<b>configured</b>{{ else }}off{{ end }} ·
+  email: {{ if .HasEmail }}<b>configured</b>{{ else }}off{{ end }} ·
+  webhook: {{ if .HasWebhook }}<b>configured</b>{{ else }}off{{ end }} ·
+  sms: {{ if .HasSMS }}<b>configured</b>{{ else }}off{{ end }} ·
+  snmp-trap: {{ if .HasSNMP }}<b>configured</b>{{ else }}off{{ end }}
+</div>
+
+<h2>channels</h2>
+<table>
+  <tr><th>id</th><th>type</th><th>destination</th><th>format</th><th>min severity</th><th>rate/min</th><th>scope</th></tr>
+  {{ range .Channels }}
+  <tr>
+    <td>{{ .ID }}</td>
+    <td>{{ .Type }}</td>
+    <td>{{ .Destination }}</td>
+    <td>{{ .Format }}</td>
+    <td>{{ .MinSeverity }}</td>
+    <td>{{ if .RateLimit }}{{ .RateLimit }}{{ end }}</td>
+    <td>{{ if .Local }}local (always){{ else }}outbound{{ end }}</td>
+  </tr>
+  {{ end }}
+</table>
+
+<h2>routes</h2>
+{{ if not .Routes }}<p class="note">No routes configured — outbound channels receive per their own gates.</p>{{ else }}
+<table>
+  <tr><th>match</th><th>channels</th></tr>
+  {{ range .Routes }}<tr><td>{{ .Match }}</td><td>{{ range .Channels }}{{ . }} {{ end }}</td></tr>{{ end }}
+</table>
+{{ end }}
+
+{{ if .Allowlist }}<h2>allowlist (outbound-suppressed sources)</h2>
+<div class="kv">{{ range .Allowlist }}{{ . }}
+{{ end }}</div>{{ end }}
+{{ template "foot" . }}{{ end }}
+
 {{ define "docs" }}{{ template "head" . }}
 <div class="docs">
 <h1>tarpit-honeypot — documentation</h1>
@@ -166,7 +236,9 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <ul>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
 <li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
+<li><a href="/hosts">hosts</a> — learned / seen / allow-listed hosts (IPv4 / IPv6 / MAC).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
+<li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
 <li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>
 </ul>
 

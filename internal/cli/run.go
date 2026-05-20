@@ -84,6 +84,20 @@ func cmdRun(args []string) error {
 		srv.SetStatsProvider(buildStatsProvider(s))
 		srv.SetConfig(cfg)
 		srv.SetTopology(s.Honeynet())
+		if dr := s.Devices(); dr != nil {
+			srv.SetHostsProvider(func() []ui.HostView {
+				devs := dr.List()
+				out := make([]ui.HostView, 0, len(devs))
+				for _, d := range devs {
+					out = append(out, ui.HostView{
+						IP: d.IP, MAC: d.MAC, Hostname: d.Hostname, Vendor: d.Vendor,
+						Source: string(d.Source), Allowed: dr.IsAllowed(d),
+						FirstSeen: d.FirstSeen, LastSeen: d.LastSeen, Count: d.Count,
+					})
+				}
+				return out
+			})
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

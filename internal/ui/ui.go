@@ -59,6 +59,7 @@ type Server struct {
 	stats      StatsProvider
 	fullConfig *config.Config
 	topo       *honeynet.Topology
+	hosts      HostsProvider
 }
 
 // SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
@@ -74,6 +75,28 @@ func (s *Server) SetConfig(c *config.Config) { s.fullConfig = c }
 // can render the virtual networks / hosts / services. nil (or an empty
 // topology) renders an "no honeynet configured" placeholder.
 func (s *Server) SetTopology(t *honeynet.Topology) { s.topo = t }
+
+// SetHostsProvider wires the learned-device inventory so the /hosts tab
+// can list known / seen / allow-listed hosts (IPv4 / IPv6 / MAC). nil
+// disables the tab's data (renders an empty list). A provider closure
+// keeps the ui package decoupled from internal/devices.
+func (s *Server) SetHostsProvider(p HostsProvider) { s.hosts = p }
+
+// HostsProvider returns a snapshot of every host the sensor has learned.
+type HostsProvider func() []HostView
+
+// HostView is one row in the /hosts table.
+type HostView struct {
+	IP        string    `json:"ip,omitempty"`
+	MAC       string    `json:"mac,omitempty"`
+	Hostname  string    `json:"hostname,omitempty"`
+	Vendor    string    `json:"vendor,omitempty"`
+	Source    string    `json:"source"`
+	Allowed   bool      `json:"allowed"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+	Count     int       `json:"count"`
+}
 
 func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if !cfg.Enabled {
@@ -113,11 +136,15 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/events/", s.handleEvent)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/topology", s.handleTopology)
+	mux.HandleFunc("/hosts", s.handleHosts)
+	mux.HandleFunc("/alerting", s.handleAlerting)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/api/topology", s.handleAPITopology)
+	mux.HandleFunc("/api/hosts", s.handleAPIHosts)
+	mux.HandleFunc("/api/alerting", s.handleAPIAlerting)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
@@ -366,6 +393,154 @@ func (s *Server) handleTopology(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleAPITopology(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.topologyView())
+}
+
+// ---- hosts tab ----
+
+func (s *Server) hostsView() []HostView {
+	if s.hosts == nil {
+		return nil
+	}
+	return s.hosts()
+}
+
+type hostsPage struct {
+	Hosts   []HostView
+	Enabled bool
+}
+
+func (s *Server) handleHosts(w http.ResponseWriter, _ *http.Request) {
+	p := hostsPage{Hosts: s.hostsView(), Enabled: s.fullConfig != nil && s.fullConfig.Devices.Enabled}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "hosts", p); err != nil {
+		slog.Warn("ui: render hosts", "err", err)
+	}
+}
+
+func (s *Server) handleAPIHosts(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.hostsView())
+}
+
+// ---- alerting / forwarding tab ----
+
+// channelView summarizes one outbound/local channel for the alerting tab.
+type channelView struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Format      string `json:"format,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	MinSeverity string `json:"min_severity,omitempty"`
+	RateLimit   int    `json:"rate_limit_per_min,omitempty"`
+	Local       bool   `json:"local"`
+}
+
+type routeView struct {
+	Match    string   `json:"match"`
+	Channels []string `json:"channels"`
+}
+
+type alertingPage struct {
+	Channels []channelView
+	Routes   []routeView
+	// Quick "is X configured?" booleans for the summary banner.
+	HasSyslog  bool
+	HasEmail   bool
+	HasWebhook bool
+	HasSMS     bool
+	HasSNMP    bool
+	Allowlist  []string
+}
+
+func (s *Server) alertingView() alertingPage {
+	var p alertingPage
+	if s.fullConfig == nil {
+		return p
+	}
+	for _, c := range s.fullConfig.Channels {
+		cv := channelView{
+			ID: c.ID, Type: c.Type, Format: c.Format,
+			MinSeverity: c.MinSeverity, RateLimit: c.RateLimitPerMin,
+			Destination: channelDestination(c),
+			Local:       c.Type == "stdout" || c.Type == "jsonlog" || c.Type == "sqlite",
+		}
+		p.Channels = append(p.Channels, cv)
+		switch c.Type {
+		case "syslog":
+			p.HasSyslog = true
+		case "smtp":
+			p.HasEmail = true
+		case "webhook":
+			p.HasWebhook = true
+		case "twilio":
+			p.HasSMS = true
+		case "snmptrap":
+			p.HasSNMP = true
+		}
+	}
+	for _, r := range s.fullConfig.Routes {
+		p.Routes = append(p.Routes, routeView{Match: matchSummary(r.Match), Channels: r.Channels})
+	}
+	p.Allowlist = s.fullConfig.Allowlist
+	return p
+}
+
+// channelDestination renders where a channel forwards to, with secrets
+// kept as their env-var names (the config model never stores values).
+func channelDestination(c config.Channel) string {
+	switch c.Type {
+	case "webhook":
+		return c.URL
+	case "smtp":
+		return fmt.Sprintf("%s:%d (from %s, to %s)", c.Host, c.Port, c.From, strings.Join(c.To, ","))
+	case "syslog":
+		return c.Network + " " + c.Address
+	case "twilio":
+		return "Twilio SMS -> " + strings.Join(c.To, ",")
+	case "sns":
+		return c.TopicARN
+	case "snmptrap":
+		return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	case "jsonlog":
+		return "<data_dir>/events/"
+	case "sqlite":
+		return "<data_dir>/events.db"
+	case "stdout":
+		return "stdout"
+	}
+	return ""
+}
+
+func matchSummary(m config.Match) string {
+	var parts []string
+	if m.Severity != "" {
+		parts = append(parts, "severity "+m.Severity)
+	}
+	if m.Honeynet != "" {
+		parts = append(parts, "honeynet="+m.Honeynet)
+	}
+	if m.HoneynetOS != "" {
+		parts = append(parts, "os="+m.HoneynetOS)
+	}
+	if m.RuleID != "" {
+		parts = append(parts, "rule="+m.RuleID)
+	}
+	if len(parts) == 0 {
+		return "(all events)"
+	}
+	return strings.Join(parts, " AND ")
+}
+
+func (s *Server) handleAlerting(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "alerting", s.alertingView()); err != nil {
+		slog.Warn("ui: render alerting", "err", err)
+	}
+}
+
+func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.alertingView())
 }
 
 // ---- docs tab ----
