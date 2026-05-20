@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — kernel self-confinement + docs
+- **seccomp + Landlock self-confinement** (`internal/sandbox`,
+  `sensor.sandbox`): pure-Go, CGO-free, Linux-only, applied after privilege
+  drop. seccomp-bpf denylist blocks execve/ptrace/module-load/mount/kexec/…
+  (a parser 0-day can't spawn a shell); Landlock makes the filesystem
+  read-only except `data_dir`. Best-effort; no-op on non-Linux.
+- **AppArmor profile** (`packaging/apparmor/`) and **SELinux policy module**
+  (`packaging/selinux/`) enforcing the same intent from the host LSM.
+- **Docs**: moved `design.md` → `docs/design.md` and rewrote it to cover the
+  full current implementation; added `docs/hardening.md` (layered
+  confinement guide); documented `sensor.sandbox` in `config.md` + the FULL
+  example.
+
 ### Added — CVE emulation, command emulation, malware capture, D3FEND, AD/Cisco
 - **CVE catalog + emulation** (`internal/cve`): curated high-signal exploit
   signatures (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell,

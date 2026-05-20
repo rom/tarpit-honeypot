@@ -12,8 +12,8 @@ sanitization, and pluggable outbound alerting.
 CGO-free. Static builds for `linux/amd64`, `linux/arm64`, `linux/armv7`,
 `linux/armv6`, `darwin/amd64`, `darwin/arm64`.
 
-See [`design.md`](design.md) for the full design conversation and
-phasing decisions.
+See [`docs/design.md`](docs/design.md) for the architecture + design
+rationale covering the current implementation.
 
 ## Features at a glance
 
@@ -183,6 +183,13 @@ phasing decisions.
   every header. Prevents log injection, terminal-jacking via ANSI
   escapes, RLO filename spoofing, and HTTP/SMTP header smuggling
   from attacker-supplied banners and captured credentials.
+- **Kernel self-confinement** (`sensor.sandbox`, Linux): a pure-Go
+  **seccomp**-bpf denylist (execve / ptrace / module-load / mount /
+  kexec / bpf / … return EPERM, so a parser 0-day can't spawn a shell)
+  and a **Landlock** policy that makes the filesystem read-only except
+  `data_dir`. Applied after privilege drop; best-effort. Shipped
+  **AppArmor** + **SELinux** policies enforce the same intent from the
+  host LSM. See [`docs/hardening.md`](docs/hardening.md).
 - **Per-event pcap capture**: optional bidirectional byte capture on TCP
   connections, written as synthesized libpcap files Wireshark loads
   directly. Pure-Go, no raw sockets, no CAP_NET_RAW.
@@ -271,6 +278,8 @@ phasing decisions.
 | Per-event pcap capture | yes | yes | synthesized libpcap, no raw sockets |
 | Outbound channels (webhook/smtp/syslog/twilio/sns/snmptrap/mqtt) | yes | yes | pure Go |
 | Privilege drop | yes | yes | `setresuid` on Linux, `setuid` on darwin |
+| seccomp syscall filter (`sensor.sandbox.seccomp`) | yes | — | pure-Go BPF denylist |
+| Landlock FS restriction (`sensor.sandbox.landlock`) | yes | — | Linux 5.13+; best-effort |
 | ARP responder | yes | — | needs AF_PACKET; on macOS use `ifconfig <iface> alias <ip>` |
 | ICMP responder | yes | — | needs AF_PACKET; aliased IPs answer ICMP echo natively |
 | LLDP / CDP responder | yes | — | needs AF_PACKET; `/dev/bpf` backend planned |
@@ -281,9 +290,11 @@ phasing decisions.
 
 In-tree:
 
+- [`docs/design.md`](docs/design.md) — architecture + design rationale covering the current implementation.
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
+- [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
