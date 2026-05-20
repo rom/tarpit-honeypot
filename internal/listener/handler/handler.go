@@ -170,6 +170,21 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &amqp{}, nil
 	case "ipp":
 		return &ipp{}, nil
+	case "mssql":
+		return &mssql{id: deps.Identity}, nil
+	case "oracle_tns":
+		return &oracleTNS{}, nil
+	case "teamviewer":
+		return &teamviewer{}, nil
+	case "anydesk":
+		return &anydesk{}, nil
+	case "openvpn":
+		return &openvpn{}, nil
+	case "citrix_ica":
+		return &citrixICA{}, nil
+	case "intel_amt", "ilo", "idrac", "esxi", "fortinet",
+		"pulse", "citrix_gateway", "horizon", "moxa_mgmt":
+		return &mgmtWeb{kind: name}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }

@@ -237,6 +237,23 @@ func (i *Identity) SMTPGreetingProduct() string {
 	return pool[r.Intn(len(pool))]
 }
 
+// VNCVersion returns one of the real RFB protocol-version strings,
+// deterministic per deployment. Different VNC servers (RealVNC,
+// TightVNC, UltraVNC, the QEMU/libvirt built-in) advertise different
+// RFB versions; varying ours defeats banner-clustering. The returned
+// string includes the trailing newline the RFB handshake requires.
+func (i *Identity) VNCVersion() string {
+	pool := []string{
+		"RFB 003.008\n", // 3.8 — most common (RealVNC, TigerVNC)
+		"RFB 003.007\n", // 3.7
+		"RFB 003.003\n", // 3.3 — older / embedded KVM-over-IP, libvirt
+		"RFB 004.001\n", // 4.1 — Apple Remote Desktop advertises this
+		"RFB 003.889\n", // Apple's quirky ARD version string
+	}
+	r := i.deterministicRand("vnc-version")
+	return pool[r.Intn(len(pool))]
+}
+
 // SSHCookie returns the 16-byte random cookie an SSH server places in
 // its KEXINIT. Deterministic per deployment so the HASSH-adjacent
 // fingerprint of OUR side is also stable + unique.

@@ -28,7 +28,13 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
-	const serverVersion = "RFB 003.008\n"
+	// Server RFB version: deployment-unique pick from the real
+	// RFB-version pool (3.3 / 3.7 / 3.8 / 4.1 / ARD) so a scanner
+	// hitting many sensors sees a believable spread of VNC products.
+	serverVersion := "RFB 003.008\n"
+	if v.id != nil {
+		serverVersion = v.id.VNCVersion()
+	}
 	if _, err := conn.Write([]byte(serverVersion)); err != nil {
 		res.Meta = map[string]any{"write_err": err.Error()}
 		return res, nil
