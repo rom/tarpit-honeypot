@@ -17,8 +17,8 @@ import (
 // emits an LLDP frame (and optionally a CDP frame) per honeynet
 // host. Both protocols ride on a multicast destination MAC at L2:
 //
-//   LLDP: dst 01:80:c2:00:00:0e, ethertype 0x88cc
-//   CDP:  dst 01:00:0c:cc:cc:cc, LLC SNAP, vendor 00:00:0c, type 0x2000
+//	LLDP: dst 01:80:c2:00:00:0e, ethertype 0x88cc
+//	CDP:  dst 01:00:0c:cc:cc:cc, LLC SNAP, vendor 00:00:0c, type 0x2000
 //
 // We only TRANSMIT — there's no listen path here, since LLDP
 // listening (passive discovery of attacker switches) lives in the

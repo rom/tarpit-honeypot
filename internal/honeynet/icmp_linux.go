@@ -108,6 +108,14 @@ func icmpLoop(fd int, iface *net.Interface, topo *Topology) {
 		if len(icmpMsg) < 8 {
 			continue
 		}
+		// Abnormal-payload / fragmentation-abuse detection (icmp
+		// tunneling, teardrop-style frag abuse, IDS evasion). Logged
+		// per host; the SIEM-facing event path runs through the
+		// sniffer / correlator, but flagging here surfaces it in the
+		// responder's debug stream.
+		if anoms := icmppkg.Anomalies(ip[:ihl], icmpMsg); len(anoms) > 0 {
+			slog.Warn("icmp anomaly", "from", srcIP.String(), "as_host", dstIP, "markers", anoms)
+		}
 		// Answer the request type with the matching reply:
 		//   8  echo request      -> 0  echo reply
 		//   13 timestamp request -> 14 timestamp reply
@@ -127,7 +135,12 @@ func icmpLoop(fd int, iface *net.Interface, topo *Topology) {
 		if icmpReply == nil {
 			continue
 		}
-		reply := buildICMPFrame(host.MAC, dstIP, buf[6:12], srcIP, icmpReply)
+		// Per-host ICMP personality: stamp the OS-characteristic
+		// initial TTL from the host's archetype (255 OT/network gear,
+		// 128 Windows, 64 Linux/BSD) so passive OS fingerprinting +
+		// traceroute hop-distance estimation see a consistent host.
+		ttl := byte(host.Archetype.ICMPTTL())
+		reply := buildICMPFrame(host.MAC, dstIP, buf[6:12], srcIP, icmpReply, ttl)
 		ll, ok := from.(*unix.SockaddrLinklayer)
 		if !ok {
 			continue
@@ -153,10 +166,13 @@ func icmpLoop(fd int, iface *net.Interface, topo *Topology) {
 // buildICMPFrame wraps a fully-formed ICMP message (already typed +
 // checksummed by the icmp package) in an Ethernet + IPv4 frame sourced
 // from the virtual host and addressed to the requester.
-func buildICMPFrame(ourMAC [6]byte, ourIP string, requesterMAC []byte, requesterIP net.IP, icmp []byte) []byte {
+func buildICMPFrame(ourMAC [6]byte, ourIP string, requesterMAC []byte, requesterIP net.IP, icmp []byte, ttl byte) []byte {
 	ourIP4 := net.ParseIP(ourIP).To4()
 	if ourIP4 == nil || requesterIP.To4() == nil {
 		return nil
+	}
+	if ttl == 0 {
+		ttl = 64
 	}
 	totalLen := 20 + len(icmp)
 	frame := make([]byte, 14+totalLen)
@@ -171,7 +187,7 @@ func buildICMPFrame(ourMAC [6]byte, ourIP string, requesterMAC []byte, requester
 	binary.BigEndian.PutUint16(ip[2:4], uint16(totalLen))
 	binary.BigEndian.PutUint16(ip[4:6], 0)      // identification
 	binary.BigEndian.PutUint16(ip[6:8], 0x4000) // DF, frag=0
-	ip[8] = 64                                  // TTL
+	ip[8] = ttl                                 // TTL (archetype personality)
 	ip[9] = 1                                   // ICMP
 	copy(ip[12:16], ourIP4)
 	copy(ip[16:20], requesterIP.To4())

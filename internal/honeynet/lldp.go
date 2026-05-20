@@ -15,9 +15,9 @@ import "context"
 // StartLLDPResponder so the operator gets a clean diagnostic
 // instead of a silent no-op.
 type LLDPCfg struct {
-	Enabled   bool
-	Interface string
-	Interval  int // seconds; 0 -> default 30
+	Enabled    bool
+	Interface  string
+	Interval   int // seconds; 0 -> default 30
 	IncludeCDP bool
 }
 

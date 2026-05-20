@@ -28,7 +28,7 @@ import (
 // banner / serial / version string.
 type Topology struct {
 	nets        []Network
-	hostByIP    map[string]*Host    // any host IP -> Host
+	hostByIP    map[string]*Host // any host IP -> Host
 	serviceByEP map[endpoint]*boundService
 }
 
@@ -46,11 +46,11 @@ type Host struct {
 	NetID     string
 	IP        string
 	Hostname  string
-	OS        string        // free-form ("linux", "windows", "cisco-ios", ...)
+	OS        string             // free-form ("linux", "windows", "cisco-ios", ...)
 	Archetype *archetype.Profile // nil = inherit from sensor default
 	Services  []*Service
 	Identity  *identity.Identity // derived per-host
-	MAC       [6]byte             // stable per-host, derived from Identity
+	MAC       [6]byte            // stable per-host, derived from Identity
 }
 
 // MACString returns the host's MAC in xx:xx:xx:xx:xx:xx form.
