@@ -34,6 +34,7 @@ type https struct {
 	id          *identity.Identity
 	jit         *jitter.Jitterer
 	arch        *archetype.Profile
+	vuln        bool
 	rotateDays  int
 }
 
@@ -96,7 +97,7 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		return Result{Meta: meta}, nil
 	}
 	state := tlsConn.ConnectionState()
-	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch)
+	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch, h.vuln)
 	if res.Meta == nil {
 		res.Meta = map[string]any{}
 	}

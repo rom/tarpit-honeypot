@@ -23,19 +23,22 @@ type Listener interface {
 // construction time. Keeps Build's signature stable as we add deployment
 // identity, jitter, retry-queue stats, etc.
 type BuildArgs struct {
-	SensorName       string
-	DataDir          string
-	CaptureMgr       *capture.Manager
-	URLCanaries      []config.URLCanary
-	Identity         *identity.Identity
-	Jitter           *jitter.Jitterer
-	TLSRotate        int
+	SensorName  string
+	DataDir     string
+	CaptureMgr  *capture.Manager
+	URLCanaries []config.URLCanary
+	Identity    *identity.Identity
+	Jitter      *jitter.Jitterer
+	TLSRotate   int
 	// SensorArchetype is the deployment-default OS archetype (nil
 	// for "no default"). A non-empty Listener.Archetype overrides
 	// it on the per-listener level.
 	SensorArchetype  *archetype.Profile
 	Honeynet         *honeynet.Topology
 	HoneynetSnapshot handler.HoneynetSnapshot
+	// VulnEmulation is the sensor-level default for vulnerable-banner
+	// emulation. A non-nil Listener.VulnEmulation overrides it.
+	VulnEmulation bool
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -51,15 +54,20 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 			arch = p
 		}
 	}
+	vuln := args.VulnEmulation
+	if l.VulnEmulation != nil {
+		vuln = *l.VulnEmulation
+	}
 	deps := handler.Deps{
-		Identity:     args.Identity,
-		Jitter:       args.Jitter,
-		DataDir:      args.DataDir,
-		URLCanaries:  args.URLCanaries,
-		TLSRotate:    args.TLSRotate,
-		Archetype:    arch,
-		AcceptCreds:  l.AcceptCreds,
-		HoneynetView: args.HoneynetSnapshot,
+		Identity:      args.Identity,
+		Jitter:        args.Jitter,
+		DataDir:       args.DataDir,
+		URLCanaries:   args.URLCanaries,
+		TLSRotate:     args.TLSRotate,
+		Archetype:     arch,
+		AcceptCreds:   l.AcceptCreds,
+		HoneynetView:  args.HoneynetSnapshot,
+		VulnEmulation: vuln,
 	}
 	switch l.Proto {
 	case "tcp":

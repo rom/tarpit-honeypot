@@ -1,0 +1,237 @@
+// Package cve is a small, in-source catalog of well-known CVEs that map
+// to the services this honeypot emulates. It has two jobs:
+//
+//  1. Vulnerable-banner / fake-patch-level emulation: ForService lets a
+//     handler (or archetype) decide which CVEs a service should *look*
+//     vulnerable to, so a scanner fingerprinting versions sees a
+//     believable unpatched box. The honeypot never becomes actually
+//     exploitable — it only advertises the version and recognizes the
+//     follow-up exploit attempt.
+//
+//  2. Exploit-attempt recognition: MatchPayload scans an attacker's
+//     request bytes for the characteristic signature of a known
+//     exploit (Log4Shell's ${jndi:, Shellshock's "() {", the Citrix
+//     path-traversal, …) so the handler can emit a high-severity
+//     cve:<id> event and harvest the payload.
+//
+// This is deliberately a curated, conservative list — high-signal
+// exploit strings only, so MatchPayload has a near-zero false-positive
+// rate on benign traffic.
+package cve
+
+import "strings"
+
+// Record describes one known CVE relevant to an emulated service.
+type Record struct {
+	ID   string  // e.g. "CVE-2021-44228"
+	Name string  // e.g. "Log4Shell"
+	CVSS float64 // base score
+	// Service is the handler name this CVE applies to ("http", "smb",
+	// "https", "fortinet", …). "http" records also match https.
+	Service string
+	// Affects lists version substrings that, when present in a banner,
+	// mean "this build is vulnerable". Used for fake-vulnerable-banner
+	// selection (advisory only).
+	Affects []string
+	// Signatures are case-insensitive substrings whose presence in an
+	// attacker's request payload indicates an attempt to exploit this
+	// CVE. High-signal only.
+	Signatures []string
+	// Technique is the ATT&CK technique the exploit attempt maps to.
+	Technique string
+	// Tactic is the ATT&CK tactic (usually initial-access / execution).
+	Tactic      string
+	Description string
+}
+
+// catalog is the curated CVE list. Signatures are matched lowercase.
+var catalog = []Record{
+	{
+		ID: "CVE-2021-44228", Name: "Log4Shell", CVSS: 10.0, Service: "http",
+		Signatures: []string{"${jndi:", "${jndi:ldap", "${jndi:rmi", "${jndi:dns", "${${::-j}", "${lower:jndi"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Log4j2 JNDI lookup remote code execution.",
+	},
+	{
+		ID: "CVE-2014-6271", Name: "Shellshock", CVSS: 9.8, Service: "http",
+		Signatures: []string{"() {", "() { :;};", "() { :; };"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "GNU Bash environment-variable function-definition RCE via CGI.",
+	},
+	{
+		ID: "CVE-2017-5638", Name: "Struts2 OGNL", CVSS: 10.0, Service: "http",
+		Signatures: []string{"%{(#_='multipart/form-data')", "#context['com.opensymphony", "ognl.OgnlContext"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Struts2 Content-Type OGNL injection RCE.",
+	},
+	{
+		ID: "CVE-2022-22965", Name: "Spring4Shell", CVSS: 9.8, Service: "http",
+		Signatures: []string{"class.module.classloader", "class.module.classLoader"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Spring Framework class.module.classLoader data-binding RCE.",
+	},
+	{
+		ID: "CVE-2022-26134", Name: "Confluence OGNL", CVSS: 9.8, Service: "http",
+		Signatures: []string{"${@java.lang.runtime", "@java.lang.runtime@getruntime().exec"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence OGNL injection RCE.",
+	},
+	{
+		ID: "CVE-2021-26855", Name: "ProxyLogon", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/owa/auth/x.js", "x-anonresource", "x-beresource", "/ecp/default.flt"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Microsoft Exchange SSRF authentication bypass (ProxyLogon).",
+	},
+	{
+		ID: "CVE-2019-19781", Name: "Citrix ADC path traversal", CVSS: 9.8, Service: "citrix_gateway",
+		Signatures: []string{"/vpn/../vpns/", "/vpns/cfg/smb.conf", "/vpns/portal/scripts/newbm.pl"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Citrix ADC/Gateway directory traversal to RCE.",
+	},
+	{
+		ID: "CVE-2018-13379", Name: "FortiOS path traversal", CVSS: 9.8, Service: "fortinet",
+		Signatures: []string{"/remote/fgt_lang?lang=/../", "/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiOS SSL VPN path traversal credential disclosure.",
+	},
+	{
+		ID: "CVE-2019-11510", Name: "Pulse Secure file read", CVSS: 10.0, Service: "pulse",
+		Signatures: []string{"/dana-na/../dana/html5acc/guacamole/", "/dana-na/../dana/html5acc/", "/+cscou+/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Pulse Connect Secure arbitrary file read.",
+	},
+	{
+		ID: "CVE-2020-5902", Name: "F5 BIG-IP TMUI", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/tmui/login.jsp/..;/", "/tmui/locallb/workspace/tmshcmd.jsp", "..;/tmui/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "F5 BIG-IP TMUI authentication bypass RCE.",
+	},
+	{
+		ID: "CVE-2018-7600", Name: "Drupalgeddon2", CVSS: 9.8, Service: "http",
+		Signatures: []string{"#post_render", "/?q=user/password&name[%23", "name[#post_render]"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Drupal form-API render-array RCE.",
+	},
+	{
+		ID: "CVE-2017-0144", Name: "EternalBlue", CVSS: 8.1, Service: "smb",
+		// SMB1 trans2 / large-NT-trans markers; matched at byte level by
+		// the smb handler, kept here for the catalog + banner advisory.
+		Signatures: []string{"\\PIPE\\", "smbghost"},
+		Technique:  "T1210", Tactic: "lateral-movement",
+		Description: "Microsoft SMBv1 remote code execution (MS17-010).",
+	},
+	{
+		ID: "CVE-2020-0796", Name: "SMBGhost", CVSS: 10.0, Service: "smb",
+		Signatures: []string{"smbghost", "smb3.1.1", "compression"},
+		Technique:  "T1210", Tactic: "lateral-movement",
+		Description: "Microsoft SMBv3.1.1 compression remote code execution.",
+	},
+	{
+		ID: "CVE-2019-0708", Name: "BlueKeep", CVSS: 9.8, Service: "rdp",
+		Signatures: []string{"mst120", "ms_t120"},
+		Technique:  "T1210", Tactic: "lateral-movement",
+		Description: "Microsoft RDP pre-auth use-after-free RCE.",
+	},
+	{
+		ID: "CVE-2014-0160", Name: "Heartbleed", CVSS: 7.5, Service: "https",
+		// Detected at the TLS record layer by the https handler.
+		Signatures: []string{"heartbeat"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "OpenSSL TLS heartbeat over-read memory disclosure.",
+	},
+	{
+		ID: "CVE-2021-34473", Name: "ProxyShell", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/autodiscover/autodiscover.json", "powershell-liveid", "/mapi/nspi/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Microsoft Exchange ProxyShell pre-auth RCE chain.",
+	},
+	{
+		ID: "CVE-2021-41773", Name: "Apache path traversal", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cgi-bin/.%2e/", "/icons/.%2e/%2e%2e/", "%2e%2e/%2e%2e/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache HTTP Server 2.4.49 path traversal / RCE.",
+	},
+	{
+		ID: "CVE-2017-9841", Name: "PHPUnit eval-stdin", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/vendor/phpunit/phpunit/src/util/php/eval-stdin.php", "eval-stdin.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "PHPUnit eval-stdin.php remote code execution.",
+	},
+	{
+		ID: "CVE-2023-46604", Name: "ActiveMQ OpenWire RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"classpathxmlapplicationcontext", "spring/spring-context"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache ActiveMQ OpenWire deserialization RCE.",
+	},
+	{
+		ID: "CVE-2022-1388", Name: "F5 iControl REST", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/mgmt/tm/util/bash", "x-f5-auth-token"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "F5 BIG-IP iControl REST authentication bypass RCE.",
+	},
+	{
+		ID: "CVE-2024-3400", Name: "PAN-OS GlobalProtect", CVSS: 10.0, Service: "https",
+		Signatures: []string{"/ssl-vpn/hipreport.esp", "sessionid=../../../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Palo Alto PAN-OS GlobalProtect command injection.",
+	},
+}
+
+// MatchPayload returns the catalog records whose exploit signature
+// appears in payload for the given handler. handler "https" also matches
+// "http"-service records (HTTP-layer exploits arrive over TLS too).
+func MatchPayload(handler, payload string) []Record {
+	if payload == "" {
+		return nil
+	}
+	low := strings.ToLower(payload)
+	var out []Record
+	for _, r := range catalog {
+		if !serviceMatches(r.Service, handler) {
+			continue
+		}
+		for _, sig := range r.Signatures {
+			if strings.Contains(low, strings.ToLower(sig)) {
+				out = append(out, r)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ForService returns every catalogued CVE for a handler (used to drive
+// fake-vulnerable-banner / patch-level advisories). handler "https"
+// includes "http" records.
+func ForService(handler string) []Record {
+	var out []Record
+	for _, r := range catalog {
+		if serviceMatches(r.Service, handler) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// Lookup returns the record for an exact CVE id.
+func Lookup(id string) (Record, bool) {
+	for _, r := range catalog {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return Record{}, false
+}
+
+// serviceMatches reports whether a catalog record for recordService
+// applies to a listener running handler.
+func serviceMatches(recordService, handler string) bool {
+	if recordService == handler {
+		return true
+	}
+	// HTTP-layer CVEs apply over TLS too.
+	if recordService == "http" && handler == "https" {
+		return true
+	}
+	return false
+}

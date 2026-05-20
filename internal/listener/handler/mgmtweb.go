@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
@@ -195,6 +196,18 @@ func (m *mgmtWeb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	}
 	res.Meta["request_line"] = safe.SanitizeForLog(firstLine)
 	res.Meta["persona"] = m.kind
+
+	// CVE exploit-attempt recognition for the appliance-specific CVEs
+	// (FortiOS path traversal, Pulse file read, Citrix ADC traversal)
+	// plus the generic HTTP-layer CVEs. Detection only.
+	for _, rec := range cve.MatchPayload(m.kind, string(res.Payload)) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(&res, "cve:"+rec.ID)
+	}
+	for _, rec := range cve.MatchPayload("http", string(res.Payload)) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(&res, "cve:"+rec.ID)
+	}
 
 	// Capture credentials from Authorization or a posted login form.
 	captured := false

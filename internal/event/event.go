@@ -100,6 +100,11 @@ type Event struct {
 	// techniques fall under. Used by the storyline correlator to
 	// detect tactic-transition sequences from a single source.
 	MitreTactics []string `json:"mitre_tactics,omitempty"`
+	// MitreDefenses lists the MITRE D3FEND countermeasure IDs (e.g.
+	// "D3-MFA", "D3-DE") that answer the techniques on this event.
+	// Stamped by the router from the technique -> D3FEND mapping so a
+	// SOC sees the attack and its defensive control side by side.
+	MitreDefenses []string `json:"mitre_defenses,omitempty"`
 	// Anomalies lists protocol-misuse markers the handler flagged
 	// (e.g. "ssh-banner-non-printable", "http-method-unknown") so a
 	// SIEM rule can route them separately from normal triggers.

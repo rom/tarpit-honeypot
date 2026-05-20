@@ -31,6 +31,16 @@ func flagDefaultCred(res *Result, user, pass string) bool {
 // non-printable bytes, or an HTTP request with a method we've never
 // heard of. The router translates Result.Meta["anomalies"] into
 // event.Anomalies which a SIEM rule can route separately.
+// appendUnique appends s to list only if it isn't already present.
+func appendUnique(list []string, s string) []string {
+	for _, e := range list {
+		if e == s {
+			return list
+		}
+	}
+	return append(list, s)
+}
+
 func flagAnomaly(res *Result, marker string) {
 	if res.Meta == nil {
 		res.Meta = map[string]any{}

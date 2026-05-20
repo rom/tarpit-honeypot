@@ -10,7 +10,11 @@
 // honeypot's rule set is small + stable and we want zero runtime cost.
 package mitre
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/rom/tarpit-honeypot/internal/cve"
+)
 
 // Tag bundles the ATT&CK metadata attached to a single rule_id. Both
 // fields can be empty for noise events the framework doesn't model
@@ -35,6 +39,15 @@ func Lookup(ruleID, handler string) Tag {
 	if strings.HasPrefix(ruleID, "listener:") {
 		if t, ok := handlerTags[handler]; ok {
 			return t
+		}
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
+	}
+	// cve:<id> events inherit the exploit's ATT&CK technique from the
+	// catalog (initial-access RCE, lateral-movement remote-service
+	// exploit, …); unknown ids fall back to T1190.
+	if strings.HasPrefix(ruleID, "cve:") {
+		if rec, ok := cve.Lookup(strings.TrimPrefix(ruleID, "cve:")); ok && rec.Technique != "" {
+			return Tag{Techniques: []string{rec.Technique}, Tactics: []string{rec.Tactic}}
 		}
 		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
 	}
@@ -186,4 +199,58 @@ func TacticRank(t string) int {
 		}
 	}
 	return -1
+}
+
+// d3fend maps an ATT&CK technique (matched by its base id, so
+// "T1110.001" inherits "T1110") to the MITRE D3FEND defensive
+// countermeasures that address it. Because tarpit-honeypot *is* a
+// deception system, the decoy-branch IDs (D3-DE Decoy Environment,
+// D3-DNR Decoy Network Resource, D3-DUC Decoy User Credential, D3-DO
+// Decoy Object) recur — they're the countermeasure the sensor itself
+// implements — alongside the detection/hardening measures a SOC would
+// pair with it.
+var d3fend = map[string][]string{
+	"T1595": {"D3-NTA", "D3-DNR"},          // active scanning
+	"T1046": {"D3-NTA", "D3-DNR"},          // network service discovery
+	"T1018": {"D3-DNR"},                    // remote system discovery
+	"T1083": {"D3-DF", "D3-DO"},            // file & directory discovery
+	"T1190": {"D3-NTA", "D3-ITF", "D3-DE"}, // exploit public-facing app
+	"T1210": {"D3-NTA", "D3-ITF", "D3-DE"}, // exploit remote services
+	"T1110": {"D3-MFA", "D3-DUC", "D3-DE"}, // brute force
+	"T1078": {"D3-MFA", "D3-DUC"},          // valid accounts
+	"T1021": {"D3-MFA", "D3-NTA"},          // remote services
+	"T1071": {"D3-NTA", "D3-DNSTA"},        // application-layer C2
+	"T1557": {"D3-NTA"},                    // adversary-in-the-middle
+	"T1558": {"D3-MFA", "D3-DUC"},          // steal/forge Kerberos tickets
+	"T1498": {"D3-ITF"},                    // network denial of service
+	"T1135": {"D3-DNR", "D3-DO"},           // network share discovery
+	"T1087": {"D3-DUC"},                    // account discovery
+	"T1114": {"D3-NTA"},                    // email collection
+	"T1610": {"D3-NTA", "D3-ITF"},          // deploy container
+	"T0814": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: denial of service
+	"T0888": {"D3-NTA", "D3-DNR"},          // ICS: remote system info discovery
+	"T0830": {"D3-NTA"},                    // ICS: adversary-in-the-middle
+}
+
+// DefensesFor returns the deduplicated set of D3FEND countermeasure IDs
+// for a list of ATT&CK techniques (sub-techniques inherit their base
+// technique's mapping). The router stamps the result on every event's
+// MitreDefenses so a SOC sees "here's the attack, here's the D3FEND
+// control that answers it" in one place.
+func DefensesFor(techniques []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range techniques {
+		base := t
+		if i := strings.IndexByte(t, '.'); i > 0 {
+			base = t[:i]
+		}
+		for _, d := range d3fend[base] {
+			if !seen[d] {
+				seen[d] = true
+				out = append(out, d)
+			}
+		}
+	}
+	return out
 }

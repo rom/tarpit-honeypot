@@ -195,6 +195,27 @@ type Sensor struct {
 	TLSRotate TLSRotate `yaml:"tls_rotate"`
 	GeoIP     GeoIP     `yaml:"geoip"`
 	RDNS      RDNS      `yaml:"rdns"`
+	// VulnEmulation, when true, makes banner-aware handlers advertise a
+	// known-vulnerable version / patch-level for their service (so a
+	// version scanner records an unpatched box) and recognize the
+	// matching CVE exploit attempt. The honeypot never becomes actually
+	// exploitable — it only presents the version and captures the
+	// follow-up exploit. Per-listener `vuln_emulation` overrides this.
+	// CVE exploit-attempt detection (cve:<id> events) runs regardless.
+	VulnEmulation bool `yaml:"vuln_emulation"`
+	// Payloads configures malware / shellcode / payload harvesting.
+	Payloads Payloads `yaml:"payloads"`
+}
+
+// Payloads configures capture of attacker-supplied binaries, shellcode,
+// and exfil/ingress payloads to <data_dir>/payloads/. Off by default.
+type Payloads struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxBytes caps a single harvested artifact (default 1 MiB).
+	MaxBytes int `yaml:"max_bytes"`
+	// MaxTotalMB caps the payloads directory with oldest-first rotation
+	// (default 256 MB).
+	MaxTotalMB int `yaml:"max_total_mb"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using
@@ -263,6 +284,10 @@ type Listener struct {
 	//   "defaults" -> accept any known vendor-default credential
 	//   "any"      -> accept anything (max engagement)
 	AcceptCreds string `yaml:"accept_creds"`
+
+	// VulnEmulation overrides sensor.vuln_emulation for this listener.
+	// nil = inherit the sensor default; true/false force it on/off.
+	VulnEmulation *bool `yaml:"vuln_emulation"`
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
@@ -23,6 +24,7 @@ type httpH struct {
 	id          *identity.Identity
 	jit         *jitter.Jitterer
 	arch        *archetype.Profile
+	vuln        bool
 }
 
 func (h *httpH) Name() string { return "http" }
@@ -35,10 +37,10 @@ func (h *httpH) Name() string { return "http" }
 // and JA4H is computed over the request line + headers.
 func (h *httpH) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	h.jit.Sleep(ctx)
-	return serveHTTP(conn, cfg, h.urlCanaries, h.id, h.arch)
+	return serveHTTP(conn, cfg, h.urlCanaries, h.id, h.arch, h.vuln)
 }
 
-func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, id *identity.Identity, arch *archetype.Profile) (Result, error) {
+func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, id *identity.Identity, arch *archetype.Profile, vuln bool) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
@@ -157,6 +159,15 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		flagAnomaly(&res, marker)
 	}
 
+	// CVE exploit-attempt recognition. Scan the whole request (line +
+	// headers + body) for known exploit signatures. Detection only —
+	// we never execute the exploit. Each hit becomes a separate
+	// cve:<id> event at the listener.
+	for _, rec := range cve.MatchPayload("http", string(res.Payload)) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(&res, "cve:"+rec.ID)
+	}
+
 	// Method-level anomaly: legit clients use a small set; everything
 	// else (binary blobs, "ATTACK", junk) is a worth-tagging.
 	if method := extractMethod(firstLine); method != "" && !isKnownHTTPMethod(method) {
@@ -172,6 +183,20 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		server = arch.HTTPServer()
 	case id != nil:
 		server = id.HTTPServerHeader()
+	}
+	// Vulnerable-banner emulation: when enabled, prefer the archetype's
+	// deliberately-unpatched HTTP banner and surface the fake patch
+	// level so a version scanner records an exploitable box.
+	if vuln && arch != nil {
+		if vb := arch.VulnBanner("http"); vb != "" {
+			server = vb
+		}
+		if pl := arch.PatchLevel(); pl != "" {
+			res.Meta["patch_level"] = pl
+		}
+		if cves := arch.VulnCVEs(); len(cves) > 0 {
+			res.Meta["emulated_vuln_cves"] = cves
+		}
 	}
 	banner := cfg.Banner
 	if banner == "" {

@@ -45,6 +45,12 @@ type Deps struct {
 	// directly (which would create a build cycle with the listener
 	// dispatch path).
 	HoneynetView HoneynetSnapshot
+	// VulnEmulation, when true, tells a banner-aware handler to
+	// advertise a known-vulnerable version / patch-level (driven by
+	// internal/cve) so a version scanner records an unpatched box. The
+	// service never becomes actually exploitable. CVE exploit-attempt
+	// detection runs regardless of this flag.
+	VulnEmulation bool
 }
 
 // HoneynetSnapshot is a flat read-only view of every honeynet host. The
@@ -79,6 +85,11 @@ type Result struct {
 	// separate canary:url:<id> event so they correlate with the trap visit
 	// but stand on their own for routing/severity.
 	CanaryHits []string
+	// CVEHits names CVE ids whose exploit signature appeared in the
+	// attacker's request (from internal/cve.MatchPayload). The listener
+	// turns each into a separate high-severity cve:<id> event. Detection
+	// only — the handler never actually executes the exploit.
+	CVEHits []string
 }
 
 // Handler is the contract that all banner-mode handlers implement.
@@ -96,7 +107,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "raw":
 		return &raw{}, nil
 	case "ssh":
-		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
+		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
 	case "ssh_interactive":
 		return &sshInteractive{
 			id:   deps.Identity,
@@ -105,7 +116,7 @@ func Get(name string, deps Deps) (Handler, error) {
 			dir:  filepath.Join(deps.DataDir, "tls"),
 		}, nil
 	case "http":
-		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
+		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
 	case "https":
 		h, err := newHTTPS(deps.DataDir, deps.TLSRotate)
 		if err != nil {
@@ -115,6 +126,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		h.id = deps.Identity
 		h.jit = deps.Jitter
 		h.arch = deps.Archetype
+		h.vuln = deps.VulnEmulation
 		return h, nil
 	case "telnet":
 		return &telnet{jit: deps.Jitter, arch: deps.Archetype}, nil

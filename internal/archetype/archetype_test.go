@@ -88,6 +88,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Windows 7", "Windows 8", "Windows 10", "Windows 11",
 		"Windows Server 2008", "Windows Server 2012", "Windows Server 2012 R2",
 		"Windows Server 2016", "Windows Server 2019", "Windows Server 2022",
+		// Active Directory DC (registered under several aliases that
+		// collapse to one display name).
+		"Active Directory (Windows Server 2019 DC)",
 	}
 	got := Names()
 	if len(got) != len(want) {

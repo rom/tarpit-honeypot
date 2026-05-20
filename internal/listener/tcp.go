@@ -11,6 +11,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
@@ -192,6 +193,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			tagHoneynet(ev, hnHost)
 		}
 		var canaryHits []string
+		var cveHits []string
 		if hnHandler != nil {
 			res, _ := hnHandler.Handle(ctx, conn, t.cfg)
 			ev.BannerSent = res.BannerSent
@@ -222,6 +224,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				}
 			}
 			canaryHits = res.CanaryHits
+			cveHits = res.CVEHits
 		}
 		_ = conn.Close()
 		finish(ev)
@@ -241,6 +244,31 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				Proto:    "tcp",
 				Handler:  t.cfg.Handler,
 				Meta:     map[string]any{"trigger_event_id": ev.ID},
+			}
+			send(ctx, bus, ce)
+		}
+		for _, id := range cveHits {
+			meta := map[string]any{"trigger_event_id": ev.ID}
+			sev := event.SeverityHigh
+			if rec, ok := cve.Lookup(id); ok {
+				meta["cve_name"] = rec.Name
+				meta["cvss"] = rec.CVSS
+				meta["description"] = rec.Description
+				if rec.CVSS >= 9.0 {
+					sev = event.SeverityCritical
+				}
+			}
+			ce := &event.Event{
+				ID:       event.NewID(),
+				Time:     time.Now().UTC(),
+				Sensor:   t.sensorName,
+				RuleID:   "cve:" + id,
+				Severity: sev,
+				Source:   src,
+				Dest:     dst,
+				Proto:    "tcp",
+				Handler:  t.cfg.Handler,
+				Meta:     meta,
 			}
 			send(ctx, bus, ce)
 		}

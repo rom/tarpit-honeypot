@@ -19,6 +19,7 @@ type ssh struct {
 	id   *identity.Identity
 	jit  *jitter.Jitterer
 	arch *archetype.Profile
+	vuln bool
 }
 
 func (s *ssh) Name() string { return "ssh" }
@@ -38,6 +39,8 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	banner := cfg.Banner
 	if banner == "" {
 		switch {
+		case s.vuln && s.arch != nil && s.arch.VulnBanner("ssh") != "":
+			banner = s.arch.VulnBanner("ssh") + "\r\n"
 		case s.arch != nil && s.arch.SSHBanner() != "":
 			banner = s.arch.SSHBanner() + "\r\n"
 		case s.id != nil:

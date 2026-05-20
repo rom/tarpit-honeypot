@@ -439,6 +439,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		SensorArchetype:  s.archetype,
 		Honeynet:         s.honeynet,
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
+		VulnEmulation:    s.cfg.Sensor.VulnEmulation,
 	})
 	if err != nil {
 		cancel()
@@ -653,6 +654,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.MitreTechniques = tag.Techniques
 					ev.MitreTactics = tag.Tactics
 				}
+				if len(ev.MitreDefenses) == 0 {
+					ev.MitreDefenses = mitre.DefensesFor(ev.MitreTechniques)
+				}
 				// Device learning: feed the source/MAC/hostname into
 				// the registry and emit device:new for never-before-
 				// seen, non-allow-listed hosts.
@@ -673,6 +677,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 							tag := mitre.Lookup(out.RuleID, out.Handler)
 							out.MitreTechniques = tag.Techniques
 							out.MitreTactics = tag.Tactics
+							out.MitreDefenses = mitre.DefensesFor(out.MitreTechniques)
 						}
 					}
 					s.router.Dispatch(out)

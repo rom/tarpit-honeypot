@@ -52,6 +52,9 @@ func init() {
 	for k, p := range windowsArchetypes {
 		registry[k] = p
 	}
+	for k, p := range adArchetypes {
+		registry[k] = p
+	}
 }
 
 // Profile is the resolved per-deployment / per-listener / per-host
@@ -120,6 +123,16 @@ type Profile struct {
 	// specific tweaks (e.g. siemens-s7-1500 disables LLDP-MED TLVs;
 	// moxa-nport advertises raw TCP on 4001/4002).
 	quirks []string
+
+	// Vulnerability emulation (advisory only — never makes the service
+	// actually exploitable). When sensor/listener vuln_emulation is on,
+	// banner-aware handlers prefer vulnBanners[service] over the patched
+	// banner so a version scanner records an unpatched box; patchLevel is
+	// surfaced in event meta; cveVulns lists the CVE ids this archetype
+	// presents as unpatched against.
+	patchLevel  string
+	cveVulns    []string
+	vulnBanners map[string]string // "ssh"|"http"|"smtp"|"mysql"|"ftp" -> vulnerable banner
 }
 
 // TLSPosture describes the TLS version + cipher posture an archetype
@@ -366,6 +379,36 @@ func (p *Profile) TLS() TLSPosture {
 	return p.tls
 }
 
+// PatchLevel returns a human-readable "unpatched" descriptor for the
+// archetype (e.g. "Server 2019 RTM (no May-2021 rollup)"), or "" if the
+// archetype declares none. Surfaced in event meta when vuln_emulation
+// is on.
+func (p *Profile) PatchLevel() string {
+	if p == nil {
+		return ""
+	}
+	return p.patchLevel
+}
+
+// VulnCVEs returns the CVE ids this archetype presents as unpatched
+// against (advisory; the service is never actually exploitable).
+func (p *Profile) VulnCVEs() []string {
+	if p == nil {
+		return nil
+	}
+	return p.cveVulns
+}
+
+// VulnBanner returns the archetype's deliberately-vulnerable banner for
+// a service ("ssh"/"http"/"smtp"/"mysql"/"ftp"), or "" if none is set.
+// Handlers use it only when vuln_emulation is enabled.
+func (p *Profile) VulnBanner(service string) string {
+	if p == nil || p.vulnBanners == nil {
+		return ""
+	}
+	return p.vulnBanners[service]
+}
+
 // ICMPTTL returns the initial IP TTL this archetype stamps on replies.
 // Falls back to a family default when unset: 255 for network/OT gear
 // (moxa/siemens), 128 for Windows, 64 for everything else (Linux/BSD).
@@ -425,11 +468,18 @@ func Lookup(name string) *Profile {
 	return nil
 }
 
-// Names returns the canonical archetype names sorted alphabetically.
+// Names returns the distinct archetype display names sorted
+// alphabetically. Aliases (multiple registry keys pointing at the same
+// device, e.g. the Active Directory DC) collapse to a single entry.
 // Used by the `tarpit-honeypot help archetypes` topic.
 func Names() []string {
+	seen := map[string]bool{}
 	out := make([]string, 0, len(registry))
 	for _, p := range registry {
+		if seen[p.DisplayName] {
+			continue
+		}
+		seen[p.DisplayName] = true
 		out = append(out, p.DisplayName)
 	}
 	// In-place sort to avoid an import for a single function.
@@ -554,6 +604,17 @@ var registry = map[string]*Profile{
 		telnetBanner: "\r\nDebian GNU/Linux 12 \\n \\l\r\n\r\nlogin: ",
 		smtpProduct:  "Postfix 3.7.11",
 		mysqlVersion: "10.11.6-MariaDB-0+deb12u1",
+		// vuln_emulation: present a deliberately-unpatched build so a
+		// version scanner records an exploitable box. Apache 2.4.49
+		// pairs with the CVE-2021-41773 path-traversal detector; vsFTPd
+		// 2.3.4 is the backdoored release; OpenSSH 7.2 is user-enum era.
+		patchLevel: "Debian 12 (no 2024 security rollup)",
+		cveVulns:   []string{"CVE-2021-41773", "CVE-2018-15473"},
+		vulnBanners: map[string]string{
+			"ssh":  "SSH-2.0-OpenSSH_7.2p2 Debian-5",
+			"http": "Apache/2.4.49 (Debian)",
+			"ftp":  "220 (vsFTPd 2.3.4)",
+		},
 	},
 	"debian-13": {
 		Name: "debian-13", DisplayName: "Debian 13 (trixie)", Family: "debian",
