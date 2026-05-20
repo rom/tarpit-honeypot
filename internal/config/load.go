@@ -247,6 +247,7 @@ func (c *Config) Validate() error {
 			"horizon": true, "moxa_mgmt": true,
 			"echo": true, "discard": true, "daytime": true,
 			"qotd": true, "chargen": true, "time": true,
+			"lua": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
@@ -271,6 +272,9 @@ func (c *Config) Validate() error {
 		}
 		if l.Mode == "banner" && l.Handler == "raw" && l.Banner == "" {
 			return fmt.Errorf("listener %s: banner mode with raw handler requires a banner string", l.ID)
+		}
+		if l.Handler == "lua" && l.Script == "" {
+			return fmt.Errorf("listener %s: lua handler requires a script path", l.ID)
 		}
 		if l.Mode == "tarpit" {
 			if l.Proto != "tcp" {

@@ -624,6 +624,18 @@ listeners:
       max_total: 256
       emulate: true
 
+  # Lua dynamic-response service: the script drives the connection with
+  # per-host personality, deterministic randomness, timers, and persistent
+  # per-source state. See configs/scripts/iot-login.lua.
+  - id: tcp-lua-iot
+    proto: tcp
+    bind: 0.0.0.0:20078
+    mode: banner
+    handler: lua
+    script: configs/scripts/iot-login.lua
+    severity: medium
+    read_timeout: 30s
+
 
 canaries:
   - id: shared-creds

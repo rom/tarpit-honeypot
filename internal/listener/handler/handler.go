@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/luaengine"
 )
 
 // Deps carries the cross-cutting dependencies handlers need: deployment
@@ -51,6 +53,8 @@ type Deps struct {
 	// service never becomes actually exploitable. CVE exploit-attempt
 	// detection runs regardless of this flag.
 	VulnEmulation bool
+	// Script is the path to a Lua dynamic-response script (handler "lua").
+	Script string
 }
 
 // HoneynetSnapshot is a flat read-only view of every honeynet host. The
@@ -117,6 +121,23 @@ func Get(name string, deps Deps) (Handler, error) {
 	switch name {
 	case "raw":
 		return &raw{}, nil
+	case "lua":
+		if deps.Script == "" {
+			return nil, fmt.Errorf("lua handler requires a script: path")
+		}
+		src, err := os.ReadFile(deps.Script)
+		if err != nil {
+			return nil, fmt.Errorf("lua: read script %s: %w", deps.Script, err)
+		}
+		archName, archFamily := "", ""
+		if deps.Archetype != nil {
+			archName, archFamily = deps.Archetype.Name, deps.Archetype.Family
+		}
+		eng, err := luaengine.Compile(filepath.Base(deps.Script), src, deps.Identity, archName, archFamily)
+		if err != nil {
+			return nil, err
+		}
+		return &luaH{eng: eng, jit: deps.Jitter}, nil
 	case "ssh":
 		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
 	case "ssh_interactive":

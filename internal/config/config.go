@@ -312,6 +312,11 @@ type Listener struct {
 	// nil = inherit the sensor default; true/false force it on/off.
 	VulnEmulation *bool `yaml:"vuln_emulation"`
 
+	// Script is the path to a Lua dynamic-response script. Required when
+	// handler is "lua"; the script drives the connection (read/write,
+	// per-host personality, deterministic randomness, timers).
+	Script string `yaml:"script"`
+
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`
 }

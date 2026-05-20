@@ -68,6 +68,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		AcceptCreds:   l.AcceptCreds,
 		HoneynetView:  args.HoneynetSnapshot,
 		VulnEmulation: vuln,
+		Script:        l.Script,
 	}
 	switch l.Proto {
 	case "tcp":
