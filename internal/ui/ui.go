@@ -25,6 +25,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -57,6 +58,7 @@ type Server struct {
 	tmpl       *template.Template
 	stats      StatsProvider
 	fullConfig *config.Config
+	topo       *honeynet.Topology
 }
 
 // SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
@@ -67,6 +69,11 @@ func (s *Server) SetStatsProvider(p StatsProvider) { s.stats = p }
 // model only ever stores *_env references, never expanded values, so
 // the rendered YAML is safe to display.
 func (s *Server) SetConfig(c *config.Config) { s.fullConfig = c }
+
+// SetTopology wires the resolved honeynet topology so the /topology tab
+// can render the virtual networks / hosts / services. nil (or an empty
+// topology) renders an "no honeynet configured" placeholder.
+func (s *Server) SetTopology(t *honeynet.Topology) { s.topo = t }
 
 func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if !cfg.Enabled {
@@ -105,9 +112,12 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/events/", s.handleEvent)
 	mux.HandleFunc("/config", s.handleConfig)
+	mux.HandleFunc("/topology", s.handleTopology)
+	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
+	mux.HandleFunc("/api/topology", s.handleAPITopology)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
@@ -292,6 +302,98 @@ func (s *Server) configYAML() string {
 
 type configPage struct {
 	YAML string
+}
+
+// ---- topology tab ----
+
+type topoServiceView struct {
+	Port    int    `json:"port"`
+	Handler string `json:"handler"`
+	Banner  string `json:"banner,omitempty"`
+}
+
+type topoHostView struct {
+	IP       string            `json:"ip"`
+	Hostname string            `json:"hostname,omitempty"`
+	OS       string            `json:"os,omitempty"`
+	MAC      string            `json:"mac,omitempty"`
+	Services []topoServiceView `json:"services,omitempty"`
+}
+
+type topoNetworkView struct {
+	ID      string         `json:"id"`
+	CIDR    string         `json:"cidr,omitempty"`
+	Gateway string         `json:"gateway,omitempty"`
+	DNS     string         `json:"dns,omitempty"`
+	Domain  string         `json:"domain,omitempty"`
+	Hosts   []topoHostView `json:"hosts"`
+}
+
+// topologyView builds a serializable snapshot of the honeynet topology.
+// It deliberately copies only the safe-to-display fields (no per-host
+// Identity / archetype internals) so the same view feeds the HTML page
+// and the JSON API.
+func (s *Server) topologyView() []topoNetworkView {
+	if s.topo == nil || s.topo.Empty() {
+		return nil
+	}
+	var out []topoNetworkView
+	for _, n := range s.topo.Networks() {
+		nv := topoNetworkView{ID: n.ID, CIDR: n.CIDR, Gateway: n.Gateway, DNS: n.DNS, Domain: n.Domain}
+		for _, h := range n.Hosts {
+			hv := topoHostView{IP: h.IP, Hostname: h.Hostname, OS: h.OS, MAC: h.MACString()}
+			for _, sv := range h.Services {
+				hv.Services = append(hv.Services, topoServiceView{Port: sv.Port, Handler: sv.Handler, Banner: sv.Banner})
+			}
+			nv.Hosts = append(nv.Hosts, hv)
+		}
+		out = append(out, nv)
+	}
+	return out
+}
+
+type topologyPage struct {
+	Networks []topoNetworkView
+}
+
+func (s *Server) handleTopology(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "topology", topologyPage{Networks: s.topologyView()}); err != nil {
+		slog.Warn("ui: render topology", "err", err)
+	}
+}
+
+func (s *Server) handleAPITopology(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.topologyView())
+}
+
+// ---- docs tab ----
+
+// docsPage carries the static reference plus a small "this deployment"
+// section so the docs reflect the running sensor.
+type docsPage struct {
+	Listeners int
+	Networks  int
+	Hosts     int
+	DevicesOn bool
+	UIBind    string
+}
+
+func (s *Server) handleDocs(w http.ResponseWriter, _ *http.Request) {
+	p := docsPage{UIBind: s.cfg.Bind}
+	if s.fullConfig != nil {
+		p.Listeners = len(s.fullConfig.Listeners)
+		p.Networks = len(s.fullConfig.Honeynets)
+		p.DevicesOn = s.fullConfig.Devices.Enabled
+	}
+	if s.topo != nil {
+		p.Hosts = len(s.topo.HostsInNetwork(""))
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "docs", p); err != nil {
+		slog.Warn("ui: render docs", "err", err)
+	}
 }
 
 func parseFilter(r *http.Request) store.Filter {

@@ -114,6 +114,7 @@ listeners:
       strategy: sticky                  # sticky | trickle | keepalive
       max_per_source: 4
       max_total: 256
+      emulate: false                    # run handler: first (banner+capture), then tarpit
       trickle:    { text: "Loading...\n", byte_interval: 2s }
       keepalive:  { interval: 30s }
 ```
@@ -130,7 +131,9 @@ listeners:
 
 **TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`.
 
-**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`.
+**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`.
+
+**TCP + UDP (small services, RFC 862-868 / 1340):** `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time`. `chargen`/`echo` reply with a single bounded datagram and never amplify — safe to expose on UDP.
 
 **Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 
@@ -154,6 +157,8 @@ use the lighter `ssh` when only credentials and fingerprints do.
 | `keepalive` | Write a NUL byte every `keepalive.interval`. | Cheapest persistent presence; minimal bandwidth. |
 
 All three modes emit `*:tarpit_start` (configured severity) on slot acquire, `*:tarpit_end` (low severity, `duration_ms` in meta) on connection close, and `*:tarpit_drop` when per-source or total caps are hit.
+
+**`tarpit.emulate: true`** runs the listener's `handler:` to completion first — sending the real protocol banner and capturing the attacker's request — and *then* applies the tarpit strategy on the same connection. The captured banner/request appears in the `tarpit_start` event (`tarpit_emulated_handler` in meta). Use it to make a tarpit look like a live service instead of a black hole.
 
 ---
 

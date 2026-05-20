@@ -83,6 +83,7 @@ func cmdRun(args []string) error {
 		}
 		srv.SetStatsProvider(buildStatsProvider(s))
 		srv.SetConfig(cfg)
+		srv.SetTopology(s.Honeynet())
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

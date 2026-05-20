@@ -261,6 +261,13 @@ By family, with the most common port. All are configurable to any port via `bind
 | `ipmi` | 623 (UDP) | RMCP Presence Ping → Pong |
 | `coap` | 5683 (UDP) | RFC 7252 GET parser, /.well-known/core reply |
 | `knx` | 3671 (UDP) | KNXnet/IP SEARCH/DESCRIPTION → MDT IP router |
+| `dns` | 53 (UDP) | resolving server: fake A/AAAA/MX/TXT/NS/CNAME + tunneling detection |
+| `echo` | 7 (TCP/UDP) | bounded 1:1 echo, never amplifies |
+| `discard` | 9 (TCP/UDP) | reads + drops, no reply |
+| `daytime` | 13 (TCP/UDP) | RFC 867 timestamp string |
+| `qotd` | 17 (TCP/UDP) | RFC 1340 quote of the day |
+| `chargen` | 19 (TCP/UDP) | one bounded line (never the unbounded amplifier stream) |
+| `time` | 37 (TCP/UDP) | RFC 868 4-byte time |
 
 ### LLMNR + NetBIOS poisoning catcher
 

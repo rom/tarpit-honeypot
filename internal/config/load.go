@@ -245,12 +245,17 @@ func (c *Config) Validate() error {
 			"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
 			"fortinet": true, "pulse": true, "citrix_gateway": true,
 			"horizon": true, "moxa_mgmt": true,
+			"echo": true, "discard": true, "daytime": true,
+			"qotd": true, "chargen": true, "time": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
 			"bacnet": true, "tftp": true, "ipmi": true,
 			"syslog_udp": true, "radius": true, "sip": true,
 			"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
+			"dns":  true,
+			"echo": true, "discard": true, "daytime": true,
+			"qotd": true, "chargen": true, "time": true,
 			"fins": true,
 			"coap": true, "knx": true, "dhcp": true,
 		}

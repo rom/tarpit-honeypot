@@ -469,6 +469,69 @@ listeners:
     severity: medium
     read_bytes: 8192
 
+  # Resolving DNS — UDP/53. Answers A/AAAA/MX/TXT/NS/CNAME with
+  # fabricated, deterministic-per-deployment records so a resolver
+  # enumeration sees a live, populated server. Every query is run
+  # through the same tunneling/exfil detection as the DNS canary.
+  - id: dns-resolver
+    proto: udp
+    bind: 0.0.0.0:53
+    mode: banner
+    handler: dns
+    severity: medium
+    read_bytes: 4096
+
+  # inetd "small services" (RFC 862-868, 1340). Trivial but heavily
+  # probed. chargen + echo are classic UDP reflection/amplification
+  # targets, so these handlers send exactly ONE bounded reply and never
+  # amplify — the probe is captured, the sensor stays safe.
+  - id: chargen-udp
+    proto: udp
+    bind: 0.0.0.0:19
+    mode: banner
+    handler: chargen
+    severity: medium     # a UDP chargen probe is flagged udp-amplifier-probe
+    read_bytes: 1500
+  - id: echo-tcp
+    proto: tcp
+    bind: 0.0.0.0:7
+    mode: banner
+    handler: echo
+    severity: low
+    read_bytes: 1024
+  - id: daytime-tcp
+    proto: tcp
+    bind: 0.0.0.0:13
+    mode: banner
+    handler: daytime
+    severity: low
+    read_timeout: 5s
+  - id: time-udp
+    proto: udp
+    bind: 0.0.0.0:37
+    mode: banner
+    handler: time
+    severity: low
+    read_bytes: 64
+
+  # Emulate-then-tarpit. mode:tarpit + tarpit.emulate runs the protocol
+  # handler FIRST (real SSH banner + captured login attempt) and THEN
+  # holds the connection open in the tarpit. The scanner gets a
+  # believable service, hangs, and the captured banner/request lands in
+  # the tarpit_start event. Set emulate:false (default) for a bare tarpit.
+  - id: ssh-emulate-tarpit
+    proto: tcp
+    bind: 0.0.0.0:2224
+    mode: tarpit
+    handler: ssh
+    severity: high
+    read_timeout: 10s
+    tarpit:
+      strategy: sticky
+      max_per_source: 4
+      max_total: 256
+      emulate: true
+
 canaries:
   - id: shared-creds
     path: ./var/canary/passwords.xlsx

@@ -488,6 +488,122 @@ listeners:
     severity: medium
     read_timeout: 10s
 
+  # ---- inetd "small services" (RFC 862-868, 1340) ----
+  # Trivial but heavily probed; chargen/echo are reflector favorites, so
+  # the handlers send a single bounded reply and never amplify.
+  - id: tcp-echo
+    proto: tcp
+    bind: 0.0.0.0:20064
+    mode: banner
+    handler: echo
+    severity: low
+    read_timeout: 10s
+  - id: tcp-discard
+    proto: tcp
+    bind: 0.0.0.0:20065
+    mode: banner
+    handler: discard
+    severity: low
+    read_timeout: 10s
+  - id: tcp-daytime
+    proto: tcp
+    bind: 0.0.0.0:20066
+    mode: banner
+    handler: daytime
+    severity: low
+    read_timeout: 10s
+  - id: tcp-qotd
+    proto: tcp
+    bind: 0.0.0.0:20067
+    mode: banner
+    handler: qotd
+    severity: low
+    read_timeout: 10s
+  - id: tcp-chargen
+    proto: tcp
+    bind: 0.0.0.0:20068
+    mode: banner
+    handler: chargen
+    severity: low
+    read_timeout: 10s
+  - id: tcp-time
+    proto: tcp
+    bind: 0.0.0.0:20069
+    mode: banner
+    handler: time
+    severity: low
+    read_timeout: 10s
+  - id: udp-echo
+    proto: udp
+    bind: 0.0.0.0:20070
+    mode: banner
+    handler: echo
+    severity: low
+    read_timeout: 10s
+  - id: udp-discard
+    proto: udp
+    bind: 0.0.0.0:20071
+    mode: banner
+    handler: discard
+    severity: low
+    read_timeout: 10s
+  - id: udp-daytime
+    proto: udp
+    bind: 0.0.0.0:20072
+    mode: banner
+    handler: daytime
+    severity: low
+    read_timeout: 10s
+  - id: udp-qotd
+    proto: udp
+    bind: 0.0.0.0:20073
+    mode: banner
+    handler: qotd
+    severity: low
+    read_timeout: 10s
+  - id: udp-chargen
+    proto: udp
+    bind: 0.0.0.0:20074
+    mode: banner
+    handler: chargen
+    severity: medium
+    read_timeout: 10s
+  - id: udp-time
+    proto: udp
+    bind: 0.0.0.0:20075
+    mode: banner
+    handler: time
+    severity: low
+    read_timeout: 10s
+
+  # ---- resolving DNS (fabricated answers) ----
+  # Answers A/AAAA/MX/TXT/NS/CNAME with deterministic-per-deployment
+  # fake records so a resolver-enumeration sees a live, populated server.
+  # Every query runs through tunneling/exfil detection.
+  - id: udp-dns
+    proto: udp
+    bind: 0.0.0.0:20076
+    mode: banner
+    handler: dns
+    severity: medium
+    read_timeout: 10s
+
+  # ---- emulate-then-tarpit ----
+  # Runs the protocol handler first (real SSH banner + captured request),
+  # THEN holds the connection in the tarpit. Any emulator becomes a tarpit.
+  - id: tcp-ssh-tarpit
+    proto: tcp
+    bind: 0.0.0.0:20077
+    mode: tarpit
+    handler: ssh
+    severity: high
+    read_timeout: 10s
+    tarpit:
+      strategy: sticky
+      max_per_source: 4
+      max_total: 256
+      emulate: true
+
 
 canaries:
   - id: shared-creds

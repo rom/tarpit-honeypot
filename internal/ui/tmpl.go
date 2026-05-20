@@ -22,9 +22,21 @@ form { display: inline-block; }
 input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .kv { background: #fff; padding: .75rem; border: 1px solid #eee; white-space: pre-wrap; word-break: break-all; }
 .note { color: #666; font-size: 12px; margin-top: .5rem; }
+.net { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .6rem .8rem; margin: .6rem 0; }
+.net h3 { margin: 0 0 .35rem; font-size: 1rem; }
+.net .meta { color: #666; font-size: 12px; margin-bottom: .4rem; }
+.host { border-left: 3px solid #ccd; padding: .15rem 0 .15rem .6rem; margin: .35rem 0; }
+.host .hostline { font-weight: 600; }
+.host .os { color: #777; font-weight: 400; }
+.svc { display: inline-block; background: #f0f3f8; border: 1px solid #dde3ec; border-radius: 3px; padding: 0 .35rem; margin: .1rem .25rem .1rem 0; font-size: 12px; }
+.docs h2 { border-bottom: 1px solid #eee; padding-bottom: .2rem; }
+.docs code { background: #f0f0f0; padding: 0 .25rem; border-radius: 3px; }
+.docs ul { margin: .3rem 0 .8rem 1.2rem; padding: 0; }
+.docs li { margin: .12rem 0; }
+.depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/config">config</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/topology">topology</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -101,5 +113,123 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 as their environment-variable names (<code>*_env</code>), never expanded values,
 so this is safe to copy into a ticket. Raw YAML also at <a href="/api/config">/api/config</a>.</p>
 <div class="kv">{{ .YAML }}</div>
+{{ template "foot" . }}{{ end }}
+
+{{ define "topology" }}{{ template "head" . }}
+<h1>honeynet topology</h1>
+{{ if not .Networks }}
+<p class="note">No honeynet configured. Add a <code>honeynets:</code> block (virtual
+networks of hosts + services the sensor answers for) to populate this view.
+JSON at <a href="/api/topology">/api/topology</a>.</p>
+{{ else }}
+<p class="note">Virtual networks the sensor presents. Each host answers on its own
+IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</a>.</p>
+{{ range .Networks }}
+<div class="net">
+  <h3>{{ .ID }}{{ if .CIDR }} — {{ .CIDR }}{{ end }}</h3>
+  <div class="meta">
+    {{ if .Domain }}domain {{ .Domain }} · {{ end }}
+    {{ if .Gateway }}gw {{ .Gateway }} · {{ end }}
+    {{ if .DNS }}dns {{ .DNS }} · {{ end }}
+    {{ len .Hosts }} host(s)
+  </div>
+  {{ range .Hosts }}
+  <div class="host">
+    <div class="hostline">{{ .IP }}{{ if .Hostname }} · {{ .Hostname }}{{ end }}
+      {{ if .OS }}<span class="os">({{ .OS }})</span>{{ end }}
+      {{ if .MAC }}<span class="os">{{ .MAC }}</span>{{ end }}
+    </div>
+    {{ range .Services }}<span class="svc">{{ .Port }}/{{ .Handler }}</span>{{ end }}
+  </div>
+  {{ end }}
+</div>
+{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "docs" }}{{ template "head" . }}
+<div class="docs">
+<h1>tarpit-honeypot — documentation</h1>
+<p>A deception + detection sensor: it presents believable services (banners,
+protocol emulators, virtual hosts), wastes attacker time (tarpits), and turns
+every interaction into a structured, ATT&amp;CK-tagged event for your SIEM. It is
+built to be a <em>target</em> — the UI is read-only, binds loopback by default,
+and the sensor never becomes a reflection/amplification primitive.</p>
+
+<h2>this deployment</h2>
+<p class="depl">
+{{ .Listeners }} listener(s) · {{ .Networks }} honeynet network(s) · {{ .Hosts }} virtual host(s)<br>
+device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .UIBind }}</code>
+</p>
+
+<h2>tabs</h2>
+<ul>
+<li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
+<li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
+<li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
+<li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>
+</ul>
+
+<h2>detection</h2>
+<ul>
+<li><b>Scan analysis</b> (<code>scananalysis:profile</code>) — per-source nmap fingerprinting:
+timing template (<code>-T0</code>..<code>-T5</code>) from inter-connection cadence, aggressive
+(<code>-A</code>) and OS-probe (<code>-O</code>) detection, service/version-probe matching
+(<code>-sV</code>), NSE-script signatures, connect-scan detection, and scan-sequencing
+heuristics. SYN/FIN/NULL/Xmas/ACK scans, raw fragmentation, and decoy floods
+(<code>-D</code>) require the AF_PACKET sniffer and are flagged as needing packet capture.</li>
+<li><b>Protocol anomalies</b> — per-handler markers (non-printable banners, smuggled
+bytes, DNS tunneling/exfil shapes, abnormal ICMP payloads, UDP amplifier probes).</li>
+<li><b>Device learning</b> — learns a baseline and raises <code>device:new</code> for
+never-before-seen, non-allow-listed hosts (DHCP, ARP sniffer, broadcast/multicast).</li>
+<li><b>Correlation / storyline</b> — port-scan, slow-scan, brute-force, and ICMP-sweep
+correlation; events carry MITRE ATT&amp;CK techniques + tactics for kill-chain pivoting.</li>
+</ul>
+
+<h2>protocol handlers</h2>
+<ul>
+<li><b>Auth surface</b>: ssh, ssh_interactive, telnet, ftp, ftp_files, rdp, vnc, winrm,
+smb, postgres, mysql, redis, ldap, kerberos, amqp, mqtt.</li>
+<li><b>Web / apps</b>: http, https (per-service certs), rtsp, ipp, dockerapi, plus vendor
+gateway emulators (fortinet, pulse, citrix, esxi, idrac/ilo/amt, moxa, ...).</li>
+<li><b>ICS / OT</b>: modbus, s7, iec104, opcua, ethernetip, bacnet, fins, melsec, knx.</li>
+<li><b>Discovery / UDP</b>: snmp, ssdp, llmnr, nbns, cldap, sip, coap, ntp, tftp, ipmi,
+radius, syslog, dhcp.</li>
+<li><b>DNS</b>: <code>dns</code> answers A/AAAA/MX/TXT/NS/CNAME with fabricated, deterministic-
+per-deployment records so a resolver-enumeration sees a live, populated server —
+every query is run through tunneling/exfil detection.</li>
+<li><b>Small services</b> (RFC 862-868, 1340): echo, discard, daytime, qotd, chargen, time —
+TCP + UDP. chargen/echo are reflector favorites, so replies are strictly bounded
+(one capped response) and never amplify.</li>
+</ul>
+
+<h2>tarpit modes</h2>
+<ul>
+<li><code>mode: tarpit</code> with <code>strategy: sticky | trickle | keepalive</code> holds the
+connection open to waste scanner/worm time.</li>
+<li><code>tarpit.emulate: true</code> runs the listener's protocol <code>handler:</code> first
+(real banner + captured request) and <em>then</em> tarpits the same connection — any
+emulator becomes a tarpit, and the captured banner/request lands in the
+<code>tarpit_start</code> event.</li>
+</ul>
+
+<h2>cli</h2>
+<ul>
+<li><code>tarpit-honeypot run -config tarpit-honeypot.yaml</code> — start the sensor.</li>
+<li><code>tarpit-honeypot validate -config ...</code> — check the config without binding.</li>
+<li><code>tarpit-honeypot list-devices</code> / <code>list-honeynets</code> — inspect learned devices / topology.</li>
+<li><code>tarpit-honeypot version</code> — build version. <code>SIGHUP</code> hot-reloads config.</li>
+</ul>
+
+<h2>security model</h2>
+<ul>
+<li>UI is read-only (no delete/config/alert endpoints) and binds loopback unless you
+set both TLS and a static auth token.</li>
+<li>Secrets live only as <code>*_env</code> references — never expanded in config output or logs.</li>
+<li>All attacker-supplied bytes are bounds-checked and sanitized before logs / SIEM / email.</li>
+<li>The sensor refuses to be a reflection/amplification primitive (bounded small-service
+replies, NTP mode-7 silent, no unbounded DNS answers).</li>
+</ul>
+</div>
 {{ template "foot" . }}{{ end }}
 `

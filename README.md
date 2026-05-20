@@ -18,14 +18,19 @@ phasing decisions.
 ## Features at a glance
 
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
-  or `tarpit` (sticky / trickle / keepalive).
+  or `tarpit` (sticky / trickle / keepalive). `tarpit.emulate: true`
+  runs the listener's protocol handler first (real banner + captured
+  request), then tarpits the same connection — any emulator becomes a
+  tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **63 built-in protocol handlers** (1 generic + 46 TCP + 17 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **76 built-in protocol handlers** (1 generic + 52 TCP + 23 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `iec104`, `mqtt`, `opcua`, `ethernetip`
-  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`
+  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
+  - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
+  - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
 - **41 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
@@ -153,6 +158,17 @@ phasing decisions.
   - **Slow-scan**: long-window detector (default 24h, 10 distinct ports).
     Per-port state ages out individually, so a one-port-per-hour scan
     accumulates instead of resetting.
+- **Scan analysis / nmap fingerprinting** (`scananalysis:profile`):
+  per-source profiling of an active scan. Estimates the nmap timing
+  template (`-T0` paranoid .. `-T5` insane) from inter-connection
+  cadence, detects aggressive scans (`-A`), OS-probe scans (`-O`),
+  service/version probes (`-sV`, matched against the nmap
+  service-probe strings), NSE-script signatures (`/nmaplowercheck`,
+  `.git`/`.svn` discovery, robots, smbghost), and bare connect scans
+  (`-sT`). Half-open SYN / FIN / NULL / Xmas / ACK scans, raw
+  fragmentation, and decoy floods (`-D`) are honestly scoped as
+  needing the AF_PACKET sniffer rather than guessed at the
+  connection layer.
 - **DNS amplifier-probe detection**: the DNS canary listener flags
   any `ANY` (qtype=255) query immediately, or `N` queries from one
   source within a window, with a separate `dnscanary:amplifier_probe`
@@ -160,7 +176,12 @@ phasing decisions.
 - **Embedded SQLite event index** for queryable history, with WAL-mode
   concurrent reads.
 - **Read-only web UI** on loopback: 24h summary + filterable event table
-  + per-event detail. Non-loopback binds refused without TLS + auth token.
+  + per-event detail, plus a **topology** tab (the virtual networks /
+  hosts / services the sensor presents), a **config** tab (effective
+  running config, secrets shown as env-var names), and a **docs** tab
+  (built-in reference reflecting this deployment). JSON at
+  `/api/events`, `/api/summary`, `/api/config`, `/api/topology`.
+  Non-loopback binds refused without TLS + auth token.
 - **Routing**: per-channel rate-limit, min-severity gate, severity-match
   route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
   (outbound-only — local sinks always receive).
@@ -587,6 +608,23 @@ handshake where it isn't HTTP.
 | `coap` | 5683 | RFC 7252 GET parser with bounds-checked option-TLV walker. Extracts `Uri-Path` + token; flags malformed packets. Replies 2.05 Content with a `/.well-known/core` link-format body advertising one fake `/led` resource. | — | — |
 | `knx` | 3671 | KNXnet/IP. Replies to SEARCH_REQUEST (0x0201) with a SEARCH_RESPONSE advertising an "MDT KNX IP Router" device-info DIB + a supported-service-families DIB (CORE, DEV_MGMT, TUNNELLING, ROUTING). DESCRIPTION_REQUEST gets a DESCRIPTION_RESPONSE. CONNECT_REQUEST gets status `0x24` (no more connections) so we look live without opening a tunnel. | — | — |
 | `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
+| `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query). | — | ✓ |
+
+### Small services (TCP + UDP)
+
+RFC 862-868 + 1340. Trivial, but heavily probed — and `chargen`/`echo`
+are classic UDP reflection/amplification targets, so the honeypot
+exposes them **without** ever amplifying: each replies with at most one
+bounded datagram and `echo` never returns more than it received.
+
+| Handler | Port | What it does |
+|---|---|---|
+| `echo` | 7 | Echoes received bytes back **once**, 1:1, capped (TCP: single bounded read+echo; UDP: ≤ request size). Captures `echoed_bytes`. |
+| `discard` | 9 | Reads and drops; never replies. Captures `discarded_bytes`. |
+| `daytime` | 13 | Sends the RFC 867 human-readable timestamp and closes. |
+| `qotd` | 17 | Sends a single fixed quote (RFC 1340) and closes. |
+| `chargen` | 19 | Sends **exactly one** bounded 72-char line + CRLF and stops (a real chargen streams forever — we don't). The UDP probe is flagged `udp-amplifier-probe`. |
+| `time` | 37 | Sends the RFC 868 4-byte seconds-since-1900 timestamp. |
 
 ## Tarpit strategies
 
@@ -602,6 +640,14 @@ event (at `low` severity, with `duration_ms` in meta) when the
 connection terminates. When the per-source or total cap is hit, a
 `*:tarpit_drop` event fires instead.
 
+**Emulate-then-tarpit**: set `tarpit.emulate: true` and the listener
+runs its protocol `handler:` first — sending the real banner and
+capturing the attacker's request — *then* applies the tarpit strategy
+on the same connection. The scanner gets a believable SSH / HTTP /
+Modbus service, then hangs; the captured banner/request lands in the
+`tarpit_start` event (`tarpit_emulated_handler` in meta). This turns
+any protocol emulator into a tarpit.
+
 ## Detection coverage
 
 Beyond per-listener events, the sensor fires aggregate / token events:
@@ -614,6 +660,11 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `correlate:slow_scan` — long-window scan detector (default 24h /
   10 distinct ports). Meta includes `first_seen`, `last_seen`,
   `spread_seconds`, `ports`.
+- `scananalysis:profile` — per-source nmap fingerprint once a source
+  crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
+  `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),
+  `os_scan` (`-O`), `aggressive` (`-A`), `nse_scripts`. Tagged
+  `T1595` (active scanning) + `T1046` (network-service discovery).
 - `dnscanary:amplifier_probe` — DNS source sent an ANY-type query or
   exceeded the per-window query threshold. Meta: `queries`,
   `any_queries`, `triggered_by_any`.

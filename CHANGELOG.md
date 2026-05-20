@@ -8,6 +8,39 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — scan analysis + small services + DNS resolver + tarpit emulation + UI tabs
+- **Scan analysis / nmap fingerprinting** (`internal/scananalysis`,
+  `scananalysis:profile` event): stateless per-payload classification
+  (nmap service-probe strings, NSE-script signatures, version probes,
+  bare connect scans) plus a stateful per-source `Tracker` that
+  estimates the nmap timing template (`-T0` paranoid .. `-T5` insane)
+  from inter-connection cadence and flags aggressive (`-A`), OS-probe
+  (`-O`), and version (`-sV`) scans once a source crosses the
+  confidence threshold. Half-open SYN / FIN / NULL / Xmas / ACK scans,
+  raw fragmentation, and decoy floods (`-D`) are honestly scoped as
+  needing the AF_PACKET sniffer. Tagged `T1595` + `T1046`.
+- **Small services** (RFC 862-868 / 1340), TCP **and** UDP: `echo`,
+  `discard`, `daytime`, `qotd`, `chargen`, `time`. `chargen`/`echo`
+  reply with a single bounded datagram and never amplify — the UDP
+  `chargen` probe is flagged `udp-amplifier-probe`. (Reflection-safe by
+  construction.)
+- **Resolving DNS handler** (`dns`, UDP/53): answers
+  `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated,
+  deterministic-per-deployment records (same name → same fake IP,
+  avoiding RFC1918/loopback) so a resolver enumeration sees a live,
+  populated server. Every query runs through the tunneling/exfil
+  detection heuristics. Distinct from the NXDOMAIN-by-default DNS
+  canary listener.
+- **Emulate-then-tarpit** (`tarpit.emulate: true`): runs the listener's
+  protocol `handler:` first (real banner + captured request), then
+  applies the tarpit strategy on the same connection — turning any
+  emulator into a tarpit. Captured banner/request lands in
+  `tarpit_start` (`tarpit_emulated_handler` in meta).
+- **Web UI: topology + docs tabs**. `/topology` (+ `/api/topology`)
+  renders the honeynet networks / hosts / services the sensor presents;
+  `/docs` is a built-in reference that reflects the running deployment.
+- Handler count: **76** (1 generic + 52 TCP + 23 UDP).
+
 ### Added — protocol breadth + archetype consistency + fingerprinting
 - **15 new protocol emulators**: `mssql` (TDS PRELOGIN), `oracle_tns`
   (TNS connect/refuse), `teamviewer`, `anydesk`, `openvpn`,

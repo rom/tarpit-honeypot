@@ -4,10 +4,10 @@ import "testing"
 
 func TestLookupListenerByHandler(t *testing.T) {
 	cases := map[string][]string{
-		"ssh":   {"T1110.001", "T1078"},
-		"http":  {"T1190", "T1083"},
-		"smb":   {"T1021.002", "T1135"},
-		"snmp":  {"T1018", "T1110.001"},
+		"ssh":    {"T1110.001", "T1078"},
+		"http":   {"T1190", "T1083"},
+		"smb":    {"T1021.002", "T1135"},
+		"snmp":   {"T1018", "T1110.001"},
 		"modbus": {"T0814", "T0888"},
 	}
 	for handler, want := range cases {

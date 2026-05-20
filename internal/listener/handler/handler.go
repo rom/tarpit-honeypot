@@ -185,6 +185,18 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "intel_amt", "ilo", "idrac", "esxi", "fortinet",
 		"pulse", "citrix_gateway", "horizon", "moxa_mgmt":
 		return &mgmtWeb{kind: name}, nil
+	case "echo":
+		return &echoTCP{}, nil
+	case "discard":
+		return &discardTCP{}, nil
+	case "daytime":
+		return &daytimeTCP{}, nil
+	case "qotd":
+		return &qotdTCP{}, nil
+	case "chargen":
+		return &chargenTCP{}, nil
+	case "time":
+		return &timeTCP{}, nil
 	}
 	return nil, fmt.Errorf("unknown handler %q", name)
 }

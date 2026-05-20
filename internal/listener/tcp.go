@@ -262,6 +262,27 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			startEv.Meta = map[string]any{}
 		}
 		startEv.Meta["tarpit_strategy"] = t.cfg.Tarpit.Strategy
+		// Emulate-then-tarpit: run the protocol handler first so the
+		// scanner gets a believable banner + we capture its request,
+		// then fall through to the tarpit strategy on the same conn.
+		if t.cfg.Tarpit.Emulate && hnHandler != nil {
+			res, _ := hnHandler.Handle(ctx, conn, t.cfg)
+			startEv.BannerSent = res.BannerSent
+			if len(res.Payload) > 0 {
+				startEv.PayloadLen = len(res.Payload)
+				startEv.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
+			}
+			if res.Meta != nil {
+				safe.SanitizeMetaStrings(res.Meta)
+				for k, v := range res.Meta {
+					startEv.Meta[k] = v
+				}
+				if anoms, ok := res.Meta["anomalies"].([]string); ok {
+					startEv.Anomalies = append(startEv.Anomalies, anoms...)
+				}
+			}
+			startEv.Meta["tarpit_emulated_handler"] = t.cfg.Handler
+		}
 		if hnHost != nil {
 			tagHoneynet(startEv, hnHost)
 		}

@@ -58,18 +58,22 @@ func Lookup(ruleID, handler string) Tag {
 
 // exactRules covers fully-qualified non-listener rule_ids.
 var exactRules = map[string]Tag{
-	"correlate:port_scan":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"correlate:brute_force":            {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
-	"correlate:slow_scan":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"sniffer:arp_scan":                 {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
-	"sniffer:arp_reply_unsolicited":    {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
-	"dnscanary:hit":                    {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier":              {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":                 {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	"correlate:port_scan":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:brute_force": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"correlate:slow_scan":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// A profiled scan (nmap timing/scope/probe fingerprint) is active
+	// scanning of the network from the adversary's recon phase, and
+	// network-service discovery from ours.
+	"scananalysis:profile":          {Techniques: []string{"T1595", "T1046"}, Tactics: []string{"reconnaissance", "discovery"}},
+	"sniffer:arp_scan":              {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"sniffer:arp_reply_unsolicited": {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
+	"dnscanary:hit":                 {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier":           {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":              {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
-	"device:new":      {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"device:new":           {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 }
 
@@ -80,30 +84,30 @@ var exactRules = map[string]Tag{
 // T1190 (exploit public-facing application).
 var handlerTags = map[string]Tag{
 	// Auth / credential surface.
-	"ssh":        {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"telnet":     {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"ftp":        {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"smtp_recv":  {Techniques: []string{"T1110.003", "T1114"}, Tactics: []string{"credential-access", "collection"}},
-	"rdp":        {Techniques: []string{"T1021.001", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
-	"vnc":        {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
-	"winrm":      {Techniques: []string{"T1021.006"}, Tactics: []string{"lateral-movement"}},
-	"smb":        {Techniques: []string{"T1021.002", "T1135"}, Tactics: []string{"lateral-movement", "discovery"}},
-	"postgres":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"mysql":      {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"redis":      {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"ldap":       {Techniques: []string{"T1110.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
-	"cldap":      {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
-	"kerberos":   {Techniques: []string{"T1558"}, Tactics: []string{"credential-access"}},
-	"dcerpc":     {Techniques: []string{"T1021.003"}, Tactics: []string{"lateral-movement"}},
-	"xmpp":       {Techniques: []string{"T1071.001"}, Tactics: []string{"command-and-control"}},
-	"amqp":       {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ssh":       {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"telnet":    {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"ftp":       {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"smtp_recv": {Techniques: []string{"T1110.003", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"rdp":       {Techniques: []string{"T1021.001", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"vnc":       {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"winrm":     {Techniques: []string{"T1021.006"}, Tactics: []string{"lateral-movement"}},
+	"smb":       {Techniques: []string{"T1021.002", "T1135"}, Tactics: []string{"lateral-movement", "discovery"}},
+	"postgres":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"mysql":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"redis":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ldap":      {Techniques: []string{"T1110.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
+	"cldap":     {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"kerberos":  {Techniques: []string{"T1558"}, Tactics: []string{"credential-access"}},
+	"dcerpc":    {Techniques: []string{"T1021.003"}, Tactics: []string{"lateral-movement"}},
+	"xmpp":      {Techniques: []string{"T1071.001"}, Tactics: []string{"command-and-control"}},
+	"amqp":      {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 
 	// Vulnerability-scanner / publicly exposed application surface.
-	"http":       {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
-	"https":      {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
-	"rtsp":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"dockerapi":  {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
-	"ipp":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http":      {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
+	"https":     {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
+	"rtsp":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dockerapi": {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
+	"ipp":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
 	"snmp":       {Techniques: []string{"T1018", "T1110.001"}, Tactics: []string{"discovery", "credential-access"}},
@@ -120,6 +124,17 @@ var handlerTags = map[string]Tag{
 	"ipmi":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"syslog_tcp": {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
 	"syslog_udp": {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
+	"dns":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+
+	// inetd "small services" (RFC 862-868, 1340) — trivial, but their
+	// presence is almost always a recon probe; chargen/echo are also
+	// reflection-amplifier scouting targets.
+	"echo":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"discard": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"daytime": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"qotd":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"chargen": {Techniques: []string{"T1046", "T1498.002"}, Tactics: []string{"discovery", "impact"}},
+	"time":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 
 	// ICS / OT surface — MITRE ATT&CK for ICS uses a separate
 	// matrix (S0599 mapped techniques live there). We keep these

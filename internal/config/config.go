@@ -289,11 +289,18 @@ type HTTPS struct {
 }
 
 type Tarpit struct {
-	Strategy     string       `yaml:"strategy"` // sticky | trickle | keepalive
-	MaxPerSource int          `yaml:"max_per_source"`
-	MaxTotal     int          `yaml:"max_total"`
-	Trickle      TrickleCfg   `yaml:"trickle"`
-	Keepalive    KeepaliveCfg `yaml:"keepalive"`
+	Strategy     string `yaml:"strategy"` // sticky | trickle | keepalive
+	MaxPerSource int    `yaml:"max_per_source"`
+	MaxTotal     int    `yaml:"max_total"`
+	// Emulate, when true, runs the listener's protocol `handler:` to
+	// completion FIRST (sending its real banner + capturing the
+	// attacker's request), THEN applies the tarpit strategy on the same
+	// connection. This turns any protocol emulator into a tarpit: the
+	// scanner gets a believable SSH/HTTP/Modbus banner, then hangs. The
+	// captured banner/request lands in the tarpit_start event.
+	Emulate   bool         `yaml:"emulate"`
+	Trickle   TrickleCfg   `yaml:"trickle"`
+	Keepalive KeepaliveCfg `yaml:"keepalive"`
 }
 
 type TrickleCfg struct {

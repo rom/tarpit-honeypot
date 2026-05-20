@@ -162,7 +162,10 @@ Default bind is `127.0.0.1:8088`. Enable in `ui:`. Endpoints:
 - `/` — last-24h summary (event counts by severity, top rules, top sources)
 - `/events?source=<ip>&rule=<id>&since=24h&limit=N` — filterable event table
 - `/events/<id>` — full event detail (banner sent, base64 payload, meta)
-- `/api/events`, `/api/summary` — JSON equivalents
+- `/topology` — the virtual networks / hosts / services the sensor presents
+- `/config` — the effective running config (secrets shown as `*_env` names)
+- `/docs` — built-in reference reflecting this deployment
+- `/api/events`, `/api/summary`, `/api/config`, `/api/topology` — JSON equivalents
 - `/metrics` — Prometheus text-format (v1.3+)
 - `/healthz` — liveness check (bypasses auth)
 

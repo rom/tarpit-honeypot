@@ -2,10 +2,12 @@ package sensor
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/safego"
+	"github.com/rom/tarpit-honeypot/internal/scananalysis"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -55,6 +58,7 @@ type Sensor struct {
 	honeynet   *honeynet.Topology
 	enrich     *enrich.Enricher
 	devices    *devices.Registry
+	scanTrack  *scananalysis.Tracker
 	deviceSev  event.Severity
 	bus        chan *event.Event
 
@@ -214,6 +218,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		enrich:     enr,
 		devices:    devReg,
 		deviceSev:  devSev,
+		scanTrack:  scananalysis.NewTracker(5 * time.Minute),
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -226,6 +231,69 @@ func (s *Sensor) Honeynet() *honeynet.Topology { return s.honeynet }
 // Devices returns the learned-device registry (nil when devices are
 // disabled). Used by the list-devices subcommand.
 func (s *Sensor) Devices() *devices.Registry { return s.devices }
+
+// observeScan feeds a listener event into the scan-analysis Tracker
+// and returns a scananalysis:profile event when the source crosses the
+// confidence threshold (timing template + scope + probe variety). Only
+// per-connection listener events are interesting; aggregate / canary /
+// internal events are skipped.
+func (s *Sensor) observeScan(ev *event.Event) *event.Event {
+	if s.scanTrack == nil || ev == nil || ev.Source.IP == "" {
+		return nil
+	}
+	if !strings.HasPrefix(ev.RuleID, "listener:") {
+		return nil
+	}
+	// Reconstruct the payload verdict from the event meta where the
+	// handler recorded it; fall back to a port-only observation.
+	var payload []byte
+	if ev.PayloadBase64 != "" {
+		if b, err := base64.StdEncoding.DecodeString(ev.PayloadBase64); err == nil {
+			payload = b
+		}
+	}
+	verdict := scananalysis.ClassifyPayload(payload, ev.Handler)
+	osHint := false
+	if ev.Proto == "icmp" {
+		osHint = true // ICMP timestamp/mask probes are OS-fingerprint inputs
+	}
+	r := s.scanTrack.Observe(scananalysis.Observation{
+		SourceIP:    ev.Source.IP,
+		DestPort:    ev.Dest.Port,
+		Handler:     ev.Handler,
+		Time:        ev.Time,
+		Verdict:     verdict,
+		OSProbeHint: osHint,
+	})
+	if r == nil {
+		return nil
+	}
+	meta := map[string]any{
+		"timing_profile": r.TimingProfile,
+		"distinct_ports": r.DistinctPorts,
+		"connections":    r.Conns,
+		"version_scan":   r.VersionScan,
+		"os_scan":        r.OSScan,
+		"aggressive":     r.Aggressive,
+	}
+	if len(r.NSEScripts) > 0 {
+		meta["nse_scripts"] = r.NSEScripts
+	}
+	sev := event.SeverityMedium
+	if r.Aggressive || r.VersionScan {
+		sev = event.SeverityHigh
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     ev.Time,
+		Sensor:   s.name,
+		RuleID:   "scananalysis:profile",
+		Severity: sev,
+		Source:   ev.Source,
+		Proto:    "tcp",
+		Meta:     meta,
+	}
+}
 
 // observeDevice extracts host identity from an event and feeds it into
 // the device registry. Returns a device:new event when the host is
@@ -590,6 +658,13 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// seen, non-allow-listed hosts.
 				if devNew := s.observeDevice(ev); devNew != nil {
 					s.router.Dispatch(devNew)
+				}
+				// Scan analysis: feed listener events into the
+				// per-source Tracker; emit scananalysis:profile when a
+				// source's timing / scope / probe variety crosses the
+				// confidence threshold.
+				if scanEv := s.observeScan(ev); scanEv != nil {
+					s.router.Dispatch(scanEv)
 				}
 				for _, out := range s.correlator.Observe(ev) {
 					if out != ev {
