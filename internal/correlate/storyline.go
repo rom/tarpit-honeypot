@@ -2,6 +2,7 @@ package correlate
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -23,14 +24,19 @@ type storylineState struct {
 	lastSeen  time.Time
 	// stages preserves the order tactics first appeared. We re-render
 	// it as a "->" arrow chain in the storyline event meta.
-	stages          []string
-	stageSeen       map[string]bool
-	ruleHits        map[string]int
-	techniques      map[string]bool
-	destPorts       map[int]bool
-	handlers        map[string]bool
-	hitCount        int
-	lastEmittedSize int
+	stages           []string
+	stageSeen        map[string]bool
+	ruleHits         map[string]int
+	techniques       map[string]bool
+	destPorts        map[int]bool
+	handlers         map[string]bool
+	cveHits          map[string]bool // CVE ids exploited along the chain
+	tools            map[string]bool // scanner/tool names fingerprinted
+	hitCount         int
+	malware          bool // a malware:capture fired for this source
+	reachedObjective bool // chain touched impact / exfiltration
+	lastEmittedSize  int
+	lastEmittedSev   event.Severity
 }
 
 // StoryMinStages is the minimum number of distinct ATT&CK tactics a
@@ -69,6 +75,8 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 			techniques: map[string]bool{},
 			destPorts:  map[int]bool{},
 			handlers:   map[string]bool{},
+			cveHits:    map[string]bool{},
+			tools:      map[string]bool{},
 		}
 		c.story[ev.Source.IP] = st
 	}
@@ -78,6 +86,9 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 		if !st.stageSeen[t] {
 			st.stageSeen[t] = true
 			st.stages = append(st.stages, t)
+		}
+		if t == "impact" || t == "exfiltration" {
+			st.reachedObjective = true
 		}
 	}
 	for _, tech := range ev.MitreTechniques {
@@ -90,42 +101,83 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	if ev.Handler != "" {
 		st.handlers[ev.Handler] = true
 	}
+	// High-signal milestones: a CVE exploit attempt or captured malware
+	// turns a noisy multi-stage chain into a confirmed intrusion.
+	if strings.HasPrefix(ev.RuleID, "cve:") {
+		st.cveHits[strings.TrimPrefix(ev.RuleID, "cve:")] = true
+	}
+	if ev.RuleID == "malware:capture" {
+		st.malware = true
+	}
+	if tools, ok := ev.Meta["tools"].([]string); ok {
+		for _, t := range tools {
+			st.tools[t] = true
+		}
+	}
 
 	if len(st.stages) < StoryMinStages {
 		return nil
 	}
-	// Only re-emit when we've gained StoryReEmitEvery new stages
-	// since the last emission. First emission fires at == StoryMinStages.
-	if st.lastEmittedSize > 0 && len(st.stages)-st.lastEmittedSize < StoryReEmitEvery {
+	sev := storySeverity(st)
+	// Re-emit when we've gained StoryReEmitEvery new stages since the
+	// last emission, OR when the severity has escalated (e.g. a CVE
+	// exploit / malware drop / objective reached after the first emit).
+	escalated := st.lastEmittedSize > 0 && sev > st.lastEmittedSev
+	if st.lastEmittedSize > 0 && len(st.stages)-st.lastEmittedSize < StoryReEmitEvery && !escalated {
 		return nil
 	}
 	st.lastEmittedSize = len(st.stages)
+	st.lastEmittedSev = sev
 
 	techniques := setToSortedSlice(st.techniques)
 	ports := setToSortedIntSlice(st.destPorts)
 	handlers := setToSortedSlice(st.handlers)
 	ordered := orderTacticsByRank(st.stages)
 
+	meta := map[string]any{
+		"stages":            ordered,
+		"chain":             joinStages(ordered),
+		"hit_count":         st.hitCount,
+		"dest_ports":        ports,
+		"handlers":          handlers,
+		"first_seen_s":      int(now.Sub(st.firstSeen).Seconds()),
+		"distinct_rules":    len(st.ruleHits),
+		"objective_reached": st.reachedObjective,
+	}
+	if len(st.cveHits) > 0 {
+		meta["cve_exploits"] = setToSortedSlice(st.cveHits)
+	}
+	if len(st.tools) > 0 {
+		meta["tools"] = setToSortedSlice(st.tools)
+	}
+	if st.malware {
+		meta["malware_captured"] = true
+	}
+
 	return &event.Event{
 		ID:              event.NewID(),
 		Time:            now,
 		Sensor:          ev.Sensor,
 		RuleID:          "storyline:multi_stage",
-		Severity:        event.SeverityHigh,
+		Severity:        sev,
 		Source:          ev.Source,
 		Proto:           "tcp",
 		MitreTechniques: techniques,
 		MitreTactics:    ordered,
-		Meta: map[string]any{
-			"stages":         ordered,
-			"chain":          joinStages(ordered),
-			"hit_count":      st.hitCount,
-			"dest_ports":     ports,
-			"handlers":       handlers,
-			"first_seen_s":   int(now.Sub(st.firstSeen).Seconds()),
-			"distinct_rules": len(st.ruleHits),
-		},
+		MitreDefenses:   mitre.DefensesFor(techniques),
+		Meta:            meta,
 	}
+}
+
+// storySeverity scales the storyline severity by how far the attacker
+// got. A bare multi-stage chain is High; a chain that landed a CVE
+// exploit, dropped malware, reached impact/exfiltration, or walked 5+
+// distinct tactics is Critical — the SOC's "wake someone up" tier.
+func storySeverity(st *storylineState) event.Severity {
+	if st.malware || len(st.cveHits) > 0 || st.reachedObjective || len(st.stages) >= 5 {
+		return event.SeverityCritical
+	}
+	return event.SeverityHigh
 }
 
 // orderTacticsByRank sorts tactic names by their position in the
