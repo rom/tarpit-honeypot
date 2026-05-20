@@ -23,13 +23,13 @@ type storylineState struct {
 	lastSeen  time.Time
 	// stages preserves the order tactics first appeared. We re-render
 	// it as a "->" arrow chain in the storyline event meta.
-	stages       []string
-	stageSeen    map[string]bool
-	ruleHits     map[string]int
-	techniques   map[string]bool
-	destPorts    map[int]bool
-	handlers     map[string]bool
-	hitCount     int
+	stages          []string
+	stageSeen       map[string]bool
+	ruleHits        map[string]int
+	techniques      map[string]bool
+	destPorts       map[int]bool
+	handlers        map[string]bool
+	hitCount        int
 	lastEmittedSize int
 }
 
@@ -63,12 +63,12 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	st, ok := c.story[ev.Source.IP]
 	if !ok || now.Sub(st.lastSeen) > StoryWindow {
 		st = &storylineState{
-			firstSeen: now,
-			stageSeen: map[string]bool{},
-			ruleHits:  map[string]int{},
+			firstSeen:  now,
+			stageSeen:  map[string]bool{},
+			ruleHits:   map[string]int{},
 			techniques: map[string]bool{},
-			destPorts: map[int]bool{},
-			handlers:  map[string]bool{},
+			destPorts:  map[int]bool{},
+			handlers:   map[string]bool{},
 		}
 		c.story[ev.Source.IP] = st
 	}
@@ -107,22 +107,22 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	ordered := orderTacticsByRank(st.stages)
 
 	return &event.Event{
-		ID:       event.NewID(),
-		Time:     now,
-		Sensor:   ev.Sensor,
-		RuleID:   "storyline:multi_stage",
-		Severity: event.SeverityHigh,
-		Source:   ev.Source,
-		Proto:    "tcp",
+		ID:              event.NewID(),
+		Time:            now,
+		Sensor:          ev.Sensor,
+		RuleID:          "storyline:multi_stage",
+		Severity:        event.SeverityHigh,
+		Source:          ev.Source,
+		Proto:           "tcp",
 		MitreTechniques: techniques,
 		MitreTactics:    ordered,
 		Meta: map[string]any{
-			"stages":        ordered,
-			"chain":         joinStages(ordered),
-			"hit_count":     st.hitCount,
-			"dest_ports":    ports,
-			"handlers":      handlers,
-			"first_seen_s":  int(now.Sub(st.firstSeen).Seconds()),
+			"stages":         ordered,
+			"chain":          joinStages(ordered),
+			"hit_count":      st.hitCount,
+			"dest_ports":     ports,
+			"handlers":       handlers,
+			"first_seen_s":   int(now.Sub(st.firstSeen).Seconds()),
 			"distinct_rules": len(st.ruleHits),
 		},
 	}

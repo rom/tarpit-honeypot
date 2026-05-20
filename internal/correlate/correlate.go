@@ -20,13 +20,15 @@ type Correlator struct {
 	scanSev  event.Severity
 	bruteSev event.Severity
 	slowSev  event.Severity
+	sweepSev event.Severity
 
-	mu       sync.Mutex
-	scan     map[string]*scanState      // key: source IP
-	brute    map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
-	slow     map[string]*slowState      // key: source IP
-	story    map[string]*storylineState // key: source IP
-	emitted  map[string]time.Time       // dedup of aggregate emission
+	mu      sync.Mutex
+	scan    map[string]*scanState      // key: source IP
+	brute   map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
+	slow    map[string]*slowState      // key: source IP
+	sweep   map[string]*sweepState     // key: source IP
+	story   map[string]*storylineState // key: source IP
+	emitted map[string]time.Time       // dedup of aggregate emission
 }
 
 type scanState struct {
@@ -48,12 +50,18 @@ type slowState struct {
 	ports     map[int]time.Time // port -> first-seen
 }
 
+type sweepState struct {
+	since time.Time
+	ips   map[string]struct{} // distinct destination IPs touched via ICMP
+}
+
 func New(cfg config.Correlate) (*Correlator, error) {
 	c := &Correlator{
 		cfg:     cfg,
 		scan:    map[string]*scanState{},
 		brute:   map[string]*bruteState{},
 		slow:    map[string]*slowState{},
+		sweep:   map[string]*sweepState{},
 		story:   map[string]*storylineState{},
 		emitted: map[string]time.Time{},
 	}
@@ -78,6 +86,13 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		}
 		c.slowSev = s
 	}
+	if cfg.ICMPSweep.Enabled {
+		s, err := event.ParseSeverity(cfg.ICMPSweep.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.sweepSev = s
+	}
 	return c, nil
 }
 
@@ -85,7 +100,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 // fired. Always returns at least one event (the original).
 func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out := []*event.Event{ev}
-	if ev.Source.IP == "" || ev.Dest.Port == 0 {
+	if ev.Source.IP == "" {
 		return out
 	}
 
@@ -95,6 +110,24 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	now := ev.Time
 	if now.IsZero() {
 		now = time.Now().UTC()
+	}
+
+	// ICMP sweep is checked first because ICMP events carry no dest
+	// port — they'd be dropped by the port-requiring guard below.
+	if c.cfg.ICMPSweep.Enabled && ev.Proto == "icmp" {
+		if extra := c.checkSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+
+	// Everything past here keys on a destination port.
+	if ev.Dest.Port == 0 {
+		// Still feed the storyline correlator (it keys on tactics, not
+		// ports) before returning.
+		if extra := c.observeStoryline(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+		return out
 	}
 
 	if c.cfg.PortScan.Enabled {
@@ -152,6 +185,54 @@ func (c *Correlator) checkScan(ev *event.Event, now time.Time) *event.Event {
 	}
 }
 
+// checkSweep detects an ICMP ping sweep: one source touching
+// DistinctIPs distinct destination IPs via ICMP within Window. The
+// destination IP comes from ev.Dest.IP (the honeynet host the ICMP
+// responder answered for). Called with c.mu held.
+func (c *Correlator) checkSweep(ev *event.Event, now time.Time) *event.Event {
+	cfg := c.cfg.ICMPSweep
+	dst := ev.Dest.IP
+	if dst == "" {
+		// Some ICMP events carry the touched IP in meta instead.
+		if m, ok := ev.Meta["target_ip"].(string); ok {
+			dst = m
+		}
+	}
+	if dst == "" {
+		return nil
+	}
+	st, ok := c.sweep[ev.Source.IP]
+	if !ok || now.Sub(st.since) > cfg.Window {
+		st = &sweepState{since: now, ips: map[string]struct{}{}}
+		c.sweep[ev.Source.IP] = st
+	}
+	st.ips[dst] = struct{}{}
+	if len(st.ips) < cfg.DistinctIPs {
+		return nil
+	}
+	if !c.shouldEmit("sweep|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	ips := make([]string, 0, len(st.ips))
+	for ip := range st.ips {
+		ips = append(ips, ip)
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:icmp_sweep",
+		Severity: c.sweepSev,
+		Source:   ev.Source,
+		Proto:    "icmp",
+		Meta: map[string]any{
+			"distinct_ips": len(ips),
+			"window_s":     int(cfg.Window.Seconds()),
+			"targets":      ips,
+		},
+	}
+}
+
 func (c *Correlator) checkBrute(ev *event.Event, now time.Time) *event.Event {
 	cfg := c.cfg.BruteForce
 	key := ev.Source.IP
@@ -180,9 +261,9 @@ func (c *Correlator) checkBrute(ev *event.Event, now time.Time) *event.Event {
 		credList = append(credList, k)
 	}
 	meta := map[string]any{
-		"attempts":      st.count,
-		"window_s":      int(cfg.Window.Seconds()),
-		"unique_creds":  len(credList),
+		"attempts":     st.count,
+		"window_s":     int(cfg.Window.Seconds()),
+		"unique_creds": len(credList),
 	}
 	if len(credList) > 0 {
 		meta["credentials"] = credList
@@ -244,12 +325,12 @@ func (c *Correlator) checkSlowScan(ev *event.Event, now time.Time) *event.Event 
 		Source:   ev.Source,
 		Proto:    "tcp",
 		Meta: map[string]any{
-			"distinct_ports":   len(ports),
-			"window_hours":     int(cfg.Window.Hours()),
-			"first_seen":       st.firstSeen.Format(time.RFC3339),
-			"last_seen":        st.lastSeen.Format(time.RFC3339),
-			"ports":            ports,
-			"spread_seconds":   int(st.lastSeen.Sub(st.firstSeen).Seconds()),
+			"distinct_ports": len(ports),
+			"window_hours":   int(cfg.Window.Hours()),
+			"first_seen":     st.firstSeen.Format(time.RFC3339),
+			"last_seen":      st.lastSeen.Format(time.RFC3339),
+			"ports":          ports,
+			"spread_seconds": int(st.lastSeen.Sub(st.firstSeen).Seconds()),
 		},
 	}
 }
@@ -258,16 +339,17 @@ func (c *Correlator) checkSlowScan(ev *event.Event, now time.Time) *event.Event 
 // Returns "" when no credentials are present.
 //
 // Recognized meta layout:
-//   ssh handlers don't capture passwords, but client_id is unique-ish
-//   ftp -> user_line / pass_line
-//   smtp_recv -> auth_user / auth_pass
-//   mqtt -> username / password
-//   ldap -> bind_dn / bind_pw
-//   postgres -> startup_params[user] / password
-//   mysql -> username / (auth_response_hex used as "the hashed password")
-//   redis -> auth_password (no username)
-//   vnc -> auth_response_hex (the DES-encrypted password)
-//   winrm -> basic_user / basic_pass
+//
+//	ssh handlers don't capture passwords, but client_id is unique-ish
+//	ftp -> user_line / pass_line
+//	smtp_recv -> auth_user / auth_pass
+//	mqtt -> username / password
+//	ldap -> bind_dn / bind_pw
+//	postgres -> startup_params[user] / password
+//	mysql -> username / (auth_response_hex used as "the hashed password")
+//	redis -> auth_password (no username)
+//	vnc -> auth_response_hex (the DES-encrypted password)
+//	winrm -> basic_user / basic_pass
 func extractCreds(ev *event.Event) string {
 	if ev.Meta == nil {
 		return ""

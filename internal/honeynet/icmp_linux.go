@@ -10,9 +10,20 @@ import (
 	"log/slog"
 	"net"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
+
+	icmppkg "github.com/rom/tarpit-honeypot/internal/icmp"
 )
+
+// msSinceMidnightUTC is the RFC 792 timestamp format used in ICMP
+// Timestamp replies (milliseconds since midnight UTC).
+func msSinceMidnightUTC() uint32 {
+	now := time.Now().UTC()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return uint32(now.Sub(midnight).Milliseconds())
+}
 
 // startICMPResponder opens an AF_PACKET socket on the named interface,
 // filters for IPv4 ICMP, and answers ICMP echo requests (type 8) addressed
@@ -93,17 +104,30 @@ func icmpLoop(fd int, iface *net.Interface, topo *Topology) {
 		if !ok {
 			continue
 		}
-		icmp := ip[ihl:]
-		if len(icmp) < 8 {
+		icmpMsg := ip[ihl:]
+		if len(icmpMsg) < 8 {
 			continue
 		}
-		if icmp[0] != 8 { // type=8 echo request
+		// Answer the request type with the matching reply:
+		//   8  echo request      -> 0  echo reply
+		//   13 timestamp request -> 14 timestamp reply
+		//   17 addr-mask request -> 18 address mask reply
+		// Other types are captured (logged) but not answered.
+		var icmpReply []byte
+		switch icmpMsg[0] {
+		case icmppkg.V4EchoRequest:
+			icmpReply = icmppkg.EchoReplyV4(icmpMsg)
+		case icmppkg.V4Timestamp:
+			icmpReply = icmppkg.TimestampReplyV4(icmpMsg, msSinceMidnightUTC())
+		case icmppkg.V4AddrMask:
+			icmpReply = icmppkg.AddrMaskReplyV4(icmpMsg, [4]byte{255, 255, 255, 0})
+		default:
 			continue
 		}
-		// Build echo reply. Same identifier (icmp[4:6]) and sequence
-		// (icmp[6:8]) so the requester's ping matches up. Payload is
-		// whatever followed.
-		reply := buildICMPEchoReply(host.MAC, dstIP, buf[6:12], srcIP, icmp)
+		if icmpReply == nil {
+			continue
+		}
+		reply := buildICMPFrame(host.MAC, dstIP, buf[6:12], srcIP, icmpReply)
 		ll, ok := from.(*unix.SockaddrLinklayer)
 		if !ok {
 			continue
@@ -126,26 +150,14 @@ func icmpLoop(fd int, iface *net.Interface, topo *Topology) {
 	}
 }
 
-// buildICMPEchoReply constructs a full Ethernet+IPv4+ICMP frame replying to
-// the supplied echo request. ourMAC is the virtual host's derived MAC,
-// ourIP is the virtual host IP, requesterMAC/IP come from the request,
-// origICMP is the original ICMP message (echo request) which we copy
-// verbatim with only type+checksum changed.
-func buildICMPEchoReply(ourMAC [6]byte, ourIP string, requesterMAC []byte, requesterIP net.IP, origICMP []byte) []byte {
+// buildICMPFrame wraps a fully-formed ICMP message (already typed +
+// checksummed by the icmp package) in an Ethernet + IPv4 frame sourced
+// from the virtual host and addressed to the requester.
+func buildICMPFrame(ourMAC [6]byte, ourIP string, requesterMAC []byte, requesterIP net.IP, icmp []byte) []byte {
 	ourIP4 := net.ParseIP(ourIP).To4()
 	if ourIP4 == nil || requesterIP.To4() == nil {
 		return nil
 	}
-	// Echo reply ICMP: type=0, code=0, then re-checksummed body.
-	icmp := append([]byte(nil), origICMP...)
-	icmp[0] = 0
-	icmp[1] = 0
-	icmp[2] = 0
-	icmp[3] = 0
-	cs := internetChecksum(icmp)
-	icmp[2] = byte(cs >> 8)
-	icmp[3] = byte(cs)
-
 	totalLen := 20 + len(icmp)
 	frame := make([]byte, 14+totalLen)
 	// Ethernet
@@ -157,10 +169,10 @@ func buildICMPEchoReply(ourMAC [6]byte, ourIP string, requesterMAC []byte, reque
 	ip[0] = 0x45 // version=4, IHL=5
 	ip[1] = 0
 	binary.BigEndian.PutUint16(ip[2:4], uint16(totalLen))
-	binary.BigEndian.PutUint16(ip[4:6], 0) // identification
+	binary.BigEndian.PutUint16(ip[4:6], 0)      // identification
 	binary.BigEndian.PutUint16(ip[6:8], 0x4000) // DF, frag=0
-	ip[8] = 64 // TTL
-	ip[9] = 1  // ICMP
+	ip[8] = 64                                  // TTL
+	ip[9] = 1                                   // ICMP
 	copy(ip[12:16], ourIP4)
 	copy(ip[16:20], requesterIP.To4())
 	ipcs := internetChecksum(ip[:20])

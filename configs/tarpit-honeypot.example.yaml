@@ -587,6 +587,15 @@ correlate:
     distinct_ports: 10
     window: 24h
     severity: high
+  # ICMP ping sweep: one source touching N distinct destination IPs via
+  # ICMP (echo / timestamp / address-mask) inside the window. Maps the
+  # live-host inventory of a subnet — a classic discovery precursor.
+  # Fed by the honeynet ICMP responder's per-interaction events.
+  icmp_sweep:
+    enabled: true
+    distinct_ips: 10
+    window: 30s
+    severity: high
 
 dedup:
   default_window: 5m

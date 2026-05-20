@@ -3,21 +3,21 @@ package config
 import "time"
 
 type Config struct {
-	Sensor       Sensor       `yaml:"sensor"`
-	UI           UI           `yaml:"ui"`
-	Listeners    []Listener   `yaml:"listeners"`
-	Canaries     []Canary     `yaml:"canaries"`
-	URLCanaries  []URLCanary  `yaml:"url_canaries"`
-	DNS          DNS          `yaml:"dns"`
-	DNSCanaries  []DNSCanary  `yaml:"dns_canaries"`
-	Sniffer      Sniffer      `yaml:"sniffer"`
-	Correlate    Correlate    `yaml:"correlate"`
-	Honeynets    []Honeynet   `yaml:"honeynets"`
-	Dedup        Dedup        `yaml:"dedup"`
-	Allowlist    []string     `yaml:"allowlist"`
-	Channels     []Channel    `yaml:"channels"`
-	Routes       []Route      `yaml:"routes"`
-	Devices      Devices      `yaml:"devices"`
+	Sensor      Sensor      `yaml:"sensor"`
+	UI          UI          `yaml:"ui"`
+	Listeners   []Listener  `yaml:"listeners"`
+	Canaries    []Canary    `yaml:"canaries"`
+	URLCanaries []URLCanary `yaml:"url_canaries"`
+	DNS         DNS         `yaml:"dns"`
+	DNSCanaries []DNSCanary `yaml:"dns_canaries"`
+	Sniffer     Sniffer     `yaml:"sniffer"`
+	Correlate   Correlate   `yaml:"correlate"`
+	Honeynets   []Honeynet  `yaml:"honeynets"`
+	Dedup       Dedup       `yaml:"dedup"`
+	Allowlist   []string    `yaml:"allowlist"`
+	Channels    []Channel   `yaml:"channels"`
+	Routes      []Route     `yaml:"routes"`
+	Devices     Devices     `yaml:"devices"`
 }
 
 // Devices configures the learned-device inventory + "new device"
@@ -43,16 +43,16 @@ type Devices struct {
 // All fields except ID are optional — a deployment can configure metadata-
 // only honeynets that only show up in DNS forward-resolution.
 type Honeynet struct {
-	ID      string             `yaml:"id"`
-	CIDR    string             `yaml:"cidr"`
-	Gateway string             `yaml:"gateway"`
-	DNS     string             `yaml:"dns"`
-	Domain  string             `yaml:"domain"`
-	Hosts   []HoneynetHost     `yaml:"hosts"`
-	ARP     ARPResponderCfg    `yaml:"arp_responder"`
-	ICMP    ICMPResponderCfg   `yaml:"icmp_responder"`
-	LLDP    LLDPResponderCfg   `yaml:"lldp_responder"`
-	TUN     TUNCfg             `yaml:"tun"`
+	ID      string           `yaml:"id"`
+	CIDR    string           `yaml:"cidr"`
+	Gateway string           `yaml:"gateway"`
+	DNS     string           `yaml:"dns"`
+	Domain  string           `yaml:"domain"`
+	Hosts   []HoneynetHost   `yaml:"hosts"`
+	ARP     ARPResponderCfg  `yaml:"arp_responder"`
+	ICMP    ICMPResponderCfg `yaml:"icmp_responder"`
+	LLDP    LLDPResponderCfg `yaml:"lldp_responder"`
+	TUN     TUNCfg           `yaml:"tun"`
 }
 
 // LLDPResponderCfg makes virtual hosts appear in `lldpctl` / Cisco
@@ -124,16 +124,16 @@ type HoneynetService struct {
 // starts when Enabled and at least one DNSCanary is configured (or
 // AmplifierDetection is on).
 type DNS struct {
-	Enabled            bool             `yaml:"enabled"`
-	Bind               string           `yaml:"bind"`
-	AmplifierDetection DNSAmplifier     `yaml:"amplifier_detection"`
+	Enabled            bool         `yaml:"enabled"`
+	Bind               string       `yaml:"bind"`
+	AmplifierDetection DNSAmplifier `yaml:"amplifier_detection"`
 }
 
 // DNSAmplifier flags traffic shaped like amplifier reconnaissance.
 type DNSAmplifier struct {
 	Enabled  bool          `yaml:"enabled"`
 	Window   time.Duration `yaml:"window"`
-	Queries  int           `yaml:"queries"`   // per-source threshold
+	Queries  int           `yaml:"queries"` // per-source threshold
 	Severity string        `yaml:"severity"`
 }
 
@@ -141,7 +141,7 @@ type DNSAmplifier struct {
 // configured path. Use unguessable paths so legitimate scanning misses them.
 type URLCanary struct {
 	ID       string `yaml:"id"`
-	Path     string `yaml:"path"`      // exact path match, e.g. /backup/aws-prod.tar.gz
+	Path     string `yaml:"path"` // exact path match, e.g. /backup/aws-prod.tar.gz
 	Severity string `yaml:"severity"`
 }
 
@@ -149,17 +149,17 @@ type URLCanary struct {
 // label or any subdomain underneath it. Use long random tokens.
 type DNSCanary struct {
 	ID       string `yaml:"id"`
-	Name     string `yaml:"name"`      // e.g. "abc123.canary.example.com"
+	Name     string `yaml:"name"` // e.g. "abc123.canary.example.com"
 	Severity string `yaml:"severity"`
 }
 
 // Sniffer configures the optional Linux AF_PACKET sniffer that watches for
 // ARP scans and unsolicited replies.
 type Sniffer struct {
-	Enabled   bool          `yaml:"enabled"`
-	Interface string        `yaml:"interface"`   // empty = all
-	ARPScan   ARPScanCfg    `yaml:"arp_scan"`
-	Severity  string        `yaml:"severity"`
+	Enabled   bool       `yaml:"enabled"`
+	Interface string     `yaml:"interface"` // empty = all
+	ARPScan   ARPScanCfg `yaml:"arp_scan"`
+	Severity  string     `yaml:"severity"`
 }
 
 type ARPScanCfg struct {
@@ -176,11 +176,11 @@ type UI struct {
 }
 
 type Sensor struct {
-	Name         string    `yaml:"name"`
-	DataDir      string    `yaml:"data_dir"`
-	DeploymentID string    `yaml:"deployment_id"`
-	DropUser     string    `yaml:"drop_user"`
-	DropGroup    string    `yaml:"drop_group"`
+	Name         string `yaml:"name"`
+	DataDir      string `yaml:"data_dir"`
+	DeploymentID string `yaml:"deployment_id"`
+	DropUser     string `yaml:"drop_user"`
+	DropGroup    string `yaml:"drop_group"`
 	// Archetype is a deployment-default OS shape (e.g. "debian 12",
 	// "Ubuntu 24.04 LTS"). When set, every handler that has an
 	// archetype-aware banner (SSH, HTTP, FTP, Telnet, SMTP, MySQL)
@@ -188,13 +188,13 @@ type Sensor struct {
 	// Per-listener archetype overrides this; per-host honeynet
 	// archetype overrides both. Empty = fall back to the v1.0
 	// deployment-id-keyed variant pool.
-	Archetype    string    `yaml:"archetype"`
-	Disk         Disk      `yaml:"disk"`
-	Jitter       Jitter    `yaml:"jitter"`
-	Shutdown     Shutdown  `yaml:"shutdown"`
-	TLSRotate    TLSRotate `yaml:"tls_rotate"`
-	GeoIP        GeoIP     `yaml:"geoip"`
-	RDNS         RDNS      `yaml:"rdns"`
+	Archetype string    `yaml:"archetype"`
+	Disk      Disk      `yaml:"disk"`
+	Jitter    Jitter    `yaml:"jitter"`
+	Shutdown  Shutdown  `yaml:"shutdown"`
+	TLSRotate TLSRotate `yaml:"tls_rotate"`
+	GeoIP     GeoIP     `yaml:"geoip"`
+	RDNS      RDNS      `yaml:"rdns"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using
@@ -242,27 +242,27 @@ type Disk struct {
 }
 
 type Listener struct {
-	ID          string        `yaml:"id"`
-	Proto       string        `yaml:"proto"`   // tcp | udp
-	Bind        string        `yaml:"bind"`    // host:port
-	Mode        string        `yaml:"mode"`    // drop | banner | tarpit
-	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
-	Banner      string        `yaml:"banner"`
-	Severity    string        `yaml:"severity"`
+	ID            string        `yaml:"id"`
+	Proto         string        `yaml:"proto"`   // tcp | udp
+	Bind          string        `yaml:"bind"`    // host:port
+	Mode          string        `yaml:"mode"`    // drop | banner | tarpit
+	Handler       string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
+	Banner        string        `yaml:"banner"`
+	Severity      string        `yaml:"severity"`
 	ReadBytes     int           `yaml:"read_bytes"`
 	ReadTimeout   time.Duration `yaml:"read_timeout"`
-	Capture       bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
+	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
 	// Archetype overrides sensor.archetype for this listener. Empty
 	// = inherit sensor.archetype. Useful when one sensor serves a
 	// mix of OS-shaped traps on different ports.
-	Archetype     string        `yaml:"archetype"`
+	Archetype string `yaml:"archetype"`
 	// AcceptCreds controls which login attempts a credential-capturing
 	// handler (ftp_files, ...) treats as a success:
 	//   ""/"none"  -> never accept (pure capture; default)
 	//   "defaults" -> accept any known vendor-default credential
 	//   "any"      -> accept anything (max engagement)
-	AcceptCreds   string        `yaml:"accept_creds"`
+	AcceptCreds string `yaml:"accept_creds"`
 
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`
@@ -278,9 +278,9 @@ type Listener struct {
 type HTTPS struct {
 	Hosts []string `yaml:"hosts"`
 	// Subject fields. Blank = deployment+service-derived default.
-	CN  string `yaml:"cn"`           // certificate Common Name
-	Org string `yaml:"org"`          // O= organization
-	OU  string `yaml:"ou"`           // OU= organizational unit
+	CN  string `yaml:"cn"`  // certificate Common Name
+	Org string `yaml:"org"` // O= organization
+	OU  string `yaml:"ou"`  // OU= organizational unit
 	// KeyType selects the key algorithm: "ecdsa" (default, P-256) or
 	// "rsa" (2048-bit). Mixing key types across services is a strong
 	// "these are different machines" signal to a TLS-fingerprinting
@@ -289,11 +289,11 @@ type HTTPS struct {
 }
 
 type Tarpit struct {
-	Strategy     string        `yaml:"strategy"` // sticky | trickle | keepalive
-	MaxPerSource int           `yaml:"max_per_source"`
-	MaxTotal     int           `yaml:"max_total"`
-	Trickle      TrickleCfg    `yaml:"trickle"`
-	Keepalive    KeepaliveCfg  `yaml:"keepalive"`
+	Strategy     string       `yaml:"strategy"` // sticky | trickle | keepalive
+	MaxPerSource int          `yaml:"max_per_source"`
+	MaxTotal     int          `yaml:"max_total"`
+	Trickle      TrickleCfg   `yaml:"trickle"`
+	Keepalive    KeepaliveCfg `yaml:"keepalive"`
 }
 
 type TrickleCfg struct {
@@ -317,6 +317,19 @@ type Correlate struct {
 	PortScan   CorrPortScan   `yaml:"port_scan"`
 	BruteForce CorrBruteForce `yaml:"brute_force"`
 	SlowScan   CorrSlowScan   `yaml:"slow_scan"`
+	ICMPSweep  CorrICMPSweep  `yaml:"icmp_sweep"`
+}
+
+// CorrICMPSweep detects an ICMP ping sweep: one source touching N
+// distinct destination IPs via ICMP (echo, timestamp, address-mask)
+// inside a window. Distinct from port_scan, which keys on ports — a
+// ping sweep maps the live-host inventory of a subnet and is a
+// classic discovery-phase precursor.
+type CorrICMPSweep struct {
+	Enabled     bool          `yaml:"enabled"`
+	DistinctIPs int           `yaml:"distinct_ips"`
+	Window      time.Duration `yaml:"window"`
+	Severity    string        `yaml:"severity"`
 }
 
 // CorrSlowScan detects scanning over long windows. Default thresholds
@@ -349,11 +362,11 @@ type Dedup struct {
 }
 
 type Channel struct {
-	ID              string        `yaml:"id"`
-	Type            string        `yaml:"type"`   // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
-	Format          string        `yaml:"format"` // json (default) | cef | leef | ocsf
-	MinSeverity     string        `yaml:"min_severity"`
-	RateLimitPerMin int           `yaml:"rate_limit_per_min"`
+	ID              string `yaml:"id"`
+	Type            string `yaml:"type"`   // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+	Format          string `yaml:"format"` // json (default) | cef | leef | ocsf
+	MinSeverity     string `yaml:"min_severity"`
+	RateLimitPerMin int    `yaml:"rate_limit_per_min"`
 
 	// webhook
 	URL           string        `yaml:"url"`
@@ -404,8 +417,8 @@ type Route struct {
 // route to fire on a given event. Fields are AND-ed together; configure
 // multiple routes for OR semantics.
 type Match struct {
-	Severity  string `yaml:"severity"`         // ">=low", "<high", "=critical"
-	Honeynet  string `yaml:"honeynet"`         // exact match on event.meta.honeynet (the network id)
-	HoneynetOS string `yaml:"honeynet_os"`     // exact match on event.meta.honeynet_os
-	RuleID    string `yaml:"rule_id"`          // exact match on event.rule_id
+	Severity   string `yaml:"severity"`    // ">=low", "<high", "=critical"
+	Honeynet   string `yaml:"honeynet"`    // exact match on event.meta.honeynet (the network id)
+	HoneynetOS string `yaml:"honeynet_os"` // exact match on event.meta.honeynet_os
+	RuleID     string `yaml:"rule_id"`     // exact match on event.rule_id
 }
