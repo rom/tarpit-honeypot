@@ -161,6 +161,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 		}
 		return nil, err
 	}
+	// Restore windowed detector state from a previous run so long-window
+	// detectors (slow-scan in particular) survive a restart.
+	if cfg.Sensor.DataDir != "" {
+		if rerr := cor.Restore(correlate.StatePath(cfg.Sensor.DataDir)); rerr != nil {
+			slog.Warn("correlator: state restore failed", "err", rerr)
+		}
+	}
 
 	topo, err := honeynet.Build(cfg.Honeynets, id, jit, cfg.Sensor.DataDir, cfg.URLCanaries, cfg.Sensor.TLSRotate.Days, arch)
 	if err != nil {
@@ -641,6 +648,11 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 		}
 		return err
 	}
+	// Carry detector state across the reload so a config change doesn't
+	// reset in-flight scan/brute/slow/sweep windows.
+	if s.correlator != nil {
+		newCorrelator.LoadSnapshot(s.correlator.Snapshot())
+	}
 
 	// Log restart-only deltas explicitly so the operator knows what was left
 	// untouched (other than listeners; we hot-reload those now).
@@ -984,6 +996,29 @@ func (s *Sensor) Run(ctx context.Context) error {
 		slog.Info("device tracking up", "learn", s.cfg.Devices.Learn, "allow_entries", len(s.cfg.Devices.Allow))
 	}
 
+	// Correlator state periodic save — windowed detector state to disk
+	// every 60s so an unclean shutdown doesn't lose much (slow-scan in
+	// particular spans 24h).
+	if s.cfg.Sensor.DataDir != "" {
+		statePath := correlate.StatePath(s.cfg.Sensor.DataDir)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := time.NewTicker(60 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					if err := s.correlator.Save(statePath); err != nil {
+						slog.Warn("correlator periodic save failed", "err", err)
+					}
+				}
+			}
+		}()
+	}
+
 	// Retention runner — only if configured.
 	if s.cfg.Sensor.Disk.RetentionDays > 0 {
 		r := &retention.Runner{
@@ -1066,6 +1101,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 	if s.devices != nil {
 		if err := s.devices.Save(); err != nil {
 			slog.Warn("device registry save failed", "err", err)
+		}
+	}
+	if s.correlator != nil && s.cfg.Sensor.DataDir != "" {
+		if err := s.correlator.Save(correlate.StatePath(s.cfg.Sensor.DataDir)); err != nil {
+			slog.Warn("correlator state save failed", "err", err)
 		}
 	}
 	return nil
