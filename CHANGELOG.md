@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — OPC-DA emulation (dcerpc / OPCEnum)
+- The `dcerpc` handler now recognizes the OPC-DA (classic, DCOM) interface
+  family — OPCEnum, IOPCServerList(2), IOPCServer/Browse/ItemMgt — plus the
+  common Windows MSRPC interfaces, labelling each bind with
+  `dcerpc_interface`. A bind to an OPC interface flags `ics-opc-da-probe`
+  and advertises believable OPC-DA server ProgIDs (`opc_servers`). The
+  endpoint mapper now always advertises OPCEnum (`epm_interfaces`) so a
+  scanner walking port 135 records an OPC-DA server present. (Full DCOM
+  IOPCServer call marshaling remains out of scope.)
+
 ### Added — fake web shells + new device archetypes
 - **Fake web shells** (`internal/listener/handler/webshell.go`): the HTTP
   handler now recognizes web-shell activity — known shell filenames

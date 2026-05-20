@@ -68,8 +68,18 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		// into the context list. Layout from offset 8: ctx_id(2) n_xfer(1) reserved(1) abstract_uuid(16) abstract_ver(4)
 		ctxStart := 8 // body offsets after hdr
 		if len(body) >= ctxStart+24 {
-			uuid := body[ctxStart+4 : ctxStart+20]
-			res.Meta["bind_abstract_uuid"] = uuidString(uuid)
+			u := uuidString(body[ctxStart+4 : ctxStart+20])
+			res.Meta["bind_abstract_uuid"] = u
+			if name := dcerpcInterfaceName(u); name != "" {
+				res.Meta["dcerpc_interface"] = name
+			}
+			// OPC-DA (classic, DCOM): a bind to OPCEnum / IOPCServer(List)
+			// is OPC discovery. Flag it + advertise believable OPC-DA
+			// servers so the scanner records a live OPC host.
+			if isOPCInterface(u) {
+				flagAnomaly(&res, "ics-opc-da-probe")
+				res.Meta["opc_servers"] = opcServerProgIDs
+			}
 		}
 	}
 
@@ -102,6 +112,11 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = "dcerpc bind_ack"
+	// The endpoint mapper advertises the interfaces registered on this
+	// host. Always surface the well-known set — including OPCEnum, the
+	// OPC-DA (classic, DCOM) discovery interface — so a scanner walking
+	// EPM records an OPC-DA server present.
+	res.Meta["epm_interfaces"] = epmAdvertisedInterfaces
 	// Advertise the honeynet's virtual endpoints if any. Real EPM
 	// implementations return them via Lookup RPCs; we surface them in
 	// meta so the operator's pipeline at least sees what topology was
@@ -120,6 +135,61 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	}
 	return res, nil
 }
+
+// dcerpcInterfaces maps canonical interface UUIDs to a human name. Covers
+// the OPC-DA (classic / DCOM) interface family plus the common Windows
+// MSRPC interfaces a scanner enumerates over port 135.
+var dcerpcInterfaces = map[string]string{
+	// OPC-DA (classic, DCOM).
+	"13486d44-4821-11d2-a494-3cb306c10000": "OPCEnum",
+	"13486d50-4821-11d2-a494-3cb306c10000": "IOPCServerList",
+	"9dd0b56c-ad9e-43ee-8305-487f3188bf7a": "IOPCServerList2",
+	"39c13a4d-011e-11d0-9675-0020afd8adb3": "IOPCServer",
+	"39c13a4f-011e-11d0-9675-0020afd8adb3": "IOPCBrowse",
+	"39c13a50-011e-11d0-9675-0020afd8adb3": "IOPCItemMgt",
+	// DCOM core (activation / object resolution).
+	"e1af8308-5d1f-11c9-91a4-08002b14a0fa": "epmapper",
+	"99fcfec4-5260-101b-bbcb-00aa0021347a": "IOXIDResolver",
+	"000001a0-0000-0000-c000-000000000046": "ISystemActivator",
+	// Common Windows MSRPC named interfaces.
+	"367abb81-9844-35f1-ad32-98f038001003": "svcctl",
+	"12345778-1234-abcd-ef00-0123456789ac": "samr",
+	"12345778-1234-abcd-ef00-0123456789ab": "lsarpc",
+	"4b324fc8-1670-01d3-1278-5a47bf6ee188": "srvsvc",
+	"338cd001-2244-31f1-aaaa-900038001003": "winreg",
+	"8a885d04-1ceb-11c9-9fe8-08002b104860": "ndr",
+}
+
+// opcInterfaces is the subset of dcerpcInterfaces that means "OPC-DA".
+var opcInterfaces = map[string]bool{
+	"13486d44-4821-11d2-a494-3cb306c10000": true, // OPCEnum
+	"13486d50-4821-11d2-a494-3cb306c10000": true, // IOPCServerList
+	"9dd0b56c-ad9e-43ee-8305-487f3188bf7a": true, // IOPCServerList2
+	"39c13a4d-011e-11d0-9675-0020afd8adb3": true, // IOPCServer
+	"39c13a4f-011e-11d0-9675-0020afd8adb3": true, // IOPCBrowse
+	"39c13a50-011e-11d0-9675-0020afd8adb3": true, // IOPCItemMgt
+}
+
+// opcServerProgIDs are believable OPC-DA server ProgIDs an OPCEnum
+// enumeration would return (decoration so the deception is richer).
+var opcServerProgIDs = []string{
+	"Matrikon.OPC.Simulation.1",
+	"OPC.SimaticNET",
+	"RSLinx OPC Server",
+	"Kepware.KEPServerEX.V6",
+}
+
+// epmAdvertisedInterfaces is the well-known interface set the endpoint
+// mapper reports, including OPCEnum so OPC-DA is discoverable over 135.
+var epmAdvertisedInterfaces = []map[string]any{
+	{"name": "OPCEnum", "uuid": "13486d44-4821-11d2-a494-3cb306c10000", "port": 135},
+	{"name": "IOPCServerList", "uuid": "13486d50-4821-11d2-a494-3cb306c10000", "port": 49152},
+	{"name": "epmapper", "uuid": "e1af8308-5d1f-11c9-91a4-08002b14a0fa", "port": 135},
+}
+
+func dcerpcInterfaceName(uuid string) string { return dcerpcInterfaces[uuid] }
+
+func isOPCInterface(uuid string) bool { return opcInterfaces[uuid] }
 
 func pTypeName(p byte) string {
 	switch p {

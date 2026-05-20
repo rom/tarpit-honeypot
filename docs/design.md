@@ -346,8 +346,9 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   synthesized RST/ICMP, but open-port SYN-ACK quirks (window/options/ISN)
   come from the host kernel — a complete `nmap -O` match would need a
   userspace stack.
-- **OPC-DA (classic, DCOM/MSRPC).** OPC-UA is supported (`opcua`); the
-  legacy DCOM-based OPC-DA is not. A future minimal approach would extend
-  the `dcerpc` endpoint-mapper to advertise the OPCEnum interface UUID
-  rather than implement the full DCOM marshaling.
+- **OPC-DA (classic, DCOM/MSRPC) — full call marshaling.** The `dcerpc`
+  handler now recognizes the OPC-DA interface family (OPCEnum / IOPCServer*)
+  on bind, flags `ics-opc-da-probe`, and advertises OPCEnum + OPC-DA server
+  ProgIDs via the endpoint mapper. The full DCOM IOPCServer / IOPCItemMgt
+  call sequence (reading actual tag values) is still out of scope.
 - **Decoy-scan attribution.** See "Open risks".
