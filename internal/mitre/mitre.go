@@ -223,6 +223,8 @@ var d3fend = map[string][]string{
 	"T1078": {"D3-MFA", "D3-DUC"},          // valid accounts
 	"T1021": {"D3-MFA", "D3-NTA"},          // remote services
 	"T1071": {"D3-NTA", "D3-DNSTA"},        // application-layer C2
+	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"}, // ingress tool transfer
+	"T1027": {"D3-DA", "D3-FH"},            // obfuscated files / information
 	"T1557": {"D3-NTA"},                    // adversary-in-the-middle
 	"T1558": {"D3-MFA", "D3-DUC"},          // steal/forge Kerberos tickets
 	"T1498": {"D3-ITF"},                    // network denial of service
