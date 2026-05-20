@@ -68,6 +68,7 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		ja3Raw = raw
 		ja4 = fingerprint.JA4(ch)
 	}
+	ja3sHash, ja3sRaw := "", ""
 
 	// TLS posture: an old archetype (Windows Server 2008, legacy
 	// SCALANCE) deliberately negotiates old protocols + weak ciphers
@@ -80,7 +81,10 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	if h.arch != nil {
 		applyTLSPosture(tlsCfg, h.arch.TLS())
 	}
-	tlsConn := tls.Server(peeker, tlsCfg)
+	// Capture the server's outbound handshake bytes so we can recover the
+	// ServerHello and compute the JA3S we present back to the client.
+	capConn := newCaptureConn(peeker, 4096)
+	tlsConn := tls.Server(capConn, tlsCfg)
 	// Use the caller's ctx (sensor-shutdown + per-listener cancellation
 	// flow through it) instead of Background, so a slow-handshake
 	// drip can be interrupted at process exit rather than burning a
@@ -96,6 +100,9 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		}
 		return Result{Meta: meta}, nil
 	}
+	if sh := capConn.serverHello(); sh != nil {
+		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
+	}
 	state := tlsConn.ConnectionState()
 	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch, h.vuln)
 	if res.Meta == nil {
@@ -109,6 +116,10 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	}
 	if ja4 != "" {
 		res.Meta["ja4"] = ja4
+	}
+	if ja3sHash != "" {
+		res.Meta["ja3s"] = ja3sHash
+		res.Meta["ja3s_raw"] = ja3sRaw
 	}
 	return res, nil
 }

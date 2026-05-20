@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — server-side TLS fingerprint (JA3S)
+- **JA3S** (`internal/fingerprint`): the HTTPS handler now captures the
+  ServerHello it sends and emits the server-side TLS fingerprint in event
+  meta (`ja3s`, `ja3s_raw`), complementing the existing client-side JA3 /
+  JA4. The `(ja3, ja3s)` pair is the tuple TLS threat-intel feeds key on.
+  (Active multi-probe JARM — the Shodan/Censys-style server fingerprint —
+  is a larger separate item and is not implemented here.)
+
 ### Added — more ICS/OT protocols
 - New handlers: **DNP3** (TCP 20000, link-status responder with valid DNP3
   CRC), **S7comm-Plus** (TCP 102, S7-1200/1500 over TPKT/COTP, classifies

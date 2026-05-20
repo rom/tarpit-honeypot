@@ -109,11 +109,13 @@ rationale covering the current implementation.
   device summaries); GETs on login-shaped paths serve a form; POSTs
   parse the form body (6 alias names each for user/pass), capture
   credentials, and emit `http-login-attempt`.
-- **Client fingerprinting**:
+- **Client + server TLS fingerprinting**:
   - **JA3** + **JA4** from the TLS ClientHello (HTTPS handler).
+  - **JA3S** (server-side TLS fingerprint) from the ServerHello we send
+    back — the `(ja3, ja3s)` pair is the tuple threat-intel feeds key on.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
-  - All four are stable across browser / scanner GREASE shuffling.
+  - All are stable across browser / scanner GREASE shuffling.
 - **Honeynets**: configure zero-to-many artificial networks via the
   `honeynets:` block. Each has a CIDR + gateway + DNS + domain + a
   list of virtual hosts; each host has an IP + hostname + OS hint +
