@@ -66,6 +66,11 @@ var exactRules = map[string]Tag{
 	"dnscanary:hit":                    {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
 	"dnscanary:amplifier":              {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"protocol_anomaly":                 {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	// A previously-unseen host appearing on the segment maps to
+	// network-service / remote-system discovery from the defender's
+	// vantage (the device is doing the discovering).
+	"device:new":      {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 }
 
 // handlerTags is the listener-handler -> ATT&CK lookup. Handlers
@@ -108,6 +113,7 @@ var handlerTags = map[string]Tag{
 	"sip":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"coap":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"knx":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dhcp":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"radius":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 	"ntp":        {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"tftp":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},

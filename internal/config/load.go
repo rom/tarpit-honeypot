@@ -247,7 +247,7 @@ func (c *Config) Validate() error {
 			"syslog_udp": true, "radius": true, "sip": true,
 			"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
 			"fins": true,
-			"coap": true, "knx": true,
+			"coap": true, "knx": true, "dhcp": true,
 		}
 		switch l.Proto {
 		case "tcp":
@@ -419,6 +419,25 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Devices.
+	if c.Devices.Enabled && c.Devices.Severity != "" {
+		if _, err := event.ParseSeverity(c.Devices.Severity); err != nil {
+			return fmt.Errorf("devices.severity: %w", err)
+		}
+	}
+	for i, a := range c.Devices.Allow {
+		if _, err := netip.ParsePrefix(a); err == nil {
+			continue
+		}
+		if _, err := netip.ParseAddr(a); err == nil {
+			continue
+		}
+		// Else must be a 12-hex-digit MAC.
+		if !looksLikeMAC(a) {
+			return fmt.Errorf("devices.allow[%d]: %q is not an IP, CIDR, or MAC", i, a)
+		}
+	}
+
 	// Correlator severities.
 	if c.Correlate.PortScan.Enabled {
 		if _, err := event.ParseSeverity(c.Correlate.PortScan.Severity); err != nil {
@@ -576,6 +595,23 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// looksLikeMAC reports whether s is 12 hex digits with optional
+// :/-/. separators — used to validate devices.allow MAC entries.
+func looksLikeMAC(s string) bool {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+			n++
+		case c == ':' || c == '-' || c == '.':
+		default:
+			return false
+		}
+	}
+	return n == 12
 }
 
 // parseSeverityMatch parses ">=low" / "<high" / "=critical" into (op, sev).

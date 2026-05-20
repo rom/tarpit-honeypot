@@ -24,6 +24,7 @@ func Dispatch(args []string) error {
 		{"gen-token", "print an unguessable canary token (dns | url | hex)", cmdGenToken},
 		{"export-pcap", "copy one event's per-connection pcap out of the captures dir", cmdExportPcap},
 		{"list-honeynets", "print the configured artificial networks + hosts + services", cmdListHoneynets},
+		{"list-devices", "print the learned-device inventory (devices.json)", cmdListDevices},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},
 		{"completion", "print shell-completion script (bash | zsh | fish)", cmdCompletion},
 		{"help", "long-form help for a subcommand or topic", cmdHelp},

@@ -363,6 +363,20 @@ listeners:
     severity: high
     read_bytes: 1500
 
+  # DHCP — UDP/67. PASSIVE: never hands out leases. Captures the client
+  # MAC / hostname / vendor-class / DHCP fingerprint (option-55 list)
+  # from broadcast DISCOVER/REQUEST and feeds the learned-device
+  # registry (see the devices: block below). Binding 67 needs the
+  # broadcast packets to reach the socket — on Linux pair with
+  # `SO_BROADCAST`-friendly routing or run on the segment gateway.
+  - id: dhcp-observer
+    proto: udp
+    bind: 0.0.0.0:67
+    mode: banner
+    handler: dhcp
+    severity: low
+    read_bytes: 1500
+
   # XMPP — TCP/5222. Replies with stream:features advertising PLAIN +
   # SCRAM-SHA-1 so the scanner records us as Prosody/ejabberd. Captures
   # the SASL PLAIN credentials on follow-up.
@@ -576,6 +590,25 @@ correlate:
 
 dedup:
   default_window: 5m
+
+# Learned-device inventory + "new device" alerting. When enabled, the
+# sensor records every host it observes (DHCP, ARP sniffer, broadcast/
+# multicast handlers, and the source IP of every handled connection)
+# into <data_dir>/devices.json and raises a device:new event for hosts
+# that are neither allow-listed nor part of the learned baseline.
+# Review with `tarpit-honeypot list-devices`.
+devices:
+  enabled: false
+  # learn=true : the first run silently records a baseline; later
+  #              never-seen devices alert.
+  # learn=false: strict allow-list mode — every device that isn't in
+  #              `allow` alerts on first sight.
+  learn: true
+  severity: high
+  allow:
+    - 127.0.0.1
+    - 10.0.0.0/8          # the corporate range we already know about
+    - aa:bb:cc:dd:ee:ff   # the gateway's MAC
 
 allowlist:
   - 127.0.0.1/32

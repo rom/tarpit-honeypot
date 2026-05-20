@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
+	"github.com/rom/tarpit-honeypot/internal/devices"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -53,6 +54,8 @@ type Sensor struct {
 	archetype  *archetype.Profile
 	honeynet   *honeynet.Topology
 	enrich     *enrich.Enricher
+	devices    *devices.Registry
+	deviceSev  event.Severity
 	bus        chan *event.Event
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
@@ -181,6 +184,21 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
+	var devReg *devices.Registry
+	devSev := event.SeverityHigh
+	if cfg.Devices.Enabled {
+		devReg = devices.New(devices.Config{
+			DataDir: cfg.Sensor.DataDir,
+			Allow:   cfg.Devices.Allow,
+			Learn:   cfg.Devices.Learn,
+		})
+		if cfg.Devices.Severity != "" {
+			if s, err := event.ParseSeverity(cfg.Devices.Severity); err == nil {
+				devSev = s
+			}
+		}
+	}
+
 	return &Sensor{
 		cfg:        cfg,
 		name:       name,
@@ -194,6 +212,8 @@ func New(cfg *config.Config) (*Sensor, error) {
 		archetype:  arch,
 		honeynet:   topo,
 		enrich:     enr,
+		devices:    devReg,
+		deviceSev:  devSev,
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
@@ -202,6 +222,80 @@ func New(cfg *config.Config) (*Sensor, error) {
 // Honeynet returns the configured topology, or an empty topology if none.
 // Used by the list-honeynets subcommand and the DNS canary listener.
 func (s *Sensor) Honeynet() *honeynet.Topology { return s.honeynet }
+
+// Devices returns the learned-device registry (nil when devices are
+// disabled). Used by the list-devices subcommand.
+func (s *Sensor) Devices() *devices.Registry { return s.devices }
+
+// observeDevice extracts host identity from an event and feeds it into
+// the device registry. Returns a device:new event when the host is
+// previously-unseen and not allow-listed, else nil. Returns nil
+// immediately when device tracking is disabled.
+//
+// The richest source is the dhcp handler (client_mac + hostname); the
+// ARP sniffer supplies sender_mac/sender_ip; everything else
+// contributes the source IP.
+func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
+	if s.devices == nil || ev == nil {
+		return nil
+	}
+	// Don't recurse on our own device events.
+	if ev.RuleID == "device:new" {
+		return nil
+	}
+	obs := devices.Observation{Time: ev.Time, Source: devices.SourceConn}
+	if ev.Source.IP != "" {
+		obs.IP = ev.Source.IP
+	}
+	if ev.Meta != nil {
+		if m, ok := ev.Meta["client_mac"].(string); ok && m != "" {
+			obs.MAC = m
+			obs.Source = devices.SourceDHCP
+		} else if m, ok := ev.Meta["sender_mac"].(string); ok && m != "" {
+			obs.MAC = m
+			obs.Source = devices.SourceARP
+		} else if m, ok := ev.Meta["mac"].(string); ok && m != "" {
+			obs.MAC = m
+		}
+		if h, ok := ev.Meta["hostname"].(string); ok && h != "" {
+			obs.Hostname = h
+		}
+		// DHCP requested_ip is the client's intended address; prefer
+		// it over the (often 0.0.0.0) UDP source for DHCP DISCOVER.
+		if rip, ok := ev.Meta["requested_ip"].(string); ok && rip != "" {
+			obs.IP = rip
+		}
+	}
+	if obs.IP == "" && obs.MAC == "" {
+		return nil
+	}
+	d, isNew := s.devices.Observe(obs)
+	if !isNew {
+		return nil
+	}
+	meta := map[string]any{
+		"device_ip":    d.IP,
+		"device_mac":   d.MAC,
+		"learned_from": string(d.Source),
+		"first_seen":   d.FirstSeen.UTC().Format(time.RFC3339),
+	}
+	if d.Hostname != "" {
+		meta["device_hostname"] = d.Hostname
+	}
+	if d.Vendor != "" {
+		meta["device_vendor"] = d.Vendor
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     ev.Time,
+		Sensor:   s.name,
+		RuleID:   "device:new",
+		Severity: s.deviceSev,
+		Source:   event.Endpoint{IP: d.IP},
+		Proto:    "device",
+		Meta:     meta,
+	}
+}
 
 // honeynetSnapshot converts a Topology to the handler-friendly view that
 // SNMP / LDAP / DCE-RPC use to advertise the honeynet hosts in their
@@ -491,6 +585,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.MitreTechniques = tag.Techniques
 					ev.MitreTactics = tag.Tactics
 				}
+				// Device learning: feed the source/MAC/hostname into
+				// the registry and emit device:new for never-before-
+				// seen, non-allow-listed hosts.
+				if devNew := s.observeDevice(ev); devNew != nil {
+					s.router.Dispatch(devNew)
+				}
 				for _, out := range s.correlator.Observe(ev) {
 					if out != ev {
 						s.enrich.Decorate(out)
@@ -634,6 +734,28 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}
 	}
 
+	// Device-registry periodic save — flushes the learned baseline to
+	// disk every 60s so an unclean shutdown doesn't lose much.
+	if s.devices != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := time.NewTicker(60 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					if err := s.devices.Save(); err != nil {
+						slog.Warn("device registry periodic save failed", "err", err)
+					}
+				}
+			}
+		}()
+		slog.Info("device tracking up", "learn", s.cfg.Devices.Learn, "allow_entries", len(s.cfg.Devices.Allow))
+	}
+
 	// Retention runner — only if configured.
 	if s.cfg.Sensor.Disk.RetentionDays > 0 {
 		r := &retention.Runner{
@@ -712,6 +834,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 	if s.enrich != nil {
 		_ = s.enrich.Close()
+	}
+	if s.devices != nil {
+		if err := s.devices.Save(); err != nil {
+			slog.Warn("device registry save failed", "err", err)
+		}
 	}
 	return nil
 }

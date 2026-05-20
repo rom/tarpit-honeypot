@@ -61,6 +61,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &coap{}, nil
 	case "knx":
 		return &knx{}, nil
+	case "dhcp":
+		return &dhcp{}, nil
 	}
 	return nil, fmt.Errorf("unknown udp handler %q", name)
 }

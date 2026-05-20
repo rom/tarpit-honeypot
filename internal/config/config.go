@@ -17,6 +17,24 @@ type Config struct {
 	Allowlist    []string     `yaml:"allowlist"`
 	Channels     []Channel    `yaml:"channels"`
 	Routes       []Route      `yaml:"routes"`
+	Devices      Devices      `yaml:"devices"`
+}
+
+// Devices configures the learned-device inventory + "new device"
+// alerting. When enabled, the sensor records every host it observes
+// (from DHCP, the ARP sniffer, broadcast/multicast handlers, and the
+// source IP of handled connections) and raises a device:new event for
+// hosts that are neither allow-listed nor part of the learned baseline.
+type Devices struct {
+	Enabled bool `yaml:"enabled"`
+	// Learn=true: the first run silently records a baseline; later
+	// never-seen devices alert. Learn=false: strict allow-list mode —
+	// every non-allow-listed device alerts on first sight.
+	Learn bool `yaml:"learn"`
+	// Allow is the list of known IPs / CIDRs / MACs that never alert.
+	Allow []string `yaml:"allow"`
+	// Severity of the device:new event (default high).
+	Severity string `yaml:"severity"`
 }
 
 // Honeynet describes one artificial network. The sensor needs to actually
