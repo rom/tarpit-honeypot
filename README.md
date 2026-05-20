@@ -173,7 +173,12 @@ rationale covering the current implementation.
   full message family — Dest-Unreachable, Frag-Needed-with-MTU (PMTUD),
   Time-Exceeded (traceroute), Redirect, Param-Problem, IPv6 NDP — and
   `internal/icmp.Anomalies` flags ICMP tunneling, oversize payloads, and
-  teardrop / overlapping-fragment evasion.
+  teardrop / overlapping-fragment evasion. The honeynet **TUN responder**
+  (`internal/tunnet`) shares the same TTL personality: its synthesized
+  echo replies + closed-port RSTs carry the per-host archetype TTL instead
+  of echoing the prober's, so `nmap -O` against a virtual host's closed
+  ports + ping matches the claimed OS. (Open-port SYN-ACKs still come from
+  the kernel — a full userspace TCP/IP stack is out of scope.)
 - **Device learning + "new device" alerts**: an opt-in learned-device
   registry (`devices.enabled`) records every host seen via DHCP (MAC +
   hostname + DHCP fingerprint), the ARP sniffer, and connection source

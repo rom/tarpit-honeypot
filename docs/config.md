@@ -338,6 +338,12 @@ honeynets:
       enabled: false              # CAP_NET_ADMIN required
       device: ""
       mtu: 1500
+      # TCP/IP stack personality: the TUN responder stamps each host's
+      # synthesized ICMP echo replies + closed-port RSTs with the initial
+      # IP TTL of that host's archetype (64 Linux / 128 Windows / 255 OT),
+      # derived automatically from the host's `archetype:` (or `os:`). This
+      # keeps nmap -O / traceroute hop-distance consistent. Open-port
+      # SYN-ACKs still come from the kernel stack (no userspace TCP stack).
 
     hosts:
       - ip: 10.99.0.10

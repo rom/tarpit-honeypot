@@ -26,6 +26,7 @@ type Config struct {
 	CIDRs      []string
 	HostIPs    []string
 	MTU        int
+	Personas   map[string]int // host IP -> initial IP TTL (0 = default 64)
 }
 
 type Adapter struct{}

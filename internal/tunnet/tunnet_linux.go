@@ -40,6 +40,12 @@ type Config struct {
 	CIDRs      []string // ip ranges the operator wants routed through this TUN
 	HostIPs    []string // virtual host IPs this TUN claims
 	MTU        int      // 0 -> 1500
+	// Personas maps a host IP to the initial IP TTL its synthesized
+	// responses should carry (TCP/IP stack personality). 64 = Linux/BSD,
+	// 128 = Windows, 255 = network/OT gear. Absent / 0 -> 64. Stamping
+	// the host's own TTL (instead of echoing the prober's) makes nmap -O
+	// + traceroute hop-distance consistent with the host's archetype.
+	Personas map[string]int
 }
 
 // Adapter holds the TUN fd, the parsed host-IP set, and runs the
@@ -52,6 +58,9 @@ type Adapter struct {
 
 	hostsV4 map[[4]byte]bool
 	hostsV6 map[[16]byte]bool
+
+	ttlV4 map[[4]byte]byte
+	ttlV6 map[[16]byte]byte
 
 	mu     sync.Mutex
 	closed bool
@@ -78,6 +87,8 @@ func New(cfg Config) (*Adapter, error) {
 		mtu:     cfg.MTU,
 		hostsV4: map[[4]byte]bool{},
 		hostsV6: map[[16]byte]bool{},
+		ttlV4:   map[[4]byte]byte{},
+		ttlV6:   map[[16]byte]byte{},
 	}
 	for _, ipStr := range cfg.HostIPs {
 		addr, err := netip.ParseAddr(ipStr)
@@ -85,10 +96,20 @@ func New(cfg Config) (*Adapter, error) {
 			_ = unix.Close(fd)
 			return nil, fmt.Errorf("tunnet: bad host ip %q: %w", ipStr, err)
 		}
+		ttl := byte(0)
+		if t, ok := cfg.Personas[ipStr]; ok && t > 0 && t <= 255 {
+			ttl = byte(t)
+		}
 		if addr.Is4() {
 			a.hostsV4[addr.As4()] = true
+			if ttl != 0 {
+				a.ttlV4[addr.As4()] = ttl
+			}
 		} else {
 			a.hostsV6[addr.As16()] = true
+			if ttl != 0 {
+				a.ttlV6[addr.As16()] = ttl
+			}
 		}
 	}
 	slog.Info("tunnet up",
@@ -138,6 +159,24 @@ func (a *Adapter) Run(ctx context.Context) error {
 	}
 }
 
+const defaultTTL = 64
+
+// ttlFor4 returns the configured persona TTL for one of our host IPs, or
+// the Linux/BSD default of 64.
+func (a *Adapter) ttlFor4(dst [4]byte) byte {
+	if t, ok := a.ttlV4[dst]; ok {
+		return t
+	}
+	return defaultTTL
+}
+
+func (a *Adapter) ttlFor6(dst [16]byte) byte {
+	if t, ok := a.ttlV6[dst]; ok {
+		return t
+	}
+	return defaultTTL
+}
+
 func (a *Adapter) handleIPv4(pkt []byte) {
 	if len(pkt) < 20 {
 		return
@@ -167,20 +206,30 @@ func (a *Adapter) handleICMPv4(pkt []byte, ihl int, src, dst [4]byte) {
 	if len(icmp) < 8 || icmp[0] != 8 { // echo request
 		return
 	}
-	reply := make([]byte, len(pkt))
-	copy(reply, pkt)
-	copy(reply[12:16], dst[:])
-	copy(reply[16:20], src[:])
-	reply[10], reply[11] = 0, 0
-	binary.BigEndian.PutUint16(reply[10:12], internetChecksum(reply[:ihl]))
-	reply[ihl] = 0
-	reply[ihl+2], reply[ihl+3] = 0, 0
-	binary.BigEndian.PutUint16(reply[ihl+2:ihl+4], internetChecksum(reply[ihl:]))
+	reply := buildEchoReplyV4(pkt, ihl, src, dst, a.ttlFor4(dst))
 	if _, err := unix.Write(a.tunFD, reply); err != nil {
 		slog.Debug("tunnet write icmp", "err", err)
 		return
 	}
 	a.icmpReplies++
+}
+
+// buildEchoReplyV4 turns an ICMP echo request into a reply: swaps the
+// addresses, stamps our own initial TTL (so the host's OS/hop-distance
+// fingerprint is consistent rather than echoing the prober's), flips the
+// ICMP type to 0, and recomputes both checksums.
+func buildEchoReplyV4(pkt []byte, ihl int, src, dst [4]byte, ttl byte) []byte {
+	reply := make([]byte, len(pkt))
+	copy(reply, pkt)
+	copy(reply[12:16], dst[:])
+	copy(reply[16:20], src[:])
+	reply[8] = ttl
+	reply[10], reply[11] = 0, 0
+	binary.BigEndian.PutUint16(reply[10:12], internetChecksum(reply[:ihl]))
+	reply[ihl] = 0 // type 0 = echo reply
+	reply[ihl+2], reply[ihl+3] = 0, 0
+	binary.BigEndian.PutUint16(reply[ihl+2:ihl+4], internetChecksum(reply[ihl:]))
+	return reply
 }
 
 func (a *Adapter) handleTCPv4(pkt []byte, ihl int, src, dst [4]byte) {
@@ -196,11 +245,23 @@ func (a *Adapter) handleTCPv4(pkt []byte, ihl int, src, dst [4]byte) {
 	dstPort := binary.BigEndian.Uint16(tcp[2:4])
 	clientSeq := binary.BigEndian.Uint32(tcp[4:8])
 
+	out := buildRSTV4(src, dst, srcPort, dstPort, clientSeq, a.ttlFor4(dst))
+	if _, err := unix.Write(a.tunFD, out); err != nil {
+		slog.Debug("tunnet write tcp", "err", err)
+		return
+	}
+	a.tcpRsts++
+}
+
+// buildRSTV4 synthesizes a RST+ACK for a SYN to an unbound port, with the
+// IP TTL set to our host persona so a closed-port probe fingerprints the
+// host consistently with its archetype.
+func buildRSTV4(src, dst [4]byte, srcPort, dstPort uint16, clientSeq uint32, ttl byte) []byte {
 	out := make([]byte, 40)
 	out[0] = 0x45
 	binary.BigEndian.PutUint16(out[2:4], 40)
-	binary.BigEndian.PutUint16(out[6:8], 0x4000)
-	out[8] = 64
+	binary.BigEndian.PutUint16(out[6:8], 0x4000) // DF
+	out[8] = ttl
 	out[9] = 6
 	copy(out[12:16], dst[:])
 	copy(out[16:20], src[:])
@@ -215,12 +276,7 @@ func (a *Adapter) handleTCPv4(pkt []byte, ihl int, src, dst [4]byte) {
 	binary.BigEndian.PutUint16(t[14:16], 0)
 	binary.BigEndian.PutUint16(t[18:20], 0)
 	binary.BigEndian.PutUint16(t[16:18], tcpChecksumV4(dst[:], src[:], t))
-	if _, err := unix.Write(a.tunFD, out); err != nil {
-		slog.Debug("tunnet write tcp", "err", err)
-		return
-	}
-	a.tcpRsts++
-	_ = srcPort
+	return out
 }
 
 func (a *Adapter) handleIPv6(pkt []byte) {
@@ -250,6 +306,7 @@ func (a *Adapter) handleICMPv6(pkt []byte, src, dst [16]byte) {
 	copy(reply, pkt)
 	copy(reply[8:24], dst[:])
 	copy(reply[24:40], src[:])
+	reply[7] = a.ttlFor6(dst) // hop limit = our persona TTL
 	reply[ipv6HdrLen] = 129
 	reply[ipv6HdrLen+2], reply[ipv6HdrLen+3] = 0, 0
 	cs := icmpv6Checksum(dst[:], src[:], reply[ipv6HdrLen:])

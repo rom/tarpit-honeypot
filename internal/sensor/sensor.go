@@ -962,8 +962,16 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}
 		if hn.TUN.Enabled {
 			hostIPs := make([]string, 0, len(hn.Hosts))
+			personas := make(map[string]int, len(hn.Hosts))
 			for _, h := range hn.Hosts {
 				hostIPs = append(hostIPs, h.IP)
+				// TCP/IP stack personality: stamp synthesized RST + ICMP
+				// replies with the host's OS-characteristic initial TTL.
+				if prof := archetype.Lookup(h.Archetype); prof != nil {
+					personas[h.IP] = prof.ICMPTTL()
+				} else if prof := archetype.Lookup(h.OS); prof != nil {
+					personas[h.IP] = prof.ICMPTTL()
+				}
 			}
 			cidrs := []string{hn.CIDR}
 			tunCfg := tunnet.Config{
@@ -971,6 +979,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 				CIDRs:      cidrs,
 				HostIPs:    hostIPs,
 				MTU:        hn.TUN.MTU,
+				Personas:   personas,
 			}
 			netID := hn.ID
 			wg.Add(1)

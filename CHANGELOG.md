@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — TCP/IP stack personality (TUN responder)
+- The honeynet TUN adapter (`internal/tunnet`) now stamps each virtual
+  host's synthesized **ICMP echo replies and closed-port RSTs** with the
+  initial IP TTL of that host's archetype (64 Linux / 128 Windows / 255
+  OT), derived automatically from the host's `archetype:`/`os:`. Replies
+  previously echoed the prober's TTL, which both leaked the honeypot and
+  produced an inconsistent OS guess; now `nmap -O` + traceroute
+  hop-distance line up with the claimed OS. Open-port SYN-ACKs still come
+  from the host kernel stack (a full userspace TCP/IP stack is out of
+  scope). V4 response builders extracted as pure, unit-tested functions.
+
 ### Added — packet-capture scan-detection layer
 - **`sniffer.tcp_scan`** (`internal/sniffer`): a second AF_PACKET socket
   (inbound IPv4) classifies TCP segments by flags and detects scans that
