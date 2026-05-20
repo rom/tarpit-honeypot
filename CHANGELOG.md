@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — security audit, round 2 (concurrency + secret hygiene)
+- **Reload data race**: `Reload()` hot-swapped `cfg`/`router`/`correlator`/
+  `sinks` with no lock while the bus loop, save ticker, shutdown, and the
+  public accessors read them. All four are now guarded by an `RWMutex`
+  (swap takes the write lock; readers snapshot under the read lock).
+  Added a `-race` regression test; `go test -race ./...` is clean.
+- **VNC / SMB challenges** are now fresh per-connection `crypto/rand`
+  nonces (what a real server sends) instead of a deployment-static value
+  — a static challenge was itself a fingerprint and enabled
+  precomputed/replay attacks on the captured response.
+- **SNMP-trap community**: added `community_env` so the trap write
+  credential can come from an env var instead of inline YAML (kept out of
+  `show-config`). Documented that remote `syslog` is cleartext.
+- **capture prune race**: the pcap-pruner now serializes on the manager
+  mutex so concurrent session-ends can't over-delete / double-count.
+- **privdrop**: clear root's supplementary groups even when dropping uid
+  without a resolved target gid. **UI**: 500s return a generic message and
+  log the detail (no DB-path disclosure). Removed dead `crypto/rand` call
+  in `identity.SerialNumber`.
+
 ### Added — detection coverage: password spraying + credential reuse
 - **`correlate:password_spray`** (`correlate.password_spray`): one source
   trying many DISTINCT usernames within a window — the breadth signal,

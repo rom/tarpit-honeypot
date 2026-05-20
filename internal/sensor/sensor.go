@@ -69,8 +69,40 @@ type Sensor struct {
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
+	// stateMu guards the four fields that Reload() hot-swaps (cfg, router,
+	// correlator, sinks) against concurrent reads from the bus loop, the
+	// periodic save ticker, shutdown, and the public accessors.
+	stateMu sync.RWMutex
+
 	listenersMu sync.Mutex
 	listeners   map[string]*listenerHandle
+}
+
+// curRouter / curCorrelator / curConfig / curSinks return the current
+// hot-swappable state under the read lock, so a concurrent Reload() can't
+// race the reader.
+func (s *Sensor) curRouter() *router.Router {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.router
+}
+
+func (s *Sensor) curCorrelator() *correlate.Correlator {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.correlator
+}
+
+func (s *Sensor) curConfig() *config.Config {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.cfg
+}
+
+func (s *Sensor) curSinks() []sink.Sink {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.sinks
 }
 
 func New(cfg *config.Config) (*Sensor, error) {
@@ -555,10 +587,10 @@ func needsStore(cfg *config.Config) bool {
 }
 
 func (s *Sensor) Name() string                      { return s.name }
-func (s *Sensor) Router() *router.Router            { return s.router }
-func (s *Sensor) Correlator() *correlate.Correlator { return s.correlator }
+func (s *Sensor) Router() *router.Router            { return s.curRouter() }
+func (s *Sensor) Correlator() *correlate.Correlator { return s.curCorrelator() }
 func (s *Sensor) Store() *store.Store               { return s.store }
-func (s *Sensor) Config() *config.Config            { return s.cfg }
+func (s *Sensor) Config() *config.Config            { return s.curConfig() }
 
 // effIface returns sectionIface if set, else the sensor's first configured
 // interface, else "" — the AF_PACKET default-interface fallback.
@@ -566,8 +598,9 @@ func (s *Sensor) effIface(sectionIface string) string {
 	if sectionIface != "" {
 		return sectionIface
 	}
-	if len(s.cfg.Sensor.Interfaces) > 0 {
-		return s.cfg.Sensor.Interfaces[0]
+	ifaces := s.curConfig().Sensor.Interfaces
+	if len(ifaces) > 0 {
+		return ifaces[0]
 	}
 	return ""
 }
@@ -578,17 +611,18 @@ func (s *Sensor) effIface(sectionIface string) string {
 // through unchanged; if the interface has no usable IP we warn and keep
 // the wildcard so the sensor still starts.
 func (s *Sensor) bindForInterfaces(bind string) string {
-	if len(s.cfg.Sensor.Interfaces) == 0 {
+	ifaces := s.curConfig().Sensor.Interfaces
+	if len(ifaces) == 0 {
 		return bind
 	}
 	host, port, err := net.SplitHostPort(bind)
 	if err != nil || !isWildcardHost(host) {
 		return bind
 	}
-	ip := ifacePrimaryIP(s.cfg.Sensor.Interfaces[0])
+	ip := ifacePrimaryIP(ifaces[0])
 	if ip == "" {
 		slog.Warn("interface has no usable IP; leaving bind wildcard",
-			"interface", s.cfg.Sensor.Interfaces[0], "bind", bind)
+			"interface", ifaces[0], "bind", bind)
 		return bind
 	}
 	return net.JoinHostPort(ip, port)
@@ -642,20 +676,21 @@ func (s *Sensor) startListener(l config.Listener) error {
 		return fmt.Errorf("startListener called before Run()")
 	}
 	ctx, cancel := context.WithCancel(s.rootCtx)
+	cfg := s.curConfig()
 	// sensor.interfaces constrains where wildcard listeners bind.
 	l.Bind = s.bindForInterfaces(l.Bind)
 	ln, err := listener.Build(l, listener.BuildArgs{
 		SensorName:       s.name,
-		DataDir:          s.cfg.Sensor.DataDir,
+		DataDir:          cfg.Sensor.DataDir,
 		CaptureMgr:       s.captureMgr,
-		URLCanaries:      s.cfg.URLCanaries,
+		URLCanaries:      cfg.URLCanaries,
 		Identity:         s.identity,
 		Jitter:           s.jitter,
-		TLSRotate:        s.cfg.Sensor.TLSRotate.Days,
+		TLSRotate:        cfg.Sensor.TLSRotate.Days,
 		SensorArchetype:  s.archetype,
 		Honeynet:         s.honeynet,
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
-		VulnEmulation:    s.cfg.Sensor.VulnEmulation,
+		VulnEmulation:    cfg.Sensor.VulnEmulation,
 		SessionRec:       s.sessionRec,
 	})
 	if err != nil {
@@ -796,14 +831,18 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 		}
 	}
 
-	// Hot-swap router + correlator.
+	// Hot-swap router + correlator + sinks + cfg under the write lock so
+	// the bus loop / accessors never see a torn pointer.
+	s.stateMu.Lock()
 	oldRouter := s.router
 	oldSinks := s.sinks
 	s.router = newRouter
 	s.correlator = newCorrelator
 	s.sinks = newSinks
 	s.cfg = newCfg
+	s.stateMu.Unlock()
 
+	// Start the new router and tear down the old one outside the lock.
 	newRouter.Start(s.rootCtx)
 	oldRouter.Stop()
 	for _, sk := range oldSinks {
@@ -875,7 +914,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	s.rootCtx = ctx
 	var wg sync.WaitGroup
 
-	s.router.Start(ctx)
+	s.curRouter().Start(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -891,6 +930,10 @@ func (s *Sensor) Run(ctx context.Context) error {
 						slog.Error("bus loop panic recovered", "panic", r, "event_id", ev.ID)
 					}
 				}()
+				// Snapshot the hot-swappable router + correlator once per
+				// event so a concurrent Reload() can't race us mid-event.
+				rt := s.curRouter()
+				co := s.curCorrelator()
 				s.enrich.Decorate(ev)
 				// ATT&CK-tag the event before correlation so the
 				// storyline correlator can build its tactic chain from
@@ -913,26 +956,26 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// the registry and emit device:new for never-before-
 				// seen, non-allow-listed hosts.
 				if devNew := s.observeDevice(ev); devNew != nil {
-					s.router.Dispatch(devNew)
+					rt.Dispatch(devNew)
 				}
 				// Payload harvesting: extract malware / shellcode /
 				// ingress URLs from the captured bytes; persist
 				// artifacts and emit malware:capture when one is found.
 				if mw := s.observePayload(ev, payloadBytes); mw != nil {
-					s.router.Dispatch(mw)
+					rt.Dispatch(mw)
 				}
 				// Scan analysis: feed listener events into the
 				// per-source Tracker; emit scananalysis:profile when a
 				// source's timing / scope / probe variety crosses the
 				// confidence threshold.
 				if scanEv := s.observeScan(ev, payloadBytes); scanEv != nil {
-					s.router.Dispatch(scanEv)
+					rt.Dispatch(scanEv)
 				}
-				for _, out := range s.correlator.Observe(ev) {
+				for _, out := range co.Observe(ev) {
 					if out != ev {
 						s.enrich.Decorate(out)
 					}
-					s.router.Dispatch(out)
+					rt.Dispatch(out)
 				}
 			}()
 		}
@@ -1154,7 +1197,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case <-t.C:
-					if err := s.correlator.Save(statePath); err != nil {
+					if err := s.curCorrelator().Save(statePath); err != nil {
 						slog.Warn("correlator periodic save failed", "err", err)
 					}
 				}
@@ -1193,7 +1236,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	// is the SAME ctx as Accept used). For now we accept that handlers
 	// will see ctx.Done() too; the drain timeout gives them a chance to
 	// finish their reply before we hard-cancel.
-	drainTimeout := s.cfg.Sensor.Shutdown.DrainTimeout
+	drainTimeout := s.curConfig().Sensor.Shutdown.DrainTimeout
 	if drainTimeout <= 0 {
 		drainTimeout = 10 * time.Second
 	}
@@ -1231,8 +1274,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 
 	close(s.bus)
 	wg.Wait()
-	s.router.Stop()
-	for _, sk := range s.sinks {
+	s.curRouter().Stop()
+	for _, sk := range s.curSinks() {
 		_ = sk.Close()
 	}
 	if s.store != nil {
@@ -1246,8 +1289,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 			slog.Warn("device registry save failed", "err", err)
 		}
 	}
-	if s.correlator != nil && s.cfg.Sensor.DataDir != "" {
-		if err := s.correlator.Save(correlate.StatePath(s.cfg.Sensor.DataDir)); err != nil {
+	if co, cfg := s.curCorrelator(), s.curConfig(); co != nil && cfg.Sensor.DataDir != "" {
+		if err := co.Save(correlate.StatePath(cfg.Sensor.DataDir)); err != nil {
 			slog.Warn("correlator state save failed", "err", err)
 		}
 	}

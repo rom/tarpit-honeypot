@@ -146,7 +146,12 @@ func (s *Session) End() (path string, truncated bool, err error) {
 }
 
 // prune deletes oldest pcaps until totalNow drops under totalBytes.
+// Serialized with m.mu so two sessions ending concurrently don't race on
+// the directory scan + removals (which could over-delete or double-count
+// the size estimate).
 func (m *Manager) prune() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if atomic.LoadInt64(&m.totalNow) <= m.totalBytes {
 		return
 	}

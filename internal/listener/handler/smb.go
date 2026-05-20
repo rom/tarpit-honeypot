@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	crand "crypto/rand"
 	"encoding/binary"
 	"io"
 	"net"
@@ -158,13 +159,15 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 // given dialect index. The challenge is a fixed 8 bytes; servername is
 // "WORKGROUP\0" UTF-16LE.
 func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identity) []byte {
-	// Per-deployment unique session key + challenge bytes. Without an
-	// Identity we fall back to the fixed v0.8 values so existing tests
-	// keep passing.
+	// Session key is per-deployment stable; the NTLM challenge is a fresh
+	// per-connection nonce (what a real server sends) — a static challenge
+	// is itself a fingerprint and enables precomputed/replay attacks.
 	var sessionKey uint32 = 0xdeadbeef
-	challenge := []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
 	if id != nil {
 		sessionKey = id.Uint32("smb-session-key")
+	}
+	challenge := make([]byte, 8)
+	if _, err := crand.Read(challenge); err != nil && id != nil {
 		challenge = id.Bytes("smb-challenge", 8)
 	}
 

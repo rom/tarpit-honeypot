@@ -216,6 +216,14 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 	})
 }
 
+// serverError logs the underlying error (which may contain the DB path or
+// other internals) and returns a generic 500 to the client so nothing
+// sensitive leaks in the HTTP response body.
+func serverError(w http.ResponseWriter, where string, err error) {
+	slog.Warn("ui: request failed", "path", where, "err", err)
+	http.Error(w, "internal server error", http.StatusInternalServerError)
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -225,7 +233,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	sum, err := s.store.Summary(ctx, time.Now().Add(-24*time.Hour))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -260,7 +268,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	evs, err := s.store.Query(ctx, f)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 	sortEvents(evs, sortKey, order)
@@ -357,7 +365,7 @@ func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-since), Limit: 1000})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 	ops := make([]*event.Event, 0, 32)
@@ -413,7 +421,7 @@ func (s *Server) handleAPIEvents(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	evs, err := s.store.Query(ctx, f)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -431,7 +439,7 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	sum, err := s.store.Summary(ctx, since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

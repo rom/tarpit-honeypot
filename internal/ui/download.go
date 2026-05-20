@@ -136,7 +136,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	evs, err := s.store.Query(ctx, f)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r.URL.Path, err)
 		return
 	}
 

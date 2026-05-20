@@ -415,6 +415,10 @@ Type-specific fields (all optional unless noted):
 
   # syslog (Unix only)
   - { id: siem-syslog, type: syslog, network: tcp, address: siem.example:6514, tag: tarpit-honeypot }
+  # NOTE: remote syslog (network: tcp/udp) is CLEARTEXT — events carry
+  # captured credentials/payloads, so don't send them across an untrusted
+  # network in the clear. Use network: local to a host syslog daemon, or
+  # forward via a local TLS agent (rsyslog/syslog-ng RELP+TLS, or stunnel).
 
   # twilio SMS
   - { id: pager, type: twilio,
@@ -425,9 +429,11 @@ Type-specific fields (all optional unless noted):
   - { id: lake, type: sns, topic_arn: arn:aws:sns:us-east-1:123:t,
       access_key_env: AWS_ACCESS_KEY_ID, secret_key_env: AWS_SECRET_ACCESS_KEY }
 
-  # SNMPv2c trap
+  # SNMPv2c trap. Prefer community_env (reads the community string from an
+  # env var) over inline community so the write credential isn't stored in
+  # the config or printed by show-config.
   - { id: nms, type: snmptrap, host: nms.example.internal, port: 162,
-      community: tarpit, enterprise_oid: "1.3.6.1.4.1.65535" }
+      community_env: SNMP_TRAP_COMMUNITY, enterprise_oid: "1.3.6.1.4.1.65535" }
 ```
 
 ### Output formats

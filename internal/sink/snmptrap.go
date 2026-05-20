@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -33,7 +34,14 @@ func newSNMPTrap(ch config.Channel) (Sink, error) {
 	if ch.Port != 0 {
 		port = uint16(ch.Port)
 	}
+	// Prefer the env-sourced community so the write credential stays out of
+	// the config file / show-config output; fall back to inline, then public.
 	community := ch.Community
+	if ch.CommunityEnv != "" {
+		if v := os.Getenv(ch.CommunityEnv); v != "" {
+			community = v
+		}
+	}
 	if community == "" {
 		community = "public"
 	}

@@ -85,6 +85,12 @@ func Drop(usr, grp string) error {
 		if err := syscall.Setgid(gid); err != nil {
 			return fmt.Errorf("privdrop: setgid(%d): %w", gid, err)
 		}
+	} else if uid >= 0 {
+		// Dropping uid without a resolved target gid: still clear root's
+		// supplementary groups so they don't persist after the drop.
+		if err := syscall.Setgroups([]int{}); err != nil {
+			slog.Warn("privdrop: setgroups (clear) failed", "err", err)
+		}
 	}
 	if uid >= 0 {
 		if err := syscall.Setuid(uid); err != nil {

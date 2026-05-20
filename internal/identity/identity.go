@@ -15,7 +15,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	mathrand "math/rand"
 	"os"
 	"path/filepath"
@@ -295,9 +294,8 @@ func (i *Identity) Uint32(label string) uint32 {
 // SerialNumber returns a stable but random-looking 32-bit serial for the
 // fake EtherNet/IP / SMB device id.
 func (i *Identity) SerialNumber() uint32 {
-	// Avoid trivially-spottable values like 0xdeadbeef / 0x00000000.
-	bi, _ := rand.Int(rand.Reader, big.NewInt(1)) // not used; reserved
-	_ = bi
+	// Deterministic per deployment (stable device id), but avoids
+	// trivially-spottable values like 0x00000000 by forcing a high bit.
 	return i.Uint32("device-serial") | 0x10000000
 }
 

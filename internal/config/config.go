@@ -532,8 +532,11 @@ type Channel struct {
 	SecretKeyEnv    string `yaml:"secret_key_env"`
 	SessionTokenEnv string `yaml:"session_token_env"`
 
-	// snmptrap
+	// snmptrap. CommunityEnv (preferred) reads the community string from an
+	// env var so the write credential isn't stored in the YAML / shown by
+	// show-config; inline Community is still honored for convenience.
 	Community     string `yaml:"community"`
+	CommunityEnv  string `yaml:"community_env"`
 	EnterpriseOID string `yaml:"enterprise_oid"`
 
 	// mqtt
