@@ -1,0 +1,84 @@
+# AppArmor profile for tarpit-honeypot.
+#
+# Install:
+#   sudo cp packaging/apparmor/usr.local.bin.tarpit-honeypot /etc/apparmor.d/
+#   sudo apparmor_parser -r -W /etc/apparmor.d/usr.local.bin.tarpit-honeypot
+#   # start in complain mode first to catch site-specific paths:
+#   sudo aa-complain /usr/local/bin/tarpit-honeypot
+#   # then enforce:
+#   sudo aa-enforce /usr/local/bin/tarpit-honeypot
+#
+# The profile confines the sensor to: read its config, read+write its
+# data dir + log dir, talk to the network (incl. AF_PACKET for the ARP /
+# ICMP / LLDP responders + sniffer), drop privileges — and nothing else.
+# It explicitly denies executing any shell/interpreter, so even a parser
+# 0-day can't spawn a process. Pairs with sensor.sandbox (seccomp +
+# Landlock) and the systemd hardening for defense-in-depth.
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile tarpit-honeypot /usr/local/bin/tarpit-honeypot {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/ssl_certs>
+
+  # The binary itself (mmap for the Go runtime; no interpreter).
+  /usr/local/bin/tarpit-honeypot mr,
+
+  # Capabilities the sensor needs (privileged port bind, AF_PACKET,
+  # privilege drop). Everything else is denied by omission.
+  capability net_bind_service,
+  capability net_raw,
+  capability setuid,
+  capability setgid,
+  capability dac_read_search,
+
+  # Networking: all TCP/UDP ports (a honeypot listens broadly) + raw
+  # packet sockets for the L2/L3 responders and the ARP-scan sniffer.
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network netlink raw,
+  network packet raw,
+  network packet dgram,
+
+  # Configuration (read-only), including conf.d includes.
+  /etc/tarpit-honeypot/{,**} r,
+
+  # Durable state: SQLite DB + WAL, rotated JSONL, pcaps, harvested
+  # payloads, TLS certs, deployment id, device inventory.
+  /var/lib/tarpit-honeypot/{,**} rwk,
+
+  # Log directory (when --log-file points here).
+  /var/log/tarpit-honeypot/{,**} rw,
+
+  # Operator-supplied GeoIP databases (common locations; read-only).
+  /var/lib/GeoIP/{,**} r,
+  /usr/share/GeoIP/{,**} r,
+
+  # System reads the Go runtime / TLS / DNS resolution need.
+  /etc/ssl/{,**} r,
+  /etc/pki/{,**} r,
+  /etc/nsswitch.conf r,
+  /etc/resolv.conf r,
+  /etc/hosts r,
+  /etc/localtime r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+  /proc/sys/net/core/somaxconn r,
+  @{PROC}/sys/kernel/random/boot_id r,
+  @{PROC}/@{pid}/{stat,status,maps,cgroup} r,
+  @{PROC}/@{pid}/net/{dev,if_inet6,route} r,
+
+  # Hard denials — the sensor never execs anything; refuse loudly.
+  deny /bin/** x,
+  deny /usr/bin/** x,
+  deny /usr/local/bin/** x,
+  deny /sbin/** x,
+  deny /usr/sbin/** x,
+  audit deny /etc/shadow r,
+  audit deny mount,
+  audit deny ptrace,
+}

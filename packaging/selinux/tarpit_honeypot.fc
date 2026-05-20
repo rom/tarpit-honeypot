@@ -1,0 +1,10 @@
+# File-context mappings for tarpit-honeypot.
+# Adjust the binary path if you install somewhere other than
+# /usr/local/bin (e.g. /usr/bin for the .rpm/.deb packages).
+
+/usr/local/bin/tarpit-honeypot		--	gen_context(system_u:object_r:tarpit_honeypot_exec_t,s0)
+/usr/bin/tarpit-honeypot		--	gen_context(system_u:object_r:tarpit_honeypot_exec_t,s0)
+
+/etc/tarpit-honeypot(/.*)?			gen_context(system_u:object_r:tarpit_honeypot_etc_t,s0)
+/var/lib/tarpit-honeypot(/.*)?			gen_context(system_u:object_r:tarpit_honeypot_var_lib_t,s0)
+/var/log/tarpit-honeypot(/.*)?			gen_context(system_u:object_r:tarpit_honeypot_log_t,s0)

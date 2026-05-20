@@ -1,0 +1,97 @@
+policy_module(tarpit_honeypot, 1.0.0)
+
+########################################
+#
+# tarpit-honeypot SELinux type-enforcement policy.
+#
+# Confines the sensor to its own domain (tarpit_honeypot_t): it may bind
+# any TCP/UDP port, open raw/packet sockets (ARP/ICMP/LLDP responders +
+# sniffer), read its config, manage its data + log dirs, resolve DNS, and
+# drop privileges — and nothing else. Pairs with the in-process
+# sensor.sandbox (seccomp + Landlock) + AppArmor + systemd hardening.
+#
+# Build + install (Fedora/RHEL with selinux-policy-devel):
+#   make -f /usr/share/selinux/devel/Makefile tarpit_honeypot.pp
+#   semodule -i tarpit_honeypot.pp
+#   restorecon -Rv /usr/local/bin/tarpit-honeypot /etc/tarpit-honeypot \
+#       /var/lib/tarpit-honeypot /var/log/tarpit-honeypot
+#
+########################################
+
+require {
+	type unlabeled_t;
+}
+
+########################################
+#
+# Declarations
+#
+
+type tarpit_honeypot_t;
+type tarpit_honeypot_exec_t;
+init_daemon_domain(tarpit_honeypot_t, tarpit_honeypot_exec_t)
+
+# Durable state: SQLite DB/WAL, rotated JSONL, pcaps, payloads, TLS certs.
+type tarpit_honeypot_var_lib_t;
+files_type(tarpit_honeypot_var_lib_t)
+
+# Read-only configuration (incl. conf.d includes).
+type tarpit_honeypot_etc_t;
+files_config_file(tarpit_honeypot_etc_t)
+
+# Log directory (when --log-file is used).
+type tarpit_honeypot_log_t;
+logging_log_file(tarpit_honeypot_log_t)
+
+########################################
+#
+# Local policy
+#
+
+# Capabilities: privileged port bind, raw sockets, privilege drop.
+allow tarpit_honeypot_t self:capability { net_bind_service net_raw setuid setgid dac_read_search };
+allow tarpit_honeypot_t self:process { setrlimit signal_perms getsched setsched };
+allow tarpit_honeypot_t self:fifo_file rw_fifo_file_perms;
+
+# Sockets: TCP/UDP listeners + outbound channels, raw/packet for the
+# L2/L3 responders and the AF_PACKET ARP-scan sniffer, netlink for
+# interface enumeration.
+allow tarpit_honeypot_t self:tcp_socket create_stream_socket_perms;
+allow tarpit_honeypot_t self:udp_socket create_socket_perms;
+allow tarpit_honeypot_t self:rawip_socket create_socket_perms;
+allow tarpit_honeypot_t self:packet_socket create_socket_perms;
+allow tarpit_honeypot_t self:netlink_route_socket r_netlink_socket_perms;
+
+# A honeypot listens broadly and dials out to alerting endpoints.
+corenet_tcp_bind_all_ports(tarpit_honeypot_t)
+corenet_udp_bind_all_ports(tarpit_honeypot_t)
+corenet_tcp_sendrecv_all_ports(tarpit_honeypot_t)
+corenet_udp_sendrecv_all_ports(tarpit_honeypot_t)
+corenet_tcp_connect_all_ports(tarpit_honeypot_t)
+corenet_tcp_bind_generic_node(tarpit_honeypot_t)
+corenet_udp_bind_generic_node(tarpit_honeypot_t)
+corenet_all_recvfrom_unlabeled(tarpit_honeypot_t)
+
+# Data directory: full management + create-with-correct-label.
+manage_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, tarpit_honeypot_var_lib_t)
+manage_files_pattern(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, tarpit_honeypot_var_lib_t)
+files_var_lib_filetrans(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, { dir file })
+
+# Configuration: read-only.
+read_files_pattern(tarpit_honeypot_t, tarpit_honeypot_etc_t, tarpit_honeypot_etc_t)
+list_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_etc_t, tarpit_honeypot_etc_t)
+
+# Log directory: create + append.
+manage_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
+manage_files_pattern(tarpit_honeypot_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
+logging_log_filetrans(tarpit_honeypot_t, tarpit_honeypot_log_t, { dir file })
+
+# System state the Go runtime + TLS + DNS need.
+kernel_read_system_state(tarpit_honeypot_t)
+kernel_read_network_state(tarpit_honeypot_t)
+files_read_etc_files(tarpit_honeypot_t)
+files_read_usr_files(tarpit_honeypot_t)
+miscfiles_read_localization(tarpit_honeypot_t)
+miscfiles_read_generic_certs(tarpit_honeypot_t)
+sysnet_dns_name_resolve(tarpit_honeypot_t)
+auth_use_nsswitch(tarpit_honeypot_t)
