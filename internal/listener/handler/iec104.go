@@ -165,7 +165,7 @@ func (i *iec104) replyToIFrame(conn net.Conn, body []byte, meta map[string]any) 
 			i.writeIFrame(conn, 100, 10, []byte{0, 0, 0x14}) // act-term
 		}
 	case 102: // C_RD_NA_1 — Read command
-		if cot == 5 { // request
+		if cot == 5 && len(body) >= 13 { // request
 			i.writeIFrame(conn, 102, 7, body[10:13]) // confirm
 		}
 	case 103: // C_CS_NA_1 — Clock sync

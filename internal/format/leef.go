@@ -75,7 +75,7 @@ func (l *leefF) Format(ev *event.Event) ([]byte, error) {
 func leefEscapeHeader(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `|`, `\|`)
-	return s
+	return stripControl(s) // CR/LF/control bytes can't forge a record
 }
 
 // leefEscapeValue escapes every byte that could disturb LEEF parsing:

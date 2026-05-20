@@ -131,7 +131,7 @@ func cefSeverity(s event.Severity) int {
 func cefEscapeHeader(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `|`, `\|`)
-	return s
+	return stripControl(s) // CR/LF/control bytes can't forge a record
 }
 
 // cefEscapeValue escapes characters that are special in the extension

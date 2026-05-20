@@ -9,8 +9,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
+
+// openNoFollow opens a file read-only, refusing to traverse a symlink at
+// the final path component. Defense in depth: even though pcap/cast names
+// are validated to stay inside the data dir, a symlink planted there (by
+// something with local write access) must not redirect a download to an
+// arbitrary file.
+func openNoFollow(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+}
 
 // SetDataDir wires the sensor data dir so the UI can serve recorded
 // pcaps (<dataDir>/captures/<id>.pcap) and session casts
@@ -55,7 +65,7 @@ func (s *Server) handlePcap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := filepath.Join(s.dataDir, "captures", id+".pcap")
-	f, err := os.Open(p)
+	f, err := openNoFollow(p)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -93,7 +103,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad cast name", http.StatusBadRequest)
 		return
 	}
-	f, err := os.Open(p)
+	f, err := openNoFollow(p)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -172,7 +182,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 // copyInto streams the file at path into the zip under name. Returns false
 // (silently) when the source file doesn't exist.
 func copyInto(zw *zip.Writer, path, name string) bool {
-	f, err := os.Open(path)
+	f, err := openNoFollow(path)
 	if err != nil {
 		return false
 	}

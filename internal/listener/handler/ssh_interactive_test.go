@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,25 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
+
+// syncBuffer is a goroutine-safe bytes.Buffer: the reader goroutine
+// io.Copy's into it while the test polls String(), so both sides must lock.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
 
 // loopbackPair sets up a localhost listener and returns one accepted
 // server-side conn + one dialed client-side conn. Unlike net.Pipe,
@@ -98,7 +118,7 @@ func TestSSHInteractiveEngagement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stdout pipe: %v", err)
 	}
-	var stdout bytes.Buffer
+	var stdout syncBuffer
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)

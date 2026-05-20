@@ -8,6 +8,30 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
+// stripControl removes ASCII control bytes (CR, LF, NUL, ESC, ...) from a
+// string. Used to harden the CEF/LEEF *header* fields so that even if an
+// attacker-controlled value ever reaches one (today they're server-
+// generated constants), it cannot inject a CR/LF and forge a log record.
+func stripControl(s string) string {
+	clean := true
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x20 && s[i] != 0x7f {
+			b = append(b, s[i])
+		}
+	}
+	return string(b)
+}
+
 // sortedMetaKeys returns the meta map's keys in stable order so the same
 // event renders to identical bytes on every Format() call. Important for
 // downstream dedup and for our own tests.

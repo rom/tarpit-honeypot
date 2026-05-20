@@ -13,7 +13,10 @@ import (
 // The TCP sequence numbers are tracked so the stream is coherent; no
 // SYN/FIN markers are emitted because we never saw the real ones.
 func writePcap(path string, s *Session) error {
-	f, err := os.Create(path)
+	// 0640: pcaps contain full captured attacker traffic (and any creds /
+	// payloads in it) — not world-readable. Matches the sessionrec/payload
+	// convention.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return err
 	}

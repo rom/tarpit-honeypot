@@ -81,6 +81,30 @@ func TestCEFEscapesPipeInHeaders(t *testing.T) {
 	}
 }
 
+// A CR/LF (or other control byte) in a header field must be stripped so it
+// can never forge a new CEF/LEEF record on a syslog hop.
+func TestHeaderEscapersStripControlBytes(t *testing.T) {
+	for _, name := range []string{"cef", "leef"} {
+		f, _ := Get(name)
+		ev := mkEvent()
+		ev.RuleID = "listener:evil\r\nCEF:0|forged|record"
+		b, _ := f.Format(ev)
+		s := string(b)
+		if strings.ContainsAny(s[:len(s)-1], "\r\n") { // allow a single trailing newline
+			t.Errorf("%s: control byte survived into header: %q", name, s)
+		}
+	}
+}
+
+func TestStripControl(t *testing.T) {
+	if got := stripControl("a\r\nb\x00c\x1bd"); got != "abcd" {
+		t.Errorf("stripControl = %q; want abcd", got)
+	}
+	if got := stripControl("clean"); got != "clean" {
+		t.Errorf("stripControl mangled a clean string: %q", got)
+	}
+}
+
 func TestLEEFShape(t *testing.T) {
 	f, _ := Get("leef")
 	b, _ := f.Format(mkEvent())

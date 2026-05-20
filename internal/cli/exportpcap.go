@@ -24,6 +24,11 @@ func cmdExportPcap(args []string) error {
 	if *eventID == "" {
 		return fmt.Errorf("--event is required")
 	}
+	// Event ids are hex (event.NewID); reject anything else so the value
+	// can't traverse out of captures/ (e.g. "../../etc/shadow\x00").
+	if !isHexID(*eventID) {
+		return fmt.Errorf("--event %q: not a valid event id", *eventID)
+	}
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		return err
@@ -51,4 +56,18 @@ func cmdExportPcap(args []string) error {
 		fmt.Fprintf(os.Stderr, "export-pcap: wrote %d bytes to %s\n", n, *outPath)
 	}
 	return nil
+}
+
+// isHexID reports whether s is a non-empty hex string (the shape of an
+// event id) — used to keep the --event value from escaping captures/.
+func isHexID(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

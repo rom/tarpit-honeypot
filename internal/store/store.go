@@ -69,6 +69,13 @@ func Open(dataDir string, capMB int) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("store: schema: %w", err)
 	}
+	// The DB holds captured payloads, source IPs, and harvested
+	// credentials — restrict it (and its WAL/SHM siblings, created by the
+	// schema write above) to owner-only. Best-effort: a chmod failure
+	// shouldn't stop the sensor from running.
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		_ = os.Chmod(p, 0o600)
+	}
 	return &Store{db: db, path: path, capMB: capMB}, nil
 }
 
