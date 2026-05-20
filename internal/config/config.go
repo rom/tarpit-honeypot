@@ -250,8 +250,24 @@ type Listener struct {
 	Tarpit Tarpit `yaml:"tarpit"`
 }
 
+// HTTPS configures the self-signed TLS cert the https handler presents.
+// Each TLS-capable listener gets its own cert keyed by these fields so
+// distinct services on the same host present distinct, believable
+// endpoints (different subject, organization, key type, serial). When
+// the subject fields are blank the handler derives deployment-unique
+// defaults from sensor.deployment_id + the listener id, so two
+// services on one sensor still look like two different machines.
 type HTTPS struct {
 	Hosts []string `yaml:"hosts"`
+	// Subject fields. Blank = deployment+service-derived default.
+	CN  string `yaml:"cn"`           // certificate Common Name
+	Org string `yaml:"org"`          // O= organization
+	OU  string `yaml:"ou"`           // OU= organizational unit
+	// KeyType selects the key algorithm: "ecdsa" (default, P-256) or
+	// "rsa" (2048-bit). Mixing key types across services is a strong
+	// "these are different machines" signal to a TLS-fingerprinting
+	// scanner.
+	KeyType string `yaml:"key_type"`
 }
 
 type Tarpit struct {

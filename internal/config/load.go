@@ -286,6 +286,11 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("listener %s: accept_creds must be none|defaults|any (got %q)", l.ID, l.AcceptCreds)
 		}
+		switch l.HTTPS.KeyType {
+		case "", "ecdsa", "rsa":
+		default:
+			return fmt.Errorf("listener %s: https.key_type must be ecdsa|rsa (got %q)", l.ID, l.HTTPS.KeyType)
+		}
 	}
 
 	// Canaries.

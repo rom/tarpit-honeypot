@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -48,11 +50,8 @@ func (h *https) Name() string { return "https" }
 func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	h.jit.Sleep(ctx)
-	hosts := cfg.HTTPS.Hosts
-	if len(hosts) == 0 {
-		hosts = []string{"localhost"}
-	}
-	cert, err := h.certFor(hosts)
+	prof := h.profileFor(cfg)
+	cert, err := h.certFor(prof)
 	if err != nil {
 		return Result{Meta: map[string]any{"cert_err": err.Error()}}, nil
 	}
@@ -105,9 +104,79 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	return res, nil
 }
 
-func (h *https) certFor(hosts []string) (*tls.Certificate, error) {
-	key := ""
-	for _, x := range hosts {
+// certProfile is the resolved, service-unique parameters for one TLS
+// endpoint's self-signed certificate.
+type certProfile struct {
+	listenerID string
+	hosts      []string
+	cn         string
+	org        string
+	ou         string
+	keyType    string // "ecdsa" | "rsa"
+}
+
+// profileFor resolves the certProfile for a listener: explicit config
+// fields win; blank fields fall back to deployment+service-derived
+// defaults so two services on one sensor present distinct
+// organizations / common names / key types even with no extra config.
+func (h *https) profileFor(cfg config.Listener) certProfile {
+	hs := cfg.HTTPS.Hosts
+	if len(hs) == 0 {
+		hs = []string{"localhost"}
+	}
+	p := certProfile{
+		listenerID: cfg.ID,
+		hosts:      hs,
+		cn:         cfg.HTTPS.CN,
+		org:        cfg.HTTPS.Org,
+		ou:         cfg.HTTPS.OU,
+		keyType:    cfg.HTTPS.KeyType,
+	}
+	if p.cn == "" {
+		p.cn = hs[0]
+	}
+	if p.org == "" {
+		p.org = h.deriveOrg(cfg.ID)
+	}
+	if p.keyType == "" {
+		p.keyType = h.deriveKeyType(cfg.ID)
+	}
+	return p
+}
+
+// deriveOrg picks a believable organization name deterministically from
+// the deployment seed + listener id, so each service's cert looks like
+// it belongs to a distinct (fake) company.
+func (h *https) deriveOrg(listenerID string) string {
+	pool := []string{
+		"Internal Services", "IT Department", "Acme Corp", "Contoso Ltd",
+		"Globex", "Initech", "Umbrella Systems", "Northwind Traders",
+		"Default Company Ltd", "",
+	}
+	if h.id == nil {
+		return pool[0]
+	}
+	idx := int(h.id.Derive("tls-org/"+listenerID).Uint32("pick")) % len(pool)
+	return pool[idx]
+}
+
+// deriveKeyType picks ecdsa or rsa per service so a TLS-fingerprinting
+// scanner sees a mix of key algorithms across the host's services.
+func (h *https) deriveKeyType(listenerID string) string {
+	if h.id == nil {
+		return "ecdsa"
+	}
+	if h.id.Derive("tls-keytype/"+listenerID).Uint32("pick")%4 == 0 {
+		return "rsa" // ~25% of services present an RSA cert
+	}
+	return "ecdsa"
+}
+
+func (h *https) certFor(prof certProfile) (*tls.Certificate, error) {
+	// Cache + on-disk key includes the listener id + subject so two
+	// services with the same hostnames still get distinct certs.
+	key := prof.listenerID + "|" + prof.cn + "|" + prof.org + "|" + prof.keyType + "|"
+	for _, x := range prof.hosts {
 		key += x + "|"
 	}
 	h.mu.Lock()
@@ -123,7 +192,7 @@ func (h *https) certFor(hosts []string) (*tls.Certificate, error) {
 		h.cache[key] = &c
 		return &c, nil
 	}
-	c, err := generateSelfSigned(hosts)
+	c, err := generateSelfSignedProfile(prof, h.id)
 	if err != nil {
 		return nil, err
 	}
@@ -155,35 +224,68 @@ func (h *https) shouldRotate(c *tls.Certificate) bool {
 	return age > time.Duration(h.rotateDays)*24*time.Hour
 }
 
-func generateSelfSigned(hosts []string) (*tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
+// generateSelfSignedProfile builds a self-signed cert from a resolved
+// service profile. The key type (ECDSA P-256 or RSA-2048), subject
+// (CN / O / OU), and validity-window jitter are all profile-driven so
+// distinct services present distinct certificates. When id is non-nil
+// the validity NotBefore is shifted by a deployment+service-derived
+// offset so two sensors don't issue certs with identical timestamps.
+func generateSelfSignedProfile(prof certProfile, id *identity.Identity) (*tls.Certificate, error) {
+	var priv crypto.Signer
+	var pub any
+	switch prof.keyType {
+	case "rsa":
+		k, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return nil, err
+		}
+		priv, pub = k, &k.PublicKey
+	default: // ecdsa
+		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		priv, pub = k, &k.PublicKey
 	}
+
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return nil, err
 	}
+
+	subject := pkix.Name{CommonName: prof.cn}
+	if prof.org != "" {
+		subject.Organization = []string{prof.org}
+	}
+	if prof.ou != "" {
+		subject.OrganizationalUnit = []string{prof.ou}
+	}
+
+	// Per-service validity jitter: shift NotBefore back by a stable
+	// number of days so a scanner correlating cert ages across the
+	// host's services sees different issue dates per endpoint.
+	ageDays := 30
+	if id != nil {
+		ageDays = 7 + int(id.Derive("tls-age/"+prof.listenerID).Uint32("days")%700)
+	}
+	notBefore := time.Now().Add(-time.Duration(ageDays) * 24 * time.Hour)
+
 	template := x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: hosts[0]},
-		NotBefore:    time.Now().Add(-1 * time.Hour),
-		NotAfter:     time.Now().Add(2 * 365 * 24 * time.Hour),
+		Subject:      subject,
+		NotBefore:    notBefore,
+		NotAfter:     notBefore.Add(2 * 365 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	for _, h := range hosts {
-		if ip := net.ParseIP(h); ip != nil {
+	for _, host := range prof.hosts {
+		if ip := net.ParseIP(host); ip != nil {
 			template.IPAddresses = append(template.IPAddresses, ip)
 		} else {
-			template.DNSNames = append(template.DNSNames, h)
+			template.DNSNames = append(template.DNSNames, host)
 		}
 	}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, err
-	}
-	keyDER, err := x509.MarshalECPrivateKey(priv)
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, pub, priv)
 	if err != nil {
 		return nil, err
 	}
@@ -191,23 +293,26 @@ func generateSelfSigned(hosts []string) (*tls.Certificate, error) {
 		Certificate: [][]byte{der},
 		PrivateKey:  priv,
 	}
-	// Stash PEM forms for persistence in writeCert.
 	c.Leaf, _ = x509.ParseCertificate(der)
-	_ = keyDER // keyDER is used by writeCert via a separate marshal call
 	return c, nil
 }
 
 func writeCert(certPath, keyPath string, c *tls.Certificate) error {
-	priv, ok := c.PrivateKey.(*ecdsa.PrivateKey)
-	if !ok {
-		return fmt.Errorf("writeCert: unexpected key type")
-	}
-	keyDER, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return err
+	var keyPEM []byte
+	switch priv := c.PrivateKey.(type) {
+	case *ecdsa.PrivateKey:
+		keyDER, err := x509.MarshalECPrivateKey(priv)
+		if err != nil {
+			return err
+		}
+		keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	case *rsa.PrivateKey:
+		keyDER := x509.MarshalPKCS1PrivateKey(priv)
+		keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyDER})
+	default:
+		return fmt.Errorf("writeCert: unexpected key type %T", c.PrivateKey)
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate[0]})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	if err := os.WriteFile(certPath, certPEM, 0o640); err != nil {
 		return err
 	}
