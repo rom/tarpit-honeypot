@@ -172,11 +172,31 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			banner = renderHTTPResponse(server, 200, "text/html; charset=utf-8",
 				arch.HTTPBodyHTML())
 		} else {
-			banner = "HTTP/1.1 401 Unauthorized\r\n" +
-				"Server: " + server + "\r\n" +
-				"WWW-Authenticate: Basic realm=\"admin\"\r\n" +
-				"Content-Length: 0\r\n" +
-				"Connection: close\r\n\r\n"
+			// No archetype web body: emulate the resolved server
+			// flavor (Apache / nginx) with its version-appropriate
+			// default pages. GET / -> 200 "It works!"/welcome;
+			// any other path -> a flavored 404 whose error-page
+			// footer matches the Server header — defeating the
+			// "404 body doesn't match the Server" honeypot tell.
+			flavor := flavorFromServer(server)
+			hostForFooter := host
+			if hostForFooter == "" {
+				hostForFooter = "localhost"
+			}
+			switch {
+			case flavor == flavorGeneric:
+				// Unknown flavor: keep the v1.0 nginx-ish 401 realm.
+				banner = "HTTP/1.1 401 Unauthorized\r\n" +
+					"Server: " + server + "\r\n" +
+					"WWW-Authenticate: Basic realm=\"admin\"\r\n" +
+					"Content-Length: 0\r\n" +
+					"Connection: close\r\n\r\n"
+			case path == "/" || path == "":
+				idxBody, idxCT := defaultIndexPage(flavor, server)
+				banner = renderHTTPResponse(server, 200, idxCT, idxBody)
+			default:
+				banner = buildErrorResponse(flavor, 404, server, hostForFooter, id)
+			}
 		}
 	}
 	if _, err := conn.Write([]byte(banner)); err != nil {

@@ -119,7 +119,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "telnet":
 		return &telnet{jit: deps.Jitter, arch: deps.Archetype}, nil
 	case "ftp":
-		return &ftp{jit: deps.Jitter, arch: deps.Archetype}, nil
+		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity}, nil
 	case "ftp_files":
 		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds}, nil
 	case "modbus":

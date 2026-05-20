@@ -130,6 +130,123 @@ func (i *Identity) HostName() string {
 	return fmt.Sprintf("%s%02d.example.internal", prefixes[r.Intn(len(prefixes))], 10+r.Intn(80))
 }
 
+// ApacheVersion returns a deployment-unique Apache httpd version
+// string of the form "Apache/2.4.X (distro)". Used by the http /
+// https handlers when emulating an Apache server. The pool spans the
+// 2.2 and 2.4 lines + several distro flavors so a scanner hitting
+// many sensors sees a believable spread of patch levels.
+func (i *Identity) ApacheVersion() string {
+	pool := []string{
+		"Apache/2.4.62 (Debian)",
+		"Apache/2.4.58 (Ubuntu)",
+		"Apache/2.4.57 (Unix)",
+		"Apache/2.4.54 (Red Hat Enterprise Linux)",
+		"Apache/2.4.52 (Ubuntu)",
+		"Apache/2.4.41 (Ubuntu)",
+		"Apache/2.4.37 (centos)",
+		"Apache/2.4.6 (CentOS)",
+		"Apache/2.2.34 (Unix)",
+		"Apache/2.2.15 (CentOS)",
+	}
+	r := i.deterministicRand("apache-version")
+	return pool[r.Intn(len(pool))]
+}
+
+// ApacheModules returns a deployment-unique trailing module list that
+// some Apache configs append to the Server header (e.g.
+// "Apache/2.4.41 (Ubuntu) OpenSSL/1.1.1f mod_wsgi/4.6.8 Python/3.8").
+// Returns "" for the (common) ServerTokens Prod / OS case.
+func (i *Identity) ApacheModules() string {
+	pool := []string{
+		"",
+		"",
+		" OpenSSL/1.1.1f",
+		" OpenSSL/3.0.2",
+		" OpenSSL/1.1.1k mod_fcgid/2.3.9",
+		" PHP/7.4.3",
+		" mod_wsgi/4.6.8 Python/3.8",
+		" OpenSSL/1.0.2k-fips mod_perl/2.0.11 Perl/v5.16.3",
+	}
+	r := i.deterministicRand("apache-modules")
+	return pool[r.Intn(len(pool))]
+}
+
+// NginxVersion returns a deployment-unique nginx version string.
+func (i *Identity) NginxVersion() string {
+	pool := []string{
+		"nginx/1.18.0 (Ubuntu)", "nginx/1.21.4", "nginx/1.24.0 (Ubuntu)",
+		"nginx/1.25.3", "nginx/1.20.1", "nginx/1.14.2",
+	}
+	r := i.deterministicRand("nginx-version")
+	return pool[r.Intn(len(pool))]
+}
+
+// FTPBannerVariant returns a deployment-unique FTP 220 banner.
+func (i *Identity) FTPBannerVariant() string {
+	pool := []string{
+		"220 (vsFTPd 3.0.5)",
+		"220 (vsFTPd 3.0.3)",
+		"220 ProFTPD Server (Debian)",
+		"220 Pure-FTPd server ready",
+		"220 Microsoft FTP Service",
+		"220 FileZilla Server 1.7.3",
+	}
+	r := i.deterministicRand("ftp-banner")
+	return pool[r.Intn(len(pool))]
+}
+
+// DNSServerVersion returns a deployment-unique BIND version string
+// (the classic `version.bind CH TXT` reconnaissance answer).
+func (i *Identity) DNSServerVersion() string {
+	pool := []string{
+		"9.16.1-Ubuntu", "9.18.18-0ubuntu0.22.04.2", "9.11.4-P2-RedHat-9.11.4-26.P2.el7_9.13",
+		"9.10.3-P4-Debian", "dnsmasq-2.80", "Microsoft DNS 6.1.7601 (1DB15CD4)",
+	}
+	r := i.deterministicRand("dns-version")
+	return pool[r.Intn(len(pool))]
+}
+
+// NTPRefID returns a deployment-unique 4-byte NTP reference identifier
+// (the upstream clock source shown in mode-4 replies). Stratum-2
+// servers show the upstream server's IP; we synthesize a plausible
+// one.
+func (i *Identity) NTPRefID() [4]byte {
+	b := i.Bytes("ntp-refid", 4)
+	var out [4]byte
+	copy(out[:], b)
+	// Make it look like a routable upstream (avoid 0.x / 127.x / 10.x).
+	if out[0] == 0 || out[0] == 127 || out[0] == 10 {
+		out[0] = 17 + out[0]%200
+	}
+	return out
+}
+
+// ETagSeed returns a deployment-unique seed for synthesizing Apache/
+// nginx ETag header values, so two sensors don't emit identical ETags
+// for the same synthetic resource.
+func (i *Identity) ETagSeed() uint32 { return i.Uint32("etag-seed") }
+
+// SMTPGreetingProduct returns a deployment-unique SMTP product string
+// for the 220 greeting (independent of the archetype path).
+func (i *Identity) SMTPGreetingProduct() string {
+	pool := []string{
+		"Postfix", "Postfix (Ubuntu)", "Exim 4.94.2", "Sendmail 8.15.2/8.15.2",
+		"Microsoft ESMTP MAIL Service", "OpenSMTPD",
+	}
+	r := i.deterministicRand("smtp-product")
+	return pool[r.Intn(len(pool))]
+}
+
+// SSHCookie returns the 16-byte random cookie an SSH server places in
+// its KEXINIT. Deterministic per deployment so the HASSH-adjacent
+// fingerprint of OUR side is also stable + unique.
+func (i *Identity) SSHCookie() [16]byte {
+	b := i.Bytes("ssh-kex-cookie", 16)
+	var out [16]byte
+	copy(out[:], b)
+	return out
+}
+
 // MySQLVersion returns a deployment-unique MySQL version string.
 func (i *Identity) MySQLVersion() string {
 	pool := []string{
