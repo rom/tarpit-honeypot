@@ -98,7 +98,17 @@ What makes the sensor *look real*:
   key) and Telnet drop into a per-family canned-response console:
   POSIX shells, **PowerShell** (incl. AD cmdlets), **Windows cmd.exe**,
   **Cisco IOS**, **Moxa** / **SCALANCE** switch CLIs, and the **Siemens
-  S7 PLC** console. Every typed line is captured + TTP-scanned.
+  S7 PLC** console. Every typed line is captured + TTP-scanned. Sessions
+  can be recorded as replayable asciinema casts
+  (`sensor.session_recording`, `internal/sessionrec`).
+- **Lua dynamic responses** (`handler: lua`, `internal/luaengine`). An
+  operator Lua script drives a service in a sandboxed pure-Go VM (no
+  io/os, context deadline + read/write/sleep budgets). API: per-session
+  state, per-source persistent `host` state, `personality()` (stable
+  hostname/version/firmware per source), deterministic `rng` (seeded from
+  `deployment_id`), `sleep` timers, `log`/`flag`/`meta`. This is the
+  mechanism for deep app emulation and rotating dynamic banners without
+  recompiling.
 - **Honeynets** (`internal/honeynet`). Zero-to-many virtual networks of
   virtual hosts; each host has its own derived Identity (distinct
   banners/serials) and answers on its own IP/MAC. Optional Linux
@@ -187,8 +197,11 @@ Per listener `mode`:
 
 All durable state under `sensor.data_dir`: SQLite index, rotated JSONL,
 per-event pcaps (synthesized libpcap, no raw sockets), harvested
-payloads, cached TLS certs, `devices.json`, `.deployment-id`. Size caps +
-time-based retention (`disk.retention_days`) prune each store.
+payloads, session-recording casts (`sessions/`), cached TLS certs,
+`devices.json`, `.deployment-id`, and the windowed-correlator checkpoint
+(`correlate-state.json`, written every 60s + on shutdown, restored on
+startup and carried across hot reload so slow-scan survives a restart).
+Size caps + time-based retention (`disk.retention_days`) prune each store.
 
 ## 9. Self-confinement & hardening
 
@@ -264,11 +277,16 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   ICMP-sweep correlation; macOS first-class.
 - **v1.12** — scan analysis; RFC small services (TCP+UDP); resolving DNS;
   emulate-then-tarpit; web UI topology + docs tabs.
-- **current** — CVE catalog + vulnerable-banner emulation; ATT&CK→D3FEND
-  mapping; Active Directory + Cisco archetypes; PowerShell / cmd / Cisco
-  / PLC command emulation; malware/shellcode/payload harvesting;
-  storyline CVE/malware/objective awareness; web UI hosts + alerting
-  tabs; seccomp + Landlock self-confinement + AppArmor/SELinux policies.
+- **v1.12** (cont.) — CVE catalog + vulnerable-banner emulation;
+  ATT&CK→D3FEND mapping; Active Directory + Cisco archetypes; PowerShell /
+  cmd / Cisco / PLC command emulation; malware/shellcode/payload
+  harvesting; storyline CVE/malware/objective awareness; web UI hosts +
+  alerting tabs; seccomp + Landlock self-confinement + AppArmor/SELinux;
+  topology-coherent DNS (SRV/PTR/HINFO/LOC/SOA); web UI sortable/filterable
+  + errors view.
+- **current (v1.13)** — Lua dynamic-response engine (`handler: lua`);
+  attacker session recording (asciinema casts); persistent + reload-durable
+  correlator state.
 
 ## 14. Open risks
 

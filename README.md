@@ -23,7 +23,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **76 built-in protocol handlers** (1 generic + 52 TCP + 23 UDP). See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **77 built-in protocol handlers** (1 generic + 53 TCP + 23 UDP), including a scriptable `lua` handler for dynamic responses. See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -64,6 +64,22 @@ rationale covering the current implementation.
   archive / script magic + x86 shellcode heuristics), decodes
   base64-wrapped droppers, harvests ingress URLs, and persists artifacts
   to `<data_dir>/payloads/` (size-capped). Emits `malware:capture`.
+- **Lua dynamic-response engine** (`handler: lua`, `internal/luaengine`):
+  drive a service from an operator Lua script in a sandboxed pure-Go VM
+  (no io/os, context deadline + read/write/sleep budgets). Scripts get
+  per-session state, per-source persistent `host` state, `personality()`
+  (stable hostname/version/firmware per source), deterministic `rng`
+  (seeded from `deployment_id`), `sleep` timers, and `log`/`flag`/`meta`
+  — for deeper app emulation + rotating dynamic banners. Example:
+  [`configs/scripts/iot-login.lua`](configs/scripts/iot-login.lua).
+- **Attacker session recording** (`sensor.session_recording`): interactive
+  `telnet` / `ssh_interactive` sessions are recorded as asciinema v2 casts
+  under `<data_dir>/sessions/` (replayable with timing); the cast filename
+  lands in event meta. Per-cast + total-size capped.
+- **Persistent correlator state**: the windowed detectors (port-scan /
+  brute-force / slow-scan / icmp-sweep) checkpoint to
+  `<data_dir>/correlate-state.json` and restore on startup + carry across
+  hot reload, so long-window detection (slow-scan) survives a restart.
 - **Archetype consistency**: each archetype keeps its firmware era,
   banners, SNMP identity, MAC OUI, login pages, ICMP TTL, **and TLS
   posture** aligned — e.g. a "Windows Server 2008" archetype caps TLS
@@ -301,6 +317,16 @@ In-tree:
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
 ## Status
+
+**v1.13 — scriptable + recorded + durable.** A Lua dynamic-response
+engine (`handler: lua`) drives services from sandboxed operator scripts
+with per-session state, per-source `host` state, deterministic `rng`,
+`personality()` rotation, and timers — the mechanism for deep app
+emulation + dynamic banners. Interactive `telnet` / `ssh_interactive`
+sessions are recorded as replayable asciinema casts
+(`sensor.session_recording`). The windowed correlators now persist their
+state to disk and across hot reload, so slow-scan detection survives a
+restart.
 
 **Current — macOS first-class.** `darwin/amd64` and `darwin/arm64`
 ship via `make cross`. Every feature except the four Linux-kernel-

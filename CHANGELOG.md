@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — Lua dynamic responses + session recording + durable correlator
+- **Lua dynamic-response engine** (`handler: lua`, `internal/luaengine`):
+  operator scripts drive a service in a sandboxed pure-Go gopher-lua VM
+  (no io/os, context deadline + read/write/sleep budgets). Per-service
+  scripts, per-session + per-source `host` state, `personality()`
+  (stable hostname/version/firmware per source), deterministic `rng`
+  (seeded from deployment_id), `sleep` timers, dynamic banners, and
+  `log`/`flag`/`meta`. Example `configs/scripts/iot-login.lua`.
+- **Attacker session recording** (`sensor.session_recording`,
+  `internal/sessionrec`): interactive `telnet` / `ssh_interactive`
+  sessions saved as replayable asciinema v2 casts under
+  `<data_dir>/sessions/`; cast filename recorded in event meta.
+- **Persistent correlator state**: port-scan / brute-force / slow-scan /
+  icmp-sweep state checkpoints to `<data_dir>/correlate-state.json`
+  (60s + on shutdown), restores on startup, and carries across hot
+  reload — so long-window detection survives a restart.
+
 ### Added — topology-coherent DNS + web UI sorting/filtering/errors view
 - **DNS resolver answers in correspondence with the topology**: a query
   matching a virtual host's FQDN (or reverse address) returns that host's
