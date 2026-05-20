@@ -56,6 +56,8 @@ type Deps struct {
 	VulnEmulation bool
 	// Script is the path to a Lua dynamic-response script (handler "lua").
 	Script string
+	// Scripted is the declarative fake-protocol spec (handler "scripted").
+	Scripted config.ScriptedProto
 	// SessionRec records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema casts. nil = recording disabled.
 	SessionRec *sessionrec.Store
@@ -125,6 +127,8 @@ func Get(name string, deps Deps) (Handler, error) {
 	switch name {
 	case "raw":
 		return &raw{}, nil
+	case "scripted":
+		return compileScripted(deps.Scripted)
 	case "lua":
 		if deps.Script == "" {
 			return nil, fmt.Errorf("lua handler requires a script: path")

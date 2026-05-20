@@ -281,7 +281,7 @@ func (c *Config) Validate() error {
 			"horizon": true, "moxa_mgmt": true,
 			"echo": true, "discard": true, "daytime": true,
 			"qotd": true, "chargen": true, "time": true,
-			"lua": true,
+			"lua": true, "scripted": true,
 		}
 		udpHandlers := map[string]bool{
 			"raw": true, "snmp": true, "ntp": true,
@@ -309,6 +309,11 @@ func (c *Config) Validate() error {
 		}
 		if l.Handler == "lua" && l.Script == "" {
 			return fmt.Errorf("listener %s: lua handler requires a script path", l.ID)
+		}
+		if l.Handler == "scripted" {
+			if err := l.Scripted.Validate(); err != nil {
+				return fmt.Errorf("listener %s: scripted: %w", l.ID, err)
+			}
 		}
 		if l.Mode == "tarpit" {
 			if l.Proto != "tcp" {

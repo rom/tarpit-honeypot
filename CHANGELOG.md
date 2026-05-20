@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — declarative fake-protocol handler (`scripted`)
+- **`handler: scripted`** (`internal/listener/handler/scripted.go`): stand up
+  a believable custom TCP service entirely in YAML — no Lua. The `scripted:`
+  block defines an optional on-connect `greeting` and top-down `rules` that
+  match each client message by `prefix` / `contains` / `regex` (RE2, no
+  catastrophic backtracking) / `hex_prefix` / `any`, then write a `respond`
+  (text with `\r \n \t \0 \xHH \\` escapes, or `respond_hex` for binary),
+  with optional per-rule `anomaly` flag and connection `close`. A `default`
+  reply covers misses. Bounded `max_rounds` (≤64) + 64 KB per-reply cap +
+  16 KB transcript cap; TCP-only so it can never be a spoofed-source
+  amplifier. The spec is fully validated at config-load (`ScriptedProto`)
+  and recompiled at handler build. FULL example: a fake memcached text
+  service (`tcp-scripted-memcached`). Added to the end-to-end handler fuzz
+  harness.
+
 ### Added — 12 appliance archetypes + richer per-archetype service params
 - **12 new archetypes** (`internal/archetype/appliances.go`), bringing the
   ship total to **58**: pfSense + FortiGate firewalls, Synology + QNAP NAS,

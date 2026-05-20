@@ -72,6 +72,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		HoneynetView:  args.HoneynetSnapshot,
 		VulnEmulation: vuln,
 		Script:        l.Script,
+		Scripted:      l.Scripted,
 		SessionRec:    args.SessionRec,
 	}
 	switch l.Proto {

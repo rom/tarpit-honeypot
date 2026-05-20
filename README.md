@@ -73,6 +73,14 @@ rationale covering the current implementation.
   (seeded from `deployment_id`), `sleep` timers, and `log`/`flag`/`meta`
   — for deeper app emulation + rotating dynamic banners. Example:
   [`configs/scripts/iot-login.lua`](configs/scripts/iot-login.lua).
+- **Declarative fake-protocol routing** (`handler: scripted`): stand up a
+  believable custom TCP service entirely in YAML — no Lua. An optional
+  on-connect `greeting`, then top-down `rules` that match each client
+  message by `prefix` / `contains` / `regex` (RE2) / `hex_prefix` / `any`
+  and write a `respond` (text-escapes or `respond_hex` for binary), with
+  optional per-rule `anomaly` flag and `close`. Bounded rounds + per-reply
+  size cap; TCP-only so it can't be a spoofed-source amplifier. Validated
+  at config-load (regex compiles, hex decodes).
 - **Attacker session recording** (`sensor.session_recording`): interactive
   `telnet` / `ssh_interactive` sessions are recorded as asciinema v2 casts
   under `<data_dir>/sessions/` (replayable with timing); the cast filename
@@ -802,6 +810,7 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | Handler | Port | What it does | arch | id |
 |---|---|---|:-:|:-:|
 | `raw` | any | Sends literal `banner:` field, reads up to `read_bytes`. | — | — |
+| `scripted` | any | Declarative fake protocol from the `scripted:` config block: optional on-connect greeting, then top-down `rules` matching each message (`prefix`/`contains`/`regex`/`hex_prefix`/`any`) → `respond` (text or `respond_hex`), with per-rule `anomaly` + `close`. Captures the full transcript. Bounded rounds + 64 KB reply cap. | — | — |
 | `ssh` | 22 | Sends archetype/identity-shaped SSH-2.0 banner, reads client ID (flags non-printable / non-SSH / overlong as anomalies), computes HASSH from the first binary packet, then sends "Protocol mismatch." | ✓ | ✓ |
 | `ssh_interactive` | 22 | Full `golang.org/x/crypto/ssh` server with persistent ed25519 host key under `<data_dir>/tls/ssh_host_ed25519_key`. Captures every password / pubkey attempt (SHA-256 fingerprint, key type, user, client version), accepts the 3rd credential and drops into `internal/shell.Run` on the session channel. Bounded: `SessionTimeout=5min`, `MaxAuthTries=6`. Also captures non-interactive `ssh host CMD` exec lines + scans them for anomalies. | ✓ | ✓ |
 | `http` | 80 | Routes on method+path. `GET /` serves the archetype's index HTML (Moxa / SCALANCE / S7 device pages or nginx 401). `GET /login` and 12 other login-shaped paths serve a form. `POST /login` parses `application/x-www-form-urlencoded` body (accepts 6 alias names each for user/pass) and captures credentials. Computes JA4H from request line + headers. Flags 8 suspicious-URI anomalies (Log4Shell JNDI, path traversal, WordPress / `.git` / `.env` / Tomcat manager probes). | ✓ | ✓ |

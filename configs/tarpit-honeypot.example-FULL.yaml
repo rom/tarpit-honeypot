@@ -670,6 +670,42 @@ listeners:
     severity: medium
     read_timeout: 30s
 
+  # Declarative fake protocol (no Lua): a fake memcached text service. Rules
+  # are matched top-down per client message; first match wins. Text fields
+  # support \r \n \t \0 \xHH \\ escapes; use *_hex for binary. TCP-only.
+  - id: tcp-scripted-memcached
+    proto: tcp
+    bind: 0.0.0.0:11211
+    mode: banner
+    handler: scripted
+    severity: medium
+    read_timeout: 30s
+    read_bytes: 4096
+    scripted:
+      max_rounds: 16
+      rules:
+        - match: prefix
+          value: "version"
+          respond: "VERSION 1.6.21\r\n"
+        - match: prefix
+          value: "stats"
+          respond: "STAT pid 2098\r\nSTAT version 1.6.21\r\nSTAT curr_connections 10\r\nEND\r\n"
+        - match: prefix
+          value: "get "
+          respond: "END\r\n"          # key miss
+        - match: prefix
+          value: "set "
+          anomaly: "memcached-write-attempt"
+          respond: "STORED\r\n"
+        - match: contains
+          value: "flush_all"
+          anomaly: "memcached-flush-attempt"
+          respond: "OK\r\n"
+        - match: contains
+          value: "gets "             # CAS reads — common scraping pattern
+          respond: "END\r\n"
+      default: "ERROR\r\n"
+
 
 canaries:
   - id: shared-creds

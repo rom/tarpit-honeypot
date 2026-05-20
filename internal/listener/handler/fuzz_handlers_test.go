@@ -66,7 +66,7 @@ var fuzzTCPNames = []string{
 	"s7comm_plus", "iec104", "mqtt", "opcua", "ethernetip", "dnp3",
 	"ge_srtp", "codesys", "teamviewer", "anydesk", "openvpn", "citrix_ica",
 	"intel_amt", "ilo", "idrac", "esxi", "fortinet", "pulse",
-	"citrix_gateway", "horizon", "moxa_mgmt",
+	"citrix_gateway", "horizon", "moxa_mgmt", "scripted",
 }
 
 func fuzzDeps(dir string) Deps {
@@ -77,6 +77,17 @@ func fuzzDeps(dir string) Deps {
 		HoneynetView: HoneynetSnapshot{Hosts: []HoneynetHost{
 			{IP: "10.0.0.5", Hostname: "fuzz-host", Services: []HoneynetService{{Port: 80, Handler: "http"}}},
 		}},
+		// Exercise the scripted match loop across every mode.
+		Scripted: config.ScriptedProto{
+			Greeting: "READY\\r\\n",
+			Rules: []config.ScriptedRule{
+				{Match: "prefix", Value: "GET", Respond: "ok\\r\\n"},
+				{Match: "contains", Value: "admin", Anomaly: "scripted-admin", Respond: "no\\r\\n"},
+				{Match: "regex", Value: "[0-9]{3,}", Respond: "num\\r\\n"},
+				{Match: "hex_prefix", Value: "00ff", RespondHex: "01", Close: true},
+			},
+			Default: "?\\r\\n",
+		},
 	}
 }
 

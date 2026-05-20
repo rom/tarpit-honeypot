@@ -1,6 +1,12 @@
 package config
 
-import "time"
+import (
+	"encoding/hex"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+)
 
 type Config struct {
 	Sensor      Sensor      `yaml:"sensor"`
@@ -400,6 +406,10 @@ type Listener struct {
 	// per-host personality, deterministic randomness, timers).
 	Script string `yaml:"script"`
 
+	// Scripted declaratively defines a fake request/response protocol.
+	// Required (non-empty) when handler is "scripted".
+	Scripted ScriptedProto `yaml:"scripted"`
+
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`
 }
@@ -446,6 +456,170 @@ type TrickleCfg struct {
 
 type KeepaliveCfg struct {
 	Interval time.Duration `yaml:"interval"`
+}
+
+// ScriptedProto declaratively defines a fake request/response protocol for
+// the "scripted" handler — a believable custom TCP service without writing
+// Lua. On connect the greeting (if any) is sent; then each client message
+// is matched top-down against Rules and the first match's response is
+// written. TCP-only: the three-way handshake rules out source-spoofed
+// amplification, and per-response sizes are bounded at compile time.
+type ScriptedProto struct {
+	// Greeting is sent immediately on connect. Greeting uses text escapes
+	// (\r \n \t \0 \xHH \\); GreetingHex is raw bytes as a hex string. Set
+	// at most one.
+	Greeting    string `yaml:"greeting"`
+	GreetingHex string `yaml:"greeting_hex"`
+	// MaxRounds caps request/response exchanges per connection (default 8,
+	// hard ceiling 64).
+	MaxRounds int `yaml:"max_rounds"`
+	// Rules are evaluated top-down; the first match wins.
+	Rules []ScriptedRule `yaml:"rules"`
+	// Default / DefaultHex is the reply when no rule matches (same escape
+	// rules as Greeting). Empty = send nothing.
+	Default    string `yaml:"default"`
+	DefaultHex string `yaml:"default_hex"`
+}
+
+// ScriptedRule is one match→respond rule in a ScriptedProto.
+type ScriptedRule struct {
+	// Match mode: prefix | contains | regex | hex_prefix | any.
+	Match string `yaml:"match"`
+	// Value is the pattern: literal text (prefix/contains), an RE2 regex
+	// (regex), or a lowercase hex string (hex_prefix). Ignored for "any".
+	Value string `yaml:"value"`
+	// Respond / RespondHex is the reply written on a match (text escapes /
+	// hex as in Greeting). Empty = respond with nothing (but still match,
+	// so Anomaly/Close apply).
+	Respond    string `yaml:"respond"`
+	RespondHex string `yaml:"respond_hex"`
+	// Anomaly, if set, is flagged on the event when this rule matches.
+	Anomaly string `yaml:"anomaly"`
+	// Close ends the connection after responding.
+	Close bool `yaml:"close"`
+}
+
+// scriptedMaxResponse caps any single greeting/response/default payload so
+// a misconfigured spec can't allocate unbounded memory or turn the service
+// into an amplifier.
+const scriptedMaxResponse = 64 * 1024
+
+// scriptedValidModes is the set of accepted rule match modes.
+var scriptedValidModes = map[string]bool{
+	"prefix": true, "contains": true, "regex": true,
+	"hex_prefix": true, "any": true,
+}
+
+// DecodeScriptedField resolves a (text, hex) field pair from a ScriptedProto
+// into raw bytes. text supports \r \n \t \0 \xHH and \\ escapes; hexStr is
+// straight hex. It is an error to set both. Used by both config validation
+// and the scripted handler so decoding lives in one place.
+func DecodeScriptedField(text, hexStr string) ([]byte, error) {
+	if text != "" && hexStr != "" {
+		return nil, fmt.Errorf("set only one of text / hex form")
+	}
+	if hexStr != "" {
+		b, err := hex.DecodeString(strings.TrimSpace(hexStr))
+		if err != nil {
+			return nil, fmt.Errorf("invalid hex: %w", err)
+		}
+		return b, nil
+	}
+	return decodeEscapes(text)
+}
+
+// decodeEscapes expands the small escape set scripted text fields support.
+func decodeEscapes(s string) ([]byte, error) {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c != '\\' {
+			out = append(out, c)
+			continue
+		}
+		i++
+		if i >= len(s) {
+			return nil, fmt.Errorf("dangling escape at end of %q", s)
+		}
+		switch s[i] {
+		case 'r':
+			out = append(out, '\r')
+		case 'n':
+			out = append(out, '\n')
+		case 't':
+			out = append(out, '\t')
+		case '0':
+			out = append(out, 0)
+		case '\\':
+			out = append(out, '\\')
+		case 'x':
+			if i+2 >= len(s) {
+				return nil, fmt.Errorf("\\x needs 2 hex digits in %q", s)
+			}
+			b, err := hex.DecodeString(s[i+1 : i+3])
+			if err != nil {
+				return nil, fmt.Errorf("bad \\x escape in %q: %w", s, err)
+			}
+			out = append(out, b[0])
+			i += 2
+		default:
+			return nil, fmt.Errorf("unknown escape \\%c in %q", s[i], s)
+		}
+	}
+	return out, nil
+}
+
+// Validate checks a ScriptedProto: a service must do something (greeting or
+// at least one rule), each field must decode and stay within the size cap,
+// every rule mode must be known, regexes must compile (RE2 — no
+// catastrophic backtracking), and hex_prefix values must be valid hex.
+func (p ScriptedProto) Validate() error {
+	if len(p.Rules) == 0 && p.Greeting == "" && p.GreetingHex == "" {
+		return fmt.Errorf("needs a greeting or at least one rule")
+	}
+	if p.MaxRounds < 0 || p.MaxRounds > 64 {
+		return fmt.Errorf("max_rounds must be 0..64 (got %d)", p.MaxRounds)
+	}
+	greet, err := DecodeScriptedField(p.Greeting, p.GreetingHex)
+	if err != nil {
+		return fmt.Errorf("greeting: %w", err)
+	}
+	if len(greet) > scriptedMaxResponse {
+		return fmt.Errorf("greeting exceeds %d bytes", scriptedMaxResponse)
+	}
+	dflt, err := DecodeScriptedField(p.Default, p.DefaultHex)
+	if err != nil {
+		return fmt.Errorf("default: %w", err)
+	}
+	if len(dflt) > scriptedMaxResponse {
+		return fmt.Errorf("default exceeds %d bytes", scriptedMaxResponse)
+	}
+	for i, r := range p.Rules {
+		if !scriptedValidModes[r.Match] {
+			return fmt.Errorf("rule[%d]: unknown match %q (prefix|contains|regex|hex_prefix|any)", i, r.Match)
+		}
+		if r.Match != "any" && r.Value == "" {
+			return fmt.Errorf("rule[%d]: match %q requires a value", i, r.Match)
+		}
+		switch r.Match {
+		case "regex":
+			if _, err := regexp.Compile(r.Value); err != nil {
+				return fmt.Errorf("rule[%d]: bad regex: %w", i, err)
+			}
+		case "hex_prefix":
+			if _, err := hex.DecodeString(strings.TrimSpace(r.Value)); err != nil {
+				return fmt.Errorf("rule[%d]: hex_prefix value not hex: %w", i, err)
+			}
+		}
+		resp, err := DecodeScriptedField(r.Respond, r.RespondHex)
+		if err != nil {
+			return fmt.Errorf("rule[%d]: respond: %w", i, err)
+		}
+		if len(resp) > scriptedMaxResponse {
+			return fmt.Errorf("rule[%d]: respond exceeds %d bytes", i, scriptedMaxResponse)
+		}
+	}
+	return nil
 }
 
 type Canary struct {
