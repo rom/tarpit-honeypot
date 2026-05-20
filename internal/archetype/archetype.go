@@ -58,6 +58,9 @@ func init() {
 	for k, p := range ciscoArchetypes {
 		registry[k] = p
 	}
+	for k, p := range networkDeviceArchetypes {
+		registry[k] = p
+	}
 }
 
 // Profile is the resolved per-deployment / per-listener / per-host

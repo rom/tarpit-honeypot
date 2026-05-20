@@ -31,6 +31,8 @@ func responseTable(p *archetype.Profile) map[string]response {
 		return siemensResponses(p)
 	case "cisco":
 		return ciscoResponses(p)
+	case "mikrotik":
+		return routerosResponses(p)
 	case "windows":
 		if isPowerShellProfile(p) {
 			return powershellResponses(p)
@@ -206,6 +208,60 @@ func moxaResponses(p *archetype.Profile) map[string]response {
 		"get":    {static: ""},
 		"set":    {static: ""},
 		"ping":   {dyn: func(a []string) string { return "PING " + lastArg(a) + ": Request timeout.\r\n" }},
+	}
+}
+
+// routerosResponses returns a MikroTik RouterOS command set. RouterOS
+// commands are slash-rooted (`/system resource print`), so the head token
+// the shell splits on is e.g. "/system"; we switch on the next word.
+func routerosResponses(p *archetype.Profile) map[string]response {
+	name := "MikroTik"
+	board := "RB750Gr3"
+	ver := "6.49.10"
+	if p != nil {
+		if n := p.SNMPSysName(); n != "" {
+			name = n
+		}
+		if d := p.SNMPSysDescr(); d != "" {
+			board = strings.TrimPrefix(d, "RouterOS ")
+		}
+	}
+	return map[string]response{
+		"/system": {dyn: func(a []string) string {
+			sub := ""
+			if len(a) > 1 {
+				sub = a[1]
+			}
+			switch sub {
+			case "resource":
+				return "                   uptime: 6w2d3h11m\r\n" +
+					"                  version: " + ver + " (stable)\r\n" +
+					"               board-name: " + board + "\r\n" +
+					"                 platform: MikroTik\r\n" +
+					"                cpu-count: 1\r\n" +
+					"            cpu-frequency: 880MHz\r\n" +
+					"                 cpu-load: 4%\r\n" +
+					"          total-memory: 256.0MiB\r\n"
+			case "identity":
+				return "  name: " + name + "\r\n"
+			case "routerboard":
+				return "       routerboard: yes\r\n             model: " + board +
+					"\r\n     serial-number: A1B2C3D4E5F6\r\n  firmware-type: qca9531L\r\n" +
+					"  current-firmware: " + ver + "\r\n"
+			}
+			return "expected end of command (line 1 column 1)\r\n"
+		}},
+		"/export": {static: "# " + ver + " by RouterOS\r\n# software id = ABCD-1234\r\n#\r\n" +
+			"/interface bridge add name=bridge\r\n/ip address add address=192.168.88.1/24 interface=bridge\r\n" +
+			"/ip dhcp-server network add address=192.168.88.0/24 gateway=192.168.88.1\r\n" +
+			"/system identity set name=" + name + "\r\n"},
+		"/ip": {dyn: func(a []string) string {
+			return " # ADDRESS            NETWORK         INTERFACE\r\n 0 192.168.88.1/24    192.168.88.0    bridge\r\n"
+		}},
+		"/interface": {static: " # NAME      TYPE     ACTUAL-MTU L2MTU\r\n 0 R ether1  ether    1500       1598\r\n 1 R ether2  ether    1500       1598\r\n 2 R bridge  bridge   1500\r\n"},
+		"/user":      {static: " # NAME   GROUP   ADDRESS\r\n 0 admin  full\r\n"},
+		"quit":       {static: ""},
+		"?":          {static: "Commands: /system /ip /interface /user /export quit\r\n"},
 	}
 }
 

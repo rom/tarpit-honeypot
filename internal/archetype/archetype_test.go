@@ -91,8 +91,12 @@ func TestAllShipArchetypes(t *testing.T) {
 		// Active Directory DC (registered under several aliases that
 		// collapse to one display name).
 		"Active Directory (Windows Server 2019 DC)",
-		// Cisco IOS switch.
+		// Cisco IOS switches.
 		"Cisco Catalyst 2960 (IOS 15)",
+		"Cisco Catalyst 9300 (IOS-XE 17)",
+		// Edge / SOHO networking gear.
+		"MikroTik RouterOS (RB750Gr3, 6.49.10)",
+		"Teltonika RUT240 (RutOS, LTE router)",
 	}
 	got := Names()
 	if len(got) != len(want) {
@@ -157,8 +161,12 @@ func TestRegistryComplete(t *testing.T) {
 // SNMP identity, MAC OUI, default services — and must populate that
 // instead of the generic SSH/HTTP/FTP/SMTP/MySQL distro surface.
 func TestDeviceArchetypeFields(t *testing.T) {
+	deviceFamilies := map[string]bool{
+		"moxa": true, "siemens": true, "cisco": true,
+		"mikrotik": true, "teltonika": true,
+	}
 	for _, p := range registry {
-		if p.Family != "moxa" && p.Family != "siemens" {
+		if !deviceFamilies[p.Family] {
 			continue
 		}
 		if !p.HasMACOUI() {
