@@ -973,6 +973,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   from N **distinct source IPs** in the window — a shared credential list /
   botnet (credential stuffing). Meta carries `username` + `distinct_sources`
   + `sources`; the password is never logged. Tagged `T1110.004`.
+- `risk:elevated` / `risk:high` / `risk:critical` — a source's **decaying
+  threat score** (`risk:` config) crossed a threshold. Every event adds
+  severity/category-weighted points (CVE / malware / storyline weigh
+  heaviest); the score halves over `half_life` of silence so quiet sources
+  cool off. Meta carries `score` + `trigger_rule`; the top scorers surface
+  in the web UI's `/risk` view. Fires once per escalation.
 - `correlate:slow_scan` — long-window scan detector (default 24h /
   10 distinct ports). Meta includes `first_seen`, `last_seen`,
   `spread_seconds`, `ports`.

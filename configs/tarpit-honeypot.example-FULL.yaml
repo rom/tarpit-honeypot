@@ -726,6 +726,17 @@ devices:
     - 127.0.0.1
     - ::1
 
+# Per-source decaying threat score. Every event adds severity/category-
+# weighted points to its source; the score halves over `half_life` of
+# silence. Crossing a threshold emits risk:elevated / risk:high /
+# risk:critical, and the top scorers surface in the web UI (/risk).
+risk:
+  enabled: true
+  half_life: 1h
+  elevated: 30
+  high: 75
+  critical: 150
+
 honeynets:
   - id: corp
     cidr: 10.99.0.0/24

@@ -29,6 +29,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/retention"
+	"github.com/rom/tarpit-honeypot/internal/risk"
 	"github.com/rom/tarpit-honeypot/internal/router"
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
@@ -64,6 +65,7 @@ type Sensor struct {
 	scanTrack  *scananalysis.Tracker
 	payloads   *payload.Store
 	sessionRec *sessionrec.Store
+	risk       *risk.Scorer
 	deviceSev  event.Severity
 	bus        chan *event.Event
 
@@ -287,9 +289,61 @@ func New(cfg *config.Config) (*Sensor, error) {
 		scanTrack:  scananalysis.NewTracker(5 * time.Minute),
 		payloads:   payloadStore,
 		sessionRec: sessRec,
+		risk:       newRiskScorer(cfg.Risk),
 		bus:        make(chan *event.Event, 1024),
 		listeners:  map[string]*listenerHandle{},
 	}, nil
+}
+
+// newRiskScorer returns a configured per-source risk scorer, or nil when
+// risk scoring is disabled.
+func newRiskScorer(c config.RiskScoring) *risk.Scorer {
+	if !c.Enabled {
+		return nil
+	}
+	return risk.New(risk.Config{
+		Enabled: true, HalfLife: c.HalfLife,
+		Elevated: c.Elevated, High: c.High, Critical: c.Critical,
+	})
+}
+
+// Risk returns the per-source risk scorer (nil when disabled).
+func (s *Sensor) Risk() *risk.Scorer { return s.risk }
+
+// scoreRisk folds a dispatched event into the per-source risk scorer and,
+// when the source escalates into a higher level, dispatches a risk:<level>
+// alert. risk:* events are not re-scored (no feedback loop).
+func (s *Sensor) scoreRisk(rt *router.Router, ev *event.Event) {
+	if s.risk == nil || ev == nil || ev.Source.IP == "" || strings.HasPrefix(ev.RuleID, "risk:") {
+		return
+	}
+	if level, score, crossed := s.risk.Observe(ev.Source.IP, ev.RuleID, int(ev.Severity), timeNow()); crossed {
+		rt.Dispatch(s.riskEvent(ev, level, score))
+	}
+}
+
+func (s *Sensor) riskEvent(src *event.Event, level string, score float64) *event.Event {
+	sev := event.SeverityHigh
+	switch level {
+	case "critical":
+		sev = event.SeverityCritical
+	case "elevated":
+		sev = event.SeverityMedium
+	}
+	e := &event.Event{
+		ID:       event.NewID(),
+		Time:     timeNow(),
+		Sensor:   s.name,
+		RuleID:   "risk:" + level,
+		Severity: sev,
+		Source:   src.Source,
+		Proto:    src.Proto,
+		Meta:     map[string]any{"score": score, "trigger_rule": src.RuleID},
+	}
+	if s.enrich != nil {
+		s.enrich.Decorate(e)
+	}
+	return e
 }
 
 // Honeynet returns the configured topology, or an empty topology if none.
@@ -957,12 +1011,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// seen, non-allow-listed hosts.
 				if devNew := s.observeDevice(ev); devNew != nil {
 					rt.Dispatch(devNew)
+					s.scoreRisk(rt, devNew)
 				}
 				// Payload harvesting: extract malware / shellcode /
 				// ingress URLs from the captured bytes; persist
 				// artifacts and emit malware:capture when one is found.
 				if mw := s.observePayload(ev, payloadBytes); mw != nil {
 					rt.Dispatch(mw)
+					s.scoreRisk(rt, mw)
 				}
 				// Scan analysis: feed listener events into the
 				// per-source Tracker; emit scananalysis:profile when a
@@ -970,12 +1026,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// confidence threshold.
 				if scanEv := s.observeScan(ev, payloadBytes); scanEv != nil {
 					rt.Dispatch(scanEv)
+					s.scoreRisk(rt, scanEv)
 				}
 				for _, out := range co.Observe(ev) {
 					if out != ev {
 						s.enrich.Decorate(out)
 					}
 					rt.Dispatch(out)
+					s.scoreRisk(rt, out)
 				}
 			}()
 		}

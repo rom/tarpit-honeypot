@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — per-source risk scoring
+- **`risk:`** (`internal/risk`): a decaying per-source threat score. Every
+  event adds severity- and category-weighted points to its source (CVE /
+  malware / storyline weigh heaviest); the score halves over `half_life`
+  of silence. Crossing a threshold emits `risk:elevated` / `risk:high` /
+  `risk:critical` (once per escalation, with `score` + `trigger_rule` in
+  meta), and the top scorers are exposed for the web UI. Concurrency-safe,
+  bounded, GC'd.
+
 ### Added — end-to-end handler fuzzing (+ 2 parser bugs fixed)
 - `FuzzTCPHandlers` / `FuzzUDPHandlers` drive every registered protocol
   handler's `Handle()` end-to-end with arbitrary bytes via an in-memory

@@ -18,6 +18,19 @@ type Config struct {
 	Channels    []Channel   `yaml:"channels"`
 	Routes      []Route     `yaml:"routes"`
 	Devices     Devices     `yaml:"devices"`
+	Risk        RiskScoring `yaml:"risk"`
+}
+
+// RiskScoring configures the decaying per-source threat score. When
+// enabled, every event adds severity/category-weighted points to its
+// source; crossing a threshold emits risk:elevated / risk:high /
+// risk:critical, and the top scorers surface in the web UI.
+type RiskScoring struct {
+	Enabled  bool          `yaml:"enabled"`
+	HalfLife time.Duration `yaml:"half_life"` // score halves over this idle period
+	Elevated float64       `yaml:"elevated"`
+	High     float64       `yaml:"high"`
+	Critical float64       `yaml:"critical"`
 }
 
 // Devices configures the learned-device inventory + "new device"
