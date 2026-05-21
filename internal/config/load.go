@@ -136,6 +136,19 @@ func (c *Config) applyDefaults() {
 	if c.Dedup.DefaultWindow == 0 {
 		c.Dedup.DefaultWindow = 5 * time.Minute
 	}
+	// DNS amplifier-detection defaults (the dnscanary server parses these at
+	// startup, so they must be complete by run time, not just validate time).
+	if c.DNS.AmplifierDetection.Enabled {
+		if c.DNS.AmplifierDetection.Severity == "" {
+			c.DNS.AmplifierDetection.Severity = "high"
+		}
+		if c.DNS.AmplifierDetection.Window == 0 {
+			c.DNS.AmplifierDetection.Window = 10 * time.Second
+		}
+		if c.DNS.AmplifierDetection.Queries == 0 {
+			c.DNS.AmplifierDetection.Queries = 50
+		}
+	}
 	for i := range c.Listeners {
 		l := &c.Listeners[i]
 		if l.Mode == "" {
@@ -269,6 +282,17 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.CredReuse.Severity == "" {
 			c.Correlate.CredReuse.Severity = "high"
+		}
+	}
+	if c.Correlate.ICMPSweep.Enabled {
+		if c.Correlate.ICMPSweep.DistinctIPs == 0 {
+			c.Correlate.ICMPSweep.DistinctIPs = 10
+		}
+		if c.Correlate.ICMPSweep.Window == 0 {
+			c.Correlate.ICMPSweep.Window = 60 * time.Second
+		}
+		if c.Correlate.ICMPSweep.Severity == "" {
+			c.Correlate.ICMPSweep.Severity = "medium"
 		}
 	}
 	for i := range c.Channels {
@@ -446,6 +470,11 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("dns_canary %s: %w", dc.ID, err)
 		}
 	}
+	if c.DNS.AmplifierDetection.Enabled {
+		if _, err := event.ParseSeverity(c.DNS.AmplifierDetection.Severity); err != nil {
+			return fmt.Errorf("dns.amplifier_detection: %w", err)
+		}
+	}
 
 	// Honeynets.
 	hnID := map[string]bool{}
@@ -545,6 +574,21 @@ func (c *Config) Validate() error {
 	if c.Correlate.SlowScan.Enabled {
 		if _, err := event.ParseSeverity(c.Correlate.SlowScan.Severity); err != nil {
 			return fmt.Errorf("correlate.slow_scan: %w", err)
+		}
+	}
+	if c.Correlate.PasswordSpray.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.PasswordSpray.Severity); err != nil {
+			return fmt.Errorf("correlate.password_spray: %w", err)
+		}
+	}
+	if c.Correlate.CredReuse.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.CredReuse.Severity); err != nil {
+			return fmt.Errorf("correlate.credential_reuse: %w", err)
+		}
+	}
+	if c.Correlate.ICMPSweep.Enabled {
+		if _, err := event.ParseSeverity(c.Correlate.ICMPSweep.Severity); err != nil {
+			return fmt.Errorf("correlate.icmp_sweep: %w", err)
 		}
 	}
 

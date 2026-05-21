@@ -49,6 +49,12 @@ documented in `docs/`).
   identity, and every archetype name resolves at runtime.
 
 ### Fixed
+- `correlate.icmp_sweep` (and `dns.amplifier_detection`) could pass
+  `validate-config` but crash `run` with `unknown severity ""` — they were
+  enabled-but-not-defaulted and the correlator / dnscanary parse severity at
+  construction time. Now defaulted in `applyDefaults`, validated in
+  `Validate`, and `dnscanary.New` defaults defensively. (Surfaced by the
+  example-LARGE config.)
 - `archetype.Lookup` now resolves a profile's canonical Name and pretty
   DisplayName (not just registry-key variants), so a config naming an
   archetype the way `list-archetypes` prints it resolves identically at

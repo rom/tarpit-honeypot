@@ -94,11 +94,21 @@ func New(bind string, sensorName string, canaries []config.DNSCanary, amp config
 		s.canaries = append(s.canaries, entry{id: c.ID, sev: sev, name: c.Name})
 	}
 	if amp.Enabled {
+		// Defensive default: config defaults should have filled this, but
+		// never fail startup on an empty severity.
 		sev, err := event.ParseSeverity(amp.Severity)
 		if err != nil {
-			return nil, fmt.Errorf("dnscanary amplifier: %w", err)
+			sev = event.SeverityHigh
 		}
-		s.amp = ampConfig{enabled: true, window: amp.Window, threshold: amp.Queries, sev: sev}
+		window := amp.Window
+		if window <= 0 {
+			window = 10 * time.Second
+		}
+		threshold := amp.Queries
+		if threshold <= 0 {
+			threshold = 50
+		}
+		s.amp = ampConfig{enabled: true, window: window, threshold: threshold, sev: sev}
 		s.ampState = &ampState{sources: map[string]*ampSrc{}}
 	}
 	return s, nil
