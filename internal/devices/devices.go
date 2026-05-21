@@ -138,13 +138,23 @@ func New(cfg Config) *Registry {
 	return r
 }
 
-// Observe records a host observation. It returns the resulting Device
-// and whether this observation should raise a device:new alert (true
-// only the first time a non-allow-listed device is seen, and only
-// when not establishing the learn-mode baseline).
-func (r *Registry) Observe(o Observation) (Device, bool) {
+// ObserveResult is what Observe reports back: the resulting device, whether
+// it warrants a device:new alert, and any identity fields that changed value
+// on an already-known device (an IP/MAC rebind or hostname change — a
+// rogue-device / ARP-spoofing signal).
+type ObserveResult struct {
+	Device  Device
+	New     bool
+	Changed []string // e.g. "ip 10.0.0.5 -> 10.0.0.9"
+}
+
+// Observe records a host observation. It returns an ObserveResult: the
+// resulting Device, whether it should raise a device:new alert (true only
+// the first time a non-allow-listed device is seen, and only when not
+// establishing the learn-mode baseline), and any changed identity fields.
+func (r *Registry) Observe(o Observation) ObserveResult {
 	if o.IP == "" && o.MAC == "" {
-		return Device{}, false
+		return ObserveResult{}
 	}
 	now := o.Time
 	if now.IsZero() {
@@ -174,6 +184,20 @@ func (r *Registry) Observe(o Observation) (Device, bool) {
 			FirstSeen: now,
 		}
 		r.byKey[key] = d
+	}
+	// Detect identity rebinds on an already-known device (before we
+	// overwrite the stored values).
+	var changed []string
+	if existed {
+		if o.IP != "" && d.IP != "" && d.IP != o.IP {
+			changed = append(changed, "ip "+d.IP+" -> "+o.IP)
+		}
+		if mac != "" && d.MAC != "" && d.MAC != mac {
+			changed = append(changed, "mac "+d.MAC+" -> "+mac)
+		}
+		if o.Hostname != "" && d.Hostname != "" && d.Hostname != o.Hostname {
+			changed = append(changed, "hostname "+d.Hostname+" -> "+o.Hostname)
+		}
 	}
 	if o.IP != "" {
 		d.IP = o.IP
@@ -222,7 +246,7 @@ func (r *Registry) Observe(o Observation) (Device, bool) {
 			alert = true
 		}
 	}
-	return *d, alert
+	return ObserveResult{Device: *d, New: alert, Changed: changed}
 }
 
 // baselineEstablishing is a heuristic: in learn mode, the very first

@@ -126,6 +126,10 @@ func (r *Router) Dispatch(ev *event.Event) {
 	// get the same treatment.
 	if len(ev.MitreTechniques) == 0 {
 		tag := mitre.Lookup(ev.RuleID, ev.Handler)
+		// Union in the finer techniques implied by the event's anomaly
+		// markers (SQLi, command injection, default creds, ICS writes, …)
+		// so a generic handler event still gets precise attribution.
+		tag = mitre.Augment(tag, ev.Anomalies)
 		ev.MitreTechniques = tag.Techniques
 		ev.MitreTactics = tag.Tactics
 	}

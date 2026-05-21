@@ -98,7 +98,10 @@ var exactRules = map[string]Tag{
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
-	"device:new":           {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"device:new": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	// A known device's IP/MAC/hostname rebinding can indicate ARP-spoofing
+	// / impersonation on the segment.
+	"device:changed":       {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
 	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
@@ -181,6 +184,114 @@ var handlerTags = map[string]Tag{
 	"s7comm_plus": {Techniques: []string{"T0814", "T0888"}, Tactics: []string{"impact", "discovery"}},
 	"ge_srtp":     {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"codesys":     {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"atg":         {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"fox":         {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"hartip":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"pcworx":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+
+	// More auth / remote-access / OOB-management surface.
+	"mssql":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"oracle_tns":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ftp_files":    {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"rlogin":       {Techniques: []string{"T1110.001", "T1021"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"vmware_authd": {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"redfish":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
+	"x11":          {Techniques: []string{"T1021", "T1056.001"}, Tactics: []string{"lateral-movement", "collection"}},
+	"nx":           {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"teamviewer":   {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"anydesk":      {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"openvpn":      {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"citrix_ica":   {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+
+	// Vendor management web UIs / lights-out: exploit-prone gateways.
+	"intel_amt":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
+	"ilo":            {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
+	"idrac":          {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
+	"esxi":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"fortinet":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"pulse":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"citrix_gateway": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"horizon":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"moxa_mgmt":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+}
+
+// anomalyTags maps a handler-flagged anomaly marker to the ATT&CK
+// technique it implies, so a finer detection (SQLi, command injection,
+// default-credential use, an ICS write) gets precise attribution even
+// though it rides on a generic handler event. Augment unions these into
+// the rule_id/handler base tag.
+var anomalyTags = map[string]Tag{
+	"default-credential-attempt": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
+	"modbus-write-attempt":       {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	"smtp-open-relay-probe":      {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration":      {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	// Web application attack families (ride on http/https handler events).
+	"webapp:sqli":              {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:lfi":               {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
+	"webapp:rfi_ssrf":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:xss":               {Techniques: []string{"T1059.007"}, Tactics: []string{"execution"}},
+	"webapp:cmdi":              {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"webapp:ssti":              {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"webapp:log4shell":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:xxe":               {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:deserialize":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:secret-file-probe": {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	// SSH/telnet protocol-misuse + auth markers.
+	"x11-connection-attempt": {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"rlogin-attempt":         {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"redfish-auth-attempt":   {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
+	"vmware-authd-login":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+}
+
+// AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
+// Exact matches win; otherwise a few marker-prefix families map by class.
+func AnomalyTag(a string) Tag {
+	if t, ok := anomalyTags[a]; ok {
+		return t
+	}
+	switch {
+	case strings.HasPrefix(a, "uri-"):
+		// suspicious-URI probes: recon / file discovery against the app.
+		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
+	case strings.HasPrefix(a, "ics-"):
+		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case a == "automation-client":
+		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
+	}
+	return Tag{}
+}
+
+// Augment unions the ATT&CK metadata implied by an event's anomaly markers
+// into a base Tag (from the rule_id/handler lookup). Deduplicated, base
+// entries first.
+func Augment(base Tag, anomalies []string) Tag {
+	tech := append([]string(nil), base.Techniques...)
+	tac := append([]string(nil), base.Tactics...)
+	seenT, seenTac := toSet(tech), toSet(tac)
+	for _, a := range anomalies {
+		at := AnomalyTag(a)
+		for _, x := range at.Techniques {
+			if !seenT[x] {
+				seenT[x] = true
+				tech = append(tech, x)
+			}
+		}
+		for _, x := range at.Tactics {
+			if !seenTac[x] {
+				seenTac[x] = true
+				tac = append(tac, x)
+			}
+		}
+	}
+	return Tag{Techniques: tech, Tactics: tac}
+}
+
+func toSet(xs []string) map[string]bool {
+	m := make(map[string]bool, len(xs))
+	for _, x := range xs {
+		m[x] = true
+	}
+	return m
 }
 
 // Tactics returns the canonical list of ATT&CK Enterprise tactics in
@@ -252,6 +363,12 @@ var d3fend = map[string][]string{
 	"T0888": {"D3-NTA", "D3-DNR"},          // ICS: remote system info discovery
 	"T0846": {"D3-NTA", "D3-DNR"},          // ICS: remote system discovery (PROFINET-DCP)
 	"T0830": {"D3-NTA"},                    // ICS: adversary-in-the-middle
+	"T0836": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: modify parameter
+	"T0831": {"D3-NTA", "D3-DE"},           // ICS: manipulation of control
+	"T1059": {"D3-NTA", "D3-DA"},           // command & scripting interpreter
+	"T1056": {"D3-NTA"},                    // input capture (keylogging via X11)
+	"T1219": {"D3-NTA", "D3-OTF"},          // remote access software
+	"T1133": {"D3-MFA", "D3-NTA"},          // external remote services
 }
 
 // DefensesFor returns the deduplicated set of D3FEND countermeasure IDs

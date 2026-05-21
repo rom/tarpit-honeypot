@@ -163,6 +163,103 @@ var catalog = []Record{
 		Technique:  "T1190", Tactic: "initial-access",
 		Description: "Palo Alto PAN-OS GlobalProtect command injection.",
 	},
+	{
+		ID: "CVE-2017-10271", Name: "WebLogic WLS-WSAT", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/wls-wsat/coordinatorporttype", "/wls-wsat/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Oracle WebLogic WLS-WSAT XML deserialization RCE.",
+	},
+	{
+		ID: "CVE-2020-14882", Name: "WebLogic console RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/console/css/%252e%252e%252fconsole.portal", "com.tangosol.coherence.mvel2"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Oracle WebLogic console unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2019-18935", Name: "Telerik UI deserialization", CVSS: 9.8, Service: "http",
+		Signatures: []string{"telerik.web.ui.webresource.axd?type=rau", "dialogparametersholder"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Progress Telerik UI for ASP.NET AJAX insecure deserialization RCE.",
+	},
+	{
+		ID: "CVE-2021-3129", Name: "Laravel Ignition RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/_ignition/execute-solution", "makeviewvariableoptionalsolution"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Laravel Ignition (debug mode) file-write to RCE.",
+	},
+	{
+		ID: "CVE-2021-26084", Name: "Confluence OGNL injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"createpage-entervariables.action", "/pages/doenterpagevariables.action"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence Webwork OGNL injection RCE.",
+	},
+	{
+		ID: "CVE-2017-12615", Name: "Tomcat PUT JSP", CVSS: 8.1, Service: "http",
+		Signatures: []string{".jsp::$data", ".jsp%20"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Tomcat PUT-based JSP upload RCE.",
+	},
+	{
+		ID: "CVE-2021-42013", Name: "Apache 2.4.50 traversal", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cgi-bin/.%%32%65", ".%%32%65%%32%65/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache HTTP Server 2.4.50 path traversal / RCE (CVE-2021-41773 bypass).",
+	},
+	{
+		ID: "CVE-2023-34362", Name: "MOVEit Transfer SQLi", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/moveitisapi/moveitisapi.dll", "x-silock-comment", "/guestaccess.aspx"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Progress MOVEit Transfer SQL injection to RCE.",
+	},
+	{
+		ID: "CVE-2022-30190", Name: "Follina MSDT", CVSS: 7.8, Service: "http",
+		Signatures: []string{"ms-msdt:", "!exec/../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Microsoft Support Diagnostic Tool (MSDT) URL-protocol RCE.",
+	},
+	{
+		ID: "CVE-2021-21972", Name: "vSphere Client RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/ui/vropspluginui/rest/services/uploadova", "/ui/vropspluginui/rest/services/getstatus"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "VMware vCenter vSphere Client (vROps plugin) unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2024-3273", Name: "D-Link NAS RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cgi-bin/nas_sharing.cgi"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "D-Link NAS nas_sharing.cgi backdoor + command injection.",
+	},
+	{
+		ID: "CVE-2018-10561", Name: "GPON router auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/gponform/diag_form", "?images/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Dasan GPON home router authentication bypass + command injection.",
+	},
+	{
+		ID: "CVE-2017-7921", Name: "Hikvision auth bypass", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/system/deviceinfo?auth=", "/security/users?auth=", "/onvif-http/snapshot?auth="},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Hikvision IP camera improper authentication (backdoor) info disclosure.",
+	},
+	{
+		ID: "CVE-2022-40684", Name: "FortiOS auth bypass", CVSS: 9.8, Service: "fortinet",
+		Signatures: []string{"/api/v2/cmdb/system/admin", "/api/v2/cmdb/system/api-user"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiOS/FortiProxy administrative-interface auth bypass.",
+	},
+	// Advisory-only records (no payload signature — timing/version or
+	// non-HTTP protocol). They give vuln_emulation advisories + cve:<id>
+	// events an ATT&CK mapping via Lookup.
+	{
+		ID: "CVE-2018-15473", Name: "OpenSSH user enumeration", CVSS: 5.3, Service: "ssh",
+		Technique: "T1087", Tactic: "discovery",
+		Description: "OpenSSH pre-auth username enumeration via timing/response differences.",
+	},
+	{
+		ID: "CVE-2018-0171", Name: "Cisco Smart Install", CVSS: 9.8, Service: "cisco",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Cisco IOS Smart Install (port 4786) unauthenticated config/RCE.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

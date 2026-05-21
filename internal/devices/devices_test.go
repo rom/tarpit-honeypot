@@ -1,9 +1,38 @@
 package devices
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDeviceRebindDetected(t *testing.T) {
+	r := New(Config{Learn: false})
+	r.Observe(Observation{MAC: "00:90:e8:01:02:03", IP: "10.0.0.5", Source: SourceARP})
+	// Same MAC now at a different IP -> "ip" change, not new.
+	res := r.Observe(Observation{MAC: "00:90:e8:01:02:03", IP: "10.0.0.9", Source: SourceARP})
+	if res.New {
+		t.Error("rebind should not be flagged as new")
+	}
+	if !hasPrefix(res.Changed, "ip ") {
+		t.Errorf("expected ip change; got %v", res.Changed)
+	}
+	// Hostname change on the same device.
+	r.Observe(Observation{MAC: "00:90:e8:01:02:03", IP: "10.0.0.9", Hostname: "plc1", Source: SourceDHCP})
+	res = r.Observe(Observation{MAC: "00:90:e8:01:02:03", IP: "10.0.0.9", Hostname: "evil", Source: SourceDHCP})
+	if !hasPrefix(res.Changed, "hostname ") {
+		t.Errorf("expected hostname change; got %v", res.Changed)
+	}
+}
+
+func hasPrefix(xs []string, p string) bool {
+	for _, x := range xs {
+		if strings.HasPrefix(x, p) {
+			return true
+		}
+	}
+	return false
+}
 
 func TestObserveAccumulatesKnowledge(t *testing.T) {
 	r := New(Config{Learn: false})
@@ -46,7 +75,7 @@ func TestDeleteAndAllow(t *testing.T) {
 		}
 	}
 	// A re-observation of an allowed device must not alert.
-	if _, alert := r.Observe(Observation{IP: "10.0.0.9", MAC: "aa:bb:cc:dd:ee:ff", Source: SourceConn}); alert {
+	if r.Observe(Observation{IP: "10.0.0.9", MAC: "aa:bb:cc:dd:ee:ff", Source: SourceConn}).New {
 		t.Error("allowed device should not alert")
 	}
 	// Delete it.
@@ -99,19 +128,19 @@ func TestStrictAllowListAlerts(t *testing.T) {
 	r := New(Config{Allow: []string{"10.0.0.0/24", "aa:bb:cc:dd:ee:ff"}, Learn: false})
 
 	// In-CIDR -> no alert.
-	if _, alert := r.Observe(Observation{IP: "10.0.0.5", Source: SourceConn}); alert {
+	if r.Observe(Observation{IP: "10.0.0.5", Source: SourceConn}).New {
 		t.Errorf("allow-listed CIDR device should not alert")
 	}
 	// Allow-listed MAC -> no alert.
-	if _, alert := r.Observe(Observation{MAC: "AA:BB:CC:DD:EE:FF", Source: SourceARP}); alert {
+	if r.Observe(Observation{MAC: "AA:BB:CC:DD:EE:FF", Source: SourceARP}).New {
 		t.Errorf("allow-listed MAC device should not alert")
 	}
 	// Outside allow-list -> alert on first sight.
-	if _, alert := r.Observe(Observation{IP: "192.168.99.7", Source: SourceConn}); !alert {
+	if !r.Observe(Observation{IP: "192.168.99.7", Source: SourceConn}).New {
 		t.Errorf("non-allow-listed device should alert on first sight")
 	}
 	// Second sight of the same device -> no repeat alert.
-	if _, alert := r.Observe(Observation{IP: "192.168.99.7", Source: SourceConn}); alert {
+	if r.Observe(Observation{IP: "192.168.99.7", Source: SourceConn}).New {
 		t.Errorf("device should not re-alert on subsequent sightings")
 	}
 }
@@ -120,10 +149,10 @@ func TestStrictAllowListAlerts(t *testing.T) {
 // subsequent never-seen devices alert.
 func TestLearnModeBaseline(t *testing.T) {
 	r := New(Config{Learn: true})
-	if _, alert := r.Observe(Observation{IP: "10.0.0.1", Source: SourceConn}); alert {
+	if r.Observe(Observation{IP: "10.0.0.1", Source: SourceConn}).New {
 		t.Errorf("first device in learn mode should seed baseline silently")
 	}
-	if _, alert := r.Observe(Observation{IP: "10.0.0.2", Source: SourceConn}); !alert {
+	if !r.Observe(Observation{IP: "10.0.0.2", Source: SourceConn}).New {
 		t.Errorf("second never-seen device in learn mode should alert")
 	}
 }
@@ -167,7 +196,7 @@ func TestPersistRoundTrip(t *testing.T) {
 	if len(r2.List()) != 1 {
 		t.Fatalf("reloaded registry has %d devices; want 1", len(r2.List()))
 	}
-	if _, alert := r2.Observe(Observation{IP: "10.0.0.250", Source: SourceConn}); !alert {
+	if !r2.Observe(Observation{IP: "10.0.0.250", Source: SourceConn}).New {
 		t.Errorf("new device after loading a baseline should alert")
 	}
 }

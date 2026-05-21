@@ -73,3 +73,64 @@ func TestTacticRankOrdering(t *testing.T) {
 		t.Errorf("unknown tactic should return -1")
 	}
 }
+
+func contains(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAugmentAnomalies(t *testing.T) {
+	// http handler base tag (T1190/T1083) + a SQLi + command-injection
+	// anomaly should union T1190 (already) + T1059.
+	base := Lookup("listener:web", "http")
+	tag := Augment(base, []string{"webapp:cmdi", "default-credential-attempt"})
+	if !contains(tag.Techniques, "T1059") {
+		t.Errorf("cmdi anomaly should add T1059: %v", tag.Techniques)
+	}
+	if !contains(tag.Techniques, "T1078.001") {
+		t.Errorf("default-cred anomaly should add T1078.001: %v", tag.Techniques)
+	}
+	// No duplicate base technique.
+	n := 0
+	for _, x := range tag.Techniques {
+		if x == "T1190" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("T1190 duplicated: %v", tag.Techniques)
+	}
+}
+
+func TestAnomalyTagPrefixes(t *testing.T) {
+	if !contains(AnomalyTag("modbus-write-attempt").Techniques, "T0836") {
+		t.Error("modbus-write-attempt should map to T0836")
+	}
+	if !contains(AnomalyTag("uri-path-traversal").Techniques, "T1083") {
+		t.Error("uri- prefix should map to discovery")
+	}
+	if !contains(AnomalyTag("ics-atg-command").Techniques, "T0888") {
+		t.Error("ics- prefix should map to T0888")
+	}
+	if len(AnomalyTag("ssh-id-overlong").Techniques) != 0 {
+		t.Error("noise anomaly should map to nothing")
+	}
+}
+
+func TestNewHandlerTags(t *testing.T) {
+	for _, h := range []string{"atg", "fox", "hartip", "pcworx", "redfish", "x11", "rlogin", "vmware_authd"} {
+		if len(Lookup("listener:x", h).Techniques) == 0 {
+			t.Errorf("handler %q has no ATT&CK mapping", h)
+		}
+	}
+}
+
+func TestDefensesForNewTechniques(t *testing.T) {
+	if len(DefensesFor([]string{"T1059", "T1219", "T0836"})) == 0 {
+		t.Error("new techniques should have D3FEND mappings")
+	}
+}

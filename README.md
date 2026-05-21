@@ -237,7 +237,15 @@ rationale covering the current implementation.
   (e.g. `["credential-access","initial-access"]`), and `mitre_defenses`
   — the MITRE **D3FEND** countermeasures (e.g. `["D3-MFA","D3-DE"]`)
   that answer those techniques — via the `internal/mitre` rule-id +
-  handler-aware mapping. SIEMs pivot on these IDs directly.
+  handler-aware mapping. The mapping also **unions in finer techniques
+  implied by the event's anomaly markers** (`webapp:sqli`/`cmdi`/`xss`/
+  `log4shell` → T1190/T1059, `modbus-write-attempt` → ICS T0836/T0831,
+  `default-credential-attempt` → T1078.001, …), so a generic handler hit
+  still carries precise attribution. CVE exploit-attempt events
+  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (now
+  ~30 entries: Log4Shell, Spring4Shell, ProxyShell, WebLogic, Telerik,
+  Confluence, MOVEit, Citrix/Pulse/Fortinet/PAN-OS, Apache 41773/42013,
+  GPON/D-Link/Hikvision, …). SIEMs pivot on these IDs directly.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-
@@ -1101,6 +1109,9 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   the segment (learned-device registry). Meta: `device_ip`,
   `device_mac`, `device_vendor` (MAC-OUI lookup), `device_hostname`.
   Tagged `T1018`. See [`devices`](#devices) config.
+- `device:changed` — a known device's IP/MAC/hostname rebound (possible
+  ARP-spoof / impersonation / re-IP). Meta: `changed` (list of
+  `field old -> new`). Tagged `T1557.002`.
 - `cve:<id>` — a known-CVE exploit signature appeared in a request
   (e.g. `cve:CVE-2021-44228`). CVSS-scaled severity (>=9.0 → critical);
   meta carries `cve_name`, `cvss`, `description`. Detection only — the

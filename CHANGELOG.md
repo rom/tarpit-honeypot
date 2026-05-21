@@ -8,6 +8,42 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — broader ATT&CK / D3FEND / CVE attribution
+- **Anomaly-level ATT&CK attribution**: the router now unions the techniques
+  implied by an event's anomaly markers into the rule_id/handler base tag
+  (`mitre.Augment`), so finer detections get precise IDs even on a generic
+  handler event — `webapp:sqli`/`lfi`/`rfi_ssrf`/`log4shell`/`xxe` → T1190,
+  `webapp:xss`/`cmdi`/`ssti` → T1059(.007), `modbus-write-attempt` → ICS
+  T0836/T0831, `default-credential-attempt` → T1078.001,
+  `smtp-open-relay-probe` → T1071.003, `uri-*` → T1595.003/T1083, `ics-*`
+  → T0888.
+- **ATT&CK for all the new handlers**: atg/fox/hartip/pcworx (T0888),
+  redfish/vmware_authd/rlogin/nx/x11 (auth + lateral-movement), mssql/
+  oracle_tns/ftp_files, teamviewer/anydesk (T1219), openvpn/citrix_ica
+  (T1133), and the vendor management-web UIs (T1190). New `device:changed`
+  → T1557.002.
+- **D3FEND** entries for the new techniques (T1059, T1056, T1219, T1133,
+  T0836, T0831).
+- **CVE catalog grown ~18 → ~30**: added WebLogic (CVE-2017-10271 /
+  2020-14882), Telerik (2019-18935), Laravel Ignition (2021-3129),
+  Confluence OGNL (2021-26084), Tomcat PUT (2017-12615), Apache 2.4.50
+  (2021-42013), MOVEit (2023-34362), Follina (2022-30190), vSphere
+  (2021-21972), D-Link NAS (2024-3273), GPON (2018-10561), Hikvision
+  (2017-7921), FortiOS auth-bypass (2022-40684), plus advisory-only records
+  (OpenSSH user-enum 2018-15473, Cisco Smart Install 2018-0171) so
+  archetype-advertised CVEs carry a technique.
+
+### Added — device:changed rebind detection + more snooped attributes
+- **`device:changed`** event: a known device's IP/MAC/hostname rebinding
+  (ARP-spoof / impersonation / re-IP) is now detected and alerted
+  (`devices.ObserveResult.Changed`), distinct from `device:new`.
+- More snooped device attributes from event meta: SMTP HELO, DHCP vendor
+  class, OS hint, realm/domain, and the last service touched.
+
+### Added — per-language HTTP client / framework detection (toolfp)
+- Detect wget/curl plus the common HTTP client libraries across python,
+  perl, go, java/jvm, c/c++, .NET, and rust, plus more recon tooling.
+
 ### Added — richer device learning + a devices web-UI tab
 - **More learning sources**: broadcast/multicast discovery (SSDP / LLMNR /
   NBNS / mDNS / CLDAP / CoAP senders) now register as `broadcast` devices,

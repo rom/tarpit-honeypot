@@ -80,3 +80,33 @@ func TestForServiceAndLookup(t *testing.T) {
 		t.Error("unknown CVE should not be found")
 	}
 }
+
+func TestMatchPayloadAddedCVEs(t *testing.T) {
+	cases := map[string]string{
+		"GET /wls-wsat/CoordinatorPortType HTTP/1.1":            "CVE-2017-10271",
+		"GET /Telerik.Web.UI.WebResource.axd?type=rau HTTP/1.1": "CVE-2019-18935",
+		"POST /_ignition/execute-solution HTTP/1.1":             "CVE-2021-3129",
+		"GET /cgi-bin/nas_sharing.cgi?user=messagebus HTTP/1.1": "CVE-2024-3273",
+	}
+	for payload, want := range cases {
+		hits := MatchPayload("http", payload)
+		found := false
+		for _, r := range hits {
+			if r.ID == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("payload %q: want %s in %v", payload, want, hits)
+		}
+	}
+}
+
+func TestAdvisoryOnlyLookup(t *testing.T) {
+	for _, id := range []string{"CVE-2018-15473", "CVE-2018-0171"} {
+		r, ok := Lookup(id)
+		if !ok || r.Technique == "" {
+			t.Errorf("advisory CVE %s should be in catalog with a technique", id)
+		}
+	}
+}

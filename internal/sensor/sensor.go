@@ -530,7 +530,7 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 		return nil
 	}
 	// Don't recurse on our own device events.
-	if ev.RuleID == "device:new" {
+	if ev.RuleID == "device:new" || ev.RuleID == "device:changed" {
 		return nil
 	}
 	obs := devices.Observation{Time: ev.Time, Source: devices.SourceConn}
@@ -570,8 +570,9 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 	if obs.IP == "" && obs.MAC == "" {
 		return nil
 	}
-	d, isNew := s.devices.Observe(obs)
-	if !isNew {
+	res := s.devices.Observe(obs)
+	d := res.Device
+	if !res.New && len(res.Changed) == 0 {
 		return nil
 	}
 	meta := map[string]any{
@@ -586,11 +587,18 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 	if d.Vendor != "" {
 		meta["device_vendor"] = d.Vendor
 	}
+	rule := "device:new"
+	if !res.New {
+		// An already-known device's IP/MAC/hostname rebound — a possible
+		// ARP-spoof / impersonation / re-IP. Distinct from a brand-new host.
+		rule = "device:changed"
+		meta["changed"] = res.Changed
+	}
 	return &event.Event{
 		ID:       event.NewID(),
 		Time:     ev.Time,
 		Sensor:   s.name,
-		RuleID:   "device:new",
+		RuleID:   rule,
 		Severity: s.deviceSev,
 		Source:   event.Endpoint{IP: d.IP},
 		Proto:    "device",
@@ -629,8 +637,16 @@ func deviceAttrsFromEvent(ev *event.Event) map[string]string {
 	add("hassh_server", "hassh_server")
 	add("user_agent", "ua")
 	add("client_id", "ssh_client")
+	// Snoop identity hints out of other protocols' captures.
+	add("helo", "smtp_helo") // SMTP HELO/EHLO name the client announced
+	add("vendor_class", "dhcp_vendor")
+	add("os", "os")
+	add("realm", "domain")
 	if b, ok := ev.Meta["automation"].(bool); ok && b {
 		attrs["automation"] = "true"
+	}
+	if ev.Handler != "" {
+		attrs["last_service"] = ev.Handler
 	}
 	if tools := metaStringSlice(ev.Meta["tools"]); len(tools) > 0 {
 		attrs["tools"] = strings.Join(tools, ",")
