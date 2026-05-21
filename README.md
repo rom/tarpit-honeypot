@@ -27,7 +27,8 @@ rationale covering the current implementation.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
-  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850)
+  - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
@@ -192,6 +193,11 @@ rationale covering the current implementation.
     `sniffer:ip_fragmented`, ATT&CK-tagged T1046 / T1595.001. (IPv4 +
     decoy detection is out of scope; ICMP sweeps are handled by the
     correlator's `icmp_sweep`.)
+  - **L2 GOOSE** (`sniffer.goose`) — passive IEC 61850 GOOSE detection on a
+    dedicated AF_PACKET socket (ethertype 0x88B8). Parses the APPID +
+    gocbRef / goID / stNum / sqNum and emits `sniffer:goose` (rate-limited
+    per source MAC). Observing substation trip/status multicast — or a
+    spoofed GOOSE stream — is high-signal in an OT segment. ATT&CK T0888.
 - **ICMP responder + personality + anomaly detection**: virtual hosts
   answer echo / timestamp / address-mask requests (Linux AF_PACKET),
   each stamped with the archetype's **initial-TTL personality** (255 OT
@@ -958,6 +964,7 @@ handshake where it isn't HTTP.
 | `fox` | 1911 | Niagara / Tridium Fox (building automation; Shodan's `fox` probe). Emits a per-deployment "fox hello" advertising station name / host id / app+VM+OS versions / brand; captures the client follow-up. | — | ✓ |
 | `hartip` | 5094 | HART-IP gateway to process field instruments. Parses the 8-byte header, captures the message type (session-initiate / token-passing PDU), replies with a valid response header. Fingerprint-grade. | — | — |
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC-class PLCs; nmap pcworx-info). Captures the connect/identify probe and returns an identification frame carrying model (`ILC 330 ETH`) + firmware. Fingerprint-grade. | — | — |
+| `mms` | 102 | IEC 61850 MMS (substation IEDs / relays over ISO-on-TCP — distinct from S7comm on the same port). Completes the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association) request, replies with a believable AARE accept; flags `ics-mms-probe`. Fingerprint-grade. | — | — |
 
 ### UDP
 

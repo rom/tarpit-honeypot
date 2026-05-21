@@ -92,9 +92,11 @@ var exactRules = map[string]Tag{
 	"sniffer:ip_fragmented": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
 	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
-	"dnscanary:hit":                  {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier":            {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":               {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	// IEC 61850 GOOSE substation multicast observed on the segment.
+	"sniffer:goose":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"dnscanary:hit":       {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":    {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
@@ -188,6 +190,7 @@ var handlerTags = map[string]Tag{
 	"fox":         {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"hartip":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"pcworx":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"mms":         {Techniques: []string{"T0888", "T0814"}, Tactics: []string{"discovery", "impact"}},
 
 	// More auth / remote-access / OOB-management surface.
 	"mssql":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},

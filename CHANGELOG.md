@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — IEC 61850 MMS handler + GOOSE detection
+- **`mms`** (TCP 102): IEC 61850 MMS responder for substation IEDs — completes
+  the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association)
+  request, replies with a believable AARE accept, flags `ics-mms-probe`.
+  Distinct from S7comm on the same port. ATT&CK T0888/T0814.
+- **`sniffer.goose`**: passive IEC 61850 **GOOSE** detection on a dedicated
+  AF_PACKET socket (ethertype 0x88B8) — parses APPID + gocbRef/goID/stNum/
+  sqNum and emits `sniffer:goose` (rate-limited per source MAC). ATT&CK
+  T0888. New `internal/sniffer` GOOSE parser + config `sniffer.goose`.
+
+### Added — more toolfp client/scanner signatures
+- PowerShell web cmdlets (Invoke-WebRequest/RestMethod, pwsh), more recon
+  (SecurityTrails, driftnet, alphastrike), and param-discovery tooling
+  (arjun, paramspider, kiterunner, x8, httprobe).
+
 ### Added — broader ATT&CK / D3FEND / CVE attribution
 - **Anomaly-level ATT&CK attribution**: the router now unions the techniques
   implied by an event's anomaly markers into the rule_id/handler base tag

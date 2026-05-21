@@ -256,3 +256,128 @@ func (r *rateLimiter) allow(key string, now time.Time) bool {
 	r.last[key] = now
 	return true
 }
+
+// gooseInfo is the fingerprint extracted from one IEC 61850 GOOSE frame.
+type gooseInfo struct {
+	srcMAC  string
+	appid   uint16
+	gocbRef string
+	goID    string
+	stNum   uint32
+	sqNum   uint32
+}
+
+// parseGOOSE parses an Ethernet frame carrying an IEC 61850-8-1 GOOSE PDU
+// (ethertype 0x88B8, optionally behind an 802.1Q tag). It pulls the APPID
+// and the key APDU fields (gocbRef, goID, stNum, sqNum). ok=false when the
+// frame isn't GOOSE. Defensive: every offset is bounds-checked.
+func parseGOOSE(frame []byte) (gooseInfo, bool) {
+	if len(frame) < 14 {
+		return gooseInfo{}, false
+	}
+	et := binary.BigEndian.Uint16(frame[12:14])
+	off := 14
+	if et == 0x8100 { // 802.1Q VLAN tag
+		if len(frame) < 18 {
+			return gooseInfo{}, false
+		}
+		et = binary.BigEndian.Uint16(frame[16:18])
+		off = 18
+	}
+	if et != 0x88B8 {
+		return gooseInfo{}, false
+	}
+	if len(frame) < off+8 {
+		return gooseInfo{}, false
+	}
+	gi := gooseInfo{
+		srcMAC: net.HardwareAddr(append([]byte(nil), frame[6:12]...)).String(),
+		appid:  binary.BigEndian.Uint16(frame[off : off+2]),
+	}
+	apdu := frame[off+8:]
+	if len(apdu) < 2 || apdu[0] != 0x61 { // GOOSE PDU SEQUENCE tag
+		return gi, true
+	}
+	l, hdr := berLen(apdu[1:])
+	if hdr == 0 {
+		return gi, true
+	}
+	p := 1 + hdr
+	end := p + l
+	if end > len(apdu) {
+		end = len(apdu)
+	}
+	for p+1 < end {
+		tag := apdu[p]
+		vl, vh := berLen(apdu[p+1:])
+		if vh == 0 {
+			break
+		}
+		vs := p + 1 + vh
+		ve := vs + vl
+		if ve > end || ve < vs {
+			break
+		}
+		v := apdu[vs:ve]
+		switch tag {
+		case 0x80:
+			gi.gocbRef = visString(v)
+		case 0x83:
+			gi.goID = visString(v)
+		case 0x85:
+			gi.stNum = beUint(v)
+		case 0x86:
+			gi.sqNum = beUint(v)
+		}
+		p = ve
+	}
+	return gi, true
+}
+
+// berLen decodes a BER length at the start of b: returns the length value
+// and the number of header bytes it consumed (0 on malformed/unsupported).
+func berLen(b []byte) (int, int) {
+	if len(b) == 0 {
+		return 0, 0
+	}
+	if b[0] < 0x80 {
+		return int(b[0]), 1
+	}
+	n := int(b[0] & 0x7f)
+	if n == 0 || n > 4 || len(b) < 1+n {
+		return 0, 0
+	}
+	v := 0
+	for i := 1; i <= n; i++ {
+		v = v<<8 | int(b[i])
+	}
+	return v, 1 + n
+}
+
+// beUint reads a big-endian unsigned integer from up to 4 bytes.
+func beUint(b []byte) uint32 {
+	var v uint32
+	if len(b) > 4 {
+		b = b[len(b)-4:]
+	}
+	for _, c := range b {
+		v = v<<8 | uint32(c)
+	}
+	return v
+}
+
+// visString returns the printable-ASCII form of a BER VisibleString value.
+func visString(b []byte) string {
+	if len(b) > 128 {
+		b = b[:128]
+	}
+	out := make([]byte, 0, len(b))
+	for _, c := range b {
+		if c >= 0x20 && c < 0x7f {
+			out = append(out, c)
+		} else {
+			out = append(out, '.')
+		}
+	}
+	return string(out)
+}

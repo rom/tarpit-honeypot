@@ -197,6 +197,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &hartIP{}, nil
 	case "pcworx":
 		return &pcworx{}, nil
+	case "mms":
+		return &mms{}, nil
 	case "mqtt":
 		return &mqtt{}, nil
 	case "opcua":

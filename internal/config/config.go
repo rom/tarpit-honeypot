@@ -209,7 +209,18 @@ type Sniffer struct {
 	Interface string     `yaml:"interface"` // empty = all
 	ARPScan   ARPScanCfg `yaml:"arp_scan"`
 	TCPScan   TCPScanCfg `yaml:"tcp_scan"`
+	GOOSE     GOOSECfg   `yaml:"goose"`
 	Severity  string     `yaml:"severity"`
+}
+
+// GOOSECfg controls passive IEC 61850 GOOSE detection. GOOSE is L2
+// multicast (ethertype 0x88B8) carrying substation trip/status messages, so
+// it's captured on a dedicated AF_PACKET socket. Each distinct
+// (source MAC, gocbRef) is reported (rate-limited) — observing GOOSE on a
+// segment, or a spoofed GOOSE stream, is high-signal in an OT environment.
+type GOOSECfg struct {
+	Enabled bool          `yaml:"enabled"`
+	Window  time.Duration `yaml:"window"` // per-source dedup window (default 60s)
 }
 
 type ARPScanCfg struct {

@@ -27,8 +27,9 @@ type linuxSniffer struct {
 	mu    sync.Mutex
 	state map[string]*scanState // key: source MAC string
 
-	tcp  *scanTracker // nil unless TCPScan enabled
-	frag *rateLimiter // nil unless TCPScan enabled
+	tcp   *scanTracker // nil unless TCPScan enabled
+	frag  *rateLimiter // nil unless TCPScan enabled
+	goose *rateLimiter // nil unless GOOSE enabled
 }
 
 type scanState struct {
@@ -53,6 +54,13 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 		s.tcp = newScanTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts, cfg.TCPScan.StealthPorts)
 		s.frag = newRateLimiter(cfg.TCPScan.Window)
 	}
+	if cfg.GOOSE.Enabled {
+		w := cfg.GOOSE.Window
+		if w <= 0 {
+			w = 60 * time.Second
+		}
+		s.goose = newRateLimiter(w)
+	}
 	return s, nil
 }
 
@@ -60,6 +68,7 @@ const (
 	ethPARP    = 0x0806
 	ethPIP     = 0x0800
 	ethPALL    = 0x0003
+	ethPGOOSE  = 0x88B8
 	arpRequest = 1
 	arpReply   = 2
 )
@@ -104,6 +113,9 @@ func (s *linuxSniffer) Run(ctx context.Context, bus chan<- *event.Event) error {
 	// on its own AF_PACKET socket so the ARP path is unaffected.
 	if s.tcp != nil {
 		go s.runIPCapture(ctx, bus)
+	}
+	if s.goose != nil {
+		go s.runGOOSECapture(ctx, bus)
 	}
 
 	buf := make([]byte, 2048)
@@ -308,6 +320,75 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	ev.Meta["distinct_ports"] = count
 	ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
 	ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
+	send(ctx, bus, ev)
+}
+
+// runGOOSECapture opens a dedicated AF_PACKET socket bound to the GOOSE
+// ethertype (0x88B8) and reports IEC 61850 GOOSE streams seen on the
+// segment, rate-limited per source MAC. GOOSE is substation trip/status
+// multicast; its presence (or a spoofed stream) is high-signal in OT.
+func (s *linuxSniffer) runGOOSECapture(ctx context.Context, bus chan<- *event.Event) {
+	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(htons(ethPGOOSE)))
+	if err != nil {
+		slog.Warn("sniffer: goose socket", "err", err)
+		return
+	}
+	ifaceIdx := 0
+	if s.cfg.Interface != "" {
+		if iface, err := net.InterfaceByName(s.cfg.Interface); err == nil {
+			ifaceIdx = iface.Index
+		}
+	}
+	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: htons(ethPGOOSE), Ifindex: ifaceIdx}); err != nil {
+		slog.Warn("sniffer: goose bind", "err", err)
+		_ = unix.Close(fd)
+		return
+	}
+	slog.Info("sniffer: goose detection up", "interface", s.cfg.Interface)
+	go func() {
+		<-ctx.Done()
+		_ = unix.Shutdown(fd, unix.SHUT_RDWR)
+		_ = unix.Close(fd)
+	}()
+
+	buf := make([]byte, 2048)
+	for {
+		n, from, err := unix.Recvfrom(fd, buf, 0)
+		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, syscall.EBADF) || errors.Is(err, syscall.EINTR) {
+				return
+			}
+			slog.Warn("sniffer: goose recvfrom", "err", err)
+			continue
+		}
+		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
+			continue
+		}
+		s.handleGOOSE(ctx, buf[:n], bus)
+	}
+}
+
+func (s *linuxSniffer) handleGOOSE(ctx context.Context, frame []byte, bus chan<- *event.Event) {
+	gi, ok := parseGOOSE(frame)
+	if !ok {
+		return
+	}
+	// Rate-limit per source MAC so a normal (high-rate) GOOSE stream emits
+	// at most one event per window.
+	if !s.goose.allow(gi.srcMAC, time.Now()) {
+		return
+	}
+	ev := s.newEvent("sniffer:goose", s.sev, gi.srcMAC, "", "")
+	ev.Proto = "goose"
+	ev.Meta["appid"] = gi.appid
+	if gi.gocbRef != "" {
+		ev.Meta["gocb_ref"] = gi.gocbRef
+	}
+	if gi.goID != "" {
+		ev.Meta["go_id"] = gi.goID
+	}
+	ev.Meta["st_num"] = gi.stNum
+	ev.Meta["sq_num"] = gi.sqNum
 	send(ctx, bus, ev)
 }
 
