@@ -251,6 +251,16 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &openvpn{}, nil
 	case "citrix_ica":
 		return &citrixICA{}, nil
+	case "vmware_authd":
+		return &vmwareAuthd{}, nil
+	case "x11":
+		return &x11{}, nil
+	case "rlogin":
+		return &rlogin{}, nil
+	case "nx":
+		return &nx{}, nil
+	case "redfish":
+		return &redfish{}, nil
 	case "intel_amt", "ilo", "idrac", "esxi", "fortinet",
 		"pulse", "citrix_gateway", "horizon", "moxa_mgmt":
 		return &mgmtWeb{kind: name}, nil

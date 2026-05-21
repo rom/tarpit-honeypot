@@ -66,6 +66,7 @@ var fuzzTCPNames = []string{
 	"s7comm_plus", "iec104", "mqtt", "opcua", "ethernetip", "dnp3",
 	"ge_srtp", "codesys", "atg", "fox", "hartip", "pcworx",
 	"teamviewer", "anydesk", "openvpn", "citrix_ica",
+	"vmware_authd", "x11", "rlogin", "nx", "redfish",
 	"intel_amt", "ilo", "idrac", "esxi", "fortinet", "pulse",
 	"citrix_gateway", "horizon", "moxa_mgmt", "scripted",
 }

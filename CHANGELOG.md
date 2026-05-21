@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 5 more remote-access / out-of-band management protocols
+- **`vmware_authd`** (TCP 902): VMware Authentication Daemon banner +
+  FTP-style USER/PASS capture (ESXi / Workstation management agent).
+- **`redfish`** (TCP 443/8000): BMC Redfish REST API — serves the
+  unauthenticated service root, demands Basic auth below it, captures
+  credentials (iLO / iDRAC / XCC / Supermicro OOB).
+- **`x11`** (TCP 6000): X11 display server — parses the setup request,
+  captures the auth-protocol name, returns a Failed setup; flags an exposed
+  X server (keylog/screen-capture risk).
+- **`rlogin`** (TCP 513): BSD rlogin — captures the NUL-separated client/
+  server user + termtype and the password prompt.
+- **`nx`** (TCP 4000): NoMachine NX server banner + client-hello capture.
+  All registered, validated, fuzzed, and tested.
+
 ### Added — web UI "attacker profiles" tab
 - New **`/profiles`** tab + **`/profiles/<ip>`** detail (and `/api/profiles`,
   `/api/profiles/<ip>`): a per-source-IP threat-actor dossier compiled from

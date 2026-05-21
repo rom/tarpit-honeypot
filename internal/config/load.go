@@ -277,6 +277,7 @@ func (c *Config) Validate() error {
 			"xmpp": true, "amqp": true, "ipp": true,
 			"mssql": true, "oracle_tns": true,
 			"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
+			"vmware_authd": true, "x11": true, "rlogin": true, "nx": true, "redfish": true,
 			"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
 			"fortinet": true, "pulse": true, "citrix_gateway": true,
 			"horizon": true, "moxa_mgmt": true,

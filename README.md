@@ -26,7 +26,7 @@ rationale covering the current implementation.
 - **81 built-in protocol handlers** (1 generic + 57 TCP + 23 UDP), including a scriptable `lua` handler for dynamic responses. See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
-  - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
+  - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
@@ -889,6 +889,11 @@ handshake where it isn't HTTP.
 | `citrix_gateway` | 443 | Citrix Gateway / NetScaler (`/cgi/login` form). | — | — |
 | `horizon` | 443 | VMware Horizon view portal (`/portal/webclient/`). | — | — |
 | `moxa_mgmt` | 80 | Moxa device web console (`MoxaHttp/1.0`, `/Login.asp` form). | — | — |
+| `vmware_authd` | 902 | VMware Authentication Daemon (ESXi / Workstation management agent). Sends the `220 VMware Authentication Daemon Version 1.10…` banner, captures the FTP-style USER/PASS + default creds. | — | — |
+| `redfish` | 443 | BMC Redfish REST API (iLO / iDRAC / XCC / Supermicro OOB). Serves the unauthenticated service root, demands Basic auth below it, captures `basic_user`/`basic_pass` + default creds; flags `redfish-auth-attempt`. | — | — |
+| `x11` | 6000 | X11 display server — parses the connection-setup request, captures the offered auth-protocol name, returns a Failed setup. An exposed X server is a keylog/screen-capture risk; flags `x11-connection-attempt`. | — | — |
+| `rlogin` | 513 | BSD rlogin — parses the NUL-separated client/server user + termtype record, prompts for a password, captures all of it. Flags `rlogin-attempt`. | — | — |
+| `nx` | 4000 | NoMachine NX server — `HELLO NXSERVER` banner, captures the client hello + login; flags `nx-probe`. | — | — |
 
 ### TCP — ICS / OT
 
