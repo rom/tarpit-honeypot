@@ -54,12 +54,15 @@ documented in `docs/`).
 ### Added — Lua `time` API + 6 new dynamic interaction scripts
 - New sandboxed `time` API (`time.now`/`time.ms`/`time.utc`/`time.uptime`)
   so Lua scripts can emit live timestamps, TTLs, and uptime counters.
-- Six new shipped scripts in `configs/scripts/` demonstrating counters,
+- Eleven new shipped scripts in `configs/scripts/` demonstrating counters,
   timestamps, uptime, and rotating banners: `redis-mini` (dynamic INFO with
   live uptime + per-source client counter), `memcached-stats` (live `stats`
   + cmd_get counter), `smtp-greeting` (RFC822-dated 220 banner),
   `telnet-switch` (per-source command counter + live uptime),
-  `pop3` (live APOP timestamp challenge), and `finger` (recon capture).
+  `pop3` (live APOP timestamp challenge), `finger` (recon capture),
+  `http-status` (live JSON health page + request counter), `irc` (botnet-C2
+  NICK/USER/PASS/JOIN capture), `whois`, `ident` (stable per-source user),
+  and `rsync` (module-enumeration capture).
 
 ### Added/Changed — richer existing-protocol support
 - **SSH server `KEXINIT` + HASSH-server** (`ssh_kex.go`): the `ssh` handler

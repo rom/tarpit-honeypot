@@ -75,8 +75,9 @@ rationale covering the current implementation.
   and `log`/`flag`/`meta` — for deeper app emulation + rotating dynamic
   banners. Shipped scripts in [`configs/scripts/`](configs/scripts/):
   `iot-login`, `redis-mini`, `memcached-stats`, `smtp-greeting`,
-  `telnet-switch`, `pop3`, `finger` (counters, live timestamps, rotating
-  versions, per-source state).
+  `telnet-switch`, `pop3`, `finger`, `http-status`, `irc` (botnet-C2
+  capture), `whois`, `ident`, `rsync` (counters, live timestamps, rotating
+  versions, per-source state, engagement + capture).
 - **Full fake-vulnerable web application** (`webapp: true` on an
   `http`/`https` listener): a believable multi-page PHP/MySQL-flavored app
   (login, search, product, file download, JSON API, plus the juicy paths
