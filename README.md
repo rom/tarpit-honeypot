@@ -23,7 +23,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **81 built-in protocol handlers** (1 generic + 57 TCP + 23 UDP), including a scriptable `lua` handler for dynamic responses. See [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **89 built-in TCP/UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -406,18 +406,35 @@ rationale covering the current implementation.
 
 ## Documentation
 
-In-tree:
+In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 - [`docs/design.md`](docs/design.md) — architecture + design rationale covering the current implementation.
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
+- [`docs/archetypes.md`](docs/archetypes.md) — the full 99-archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
+- [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
 - [`EXAMPLES.md`](EXAMPLES.md) — walkthrough of every example config (OT Purdue-model decoys + edge + IT), how to adapt and combine them.
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
 
 ## Status
+
+**v2.0 — printers/MFD, offline tooling, deeper detection.** A full
+printer / multi-function-device deception + detection suite: the `pjl`
+(JetDirect 9100), `ipp` (CUPS 631) and `lpd` (515) handlers, a PRET-aware
+PJL responder that decoys a fake filesystem and flags the destructive
+operations (FSINIT format, password set, PostScript `exitserver`, ZPL
+config), CUPS foomatic-rip RCE detection, and **11 printer/MFD archetypes**
+(HP, Brother, Canon, Epson, Xerox, Lexmark, Ricoh, Konica Minolta, Kyocera,
+Sharp, Zebra). Five offline CLI inspection subcommands (`list-archetypes`,
+`list-handlers`, `list-cves`, `list-techniques`, `identify`). Passive OS
+fingerprinting from observed TTL feeds the device registry. Per-deployment
+webapp honeytokens. SNMP-SET / DNS-zone-transfer / TFTP protocol-misuse
+detection. The catalog reached **99 OS/device archetypes**; a new
+[`docs/archetypes.md`](docs/archetypes.md) documents every one. See the
+[CHANGELOG](CHANGELOG.md) for the full list.
 
 **v1.13 — scriptable + recorded + durable.** A Lua dynamic-response
 engine (`handler: lua`) drives services from sandboxed operator scripts
@@ -704,7 +721,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 89. |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 99; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -821,7 +838,9 @@ archetype then drives every banner-aware handler (SSH/HTTP(S)/FTP/Telnet/
 SMTP/MySQL), the SNMP MIB-2 identity (sysDescr/sysObjectID/ifTable), MAC
 OUI, interactive-shell CLI, TLS posture, and the initial IP TTL so the
 host is internally consistent end to end. `tarpit-honeypot help archetypes`
-prints the live list.
+prints the live list, `tarpit-honeypot list-archetypes <name>` the full
+fingerprint of one, and [`docs/archetypes.md`](docs/archetypes.md)
+documents all 99 with their services/protocols and emulated CVEs.
 
 | Category | Archetype | Config name(s) | Family | Init TTL | Signature highlights |
 |---|---|---|---|---|---|
@@ -1798,14 +1817,14 @@ Sample Prometheus scrape:
     - targets: ['sensor.example.internal:8088']
 ```
 
-## What's NOT in v1.5
+## What's NOT in v2.0
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
-- **Full TCP termination over TUN.** The v1.5 TUN adapter is an L3
+- **Full TCP termination over TUN.** The TUN adapter is an L3
   responder — it answers ICMP/ICMPv6 echo and TCP RST so the network
   appears alive. Real TCP termination would need a pure-userspace TCP
   stack (gvisor's netstack would be the natural fit, but their module

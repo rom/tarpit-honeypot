@@ -137,13 +137,20 @@ listeners:
 
 ### Handlers
 
-**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`.
+The authoritative list is `tarpit-honeypot list-handlers` (it is sourced from
+the same whitelist the validator enforces, so it never drifts).
+
+**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`.
+
+The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515) — recognize PJL/PostScript/ZPL abuse, CUPS foomatic-rip RCE, and LPD injection; pair them with a printer archetype (`hp-printer`, `brother-printer`, `xerox-versalink`, …) so the IPP/SNMP/web identities agree. See [`archetypes.md`](archetypes.md).
 
 **UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`.
 
 **TCP + UDP (small services, RFC 862-868 / 1340):** `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time`. `chargen`/`echo` reply with a single bounded datagram and never amplify — safe to expose on UDP.
 
 **Dynamic (Lua):** `lua` — the listener's `script:` path drives the connection via a sandboxed Lua VM (pure-Go, no io/os, context deadline + read/write/sleep budgets). Scripts get `conn:read/readline/write`, `host:get/set` (per-source state), `rng:int/choice/hex` (deterministic per deployment+host), `personality()` (stable hostname/version/firmware), `sleep` (timers), and `log`/`flag`/`meta`. Used for deeper app emulation + dynamic banners. Example: [`configs/scripts/iot-login.lua`](../configs/scripts/iot-login.lua).
+
+**Declarative (scripted):** `scripted` — stand up a custom TCP service entirely in YAML under the listener's `scripted:` block: an optional on-connect `greeting`, then top-down `rules` matching each client message by `prefix` / `contains` / `regex` (RE2) / `hex_prefix` / `any`, each writing a `respond` (or `respond_hex` for binary) with an optional per-rule `anomaly` flag and `close`. Bounded rounds + per-reply size cap; TCP-only (cannot be a spoofed-source amplifier); validated at config load.
 
 **Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 

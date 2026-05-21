@@ -88,6 +88,22 @@ When a TCP listener has `capture: true`, every accepted connection is written as
 wireshark /tmp/ssh.pcap
 ```
 
+### Inspecting the built-in catalogs (offline)
+
+These read-only subcommands dump the in-source catalogs (no config or
+network needed) so you can discover what the sensor can impersonate and
+detect, and tune detections:
+
+```bash
+./bin/tarpit-honeypot list-archetypes                 # all 99 device personas
+./bin/tarpit-honeypot list-archetypes xerox-versalink # one archetype's full fingerprint
+./bin/tarpit-honeypot list-handlers --proto tcp       # handlers valid on a listener
+./bin/tarpit-honeypot list-cves --service ipp         # emulated/detected CVEs by service
+./bin/tarpit-honeypot list-techniques --kind anomaly  # MITRE ATT&CK -> D3FEND coverage
+# Triage a log line: what would the sensor make of this?
+./bin/tarpit-honeypot identify --ua "sqlmap/1.7" --payload '${jndi:ldap://x/a}'
+```
+
 ## 3. Honeynets
 
 A *honeynet* is a configured artificial network with virtual hosts. One sensor can present as many distinct virtual machines, each with its own deterministic identity (SSH banner version, MAC, MySQL build string, SMB challenge, etc.).
@@ -308,14 +324,29 @@ honeynets:
 | RHEL / clones | RHEL 8/9/10, CentOS 5/6/7/8 + Stream 10, Rocky 9, AlmaLinux 9, Oracle 8/9 |
 | BSD | FreeBSD 13/14, OpenBSD 7.5/7.6 |
 | Other Linux | Arch Linux |
-| Industrial network | Moxa EDS-208, Moxa NPort 5210, Siemens SCALANCE XB-208 |
-| Industrial controller | Siemens S7-1200 PLC, Siemens S7-1500 PLC |
+| Industrial network | Moxa (EDS / NPort / AWK / MGate), Westermo (WeOS), Hirschmann, Phoenix Contact, Advantech, Cisco IE-2000/IE-3400/IR1101, SCALANCE |
+| Industrial controller | Siemens S7-1200/1500, Allen-Bradley ControlLogix, Schneider Modicon, Omron, ABB, Honeywell, WAGO, Beckhoff CX |
+| Printers / MFD | HP LaserJet, Brother, Canon, Epson, Xerox VersaLink, Lexmark, Ricoh, Konica Minolta, Kyocera, Sharp, Zebra |
+| Appliances | pfSense, FortiGate, Synology, QNAP, Hikvision/Axis cameras, MikroTik, Ubiquiti, Asterisk PBX |
+
+This is an abbreviated view — see [`archetypes.md`](archetypes.md) for the
+**complete 99-archetype catalog** with each device's services/protocols and
+emulated CVEs, or run `tarpit-honeypot list-archetypes`.
 
 **Each archetype carries:** SSH / HTTP / FTP / Telnet / SMTP / MySQL
 banner strings; MAC vendor OUI (Moxa 00:90:E8, Siemens 28:63:36); CLI
 prompt for shell engagement; SNMP MIB-2 identity (sysDescr,
 sysObjectID, sysName, ifTable); LLDP neighbor TLVs; default-service
-list; web-UI HTML body; per-archetype protocol quirks.
+list; web-UI HTML body; TLS posture; ICMP TTL; advertised CVEs;
+per-archetype protocol quirks.
+
+**Printers / MFD:** pair a printer archetype with the `pjl` (9100), `ipp`
+(631) and `lpd` (515) handlers for a coherent multi-function device. The
+PJL handler is PRET-aware (decoys a fake filesystem, flags FSINIT format /
+password set / PostScript `exitserver` / ZPL config); IPP flags the CUPS
+foomatic-rip RCE chain; LPD flags control-file injection. The IPP reply
+takes its make/model from the bound archetype, so IPP, SNMP and the web UI
+agree.
 
 ## 10. Interactive engagement (post-login shell + web login capture)
 

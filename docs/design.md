@@ -309,11 +309,22 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
 - **v1.13** — Lua dynamic-response engine (`handler: lua`); attacker
   session recording (asciinema casts); persistent + reload-durable
   correlator state.
-- **current (v1.14)** — more ICS/OT protocols (DNP3, S7comm-Plus, GE-SRTP,
+- **v1.14** — more ICS/OT protocols (DNP3, S7comm-Plus, GE-SRTP,
   CODESYS, BACnet WriteProperty); **JA3S** server-side TLS fingerprint;
   packet-capture TCP scan-detection layer (NULL/FIN/Xmas/SYN/ACK/frag);
   TCP/IP stack personality (per-archetype TTL on TUN responses);
   **PROFINET-DCP** L2 responder + ICS-discovery detection.
+- **current (v2.0)** — printer / multi-function-device suite: `pjl`
+  (JetDirect 9100, PRET-aware with a decoy filesystem), `ipp` (CUPS 631,
+  archetype-aware + foomatic-rip RCE detection), `lpd` (515) handlers, plus
+  11 printer/MFD archetypes; PJL/PostScript/ZPL abuse detection. Five
+  offline CLI inspection subcommands (`list-archetypes` / `-handlers` /
+  `-cves` / `-techniques`, `identify`). Passive OS fingerprint from observed
+  IPv4 TTL into the device registry. Per-deployment webapp honeytokens.
+  Protocol-misuse detection on SNMP (SetRequest), DNS (AXFR/IXFR) and TFTP
+  (write / config-read). Catalog reached 99 archetypes; new
+  [`archetypes.md`](archetypes.md) reference + a man page. Cross-package
+  catalog-integrity tests.
 
 ## 14. Open risks
 

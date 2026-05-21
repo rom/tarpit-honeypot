@@ -230,18 +230,39 @@ By family, with the most common port. All are configurable to any port via `bind
 | `dockerapi` | 2375 | unauthenticated Docker daemon mimic |
 | `xmpp` | 5222 | stream:features advertising PLAIN/SCRAM-SHA-1 |
 | `amqp` | 5672 | RabbitMQ Connection.Start, captures PLAIN creds |
-| `ipp` | 631 | CUPS Get-Printer-Attributes (Brother HL-shaped) |
+| `mssql` | 1433 | TDS pre-login + login capture |
+| `oracle_tns` | 1521 | TNS connect packet parse |
+
+**Printers / multi-function devices:**
+
+| Handler | Default port | What |
+|---|---|---|
+| `pjl` | 9100 | HP JetDirect / PJL — PRET-aware; answers INFO recon, decoys a fake filesystem (FSDIRLIST/FSUPLOAD), flags FSINIT format, password set/lock, PostScript `exitserver`/file-ops, ZPL config, language switch, firmware upgrade |
+| `ipp` | 631 | IPP / CUPS — archetype-aware identity (toner levels, uuid, doc-formats); flags admin/server-fetch ops, the foomatic-rip RCE (`cve:CVE-2024-47177`), attribute command injection |
+| `lpd` | 515 | LPD (RFC 1179) — acks the command, captures queue + control file, flags shell-metacharacter injection / overlong fields / traversal |
+
+Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-versalink`, `lexmark-printer`, `zebra-printer`, …) so IPP/SNMP/web identities agree. See [`archetypes.md`](archetypes.md).
 
 **ICS / OT:**
 
 | Handler | Default port | What |
 |---|---|---|
-| `modbus` | 502 | MBAP function-code parser |
+| `modbus` | 502 | MBAP function-code parser (+ write-attempt detection) |
 | `s7` | 102 | TPKT/COTP Connection Request → Confirm |
+| `s7comm_plus` | 102 | S7comm-Plus (S7-1200/1500) framing |
 | `iec104` | 2404 | BVLC frame parser, STARTDT_CON reply |
 | `mqtt` | 1883 | CONNECT parser with username/password capture |
 | `opcua` | 4840 | TCP-layer HEL → ACK |
 | `ethernetip` | 44818 | RegisterSession + ListIdentity (Allen-Bradley) |
+| `dnp3` | 20000 | DNP3 link-layer parse |
+| `ge_srtp` | 18245 | GE SRTP service request |
+| `codesys` | 1217 | CODESYS protocol probe |
+| `atg` | 10001 | Veeder-Root TLS-350 ATG |
+| `fox` | 1911 | Niagara/Tridium Fox |
+| `hartip` | 5094 | HART-IP session |
+| `pcworx` | 1962 | Phoenix Contact PC Worx |
+| `mms` | 102 | IEC 61850 MMS (substation IEDs) |
+| `ads` | 48898 | Beckhoff ADS/AMS (TwinCAT) |
 | `bacnet` | 47808 (UDP) | Who-Is → I-Am |
 | `fins` | 9600 (UDP) | Omron CPU-data-read response |
 | `melsec` | 1025 (TCP) | Mitsubishi 3E frame CPU read |
