@@ -706,6 +706,39 @@ listeners:
           respond: "END\r\n"
       default: "ERROR\r\n"
 
+  # Dynamic Lua services (counters / timestamps / uptime / rotating banners).
+  # See configs/scripts/*.lua. Each script drives the socket directly.
+  - id: tcp-lua-redis
+    proto: tcp
+    bind: 0.0.0.0:20083
+    mode: banner
+    handler: lua
+    script: configs/scripts/redis-mini.lua
+    severity: medium
+    read_timeout: 30s
+  - id: tcp-lua-smtp
+    proto: tcp
+    bind: 0.0.0.0:20084
+    mode: banner
+    handler: lua
+    script: configs/scripts/smtp-greeting.lua
+    severity: low
+    read_timeout: 30s
+
+  # Full fake-vulnerable web application. Works on http or https (set
+  # handler: https + an https: block to serve it over TLS). Detects — never
+  # executes — SQLi / XSS / LFI / RFI / SSRF / cmdi / SSTI / Log4Shell etc.
+  - id: tcp-webapp
+    proto: tcp
+    bind: 0.0.0.0:20085
+    mode: banner
+    handler: http
+    webapp: true
+    severity: high
+    read_timeout: 20s
+    read_bytes: 16384
+    capture: true
+
 
 canaries:
   - id: shared-creds

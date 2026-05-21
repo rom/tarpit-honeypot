@@ -8,6 +8,30 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — full fake-vulnerable web application (`webapp: true`)
+- Setting `webapp: true` on an `http`/`https` listener serves a believable
+  multi-page PHP/MySQL-flavored app (`internal/listener/handler/vulnweb.go`):
+  login, search, product, file download, a JSON API, and the juicy paths
+  scanners probe (`/.env`, `/.git/config`, `/config.php.bak`, `/robots.txt`,
+  `/phpinfo.php`, `/admin`). Every request is classified for the web-attack
+  families — SQLi, XSS, LFI, RFI/SSRF, command injection, SSTI, Log4Shell,
+  XXE, insecure deserialization — and flagged as `webapp:<class>`; nothing
+  is ever executed. Active deception: LFI toward `/etc/passwd` and `/.env`
+  return fake "loot" (decoy creds) to draw the attacker deeper, and a SQLi
+  login/parameter gets a fake MySQL syntax error. Reflected input is always
+  HTML-escaped, so the honeypot is never itself a real reflected-XSS vector.
+  Works over plain HTTP and TLS (the https handler shares the code path).
+
+### Added — Lua `time` API + 6 new dynamic interaction scripts
+- New sandboxed `time` API (`time.now`/`time.ms`/`time.utc`/`time.uptime`)
+  so Lua scripts can emit live timestamps, TTLs, and uptime counters.
+- Six new shipped scripts in `configs/scripts/` demonstrating counters,
+  timestamps, uptime, and rotating banners: `redis-mini` (dynamic INFO with
+  live uptime + per-source client counter), `memcached-stats` (live `stats`
+  + cmd_get counter), `smtp-greeting` (RFC822-dated 220 banner),
+  `telnet-switch` (per-source command counter + live uptime),
+  `pop3` (live APOP timestamp challenge), and `finger` (recon capture).
+
 ### Added/Changed — richer existing-protocol support
 - **SSH server `KEXINIT` + HASSH-server** (`ssh_kex.go`): the `ssh` handler
   now pipelines its own `SSH_MSG_KEXINIT` right after the banner, exactly as

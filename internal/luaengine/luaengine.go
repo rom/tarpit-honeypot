@@ -13,6 +13,7 @@
 //	rng:int(n) / rng:choice(t) / rng:hex(n)          -- deterministic per (deployment, host, script)
 //	personality()                                    -- stable per-host {hostname,version,firmware,serial}
 //	sleep(ms)                                         -- bounded delay (timers)
+//	time.now() / time.ms() / time.utc() / time.uptime() -- clock (timestamps/TTL)
 //	log(s) / flag(marker) / meta(k,v)                -- record into the event
 //	archetype                                        -- {name, family}
 //
@@ -64,11 +65,12 @@ type Result struct {
 
 // Engine is one compiled script, reusable across connections.
 type Engine struct {
-	name  string
-	proto *lua.FunctionProto
-	id    *identity.Identity
-	arch  archInfo
-	hosts *hostStore
+	name    string
+	proto   *lua.FunctionProto
+	id      *identity.Identity
+	arch    archInfo
+	hosts   *hostStore
+	started time.Time // for time.uptime()
 }
 
 type archInfo struct{ Name, Family string }
@@ -84,7 +86,7 @@ func Compile(name string, src []byte, id *identity.Identity, archName, archFamil
 	if err != nil {
 		return nil, fmt.Errorf("lua: compile %s: %w", name, err)
 	}
-	return &Engine{name: name, proto: proto, id: id, arch: archInfo{archName, archFamily}, hosts: newHostStore()}, nil
+	return &Engine{name: name, proto: proto, id: id, arch: archInfo{archName, archFamily}, hosts: newHostStore(), started: time.Now()}, nil
 }
 
 // Run executes the script for one connection. The deadline comes from
@@ -303,6 +305,28 @@ func (e *Engine) install(L *lua.LState, st *runState, srcIP string) {
 		}
 		return 0
 	}))
+
+	// time — wall clock + process uptime, for dynamic banners that carry a
+	// timestamp / counter / TTL (e.g. an SMTP RFC822 date, a fake device
+	// uptime, an HTTP Date). Read-only; benign to expose to the sandbox.
+	tmod := L.NewTable()
+	L.SetField(tmod, "now", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LNumber(time.Now().Unix()))
+		return 1
+	}))
+	L.SetField(tmod, "ms", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LNumber(time.Now().UnixMilli()))
+		return 1
+	}))
+	L.SetField(tmod, "utc", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LString(time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")))
+		return 1
+	}))
+	L.SetField(tmod, "uptime", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LNumber(int(time.Since(e.started).Seconds())))
+		return 1
+	}))
+	L.SetGlobal("time", tmod)
 
 	// log / flag / meta — recording into the event.
 	L.SetGlobal("log", L.NewFunction(func(L *lua.LState) int {

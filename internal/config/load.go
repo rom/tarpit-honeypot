@@ -315,6 +315,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("listener %s: scripted: %w", l.ID, err)
 			}
 		}
+		if l.Webapp && l.Handler != "http" && l.Handler != "https" {
+			return fmt.Errorf("listener %s: webapp requires handler http or https (got %q)", l.ID, l.Handler)
+		}
 		if l.Mode == "tarpit" {
 			if l.Proto != "tcp" {
 				return fmt.Errorf("listener %s: tarpit is tcp-only", l.ID)

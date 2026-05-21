@@ -3,6 +3,8 @@ package luaengine
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +113,57 @@ func TestLuaInfiniteLoopCancelled(t *testing.T) {
 	r := e.Run(ctx, newConn(""), "5.5.5.5")
 	if r.Meta["lua_error"] == nil {
 		t.Error("infinite loop should be cancelled by the context deadline")
+	}
+}
+
+// Every shipped configs/scripts/*.lua must compile and run end-to-end
+// without a Lua error against representative input — a guard so a broken
+// script can't ship.
+func TestShippedScriptsCompileAndRun(t *testing.T) {
+	dir := filepath.Join("..", "..", "configs", "scripts")
+	files, err := filepath.Glob(filepath.Join(dir, "*.lua"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	if len(files) < 5 {
+		t.Fatalf("expected several shipped scripts, found %d in %s", len(files), dir)
+	}
+	input := "PING\r\nINFO\r\nstats\r\nversion\r\nEHLO x\r\nUSER a\r\nPASS b\r\nshow version\r\nQUIT\r\n"
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		name := filepath.Base(f)
+		e, err := Compile(name, src, identity.New("seed-A"), "debian-12", "debian")
+		if err != nil {
+			t.Errorf("%s: compile: %v", name, err)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		r := e.Run(ctx, newConn(input), "9.9.9.9")
+		cancel()
+		if r.Meta["lua_error"] != nil {
+			t.Errorf("%s: runtime error: %v", name, r.Meta["lua_error"])
+		}
+	}
+}
+
+func TestLuaTimeAPI(t *testing.T) {
+	e := compile(t, `
+		meta("now_ok", time.now() > 1700000000)
+		meta("utc", time.utc())
+		meta("uptime_ok", time.uptime() >= 0)
+	`)
+	r := e.Run(context.Background(), newConn(""), "8.8.8.8")
+	if r.Meta["now_ok"] != true {
+		t.Errorf("time.now() looks wrong: %v", r.Meta["now_ok"])
+	}
+	if s, _ := r.Meta["utc"].(string); !strings.HasSuffix(s, "GMT") {
+		t.Errorf("time.utc() = %q; want an HTTP-date ending GMT", s)
+	}
+	if r.Meta["uptime_ok"] != true {
+		t.Errorf("time.uptime() negative: %v", r.Meta["uptime_ok"])
 	}
 }
 

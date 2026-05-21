@@ -410,6 +410,12 @@ type Listener struct {
 	// Required (non-empty) when handler is "scripted".
 	Scripted ScriptedProto `yaml:"scripted"`
 
+	// Webapp turns an http / https listener into the full
+	// fake-vulnerable web application (login + search + file download +
+	// JSON API + the juicy paths scanners probe), detecting — never
+	// executing — the web-attack families. Ignored by other handlers.
+	Webapp bool `yaml:"webapp"`
+
 	HTTPS  HTTPS  `yaml:"https"`
 	Tarpit Tarpit `yaml:"tarpit"`
 }

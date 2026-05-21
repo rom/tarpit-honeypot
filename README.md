@@ -70,9 +70,24 @@ rationale covering the current implementation.
   (no io/os, context deadline + read/write/sleep budgets). Scripts get
   per-session state, per-source persistent `host` state, `personality()`
   (stable hostname/version/firmware per source), deterministic `rng`
-  (seeded from `deployment_id`), `sleep` timers, and `log`/`flag`/`meta`
-  — for deeper app emulation + rotating dynamic banners. Example:
-  [`configs/scripts/iot-login.lua`](configs/scripts/iot-login.lua).
+  (seeded from `deployment_id`), `sleep` timers, a `time` clock
+  (`now`/`ms`/`utc`/`uptime` — for live timestamps, TTL, uptime counters),
+  and `log`/`flag`/`meta` — for deeper app emulation + rotating dynamic
+  banners. Shipped scripts in [`configs/scripts/`](configs/scripts/):
+  `iot-login`, `redis-mini`, `memcached-stats`, `smtp-greeting`,
+  `telnet-switch`, `pop3`, `finger` (counters, live timestamps, rotating
+  versions, per-source state).
+- **Full fake-vulnerable web application** (`webapp: true` on an
+  `http`/`https` listener): a believable multi-page PHP/MySQL-flavored app
+  (login, search, product, file download, JSON API, plus the juicy paths
+  scanners probe — `/.env`, `/.git/config`, `/config.php.bak`, `robots.txt`)
+  whose endpoints LOOK exploitable so an attacker engages and reveals TTPs.
+  Detects — never executes — SQLi / XSS / LFI / RFI / SSRF / command
+  injection / SSTI / Log4Shell / XXE / deserialization, flagging each as a
+  `webapp:<class>` anomaly. Active deception: LFI toward `/etc/passwd` and
+  `/.env` return fake "loot" (decoy creds) to draw the attacker deeper;
+  reflected input is always HTML-escaped so the honeypot is never itself a
+  real XSS vector.
 - **Declarative fake-protocol routing** (`handler: scripted`): stand up a
   believable custom TCP service entirely in YAML — no Lua. An optional
   on-connect `greeting`, then top-down `rules` that match each client
