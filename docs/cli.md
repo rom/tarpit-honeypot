@@ -14,6 +14,7 @@ tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
+tarpit-honeypot list-archeservices [<role>]
 tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
@@ -332,6 +333,21 @@ tarpit-honeypot list-handlers --proto udp
 | Flag | Default | Meaning |
 |---|---|---|
 | `--proto tcp\|udp` | both | Limit to one transport. |
+
+---
+
+## `list-archeservices`
+
+Print the service roles (`webserver`, `ftpserver`, `printserver`,
+`fileserver`, `ldapserver`, `adserver`, …) and the port/proto/handler set
+each one stands up. Use a role in an `archeservices:` config entry together
+with an `archetype:` so the expanded listeners answer with the right
+software identity. Read-only; no config or network needed.
+
+```
+tarpit-honeypot list-archeservices
+tarpit-honeypot list-archeservices adserver
+```
 
 ---
 

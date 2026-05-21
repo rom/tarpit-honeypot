@@ -1,0 +1,708 @@
+# tarpit-honeypot — LARGE example: every protocol handler enabled, plus
+# the archeservice role bundles and all detection subsystems. This is a
+# stress / reference config (validate with `tarpit-honeypot validate-config`);
+# in production bind only the services you actually want exposed.
+#
+# Generated to exercise the full handler matrix. Ports are remapped into
+# the 10000+/12000+ ranges so it runs without privileged ports or
+# colliding with the archeservices below (which use real ports on
+# dedicated loopback IPs).
+
+sensor:
+  name: tarpit-large
+  deployment_id: large-ref-01
+  data_dir: /var/lib/tarpit-honeypot
+  archetype: debian 12
+  vuln_emulation: true
+  jitter: { enabled: true, min_ms: 5, max_ms: 40 }
+  session_recording: { enabled: true }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - id: tcp-ads
+    proto: tcp
+    bind: 0.0.0.0:10000
+    mode: banner
+    handler: ads
+    severity: medium
+  - id: tcp-amqp
+    proto: tcp
+    bind: 0.0.0.0:10001
+    mode: banner
+    handler: amqp
+    severity: medium
+  - id: tcp-anydesk
+    proto: tcp
+    bind: 0.0.0.0:10002
+    mode: banner
+    handler: anydesk
+    severity: medium
+  - id: tcp-atg
+    proto: tcp
+    bind: 0.0.0.0:10003
+    mode: banner
+    handler: atg
+    severity: medium
+  - id: tcp-chargen
+    proto: tcp
+    bind: 0.0.0.0:10004
+    mode: banner
+    handler: chargen
+    severity: medium
+  - id: tcp-citrix-gateway
+    proto: tcp
+    bind: 0.0.0.0:10005
+    mode: banner
+    handler: citrix_gateway
+    severity: medium
+  - id: tcp-citrix-ica
+    proto: tcp
+    bind: 0.0.0.0:10006
+    mode: banner
+    handler: citrix_ica
+    severity: medium
+  - id: tcp-codesys
+    proto: tcp
+    bind: 0.0.0.0:10007
+    mode: banner
+    handler: codesys
+    severity: medium
+  - id: tcp-daytime
+    proto: tcp
+    bind: 0.0.0.0:10008
+    mode: banner
+    handler: daytime
+    severity: medium
+  - id: tcp-dcerpc
+    proto: tcp
+    bind: 0.0.0.0:10009
+    mode: banner
+    handler: dcerpc
+    severity: medium
+  - id: tcp-discard
+    proto: tcp
+    bind: 0.0.0.0:10010
+    mode: banner
+    handler: discard
+    severity: medium
+  - id: tcp-dnp3
+    proto: tcp
+    bind: 0.0.0.0:10011
+    mode: banner
+    handler: dnp3
+    severity: medium
+  - id: tcp-dockerapi
+    proto: tcp
+    bind: 0.0.0.0:10012
+    mode: banner
+    handler: dockerapi
+    severity: medium
+  - id: tcp-echo
+    proto: tcp
+    bind: 0.0.0.0:10013
+    mode: banner
+    handler: echo
+    severity: medium
+  - id: tcp-esxi
+    proto: tcp
+    bind: 0.0.0.0:10014
+    mode: banner
+    handler: esxi
+    severity: medium
+  - id: tcp-ethernetip
+    proto: tcp
+    bind: 0.0.0.0:10015
+    mode: banner
+    handler: ethernetip
+    severity: medium
+  - id: tcp-fortinet
+    proto: tcp
+    bind: 0.0.0.0:10016
+    mode: banner
+    handler: fortinet
+    severity: medium
+  - id: tcp-fox
+    proto: tcp
+    bind: 0.0.0.0:10017
+    mode: banner
+    handler: fox
+    severity: medium
+  - id: tcp-ftp
+    proto: tcp
+    bind: 0.0.0.0:10018
+    mode: banner
+    handler: ftp
+    severity: medium
+  - id: tcp-ftp-files
+    proto: tcp
+    bind: 0.0.0.0:10019
+    mode: banner
+    handler: ftp_files
+    severity: medium
+  - id: tcp-ge-srtp
+    proto: tcp
+    bind: 0.0.0.0:10020
+    mode: banner
+    handler: ge_srtp
+    severity: medium
+  - id: tcp-hartip
+    proto: tcp
+    bind: 0.0.0.0:10021
+    mode: banner
+    handler: hartip
+    severity: medium
+  - id: tcp-horizon
+    proto: tcp
+    bind: 0.0.0.0:10022
+    mode: banner
+    handler: horizon
+    severity: medium
+  - id: tcp-http
+    proto: tcp
+    bind: 0.0.0.0:10023
+    mode: banner
+    handler: http
+    webapp: true
+    severity: medium
+  - id: tcp-https
+    proto: tcp
+    bind: 0.0.0.0:10024
+    mode: banner
+    handler: https
+    webapp: true
+    severity: medium
+  - id: tcp-idrac
+    proto: tcp
+    bind: 0.0.0.0:10025
+    mode: banner
+    handler: idrac
+    severity: medium
+  - id: tcp-iec104
+    proto: tcp
+    bind: 0.0.0.0:10026
+    mode: banner
+    handler: iec104
+    severity: medium
+  - id: tcp-ilo
+    proto: tcp
+    bind: 0.0.0.0:10027
+    mode: banner
+    handler: ilo
+    severity: medium
+  - id: tcp-intel-amt
+    proto: tcp
+    bind: 0.0.0.0:10028
+    mode: banner
+    handler: intel_amt
+    severity: medium
+  - id: tcp-ipp
+    proto: tcp
+    bind: 0.0.0.0:10029
+    mode: banner
+    handler: ipp
+    severity: medium
+  - id: tcp-kerberos
+    proto: tcp
+    bind: 0.0.0.0:10030
+    mode: banner
+    handler: kerberos
+    severity: medium
+  - id: tcp-ldap
+    proto: tcp
+    bind: 0.0.0.0:10031
+    mode: banner
+    handler: ldap
+    severity: medium
+  - id: tcp-lpd
+    proto: tcp
+    bind: 0.0.0.0:10032
+    mode: banner
+    handler: lpd
+    severity: medium
+  # lua handler omitted — needs a script: path (see configs/scripts/).
+  - id: tcp-melsec
+    proto: tcp
+    bind: 0.0.0.0:10033
+    mode: banner
+    handler: melsec
+    severity: medium
+  - id: tcp-mms
+    proto: tcp
+    bind: 0.0.0.0:10034
+    mode: banner
+    handler: mms
+    severity: medium
+  - id: tcp-modbus
+    proto: tcp
+    bind: 0.0.0.0:10035
+    mode: banner
+    handler: modbus
+    severity: medium
+  - id: tcp-moxa-mgmt
+    proto: tcp
+    bind: 0.0.0.0:10036
+    mode: banner
+    handler: moxa_mgmt
+    severity: medium
+  - id: tcp-mqtt
+    proto: tcp
+    bind: 0.0.0.0:10037
+    mode: banner
+    handler: mqtt
+    severity: medium
+  - id: tcp-mssql
+    proto: tcp
+    bind: 0.0.0.0:10038
+    mode: banner
+    handler: mssql
+    severity: medium
+  - id: tcp-mysql
+    proto: tcp
+    bind: 0.0.0.0:10039
+    mode: banner
+    handler: mysql
+    severity: medium
+  - id: tcp-nx
+    proto: tcp
+    bind: 0.0.0.0:10040
+    mode: banner
+    handler: nx
+    severity: medium
+  - id: tcp-opcua
+    proto: tcp
+    bind: 0.0.0.0:10041
+    mode: banner
+    handler: opcua
+    severity: medium
+  - id: tcp-openvpn
+    proto: tcp
+    bind: 0.0.0.0:10042
+    mode: banner
+    handler: openvpn
+    severity: medium
+  - id: tcp-oracle-tns
+    proto: tcp
+    bind: 0.0.0.0:10043
+    mode: banner
+    handler: oracle_tns
+    severity: medium
+  - id: tcp-pcworx
+    proto: tcp
+    bind: 0.0.0.0:10044
+    mode: banner
+    handler: pcworx
+    severity: medium
+  - id: tcp-pjl
+    proto: tcp
+    bind: 0.0.0.0:10045
+    mode: banner
+    handler: pjl
+    severity: medium
+  - id: tcp-postgres
+    proto: tcp
+    bind: 0.0.0.0:10046
+    mode: banner
+    handler: postgres
+    severity: medium
+  - id: tcp-pulse
+    proto: tcp
+    bind: 0.0.0.0:10047
+    mode: banner
+    handler: pulse
+    severity: medium
+  - id: tcp-qotd
+    proto: tcp
+    bind: 0.0.0.0:10048
+    mode: banner
+    handler: qotd
+    severity: medium
+  - id: tcp-raw
+    proto: tcp
+    bind: 0.0.0.0:10049
+    mode: drop
+    handler: raw
+    severity: medium
+  - id: tcp-rdp
+    proto: tcp
+    bind: 0.0.0.0:10050
+    mode: banner
+    handler: rdp
+    severity: medium
+  - id: tcp-redfish
+    proto: tcp
+    bind: 0.0.0.0:10051
+    mode: banner
+    handler: redfish
+    severity: medium
+  - id: tcp-redis
+    proto: tcp
+    bind: 0.0.0.0:10052
+    mode: banner
+    handler: redis
+    severity: medium
+  - id: tcp-rlogin
+    proto: tcp
+    bind: 0.0.0.0:10053
+    mode: banner
+    handler: rlogin
+    severity: medium
+  - id: tcp-rtsp
+    proto: tcp
+    bind: 0.0.0.0:10054
+    mode: banner
+    handler: rtsp
+    severity: medium
+  - id: tcp-s7
+    proto: tcp
+    bind: 0.0.0.0:10055
+    mode: banner
+    handler: s7
+    severity: medium
+  - id: tcp-s7comm-plus
+    proto: tcp
+    bind: 0.0.0.0:10056
+    mode: banner
+    handler: s7comm_plus
+    severity: medium
+  - id: tcp-scripted
+    proto: tcp
+    bind: 0.0.0.0:10057
+    mode: banner
+    handler: scripted
+    scripted:
+      greeting: "stub service ready\r\n"
+      rules:
+        - { match: any, respond: "ok\r\n" }
+    severity: medium
+  - id: tcp-smb
+    proto: tcp
+    bind: 0.0.0.0:10058
+    mode: banner
+    handler: smb
+    severity: medium
+  - id: tcp-smtp-recv
+    proto: tcp
+    bind: 0.0.0.0:10059
+    mode: banner
+    handler: smtp_recv
+    severity: medium
+  - id: tcp-ssh
+    proto: tcp
+    bind: 0.0.0.0:10060
+    mode: banner
+    handler: ssh
+    severity: medium
+  - id: tcp-ssh-interactive
+    proto: tcp
+    bind: 0.0.0.0:10061
+    mode: banner
+    handler: ssh_interactive
+    severity: medium
+  - id: tcp-syslog-tcp
+    proto: tcp
+    bind: 0.0.0.0:10062
+    mode: banner
+    handler: syslog_tcp
+    severity: medium
+  - id: tcp-teamviewer
+    proto: tcp
+    bind: 0.0.0.0:10063
+    mode: banner
+    handler: teamviewer
+    severity: medium
+  - id: tcp-telnet
+    proto: tcp
+    bind: 0.0.0.0:10064
+    mode: banner
+    handler: telnet
+    severity: medium
+  - id: tcp-time
+    proto: tcp
+    bind: 0.0.0.0:10065
+    mode: banner
+    handler: time
+    severity: medium
+  - id: tcp-vmware-authd
+    proto: tcp
+    bind: 0.0.0.0:10066
+    mode: banner
+    handler: vmware_authd
+    severity: medium
+  - id: tcp-vnc
+    proto: tcp
+    bind: 0.0.0.0:10067
+    mode: banner
+    handler: vnc
+    severity: medium
+  - id: tcp-winrm
+    proto: tcp
+    bind: 0.0.0.0:10068
+    mode: banner
+    handler: winrm
+    severity: medium
+  - id: tcp-x11
+    proto: tcp
+    bind: 0.0.0.0:10069
+    mode: banner
+    handler: x11
+    severity: medium
+  - id: tcp-xmpp
+    proto: tcp
+    bind: 0.0.0.0:10070
+    mode: banner
+    handler: xmpp
+    severity: medium
+  - id: udp-bacnet
+    proto: udp
+    bind: 0.0.0.0:12000
+    mode: banner
+    handler: bacnet
+    severity: medium
+  - id: udp-chargen
+    proto: udp
+    bind: 0.0.0.0:12001
+    mode: banner
+    handler: chargen
+    severity: medium
+  - id: udp-cldap
+    proto: udp
+    bind: 0.0.0.0:12002
+    mode: banner
+    handler: cldap
+    severity: medium
+  - id: udp-coap
+    proto: udp
+    bind: 0.0.0.0:12003
+    mode: banner
+    handler: coap
+    severity: medium
+  - id: udp-daytime
+    proto: udp
+    bind: 0.0.0.0:12004
+    mode: banner
+    handler: daytime
+    severity: medium
+  - id: udp-dhcp
+    proto: udp
+    bind: 0.0.0.0:12005
+    mode: banner
+    handler: dhcp
+    severity: medium
+  - id: udp-discard
+    proto: udp
+    bind: 0.0.0.0:12006
+    mode: banner
+    handler: discard
+    severity: medium
+  - id: udp-dns
+    proto: udp
+    bind: 0.0.0.0:12007
+    mode: banner
+    handler: dns
+    severity: medium
+  - id: udp-echo
+    proto: udp
+    bind: 0.0.0.0:12008
+    mode: banner
+    handler: echo
+    severity: medium
+  - id: udp-fins
+    proto: udp
+    bind: 0.0.0.0:12009
+    mode: banner
+    handler: fins
+    severity: medium
+  - id: udp-ipmi
+    proto: udp
+    bind: 0.0.0.0:12010
+    mode: banner
+    handler: ipmi
+    severity: medium
+  - id: udp-knx
+    proto: udp
+    bind: 0.0.0.0:12011
+    mode: banner
+    handler: knx
+    severity: medium
+  - id: udp-llmnr
+    proto: udp
+    bind: 0.0.0.0:12012
+    mode: banner
+    handler: llmnr
+    severity: medium
+  - id: udp-nbns
+    proto: udp
+    bind: 0.0.0.0:12013
+    mode: banner
+    handler: nbns
+    severity: medium
+  - id: udp-ntp
+    proto: udp
+    bind: 0.0.0.0:12014
+    mode: banner
+    handler: ntp
+    severity: medium
+  - id: udp-qotd
+    proto: udp
+    bind: 0.0.0.0:12015
+    mode: banner
+    handler: qotd
+    severity: medium
+  - id: udp-radius
+    proto: udp
+    bind: 0.0.0.0:12016
+    mode: banner
+    handler: radius
+    severity: medium
+  - id: udp-raw
+    proto: udp
+    bind: 0.0.0.0:12017
+    mode: drop
+    handler: raw
+    severity: medium
+  - id: udp-sip
+    proto: udp
+    bind: 0.0.0.0:12018
+    mode: banner
+    handler: sip
+    severity: medium
+  - id: udp-snmp
+    proto: udp
+    bind: 0.0.0.0:12019
+    mode: banner
+    handler: snmp
+    severity: medium
+  - id: udp-ssdp
+    proto: udp
+    bind: 0.0.0.0:12020
+    mode: banner
+    handler: ssdp
+    severity: medium
+  - id: udp-syslog-udp
+    proto: udp
+    bind: 0.0.0.0:12021
+    mode: banner
+    handler: syslog_udp
+    severity: medium
+  - id: udp-tftp
+    proto: udp
+    bind: 0.0.0.0:12022
+    mode: banner
+    handler: tftp
+    severity: medium
+  - id: udp-time
+    proto: udp
+    bind: 0.0.0.0:12023
+    mode: banner
+    handler: time
+    severity: medium
+
+# Archeservice role bundles: each expands into the right listeners for
+# the role, combined with an archetype for correct software/banners.
+# Bound to dedicated loopback IPs so their real ports don't collide.
+archeservices:
+  - id: svc-webserver
+    role: webserver
+    archetype: debian 12
+    bind: 127.0.1.1
+    severity: high
+  - id: svc-ftpserver
+    role: ftpserver
+    archetype: ubuntu 24.04 lts
+    bind: 127.0.1.2
+    severity: high
+  - id: svc-sshserver
+    role: sshserver
+    archetype: rhel 9
+    bind: 127.0.1.3
+    severity: high
+  - id: svc-printserver
+    role: printserver
+    archetype: hp-printer
+    bind: 127.0.1.4
+    severity: high
+  - id: svc-fileserver
+    role: fileserver
+    archetype: windows server 2019
+    bind: 127.0.1.5
+    severity: high
+  - id: svc-ldapserver
+    role: ldapserver
+    archetype: active-directory
+    bind: 127.0.1.6
+    severity: high
+  - id: svc-adserver
+    role: adserver
+    archetype: active-directory
+    bind: 127.0.1.7
+    severity: high
+  - id: svc-mailserver
+    role: mailserver
+    archetype: debian 12
+    bind: 127.0.1.8
+    severity: high
+  - id: svc-dbserver
+    role: dbserver
+    archetype: debian 12
+    bind: 127.0.1.9
+    severity: high
+  - id: svc-dnsserver
+    role: dnsserver
+    archetype: debian 12
+    bind: 127.0.1.10
+    severity: high
+  - id: svc-snmpserver
+    role: snmpserver
+    archetype: cisco-catalyst-9300
+    bind: 127.0.1.11
+    severity: high
+  - id: svc-voipserver
+    role: voipserver
+    archetype: asterisk-voip
+    bind: 127.0.1.12
+    severity: high
+  - id: svc-remoteaccess
+    role: remoteaccess
+    archetype: windows server 2019
+    bind: 127.0.1.13
+    severity: high
+
+sniffer:
+  enabled: false   # set true on Linux with CAP_NET_RAW for L2 scan detection
+  arp_scan: { enabled: false }
+  tcp_scan: { enabled: false, detect_fragments: true }
+  goose: { enabled: false }
+
+correlate:
+  port_scan: { enabled: true }
+  brute_force: { enabled: true }
+  slow_scan: { enabled: true }
+  password_spray: { enabled: true }
+  credential_reuse: { enabled: true }
+  icmp_sweep: { enabled: true }
+  storyline: { enabled: true }
+
+devices:
+  enabled: true
+  learn: true
+  severity: high
+
+risk:
+  enabled: true
+  half_life: 1h
+  elevated: 20
+  high: 50
+  critical: 100
+
+dns:
+  amplifier_detection: { enabled: true }
+
+channels:
+  - { id: console, type: stdout }
+  - { id: db, type: sqlite }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [console, db] }

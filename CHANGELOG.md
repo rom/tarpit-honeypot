@@ -8,6 +8,40 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — archeservice role bundles
+- New `archeservices:` config section: declare a service *role* —
+  `webserver`, `ftpserver`, `sshserver`, `printserver`, `fileserver`,
+  `ldapserver`, `adserver`, `mailserver`, `dbserver`, `dnsserver`,
+  `snmpserver`, `voipserver`, `remoteaccess` — and it expands at load time
+  into the right listeners (correct ports + handlers). Combined with an
+  `archetype:` it answers with that OS/device's software, banners, versions
+  and TLS posture (e.g. `webserver` + `debian 12` → Apache; +
+  `windows server 2019` → IIS; `printserver` + `hp-printer` → coherent
+  PJL/IPP/LPD/SNMP). New `list-archeservices` subcommand + `internal/archeservice`.
+
+### Added — vulnerability-scanner detection
+- toolfp now classifies identified tools and sets `Verdict.Scanner` for
+  vulnerability scanners (Nessus/Tenable, OpenVAS/Greenbone, Qualys,
+  Nexpose/InsightVM/Rapid7, Acunetix, Nikto, Nuclei, sqlmap, …). The http
+  handler raises a `vulnerability-scanner` anomaly (ATT&CK T1595.002 /
+  T1190); the `tool:` prefix maps to active-scanning recon.
+
+### Added — example configs + tests
+- `configs/tarpit-honeypot.example-LARGE.yaml` (every handler enabled + all
+  archeservice roles + all subsystems) and
+  `configs/tarpit-honeypot.example-archeservices.yaml`.
+- Unit / regression / coherence / compatibility tests: archeservice
+  expansion + validation, every role's handlers are real, scanner
+  detection, plus catalog coherence — every archetype that pins an HTTP
+  Server header actually serves it, every printer's IPP reply carries its
+  identity, and every archetype name resolves at runtime.
+
+### Fixed
+- `archetype.Lookup` now resolves a profile's canonical Name and pretty
+  DisplayName (not just registry-key variants), so a config naming an
+  archetype the way `list-archetypes` prints it resolves identically at
+  runtime instead of silently running with no archetype.
+
 ### Security — DoS / robustness hardening (audit findings batch)
 - **DCE/RPC concurrent-map crash**: the endpoint-mapper interface set was a
   shared package var assigned into per-event meta; the listener sanitizes

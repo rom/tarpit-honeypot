@@ -165,6 +165,43 @@ credential, and drops into the archetype's shell on the session
 channel. Use `ssh_interactive` when post-auth TTP capture matters;
 use the lighter `ssh` when only credentials and fingerprints do.
 
+## `archeservices:` — service-role bundles
+
+An archeservice declares a service *role* and expands at load time into the
+listeners that role needs. Combine it with an `archetype:` so the handlers
+answer with the right software, banner strings, versions and TLS posture
+for that OS/device. One entry → several listeners.
+
+```yaml
+archeservices:
+  - id: corp-web                 # listener-id prefix (must be unique)
+    role: webserver              # see `tarpit-honeypot list-archeservices`
+    archetype: debian 12         # optional; the software/identity to wear
+    bind: 0.0.0.0                # host/IP ONLY — the role supplies the ports
+    severity: high               # optional; applied to every expanded listener
+    mode: banner                 # optional; default banner (raw services -> drop)
+    capture: false               # optional
+    vuln_emulation: true         # optional; overrides sensor default
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Unique prefix for the generated listener ids (`<id>-<proto><port>`). |
+| `role` | The service role. Run `tarpit-honeypot list-archeservices` for the catalog and each role's ports. |
+| `archetype` | OS/device identity the expanded handlers wear (validated like `sensor.archetype`). Optional. |
+| `bind` | A bare host/IP (no port). Each role service binds `<bind>:<port>`. |
+| `mode` / `severity` / `capture` / `vuln_emulation` | Applied to every expanded listener (sensible defaults). |
+
+Roles: `webserver`, `ftpserver`, `sshserver`, `printserver`, `fileserver`,
+`ldapserver`, `adserver`, `mailserver`, `dbserver`, `dnsserver`,
+`snmpserver`, `voipserver`, `remoteaccess`. Example:
+`webserver` + `debian 12` opens 80/http + 443/https with Debian's Apache
+banner; `adserver` + `active-directory` opens the full DC port set
+(Kerberos/LDAP/LDAPS/SMB/DCE-RPC/DNS/WinRM/RDP/GC); `printserver` +
+`hp-printer` opens 9100/631/515/161 as a coherent HP MFP. Inspect the
+result with `tarpit-honeypot show-config`. See
+[`configs/tarpit-honeypot.example-archeservices.yaml`](../configs/tarpit-honeypot.example-archeservices.yaml).
+
 ### Tarpit strategies
 
 | Strategy | Connection behavior | Use when |

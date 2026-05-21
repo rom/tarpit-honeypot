@@ -21,6 +21,21 @@ func TestFindRoundTrips(t *testing.T) {
 	}
 }
 
+// TestLookupResolvesEveryName: the runtime resolves a listener/sensor
+// archetype with Lookup, so every name list-archetypes prints (canonical
+// Name + DisplayName) must resolve there — otherwise a config naming an
+// archetype by Name would silently run with no archetype.
+func TestLookupResolvesEveryName(t *testing.T) {
+	for _, p := range All() {
+		if Lookup(p.Name) == nil {
+			t.Errorf("Lookup(%q) (canonical Name) returned nil", p.Name)
+		}
+		if Lookup(p.DisplayName) == nil {
+			t.Errorf("Lookup(%q) (DisplayName) returned nil", p.DisplayName)
+		}
+	}
+}
+
 // TestAllSortedAndDeduped: All() must be sorted by DisplayName with no
 // duplicate display names, and agree with Names().
 func TestAllSortedAndDeduped(t *testing.T) {

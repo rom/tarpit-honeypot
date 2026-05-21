@@ -229,7 +229,11 @@ var handlerTags = map[string]Tag{
 // the rule_id/handler base tag.
 var anomalyTags = map[string]Tag{
 	"default-credential-attempt": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
-	"modbus-write-attempt":       {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// A recognized vulnerability scanner (Nessus / OpenVAS / Qualys /
+	// Nexpose / Acunetix / Nikto / Nuclei / sqlmap …) — active vuln
+	// scanning (recon) that probes for exploitable public-facing apps.
+	"vulnerability-scanner": {Techniques: []string{"T1595.002", "T1190"}, Tactics: []string{"reconnaissance", "initial-access"}},
+	"modbus-write-attempt":  {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// SNMP SetRequest = write the device's running config (ACL / interface
 	// / config-copy-to-tftp). Manipulation on enterprise gear, modify-
 	// parameter on the ICS archetypes that also speak SNMP.
@@ -300,6 +304,9 @@ func AnomalyTag(a string) Tag {
 		// received, nvram, dmcmd, ipp admin op, lpd command).
 		return Tag{Techniques: []string{"T1083"}, Tactics: []string{"discovery"}}
 	case a == "automation-client":
+		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
+	case strings.HasPrefix(a, "tool:"):
+		// An identified scanning/attack tool — active scanning recon.
 		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
 	}
 	return Tag{}

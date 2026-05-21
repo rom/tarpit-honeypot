@@ -27,6 +27,7 @@ func Dispatch(args []string) error {
 		{"list-devices", "print the learned-device inventory (devices.json)", cmdListDevices},
 		{"list-archetypes", "print the device/OS archetype catalog (name for detail)", cmdListArchetypes},
 		{"list-handlers", "print the protocol handlers valid in a listener", cmdListHandlers},
+		{"list-archeservices", "print the service roles (webserver, adserver, …)", cmdListArcheservices},
 		{"list-cves", "print the CVE catalog (emulation + exploit detection)", cmdListCVEs},
 		{"list-techniques", "print the MITRE ATT&CK / D3FEND coverage map", cmdListTechniques},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},

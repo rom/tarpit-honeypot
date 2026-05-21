@@ -43,7 +43,7 @@ _tarpit_honeypot() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets list-devices list-archetypes list-handlers list-cves list-techniques identify init completion version"
+    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets list-devices list-archetypes list-handlers list-archeservices list-cves list-techniques identify init completion version"
     opts="-c --set --log-level --log-format --log-file --quiet --verbose --version -V -h --help"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then
@@ -94,6 +94,7 @@ _tarpit_honeypot() {
         'list-devices:print the learned-device inventory'
         'list-archetypes:print the archetype catalog'
         'list-handlers:print valid listener handlers'
+        'list-archeservices:print service roles'
         'list-cves:print the CVE catalog'
         'list-techniques:print ATT&CK / D3FEND coverage'
         'identify:fingerprint a UA / ssh-id / payload'
@@ -134,6 +135,7 @@ complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-honeynets' -d 'p
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-devices' -d 'print the learned-device inventory'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-archetypes' -d 'print the archetype catalog'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-handlers' -d 'print valid listener handlers'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-archeservices' -d 'print service roles'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-cves' -d 'print the CVE catalog'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-techniques' -d 'print ATT&CK / D3FEND coverage'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'identify' -d 'fingerprint a UA / ssh-id / payload'

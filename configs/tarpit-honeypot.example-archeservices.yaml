@@ -1,0 +1,59 @@
+# tarpit-honeypot — archeservices example.
+#
+# An `archeservice` stands up a *service role* (webserver, ftpserver,
+# printserver, fileserver, ldapserver, adserver, …) — it opens the right
+# ports with the right handlers, and combined with an `archetype` it answers
+# with the correct software, banner strings, versions and TLS posture for
+# that OS/device. One entry expands into several listeners at load time.
+#
+# Run `tarpit-honeypot list-archeservices` for the role catalog and
+# `tarpit-honeypot show-config -c <this file>` to see the expanded listeners.
+
+sensor:
+  name: tarpit-roles
+  data_dir: /var/lib/tarpit-honeypot
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  # A Debian box serving a website → 80/http + 443/https with Debian's
+  # Apache banner + TLS posture (and the fake-vulnerable webapp via the
+  # http/https handlers' archetype).
+  - id: corp-web
+    role: webserver
+    archetype: debian 12
+    bind: 0.0.0.0
+    severity: high
+
+  # An HP multi-function printer → 9100/PJL, 631/IPP, 515/LPD, 161/SNMP,
+  # all answering as an HP LaserJet. PRET / printer scans see one coherent
+  # device.
+  - id: floor3-printer
+    role: printserver
+    archetype: hp-printer
+    bind: 0.0.0.0
+    severity: high
+
+  # A Windows Active Directory domain controller → the full DC port set
+  # (Kerberos, LDAP/LDAPS, SMB, DCE-RPC, DNS, WinRM, RDP, Global Catalog)
+  # with Server-2019 identity + era-correct TLS.
+  - id: corp-dc
+    role: adserver
+    archetype: active-directory
+    bind: 0.0.0.0
+    severity: critical
+
+  # A Lexmark MFP advertising its (advisory) device CVE.
+  - id: lab-mfp
+    role: printserver
+    archetype: lexmark-printer
+    bind: 127.0.0.50
+
+channels:
+  - { id: console, type: stdout }
+
+routes:
+  - { match: { severity: ">=medium" }, channels: [console] }

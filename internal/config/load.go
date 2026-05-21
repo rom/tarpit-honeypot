@@ -106,6 +106,9 @@ func LoadDefaultsOnly(path string) (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
+	// Expand archeservice role bundles into listeners first, so the
+	// generated listeners pick up the per-listener defaults below.
+	c.expandArcheservices()
 	if c.Sensor.DataDir == "" {
 		c.Sensor.DataDir = "/var/lib/tarpit-honeypot"
 	}
@@ -291,6 +294,12 @@ func (c *Config) Validate() error {
 	// the silent fall-back to the identity-based banner pool.
 	if c.Sensor.Archetype != "" && archetype.Lookup(c.Sensor.Archetype) == nil {
 		return fmt.Errorf("sensor.archetype %q is not a known archetype; run `tarpit-honeypot help archetypes` for the list", c.Sensor.Archetype)
+	}
+
+	// Archeservice role bundles (validated before the listeners they
+	// expanded into).
+	if err := c.validateArcheservices(); err != nil {
+		return err
 	}
 
 	// Listeners.

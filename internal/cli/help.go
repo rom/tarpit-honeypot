@@ -325,6 +325,23 @@ EXAMPLES
     tarpit-honeypot list-handlers --proto udp
 `,
 
+	"list-archeservices": `list-archeservices — print the service roles
+
+SYNOPSIS
+    tarpit-honeypot list-archeservices [<role>]
+
+DESCRIPTION
+    Print the built-in service roles (webserver, ftpserver, printserver,
+    fileserver, ldapserver, adserver, dbserver, mailserver, …) and the
+    port/proto/handler set each one stands up. Use a role in an
+    archeservices: config entry together with an archetype: so the
+    expanded listeners answer with the right software identity.
+
+EXAMPLES
+    tarpit-honeypot list-archeservices
+    tarpit-honeypot list-archeservices adserver
+`,
+
 	"list-cves": `list-cves — print the CVE catalog
 
 SYNOPSIS

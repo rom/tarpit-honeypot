@@ -49,6 +49,16 @@ rationale covering the current implementation.
   (Hikvision / Axis), a network printer, and a VoIP PBX — see the full
   [OS / device archetypes](#os--device-archetypes) table.
   `tarpit-honeypot help archetypes` lists them all.
+- **Archeservice role bundles** (`archeservices:`): declare a *role* —
+  `webserver`, `ftpserver`, `printserver`, `fileserver`, `ldapserver`,
+  `adserver`, `mailserver`, `dbserver`, `dnsserver`, `sshserver`,
+  `snmpserver`, `voipserver`, `remoteaccess` — and it expands into the right
+  listeners (correct ports + handlers). Combined with an `archetype:` it
+  wears that OS/device's software, banners, versions and TLS posture
+  (`webserver` + `debian 12` → Apache; `adserver` + `active-directory` →
+  the full DC port set; `printserver` + `hp-printer` → a coherent
+  PJL/IPP/LPD/SNMP MFP). `tarpit-honeypot list-archeservices` lists the
+  roles; `internal/archeservice`.
 - **CVE emulation + exploit-attempt capture** (`internal/cve`): the
   http/https/appliance handlers recognize known exploit signatures
   (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell, FortiOS /
@@ -417,7 +427,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
 - [`EXAMPLES.md`](EXAMPLES.md) — walkthrough of every example config (OT Purdue-model decoys + edge + IT), how to adapt and combine them.
-- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference.
+- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Also `example-LARGE.yaml` (every handler + all archeservice roles + all subsystems), `example-archeservices.yaml` (the role-bundle feature), and the OT examples (`example-FULL` / `example-ADVANCED-OT` / `example-SMALL-OT`).
 
 ## Status
 
@@ -638,6 +648,7 @@ tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
+tarpit-honeypot list-archeservices [<role>]
 tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]

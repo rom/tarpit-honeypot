@@ -510,8 +510,11 @@ func (p *Profile) HMIs() []HMI {
 
 // Lookup returns the Profile for the named archetype. Names are matched
 // case-insensitively with most reasonable separator variants accepted
-// ("Debian 12", "debian-12", "debian12", "DEBIAN_12" all resolve).
-// Unknown names return nil — the caller treats nil as "no archetype set."
+// ("Debian 12", "debian-12", "debian12", "DEBIAN_12" all resolve). Beyond
+// the registry keys it also resolves a profile's canonical Name and its
+// pretty DisplayName, so every name `list-archetypes` prints is usable in
+// a config (and resolves identically at runtime). Unknown names return nil
+// — the caller treats nil as "no archetype set."
 func Lookup(name string) *Profile {
 	if name == "" {
 		return nil
@@ -519,6 +522,11 @@ func Lookup(name string) *Profile {
 	key := normalize(name)
 	if p, ok := registry[key]; ok {
 		return p
+	}
+	for _, p := range registry {
+		if normalize(p.Name) == key || normalize(p.DisplayName) == key {
+			return p
+		}
 	}
 	return nil
 }
@@ -568,22 +576,10 @@ func All() []*Profile {
 	return out
 }
 
-// Find resolves a profile by canonical name, an accepted name variant,
-// or its pretty DisplayName (case-insensitive). Returns nil when no
-// archetype matches. Lookup only keys on the canonical/variant name, so
-// Find adds the DisplayName fallback that a CLI user expects.
-func Find(name string) *Profile {
-	if p := Lookup(name); p != nil {
-		return p
-	}
-	want := normalize(name)
-	for _, p := range All() {
-		if normalize(p.DisplayName) == want || normalize(p.Name) == want {
-			return p
-		}
-	}
-	return nil
-}
+// Find resolves a profile by canonical name, an accepted name variant, or
+// its pretty DisplayName. Retained as a clear CLI-facing alias of Lookup,
+// which now performs the same resolution.
+func Find(name string) *Profile { return Lookup(name) }
 
 // normalize folds case, replaces separators with hyphens, and collapses
 // runs of hyphens so "Debian 12", "debian_12", "DEBIAN-12" all key on

@@ -27,9 +27,31 @@ type Verdict struct {
 	// Automation is true when the client looks like a script/scanner
 	// rather than an interactive browser.
 	Automation bool
+	// Scanner is true when one of the identified Tools is a known
+	// vulnerability scanner (Nessus, OpenVAS/Greenbone, Qualys, Nexpose/
+	// InsightVM, Acunetix, Nikto, Nuclei, sqlmap, …). Lets a SOC pivot on
+	// "a vuln scan hit us" regardless of which product.
+	Scanner bool
 	// Reason is a short human-readable explanation of the verdict.
 	Reason string
 }
+
+// vulnScanners is the set of identified tool names that are vulnerability
+// scanners (vs. recon engines, content-discovery fuzzers, or brute-forcers).
+var vulnScanners = map[string]bool{
+	"nessus": true, "tenable": true, "openvas": true, "qualys": true, "nexpose": true,
+	"insightvm": true, "rapid7": true, "acunetix": true, "netsparker": true,
+	"invicti": true, "appscan": true, "nikto": true, "nuclei": true,
+	"arachni": true, "w3af": true, "skipfish": true, "wapiti": true,
+	"owasp-zap": true, "burpsuite": true, "vega": true, "wpscan": true,
+	"joomscan": true, "droopescan": true, "cmsmap": true, "sqlmap": true,
+	"commix": true, "xsstrike": true, "dalfox": true, "jaeles": true,
+	"metasploit": true, "whatweb": true,
+}
+
+// IsVulnScanner reports whether an identified tool name is a vulnerability
+// scanner.
+func IsVulnScanner(tool string) bool { return vulnScanners[tool] }
 
 // uaSignatures maps a lower-cased User-Agent substring to a tool name.
 // These are the literal UA strings the named tools send by default.
@@ -86,6 +108,13 @@ var uaSignatures = map[string]string{
 	"commix":           "commix",
 	"xsstrike":         "xsstrike",
 	"nuclei-templates": "nuclei",
+	// More enterprise / network vulnerability scanners.
+	"nessuscli":   "nessus",
+	"nexpose":     "nexpose",
+	"insightvm":   "insightvm",
+	"greenbone":   "openvas",
+	"gvm":         "openvas",
+	"meterpreter": "metasploit",
 
 	// Content discovery / fuzzers.
 	"dirbuster":   "dirbuster",
@@ -355,6 +384,12 @@ func IdentifyHTTP(s HTTPSignals) Verdict {
 	for needle, tool := range pathSignatures {
 		if strings.Contains(path, needle) {
 			v.Tools = appendUnique(v.Tools, tool)
+		}
+	}
+	for _, tool := range v.Tools {
+		if IsVulnScanner(tool) {
+			v.Scanner = true
+			break
 		}
 	}
 

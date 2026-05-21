@@ -9,22 +9,47 @@ import (
 )
 
 type Config struct {
-	Sensor      Sensor      `yaml:"sensor"`
-	UI          UI          `yaml:"ui"`
-	Listeners   []Listener  `yaml:"listeners"`
-	Canaries    []Canary    `yaml:"canaries"`
-	URLCanaries []URLCanary `yaml:"url_canaries"`
-	DNS         DNS         `yaml:"dns"`
-	DNSCanaries []DNSCanary `yaml:"dns_canaries"`
-	Sniffer     Sniffer     `yaml:"sniffer"`
-	Correlate   Correlate   `yaml:"correlate"`
-	Honeynets   []Honeynet  `yaml:"honeynets"`
-	Dedup       Dedup       `yaml:"dedup"`
-	Allowlist   []string    `yaml:"allowlist"`
-	Channels    []Channel   `yaml:"channels"`
-	Routes      []Route     `yaml:"routes"`
-	Devices     Devices     `yaml:"devices"`
-	Risk        RiskScoring `yaml:"risk"`
+	Sensor    Sensor     `yaml:"sensor"`
+	UI        UI         `yaml:"ui"`
+	Listeners []Listener `yaml:"listeners"`
+	// Archeservices are role bundles (webserver, ftpserver, adserver, …)
+	// that expand into Listeners at load time, combined with an archetype
+	// for the software identity. See internal/archeservice.
+	Archeservices []Archeservice `yaml:"archeservices"`
+	Canaries      []Canary       `yaml:"canaries"`
+	URLCanaries   []URLCanary    `yaml:"url_canaries"`
+	DNS           DNS            `yaml:"dns"`
+	DNSCanaries   []DNSCanary    `yaml:"dns_canaries"`
+	Sniffer       Sniffer        `yaml:"sniffer"`
+	Correlate     Correlate      `yaml:"correlate"`
+	Honeynets     []Honeynet     `yaml:"honeynets"`
+	Dedup         Dedup          `yaml:"dedup"`
+	Allowlist     []string       `yaml:"allowlist"`
+	Channels      []Channel      `yaml:"channels"`
+	Routes        []Route        `yaml:"routes"`
+	Devices       Devices        `yaml:"devices"`
+	Risk          RiskScoring    `yaml:"risk"`
+
+	// archeservicesExpanded guards expandArcheservices so it runs once even
+	// if applyDefaults is invoked more than once on the same Config.
+	archeservicesExpanded bool
+}
+
+// Archeservice declares a service role to stand up. At load time it expands
+// into one Listener per port the role exposes (see internal/archeservice),
+// each carrying Archetype so the handlers answer with software/version
+// strings consistent with that OS/device.
+type Archeservice struct {
+	ID        string `yaml:"id"`
+	Role      string `yaml:"role"`      // webserver | ftpserver | adserver | …
+	Archetype string `yaml:"archetype"` // optional OS/device identity
+	Bind      string `yaml:"bind"`      // host/IP only — the role supplies ports
+	Mode      string `yaml:"mode"`      // optional; default "banner"
+	Severity  string `yaml:"severity"`  // optional; default per-listener
+	Capture   bool   `yaml:"capture"`
+	// VulnEmulation overrides sensor.vuln_emulation for the expanded
+	// listeners. nil = inherit.
+	VulnEmulation *bool `yaml:"vuln_emulation"`
 }
 
 // AlertsConfig configures operational alarms/notifications. Lifecycle
