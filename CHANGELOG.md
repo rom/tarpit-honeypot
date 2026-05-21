@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — PJL (printer) + Beckhoff ADS handlers (archetype protocol gaps)
+- **`pjl`** (TCP 9100): HP JetDirect PJL responder — answers `@PJL INFO`
+  queries with a printer identity, captures jobs/commands, flags ready-
+  message defacement + filesystem access. Wired into the `hp-printer`
+  archetype (was a `raw` placeholder).
+- **`ads`** (TCP 48898): Beckhoff ADS/AMS responder — parses the AMS header,
+  answers Read-Device-Info with a TwinCAT identity, flags `ics-ads-probe`.
+  Wired into the `beckhoff-cx` archetype (was `raw`). Both ATT&CK-tagged.
+
 ### Added — device classification + larger CVE catalog
 - **Device classification**: each learned device now gets an inferred
   `class` attribute (scanner / ics-endpoint / network-device / web-host /

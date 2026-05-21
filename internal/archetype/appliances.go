@@ -231,7 +231,7 @@ func hpPrinter() *Profile {
 		icmpTTL: 64,
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "EWS web"}, {Port: 443, Handler: "https", Note: "EWS web (TLS)"},
-			{Port: 9100, Handler: "raw", Note: "JetDirect / PJL"}, {Port: 631, Handler: "ipp", Note: "IPP"},
+			{Port: 9100, Handler: "pjl", Note: "JetDirect / PJL"}, {Port: 631, Handler: "ipp", Note: "IPP"},
 			{Port: 161, Handler: "snmp", Note: "SNMP"},
 		},
 		quirks: []string{"printer", "pjl"},

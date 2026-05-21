@@ -634,7 +634,7 @@ var industrialArchetypes = map[string]*Profile{
 		snmpIfTable:     mockSwitchInterfaces(2, "eth"),
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http"}, {Port: 161, Handler: "snmp"},
-			{Port: 48898, Handler: "raw", Note: "Beckhoff ADS/AMS"},
+			{Port: 48898, Handler: "ads", Note: "Beckhoff ADS/AMS"},
 			{Port: 502, Handler: "modbus", Note: "Modbus/TCP (TF6250)"},
 		},
 		quirks: []string{"beckhoff", "twincat", "ads"},

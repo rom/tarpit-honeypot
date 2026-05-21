@@ -27,7 +27,8 @@ rationale covering the current implementation.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
-  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850)
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
+  - **TCP / printers**: `ipp`, `pjl` (HP JetDirect 9100)
   - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
@@ -975,6 +976,8 @@ handshake where it isn't HTTP.
 | `hartip` | 5094 | HART-IP gateway to process field instruments. Parses the 8-byte header, captures the message type (session-initiate / token-passing PDU), replies with a valid response header. Fingerprint-grade. | — | — |
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC-class PLCs; nmap pcworx-info). Captures the connect/identify probe and returns an identification frame carrying model (`ILC 330 ETH`) + firmware. Fingerprint-grade. | — | — |
 | `mms` | 102 | IEC 61850 MMS (substation IEDs / relays over ISO-on-TCP — distinct from S7comm on the same port). Completes the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association) request, replies with a believable AARE accept; flags `ics-mms-probe`. Fingerprint-grade. | — | — |
+| `ads` | 48898 | Beckhoff ADS/AMS (TwinCAT PLCs / CX embedded PCs). Parses the AMS/TCP + AMS header, captures the command + AmsNetIds, answers Read-Device-Info with a TwinCAT identity; flags `ics-ads-probe`. Fingerprint-grade. | — | — |
+| `pjl` | 9100 | HP JetDirect raw-print port speaking PJL. Answers `@PJL INFO ID/STATUS/CONFIG` with a believable printer identity, captures print jobs + commands, flags ready-message defacement (`printer-rdymsg-set`) and filesystem access (`printer-filesystem-access`). | ✓ | — |
 
 ### UDP
 

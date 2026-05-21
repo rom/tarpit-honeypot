@@ -191,6 +191,8 @@ var handlerTags = map[string]Tag{
 	"hartip":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"pcworx":      {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"mms":         {Techniques: []string{"T0888", "T0814"}, Tactics: []string{"discovery", "impact"}},
+	"ads":         {Techniques: []string{"T0888", "T0814"}, Tactics: []string{"discovery", "impact"}},
+	"pjl":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// More auth / remote-access / OOB-management surface.
 	"mssql":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
