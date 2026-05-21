@@ -142,8 +142,12 @@ type Filter struct {
 	SourceIP    string
 	RuleID      string
 	MinSeverity event.Severity
-	Limit       int
-	Offset      int
+	// Text is a free-text substring matched (case-insensitively) against
+	// the rule_id, banner_sent, and meta JSON — a full-text search over
+	// what the attacker sent / what we captured.
+	Text   string
+	Limit  int
+	Offset int
 }
 
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
@@ -171,6 +175,11 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"
 		args = append(args, int(f.MinSeverity))
+	}
+	if f.Text != "" {
+		like := "%" + f.Text + "%"
+		q += " AND (rule_id LIKE ? OR banner_sent LIKE ? OR meta_json LIKE ?)"
+		args = append(args, like, like, like)
 	}
 	q += " ORDER BY time DESC"
 	if f.Limit > 0 {
@@ -304,6 +313,45 @@ LIMIT ?`, since.UTC().UnixNano(), limit)
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// HourBucket is one hour of the events-over-time histogram.
+type HourBucket struct {
+	Hour  time.Time `json:"hour"`
+	Count int       `json:"count"`
+}
+
+// EventsPerHour returns hourly event counts from since to now, with empty
+// hours zero-filled, for the dashboard trend chart.
+func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]HourBucket, error) {
+	const hourNS = int64(3600) * 1_000_000_000
+	startBucket := since.UTC().UnixNano() / hourNS
+	nowBucket := time.Now().UTC().UnixNano() / hourNS
+	counts := map[int64]int{}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT time/?, COUNT(*) FROM events WHERE time >= ? GROUP BY time/?`,
+		hourNS, since.UTC().UnixNano(), hourNS)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var b int64
+		var c int
+		if err := rows.Scan(&b, &c); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		counts[b] = c
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]HourBucket, 0, nowBucket-startBucket+1)
+	for b := startBucket; b <= nowBucket; b++ {
+		out = append(out, HourBucket{Hour: time.Unix(0, b*hourNS).UTC(), Count: counts[b]})
+	}
+	return out, nil
 }
 
 func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {

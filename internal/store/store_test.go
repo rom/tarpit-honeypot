@@ -23,6 +23,51 @@ func mkEvent(id, srcIP, rule string, sev event.Severity, t time.Time) *event.Eve
 	}
 }
 
+func TestQueryTextAndEventsPerHour(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	e1 := mkEvent("a", "1.1.1.1", "webapp:sqli", event.SeverityHigh, now.Add(-30*time.Minute))
+	e1.Meta = map[string]any{"tools": []string{"sqlmap"}}
+	e2 := mkEvent("b", "2.2.2.2", "listener:ssh", event.SeverityLow, now.Add(-90*time.Minute))
+	e2.BannerSent = "SSH-2.0-OpenSSH_9.2"
+	_ = s.Insert(ctx, e1)
+	_ = s.Insert(ctx, e2)
+
+	since := now.Add(-3 * time.Hour)
+	check := func(text, wantID string) {
+		got, err := s.Query(ctx, Filter{Since: since, Text: text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].ID != wantID {
+			t.Errorf("text %q = %v; want one event %q", text, got, wantID)
+		}
+	}
+	check("sqlmap", "a")      // meta
+	check("OpenSSH", "b")     // banner
+	check("webapp:sqli", "a") // rule_id
+
+	buckets, err := s.EventsPerHour(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, b := range buckets {
+		total += b.Count
+	}
+	if total != 2 {
+		t.Errorf("EventsPerHour total = %d; want 2", total)
+	}
+	if len(buckets) < 3 {
+		t.Errorf("expected zero-filled hourly buckets, got %d", len(buckets))
+	}
+}
+
 func TestSourceAggregates(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {

@@ -124,6 +124,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			}
 			return strings.Join(p, ", ")
 		},
+		"hexdump": hexDump,
 	}).Parse(tmpls)
 	if err != nil {
 		return nil, err
@@ -235,13 +236,19 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	sum, err := s.store.Summary(ctx, time.Now().Add(-24*time.Hour))
+	since := time.Now().Add(-24 * time.Hour)
+	sum, err := s.store.Summary(ctx, since)
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	hours, err := s.store.EventsPerHour(ctx, since)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "index", sum); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "index", buildDashboard(sum, hours)); err != nil {
 		slog.Warn("ui: render index", "err", err)
 	}
 }
@@ -257,6 +264,7 @@ type eventsPage struct {
 	Filter      store.Filter
 	SeverityStr string
 	SinceStr    string
+	QStr        string
 	Headers     map[string]colHeader
 }
 
@@ -282,6 +290,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		Filter:      f,
 		SeverityStr: q.Get("severity"),
 		SinceStr:    q.Get("since"),
+		QStr:        q.Get("q"),
 		Headers:     buildSortHeaders("/events", q, sortKey, order),
 	}
 	if err := s.tmpl.ExecuteTemplate(w, "events", page); err != nil {
@@ -323,7 +332,7 @@ func sortEvents(evs []*event.Event, key, order string) {
 // columns: time, severity, source, rule, handler.
 func buildSortHeaders(path string, q url.Values, sortKey, order string) map[string]colHeader {
 	carry := url.Values{}
-	for _, k := range []string{"source", "rule", "since", "limit", "severity"} {
+	for _, k := range []string{"source", "rule", "since", "limit", "severity", "q"} {
 		if v := q.Get(k); v != "" {
 			carry.Set(k, v)
 		}
@@ -775,6 +784,9 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("rule"); v != "" {
 		f.RuleID = v
+	}
+	if v := q.Get("q"); v != "" {
+		f.Text = v
 	}
 	if v := q.Get("severity"); v != "" {
 		if sev, err := event.ParseSeverity(v); err == nil {

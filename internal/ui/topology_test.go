@@ -16,6 +16,7 @@ func uiTmpl(t *testing.T) *template.Template {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(any) string { return "" },
 		"join":    func([]int) string { return "" },
+		"hexdump": hexDump,
 	}).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)

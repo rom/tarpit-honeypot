@@ -288,9 +288,12 @@ rationale covering the current implementation.
   event.
 - **Embedded SQLite event index** for queryable history, with WAL-mode
   concurrent reads.
-- **Read-only web UI** on loopback: 24h summary + a filterable,
-  **sortable** event table (click any column to sort/reverse) + per-event
-  detail, plus **profiles** (per-source-IP attacker dossiers — see below),
+- **Read-only web UI** on loopback: a 24h **dashboard** (events-per-hour
+  trend + severity / top-rule / top-source CSS bar charts, no JS) + a
+  filterable, **sortable** event table with **full-text search** over
+  rule / banner / captured meta + per-event detail with a **hex view** of
+  the captured payload, plus **profiles** (per-source-IP attacker dossiers
+  — see below),
   **hosts** (learned IPv4/IPv6/MAC inventory, filterable),
   **topology** (the virtual networks / hosts / services presented),
   **alerting** (how events forward), **errors** (operational/health

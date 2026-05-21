@@ -41,6 +41,17 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .tag { display: inline-block; background: #eef; border: 1px solid #cce; border-radius: 3px; padding: 0 .35rem; margin: .1rem .2rem .1rem 0; font-size: 12px; }
 .tag.warn { background: #fff0e6; border-color: #f0c8a0; }
 .tag.bad { background: #ffe9ec; border-color: #f0a8b4; }
+table.chart { width: 100%; background: transparent; }
+table.chart td { border: none; padding: .12rem .4rem; }
+td.blabel { width: 32%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.bcell { width: 58%; }
+td.bnum { width: 10%; text-align: right; color: #555; }
+.bar { display: inline-block; height: .8rem; background: #6b8fb5; border-radius: 2px; min-width: 2px; }
+.bar.sev-medium { background: #d59a3a; }
+.bar.sev-high { background: #c0506a; }
+.bar.sev-critical { background: #b00020; }
+.spark { display: flex; align-items: flex-end; gap: 1px; height: 80px; background: #fff; border: 1px solid #eee; padding: 4px; }
+.sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
@@ -48,24 +59,30 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
 
+{{ define "bars" }}<table class="chart">
+{{ range . }}<tr>
+  <td class="blabel">{{ if .Href }}<a href="{{ .Href }}">{{ .Label }}</a>{{ else }}{{ .Label }}{{ end }}</td>
+  <td class="bcell"><span class="bar {{ .Class }}" style="width:{{ .Pct }}%">&nbsp;</span></td>
+  <td class="bnum">{{ .Count }}</td>
+</tr>{{ end }}
+</table>{{ end }}
+
 {{ define "index" }}{{ template "head" . }}
 <h1>tarpit-honeypot — last 24 hours</h1>
-<p>{{ .Total }} events since {{ fmtTime .Since }}</p>
+<p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
+
+<h2>events per hour</h2>
+{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
+<p class="note">last 24h, one bar per hour</p>{{ else }}<p class="note">no events yet</p>{{ end }}
 
 <h2>by severity</h2>
-<table><tr><th>severity</th><th>count</th></tr>
-{{ range $k, $v := .BySeverity }}<tr><td>{{ $k }}</td><td>{{ $v }}</td></tr>{{ end }}
-</table>
+{{ if .Severity }}{{ template "bars" .Severity }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>top rules</h2>
-<table><tr><th>rule_id</th><th>count</th></tr>
-{{ range $k, $v := .ByRule }}<tr><td><a href="/events?rule={{ $k }}">{{ $k }}</a></td><td>{{ $v }}</td></tr>{{ end }}
-</table>
+{{ if .Rules }}{{ template "bars" .Rules }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>top sources</h2>
-<table><tr><th>source ip</th><th>count</th></tr>
-{{ range .TopSources }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td></tr>{{ end }}
-</table>
+{{ if .Sources }}{{ template "bars" .Sources }}{{ else }}<p class="note">none</p>{{ end }}
 <p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
 {{ template "foot" . }}{{ end }}
 
@@ -73,10 +90,11 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 <h1>events</h1>
 <form method="get" action="/events">
   source: <input type="text" name="source" value="{{ .Filter.SourceIP }}" size="15">
-  rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="25">
+  rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="20">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
   limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="1000" size="5">
+  <br>search: <input type="text" name="q" value="{{ .QStr }}" placeholder="full-text: rule / banner / captured meta" size="40">
   <button type="submit">filter</button>
   <a href="/events">reset</a>
 </form>
@@ -131,7 +149,9 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 </ul>
 
 {{ if .BannerSent }}<h2>banner sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
-{{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes, base64)</h2><div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
+{{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
+{{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
+<details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div></details>{{ end }}
 {{ if .Meta }}<h2>meta</h2><table>
 {{ range $k, $v := .Meta }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
 </table>{{ end }}

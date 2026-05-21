@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI dashboard charts, full-text search, payload hex view
+- **Dashboard** (summary page): an events-per-hour trend sparkline plus
+  severity / top-rule / top-source CSS bar charts (no JavaScript — bars are
+  styled divs, CSP-safe). Backed by `store.EventsPerHour`.
+- **Full-text search** on the events tab (`?q=`): a substring match over
+  rule_id / banner_sent / captured meta (`store.Filter.Text`), preserved
+  across column sorts.
+- **Payload hex view**: event detail now renders an offset/hex/ASCII dump
+  of the captured payload (base64 still available behind a details toggle).
+
 ### Added — 5 more remote-access / out-of-band management protocols
 - **`vmware_authd`** (TCP 902): VMware Authentication Daemon banner +
   FTP-style USER/PASS capture (ESXi / Workstation management agent).
