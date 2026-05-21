@@ -178,6 +178,63 @@ var uaSignatures = map[string]string{
 	"bun":            "bun-script",
 	"electron":       "electron-client",
 	"uipath":         "rpa-bot",
+	// --- HTTP client libraries / frameworks, grouped by language ---
+	// shell / cli.
+	"lwp-request": "perl-script",
+	"libcurl":     "c-http",
+	// python.
+	"urllib3":       "python-script",
+	"pycurl":        "python-script",
+	"httplib2":      "python-script",
+	"treq":          "python-script",
+	"uplink":        "python-script",
+	"tornado":       "python-script",
+	"grequests":     "python-script",
+	"requests-html": "python-script",
+	// perl.
+	"lwp::":         "perl-script",
+	"http::tiny":    "perl-script",
+	"mojolicious":   "perl-script",
+	"www-mechanize": "perl-script",
+	"anyevent-http": "perl-script",
+	// go.
+	"go-resty":  "go-http",
+	"fasthttp":  "go-http",
+	"heroku-go": "go-http",
+	// java / jvm.
+	"jersey":       "java-http",
+	"unirest-java": "java-http",
+	"vert.x":       "java-http",
+	"jetty":        "java-http",
+	"reactornetty": "java-http",
+	"retrofit":     "java-http",
+	"openfeign":    "java-http",
+	"ktor-client":  "kotlin-http",
+	"scalaj-http":  "scala-http",
+	"akka-http":    "scala-http",
+	// c / c++.
+	"libsoup":  "c-http",
+	"libwww":   "c-http",
+	"wininet":  "windows-script",
+	"winhttp.": "windows-script",
+	// .net.
+	"system.net.http": "dotnet-http",
+	"flurl":           "dotnet-http",
+	"servicestack":    "dotnet-http",
+	".net cli":        "dotnet-http",
+	// rust.
+	"ureq":  "rust-http",
+	"isahc": "rust-http",
+	// --- more recon / attack tooling ---
+	"vulnx":       "vulnx",
+	"cariddi":     "cariddi",
+	"subfinder":   "subfinder",
+	"amass":       "amass",
+	"dnsx":        "dnsx",
+	"interactsh":  "interactsh",
+	"gau ":        "gau",
+	"waybackurls": "waybackurls",
+	"nuclei-fuzz": "nuclei",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used

@@ -110,6 +110,39 @@ func TestPathSignaturesExpanded(t *testing.T) {
 	}
 }
 
+func TestClientFrameworkSignatures(t *testing.T) {
+	cases := map[string]string{
+		"curl/8.4.0":                   "curl",
+		"Wget/1.21.3":                  "wget",
+		"python-urllib3/2.1.0":         "python-script",
+		"PycURL/7.45.1":                "python-script",
+		"libwww-perl/6.67":             "perl-script",
+		"Mojolicious (Perl)":           "perl-script",
+		"Go-http-client/2.0":           "go-scanner",
+		"go-resty/2.7.0 (https://...)": "go-http",
+		"fasthttp":                     "go-http",
+		"Apache-HttpClient/4.5.13":     "java-http",
+		"Jersey/3.1":                   "java-http",
+		"okhttp/4.12.0":                "okhttp-script",
+		"libcurl/8.4.0":                "c-http",
+		"libsoup/3.4":                  "c-http",
+		"RestSharp/108.0.0":            "dotnet-http",
+		"System.Net.Http/8.0":          "dotnet-http",
+		"reqwest/0.11":                 "rust-http",
+		"ureq/2.9":                     "rust-http",
+		"node-fetch/3.3":               "node-script",
+	}
+	for ua, want := range cases {
+		v := IdentifyHTTP(HTTPSignals{UserAgent: ua, Path: "/"})
+		if !has(v.Tools, want) {
+			t.Errorf("UA %q: tools=%v; want %q", ua, v.Tools, want)
+		}
+		if !v.Automation {
+			t.Errorf("UA %q should be automation", ua)
+		}
+	}
+}
+
 func TestIdentifySSH(t *testing.T) {
 	cases := map[string][]string{
 		"SSH-2.0-libssh2_1.10.0":       {"libssh2"},
