@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — passive OS fingerprint (TTL) device learning
+- The AF_PACKET scan-detector now reads the source IPv4 **TTL** and stamps
+  `ip_ttl` + an `os_guess` (linux/unix · windows · network/embedded) with an
+  estimated `ttl_hops` onto its scan / fragment events. The device registry
+  learns `os_guess` as a per-device attribute (visible in `list-devices
+  --json`, `/api/devices`, and the devices web-UI tab), so the inventory
+  gains an OS family for hosts seen only on the wire. Best-effort, passive.
+
 ### Added — protocol-misuse detection on SNMP / DNS / TFTP
 - **`snmp-set-attempt`**: the SNMP handler now flags an SNMP `SetRequest`
   (a config *write* — flip an interface, rewrite an ACL, trigger a config

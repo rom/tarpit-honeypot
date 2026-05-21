@@ -99,6 +99,7 @@ func classifyTCP(flags byte) scanKind {
 type ipv4Info struct {
 	srcIP      string
 	proto      byte
+	ttl        byte
 	fragmented bool
 	payload    []byte // L4 bytes (TCP/UDP/ICMP header onward)
 }
@@ -124,10 +125,31 @@ func parseIPv4(frame []byte) (ipv4Info, bool) {
 	}
 	flagsFrag := binary.BigEndian.Uint16(ip[6:8])
 	info.fragmented = flagsFrag&0x2000 != 0 || flagsFrag&0x1fff != 0
+	info.ttl = ip[8]
 	info.proto = ip[9]
 	info.srcIP = net.IP(ip[12:16]).String()
 	info.payload = ip[ihl:]
 	return info, true
+}
+
+// osGuessFromTTL estimates the source OS family from an observed IPv4 TTL.
+// Hosts stamp a stack-characteristic initial TTL (Linux/Unix/macOS/BSD 64,
+// Windows 128, many routers/switches/printers 255); each hop decrements it,
+// so the observed value sits at-or-below the initial. We bucket to the
+// nearest initial above the observation and report the implied hop count.
+// Returns ("", 0) for a zero TTL. Passive, best-effort — a strong hint for
+// device-learning, not an assertion.
+func osGuessFromTTL(ttl byte) (guess string, hops int) {
+	switch {
+	case ttl == 0:
+		return "", 0
+	case ttl <= 64:
+		return "linux/unix", int(64 - ttl)
+	case ttl <= 128:
+		return "windows", int(128 - ttl)
+	default:
+		return "network/embedded", int(255 - ttl)
+	}
 }
 
 // parseTCP pulls the destination port + flag byte out of a TCP segment.

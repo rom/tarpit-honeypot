@@ -296,6 +296,7 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 		if s.cfg.TCPScan.DetectFragments && s.frag.allow(info.srcIP, now) {
 			ev := s.newIPEvent("sniffer:ip_fragmented", event.SeverityMedium, info.srcIP, "ip")
 			ev.Meta["ip_proto"] = int(info.proto)
+			addTTLGuess(ev, info.ttl)
 			send(ctx, bus, ev)
 		}
 		// Non-initial fragments carry no usable L4 header.
@@ -320,7 +321,23 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	ev.Meta["distinct_ports"] = count
 	ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
 	ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
+	addTTLGuess(ev, info.ttl)
 	send(ctx, bus, ev)
+}
+
+// addTTLGuess stamps the observed IP TTL and the passive OS-family guess
+// it implies onto a sniffer event's meta, so the device registry can learn
+// an os_guess for the source host (see deviceAttrsFromEvent). No-op for a
+// zero TTL.
+func addTTLGuess(ev *event.Event, ttl byte) {
+	if ttl == 0 {
+		return
+	}
+	ev.Meta["ip_ttl"] = int(ttl)
+	if guess, hops := osGuessFromTTL(ttl); guess != "" {
+		ev.Meta["os_guess"] = guess
+		ev.Meta["ttl_hops"] = hops
+	}
 }
 
 // runGOOSECapture opens a dedicated AF_PACKET socket bound to the GOOSE

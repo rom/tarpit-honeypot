@@ -222,7 +222,9 @@ rationale covering the current implementation.
   (learn-baseline or strict allow-list mode). Knowledge **builds up over
   time**: each device accumulates the sensor services/ports it touched and
   learned attributes other listeners contribute (JA3/JA4/HASSH, SSH client,
-  User-Agent, identified tools, automation). Inspect with `list-devices`,
+  User-Agent, identified tools, automation, plus a passive **`os_guess`**
+  from the source IP TTL the AF_PACKET scan-detector observes — Linux/Unix
+  vs Windows vs network/embedded, with an estimated hop count). Inspect with `list-devices`,
   the **devices** web-UI tab, or `/api/devices`; optional UI delete /
   whitelist actions (see below).
 - **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host

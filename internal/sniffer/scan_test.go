@@ -68,9 +68,34 @@ func TestParseIPv4AndTCP(t *testing.T) {
 	if info.fragmented {
 		t.Errorf("non-fragmented frame reported fragmented")
 	}
+	if info.ttl != 64 {
+		t.Errorf("ttl = %d; want 64", info.ttl)
+	}
 	port, flags, ok := parseTCP(info.payload)
 	if !ok || port != 443 || flags != flagSYN {
 		t.Errorf("parseTCP = (%d,%#02x,%v); want (443,SYN,true)", port, flags, ok)
+	}
+}
+
+func TestOSGuessFromTTL(t *testing.T) {
+	cases := []struct {
+		ttl   byte
+		guess string
+		hops  int
+	}{
+		{64, "linux/unix", 0},
+		{57, "linux/unix", 7},
+		{128, "windows", 0},
+		{120, "windows", 8},
+		{255, "network/embedded", 0},
+		{250, "network/embedded", 5},
+		{0, "", 0},
+	}
+	for _, c := range cases {
+		g, h := osGuessFromTTL(c.ttl)
+		if g != c.guess || h != c.hops {
+			t.Errorf("osGuessFromTTL(%d) = (%q,%d); want (%q,%d)", c.ttl, g, h, c.guess, c.hops)
+		}
 	}
 }
 
