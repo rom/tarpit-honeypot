@@ -32,17 +32,19 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **58 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **81 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
   TLS posture, ICMP TTL personality, and Web UI body report values
   consistent with a stock install of that OS. Spans Linux distros, *BSD,
   Windows client + server, Active Directory, Cisco Catalyst (IOS / IOS-XE),
-  MikroTik RouterOS, Teltonika RUT240, Moxa / Siemens OT gear, more PLC
-  vendors (Allen-Bradley / Schneider / Omron), firewalls (pfSense /
-  FortiGate), NAS (Synology / QNAP), IP cameras (Hikvision / Axis), a
-  network printer, and a VoIP PBX — see the full
+  MikroTik RouterOS, Teltonika (RUT240/RUT955/RUTX11/RUT956/TRB140),
+  Moxa / Siemens OT gear, Westermo (WeOS), Hirschmann, Phoenix Contact and
+  Advantech industrial switches, Cisco Industrial Ethernet (IE-2000 /
+  IE-3400 / IR1101), more PLC vendors (Allen-Bradley / Schneider / Omron),
+  firewalls (pfSense / FortiGate), NAS (Synology / QNAP), IP cameras
+  (Hikvision / Axis), a network printer, and a VoIP PBX — see the full
   [OS / device archetypes](#os--device-archetypes) table.
   `tarpit-honeypot help archetypes` lists them all.
 - **CVE emulation + exploit-attempt capture** (`internal/cve`): the
@@ -648,7 +650,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 58. |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 81. |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -806,10 +808,33 @@ prints the live list.
 | Windows | Active Directory (Server 2019 DC) | `active-directory`, `domain-controller`, `windows-server-2019-dc` | windows | 128 | PowerShell shell + full AD protocol mix; pre-rollup patch level (ZeroLogon/PrintNightmare/ProxyLogon advisory) |
 | Network | Cisco Catalyst 2960 (IOS 15) | `cisco-ios`, `cisco-catalyst-2960` | cisco | 255 | IOS CLI emulator, SSH-2.0-Cisco, SNMP ifTable/VLAN/LLDP, weak TLS, CVE-2018-0171 (Smart Install) |
 | Network | Cisco Catalyst 9300 (IOS-XE 17) | `cisco-catalyst-switch`, `cisco-catalyst-9300` | cisco | 255 | IOS-XE identity, cat9k sysObjectID |
+| Network | Cisco Industrial Ethernet 2000 | `cisco-ie-2000` | cisco | 255 | rugged IE switch, IOS 15.2, IE2000 sysObjectID |
+| Network | Cisco Catalyst IE-3400 | `cisco-ie-3400` | cisco | 255 | IOS-XE IE3400, IOx edge |
+| Network | Cisco IR1101 (industrial router) | `cisco-ir1101` | cisco | 255 | IOS-XE industrial router, Cellular0/1/0 |
 | Network | MikroTik RouterOS | `mikrotik-router`, `mikrotik-routeros`, `mikrotik-routerboard` | mikrotik | 64 | SSH-2.0-ROSSSH, webfig, Winbox/API ports, RouterOS CLI emulator, MikroTik SNMP OID |
 | Network | Teltonika RUT240 | `teltonika-rut240`, `teltonika-router` | teltonika | 64 | RutOS/OpenWrt, Dropbear SSH, lighttpd, LTE wwan0, Teltonika SNMP OID |
+| Network | Teltonika RUT955 | `teltonika-rut955` | teltonika | 64 | RutOS industrial router, GPS, Modbus TCP |
+| Network | Teltonika RUTX11 | `teltonika-rutx11` | teltonika | 64 | RutOS, LTE Cat6 + dual-band wifi, nginx |
+| Network | Teltonika RUT956 | `teltonika-rut956` | teltonika | 64 | RutOS industrial router, Modbus TCP |
+| Network | Teltonika TRB140 | `teltonika-trb140` | teltonika | 64 | RutOS LTE gateway, Modbus TCP |
 | ICS/OT | Moxa EDS-208 | `moxa-eds-208` | moxa | 255 | industrial switch CLI, Moxa OUI/SNMP |
 | ICS/OT | Moxa NPort 5210 | `moxa-nport-5210` | moxa | 255 | serial device server, raw TCP 4001/4002 |
+| ICS/OT | Moxa EDS-405A | `moxa-eds-405a` | moxa | 255 | managed switch CLI/web/SNMP |
+| ICS/OT | Moxa EDS-G516E | `moxa-eds-g516e` | moxa | 255 | 16-port gigabit managed switch, MRP ring |
+| ICS/OT | Moxa NPort 5650-8 | `moxa-nport-5650` | moxa | 255 | 8-port serial device server, raw TCP 4001-4008 |
+| ICS/OT | Moxa AWK-3131A | `moxa-awk-3131a` | moxa | 255 | industrial wireless AP/bridge/client |
+| ICS/OT | Moxa MGate MB3180 | `moxa-mgate-mb3180` | moxa | 255 | Modbus/TCP↔serial gateway (502) |
+| ICS/OT | Westermo Lynx | `westermo-lynx` | westermo | 64 | WeOS managed switch, GoAhead-Webs, FRNT ring |
+| ICS/OT | Westermo RedFox | `westermo-redfox` | westermo | 64 | WeOS rugged managed switch, IEC 61850 VLAN |
+| ICS/OT | Westermo Viper | `westermo-viper` | westermo | 64 | WeOS EN50155 rail switch |
+| ICS/OT | Westermo Merlin-4400 | `westermo-merlin-4400` | westermo | 64 | WeOS-5 cellular router, wwan0 |
+| ICS/OT | Westermo Ibex | `westermo-ibex` | westermo | 64 | WeOS industrial wireless |
+| ICS/OT | Hirschmann RS20 | `hirschmann-rs20` | hirschmann | 64 | Classic rail switch, HIPER-Ring, Hirschmann OUI/OID |
+| ICS/OT | Hirschmann RSP35 | `hirschmann-rsp35` | hirschmann | 64 | HiOS managed switch, MRP + PROFINET |
+| ICS/OT | Hirschmann EAGLE20 | `hirschmann-eagle20` | hirschmann | 64 | EAGLE One industrial firewall |
+| ICS/OT | Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 64 | RomPager web, Phoenix OUI/OID |
+| ICS/OT | Phoenix Contact FL MGUARD | `phoenix-fl-mguard` | phoenix | 64 | mGuard security router/firewall |
+| ICS/OT | Advantech EKI-5528 | `advantech-eki-5528` | advantech | 64 | Boa web, managed switch, Advantech OUI/OID |
 | ICS/OT | Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 255 | SCALANCE CLI, MRP ring / PROFINET tree / VLAN exposure |
 | ICS/OT | Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 255 | industrial security router |
 | ICS/OT | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 255 | industrial firewall |

@@ -12,6 +12,86 @@ var ciscoArchetypes = map[string]*Profile{
 	"cisco-catalyst-2960":   ciscoProfile("cisco-catalyst-2960"),
 	"cisco-catalyst-switch": ciscoProfile("cisco-catalyst-switch"),
 	"cisco-catalyst-9300":   ciscoProfile("cisco-catalyst-9300"),
+	"cisco-ie-2000":         ciscoIEProfile("cisco-ie-2000"),
+	"cisco-ie-3400":         ciscoIEProfile("cisco-ie-3400"),
+	"cisco-ir1101":          ciscoIEProfile("cisco-ir1101"),
+}
+
+// ciscoIEProfile models Cisco's Industrial Ethernet switches (IE-2000 on
+// IOS, IE-3400 on IOS-XE) and the IR1101 industrial router — the ruggedized
+// gear on plant floors and at the OT edge. Family "cisco" reuses the IOS
+// CLI emulator; the identity (model / sysObjectID / interface naming)
+// differs from the enterprise Catalyst line.
+func ciscoIEProfile(name string) *Profile {
+	var display, sysDescr, sysObjectID, model, prompt string
+	ifs := []Interface{
+		{Index: 1, Descr: "GigabitEthernet1/1", Type: 6, Speed: 1_000_000_000, OperUp: true},
+		{Index: 2, Descr: "GigabitEthernet1/2", Type: 6, Speed: 1_000_000_000, OperUp: true},
+		{Index: 3, Descr: "FastEthernet1/1", Type: 6, Speed: 100_000_000, OperUp: false},
+		{Index: 4, Descr: "Vlan1", Type: 53, Speed: 1_000_000_000, OperUp: true},
+	}
+	switch name {
+	case "cisco-ie-3400":
+		display = "Cisco Catalyst IE-3400 (IOS-XE 17)"
+		sysDescr = "Cisco IOS Software [Cupertino], IE3400 Switch Software (IE3400-UNIVERSALK9-M), Version 17.9.4, RELEASE SOFTWARE (fc1)"
+		sysObjectID = ".1.3.6.1.4.1.9.1.2920"
+		model = "IE-3400-8T2S"
+		prompt = "IE3400>"
+	case "cisco-ir1101":
+		display = "Cisco IR1101 (industrial router, IOS-XE)"
+		sysDescr = "Cisco IOS Software [Cupertino], ir1101 Software (ir1101-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc1)"
+		sysObjectID = ".1.3.6.1.4.1.9.1.2601"
+		model = "IR1101-K9"
+		prompt = "IR1101>"
+		ifs = []Interface{
+			{Index: 1, Descr: "GigabitEthernet0/0/0", Type: 6, Speed: 1_000_000_000, OperUp: true},
+			{Index: 2, Descr: "FastEthernet0/0/1", Type: 6, Speed: 100_000_000, OperUp: true},
+			{Index: 3, Descr: "Cellular0/1/0", Type: 1, Speed: 100_000_000, OperUp: true},
+			{Index: 4, Descr: "Vlan1", Type: 53, Speed: 1_000_000_000, OperUp: true},
+		}
+	default: // cisco-ie-2000
+		display = "Cisco Industrial Ethernet 2000 (IOS 15)"
+		sysDescr = "Cisco IOS Software, IE2000 Software (IE2000-UNIVERSALK9-M), Version 15.2(7)E3, RELEASE SOFTWARE (fc3)"
+		sysObjectID = ".1.3.6.1.4.1.9.1.1409"
+		model = "IE-2000-8TC-G-E"
+		prompt = "IE2000>"
+	}
+	return &Profile{
+		Name:        name,
+		DisplayName: display,
+		Family:      "cisco",
+		macOUI:      [3]byte{0x00, 0x1a, 0x2b},
+		loginPrompt: "\r\nUser Access Verification\r\n\r\nUsername: ",
+		cliPrompt:   prompt,
+		sshBanner:   "SSH-2.0-Cisco-1.25",
+		httpServer:  "cisco-IOS",
+		httpTitle:   "Cisco Systems",
+		httpBodyHTML: "<html><head><title>Cisco Systems</title></head><body>" +
+			"<h1>" + model + "</h1><p>Cisco Systems, Inc. — Industrial — accessing Cisco IOS HTTP server.</p>" +
+			"<p>Authentication required.</p></body></html>",
+		snmpSysDescr:    sysDescr,
+		snmpSysObjectID: sysObjectID,
+		snmpSysName:     "Switch",
+		snmpSysContact:  "ot-noc@corp.local",
+		snmpSysLocation: "Plant floor",
+		icmpTTL:         255,
+		snmpIfTable:     ifs,
+		vlans: []VLAN{
+			{ID: 1, Name: "default", Ports: []int{1, 2}},
+			{ID: 10, Name: "CONTROL", Ports: []int{3}},
+		},
+		tls:        TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+		patchLevel: "IOS 15.2(7)E3",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh", Note: "SSH management"},
+			{Port: 23, Handler: "telnet", Note: "Telnet (legacy)"},
+			{Port: 80, Handler: "http", Note: "IOS web device manager"},
+			{Port: 443, Handler: "https"},
+			{Port: 161, Handler: "snmp"},
+			{Port: 4840, Handler: "opcua", Note: "IOx / OPC UA edge app (optional)"},
+		},
+		quirks: []string{"cisco-ios", "cisco-industrial"},
+	}
 }
 
 func ciscoProfile(name string) *Profile {

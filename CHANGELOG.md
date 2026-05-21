@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 23 more industrial-device archetypes (ship total 81)
+- **More Moxa**: EDS-405A, EDS-G516E (gigabit, MRP), NPort 5650-8, AWK-3131A
+  wireless AP, MGate MB3180 Modbus gateway.
+- **Westermo (WeOS)**: Lynx, RedFox, Viper (EN50155 rail), Merlin-4400
+  cellular router, Ibex wireless.
+- **More Teltonika**: RUT955 (GPS), RUTX11, RUT956, TRB140.
+- **More industrial switch vendors**: Hirschmann RS20 / RSP35 (HiOS) /
+  EAGLE20 firewall, Phoenix Contact FL SWITCH 2008 / FL MGUARD, Advantech
+  EKI-5528 — each with the correct vendor MAC OUI + SNMP enterprise OID.
+- **Cisco industrial**: Industrial Ethernet 2000 (IOS), Catalyst IE-3400
+  (IOS-XE), IR1101 industrial router.
+  All carry realistic banners, SNMP identity, MAC OUI, ICMP TTL, and
+  default-service maps; guarded by `TestIndustrialArchetypeFields`.
+
 ### Added — web UI dashboard charts, full-text search, payload hex view
 - **Dashboard** (summary page): an events-per-hour trend sparkline plus
   severity / top-rule / top-source CSS bar charts (no JavaScript — bars are

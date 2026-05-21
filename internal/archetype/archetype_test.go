@@ -111,6 +111,31 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Omron PLC (FINS)",
 		"HP LaserJet (network printer)",
 		"Asterisk PBX (VoIP)",
+		// Industrial depth: more Moxa / Teltonika, Westermo, Hirschmann,
+		// Phoenix Contact, Advantech, Cisco industrial.
+		"Moxa EDS-405A (managed switch)",
+		"Moxa EDS-G516E (gigabit managed switch)",
+		"Moxa NPort 5650-8 (serial device server)",
+		"Moxa AWK-3131A (industrial wireless AP)",
+		"Moxa MGate MB3180 (Modbus gateway)",
+		"Westermo Lynx (WeOS managed switch)",
+		"Westermo RedFox (rugged managed switch)",
+		"Westermo Viper (EN50155 rail switch)",
+		"Westermo Merlin-4400 (cellular router)",
+		"Westermo Ibex (industrial wireless)",
+		"Teltonika RUT955 (industrial router, GPS)",
+		"Teltonika RUTX11 (LTE Cat6 router)",
+		"Teltonika RUT956 (industrial router)",
+		"Teltonika TRB140 (LTE gateway)",
+		"Hirschmann RS20 (Classic managed switch)",
+		"Hirschmann RSP35 (HiOS managed switch)",
+		"Hirschmann EAGLE20 (industrial firewall)",
+		"Phoenix Contact FL SWITCH 2008",
+		"Phoenix Contact FL MGUARD (security router)",
+		"Advantech EKI-5528 (managed switch)",
+		"Cisco Industrial Ethernet 2000 (IOS 15)",
+		"Cisco Catalyst IE-3400 (IOS-XE 17)",
+		"Cisco IR1101 (industrial router, IOS-XE)",
 	}
 	got := Names()
 	if len(got) != len(want) {
@@ -219,6 +244,33 @@ func TestApplianceArchetypeFields(t *testing.T) {
 		}
 		if p.HTTPServer() == "" && p.SSHBanner() == "" {
 			t.Errorf("%s: no identifying banner (httpServer/sshBanner both empty)", name)
+		}
+		if Lookup(name) == nil {
+			t.Errorf("%s: not resolvable via Lookup", name)
+		}
+	}
+}
+
+// Industrial archetypes (more Moxa / Teltonika + Westermo / Hirschmann /
+// Phoenix Contact / Advantech) must carry the device fingerprint surface a
+// scanner keys on: MAC OUI, SNMP description + enterprise OID, at least one
+// default service, and resolvability via Lookup.
+func TestIndustrialArchetypeFields(t *testing.T) {
+	for name, p := range industrialArchetypes {
+		if !p.HasMACOUI() {
+			t.Errorf("%s: macOUI not set", name)
+		}
+		if p.SNMPSysDescr() == "" {
+			t.Errorf("%s: snmpSysDescr empty", name)
+		}
+		if p.SNMPSysObjectID() == "" {
+			t.Errorf("%s: snmpSysObjectID empty", name)
+		}
+		if len(p.DefaultServices()) == 0 {
+			t.Errorf("%s: defaultServices empty", name)
+		}
+		if p.Family == "" {
+			t.Errorf("%s: Family empty", name)
 		}
 		if Lookup(name) == nil {
 			t.Errorf("%s: not resolvable via Lookup", name)
