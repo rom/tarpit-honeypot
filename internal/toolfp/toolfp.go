@@ -142,6 +142,42 @@ var uaSignatures = map[string]string{
 	"zabbix":                 "zabbix-probe",
 	"hello, world":           "scanner-stub",
 	"custom-asynchttpclient": "scanner-stub",
+	// More recon engines / SaaS scanners.
+	"rapid7":           "rapid7",
+	"tenable":          "tenable",
+	"detectify":        "detectify",
+	"intruder.io":      "intruder",
+	"pentest-tools":    "pentest-tools",
+	"modat":            "modat-scanner",
+	"netcraft":         "netcraft",
+	"cortex xpanse":    "expanse",
+	"paloaltonetworks": "expanse",
+	"bytespider":       "bytespider-bot",
+	"google-cloud-sdk": "gcloud-script",
+	// More vuln scanners / fuzzers.
+	"rustscan":  "rustscan",
+	"naabu":     "naabu",
+	"testssl":   "testssl",
+	"sslyze":    "sslyze",
+	"nmap.org":  "nmap",
+	"dalfox":    "dalfox",
+	"crlfuzz":   "crlfuzz",
+	"jaeles":    "jaeles",
+	"gospider":  "gospider",
+	"hakrawler": "hakrawler",
+	// More HTTP clients / runtimes.
+	"httpie":         "httpie",
+	"postmanruntime": "postman",
+	"insomnia":       "insomnia",
+	"reqwest":        "rust-http",
+	"hyper":          "rust-http",
+	"http_request2":  "php-script",
+	"symfony":        "php-script",
+	"typhoeus":       "ruby-script",
+	"deno":           "deno-script",
+	"bun":            "bun-script",
+	"electron":       "electron-client",
+	"uipath":         "rpa-bot",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
@@ -202,6 +238,20 @@ var pathSignatures = map[string]string{
 	"/login.action":                                       "confluence-probe",
 	"/druid/index.html":                                   "scanner-recon",
 	"/geoserver/web/":                                     "geoserver-exploit",
+	"/cgi-bin/.%2e/":                                      "cve-2021-41773",
+	"/telerik.web.ui.webresource.axd":                     "cve-2019-18935",
+	"/cfide/administrator/":                               "coldfusion-probe",
+	"/cf_scripts/scripts/ajax/ckeditor/":                  "coldfusion-exploit",
+	"/solr/admin/cores":                                   "solr-probe",
+	"/_cat/indices":                                       "elasticsearch-probe",
+	"/+cscoe+/logon.html":                                 "cisco-asa-probe",
+	"/cgi-bin/system_mgr.cgi":                             "dlink-exploit",
+	"/cgi-bin/nas_sharing.cgi":                            "dlink-exploit",
+	"/goform/set_lansetting":                              "router-exploit",
+	"/api/sonicos/":                                       "sonicwall-probe",
+	"/secure/contactadministrators!default.jspa":          "cve-2019-11581",
+	"/wp-content/plugins/":                                "wpscan",
+	"/v2/_catalog":                                        "registry-probe",
 }
 
 // browserUASubstrings are tokens that, when present, indicate a real
@@ -289,6 +339,10 @@ var sshClientSignatures = []sshSig{
 	{"scanssh", "scanssh"},
 	{"zgrab", "zgrab"},
 	{"nmap", "nmap"},
+	{"twistedconch", "twisted-conch"},
+	{"erlang", "erlang-ssh"},
+	{"maverick", "maverick-ssh"},
+	{"sshlib", "sshlib"},
 	{"go", "go-ssh"}, // matched specially: exactly SSH-2.0-Go
 }
 
