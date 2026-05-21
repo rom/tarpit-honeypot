@@ -201,6 +201,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &mms{}, nil
 	case "pjl":
 		return &pjl{arch: deps.Archetype}, nil
+	case "lpd":
+		return &lpd{}, nil
 	case "ads":
 		return &ads{}, nil
 	case "mqtt":

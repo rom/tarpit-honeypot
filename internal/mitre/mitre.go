@@ -194,6 +194,7 @@ var handlerTags = map[string]Tag{
 	"mms":         {Techniques: []string{"T0888", "T0814"}, Tactics: []string{"discovery", "impact"}},
 	"ads":         {Techniques: []string{"T0888", "T0814"}, Tactics: []string{"discovery", "impact"}},
 	"pjl":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"lpd":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// More auth / remote-access / OOB-management surface.
 	"mssql":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
@@ -241,6 +242,25 @@ var anomalyTags = map[string]Tag{
 	// a configuration repository (the "copy run tftp" pivot on net gear).
 	"tftp-write-attempt": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
 	"tftp-config-read":   {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
+	// Printer / MFP abuse (PJL 9100, IPP 631, LPD 515). The generic
+	// printer- markers (recon, fs access, job received, dmcmd, admin ops)
+	// fall through to the "printer-" discovery prefix below; these are the
+	// high-signal ones that warrant a precise technique.
+	"printer-filesystem-format":     {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"printer-path-traversal":        {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"printer-config-set":            {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	"printer-password-set":          {Techniques: []string{"T1098"}, Tactics: []string{"persistence"}},
+	"printer-credential-access":     {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
+	"printer-rdymsg-set":            {Techniques: []string{"T1491"}, Tactics: []string{"impact"}},
+	"printer-message-injection":     {Techniques: []string{"T1491"}, Tactics: []string{"impact"}},
+	"printer-auth-attempt":          {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"printer-postscript-exitserver": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"printer-postscript-fileop":     {Techniques: []string{"T1059", "T1005"}, Tactics: []string{"execution", "collection"}},
+	"printer-postscript-setparams":  {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"printer-cups-rce":              {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"printer-ipp-cmd-injection":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"printer-lpd-injection":         {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"printer-lpd-overflow":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// Web application attack families (ride on http/https handler events).
 	"webapp:sqli":              {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"webapp:lfi":               {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
@@ -271,6 +291,10 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "printer-"):
+		// Generic printer/MFP recon + access (fs access, info query, job
+		// received, nvram, dmcmd, ipp admin op, lpd command).
+		return Tag{Techniques: []string{"T1083"}, Tactics: []string{"discovery"}}
 	case a == "automation-client":
 		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
 	}
@@ -388,6 +412,11 @@ var d3fend = map[string][]string{
 	"T1565": {"D3-NTA", "D3-DE"},           // data manipulation (SNMP SET write)
 	"T1590": {"D3-DNSTA", "D3-DNR"},        // gather victim network info (DNS AXFR)
 	"T1602": {"D3-NTA", "D3-DE"},           // data from configuration repository (TFTP)
+	"T1485": {"D3-NTA", "D3-DE"},           // data destruction (PJL FSINIT format)
+	"T1491": {"D3-NTA"},                    // defacement (printer panel message)
+	"T1098": {"D3-MFA", "D3-DUC"},          // account manipulation (printer password set)
+	"T1552": {"D3-DUC", "D3-NTA"},          // unsecured credentials (printer password read)
+	"T1005": {"D3-DO", "D3-NTA"},           // data from local system (PostScript file read)
 }
 
 // CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,

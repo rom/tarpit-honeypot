@@ -43,6 +43,98 @@ func TestPJLRdymsgDefacement(t *testing.T) {
 	}
 }
 
+// runPJLSession drives the pjl handler with a full input then EOF, draining
+// any believable responses it writes so the handler never blocks.
+func runPJLSession(t *testing.T, input string) Result {
+	t.Helper()
+	client, server := pipePair(t)
+	cfg := config.Listener{ReadTimeout: 2 * time.Second, ReadBytes: 8192}
+	resC := make(chan Result, 1)
+	go func() { r, _ := (&pjl{}).Handle(context.Background(), server, cfg); resC <- r }()
+	go func() { _, _ = io.Copy(io.Discard, client) }()
+	_, _ = client.Write([]byte(input))
+	_ = client.Close()
+	return <-resC
+}
+
+func pjlAnoms(r Result) []string {
+	a, _ := r.Meta["anomalies"].([]string)
+	return a
+}
+
+func TestPJLFilesystemTraversal(t *testing.T) {
+	r := runPJLSession(t, "\x1b%-12345X@PJL FSDOWNLOAD FORMAT:BINARY SIZE=10 NAME=\"0:\\..\\..\\etc\\passwd\"\r\n")
+	a := pjlAnoms(r)
+	if !containsStr(a, "printer-filesystem-access") {
+		t.Errorf("FS access not flagged: %v", a)
+	}
+	if !containsStr(a, "printer-path-traversal") {
+		t.Errorf("path traversal not flagged: %v", a)
+	}
+}
+
+func TestPJLFSInitFormat(t *testing.T) {
+	r := runPJLSession(t, "@PJL FSINIT VOLUME=\"0:\"\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-filesystem-format") {
+		t.Errorf("FSINIT (format) not flagged: %v", a)
+	}
+}
+
+func TestPJLPasswordSet(t *testing.T) {
+	r := runPJLSession(t, "@PJL DEFAULT PASSWORD=12345\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-password-set") {
+		t.Errorf("password set not flagged: %v", a)
+	}
+}
+
+func TestPJLCredentialRead(t *testing.T) {
+	r := runPJLSession(t, "@PJL DINQUIRE PASSWORD\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-credential-access") {
+		t.Errorf("password read not flagged: %v", a)
+	}
+}
+
+func TestPJLInfoRecon(t *testing.T) {
+	r := runPJLSession(t, "@PJL INFO VARIABLES\r\n@PJL INFO FILESYS\r\n@PJL INFO PAGECOUNT\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-info-query") {
+		t.Errorf("INFO recon not flagged: %v", a)
+	}
+	cats, _ := r.Meta["pjl_info"].([]string)
+	if !containsStr(cats, "VARIABLES") || !containsStr(cats, "FILESYS") {
+		t.Errorf("INFO categories not recorded: %v", cats)
+	}
+}
+
+func TestPJLJobPassword(t *testing.T) {
+	r := runPJLSession(t, "@PJL JOB PASSWORD=4321 NAME=\"x\"\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-auth-attempt") {
+		t.Errorf("job password not flagged auth-attempt: %v", a)
+	}
+	if r.Meta["pjl_password"] != "4321" {
+		t.Errorf("password not captured: %v", r.Meta["pjl_password"])
+	}
+}
+
+func TestPJLPostScriptExitserver(t *testing.T) {
+	job := "%!PS-Adobe-3.0\nserverdict begin 0 exitserver\nstatusdict begin\n"
+	r := runPJLSession(t, job)
+	a := pjlAnoms(r)
+	if !containsStr(a, "printer-job-received") {
+		t.Errorf("raw job not flagged: %v", a)
+	}
+	if !containsStr(a, "printer-postscript-exitserver") {
+		t.Errorf("PostScript exitserver not flagged: %v", a)
+	}
+}
+
+func TestPJLPostScriptFileOp(t *testing.T) {
+	job := "%!PS-Adobe-3.0\n(0:/etc/passwd) (r) file\n(junk) deletefile\n"
+	r := runPJLSession(t, job)
+	if a := pjlAnoms(r); !containsStr(a, "printer-postscript-fileop") {
+		t.Errorf("PostScript file op not flagged: %v", a)
+	}
+}
+
 func TestADSReadDeviceInfo(t *testing.T) {
 	client, server := pipePair(t)
 	cfg := config.Listener{ReadTimeout: 2 * time.Second}

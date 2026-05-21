@@ -28,7 +28,7 @@ rationale covering the current implementation.
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
-  - **TCP / printers**: `ipp`, `pjl` (HP JetDirect 9100)
+  - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
@@ -912,7 +912,7 @@ prints the live list.
 | Camera | Hikvision IP camera | `hikvision-camera` | hikvision | 64 | `App-webs/` Server, RTSP 554, Digest "IP Camera", CVE-2017-7921 (advisory) |
 | Camera | Axis network camera | `axis-camera` | axis | 64 | VAPIX, RTSP 554, Digest realm `AXIS_*`, Axis OUI |
 | Network | Ubiquiti EdgeRouter | `ubiquiti-edgerouter` | ubiquiti | 64 | EdgeOS lighttpd, Ubiquiti OUI/OID |
-| Printer | HP LaserJet | `hp-printer` | printer | 64 | HP HTTP Server, JetDirect 9100, IPP 631, HP OUI/OID |
+| Printer | HP LaserJet | `hp-printer` | printer | 64 | HP HTTP Server, JetDirect 9100, IPP 631, LPD 515, HP OUI/OID |
 | VoIP | Asterisk PBX | `asterisk-voip` | voip | 64 | SIP 5060, FreePBX web, `Asterisk/18.x` Server header |
 
 ---
@@ -954,7 +954,8 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `melsec` | 1025 | Mitsubishi MELSEC 3E frame parser. Reads `0x5000` request header, replies `0xD000` with a fake `Q03UDVCPU` CPU model + serial. | — | — |
 | `xmpp` | 5222 | Reads the client `<stream:stream>` open, extracts `to` / `from` / `xmlns` / `version`. Replies with our own `<stream:stream>` + `<stream:features>` advertising STARTTLS + PLAIN + SCRAM-SHA-1. Captures the follow-up `<auth>` or `<starttls/>` stanza. | — | — |
 | `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |
-| `ipp` | 631 | IPP / CUPS printer over HTTP. Parses Get-Printer-Attributes body, replies HTTP 200 + `application/ipp` with printer-attributes-tag advertising a fake Brother HL-L8260CDW (idle, accepting jobs). | — | — |
+| `ipp` | 631 | IPP / CUPS printer over HTTP. Parses the body, replies HTTP 200 + `application/ipp` advertising a fake Brother HL-L8260CDW (idle, accepting jobs). Names the IPP operation and flags printer-admin / job-injection / server-fetch ops (`printer-ipp-admin-op`), the CUPS foomatic-rip RCE primitive (`printer-cups-rce` + `cve:CVE-2024-47177`), and command-injection metacharacters in printer/device attributes (`printer-ipp-cmd-injection`). | — | — |
+| `lpd` | 515 | Line Printer Daemon (RFC 1179). Acknowledges the command (so a client sends its control file), names the command, captures the queue + control metadata, and flags shell-metacharacter injection in any field (`printer-lpd-injection`), overlong fields (`printer-lpd-overflow`), and path traversal. Nothing is queued. | ✓ | — |
 
 ### TCP — remote access / out-of-band management
 
@@ -1005,7 +1006,7 @@ handshake where it isn't HTTP.
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC-class PLCs; nmap pcworx-info). Captures the connect/identify probe and returns an identification frame carrying model (`ILC 330 ETH`) + firmware. Fingerprint-grade. | — | — |
 | `mms` | 102 | IEC 61850 MMS (substation IEDs / relays over ISO-on-TCP — distinct from S7comm on the same port). Completes the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association) request, replies with a believable AARE accept; flags `ics-mms-probe`. Fingerprint-grade. | — | — |
 | `ads` | 48898 | Beckhoff ADS/AMS (TwinCAT PLCs / CX embedded PCs). Parses the AMS/TCP + AMS header, captures the command + AmsNetIds, answers Read-Device-Info with a TwinCAT identity; flags `ics-ads-probe`. Fingerprint-grade. | — | — |
-| `pjl` | 9100 | HP JetDirect raw-print port speaking PJL. Answers `@PJL INFO ID/STATUS/CONFIG` with a believable printer identity, captures print jobs + commands, flags ready-message defacement (`printer-rdymsg-set`) and filesystem access (`printer-filesystem-access`). | ✓ | — |
+| `pjl` | 9100 | HP JetDirect raw-print port speaking PJL — the channel PRET drives. Interactive loop: answers `@PJL INFO ID/STATUS/CONFIG/VARIABLES/FILESYS/MEMORY/PAGECOUNT/...` with a believable identity (recon deception), captures jobs + commands + a PJL password, and flags panel defacement (`printer-rdymsg-set`/`printer-message-injection`), filesystem access + the destructive `FSINIT` format (`printer-filesystem-access`/`printer-filesystem-format`), path traversal, config/password writes + credential reads, NVRAM + DM commands, and embedded **PostScript** abuse in the job (exitserver persistence, file ops, `set*params`, raw device access). Nothing prints or touches a real FS. | ✓ | — |
 
 ### UDP
 

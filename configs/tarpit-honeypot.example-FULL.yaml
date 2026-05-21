@@ -250,6 +250,21 @@ listeners:
     handler: ipp
     severity: medium
     read_timeout: 10s
+  - id: tcp-pjl
+    proto: tcp
+    bind: 0.0.0.0:9100
+    mode: banner
+    handler: pjl
+    archetype: hp-printer
+    severity: medium
+    read_timeout: 10s
+  - id: tcp-lpd
+    proto: tcp
+    bind: 0.0.0.0:515
+    mode: banner
+    handler: lpd
+    severity: medium
+    read_timeout: 10s
   - id: tcp-mssql
     proto: tcp
     bind: 0.0.0.0:20026

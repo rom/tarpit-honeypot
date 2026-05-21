@@ -8,6 +8,33 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — broad printer / MFD attack detection (PJL · IPP/CUPS · LPD)
+- **PJL handler (9100) rewritten as an interactive responder** — the channel
+  PRET drives. Answers many more `@PJL INFO` recon categories (VARIABLES,
+  FILESYS, MEMORY, PAGECOUNT, USTATUS, …) believably and flags a broad set
+  of abuse: panel defacement (`printer-rdymsg-set` / `printer-message-injection`),
+  filesystem access + the destructive `FSINIT` format (`printer-filesystem-access`
+  / `printer-filesystem-format`), path traversal (`printer-path-traversal`),
+  config + password writes (`printer-config-set` / `printer-password-set`),
+  credential reads (`printer-credential-access`), PJL job passwords
+  (`printer-auth-attempt`, captured), NVRAM + device-management commands, and
+  embedded **PostScript** abuse in the job stream — `serverdict`/`exitserver`
+  persistence, file ops, `set*params`, raw `%disk%`/`%os%` device access.
+  Nothing prints; no real filesystem/NVRAM is touched.
+- **IPP handler (631) gains CUPS attack detection** — names the IPP operation,
+  flags printer-admin / job-injection / server-fetch ops (`printer-ipp-admin-op`),
+  the foomatic-rip RCE primitive (`printer-cups-rce` + a live `cve:CVE-2024-47177`),
+  and command-injection metacharacters in printer/device attributes
+  (`printer-ipp-cmd-injection`). Catalog gains the Sept-2024 CUPS chain
+  (CVE-2024-47177 detectable; 47076/47175/47176 advisory).
+- **New `lpd` handler (LPD, TCP 515)** — acknowledges the command so a client
+  sends its control file, captures the queue + control metadata, and flags
+  shell-metacharacter injection (`printer-lpd-injection`), overlong fields
+  (`printer-lpd-overflow`), and path traversal. Wired into the `hp-printer`
+  archetype (now advertises 9100/631/515/161/80/443) + the FULL example.
+- All printer markers carry ATT&CK + D3FEND mappings (T1485/T1491/T1098/
+  T1552/T1005/T1059/T1190 + a `printer-` discovery prefix fallback).
+
 ### Changed — webapp decoy secrets are now per-deployment honeytokens
 - The fake-vulnerable webapp's `/.env` and config-backup loot no longer use
   static strings (`Tr4pP3d-D3c0y-2024` / `decoy-not-a-real-secret`) — those

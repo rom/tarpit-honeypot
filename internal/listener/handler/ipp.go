@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 )
 
 // ipp implements just enough of the Internet Printing Protocol (TCP 631,
@@ -102,7 +103,21 @@ func (i *ipp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		res.Meta["ipp_version"] = ver
 		res.Meta["ipp_op"] = opID
 		res.Meta["ipp_request_id"] = reqID
+		name, admin := ippOpName(opID)
+		res.Meta["ipp_op_name"] = name
+		if admin {
+			// Printer-admin / job-injection / server-side-fetch ops that a
+			// scanner has no business calling unauthenticated — the surface
+			// the CUPS chain (add a malicious printer, then print) abuses.
+			flagAnomaly(&res, "printer-ipp-admin-op")
+		}
 	}
+
+	// CUPS exploit-chain + injection detection over the whole request
+	// (HTTP head + IPP body). FoomaticRIPCommandLine is the foomatic-rip
+	// RCE primitive (CVE-2024-47177); shell metacharacters smuggled into a
+	// device-uri / command attribute are the generic injection shape.
+	i.detectIPPAbuse(&res)
 
 	// Build an IPP successful-ok body advertising a fake Brother
 	// printer. operation-attributes-tag with charset + language, then
@@ -124,6 +139,82 @@ func (i *ipp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	}
 	res.BannerSent = "ipp Get-Printer-Attributes 200 OK"
 	return res, nil
+}
+
+// detectIPPAbuse scans the captured request for the CUPS RCE primitive and
+// command-injection metacharacters in printer/device attributes, recording
+// CVE hits + anomalies. Recognition only — nothing is executed.
+func (i *ipp) detectIPPAbuse(res *Result) {
+	low := strings.ToLower(string(res.Payload))
+	for _, rec := range cve.MatchPayload("ipp", low) {
+		res.CVEHits = append(res.CVEHits, rec.ID)
+	}
+	if strings.Contains(low, "foomaticripcommandline") {
+		flagAnomaly(res, "printer-cups-rce")
+	}
+	// A device-uri / command attribute carrying shell metacharacters is a
+	// command-injection attempt against the print pipeline.
+	if (strings.Contains(low, "device-uri") || strings.Contains(low, "commandline") ||
+		strings.Contains(low, "ppd-name")) &&
+		(strings.ContainsAny(low, "`;|&") || strings.Contains(low, "$(")) {
+		flagAnomaly(res, "printer-ipp-cmd-injection")
+	}
+}
+
+// ippOpName maps an IPP operation id to its name and whether it is a
+// printer-admin / job-injection / server-fetch operation a honeypot should
+// treat as abuse when seen unauthenticated. Standard ops (RFC 8011) plus
+// the CUPS vendor extensions (0x4000+).
+func ippOpName(op uint16) (name string, admin bool) {
+	switch op {
+	case 0x0002:
+		return "Print-Job", false
+	case 0x0003:
+		return "Print-URI", true // server-side fetch (SSRF)
+	case 0x0004:
+		return "Validate-Job", false
+	case 0x0005:
+		return "Create-Job", false
+	case 0x0006:
+		return "Send-Document", false
+	case 0x0007:
+		return "Send-URI", true // server-side fetch (SSRF)
+	case 0x0008:
+		return "Cancel-Job", false
+	case 0x0009:
+		return "Get-Job-Attributes", false
+	case 0x000A:
+		return "Get-Jobs", false
+	case 0x000B:
+		return "Get-Printer-Attributes", false
+	case 0x0010:
+		return "Pause-Printer", true
+	case 0x0011:
+		return "Resume-Printer", true
+	case 0x0012:
+		return "Purge-Jobs", true
+	case 0x0013:
+		return "Set-Printer-Attributes", true
+	case 0x0014:
+		return "Set-Job-Attributes", false
+	case 0x4003:
+		return "CUPS-Add-Modify-Printer", true
+	case 0x4004:
+		return "CUPS-Delete-Printer", true
+	case 0x4006:
+		return "CUPS-Add-Modify-Class", true
+	case 0x4007:
+		return "CUPS-Delete-Class", true
+	case 0x400A:
+		return "CUPS-Set-Default", true
+	case 0x400D:
+		return "CUPS-Move-Job", true
+	case 0x400F:
+		return "CUPS-Get-PPD", true
+	case 0x4027:
+		return "CUPS-Get-Document", true
+	}
+	return "op-" + itoa(int(op)), false
 }
 
 func (i *ipp) buildOK(rid uint32) []byte {

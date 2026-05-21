@@ -25,7 +25,7 @@ var tcpHandlers = map[string]bool{
 	"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 	"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
 	"atg": true, "fox": true, "hartip": true, "pcworx": true, "mms": true,
-	"pjl": true, "ads": true,
+	"pjl": true, "lpd": true, "ads": true,
 	"opcua": true, "ethernetip": true, "smb": true,
 	"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
 	"dcerpc": true, "ldap": true, "kerberos": true,

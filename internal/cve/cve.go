@@ -322,6 +322,32 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Rockwell Logix controllers — boot-code injection of hidden program.",
 	},
+	// CUPS / IPP printing chain (Sept 2024). foomatic-rip is the RCE
+	// primitive: a crafted PPD's FoomaticRIPCommandLine runs an arbitrary
+	// shell command when a job prints. Detectable over IPP (TCP 631).
+	{
+		ID: "CVE-2024-47177", Name: "CUPS foomatic-rip RCE", CVSS: 9.0, Service: "ipp",
+		Signatures: []string{"foomaticripcommandline"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "cups-filters foomatic-rip arbitrary command execution via FoomaticRIPCommandLine.",
+	},
+	// The remaining three links advertise the unpatched chain (advisory-
+	// only — no single TCP-side exploit string).
+	{
+		ID: "CVE-2024-47176", Name: "cups-browsed SSRF/bind", CVSS: 8.6, Service: "ipp",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "cups-browsed binds 0.0.0.0:631 and trusts Get-Printer-Attributes from any source.",
+	},
+	{
+		ID: "CVE-2024-47076", Name: "libcupsfilters no-validate", CVSS: 8.6, Service: "ipp",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "libcupsfilters cfGetPrinterAttributes returns attacker IPP data unvalidated.",
+	},
+	{
+		ID: "CVE-2024-47175", Name: "libppd PPD injection", CVSS: 8.6, Service: "ipp",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "libppd ppdCreatePPDFromIPP2 writes attacker IPP attributes into a PPD unescaped.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
