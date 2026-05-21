@@ -183,6 +183,20 @@ func TestDNSTunnelingAnomaly(t *testing.T) {
 	}
 }
 
+func TestDNSZoneTransferFlagged(t *testing.T) {
+	pc := &fakePacketConn{}
+	src := &net.UDPAddr{IP: net.IPv4(10, 1, 1, 2), Port: 5301}
+	// qtype 252 = AXFR (full zone transfer).
+	q := buildDNSQuery("internal.example.com", 252)
+	res, err := (&dnsHandler{}).Handle(context.Background(), q, src, pc, config.Listener{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anoms, _ := res.Meta["anomalies"].([]string); !containsStr(anoms, "dns-zone-transfer") {
+		t.Errorf("AXFR not flagged: %v", res.Meta["anomalies"])
+	}
+}
+
 func TestDNSMalformedShort(t *testing.T) {
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 1, 1, 1), Port: 5300}

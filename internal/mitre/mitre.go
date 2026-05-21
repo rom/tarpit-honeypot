@@ -229,8 +229,18 @@ var handlerTags = map[string]Tag{
 var anomalyTags = map[string]Tag{
 	"default-credential-attempt": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
 	"modbus-write-attempt":       {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
-	"smtp-open-relay-probe":      {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
-	"smtp-user-enumeration":      {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	// SNMP SetRequest = write the device's running config (ACL / interface
+	// / config-copy-to-tftp). Manipulation on enterprise gear, modify-
+	// parameter on the ICS archetypes that also speak SNMP.
+	"snmp-set-attempt":      {Techniques: []string{"T1565.001", "T0836"}, Tactics: []string{"impact"}},
+	"smtp-open-relay-probe": {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
+	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
+	// TFTP upload = ingress tool / firmware push; config read = exfil from
+	// a configuration repository (the "copy run tftp" pivot on net gear).
+	"tftp-write-attempt": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"tftp-config-read":   {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
 	// Web application attack families (ride on http/https handler events).
 	"webapp:sqli":              {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"webapp:lfi":               {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
@@ -375,6 +385,9 @@ var d3fend = map[string][]string{
 	"T1056": {"D3-NTA"},                    // input capture (keylogging via X11)
 	"T1219": {"D3-NTA", "D3-OTF"},          // remote access software
 	"T1133": {"D3-MFA", "D3-NTA"},          // external remote services
+	"T1565": {"D3-NTA", "D3-DE"},           // data manipulation (SNMP SET write)
+	"T1590": {"D3-DNSTA", "D3-DNR"},        // gather victim network info (DNS AXFR)
+	"T1602": {"D3-NTA", "D3-DE"},           // data from configuration repository (TFTP)
 }
 
 // CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,

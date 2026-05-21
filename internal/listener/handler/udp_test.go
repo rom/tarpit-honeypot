@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,5 +126,42 @@ func TestSNMPv2cGetRequest(t *testing.T) {
 	}
 	if len(pc.written) != 1 {
 		t.Fatalf("expected 1 reply; got %d", len(pc.written))
+	}
+}
+
+func TestSNMPSetRequestFlagged(t *testing.T) {
+	// A SetRequest is a config-write attempt: must be flagged, captured,
+	// and NOT answered (the honeypot never applies the write).
+	pkt := &g.SnmpPacket{
+		Version:   g.Version2c,
+		Community: "private",
+		PDUType:   g.SetRequest,
+		RequestID: 7,
+		Variables: []g.SnmpPDU{
+			{Name: "1.3.6.1.2.1.1.5.0", Type: g.OctetString, Value: []byte("pwned")},
+		},
+	}
+	encoded, err := pkt.MarshalMsg()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := &fakePacketConn{}
+	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 9), Port: 40000}
+	res, err := (&snmp{}).Handle(context.Background(), encoded, src, pc, config.Listener{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Meta["pdu_type"] != "SetRequest" {
+		t.Errorf("pdu_type: %v", res.Meta["pdu_type"])
+	}
+	if anoms, _ := res.Meta["anomalies"].([]string); !containsStr(anoms, "snmp-set-attempt") {
+		t.Errorf("SetRequest not flagged: %v", res.Meta["anomalies"])
+	}
+	sets, _ := res.Meta["snmp_set"].([]string)
+	if len(sets) != 1 || !strings.Contains(sets[0], "pwned") {
+		t.Errorf("set values not captured: %v", res.Meta["snmp_set"])
+	}
+	if len(pc.written) != 0 {
+		t.Fatalf("SetRequest must not be answered; got %d replies", len(pc.written))
 	}
 }

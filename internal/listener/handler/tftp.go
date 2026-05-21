@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -53,6 +54,19 @@ func (t *tftp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		if len(opts) > 0 {
 			res.Meta["options"] = opts
 		}
+		// Protocol-misuse detection. A WRQ is an upload — pushing a file
+		// (often a tampered firmware / config) onto the device. An RRQ for
+		// a device config file is config exfil (the classic "copy running-
+		// config tftp" pivot against network gear). We serve neither.
+		filename := ""
+		if len(fields) >= 1 {
+			filename = string(fields[0])
+		}
+		if opcode == 2 {
+			flagAnomaly(&res, "tftp-write-attempt")
+		} else if tftpConfigName(filename) {
+			flagAnomaly(&res, "tftp-config-read")
+		}
 		sendTFTPError(pc, src, 2, "Access violation")
 		res.BannerSent = "tftp ERROR access_violation"
 
@@ -74,6 +88,31 @@ func sendTFTPError(pc net.PacketConn, dst net.Addr, code uint16, msg string) {
 	copy(pkt[4:], msg)
 	pkt[len(pkt)-1] = 0
 	_, _ = pc.WriteTo(pkt, dst)
+}
+
+// tftpConfigName reports whether a requested filename looks like a network
+// device's configuration or firmware image — the targets an attacker reads
+// over TFTP to harvest credentials / topology or to stage a downgrade.
+func tftpConfigName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return false
+	}
+	// Cisco's well-known auto-load names + generic config/firmware files.
+	for _, sub := range []string{
+		"running-config", "startup-config", "running-confg", "startup-confg",
+		"network-confg", "router-confg", "cisconet.cfg", "ciscortr.cfg",
+	} {
+		if strings.Contains(n, sub) {
+			return true
+		}
+	}
+	for _, ext := range []string{".cfg", ".conf", ".config", ".confg", ".bin", ".img", ".rom"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func tftpOpName(c uint16) string {

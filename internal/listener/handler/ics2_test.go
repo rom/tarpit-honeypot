@@ -170,4 +170,26 @@ func TestTFTPRRQReturnsError(t *testing.T) {
 	if res.Meta["mode"] != "octet" {
 		t.Errorf("mode: %v", res.Meta["mode"])
 	}
+	// .cfg read over TFTP is config exfil.
+	if anoms, _ := res.Meta["anomalies"].([]string); !containsStr(anoms, "tftp-config-read") {
+		t.Errorf("config-file RRQ not flagged: %v", res.Meta["anomalies"])
+	}
+}
+
+func TestTFTPWRQFlagged(t *testing.T) {
+	pc := &fakePacketConn{}
+	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 12346}
+	pkt := []byte{0x00, 0x02} // opcode WRQ (upload)
+	pkt = append(pkt, []byte("firmware.bin")...)
+	pkt = append(pkt, 0)
+	pkt = append(pkt, []byte("octet")...)
+	pkt = append(pkt, 0)
+
+	res, _ := (&tftp{}).Handle(context.Background(), pkt, src, pc, config.Listener{})
+	if res.Meta["opcode"] != "WRQ" {
+		t.Errorf("opcode: %v", res.Meta["opcode"])
+	}
+	if anoms, _ := res.Meta["anomalies"].([]string); !containsStr(anoms, "tftp-write-attempt") {
+		t.Errorf("WRQ upload not flagged: %v", res.Meta["anomalies"])
+	}
 }

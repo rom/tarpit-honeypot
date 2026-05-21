@@ -70,7 +70,28 @@ func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	res.Meta = meta
 
-	// Only reply to GetRequest / GetNextRequest. Traps/responses we just log.
+	// Protocol-misuse detection. An SNMP SetRequest is an attempt to
+	// *write* the device's configuration — flip an interface, rewrite an
+	// ACL, or trigger a running-config copy to an attacker TFTP server.
+	// The honeypot never applies the write (we don't even reply), but a
+	// write attempt against any of our SNMP-advertising archetypes
+	// (switch / PLC / printer / camera) is a high-signal manipulation
+	// event, so we flag it and capture the target OIDs + intended values.
+	if pkt.PDUType == g.SetRequest {
+		flagAnomaly(&res, "snmp-set-attempt")
+		if len(pkt.Variables) > 0 {
+			// Raw is fine here: the listener sanitizes res.Meta centrally
+			// (safe.SanitizeMetaStrings) before anything reaches a sink.
+			sets := make([]string, 0, len(pkt.Variables))
+			for _, v := range pkt.Variables {
+				sets = append(sets, v.Name+"="+snmpValueString(v))
+			}
+			res.Meta["snmp_set"] = sets
+		}
+	}
+
+	// Only reply to GetRequest / GetNextRequest. Traps/responses (and
+	// the SetRequest above) we just log.
 	if pkt.PDUType != g.GetRequest && pkt.PDUType != g.GetNextRequest {
 		return res, nil
 	}
@@ -199,6 +220,23 @@ func atoiSafe(s string) (int, bool) {
 		}
 	}
 	return n, true
+}
+
+// snmpValueString renders a varbind value for forensic capture. Strings
+// stay strings (the caller sanitizes); everything else is formatted
+// generically. Kept tiny and allocation-light — this only runs on the
+// rare SetRequest path.
+func snmpValueString(v g.SnmpPDU) string {
+	switch val := v.Value.(type) {
+	case []byte:
+		return string(val)
+	case string:
+		return val
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 func versionName(v g.SnmpVersion) string {

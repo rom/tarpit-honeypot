@@ -588,6 +588,13 @@ func dnsQueryAnomalies(name string, qtype uint16, msgLen int) []string {
 	if qtype == 10 || qtype == 16 {
 		out = append(out, "dns-tunneling-qtype")
 	}
+	// AXFR (252) / IXFR (251): a zone-transfer request tries to dump the
+	// whole zone — classic recon against a misconfigured authoritative
+	// server (and a strong tell on a workstation/DC archetype). We never
+	// serve the zone; we just flag the attempt.
+	if qtype == 251 || qtype == 252 {
+		out = append(out, "dns-zone-transfer")
+	}
 	if msgLen > 512 {
 		out = append(out, "dns-oversize-query")
 	}

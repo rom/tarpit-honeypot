@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — protocol-misuse detection on SNMP / DNS / TFTP
+- **`snmp-set-attempt`**: the SNMP handler now flags an SNMP `SetRequest`
+  (a config *write* — flip an interface, rewrite an ACL, trigger a config
+  copy-to-TFTP) and captures the target OIDs + intended values. The write
+  is never applied (we don't even reply). High-signal across every
+  SNMP-advertising archetype (switch / PLC / printer / camera). ATT&CK
+  T1565.001 / T0836.
+- **`dns-zone-transfer`**: the DNS handler flags AXFR/IXFR (qtype 251/252)
+  zone-transfer requests — bulk host enumeration against a misconfigured
+  authoritative server / DC. ATT&CK T1590.002 / T1018.
+- **`tftp-write-attempt`** + **`tftp-config-read`**: the TFTP handler flags
+  WRQ uploads (firmware/config push) and RRQ of device-config / firmware
+  filenames (`running-config`, `*.cfg`, `*.bin`, Cisco `network-confg`, …).
+  ATT&CK T1105 / T1602.001. New D3FEND rows: T1565, T1590, T1602.
+
 ### Added — five read-only inspection subcommands (offline catalog/triage)
 - **`list-archetypes`** [`<name>`]: dump the device/OS archetype catalog, or
   one archetype's full fingerprint (banners, SNMP identity, ICMP TTL,
