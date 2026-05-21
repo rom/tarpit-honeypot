@@ -543,6 +543,45 @@ func Names() []string {
 	return out
 }
 
+// All returns the distinct registered Profiles sorted by DisplayName.
+// Aliases (multiple registry keys for the same device) collapse to a
+// single entry. Used by `tarpit-honeypot list-archetypes`.
+func All() []*Profile {
+	seen := map[string]bool{}
+	out := make([]*Profile, 0, len(registry))
+	for _, p := range registry {
+		if seen[p.DisplayName] {
+			continue
+		}
+		seen[p.DisplayName] = true
+		out = append(out, p)
+	}
+	// Insertion sort (matches Names(); avoids a sort import for one use).
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].DisplayName > out[j].DisplayName; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
+// Find resolves a profile by canonical name, an accepted name variant,
+// or its pretty DisplayName (case-insensitive). Returns nil when no
+// archetype matches. Lookup only keys on the canonical/variant name, so
+// Find adds the DisplayName fallback that a CLI user expects.
+func Find(name string) *Profile {
+	if p := Lookup(name); p != nil {
+		return p
+	}
+	want := normalize(name)
+	for _, p := range All() {
+		if normalize(p.DisplayName) == want {
+			return p
+		}
+	}
+	return nil
+}
+
 // normalize folds case, replaces separators with hyphens, and collapses
 // runs of hyphens so "Debian 12", "debian_12", "DEBIAN-12" all key on
 // "debian-12".

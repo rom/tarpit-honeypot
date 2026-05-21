@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — five read-only inspection subcommands (offline catalog/triage)
+- **`list-archetypes`** [`<name>`]: dump the device/OS archetype catalog, or
+  one archetype's full fingerprint (banners, SNMP identity, ICMP TTL,
+  advertised CVEs, default services). `--json` for machine output.
+- **`list-handlers`** [`--proto tcp|udp`]: the protocol handlers valid in a
+  listener's `handler:` field, sourced from the same whitelist the config
+  validator enforces (the maps were lifted to package scope so the two can
+  never drift).
+- **`list-cves`** [`--service`]: the CVE catalog, marking which records are
+  recognized as live exploit attempts vs advisory-only.
+- **`list-techniques`** [`--kind`]: the static MITRE ATT&CK → D3FEND coverage
+  map (rule / handler / anomaly), for coverage audits + navigator layers.
+- **`identify`**: run the offline fingerprint engine over a supplied
+  User-Agent / path / SSH client id / JA3 / payload and print the verdict
+  (tool, automation flag, CVE matches) — a log-triage / detection-tuning aid.
+- Shell completions (bash/zsh/fish) + `help` topic docs updated for all of
+  the above (and the previously-undocumented `list-devices`). New exported
+  accessors: `archetype.All`/`Find`, `cve.All`/`Record.Detectable`,
+  `mitre.Coverage`, `config.TCPHandlerNames`/`UDPHandlerNames`.
+
 ### Added — PJL (printer) + Beckhoff ADS handlers (archetype protocol gaps)
 - **`pjl`** (TCP 9100): HP JetDirect PJL responder — answers `@PJL INFO`
   queries with a printer identity, captures jobs/commands, flags ready-

@@ -43,7 +43,7 @@ _tarpit_honeypot() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets init completion version"
+    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets list-devices list-archetypes list-handlers list-cves list-techniques identify init completion version"
     opts="-c --set --log-level --log-format --log-file --quiet --verbose --version -V -h --help"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then
@@ -63,6 +63,12 @@ _tarpit_honeypot() {
             return 0 ;;
         --type)
             COMPREPLY=( $(compgen -W "dns url hex" -- "${cur}") )
+            return 0 ;;
+        --proto)
+            COMPREPLY=( $(compgen -W "tcp udp" -- "${cur}") )
+            return 0 ;;
+        --kind)
+            COMPREPLY=( $(compgen -W "rule handler anomaly" -- "${cur}") )
             return 0 ;;
         completion)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "${cur}") )
@@ -85,6 +91,12 @@ _tarpit_honeypot() {
         'gen-token:generate a canary token'
         'export-pcap:copy one event pcap out'
         'list-honeynets:print honeynet topology'
+        'list-devices:print the learned-device inventory'
+        'list-archetypes:print the archetype catalog'
+        'list-handlers:print valid listener handlers'
+        'list-cves:print the CVE catalog'
+        'list-techniques:print ATT&CK / D3FEND coverage'
+        'identify:fingerprint a UA / ssh-id / payload'
         'init:write default config skeleton'
         'completion:print shell completion'
         'version:print version info'
@@ -119,6 +131,12 @@ complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-events' -d 'tail
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'gen-token' -d 'generate a canary token'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'export-pcap' -d 'copy one event pcap out'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-honeynets' -d 'print honeynet topology'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-devices' -d 'print the learned-device inventory'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-archetypes' -d 'print the archetype catalog'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-handlers' -d 'print valid listener handlers'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-cves' -d 'print the CVE catalog'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-techniques' -d 'print ATT&CK / D3FEND coverage'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'identify' -d 'fingerprint a UA / ssh-id / payload'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'init' -d 'write default config skeleton'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'completion' -d 'print shell completion'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'version' -d 'print version info'
@@ -134,4 +152,6 @@ complete -c tarpit-honeypot -s V -d 'print version and exit'
 complete -c tarpit-honeypot -s h -l help -d 'show help'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from gen-token' -l type -x -a 'dns url hex'
+complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-handlers' -l proto -x -a 'tcp udp'
+complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-techniques' -l kind -x -a 'rule handler anomaly'
 `

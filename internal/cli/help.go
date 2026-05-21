@@ -138,7 +138,7 @@ SUBCOMMANDS`)
 	}
 	fmt.Println()
 	fmt.Println(`TOPICS
-    archetypes         The 15 OS-shaped banner profiles you can pin.
+    archetypes         The OS / device-shaped fingerprint profiles you can pin.
 
 Use ` + "`tarpit-honeypot help <subcommand>`" + ` for the full topic.`)
 }
@@ -274,6 +274,105 @@ DESCRIPTION
 
 EXAMPLES
     tarpit-honeypot list-honeynets -c cfg.yaml
+`,
+
+	"list-devices": `list-devices — print the learned-device inventory
+
+SYNOPSIS
+    tarpit-honeypot list-devices -c <config> [--json]
+
+DESCRIPTION
+    Read-only dump of <data_dir>/devices.json — the passive device
+    inventory the sniffer + listeners build over time (IP / MAC /
+    vendor / hostname / class / first+last seen), with the configured
+    allow-list applied. Snapshot a baseline with --json.
+
+EXAMPLES
+    tarpit-honeypot list-devices -c cfg.yaml
+    tarpit-honeypot list-devices -c cfg.yaml --json > baseline.json
+`,
+
+	"list-archetypes": `list-archetypes — print the device/OS archetype catalog
+
+SYNOPSIS
+    tarpit-honeypot list-archetypes [--json] [<name>]
+
+DESCRIPTION
+    With no argument, lists every shipped archetype (the canonical name
+    you put in sensor.archetype, its family, service + CVE counts). With
+    a name (canonical or pretty DisplayName), prints that archetype's
+    full fingerprint: banners, SNMP identity, ICMP TTL, advertised CVEs,
+    and default services. Reads only the in-source catalog — no config.
+
+EXAMPLES
+    tarpit-honeypot list-archetypes
+    tarpit-honeypot list-archetypes debian-12
+    tarpit-honeypot list-archetypes --json beckhoff-cx
+`,
+
+	"list-handlers": `list-handlers — print the protocol handlers valid in a listener
+
+SYNOPSIS
+    tarpit-honeypot list-handlers [--proto tcp|udp]
+
+DESCRIPTION
+    Print every value accepted in a listener's handler: field, split by
+    transport. Sourced from the same whitelist the config validator
+    enforces, so it never drifts from what ` + "`run`" + ` will accept.
+
+EXAMPLES
+    tarpit-honeypot list-handlers
+    tarpit-honeypot list-handlers --proto udp
+`,
+
+	"list-cves": `list-cves — print the CVE catalog
+
+SYNOPSIS
+    tarpit-honeypot list-cves [--service <handler>] [--json]
+
+DESCRIPTION
+    Dump the in-source CVE catalog used for vulnerable-banner emulation
+    and exploit-attempt recognition. The DET column marks records whose
+    exploit signature is recognized live (MatchPayload); the rest are
+    advisory-only. Filter to one service/handler with --service.
+
+EXAMPLES
+    tarpit-honeypot list-cves
+    tarpit-honeypot list-cves --service fortinet
+`,
+
+	"list-techniques": `list-techniques — print the MITRE ATT&CK / D3FEND coverage map
+
+SYNOPSIS
+    tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+
+DESCRIPTION
+    Print every static rule / handler / anomaly → ATT&CK technique +
+    tactic mapping the router stamps on events, annotated with the
+    D3FEND countermeasures for each. Audit detection coverage or build
+    ATT&CK-navigator layers without reading the source.
+
+EXAMPLES
+    tarpit-honeypot list-techniques
+    tarpit-honeypot list-techniques --kind anomaly
+`,
+
+	"identify": `identify — fingerprint a captured signal offline
+
+SYNOPSIS
+    tarpit-honeypot identify [--ua S] [--path S] [--method M]
+        [--headers a,b] [--ssh S] [--ja3 S] [--payload S] [--handler H]
+
+DESCRIPTION
+    Run the sensor's offline fingerprint engine over signals you supply
+    and print the same verdict a live listener would attach: tool /
+    scanner name, automation flag, and any CVE exploit signature found
+    in --payload. A tuning / triage aid — no network, no config.
+
+EXAMPLES
+    tarpit-honeypot identify --ua "sqlmap/1.7"
+    tarpit-honeypot identify --ssh SSH-2.0-Go
+    tarpit-honeypot identify --payload '${jndi:ldap://x/a}' --handler http
 `,
 
 	"init": `init — write a default config skeleton

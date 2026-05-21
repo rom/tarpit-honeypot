@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +13,64 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"gopkg.in/yaml.v3"
 )
+
+// tcpHandlers / udpHandlers are the per-protocol handler whitelists used
+// by Validate and surfaced (sorted) by TCPHandlerNames / UDPHandlerNames
+// so the `tarpit-honeypot list-handlers` command stays in lock-step with
+// what the validator actually accepts.
+var tcpHandlers = map[string]bool{
+	"raw": true, "ssh": true, "ssh_interactive": true,
+	"http": true, "https": true,
+	"telnet": true, "ftp": true, "ftp_files": true,
+	"modbus": true, "s7": true, "iec104": true, "mqtt": true,
+	"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
+	"atg": true, "fox": true, "hartip": true, "pcworx": true, "mms": true,
+	"pjl": true, "ads": true,
+	"opcua": true, "ethernetip": true, "smb": true,
+	"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
+	"dcerpc": true, "ldap": true, "kerberos": true,
+	"postgres": true, "mysql": true, "redis": true,
+	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
+	"xmpp": true, "amqp": true, "ipp": true,
+	"mssql": true, "oracle_tns": true,
+	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
+	"vmware_authd": true, "x11": true, "rlogin": true, "nx": true, "redfish": true,
+	"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
+	"fortinet": true, "pulse": true, "citrix_gateway": true,
+	"horizon": true, "moxa_mgmt": true,
+	"echo": true, "discard": true, "daytime": true,
+	"qotd": true, "chargen": true, "time": true,
+	"lua": true, "scripted": true,
+}
+
+var udpHandlers = map[string]bool{
+	"raw": true, "snmp": true, "ntp": true,
+	"bacnet": true, "tftp": true, "ipmi": true,
+	"syslog_udp": true, "radius": true, "sip": true,
+	"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
+	"dns":  true,
+	"echo": true, "discard": true, "daytime": true,
+	"qotd": true, "chargen": true, "time": true,
+	"fins": true,
+	"coap": true, "knx": true, "dhcp": true,
+}
+
+// TCPHandlerNames returns the sorted set of handler names accepted on a
+// tcp listener. UDPHandlerNames is the udp equivalent.
+func TCPHandlerNames() []string { return sortedKeys(tcpHandlers) }
+
+// UDPHandlerNames returns the sorted set of handler names accepted on a
+// udp listener.
+func UDPHandlerNames() []string { return sortedKeys(udpHandlers) }
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
 
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
@@ -261,42 +320,8 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("listener %s: unknown mode %q", l.ID, l.Mode)
 		}
-		// Per-protocol handler whitelist.
-		tcpHandlers := map[string]bool{
-			"raw": true, "ssh": true, "ssh_interactive": true,
-			"http": true, "https": true,
-			"telnet": true, "ftp": true, "ftp_files": true,
-			"modbus": true, "s7": true, "iec104": true, "mqtt": true,
-			"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
-			"atg": true, "fox": true, "hartip": true, "pcworx": true, "mms": true,
-			"pjl": true, "ads": true,
-			"opcua": true, "ethernetip": true, "smb": true,
-			"vnc": true, "smtp_recv": true, "rdp": true, "winrm": true,
-			"dcerpc": true, "ldap": true, "kerberos": true,
-			"postgres": true, "mysql": true, "redis": true,
-			"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
-			"xmpp": true, "amqp": true, "ipp": true,
-			"mssql": true, "oracle_tns": true,
-			"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
-			"vmware_authd": true, "x11": true, "rlogin": true, "nx": true, "redfish": true,
-			"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
-			"fortinet": true, "pulse": true, "citrix_gateway": true,
-			"horizon": true, "moxa_mgmt": true,
-			"echo": true, "discard": true, "daytime": true,
-			"qotd": true, "chargen": true, "time": true,
-			"lua": true, "scripted": true,
-		}
-		udpHandlers := map[string]bool{
-			"raw": true, "snmp": true, "ntp": true,
-			"bacnet": true, "tftp": true, "ipmi": true,
-			"syslog_udp": true, "radius": true, "sip": true,
-			"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
-			"dns":  true,
-			"echo": true, "discard": true, "daytime": true,
-			"qotd": true, "chargen": true, "time": true,
-			"fins": true,
-			"coap": true, "knx": true, "dhcp": true,
-		}
+		// Per-protocol handler whitelist (package-level: see tcpHandlers /
+		// udpHandlers, also surfaced by TCPHandlerNames / UDPHandlerNames).
 		switch l.Proto {
 		case "tcp":
 			if !tcpHandlers[l.Handler] {

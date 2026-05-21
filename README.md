@@ -611,11 +611,32 @@ tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
-tarpit-honeypot list-devices   -c <config>
+tarpit-honeypot list-devices   -c <config> [--json]
+tarpit-honeypot list-archetypes [--json] [<name>]
+tarpit-honeypot list-handlers  [--proto tcp|udp]
+tarpit-honeypot list-cves      [--service <handler>] [--json]
+tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot init           [-o <config>]
 tarpit-honeypot completion     bash|zsh|fish
 tarpit-honeypot help           [subcommand|topic]
 tarpit-honeypot version
+```
+
+The `list-archetypes`, `list-handlers`, `list-cves` and `list-techniques`
+commands dump the in-source catalogs (no config or network needed) so you
+can discover what the sensor can impersonate, which `handler:` values are
+valid, which CVEs it emulates / detects, and how each rule maps to MITRE
+ATT&CK + D3FEND. `identify` runs the same offline fingerprint engine the
+live listener uses over a string you paste in (a User-Agent, SSH client
+id, JA3, or request payload) — handy for triaging a log line or tuning a
+detection:
+
+```
+tarpit-honeypot list-archetypes beckhoff-cx        # one archetype's full fingerprint
+tarpit-honeypot list-cves --service fortinet        # CVEs for a service
+tarpit-honeypot list-techniques --kind anomaly      # ATT&CK/D3FEND per anomaly marker
+tarpit-honeypot identify --ua "sqlmap/1.7" --payload '${jndi:ldap://x/a}'
 ```
 
 `export-pcap` copies `<data_dir>/captures/<event_id>.pcap` to stdout

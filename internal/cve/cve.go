@@ -19,7 +19,10 @@
 // rate on benign traffic.
 package cve
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Record describes one known CVE relevant to an emulated service.
 type Record struct {
@@ -366,6 +369,20 @@ func ForService(handler string) []Record {
 	}
 	return out
 }
+
+// All returns a copy of the full CVE catalog sorted by id. Records with
+// no Signatures are advisory-only (banner / patch-level emulation); the
+// rest are also recognized as live exploit attempts by MatchPayload.
+// Used by `tarpit-honeypot list-cves`.
+func All() []Record {
+	out := append([]Record(nil), catalog...)
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Detectable reports whether a record carries exploit signatures (so
+// MatchPayload can flag a live attempt) versus being advisory-only.
+func (r Record) Detectable() bool { return len(r.Signatures) > 0 }
 
 // Lookup returns the record for an exact CVE id.
 func Lookup(id string) (Record, bool) {

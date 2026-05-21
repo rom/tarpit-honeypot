@@ -12,6 +12,11 @@ tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--do
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
+tarpit-honeypot list-archetypes [--json] [<name>]
+tarpit-honeypot list-handlers  [--proto tcp|udp]
+tarpit-honeypot list-cves      [--service <handler>] [--json]
+tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot init           [-o file]
 tarpit-honeypot completion     bash | zsh | fish
 tarpit-honeypot help           [subcommand | topic]
@@ -50,8 +55,9 @@ docs (the same content as this file, distilled). Beyond the
 subcommands above, the following non-subcommand topics are
 available:
 
-- `tarpit-honeypot help archetypes` — list of the 29 OS / device
-  archetypes with usage examples + precedence rules.
+- `tarpit-honeypot help archetypes` — the full list of OS / device
+  archetypes with usage examples + precedence rules (or use
+  `list-archetypes` for a machine-readable catalog).
 
 ---
 
@@ -287,6 +293,113 @@ IP               MAC                VENDOR                 HOSTNAME             
 10.0.0.10        00:90:e8:11:22:33  Moxa                   plc-press            dhcp      2025-05-19 14:03
 10.0.0.50        -                  -                      -                    conn      2025-05-19 14:05
 ```
+
+---
+
+## `list-archetypes`
+
+Dump the built-in device/OS archetype catalog. With no argument it lists
+every archetype (the canonical name you put in `sensor.archetype:`, its
+family, and service + CVE counts); with a name — either the canonical
+name or the pretty display name — it prints that archetype's full
+fingerprint (banners, SNMP identity, ICMP TTL, advertised CVEs, default
+services). Reads only the in-source catalog: no config, no network.
+
+```
+tarpit-honeypot list-archetypes
+tarpit-honeypot list-archetypes debian-12
+tarpit-honeypot list-archetypes --json beckhoff-cx
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--json` | off | Emit JSON (a summary array, or the detail object with `<name>`). |
+
+---
+
+## `list-handlers`
+
+Print the protocol handlers the sensor ships, split by transport. These
+are exactly the values accepted in a listener's `handler:` field — the
+list comes from the same whitelist `validate-config` enforces, so it can
+never drift from what `run` accepts.
+
+```
+tarpit-honeypot list-handlers
+tarpit-honeypot list-handlers --proto udp
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--proto tcp\|udp` | both | Limit to one transport. |
+
+---
+
+## `list-cves`
+
+Print the in-source CVE catalog used for vulnerable-banner emulation and
+exploit-attempt recognition. The `DET` column marks records that carry an
+exploit signature (a live attempt is flagged by `MatchPayload` as a
+`cve:<id>` event); the rest are advisory-only (banner / patch-level).
+
+```
+tarpit-honeypot list-cves
+tarpit-honeypot list-cves --service fortinet
+tarpit-honeypot list-cves --json
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--service <handler>` | all | Filter by service/handler (e.g. `http`, `s7`, `fortinet`). |
+| `--json` | off | Emit the catalog as JSON. |
+
+---
+
+## `list-techniques`
+
+Print the sensor's static MITRE ATT&CK coverage: every rule / handler /
+anomaly marker mapped to its ATT&CK techniques + tactics, annotated with
+the D3FEND countermeasures the router stamps alongside. Use it to audit
+detection coverage or to build ATT&CK-navigator layers.
+
+```
+tarpit-honeypot list-techniques
+tarpit-honeypot list-techniques --kind anomaly
+tarpit-honeypot list-techniques --json
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--kind rule\|handler\|anomaly` | all | Limit to one mapping class. |
+| `--json` | off | Emit the coverage map as JSON. |
+
+---
+
+## `identify`
+
+Run the sensor's offline fingerprint engine over signals you supply and
+print the same verdict a live listener would attach: the tool / scanner
+name, an automation flag, and any CVE exploit signature found in
+`--payload`. A tuning / triage aid — paste a string out of a log and see
+what the sensor makes of it. No network, no config; supply at least one
+signal.
+
+```
+tarpit-honeypot identify --ua "sqlmap/1.7"
+tarpit-honeypot identify --ssh SSH-2.0-Go
+tarpit-honeypot identify --payload '${jndi:ldap://x/a}' --handler http
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--ua <s>` | — | HTTP User-Agent to classify. |
+| `--path <s>` | — | HTTP request path to classify. |
+| `--method <m>` | `GET` | HTTP method (with `--path`/`--ua`). |
+| `--headers a,b` | — | Comma-separated HTTP header names seen. |
+| `--ssh <s>` | — | SSH client id, e.g. `SSH-2.0-libssh2_1.9.0`. |
+| `--ja3 <s>` | — | JA3 TLS fingerprint (md5 hex). |
+| `--payload <s>` | — | Raw request bytes to scan for CVE exploit signatures. |
+| `--handler <h>` | `http` | Service context for `--payload` CVE matching. |
 
 ---
 

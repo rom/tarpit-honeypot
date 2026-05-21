@@ -11,6 +11,7 @@
 package mitre
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/cve"
@@ -374,6 +375,46 @@ var d3fend = map[string][]string{
 	"T1056": {"D3-NTA"},                    // input capture (keylogging via X11)
 	"T1219": {"D3-NTA", "D3-OTF"},          // remote access software
 	"T1133": {"D3-MFA", "D3-NTA"},          // external remote services
+}
+
+// CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,
+// annotated with the D3FEND countermeasures for its techniques.
+type CoverageEntry struct {
+	Kind       string // "rule" | "handler" | "anomaly"
+	Key        string // rule_id, handler name, or anomaly marker
+	Techniques []string
+	Tactics    []string
+	Defenses   []string // D3FEND countermeasure ids
+}
+
+// Coverage flattens every static ATT&CK mapping (exact rules, handler
+// tags, anomaly tags) into a single sorted list, each row annotated with
+// the D3FEND countermeasures DefensesFor returns for its techniques.
+// Used by `tarpit-honeypot list-techniques` so an operator can audit the
+// sensor's ATT&CK / D3FEND coverage without reading the source.
+func Coverage() []CoverageEntry {
+	out := make([]CoverageEntry, 0, len(exactRules)+len(handlerTags)+len(anomalyTags))
+	add := func(kind string, m map[string]Tag) {
+		for k, t := range m {
+			out = append(out, CoverageEntry{
+				Kind:       kind,
+				Key:        k,
+				Techniques: t.Techniques,
+				Tactics:    t.Tactics,
+				Defenses:   DefensesFor(t.Techniques),
+			})
+		}
+	}
+	add("rule", exactRules)
+	add("handler", handlerTags)
+	add("anomaly", anomalyTags)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
 }
 
 // DefensesFor returns the deduplicated set of D3FEND countermeasure IDs
