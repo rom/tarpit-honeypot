@@ -25,7 +25,7 @@ import (
 // All other commands get a generic END=0x0000 acknowledge. Unknown
 // MRC pairs aren't silently dropped because that distinguishes a
 // honeypot from a real PLC (which ack-and-execute).
-type fins struct{}
+type fins struct{ lim *udpReflectLimiter }
 
 func (f *fins) Name() string { return "fins" }
 
@@ -113,6 +113,14 @@ func (f *fins) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 
 	reply := append(header, extra...)
+	// Global rate-limit replies so a spoofed-source MEMORY_AREA_READ flood
+	// (count up to 256 words → ~29x amplification) can't be used to reflect
+	// meaningful bandwidth at a forged source.
+	if !f.lim.allow() {
+		res.Meta["rate_limited"] = true
+		_ = cfg
+		return res, nil
+	}
 	if _, err := pc.WriteTo(reply, src); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}

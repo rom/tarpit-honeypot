@@ -31,13 +31,25 @@ func (d *Dedup) ShouldSend(key string) bool {
 		return false
 	}
 	d.seen[key] = now
-	// Opportunistic prune.
+	// Opportunistic prune of expired entries.
 	if len(d.seen) > 4096 {
 		for k, t := range d.seen {
 			if now.Sub(t) >= d.window {
 				delete(d.seen, k)
 			}
 		}
+		// Hard cap: a flood of unique keys (e.g. spoofed UDP source IPs)
+		// produces unexpired entries the prune above can't remove. Bound
+		// the map by resetting it — dedup is best-effort, so the worst case
+		// is a few duplicate events slipping through, never unbounded memory.
+		if len(d.seen) > dedupMaxKeys {
+			d.seen = map[string]time.Time{key: now}
+		}
 	}
 	return true
 }
+
+// dedupMaxKeys hard-caps the dedup table so an attacker can't grow it
+// without bound by sending many unique (source, rule) keys inside the
+// window.
+const dedupMaxKeys = 65536

@@ -96,8 +96,11 @@ func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			case t.sema <- struct{}{}:
 				// Acquired a slot. handle() will release on exit.
 			default:
-				// Cap exceeded. Drop with a low-severity event and close.
-				go t.emitAcceptCap(ctx, conn, bus)
+				// Cap exceeded. Close immediately and emit a low-severity
+				// event with a non-blocking send — done inline (no
+				// goroutine) so a connection flood against a full event bus
+				// can't spawn unbounded blocked goroutines.
+				t.emitAcceptCap(ctx, conn, bus)
 				continue
 			}
 		}
@@ -133,7 +136,15 @@ func (t *tcpListener) emitAcceptCap(ctx context.Context, conn net.Conn, bus chan
 			"max_concurrent": t.cfg.MaxConcurrent,
 		},
 	}
-	send(ctx, bus, ev)
+	// Non-blocking: under a connection flood the bus may be full; the
+	// accept-cap event is low-severity and redundant with the source's
+	// port-scan / brute-force aggregate, so drop it rather than block the
+	// accept loop (which would let refused connections queue unbounded).
+	select {
+	case bus <- ev:
+	case <-ctx.Done():
+	default:
+	}
 }
 
 func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
@@ -160,8 +171,21 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		conn = &capture.Conn{Conn: conn, Sess: sess}
 	}
 
+	// Guaranteed cleanup even if a handler panics (safego recovers the
+	// panic one frame up, which would otherwise skip the per-branch
+	// conn.Close + capture End and leak the fd / capture session). Close is
+	// idempotent for net.Conn; End runs only if the normal path didn't.
+	sessEnded := false
+	defer func() {
+		_ = conn.Close()
+		if sess != nil && !sessEnded {
+			_, _, _ = sess.End()
+		}
+	}()
+
 	finish := func(ev *event.Event) {
 		if sess != nil {
+			sessEnded = true
 			path, truncated, err := sess.End()
 			if err != nil {
 				slog.Warn("capture end failed", "id", t.cfg.ID, "err", err)

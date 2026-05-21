@@ -23,7 +23,7 @@ import (
 // We capture code + token + URI options, and reply with a 2.05 Content
 // payload listing one made-up /.well-known/core entry — that's the
 // typical "this is a real CoAP server" answer.
-type coap struct{}
+type coap struct{ lim *udpReflectLimiter }
 
 func (c *coap) Name() string { return "coap" }
 
@@ -149,11 +149,17 @@ func (c *coap) reply(req []byte, mid uint16, token []byte, code byte, body []byt
 		pkt = append(pkt, 0xff)
 		pkt = append(pkt, body...)
 	}
+	// Global rate-limit replies so a spoofed-source flood can't reflect
+	// amplified bandwidth at a forged victim (a 4-byte CoAP probe would
+	// otherwise draw an ~82-byte response).
+	if !c.lim.allow() {
+		res.Meta["rate_limited"] = true
+		return res, nil
+	}
 	if _, err := pc.WriteTo(pkt, src); err != nil {
 		res.Meta["write_err"] = err.Error()
 		return res, nil
 	}
 	res.BannerSent = "coap 2.05 Content"
-	_ = req
 	return res, nil
 }

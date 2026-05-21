@@ -269,11 +269,28 @@ func newRateLimiter(window time.Duration) *rateLimiter {
 	return &rateLimiter{window: window, last: map[string]time.Time{}}
 }
 
+// rateLimiterMaxKeys bounds the per-source table. Fragmented-packet source
+// IPs are spoofable, so without a cap an attacker could grow this map
+// without bound; past the cap we sweep expired entries and, if still over,
+// drop the table (a fresh window for everyone is acceptable for an alert
+// rate limiter).
+const rateLimiterMaxKeys = 8192
+
 func (r *rateLimiter) allow(key string, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if t, ok := r.last[key]; ok && now.Sub(t) < r.window {
 		return false
+	}
+	if len(r.last) >= rateLimiterMaxKeys {
+		for k, t := range r.last {
+			if now.Sub(t) >= r.window {
+				delete(r.last, k)
+			}
+		}
+		if len(r.last) >= rateLimiterMaxKeys {
+			r.last = make(map[string]time.Time)
+		}
 	}
 	r.last[key] = now
 	return true

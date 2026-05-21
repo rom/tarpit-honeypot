@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -17,6 +19,47 @@ import (
 type UDPHandler interface {
 	Name() string
 	Handle(ctx context.Context, payload []byte, src net.Addr, pc net.PacketConn, cfg config.Listener) (Result, error)
+}
+
+// udpReflectLimiter is a global token-bucket rate limiter that caps how
+// many believable replies a discovery/reflector handler (coap/knx/ssdp/
+// fins) emits per second. Those protocols are inherently amplifying
+// (small request → larger response), and UDP source addresses are
+// spoofable, so a per-source limit is defeated by spoofing — only a
+// *global* cap bounds the total reflected bandwidth and makes the sensor
+// useless as a DDoS reflector. It holds no per-source state, so it can't
+// be a memory-exhaustion vector itself. nil = unlimited (unit tests that
+// construct a handler directly).
+type udpReflectLimiter struct {
+	mu     sync.Mutex
+	tokens float64
+	burst  float64
+	rate   float64 // tokens (replies) per second
+	last   time.Time
+}
+
+func newUDPReflectLimiter() *udpReflectLimiter {
+	return &udpReflectLimiter{tokens: 40, burst: 40, rate: 20, last: time.Now()}
+}
+
+// allow reports whether one reply may be sent now, consuming a token.
+func (l *udpReflectLimiter) allow() bool {
+	if l == nil {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	l.tokens += now.Sub(l.last).Seconds() * l.rate
+	if l.tokens > l.burst {
+		l.tokens = l.burst
+	}
+	l.last = now
+	if l.tokens >= 1 {
+		l.tokens--
+		return true
+	}
+	return false
 }
 
 // GetUDP returns the UDP handler for a configured listener.handler name.
@@ -48,7 +91,7 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 	case "sip":
 		return &sipUDP{}, nil
 	case "ssdp":
-		return &ssdp{}, nil
+		return &ssdp{lim: newUDPReflectLimiter()}, nil
 	case "cldap":
 		return &cldap{}, nil
 	case "llmnr":
@@ -56,11 +99,11 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 	case "nbns":
 		return &nbns{}, nil
 	case "fins":
-		return &fins{}, nil
+		return &fins{lim: newUDPReflectLimiter()}, nil
 	case "coap":
-		return &coap{}, nil
+		return &coap{lim: newUDPReflectLimiter()}, nil
 	case "knx":
-		return &knx{}, nil
+		return &knx{lim: newUDPReflectLimiter()}, nil
 	case "dhcp":
 		return &dhcp{}, nil
 	case "dns":

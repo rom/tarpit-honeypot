@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -39,6 +40,10 @@ func (p *pjl) Name() string { return "pjl" }
 const (
 	pjlMaxBytes = 256 * 1024
 	pjlMaxLines = 4096
+	// pjlMaxSession bounds the whole connection regardless of how slowly a
+	// client trickles bytes (anti-slowloris). Generous enough for a real
+	// interactive PRET session.
+	pjlMaxSession = 2 * time.Minute
 )
 
 func (p *pjl) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
@@ -60,8 +65,19 @@ func (p *pjl) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		jobSeen  bool
 		infoCats []string
 	)
-	for total < pjlMaxBytes && lines < pjlMaxLines {
-		withTimeout(conn, cfg.ReadTimeout)
+	// Absolute session deadline. Per-read deadlines alone don't bound a
+	// slowloris client that trickles one byte just before each read_timeout
+	// — it could hold the goroutine/socket open until pjlMaxBytes (days at
+	// the default timeout). Cap the whole interaction; legitimate scanner /
+	// PRET sessions finish well within this.
+	sessionEnd := time.Now().Add(pjlMaxSession)
+	for total < pjlMaxBytes && lines < pjlMaxLines && time.Now().Before(sessionEnd) {
+		deadline := time.Now().Add(cfg.ReadTimeout)
+		if deadline.After(sessionEnd) {
+			deadline = sessionEnd
+		}
+		_ = conn.SetReadDeadline(deadline)
+		_ = conn.SetWriteDeadline(deadline)
 		n, err := conn.Read(buf)
 		if n > 0 {
 			total += n

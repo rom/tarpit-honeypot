@@ -135,6 +135,71 @@ func TestSecSSDPHeaderInjection(t *testing.T) {
 	}
 }
 
+// UDP discovery/reflector handlers (coap/knx/ssdp/fins) used to answer
+// every probe, making the sensor a spoofed-source reflection/amplification
+// primitive. After the fix a global rate limiter caps believable replies;
+// a flood is suppressed (rate_limited) instead of reflected at the victim.
+func TestSecUDPReflectionRateLimited(t *testing.T) {
+	h := &coap{lim: newUDPReflectLimiter()}
+	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 9), Port: 5683}
+	req := []byte{0x40, 0x01, 0x00, 0x01} // valid minimal CoAP GET
+	pc := &fakePacketConn{}
+	suppressed := 0
+	for i := 0; i < 200; i++ {
+		res, _ := h.Handle(context.Background(), req, src, pc, config.Listener{})
+		if res.Meta["rate_limited"] == true {
+			suppressed++
+		}
+	}
+	if suppressed == 0 {
+		t.Error("rate limiter never engaged under a 200-packet flood")
+	}
+	if len(pc.written) >= 200 {
+		t.Errorf("every probe was reflected (%d writes) — not rate limited", len(pc.written))
+	}
+}
+
+// A nil limiter (handler constructed directly, e.g. unit tests) must not
+// block the reply path.
+func TestSecUDPReflectLimiterNilSafe(t *testing.T) {
+	if !(*udpReflectLimiter)(nil).allow() {
+		t.Error("nil udpReflectLimiter must allow")
+	}
+}
+
+// The DCE/RPC endpoint-mapper interface set used to be a shared package
+// var assigned straight into res.Meta; the listener sanitizes meta in
+// place, so concurrent connections mutated the same maps and crashed with
+// "concurrent map writes". epmInterfaces() must now hand out fresh maps.
+func TestSecDCERPCEPMFreshMaps(t *testing.T) {
+	a := epmInterfaces()
+	b := epmInterfaces()
+	if len(a) == 0 {
+		t.Fatal("epmInterfaces returned nothing")
+	}
+	a[0]["name"] = "MUTATED"
+	if b[0]["name"] == "MUTATED" {
+		t.Error("epmInterfaces returned shared maps — concurrent sanitize would race/crash")
+	}
+}
+
+// shouldRotate used to read the cert NotBefore, which is deliberately
+// backdated — so any rotate window shorter than the backdate regenerated
+// the cert on every TLS connection (CPU/disk DoS). Rotation now keys on
+// real creation time.
+func TestSecHTTPSRotationUsesCreationTime(t *testing.T) {
+	h := &https{rotateDays: 30}
+	if h.expired(time.Now()) {
+		t.Error("a just-created cert must not be considered expired")
+	}
+	if !h.expired(time.Now().AddDate(0, 0, -40)) {
+		t.Error("a 40-day-old cert must be expired at rotateDays=30")
+	}
+	if (&https{rotateDays: 0}).expired(time.Now().AddDate(-5, 0, 0)) {
+		t.Error("rotateDays=0 disables rotation")
+	}
+}
+
 // SIP Via header used to be reflected raw. Same threat shape as SSDP
 // (UDP, spoofable, reflection amplification).
 func TestSecSIPHeaderInjection(t *testing.T) {

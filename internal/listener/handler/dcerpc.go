@@ -116,7 +116,7 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	// host. Always surface the well-known set — including OPCEnum, the
 	// OPC-DA (classic, DCOM) discovery interface — so a scanner walking
 	// EPM records an OPC-DA server present.
-	res.Meta["epm_interfaces"] = epmAdvertisedInterfaces
+	res.Meta["epm_interfaces"] = epmInterfaces()
 	// Advertise the honeynet's virtual endpoints if any. Real EPM
 	// implementations return them via Lookup RPCs; we surface them in
 	// meta so the operator's pipeline at least sees what topology was
@@ -179,12 +179,18 @@ var opcServerProgIDs = []string{
 	"Kepware.KEPServerEX.V6",
 }
 
-// epmAdvertisedInterfaces is the well-known interface set the endpoint
-// mapper reports, including OPCEnum so OPC-DA is discoverable over 135.
-var epmAdvertisedInterfaces = []map[string]any{
-	{"name": "OPCEnum", "uuid": "13486d44-4821-11d2-a494-3cb306c10000", "port": 135},
-	{"name": "IOPCServerList", "uuid": "13486d50-4821-11d2-a494-3cb306c10000", "port": 49152},
-	{"name": "epmapper", "uuid": "e1af8308-5d1f-11c9-91a4-08002b14a0fa", "port": 135},
+// epmInterfaces returns the well-known interface set the endpoint mapper
+// reports, including OPCEnum so OPC-DA is discoverable over 135. It builds
+// fresh maps on every call: the result lands in res.Meta, which the
+// listener sanitizes in place (safe.SanitizeMetaStrings), and connections
+// are handled concurrently — a shared []map[string]any would be mutated by
+// multiple goroutines at once and crash with "concurrent map writes".
+func epmInterfaces() []map[string]any {
+	return []map[string]any{
+		{"name": "OPCEnum", "uuid": "13486d44-4821-11d2-a494-3cb306c10000", "port": 135},
+		{"name": "IOPCServerList", "uuid": "13486d50-4821-11d2-a494-3cb306c10000", "port": 49152},
+		{"name": "epmapper", "uuid": "e1af8308-5d1f-11c9-91a4-08002b14a0fa", "port": 135},
+	}
 }
 
 func dcerpcInterfaceName(uuid string) string { return dcerpcInterfaces[uuid] }

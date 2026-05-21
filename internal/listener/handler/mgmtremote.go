@@ -238,8 +238,16 @@ func (rf *redfish) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
 
+	// Bounded per-line reads (not ReadString, which buffers a newline-less
+	// stream up to the read deadline) so a peer can't force a large
+	// allocation through the request line or a header — including the
+	// base64 in an Authorization header.
+	lineCap := cfg.ReadBytes
+	if lineCap <= 0 || lineCap > 16384 {
+		lineCap = 8192
+	}
 	br := bufio.NewReader(conn)
-	reqLine, err := br.ReadString('\n')
+	reqLine, err := readFTPLine(br, lineCap)
 	if err != nil && reqLine == "" {
 		res.Meta["read_err"] = "no request"
 		return res, nil
@@ -251,7 +259,7 @@ func (rf *redfish) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 
 	authUser, authPass := "", ""
 	for i := 0; i < 40; i++ {
-		h, err := br.ReadString('\n')
+		h, err := readFTPLine(br, lineCap)
 		if err != nil || h == "\r\n" || h == "\n" {
 			break
 		}

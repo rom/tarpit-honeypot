@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Security — DoS / robustness hardening (audit findings batch)
+- **DCE/RPC concurrent-map crash**: the endpoint-mapper interface set was a
+  shared package var assigned into per-event meta; the listener sanitizes
+  meta in place, so concurrent connections mutated the same maps → `fatal:
+  concurrent map writes`. Now built fresh per request.
+- **DNS post-dispatch map mutation**: dnscanary added honeynet A-resolution
+  metadata to the event *after* sending it to async sinks, racing the
+  sink's encode. Metadata is now complete before dispatch.
+- **UDP reflection/amplification**: the coap / knx / ssdp / fins handlers
+  could be used as spoofed-source reflectors. Added a global token-bucket
+  reply rate-limiter plus stricter request validation (KNX declared-length
+  + HPAI, SSDP requires MAN+ST); the sensor can no longer reflect
+  meaningful bandwidth at a forged victim.
+- **Unbounded reads**: the ssh and redfish handlers used `ReadString`
+  (buffers a newline-less stream up to the deadline); both now read bounded
+  lines. The PJL handler gained an absolute session deadline (anti-slowloris).
+- **HTTPS cert-regeneration DoS**: rotation keyed on the (deliberately
+  backdated) cert NotBefore, so any `tls_rotate.days` shorter than the
+  backdate regenerated a key/cert on every connection. Rotation now keys on
+  real creation time (cache timestamp / file mtime).
+- **Unbounded per-source maps**: hard caps + sweeps added to the event
+  dedup cache, the sniffer fragment rate-limiter, and the DNS amplifier
+  tracker (all keyed by spoofable source IPs).
+- **Goroutine/fd exhaustion**: the TCP accept-cap path no longer spawns a
+  blocking goroutine per refused connection (synchronous close +
+  non-blocking emit); a recovered handler panic now closes the conn + ends
+  the capture session via deferred cleanup; the DNS canary bounds in-flight
+  handler goroutines with a semaphore.
+- **JA4 quadratic sort**: the cipher/extension sort over an
+  attacker-controlled ClientHello was O(n²); now O(n log n).
+
 ## [v2.0.0] — 2026-05-21
 
 Major release. Headline additions since v1.5: a full printer / multi-function

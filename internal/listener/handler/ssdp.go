@@ -22,7 +22,7 @@ import (
 //
 // We reply with a fake-but-plausible NOTIFY referencing a router-shaped
 // USN so IoT scanners think they've discovered a Cisco / TP-Link / etc.
-type ssdp struct{}
+type ssdp struct{ lim *udpReflectLimiter }
 
 func (s *ssdp) Name() string { return "ssdp" }
 
@@ -34,7 +34,7 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	reqLine := lines[0]
 	res.Meta["request_line"] = reqLine
-	st := ""
+	st, man := "", ""
 	for _, line := range lines[1:] {
 		lower := strings.ToLower(line)
 		switch {
@@ -46,10 +46,18 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		case strings.HasPrefix(lower, "mx:"):
 			res.Meta["mx"] = strings.TrimSpace(line[3:])
 		case strings.HasPrefix(lower, "man:"):
-			res.Meta["man"] = strings.TrimSpace(line[4:])
+			man = strings.TrimSpace(line[4:])
+			res.Meta["man"] = man
 		}
 	}
 	if !strings.HasPrefix(strings.ToUpper(reqLine), "M-SEARCH") {
+		return res, nil
+	}
+	// Only answer a complete ssdp:discover (MAN + ST present), and never
+	// amplify — a minimal/forged "M-SEARCH" probe with a spoofed source is
+	// the classic SSDP reflection vector.
+	if st == "" || !strings.Contains(strings.ToLower(man), "ssdp:discover") {
+		res.Meta["incomplete_msearch"] = true
 		return res, nil
 	}
 	location := "http://192.168.1.1:1900/rootDesc.xml"
@@ -71,6 +79,11 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		"ST: %s\r\n"+
 		"USN: %s\r\n\r\n",
 		location, server, safeST, usn)
+	if !s.lim.allow() {
+		res.Meta["rate_limited"] = true
+		_ = cfg
+		return res, nil
+	}
 	if _, err := pc.WriteTo([]byte(reply), src); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}

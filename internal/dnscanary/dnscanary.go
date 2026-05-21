@@ -34,7 +34,14 @@ type Server struct {
 	amp        ampConfig
 	ampState   *ampState
 	resolve    Resolver
+	sem        chan struct{} // bounds concurrent in-flight handlers
 }
+
+// dnsMaxConcurrent caps in-flight handler goroutines. UDP/53 is
+// connectionless and spoofable, so an unbounded `go s.handle(...)` per
+// datagram lets a flood spawn goroutines faster than the event bus drains
+// — exhausting memory. Excess datagrams are dropped (UDP is lossy anyway).
+const dnsMaxConcurrent = 256
 
 type ampConfig struct {
 	enabled   bool
@@ -47,6 +54,10 @@ type ampState struct {
 	mu      sync.Mutex
 	sources map[string]*ampSrc
 }
+
+// ampMaxSources hard-caps the amplifier per-source table against a
+// spoofed-source flood.
+const ampMaxSources = 16384
 
 type ampSrc struct {
 	since     time.Time
@@ -74,7 +85,7 @@ func New(bind string, sensorName string, canaries []config.DNSCanary, amp config
 	if bind == "" {
 		return nil, fmt.Errorf("dnscanary: bind required")
 	}
-	s := &Server{bind: bind, sensorName: sensorName}
+	s := &Server{bind: bind, sensorName: sensorName, sem: make(chan struct{}, dnsMaxConcurrent)}
 	for _, c := range canaries {
 		sev, err := event.ParseSeverity(c.Severity)
 		if err != nil {
@@ -118,7 +129,16 @@ func (s *Server) Run(ctx context.Context, bus chan<- *event.Event) error {
 			slog.Warn("dnscanary read", "err", err)
 			continue
 		}
-		go s.handle(ctx, pc, raddr, append([]byte(nil), buf[:n]...), bus)
+		msg := append([]byte(nil), buf[:n]...)
+		select {
+		case s.sem <- struct{}{}:
+			go func() {
+				defer func() { <-s.sem }()
+				s.handle(ctx, pc, raddr, msg, bus)
+			}()
+		default:
+			// Too many handlers in flight (flood) — drop this datagram.
+		}
 	}
 }
 
@@ -148,6 +168,19 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 	}
 	if len(anomalies) > 0 {
 		baseMeta["anomalies"] = anomalies
+	}
+	// Resolve honeynet A records up front so the event meta is COMPLETE
+	// before dispatch. Events travel by pointer to asynchronous sink
+	// workers that JSON-encode (iterate) Meta; mutating Meta after send
+	// races that read and can crash the process ("fatal error: concurrent
+	// map read and map write").
+	var reply []byte
+	if qtype == 1 && s.resolve != nil {
+		if ip, hostname, ok := s.resolve(name); ok {
+			reply = buildA(msg, ip)
+			baseMeta["honeynet_resolved"] = hostname
+			baseMeta["honeynet_ip"] = ip
+		}
 	}
 	baseEv := &event.Event{
 		ID:       event.NewID(),
@@ -192,15 +225,7 @@ func (s *Server) handle(ctx context.Context, pc net.PacketConn, raddr net.Addr, 
 		}
 	}
 
-	// Try honeynet forward resolution for A queries; otherwise NXDOMAIN.
-	var reply []byte
-	if qtype == 1 && s.resolve != nil {
-		if ip, hostname, ok := s.resolve(name); ok {
-			reply = buildA(msg, ip)
-			baseEv.Meta["honeynet_resolved"] = hostname
-			baseEv.Meta["honeynet_ip"] = ip
-		}
-	}
+	// reply was resolved before dispatch (see above); NXDOMAIN otherwise.
 	if reply == nil {
 		reply = buildNXDOMAIN(msg)
 	}
@@ -344,6 +369,19 @@ func (s *Server) checkAmplifier(srcIP string, qtype uint16) *event.Event {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	now := time.Now()
+	// Bound the per-source table: DNS source IPs are spoofable, so a flood
+	// of unique sources would otherwise grow this map without limit. Past
+	// the cap, sweep expired sources and, if still over, reset.
+	if len(st.sources) >= ampMaxSources {
+		for ip, c := range st.sources {
+			if now.Sub(c.since) > s.amp.window {
+				delete(st.sources, ip)
+			}
+		}
+		if len(st.sources) >= ampMaxSources {
+			st.sources = map[string]*ampSrc{}
+		}
+	}
 	cur, ok := st.sources[srcIP]
 	if !ok || now.Sub(cur.since) > s.amp.window {
 		cur = &ampSrc{since: now}

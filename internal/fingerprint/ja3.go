@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -258,12 +259,12 @@ func joinUint16Hex4(in []uint16, sep string) string {
 	return strings.Join(parts, sep)
 }
 
+// sortUint16 sorts in O(n log n). The cipher / extension lists come
+// straight from an attacker-controlled ClientHello (up to tens of
+// thousands of entries within the peeked record), so an O(n^2) sort here
+// was a per-connection CPU-exhaustion vector.
 func sortUint16(s []uint16) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
+	slices.Sort(s)
 }
 
 func boundedCount(n int) string {

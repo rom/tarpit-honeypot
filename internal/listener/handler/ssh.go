@@ -71,7 +71,11 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		return res, nil
 	}
 	br := bufio.NewReader(conn)
-	line, err := br.ReadString('\n')
+	// RFC 4253 §4.2 caps the identification string at 255 bytes; read a
+	// bounded line (not ReadString, which would buffer an attacker's
+	// newline-less stream up to the read deadline) so a peer can't force a
+	// large allocation. Anything longer is flagged overlong below.
+	line, err := readFTPLine(br, 512)
 	if err == nil && line != "" {
 		res.Payload = []byte(line)
 		res.Meta["client_id"] = line

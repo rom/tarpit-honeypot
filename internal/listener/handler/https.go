@@ -29,6 +29,7 @@ import (
 type https struct {
 	mu          sync.Mutex
 	cache       map[string]*tls.Certificate
+	created     map[string]time.Time // when each cached cert was generated/loaded
 	dir         string
 	urlCanaries []config.URLCanary
 	id          *identity.Identity
@@ -43,7 +44,7 @@ func newHTTPS(dataDir string, rotateDays int) (*https, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("https: mkdir %s: %w", dir, err)
 	}
-	return &https{cache: map[string]*tls.Certificate{}, dir: dir, rotateDays: rotateDays}, nil
+	return &https{cache: map[string]*tls.Certificate{}, created: map[string]time.Time{}, dir: dir, rotateDays: rotateDays}, nil
 }
 
 func (h *https) Name() string { return "https" }
@@ -201,16 +202,24 @@ func (h *https) certFor(prof certProfile) (*tls.Certificate, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if c, ok := h.cache[key]; ok && !h.shouldRotate(c) {
+	if c, ok := h.cache[key]; ok && !h.expired(h.created[key]) {
 		return c, nil
 	}
 	// Try to load from disk first — and rotate if the on-disk cert is
-	// older than the configured window.
+	// older than the configured window. The on-disk file's mtime is the
+	// real creation time: the cert's NotBefore is deliberately backdated
+	// (anti-fingerprint jitter), so using NotBefore here would make any
+	// rotate window shorter than the backdate regenerate on every
+	// connection — a CPU/disk DoS.
 	certPath := filepath.Join(h.dir, safeFilename(key)+".crt")
 	keyPath := filepath.Join(h.dir, safeFilename(key)+".key")
-	if c, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && !h.shouldRotate(&c) {
-		h.cache[key] = &c
-		return &c, nil
+	if c, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil {
+		mt := fileModTime(certPath)
+		if !h.expired(mt) {
+			h.cache[key] = &c
+			h.created[key] = mt
+			return &c, nil
+		}
 	}
 	c, err := generateSelfSignedProfile(prof, h.id)
 	if err != nil {
@@ -220,28 +229,27 @@ func (h *https) certFor(prof certProfile) (*tls.Certificate, error) {
 		return nil, err
 	}
 	h.cache[key] = c
+	h.created[key] = time.Now()
 	return c, nil
 }
 
-// shouldRotate reports whether the cert is older than the configured
-// rotateDays. The check uses NotBefore so it doesn't depend on the
-// far-future NotAfter.
-func (h *https) shouldRotate(c *tls.Certificate) bool {
-	if h.rotateDays <= 0 || c == nil {
+// expired reports whether a cert generated/loaded at created is older than
+// the configured rotateDays. Based on real creation time, never the
+// (intentionally backdated) certificate NotBefore.
+func (h *https) expired(created time.Time) bool {
+	if h.rotateDays <= 0 || created.IsZero() {
 		return false
 	}
-	if c.Leaf == nil && len(c.Certificate) > 0 {
-		parsed, err := x509.ParseCertificate(c.Certificate[0])
-		if err != nil {
-			return false
-		}
-		c.Leaf = parsed
+	return time.Since(created) > time.Duration(h.rotateDays)*24*time.Hour
+}
+
+// fileModTime returns the file's modification time, or the zero time when
+// it can't be stat'd (treated as "never expires" by expired()).
+func fileModTime(path string) time.Time {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.ModTime()
 	}
-	if c.Leaf == nil {
-		return false
-	}
-	age := time.Since(c.Leaf.NotBefore)
-	return age > time.Duration(h.rotateDays)*24*time.Hour
+	return time.Time{}
 }
 
 // generateSelfSignedProfile builds a self-signed cert from a resolved

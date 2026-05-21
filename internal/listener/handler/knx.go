@@ -26,7 +26,7 @@ import (
 // the responder's UDP endpoint in the body. We reply with
 // SEARCH_RESPONSE (0x0202) advertising a believable "MDT KNX IP Router"
 // device.
-type knx struct{}
+type knx struct{ lim *udpReflectLimiter }
 
 func (k *knx) Name() string { return "knx" }
 
@@ -54,35 +54,49 @@ func (k *knx) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 	res.Meta["service"] = svc
 	res.Meta["total_len"] = total
 
+	// Reject packets whose declared total length doesn't match the datagram
+	// (a minimal/malformed probe used purely for reflection).
+	if int(total) != len(payload) {
+		res.Meta["bad_total_len"] = total
+		_ = cfg
+		return res, nil
+	}
+
+	var reply []byte
+	var banner string
 	switch svc {
 	case knxSvcSearchRequest:
 		res.Meta["op"] = "SEARCH_REQUEST"
-		reply := k.buildSearchResponse(src, pc)
-		if _, err := pc.WriteTo(reply, src); err != nil {
-			res.Meta["write_err"] = err.Error()
-		} else {
-			res.BannerSent = "knx SEARCH_RESPONSE"
+		// A real SEARCH_REQUEST is 14 bytes (6-byte header + 8-byte HPAI).
+		if len(payload) >= 14 {
+			reply = k.buildSearchResponse(src, pc)
+			banner = "knx SEARCH_RESPONSE"
 		}
 	case knxSvcDescriptionRequest:
 		res.Meta["op"] = "DESCRIPTION_REQUEST"
-		reply := k.buildDescriptionResponse()
-		if _, err := pc.WriteTo(reply, src); err != nil {
-			res.Meta["write_err"] = err.Error()
-		} else {
-			res.BannerSent = "knx DESCRIPTION_RESPONSE"
+		if len(payload) >= 14 {
+			reply = k.buildDescriptionResponse()
+			banner = "knx DESCRIPTION_RESPONSE"
 		}
 	case knxSvcConnectRequest:
 		res.Meta["op"] = "CONNECT_REQUEST"
 		// Reply with status=0x24 (no more connections) so the scanner
 		// records a live device but we don't get tied up in a tunnel.
-		reply := k.buildConnectError()
-		if _, err := pc.WriteTo(reply, src); err != nil {
-			res.Meta["write_err"] = err.Error()
-		} else {
-			res.BannerSent = "knx CONNECT_RESPONSE err=0x24"
-		}
+		reply = k.buildConnectError()
+		banner = "knx CONNECT_RESPONSE err=0x24"
 	default:
 		res.Meta["op"] = "other"
+	}
+	if len(reply) > 0 {
+		// Global rate-limit so a spoofed-source SEARCH flood can't reflect
+		// amplified bandwidth at a forged victim.
+		if !k.lim.allow() {
+			res.Meta["rate_limited"] = true
+		} else if _, err := pc.WriteTo(reply, src); err != nil {
+			res.Meta["write_err"] = err.Error()
+		} else {
+			res.BannerSent = banner
+		}
 	}
 	_ = cfg
 	return res, nil
