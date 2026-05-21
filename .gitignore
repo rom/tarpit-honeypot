@@ -7,3 +7,6 @@
 *.swp
 local.yaml
 local-*.yaml
+
+# runtime data_dir created by local runs
+/var/
