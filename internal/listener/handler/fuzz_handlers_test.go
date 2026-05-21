@@ -64,7 +64,8 @@ var fuzzTCPNames = []string{
 	"mysql", "mssql", "oracle_tns", "redis", "syslog_tcp", "rtsp",
 	"dockerapi", "melsec", "xmpp", "amqp", "ipp", "modbus", "s7",
 	"s7comm_plus", "iec104", "mqtt", "opcua", "ethernetip", "dnp3",
-	"ge_srtp", "codesys", "teamviewer", "anydesk", "openvpn", "citrix_ica",
+	"ge_srtp", "codesys", "atg", "fox", "hartip", "pcworx",
+	"teamviewer", "anydesk", "openvpn", "citrix_ica",
 	"intel_amt", "ilo", "idrac", "esxi", "fortinet", "pulse",
 	"citrix_gateway", "horizon", "moxa_mgmt", "scripted",
 }

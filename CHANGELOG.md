@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 4 more OT/ICS protocols
+- **`atg`** (Veeder-Root TLS-350, TCP 10001): the "internet-exposed gas
+  pump" target — answers `^A I20100/I20200/I20300` with a believable
+  per-deployment tank report, captures the command. Report-only.
+- **`fox`** (Niagara / Tridium Fox, TCP 1911): Shodan's `fox` probe —
+  emits a per-deployment "fox hello" (station name / host id / app+VM+OS
+  versions / brand), captures the follow-up.
+- **`hartip`** (HART-IP, TCP 5094): parses the 8-byte header, captures the
+  message type, replies with a valid response header.
+- **`pcworx`** (Phoenix Contact PCWorx, TCP 1962): captures the
+  connect/identify probe, returns a model + firmware identification frame.
+  All four added to the end-to-end handler fuzz harness.
+
 ### Added — much broader tool / scanner identification
 - Expanded `internal/toolfp` from ~25 to ~80 User-Agent + request-path
   signatures: recon engines (Shodan, BinaryEdge, LeakIX, Onyphe,

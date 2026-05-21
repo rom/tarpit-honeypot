@@ -27,7 +27,7 @@ rationale covering the current implementation.
   - **Generic**: `raw`
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
-  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`
   - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
@@ -894,6 +894,10 @@ handshake where it isn't HTTP.
 | `dnp3` | 20000 | DNP3 (IEEE 1815) data-link responder. Parses the frame (start `05 64`, control function, src/dest) and replies with a LINK_STATUS frame (correct DNP3 CRC) so a scanner records a live outstation. | — | — |
 | `ge_srtp` | 18245 | GE-SRTP (GE / Emerson PACSystems / Series 90). Captures the 56-byte request and returns a believable success response; flags the probe. Fingerprint-grade. | — | — |
 | `codesys` | 1217 | CODESYS V3 gateway/runtime (WAGO / Beckhoff / Schneider / ABB soft-PLCs). Captures the request + returns a minimal channel ack; flags the probe. Fingerprint-grade. | — | — |
+| `atg` | 10001 | Veeder-Root TLS-350 Automatic Tank Gauge (the "internet-exposed gas pump" target; nmap atg-info). Answers `^A`+`I20100`/`I20200`/`I20300` with a believable, per-deployment tank report; captures the command, flags `ics-atg-command`. Report-only. | — | ✓ |
+| `fox` | 1911 | Niagara / Tridium Fox (building automation; Shodan's `fox` probe). Emits a per-deployment "fox hello" advertising station name / host id / app+VM+OS versions / brand; captures the client follow-up. | — | ✓ |
+| `hartip` | 5094 | HART-IP gateway to process field instruments. Parses the 8-byte header, captures the message type (session-initiate / token-passing PDU), replies with a valid response header. Fingerprint-grade. | — | — |
+| `pcworx` | 1962 | Phoenix Contact PCWorx (ILC-class PLCs; nmap pcworx-info). Captures the connect/identify probe and returns an identification frame carrying model (`ILC 330 ETH`) + firmware. Fingerprint-grade. | — | — |
 
 ### UDP
 

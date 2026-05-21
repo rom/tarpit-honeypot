@@ -189,6 +189,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &codesys{}, nil
 	case "iec104":
 		return &iec104{}, nil
+	case "atg":
+		return &atg{id: deps.Identity}, nil
+	case "fox":
+		return &foxH{id: deps.Identity}, nil
+	case "hartip":
+		return &hartIP{}, nil
+	case "pcworx":
+		return &pcworx{}, nil
 	case "mqtt":
 		return &mqtt{}, nil
 	case "opcua":
