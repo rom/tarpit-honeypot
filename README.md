@@ -90,8 +90,13 @@ rationale covering the current implementation.
   Detects — never executes — SQLi / XSS / LFI / RFI / SSRF / command
   injection / SSTI / Log4Shell / XXE / deserialization, flagging each as a
   `webapp:<class>` anomaly. Active deception: LFI toward `/etc/passwd` and
-  `/.env` return fake "loot" (decoy creds) to draw the attacker deeper;
-  reflected input is always HTML-escaped so the honeypot is never itself a
+  `/.env` / config backups return fake "loot" to draw the attacker deeper.
+  The planted secrets (DB password, Laravel `APP_KEY`, an `AKIA…` AWS key +
+  secret) are **per-deployment-unique honeytokens** derived from the sensor
+  identity — so they can't be grep-matched to fingerprint every deployment,
+  and the served DB password is stamped on the event meta (`honeytoken`) so
+  a SOC can register it and alert if it ever surfaces in real auth logs.
+  Reflected input is always HTML-escaped so the honeypot is never itself a
   real XSS vector.
 - **Declarative fake-protocol routing** (`handler: scripted`): stand up a
   believable custom TCP service entirely in YAML — no Lua. An optional

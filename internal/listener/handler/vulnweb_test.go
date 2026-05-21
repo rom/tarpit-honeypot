@@ -78,6 +78,44 @@ func TestWebappRoutesAndDeception(t *testing.T) {
 	}
 }
 
+// Decoy secrets must be per-deployment-unique honeytokens (not the old
+// static string that fingerprinted every sensor), tracked in event meta.
+func TestWebappHoneytokensUniqueAndTracked(t *testing.T) {
+	idA := identity.New("deployment-a")
+	idB := identity.New("deployment-b")
+
+	resA := Result{Meta: map[string]any{}}
+	outA := serveWebapp("GET /.env HTTP/1.1", nil, "nginx", idA, &resA)
+	resB := Result{Meta: map[string]any{}}
+	outB := serveWebapp("GET /.env HTTP/1.1", nil, "nginx", idB, &resB)
+
+	// No leftover static fingerprint.
+	if strings.Contains(outA, "Tr4pP3d-D3c0y-2024") || strings.Contains(outA, "decoy-not-a-real-secret") {
+		t.Error(".env still contains a static decoy fingerprint")
+	}
+	// Realistic high-value canaries present.
+	if !strings.Contains(outA, "AWS_ACCESS_KEY_ID=AKIA") {
+		t.Errorf(".env missing AWS honeytoken: %q", outA)
+	}
+	// The served DB password is stamped on meta for SOC registration...
+	tokA, _ := resA.Meta["honeytoken"].(string)
+	if tokA == "" || !strings.Contains(outA, "DB_PASSWORD="+tokA) {
+		t.Errorf("honeytoken meta %q not reflected in .env body", tokA)
+	}
+	// ...and is unique per deployment.
+	tokB, _ := resB.Meta["honeytoken"].(string)
+	if tokA == tokB {
+		t.Errorf("honeytoken not per-deployment unique: both %q", tokA)
+	}
+	// Same identity is deterministic (a real .env doesn't change per fetch).
+	resA2 := Result{Meta: map[string]any{}}
+	_ = serveWebapp("GET /.env HTTP/1.1", nil, "nginx", idA, &resA2)
+	if resA2.Meta["honeytoken"] != tokA {
+		t.Errorf("honeytoken not stable for one deployment: %v vs %q", resA2.Meta["honeytoken"], tokA)
+	}
+	_ = outB
+}
+
 // cfg.Webapp must route the http handler into the fake app end-to-end.
 func TestWebappViaHTTPHandler(t *testing.T) {
 	client, server := pipePair(t)

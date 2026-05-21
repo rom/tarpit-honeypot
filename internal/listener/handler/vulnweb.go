@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/url"
@@ -106,6 +108,7 @@ func serveWebapp(reqLine string, body []byte, server string, id *identity.Identi
 	}
 
 	app := webappName(id)
+	hc := webappHoneyCreds(id)
 	cookie := "Set-Cookie: PHPSESSID=" + webappSessionID(id) + "; path=/; HttpOnly"
 	q := parseQuery(rawQuery)
 
@@ -145,7 +148,8 @@ func serveWebapp(reqLine string, body []byte, server string, id *identity.Identi
 
 	case path == "/.env" || path == "/.env.bak":
 		flagAnomaly(res, "webapp:secret-file-probe")
-		return webappResponse(server, 200, "OK", "text/plain", webappFakeEnv(app), nil)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/plain", webappFakeEnv(app, hc), nil)
 
 	case path == "/.git/config":
 		flagAnomaly(res, "webapp:secret-file-probe")
@@ -154,7 +158,8 @@ func serveWebapp(reqLine string, body []byte, server string, id *identity.Identi
 
 	case path == "/config.php.bak" || path == "/config.php~" || path == "/backup.zip":
 		flagAnomaly(res, "webapp:secret-file-probe")
-		return webappResponse(server, 200, "OK", "text/plain", webappFakeConfig(app), nil)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/plain", webappFakeConfig(app, hc), nil)
 
 	case path == "/phpinfo.php" || path == "/info.php":
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappPhpinfo(id), nil)
@@ -271,18 +276,77 @@ func webappFakePasswd() string {
 		"webadmin:x:1000:1000:Web Admin:/home/webadmin:/bin/bash\n"
 }
 
-func webappFakeEnv(app string) string {
+func webappFakeEnv(app string, hc honeyCreds) string {
 	return "APP_NAME=" + app + "\nAPP_ENV=production\nAPP_DEBUG=false\n" +
 		"DB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=intranet\n" +
-		"DB_USERNAME=intranet_app\nDB_PASSWORD=Tr4pP3d-D3c0y-2024\n" +
-		"APP_KEY=base64:ZGVjb3lfa2V5X25vdF9yZWFsX2hvbmV5cG90Cg==\n"
+		"DB_USERNAME=intranet_app\nDB_PASSWORD=" + hc.dbPass + "\n" +
+		"APP_KEY=" + hc.appKey + "\n" +
+		"AWS_ACCESS_KEY_ID=" + hc.awsKeyID + "\nAWS_SECRET_ACCESS_KEY=" + hc.awsSecret + "\n"
 }
 
-func webappFakeConfig(app string) string {
+func webappFakeConfig(app string, hc honeyCreds) string {
 	return "<?php\n// " + app + " configuration (backup)\n" +
 		"$DB_HOST = '127.0.0.1';\n$DB_USER = 'intranet_app';\n" +
-		"$DB_PASS = 'Tr4pP3d-D3c0y-2024';\n$DB_NAME = 'intranet';\n" +
-		"define('SECRET_KEY', 'decoy-not-a-real-secret');\n"
+		"$DB_PASS = '" + hc.dbPass + "';\n$DB_NAME = 'intranet';\n" +
+		"define('SECRET_KEY', '" + hc.secretKey + "');\n"
+}
+
+// honeyCreds is a set of believable-but-fake secrets planted in the
+// webapp's decoy files (/.env, config backups). Every value is derived
+// deterministically from the deployment identity, so it is unique per
+// deployment — an attacker who scraped one sensor's ".env" can't grep the
+// internet for the literal string to fingerprint every tarpit-honeypot
+// (the old static "Tr4pP3d-D3c0y-2024" was exactly that tell). Because
+// each value is stable + unique, it doubles as a trackable honeytoken: the
+// served DB password is stamped on the event meta (honeytoken) so a SOC
+// can register it and alert if it ever shows up in real auth logs.
+type honeyCreds struct {
+	dbPass    string
+	appKey    string // Laravel-style "base64:..."
+	awsKeyID  string // "AKIA..." (20 chars, AWS access-key-id shape)
+	awsSecret string // 40-char AWS secret-access-key shape
+	secretKey string
+}
+
+func webappHoneyCreds(id *identity.Identity) honeyCreds {
+	return honeyCreds{
+		dbPass:    encodeAlpha(idBytes(id, "webapp-db-pass", 20), honeyAlnum),
+		appKey:    "base64:" + base64.StdEncoding.EncodeToString(idBytes(id, "webapp-app-key", 32)),
+		awsKeyID:  "AKIA" + encodeAlpha(idBytes(id, "webapp-aws-id", 16), honeyAWSAlpha),
+		awsSecret: encodeAlpha(idBytes(id, "webapp-aws-secret", 40), honeyB64Alpha),
+		secretKey: encodeAlpha(idBytes(id, "webapp-secret-key", 32), honeyAlnum),
+	}
+}
+
+const (
+	honeyAlnum    = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	honeyAWSAlpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" // AWS key-id charset
+	honeyB64Alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+)
+
+// idBytes returns n deterministic bytes for a label from the deployment
+// identity, falling back to a label hash when no identity is configured so
+// the decoy still renders (just not per-deployment unique).
+func idBytes(id *identity.Identity, label string, n int) []byte {
+	if id != nil {
+		return id.Bytes(label, n)
+	}
+	h := sha256.Sum256([]byte(label))
+	out := make([]byte, n)
+	for i := 0; i < n; i++ {
+		out[i] = h[i%len(h)]
+	}
+	return out
+}
+
+// encodeAlpha maps each byte onto an alphabet, yielding a fixed-length
+// token of len(b) characters drawn from alpha.
+func encodeAlpha(b []byte, alpha string) string {
+	out := make([]byte, len(b))
+	for i := range b {
+		out[i] = alpha[int(b[i])%len(alpha)]
+	}
+	return string(out)
 }
 
 func webappMySQLError(input string) string {

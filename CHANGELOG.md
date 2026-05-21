@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — webapp decoy secrets are now per-deployment honeytokens
+- The fake-vulnerable webapp's `/.env` and config-backup loot no longer use
+  static strings (`Tr4pP3d-D3c0y-2024` / `decoy-not-a-real-secret`) — those
+  were a literal fingerprint that let a scanner grep-match every
+  tarpit-honeypot. Secrets (DB password, Laravel `APP_KEY`, an `AKIA…` AWS
+  access key + secret, app `SECRET_KEY`) are now derived deterministically
+  from the deployment identity: unique per sensor, stable per sensor. The
+  served DB password is stamped on the event meta as `honeytoken`, turning
+  the decoy into a trackable canary a SOC can watch for in real auth logs.
+
 ### Added — passive OS fingerprint (TTL) device learning
 - The AF_PACKET scan-detector now reads the source IPv4 **TTL** and stamps
   `ip_ttl` + an `os_guess` (linux/unix · windows · network/embedded) with an
