@@ -235,6 +235,28 @@ var uaSignatures = map[string]string{
 	"gau ":        "gau",
 	"waybackurls": "waybackurls",
 	"nuclei-fuzz": "nuclei",
+	// PowerShell web cmdlets + more runtimes.
+	"pwsh":              "powershell",
+	"invoke-webrequest": "powershell",
+	"invoke-restmethod": "powershell",
+	"windowspowershell": "powershell",
+	"niquests":          "python-script",
+	"primp":             "python-script",
+	"httprobe":          "httprobe",
+	// Parameter / endpoint discovery tooling.
+	"arjun":       "arjun",
+	"paramspider": "paramspider",
+	"kiterunner":  "kiterunner",
+	"x8":          "x8",
+	"nuclei-dast": "nuclei",
+	// More recon / threat-intel scanners.
+	"securitytrails": "securitytrails",
+	"driftnet":       "driftnet-scanner",
+	"alphastrike":    "alphastrike",
+	"recyber":        "recyber",
+	"internetscan":   "internet-scanner",
+	"mauscan":        "mauscan",
+	"aazscan":        "aazscan",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
