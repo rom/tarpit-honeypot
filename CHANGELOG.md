@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 8 more OT/ICS device archetypes (ship total 89)
+- **ABB**: AC500 PLC (CODESYS), S500 remote I/O (CI502 PROFINET), RTU560
+  substation RTU (IEC 104 + 61850 MMS).
+- **Honeywell**: ControlEdge 900 PLC/RTU, Experion C300 DCS controller.
+- **Siemens PN/PN Coupler** (PROFINET-to-PROFINET).
+- **WAGO 750-8212 PFC200** (CODESYS Linux PLC) and **Beckhoff CX9020**
+  (TwinCAT, ADS/AMS) — each with vendor MAC OUI + realistic service map.
+
 ### Added — IEC 61850 MMS handler + GOOSE detection
 - **`mms`** (TCP 102): IEC 61850 MMS responder for substation IEDs — completes
   the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association)

@@ -136,6 +136,15 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Cisco Industrial Ethernet 2000 (IOS 15)",
 		"Cisco Catalyst IE-3400 (IOS-XE 17)",
 		"Cisco IR1101 (industrial router, IOS-XE)",
+		// ABB / Honeywell / PN-PN coupler / WAGO / Beckhoff.
+		"ABB AC500 PLC (PM573)",
+		"ABB S500 remote I/O (CI502 PROFINET)",
+		"ABB RTU560 (substation RTU)",
+		"Honeywell ControlEdge 900 (PLC/RTU)",
+		"Honeywell Experion C300 (DCS controller)",
+		"Siemens PN/PN Coupler",
+		"WAGO 750-8212 PFC200",
+		"Beckhoff CX9020 (TwinCAT)",
 	}
 	got := Names()
 	if len(got) != len(want) {

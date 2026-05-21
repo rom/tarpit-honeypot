@@ -33,7 +33,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **81 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **89 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -673,7 +673,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 81. |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 89. |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -858,6 +858,14 @@ prints the live list.
 | ICS/OT | Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 64 | RomPager web, Phoenix OUI/OID |
 | ICS/OT | Phoenix Contact FL MGUARD | `phoenix-fl-mguard` | phoenix | 64 | mGuard security router/firewall |
 | ICS/OT | Advantech EKI-5528 | `advantech-eki-5528` | advantech | 64 | Boa web, managed switch, Advantech OUI/OID |
+| ICS/OT | ABB AC500 PLC | `abb-ac500` | abb | 64 | CODESYS gateway 1217, Modbus + EtherNet/IP, ABB OUI |
+| ICS/OT | ABB S500 remote I/O | `abb-s500-io` | abb | 64 | PROFINET I/O adapter (CI502), ABB OUI |
+| ICS/OT | ABB RTU560 | `abb-rtu560` | abb | 64 | substation RTU, IEC 60870-5-104 + IEC 61850 MMS |
+| ICS/OT | Honeywell ControlEdge 900 | `honeywell-controledge` | honeywell | 64 | PLC/RTU, Modbus + IEC 104, Honeywell OUI |
+| ICS/OT | Honeywell Experion C300 | `honeywell-experion` | honeywell | 64 | DCS controller, FTE, Honeywell OUI |
+| ICS/OT | Siemens PN/PN Coupler | `siemens-pn-pn-coupler` | siemens | 255 | PROFINET-to-PROFINET coupler (6ES7158) |
+| ICS/OT | WAGO 750-8212 PFC200 | `wago-750-pfc` | wago | 64 | CODESYS Linux PLC, Modbus, WAGO OUI/OID |
+| ICS/OT | Beckhoff CX9020 | `beckhoff-cx` | beckhoff | 128 | TwinCAT embedded PC, ADS/AMS 48898, Beckhoff OUI |
 | ICS/OT | Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 255 | SCALANCE CLI, MRP ring / PROFINET tree / VLAN exposure |
 | ICS/OT | Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 255 | industrial security router |
 | ICS/OT | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 255 | industrial firewall |
