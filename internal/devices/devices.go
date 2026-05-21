@@ -39,16 +39,23 @@ const (
 	SourceManual    Source = "manual"    // operator-provided
 )
 
-// Device is one learned host.
+// Device is one learned host. Beyond the first-seen identity it accumulates
+// knowledge over time: the sensor services/ports the host touched and
+// free-form attributes (client fingerprints, OS/tool hints) that other
+// listeners and sensor parts contribute.
 type Device struct {
-	IP        string    `json:"ip,omitempty"`
-	MAC       string    `json:"mac,omitempty"`
-	Hostname  string    `json:"hostname,omitempty"`
-	Vendor    string    `json:"vendor,omitempty"` // from MAC OUI
-	Source    Source    `json:"source"`           // first-seen source
-	FirstSeen time.Time `json:"first_seen"`
-	LastSeen  time.Time `json:"last_seen"`
-	Count     int       `json:"count"` // observation count
+	IP        string            `json:"ip,omitempty"`
+	MAC       string            `json:"mac,omitempty"`
+	Hostname  string            `json:"hostname,omitempty"`
+	Vendor    string            `json:"vendor,omitempty"` // from MAC OUI
+	Source    Source            `json:"source"`           // first-seen source
+	FirstSeen time.Time         `json:"first_seen"`
+	LastSeen  time.Time         `json:"last_seen"`
+	Count     int               `json:"count"`              // observation count
+	Allowed   bool              `json:"allowed,omitempty"`  // operator-whitelisted (persisted)
+	Ports     []int             `json:"ports,omitempty"`    // sensor ports the host hit
+	Services  []string          `json:"services,omitempty"` // handlers the host interacted with
+	Attrs     map[string]string `json:"attrs,omitempty"`    // learned attributes (ja3/hassh/ua/os/tools/…)
 }
 
 // Observation is the input to Observe — whatever a producer learned
@@ -59,7 +66,19 @@ type Observation struct {
 	Hostname string
 	Source   Source
 	Time     time.Time
+	// Enrichment (all optional): the sensor port the host hit, the handler
+	// it interacted with, and free-form learned attributes.
+	Port    int
+	Service string
+	Attrs   map[string]string
 }
+
+// bounds on per-device accumulated knowledge.
+const (
+	maxDevicePorts    = 64
+	maxDeviceServices = 32
+	maxDeviceAttrs    = 32
+)
 
 // Registry is the thread-safe device inventory.
 type Registry struct {
@@ -168,6 +187,24 @@ func (r *Registry) Observe(o Observation) (Device, bool) {
 	if o.Hostname != "" {
 		d.Hostname = o.Hostname
 	}
+	if o.Port > 0 {
+		d.Ports = addInt(d.Ports, o.Port, maxDevicePorts)
+	}
+	if o.Service != "" {
+		d.Services = addStr(d.Services, o.Service, maxDeviceServices)
+	}
+	for k, v := range o.Attrs {
+		if k == "" || v == "" {
+			continue
+		}
+		if d.Attrs == nil {
+			d.Attrs = map[string]string{}
+		}
+		if _, ok := d.Attrs[k]; !ok && len(d.Attrs) >= maxDeviceAttrs {
+			continue
+		}
+		d.Attrs[k] = v
+	}
 	d.LastSeen = now
 	d.Count++
 	r.dirty = true
@@ -199,6 +236,9 @@ func (r *Registry) baselineEstablishing() bool {
 // isAllowed reports whether the device matches the operator allow-list.
 // Called with r.mu held.
 func (r *Registry) isAllowed(d *Device) bool {
+	if d.Allowed { // operator-whitelisted at runtime (persisted)
+		return true
+	}
 	if d.MAC != "" && r.allowMAC[d.MAC] {
 		return true
 	}
@@ -225,6 +265,67 @@ func (r *Registry) IsAllowed(d Device) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.isAllowed(&d)
+}
+
+// Delete removes a device by its registry key (its MAC if known, else its
+// IP). Returns whether a device was removed. Used by the web UI's
+// device-delete action.
+func (r *Registry) Delete(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, k := range []string{key, normalizeMAC(key)} {
+		if _, ok := r.byKey[k]; ok {
+			delete(r.byKey, k)
+			r.dirty = true
+			return true
+		}
+	}
+	return false
+}
+
+// Allow whitelists a device by its registry key — it stops raising
+// device:new and is persisted (Device.Allowed) so the whitelist survives a
+// restart. Returns whether the device was found. Used by the web UI's
+// whitelist action.
+func (r *Registry) Allow(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, k := range []string{key, normalizeMAC(key)} {
+		if d, ok := r.byKey[k]; ok {
+			d.Allowed = true
+			r.dirty = true
+			return true
+		}
+	}
+	return false
+}
+
+// addInt appends v to xs (deduped, sorted) up to a cap.
+func addInt(xs []int, v, max int) []int {
+	for _, x := range xs {
+		if x == v {
+			return xs
+		}
+	}
+	if len(xs) >= max {
+		return xs
+	}
+	xs = append(xs, v)
+	sort.Ints(xs)
+	return xs
+}
+
+// addStr appends s to xs (deduped) up to a cap.
+func addStr(xs []string, s string, max int) []string {
+	for _, x := range xs {
+		if x == s {
+			return xs
+		}
+	}
+	if len(xs) >= max {
+		return xs
+	}
+	return append(xs, s)
 }
 
 // List returns a snapshot of all known devices, sorted by IP then MAC.

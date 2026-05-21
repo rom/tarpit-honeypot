@@ -107,14 +107,20 @@ func cmdRun(args []string) error {
 				devs := dr.List()
 				out := make([]ui.HostView, 0, len(devs))
 				for _, d := range devs {
+					key := d.MAC
+					if key == "" {
+						key = d.IP
+					}
 					out = append(out, ui.HostView{
-						IP: d.IP, MAC: d.MAC, Hostname: d.Hostname, Vendor: d.Vendor,
+						Key: key, IP: d.IP, MAC: d.MAC, Hostname: d.Hostname, Vendor: d.Vendor,
 						Source: string(d.Source), Allowed: dr.IsAllowed(d),
 						FirstSeen: d.FirstSeen, LastSeen: d.LastSeen, Count: d.Count,
+						Ports: d.Ports, Services: d.Services, Attrs: d.Attrs,
 					})
 				}
 				return out
 			})
+			srv.SetDeviceActions(dr)
 		}
 		wg.Add(1)
 		go func() {

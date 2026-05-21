@@ -8,31 +8,51 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-func TestHostsTemplateRenders(t *testing.T) {
+func TestDevicesTemplateRenders(t *testing.T) {
 	p := hostsPage{Enabled: true, Hosts: []HostView{
-		{IP: "10.0.0.5", MAC: "aa:bb:cc:dd:ee:ff", Hostname: "ws-1", Vendor: "Dell", Source: "dhcp", Allowed: false, FirstSeen: time.Now(), LastSeen: time.Now(), Count: 3},
-		{IP: "2001:db8::1", Source: "conn", Allowed: true, Count: 1},
+		{Key: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.5", MAC: "aa:bb:cc:dd:ee:ff", Hostname: "ws-1", Vendor: "Dell", Source: "dhcp", Allowed: false, FirstSeen: time.Now(), LastSeen: time.Now(), Count: 3, Services: []string{"ssh"}, Ports: []int{22}, Attrs: map[string]string{"ja3": "abc"}},
+		{Key: "2001:db8::1", IP: "2001:db8::1", Source: "conn", Allowed: true, Count: 1},
 	}}
 	var b strings.Builder
-	if err := uiTmpl(t).ExecuteTemplate(&b, "hosts", p); err != nil {
+	if err := uiTmpl(t).ExecuteTemplate(&b, "devices", p); err != nil {
 		t.Fatal(err)
 	}
 	html := b.String()
-	for _, want := range []string{"known / seen hosts", "10.0.0.5", "aa:bb:cc:dd:ee:ff", "2001:db8::1", "allow", `href="/hosts"`, `href="/alerting"`} {
+	for _, want := range []string{"known / seen devices", "10.0.0.5", "aa:bb:cc:dd:ee:ff", "2001:db8::1", "allow", `href="/devices"`, "ssh", "ja3=abc"} {
 		if !strings.Contains(html, want) {
-			t.Errorf("hosts page missing %q", want)
+			t.Errorf("devices page missing %q", want)
+		}
+	}
+	// Read-only by default: no action forms.
+	if strings.Contains(html, `action="/devices/action"`) {
+		t.Errorf("read-only devices page should not render action forms")
+	}
+}
+
+func TestDevicesTemplateActionsEnabled(t *testing.T) {
+	p := hostsPage{Enabled: true, ActionsEnabled: true, Token: "secret-tok", Hosts: []HostView{
+		{Key: "10.0.0.9", IP: "10.0.0.9", Source: "conn", Count: 1},
+	}}
+	var b strings.Builder
+	if err := uiTmpl(t).ExecuteTemplate(&b, "devices", p); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{`action="/devices/action"`, `name="action" value="delete"`, `name="action" value="allow"`, "secret-tok"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("actions-enabled devices page missing %q", want)
 		}
 	}
 }
 
-func TestHostsEmptyPlaceholder(t *testing.T) {
+func TestDevicesEmptyPlaceholder(t *testing.T) {
 	var b strings.Builder
-	if err := uiTmpl(t).ExecuteTemplate(&b, "hosts", hostsPage{}); err != nil {
+	if err := uiTmpl(t).ExecuteTemplate(&b, "devices", hostsPage{}); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
-	if !strings.Contains(out, "No hosts learned") || !strings.Contains(out, "disabled") {
-		t.Errorf("empty hosts page should note disabled + empty: %q", out)
+	if !strings.Contains(out, "No devices learned") || !strings.Contains(out, "disabled") {
+		t.Errorf("empty devices page should note disabled + empty: %q", out)
 	}
 }
 

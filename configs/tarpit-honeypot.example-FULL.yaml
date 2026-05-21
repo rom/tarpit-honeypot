@@ -60,6 +60,10 @@ sensor:
 ui:
   enabled: true
   bind: 127.0.0.1:8088
+  # auth_token_env: TARPIT_UI_TOKEN
+  # Opt the otherwise read-only UI into device delete/whitelist actions on
+  # the devices tab. Requires auth_token_env to also be set; off by default.
+  # allow_device_actions: true
 
 listeners:
   - id: tcp-raw

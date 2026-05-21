@@ -1,9 +1,12 @@
 // Package ui exposes a read-only HTTP UI backed by the SQLite event store.
 //
 // Default bind is loopback. The validator (config.Validate) refuses to start
-// on a non-loopback bind without both TLS and a static auth token. There is
-// no write endpoint — the UI cannot delete events, change config, or trigger
-// alerts. That stays a hard rule: the sensor host is a target.
+// on a non-loopback bind without both TLS and a static auth token. The UI is
+// read-only by default — it cannot delete events, change config, or trigger
+// alerts. The one exception is the device delete/whitelist action, which is
+// opt-in (ui.allow_device_actions) AND always requires the auth token; with
+// the flag off (the default) there are no write endpoints. The sensor host
+// is a target, so that stays the safe default.
 package ui
 
 import (
@@ -53,16 +56,25 @@ type Sample struct {
 }
 
 type Server struct {
-	cfg        config.UI
-	store      *store.Store
-	authToken  string
-	srv        *http.Server
-	tmpl       *template.Template
-	stats      StatsProvider
-	fullConfig *config.Config
-	topo       *honeynet.Topology
-	hosts      HostsProvider
-	dataDir    string
+	cfg           config.UI
+	store         *store.Store
+	authToken     string
+	srv           *http.Server
+	tmpl          *template.Template
+	stats         StatsProvider
+	fullConfig    *config.Config
+	topo          *honeynet.Topology
+	hosts         HostsProvider
+	deviceActions DeviceActions
+	dataDir       string
+}
+
+// deviceActionsEnabled reports whether the opt-in device write actions are
+// usable: the operator set the flag, an auth token is configured (so a
+// tokenless loopback UI stays read-only), and a registry is wired.
+func (s *Server) deviceActionsEnabled() bool {
+	return s.fullConfig != nil && s.fullConfig.UI.AllowDeviceActions &&
+		s.authToken != "" && s.deviceActions != nil
 }
 
 // SetStatsProvider wires up Prometheus metrics. nil disables the endpoint.
@@ -88,18 +100,33 @@ func (s *Server) SetHostsProvider(p HostsProvider) { s.hosts = p }
 // HostsProvider returns a snapshot of every host the sensor has learned.
 type HostsProvider func() []HostView
 
-// HostView is one row in the /hosts table.
+// HostView is one row in the /devices table.
 type HostView struct {
-	IP        string    `json:"ip,omitempty"`
-	MAC       string    `json:"mac,omitempty"`
-	Hostname  string    `json:"hostname,omitempty"`
-	Vendor    string    `json:"vendor,omitempty"`
-	Source    string    `json:"source"`
-	Allowed   bool      `json:"allowed"`
-	FirstSeen time.Time `json:"first_seen"`
-	LastSeen  time.Time `json:"last_seen"`
-	Count     int       `json:"count"`
+	Key       string            `json:"key"` // registry key (MAC if known, else IP) for actions
+	IP        string            `json:"ip,omitempty"`
+	MAC       string            `json:"mac,omitempty"`
+	Hostname  string            `json:"hostname,omitempty"`
+	Vendor    string            `json:"vendor,omitempty"`
+	Source    string            `json:"source"`
+	Allowed   bool              `json:"allowed"`
+	FirstSeen time.Time         `json:"first_seen"`
+	LastSeen  time.Time         `json:"last_seen"`
+	Count     int               `json:"count"`
+	Ports     []int             `json:"ports,omitempty"`
+	Services  []string          `json:"services,omitempty"`
+	Attrs     map[string]string `json:"attrs,omitempty"`
 }
+
+// DeviceActions lets the (opt-in) devices tab mutate the inventory. The
+// sensor wires this to the devices.Registry. nil = no write actions.
+type DeviceActions interface {
+	Delete(key string) bool
+	Allow(key string) bool
+}
+
+// SetDeviceActions wires the device delete/whitelist actions. They are only
+// reachable when cfg.AllowDeviceActions is true AND an auth token is set.
+func (s *Server) SetDeviceActions(a DeviceActions) { s.deviceActions = a }
 
 func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if !cfg.Enabled {
@@ -146,6 +173,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/topology", s.handleTopology)
 	mux.HandleFunc("/hosts", s.handleHosts)
+	mux.HandleFunc("/devices", s.handleHosts)
+	mux.HandleFunc("/devices/action", s.handleDeviceAction)
 	mux.HandleFunc("/alerting", s.handleAlerting)
 	mux.HandleFunc("/errors", s.handleErrors)
 	mux.HandleFunc("/docs", s.handleDocs)
@@ -156,6 +185,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/api/topology", s.handleAPITopology)
 	mux.HandleFunc("/api/hosts", s.handleAPIHosts)
+	mux.HandleFunc("/api/devices", s.handleAPIHosts)
 	mux.HandleFunc("/api/alerting", s.handleAPIAlerting)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
@@ -195,6 +225,14 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
 
 		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// The device-action POST authorizes itself (constant-time token
+		// compare, accepting the token from a form field so a browser form
+		// works), so it bypasses the header-only gate here. It still
+		// refuses unless the opt-in flag + token are configured.
+		if r.URL.Path == "/devices/action" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -568,10 +606,13 @@ func (s *Server) hostsView() []HostView {
 }
 
 type hostsPage struct {
-	Hosts   []HostView
-	Enabled bool
-	Query   string // substring filter (ip/mac/hostname/vendor/source)
-	Status  string // "" | "seen" | "allow"
+	Hosts          []HostView
+	Enabled        bool
+	Query          string // substring filter (ip/mac/hostname/vendor/source)
+	Status         string // "" | "seen" | "allow"
+	ActionsEnabled bool   // device delete/whitelist available
+	Token          string // embedded in action forms when ActionsEnabled
+	Notice         string // result of the last action
 }
 
 func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
@@ -579,14 +620,19 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	hosts := filterHosts(s.hostsView(), q, status)
 	p := hostsPage{
-		Hosts:   hosts,
-		Enabled: s.fullConfig != nil && s.fullConfig.Devices.Enabled,
-		Query:   r.URL.Query().Get("q"),
-		Status:  status,
+		Hosts:          hosts,
+		Enabled:        s.fullConfig != nil && s.fullConfig.Devices.Enabled,
+		Query:          r.URL.Query().Get("q"),
+		Status:         status,
+		ActionsEnabled: s.deviceActionsEnabled(),
+		Notice:         r.URL.Query().Get("notice"),
+	}
+	if p.ActionsEnabled {
+		p.Token = s.authToken
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "hosts", p); err != nil {
-		slog.Warn("ui: render hosts", "err", err)
+	if err := s.tmpl.ExecuteTemplate(w, "devices", p); err != nil {
+		slog.Warn("ui: render devices", "err", err)
 	}
 }
 
@@ -605,7 +651,7 @@ func filterHosts(in []HostView, q, status string) []HostView {
 			continue
 		}
 		if q != "" {
-			hay := strings.ToLower(h.IP + " " + h.MAC + " " + h.Hostname + " " + h.Vendor + " " + h.Source)
+			hay := strings.ToLower(h.IP + " " + h.MAC + " " + h.Hostname + " " + h.Vendor + " " + h.Source + " " + strings.Join(h.Services, " "))
 			if !strings.Contains(hay, q) {
 				continue
 			}
@@ -618,6 +664,59 @@ func filterHosts(in []HostView, q, status string) []HostView {
 func (s *Server) handleAPIHosts(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.hostsView())
+}
+
+// handleDeviceAction performs a device delete / whitelist. It is opt-in
+// (cfg.AllowDeviceActions) and always requires the auth token — supplied as
+// a form field so a browser form works (the page that renders the form was
+// itself served only to a token-bearing request). POST only.
+func (s *Server) handleDeviceAction(w http.ResponseWriter, r *http.Request) {
+	if !s.deviceActionsEnabled() {
+		http.Error(w, "device actions disabled", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	tok := r.FormValue("token")
+	if r.Header.Get("Authorization") != "" {
+		tok = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+	if subtle.ConstantTimeCompare([]byte(tok), []byte(s.authToken)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	action := r.FormValue("action")
+	key := r.FormValue("key")
+	if key == "" {
+		http.Error(w, "missing key", http.StatusBadRequest)
+		return
+	}
+	notice := ""
+	switch action {
+	case "delete":
+		if s.deviceActions.Delete(key) {
+			notice = "deleted " + key
+		} else {
+			notice = "not found: " + key
+		}
+	case "allow":
+		if s.deviceActions.Allow(key) {
+			notice = "whitelisted " + key
+		} else {
+			notice = "not found: " + key
+		}
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	slog.Info("ui: device action", "action", action, "key", key)
+	http.Redirect(w, r, "/devices?notice="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
 // ---- alerting / forwarding tab ----

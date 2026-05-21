@@ -5,6 +5,62 @@ import (
 	"time"
 )
 
+func TestObserveAccumulatesKnowledge(t *testing.T) {
+	r := New(Config{Learn: false})
+	for _, o := range []Observation{
+		{IP: "10.0.0.9", Source: SourceConn, Port: 22, Service: "ssh", Attrs: map[string]string{"hassh": "abc"}},
+		{IP: "10.0.0.9", Source: SourceConn, Port: 80, Service: "http", Attrs: map[string]string{"ua": "curl/8"}},
+		{IP: "10.0.0.9", Source: SourceConn, Port: 22, Service: "ssh"}, // dup port/service
+	} {
+		r.Observe(o)
+	}
+	devs := r.List()
+	if len(devs) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devs))
+	}
+	d := devs[0]
+	if len(d.Ports) != 2 || d.Ports[0] != 22 || d.Ports[1] != 80 {
+		t.Errorf("ports = %v; want sorted unique [22 80]", d.Ports)
+	}
+	if len(d.Services) != 2 {
+		t.Errorf("services = %v; want ssh+http", d.Services)
+	}
+	if d.Attrs["hassh"] != "abc" || d.Attrs["ua"] != "curl/8" {
+		t.Errorf("attrs = %v; want merged hassh+ua", d.Attrs)
+	}
+	if d.Count != 3 {
+		t.Errorf("count = %d; want 3", d.Count)
+	}
+}
+
+func TestDeleteAndAllow(t *testing.T) {
+	r := New(Config{Learn: false})
+	r.Observe(Observation{IP: "10.0.0.9", MAC: "aa:bb:cc:dd:ee:ff", Source: SourceConn})
+	// Whitelist by key (MAC).
+	if !r.Allow("aa:bb:cc:dd:ee:ff") {
+		t.Fatal("Allow should find the device")
+	}
+	for _, d := range r.List() {
+		if !d.Allowed || !r.IsAllowed(d) {
+			t.Errorf("device should be allowed after Allow: %+v", d)
+		}
+	}
+	// A re-observation of an allowed device must not alert.
+	if _, alert := r.Observe(Observation{IP: "10.0.0.9", MAC: "aa:bb:cc:dd:ee:ff", Source: SourceConn}); alert {
+		t.Error("allowed device should not alert")
+	}
+	// Delete it.
+	if !r.Delete("aa:bb:cc:dd:ee:ff") {
+		t.Fatal("Delete should remove the device")
+	}
+	if len(r.List()) != 0 {
+		t.Errorf("device list should be empty after delete: %v", r.List())
+	}
+	if r.Delete("nonexistent") {
+		t.Error("Delete of unknown key should return false")
+	}
+}
+
 func TestNormalizeMAC(t *testing.T) {
 	cases := map[string]string{
 		"00:90:E8:11:22:33": "00:90:e8:11:22:33",

@@ -237,6 +237,11 @@ type UI struct {
 	TLSCert      string `yaml:"tls_cert"`
 	TLSKey       string `yaml:"tls_key"`
 	AuthTokenEnv string `yaml:"auth_token_env"`
+	// AllowDeviceActions opts the otherwise read-only UI into the device
+	// delete / whitelist write actions on the devices tab. Off by default;
+	// even when true the actions require an auth token (auth_token_env), so
+	// a tokenless loopback UI stays read-only.
+	AllowDeviceActions bool `yaml:"allow_device_actions"`
 }
 
 type Sensor struct {

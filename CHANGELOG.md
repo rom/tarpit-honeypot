@@ -8,6 +8,29 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — richer device learning + a devices web-UI tab
+- **More learning sources**: broadcast/multicast discovery (SSDP / LLMNR /
+  NBNS / mDNS / CLDAP / CoAP senders) now register as `broadcast` devices,
+  alongside the existing DHCP / ARP / connection learning.
+- **Knowledge accrues over time**: each `devices.Device` now accumulates the
+  sensor ports + services it touched and free-form attributes other
+  listeners contribute (JA3/JA4/HASSH, SSH client, User-Agent, identified
+  tools, automation) — extracted from event meta in the sensor bus.
+- **Devices web-UI tab** (`/devices`, replacing/expanding `hosts`): shows
+  the learned services/ports + attributes per device, filterable; source
+  IPs link to their attacker profile. JSON at `/api/devices`.
+- **Opt-in device delete / whitelist actions** in the UI: gated behind a new
+  `ui.allow_device_actions` flag AND the UI auth token (the only write
+  endpoint; off by default, so the read-only invariant holds unless
+  explicitly enabled). Whitelisting persists via `Device.Allowed` in
+  `devices.json`. New `Registry.Delete` / `Registry.Allow`.
+
+### Added — more tool / scanner identification
+- Another ~40 toolfp signatures: recon engines (Rapid7, Tenable, Detectify,
+  Netcraft, Cortex Xpanse, modat), scanners/fuzzers (rustscan, naabu,
+  testssl, sslyze, dalfox, gospider), HTTP clients (httpie, Postman, deno,
+  bun), more named-CVE probe paths, and SSH clients (twisted-conch, erlang).
+
 ### Added — 23 more industrial-device archetypes (ship total 81)
 - **More Moxa**: EDS-405A, EDS-G516E (gigabit, MRP), NPort 5650-8, AWK-3131A
   wireless AP, MGate MB3180 Modbus gateway.

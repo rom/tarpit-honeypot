@@ -556,6 +556,17 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 			obs.IP = rip
 		}
 	}
+	// Enrich the observation so device knowledge builds up over time: the
+	// sensor port hit, the handler interacted with, broadcast/multicast
+	// learning, and client-fingerprint attributes other listeners captured.
+	obs.Port = ev.Dest.Port
+	if ev.Handler != "" {
+		obs.Service = ev.Handler
+		if obs.Source == devices.SourceConn && isBroadcastHandler(ev.Handler) {
+			obs.Source = devices.SourceBroadcast
+		}
+	}
+	obs.Attrs = deviceAttrsFromEvent(ev)
 	if obs.IP == "" && obs.MAC == "" {
 		return nil
 	}
@@ -585,6 +596,69 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 		Proto:    "device",
 		Meta:     meta,
 	}
+}
+
+// isBroadcastHandler reports whether a handler answers a broadcast /
+// multicast discovery protocol — a source seen on one is learned as a
+// SourceBroadcast device.
+func isBroadcastHandler(name string) bool {
+	switch name {
+	case "ssdp", "llmnr", "nbns", "mdns", "ws-discovery", "cldap", "coap":
+		return true
+	}
+	return false
+}
+
+// deviceAttrsFromEvent extracts the client-fingerprint / capability
+// attributes a handler captured into the event meta, so the device
+// inventory accumulates them. Returns nil when there's nothing to record.
+func deviceAttrsFromEvent(ev *event.Event) map[string]string {
+	if ev.Meta == nil {
+		return nil
+	}
+	attrs := map[string]string{}
+	add := func(metaKey, attrKey string) {
+		if v, ok := ev.Meta[metaKey].(string); ok && v != "" {
+			attrs[attrKey] = v
+		}
+	}
+	add("ja3", "ja3")
+	add("ja4", "ja4")
+	add("ja4h", "ja4h")
+	add("hassh", "hassh")
+	add("hassh_server", "hassh_server")
+	add("user_agent", "ua")
+	add("client_id", "ssh_client")
+	if b, ok := ev.Meta["automation"].(bool); ok && b {
+		attrs["automation"] = "true"
+	}
+	if tools := metaStringSlice(ev.Meta["tools"]); len(tools) > 0 {
+		attrs["tools"] = strings.Join(tools, ",")
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	return attrs
+}
+
+// metaStringSlice coerces a meta value (string / []string / the []any JSON
+// decodes to) into a []string.
+func metaStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		return []string{t}
+	}
+	return nil
 }
 
 // honeynetSnapshot converts a Topology to the handler-friendly view that

@@ -208,10 +208,16 @@ rationale covering the current implementation.
   the kernel — a full userspace TCP/IP stack is out of scope.)
 - **Device learning + "new device" alerts**: an opt-in learned-device
   registry (`devices.enabled`) records every host seen via DHCP (MAC +
-  hostname + DHCP fingerprint), the ARP sniffer, and connection source
-  IPs, does MAC-OUI vendor lookup, and raises `device:new` for
-  never-before-seen, non-allow-listed hosts (learn-baseline or strict
-  allow-list mode). Inspect with `list-devices`.
+  hostname + DHCP fingerprint), the ARP sniffer, **broadcast/multicast
+  discovery** (SSDP / LLMNR / NBNS / mDNS / CLDAP / CoAP senders, learned
+  as `broadcast`), and connection source IPs, does MAC-OUI vendor lookup,
+  and raises `device:new` for never-before-seen, non-allow-listed hosts
+  (learn-baseline or strict allow-list mode). Knowledge **builds up over
+  time**: each device accumulates the sensor services/ports it touched and
+  learned attributes other listeners contribute (JA3/JA4/HASSH, SSH client,
+  User-Agent, identified tools, automation). Inspect with `list-devices`,
+  the **devices** web-UI tab, or `/api/devices`; optional UI delete /
+  whitelist actions (see below).
 - **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host
   advertises itself in `lldpctl` / Cisco `show cdp neighbors` output
   with archetype-shaped MAC, hostname, system description, and
@@ -296,13 +302,16 @@ rationale covering the current implementation.
   rule / banner / captured meta + per-event detail with a **hex view** of
   the captured payload, plus **profiles** (per-source-IP attacker dossiers
   — see below),
-  **hosts** (learned IPv4/IPv6/MAC inventory, filterable),
+  **devices** (learned IPv4/IPv6/MAC inventory + per-device services/ports
+  and learned attributes, filterable; opt-in delete/whitelist actions via
+  `ui.allow_device_actions` + an auth token — the only write endpoint,
+  off by default),
   **topology** (the virtual networks / hosts / services presented),
   **alerting** (how events forward), **errors** (operational/health
   events — listener or canary-watcher stopped, accept-cap overflow),
   **config**, and **docs** tabs. JSON at `/api/events`, `/api/summary`,
   `/api/profiles`, `/api/profiles/<ip>`, `/api/config`, `/api/topology`,
-  `/api/hosts`, `/api/alerting`. Non-loopback binds refused without TLS +
+  `/api/devices`, `/api/alerting`. Non-loopback binds refused without TLS +
   auth token.
 - **Attacker profiles** (`/profiles`): a per-source-IP dossier compiled
   from every event that source produced — first/last seen, a

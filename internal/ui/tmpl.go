@@ -54,7 +54,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -284,39 +284,49 @@ IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
-{{ define "hosts" }}{{ template "head" . }}
-<h1>known / seen hosts</h1>
+{{ define "devices" }}{{ template "head" . }}
+<h1>known / seen devices</h1>
 {{ if not .Enabled }}<p class="note">Device tracking is disabled. Set
-<code>devices.enabled: true</code> to learn hosts from DHCP, the ARP sniffer,
-and connection source IPs.</p>{{ end }}
-<form method="get" action="/hosts">
-  filter: <input type="text" name="q" value="{{ .Query }}" placeholder="ip / mac / hostname / vendor" size="28">
+<code>devices.enabled: true</code> to learn devices from DHCP, the ARP sniffer,
+broadcast/multicast discovery, and connection source IPs.</p>{{ end }}
+{{ if .Notice }}<p class="depl">{{ .Notice }}</p>{{ end }}
+<form method="get" action="/devices">
+  filter: <input type="text" name="q" value="{{ .Query }}" placeholder="ip / mac / hostname / vendor / service" size="28">
   status: <select name="status">
     <option value=""{{ if eq .Status "" }} selected{{ end }}>all</option>
     <option value="seen"{{ if eq .Status "seen" }} selected{{ end }}>seen</option>
     <option value="allow"{{ if eq .Status "allow" }} selected{{ end }}>allow-listed</option>
   </select>
   <button type="submit">filter</button>
-  <a href="/hosts">reset</a>
+  <a href="/devices">reset</a>
 </form>
 {{ if not .Hosts }}
-<p class="note">No hosts learned yet. JSON at <a href="/api/hosts">/api/hosts</a>.</p>
+<p class="note">No devices learned yet. JSON at <a href="/api/devices">/api/devices</a>.</p>
 {{ else }}
-<p class="note">Hosts the sensor has observed (IPv4 / IPv6 / MAC). "allow" = on the
-device allow-list (won't raise <code>device:new</code>). JSON at <a href="/api/hosts">/api/hosts</a>.</p>
+<p class="note">Devices the sensor has observed (IPv4 / IPv6 / MAC), with the
+services/ports they touched and learned attributes — knowledge accrues over
+time. "allow" = whitelisted (won't raise <code>device:new</code>).
+{{ if .ActionsEnabled }} Write actions are <b>enabled</b>.{{ else }} Actions are read-only ( set <code>ui.allow_device_actions: true</code> + an auth token to manage devices here).{{ end }}
+JSON at <a href="/api/devices">/api/devices</a>.</p>
 <table>
-  <tr><th>ip</th><th>mac</th><th>hostname</th><th>vendor</th><th>source</th><th>status</th><th>first seen</th><th>last seen</th><th>count</th></tr>
+  <tr><th>ip</th><th>mac</th><th>hostname</th><th>vendor</th><th>source</th><th>status</th><th>services</th><th>ports</th><th>attrs</th><th>last seen</th><th>count</th>{{ if .ActionsEnabled }}<th>actions</th>{{ end }}</tr>
   {{ range .Hosts }}
   <tr>
-    <td>{{ .IP }}</td>
+    <td>{{ if .IP }}<a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ end }}</td>
     <td>{{ .MAC }}</td>
     <td>{{ .Hostname }}</td>
     <td>{{ .Vendor }}</td>
     <td>{{ .Source }}</td>
     <td>{{ if .Allowed }}allow{{ else }}seen{{ end }}</td>
-    <td>{{ fmtTime .FirstSeen }}</td>
+    <td>{{ range .Services }}<span class="tag">{{ . }}</span>{{ end }}</td>
+    <td>{{ join .Ports }}</td>
+    <td>{{ range $k, $v := .Attrs }}<span class="tag">{{ $k }}={{ $v }}</span>{{ end }}</td>
     <td>{{ fmtTime .LastSeen }}</td>
     <td>{{ .Count }}</td>
+    {{ if $.ActionsEnabled }}<td>
+      {{ if not .Allowed }}<form method="post" action="/devices/action"><input type="hidden" name="token" value="{{ $.Token }}"><input type="hidden" name="key" value="{{ .Key }}"><input type="hidden" name="action" value="allow"><button type="submit">whitelist</button></form>{{ end }}
+      <form method="post" action="/devices/action"><input type="hidden" name="token" value="{{ $.Token }}"><input type="hidden" name="key" value="{{ .Key }}"><input type="hidden" name="action" value="delete"><button type="submit">delete</button></form>
+    </td>{{ end }}
   </tr>
   {{ end }}
 </table>
@@ -411,7 +421,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
 <li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
 <li><a href="/profiles">profiles</a> — per-source-IP attacker dossiers (threat score, tools/scanners, fingerprints, credentials tried, ATT&amp;CK, targeted services), compiled over time.</li>
-<li><a href="/hosts">hosts</a> — learned / seen / allow-listed hosts (IPv4 / IPv6 / MAC).</li>
+<li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
 <li><a href="/errors">errors</a> — operational / health events (listener or canary-watcher stopped, accept-cap overflow).</li>
@@ -471,8 +481,9 @@ emulator becomes a tarpit, and the captured banner/request lands in the
 
 <h2>security model</h2>
 <ul>
-<li>UI is read-only (no delete/config/alert endpoints) and binds loopback unless you
-set both TLS and a static auth token.</li>
+<li>UI is read-only by default and binds loopback unless you set both TLS and a static
+auth token. The only optional write action is device delete/whitelist, gated behind
+<code>ui.allow_device_actions</code> + an auth token (off by default).</li>
 <li>Secrets live only as <code>*_env</code> references — never expanded in config output or logs.</li>
 <li>All attacker-supplied bytes are bounds-checked and sanitized before logs / SIEM / email.</li>
 <li>The sensor refuses to be a reflection/amplification primitive (bounded small-service
