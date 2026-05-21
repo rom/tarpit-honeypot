@@ -1263,16 +1263,30 @@ Caveat: HASSH relies on the SSH client sending its KEXINIT before the
 server. OpenSSH does this by default; some scanners don't.
 
 **Tool / scanner identification** (`internal/toolfp`) — beyond the
-cryptographic fingerprints above, the HTTP/HTTPS handlers classify the
-*tool* behind a request:
+cryptographic fingerprints above, the HTTP/HTTPS **and SSH** handlers
+classify the *tool* behind a connection:
 
-- `meta.tools` — names matched from User-Agent + request-path
-  signatures: nmap, masscan, sqlmap, nikto, hydra, nuclei, metasploit,
-  gobuster, zgrab, censys, curl, wget, python (requests/urllib), and
-  Mirai-style + router-exploit probe paths. A JA3 hash can also map to a
-  known scanner via `IdentifyTLS`.
+- `meta.tools` (HTTP) — names matched from ~80 User-Agent + request-path
+  signatures across: port scanners (nmap, masscan, zmap, zgrab, l9explore);
+  internet-wide recon engines (Shodan, Censys, BinaryEdge, LeakIX,
+  Onyphe, Shadowserver, Stretchoid, ProjectDiscovery, …); web vuln
+  scanners (sqlmap, nikto, nuclei, Acunetix, Nessus, OpenVAS, Qualys,
+  Netsparker/Invicti, AppScan, Arachni, Wapiti, WhatWeb, OWASP ZAP,
+  Burp, wpscan/joomscan/droopescan, commix, XSStrike); content-discovery
+  fuzzers (gobuster, ffuf, dirsearch, feroxbuster, wfuzz, katana, httpx);
+  credential brute-forcers (hydra, medusa, ncrack, patator); exploitation
+  frameworks + webshell managers (Metasploit, Cobalt Strike, AntSword,
+  Behinder, Godzilla); and generic HTTP libraries (Go, python, java,
+  node, ruby, php, powershell, curl, wget). Path signatures also flag
+  named-CVE probes (Log4Shell, PHPUnit CVE-2017-9841, FortiOS
+  CVE-2018-13379, WebLogic CVE-2017-10271, Citrix/Pulse/Exchange/Confluence
+  exploit paths) even when the UA is spoofed.
+- `meta.tools` (SSH) — `IdentifySSH` maps the clear-text SSH client banner
+  to libssh (hydra/scanners), libssh2, paramiko, Go, PuTTY, zgrab, JSch,
+  phpseclib, WinSCP, … (OpenSSH excluded as legitimate-default noise).
 - `meta.automation` — a browser-vs-script verdict from header shape
   (missing `Accept`/`Accept-Language`, scripted ordering, etc.).
+- A JA3 hash can also map to a known scanner via `IdentifyTLS`.
 - Surfaced as `tool:<name>` and `automation-client` anomalies so a SIEM
   can separate hand-driven probes from mass scanners.
 

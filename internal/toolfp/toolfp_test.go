@@ -71,6 +71,74 @@ func TestAutomationHeuristic(t *testing.T) {
 	}
 }
 
+func TestUASignaturesExpanded(t *testing.T) {
+	cases := map[string]string{
+		"Mozilla/5.0 (compatible; Censys/...)":            "", // not a default UA
+		"Mozilla/5.0 zgrab/0.x":                           "zgrab",
+		"Burp Suite Professional":                         "burpsuite",
+		"Mozilla/5.0 (compatible; LeakIX)":                "leakix",
+		"Shodan":                                          "shodan",
+		"ffuf/2.1.0":                                      "ffuf",
+		"Mozilla/5.0 (compatible; Nuclei - Open-source) ": "nuclei",
+		"WPScan v3.8.22":                                  "wpscan",
+		"Hello, World":                                    "scanner-stub",
+		"Java/1.8.0_181":                                  "java-http",
+	}
+	for ua, want := range cases {
+		v := IdentifyHTTP(HTTPSignals{UserAgent: ua, Path: "/"})
+		if want == "" {
+			continue
+		}
+		if !has(v.Tools, want) {
+			t.Errorf("UA %q: tools=%v; want %q", ua, v.Tools, want)
+		}
+	}
+}
+
+func TestPathSignaturesExpanded(t *testing.T) {
+	cases := map[string]string{
+		"/vendor/phpunit/phpunit/src/util/php/eval-stdin.php": "cve-2017-9841",
+		"/remote/fgt_lang?lang=/../../../..//////////dev/":    "cve-2018-13379",
+		"/wls-wsat/CoordinatorPortType":                       "cve-2017-10271",
+		"/.git/config":                                        "scanner-recon",
+	}
+	for p, want := range cases {
+		v := IdentifyHTTP(HTTPSignals{Path: p, UserAgent: "Mozilla/5.0"})
+		if !has(v.Tools, want) {
+			t.Errorf("path %q: tools=%v; want %q", p, v.Tools, want)
+		}
+	}
+}
+
+func TestIdentifySSH(t *testing.T) {
+	cases := map[string][]string{
+		"SSH-2.0-libssh2_1.10.0":       {"libssh2"},
+		"SSH-2.0-libssh-0.9.6":         {"libssh"},
+		"SSH-2.0-paramiko_2.11.0":      {"paramiko"},
+		"SSH-2.0-Go":                   {"go-ssh"},
+		"SSH-2.0-PuTTY_Release_0.78":   {"putty"},
+		"SSH-2.0-OpenSSH_9.2p1 Debian": nil, // legit default — no tag
+	}
+	for id, want := range cases {
+		got := IdentifySSH(id)
+		if len(want) == 0 {
+			if len(got) != 0 {
+				t.Errorf("%q: got %v; want none", id, got)
+			}
+			continue
+		}
+		for _, w := range want {
+			if !has(got, w) {
+				t.Errorf("%q: got %v; want %q", id, got, w)
+			}
+		}
+	}
+	// libssh2 banner must not also tag plain "libssh".
+	if g := IdentifySSH("SSH-2.0-libssh2_1.10.0"); has(g, "libssh") {
+		t.Errorf("libssh2 banner double-tagged libssh: %v", g)
+	}
+}
+
 func TestIdentifyTLS(t *testing.T) {
 	if IdentifyTLS("e7d705a3286e19ea42f587b344ee6865") != "go-tls" {
 		t.Errorf("go-tls JA3 not mapped")

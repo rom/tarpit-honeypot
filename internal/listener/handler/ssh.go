@@ -13,6 +13,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 type ssh struct {
@@ -85,6 +86,12 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		}
 		if !strings.HasPrefix(line, "SSH-") {
 			flagAnomaly(&res, "ssh-id-not-ssh")
+		}
+		// Identify the SSH client/scanner from its banner (libssh→hydra,
+		// paramiko, zgrab, Go, PuTTY, ...). The banner is clear-text pre-KEX.
+		if tools := toolfp.IdentifySSH(line); len(tools) > 0 {
+			res.Meta["tools"] = tools
+			flagAnomaly(&res, "tool:"+tools[0])
 		}
 	} else if err != nil {
 		res.Meta["read_err"] = err.Error()

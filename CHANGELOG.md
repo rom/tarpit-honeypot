@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — much broader tool / scanner identification
+- Expanded `internal/toolfp` from ~25 to ~80 User-Agent + request-path
+  signatures: recon engines (Shodan, BinaryEdge, LeakIX, Onyphe,
+  Shadowserver, Stretchoid, ProjectDiscovery, …), web vuln scanners
+  (Acunetix/Nessus/OpenVAS/Qualys/Netsparker/AppScan/Arachni/Wapiti/
+  WhatWeb/OWASP-ZAP/Burp/commix/XSStrike), fuzzers (ffuf/dirsearch/
+  katana/httpx/wfuzz), brute-forcers (medusa/ncrack/patator), frameworks +
+  webshell managers (Cobalt Strike/AntSword/Behinder/Godzilla), and many
+  HTTP libraries. Path signatures now flag named-CVE probes (Log4Shell,
+  PHPUnit, FortiOS, WebLogic, Citrix/Pulse/Exchange/Confluence).
+- New `IdentifySSH`: classifies the clear-text SSH client banner
+  (libssh/hydra, libssh2, paramiko, Go, PuTTY, zgrab, JSch, phpseclib, …),
+  wired into the `ssh` handler → `meta.tools` + `tool:<name>`.
+
 ### Added — outbound channels: syslog/TLS, Discord, MQTT/TLS options
 - **syslog `network: tcp` / `network: tls`** now use an RFC 5424 message
   with RFC 6587 octet-counting framing (the framing RFC 5425 mandates for
