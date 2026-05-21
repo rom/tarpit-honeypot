@@ -23,6 +23,46 @@ func mkEvent(id, srcIP, rule string, sev event.Severity, t time.Time) *event.Eve
 	}
 }
 
+func TestSourceAggregates(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	// 1.1.1.1: 2 high + 1 critical (distinct rules r1, r2); 2.2.2.2: 1 low.
+	_ = s.Insert(ctx, mkEvent("a", "1.1.1.1", "r1", event.SeverityHigh, now.Add(-3*time.Minute)))
+	_ = s.Insert(ctx, mkEvent("b", "1.1.1.1", "r1", event.SeverityHigh, now.Add(-2*time.Minute)))
+	_ = s.Insert(ctx, mkEvent("c", "1.1.1.1", "r2", event.SeverityCritical, now.Add(-time.Minute)))
+	_ = s.Insert(ctx, mkEvent("d", "2.2.2.2", "r3", event.SeverityLow, now))
+
+	aggs, err := s.SourceAggregates(ctx, now.Add(-time.Hour), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aggs) != 2 {
+		t.Fatalf("aggregates = %d; want 2", len(aggs))
+	}
+	// Ordered by severity-weighted threat score: 1.1.1.1 (9+9+16=34) first.
+	top := aggs[0]
+	if top.IP != "1.1.1.1" {
+		t.Errorf("top source = %q; want 1.1.1.1", top.IP)
+	}
+	if top.Count != 3 {
+		t.Errorf("count = %d; want 3", top.Count)
+	}
+	if top.MaxSeverity != event.SeverityCritical {
+		t.Errorf("max severity = %v; want critical", top.MaxSeverity)
+	}
+	if top.DistinctRules != 2 {
+		t.Errorf("distinct rules = %d; want 2", top.DistinctRules)
+	}
+	if top.Weight != 34 {
+		t.Errorf("weight = %d; want 34", top.Weight)
+	}
+}
+
 func TestInsertAndQuery(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {

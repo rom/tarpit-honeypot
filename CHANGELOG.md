@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI "attacker profiles" tab
+- New **`/profiles`** tab + **`/profiles/<ip>`** detail (and `/api/profiles`,
+  `/api/profiles/<ip>`): a per-source-IP threat-actor dossier compiled from
+  every event the source produced and built up over time —
+  first/last seen, a severity-weighted **threat score** + level, identified
+  **tools/scanners**, **JA3/JA4/HASSH** fingerprints, **credentials tried**,
+  **ATT&CK** techniques/tactics, **CVE** exploit attempts, anomalies, and
+  the services/ports targeted, plus recent events. The list (cheap GROUP BY
+  via `store.SourceAggregates`) ranks actors by threat; the detail view
+  (`ui.buildProfile`) scans that actor's events. Summary top-sources now
+  link to the profile.
+
 ### Added — 4 more OT/ICS protocols
 - **`atg`** (Veeder-Root TLS-350, TCP 10001): the "internet-exposed gas
   pump" target — answers `^A I20100/I20200/I20300` with a believable

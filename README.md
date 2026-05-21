@@ -290,13 +290,23 @@ rationale covering the current implementation.
   concurrent reads.
 - **Read-only web UI** on loopback: 24h summary + a filterable,
   **sortable** event table (click any column to sort/reverse) + per-event
-  detail, plus **hosts** (learned IPv4/IPv6/MAC inventory, filterable),
+  detail, plus **profiles** (per-source-IP attacker dossiers — see below),
+  **hosts** (learned IPv4/IPv6/MAC inventory, filterable),
   **topology** (the virtual networks / hosts / services presented),
   **alerting** (how events forward), **errors** (operational/health
   events — listener or canary-watcher stopped, accept-cap overflow),
   **config**, and **docs** tabs. JSON at `/api/events`, `/api/summary`,
-  `/api/config`, `/api/topology`, `/api/hosts`, `/api/alerting`.
-  Non-loopback binds refused without TLS + auth token.
+  `/api/profiles`, `/api/profiles/<ip>`, `/api/config`, `/api/topology`,
+  `/api/hosts`, `/api/alerting`. Non-loopback binds refused without TLS +
+  auth token.
+- **Attacker profiles** (`/profiles`): a per-source-IP dossier compiled
+  from every event that source produced — first/last seen, a
+  severity-weighted **threat score**, identified **tools/scanners**
+  (UA + SSH-banner fingerprinting), **JA3/JA4/HASSH** fingerprints,
+  **credentials tried**, **ATT&CK** techniques/tactics, **CVE** exploit
+  attempts, anomalies, and the services/ports targeted. The list ranks
+  actors by threat; each detail page builds up as the source keeps
+  interacting. Top-sources on the summary link straight to the profile.
 - **Routing**: per-channel rate-limit, min-severity gate, severity-match
   route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
   (outbound-only — local sinks always receive).

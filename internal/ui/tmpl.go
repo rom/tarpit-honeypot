@@ -34,9 +34,16 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .docs ul { margin: .3rem 0 .8rem 1.2rem; padding: 0; }
 .docs li { margin: .12rem 0; }
 .depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
+.threat-low { color: #555; }
+.threat-elevated { color: #b36b00; font-weight: 600; }
+.threat-high { color: #b00020; font-weight: 600; }
+.threat-critical { color: #b00020; font-weight: 700; background: #fff5f5; }
+.tag { display: inline-block; background: #eef; border: 1px solid #cce; border-radius: 3px; padding: 0 .35rem; margin: .1rem .2rem .1rem 0; font-size: 12px; }
+.tag.warn { background: #fff0e6; border-color: #f0c8a0; }
+.tag.bad { background: #ffe9ec; border-color: #f0a8b4; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/hosts">hosts</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
@@ -57,8 +64,9 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 
 <h2>top sources</h2>
 <table><tr><th>source ip</th><th>count</th></tr>
-{{ range .TopSources }}<tr><td><a href="/events?source={{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td></tr>{{ end }}
+{{ range .TopSources }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td></tr>{{ end }}
 </table>
+<p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "events" }}{{ template "head" . }}
@@ -127,6 +135,93 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 {{ if .Meta }}<h2>meta</h2><table>
 {{ range $k, $v := .Meta }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "profiles" }}{{ template "head" . }}
+<h1>attacker profiles</h1>
+<p class="note">One dossier per source IP, compiled from behaviour, tool / scanner
+fingerprinting, credentials tried, and ATT&amp;CK technique observation — it builds up
+as the source keeps interacting. Ranked by a severity-weighted threat score. JSON at
+<a href="/api/profiles">/api/profiles</a>.</p>
+<form method="get" action="/profiles">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="720h" size="6">
+  <button type="submit">filter</button>
+  <a href="/profiles">reset</a>
+</form>
+{{ if not .Profiles }}
+<p class="note">No sources observed in the window.</p>
+{{ else }}
+<table>
+  <tr><th>source ip</th><th>threat</th><th>max severity</th><th>events</th><th>distinct rules</th><th>first seen</th><th>last seen</th></tr>
+  {{ range .Profiles }}
+  <tr>
+    <td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td>
+    <td>{{ .Weight }}</td>
+    <td class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</td>
+    <td>{{ .Count }}</td>
+    <td>{{ .DistinctRules }}</td>
+    <td>{{ fmtTime .FirstSeen }}</td>
+    <td>{{ fmtTime .LastSeen }}</td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "profile" }}{{ template "head" . }}
+<h1>attacker profile — {{ .IP }}</h1>
+<div class="depl">
+  threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
+  max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·
+  {{ .Count }} event(s){{ if .Partial }}+{{ end }} ·
+  {{ if .Automation }}automation{{ else }}unflagged{{ end }}
+</div>
+<p class="note">first seen {{ fmtTime .FirstSeen }} · last seen {{ fmtTime .LastSeen }} ·
+  <a href="/events?source={{ .IP }}&amp;since=2160h">all events</a> ·
+  <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts (ZIP)</a> ·
+  <a href="/api/profiles/{{ .IP }}">JSON</a></p>
+
+<h2>events by severity</h2>
+<table><tr><th>severity</th><th>count</th></tr>
+{{ range $k, $v := .BySeverity }}<tr><td class="sev-{{ $k }}">{{ $k }}</td><td>{{ $v }}</td></tr>{{ end }}
+</table>
+
+{{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .Fingerprints }}<h2>fingerprints</h2><table>
+{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
+</table>{{ end }}
+
+{{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<span class="tag">{{ . }}</span>{{ end }}</div>
+{{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
+
+{{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th></tr>
+{{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td></tr>{{ end }}
+</table>{{ end }}
+
+{{ if .Rules }}<h2>triggered rules</h2><table><tr><th>rule</th><th>count</th></tr>
+{{ range .Rules }}<tr><td><a href="/events?source={{ $.IP }}&amp;rule={{ .Name }}">{{ .Name }}</a></td><td>{{ .Count }}</td></tr>{{ end }}
+</table>{{ end }}
+
+{{ if .Sensors }}<p class="note">seen by sensor(s): {{ range .Sensors }}{{ . }} {{ end }}</p>{{ end }}
+
+<h2>recent events</h2>
+<table><tr><th>time (utc)</th><th>severity</th><th>rule</th><th>handler</th><th></th></tr>
+{{ range .Recent }}<tr>
+  <td>{{ fmtTime .Time }}</td>
+  <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+  <td>{{ .RuleID }}</td>
+  <td>{{ .Handler }}</td>
+  <td><a href="/events/{{ .ID }}">details</a></td>
+</tr>{{ end }}
+</table>
 {{ template "foot" . }}{{ end }}
 
 {{ define "config" }}{{ template "head" . }}
@@ -295,6 +390,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <ul>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
 <li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
+<li><a href="/profiles">profiles</a> — per-source-IP attacker dossiers (threat score, tools/scanners, fingerprints, credentials tried, ATT&amp;CK, targeted services), compiled over time.</li>
 <li><a href="/hosts">hosts</a> — learned / seen / allow-listed hosts (IPv4 / IPv6 / MAC).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>

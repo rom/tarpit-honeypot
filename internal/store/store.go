@@ -256,6 +256,56 @@ type SourceCount struct {
 	Count int    `json:"count"`
 }
 
+// SourceAggregate is a cheap per-source rollup (one GROUP BY pass) that
+// powers the attacker-profiles list. The rich per-actor dossier (tools,
+// fingerprints, credentials, ATT&CK) is built separately by scanning that
+// source's events.
+type SourceAggregate struct {
+	IP            string         `json:"ip"`
+	Count         int            `json:"events"`
+	FirstSeen     time.Time      `json:"first_seen"`
+	LastSeen      time.Time      `json:"last_seen"`
+	MaxSeverity   event.Severity `json:"max_severity"`
+	DistinctRules int            `json:"distinct_rules"`
+	Weight        int            `json:"threat_score"` // SUM(severity^2) — weights criticals
+}
+
+// SourceAggregates returns per-source rollups for events since the given
+// time, ordered by severity-weighted threat score (most dangerous first).
+func (s *Store) SourceAggregates(ctx context.Context, since time.Time, limit int) ([]SourceAggregate, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT src_ip, COUNT(*) c, MIN(time) mn, MAX(time) mx, MAX(severity) ms,
+       COUNT(DISTINCT rule_id) dr, SUM(severity*severity) w
+FROM events
+WHERE time >= ? AND src_ip <> ''
+GROUP BY src_ip
+ORDER BY w DESC, c DESC
+LIMIT ?`, since.UTC().UnixNano(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SourceAggregate
+	for rows.Next() {
+		var (
+			a      SourceAggregate
+			mn, mx int64
+			ms     int
+		)
+		if err := rows.Scan(&a.IP, &a.Count, &mn, &mx, &ms, &a.DistinctRules, &a.Weight); err != nil {
+			return nil, err
+		}
+		a.FirstSeen = time.Unix(0, mn).UTC()
+		a.LastSeen = time.Unix(0, mx).UTC()
+		a.MaxSeverity = event.Severity(ms)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
 	sum := Summary{Since: since, BySeverity: map[string]int{}, ByRule: map[string]int{}}
 	sinceNS := since.UTC().UnixNano()
