@@ -42,6 +42,33 @@ func TestDetectableMatchesSignatures(t *testing.T) {
 	}
 }
 
+// TestEnrichmentWellFormed: the CWE/CPE/EPSS cross-references must be
+// well-formed and reference real catalog entries.
+func TestEnrichmentWellFormed(t *testing.T) {
+	ids := map[string]bool{}
+	for _, r := range All() {
+		ids[r.ID] = true
+	}
+	for id := range cveExtra {
+		if !ids[id] {
+			t.Errorf("cveExtra has entry for unknown CVE %q", id)
+		}
+	}
+	for _, r := range All() {
+		if r.EPSS < 0 || r.EPSS > 1 {
+			t.Errorf("%s: EPSS %v out of [0,1]", r.ID, r.EPSS)
+		}
+		for _, c := range r.CWE {
+			if len(c) < 5 || c[:4] != "CWE-" {
+				t.Errorf("%s: malformed CWE %q", r.ID, c)
+			}
+		}
+		if r.CPE != "" && len(r.CPE) < 8 || (r.CPE != "" && r.CPE[:8] != "cpe:2.3:") {
+			t.Errorf("%s: CPE not 2.3 form: %q", r.ID, r.CPE)
+		}
+	}
+}
+
 // TestEveryRecordHasServiceAndTechnique: a record with no service can't be
 // matched/advertised; one with no technique can't be ATT&CK-tagged.
 func TestEveryRecordHasServiceAndTechnique(t *testing.T) {

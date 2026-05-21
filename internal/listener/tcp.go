@@ -278,6 +278,15 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				meta["cve_name"] = rec.Name
 				meta["cvss"] = rec.CVSS
 				meta["description"] = rec.Description
+				if len(rec.CWE) > 0 {
+					meta["cwe"] = rec.CWE
+				}
+				if rec.CPE != "" {
+					meta["cpe"] = rec.CPE
+				}
+				if rec.EPSS > 0 {
+					meta["epss"] = rec.EPSS
+				}
 				if rec.CVSS >= 9.0 {
 					sev = event.SeverityCritical
 				}

@@ -271,7 +271,11 @@ rationale covering the current implementation.
   Confluence, MOVEit, Citrix/Pulse/Ivanti/Fortinet/PAN-OS, Apache
   41773/42013, Cisco IOS-XE 20198, PHP-CGI 4577, TeamCity, GPON/D-Link/
   Hikvision, plus ICS advisories for Siemens S7 and Rockwell Logix). SIEMs
-  pivot on these IDs directly.
+  pivot on these IDs directly. Each `cve:<id>` event also carries the
+  **CWE** weakness class, the affected-product **CPE 2.3**, and an **EPSS**
+  exploit-probability snapshot. See [`docs/attribution.md`](docs/attribution.md)
+  for the full ATT&CK / D3FEND / CVE / CWE / CPE / EPSS reference plus the
+  scanner-detection and client-classifier capabilities.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-
@@ -423,6 +427,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
 - [`docs/archetypes.md`](docs/archetypes.md) — the full 99-archetype catalog: every device's services/protocols and the CVEs it emulates.
+- [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).

@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CWE / CPE / EPSS cross-references + attribution doc
+- The CVE catalog records now carry **CWE** (weakness class), **CPE 2.3**
+  (affected product) and **EPSS** (exploit-probability snapshot) alongside
+  CVSS + the ATT&CK mapping. `cve:<id>` events stamp `cwe`/`cpe`/`epss` into
+  meta; `list-cves` shows EPSS in the table and CWE/CPE/EPSS in `--json`.
+- New [`docs/attribution.md`](docs/attribution.md) — an in-depth reference
+  for every standards mapping the sensor stamps (ATT&CK, D3FEND, CVE, CWE,
+  CPE, EPSS), the four scanner-detection layers (tool fingerprinting, nmap
+  profiling, packet-capture scan detection, correlator aggregates), and the
+  client classifiers (automation heuristic + JA3/JA4/JA3S/HASSH/JA4H). Linked
+  from the docs index and the main README.
+
 ### Added — archeservice role bundles
 - New `archeservices:` config section: declare a service *role* —
   `webserver`, `ftpserver`, `sshserver`, `printserver`, `fileserver`,

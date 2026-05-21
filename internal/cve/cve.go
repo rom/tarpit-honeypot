@@ -42,6 +42,16 @@ type Record struct {
 	// Tactic is the ATT&CK tactic (usually initial-access / execution).
 	Tactic      string
 	Description string
+
+	// The following are curated cross-references, merged from cveExtra at
+	// package init (see attribution docs):
+	//   CWE  – the weakness class(es), e.g. ["CWE-502"] for unsafe deser.
+	//   CPE  – the affected-product CPE 2.3 (vendor:product), wildcarded.
+	//   EPSS – Exploit-Prediction Scoring System probability (0..1), a
+	//          point-in-time snapshot used as a relative-priority hint.
+	CWE  []string
+	CPE  string
+	EPSS float64
 }
 
 // catalog is the curated CVE list. Signatures are matched lowercase.
@@ -388,10 +398,82 @@ var catalog = []Record{
 
 // init normalizes every catalog signature to lowercase once, so
 // MatchPayload (called on every request) only lowercases the payload.
+// cveExtra carries the CWE / CPE / EPSS cross-references merged into the
+// catalog at init. CWE (weakness class) and CPE (affected product) are
+// stable; EPSS is a point-in-time snapshot (~2026-05) used only as a
+// relative-priority hint — see docs/attribution.md. Entries omitted here
+// simply leave those fields empty.
+var cveExtra = map[string]struct {
+	CWE  []string
+	CPE  string
+	EPSS float64
+}{
+	"CVE-2014-6271":  {[]string{"CWE-78"}, "cpe:2.3:a:gnu:bash:*", 0.94},
+	"CVE-2017-0144":  {[]string{"CWE-20", "CWE-787"}, "cpe:2.3:o:microsoft:windows:*", 0.94},
+	"CVE-2017-10271": {[]string{"CWE-502"}, "cpe:2.3:a:oracle:weblogic_server:*", 0.97},
+	"CVE-2017-12615": {[]string{"CWE-434"}, "cpe:2.3:a:apache:tomcat:*", 0.97},
+	"CVE-2017-5638":  {[]string{"CWE-1336", "CWE-20"}, "cpe:2.3:a:apache:struts:*", 0.97},
+	"CVE-2017-7921":  {[]string{"CWE-287"}, "cpe:2.3:o:hikvision:firmware:*", 0.90},
+	"CVE-2017-9841":  {[]string{"CWE-94"}, "cpe:2.3:a:phpunit:phpunit:*", 0.97},
+	"CVE-2018-0171":  {[]string{"CWE-787"}, "cpe:2.3:o:cisco:ios:*", 0.90},
+	"CVE-2018-10561": {[]string{"CWE-287"}, "cpe:2.3:o:dasannetworks:gpon_firmware:*", 0.97},
+	"CVE-2018-13379": {[]string{"CWE-22"}, "cpe:2.3:o:fortinet:fortios:*", 0.97},
+	"CVE-2018-15473": {[]string{"CWE-200"}, "cpe:2.3:a:openbsd:openssh:*", 0.55},
+	"CVE-2018-7600":  {[]string{"CWE-20", "CWE-94"}, "cpe:2.3:a:drupal:drupal:*", 0.97},
+	"CVE-2019-0708":  {[]string{"CWE-416"}, "cpe:2.3:o:microsoft:windows:*", 0.95},
+	"CVE-2019-11510": {[]string{"CWE-22"}, "cpe:2.3:a:pulsesecure:pulse_connect_secure:*", 0.97},
+	"CVE-2019-18935": {[]string{"CWE-502"}, "cpe:2.3:a:telerik:ui_for_asp.net_ajax:*", 0.95},
+	"CVE-2019-19781": {[]string{"CWE-22"}, "cpe:2.3:a:citrix:application_delivery_controller:*", 0.97},
+	"CVE-2020-1472":  {[]string{"CWE-330"}, "cpe:2.3:o:microsoft:windows_server:*", 0.96},
+	"CVE-2020-14882": {[]string{"CWE-22", "CWE-94"}, "cpe:2.3:a:oracle:weblogic_server:*", 0.97},
+	"CVE-2020-15782": {[]string{"CWE-787", "CWE-119"}, "cpe:2.3:o:siemens:simatic_s7-1200_firmware:*", 0.20},
+	"CVE-2020-5902":  {[]string{"CWE-22", "CWE-94"}, "cpe:2.3:a:f5:big-ip:*", 0.97},
+	"CVE-2021-21972": {[]string{"CWE-22", "CWE-434"}, "cpe:2.3:a:vmware:vcenter_server:*", 0.97},
+	"CVE-2021-22681": {[]string{"CWE-321"}, "cpe:2.3:o:rockwellautomation:studio_5000:*", 0.10},
+	"CVE-2021-26084": {[]string{"CWE-917"}, "cpe:2.3:a:atlassian:confluence_server:*", 0.97},
+	"CVE-2021-26855": {[]string{"CWE-918"}, "cpe:2.3:a:microsoft:exchange_server:*", 0.97},
+	"CVE-2021-3129":  {[]string{"CWE-502"}, "cpe:2.3:a:laravel:laravel:*", 0.96},
+	"CVE-2021-34473": {[]string{"CWE-918"}, "cpe:2.3:a:microsoft:exchange_server:*", 0.97},
+	"CVE-2021-34527": {[]string{"CWE-269", "CWE-22"}, "cpe:2.3:o:microsoft:windows:*", 0.94},
+	"CVE-2021-40539": {[]string{"CWE-287"}, "cpe:2.3:a:zohocorp:manageengine_adselfservice_plus:*", 0.95},
+	"CVE-2021-41773": {[]string{"CWE-22"}, "cpe:2.3:a:apache:http_server:2.4.49", 0.97},
+	"CVE-2021-42013": {[]string{"CWE-22"}, "cpe:2.3:a:apache:http_server:2.4.50", 0.97},
+	"CVE-2021-42278": {[]string{"CWE-269"}, "cpe:2.3:o:microsoft:windows_server:*", 0.55},
+	"CVE-2021-44228": {[]string{"CWE-502", "CWE-917", "CWE-20"}, "cpe:2.3:a:apache:log4j:*", 0.94},
+	"CVE-2022-1026":  {[]string{"CWE-200", "CWE-22"}, "cpe:2.3:o:kyocera:command_center_rx:*", 0.20},
+	"CVE-2022-1161":  {[]string{"CWE-94"}, "cpe:2.3:o:rockwellautomation:logix:*", 0.10},
+	"CVE-2022-1388":  {[]string{"CWE-306"}, "cpe:2.3:a:f5:big-ip:*", 0.97},
+	"CVE-2022-22965": {[]string{"CWE-94", "CWE-20"}, "cpe:2.3:a:vmware:spring_framework:*", 0.97},
+	"CVE-2022-26134": {[]string{"CWE-917"}, "cpe:2.3:a:atlassian:confluence_server:*", 0.97},
+	"CVE-2022-30190": {[]string{"CWE-94"}, "cpe:2.3:a:microsoft:windows:*", 0.97},
+	"CVE-2022-40684": {[]string{"CWE-288"}, "cpe:2.3:o:fortinet:fortios:*", 0.97},
+	"CVE-2023-20198": {[]string{"CWE-420", "CWE-269"}, "cpe:2.3:o:cisco:ios_xe:*", 0.94},
+	"CVE-2023-22518": {[]string{"CWE-863"}, "cpe:2.3:a:atlassian:confluence_data_center:*", 0.94},
+	"CVE-2023-26067": {[]string{"CWE-20"}, "cpe:2.3:o:lexmark:firmware:*", 0.50},
+	"CVE-2023-34362": {[]string{"CWE-89"}, "cpe:2.3:a:progress:moveit_transfer:*", 0.94},
+	"CVE-2023-3595":  {[]string{"CWE-787"}, "cpe:2.3:o:rockwellautomation:1756-en2t:*", 0.20},
+	"CVE-2023-42793": {[]string{"CWE-288"}, "cpe:2.3:a:jetbrains:teamcity:*", 0.97},
+	"CVE-2023-46604": {[]string{"CWE-502"}, "cpe:2.3:a:apache:activemq:*", 0.97},
+	"CVE-2024-12510": {[]string{"CWE-522"}, "cpe:2.3:o:xerox:versalink_firmware:*", 0.10},
+	"CVE-2024-21887": {[]string{"CWE-78"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.97},
+	"CVE-2024-3273":  {[]string{"CWE-78", "CWE-77"}, "cpe:2.3:o:dlink:dns-320_firmware:*", 0.94},
+	"CVE-2024-3400":  {[]string{"CWE-78"}, "cpe:2.3:o:paloaltonetworks:pan-os:*", 0.95},
+	"CVE-2024-4577":  {[]string{"CWE-78", "CWE-88"}, "cpe:2.3:a:php:php:*", 0.95},
+	"CVE-2024-47076": {[]string{"CWE-20"}, "cpe:2.3:a:openprinting:libcupsfilters:*", 0.30},
+	"CVE-2024-47175": {[]string{"CWE-20"}, "cpe:2.3:a:openprinting:libppd:*", 0.30},
+	"CVE-2024-47176": {[]string{"CWE-20", "CWE-918"}, "cpe:2.3:a:openprinting:cups-browsed:*", 0.30},
+	"CVE-2024-47177": {[]string{"CWE-78"}, "cpe:2.3:a:openprinting:cups-filters:*", 0.40},
+}
+
 func init() {
 	for i := range catalog {
 		for j, s := range catalog[i].Signatures {
 			catalog[i].Signatures[j] = strings.ToLower(s)
+		}
+		if e, ok := cveExtra[catalog[i].ID]; ok {
+			catalog[i].CWE = e.CWE
+			catalog[i].CPE = e.CPE
+			catalog[i].EPSS = e.EPSS
 		}
 	}
 }

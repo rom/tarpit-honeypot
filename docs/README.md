@@ -9,6 +9,7 @@ This directory has these reference documents:
 | [`config.md`](config.md) | When writing or auditing a YAML config. Section-by-section reference with defaults and rationale. |
 | [`cli.md`](cli.md) | When invoking the binary directly — every subcommand, every flag, every signal, every help topic. |
 | [`archetypes.md`](archetypes.md) | The full catalog of all 99 OS/device archetypes: each one's services/protocols, identity (banners, SNMP OID), and the CVEs it emulates. How vulnerability emulation works. |
+| [`attribution.md`](attribution.md) | In depth: the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings stamped on every event, plus the scanner-detection layers and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H). |
 | [`hardening.md`](hardening.md) | The layered self-confinement model — privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd. |
 | [`INTEGRATIONS.md`](INTEGRATIONS.md) | When wiring the sensor into SIEMs, IoT pipelines, pagers, K8s, launchd, ATT&CK pivots. Channel-by-channel cookbook + protocol handler catalog. |
 | [`tarpit-honeypot.1`](tarpit-honeypot.1) | Man page. Render with `man ./docs/tarpit-honeypot.1`; install to `/usr/share/man/man1/`. |

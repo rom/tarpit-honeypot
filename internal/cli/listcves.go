@@ -37,14 +37,19 @@ func cmdListCVEs(args []string) error {
 		fmt.Println("(no matching CVEs)")
 		return nil
 	}
-	fmt.Printf("%-18s %5s %-16s %-3s %s\n", "ID", "CVSS", "SERVICE", "DET", "NAME")
+	fmt.Printf("%-18s %5s %5s %-16s %-3s %s\n", "ID", "CVSS", "EPSS", "SERVICE", "DET", "NAME")
 	for _, r := range rows {
 		det := "-"
 		if r.Detectable() {
 			det = "yes"
 		}
-		fmt.Printf("%-18s %5.1f %-16s %-3s %s\n", r.ID, r.CVSS, dash(r.Service), det, r.Name)
+		epss := "-"
+		if r.EPSS > 0 {
+			epss = fmt.Sprintf("%.2f", r.EPSS)
+		}
+		fmt.Printf("%-18s %5.1f %5s %-16s %-3s %s\n", r.ID, r.CVSS, epss, dash(r.Service), det, r.Name)
 	}
-	fmt.Printf("\n%d CVE(s). DET=yes means an exploit attempt is recognized live.\n", len(rows))
+	fmt.Printf("\n%d CVE(s). DET=yes means a live exploit attempt is recognized; "+
+		"--json adds CWE/CPE/EPSS.\n", len(rows))
 	return nil
 }
