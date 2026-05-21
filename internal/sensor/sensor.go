@@ -160,6 +160,10 @@ func New(cfg *config.Config) (*Sensor, error) {
 
 	var sinks []sink.Sink
 	for _, ch := range cfg.Channels {
+		if !ch.On() {
+			slog.Info("channel disabled, skipping", "id", ch.ID, "type", ch.Type)
+			continue
+		}
 		var s sink.Sink
 		var err error
 		if ch.Type == "sqlite" {
@@ -892,6 +896,9 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	// Sinks + router + correlator first; if either fails we keep the old set.
 	var newSinks []sink.Sink
 	for _, ch := range newCfg.Channels {
+		if !ch.On() {
+			continue
+		}
 		var sk sink.Sink
 		var err error
 		if ch.Type == "sqlite" {

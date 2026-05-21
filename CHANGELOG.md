@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — per-channel `enabled` toggle
+- Channels accept `enabled: false` to stay **defined but off** — not built,
+  not type-validated, so an outbound sink that needs external infra (an
+  MQTT broker, a webhook secret, a SIEM collector) can ship in a config and
+  stay dormant until turned on. `run` no longer aborts when a disabled
+  broker/endpoint is unreachable. The bundled `example-FULL` and
+  `example-ADVANCED-OT` configs now ship their MQTT / webhook /
+  remote-syslog channels disabled, so every example runs standalone out of
+  the box.
+
 ### Added — CWE / CPE / EPSS cross-references + attribution doc
 - The CVE catalog records now carry **CWE** (weakness class), **CPE 2.3**
   (affected product) and **EPSS** (exploit-probability snapshot) alongside

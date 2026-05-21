@@ -611,6 +611,12 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("channel id %q duplicated", ch.ID)
 		}
 		chanByID[ch.ID] = true
+		// A disabled channel keeps its id (so routes referencing it still
+		// validate) but skips type-specific checks — it can ship
+		// half-configured (no broker / secret yet) and stay off.
+		if !ch.On() {
+			continue
+		}
 		switch ch.Type {
 		case "stdout", "jsonlog", "sqlite":
 		case "webhook":

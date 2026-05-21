@@ -440,10 +440,21 @@ Events get `honeynet`, `honeynet_host`, `honeynet_hostname`, `honeynet_os` meta 
 channels:
   - id: stdout
     type: stdout                   # stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+    enabled: true                  # omit/true = on; false = defined but skipped
     format: json                   # json (default) | cef | leef | ocsf
     min_severity: low              # gate per-channel
     rate_limit_per_min: 0          # 0 = unlimited
 ```
+
+`enabled: false` keeps a channel **defined but off** — it is neither built
+nor type-validated at startup, so an outbound sink that needs external infra
+(an MQTT broker, a webhook secret, a SIEM collector) can ship in a config
+and stay dormant until you set `enabled: true` and provide the
+endpoint/secret. A `run` no longer aborts because a disabled broker isn't
+reachable. Routes that reference a disabled channel simply don't deliver
+there. (This is why the bundled `example-FULL` / `example-ADVANCED-OT`
+configs ship their MQTT / webhook / remote-syslog channels disabled — they
+run standalone out of the box.)
 
 Type-specific fields (all optional unless noted):
 

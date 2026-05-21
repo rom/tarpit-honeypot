@@ -748,8 +748,15 @@ type Dedup struct {
 }
 
 type Channel struct {
-	ID              string `yaml:"id"`
-	Type            string `yaml:"type"`   // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+	ID   string `yaml:"id"`
+	Type string `yaml:"type"` // stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+	// Enabled gates the channel. Omitted (nil) or true = active; false =
+	// defined but skipped (not built, not validated for type-specifics) —
+	// so an outbound sink that needs external infra (an MQTT broker, a
+	// webhook secret, a SIEM host) can ship in a config but stay off until
+	// the operator turns it on. Routes referencing a disabled channel are
+	// simply not delivered there.
+	Enabled         *bool  `yaml:"enabled"`
 	Format          string `yaml:"format"` // json (default) | cef | leef | ocsf
 	MinSeverity     string `yaml:"min_severity"`
 	RateLimitPerMin int    `yaml:"rate_limit_per_min"`
@@ -804,6 +811,11 @@ type Channel struct {
 	CACertFile    string `yaml:"ca_cert_file"`    // PEM bundle to verify the server against
 	TLSServerName string `yaml:"tls_server_name"` // SNI / verify name override
 }
+
+// On reports whether the channel is enabled. Default (Enabled nil) is on,
+// so existing configs are unaffected; set `enabled: false` to keep a
+// channel defined but skipped.
+func (c Channel) On() bool { return c.Enabled == nil || *c.Enabled }
 
 type Route struct {
 	Match    Match    `yaml:"match"`

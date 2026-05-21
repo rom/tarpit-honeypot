@@ -282,13 +282,17 @@ channels:
     type: sqlite
   - id: log
     type: jsonlog
+  # Outbound channels ship disabled — point them at your real SIEM / SOC
+  # and set `enabled: true` to turn them on.
   - id: siem
     type: syslog
+    enabled: false
     network: udp
     address: siem.plant.local:514
     format: cef
   - id: soc-webhook
     type: webhook
+    enabled: false
     url: https://soc.plant.local/hooks/tarpit
     hmac_secret_env: TARPIT_WEBHOOK_SECRET
     min_severity: high

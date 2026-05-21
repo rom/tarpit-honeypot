@@ -912,18 +912,25 @@ channels:
     network: udp
     address: 127.0.0.1:5515
     format: leef
+  # The outbound channels below need external infra (a broker, a SIEM
+  # collector, a secret/URL in an env var) so they ship `enabled: false`
+  # and are skipped at startup. Set `enabled: true` (and provide the env
+  # vars / endpoints) to turn one on.
   - id: webhook
     type: webhook
+    enabled: false
     url: https://example.invalid/hook
     hmac_secret_env: TARPIT_WEBHOOK_SECRET
     min_severity: high
   - id: mqtt-out
     type: mqtt
+    enabled: false         # needs an MQTT broker on tcp://127.0.0.1:1883
     url: tcp://127.0.0.1:1883
     topic: tarpit/events
     qos: 1
   - id: mqtt-tls
     type: mqtt
+    enabled: false
     url: tls://broker.example:8883
     topic: tarpit/events
     qos: 1
@@ -933,6 +940,7 @@ channels:
     min_severity: high
   - id: syslog-tls
     type: syslog
+    enabled: false
     network: tls           # RFC 5424 + octet-counting over TLS (RFC 5425)
     address: siem.example:6514
     format: cef
@@ -941,6 +949,7 @@ channels:
     min_severity: medium
   - id: discord
     type: discord
+    enabled: false
     url_env: TARPIT_DISCORD_WEBHOOK   # the Discord incoming-webhook URL
     min_severity: high
 
