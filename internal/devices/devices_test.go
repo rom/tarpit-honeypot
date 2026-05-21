@@ -200,3 +200,34 @@ func TestPersistRoundTrip(t *testing.T) {
 		t.Errorf("new device after loading a baseline should alert")
 	}
 }
+
+func TestDeviceClassification(t *testing.T) {
+	cases := []struct {
+		services []string
+		ports    []int
+		want     string
+	}{
+		{[]string{"modbus"}, []int{502}, "ics-endpoint"},
+		{[]string{"snmp"}, []int{161}, "network-device"},
+		{[]string{"http", "https"}, []int{80, 443}, "web-host"},
+		{[]string{"ssh"}, []int{22}, "host"},
+	}
+	for _, c := range cases {
+		r := New(Config{Learn: false})
+		for i, s := range c.services {
+			r.Observe(Observation{IP: "10.9.9.9", Source: SourceConn, Service: s, Port: c.ports[i]})
+		}
+		d := r.List()[0]
+		if d.Attrs["class"] != c.want {
+			t.Errorf("services %v -> class %q; want %q", c.services, d.Attrs["class"], c.want)
+		}
+	}
+	// A wide port sweep is a scanner regardless of services.
+	r := New(Config{Learn: false})
+	for p := 1; p <= 10; p++ {
+		r.Observe(Observation{IP: "5.5.5.5", Source: SourceConn, Port: p, Service: "raw"})
+	}
+	if r.List()[0].Attrs["class"] != "scanner" {
+		t.Errorf("port sweep should classify as scanner; got %q", r.List()[0].Attrs["class"])
+	}
+}

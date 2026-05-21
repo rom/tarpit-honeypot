@@ -260,6 +260,65 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Cisco IOS Smart Install (port 4786) unauthenticated config/RCE.",
 	},
+	// More web exploit signatures.
+	{
+		ID: "CVE-2023-22518", Name: "Confluence setup-restore", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/json/setup-restore.action", "/json/setup-restore-local.action"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence improper-authorization data-destruction / takeover.",
+	},
+	{
+		ID: "CVE-2023-20198", Name: "Cisco IOS-XE Web UI", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/webui/logoutconfirm.html?logon_hash=", "/%2577ebui_wsma_http"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Cisco IOS-XE web UI privilege escalation / implant install.",
+	},
+	{
+		ID: "CVE-2024-4577", Name: "PHP-CGI argument injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/php-cgi/php-cgi.exe", "%add+allow_url_include", "auto_prepend_file%3dphp"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "PHP-CGI on Windows argument injection (Best-Fit encoding) RCE.",
+	},
+	{
+		ID: "CVE-2023-42793", Name: "JetBrains TeamCity auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/app/rest/users/id:1/tokens/", "/app/rest/debug/processes"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "JetBrains TeamCity authentication bypass to RCE.",
+	},
+	{
+		ID: "CVE-2021-40539", Name: "ManageEngine ADSelfService", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/restapi/logoncustomization", "/help/admin-guide/generalsettings/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Zoho ManageEngine ADSelfService Plus REST API auth bypass RCE.",
+	},
+	{
+		ID: "CVE-2024-21887", Name: "Ivanti Connect Secure", CVSS: 9.1, Service: "pulse",
+		Signatures: []string{"/api/v1/totp/user-backup-code/", "/api/v1/license/keys-status/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Connect Secure command injection (chained with auth bypass).",
+	},
+	// ICS advisory records (control-protocol exploits, no HTTP signature) —
+	// give the cve:<id> events + vuln_emulation advisories an ATT&CK mapping.
+	{
+		ID: "CVE-2020-15782", Name: "Siemens S7-1200/1500 memory bypass", CVSS: 8.1, Service: "s7",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Siemens SIMATIC S7-1200/1500 protection-mechanism bypass / memory R-W.",
+	},
+	{
+		ID: "CVE-2023-3595", Name: "Rockwell 1756-EN2T RCE", CVSS: 9.8, Service: "ethernetip",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Rockwell ControlLogix 1756-EN* CIP out-of-bounds write RCE / DoS.",
+	},
+	{
+		ID: "CVE-2021-22681", Name: "Rockwell Studio 5000 key", CVSS: 10.0, Service: "ethernetip",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Rockwell Logix controllers hardcoded key — unauthenticated control.",
+	},
+	{
+		ID: "CVE-2022-1161", Name: "Rockwell Logix hidden code", CVSS: 10.0, Service: "ethernetip",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Rockwell Logix controllers — boot-code injection of hidden program.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

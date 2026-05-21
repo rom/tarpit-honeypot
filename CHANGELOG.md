@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — device classification + larger CVE catalog
+- **Device classification**: each learned device now gets an inferred
+  `class` attribute (scanner / ics-endpoint / network-device / web-host /
+  host) from the services + ports it touched, sharpening over time
+  (`devices.classify`).
+- **CVE catalog ~30 → ~40**: added Confluence 22518, Cisco IOS-XE 20198,
+  PHP-CGI 4577, TeamCity 42793, ManageEngine 40539, Ivanti 21887, and ICS
+  advisory records for Siemens S7 (CVE-2020-15782) and Rockwell Logix
+  (CVE-2023-3595 / 2021-22681 / 2022-1161).
+
 ### Added — 8 more OT/ICS device archetypes (ship total 89)
 - **ABB**: AC500 PLC (CODESYS), S500 remote I/O (CI502 PROFINET), RTU560
   substation RTU (IEC 104 + 61850 MMS).

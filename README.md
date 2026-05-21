@@ -248,10 +248,12 @@ rationale covering the current implementation.
   `log4shell` → T1190/T1059, `modbus-write-attempt` → ICS T0836/T0831,
   `default-credential-attempt` → T1078.001, …), so a generic handler hit
   still carries precise attribution. CVE exploit-attempt events
-  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (now
-  ~30 entries: Log4Shell, Spring4Shell, ProxyShell, WebLogic, Telerik,
-  Confluence, MOVEit, Citrix/Pulse/Fortinet/PAN-OS, Apache 41773/42013,
-  GPON/D-Link/Hikvision, …). SIEMs pivot on these IDs directly.
+  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (~40
+  entries: Log4Shell, Spring4Shell, ProxyShell, WebLogic, Telerik,
+  Confluence, MOVEit, Citrix/Pulse/Ivanti/Fortinet/PAN-OS, Apache
+  41773/42013, Cisco IOS-XE 20198, PHP-CGI 4577, TeamCity, GPON/D-Link/
+  Hikvision, plus ICS advisories for Siemens S7 and Rockwell Logix). SIEMs
+  pivot on these IDs directly.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-

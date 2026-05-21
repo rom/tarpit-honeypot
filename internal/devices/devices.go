@@ -229,6 +229,14 @@ func (r *Registry) Observe(o Observation) ObserveResult {
 		}
 		d.Attrs[k] = v
 	}
+	// Infer a coarse device class from the services/ports accumulated so
+	// far. Sharpens as the device interacts more; stored as an attribute.
+	if c := classify(d); c != "" {
+		if d.Attrs == nil {
+			d.Attrs = map[string]string{}
+		}
+		d.Attrs["class"] = c
+	}
 	d.LastSeen = now
 	d.Count++
 	r.dirty = true
@@ -322,6 +330,51 @@ func (r *Registry) Allow(key string) bool {
 		}
 	}
 	return false
+}
+
+var icsServices = map[string]bool{
+	"modbus": true, "s7": true, "s7comm_plus": true, "iec104": true, "dnp3": true,
+	"ethernetip": true, "opcua": true, "bacnet": true, "fins": true, "melsec": true,
+	"mms": true, "codesys": true, "ge_srtp": true, "atg": true, "fox": true,
+	"hartip": true, "pcworx": true, "knx": true,
+}
+
+var netServices = map[string]bool{
+	"snmp": true, "ssdp": true, "llmnr": true, "nbns": true, "cldap": true, "lldp": true,
+}
+
+// classify infers a coarse device class from the services/ports a host has
+// touched. Order matters: a wide port sweep is a scanner regardless of which
+// services it brushed; an ICS protocol marks an OT endpoint; SNMP/discovery
+// without much else is network gear; web-only is a web host.
+func classify(d *Device) string {
+	if len(d.Ports) >= 8 {
+		return "scanner"
+	}
+	for _, s := range d.Services {
+		if icsServices[s] {
+			return "ics-endpoint"
+		}
+	}
+	netHits, web := 0, false
+	for _, s := range d.Services {
+		if netServices[s] {
+			netHits++
+		}
+		if s == "http" || s == "https" {
+			web = true
+		}
+	}
+	if netHits > 0 && len(d.Services) <= 3 {
+		return "network-device"
+	}
+	if web {
+		return "web-host"
+	}
+	if len(d.Services) > 0 {
+		return "host"
+	}
+	return ""
 }
 
 // addInt appends v to xs (deduped, sorted) up to a cap.
