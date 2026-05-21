@@ -8,6 +8,39 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [v2.0.0] — 2026-05-21
+
+Major release. Headline additions since v1.5: a full printer / multi-function
+device deception + detection suite (PJL, IPP/CUPS, LPD handlers; PRET-aware
+PJL with decoy filesystem; 11 printer/MFD archetypes); five offline CLI
+inspection subcommands; passive OS fingerprinting; per-deployment webapp
+honeytokens; SNMP-SET / DNS-zone-transfer / TFTP protocol-misuse detection;
+and the catalog grown to 99 OS/device archetypes. See the entries below.
+
+### Changed
+- Default build version is now `2.0.0` (compiled-in fallback; release builds
+  still derive it from `git describe`).
+
+### Fixed
+- Deterministic archetype catalog: the Active Directory, MikroTik and Cisco
+  Catalyst archetypes registered several aliases with *different*
+  `Profile.Name`s but one `DisplayName`, so `All()` / `Names()` /
+  `list-archetypes` picked a nondeterministic canonical name. Each now uses
+  one canonical name per device. `list-archetypes <canonical-name>` also
+  resolves now (the `Find` resolver gained a Name fallback).
+- Catalog integrity: added the CVEs the AD DC archetype advertised but the
+  catalog was missing — ZeroLogon (CVE-2020-1472), PrintNightmare
+  (CVE-2021-34527), noPac (CVE-2021-42278).
+
+### Added — documentation & tests
+- New [`docs/archetypes.md`](docs/archetypes.md): the full 99-archetype
+  catalog with each device's services/protocols and emulated CVEs.
+- New cross-package integrity tests: archetype name/DisplayName round-trip,
+  archetype default-service handlers are all real, advertised CVEs all exist
+  in the catalog, the CVE catalog is sorted/dup-free, and the MITRE coverage
+  map is well-formed.
+- A man page (`docs/tarpit-honeypot.1`).
+
 ### Added — 10 printer/MFD archetypes + richer emulation & detection
 - **10 new printer/MFD archetypes** (ship total 99): Brother, Canon
   imageRUNNER, Epson WorkForce, Xerox VersaLink, Lexmark, Ricoh, Konica

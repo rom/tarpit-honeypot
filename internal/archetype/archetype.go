@@ -578,7 +578,7 @@ func Find(name string) *Profile {
 	}
 	want := normalize(name)
 	for _, p := range All() {
-		if normalize(p.DisplayName) == want {
+		if normalize(p.DisplayName) == want || normalize(p.Name) == want {
 			return p
 		}
 	}

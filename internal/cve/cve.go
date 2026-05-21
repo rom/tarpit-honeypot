@@ -365,6 +365,25 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Kyocera Net Manager / device path traversal exposing stored credentials.",
 	},
+	// Active Directory / Windows server advisories (advertised by the
+	// domain-controller archetype). ZeroLogon is the Netlogon auth bypass;
+	// PrintNightmare is the Print Spooler RCE; noPac is sAMAccountName
+	// spoofing to Domain Admin.
+	{
+		ID: "CVE-2020-1472", Name: "ZeroLogon", CVSS: 10.0, Service: "dcerpc",
+		Technique: "T1210", Tactic: "lateral-movement",
+		Description: "Netlogon (MS-NRPC) cryptographic flaw — unauthenticated DC takeover.",
+	},
+	{
+		ID: "CVE-2021-34527", Name: "PrintNightmare", CVSS: 8.8, Service: "dcerpc",
+		Technique: "T1210", Tactic: "lateral-movement",
+		Description: "Windows Print Spooler (MS-RPRN) remote code execution.",
+	},
+	{
+		ID: "CVE-2021-42278", Name: "noPac (sAMAccountName spoofing)", CVSS: 8.8, Service: "kerberos",
+		Technique: "T1558", Tactic: "credential-access",
+		Description: "AD sAMAccountName spoofing chained with CVE-2021-42287 for Domain Admin.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

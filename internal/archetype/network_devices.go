@@ -6,9 +6,9 @@ package archetype
 // Linux-based (icmpTTL 64) but present very distinct, recognisable service
 // banners + SNMP identities that scanners (Shodan/Censys) key on.
 var networkDeviceArchetypes = map[string]*Profile{
-	"mikrotik-router":      mikrotikProfile("mikrotik-router"),
-	"mikrotik-routeros":    mikrotikProfile("mikrotik-routeros"),
-	"mikrotik-routerboard": mikrotikProfile("mikrotik-routerboard"),
+	"mikrotik-router":      mikrotikProfile(),
+	"mikrotik-routeros":    mikrotikProfile(),
+	"mikrotik-routerboard": mikrotikProfile(),
 	"teltonika-rut240":     teltonikaRUT240(),
 	"teltonika-router":     teltonikaRUT240(),
 }
@@ -19,10 +19,10 @@ var networkDeviceArchetypes = map[string]*Profile{
 // (8728) are MikroTik-only. SNMP sysObjectID lives under the MikroTik
 // enterprise tree (.1.3.6.1.4.1.14988). Family "mikrotik" routes the
 // interactive shell to the RouterOS CLI emulator.
-func mikrotikProfile(name string) *Profile {
+func mikrotikProfile() *Profile {
 	const ver = "6.49.10"
 	return &Profile{
-		Name:        name,
+		Name:        "mikrotik-routeros",
 		DisplayName: "MikroTik RouterOS (RB750Gr3, " + ver + ")",
 		Family:      "mikrotik",
 		macOUI:      [3]byte{0x4c, 0x5e, 0x0c}, // Routerboard.com / MikroTikls

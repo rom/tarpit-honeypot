@@ -1,0 +1,211 @@
+.\" Manpage for tarpit-honeypot.
+.\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
+.TH TARPIT-HONEYPOT 1 "2026-05-21" "tarpit-honeypot 2.0.0" "User Commands"
+.SH NAME
+tarpit-honeypot \- CGO-free deception + detection honeypot sensor
+.SH SYNOPSIS
+.B tarpit-honeypot
+.RI [ global-flags ]
+.I subcommand
+.RI [ flags ]
+.br
+.B tarpit-honeypot
+.BR --version | -V
+.br
+.B tarpit-honeypot
+.BR help " [" \fIsubcommand\fR | \fItopic\fR ]
+.SH DESCRIPTION
+.B tarpit-honeypot
+is a single, statically linked, CGO-free Go binary that stands up
+plausible decoy services (SSH, HTTP/S, FTP, SMB, RDP, databases, a large
+set of ICS/OT protocols, printers/MFDs, remote-access and out-of-band
+management endpoints), records every interaction as a structured event,
+and forwards alerts to one or more outbound channels. It never exposes a
+real shell, filesystem, or exploitable code path: dangerous operations are
+recognized and logged, never performed.
+.PP
+An optional
+.I archetype
+pins every fingerprint-bearing handler to a single coherent device
+identity (banners, SNMP identity, MAC OUI, TLS posture, ICMP TTL, web UI,
+advertised CVEs) so a scanner cannot catch the sensor on an internal
+inconsistency. See
+.BR "tarpit-honeypot list-archetypes" " and " docs/archetypes.md .
+.SH GLOBAL FLAGS
+.TP
+.BR --version ", " -V
+Print version, commit, and build date, then exit.
+.TP
+.BR -h ", " --help
+Print the subcommand index.
+.SH COMMON FLAGS
+Most subcommands accept the shared logging and config-override set.
+.TP
+.BI -c " path"
+Config file (default
+.IR /etc/tarpit-honeypot/config.yaml ).
+Repeatable to combine files.
+.TP
+.BI --set " key.path=value"
+Override one YAML key (repeatable; type auto-detected). Applied last.
+.TP
+.BI -i ", " --interface " name"
+Network interface for the AF_PACKET layer (repeatable).
+.TP
+.BI --log-level " level"
+.BR debug | info | warn | error
+(default
+.BR info ).
+.TP
+.BI --log-format " fmt"
+.BR text | json
+(default
+.BR text ).
+.TP
+.BI --log-file " path"
+Redirect logs to a file (default stderr).
+.TP
+.BR --quiet ", " --verbose
+Shortcuts for
+.B --log-level=error
+and
+.BR --log-level=debug .
+.SH SUBCOMMANDS
+.TP
+.B run
+Start the sensor (listeners + sinks). Reloads config on
+.BR SIGHUP ;
+.B --dry-run
+loads and validates without binding.
+.TP
+.B validate-config
+Parse and validate a config; with
+.B --diff
+classify hot-reloadable vs restart-required changes between two configs.
+.TP
+.B show-config
+Print the effective post-defaults config as YAML (secrets stay as env-var
+names).
+.TP
+.B test-alert
+Emit a synthetic event through the configured channels.
+.TP
+.B list-events
+Tail / query events from the local SQLite store or JSON logs
+.RB ( --since ", " --source ", " --rule ", " --limit ).
+.TP
+.B gen-token
+Print an unguessable canary token
+.RB ( --type " " dns | url | hex ).
+.TP
+.B export-pcap
+Copy one event's per-connection pcap out of the captures directory.
+.TP
+.B list-honeynets
+Print the configured artificial networks, hosts, and services.
+.TP
+.B list-devices
+Print the learned-device inventory
+.RI ( devices.json );
+.B --json
+for a baseline snapshot.
+.TP
+.B list-archetypes
+Print the device/OS archetype catalog; add a name for the full
+fingerprint, or
+.BR --json .
+.TP
+.B list-handlers
+Print the protocol handlers valid in a listener
+.RB ( --proto " " tcp | udp ).
+.TP
+.B list-cves
+Print the CVE catalog used for emulation + exploit detection
+.RB ( --service ", " --json ).
+.TP
+.B list-techniques
+Print the MITRE ATT&CK / D3FEND coverage map
+.RB ( --kind " " rule | handler | anomaly ).
+.TP
+.B identify
+Run the offline fingerprint engine over a supplied User-Agent, path, SSH
+client id, JA3, or payload
+.RB ( --ua ", " --ssh ", " --ja3 ", " --payload ", " --handler ).
+.TP
+.B init
+Write a default config skeleton to stdout (or
+.BR -o ).
+.TP
+.B completion
+Print a shell-completion script
+.RB ( bash | zsh | fish ).
+.TP
+.B help
+Long-form help for a subcommand or topic
+.RB ( "help archetypes" ).
+.TP
+.B version
+Print version info.
+.SH FILES
+.TP
+.I /etc/tarpit-honeypot/config.yaml
+Default configuration file.
+.TP
+.I <data_dir>/events.db
+SQLite event store (powers
+.B list-events
+and the web UI).
+.TP
+.I <data_dir>/devices.json
+Learned-device inventory.
+.TP
+.I <data_dir>/captures/<event_id>.pcap
+Per-connection packet captures (when
+.B capture: true
+is set on a listener).
+.SH EXAMPLES
+.PP
+Validate a config and start the sensor:
+.PP
+.RS
+.nf
+tarpit-honeypot validate-config -c /etc/tarpit-honeypot/config.yaml
+tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
+.fi
+.RE
+.PP
+Inspect the built-in catalogs offline:
+.PP
+.RS
+.nf
+tarpit-honeypot list-archetypes xerox-versalink
+tarpit-honeypot list-cves --service ipp
+tarpit-honeypot list-techniques --kind anomaly
+.fi
+.RE
+.PP
+Triage a captured signal:
+.PP
+.RS
+.nf
+tarpit-honeypot identify --ua "sqlmap/1.7" --payload '${jndi:ldap://x/a}'
+.fi
+.RE
+.SH SECURITY
+The sensor is read-only by design and never becomes an
+amplification/reflection primitive or an exploitable target. The one
+opt-in write path (web-UI device delete/whitelist) is gated by a config
+flag plus an auth token. Run it as an unprivileged user; use
+.B sensor.drop_user
+/
+.B sensor.drop_group
+to drop privileges after binding low ports.
+.SH SEE ALSO
+Full documentation in the
+.I docs/
+directory:
+.IR README.md ", " docs/cli.md ", " docs/config.md ", " docs/usage.md ", "
+.IR docs/archetypes.md ", " docs/design.md ", " docs/hardening.md ", "
+.IR docs/INTEGRATIONS.md .
+.SH BUGS
+Report issues at https://github.com/rom/tarpit-honeypot/issues .

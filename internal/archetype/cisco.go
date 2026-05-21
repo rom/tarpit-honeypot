@@ -98,20 +98,24 @@ func ciscoProfile(name string) *Profile {
 	// Model-specific identity. "cisco-catalyst-switch" and
 	// "cisco-catalyst-9300" present a modern IOS-XE 9300; the rest are the
 	// classic 2960 / IOS 15 access switch.
+	// canonicalName is fixed per model (not per alias) so All()/Names()
+	// dedup deterministically when several aliases share a DisplayName.
 	display := "Cisco Catalyst 2960 (IOS 15)"
+	canonicalName := "cisco-catalyst-2960"
 	sysDescr := "Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE11, RELEASE SOFTWARE (fc3)"
 	sysObjectID := ".1.3.6.1.4.1.9.1.716" // catalyst2960
 	model := "WS-C2960-24TT-L"
 	switch name {
 	case "cisco-catalyst-switch", "cisco-catalyst-9300":
 		display = "Cisco Catalyst 9300 (IOS-XE 17)"
+		canonicalName = "cisco-catalyst-9300"
 		sysDescr = "Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4a, RELEASE SOFTWARE (fc1)"
 		sysObjectID = ".1.3.6.1.4.1.9.1.2494" // cat9300
 		model = "C9300-24T"
 	}
 
 	p := &Profile{
-		Name:        name,
+		Name:        canonicalName,
 		DisplayName: display,
 		Family:      "cisco",
 		macOUI:      [3]byte{0x00, 0x1a, 0x2b}, // Cisco Systems OUI

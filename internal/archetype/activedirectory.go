@@ -17,19 +17,20 @@ import "crypto/tls"
 // Registered under several aliases ("active directory", "domain
 // controller", "windows server 2019 ad") so operators can name it
 // naturally in sensor.archetype.
+// All aliases resolve to one canonical profile (Name "active-directory")
+// so dedup in All()/Names() is deterministic regardless of which alias the
+// operator names in sensor.archetype. normalize() folds spaces/case.
 var adArchetypes = map[string]*Profile{
-	"active-directory": adProfile("active-directory"),
-	// Aliases resolve to an equivalent profile (normalize() folds the
-	// spaces/case in sensor.archetype).
-	"domain-controller":           adProfile("domain-controller"),
-	"windows-server-2019-ad":      adProfile("windows-server-2019-ad"),
-	"windows-server-2019-dc":      adProfile("windows-server-2019-dc"),
-	"windows-active-directory-dc": adProfile("windows-active-directory-dc"),
+	"active-directory":            adProfile(),
+	"domain-controller":           adProfile(),
+	"windows-server-2019-ad":      adProfile(),
+	"windows-server-2019-dc":      adProfile(),
+	"windows-active-directory-dc": adProfile(),
 }
 
-func adProfile(name string) *Profile {
+func adProfile() *Profile {
 	return &Profile{
-		Name:        name,
+		Name:        "active-directory",
 		DisplayName: "Active Directory (Windows Server 2019 DC)",
 		Family:      "windows",
 		httpServer:  "Microsoft-IIS/10.0",
