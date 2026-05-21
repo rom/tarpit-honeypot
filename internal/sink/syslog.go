@@ -17,14 +17,19 @@ type syslogSink struct {
 	formatter format.Formatter
 }
 
-func newSyslog(ch config.Channel, f format.Formatter) (*syslogSink, error) {
+func newSyslog(ch config.Channel, f format.Formatter) (Sink, error) {
+	// tcp / tls use the RFC 5424 + octet-counting stream sink (log/syslog
+	// can't do TLS and uses BSD framing).
+	if ch.Network == "tcp" || ch.Network == "tls" {
+		return newStreamSyslog(ch, f)
+	}
 	var w *syslog.Writer
 	var err error
 	priority := syslog.LOG_INFO | syslog.LOG_DAEMON
 	switch ch.Network {
 	case "local", "":
 		w, err = syslog.New(priority, ch.Tag)
-	default:
+	default: // udp | unix
 		w, err = syslog.Dial(ch.Network, ch.Address, priority, ch.Tag)
 	}
 	if err != nil {

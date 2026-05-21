@@ -715,6 +715,7 @@ type Channel struct {
 
 	// webhook
 	URL           string        `yaml:"url"`
+	URLEnv        string        `yaml:"url_env"` // read URL from this env var (keeps secrets/webhook tokens out of YAML)
 	HMACSecretEnv string        `yaml:"hmac_secret_env"`
 	Timeout       time.Duration `yaml:"timeout"`
 
@@ -754,6 +755,13 @@ type Channel struct {
 	Topic  string `yaml:"topic"`
 	QoS    int    `yaml:"qos"`
 	Retain bool   `yaml:"retain"`
+
+	// TLS options shared by stream sinks that dial over TLS (syslog
+	// network=tls, mqtt tls:// brokers). Default = verify against the
+	// system roots.
+	TLSInsecure   bool   `yaml:"tls_insecure"`    // skip cert verification (lab brokers only)
+	CACertFile    string `yaml:"ca_cert_file"`    // PEM bundle to verify the server against
+	TLSServerName string `yaml:"tls_server_name"` // SNI / verify name override
 }
 
 type Route struct {

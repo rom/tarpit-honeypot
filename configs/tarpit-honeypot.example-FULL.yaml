@@ -903,9 +903,30 @@ channels:
     url: tcp://127.0.0.1:1883
     topic: tarpit/events
     qos: 1
+  - id: mqtt-tls
+    type: mqtt
+    url: tls://broker.example:8883
+    topic: tarpit/events
+    qos: 1
+    username_env: TARPIT_MQTT_USER
+    password_env: TARPIT_MQTT_PASS
+    # ca_cert_file: /etc/tarpit-honeypot/broker-ca.pem
+    min_severity: high
+  - id: syslog-tls
+    type: syslog
+    network: tls           # RFC 5424 + octet-counting over TLS (RFC 5425)
+    address: siem.example:6514
+    format: cef
+    # ca_cert_file: /etc/tarpit-honeypot/siem-ca.pem
+    # tls_insecure: true   # lab collectors with self-signed certs only
+    min_severity: medium
+  - id: discord
+    type: discord
+    url_env: TARPIT_DISCORD_WEBHOOK   # the Discord incoming-webhook URL
+    min_severity: high
 
 routes:
   - match: {}
     channels: [db, log]
   - match: { severity: ">=high" }
-    channels: [console, cef-syslog, leef-syslog, webhook, mqtt-out]
+    channels: [console, cef-syslog, leef-syslog, webhook, mqtt-out, discord]

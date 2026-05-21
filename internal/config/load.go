@@ -214,7 +214,7 @@ func (c *Config) applyDefaults() {
 		if ch.MinSeverity == "" {
 			ch.MinSeverity = "low"
 		}
-		if ch.Type == "webhook" && ch.Timeout == 0 {
+		if (ch.Type == "webhook" || ch.Type == "discord") && ch.Timeout == 0 {
 			ch.Timeout = 5 * time.Second
 		}
 		if ch.Type == "syslog" && ch.Network == "" {
@@ -545,12 +545,16 @@ func (c *Config) Validate() error {
 			}
 		case "syslog":
 			switch ch.Network {
-			case "local", "tcp", "udp", "unix":
+			case "local", "tcp", "udp", "unix", "tls":
 			default:
-				return fmt.Errorf("channel %s: syslog network must be local|tcp|udp|unix", ch.ID)
+				return fmt.Errorf("channel %s: syslog network must be local|tcp|udp|unix|tls", ch.ID)
 			}
 			if ch.Network != "local" && ch.Address == "" {
 				return fmt.Errorf("channel %s: syslog network=%s requires address", ch.ID, ch.Network)
+			}
+		case "discord":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: discord needs url (or url_env) — the Discord webhook URL", ch.ID)
 			}
 		case "twilio":
 			if ch.AccountSIDEnv == "" || ch.AuthTokenEnv == "" {

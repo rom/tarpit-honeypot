@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -52,6 +53,15 @@ func newMQTT(ch config.Channel, f format.Formatter) (Sink, error) {
 	if ch.PasswordEnv != "" {
 		opts.SetPassword(os.Getenv(ch.PasswordEnv))
 	}
+	// TLS brokers (tls:// ssl:// wss://): apply custom CA / insecure / SNI
+	// when any TLS option is set; otherwise paho uses the system roots.
+	if isTLSBroker(ch.URL) && (ch.TLSInsecure || ch.CACertFile != "" || ch.TLSServerName != "") {
+		tlsCfg, err := buildTLSConfig(ch)
+		if err != nil {
+			return nil, fmt.Errorf("mqtt %s: %w", ch.ID, err)
+		}
+		opts.SetTLSConfig(tlsCfg)
+	}
 	c := mqtt.NewClient(opts)
 	if token := c.Connect(); token.WaitTimeout(5*time.Second) && token.Error() != nil {
 		return nil, fmt.Errorf("mqtt %s: connect: %w", ch.ID, token.Error())
@@ -96,4 +106,8 @@ func (m *mqttSink) Close() error {
 
 func nowSuffix() string {
 	return fmt.Sprintf("%x", time.Now().UnixNano())
+}
+
+func isTLSBroker(u string) bool {
+	return strings.HasPrefix(u, "tls://") || strings.HasPrefix(u, "ssl://") || strings.HasPrefix(u, "wss://")
 }

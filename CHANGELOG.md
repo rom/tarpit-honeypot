@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — outbound channels: syslog/TLS, Discord, MQTT/TLS options
+- **syslog `network: tcp` / `network: tls`** now use an RFC 5424 message
+  with RFC 6587 octet-counting framing (the framing RFC 5425 mandates for
+  syslog over TLS), with reconnect-on-failure (`internal/sink/syslog_stream.go`).
+  TLS verifies against the system roots unless `ca_cert_file` /
+  `tls_insecure` / `tls_server_name` are set. Cross-platform (the stream
+  sink builds on Windows too; only local/udp/unix need the unix stdlib).
+- **`discord` channel**: posts a severity-colored embed to a Discord
+  incoming-webhook `url` (or `url_env`). Embeds suppress @mentions and meta
+  is sanitized, so a captured payload can't ping a channel.
+- **MQTT TLS options**: `tls://` brokers now honor `ca_cert_file` /
+  `tls_insecure` / `tls_server_name`.
+- New shared channel fields: `url_env`, `tls_insecure`, `ca_cert_file`,
+  `tls_server_name`.
+
 ### Added — full fake-vulnerable web application (`webapp: true`)
 - Setting `webapp: true` on an `http`/`https` listener serves a believable
   multi-page PHP/MySQL-flavored app (`internal/listener/handler/vulnweb.go`):

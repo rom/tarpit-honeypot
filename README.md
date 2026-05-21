@@ -299,9 +299,10 @@ rationale covering the current implementation.
 - **Routing**: per-channel rate-limit, min-severity gate, severity-match
   route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
   (outbound-only — local sinks always receive).
-- **Outbound channels**: `webhook` (HMAC-SHA256), `smtp` (STARTTLS),
-  `syslog` (RFC 5424 over local/tcp/udp/unix), `twilio` (SMS), `sns`
-  (AWS SNS via hand-rolled Sigv4 — no AWS SDK dependency), `snmptrap`
+- **Outbound channels**: `webhook` (HMAC-SHA256), `discord` (severity
+  embeds), `smtp` (STARTTLS), `syslog` (RFC 5424 over local/tcp/udp/unix +
+  **TLS** with octet-counting), `mqtt` (tcp/tls brokers), `twilio` (SMS),
+  `sns` (AWS SNS via hand-rolled Sigv4 — no AWS SDK dependency), `snmptrap`
   (SNMPv2c via gosnmp).
 - **Local sinks**: `stdout`, `jsonlog` (rotated JSONL), `sqlite`. These
   always receive every event so the local record stays complete even
@@ -1082,10 +1083,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 | `sqlite` | Embedded SQLite at `<data_dir>/events.db`. WAL mode. Powers `list-events` and the web UI. Local. |
 | `webhook` | POST JSON event. Optional HMAC-SHA256 signature via `hmac_secret_env`. Configurable timeout. |
 | `smtp` | Submits via STARTTLS with PLAIN auth. One mail per event. |
-| `syslog` | RFC 5424 over `local`, `tcp`, `udp`, or `unix` (path). |
+| `syslog` | `local`/`udp`/`unix` use BSD framing (stdlib); `tcp` and `tls` use **RFC 5424 + RFC 6587 octet-counting** (the framing RFC 5425 mandates for syslog/TLS) with reconnect-on-failure. TLS verifies against the system roots unless `ca_cert_file` / `tls_insecure` / `tls_server_name` are set. |
+| `discord` | Posts a severity-colored embed to a Discord incoming-webhook `url` (or `url_env` to keep the token out of YAML). Embeds suppress @mentions and meta is sanitized, so a captured payload can't ping a channel. |
 | `twilio` | SMS via Twilio REST. One SMS per recipient; failures don't block others. Body capped at 1500 chars. |
 | `sns` | AWS SNS Publish via hand-rolled Sigv4 (no AWS SDK). Supports STS session tokens. Region inferred from topic ARN if not set. |
 | `snmptrap` | SNMPv2c trap via gosnmp. Five custom OIDs under a configurable enterprise prefix carry event_id / rule_id / severity / source / sensor. |
+| `mqtt` | Publishes each event to an MQTT broker (`tcp://` / `tls://` / `ws://` / `wss://`); `tls://` honors `ca_cert_file` / `tls_insecure` / `tls_server_name`. Configurable `topic` / `qos` / `retain`. |
 
 Local sinks always receive events (so the on-disk record stays complete
 even for allowlisted sources). Outbound sinks are gated by allowlist,

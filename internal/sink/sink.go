@@ -27,6 +27,8 @@ func Build(ch config.Channel, dataDir string, jsonMB int) (Sink, error) {
 		return newJSONLog(ch.ID, dataDir, jsonMB, f)
 	case "webhook":
 		return newWebhook(ch, f)
+	case "discord":
+		return newDiscord(ch)
 	case "smtp":
 		return newSMTP(ch, f)
 	case "syslog":
