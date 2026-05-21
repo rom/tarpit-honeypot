@@ -135,6 +135,61 @@ func TestPJLPostScriptFileOp(t *testing.T) {
 	}
 }
 
+func TestPJLEnterLanguage(t *testing.T) {
+	r := runPJLSession(t, "@PJL ENTER LANGUAGE=POSTSCRIPT\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-language-switch") {
+		t.Errorf("language switch not flagged: %v", a)
+	}
+	if r.Meta["pjl_language"] != "POSTSCRIPT" {
+		t.Errorf("language not captured: %v", r.Meta["pjl_language"])
+	}
+}
+
+func TestPJLServiceMode(t *testing.T) {
+	r := runPJLSession(t, "@PJL DEFAULT SERVICEMODE=1\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-servicemode") {
+		t.Errorf("service mode not flagged: %v", a)
+	}
+}
+
+func TestPJLFirmwareUpgrade(t *testing.T) {
+	r := runPJLSession(t, "@PJL UPGRADE SIZE=1024\r\n")
+	if a := pjlAnoms(r); !containsStr(a, "printer-firmware-upload") {
+		t.Errorf("firmware upgrade not flagged: %v", a)
+	}
+}
+
+func TestPJLFSDirListDeception(t *testing.T) {
+	client, server := pipePair(t)
+	cfg := config.Listener{ReadTimeout: 2 * time.Second, ReadBytes: 8192}
+	resC := make(chan Result, 1)
+	go func() { r, _ := (&pjl{}).Handle(context.Background(), server, cfg); resC <- r }()
+	_, _ = client.Write([]byte("@PJL FSDIRLIST NAME=\"0:\\\" ENTRY=1\r\n"))
+	buf := make([]byte, 512)
+	n, _ := client.Read(buf)
+	_ = client.Close()
+	r := <-resC
+	if !strings.Contains(string(buf[:n]), "TYPE=DIR") {
+		t.Errorf("FSDIRLIST decoy listing missing: %q", string(buf[:n]))
+	}
+	if a := pjlAnoms(r); !containsStr(a, "printer-filesystem-access") {
+		t.Errorf("FSDIRLIST not flagged: %v", a)
+	}
+}
+
+func TestPJLZebraZPLJob(t *testing.T) {
+	// A Zebra label-printer job (ZPL) on the raw port — config-saving
+	// control commands must be flagged.
+	r := runPJLSession(t, "^XA^JUS^FO50,50^FDhi^FS^XZ\n~JA\n")
+	a := pjlAnoms(r)
+	if !containsStr(a, "printer-zpl-job") {
+		t.Errorf("ZPL job not flagged: %v", a)
+	}
+	if !containsStr(a, "printer-zpl-config") {
+		t.Errorf("ZPL config/destructive command not flagged: %v", a)
+	}
+}
+
 func TestADSReadDeviceInfo(t *testing.T) {
 	client, server := pipePair(t)
 	cfg := config.Listener{ReadTimeout: 2 * time.Second}

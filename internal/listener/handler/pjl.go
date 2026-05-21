@@ -121,7 +121,10 @@ func (p *pjl) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	}
 	if jobSeen {
 		flagAnomaly(&res, "printer-job-received")
-		scanPostScript(jobText.String(), &res)
+		job := jobText.String()
+		scanPostScript(job, &res)
+		scanZPL(job, &res)
+		scanPCL(job, &res)
 	}
 	if !pjlSeen && !jobSeen {
 		res.Meta["read_err"] = "no data"
@@ -173,11 +176,37 @@ func (p *pjl) processPJL(line, model string, out *strings.Builder, res *Result, 
 		if pjlPathTraversal(line) {
 			flagAnomaly(res, "printer-path-traversal")
 		}
+		// Decoy: answer the read-style ops with believable fake contents so
+		// a tool (PRET `ls` / `get` / `fuzz`) keeps walking our "filesystem"
+		// and revealing intent. The honeypot has no real FS behind this.
+		switch kw {
+		case "FSDIRLIST":
+			out.WriteString(pjlFSDirList(line))
+		case "FSUPLOAD":
+			out.WriteString(pjlFSUpload(line))
+		case "FSQUERY":
+			out.WriteString(pjlFSQuery(line))
+		}
+		return
+	case "ENTER":
+		// @PJL ENTER LANGUAGE=POSTSCRIPT|PCL — switching the stream into a
+		// scripting language is how PostScript/PCL attacks get injected.
+		flagAnomaly(res, "printer-language-switch")
+		if lang := pjlValueOf(line, "LANGUAGE"); lang != "" {
+			res.Meta["pjl_language"] = lang
+		}
+		return
+	case "EXECUTE", "UPGRADE":
+		// EXECUTE = vendor command exec; UPGRADE = firmware push.
+		flagAnomaly(res, "printer-firmware-upload")
 		return
 	case "SET", "DEFAULT":
-		if pjlMentionsPassword(up) {
+		switch {
+		case pjlMentionsPassword(up):
 			flagAnomaly(res, "printer-password-set")
-		} else {
+		case strings.Contains(up, "SERVICEMODE") || strings.Contains(up, "SERVICE MODE"):
+			flagAnomaly(res, "printer-servicemode")
+		default:
 			flagAnomaly(res, "printer-config-set")
 		}
 		return
@@ -263,6 +292,59 @@ func scanPostScript(job string, res *Result) {
 	}
 }
 
+// scanZPL flags Zebra Programming Language jobs (Zebra label printers
+// speak ZPL on the same raw port). A ZPL stream is ^XA...^XZ or starts
+// with a ~ control command. Config-saving / destructive control commands
+// (~JA cancel-all, ^JU config update, ~DG/~DY object download) are the
+// abuse shapes.
+func scanZPL(job string, res *Result) {
+	up := strings.ToUpper(job)
+	if !strings.Contains(up, "^XA") && !strings.Contains(up, "^XZ") &&
+		!strings.HasPrefix(strings.TrimSpace(up), "~") {
+		return
+	}
+	flagAnomaly(res, "printer-zpl-job")
+	if strings.Contains(up, "~JA") || strings.Contains(up, "^JU") ||
+		strings.Contains(up, "~DG") || strings.Contains(up, "~DY") {
+		flagAnomaly(res, "printer-zpl-config")
+	}
+}
+
+// scanPCL flags a raw PCL job (HP Printer Control Language). PCL is mostly
+// benign printing, so this is a low-signal informational marker — the
+// escape sequence \x1bE (reset) / \x1b& start most PCL streams.
+func scanPCL(job string, res *Result) {
+	if strings.Contains(job, "\x1bE") || strings.Contains(job, "\x1b&") || strings.Contains(job, "\x1b*") {
+		flagAnomaly(res, "printer-pcl-job")
+	}
+}
+
+// pjlFSDirList returns a believable FSDIRLIST reply for the requested path.
+func pjlFSDirList(line string) string {
+	name := pjlNameArg(line)
+	if name == "" {
+		name = "0:\\"
+	}
+	return "@PJL FSDIRLIST NAME=\"" + safe.SanitizeHeader(name) + "\" ENTRY=1\r\n" +
+		". TYPE=DIR\r\n.. TYPE=DIR\r\n" +
+		"webServer TYPE=DIR\r\nsaveDevice TYPE=DIR\r\nPostScript TYPE=DIR\r\n" +
+		"jobs TYPE=DIR\r\ndefault TYPE=DIR\r\n\x0c"
+}
+
+// pjlFSUpload returns a small believable file body for an FSUPLOAD read.
+func pjlFSUpload(line string) string {
+	name := pjlNameArg(line)
+	data := "; printer device configuration\nMODEL=stub\nLOCATION=copy-room\n"
+	return "@PJL FSUPLOAD FORMAT:BINARY NAME=\"" + safe.SanitizeHeader(name) + "\" OFFSET=0 SIZE=" +
+		itoa(len(data)) + "\r\n" + data + "\x0c"
+}
+
+// pjlFSQuery returns a believable single-file FSQUERY result.
+func pjlFSQuery(line string) string {
+	name := pjlNameArg(line)
+	return "@PJL FSQUERY NAME=\"" + safe.SanitizeHeader(name) + "\" TYPE=FILE SIZE=2048\r\n\x0c"
+}
+
 // --- small PJL parsing helpers ---
 
 // pjlKeyword returns the command keyword (the token after @PJL) from an
@@ -293,6 +375,35 @@ func firstToken(s string) string {
 		}
 	}
 	return s
+}
+
+// pjlNameArg extracts the value of NAME="..." (or NAME=...) from a PJL
+// line, preserving original case. "" when absent.
+func pjlNameArg(line string) string {
+	up := strings.ToUpper(line)
+	i := strings.Index(up, "NAME=")
+	if i < 0 {
+		return ""
+	}
+	v := line[i+len("NAME="):]
+	if len(v) > 0 && v[0] == '"' {
+		v = v[1:]
+		if j := strings.IndexByte(v, '"'); j >= 0 {
+			return v[:j]
+		}
+		return v
+	}
+	return firstToken(v)
+}
+
+// pjlValueOf returns the value after KEY= on a PJL line (original case).
+func pjlValueOf(line, key string) string {
+	up := strings.ToUpper(line)
+	i := strings.Index(up, strings.ToUpper(key)+"=")
+	if i < 0 {
+		return ""
+	}
+	return firstToken(strings.TrimSpace(line[i+len(key)+1:]))
 }
 
 func pjlMentionsPassword(up string) bool {

@@ -111,6 +111,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Omron PLC (FINS)",
 		"HP LaserJet (network printer)",
 		"Asterisk PBX (VoIP)",
+		// Printers / multi-function devices across the major vendors.
+		"Brother HL-L8260CDW (printer)",
+		"Canon imageRUNNER ADVANCE (MFP)",
+		"Epson WorkForce Pro (MFP)",
+		"Xerox VersaLink C405 (MFP)",
+		"Lexmark MX622 (MFP)",
+		"Ricoh IM C3000 (MFP)",
+		"Konica Minolta bizhub C284e (MFP)",
+		"Kyocera ECOSYS M3550idn (MFP)",
+		"Sharp MX-3071 (MFP)",
+		"Zebra ZT411 (label printer)",
 		// Industrial depth: more Moxa / Teltonika, Westermo, Hirschmann,
 		// Phoenix Contact, Advantech, Cisco industrial.
 		"Moxa EDS-405A (managed switch)",

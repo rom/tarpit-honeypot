@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
@@ -70,6 +72,33 @@ func TestIPPBenignNoFalsePositive(t *testing.T) {
 	}
 	if len(r.CVEHits) != 0 {
 		t.Errorf("benign IPP query produced CVE hits: %v", r.CVEHits)
+	}
+}
+
+func TestIPPArchetypeIdentity(t *testing.T) {
+	client, server := pipePair(t)
+	cfg := config.Listener{Handler: "ipp", ReadBytes: 65535, ReadTimeout: 2 * time.Second}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = (&ipp{arch: archetype.Lookup("xerox-versalink")}).Handle(context.Background(), server, cfg)
+	}()
+	body := []byte{0x02, 0x00, 0x00, 0x0B, 0, 0, 0, 1, 0x03}
+	req := "POST /ipp/print HTTP/1.1\r\nHost: x\r\nContent-Type: application/ipp\r\n" +
+		"Content-Length: " + itoa(len(body)) + "\r\n\r\n"
+	_, _ = client.Write(append([]byte(req), body...))
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 8192)
+	n, _ := client.Read(buf)
+	_ = client.Close()
+	<-done
+	resp := string(buf[:n])
+	if !strings.Contains(resp, "Xerox") {
+		t.Errorf("IPP reply did not use the bound archetype identity: %q", resp)
+	}
+	// Richer attribute set the emulation now advertises.
+	if !strings.Contains(resp, "marker-levels") || !strings.Contains(resp, "document-format-supported") {
+		t.Errorf("IPP reply missing richer attributes: %q", resp)
 	}
 }
 

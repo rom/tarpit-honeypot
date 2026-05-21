@@ -8,6 +8,29 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — 10 printer/MFD archetypes + richer emulation & detection
+- **10 new printer/MFD archetypes** (ship total 99): Brother, Canon
+  imageRUNNER, Epson WorkForce, Xerox VersaLink, Lexmark, Ricoh, Konica
+  Minolta bizhub, Kyocera ECOSYS, Sharp, and a Zebra ZT411 label printer.
+  Each carries the vendor EWS Server header + title, SNMP enterprise OID +
+  sysDescr, MAC OUI, a believable web status page (toner/drum levels, page
+  count), and the full MFD service set (9100/631/515/161/80/443; Zebra is
+  9100/80/161). Xerox/Lexmark/Kyocera advertise a real (advisory) device CVE.
+- **IPP emulation is archetype-aware** — the IPP reply now takes its
+  printer-name / make-and-model from the bound archetype (so IPP, SNMP and
+  the web UI agree) and advertises a fuller, more believable attribute set
+  (printer-uuid, dns-sd-name, document-format-supported, media-default,
+  toner `marker-levels`, queued-job-count, color-supported).
+- **PJL filesystem deception** — FSDIRLIST / FSUPLOAD / FSQUERY now return a
+  believable fake directory tree + file contents so PRET's `ls`/`get`/`fuzz`
+  keep walking the decoy filesystem (nothing real behind it).
+- **More PJL/printer attack detection** — PJL `ENTER LANGUAGE=` language
+  switch (`printer-language-switch`), service-mode access
+  (`printer-servicemode`), firmware upgrade (`printer-firmware-upload`), and
+  **ZPL** (Zebra) + PCL job recognition (`printer-zpl-job` /
+  `printer-zpl-config` / `printer-pcl-job`). New ATT&CK/D3FEND rows
+  (T1601, T1212).
+
 ### Added — broad printer / MFD attack detection (PJL · IPP/CUPS · LPD)
 - **PJL handler (9100) rewritten as an interactive responder** — the channel
   PRET drives. Answers many more `@PJL INFO` recon categories (VARIABLES,

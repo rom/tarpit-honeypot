@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/cve"
 )
@@ -20,9 +21,10 @@ import (
 //
 // We parse the HTTP request line + Content-Length, read the body, peek
 // the IPP operation-id (e.g. 0x000B = Get-Printer-Attributes) and reply
-// with an HTTP 200 wrapping an IPP successful-ok body that advertises
-// a fake "Brother HL-L8260CDW series" printer.
-type ipp struct{}
+// with an HTTP 200 wrapping an IPP successful-ok body that advertises a
+// believable printer — identity taken from the bound archetype when set
+// (so the IPP reply matches the SNMP/web identity), else a default MFP.
+type ipp struct{ arch *archetype.Profile }
 
 func (i *ipp) Name() string { return "ipp" }
 
@@ -42,6 +44,7 @@ const (
 	ippTagBool           = 0x22
 	ippTagName           = 0x42
 	ippTagText           = 0x41
+	ippTagMime           = 0x49
 )
 
 func (i *ipp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
@@ -128,7 +131,8 @@ func (i *ipp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	if len(body) >= 8 {
 		rid = binary.BigEndian.Uint32(body[4:8])
 	}
-	ipp := i.buildOK(rid)
+	name, model := i.identity()
+	ipp := i.buildOK(rid, name, model)
 	httpResp := "HTTP/1.1 200 OK\r\n" +
 		"Server: CUPS/2.4.7 IPP/2.1\r\n" +
 		"Content-Type: application/ipp\r\n" +
@@ -217,8 +221,24 @@ func ippOpName(op uint16) (name string, admin bool) {
 	return "op-" + itoa(int(op)), false
 }
 
-func (i *ipp) buildOK(rid uint32) []byte {
-	out := make([]byte, 0, 256)
+// identity returns the printer name + make-and-model the IPP reply
+// advertises, taken from the bound archetype when present so IPP, SNMP and
+// the web UI all tell the same story; default is a generic office MFP.
+func (i *ipp) identity() (name, model string) {
+	name, model = "Brother HL-L8260CDW", "Brother HL-L8260CDW series"
+	if i.arch != nil {
+		if t := i.arch.HTTPTitle(); t != "" {
+			name = t
+		}
+		if d := i.arch.SNMPSysDescr(); d != "" {
+			model = d
+		}
+	}
+	return name, model
+}
+
+func (i *ipp) buildOK(rid uint32, name, model string) []byte {
+	out := make([]byte, 0, 512)
 	out = binary.BigEndian.AppendUint16(out, ippVersion)
 	out = binary.BigEndian.AppendUint16(out, ippStatusOK)
 	out = binary.BigEndian.AppendUint32(out, rid)
@@ -228,16 +248,31 @@ func (i *ipp) buildOK(rid uint32) []byte {
 	out = appendIPPAttr(out, ippTagCharset, "attributes-charset", "utf-8")
 	out = appendIPPAttr(out, ippTagLang, "attributes-natural-language", "en")
 
-	// printer-attributes-tag
+	// printer-attributes-tag — a fuller, believable attribute set so a
+	// printer-discovery client (CUPS, ipptool, AirPrint) sees a real MFP.
 	out = append(out, ippTagPrinter)
-	out = appendIPPAttr(out, ippTagName, "printer-name", "Brother HL-L8260CDW")
-	out = appendIPPAttr(out, ippTagText, "printer-make-and-model", "Brother HL-L8260CDW series")
+	out = appendIPPAttr(out, ippTagName, "printer-name", name)
+	out = appendIPPAttr(out, ippTagText, "printer-make-and-model", model)
 	out = appendIPPAttr(out, ippTagText, "printer-info", "Office MFP")
 	out = appendIPPAttr(out, ippTagText, "printer-location", "1st floor copy room")
 	out = appendIPPAttr(out, ippTagURI, "printer-uri-supported", "ipp://printer.local:631/ipp/print")
+	out = appendIPPAttr(out, ippTagURI, "printer-more-info", "http://printer.local/")
+	out = appendIPPAttr(out, ippTagURI, "printer-uuid", "urn:uuid:564e4333-4e50-4831-3832-363043445720")
+	out = appendIPPAttr(out, ippTagName, "printer-dns-sd-name", name)
 	out = appendIPPAttr(out, ippTagKeyword, "printer-state-reasons", "none")
-	out = appendIPPIntAttr(out, "printer-state", 3) // 3 = idle
+	out = appendIPPAttr(out, ippTagText, "printer-state-message", "Ready")
+	out = appendIPPAttr(out, ippTagKeyword, "ipp-versions-supported", "2.0")
+	out = appendIPPAttr(out, ippTagMime, "document-format-default", "application/pdf")
+	out = appendIPPAttr(out, ippTagMime, "document-format-supported", "application/pdf")
+	out = appendIPPAttr(out, ippTagMime, "document-format-supported", "application/postscript")
+	out = appendIPPAttr(out, ippTagMime, "document-format-supported", "application/vnd.hp-PCL")
+	out = appendIPPAttr(out, ippTagKeyword, "media-default", "iso_a4_210x297mm")
+	out = appendIPPAttr(out, ippTagText, "marker-names", "Black Cartridge")
+	out = appendIPPIntAttr(out, "printer-state", 3) // enum: 3 = idle
+	out = appendIPPInteger(out, "queued-job-count", 0)
+	out = appendIPPInteger(out, "marker-levels", 72) // toner %
 	out = appendIPPBoolAttr(out, "printer-is-accepting-jobs", true)
+	out = appendIPPBoolAttr(out, "color-supported", true)
 
 	// end-of-attributes-tag
 	out = append(out, ippTagEnd)
@@ -254,7 +289,17 @@ func appendIPPAttr(out []byte, tag byte, name, val string) []byte {
 }
 
 func appendIPPIntAttr(out []byte, name string, val int32) []byte {
-	out = append(out, ippTagEnum)
+	return appendIPPNumeric(out, ippTagEnum, name, val)
+}
+
+// appendIPPInteger appends an IPP integer (tag 0x21) attribute — used for
+// counts / levels, vs appendIPPIntAttr's enum (printer-state).
+func appendIPPInteger(out []byte, name string, val int32) []byte {
+	return appendIPPNumeric(out, ippTagInt, name, val)
+}
+
+func appendIPPNumeric(out []byte, tag byte, name string, val int32) []byte {
+	out = append(out, tag)
 	out = binary.BigEndian.AppendUint16(out, uint16(len(name)))
 	out = append(out, []byte(name)...)
 	out = binary.BigEndian.AppendUint16(out, 4)

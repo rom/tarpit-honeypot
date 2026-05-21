@@ -34,7 +34,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **89 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **99 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -913,6 +913,16 @@ prints the live list.
 | Camera | Axis network camera | `axis-camera` | axis | 64 | VAPIX, RTSP 554, Digest realm `AXIS_*`, Axis OUI |
 | Network | Ubiquiti EdgeRouter | `ubiquiti-edgerouter` | ubiquiti | 64 | EdgeOS lighttpd, Ubiquiti OUI/OID |
 | Printer | HP LaserJet | `hp-printer` | printer | 64 | HP HTTP Server, JetDirect 9100, IPP 631, LPD 515, HP OUI/OID |
+| Printer | Brother HL-L8260CDW | `brother-printer` | printer | 64 | `debut/1.20` EWS, Brother OUI/PEN 2435, full MFD service set |
+| MFP | Canon imageRUNNER ADVANCE | `canon-imagerunner` | printer | 64 | Canon HTTP Server, PEN 1602, Canon OUI |
+| MFP | Epson WorkForce Pro | `epson-workforce` | printer | 64 | `EPSON-HTTP/1.0`, PEN 1248, Epson OUI |
+| MFP | Xerox VersaLink C405 | `xerox-versalink` | printer | 64 | `Xerox_MicroServer`, PEN 253, CVE-2024-12510 (advisory) |
+| MFP | Lexmark MX622 | `lexmark-printer` | printer | 64 | `Lexmark_Web_Server`, PEN 641, CVE-2023-26067 (advisory) |
+| MFP | Ricoh IM C3000 | `ricoh-mfp` | printer | 64 | `Web-Server/3.0`, PEN 367, Ricoh OUI |
+| MFP | Konica Minolta bizhub | `konica-minolta-bizhub` | printer | 64 | `KM-MFP-Http/1.0`, PEN 18334, KM OUI |
+| MFP | Kyocera ECOSYS | `kyocera-ecosys` | printer | 64 | Command Center RX, PEN 1347, CVE-2022-1026 (advisory) |
+| MFP | Sharp MX-3071 | `sharp-mfp` | printer | 64 | `Boa/0.94.13`, PEN 2385, Sharp OUI |
+| Printer | Zebra ZT411 (label) | `zebra-printer` | printer | 64 | ZebraNet web, ZPL on 9100, PEN 10642, Zebra OUI |
 | VoIP | Asterisk PBX | `asterisk-voip` | voip | 64 | SIP 5060, FreePBX web, `Asterisk/18.x` Server header |
 
 ---
@@ -954,7 +964,7 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `melsec` | 1025 | Mitsubishi MELSEC 3E frame parser. Reads `0x5000` request header, replies `0xD000` with a fake `Q03UDVCPU` CPU model + serial. | — | — |
 | `xmpp` | 5222 | Reads the client `<stream:stream>` open, extracts `to` / `from` / `xmlns` / `version`. Replies with our own `<stream:stream>` + `<stream:features>` advertising STARTTLS + PLAIN + SCRAM-SHA-1. Captures the follow-up `<auth>` or `<starttls/>` stanza. | — | — |
 | `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |
-| `ipp` | 631 | IPP / CUPS printer over HTTP. Parses the body, replies HTTP 200 + `application/ipp` advertising a fake Brother HL-L8260CDW (idle, accepting jobs). Names the IPP operation and flags printer-admin / job-injection / server-fetch ops (`printer-ipp-admin-op`), the CUPS foomatic-rip RCE primitive (`printer-cups-rce` + `cve:CVE-2024-47177`), and command-injection metacharacters in printer/device attributes (`printer-ipp-cmd-injection`). | — | — |
+| `ipp` | 631 | IPP / CUPS printer over HTTP. Replies HTTP 200 + `application/ipp` advertising a believable MFP — **identity taken from the bound archetype** (Xerox/Lexmark/Brother/…) so IPP/SNMP/web agree — with a fuller attribute set (uuid, dns-sd-name, document-format-supported, media, toner `marker-levels`). Names the IPP operation and flags printer-admin / job-injection / server-fetch ops (`printer-ipp-admin-op`), the CUPS foomatic-rip RCE primitive (`printer-cups-rce` + `cve:CVE-2024-47177`), and command-injection metacharacters in printer/device attributes (`printer-ipp-cmd-injection`). | — | — |
 | `lpd` | 515 | Line Printer Daemon (RFC 1179). Acknowledges the command (so a client sends its control file), names the command, captures the queue + control metadata, and flags shell-metacharacter injection in any field (`printer-lpd-injection`), overlong fields (`printer-lpd-overflow`), and path traversal. Nothing is queued. | ✓ | — |
 
 ### TCP — remote access / out-of-band management
@@ -1006,7 +1016,7 @@ handshake where it isn't HTTP.
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC-class PLCs; nmap pcworx-info). Captures the connect/identify probe and returns an identification frame carrying model (`ILC 330 ETH`) + firmware. Fingerprint-grade. | — | — |
 | `mms` | 102 | IEC 61850 MMS (substation IEDs / relays over ISO-on-TCP — distinct from S7comm on the same port). Completes the COTP CR→CC handshake, captures the ACSE/MMS Initiate (association) request, replies with a believable AARE accept; flags `ics-mms-probe`. Fingerprint-grade. | — | — |
 | `ads` | 48898 | Beckhoff ADS/AMS (TwinCAT PLCs / CX embedded PCs). Parses the AMS/TCP + AMS header, captures the command + AmsNetIds, answers Read-Device-Info with a TwinCAT identity; flags `ics-ads-probe`. Fingerprint-grade. | — | — |
-| `pjl` | 9100 | HP JetDirect raw-print port speaking PJL — the channel PRET drives. Interactive loop: answers `@PJL INFO ID/STATUS/CONFIG/VARIABLES/FILESYS/MEMORY/PAGECOUNT/...` with a believable identity (recon deception), captures jobs + commands + a PJL password, and flags panel defacement (`printer-rdymsg-set`/`printer-message-injection`), filesystem access + the destructive `FSINIT` format (`printer-filesystem-access`/`printer-filesystem-format`), path traversal, config/password writes + credential reads, NVRAM + DM commands, and embedded **PostScript** abuse in the job (exitserver persistence, file ops, `set*params`, raw device access). Nothing prints or touches a real FS. | ✓ | — |
+| `pjl` | 9100 | HP JetDirect raw-print port speaking PJL — the channel PRET drives. Interactive loop: answers `@PJL INFO ID/STATUS/CONFIG/VARIABLES/FILESYS/MEMORY/PAGECOUNT/...` believably and **decoys the read-style filesystem ops** (FSDIRLIST/FSUPLOAD/FSQUERY return a fake directory tree + file contents so PRET keeps walking). Captures jobs/commands + a PJL password and flags panel defacement, filesystem access + the destructive `FSINIT` format, path traversal, config/password writes + credential reads, service-mode + firmware-upgrade + language-switch, NVRAM/DM commands, embedded **PostScript** abuse (exitserver, file ops, `set*params`), and **ZPL** (Zebra) / PCL jobs (`printer-zpl-job`/`printer-zpl-config`/`printer-pcl-job`). Nothing prints or touches a real FS. | ✓ | — |
 
 ### UDP
 

@@ -261,6 +261,10 @@ var anomalyTags = map[string]Tag{
 	"printer-ipp-cmd-injection":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	"printer-lpd-injection":         {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	"printer-lpd-overflow":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"printer-language-switch":       {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"printer-servicemode":           {Techniques: []string{"T1078"}, Tactics: []string{"privilege-escalation"}},
+	"printer-firmware-upload":       {Techniques: []string{"T1601"}, Tactics: []string{"defense-evasion"}},
+	"printer-zpl-config":            {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// Web application attack families (ride on http/https handler events).
 	"webapp:sqli":              {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"webapp:lfi":               {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
@@ -417,6 +421,7 @@ var d3fend = map[string][]string{
 	"T1098": {"D3-MFA", "D3-DUC"},          // account manipulation (printer password set)
 	"T1552": {"D3-DUC", "D3-NTA"},          // unsecured credentials (printer password read)
 	"T1005": {"D3-DO", "D3-NTA"},           // data from local system (PostScript file read)
+	"T1601": {"D3-NTA", "D3-DE"},           // modify system image (printer firmware upload)
 }
 
 // CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,

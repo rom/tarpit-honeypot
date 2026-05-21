@@ -348,6 +348,23 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "libppd ppdCreatePPDFromIPP2 writes attacker IPP attributes into a PPD unescaped.",
 	},
+	// Printer / MFP web-UI (EWS) advisories — advertised by the printer
+	// archetypes so a version scanner records an unpatched device.
+	{
+		ID: "CVE-2024-12510", Name: "Xerox VersaLink pass-back", CVSS: 6.7, Service: "http",
+		Technique: "T1212", Tactic: "credential-access",
+		Description: "Xerox VersaLink LDAP/SMB pass-back — config change redirects auth to capture creds.",
+	},
+	{
+		ID: "CVE-2023-26067", Name: "Lexmark privilege escalation", CVSS: 8.0, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Lexmark devices improper input validation in the EWS leading to privilege escalation.",
+	},
+	{
+		ID: "CVE-2022-1026", Name: "Kyocera data disclosure", CVSS: 7.1, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Kyocera Net Manager / device path traversal exposing stored credentials.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

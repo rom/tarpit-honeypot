@@ -246,7 +246,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "amqp":
 		return &amqp{}, nil
 	case "ipp":
-		return &ipp{}, nil
+		return &ipp{arch: deps.Archetype}, nil
 	case "mssql":
 		return &mssql{id: deps.Identity}, nil
 	case "oracle_tns":
