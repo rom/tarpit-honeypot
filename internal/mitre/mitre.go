@@ -270,6 +270,11 @@ var anomalyTags = map[string]Tag{
 	"dnscrypt-probe": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	// DNS-SD service enumeration over mDNS = local network-service discovery.
 	"mdns-service-enumeration": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Behavioral HTTP anomalies: malformed/smuggled headers and a spoofed
+	// (impossible) browser User-Agent.
+	"http-malformed-header":   {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-duplicate-host":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-impossible-browser": {Techniques: []string{"T1036"}, Tactics: []string{"defense-evasion"}},
 	// memcached abuse: stats recon, writes (cache poisoning), flush_all (wipe).
 	"memcached-stats-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"memcached-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},

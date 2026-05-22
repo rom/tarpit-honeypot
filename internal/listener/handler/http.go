@@ -69,17 +69,39 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	var headerKeys []string
 	contentLen := 0
 	contentType := ""
+	malformedHeader := false
+	hostCount := 0
+	sawBlank := false
 	for i, line := range strings.Split(string(buf.Bytes()), "\r\n") {
 		if i == 0 {
 			firstLine = line
 			continue
 		}
+		if line == "" {
+			sawBlank = true // end of the header section
+			continue
+		}
+		if sawBlank {
+			continue // body bytes — not headers
+		}
 		lower := strings.ToLower(line)
-		if k := strings.IndexByte(lower, ':'); k > 0 {
-			headerKeys = append(headerKeys, lower[:k])
+		k := strings.IndexByte(lower, ':')
+		if k <= 0 {
+			// A non-empty header line with no name:value colon is malformed
+			// (header smuggling / a non-HTTP client).
+			malformedHeader = true
+			continue
+		}
+		headerKeys = append(headerKeys, lower[:k])
+		// Control bytes embedded in a header line are a smuggling / evasion
+		// tell (the line was already split on CRLF, so any control byte here
+		// is illegitimate).
+		if hasNonPrintable(line) {
+			malformedHeader = true
 		}
 		switch {
 		case strings.HasPrefix(lower, "host:"):
+			hostCount++
 			host = strings.TrimSpace(line[5:])
 		case strings.HasPrefix(lower, "user-agent:"):
 			userAgent = strings.TrimSpace(line[11:])
@@ -146,6 +168,20 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	res.Meta["automation_reason"] = verdict.Reason
 	if verdict.Automation {
 		flagAnomaly(&res, "automation-client")
+	}
+
+	// Behavioral HTTP anomalies.
+	if malformedHeader {
+		flagAnomaly(&res, "http-malformed-header")
+	}
+	if hostCount > 1 {
+		// Multiple Host headers is a request-smuggling / cache-poisoning tell.
+		flagAnomaly(&res, "http-duplicate-host")
+	}
+	if impossibleBrowser(userAgent, headerKeys) {
+		// The UA claims a full browser but the request is missing the
+		// Accept-* header set every real browser sends — a spoofed UA.
+		flagAnomaly(&res, "http-impossible-browser")
 	}
 
 	// JA4H fingerprint over method+version+header order/values.
@@ -451,6 +487,26 @@ func extractPath(reqLine string) string {
 		p = p[:i]
 	}
 	return p
+}
+
+// impossibleBrowser reports whether a User-Agent claims a full graphical
+// browser (Mozilla/5.0 token) while the request omits the Accept-* header
+// set every real browser sends — a strong UA-spoofing / masquerade tell.
+func impossibleBrowser(ua string, headerKeys []string) bool {
+	if !strings.Contains(strings.ToLower(ua), "mozilla/5.0") {
+		return false
+	}
+	has := make(map[string]bool, len(headerKeys))
+	for _, k := range headerKeys {
+		has[k] = true
+	}
+	missing := 0
+	for _, h := range []string{"accept", "accept-language", "accept-encoding"} {
+		if !has[h] {
+			missing++
+		}
+	}
+	return missing >= 2
 }
 
 // isDoHRequest reports whether an HTTP request looks like DNS-over-HTTPS

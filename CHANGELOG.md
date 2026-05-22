@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — HTTP behavioral detection
+- The HTTP handler now flags **malformed headers** (`http-malformed-header`:
+  a header line with no `name:` colon, or control bytes embedded in a
+  header — a smuggling / non-HTTP-client tell), **duplicate Host**
+  (`http-duplicate-host`: request-smuggling / cache-poisoning, T1190), and
+  an **impossible browser stack** (`http-impossible-browser`: a `Mozilla/5.0`
+  User-Agent that omits the Accept-* header set every real browser sends —
+  UA spoofing / masquerade, T1036).
+
 ### Added — new protocol handlers: MongoDB, Elasticsearch
 - **MongoDB** (TCP 27017) speaks the wire protocol: parses the OP_MSG /
   OP_QUERY header, answers the hello/isMaster handshake with a hand-built
