@@ -389,9 +389,10 @@ device CLI.
 ### What the shell captures
 
 Per-command capture lands in `event.meta.shell_commands` (a list).
-Each line is also scanned against a 14-marker ATT&CK-aligned anomaly
-catalog and any hits flow into `event.anomalies` for SIEM-side
-routing:
+Each line is also scanned against a 24-marker ATT&CK-aligned anomaly
+catalog (reverse shells, credential dumping, persistence, AD recon,
+defense evasion, coin miners, …) and any hits flow into `event.anomalies`
+for SIEM-side routing — each marker carries its own ATT&CK technique:
 
 | Marker | ATT&CK |
 |---|---|

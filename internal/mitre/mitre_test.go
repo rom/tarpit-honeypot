@@ -121,6 +121,32 @@ func TestAnomalyTagPrefixes(t *testing.T) {
 	}
 }
 
+// TestShellAndInteractiveCoverage guards the post-login TTP capture: every
+// shell-* marker must carry an ATT&CK technique (explicit or via the shell-
+// prefix fallback), and ssh_interactive must map like ssh (not the T1190
+// listener default).
+func TestShellAndInteractiveCoverage(t *testing.T) {
+	if got := Lookup("listener:s", "ssh_interactive").Techniques; len(got) == 0 || got[0] != "T1110.001" {
+		t.Errorf("ssh_interactive = %v; want ssh-like T1110.001", got)
+	}
+	shellMarkers := []string{
+		"shell-reverse-shell", "shell-credential-dump", "shell-passwd-read",
+		"shell-persistence-cron", "shell-persistence-systemd", "shell-priv-esc-suid",
+		"shell-defender-tamper", "shell-coin-miner", "shell-ad-recon",
+		"shell-ps-encoded", "shell-download-tool", "shell-future-unmapped-marker",
+	}
+	for _, m := range shellMarkers {
+		if len(AnomalyTag(m).Techniques) == 0 {
+			t.Errorf("shell marker %q has no ATT&CK technique", m)
+		}
+	}
+	for _, m := range []string{"bacnet-write-attempt", "udp-amplifier-probe", "honeyfile-download"} {
+		if len(AnomalyTag(m).Techniques) == 0 {
+			t.Errorf("%q has no ATT&CK technique", m)
+		}
+	}
+}
+
 func TestNewHandlerTags(t *testing.T) {
 	for _, h := range []string{"atg", "fox", "hartip", "pcworx", "redfish", "x11", "rlogin", "vmware_authd"} {
 		if len(Lookup("listener:x", h).Techniques) == 0 {

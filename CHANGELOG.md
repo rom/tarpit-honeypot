@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — ATT&CK attribution gaps (audit follow-up)
+- The **24 `shell-*` interactive-shell TTP markers** (reverse shells,
+  credential dumping, persistence, AD recon, defense evasion, coin miners,
+  …) had **no ATT&CK mapping** — the marquee post-login detections were
+  emitting with empty `mitre_techniques`. Each now carries its own technique
+  (T1059 / T1003 / T1053.003 / T1548.x / T1562.x / T1496 / …), plus a
+  `shell-` prefix fallback (→ T1059) so future markers are never unattributed.
+- `ssh_interactive` had no handler-tag and fell back to **T1190**
+  (exploit-public-facing-app); it now maps like `ssh` → T1110.001 + T1078.
+- Mapped three more emitted-but-unattributed markers: `bacnet-write-attempt`
+  (T0836/T0831, the BACnet analogue of `modbus-write-attempt`),
+  `udp-amplifier-probe` (T1498.002), and `honeyfile-download` (T1005).
+- The `mailserver` archeservice role now also stands up **POP3 + IMAP**, and
+  `dbserver` adds **memcached / MongoDB / Elasticsearch**, so those roles
+  expose the handlers added this cycle. (ATT&CK catalog is now 227 mappings:
+  31 rule + 92 handler + 104 anomaly.)
+
 ### Fixed
 - The web UI **fingerprints** page (and the fingerprint detail/API filter) no
   longer 500s. Events stored without meta have `meta_json = ''`, and SQLite's

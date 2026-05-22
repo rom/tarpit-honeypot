@@ -70,6 +70,8 @@ var roles = map[string][]Service{
 	"mailserver": {
 		{25, "tcp", "smtp_recv", "SMTP"},
 		{587, "tcp", "smtp_recv", "SMTP submission"},
+		{110, "tcp", "pop3", "POP3"},
+		{143, "tcp", "imap", "IMAP"},
 	},
 	"dbserver": {
 		{3306, "tcp", "mysql", "MySQL"},
@@ -77,6 +79,9 @@ var roles = map[string][]Service{
 		{1433, "tcp", "mssql", "Microsoft SQL Server"},
 		{1521, "tcp", "oracle_tns", "Oracle TNS"},
 		{6379, "tcp", "redis", "Redis"},
+		{11211, "tcp", "memcached", "Memcached"},
+		{27017, "tcp", "mongodb", "MongoDB"},
+		{9200, "tcp", "elasticsearch", "Elasticsearch"},
 	},
 	"dnsserver": {
 		{53, "udp", "dns", "DNS"},

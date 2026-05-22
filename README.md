@@ -1269,8 +1269,9 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   **Kerberoasting** + **SPN/LDAP/AS-REP-roast** enumeration; **sensitive
   MSRPC interface binds** (SAMR / LSARPC / srvsvc / svcctl-PsExec / winreg /
   DRSUAPI-DCSync / netlogon); post-auth **FTP** abuse (uploads / SITE EXEC /
-  FTP-bounce); ICMP abnormal payloads; and the 14-marker interactive-shell
-  TTP scanner. Routed separately so a SIEM rule can pivot on the marker.
+  FTP-bounce); ICMP abnormal payloads; and the 24-marker interactive-shell
+  TTP scanner (each marker carries its own ATT&CK technique). Routed
+  separately so a SIEM rule can pivot on the marker.
 - `dnscanary:amplifier_probe` — DNS source sent an ANY-type query or
   exceeded the per-window query threshold. Meta: `queries`,
   `any_queries`, `triggered_by_any`.

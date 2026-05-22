@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **199 static mappings** (31 exact rules + 91 handler tags + 77
+There are **227 static mappings** (31 exact rules + 92 handler tags + 104
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -80,7 +80,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `sniffer:tcp_xmas_scan` | T1046, T1595.001 | discovery, reconnaissance |
 | `sniffer:udp_scan` | T1046, T1595.001 | discovery, reconnaissance |
 
-### 1b. Handler tags (91) — applied to every `listener:*` event by its handler
+### 1b. Handler tags (92) — applied to every `listener:*` event by its handler
 
 | handler | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -164,6 +164,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `snmp` | T1018, T1110.001 | discovery, credential-access |
 | `ssdp` | T1018 | discovery |
 | `ssh` | T1110.001, T1078 | credential-access, initial-access |
+| `ssh_interactive` | T1110.001, T1078 | credential-access, initial-access |
 | `syslog_tcp` | T1078 | initial-access |
 | `syslog_udp` | T1078 | initial-access |
 | `teamviewer` | T1219 | command-and-control |
@@ -179,10 +180,11 @@ The complete catalog follows (generated from `list-techniques --json`; the
 Handlers without an explicit tag (`raw`, `auto`, `scripted`, `lua`) fall back
 to the `listener:*` default **T1190 / initial-access**.
 
-### 1c. Anomaly tags (77) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (104) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
+| `bacnet-write-attempt` | T0836, T0831 | impact |
 | `c2-framework` | T1071.001, T1219 | command-and-control |
 | `dcerpc-dcsync` | T1003.006 | credential-access |
 | `dcerpc-lsarpc-enum` | T1087.002, T1482 | discovery |
@@ -206,6 +208,7 @@ to the `listener:*` default **T1190 / initial-access**.
 | `ftp-site-command` | T1059 | execution |
 | `ftp-upload-attempt` | T1105 | command-and-control |
 | `headless-browser` | T1595 | reconnaissance |
+| `honeyfile-download` | T1005 | collection |
 | `http-duplicate-host` | T1190 | initial-access |
 | `http-impossible-browser` | T1036 | defense-evasion |
 | `http-malformed-header` | T1190 | initial-access |
@@ -241,11 +244,36 @@ to the `listener:*` default **T1190 / initial-access**.
 | `printer-zpl-config` | T1565 | impact |
 | `redfish-auth-attempt` | T1078 | credential-access |
 | `rlogin-attempt` | T1021 | lateral-movement |
+| `shell-ad-recon` | T1087.002 | discovery |
+| `shell-coin-miner` | T1496 | impact |
+| `shell-credential-dump` | T1003 | credential-access |
+| `shell-creds-file-access` | T1552.001 | credential-access |
+| `shell-defender-tamper` | T1562.001 | defense-evasion |
+| `shell-defense-evade-history` | T1070.003 | defense-evasion |
+| `shell-defense-evade-logclean` | T1070.002 | defense-evasion |
+| `shell-disable-fw` | T1562.004 | defense-evasion |
+| `shell-download-tool` | T1105 | command-and-control |
+| `shell-encoded-payload` | T1027, T1140 | defense-evasion |
+| `shell-living-off-the-land` | T1218 | defense-evasion |
+| `shell-network-recon` | T1016 | discovery |
+| `shell-passwd-read` | T1003.008 | credential-access |
+| `shell-passwd-write` | T1136.001 | persistence |
+| `shell-persistence-cron` | T1053.003 | persistence |
+| `shell-persistence-ssh-key` | T1098.004 | persistence |
+| `shell-persistence-systemd` | T1543.002 | persistence |
+| `shell-persistence-windows` | T1547 | persistence |
+| `shell-priv-esc-sudo` | T1548.003 | privilege-escalation |
+| `shell-priv-esc-suid` | T1548.001 | privilege-escalation |
+| `shell-ps-download-exec` | T1059.001, T1105 | execution, command-and-control |
+| `shell-ps-encoded` | T1059.001, T1027 | execution, defense-evasion |
+| `shell-reverse-shell` | T1059 | execution |
+| `shell-shadow-read` | T1003.008 | credential-access |
 | `smtp-open-relay-probe` | T1071.003 | command-and-control |
 | `smtp-user-enumeration` | T1087 | discovery |
 | `snmp-set-attempt` | T1565.001, T0836 | impact |
 | `tftp-config-read` | T1602.001 | collection |
 | `tftp-write-attempt` | T1105 | command-and-control |
+| `udp-amplifier-probe` | T1498.002 | impact |
 | `unknown-protocol` | T1046 | discovery |
 | `vmware-authd-login` | T1110.001 | credential-access |
 | `vulnerability-scanner` | T1595.002, T1190 | reconnaissance, initial-access |

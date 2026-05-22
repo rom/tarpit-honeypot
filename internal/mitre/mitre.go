@@ -136,28 +136,29 @@ var exactRules = map[string]Tag{
 // T1190 (exploit public-facing application).
 var handlerTags = map[string]Tag{
 	// Auth / credential surface.
-	"ssh":           {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"telnet":        {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"ftp":           {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
-	"smtp_recv":     {Techniques: []string{"T1110.003", "T1114"}, Tactics: []string{"credential-access", "collection"}},
-	"pop3":          {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
-	"imap":          {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
-	"memcached":     {Techniques: []string{"T1213", "T1046"}, Tactics: []string{"collection", "discovery"}},
-	"mongodb":       {Techniques: []string{"T1213", "T1110.001"}, Tactics: []string{"collection", "credential-access"}},
-	"elasticsearch": {Techniques: []string{"T1213", "T1046"}, Tactics: []string{"collection", "discovery"}},
-	"rdp":           {Techniques: []string{"T1021.001", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
-	"vnc":           {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
-	"winrm":         {Techniques: []string{"T1021.006"}, Tactics: []string{"lateral-movement"}},
-	"smb":           {Techniques: []string{"T1021.002", "T1135"}, Tactics: []string{"lateral-movement", "discovery"}},
-	"postgres":      {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"mysql":         {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"redis":         {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	"ldap":          {Techniques: []string{"T1110.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
-	"cldap":         {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
-	"kerberos":      {Techniques: []string{"T1558"}, Tactics: []string{"credential-access"}},
-	"dcerpc":        {Techniques: []string{"T1021.003"}, Tactics: []string{"lateral-movement"}},
-	"xmpp":          {Techniques: []string{"T1071.001"}, Tactics: []string{"command-and-control"}},
-	"amqp":          {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ssh":             {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"ssh_interactive": {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"telnet":          {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"ftp":             {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
+	"smtp_recv":       {Techniques: []string{"T1110.003", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"pop3":            {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"imap":            {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"memcached":       {Techniques: []string{"T1213", "T1046"}, Tactics: []string{"collection", "discovery"}},
+	"mongodb":         {Techniques: []string{"T1213", "T1110.001"}, Tactics: []string{"collection", "credential-access"}},
+	"elasticsearch":   {Techniques: []string{"T1213", "T1046"}, Tactics: []string{"collection", "discovery"}},
+	"rdp":             {Techniques: []string{"T1021.001", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"vnc":             {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"winrm":           {Techniques: []string{"T1021.006"}, Tactics: []string{"lateral-movement"}},
+	"smb":             {Techniques: []string{"T1021.002", "T1135"}, Tactics: []string{"lateral-movement", "discovery"}},
+	"postgres":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"mysql":           {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"redis":           {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ldap":            {Techniques: []string{"T1110.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
+	"cldap":           {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"kerberos":        {Techniques: []string{"T1558"}, Tactics: []string{"credential-access"}},
+	"dcerpc":          {Techniques: []string{"T1021.003"}, Tactics: []string{"lateral-movement"}},
+	"xmpp":            {Techniques: []string{"T1071.001"}, Tactics: []string{"command-and-control"}},
+	"amqp":            {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 
 	// Vulnerability-scanner / publicly exposed application surface.
 	"http":      {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
@@ -360,6 +361,39 @@ var anomalyTags = map[string]Tag{
 	"rlogin-attempt":         {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"redfish-auth-attempt":   {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"vmware-authd-login":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// BACnet WriteProperty against a control point = ICS manipulation (the
+	// BACnet analogue of modbus-write-attempt).
+	"bacnet-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// A probe to chargen/echo etc. — the reflection-amplifier scouting target.
+	"udp-amplifier-probe": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	// A planted bait file was retrieved from the decoy FTP tree.
+	"honeyfile-download": {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	// Interactive-shell TTPs (internal/shell) captured post-login on the
+	// ssh_interactive / telnet handlers — the highest-signal detections.
+	"shell-reverse-shell":          {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"shell-download-tool":          {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"shell-encoded-payload":        {Techniques: []string{"T1027", "T1140"}, Tactics: []string{"defense-evasion"}},
+	"shell-living-off-the-land":    {Techniques: []string{"T1218"}, Tactics: []string{"defense-evasion"}},
+	"shell-ps-download-exec":       {Techniques: []string{"T1059.001", "T1105"}, Tactics: []string{"execution", "command-and-control"}},
+	"shell-ps-encoded":             {Techniques: []string{"T1059.001", "T1027"}, Tactics: []string{"execution", "defense-evasion"}},
+	"shell-credential-dump":        {Techniques: []string{"T1003"}, Tactics: []string{"credential-access"}},
+	"shell-creds-file-access":      {Techniques: []string{"T1552.001"}, Tactics: []string{"credential-access"}},
+	"shell-passwd-read":            {Techniques: []string{"T1003.008"}, Tactics: []string{"credential-access"}},
+	"shell-shadow-read":            {Techniques: []string{"T1003.008"}, Tactics: []string{"credential-access"}},
+	"shell-passwd-write":           {Techniques: []string{"T1136.001"}, Tactics: []string{"persistence"}},
+	"shell-ad-recon":               {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
+	"shell-network-recon":          {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
+	"shell-persistence-cron":       {Techniques: []string{"T1053.003"}, Tactics: []string{"persistence"}},
+	"shell-persistence-ssh-key":    {Techniques: []string{"T1098.004"}, Tactics: []string{"persistence"}},
+	"shell-persistence-systemd":    {Techniques: []string{"T1543.002"}, Tactics: []string{"persistence"}},
+	"shell-persistence-windows":    {Techniques: []string{"T1547"}, Tactics: []string{"persistence"}},
+	"shell-priv-esc-sudo":          {Techniques: []string{"T1548.003"}, Tactics: []string{"privilege-escalation"}},
+	"shell-priv-esc-suid":          {Techniques: []string{"T1548.001"}, Tactics: []string{"privilege-escalation"}},
+	"shell-defender-tamper":        {Techniques: []string{"T1562.001"}, Tactics: []string{"defense-evasion"}},
+	"shell-disable-fw":             {Techniques: []string{"T1562.004"}, Tactics: []string{"defense-evasion"}},
+	"shell-defense-evade-history":  {Techniques: []string{"T1070.003"}, Tactics: []string{"defense-evasion"}},
+	"shell-defense-evade-logclean": {Techniques: []string{"T1070.002"}, Tactics: []string{"defense-evasion"}},
+	"shell-coin-miner":             {Techniques: []string{"T1496"}, Tactics: []string{"impact"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
@@ -374,6 +408,10 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "shell-"):
+		// Any interactive-shell TTP marker without an explicit entry above
+		// is at least command execution by an engaged attacker.
+		return Tag{Techniques: []string{"T1059"}, Tactics: []string{"execution"}}
 	case strings.HasPrefix(a, "printer-"):
 		// Generic printer/MFP recon + access (fs access, info query, job
 		// received, nvram, dmcmd, ipp admin op, lpd command).
