@@ -268,6 +268,8 @@ var anomalyTags = map[string]Tag{
 	"dns-over-https": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	"dns-over-tls":   {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	"dnscrypt-probe": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
+	// Algorithmically-generated C2 rendezvous domain.
+	"dns-dga-suspected": {Techniques: []string{"T1568.002"}, Tactics: []string{"command-and-control"}},
 	// DNS-SD service enumeration over mDNS = local network-service discovery.
 	"mdns-service-enumeration": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// Behavioral HTTP anomalies: malformed/smuggled headers and a spoofed

@@ -277,6 +277,16 @@ func dnsAnomalies(name string, qtype uint16, msgLen int) []string {
 	if strings.Contains(name, "dnscrypt-cert.") {
 		out = append(out, "dnscrypt-probe")
 	}
+	// DGA: malware resolving algorithmically-generated domains for C2
+	// rendezvous. Only for address lookups (A/AAAA) — tunnels use TXT/NULL.
+	if qtype == 1 || qtype == 28 {
+		for _, l := range labels {
+			if looksDGALabel(l) {
+				out = append(out, "dns-dga-suspected")
+				break
+			}
+		}
+	}
 	if msgLen > 512 {
 		out = append(out, "dns-oversize-query")
 	}
@@ -305,6 +315,44 @@ func looksEncodedLabel(l string) bool {
 	// rarely do. >= 20% digits in a 20+ char all-alnum label is a
 	// strong tunneling tell.
 	return digits*5 >= len(l)
+}
+
+// looksDGALabel heuristically flags an algorithmically-generated domain
+// label: long, vowel-poor (or digit-heavy), with a long consonant run — the
+// shape of malware DGA SLDs. Conservative (length >= 12, all-alphanumeric)
+// to limit false positives on real names.
+func looksDGALabel(l string) bool {
+	if len(l) < 12 || len(l) > 63 {
+		return false
+	}
+	vowels, digits, alpha, run, maxRun := 0, 0, 0, 0, 0
+	for i := 0; i < len(l); i++ {
+		switch c := l[i]; {
+		case c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u':
+			vowels++
+			alpha++
+			run = 0
+		case c >= 'a' && c <= 'z':
+			alpha++
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		case c >= '0' && c <= '9':
+			digits++
+			run = 0
+		default:
+			return false // hyphen / other → likely a real name
+		}
+	}
+	if alpha == 0 {
+		return false
+	}
+	// Vowel-poor (< ~26%), or a 6+ consonant run, or a substantial digit
+	// fraction (25–70%) — all hallmarks of generated labels.
+	vowelPoor := vowels*100 < len(l)*26
+	digitHeavy := digits*4 >= len(l) && digits*10 <= len(l)*7
+	return vowelPoor || maxRun >= 6 || digitHeavy
 }
 
 func dedupStrings(in []string) []string {

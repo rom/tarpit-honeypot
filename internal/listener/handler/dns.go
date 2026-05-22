@@ -600,6 +600,15 @@ func dnsQueryAnomalies(name string, qtype uint16, msgLen int) []string {
 	if strings.Contains(name, "dnscrypt-cert.") {
 		out = append(out, "dnscrypt-probe")
 	}
+	// DGA: address lookups (A/AAAA) for algorithmically-generated domains.
+	if qtype == 1 || qtype == 28 {
+		for _, l := range strings.Split(name, ".") {
+			if dnsLabelLooksDGA(l) {
+				out = append(out, "dns-dga-suspected")
+				break
+			}
+		}
+	}
 	if msgLen > 512 {
 		out = append(out, "dns-oversize-query")
 	}
@@ -619,4 +628,39 @@ func dnsLabelLooksEncoded(l string) bool {
 		}
 	}
 	return alnum == len(l) && digits*5 >= len(l)
+}
+
+// dnsLabelLooksDGA mirrors dnscanary.looksDGALabel (kept local to avoid an
+// import cycle): a long, vowel-poor / digit-heavy / consonant-run-heavy
+// label of the kind a malware DGA generates.
+func dnsLabelLooksDGA(l string) bool {
+	if len(l) < 12 || len(l) > 63 {
+		return false
+	}
+	vowels, digits, alpha, run, maxRun := 0, 0, 0, 0, 0
+	for i := 0; i < len(l); i++ {
+		switch c := l[i]; {
+		case c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u':
+			vowels++
+			alpha++
+			run = 0
+		case c >= 'a' && c <= 'z':
+			alpha++
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		case c >= '0' && c <= '9':
+			digits++
+			run = 0
+		default:
+			return false
+		}
+	}
+	if alpha == 0 {
+		return false
+	}
+	vowelPoor := vowels*100 < len(l)*26
+	digitHeavy := digits*4 >= len(l) && digits*10 <= len(l)*7
+	return vowelPoor || maxRun >= 6 || digitHeavy
 }

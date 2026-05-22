@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — DNS DGA detection
+- The DNS handler + canary flag `dns-dga-suspected` on A/AAAA lookups for
+  algorithmically-generated domains (long, vowel-poor / digit-heavy /
+  long-consonant-run labels — the shape of malware DGA C2 rendezvous,
+  ATT&CK T1568.002). Conservative (>= 12-char all-alphanumeric labels) to
+  avoid false-positives on real domains; only address lookups, since
+  tunnelling uses TXT/NULL.
+
 ### Added — SMB / Windows MSRPC abuse detection
 - The **DCERPC** handler now flags a bind to a sensitive MSRPC interface as
   AD enumeration / lateral movement: `dcerpc-samr-enum` (account

@@ -50,6 +50,30 @@ func TestDNSAnomalies(t *testing.T) {
 	if a := dnsAnomalies("2.dnscrypt-cert.example.com", 16, 60); !has(a, "dnscrypt-probe") {
 		t.Errorf("dnscrypt-cert query not flagged: %v", a)
 	}
+
+	// DGA: a vowel-poor random A-record SLD is flagged...
+	if a := dnsAnomalies("kjqwxzbmwptr.com", 1, 40); !has(a, "dns-dga-suspected") {
+		t.Errorf("DGA-shaped A query not flagged: %v", a)
+	}
+	// ...but common domains are not, and DGA only applies to A/AAAA.
+	for _, n := range []string{"www.google.com", "mail.example.org", "api.github.com"} {
+		if a := dnsAnomalies(n, 1, 40); has(a, "dns-dga-suspected") {
+			t.Errorf("legit domain %q false-flagged as DGA: %v", n, a)
+		}
+	}
+}
+
+func TestLooksDGALabel(t *testing.T) {
+	for _, dga := range []string{"kjqwxzbmwptr", "x7y2q9z4w1k8", "bcdfghjklmnp"} {
+		if !looksDGALabel(dga) {
+			t.Errorf("%q should look DGA", dga)
+		}
+	}
+	for _, ok := range []string{"google", "example", "administration", "cloudfront", "short"} {
+		if looksDGALabel(ok) {
+			t.Errorf("%q should NOT look DGA", ok)
+		}
+	}
 }
 
 func TestLooksEncodedLabel(t *testing.T) {
