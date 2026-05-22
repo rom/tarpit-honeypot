@@ -298,6 +298,28 @@ func (c *Config) applyDefaults() {
 			c.Correlate.ICMPSweep.Severity = "medium"
 		}
 	}
+	if c.Correlate.PathEnum.Enabled {
+		if c.Correlate.PathEnum.DistinctPaths == 0 {
+			c.Correlate.PathEnum.DistinctPaths = 50
+		}
+		if c.Correlate.PathEnum.Window == 0 {
+			c.Correlate.PathEnum.Window = 60 * time.Second
+		}
+		if c.Correlate.PathEnum.Severity == "" {
+			c.Correlate.PathEnum.Severity = "high"
+		}
+	}
+	if c.Correlate.DNSEnum.Enabled {
+		if c.Correlate.DNSEnum.DistinctNames == 0 {
+			c.Correlate.DNSEnum.DistinctNames = 50
+		}
+		if c.Correlate.DNSEnum.Window == 0 {
+			c.Correlate.DNSEnum.Window = 60 * time.Second
+		}
+		if c.Correlate.DNSEnum.Severity == "" {
+			c.Correlate.DNSEnum.Severity = "medium"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {

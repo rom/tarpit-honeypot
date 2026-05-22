@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — correlator: path-enumeration + DNS-enumeration
+- New `correlate:path_enumeration` detector — one source requesting many
+  distinct HTTP URL paths within a window (content discovery / dirbusting /
+  forced browsing that per-request UA fingerprinting misses when the UA is
+  spoofed). Config `correlate.path_enumeration` (default 50 paths / 60s);
+  ATT&CK T1595.003 / T1083.
+- New `correlate:dns_enumeration` detector — one source querying many
+  distinct DNS names within a window (subdomain brute force / NXDOMAIN flood
+  / DGA churn). Config `correlate.dns_enumeration` (default 50 names / 60s);
+  ATT&CK T1590.002 / T1568.002. Both per-source sets are window-aged + capped.
+
 ### Added — DNS DGA detection
 - The DNS handler + canary flag `dns-dga-suspected` on A/AAAA lookups for
   algorithmically-generated domains (long, vowel-poor / digit-heavy /

@@ -351,6 +351,8 @@ correlate:
 - **icmp_sweep**: one source touching N distinct *destination IPs* via ICMP within window → `correlate:icmp_sweep` (a ping-sweep / live-host-mapping precursor). Keys on dest IP, not port, so it also runs for portless ICMP events.
 - **password_spray**: one source trying N **distinct usernames** within window → `correlate:password_spray` (the breadth signal — the inverse of brute force, which is depth against one account). Tagged `T1110.003`.
 - **credential_reuse**: the **same** credential pair attempted from N **distinct source IPs** within window → `correlate:credential_reuse` (a shared credential list / botnet — credential stuffing). The event reports the username + source count; the password is never logged. Tagged `T1110.004`.
+- **path_enumeration**: one source requesting N **distinct HTTP URL paths** within window → `correlate:path_enumeration` (content discovery / dirbusting / forced browsing that per-request UA fingerprinting misses when the UA is spoofed). Tagged `T1595.003` / `T1083`.
+- **dns_enumeration**: one source querying N **distinct DNS names** within window → `correlate:dns_enumeration` (subdomain brute force / NXDOMAIN flood / DGA churn). Tagged `T1590.002` / `T1568.002`.
 
 Beyond these, the sensor always emits a cross-protocol **`storyline:multi_stage`** event when one source touches 3+ distinct ATT&CK tactics inside 30 minutes (no config — it's driven by the `mitre_tactics` tags every event carries).
 

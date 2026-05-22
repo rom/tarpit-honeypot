@@ -77,6 +77,10 @@ var exactRules = map[string]Tag{
 	"correlate:slow_scan":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"correlate:password_spray":   {Techniques: []string{"T1110.003"}, Tactics: []string{"credential-access"}},
 	"correlate:credential_reuse": {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
+	// Content discovery / forced browsing (dirbusting) of many URL paths.
+	"correlate:path_enumeration": {Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}},
+	// DNS name enumeration: subdomain brute force / NXDOMAIN flood / DGA churn.
+	"correlate:dns_enumeration": {Techniques: []string{"T1590.002", "T1568.002"}, Tactics: []string{"reconnaissance", "command-and-control"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.

@@ -701,6 +701,28 @@ type Correlate struct {
 	ICMPSweep     CorrICMPSweep     `yaml:"icmp_sweep"`
 	PasswordSpray CorrPasswordSpray `yaml:"password_spray"`
 	CredReuse     CorrCredReuse     `yaml:"credential_reuse"`
+	PathEnum      CorrPathEnum      `yaml:"path_enumeration"`
+	DNSEnum       CorrDNSEnum       `yaml:"dns_enumeration"`
+}
+
+// CorrPathEnum detects HTTP content discovery: one source requesting many
+// DISTINCT URL paths within a window (dirbusting / forced browsing), which
+// per-request tool fingerprinting can miss when the UA is spoofed.
+type CorrPathEnum struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctPaths int           `yaml:"distinct_paths"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
+}
+
+// CorrDNSEnum detects DNS name enumeration: one source querying many
+// DISTINCT names within a window — subdomain brute force, an NXDOMAIN flood,
+// or DGA churn.
+type CorrDNSEnum struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctNames int           `yaml:"distinct_names"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
 }
 
 // CorrPasswordSpray detects password spraying: one source trying many

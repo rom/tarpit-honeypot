@@ -24,17 +24,28 @@ type Correlator struct {
 	sweepSev event.Severity
 	spraySev event.Severity
 	reuseSev event.Severity
+	pathSev  event.Severity
+	dnsSev   event.Severity
 
-	mu      sync.Mutex
-	scan    map[string]*scanState      // key: source IP
-	brute   map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
-	slow    map[string]*slowState      // key: source IP
-	sweep   map[string]*sweepState     // key: source IP
-	spray   map[string]*sprayState     // key: source IP
-	reuse   map[string]*reuseState     // key: credential pair
-	story   map[string]*storylineState // key: source IP
-	emitted map[string]time.Time       // dedup of aggregate emission
-	lastGC  time.Time                  // last idle-state sweep
+	mu       sync.Mutex
+	scan     map[string]*scanState      // key: source IP
+	brute    map[string]*bruteState     // key: source IP (+ ":<port>" if PerPort)
+	slow     map[string]*slowState      // key: source IP
+	sweep    map[string]*sweepState     // key: source IP
+	spray    map[string]*sprayState     // key: source IP
+	reuse    map[string]*reuseState     // key: credential pair
+	pathEnum map[string]*setState       // key: source IP (distinct HTTP paths)
+	dnsEnum  map[string]*setState       // key: source IP (distinct DNS names)
+	story    map[string]*storylineState // key: source IP
+	emitted  map[string]time.Time       // dedup of aggregate emission
+	lastGC   time.Time                  // last idle-state sweep
+}
+
+// setState tracks a per-source set of distinct strings within a window
+// (HTTP paths / DNS names), capped to bound memory.
+type setState struct {
+	since time.Time
+	set   map[string]struct{}
 }
 
 // sprayState tracks the distinct usernames one source has tried (password
@@ -79,15 +90,17 @@ type sweepState struct {
 
 func New(cfg config.Correlate) (*Correlator, error) {
 	c := &Correlator{
-		cfg:     cfg,
-		scan:    map[string]*scanState{},
-		brute:   map[string]*bruteState{},
-		slow:    map[string]*slowState{},
-		sweep:   map[string]*sweepState{},
-		spray:   map[string]*sprayState{},
-		reuse:   map[string]*reuseState{},
-		story:   map[string]*storylineState{},
-		emitted: map[string]time.Time{},
+		cfg:      cfg,
+		scan:     map[string]*scanState{},
+		brute:    map[string]*bruteState{},
+		slow:     map[string]*slowState{},
+		sweep:    map[string]*sweepState{},
+		spray:    map[string]*sprayState{},
+		reuse:    map[string]*reuseState{},
+		pathEnum: map[string]*setState{},
+		dnsEnum:  map[string]*setState{},
+		story:    map[string]*storylineState{},
+		emitted:  map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
 		s, err := event.ParseSeverity(cfg.PortScan.Severity)
@@ -130,6 +143,20 @@ func New(cfg config.Correlate) (*Correlator, error) {
 			return nil, err
 		}
 		c.reuseSev = s
+	}
+	if cfg.PathEnum.Enabled {
+		s, err := event.ParseSeverity(cfg.PathEnum.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.pathSev = s
+	}
+	if cfg.DNSEnum.Enabled {
+		s, err := event.ParseSeverity(cfg.DNSEnum.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.dnsSev = s
 	}
 	return c, nil
 }
@@ -194,10 +221,121 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 			out = append(out, extra)
 		}
 	}
+	if c.cfg.PathEnum.Enabled {
+		if extra := c.checkPathEnum(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.DNSEnum.Enabled {
+		if extra := c.checkDNSEnum(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
 	if extra := c.observeStoryline(ev, now); extra != nil {
 		out = append(out, extra)
 	}
 	return out
+}
+
+// checkPathEnum detects HTTP content discovery: DistinctPaths distinct URL
+// paths from one source within the window. Called with c.mu held.
+func (c *Correlator) checkPathEnum(ev *event.Event, now time.Time) *event.Event {
+	path := httpEventPath(ev)
+	if path == "" {
+		return nil
+	}
+	cfg := c.cfg.PathEnum
+	st, ok := c.pathEnum[ev.Source.IP]
+	if !ok || now.Sub(st.since) > cfg.Window {
+		st = &setState{since: now, set: map[string]struct{}{}}
+		c.pathEnum[ev.Source.IP] = st
+	}
+	if len(st.set) < corrSetCap {
+		st.set[path] = struct{}{}
+	}
+	if len(st.set) < cfg.DistinctPaths {
+		return nil
+	}
+	if !c.shouldEmit("pathenum|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:path_enumeration",
+		Severity: c.pathSev,
+		Source:   ev.Source,
+		Dest:     event.Endpoint{Port: ev.Dest.Port},
+		Proto:    ev.Proto,
+		Handler:  ev.Handler,
+		Meta: map[string]any{
+			"distinct_paths": len(st.set),
+			"window_s":       int(cfg.Window.Seconds()),
+		},
+	}
+}
+
+// checkDNSEnum detects DNS name enumeration: DistinctNames distinct query
+// names from one source within the window (subdomain brute / NXDOMAIN flood
+// / DGA churn). Called with c.mu held.
+func (c *Correlator) checkDNSEnum(ev *event.Event, now time.Time) *event.Event {
+	if ev.Handler != "dns" {
+		return nil
+	}
+	name, _ := ev.Meta["qname"].(string)
+	if name == "" {
+		return nil
+	}
+	cfg := c.cfg.DNSEnum
+	st, ok := c.dnsEnum[ev.Source.IP]
+	if !ok || now.Sub(st.since) > cfg.Window {
+		st = &setState{since: now, set: map[string]struct{}{}}
+		c.dnsEnum[ev.Source.IP] = st
+	}
+	if len(st.set) < corrSetCap {
+		st.set[name] = struct{}{}
+	}
+	if len(st.set) < cfg.DistinctNames {
+		return nil
+	}
+	if !c.shouldEmit("dnsenum|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:dns_enumeration",
+		Severity: c.dnsSev,
+		Source:   ev.Source,
+		Dest:     event.Endpoint{Port: ev.Dest.Port},
+		Proto:    ev.Proto,
+		Handler:  ev.Handler,
+		Meta: map[string]any{
+			"distinct_names": len(st.set),
+			"window_s":       int(cfg.Window.Seconds()),
+		},
+	}
+}
+
+// httpEventPath extracts the request path from an HTTP-shaped event's meta,
+// preferring an explicit http_path, else parsing the request line.
+func httpEventPath(ev *event.Event) string {
+	if p, ok := ev.Meta["http_path"].(string); ok && p != "" {
+		return p
+	}
+	if rl, ok := ev.Meta["request_line"].(string); ok && rl != "" {
+		f := strings.Fields(rl)
+		if len(f) >= 2 {
+			p := f[1]
+			if i := strings.IndexByte(p, '?'); i >= 0 {
+				p = p[:i]
+			}
+			return p
+		}
+	}
+	return ""
 }
 
 func (c *Correlator) checkScan(ev *event.Event, now time.Time) *event.Event {
@@ -606,6 +744,16 @@ func (c *Correlator) gc(now time.Time) {
 	for k, st := range c.reuse {
 		if now.Sub(st.since) > effWindow(c.cfg.CredReuse.Window, time.Hour) {
 			delete(c.reuse, k)
+		}
+	}
+	for ip, st := range c.pathEnum {
+		if now.Sub(st.since) > effWindow(c.cfg.PathEnum.Window, time.Minute) {
+			delete(c.pathEnum, ip)
+		}
+	}
+	for ip, st := range c.dnsEnum {
+		if now.Sub(st.since) > effWindow(c.cfg.DNSEnum.Window, time.Minute) {
+			delete(c.dnsEnum, ip)
 		}
 	}
 	for ip, st := range c.story {
