@@ -59,13 +59,17 @@ func (s *Store) Fingerprints(ctx context.Context, since time.Time, limit int) ([
 	)
 	for _, kind := range fingerprintKindOrder {
 		path := fingerprintKinds[kind]
+		// Guard json_extract with json_valid: events stored with no meta have
+		// meta_json = '' (not NULL), and json_extract('', …) raises "malformed
+		// JSON" — which would fail the whole query. The CASE makes json_extract
+		// run only on valid-JSON rows, regardless of WHERE-term ordering.
+		val := "CASE WHEN json_valid(meta_json) THEN json_extract(meta_json,'" + path + "') END"
 		selects = append(selects, `
-SELECT '`+kind+`' AS kind, json_extract(meta_json,'`+path+`') AS val,
+SELECT '`+kind+`' AS kind, `+val+` AS val,
        COUNT(*) AS c, COUNT(DISTINCT src_ip) AS ips, COUNT(DISTINCT sensor) AS sensors,
        MIN(time) AS firstns, MAX(time) AS lastns
 FROM events
-WHERE time >= ? AND json_extract(meta_json,'`+path+`') IS NOT NULL
-  AND json_extract(meta_json,'`+path+`') <> ''
+WHERE time >= ? AND `+val+` IS NOT NULL AND `+val+` <> ''
 GROUP BY val`)
 		args = append(args, sinceNS)
 	}

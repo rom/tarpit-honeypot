@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+- The web UI **fingerprints** page (and the fingerprint detail/API filter) no
+  longer 500s. Events stored without meta have `meta_json = ''`, and SQLite's
+  `json_extract('', …)` raises "malformed JSON", which failed the whole index
+  query whenever any empty-meta event existed. The fingerprint queries now
+  guard `json_extract` with `json_valid(meta_json)` (via CASE, so it can't be
+  reordered around the guard). Fixes existing databases with no migration.
+
 ### Added — IPv6 packet capture (scans / tunnels / fragmentation over IPv6)
 - The sniffer now binds a third AF_PACKET socket for IPv6 (alongside IPv4
   and the L2 path), so the scan, encapsulation, fragmentation, and ICMP-

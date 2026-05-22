@@ -69,6 +69,47 @@ func TestFingerprintsAndFilter(t *testing.T) {
 	}
 }
 
+// TestFingerprintsIgnoresEmptyMeta reproduces the "internal server error" on
+// the fingerprints page: events stored with no meta have meta_json = ”, and
+// json_extract(”, …) raises "malformed JSON", which used to fail the whole
+// index query. The json_valid guard must skip such rows.
+func TestFingerprintsIgnoresEmptyMeta(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A no-meta event (meta_json = '') alongside a fingerprinted one.
+	noMeta := mkEvent("n", "9.9.9.9", "listener:raw", event.SeverityLow, now.Add(-3*time.Minute))
+	fp := mkEvent("f", "1.1.1.1", "listener:tls", event.SeverityMedium, now.Add(-1*time.Minute))
+	fp.Meta = map[string]any{"ja3": "deadbeef"}
+	for _, e := range []*event.Event{noMeta, fp} {
+		if err := s.Insert(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows, err := s.Fingerprints(ctx, now.Add(-time.Hour), 50)
+	if err != nil {
+		t.Fatalf("Fingerprints errored with an empty-meta row present: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Value != "deadbeef" {
+		t.Fatalf("want 1 row [deadbeef]; got %+v", rows)
+	}
+
+	// The detail filter must also tolerate the empty-meta row.
+	evs, err := s.Query(ctx, Filter{FPKind: "ja3", FPValue: "deadbeef", Since: now.Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("Query(FP filter) errored with an empty-meta row present: %v", err)
+	}
+	if len(evs) != 1 {
+		t.Errorf("FP filter returned %d events; want 1", len(evs))
+	}
+}
+
 func TestFingerprintKindKnown(t *testing.T) {
 	for _, k := range []string{"ja3", "ja4", "ja4h", "ja3s", "hassh", "hassh_server"} {
 		if !FingerprintKindKnown(k) {

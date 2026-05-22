@@ -190,7 +190,9 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		// The path is taken from the fixed allowlist map (never user input);
 		// the value is bound as a parameter. An unknown kind matches nothing.
 		if path := fingerprintPath(f.FPKind); path != "" {
-			q += " AND json_extract(meta_json, '" + path + "') = ?"
+			// json_valid guard: events with empty meta store meta_json = ''
+			// and json_extract('', …) raises "malformed JSON".
+			q += " AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '" + path + "') END = ?"
 			args = append(args, f.FPValue)
 		} else {
 			q += " AND 0=1"
