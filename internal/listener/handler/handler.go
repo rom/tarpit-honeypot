@@ -127,6 +127,8 @@ func Get(name string, deps Deps) (Handler, error) {
 	switch name {
 	case "raw":
 		return &raw{}, nil
+	case "auto":
+		return &auto{}, nil
 	case "scripted":
 		return compileScripted(deps.Scripted)
 	case "lua":

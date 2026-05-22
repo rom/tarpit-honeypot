@@ -42,7 +42,7 @@ var tcpHandlers = map[string]bool{
 	"horizon": true, "moxa_mgmt": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
-	"lua": true, "scripted": true,
+	"lua": true, "scripted": true, "auto": true,
 }
 
 var udpHandlers = map[string]bool{
@@ -56,6 +56,7 @@ var udpHandlers = map[string]bool{
 	"qotd": true, "chargen": true, "time": true,
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
+	"auto": true,
 }
 
 // TCPHandlerNames returns the sorted set of handler names accepted on a

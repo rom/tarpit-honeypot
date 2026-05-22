@@ -110,6 +110,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &dhcp{}, nil
 	case "dns":
 		return &dnsHandler{id: deps.Identity, topo: deps.HoneynetView}, nil
+	case "auto":
+		return &autoUDP{}, nil
 	case "echo":
 		return &echoUDP{}, nil
 	case "discard":
@@ -131,6 +133,27 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 // (Get / GetUDP) when honeynets are configured.
 type HoneynetAware interface {
 	SetHoneynetView(HoneynetSnapshot)
+}
+
+// autoUDP is the generic UDP catch-all: it records the datagram and guesses
+// the protocol from its leading bytes, flagging unmodelled traffic. It never
+// writes a response — a UDP reply to a (spoofable) source is a reflection /
+// amplification primitive, which the honeypot must never become.
+type autoUDP struct{}
+
+func (a *autoUDP) Name() string { return "auto" }
+
+func (a *autoUDP) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.PacketConn, _ config.Listener) (Result, error) {
+	res := Result{Meta: map[string]any{}}
+	if len(payload) == 0 {
+		res.Meta["no_data"] = true
+		return res, nil
+	}
+	res.Payload = append([]byte(nil), payload...)
+	res.Meta["protocol_guess"] = guessProtocol(payload)
+	res.Meta["bytes"] = len(payload)
+	flagAnomaly(&res, "unknown-protocol")
+	return res, nil
 }
 
 // rawUDP records the packet bytes and optionally writes a static banner back.

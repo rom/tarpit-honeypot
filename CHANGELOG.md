@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — generic `auto` catch-all handler (TCP + UDP)
+- New `auto` handler for protocols the sensor doesn't explicitly model: it
+  captures the client's opening message, guesses the protocol from the
+  leading bytes (`protocol_guess`: tls / ssh / http / socks4|5 / text /
+  binary / length-prefixed), records the byte count, and raises an
+  `unknown-protocol` anomaly (ATT&CK T1046) so a probe on any unmodelled
+  port is still attributable. On TCP it can send an operator-set `banner`
+  as a server-first nudge; on UDP it never replies (a UDP reply to a
+  spoofable source would be a reflection/amplification primitive).
+
 ### Added — correlator: C2 beacon detection
 - New `correlate:beacon` detector — regularly-spaced call-home contact from
   one source. After `min_hits` samples (default 6) in the window it measures

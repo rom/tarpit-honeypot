@@ -83,6 +83,8 @@ var exactRules = map[string]Tag{
 	"correlate:dns_enumeration": {Techniques: []string{"T1590.002", "T1568.002"}, Tactics: []string{"reconnaissance", "command-and-control"}},
 	// Regularly-spaced call-home contact = C2 beaconing.
 	"correlate:beacon": {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	// A probe to an unmodelled port on the generic catch-all = service scan.
+	"unknown-protocol": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.
