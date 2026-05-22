@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — new protocol handlers: POP3, IMAP, memcached
+- **POP3** (TCP 110) and **IMAP** (TCP 143) mail handlers greet, walk the
+  login (USER/PASS, APOP, LOGIN incl. quoted args, AUTHENTICATE), capture
+  the credentials (→ attacker-profile creds + default-credential matching),
+  and reject the auth. ATT&CK T1110.001 / T1114.
+- **memcached** (TCP 11211) text-protocol handler answers version/stats/
+  get/set believably and flags abuse (`memcached-stats-probe`,
+  `memcached-write-attempt`, `memcached-flush`). TCP-only by design — it
+  never reflects, so it can't be abused as a UDP amplifier. T1213 / T1046.
+
 ### Added — encrypted-DNS detection (DoH / DoT / DNSCrypt) + mDNS handler
 - The HTTP handler flags **DNS-over-HTTPS** (`dns-over-https`): the RFC 8484
   `/dns-query` path or the `application/dns-message` media type.

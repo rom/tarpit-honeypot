@@ -131,6 +131,9 @@ var handlerTags = map[string]Tag{
 	"telnet":    {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
 	"ftp":       {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
 	"smtp_recv": {Techniques: []string{"T1110.003", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"pop3":      {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"imap":      {Techniques: []string{"T1110.001", "T1114"}, Tactics: []string{"credential-access", "collection"}},
+	"memcached": {Techniques: []string{"T1213", "T1046"}, Tactics: []string{"collection", "discovery"}},
 	"rdp":       {Techniques: []string{"T1021.001", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
 	"vnc":       {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
 	"winrm":     {Techniques: []string{"T1021.006"}, Tactics: []string{"lateral-movement"}},
@@ -265,6 +268,10 @@ var anomalyTags = map[string]Tag{
 	"dnscrypt-probe": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	// DNS-SD service enumeration over mDNS = local network-service discovery.
 	"mdns-service-enumeration": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// memcached abuse: stats recon, writes (cache poisoning), flush_all (wipe).
+	"memcached-stats-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"memcached-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"memcached-flush":         {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
 	// TFTP upload = ingress tool / firmware push; config read = exfil from
 	// a configuration repository (the "copy run tftp" pivot on net gear).
 	"tftp-write-attempt": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},

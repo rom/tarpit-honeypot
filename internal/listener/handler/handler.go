@@ -233,6 +233,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &mysql{id: deps.Identity, arch: deps.Archetype}, nil
 	case "redis":
 		return &redis{}, nil
+	case "memcached":
+		return &memcached{}, nil
+	case "pop3":
+		return &pop3{}, nil
+	case "imap":
+		return &imap{}, nil
 	case "syslog_tcp":
 		return &syslogTCP{}, nil
 	case "rtsp":
