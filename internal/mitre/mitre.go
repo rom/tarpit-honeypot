@@ -81,6 +81,8 @@ var exactRules = map[string]Tag{
 	"correlate:path_enumeration": {Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}},
 	// DNS name enumeration: subdomain brute force / NXDOMAIN flood / DGA churn.
 	"correlate:dns_enumeration": {Techniques: []string{"T1590.002", "T1568.002"}, Tactics: []string{"reconnaissance", "command-and-control"}},
+	// Regularly-spaced call-home contact = C2 beaconing.
+	"correlate:beacon": {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.

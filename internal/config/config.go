@@ -703,6 +703,19 @@ type Correlate struct {
 	CredReuse     CorrCredReuse     `yaml:"credential_reuse"`
 	PathEnum      CorrPathEnum      `yaml:"path_enumeration"`
 	DNSEnum       CorrDNSEnum       `yaml:"dns_enumeration"`
+	Beacon        CorrBeacon        `yaml:"beacon"`
+}
+
+// CorrBeacon detects C2 beaconing: repeated, regularly-spaced contact from
+// one source. After MinHits events it measures the inter-arrival jitter
+// (stddev/mean as a percentage); a low jitter (<= MaxJitterPct) over a
+// non-trivial mean interval is the periodic call-home pattern of a beacon.
+type CorrBeacon struct {
+	Enabled      bool          `yaml:"enabled"`
+	MinHits      int           `yaml:"min_hits"`
+	MaxJitterPct int           `yaml:"max_jitter_pct"`
+	Window       time.Duration `yaml:"window"`
+	Severity     string        `yaml:"severity"`
 }
 
 // CorrPathEnum detects HTTP content discovery: one source requesting many

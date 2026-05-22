@@ -320,6 +320,20 @@ func (c *Config) applyDefaults() {
 			c.Correlate.DNSEnum.Severity = "medium"
 		}
 	}
+	if c.Correlate.Beacon.Enabled {
+		if c.Correlate.Beacon.MinHits == 0 {
+			c.Correlate.Beacon.MinHits = 6
+		}
+		if c.Correlate.Beacon.MaxJitterPct == 0 {
+			c.Correlate.Beacon.MaxJitterPct = 20
+		}
+		if c.Correlate.Beacon.Window == 0 {
+			c.Correlate.Beacon.Window = time.Hour
+		}
+		if c.Correlate.Beacon.Severity == "" {
+			c.Correlate.Beacon.Severity = "high"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {

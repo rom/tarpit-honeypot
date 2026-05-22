@@ -353,6 +353,7 @@ correlate:
 - **credential_reuse**: the **same** credential pair attempted from N **distinct source IPs** within window → `correlate:credential_reuse` (a shared credential list / botnet — credential stuffing). The event reports the username + source count; the password is never logged. Tagged `T1110.004`.
 - **path_enumeration**: one source requesting N **distinct HTTP URL paths** within window → `correlate:path_enumeration` (content discovery / dirbusting / forced browsing that per-request UA fingerprinting misses when the UA is spoofed). Tagged `T1595.003` / `T1083`.
 - **dns_enumeration**: one source querying N **distinct DNS names** within window → `correlate:dns_enumeration` (subdomain brute force / NXDOMAIN flood / DGA churn). Tagged `T1590.002` / `T1568.002`.
+- **beacon**: regularly-spaced call-home contact from one source → `correlate:beacon`. After `min_hits` samples it measures inter-arrival jitter (stddev/mean); a jitter `<= max_jitter_pct` over a mean interval `>= 1s` is the periodic pattern of C2 beaconing (sub-second bursts and irregular timing are excluded). Tagged `T1071`.
 
 Beyond these, the sensor always emits a cross-protocol **`storyline:multi_stage`** event when one source touches 3+ distinct ATT&CK tactics inside 30 minutes (no config — it's driven by the `mitre_tactics` tags every event carries).
 

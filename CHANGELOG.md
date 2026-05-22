@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — correlator: C2 beacon detection
+- New `correlate:beacon` detector — regularly-spaced call-home contact from
+  one source. After `min_hits` samples (default 6) in the window it measures
+  inter-arrival jitter (stddev/mean); a jitter `<= max_jitter_pct`
+  (default 20%) over a mean interval `>= 1s` is flagged as C2 beaconing.
+  Sub-second bursts and irregular timing are excluded. Config
+  `correlate.beacon`; ATT&CK T1071.
+
 ### Added — correlator: path-enumeration + DNS-enumeration
 - New `correlate:path_enumeration` detector — one source requesting many
   distinct HTTP URL paths within a window (content discovery / dirbusting /

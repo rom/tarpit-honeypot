@@ -7,6 +7,7 @@
 package correlate
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,15 +18,16 @@ import (
 )
 
 type Correlator struct {
-	cfg      config.Correlate
-	scanSev  event.Severity
-	bruteSev event.Severity
-	slowSev  event.Severity
-	sweepSev event.Severity
-	spraySev event.Severity
-	reuseSev event.Severity
-	pathSev  event.Severity
-	dnsSev   event.Severity
+	cfg       config.Correlate
+	scanSev   event.Severity
+	bruteSev  event.Severity
+	slowSev   event.Severity
+	sweepSev  event.Severity
+	spraySev  event.Severity
+	reuseSev  event.Severity
+	pathSev   event.Severity
+	dnsSev    event.Severity
+	beaconSev event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -36,9 +38,16 @@ type Correlator struct {
 	reuse    map[string]*reuseState     // key: credential pair
 	pathEnum map[string]*setState       // key: source IP (distinct HTTP paths)
 	dnsEnum  map[string]*setState       // key: source IP (distinct DNS names)
+	beacon   map[string]*beaconState    // key: source IP (call-home timestamps)
 	story    map[string]*storylineState // key: source IP
 	emitted  map[string]time.Time       // dedup of aggregate emission
 	lastGC   time.Time                  // last idle-state sweep
+}
+
+// beaconState holds the recent contact timestamps for one source so the
+// inter-arrival regularity (C2 beacon jitter) can be measured.
+type beaconState struct {
+	times []time.Time
 }
 
 // setState tracks a per-source set of distinct strings within a window
@@ -99,6 +108,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		reuse:    map[string]*reuseState{},
 		pathEnum: map[string]*setState{},
 		dnsEnum:  map[string]*setState{},
+		beacon:   map[string]*beaconState{},
 		story:    map[string]*storylineState{},
 		emitted:  map[string]time.Time{},
 	}
@@ -157,6 +167,13 @@ func New(cfg config.Correlate) (*Correlator, error) {
 			return nil, err
 		}
 		c.dnsSev = s
+	}
+	if cfg.Beacon.Enabled {
+		s, err := event.ParseSeverity(cfg.Beacon.Severity)
+		if err != nil {
+			return nil, err
+		}
+		c.beaconSev = s
 	}
 	return c, nil
 }
@@ -231,10 +248,97 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 			out = append(out, extra)
 		}
 	}
+	if c.cfg.Beacon.Enabled {
+		if extra := c.checkBeacon(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
 	if extra := c.observeStoryline(ev, now); extra != nil {
 		out = append(out, extra)
 	}
 	return out
+}
+
+// checkBeacon detects regularly-spaced call-home contact from one source.
+// After MinHits samples in the window it measures inter-arrival jitter
+// (stddev/mean); a low jitter over a non-trivial mean interval is a C2
+// beacon. Called with c.mu held.
+func (c *Correlator) checkBeacon(ev *event.Event, now time.Time) *event.Event {
+	cfg := c.cfg.Beacon
+	st, ok := c.beacon[ev.Source.IP]
+	if !ok {
+		st = &beaconState{}
+		c.beacon[ev.Source.IP] = st
+	}
+	// Keep only in-window samples, then record this contact (bounded).
+	cutoff := now.Add(-cfg.Window)
+	kept := st.times[:0]
+	for _, t := range st.times {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	st.times = append(kept, now)
+	if len(st.times) > 128 {
+		st.times = st.times[len(st.times)-128:]
+	}
+	if len(st.times) < cfg.MinHits {
+		return nil
+	}
+	mean, jitterPct, ok := intervalRegularity(st.times)
+	// Ignore bursts (sub-second mean) — a beacon is a periodic call-home,
+	// not a flood; those are caught by the scan / enumeration detectors.
+	if !ok || mean < time.Second || jitterPct > cfg.MaxJitterPct {
+		return nil
+	}
+	if !c.shouldEmit("beacon|"+ev.Source.IP, cfg.Window) {
+		return nil
+	}
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     now,
+		Sensor:   ev.Sensor,
+		RuleID:   "correlate:beacon",
+		Severity: c.beaconSev,
+		Source:   ev.Source,
+		Dest:     event.Endpoint{Port: ev.Dest.Port},
+		Proto:    ev.Proto,
+		Handler:  ev.Handler,
+		Meta: map[string]any{
+			"interval_s": int(mean.Seconds()),
+			"jitter_pct": jitterPct,
+			"samples":    len(st.times),
+			"window_s":   int(cfg.Window.Seconds()),
+		},
+	}
+}
+
+// intervalRegularity returns the mean inter-arrival interval and the jitter
+// (stddev/mean as a percent) over a series of timestamps. ok is false when
+// there are too few samples or the mean is non-positive.
+func intervalRegularity(times []time.Time) (mean time.Duration, jitterPct int, ok bool) {
+	if len(times) < 3 {
+		return 0, 0, false
+	}
+	ivs := make([]float64, 0, len(times)-1)
+	for i := 1; i < len(times); i++ {
+		ivs = append(ivs, times[i].Sub(times[i-1]).Seconds())
+	}
+	var sum float64
+	for _, v := range ivs {
+		sum += v
+	}
+	m := sum / float64(len(ivs))
+	if m <= 0 {
+		return 0, 0, false
+	}
+	var varSum float64
+	for _, v := range ivs {
+		d := v - m
+		varSum += d * d
+	}
+	std := math.Sqrt(varSum / float64(len(ivs)))
+	return time.Duration(m * float64(time.Second)), int(std / m * 100), true
 }
 
 // checkPathEnum detects HTTP content discovery: DistinctPaths distinct URL
@@ -754,6 +858,11 @@ func (c *Correlator) gc(now time.Time) {
 	for ip, st := range c.dnsEnum {
 		if now.Sub(st.since) > effWindow(c.cfg.DNSEnum.Window, time.Minute) {
 			delete(c.dnsEnum, ip)
+		}
+	}
+	for ip, st := range c.beacon {
+		if len(st.times) == 0 || now.Sub(st.times[len(st.times)-1]) > effWindow(c.cfg.Beacon.Window, time.Hour) {
+			delete(c.beacon, ip)
 		}
 	}
 	for ip, st := range c.story {

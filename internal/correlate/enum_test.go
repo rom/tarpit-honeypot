@@ -80,6 +80,52 @@ func TestDNSEnumerationFires(t *testing.T) {
 	}
 }
 
+func TestBeaconFiresOnRegularInterval(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		Beacon: config.CorrBeacon{Enabled: true, MinHits: 6, MaxJitterPct: 20, Window: time.Hour, Severity: "high"},
+	})
+	base := time.Now().UTC()
+	var last []*event.Event
+	// Six contacts spaced exactly 10s apart — a textbook beacon.
+	for i := 0; i < 6; i++ {
+		last = cor.Observe(mkEvent("7.7.7.7", 443, base.Add(time.Duration(i)*10*time.Second)))
+	}
+	agg := aggregate(last, "correlate:beacon")
+	if agg == nil {
+		t.Fatalf("beacon did not fire on regular interval: %v", last)
+	}
+	if agg.Meta["interval_s"].(int) != 10 {
+		t.Errorf("interval_s = %v; want 10", agg.Meta["interval_s"])
+	}
+}
+
+func TestBeaconIgnoresIrregularAndBursts(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		Beacon: config.CorrBeacon{Enabled: true, MinHits: 5, MaxJitterPct: 15, Window: time.Hour, Severity: "high"},
+	})
+	base := time.Now().UTC()
+	// Wildly irregular gaps → high jitter, no beacon.
+	offsets := []int{0, 1, 30, 31, 600}
+	var last []*event.Event
+	for _, off := range offsets {
+		last = cor.Observe(mkEvent("8.8.8.8", 443, base.Add(time.Duration(off)*time.Second)))
+	}
+	if aggregate(last, "correlate:beacon") != nil {
+		t.Errorf("irregular timing must not fire a beacon")
+	}
+
+	// A sub-second burst (scan) must not be classed as a beacon either.
+	cor2, _ := New(config.Correlate{
+		Beacon: config.CorrBeacon{Enabled: true, MinHits: 5, MaxJitterPct: 50, Window: time.Hour, Severity: "high"},
+	})
+	for i := 0; i < 6; i++ {
+		last = cor2.Observe(mkEvent("8.8.8.9", 443, base.Add(time.Duration(i)*10*time.Millisecond)))
+	}
+	if aggregate(last, "correlate:beacon") != nil {
+		t.Errorf("sub-second burst must not fire a beacon")
+	}
+}
+
 func TestHTTPEventPath(t *testing.T) {
 	if got := httpEventPath(&event.Event{Meta: map[string]any{"http_path": "/x"}}); got != "/x" {
 		t.Errorf("http_path = %q; want /x", got)
