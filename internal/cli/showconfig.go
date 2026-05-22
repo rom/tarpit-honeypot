@@ -27,7 +27,7 @@ func cmdShowConfig(args []string) error {
 	if c, err := f.log.apply(); err == nil && c != nil {
 		defer c.Close()
 	}
-	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 	if err != nil {
 		return err
 	}

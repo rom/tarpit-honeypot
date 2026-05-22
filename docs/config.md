@@ -562,6 +562,27 @@ Allowlisted source IPs **don't** trigger outbound channels (webhook, syslog, SMS
 
 ---
 
+## `interaction:` — interaction depth + experimental-feature guardrails
+
+The docs note that some signals are infeasible in a low-interaction emulator. The `interaction:` block makes that a **hard guardrail** rather than an assumption: experimental / high-interaction capture knobs only unlock in `medium_experimental` mode, and setting one in `low` mode is a config **error** (not a silent downgrade).
+
+```yaml
+interaction:
+  mode: low                      # low (default) | medium_experimental
+  http2_probe_capture: disabled  # disabled (default) | headers_only  (needs medium_experimental)
+  ssh_kex_depth: kexinit_only    # kexinit_only (default) | extended_experimental (needs medium_experimental)
+  browser_traps: off             # off only — locked; no real browser is ever driven
+```
+
+- **`mode`** — `low` is the safe default: every emitted capture is something a low-interaction emulator can actually produce. `medium_experimental` unlocks the knobs below (best-effort, possibly incomplete — the sensor is still never a real browser / OS / crypto stack).
+- **`http2_probe_capture`** — `headers_only` is a future-proof, header-only knob; full HTTP/2 frame / HPACK / multiplexed-stream reconstruction is not implemented in any mode.
+- **`ssh_kex_depth`** — `kexinit_only` captures the client KEXINIT (HASSH); `extended_experimental` is a placeholder for deeper best-effort KEX capture.
+- **`browser_traps`** — locked to `off`. JavaScript / canvas / beacon traps can't execute without driving a real browser.
+
+**CLI.** `--interaction-mode low|medium_experimental` overrides `interaction.mode` for `run` / `validate-config` / `show-config` (it flows through the normal pre-validation override path, so the guardrail still applies). `tarpit-honeypot list-unavailable-capabilities` prints the exact disabled / locked / infeasible feature matrix for the active config (`--json` for machine output) — so an operator never assumes a capability that the deployment can't produce.
+
+---
+
 ## Hot reload classification
 
 Run `tarpit-honeypot validate-config -c new.yaml --diff old.yaml` to see what would happen on SIGHUP. Cheat sheet:

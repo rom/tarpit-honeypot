@@ -37,11 +37,12 @@ func (s *plainList) Set(v string) error {
 // path(s), -i for network interface(s), --set for overrides, and the
 // loggingFlags block.
 type commonFlags struct {
-	cfgPaths   plainList
-	cfgDefault string
-	ifaces     plainList
-	sets       stringList
-	log        loggingFlags
+	cfgPaths    plainList
+	cfgDefault  string
+	ifaces      plainList
+	sets        stringList
+	interaction string
+	log         loggingFlags
 }
 
 // register wires up the standard flags on fs. cfgDefault is the default
@@ -56,6 +57,7 @@ func (c *commonFlags) register(fs *flag.FlagSet, cfgDefault string) {
 	fs.Var(&c.ifaces, "i", "network interface to use (repeatable; overrides sensor.interfaces)")
 	fs.Var(&c.ifaces, "interface", "alias for -i")
 	fs.Var(&c.sets, "set", "override one YAML key as `key.path=value` (repeatable)")
+	fs.StringVar(&c.interaction, "interaction-mode", "", "override interaction.mode: low | medium_experimental")
 	c.log.register(
 		func(p *string, name, def, usage string) { fs.StringVar(p, name, def, usage) },
 		func(p *bool, name string, def bool, usage string) { fs.BoolVar(p, name, def, usage) },
@@ -79,6 +81,18 @@ func (c *commonFlags) applyIfaceOverride(cfg *config.Config) {
 	if len(c.ifaces) > 0 {
 		cfg.Sensor.Interfaces = append([]string(nil), c.ifaces...)
 	}
+}
+
+// overrideSets returns the --set list plus a synthesized
+// `interaction.mode=<v>` entry when --interaction-mode was given, so the CLI
+// override flows through the normal pre-validation override path (and the
+// low-mode guardrail still applies). Pass this to LoadManyWithOverrides.
+func (c *commonFlags) overrideSets() stringList {
+	if c.interaction == "" {
+		return c.sets
+	}
+	out := append(stringList(nil), c.sets...)
+	return append(out, "interaction.mode="+c.interaction)
 }
 
 // parseOrUsage runs fs.Parse but treats `-h`/`--help` as a clean exit

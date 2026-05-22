@@ -29,6 +29,7 @@ type Config struct {
 	Routes        []Route        `yaml:"routes"`
 	Devices       Devices        `yaml:"devices"`
 	Risk          RiskScoring    `yaml:"risk"`
+	Interaction   Interaction    `yaml:"interaction"`
 
 	// archeservicesExpanded guards expandArcheservices so it runs once even
 	// if applyDefaults is invoked more than once on the same Config.

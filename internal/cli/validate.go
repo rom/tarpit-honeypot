@@ -20,7 +20,7 @@ func cmdValidate(args []string) error {
 	}
 	// Validate the effective config (base file(s) + conf.d + env + --set);
 	// multiple -c are combined exactly as `run` would combine them.
-	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 	if err != nil {
 		return err
 	}

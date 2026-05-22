@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — interaction-depth guardrails (`interaction:`) + CLI
+- New `interaction:` config block makes "this signal is infeasible in
+  low-interaction mode" an explicit guardrail instead of a docs footnote:
+  `mode` (`low` default | `medium_experimental`), `http2_probe_capture`
+  (`disabled` | `headers_only`), `ssh_kex_depth` (`kexinit_only` |
+  `extended_experimental`), `browser_traps` (locked `off`). The
+  `*_experimental` values only unlock in `medium_experimental`; setting one
+  in `low` mode is a config **error**, not a silent downgrade.
+- New CLI: `--interaction-mode low|medium_experimental` (overrides
+  `interaction.mode` for run/validate/show-config through the normal
+  override path), and `list-unavailable-capabilities` which prints the
+  disabled / locked / infeasible high-interaction feature matrix for the
+  active config (`--json` supported).
+
 ### Fixed — remaining ATT&CK gaps + example-config coverage
 - Mapped the last 15 emitted-but-unattributed anomaly markers so **every
   marker the sensor emits now carries an ATT&CK technique**: web-shell

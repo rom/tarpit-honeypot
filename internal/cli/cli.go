@@ -20,7 +20,8 @@ type command struct {
 // subcommand. (`=`-form `-c=path` is a single token and needs no entry.)
 var globalValueFlags = map[string]bool{
 	"-c": true, "-i": true, "--interface": true, "--set": true,
-	"--log-level": true, "--log-format": true, "--log-file": true,
+	"--interaction-mode": true,
+	"--log-level":        true, "--log-format": true, "--log-file": true,
 }
 
 func Dispatch(args []string) error {
@@ -39,6 +40,7 @@ func Dispatch(args []string) error {
 		{"list-archeservices", "print the service roles (webserver, adserver, …)", cmdListArcheservices},
 		{"list-cves", "print the CVE catalog (emulation + exploit detection)", cmdListCVEs},
 		{"list-techniques", "print the MITRE ATT&CK / D3FEND coverage map", cmdListTechniques},
+		{"list-unavailable-capabilities", "print disabled / infeasible high-interaction features", cmdListUnavailableCapabilities},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
 		{"reset-db", "empty the local event store / device inventory / captures", cmdResetDB},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},

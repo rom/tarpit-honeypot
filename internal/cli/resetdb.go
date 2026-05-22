@@ -39,7 +39,7 @@ func cmdResetDB(args []string) error {
 
 	dir := *dataDir
 	if dir == "" {
-		cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
+		cfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 		if err != nil {
 			return fmt.Errorf("reset-db: %w (or pass --data-dir to skip config loading)", err)
 		}

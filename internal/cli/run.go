@@ -40,7 +40,7 @@ func cmdRun(args []string) error {
 		defer logCloser.Close()
 	}
 
-	cfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
+	cfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func cmdRun(args []string) error {
 				return
 			case <-hupCh:
 				slog.Info("SIGHUP received; reloading config", "paths", f.paths())
-				newCfg, err := config.LoadManyWithOverrides(f.paths(), f.sets)
+				newCfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 				if err != nil {
 					slog.Error("reload: config invalid; keeping running config", "err", err)
 					continue
