@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: correlation, tunnels, advanced search
+- New **`/correlation`** view: per-source pivot chains (IP → fingerprints →
+  User-Agents → ASN/country → domains → tools → credentials → malware →
+  sessions) as linked chips — a no-JS render of the pivot graph.
+- New **`/tunnels`** view: covert-transport detections (DNS/ICMP tunnels,
+  encrypted DNS, DGA, sniffer encapsulation, QUIC, unknown-protocol) by type
+  / source / recency. Honest by design — labelled detections, not live
+  tunnels (the sensor doesn't carry SSH/SOCKS/k8s/service-mesh pivots).
+- New **`/search`** view: structured columns to SQL + behavioral post-filters
+  (ATT&CK tactic / country / tool / has-payload / has-session) over meta.
+
 ### Added — web UI: attack timeline + richer summary
 - New **`/timeline`** view: per-source chronological event sequences (top
   sources by volume), each showing the attacker's progression with severity

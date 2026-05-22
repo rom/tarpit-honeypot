@@ -55,7 +55,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }}</p></body></html>{{ end }}
@@ -143,6 +143,74 @@ td.bnum { width: 10%; text-align: right; color: #555; }
   </table>
   {{ if gt .Truncated 0 }}<p class="note">… {{ .Truncated }} earlier event(s) not shown — <a href="/events?source={{ .Source }}">see all</a></p>{{ end }}
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "correlation" }}{{ template "head" . }}
+<h1>correlation — last 24 hours</h1>
+<p class="note">Per-source pivot chains: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view. (No-JS render of the pivot graph.)</p>
+{{ if .Sources }}{{ range .Sources }}
+<div class="net">
+  <h3 class="sev-{{ .MaxSev }}"><a href="/profiles/{{ .IP }}">{{ .IP }}</a> <span class="meta">{{ .Count }} events</span></h3>
+  <table>
+    {{ if .FPs }}<tr><th>fingerprints</th><td>{{ range .FPs }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
+    {{ if .UAs }}<tr><th>user-agents</th><td>{{ range .UAs }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .ASN }}<tr><th>asn</th><td>{{ .ASN }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
+    {{ if .Domains }}<tr><th>domains</th><td>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .Tools }}<tr><th>tools</th><td>{{ range .Tools }}<span class="tag warn">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .Creds }}<tr><th>credentials</th><td>{{ range .Creds }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .Malware }}<tr><th>malware</th><td>{{ range .Malware }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .Tactics }}<tr><th>tactics</th><td>{{ range .Tactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+    {{ if .Sessions }}<tr><th>sessions</th><td>{{ .Sessions }} recorded · <a href="/events?source={{ .IP }}">events</a></td></tr>{{ end }}
+  </table>
+</div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "tunnels" }}{{ template "head" . }}
+<h1>tunnels &amp; covert transport — last 24 hours</h1>
+<p class="note">Detections of tunnelling / covert channels the sensor observes. <strong>These are detections, not established tunnels</strong> — the honeypot terminates connections, it doesn't carry SSH/SOCKS/k8s/service-mesh pivots. See <a href="/docs">docs</a> and <code>list-unavailable-capabilities</code> for what is and isn't captured.</p>
+<h2>by type</h2>
+{{ if .Types }}{{ template "bars" .Types }}{{ else }}<p class="note">no tunnel / covert-transport detections in the window</p>{{ end }}
+{{ if .Sources }}<h2>by source</h2>
+<table><tr><th>source</th><th>detections</th><th>kinds</th></tr>
+{{ range .Sources }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td><td>{{ range .Kinds }}<span class="tag warn">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+<h2>recent</h2>
+{{ if .Recent }}<table><tr><th>time</th><th>source</th><th>kind</th><th>detail</th></tr>
+{{ range .Recent }}<tr><td style="white-space:nowrap">{{ fmtTime .Time }}</td><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td><td><span class="tag warn">{{ .Kind }}</span></td><td>{{ .Detail }}</td></tr>{{ end }}
+</table>{{ else }}<p class="note">none</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "search" }}{{ template "head" . }}
+<h1>advanced search</h1>
+<form method="get" action="/search">
+  <table class="chart">
+  <tr><td>source IP</td><td><input type="text" name="source" value="{{ .Q.SourceIP }}" size="18"></td>
+      <td>rule</td><td><input type="text" name="rule" value="{{ .Q.RuleID }}" size="20"></td></tr>
+  <tr><td>severity ≥</td><td><input type="text" name="severity" value="{{ .Q.Severity }}" placeholder="low|medium|high|critical" size="12"></td>
+      <td>handler</td><td><input type="text" name="handler" value="{{ .Q.Handler }}" size="14"></td></tr>
+  <tr><td>dest port</td><td><input type="text" name="port" value="{{ .Q.Port }}" size="8"></td>
+      <td>since</td><td><input type="text" name="since" value="{{ .Q.Since }}" placeholder="24h" size="8"></td></tr>
+  <tr><td>ATT&amp;CK tactic</td><td><input type="text" name="tactic" value="{{ .Q.Tactic }}" placeholder="credential-access" size="18"></td>
+      <td>country</td><td><input type="text" name="country" value="{{ .Q.Country }}" size="6"></td></tr>
+  <tr><td>tool</td><td><input type="text" name="tool" value="{{ .Q.Tool }}" placeholder="nmap / sqlmap / …" size="16"></td>
+      <td>full-text</td><td><input type="text" name="q" value="{{ .Q.Text }}" placeholder="rule / banner / captured meta" size="28"></td></tr>
+  <tr><td colspan="2"><label><input type="checkbox" name="has_payload" value="1" {{ if .Q.HasPayload }}checked{{ end }}> has payload</label>
+      <label><input type="checkbox" name="has_session" value="1" {{ if .Q.HasSession }}checked{{ end }}> has session</label></td>
+      <td colspan="2"><button type="submit">search</button> <a href="/search">reset</a></td></tr>
+  </table>
+</form>
+<p class="note">Structured columns use the SQL store; tactic / country / tool / payload / session are behavioral post-filters over the captured meta. {{ if .Searched }}<strong>{{ .Matched }}</strong> match(es){{ if .Capped }} (capped){{ end }}.{{ end }}</p>
+{{ if .Searched }}{{ if .Results }}<table>
+<tr><th>time</th><th>severity</th><th>source</th><th>rule</th><th>handler</th><th></th></tr>
+{{ range .Results }}<tr>
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td class="sev-{{ .Severity.String }}">{{ .Severity.String }}</td>
+  <td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a></td>
+  <td>{{ .RuleID }}</td>
+  <td>{{ .Handler }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ end }}</td>
+  <td><a href="/events/{{ .ID }}">details</a></td>
+</tr>{{ end }}
+</table>{{ else }}<p class="note">no matches</p>{{ end }}{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "health" }}{{ template "head" . }}

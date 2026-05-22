@@ -1357,6 +1357,17 @@ Endpoints:
   (top sources by volume), each showing the attacker's progression with
   severity colouring + the ATT&CK tactics touched (distinct from the flat
   `/events` table).
+- `/search` — **advanced search**: structured columns (source / rule /
+  severity / handler / dest port / since / full-text) pushed to SQL, plus
+  behavioral post-filters over captured meta (ATT&CK tactic, country, tool,
+  has-payload, has-session). (NL search is intentionally out of scope.)
+- `/correlation` — per-source **pivot chains**: IP → fingerprints →
+  User-Agents → ASN/country → domains → tools → credentials → malware →
+  sessions, rendered as linked chips (no-JS render of the pivot graph).
+- `/tunnels` — **covert-transport detections** (DNS/ICMP tunnels, encrypted
+  DNS, DGA, sniffer encapsulation 6in4/6to4/GRE/…, QUIC, unknown-protocol),
+  by type / source / recency. Honest by design: these are *detections*, not
+  live tunnels (the sensor terminates connections, it doesn't carry pivots).
 - `/attack` — **ATT&CK mapping** view: a kill-chain-ordered tactic timeline
   (with the techniques nested under each tactic), a top-technique heatmap,
   and the recent `storyline:multi_stage` kill-chain progressions. Techniques
