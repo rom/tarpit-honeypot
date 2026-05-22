@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — DNS-over-HTTPS (DoH) detection
+- The HTTP handler now flags DNS-over-HTTPS request shapes (`dns-over-https`
+  anomaly): the RFC 8484 `/dns-query` path or the `application/dns-message`
+  media type in an Accept/Content-Type header — DNS tunnelled inside HTTPS
+  to evade DNS monitoring (ATT&CK T1572 / T1071.004). (DNS tunnelling /
+  exfil over plain DNS, oversize/ANY amplifier probes, NULL/TXT
+  tunnelling-qtypes, and high-entropy labels were already detected by the
+  DNS handler + canary; mDNS / LLMNR / NBNS / CLDAP have dedicated
+  handlers.)
+
 ### Added — sniffer L2/tunnelling detection (encapsulation + spanning-tree)
 - The packet-capture layer now flags **tunnelling / overlay traffic**
   (`sniffer:encapsulation`): GRE, IP-in-IP, 6in4, EtherIP, L2TPv3 by IP

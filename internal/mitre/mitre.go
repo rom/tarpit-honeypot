@@ -257,6 +257,9 @@ var anomalyTags = map[string]Tag{
 	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
 	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
+	// DNS-over-HTTPS request shape = DNS tunnelled inside HTTPS to evade
+	// DNS monitoring (application-layer C2 over a web protocol).
+	"dns-over-https": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	// TFTP upload = ingress tool / firmware push; config read = exfil from
 	// a configuration repository (the "copy run tftp" pivot on net gear).
 	"tftp-write-attempt": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},

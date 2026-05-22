@@ -164,6 +164,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		if marker := suspiciousURI(path); marker != "" {
 			flagAnomaly(&res, marker)
 		}
+		// DNS-over-HTTPS (RFC 8484): a DoH client targets /dns-query (or
+		// carries the application/dns-message media type). Tunnelling DNS
+		// inside HTTPS evades DNS monitoring (T1572 / T1071.004).
+		if isDoHRequest(path, headerKeys, res.Payload) {
+			flagAnomaly(&res, "dns-over-https")
+		}
 	}
 	// Also scan the full request line — Log4Shell / RCE payloads
 	// frequently live in the query string, which extractPath
@@ -445,6 +451,23 @@ func extractPath(reqLine string) string {
 		p = p[:i]
 	}
 	return p
+}
+
+// isDoHRequest reports whether an HTTP request looks like DNS-over-HTTPS
+// (RFC 8484): the well-known /dns-query path, or the application/dns-message
+// media type in an Accept / Content-Type header.
+func isDoHRequest(path string, headerKeys []string, payload []byte) bool {
+	if strings.Contains(strings.ToLower(path), "/dns-query") {
+		return true
+	}
+	hasCT := false
+	for _, k := range headerKeys {
+		if k == "content-type" || k == "accept" {
+			hasCT = true
+			break
+		}
+	}
+	return hasCT && strings.Contains(strings.ToLower(string(payload)), "application/dns-message")
 }
 
 // extractMethod returns the first whitespace-separated token of the
