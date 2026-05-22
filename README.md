@@ -1353,6 +1353,15 @@ Endpoints:
   meta table, plus download links for the connection **pcap**, the
   **session recording** (asciinema cast, when present), and an "all pcaps +
   sessions from this source IP" ZIP.
+- `/attack` — **ATT&CK mapping** view: a kill-chain-ordered tactic timeline
+  (with the techniques nested under each tactic), a top-technique heatmap,
+  and the recent `storyline:multi_stage` kill-chain progressions. Techniques
+  are recomputed per event from rule + handler + anomaly markers (the same
+  mapping the router stamps). JSON at `/api/attack`.
+- `/health` — **sensor health** dashboard: uptime, Go runtime (memory /
+  goroutines / GC), recovered panics, event-DB size + data_dir disk %,
+  events/24h, and per-sink dropped / failed / retried counters (so a
+  backlogged or down sink is obvious). Backed by the same data as `/metrics`.
 - `/pcap/<id>` / `/session/<id>` — download one event's recorded capture /
   session cast.
 - `/download?source=&rule=&since=&what=pcap|session|all` — stream a ZIP of

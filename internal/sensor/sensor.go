@@ -744,6 +744,13 @@ func (s *Sensor) Correlator() *correlate.Correlator { return s.curCorrelator() }
 func (s *Sensor) Store() *store.Store               { return s.store }
 func (s *Sensor) Config() *config.Config            { return s.curConfig() }
 
+// DiskUsedPercent returns the data_dir filesystem usage percent (and ok=false
+// on platforms without statfs). Used by the stats provider for the UI health
+// dashboard + /metrics.
+func (s *Sensor) DiskUsedPercent() (int, bool) {
+	return diskUsedPercent(s.curConfig().Sensor.DataDir)
+}
+
 // effIface returns sectionIface if set, else the sensor's first configured
 // interface, else "" — the AF_PACKET default-interface fallback.
 func (s *Sensor) effIface(sectionIface string) string {

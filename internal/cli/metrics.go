@@ -88,6 +88,15 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 				})
 			}
 		}
+		// data_dir filesystem usage (statfs; absent on non-unix).
+		if used, ok := s.DiskUsedPercent(); ok {
+			out.Samples = append(out.Samples, ui.Sample{
+				Name:  "tarpit_disk_used_percent",
+				Help:  "data_dir filesystem usage percent",
+				Type:  "gauge",
+				Value: float64(used),
+			})
+		}
 		// Process metrics.
 		out.Samples = append(out.Samples,
 			ui.Sample{

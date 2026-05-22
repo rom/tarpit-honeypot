@@ -55,7 +55,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/attack">att&amp;ck</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }}</p></body></html>{{ end }}
@@ -85,6 +85,61 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 <h2>top sources</h2>
 {{ if .Sources }}{{ template "bars" .Sources }}{{ else }}<p class="note">none</p>{{ end }}
 <p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "attack" }}{{ template "head" . }}
+<h1>ATT&amp;CK mapping — last 24 hours</h1>
+<p>{{ .Events }} attributed events · {{ .DistinctTID }} distinct techniques across {{ len .Tactics }} tactics.</p>
+<p class="note">Recomputed live from each event's rule + handler + anomaly markers (the same mapping the router stamps); see <a href="/docs">docs</a> for the catalog.</p>
+
+<h2>tactic timeline (kill-chain order)</h2>
+{{ if .Tactics }}{{ range .Tactics }}
+<div class="net">
+  <h3>{{ .Rank }}. {{ .Tactic }} <span class="meta">{{ .Count }} events</span></h3>
+  <table class="chart"><tr><td class="bcell"><span class="bar" style="width:{{ .Pct }}%">&nbsp;</span></td><td class="bnum">{{ .Count }}</td></tr></table>
+  {{ if .Techniques }}{{ template "bars" .Techniques }}{{ end }}
+</div>{{ end }}{{ else }}<p class="note">no ATT&amp;CK-attributed events in the window yet</p>{{ end }}
+
+<h2>technique heatmap (top 25 by volume)</h2>
+{{ if .TopTech }}{{ template "bars" .TopTech }}{{ else }}<p class="note">none</p>{{ end }}
+
+<h2>recent kill-chain progressions</h2>
+{{ if .Chains }}<table><tr><th>time</th><th>source</th><th>chain</th></tr>
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+</table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
+<p class="note">JSON at <a href="/api/attack">/api/attack</a>.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "health" }}{{ template "head" . }}
+<h1>sensor health</h1>
+{{ if not .Available }}<p class="note">live metrics provider not wired (run via <code>tarpit-honeypot run</code>); showing Go runtime only.</p>{{ end }}
+
+<h2>process</h2>
+<table>
+<tr><th>uptime</th><td>{{ if .Uptime }}{{ .Uptime }}{{ else }}n/a{{ end }}</td></tr>
+<tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }}</td></tr>
+<tr><th>goroutines</th><td>{{ .Goroutines }}</td></tr>
+<tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ .NumGC }} GC cycles</td></tr>
+<tr><th class="{{ if gt .Panics 0 }}sev-high{{ end }}">recovered panics</th><td>{{ .Panics }}</td></tr>
+</table>
+
+<h2>storage</h2>
+<table>
+<tr><th>event DB</th><td>{{ .DBSize }}</td></tr>
+{{ if .DiskKnown }}<tr><th class="{{ if gt .DiskPct 90 }}sev-high{{ end }}">data_dir disk</th><td>{{ .DiskPct }}% used</td></tr>{{ else }}<tr><th>data_dir disk</th><td>n/a (no statfs on this platform)</td></tr>{{ end }}
+<tr><th>events / 24h</th><td>{{ .Events24h }}</td></tr>
+</table>
+
+<h2>event delivery (sinks)</h2>
+{{ if .Sinks }}<table><tr><th>channel</th><th>dropped</th><th>failed</th><th>retried</th></tr>
+{{ range .Sinks }}<tr><td>{{ .Channel }}</td><td class="{{ if gt .Dropped 0 }}sev-high{{ end }}">{{ .Dropped }}</td><td class="{{ if gt .Failed 0 }}sev-high{{ end }}">{{ .Failed }}</td><td>{{ .Retried }}</td></tr>{{ end }}
+</table>
+{{ if or (gt .DropTotal 0) (gt .FailTotal 0) }}<p class="note">⚠ {{ .DropTotal }} dropped + {{ .FailTotal }} failed event(s) — a sink is backlogged or down; events were lost.</p>{{ else }}<p class="note">no dropped or failed events — delivery healthy.</p>{{ end }}
+{{ else }}<p class="note">no sink stats available</p>{{ end }}
+
+{{ if .Available }}<h2>honeynet</h2>
+<p>{{ .HoneyNets }} network(s) · {{ .HoneyHosts }} virtual host(s)</p>{{ end }}
+<p class="note">Prometheus-format metrics at <a href="/metrics">/metrics</a>.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "events" }}{{ template "head" . }}

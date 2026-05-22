@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: ATT&CK mapping + sensor health dashboards
+- New **`/attack`** view: a kill-chain-ordered tactic timeline (techniques
+  nested per tactic), a top-technique heatmap, and the recent
+  `storyline:multi_stage` kill-chain progressions — techniques recomputed
+  per stored event from rule + handler + anomaly markers (the same mapping
+  the router stamps live). JSON at `/api/attack`.
+- New **`/health`** view: uptime, Go runtime (memory / goroutines / GC),
+  recovered panics, event-DB size + data_dir disk %, events/24h, and
+  per-sink dropped / failed / retried counters. The stats provider now also
+  exposes `tarpit_disk_used_percent`.
+
 ### Added — more example configs + refreshed existing ones
 - New ready-to-run example configs in `configs/`: `example-MINIMAL`
   (smallest useful deployment), `example-AD-ENTERPRISE` (Windows / Active
