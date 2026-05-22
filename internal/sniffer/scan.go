@@ -229,18 +229,118 @@ const icmpTunnelMinData = 128
 // parseIPv4) is an echo request/reply carrying a large, high-entropy data
 // payload — the shape of an ICMP tunnel (ptunnel / icmpsh / Loki).
 func icmpEchoTunnel(l4 []byte) (dataLen int, tunnel bool) {
+	return echoTunnelData(l4, 8, 0) // ICMPv4 echo request / reply
+}
+
+// icmpv6EchoTunnel is the ICMPv6 equivalent (echo request 128 / reply 129).
+func icmpv6EchoTunnel(l4 []byte) (dataLen int, tunnel bool) {
+	return echoTunnelData(l4, 128, 129)
+}
+
+// echoTunnelData is the shared ICMP/ICMPv6 echo-tunnel test: an echo of one
+// of the two given types carrying a large, high-entropy data payload.
+func echoTunnelData(l4 []byte, echoType1, echoType2 byte) (int, bool) {
 	if len(l4) < 8 {
 		return 0, false
 	}
-	if typ := l4[0]; typ != 8 && typ != 0 { // echo request / reply only
+	if t := l4[0]; t != echoType1 && t != echoType2 {
 		return 0, false
 	}
 	data := l4[8:]
 	if len(data) < icmpTunnelMinData {
 		return len(data), false
 	}
-	// High byte-diversity ⇒ not the standard incrementing ping pattern.
 	return len(data), distinctByteCount(data) > 80
+}
+
+// encapByProto6 names a tunnelling protocol carried directly in an IPv6
+// datagram's next-header field. IPv4-in-IPv6 (proto 4) is DS-Lite / 6rd's
+// reverse path; the rest mirror the IPv4 transport names.
+func encapByProto6(proto byte) string {
+	switch proto {
+	case 4:
+		return "ds-lite" // IPv4-in-IPv6
+	case 41:
+		return "ip6in6" // IPv6-in-IPv6
+	case 47:
+		return "gre" // GRE over IPv6
+	case 97:
+		return "etherip"
+	case 115:
+		return "l2tp"
+	}
+	return ""
+}
+
+// ipv6Info is the parsed result of one captured IPv6 frame.
+type ipv6Info struct {
+	srcIP      string
+	nextHdr    byte   // upper-layer protocol after any extension headers
+	hopLimit   byte   // analogous to IPv4 TTL
+	fragmented bool   // a fragment extension header was present
+	payload    []byte // upper-layer bytes (TCP/UDP/ICMPv6 onward)
+}
+
+// ipv6ExtHeaders are the IPv6 extension-header next-header values we walk
+// past to reach the upper-layer protocol.
+var ipv6ExtHeaders = map[byte]bool{
+	0: true, 43: true, 60: true, // hop-by-hop, routing, destination-options
+	51: true, // authentication header
+}
+
+// parseIPv6 parses an Ethernet frame carrying IPv6 (EtherType 0x86DD),
+// walking the extension-header chain to the upper-layer protocol. Returns
+// ok=false for non-IPv6 / malformed frames. Every offset is bounds-checked.
+func parseIPv6(frame []byte) (ipv6Info, bool) {
+	var info ipv6Info
+	if len(frame) < 14+40 {
+		return info, false
+	}
+	if binary.BigEndian.Uint16(frame[12:14]) != 0x86DD {
+		return info, false
+	}
+	ip := frame[14:]
+	if ip[0]>>4 != 6 {
+		return info, false
+	}
+	info.hopLimit = ip[7]
+	info.srcIP = net.IP(ip[8:24]).String()
+	nh := ip[6]
+	off := 40
+	for i := 0; i < 8; i++ { // bounded ext-header walk
+		if nh == 44 { // fragment header (fixed 8 bytes)
+			info.fragmented = true
+			if off+8 > len(ip) {
+				return info, false
+			}
+			nh = ip[off]
+			off += 8
+			continue
+		}
+		if !ipv6ExtHeaders[nh] {
+			break
+		}
+		if off+2 > len(ip) {
+			return info, false
+		}
+		var length int
+		if nh == 51 { // AH: (len+2)*4 bytes
+			length = (int(ip[off+1]) + 2) * 4
+		} else { // hop-by-hop / routing / dest-opts: (len+1)*8 bytes
+			length = (int(ip[off+1]) + 1) * 8
+		}
+		next := ip[off]
+		off += length
+		if off > len(ip) {
+			return info, false
+		}
+		nh = next
+	}
+	info.nextHdr = nh
+	if off <= len(ip) {
+		info.payload = ip[off:]
+	}
+	return info, true
 }
 
 // distinctByteCount returns how many distinct byte values appear in b — a

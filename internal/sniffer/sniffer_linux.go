@@ -69,6 +69,7 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 const (
 	ethPARP    = 0x0806
 	ethPIP     = 0x0800
+	ethPIP6    = 0x86DD
 	ethPALL    = 0x0003
 	ethPGOOSE  = 0x88B8
 	arpRequest = 1
@@ -115,6 +116,7 @@ func (s *linuxSniffer) Run(ctx context.Context, bus chan<- *event.Event) error {
 	// on its own AF_PACKET socket so the ARP path is unaffected.
 	if s.tcp != nil {
 		go s.runIPCapture(ctx, bus)
+		go s.runIP6Capture(ctx, bus)
 	}
 	if s.goose != nil {
 		go s.runGOOSECapture(ctx, bus)
@@ -311,6 +313,146 @@ func (s *linuxSniffer) runIPCapture(ctx context.Context, bus chan<- *event.Event
 		s.handleIPFrame(ctx, buf[:n], bus)
 	}
 }
+
+// runIP6Capture is the IPv6 counterpart of runIPCapture: a third AF_PACKET
+// socket bound to ETH_P_IPV6 so the scan / tunnelling / fragmentation
+// detectors also see IPv6 traffic (DS-Lite, GRE-over-IPv6, IPv6 scans).
+func (s *linuxSniffer) runIP6Capture(ctx context.Context, bus chan<- *event.Event) {
+	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(htons(ethPIP6)))
+	if err != nil {
+		slog.Warn("sniffer: ipv6-scan socket (need CAP_NET_RAW)", "err", err)
+		return
+	}
+	defer unix.Close(fd)
+
+	ifaceIdx := 0
+	if s.cfg.Interface != "" {
+		if iface, err := net.InterfaceByName(s.cfg.Interface); err == nil {
+			ifaceIdx = iface.Index
+		}
+	}
+	if err := unix.Bind(fd, &unix.SockaddrLinklayer{
+		Protocol: htons(ethPIP6),
+		Ifindex:  ifaceIdx,
+	}); err != nil {
+		slog.Warn("sniffer: ipv6-scan bind", "err", err)
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		_ = unix.Shutdown(fd, unix.SHUT_RDWR)
+		_ = unix.Close(fd)
+	}()
+
+	buf := make([]byte, 2048)
+	for {
+		n, from, err := unix.Recvfrom(fd, buf, 0)
+		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, syscall.EBADF) || errors.Is(err, syscall.EINTR) {
+				return
+			}
+			slog.Warn("sniffer: ipv6-scan recvfrom", "err", err)
+			continue
+		}
+		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
+			continue
+		}
+		s.handleIP6Frame(ctx, buf[:n], bus)
+	}
+}
+
+// handleIP6Frame classifies one captured IPv6 frame: fragmentation,
+// tunnelling (DS-Lite / GRE-over-IPv6 / IPv6-in-IPv6 / …), ICMPv6 echo
+// tunnels, and TCP/UDP scans — the IPv6 mirror of handleIPFrame.
+func (s *linuxSniffer) handleIP6Frame(ctx context.Context, frame []byte, bus chan<- *event.Event) {
+	info, ok := parseIPv6(frame)
+	if !ok {
+		return
+	}
+	now := time.Now()
+
+	if info.fragmented {
+		if s.cfg.TCPScan.DetectFragments && s.frag.allow("v6:"+info.srcIP, now) {
+			ev := s.newIPEvent("sniffer:ip_fragmented", event.SeverityMedium, info.srcIP, "ipv6")
+			ev.Meta["ip_proto"] = int(info.nextHdr)
+			addHopGuess(ev, info.hopLimit)
+			send(ctx, bus, ev)
+		}
+		return
+	}
+	if name := encapByProto6(info.nextHdr); name != "" {
+		if s.encap.allow("encap6:"+info.srcIP+":"+name, now) {
+			ev := s.newIPEvent("sniffer:encapsulation", event.SeverityMedium, info.srcIP, name)
+			ev.Meta["encap_type"] = name
+			ev.Meta["ip_proto"] = int(info.nextHdr)
+			ev.Meta["ip_version"] = 6
+			addHopGuess(ev, info.hopLimit)
+			send(ctx, bus, ev)
+		}
+		return
+	}
+
+	switch info.nextHdr {
+	case 58: // ICMPv6 — echo-based covert tunnel
+		dataLen, tunnel := icmpv6EchoTunnel(info.payload)
+		if !tunnel {
+			return
+		}
+		if s.encap.allow("icmptun6:"+info.srcIP, now) {
+			ev := s.newIPEvent("sniffer:icmp_tunnel", event.SeverityHigh, info.srcIP, "icm6")
+			ev.Meta["icmp_data_len"] = dataLen
+			addHopGuess(ev, info.hopLimit)
+			send(ctx, bus, ev)
+		}
+	case 6: // TCP
+		port, flags, ok := parseTCP(info.payload)
+		if !ok {
+			return
+		}
+		kind := classifyTCP(flags)
+		if kind == scanNone {
+			return
+		}
+		count, fire := s.tcp.observe(info.srcIP, port, kind, now)
+		if !fire {
+			return
+		}
+		ev := s.newIPEvent(kind.ruleID(), s.sev, info.srcIP, "tcp6")
+		ev.Meta["distinct_ports"] = count
+		ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+		ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
+		addHopGuess(ev, info.hopLimit)
+		send(ctx, bus, ev)
+	case 17: // UDP
+		port, ok := parseUDP(info.payload)
+		if !ok {
+			return
+		}
+		if name := encapByUDPPort(port); name != "" {
+			if s.encap.allow("encap6:"+info.srcIP+":"+name, now) {
+				ev := s.newIPEvent("sniffer:encapsulation", event.SeverityMedium, info.srcIP, "udp6")
+				ev.Meta["encap_type"] = name
+				ev.Meta["udp_port"] = int(port)
+				addHopGuess(ev, info.hopLimit)
+				send(ctx, bus, ev)
+			}
+			return
+		}
+		count, fire := s.tcp.observe(info.srcIP, port, scanUDP, now)
+		if !fire {
+			return
+		}
+		ev := s.newIPEvent(scanUDP.ruleID(), s.sev, info.srcIP, "udp6")
+		ev.Meta["distinct_ports"] = count
+		ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+		addHopGuess(ev, info.hopLimit)
+		send(ctx, bus, ev)
+	}
+}
+
+// addHopGuess stamps the IPv6 hop limit + passive OS guess (the hop limit is
+// the IPv6 analogue of the IPv4 TTL, with the same initial-value buckets).
+func addHopGuess(ev *event.Event, hop byte) { addTTLGuess(ev, hop) }
 
 // handleIPFrame classifies one captured IPv4 frame and emits a scan event
 // when a per-source threshold trips.

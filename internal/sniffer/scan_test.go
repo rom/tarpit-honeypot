@@ -194,6 +194,79 @@ func TestICMPEchoTunnel(t *testing.T) {
 	}
 }
 
+// buildIP6Frame builds an Ethernet frame carrying IPv6 with the given
+// next-header value and upper-layer payload.
+func buildIP6Frame(nextHdr byte, payload []byte) []byte {
+	frame := make([]byte, 14)
+	binary.BigEndian.PutUint16(frame[12:14], 0x86DD)
+	ip := make([]byte, 40)
+	ip[0] = 0x60 // version 6
+	binary.BigEndian.PutUint16(ip[4:6], uint16(len(payload)))
+	ip[6] = nextHdr
+	ip[7] = 64 // hop limit
+	frame = append(frame, ip...)
+	return append(frame, payload...)
+}
+
+func TestParseIPv6(t *testing.T) {
+	// Direct TCP.
+	info, ok := parseIPv6(buildIP6Frame(6, tcpSeg(443, flagSYN)))
+	if !ok || info.nextHdr != 6 || info.fragmented {
+		t.Fatalf("ipv6 TCP parse: ok=%v nh=%d frag=%v", ok, info.nextHdr, info.fragmented)
+	}
+	if info.hopLimit != 64 {
+		t.Errorf("hop limit = %d; want 64", info.hopLimit)
+	}
+	port, flags, _ := parseTCP(info.payload)
+	if port != 443 || flags != flagSYN {
+		t.Errorf("ipv6 upper-layer = (%d,%#x); want (443,SYN)", port, flags)
+	}
+
+	// Fragment extension header (44) → fragmented, real next-header recovered.
+	fragHdr := make([]byte, 8)
+	fragHdr[0] = 6 // next header = TCP
+	info, ok = parseIPv6(buildIP6Frame(44, append(fragHdr, tcpSeg(80, flagSYN)...)))
+	if !ok || !info.fragmented || info.nextHdr != 6 {
+		t.Errorf("ipv6 fragment: ok=%v frag=%v nh=%d", ok, info.fragmented, info.nextHdr)
+	}
+
+	// Hop-by-hop extension header (0) of one 8-byte unit, then UDP.
+	hbh := []byte{17, 0, 0, 0, 0, 0, 0, 0} // next=UDP, hdrextlen=0
+	info, ok = parseIPv6(buildIP6Frame(0, append(hbh, make([]byte, 8)...)))
+	if !ok || info.nextHdr != 17 {
+		t.Errorf("ipv6 hop-by-hop: ok=%v nh=%d", ok, info.nextHdr)
+	}
+
+	// Runt frame rejected.
+	if _, ok := parseIPv6([]byte{0x00}); ok {
+		t.Error("parseIPv6 accepted a runt frame")
+	}
+}
+
+func TestEncapByProto6(t *testing.T) {
+	cases := map[byte]string{4: "ds-lite", 41: "ip6in6", 47: "gre", 97: "etherip", 115: "l2tp", 6: "", 17: ""}
+	for p, want := range cases {
+		if got := encapByProto6(p); got != want {
+			t.Errorf("encapByProto6(%d) = %q; want %q", p, got, want)
+		}
+	}
+}
+
+func TestICMPv6EchoTunnel(t *testing.T) {
+	data := make([]byte, 256)
+	for i := range data {
+		data[i] = byte(i * 7)
+	}
+	// ICMPv6 echo request = type 128.
+	if _, tun := icmpv6EchoTunnel(append([]byte{128, 0, 0, 0, 0, 0, 0, 0}, data...)); !tun {
+		t.Errorf("ICMPv6 echo tunnel not flagged")
+	}
+	// A small neighbor-solicitation-sized payload of the right type is fine.
+	if _, tun := icmpv6EchoTunnel(append([]byte{128, 0, 0, 0, 0, 0, 0, 0}, make([]byte, 16)...)); tun {
+		t.Errorf("small ICMPv6 echo wrongly flagged")
+	}
+}
+
 func TestOSGuessFromTTL(t *testing.T) {
 	cases := []struct {
 		ttl   byte

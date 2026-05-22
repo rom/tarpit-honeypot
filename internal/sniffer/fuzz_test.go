@@ -9,6 +9,9 @@ import "testing"
 func FuzzParseFrame(f *testing.F) {
 	f.Add(buildFrame(nil, 6, 0, tcpSeg(443, flagSYN)))
 	f.Add(buildFrame(nil, 1, 0x2000, []byte{0x08, 0x00}))
+	f.Add(buildIP6Frame(6, tcpSeg(443, flagSYN)))
+	f.Add(buildIP6Frame(44, append([]byte{6, 0, 0, 0, 0, 0, 0, 0}, tcpSeg(80, flagSYN)...)))
+	f.Add(buildIP6Frame(0, []byte{17, 0})) // truncated hop-by-hop ext header
 	f.Add([]byte{})
 	f.Add([]byte{0x00})
 	f.Add(make([]byte, 14)) // ethernet header only
@@ -18,13 +21,18 @@ func FuzzParseFrame(f *testing.F) {
 				t.Fatalf("frame parser panicked on %d bytes: %v", len(frame), r)
 			}
 		}()
-		info, ok := parseIPv4(frame)
-		if !ok {
-			return
+		if info, ok := parseIPv4(frame); ok {
+			if port, flags, ok := parseTCP(info.payload); ok {
+				_ = port
+				_ = classifyTCP(flags)
+			}
 		}
-		if port, flags, ok := parseTCP(info.payload); ok {
-			_ = port
-			_ = classifyTCP(flags)
+		// The IPv6 parser walks an attacker-controlled extension-header
+		// chain, so it must also never panic on a malformed frame.
+		if info, ok := parseIPv6(frame); ok {
+			_, _, _ = parseTCP(info.payload)
+			_ = encapByProto6(info.nextHdr)
+			_, _ = icmpv6EchoTunnel(info.payload)
 		}
 	})
 }

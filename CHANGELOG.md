@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — IPv6 packet capture (scans / tunnels / fragmentation over IPv6)
+- The sniffer now binds a third AF_PACKET socket for IPv6 (alongside IPv4
+  and the L2 path), so the scan, encapsulation, fragmentation, and ICMP-
+  tunnel detectors see **both IP versions**. New coverage: **DS-Lite**
+  (IPv4-in-IPv6), **GRE-over-IPv6**, IPv6-in-IPv6, **ICMPv6** echo tunnels,
+  and IPv6 SYN/NULL/FIN/Xmas/ACK/Maimon/UDP scans + IPv6 fragmentation.
+  `parseIPv6` walks the extension-header chain (hop-by-hop / routing /
+  fragment / dest-opts / AH) with full bounds-checking and is exercised by
+  the frame fuzzer.
+
 ### Added — covert / tunnelling transport detection
 - `sniffer:icmp_tunnel` — an ICMP echo carrying a large, high-entropy data
   payload (ptunnel / icmpsh / Loki); stock pings don't trip it. T1095/T1572.

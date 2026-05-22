@@ -200,12 +200,13 @@ handler/canary: overlong/high-entropy qnames, NULL/TXT qtypes, DGA), ICMP
 tunnels, GRE / IP-in-IP / 6in4 / 6to4 / ISATAP / EtherIP / L2TPv3 / VXLAN /
 GENEVE / Teredo, QUIC, fragmented evasions (`sniffer:ip_fragmented`), and
 arbitrary custom malware framing (the `auto` catch-all records + guesses it,
-raising `unknown-protocol`). Out of reach for a passive IPv4 sniffer:
-**IPv4-in-IPv6 transports** (DS-Lite, GRE-over-IPv6) need IPv6 frame
-capture, which the L3/L4 socket doesn't bind today; **steganographic
-transport** (data hidden inside otherwise-valid traffic) can't be detected
-reliably in general — the per-protocol entropy heuristics (DNS labels, ICMP
-payloads, payload harvesting) catch only the blatant cases.
+raising `unknown-protocol`). The L3/L4 layer captures **both IPv4 and IPv6**
+(separate AF_PACKET sockets), so DS-Lite (IPv4-in-IPv6), GRE-over-IPv6,
+IPv6-in-IPv6, ICMPv6 tunnels, and IPv6 scans / fragmentation are detected
+too. Still out of reach: **steganographic transport** (data hidden inside
+otherwise-valid traffic) can't be detected reliably in general — the
+per-protocol entropy heuristics (DNS labels, ICMP payloads, payload
+harvesting) catch only the blatant cases.
 
 ### 4d. Correlator aggregates (`internal/correlate`)
 
