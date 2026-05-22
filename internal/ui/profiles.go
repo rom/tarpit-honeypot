@@ -417,7 +417,8 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	p.Partial = len(evs) >= profileDetailMax
 
 	// The "triggered rules" table is sortable by rule name or count via
-	// ?rsort=rule|count&rorder=asc|desc (server-side — the CSP forbids JS).
+	// ?rsort=rule|count&rorder=asc|desc (server-side; the packaged app.js
+	// can also sort client-side as progressive enhancement).
 	rsort := r.URL.Query().Get("rsort")
 	if rsort != "rule" {
 		rsort = "count"

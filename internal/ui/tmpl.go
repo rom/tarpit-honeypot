@@ -53,7 +53,19 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .bar.sev-critical { background: #b00020; }
 .spark { display: flex; align-items: flex-end; gap: 1px; height: 80px; background: #fff; border: 1px solid #eee; padding: 4px; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
+/* JS enhancement layer (app.js): live-refresh bar, sortable headers, filter, graph. */
+#live-bar { position: fixed; top: 0; right: 0; z-index: 20; background: #fff; border: 1px solid #e3e3e3; border-radius: 0 0 0 4px; padding: .2rem .5rem; font-size: 12px; color: #555; }
+#live-bar button { font: inherit; cursor: pointer; border: 1px solid #ccd; background: #f3f3f3; border-radius: 3px; padding: 0 .35rem; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { background: #ebebeb; }
+th[data-arrow]::after { content: " " attr(data-arrow); color: #888; font-weight: 400; }
+input.tablefilter { margin: .3rem 0; padding: .15rem .35rem; font: inherit; width: 16rem; max-width: 100%; }
+svg.graph { background: #fff; border: 1px solid #eee; border-radius: 4px; }
+svg.graph .edge { stroke: #cbd3df; stroke-width: 1; }
+svg.graph .node { fill: #6b8fb5; }
+svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 </style>
+<script src="/static/app.js" defer></script>
 </head><body>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
@@ -147,7 +159,8 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 
 {{ define "correlation" }}{{ template "head" . }}
 <h1>correlation — last 24 hours</h1>
-<p class="note">Per-source pivot chains: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view. (No-JS render of the pivot graph.)</p>
+<p class="note">Per-source pivot chains: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view.</p>
+{{ if .GraphB64 }}<div id="corrgraph" data-graph-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the interactive pivot graph</p></div>{{ end }}
 {{ if .Sources }}{{ range .Sources }}
 <div class="net">
   <h3 class="sev-{{ .MaxSev }}"><a href="/profiles/{{ .IP }}">{{ .IP }}</a> <span class="meta">{{ .Count }} events</span></h3>

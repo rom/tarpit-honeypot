@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — web UI: packaged JavaScript + relaxed-but-tight CSP
+- The UI now ships a small **packaged JS layer** (`internal/ui/static/app.js`,
+  embedded in the binary via `go:embed`, served same-origin from `/static/`
+  — never a CDN). The CSP moves from blocking all scripts to
+  `script-src 'self'` (no inline, no `eval`, no third-party) plus
+  `connect-src 'self'` / `form-action 'self'`.
+- The JS is **progressive enhancement** (every view still works with JS off):
+  a pausable, visibility-aware live-refresh bar (no-JS fallback remains the
+  `<meta refresh>`), client-side table sort + row filter, and an interactive
+  SVG **node-link correlation graph** on `/correlation`. No third-party
+  framework blob is vendored into the security binary; the static pipeline +
+  `script-src 'self'` make dropping one in (pinned + checksummed) a one-file
+  change if desired.
+
 ### Added — web UI: infrastructure-map activity overlay
 - `/topology` is now an **infrastructure map**: each honeynet host shows live
   attack activity (last 24h) overlaid — event count, distinct attacker count,

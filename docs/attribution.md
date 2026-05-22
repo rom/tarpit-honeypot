@@ -670,7 +670,7 @@ low-interaction, CGO-free, no-JavaScript** sensor that deliberately does
 | TCP/IP **window / options** (full p0f) | ◑ partial | TTL only; per-SYN options aren't joined to the flow |
 | SSH **auth methods / PTY** request | ✗ infeasible | the sensor drops after `KEXINIT`; no key exchange is carried |
 | HTTP/2 **SETTINGS / pseudo-header** order | ✗ infeasible | no HTTP/2 server (HTTP/1.1 bait only) |
-| Browser **canvas / WebGL / fonts / timezone / navigation timing** | ✗ infeasible | requires executing JavaScript in a real browser; the honeypot serves no live JS and the UI is no-JS by design |
+| Browser **canvas / WebGL / fonts / timezone / navigation timing** | ✗ infeasible | requires executing JavaScript in a real attacker browser; the honeypot serves no live JS to targets (the operator UI's packaged JS is same-origin, `script-src 'self'`, and never sent to attacker-facing handlers) |
 | nmap **idle / zombie scan** (`-sI`) | ✗ infeasible | by design the attacker's IP never appears on the wire — only the zombie's |
 
 "Infeasible" here means *would require turning the honeypot into a

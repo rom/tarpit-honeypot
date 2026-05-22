@@ -205,6 +205,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/devices", s.handleAPIHosts)
 	mux.HandleFunc("/api/alerting", s.handleAPIAlerting)
 	mux.HandleFunc("/metrics", s.handleMetrics)
+	mux.HandleFunc("/static/", s.handleStatic)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	s.srv = &http.Server{
@@ -238,8 +239,14 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		// Scripts load only as same-origin files we package into the binary
+		// (script-src 'self', no inline/eval); fetch()/XHR is same-origin
+		// (connect-src 'self'); forms post same-origin. Inline styles stay
+		// for the server-rendered CSS bars.
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
+			"default-src 'none'; script-src 'self'; connect-src 'self'; "+
+				"style-src 'unsafe-inline'; img-src 'self' data:; "+
+				"form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 		if r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)

@@ -1337,11 +1337,15 @@ in event meta.
 
 ## Web UI
 
-Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`. The strict
-CSP forbids JavaScript, so the views **auto-refresh** with an HTML
-`<meta http-equiv="refresh">` every `ui.refresh_seconds` (default 10s) —
-the console updates live during a scan without a manual reload; set
-`refresh_seconds: 0` to disable.
+Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`. Client JS is
+**packaged into the binary** (served same-origin from `/static/`, never a
+CDN — the sensor host is a target) under a tight CSP: `script-src 'self'`
+only — no inline scripts, no `eval`, no third-party origins. The JS is
+**progressive enhancement** — every view still works with JavaScript
+disabled. It adds a pausable, visibility-aware **live-refresh** bar (no-JS
+fallback: a `<meta http-equiv="refresh">` every `ui.refresh_seconds`,
+default 10s; set `0` to disable), client-side **table sorting/filtering**,
+and an interactive **correlation graph**.
 
 Endpoints:
 
@@ -1363,7 +1367,8 @@ Endpoints:
   has-payload, has-session). (NL search is intentionally out of scope.)
 - `/correlation` — per-source **pivot chains**: IP → fingerprints →
   User-Agents → ASN/country → domains → tools → credentials → malware →
-  sessions, rendered as linked chips (no-JS render of the pivot graph).
+  sessions, rendered as linked chips plus an interactive SVG node-link
+  **pivot graph** (the chips remain as the no-JS fallback).
 - `/tunnels` — **covert-transport detections** (DNS/ICMP tunnels, encrypted
   DNS, DGA, sniffer encapsulation 6in4/6to4/GRE/…, QUIC, unknown-protocol),
   by type / source / recency. Honest by design: these are *detections*, not
