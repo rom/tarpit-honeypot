@@ -300,6 +300,8 @@ Watches the local segment (needs `CAP_NET_RAW`).
 - `sniffer:tcp_null_scan` / `tcp_fin_scan` / `tcp_xmas_scan` — stealth probes (`nmap -sN/-sF/-sX`), flagged once a source hits `stealth_ports` distinct ports in `window`.
 - `sniffer:tcp_syn_scan` / `tcp_ack_scan` / `tcp_maimon_scan` — SYN (`-sS`), ACK/Window (`-sA`/`-sW`), and Maimon (`-sM`, FIN+ACK) scans, flagged at `distinct_ports` (volume — a single connection's normal teardown can't trip Maimon).
 - `sniffer:udp_scan` — UDP port scan (`nmap -sU`), flagged when one source sprays `distinct_ports` distinct UDP ports in `window`.
+- `sniffer:encapsulation` — tunnelling / overlay traffic on the segment: GRE, IP-in-IP, 6in4, EtherIP, L2TPv3 (by IP protocol) and VXLAN, GENEVE, L2TP, Teredo, GRE-in-UDP (by UDP port). Rate-limited per source per `window`; ATT&CK T1572 / T1095.
+- `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+) seen on the segment (mis-cabled edge port, or an injected root-bridge / topology-manipulation attempt → AiTM, T1557). Low severity, rate-limited per source MAC + variant.
 - `sniffer:ip_fragmented` — fragmented inbound probes (when `detect_fragments`), one event per source per window.
 
 This complements `correlate:port_scan` (which sees only connections that reach a listener) by catching closed-port and dropped-stealth traffic. IPv4 only; decoy-scan detection is out of scope; ICMP sweeps are handled by `correlate:icmp_sweep`.

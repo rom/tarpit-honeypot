@@ -183,6 +183,13 @@ session: `sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
 (`-sU`, volume), plus `sniffer:ip_fragmented` (`-f`) and `sniffer:arp_scan`
 → T1046 / T1595.001. (Also feeds passive OS fingerprinting, see §5.)
 
+The same socket also flags **L2/tunnelling anomalies** that have no business
+on a flat honeypot segment: `sniffer:encapsulation` — GRE / IP-in-IP /
+6in4 / EtherIP / L2TPv3 (by IP protocol) and VXLAN / GENEVE / L2TP /
+Teredo / GRE-in-UDP (by UDP port) → protocol tunnelling (T1572 / T1095);
+and `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+), a
+root-bridge / topology-manipulation tell → AiTM (T1557).
+
 ### 4d. Correlator aggregates (`internal/correlate`)
 
 Windowed per-source aggregation turns many small probes into one verdict:

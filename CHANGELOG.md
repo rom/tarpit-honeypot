@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — sniffer L2/tunnelling detection (encapsulation + spanning-tree)
+- The packet-capture layer now flags **tunnelling / overlay traffic**
+  (`sniffer:encapsulation`): GRE, IP-in-IP, 6in4, EtherIP, L2TPv3 by IP
+  protocol, and VXLAN, GENEVE, L2TP, Teredo, GRE-in-UDP by UDP port —
+  anomalous on a flat segment (ATT&CK T1572 / T1095, protocol tunnelling).
+- It also recognizes **spanning-tree BPDUs** (`sniffer:stp_bpdu` —
+  STP/RSTP/MSTP/PVST+) on the main capture socket; a root-bridge /
+  topology-manipulation tell (AiTM, T1557), low severity + rate-limited.
+  Both are gated by the existing `tcp_scan` capability (need CAP_NET_RAW).
+
 ### Added — nmap Maimon (`-sM`) + UDP (`-sU`) scan detection + coverage docs
 - The packet-capture layer now classifies the nmap Maimon scan
   (`sniffer:tcp_maimon_scan` — bare FIN+ACK to a port, volume-gated so a

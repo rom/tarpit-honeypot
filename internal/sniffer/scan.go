@@ -179,6 +179,97 @@ func parseUDP(l4 []byte) (dstPort uint16, ok bool) {
 	return binary.BigEndian.Uint16(l4[2:4]), true
 }
 
+// encapByProto names the tunnelling / encapsulation protocol carried in an
+// IPv4 datagram's protocol field, or "" for a normal L4 proto. Seeing these
+// on a flat honeypot segment is anomalous — they're the building blocks of
+// protocol tunnelling, pivoting and overlay networks (ATT&CK T1572 / T1095).
+func encapByProto(proto byte) string {
+	switch proto {
+	case 4:
+		return "ipip" // IPv4-in-IPv4 (RFC 2003)
+	case 41:
+		return "6in4" // IPv6-in-IPv4 (RFC 4213)
+	case 47:
+		return "gre" // Generic Routing Encapsulation
+	case 97:
+		return "etherip" // EtherIP (RFC 3378)
+	case 115:
+		return "l2tp" // L2TPv3 over IP
+	}
+	return ""
+}
+
+// encapByUDPPort names a UDP-borne encapsulation/overlay protocol by its
+// well-known destination port, or "".
+func encapByUDPPort(port uint16) string {
+	switch port {
+	case 4789, 8472:
+		return "vxlan" // VXLAN (IANA 4789; Linux legacy 8472)
+	case 6081:
+		return "geneve" // Generic Network Virtualization Encapsulation
+	case 1701:
+		return "l2tp" // L2TP over UDP
+	case 3544:
+		return "teredo" // Teredo IPv6 tunnelling
+	case 4754:
+		return "gre-in-udp" // GRE-in-UDP (RFC 8086)
+	}
+	return ""
+}
+
+// stpGroupMAC is the IEEE 802.1D bridge-group address spanning-tree BPDUs
+// (STP/RSTP/MSTP) are sent to; pvstMAC is Cisco PVST+'s SNAP address.
+var (
+	stpGroupMAC = [6]byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x00}
+	pvstMAC     = [6]byte{0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcd}
+)
+
+// parseSTP recognizes a spanning-tree BPDU and returns its protocol variant
+// (stp/rstp/mstp/pvst+) and source MAC. BPDUs are 802.3/LLC frames (the
+// type/length field carries a length, not an EtherType), addressed to the
+// bridge-group MAC, with LLC DSAP/SSAP 0x42 and BPDU protocol id 0x0000.
+func parseSTP(frame []byte) (variant, srcMAC string, ok bool) {
+	if len(frame) < 17 {
+		return "", "", false
+	}
+	var dst [6]byte
+	copy(dst[:], frame[0:6])
+	pvst := dst == pvstMAC
+	if dst != stpGroupMAC && !pvst {
+		return "", "", false
+	}
+	// 802.3: the type/length field is a length (<= 1500), not an EtherType.
+	if binary.BigEndian.Uint16(frame[12:14]) > 0x05dc {
+		return "", "", false
+	}
+	llc := frame[14:]
+	var bpdu []byte
+	switch {
+	case len(llc) >= 3 && llc[0] == 0x42 && llc[1] == 0x42 && llc[2] == 0x03:
+		bpdu = llc[3:] // IEEE STP: LLC 42 42 03
+	case pvst && len(llc) >= 8 && llc[0] == 0xaa && llc[1] == 0xaa && llc[2] == 0x03:
+		bpdu = llc[8:] // PVST+: SNAP (AA AA 03 + OUI(3) + PID(2))
+	default:
+		return "", "", false
+	}
+	srcMAC = net.HardwareAddr(append([]byte(nil), frame[6:12]...)).String()
+	if pvst {
+		return "pvst+", srcMAC, true
+	}
+	// BPDU header: protocol id (2 = 0x0000), version (1), bpdu type (1).
+	if len(bpdu) < 4 {
+		return "stp", srcMAC, true
+	}
+	switch bpdu[2] {
+	case 2:
+		return "rstp", srcMAC, true
+	case 3:
+		return "mstp", srcMAC, true
+	default:
+		return "stp", srcMAC, true
+	}
+}
+
 // scanTracker aggregates per-source scan probes over a sliding window and
 // decides when to emit. Stealth probes fire at a low distinct-port count
 // (they are malicious on sight); SYN/ACK fire only at the volume

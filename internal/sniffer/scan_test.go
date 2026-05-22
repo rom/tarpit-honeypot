@@ -98,6 +98,56 @@ func TestParseUDPAndScanKind(t *testing.T) {
 	}
 }
 
+func TestEncapClassifiers(t *testing.T) {
+	protos := map[byte]string{4: "ipip", 41: "6in4", 47: "gre", 97: "etherip", 115: "l2tp", 6: "", 17: "", 1: ""}
+	for p, want := range protos {
+		if got := encapByProto(p); got != want {
+			t.Errorf("encapByProto(%d) = %q; want %q", p, got, want)
+		}
+	}
+	ports := map[uint16]string{4789: "vxlan", 8472: "vxlan", 6081: "geneve", 1701: "l2tp", 3544: "teredo", 4754: "gre-in-udp", 53: "", 443: ""}
+	for p, want := range ports {
+		if got := encapByUDPPort(p); got != want {
+			t.Errorf("encapByUDPPort(%d) = %q; want %q", p, got, want)
+		}
+	}
+}
+
+// stpFrame builds an 802.3/LLC spanning-tree BPDU frame with the given BPDU
+// version byte (0=STP, 2=RSTP, 3=MSTP).
+func stpFrame(version byte) []byte {
+	frame := make([]byte, 14)
+	copy(frame[0:6], []byte{0x01, 0x80, 0xc2, 0x00, 0x00, 0x00}) // bridge group
+	copy(frame[6:12], []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01})
+	binary.BigEndian.PutUint16(frame[12:14], 38) // 802.3 length (<= 1500)
+	llc := []byte{0x42, 0x42, 0x03}              // LLC: STP
+	bpdu := []byte{0x00, 0x00, version, 0x00}    // protocol id, version, type
+	return append(append(frame, llc...), bpdu...)
+}
+
+func TestParseSTP(t *testing.T) {
+	cases := map[byte]string{0: "stp", 2: "rstp", 3: "mstp"}
+	for ver, want := range cases {
+		variant, mac, ok := parseSTP(stpFrame(ver))
+		if !ok || variant != want {
+			t.Errorf("parseSTP(version=%d) = (%q,%v); want (%q,true)", ver, variant, ok, want)
+		}
+		if mac != "02:00:00:00:00:01" {
+			t.Errorf("parseSTP src MAC = %q; want 02:00:00:00:00:01", mac)
+		}
+	}
+	// A normal IPv4 frame is not a BPDU.
+	if _, _, ok := parseSTP(buildFrame(net.IPv4(1, 2, 3, 4), 6, 0, tcpSeg(443, flagSYN))); ok {
+		t.Error("parseSTP matched a non-BPDU IPv4 frame")
+	}
+	// Right dest MAC but an EtherType (>1500) instead of an 802.3 length.
+	bad := stpFrame(0)
+	binary.BigEndian.PutUint16(bad[12:14], 0x0800)
+	if _, _, ok := parseSTP(bad); ok {
+		t.Error("parseSTP matched a frame with an EtherType, not a length")
+	}
+}
+
 func TestOSGuessFromTTL(t *testing.T) {
 	cases := []struct {
 		ttl   byte

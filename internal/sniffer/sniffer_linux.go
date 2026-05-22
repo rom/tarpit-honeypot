@@ -29,6 +29,7 @@ type linuxSniffer struct {
 
 	tcp   *scanTracker // nil unless TCPScan enabled
 	frag  *rateLimiter // nil unless TCPScan enabled
+	encap *rateLimiter // nil unless TCPScan enabled (encapsulation + STP dedup)
 	goose *rateLimiter // nil unless GOOSE enabled
 }
 
@@ -53,6 +54,7 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 	if cfg.TCPScan.Enabled {
 		s.tcp = newScanTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts, cfg.TCPScan.StealthPorts)
 		s.frag = newRateLimiter(cfg.TCPScan.Window)
+		s.encap = newRateLimiter(cfg.TCPScan.Window)
 	}
 	if cfg.GOOSE.Enabled {
 		w := cfg.GOOSE.Window
@@ -131,11 +133,38 @@ func (s *linuxSniffer) Run(ctx context.Context, bus chan<- *event.Event) error {
 			slog.Warn("sniffer: recvfrom", "err", err)
 			continue
 		}
+		if n < 14 {
+			continue
+		}
+		frame := buf[:n]
+		// Spanning-tree BPDUs are non-IP 802.3/LLC frames on this socket.
+		if s.encap != nil && s.handleSTP(ctx, frame, bus) {
+			continue
+		}
 		if n < 14+28 {
 			continue
 		}
-		s.handleARP(ctx, buf[:n], bus)
+		s.handleARP(ctx, frame, bus)
 	}
+}
+
+// handleSTP recognizes and reports a spanning-tree BPDU (STP/RSTP/MSTP/
+// PVST+). Returns true when the frame was a BPDU (handled). BPDUs are
+// periodic, so emission is rate-limited per (source MAC, variant); a host
+// receiving them at all is worth surfacing (mis-cabled edge port, or an
+// injected root-bridge / topology-manipulation attempt → AiTM).
+func (s *linuxSniffer) handleSTP(ctx context.Context, frame []byte, bus chan<- *event.Event) bool {
+	variant, srcMAC, ok := parseSTP(frame)
+	if !ok {
+		return false
+	}
+	if s.encap.allow("stp:"+srcMAC+":"+variant, time.Now()) {
+		ev := s.newEvent("sniffer:stp_bpdu", event.SeverityLow, srcMAC, "", "")
+		ev.Proto = "stp"
+		ev.Meta["stp_variant"] = variant
+		send(ctx, bus, ev)
+	}
+	return true
 }
 
 // handleARP parses one Ethernet frame carrying an ARP packet and updates
@@ -302,6 +331,19 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 		// Non-initial fragments carry no usable L4 header.
 		return
 	}
+	// Tunnelling / encapsulation carried directly in the IP protocol field
+	// (GRE, IP-in-IP, 6in4, EtherIP, L2TPv3) — anomalous on a flat segment.
+	if name := encapByProto(info.proto); name != "" {
+		if s.encap.allow("encap:"+info.srcIP+":"+name, now) {
+			ev := s.newIPEvent("sniffer:encapsulation", event.SeverityMedium, info.srcIP, name)
+			ev.Meta["encap_type"] = name
+			ev.Meta["ip_proto"] = int(info.proto)
+			addTTLGuess(ev, info.ttl)
+			send(ctx, bus, ev)
+		}
+		return
+	}
+
 	switch info.proto {
 	case 6: // TCP
 		port, flags, ok := parseTCP(info.payload)
@@ -325,6 +367,17 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	case 17: // UDP — nmap -sU sprays datagrams across many ports
 		port, ok := parseUDP(info.payload)
 		if !ok {
+			return
+		}
+		// UDP-borne overlay/tunnelling (VXLAN, GENEVE, L2TP, Teredo, …).
+		if name := encapByUDPPort(port); name != "" {
+			if s.encap.allow("encap:"+info.srcIP+":"+name, now) {
+				ev := s.newIPEvent("sniffer:encapsulation", event.SeverityMedium, info.srcIP, "udp")
+				ev.Meta["encap_type"] = name
+				ev.Meta["udp_port"] = int(port)
+				addTTLGuess(ev, info.ttl)
+				send(ctx, bus, ev)
+			}
 			return
 		}
 		count, fire := s.tcp.observe(info.srcIP, port, scanUDP, now)

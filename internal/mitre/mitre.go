@@ -93,6 +93,13 @@ var exactRules = map[string]Tag{
 	"sniffer:tcp_maimon_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:udp_scan":        {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:ip_fragmented":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Tunnelling / overlay encapsulation observed on the segment (GRE,
+	// IP-in-IP, VXLAN, GENEVE, L2TP, Teredo, …) = protocol tunnelling /
+	// non-application-layer C2 transport.
+	"sniffer:encapsulation": {Techniques: []string{"T1572", "T1095"}, Tactics: []string{"command-and-control"}},
+	// Spanning-tree BPDUs: a root-bridge / topology-manipulation attempt
+	// enables adversary-in-the-middle on the L2 segment.
+	"sniffer:stp_bpdu": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
 	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
 	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.
