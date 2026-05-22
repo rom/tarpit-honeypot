@@ -19,6 +19,9 @@ var staticFS embed.FS
 // "static/" prefix), sets a correct JS MIME type (required since we send
 // X-Content-Type-Options: nosniff), and 404s anything missing.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "max-age=3600")
+	// Don't cache: the asset is embedded and changes with the binary, so a
+	// stale cached copy after an upgrade would silently run old JS. (It's a
+	// few KB on a localhost ops UI — caching buys nothing here.)
+	w.Header().Set("Cache-Control", "no-store")
 	http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
 }

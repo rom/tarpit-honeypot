@@ -16,34 +16,48 @@
 // CSP: loaded as an external file under script-src 'self'; no inline script,
 // no eval.
 (function () {
+  // Mark the document as JS-enabled the moment the script executes, so CSS
+  // can reveal JS-only affordances and an operator can see at a glance that
+  // the packaged JS loaded.
+  document.documentElement.classList.add("js");
+
   function ready(fn) {
     if (document.readyState !== "loading") fn();
     else document.addEventListener("DOMContentLoaded", fn);
   }
 
   // ---- live auto-refresh -------------------------------------------------
+  // Inserts a visible, ticking "live" pill into the nav (unmistakable proof
+  // the packaged JS is running) and takes over from the no-JS <meta refresh>
+  // with a pausable, tab-visibility-aware countdown.
   function setupRefresh() {
-    var meta = document.querySelector('meta[http-equiv="refresh"]');
-    if (!meta) return;
-    var secs = parseInt(meta.getAttribute("content"), 10);
-    meta.parentNode.removeChild(meta); // JS takes over the refresh
-    if (!secs || secs < 1) return;
-
-    var bar = document.createElement("div");
-    bar.id = "live-bar";
+    var pill = document.createElement("span");
+    pill.id = "live-pill";
     var btn = document.createElement("button");
     btn.type = "button";
+    btn.id = "live-toggle";
     var status = document.createElement("span");
     status.id = "live-status";
-    bar.appendChild(btn);
-    bar.appendChild(document.createTextNode(" "));
-    bar.appendChild(status);
-    document.body.insertBefore(bar, document.body.firstChild);
+    pill.appendChild(status);
+    pill.appendChild(document.createTextNode(" "));
+    pill.appendChild(btn);
+    var nav = document.querySelector("nav");
+    if (nav) nav.appendChild(pill);
+    else document.body.insertBefore(pill, document.body.firstChild);
 
+    var meta = document.querySelector('meta[http-equiv="refresh"]');
+    var secs = meta ? parseInt(meta.getAttribute("content"), 10) : 0;
+    if (meta) meta.parentNode.removeChild(meta); // JS takes over the refresh
+
+    if (!secs || secs < 1) {
+      status.textContent = "● JS active";
+      btn.style.display = "none";
+      return;
+    }
     var paused = false, remaining = secs;
     function render() {
-      btn.textContent = paused ? "▶ resume" : "⏸ pause";
-      status.textContent = paused ? "live paused" : ("● live · " + remaining + "s");
+      btn.textContent = paused ? "resume" : "pause";
+      status.textContent = paused ? "❙❙ live paused" : ("● live · refresh " + remaining + "s");
     }
     btn.addEventListener("click", function () {
       paused = !paused;
