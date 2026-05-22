@@ -43,6 +43,7 @@ func TestConfigTemplateRenders(t *testing.T) {
 		"hexdump":        hexDump,
 		"refreshSeconds": func() int { return 0 },
 		"svcName":        func(int) string { return "" },
+		"confLabel":      func(int) string { return "" },
 	}).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)

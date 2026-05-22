@@ -33,6 +33,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // StatsProvider lets the UI publish Prometheus-format metrics without
@@ -156,6 +157,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 		"hexdump":        hexDump,
 		"refreshSeconds": func() int { return s.refresh },
 		"svcName":        portsvc.Name,
+		"confLabel":      toolfp.ConfidenceLabel,
 	}).Parse(tmpls)
 	if err != nil {
 		return nil, err

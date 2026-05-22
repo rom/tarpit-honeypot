@@ -96,6 +96,10 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		if tools := toolfp.IdentifySSH(line); len(tools) > 0 {
 			res.Meta["tools"] = tools
 			flagAnomaly(&res, "tool:"+tools[0])
+			// The SSH client ID is sent in clear pre-KEX, so a banner match
+			// is a high-confidence self-identification.
+			res.Meta["tool_confidence"] = toolfp.ConfHigh
+			res.Meta["tool_confidence_label"] = toolfp.ConfidenceLabel(toolfp.ConfHigh)
 		}
 	} else if err != nil {
 		res.Meta["read_err"] = err.Error()

@@ -163,13 +163,20 @@ func TestProfileTemplatesRender(t *testing.T) {
 	b.Reset()
 	prof := buildProfile("9.9.9.9", []*event.Event{
 		{ID: "1", Time: time.Now(), RuleID: "webapp:sqli", Severity: event.SeverityHigh, Handler: "http",
-			Meta: map[string]any{"tools": []any{"sqlmap"}, "http_login_user": "admin", "http_login_pass": "x"}},
+			Meta: map[string]any{"tools": []any{"sqlmap"}, "tool_confidence": 90, "http_login_user": "admin", "http_login_pass": "x"}},
 	})
+	if prof.Confidence != 90 {
+		t.Errorf("profile confidence = %d; want 90", prof.Confidence)
+	}
 	if err := tmpl.ExecuteTemplate(&b, "profile", profileView{Profile: prof}); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
 	if !strings.Contains(out, "attacker profile") || !strings.Contains(out, "sqlmap") || !strings.Contains(out, "credentials tried") {
 		t.Errorf("profile detail missing content: %q", out)
+	}
+	// The synthesized assessment + identification confidence are surfaced.
+	if !strings.Contains(out, "assessment:") || !strings.Contains(out, "id confidence") || !strings.Contains(out, "high (90)") {
+		t.Errorf("profile missing synthesized assessment / confidence: %q", out)
 	}
 }

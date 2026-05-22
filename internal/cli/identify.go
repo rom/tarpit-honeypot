@@ -47,18 +47,28 @@ func cmdIdentify(args []string) error {
 		})
 		fmt.Println("http:")
 		fmt.Printf("  tools:      %s\n", joinOrDash(v.Tools))
+		fmt.Printf("  category:   %s\n", dash(v.Category))
 		fmt.Printf("  automation: %t\n", v.Automation)
+		fmt.Printf("  confidence: %s\n", confStr(v.Confidence))
 		fmt.Printf("  reason:     %s\n", dash(v.Reason))
 	}
 
 	if *sshID != "" {
+		tools := toolfp.IdentifySSH(*sshID)
 		fmt.Println("ssh:")
-		fmt.Printf("  tools:      %s\n", joinOrDash(toolfp.IdentifySSH(*sshID)))
+		fmt.Printf("  tools:      %s\n", joinOrDash(tools))
+		if len(tools) > 0 {
+			fmt.Printf("  confidence: %s\n", confStr(toolfp.ConfHigh))
+		}
 	}
 
 	if *ja3 != "" {
+		tool := toolfp.IdentifyTLS(*ja3)
 		fmt.Println("tls:")
-		fmt.Printf("  tool:       %s\n", dash(toolfp.IdentifyTLS(*ja3)))
+		fmt.Printf("  tool:       %s\n", dash(tool))
+		if tool != "" {
+			fmt.Printf("  confidence: %s\n", confStr(toolfp.ConfHigh))
+		}
 	}
 
 	if *payload != "" {
@@ -79,4 +89,12 @@ func joinOrDash(xs []string) string {
 		return "-"
 	}
 	return strings.Join(xs, ", ")
+}
+
+// confStr renders a confidence score as "label (n)", or "-" for zero.
+func confStr(c int) string {
+	if c <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%s (%d)", toolfp.ConfidenceLabel(c), c)
 }

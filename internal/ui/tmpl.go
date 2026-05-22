@@ -198,6 +198,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·
   {{ .Count }} event(s){{ if .Partial }}+{{ end }} ·
   {{ if .Automation }}automation{{ else }}unflagged{{ end }}
+  {{ if .Confidence }} · id confidence: <span class="tag">{{ confLabel .Confidence }} ({{ .Confidence }})</span>{{ end }}
   {{ if .Sensors }} · sensors: {{ range .Sensors }}<span class="tag">{{ . }}</span>{{ end }}{{ end }}
 </div>
 <p class="note">first seen {{ fmtTime .FirstSeen }} · last seen {{ fmtTime .LastSeen }} ·

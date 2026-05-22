@@ -129,6 +129,10 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		res.Meta["tools"] = verdict.Tools
 		flagAnomaly(&res, "tool:"+verdict.Tools[0])
 	}
+	if verdict.Confidence > 0 {
+		res.Meta["tool_confidence"] = verdict.Confidence
+		res.Meta["tool_confidence_label"] = toolfp.ConfidenceLabel(verdict.Confidence)
+	}
 	if verdict.Scanner {
 		flagAnomaly(&res, "vulnerability-scanner")
 	}

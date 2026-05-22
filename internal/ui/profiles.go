@@ -57,9 +57,12 @@ type Profile struct {
 	// brute-force", "reconnaissance / scanning", "exploitation attempt").
 	Classification string `json:"classification,omitempty"`
 	// Summary is a one-line human-readable assessment of the actor.
-	Summary      string            `json:"summary,omitempty"`
-	Automation   bool              `json:"automation"`
-	Tools        []string          `json:"tools,omitempty"`
+	Summary    string   `json:"summary,omitempty"`
+	Automation bool     `json:"automation"`
+	Tools      []string `json:"tools,omitempty"`
+	// Confidence is the highest tool-identification confidence (0-100) seen
+	// across this source's events; ConfidenceLabel renders the coarse band.
+	Confidence   int               `json:"confidence,omitempty"`
 	Rules        []countItem       `json:"rules,omitempty"`
 	Handlers     []string          `json:"handlers_targeted,omitempty"`
 	Ports        []int             `json:"ports_targeted,omitempty"`
@@ -129,6 +132,9 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		if b, ok := ev.Meta["automation"].(bool); ok && b {
 			p.Automation = true
+		}
+		if c := metaInt(ev.Meta, "tool_confidence"); c > p.Confidence {
+			p.Confidence = c
 		}
 		for _, fp := range []string{"ja3", "ja4", "ja4h", "ja3s", "hassh", "hassh_server"} {
 			if v, ok := ev.Meta[fp].(string); ok && v != "" {
@@ -287,6 +293,20 @@ func metaStrings(meta map[string]any, key string) []string {
 		return []string{t}
 	}
 	return nil
+}
+
+// metaInt coerces meta[key] into an int. In-memory events carry an int;
+// events round-tripped through the JSON store decode numbers as float64.
+func metaInt(meta map[string]any, key string) int {
+	switch t := meta[key].(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	}
+	return 0
 }
 
 // extractCreds pulls a captured (user, pass) pair from an event's meta,

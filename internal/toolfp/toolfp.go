@@ -37,8 +37,43 @@ type Verdict struct {
 	// "vuln-scanner", "headless" (Selenium / Puppeteer / headless Chrome),
 	// "tool" (any other identified tool), or "" (unidentified).
 	Category string
+	// Confidence is how reliable the identification is (0-100), expressing
+	// signal strength rather than how dangerous the tool is. See the Conf*
+	// constants and ConfidenceLabel.
+	Confidence int
 	// Reason is a short human-readable explanation of the verdict.
 	Reason string
+}
+
+// Confidence levels for a tool/automation identification — how reliable the
+// signal is, not how dangerous the tool is:
+//
+//	high   — the client self-identified (UA tool string, SSH banner sent in
+//	         clear) or matched a cryptographic fingerprint (JA3 hash).
+//	medium — a tool-specific request path matched, or automation was clear
+//	         from a missing/non-browser User-Agent (the *specific* tool is
+//	         less certain than a self-identification).
+//	low    — automation inferred purely from a weak heuristic (browser UA
+//	         but absent Accept-* headers); no tool named.
+const (
+	ConfHigh   = 90
+	ConfMedium = 65
+	ConfLow    = 40
+)
+
+// ConfidenceLabel maps a numeric confidence to a coarse label
+// ("high"/"medium"/"low"), or "" for zero.
+func ConfidenceLabel(c int) string {
+	switch {
+	case c >= 80:
+		return "high"
+	case c >= 55:
+		return "medium"
+	case c > 0:
+		return "low"
+	default:
+		return ""
+	}
 }
 
 // c2Frameworks are command-and-control / red-team frameworks — the highest-
@@ -442,9 +477,11 @@ func IdentifyHTTP(s HTTPSignals) Verdict {
 	ua := strings.ToLower(s.UserAgent)
 	path := strings.ToLower(s.Path)
 
+	uaMatched := false
 	for needle, tool := range uaSignatures {
 		if strings.Contains(ua, needle) {
 			v.Tools = appendUnique(v.Tools, tool)
+			uaMatched = true
 		}
 	}
 	for needle, tool := range pathSignatures {
@@ -460,24 +497,35 @@ func IdentifyHTTP(s HTTPSignals) Verdict {
 	}
 	v.Category = classify(v.Tools)
 
-	// Automation heuristic.
+	// Automation heuristic + identification confidence.
 	switch {
 	case len(v.Tools) > 0:
 		v.Automation = true
 		v.Reason = "matched tool signature"
+		// A UA tool string is a self-identification (high); a path-only
+		// match means the UA was spoofed/absent and we inferred the tool
+		// from a tool-specific request path (medium).
+		if uaMatched {
+			v.Confidence = ConfHigh
+		} else {
+			v.Confidence = ConfMedium
+		}
 	case s.UserAgent == "":
 		// A browser always sends a User-Agent; its absence on an HTTP/1.1
 		// request is a strong automation signal.
 		v.Automation = true
 		v.Reason = "no User-Agent header"
+		v.Confidence = ConfMedium
 	case !looksLikeBrowserUA(ua):
 		v.Automation = true
 		v.Reason = "non-browser User-Agent"
+		v.Confidence = ConfMedium
 	case !hasBrowserHeaderSet(s.HeaderKeys):
 		// A real browser sends Accept / Accept-Language / Accept-Encoding;
 		// scripts impersonating a browser UA usually omit them.
 		v.Automation = true
 		v.Reason = "browser UA but missing Accept-* headers"
+		v.Confidence = ConfLow
 	default:
 		v.Automation = false
 		v.Reason = "browser-like"

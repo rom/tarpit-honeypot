@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — Fingerprint / tool-identification confidence scoring
+- `toolfp` now scores every identification with a `Confidence` (0-100,
+  banded high/medium/low by `ConfidenceLabel`): a self-identifying
+  User-Agent tool string or an in-clear SSH client banner or a JA3 hash
+  match scores **high**; a tool inferred from a tool-specific request path
+  (UA spoofed/absent) or automation from a missing/non-browser UA scores
+  **medium**; automation inferred from a weak heuristic (browser UA but no
+  Accept-* headers) scores **low**. The http/ssh handlers promote it to
+  `tool_confidence` / `tool_confidence_label` event meta; the attacker
+  profile surfaces the peak confidence, and `identify` prints it.
+
 ### Added — Web UI: service names, attacker-profile synthesis, sortable rules
 - Event tables and the event-detail view now annotate destination ports
   with their well-known service name (`:22 ssh`, `:502 modbus`,
