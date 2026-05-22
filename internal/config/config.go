@@ -547,10 +547,12 @@ type ScriptedProto struct {
 
 // ScriptedRule is one match→respond rule in a ScriptedProto.
 type ScriptedRule struct {
-	// Match mode: prefix | contains | regex | hex_prefix | any.
+	// Match mode: prefix | contains | regex | hex_prefix | any, plus the
+	// case-insensitive iprefix | icontains and suffix.
 	Match string `yaml:"match"`
-	// Value is the pattern: literal text (prefix/contains), an RE2 regex
-	// (regex), or a lowercase hex string (hex_prefix). Ignored for "any".
+	// Value is the pattern: literal text (prefix/contains/suffix and their
+	// i-variants), an RE2 regex (regex), or a lowercase hex string
+	// (hex_prefix). Ignored for "any".
 	Value string `yaml:"value"`
 	// Respond / RespondHex is the reply written on a match (text escapes /
 	// hex as in Greeting). Empty = respond with nothing (but still match,
@@ -561,6 +563,16 @@ type ScriptedRule struct {
 	Anomaly string `yaml:"anomaly"`
 	// Close ends the connection after responding.
 	Close bool `yaml:"close"`
+	// Stage gates this rule: it only matches while the session is in this
+	// stage (empty = any stage). SetStage transitions the session to a new
+	// stage when the rule matches — together they model multi-step,
+	// stateful protocols (e.g. an "auth" stage that must precede "command").
+	Stage    string `yaml:"stage"`
+	SetStage string `yaml:"set_stage"`
+	// Capture, on a regex rule, records the first capture group into the
+	// named credential meta field ("user" or "pass") so a custom auth
+	// protocol feeds the attacker profile + default-credential matching.
+	Capture string `yaml:"capture"`
 }
 
 // scriptedMaxResponse caps any single greeting/response/default payload so
@@ -572,6 +584,7 @@ const scriptedMaxResponse = 64 * 1024
 var scriptedValidModes = map[string]bool{
 	"prefix": true, "contains": true, "regex": true,
 	"hex_prefix": true, "any": true,
+	"iprefix": true, "icontains": true, "suffix": true,
 }
 
 // DecodeScriptedField resolves a (text, hex) field pair from a ScriptedProto
@@ -674,6 +687,14 @@ func (p ScriptedProto) Validate() error {
 			if _, err := hex.DecodeString(strings.TrimSpace(r.Value)); err != nil {
 				return fmt.Errorf("rule[%d]: hex_prefix value not hex: %w", i, err)
 			}
+		}
+		switch r.Capture {
+		case "", "user", "pass":
+		default:
+			return fmt.Errorf("rule[%d]: capture must be user|pass (got %q)", i, r.Capture)
+		}
+		if r.Capture != "" && r.Match != "regex" {
+			return fmt.Errorf("rule[%d]: capture requires match: regex (with a capture group)", i)
 		}
 		resp, err := DecodeScriptedField(r.Respond, r.RespondHex)
 		if err != nil {

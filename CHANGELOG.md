@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — scripted-protocol framework: stages, match modes, capture
+- The `scripted` handler gained **stateful sessions**: a rule can require a
+  `stage` and transition with `set_stage`, so operators can model multi-step
+  protocols (e.g. an `auth` stage gating a `command` stage) in YAML.
+- New **match modes**: `suffix`, and the case-insensitive `iprefix` /
+  `icontains` (alongside the existing prefix/contains/regex/hex_prefix/any).
+- **Credential capture**: a `regex` rule with `capture: user` / `capture:
+  pass` records the first capture group into `auth_user` / `auth_pass`,
+  feeding the attacker profile + default-credential matching — so a custom
+  auth protocol harvests credentials without writing Lua.
+
 ### Added — deeper FTP interaction (post-auth session capture)
 - The FTP handler no longer stops at the login: it captures the first
   credential (still 530), then accepts a retry (230) and drives a logged-in

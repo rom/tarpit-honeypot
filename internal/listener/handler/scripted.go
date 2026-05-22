@@ -24,13 +24,17 @@ type scriptedH struct {
 }
 
 type scriptedRule struct {
-	mode    string
-	lit     []byte         // prefix / contains literal
-	rx      *regexp.Regexp // regex
-	hexPfx  string         // hex_prefix, lowercased
-	resp    []byte
-	anomaly string
-	close   bool
+	mode     string
+	lit      []byte         // prefix / contains / suffix literal
+	litLower []byte         // lower-cased literal for the i-variants
+	rx       *regexp.Regexp // regex
+	hexPfx   string         // hex_prefix, lowercased
+	resp     []byte
+	anomaly  string
+	close    bool
+	stage    string // required current stage ("" = any)
+	setStage string // stage to transition to on match
+	capture  string // "user" | "pass" | ""
 }
 
 func (s *scriptedH) Name() string { return "scripted" }
@@ -55,10 +59,15 @@ func compileScripted(p config.ScriptedProto) (*scriptedH, error) {
 	}
 	for _, r := range p.Rules {
 		resp, _ := config.DecodeScriptedField(r.Respond, r.RespondHex)
-		cr := scriptedRule{mode: r.Match, resp: resp, anomaly: r.Anomaly, close: r.Close}
+		cr := scriptedRule{
+			mode: r.Match, resp: resp, anomaly: r.Anomaly, close: r.Close,
+			stage: r.Stage, setStage: r.SetStage, capture: r.Capture,
+		}
 		switch r.Match {
-		case "prefix", "contains":
+		case "prefix", "contains", "suffix":
 			cr.lit = []byte(r.Value)
+		case "iprefix", "icontains":
+			cr.litLower = []byte(strings.ToLower(r.Value))
 		case "regex":
 			cr.rx = regexp.MustCompile(r.Value) // Validate already compiled it
 		case "hex_prefix":
@@ -86,6 +95,7 @@ func (s *scriptedH) Handle(ctx context.Context, conn net.Conn, cfg config.Listen
 	buf := make([]byte, readCap)
 	var transcript []byte
 	matched := 0
+	stage := "" // session stage for stateful, multi-step protocols
 	for i := 0; i < s.maxRounds; i++ {
 		n, err := conn.Read(buf)
 		if n > 0 {
@@ -97,8 +107,14 @@ func (s *scriptedH) Handle(ctx context.Context, conn net.Conn, cfg config.Listen
 					transcript = append(transcript, in...)
 				}
 			}
-			if r := s.match(in); r != nil {
+			if r := s.match(in, stage); r != nil {
 				matched++
+				if r.capture != "" && r.rx != nil {
+					scriptedCapture(&res, r, in)
+				}
+				if r.setStage != "" {
+					stage = r.setStage
+				}
 				if len(r.resp) > 0 {
 					if _, werr := conn.Write(r.resp); werr != nil {
 						break
@@ -122,14 +138,44 @@ func (s *scriptedH) Handle(ctx context.Context, conn net.Conn, cfg config.Listen
 	}
 	res.Payload = transcript
 	res.Meta["scripted_matches"] = matched
+	if stage != "" {
+		res.Meta["scripted_stage"] = stage
+	}
 	return res, nil
 }
 
-// match returns the first rule whose pattern matches in, or nil.
-func (s *scriptedH) match(in []byte) *scriptedRule {
+// scriptedCapture pulls the first regex capture group out of in and records
+// it as the named credential, feeding default-credential matching once both
+// halves are present.
+func scriptedCapture(res *Result, r *scriptedRule, in []byte) {
+	m := r.rx.FindSubmatch(in)
+	if len(m) < 2 {
+		return
+	}
+	val := string(m[1])
+	switch r.capture {
+	case "user":
+		res.Meta["auth_user"] = val
+	case "pass":
+		res.Meta["auth_pass"] = val
+	}
+	u, _ := res.Meta["auth_user"].(string)
+	p, _ := res.Meta["auth_pass"].(string)
+	if u != "" && p != "" {
+		flagDefaultCred(res, u, p)
+	}
+}
+
+// match returns the first rule whose pattern matches in within the current
+// session stage, or nil. A rule with no Stage matches in any stage.
+func (s *scriptedH) match(in []byte, stage string) *scriptedRule {
 	var hexIn string
+	lowerIn := bytes.ToLower(in)
 	for i := range s.rules {
 		r := &s.rules[i]
+		if r.stage != "" && r.stage != stage {
+			continue
+		}
 		switch r.mode {
 		case "any":
 			return r
@@ -139,6 +185,18 @@ func (s *scriptedH) match(in []byte) *scriptedRule {
 			}
 		case "contains":
 			if bytes.Contains(in, r.lit) {
+				return r
+			}
+		case "suffix":
+			if bytes.HasSuffix(bytes.TrimRight(in, "\r\n"), r.lit) {
+				return r
+			}
+		case "iprefix":
+			if bytes.HasPrefix(lowerIn, r.litLower) {
+				return r
+			}
+		case "icontains":
+			if bytes.Contains(lowerIn, r.litLower) {
 				return r
 			}
 		case "regex":
