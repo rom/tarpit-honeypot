@@ -394,6 +394,27 @@ var anomalyTags = map[string]Tag{
 	"shell-defense-evade-history":  {Techniques: []string{"T1070.003"}, Tactics: []string{"defense-evasion"}},
 	"shell-defense-evade-logclean": {Techniques: []string{"T1070.002"}, Tactics: []string{"defense-evasion"}},
 	"shell-coin-miner":             {Techniques: []string{"T1496"}, Tactics: []string{"impact"}},
+	// Web-shell access / command execution (http handler webshell detector).
+	"webshell-access-attempt": {Techniques: []string{"T1505.003"}, Tactics: []string{"persistence"}},
+	"webshell-command":        {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
+	// Login-form / auth submissions on services whose handler base tag isn't
+	// already credential-access.
+	"http-login-attempt":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"mssql-login-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// Bare service probes + malformed / non-conforming protocol input — the
+	// shape of an automated scanner banner-grabbing a port.
+	"oracle-tns-probe":                {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"nx-probe":                        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"openvpn-probe":                   {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-non-printable":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-not-ssh":                  {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-overlong":                 {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-method-unknown":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-request-line-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"telnet-credential-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// Printer command recon + passive DHCP client observation.
+	"pjl-command":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"dhcp-client-observed": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.

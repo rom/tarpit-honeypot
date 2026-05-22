@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — remaining ATT&CK gaps + example-config coverage
+- Mapped the last 15 emitted-but-unattributed anomaly markers so **every
+  marker the sensor emits now carries an ATT&CK technique**: web-shell
+  access / command (`webshell-access-attempt`, `webshell-command` →
+  T1505.003 / T1059), login attempts (`http-login-attempt`,
+  `mssql-login-attempt` → T1110.001), bare service probes + malformed
+  protocol banners (`*-probe`, `ssh-id-*`, `http-method-unknown`,
+  `http-request-line-non-printable`, `telnet-credential-non-printable` →
+  T1595), and `pjl-command` / `dhcp-client-observed` (T1083 / T1046).
+  ATT&CK catalog is now **242 mappings** (31 rule + 92 handler + 119 anomaly).
+- The example config (`configs/tarpit-honeypot.example.yaml`) now exercises
+  the handlers added this cycle: `pop3`, `imap`, `memcached`, `mongodb`,
+  `elasticsearch`, `mdns`, and the generic `auto` catch-all.
+
 ### Fixed — ATT&CK attribution gaps (audit follow-up)
 - The **24 `shell-*` interactive-shell TTP markers** (reverse shells,
   credential dumping, persistence, AD recon, defense evasion, coin miners,

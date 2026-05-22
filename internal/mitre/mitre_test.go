@@ -116,8 +116,11 @@ func TestAnomalyTagPrefixes(t *testing.T) {
 	if !contains(AnomalyTag("ics-atg-command").Techniques, "T0888") {
 		t.Error("ics- prefix should map to T0888")
 	}
-	if len(AnomalyTag("ssh-id-overlong").Techniques) != 0 {
-		t.Error("noise anomaly should map to nothing")
+	if !contains(AnomalyTag("ssh-id-overlong").Techniques, "T1595") {
+		t.Error("ssh-id-overlong should map to active-scanning T1595")
+	}
+	if len(AnomalyTag("totally-unknown-marker-xyz").Techniques) != 0 {
+		t.Error("an unmapped anomaly should map to nothing")
 	}
 }
 

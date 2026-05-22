@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **227 static mappings** (31 exact rules + 92 handler tags + 104
+There are **242 static mappings** (31 exact rules + 92 handler tags + 119
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -180,7 +180,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 Handlers without an explicit tag (`raw`, `auto`, `scripted`, `lua`) fall back
 to the `listener:*` default **T1190 / initial-access**.
 
-### 1c. Anomaly tags (104) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (119) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -194,6 +194,7 @@ to the `listener:*` default **T1190 / initial-access**.
 | `dcerpc-svcctl-access` | T1021.002, T1543.003 | lateral-movement, persistence |
 | `dcerpc-winreg-access` | T1012, T1003.002 | discovery, credential-access |
 | `default-credential-attempt` | T1078.001 | credential-access |
+| `dhcp-client-observed` | T1046 | discovery |
 | `dns-dga-suspected` | T1568.002 | command-and-control |
 | `dns-over-https` | T1572, T1071.004 | command-and-control |
 | `dns-over-tls` | T1572, T1071.004 | command-and-control |
@@ -211,7 +212,10 @@ to the `listener:*` default **T1190 / initial-access**.
 | `honeyfile-download` | T1005 | collection |
 | `http-duplicate-host` | T1190 | initial-access |
 | `http-impossible-browser` | T1036 | defense-evasion |
+| `http-login-attempt` | T1110.001 | credential-access |
 | `http-malformed-header` | T1190 | initial-access |
+| `http-method-unknown` | T1595 | reconnaissance |
+| `http-request-line-non-printable` | T1595 | reconnaissance |
 | `kerberos-rc4-requested` | T1558.003 | credential-access |
 | `kerberos-tgs-request` | T1558.003 | credential-access |
 | `ldap-asrep-roast-recon` | T1558.004, T1087.002 | credential-access, discovery |
@@ -223,6 +227,11 @@ to the `listener:*` default **T1190 / initial-access**.
 | `memcached-write-attempt` | T1565.001 | impact |
 | `modbus-write-attempt` | T0836, T0831 | impact |
 | `mongodb-data-access` | T1213 | collection |
+| `mssql-login-attempt` | T1110.001 | credential-access |
+| `nx-probe` | T1595 | reconnaissance |
+| `openvpn-probe` | T1595 | reconnaissance |
+| `oracle-tns-probe` | T1595 | reconnaissance |
+| `pjl-command` | T1083 | discovery |
 | `printer-auth-attempt` | T1110.001 | credential-access |
 | `printer-config-set` | T1565 | impact |
 | `printer-credential-access` | T1552 | credential-access |
@@ -271,6 +280,10 @@ to the `listener:*` default **T1190 / initial-access**.
 | `smtp-open-relay-probe` | T1071.003 | command-and-control |
 | `smtp-user-enumeration` | T1087 | discovery |
 | `snmp-set-attempt` | T1565.001, T0836 | impact |
+| `ssh-id-non-printable` | T1595 | reconnaissance |
+| `ssh-id-not-ssh` | T1595 | reconnaissance |
+| `ssh-id-overlong` | T1595 | reconnaissance |
+| `telnet-credential-non-printable` | T1595 | reconnaissance |
 | `tftp-config-read` | T1602.001 | collection |
 | `tftp-write-attempt` | T1105 | command-and-control |
 | `udp-amplifier-probe` | T1498.002 | impact |
@@ -287,6 +300,8 @@ to the `listener:*` default **T1190 / initial-access**.
 | `webapp:ssti` | T1059 | execution |
 | `webapp:xss` | T1059.007 | execution |
 | `webapp:xxe` | T1190 | initial-access |
+| `webshell-access-attempt` | T1505.003 | persistence |
+| `webshell-command` | T1505.003, T1059 | persistence, execution |
 | `x11-connection-attempt` | T1021 | lateral-movement |
 
 ### 1d. Prefix fallbacks

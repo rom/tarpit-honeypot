@@ -192,10 +192,12 @@ listeners:
     accept_creds: defaults
     max_concurrent: 32
 
-  - id: udp-5353
+  # mDNS (multicast DNS / DNS-SD) — flags service-enumeration probes.
+  - id: mdns-bait
     proto: udp
     bind: 0.0.0.0:5353
-    mode: drop
+    mode: banner
+    handler: mdns
     severity: low
     read_bytes: 1500
 
@@ -257,6 +259,24 @@ listeners:
     handler: smtp_recv
     severity: high
     read_timeout: 15s
+
+  # POP3 / IMAP — mail-retrieval login capture (pair with a mailserver
+  # archeservice, or stand them up directly like this).
+  - id: pop3-bait
+    proto: tcp
+    bind: 0.0.0.0:110
+    mode: banner
+    handler: pop3
+    severity: high
+    read_timeout: 10s
+
+  - id: imap-bait
+    proto: tcp
+    bind: 0.0.0.0:143
+    mode: banner
+    handler: imap
+    severity: high
+    read_timeout: 10s
 
   - id: rdp-bait
     proto: tcp
@@ -328,6 +348,33 @@ listeners:
     handler: redis
     severity: high
     read_bytes: 1024
+    read_timeout: 5s
+
+  # memcached — answers version/stats; flags stats recon, writes, flush_all.
+  - id: memcached-bait
+    proto: tcp
+    bind: 0.0.0.0:11211
+    mode: banner
+    handler: memcached
+    severity: high
+    read_timeout: 5s
+
+  # MongoDB — wire protocol isMaster/buildInfo; flags unauthenticated access.
+  - id: mongodb-bait
+    proto: tcp
+    bind: 0.0.0.0:27017
+    mode: banner
+    handler: mongodb
+    severity: high
+    read_timeout: 5s
+
+  # Elasticsearch — HTTP API cluster banner; flags unauth _search / _cat.
+  - id: elasticsearch-bait
+    proto: tcp
+    bind: 0.0.0.0:9200
+    mode: banner
+    handler: elasticsearch
+    severity: high
     read_timeout: 5s
 
   # MSSQL — TDS PRELOGIN exchange; advertises SQL Server 15.0, captures
@@ -532,6 +579,19 @@ listeners:
       max_per_source: 4
       max_total: 256
       emulate: true
+
+  # Generic catch-all: captures + fingerprints any unmodelled protocol on a
+  # port you don't otherwise emulate, raising `unknown-protocol`. Point a wide
+  # listener at it to cover everything not explicitly modelled. (UDP `auto`
+  # never replies — no reflection/amplification.)
+  - id: auto-catchall
+    proto: tcp
+    bind: 0.0.0.0:9999
+    mode: banner
+    handler: auto
+    severity: medium
+    read_bytes: 2048
+    read_timeout: 5s
 
 canaries:
   - id: shared-creds
