@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -34,56 +35,114 @@ func (l *ldap) SetHoneynetView(v HoneynetSnapshot) { l.hosts = v.Hosts }
 // of resultCode 49 (invalidCredentials).
 func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
-	res := Result{}
+	res := Result{Meta: map[string]any{}}
 
-	pkt, err := readBERMessage(conn, 4096)
-	if err != nil {
-		res.Meta = map[string]any{"read_err": err.Error()}
-		return res, nil
-	}
-	res.Payload = pkt
-
-	messageID, op, opBody, ok := parseLDAPMessage(pkt)
-	if !ok {
-		res.Meta = map[string]any{"bad_ldap_message": true}
-		return res, nil
-	}
-	res.Meta = map[string]any{
-		"message_id": messageID,
-		"op":         ldapOpName(op),
-	}
-
-	if op == 0x60 { // BindRequest [APPLICATION 0]
-		ver, bindDN, simplePw, mech := parseBindRequest(opBody)
-		res.Meta["ldap_version"] = ver
-		res.Meta["bind_dn"] = bindDN
-		if simplePw != "" {
-			res.Meta["bind_pw"] = simplePw
-		}
-		if mech != "" {
-			res.Meta["sasl_mechanism"] = mech
-		}
-		// If we have a honeynet, advertise the virtual AD computer
-		// inventory in meta so the operator can correlate "this scanner
-		// asked the AD; here's what they would have seen if our AD
-		// search handler were complete."
-		if len(l.hosts) > 0 {
-			computers := make([]map[string]string, 0, len(l.hosts))
-			for _, h := range l.hosts {
-				dn := "cn=" + h.Hostname + ",ou=Computers"
-				computers = append(computers, map[string]string{
-					"dn": dn, "hostname": h.Hostname, "ip": h.IP, "os": h.OS,
-				})
+	var ops []string
+	for i := 0; i < 8; i++ {
+		pkt, err := readBERMessage(conn, 8192)
+		if err != nil {
+			if i == 0 {
+				res.Meta["read_err"] = err.Error()
 			}
-			res.Meta["honeynet_computer_accounts"] = computers
+			break
 		}
-		reply := buildLDAPBindResponse(messageID, 49) // invalidCredentials
-		if _, err := conn.Write(reply); err != nil {
-			res.Meta["write_err"] = err.Error()
+		res.Payload = append(res.Payload, pkt...)
+		messageID, op, opBody, ok := parseLDAPMessage(pkt)
+		if !ok {
+			res.Meta["bad_ldap_message"] = true
+			break
 		}
-		res.BannerSent = "ldap BindResponse invalidCredentials"
+		ops = append(ops, ldapOpName(op))
+		res.Meta["message_id"] = messageID
+		res.Meta["op"] = ldapOpName(op)
+
+		switch op {
+		case 0x60: // BindRequest [APPLICATION 0]
+			ver, bindDN, simplePw, mech := parseBindRequest(opBody)
+			res.Meta["ldap_version"] = ver
+			if bindDN != "" {
+				res.Meta["bind_dn"] = bindDN
+			}
+			if simplePw != "" {
+				res.Meta["bind_pw"] = simplePw
+			}
+			if mech != "" {
+				res.Meta["sasl_mechanism"] = mech
+			}
+			anonymous := bindDN == "" && simplePw == "" && mech == ""
+			if !anonymous && (bindDN != "" || simplePw != "") {
+				flagDefaultCred(&res, bindDN, simplePw)
+			}
+			if len(l.hosts) > 0 {
+				computers := make([]map[string]string, 0, len(l.hosts))
+				for _, h := range l.hosts {
+					computers = append(computers, map[string]string{
+						"dn": "cn=" + h.Hostname + ",ou=Computers", "hostname": h.Hostname, "ip": h.IP, "os": h.OS,
+					})
+				}
+				res.Meta["honeynet_computer_accounts"] = computers
+			}
+			// Accept an anonymous bind (resultCode 0) to elicit the
+			// follow-up search a scanner runs; reject credentialed binds
+			// (49) so a brute-force keeps shipping passwords.
+			code := 49
+			if anonymous {
+				code = 0
+			}
+			if _, err := conn.Write(buildLDAPBindResponse(messageID, code)); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			res.BannerSent = "ldap BindResponse"
+		case 0x63: // SearchRequest [APPLICATION 3]
+			detectLDAPEnumeration(&res, pkt)
+			if _, err := conn.Write(buildLDAPSearchDone(messageID, 0)); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			res.BannerSent = "ldap SearchResultDone"
+		case 0x42: // UnbindRequest
+			res.Meta["ops"] = ops
+			return res, nil
+		default:
+			// Unhandled op — stop rather than guess a response.
+			break
+		}
+	}
+	if len(ops) > 0 {
+		res.Meta["ops"] = ops
 	}
 	return res, nil
+}
+
+// detectLDAPEnumeration flags AD-reconnaissance search patterns by scanning
+// the raw BER message for the attribute names / filter OIDs that appear as
+// ASCII in the request: SPN enumeration (Kerberoasting recon), the
+// DONT_REQ_PREAUTH filter (AS-REP roasting recon), and broad account/object
+// enumeration.
+func detectLDAPEnumeration(res *Result, pkt []byte) {
+	low := bytes.ToLower(pkt)
+	if bytes.Contains(low, []byte("serviceprincipalname")) {
+		flagAnomaly(res, "ldap-spn-enumeration")
+	}
+	// userAccountControl:1.2.840.113556.1.4.803:=4194304 → accounts with
+	// "do not require pre-auth" set = AS-REP roasting targets.
+	if bytes.Contains(low, []byte("1.2.840.113556.1.4.803")) || bytes.Contains(pkt, []byte("4194304")) {
+		flagAnomaly(res, "ldap-asrep-roast-recon")
+	}
+	for _, attr := range []string{"objectclass", "samaccountname", "objectcategory", "memberof", "admincount"} {
+		if bytes.Contains(low, []byte(attr)) {
+			flagAnomaly(res, "ldap-enumeration")
+			break
+		}
+	}
+}
+
+// buildLDAPSearchDone returns a SearchResultDone [APPLICATION 5] with the
+// given resultCode (0 = success, no entries).
+func buildLDAPSearchDone(messageID, code int) []byte {
+	inner := []byte{0x0A, 0x01, byte(code), 0x04, 0x00, 0x04, 0x00}
+	op := append([]byte{0x65, byte(len(inner))}, inner...)
+	body := append(encodeBERInt(messageID), op...)
+	return append([]byte{0x30, byte(len(body))}, body...)
 }
 
 func ldapOpName(op byte) string {

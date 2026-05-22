@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — Active Directory / Kerberos abuse detection
+- The **Kerberos** handler flags a TGS-REQ (`kerberos-tgs-request` —
+  Kerberoasting service-ticket request) and an RC4-HMAC etype in the
+  request (`kerberos-rc4-requested` — the offline-crack downgrade
+  Kerberoasting / AS-REP roasting use). ATT&CK T1558.003.
+- The **LDAP** handler now processes a full message sequence: it accepts an
+  anonymous bind (resultCode 0) to elicit the follow-up search, then flags
+  AD reconnaissance — `ldap-spn-enumeration` (Kerberoasting recon,
+  T1558.003 / T1087.002), `ldap-asrep-roast-recon` (the DONT_REQ_PREAUTH
+  `userAccountControl:…:=4194304` filter, T1558.004), and `ldap-enumeration`
+  (broad objectClass / sAMAccountName / objectCategory queries, T1087.002).
+  Credentialed binds are still captured + rejected.
+
 ### Added — HTTP behavioral detection
 - The HTTP handler now flags **malformed headers** (`http-malformed-header`:
   a header line with no `name:` colon, or control bytes embedded in a

@@ -275,6 +275,12 @@ var anomalyTags = map[string]Tag{
 	"http-malformed-header":   {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"http-duplicate-host":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"http-impossible-browser": {Techniques: []string{"T1036"}, Tactics: []string{"defense-evasion"}},
+	// Active Directory / Kerberos abuse.
+	"kerberos-tgs-request":   {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
+	"kerberos-rc4-requested": {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
+	"ldap-spn-enumeration":   {Techniques: []string{"T1558.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
+	"ldap-asrep-roast-recon": {Techniques: []string{"T1558.004", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
+	"ldap-enumeration":       {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
 	// memcached abuse: stats recon, writes (cache poisoning), flush_all (wipe).
 	"memcached-stats-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"memcached-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},

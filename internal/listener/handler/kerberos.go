@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -53,8 +54,19 @@ func (k *kerberos) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 		res.Meta["message_type"] = "AS-REQ"
 	case 0x6C:
 		res.Meta["message_type"] = "TGS-REQ"
+		// A TGS-REQ asks for a service ticket; on a honeypot KDC no
+		// legitimate client does this — it's the Kerberoasting primitive
+		// (request service tickets to crack offline).
+		flagAnomaly(&res, "kerberos-tgs-request")
 	default:
 		res.Meta["message_type"] = "unknown"
+	}
+	// RC4-HMAC (etype 23 = 0x17) in the requested etype list is the
+	// offline-crack downgrade Kerberoasting / AS-REP roasting rely on
+	// (modern Windows defaults to AES 17/18). DER INTEGER 23 = 02 01 17.
+	if bytes.Contains(body, []byte{0x02, 0x01, 0x17}) {
+		res.Meta["rc4_requested"] = true
+		flagAnomaly(&res, "kerberos-rc4-requested")
 	}
 
 	// Reply with a KRB-ERROR(KDC_ERR_PREAUTH_REQUIRED). Minimal:
