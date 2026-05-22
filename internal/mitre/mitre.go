@@ -281,6 +281,14 @@ var anomalyTags = map[string]Tag{
 	"ldap-spn-enumeration":   {Techniques: []string{"T1558.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-asrep-roast-recon": {Techniques: []string{"T1558.004", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-enumeration":       {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
+	// MSRPC named-interface binds = AD enumeration / lateral movement.
+	"dcerpc-samr-enum":       {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
+	"dcerpc-lsarpc-enum":     {Techniques: []string{"T1087.002", "T1482"}, Tactics: []string{"discovery"}},
+	"dcerpc-srvsvc-enum":     {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"dcerpc-svcctl-access":   {Techniques: []string{"T1021.002", "T1543.003"}, Tactics: []string{"lateral-movement", "persistence"}},
+	"dcerpc-winreg-access":   {Techniques: []string{"T1012", "T1003.002"}, Tactics: []string{"discovery", "credential-access"}},
+	"dcerpc-dcsync":          {Techniques: []string{"T1003.006"}, Tactics: []string{"credential-access"}},
+	"dcerpc-netlogon-access": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
 	// memcached abuse: stats recon, writes (cache poisoning), flush_all (wipe).
 	"memcached-stats-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"memcached-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},

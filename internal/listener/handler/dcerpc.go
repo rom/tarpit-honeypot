@@ -72,6 +72,11 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 			res.Meta["bind_abstract_uuid"] = u
 			if name := dcerpcInterfaceName(u); name != "" {
 				res.Meta["dcerpc_interface"] = name
+				// Binding a sensitive MSRPC interface on a honeypot is a
+				// high-signal AD-enumeration / lateral-movement tell.
+				if marker := dcerpcAbuse(name); marker != "" {
+					flagAnomaly(&res, marker)
+				}
 			}
 			// OPC-DA (classic, DCOM): a bind to OPCEnum / IOPCServer(List)
 			// is OPC discovery. Flag it + advertise believable OPC-DA
@@ -157,7 +162,34 @@ var dcerpcInterfaces = map[string]string{
 	"12345778-1234-abcd-ef00-0123456789ab": "lsarpc",
 	"4b324fc8-1670-01d3-1278-5a47bf6ee188": "srvsvc",
 	"338cd001-2244-31f1-aaaa-900038001003": "winreg",
+	"e3514235-4b06-11d1-ab04-00c04fc2dcd2": "drsuapi", // AD replication → DCSync
+	"12345678-1234-abcd-ef00-01234567cffb": "netlogon",
 	"8a885d04-1ceb-11c9-9fe8-08002b104860": "ndr",
+}
+
+// dcerpcAbuse maps a sensitive MSRPC interface to an anomaly marker. Binding
+// these on a honeypot is reconnaissance or lateral movement: SAMR/LSARPC
+// (account + SID enumeration, BloodHound), srvsvc (share enumeration),
+// svcctl (remote service create = PsExec), winreg (SAM/LSA hive read),
+// drsuapi (DCSync), netlogon (ZeroLogon / NetrServerPasswordSet abuse).
+func dcerpcAbuse(iface string) string {
+	switch iface {
+	case "samr":
+		return "dcerpc-samr-enum"
+	case "lsarpc":
+		return "dcerpc-lsarpc-enum"
+	case "srvsvc":
+		return "dcerpc-srvsvc-enum"
+	case "svcctl":
+		return "dcerpc-svcctl-access"
+	case "winreg":
+		return "dcerpc-winreg-access"
+	case "drsuapi":
+		return "dcerpc-dcsync"
+	case "netlogon":
+		return "dcerpc-netlogon-access"
+	}
+	return ""
 }
 
 // opcInterfaces is the subset of dcerpcInterfaces that means "OPC-DA".

@@ -64,6 +64,40 @@ func runDCERPC(t *testing.T, pdu []byte) Result {
 	}
 }
 
+// samrWireUUID is samr (12345778-1234-abcd-ef00-0123456789ac) in the
+// DCE/RPC on-wire mixed-endian encoding.
+var samrWireUUID = []byte{
+	0x78, 0x57, 0x34, 0x12, // field1 LE
+	0x34, 0x12, // field2 LE
+	0xcd, 0xab, // field3 LE
+	0xef, 0x00, // field4 BE
+	0x01, 0x23, 0x45, 0x67, 0x89, 0xac, // field5 BE
+}
+
+func TestDCERPCFlagsSAMREnumeration(t *testing.T) {
+	res := runDCERPC(t, buildBindPDU(samrWireUUID))
+	if res.Meta["dcerpc_interface"] != "samr" {
+		t.Fatalf("dcerpc_interface = %v; want samr", res.Meta["dcerpc_interface"])
+	}
+	if !hasAnom(res, "dcerpc-samr-enum") {
+		t.Errorf("samr bind not flagged as enumeration; meta=%v", res.Meta)
+	}
+}
+
+func TestDCERPCAbuseMap(t *testing.T) {
+	cases := map[string]string{
+		"samr": "dcerpc-samr-enum", "lsarpc": "dcerpc-lsarpc-enum",
+		"srvsvc": "dcerpc-srvsvc-enum", "svcctl": "dcerpc-svcctl-access",
+		"winreg": "dcerpc-winreg-access", "drsuapi": "dcerpc-dcsync",
+		"netlogon": "dcerpc-netlogon-access", "ndr": "",
+	}
+	for iface, want := range cases {
+		if got := dcerpcAbuse(iface); got != want {
+			t.Errorf("dcerpcAbuse(%q) = %q; want %q", iface, got, want)
+		}
+	}
+}
+
 func TestDCERPCRecognizesOPCEnum(t *testing.T) {
 	res := runDCERPC(t, buildBindPDU(opcEnumWireUUID))
 	if res.Meta["bind_abstract_uuid"] != "13486d44-4821-11d2-a494-3cb306c10000" {

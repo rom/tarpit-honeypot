@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — SMB / Windows MSRPC abuse detection
+- The **DCERPC** handler now flags a bind to a sensitive MSRPC interface as
+  AD enumeration / lateral movement: `dcerpc-samr-enum` (account
+  enumeration), `dcerpc-lsarpc-enum` (SID/policy enumeration — BloodHound,
+  T1482), `dcerpc-srvsvc-enum` (share enumeration, T1135),
+  `dcerpc-svcctl-access` (remote service control — PsExec, T1021.002 /
+  T1543.003), `dcerpc-winreg-access` (remote registry — SAM/LSA hive read,
+  T1003.002), `dcerpc-dcsync` (DRSUAPI replication — DCSync, T1003.006),
+  and `dcerpc-netlogon-access` (Netlogon — ZeroLogon surface, T1210). Added
+  the drsuapi + netlogon interface UUIDs.
+
 ### Added — Active Directory / Kerberos abuse detection
 - The **Kerberos** handler flags a TGS-REQ (`kerberos-tgs-request` —
   Kerberoasting service-ticket request) and an RC4-HMAC etype in the
