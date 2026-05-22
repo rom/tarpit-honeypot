@@ -78,6 +78,10 @@ func guessProtocol(b []byte) string {
 	switch {
 	case len(b) >= 3 && b[0] == 0x16 && b[1] == 0x03 && b[2] <= 0x04:
 		return "tls"
+	case isQUICLongHeader(b):
+		// QUIC where it isn't expected (i.e. caught by the catch-all rather
+		// than a :443 service) is a covert-channel / tunnelling signal.
+		return "quic"
 	case bytes.HasPrefix(b, []byte("SSH-")):
 		return "ssh"
 	case looksHTTP(b):
@@ -93,6 +97,27 @@ func guessProtocol(b []byte) string {
 	default:
 		return "binary"
 	}
+}
+
+// isQUICLongHeader reports whether b is a QUIC long-header packet (RFC 9000):
+// the header-form + fixed bits set (0xc0) followed by a recognized 4-byte
+// version (v1, v2, version-negotiation, or an IETF draft).
+func isQUICLongHeader(b []byte) bool {
+	if len(b) < 6 || b[0]&0xc0 != 0xc0 {
+		return false
+	}
+	v := uint32(b[1])<<24 | uint32(b[2])<<16 | uint32(b[3])<<8 | uint32(b[4])
+	switch {
+	case v == 0x00000001: // QUIC v1
+		return true
+	case v == 0x6b3343cf: // QUIC v2
+		return true
+	case v == 0x00000000: // version negotiation
+		return true
+	case b[1] == 0xff: // IETF drafts (0xff0000xx)
+		return true
+	}
+	return false
 }
 
 // looksHTTP reports whether b starts with an HTTP request line.

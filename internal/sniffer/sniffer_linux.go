@@ -334,6 +334,10 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	// Tunnelling / encapsulation carried directly in the IP protocol field
 	// (GRE, IP-in-IP, 6in4, EtherIP, L2TPv3) — anomalous on a flat segment.
 	if name := encapByProto(info.proto); name != "" {
+		// Refine IPv6-in-IPv4 into 6in4 / 6to4 / ISATAP from the inner header.
+		if info.proto == 41 {
+			name = encap41Subtype(info.payload)
+		}
 		if s.encap.allow("encap:"+info.srcIP+":"+name, now) {
 			ev := s.newIPEvent("sniffer:encapsulation", event.SeverityMedium, info.srcIP, name)
 			ev.Meta["encap_type"] = name
@@ -345,6 +349,17 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	}
 
 	switch info.proto {
+	case 1: // ICMP — echo-based covert tunnel (ptunnel / icmpsh / Loki)
+		dataLen, tunnel := icmpEchoTunnel(info.payload)
+		if !tunnel {
+			return
+		}
+		if s.encap.allow("icmptun:"+info.srcIP, now) {
+			ev := s.newIPEvent("sniffer:icmp_tunnel", event.SeverityHigh, info.srcIP, "icmp")
+			ev.Meta["icmp_data_len"] = dataLen
+			addTTLGuess(ev, info.ttl)
+			send(ctx, bus, ev)
+		}
 	case 6: // TCP
 		port, flags, ok := parseTCP(info.payload)
 		if !ok {

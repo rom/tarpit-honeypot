@@ -183,12 +183,29 @@ session: `sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
 (`-sU`, volume), plus `sniffer:ip_fragmented` (`-f`) and `sniffer:arp_scan`
 → T1046 / T1595.001. (Also feeds passive OS fingerprinting, see §5.)
 
-The same socket also flags **L2/tunnelling anomalies** that have no business
-on a flat honeypot segment: `sniffer:encapsulation` — GRE / IP-in-IP /
-6in4 / EtherIP / L2TPv3 (by IP protocol) and VXLAN / GENEVE / L2TP /
-Teredo / GRE-in-UDP (by UDP port) → protocol tunnelling (T1572 / T1095);
-and `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+), a
-root-bridge / topology-manipulation tell → AiTM (T1557).
+The same socket also flags **covert / tunnelling transports** that have no
+business on a flat honeypot segment: `sniffer:encapsulation` — GRE /
+IP-in-IP / EtherIP / L2TPv3 and IPv6-in-IPv4 sub-typed into 6in4 / 6to4 /
+ISATAP (by IP protocol), plus VXLAN / GENEVE / L2TP / Teredo / GRE-in-UDP
+(by UDP port) → protocol tunnelling (T1572 / T1095); `sniffer:icmp_tunnel`
+— a large, high-entropy ICMP echo (ptunnel / icmpsh / Loki); and
+`sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+), a
+root-bridge / topology-manipulation tell → AiTM (T1557). The generic
+[`auto`](config.md) catch-all additionally fingerprints **QUIC** long-header
+packets, so a covert QUIC channel landing on an unmodelled port is labelled
+rather than dropped.
+
+**Covert-transport coverage & limits.** Covered: DNS tunnels (§4a + the DNS
+handler/canary: overlong/high-entropy qnames, NULL/TXT qtypes, DGA), ICMP
+tunnels, GRE / IP-in-IP / 6in4 / 6to4 / ISATAP / EtherIP / L2TPv3 / VXLAN /
+GENEVE / Teredo, QUIC, fragmented evasions (`sniffer:ip_fragmented`), and
+arbitrary custom malware framing (the `auto` catch-all records + guesses it,
+raising `unknown-protocol`). Out of reach for a passive IPv4 sniffer:
+**IPv4-in-IPv6 transports** (DS-Lite, GRE-over-IPv6) need IPv6 frame
+capture, which the L3/L4 socket doesn't bind today; **steganographic
+transport** (data hidden inside otherwise-valid traffic) can't be detected
+reliably in general — the per-protocol entropy heuristics (DNS labels, ICMP
+payloads, payload harvesting) catch only the blatant cases.
 
 ### 4d. Correlator aggregates (`internal/correlate`)
 

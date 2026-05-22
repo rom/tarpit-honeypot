@@ -199,6 +199,64 @@ func encapByProto(proto byte) string {
 	return ""
 }
 
+// encap41Subtype refines an IPv6-in-IPv4 (IP protocol 41) payload into the
+// specific transition mechanism by inspecting the encapsulated IPv6
+// addresses: 6to4 (2002::/16), ISATAP (…:0000:5efe / …:0200:5efe interface
+// id), else generic 6in4.
+func encap41Subtype(ipv6 []byte) string {
+	if len(ipv6) < 40 || ipv6[0]>>4 != 6 {
+		return "6in4"
+	}
+	for _, a := range [][]byte{ipv6[8:24], ipv6[24:40]} {
+		if a[0] == 0x20 && a[1] == 0x02 {
+			return "6to4"
+		}
+	}
+	for _, a := range [][]byte{ipv6[8:24], ipv6[24:40]} {
+		if (a[8] == 0x00 || a[8] == 0x02) && a[9] == 0x00 && a[10] == 0x5e && a[11] == 0xfe {
+			return "isatap"
+		}
+	}
+	return "6in4"
+}
+
+// icmpTunnelMinData is the ICMP echo data length above which (combined with
+// high entropy) we treat a ping as a covert tunnel. Stock pings carry a
+// small, low-entropy pattern (Linux 56 bytes, Windows 32).
+const icmpTunnelMinData = 128
+
+// icmpEchoTunnel reports whether an ICMP message (the L4 payload from
+// parseIPv4) is an echo request/reply carrying a large, high-entropy data
+// payload — the shape of an ICMP tunnel (ptunnel / icmpsh / Loki).
+func icmpEchoTunnel(l4 []byte) (dataLen int, tunnel bool) {
+	if len(l4) < 8 {
+		return 0, false
+	}
+	if typ := l4[0]; typ != 8 && typ != 0 { // echo request / reply only
+		return 0, false
+	}
+	data := l4[8:]
+	if len(data) < icmpTunnelMinData {
+		return len(data), false
+	}
+	// High byte-diversity ⇒ not the standard incrementing ping pattern.
+	return len(data), distinctByteCount(data) > 80
+}
+
+// distinctByteCount returns how many distinct byte values appear in b — a
+// cheap entropy proxy.
+func distinctByteCount(b []byte) int {
+	var seen [256]bool
+	n := 0
+	for _, c := range b {
+		if !seen[c] {
+			seen[c] = true
+			n++
+		}
+	}
+	return n
+}
+
 // encapByUDPPort names a UDP-borne encapsulation/overlay protocol by its
 // well-known destination port, or "".
 func encapByUDPPort(port uint16) string {

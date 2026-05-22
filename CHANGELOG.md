@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — covert / tunnelling transport detection
+- `sniffer:icmp_tunnel` — an ICMP echo carrying a large, high-entropy data
+  payload (ptunnel / icmpsh / Loki); stock pings don't trip it. T1095/T1572.
+- `sniffer:encapsulation` now sub-types IPv6-in-IPv4 (IP proto 41) into
+  **6in4 / 6to4 / ISATAP** from the inner IPv6 addresses (2002::/16,
+  …:5efe interface id).
+- The `auto` catch-all fingerprints **QUIC** long-header packets, so a
+  covert QUIC channel on an unmodelled port is labelled (`protocol_guess:
+  quic`) rather than dropped.
+- `docs/attribution.md` gained a covert-transport coverage & limits note:
+  what's caught (DNS/ICMP tunnels, the encap family, QUIC, fragmentation,
+  custom malware framing via the catch-all) and what isn't without IPv6
+  capture (DS-Lite, GRE-over-IPv6) or in general (steganographic transport).
+
 ### Added — scripted-protocol framework: stages, match modes, capture
 - The `scripted` handler gained **stateful sessions**: a rule can require a
   `stage` and transition with `set_stage`, so operators can model multi-step

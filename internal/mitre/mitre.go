@@ -115,6 +115,9 @@ var exactRules = map[string]Tag{
 	// Spanning-tree BPDUs: a root-bridge / topology-manipulation attempt
 	// enables adversary-in-the-middle on the L2 segment.
 	"sniffer:stp_bpdu": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	// Echo-based covert tunnel (ptunnel / icmpsh / Loki) — data smuggled in
+	// ICMP = non-application-layer protocol tunnelling.
+	"sniffer:icmp_tunnel": {Techniques: []string{"T1095", "T1572"}, Tactics: []string{"command-and-control"}},
 	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
 	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.

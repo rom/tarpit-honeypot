@@ -148,6 +148,52 @@ func TestParseSTP(t *testing.T) {
 	}
 }
 
+func TestEncap41Subtype(t *testing.T) {
+	mk := func(srcHi, srcLo []byte) []byte {
+		p := make([]byte, 40)
+		p[0] = 0x60 // IPv6 version
+		copy(p[8:24], srcHi)
+		copy(p[24:40], srcLo)
+		return p
+	}
+	// 6to4: 2002::/16 in the source address.
+	v6to4 := mk([]byte{0x20, 0x02, 0, 0}, make([]byte, 16))
+	if got := encap41Subtype(v6to4); got != "6to4" {
+		t.Errorf("6to4 = %q", got)
+	}
+	// ISATAP: ...:0000:5efe interface id in the destination.
+	iid := make([]byte, 16)
+	iid[8], iid[9], iid[10], iid[11] = 0x00, 0x00, 0x5e, 0xfe
+	if got := encap41Subtype(mk(make([]byte, 16), iid)); got != "isatap" {
+		t.Errorf("isatap = %q", got)
+	}
+	// Plain 6in4.
+	if got := encap41Subtype(mk(make([]byte, 16), make([]byte, 16))); got != "6in4" {
+		t.Errorf("6in4 = %q", got)
+	}
+}
+
+func TestICMPEchoTunnel(t *testing.T) {
+	// Small standard ping → not a tunnel.
+	small := append([]byte{8, 0, 0, 0, 0, 0, 0, 0}, make([]byte, 56)...)
+	if _, tun := icmpEchoTunnel(small); tun {
+		t.Errorf("standard ping flagged as tunnel")
+	}
+	// Large, high-entropy echo payload → tunnel.
+	data := make([]byte, 256)
+	for i := range data {
+		data[i] = byte(i * 7) // spreads across many distinct values
+	}
+	big := append([]byte{0, 0, 0, 0, 0, 0, 0, 0}, data...) // echo reply
+	if n, tun := icmpEchoTunnel(big); !tun || n != 256 {
+		t.Errorf("large high-entropy echo not flagged: n=%d tun=%v", n, tun)
+	}
+	// A non-echo ICMP type is ignored.
+	if _, tun := icmpEchoTunnel(append([]byte{3, 0, 0, 0, 0, 0, 0, 0}, data...)); tun {
+		t.Errorf("non-echo ICMP type flagged")
+	}
+}
+
 func TestOSGuessFromTTL(t *testing.T) {
 	cases := []struct {
 		ttl   byte
