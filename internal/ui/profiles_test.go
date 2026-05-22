@@ -165,7 +165,7 @@ func TestProfileTemplatesRender(t *testing.T) {
 		{ID: "1", Time: time.Now(), RuleID: "webapp:sqli", Severity: event.SeverityHigh, Handler: "http",
 			Meta: map[string]any{"tools": []any{"sqlmap"}, "http_login_user": "admin", "http_login_pass": "x"}},
 	})
-	if err := tmpl.ExecuteTemplate(&b, "profile", prof); err != nil {
+	if err := tmpl.ExecuteTemplate(&b, "profile", profileView{Profile: prof}); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()

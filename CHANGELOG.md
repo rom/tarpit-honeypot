@@ -8,6 +8,22 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — Web UI: service names, attacker-profile synthesis, sortable rules
+- Event tables and the event-detail view now annotate destination ports
+  with their well-known service name (`:22 ssh`, `:502 modbus`,
+  `:9100 jetdirect/pjl`, …) via a new `internal/portsvc` lookup covering
+  common IANA ports plus the ICS/OT and printer ports the honeypot emulates.
+- Attacker profiles gained a synthesized **assessment**: a higher-level
+  `Classification` (C2 / red-team framework, exploitation attempt,
+  vulnerability scan, credential brute-force, reconnaissance / scanning,
+  automated client, manual / unclassified) plus a one-line `Summary`
+  (event count, time span, ports/services touched, peak severity, tools,
+  credentials, CVEs). The profile also surfaces the reporting sensor(s).
+- The "triggered rules" table on a profile is now sortable by rule name or
+  count via `?rsort=rule|count&rorder=asc|desc` (server-side, so it works
+  under the no-JavaScript CSP), with clickable column headers and a
+  direction arrow.
+
 ### Added — C2 / red-team / headless-browser tool detection
 - toolfp now recognizes C2 / red-team frameworks (Cobalt Strike, Mythic,
   Empire, Covenant, Sliver, Havoc, Brute Ratel, Metasploit, Core Impact)

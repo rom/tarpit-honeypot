@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // Attacker profiles: a per-source-IP dossier compiled from every event that
@@ -41,15 +43,21 @@ type credPair struct {
 
 // Profile is the compiled dossier for one source IP.
 type Profile struct {
-	IP           string            `json:"ip"`
-	FirstSeen    time.Time         `json:"first_seen"`
-	LastSeen     time.Time         `json:"last_seen"`
-	Count        int               `json:"events"`
-	Partial      bool              `json:"partial"` // true if more events exist than were scanned
-	BySeverity   map[string]int    `json:"by_severity"`
-	MaxSeverity  string            `json:"max_severity"`
-	ThreatScore  int               `json:"threat_score"`
-	ThreatLevel  string            `json:"threat_level"`
+	IP          string         `json:"ip"`
+	FirstSeen   time.Time      `json:"first_seen"`
+	LastSeen    time.Time      `json:"last_seen"`
+	Count       int            `json:"events"`
+	Partial     bool           `json:"partial"` // true if more events exist than were scanned
+	BySeverity  map[string]int `json:"by_severity"`
+	MaxSeverity string         `json:"max_severity"`
+	ThreatScore int            `json:"threat_score"`
+	ThreatLevel string         `json:"threat_level"`
+	// Classification is a synthesized higher-level label for this actor
+	// (e.g. "C2 / red-team framework", "vulnerability scan", "credential
+	// brute-force", "reconnaissance / scanning", "exploitation attempt").
+	Classification string `json:"classification,omitempty"`
+	// Summary is a one-line human-readable assessment of the actor.
+	Summary      string            `json:"summary,omitempty"`
 	Automation   bool              `json:"automation"`
 	Tools        []string          `json:"tools,omitempty"`
 	Rules        []countItem       `json:"rules,omitempty"`
@@ -160,7 +168,101 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		return p.Rules[i].Name < p.Rules[j].Name
 	})
+	p.synthesize()
 	return p
+}
+
+// synthesize derives a higher-level classification + one-line assessment
+// from the already-aggregated signals.
+func (p *Profile) synthesize() {
+	has := func(list []string, want string) bool {
+		for _, x := range list {
+			if x == want {
+				return true
+			}
+		}
+		return false
+	}
+	anomPrefix := func(prefix string) bool {
+		for _, a := range p.Anomalies {
+			if strings.HasPrefix(a, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+	anyTool := func(pred func(string) bool) bool {
+		for _, t := range p.Tools {
+			if pred(t) {
+				return true
+			}
+		}
+		return false
+	}
+	ruleHas := func(sub string) bool {
+		for _, r := range p.Rules {
+			if strings.Contains(r.Name, sub) {
+				return true
+			}
+		}
+		return false
+	}
+
+	switch {
+	case anyTool(toolfp.IsC2) || has(p.Anomalies, "c2-framework"):
+		p.Classification = "C2 / red-team framework"
+	case len(p.CVEs) > 0 || anomPrefix("webapp:") || has(p.Anomalies, "printer-cups-rce") || has(p.Anomalies, "printer-ipp-cmd-injection"):
+		p.Classification = "exploitation attempt"
+	case anyTool(toolfp.IsVulnScanner) || has(p.Anomalies, "vulnerability-scanner"):
+		p.Classification = "vulnerability scan"
+	case ruleHas("brute_force") || ruleHas("password_spray") || len(p.Credentials) >= 5:
+		p.Classification = "credential brute-force"
+	case has(p.Tactics, "discovery") || has(p.Tactics, "reconnaissance") || len(p.Ports) >= 10 || ruleHas("port_scan") || ruleHas("scananalysis") || anyTool(toolfp.IsHeadless):
+		p.Classification = "reconnaissance / scanning"
+	case p.Automation:
+		p.Classification = "automated client"
+	default:
+		p.Classification = "manual / unclassified"
+	}
+
+	// One-line assessment.
+	span := "a single moment"
+	if d := p.LastSeen.Sub(p.FirstSeen); d > time.Second {
+		span = humanDur(d)
+	}
+	var extra []string
+	if len(p.Tools) > 0 {
+		extra = append(extra, "tools: "+strings.Join(p.Tools, ", "))
+	}
+	if len(p.Credentials) > 0 {
+		extra = append(extra, fmt.Sprintf("%d credential(s) tried", len(p.Credentials)))
+	}
+	if len(p.CVEs) > 0 {
+		extra = append(extra, fmt.Sprintf("%d CVE(s): %s", len(p.CVEs), strings.Join(p.CVEs, ", ")))
+	}
+	suffix := ""
+	if len(extra) > 0 {
+		suffix = " — " + strings.Join(extra, "; ")
+	}
+	p.Summary = fmt.Sprintf("%s: %d event(s) over %s, %d port(s) / %d service(s) touched, peak %s severity%s.",
+		p.Classification, p.Count, span, len(p.Ports), len(p.Handlers), p.MaxSeverity, suffix)
+}
+
+// humanDur renders a duration compactly (e.g. "2h13m", "45s").
+func humanDur(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if d >= 24*time.Hour {
+		return fmt.Sprintf("%dd%dh", h/24, h%24)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 // metaStrings coerces meta[key] (which may be a string, []string, or the
@@ -293,9 +395,81 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	p := buildProfile(ip, evs)
 	p.Partial = len(evs) >= profileDetailMax
+
+	// The "triggered rules" table is sortable by rule name or count via
+	// ?rsort=rule|count&rorder=asc|desc (server-side — the CSP forbids JS).
+	rsort := r.URL.Query().Get("rsort")
+	if rsort != "rule" {
+		rsort = "count"
+	}
+	rorder := r.URL.Query().Get("rorder")
+	if rorder != "asc" {
+		rorder = "desc"
+	}
+	sortRules(p.Rules, rsort, rorder)
+
+	view := profileView{
+		Profile: p,
+		RuleHeaders: ruleHeaders{
+			Rule:  ruleSortHeader(ip, "rule", rsort, rorder),
+			Count: ruleSortHeader(ip, "count", rsort, rorder),
+		},
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "profile", p); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "profile", view); err != nil {
 		slog.Warn("ui: render profile", "err", err)
+	}
+}
+
+// profileView wraps a Profile (embedded, so the template's field access is
+// unchanged) with the triggered-rules sort header links.
+type profileView struct {
+	Profile
+	RuleHeaders ruleHeaders
+}
+
+type ruleHeaders struct{ Rule, Count sortLink }
+
+type sortLink struct {
+	Href  string
+	Arrow string
+}
+
+func sortRules(rules []countItem, by, order string) {
+	asc := order == "asc"
+	sort.Slice(rules, func(i, j int) bool {
+		var less bool
+		if by == "rule" {
+			less = rules[i].Name < rules[j].Name
+		} else {
+			if rules[i].Count != rules[j].Count {
+				less = rules[i].Count < rules[j].Count
+			} else {
+				less = rules[i].Name < rules[j].Name
+			}
+		}
+		if asc {
+			return less
+		}
+		return !less
+	})
+}
+
+// ruleSortHeader builds the toggle link + arrow for a triggered-rules column.
+func ruleSortHeader(ip, col, curSort, curOrder string) sortLink {
+	next := "desc"
+	arrow := ""
+	if curSort == col {
+		if curOrder == "desc" {
+			next = "asc"
+			arrow = " ▼"
+		} else {
+			arrow = " ▲"
+		}
+	}
+	return sortLink{
+		Href:  fmt.Sprintf("/profiles/%s?rsort=%s&rorder=%s", ip, col, next),
+		Arrow: arrow,
 	}
 }
 

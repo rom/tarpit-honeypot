@@ -18,6 +18,7 @@ func uiTmpl(t *testing.T) *template.Template {
 		"join":           func([]int) string { return "" },
 		"hexdump":        hexDump,
 		"refreshSeconds": func() int { return 0 },
+		"svcName":        func(int) string { return "" },
 	}).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)

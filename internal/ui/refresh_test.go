@@ -15,6 +15,7 @@ func headWithRefresh(t *testing.T, secs int) string {
 		"join":           func([]int) string { return "" },
 		"hexdump":        hexDump,
 		"refreshSeconds": func() int { return secs },
+		"svcName":        func(int) string { return "" },
 	}).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)

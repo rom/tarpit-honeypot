@@ -31,6 +31,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
+	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -154,6 +155,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 		},
 		"hexdump":        hexDump,
 		"refreshSeconds": func() int { return s.refresh },
+		"svcName":        portsvc.Name,
 	}).Parse(tmpls)
 	if err != nil {
 		return nil, err

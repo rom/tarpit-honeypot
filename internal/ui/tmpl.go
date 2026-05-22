@@ -121,7 +121,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
     <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
     <td>{{ .RuleID }}</td>
     <td>{{ .Source.IP }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
-    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ end }}</td>
+    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}</td>
     <td>{{ .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
   </tr>
@@ -137,7 +137,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}</td></tr>
   <tr><th>source</th><td>{{ .Source.IP }}:{{ .Source.Port }}</td></tr>
-  <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}</td></tr>
+  <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
   <tr><th>proto</th><td>{{ .Proto }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
 </table>
@@ -191,11 +191,14 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ define "profile" }}{{ template "head" . }}
 <h1>attacker profile — {{ .IP }}</h1>
+{{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
+<p class="note">{{ .Summary }}</p>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·
   {{ .Count }} event(s){{ if .Partial }}+{{ end }} ·
   {{ if .Automation }}automation{{ else }}unflagged{{ end }}
+  {{ if .Sensors }} · sensors: {{ range .Sensors }}<span class="tag">{{ . }}</span>{{ end }}{{ end }}
 </div>
 <p class="note">first seen {{ fmtTime .FirstSeen }} · last seen {{ fmtTime .LastSeen }} ·
   <a href="/events?source={{ .IP }}&amp;since=2160h">all events</a> ·
@@ -227,7 +230,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td></tr>{{ end }}
 </table>{{ end }}
 
-{{ if .Rules }}<h2>triggered rules</h2><table><tr><th>rule</th><th>count</th></tr>
+{{ if .Rules }}<h2>triggered rules</h2><table><tr><th><a href="{{ .RuleHeaders.Rule.Href }}">rule{{ .RuleHeaders.Rule.Arrow }}</a></th><th><a href="{{ .RuleHeaders.Count.Href }}">count{{ .RuleHeaders.Count.Arrow }}</a></th></tr>
 {{ range .Rules }}<tr><td><a href="/events?source={{ $.IP }}&amp;rule={{ .Name }}">{{ .Name }}</a></td><td>{{ .Count }}</td></tr>{{ end }}
 </table>{{ end }}
 
