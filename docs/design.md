@@ -54,8 +54,8 @@ goroutines with bounded queues. No external broker.
 
 ```
                      ┌──────────────────────────── sensor ────────────────────────────┐
-  TCP/UDP connects ─►│ listeners ─► handlers (81: IT/OT/mgmt/small-svc/dns) ─┐         │
-  ICMP/ARP/L2/L3 ───►│ AF_PACKET responders + ARP/TCP-scan + PROFINET-DCP ───┤         │
+  TCP/UDP connects ─►│ listeners ─► handlers (96: IT/OT/mgmt/small-svc/dns) ─┐         │
+  ICMP/ARP/L2/L3 ───►│ AF_PACKET responders + ARP/IPv4+IPv6-scan + PROFINET ─┤         │
   fs/url/dns tokens ►│ canaries ────────────────────────────────────────────┤         │
                      │                                                       ▼         │
                      │  per-conn capture + payload harvest        ┌──► enrich (geoip/rdns)
@@ -130,18 +130,25 @@ What makes the sensor *look real*:
 
 What turns interaction into signal:
 
-- **81 protocol handlers** (1 generic + 57 TCP + 23 UDP; IT, remote-access
+- **96 protocol handlers** (78 TCP + 26 UDP registrations; IT, remote-access
   / OOB-management personas, ICS/OT, discovery/UDP, a resolving DNS
-  server, RFC small services, plus the scriptable `lua` handler). Each
-  captures the application-layer exchange (credentials, requested objects,
-  fingerprints) and replies credibly. ICS/OT coverage includes Modbus, S7
-  + **S7comm-Plus**, IEC-104, **DNP3**, EtherNet/IP, **GE-SRTP**,
-  **CODESYS**, OPC-UA, BACnet (incl. WriteProperty), MELSEC, FINS. See
-  README "Protocol handlers in detail".
+  server, RFC small services, the scriptable `lua` + declarative `scripted`
+  handlers, and a generic `auto` catch-all). Each captures the
+  application-layer exchange (credentials, requested objects, fingerprints)
+  and replies credibly. ICS/OT coverage includes Modbus, S7 + **S7comm-Plus**,
+  IEC-104, **DNP3**, EtherNet/IP, **GE-SRTP**, **CODESYS**, OPC-UA, BACnet
+  (incl. WriteProperty), MELSEC, FINS; data stores include Redis, **memcached**,
+  **MongoDB**, **Elasticsearch**; mail adds **POP3** + **IMAP**. See README
+  "Protocol handlers in detail".
 - **Protocol-anomaly detection** (`event.anomalies`). Per-handler markers
-  for malformed / smuggled / hostile input (non-printable SSH banners,
-  unknown HTTP methods + suspicious URIs, DNS tunneling shapes, abnormal
-  ICMP payloads, UDP amplifier probes, shell TTPs).
+  for malformed / smuggled / hostile input: non-printable SSH banners;
+  unknown HTTP methods, suspicious URIs, **malformed/duplicate-Host headers**,
+  **impossible-browser** UA spoofing; DNS tunneling shapes, **DGA-suspected**
+  domains, **encrypted-DNS** (DoH/DoT/DNSCrypt) recognition; **Kerberoasting**
+  + **SPN/LDAP/AS-REP-roast** enumeration; **sensitive MSRPC interface binds**
+  (SAMR/LSARPC/svcctl-PsExec/DRSUAPI-DCSync); post-auth **FTP** abuse;
+  abnormal ICMP payloads; UDP amplifier probes; shell TTPs; and the `auto`
+  catch-all's `unknown-protocol`.
 - **TLS / client fingerprinting** (`internal/fingerprint`, `internal/toolfp`):
   JA3 + JA4 (client TLS ClientHello), **JA3S** (server-side TLS — the
   ServerHello we send back; the `(ja3, ja3s)` pair is the threat-intel
@@ -158,17 +165,24 @@ What turns interaction into signal:
   timing template (`-T0`..`-T5`), `-A`/`-O`/`-sV`, NSE + service-probe
   matching, connect scans → `scananalysis:profile`.
 - **Packet-capture scan-detection layer** (`internal/sniffer`, opt-in,
-  Linux AF_PACKET). A second socket classifies inbound IPv4 TCP by flags
-  and reports scans that never establish a session — **NULL/FIN/Xmas**
-  stealth probes, **SYN/ACK** scans (by volume), and fragmented probes —
-  emitting `sniffer:tcp_{syn,null,fin,xmas,ack}_scan` / `sniffer:ip_fragmented`.
-  This is the closed-port / dropped-stealth visibility the connection
-  layer can't have. (Decoy detection is still out of scope.)
+  Linux AF_PACKET). Dedicated sockets for IPv4 **and IPv6** classify inbound
+  TCP by flags and report scans that never establish a session —
+  **NULL/FIN/Xmas** stealth probes, **SYN/ACK/Maimon** scans, **UDP** scans,
+  and fragmented probes — emitting `sniffer:tcp_{syn,null,fin,xmas,ack,maimon}_scan`
+  / `sniffer:udp_scan` / `sniffer:ip_fragmented`. The same layer flags covert
+  **tunnelling** (`sniffer:encapsulation` — GRE / IP-in-IP / 6in4 / 6to4 /
+  ISATAP / DS-Lite / GRE-over-IPv6 / VXLAN / GENEVE / Teredo),
+  **ICMP/ICMPv6 tunnels** (`sniffer:icmp_tunnel`), and spanning-tree abuse
+  (`sniffer:stp_bpdu`). This is the closed-port / dropped-stealth / covert-
+  transport visibility the connection layer can't have. (Decoy detection is
+  still out of scope; steganographic transport is out of reach in general.)
 - **In-sensor correlators** (`internal/correlate`): port-scan,
   brute-force (with extracted credential pairs), slow-scan (hour-scale),
-  ICMP ping-sweep. The PROFINET-DCP responder also emits a detection
-  event (`honeynet:profinet_dcp_identify`, ATT&CK T0846) for every DCP
-  Identify it observes — ICS reconnaissance on the segment.
+  ICMP ping-sweep, password-spray, credential-reuse, **HTTP path-enumeration**,
+  **DNS-enumeration**, and **C2 beacon** (inter-arrival jitter analysis). The
+  PROFINET-DCP responder also emits a detection event
+  (`honeynet:profinet_dcp_identify`, ATT&CK T0846) for every DCP Identify it
+  observes — ICS reconnaissance on the segment.
 - **Attack-storyline correlator** (`storyline:multi_stage`). Joins a
   source's events across ATT&CK tactics; tracks CVE exploits / captured
   malware / tools, flags `objective_reached`, and scales severity to

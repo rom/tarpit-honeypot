@@ -176,7 +176,8 @@ service-probe matches, and connect-scan shape → ATT&CK T1595 + T1046.
 ### 4c. Packet-capture scan detection (`internal/sniffer`, Linux AF_PACKET)
 
 Stealth + volume TCP scans observed on the wire that never establish a
-session: `sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
+session, over **both IPv4 and IPv6** (separate AF_PACKET sockets):
+`sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
 `tcp_fin_scan` (`-sF`), `tcp_xmas_scan` (`-sX`), `tcp_ack_scan`
 (`-sA`; `-sW` Window scan shares the ACK probe on the wire),
 `tcp_maimon_scan` (`-sM`, FIN+ACK, volume-gated), `sniffer:udp_scan`
@@ -211,9 +212,11 @@ harvesting) catch only the blatant cases.
 ### 4d. Correlator aggregates (`internal/correlate`)
 
 Windowed per-source aggregation turns many small probes into one verdict:
-`correlate:port_scan`, `correlate:slow_scan`, `correlate:icmp_sweep`
-(discovery) and `correlate:brute_force` / `password_spray` /
-`credential_reuse` (credential-access).
+`correlate:port_scan`, `correlate:slow_scan`, `correlate:icmp_sweep`,
+`correlate:path_enumeration` (HTTP dirbusting), `correlate:dns_enumeration`
+(subdomain brute / NXDOMAIN flood) (discovery), `correlate:brute_force` /
+`password_spray` / `credential_reuse` (credential-access), and
+`correlate:beacon` (regularly-spaced C2 call-home — command-and-control).
 
 **Inspect it:** `tarpit-honeypot identify --ua/--path/--ssh/--ja3 …`.
 

@@ -454,8 +454,27 @@ listener hits.
   `uri-path-traversal`, `uri-log4shell-jndi`, `uri-wordpress-probe`,
   `uri-source-leak-probe`, `uri-mgmt-endpoint-probe`,
   `uri-secret-file-probe`, `uri-xss-or-rce-payload`,
-  `http-login-attempt`
+  `http-login-attempt`; behavioral: `http-malformed-header`,
+  `http-duplicate-host`, `http-impossible-browser`
+- DNS: `dns-tunnel-suspected`, `dns-qname-overlong`, `dns-dga-suspected`,
+  `dns-over-https`, `dns-over-tls`, `dnscrypt-probe`, `mdns-service-enumeration`
+- Active Directory / Kerberos: `kerberos-tgs-request`,
+  `kerberos-rc4-requested`, `ldap-spn-enumeration`,
+  `ldap-asrep-roast-recon`, `ldap-enumeration`
+- MSRPC (port 135): `dcerpc-samr-enum`, `dcerpc-lsarpc-enum`,
+  `dcerpc-srvsvc-enum`, `dcerpc-svcctl-access`, `dcerpc-winreg-access`,
+  `dcerpc-dcsync`, `dcerpc-netlogon-access`
+- FTP (post-auth): `ftp-upload-attempt`, `ftp-download-attempt`,
+  `ftp-site-command`, `ftp-bounce-scan`, `ftp-delete-attempt`, `ftp-listing`
+- Data stores: `memcached-stats-probe`, `memcached-write-attempt`,
+  `memcached-flush`; `unknown-protocol` (the `auto` catch-all)
 - All shell-* markers listed in §10
+
+The L3/L4 sniffer additionally flags scans (`sniffer:tcp_*_scan`,
+`sniffer:udp_scan`), fragmentation (`sniffer:ip_fragmented`), covert
+tunnelling (`sniffer:encapsulation` — GRE / 6in4 / 6to4 / ISATAP / DS-Lite /
+GRE-over-IPv6 / VXLAN / …, `sniffer:icmp_tunnel`), and spanning-tree abuse
+(`sniffer:stp_bpdu`) — over **both IPv4 and IPv6**.
 
 ## 12. Platform support
 
@@ -475,7 +494,7 @@ with a workaround:
 | `icmp_responder` | AF_PACKET ✓ | Same `ifconfig alias` — the kernel answers ICMP echo natively |
 | `lldp_responder` (LLDP/CDP advertise) | AF_PACKET ✓ | Unavailable; the rest of the deception still works |
 | `profinet_responder` (PROFINET-DCP) | AF_PACKET ✓ | Unavailable; the rest of the deception still works |
-| AF_PACKET sniffer (ARP + TCP scan detection) | ✓ | Unavailable; protocol-level brute-force / port-scan correlators still work |
+| AF_PACKET sniffer (ARP + IPv4/IPv6 scan / tunnel detection) | ✓ | Unavailable; protocol-level brute-force / port-scan correlators still work |
 | File canary OPEN events (read detection) | fanotify ✓ | Unavailable; fsnotify still catches write/remove/rename/chmod |
 | TUN/utun adapter | TUN ✓ | Use `ifconfig <iface> alias <ip>` to attract L4 traffic for virtual hosts |
 | Privilege drop | `setresuid` ✓ | `setuid` ✓ (saved-uid also dropped on darwin) |

@@ -224,6 +224,11 @@ By family, with the most common port. All are configurable to any port via `bind
 | `postgres` | 5432 | startup + cleartext password capture |
 | `mysql` | 3306 | server-first handshake + auth_response capture |
 | `redis` | 6379 | RESP with AUTH password capture |
+| `memcached` | 11211 | text protocol; flags stats recon / writes / flush_all |
+| `mongodb` | 27017 | wire protocol isMaster/buildInfo; flags unauth access |
+| `elasticsearch` | 9200 | HTTP API cluster banner; flags unauth `_search`/`_cat` |
+| `pop3` | 110 | `+OK` greeting, USER/PASS capture |
+| `imap` | 143 | IMAP4rev1 LOGIN capture |
 | `syslog_tcp` | 514 | octet-counting + non-transparent framing |
 | `syslog_udp` | 514 | RFC 3164/5424 capture |
 | `rtsp` | 554 | RTSP/1.0 401 Digest |
@@ -276,6 +281,7 @@ Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-ver
 | `ssdp` | 1900 (UDP) | M-SEARCH → fake router NOTIFY |
 | `llmnr` | 5355 (UDP) | poisoning responder catching Windows fallback lookups |
 | `nbns` | 137 (UDP) | NetBIOS-NS responder catching SMB-relay precursors |
+| `mdns` | 5353 (UDP) | multicast-DNS responder; flags DNS-SD service enumeration |
 | `snmp` | 161 (UDP) | v1/v2c GetRequest with community capture |
 | `ntp` | 123 (UDP) | mode-3 → mode-4; mode-7 silenced (no monlist amplifier) |
 | `tftp` | 69 (UDP) | RRQ/WRQ filename capture, ERROR access_violation reply |
@@ -289,6 +295,9 @@ Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-ver
 | `qotd` | 17 (TCP/UDP) | RFC 1340 quote of the day |
 | `chargen` | 19 (TCP/UDP) | one bounded line (never the unbounded amplifier stream) |
 | `time` | 37 (TCP/UDP) | RFC 868 4-byte time |
+| `auto` | any (TCP/UDP) | catch-all: captures + fingerprints unmodelled protocols (`protocol_guess`), flags `unknown-protocol`; never replies on UDP |
+| `scripted` | any (TCP) | declarative YAML protocol: greeting + match→respond rules, stateful stages, credential capture |
+| `lua` | any (TCP) | sandboxed Lua dynamic-response engine |
 
 ### LLMNR + NetBIOS poisoning catcher
 

@@ -76,7 +76,7 @@ tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
 | `--dry-run` | off | Load + validate config, construct the sensor end-to-end, exit before binding any listener. CI-friendly. |
 | Common flags | — | See "Common flags" at the top. |
 
-The sensor brings up, in order: SQLite store + retention pruner; capture manager (when any listener has `capture: true`); sinks; router workers; correlator (port-scan / brute-force / slow-scan + storyline); per-listener accept loops (with hot-reload tracking); canary watchers (fanotify on Linux for OPEN events, fsnotify everywhere else for write/remove/rename/chmod); DNS canary listener; ARP / ICMP / LLDP / TUN responders per honeynet (Linux only); AF_PACKET sniffer (Linux only); Web UI + `/metrics` endpoint.
+The sensor brings up, in order: SQLite store + retention pruner; capture manager (when any listener has `capture: true`); sinks; router workers; correlator (port-scan / brute-force / slow-scan / spray / path- + dns-enumeration / beacon + storyline); per-listener accept loops (with hot-reload tracking); canary watchers (fanotify on Linux for OPEN events, fsnotify everywhere else for write/remove/rename/chmod); DNS canary listener; ARP / ICMP / LLDP / TUN responders per honeynet (Linux only); AF_PACKET sniffer — IPv4 + IPv6 + L2 (Linux only); Web UI + `/metrics` endpoint.
 
 ### Signals
 

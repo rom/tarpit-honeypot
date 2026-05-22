@@ -23,14 +23,14 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **89 built-in TCP/UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
-  - **Generic**: `raw`
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
+- **96 built-in TCP/UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+  - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
-  - **UDP**: `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
+  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
@@ -111,9 +111,14 @@ rationale covering the current implementation.
 - **Declarative fake-protocol routing** (`handler: scripted`): stand up a
   believable custom TCP service entirely in YAML — no Lua. An optional
   on-connect `greeting`, then top-down `rules` that match each client
-  message by `prefix` / `contains` / `regex` (RE2) / `hex_prefix` / `any`
-  and write a `respond` (text-escapes or `respond_hex` for binary), with
-  optional per-rule `anomaly` flag and `close`. Bounded rounds + per-reply
+  message by `prefix` / `contains` / `suffix` / `iprefix` / `icontains`
+  (case-insensitive) / `regex` (RE2) / `hex_prefix` / `any` and write a
+  `respond` (text-escapes or `respond_hex` for binary), with optional
+  per-rule `anomaly` flag and `close`. **Stateful, multi-step protocols**:
+  a rule can require a `stage` and advance it with `set_stage` (e.g. an
+  `auth` stage gating a `command` stage). **Credential capture**: a `regex`
+  rule with `capture: user`/`pass` records the capture group into the
+  attacker profile + default-credential matching. Bounded rounds + per-reply
   size cap; TCP-only so it can't be a spoofed-source amplifier. Validated
   at config-load (regex compiles, hex decodes).
 - **Attacker session recording** (`sensor.session_recording`): interactive
@@ -121,7 +126,8 @@ rationale covering the current implementation.
   under `<data_dir>/sessions/` (replayable with timing); the cast filename
   lands in event meta. Per-cast + total-size capped.
 - **Persistent correlator state**: the windowed detectors (port-scan /
-  brute-force / slow-scan / icmp-sweep) checkpoint to
+  brute-force / slow-scan / icmp-sweep / password-spray / credential-reuse /
+  path-enumeration / dns-enumeration / C2-beacon) checkpoint to
   `<data_dir>/correlate-state.json` and restore on startup + carry across
   hot reload, so long-window detection (slow-scan) survives a restart.
 - **Archetype consistency**: each archetype keeps its firmware era,
@@ -435,6 +441,23 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Also `example-LARGE.yaml` (every handler + all archeservice roles + all subsystems), `example-archeservices.yaml` (the role-bundle feature), and the OT examples (`example-FULL` / `example-ADVANCED-OT` / `example-SMALL-OT`).
 
 ## Status
+
+**Unreleased — protocol breadth, detection depth, covert transports.** Seven
+new handlers: `pop3`, `imap`, `memcached`, `mongodb`, `elasticsearch` (TCP),
+`mdns` (UDP), and a generic `auto` catch-all (TCP+UDP) that captures and
+fingerprints any unmodelled protocol (`unknown-protocol`). Encrypted-DNS
+recognition (DoH / DoT / DNSCrypt) and DGA-domain detection. New behavioral
+detection: HTTP (malformed/duplicate-Host headers, impossible-browser UA),
+Active Directory / Kerberos abuse (Kerberoasting, SPN / LDAP enumeration,
+AS-REP-roast recon), sensitive MSRPC interface binds (SAMR / LSARPC / DRSUAPI
+DCSync / svcctl PsExec), and deeper post-auth FTP session capture. Three new
+correlators: `path_enumeration`, `dns_enumeration`, and C2 `beacon` (jitter
+analysis). Covert-transport detection: ICMP/ICMPv6 tunnels, 6in4 / 6to4 /
+ISATAP / DS-Lite / GRE-over-IPv6 sub-typing, QUIC fingerprinting, and a new
+**IPv6 capture socket** so scans / tunnels / fragmentation are detected over
+both IP versions. The `scripted` framework gained stateful stages, more match
+modes, and credential capture. See the [CHANGELOG](CHANGELOG.md) for the full
+list.
 
 **v2.0 — printers/MFD, offline tooling, deeper detection.** A full
 printer / multi-function-device deception + detection suite: the `pjl`
@@ -972,7 +995,8 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | Handler | Port | What it does | arch | id |
 |---|---|---|:-:|:-:|
 | `raw` | any | Sends literal `banner:` field, reads up to `read_bytes`. | — | — |
-| `scripted` | any | Declarative fake protocol from the `scripted:` config block: optional on-connect greeting, then top-down `rules` matching each message (`prefix`/`contains`/`regex`/`hex_prefix`/`any`) → `respond` (text or `respond_hex`), with per-rule `anomaly` + `close`. Captures the full transcript. Bounded rounds + 64 KB reply cap. | — | — |
+| `auto` | any | Generic catch-all for unmodelled protocols: captures the client's opening message, guesses the protocol from leading bytes (`protocol_guess`: tls / ssh / http / socks / quic / text / binary), and flags `unknown-protocol`. Optional `banner:` is sent as a server-first nudge. | — | — |
+| `scripted` | any | Declarative fake protocol from the `scripted:` config block: optional on-connect greeting, then top-down `rules` matching each message (`prefix`/`contains`/`suffix`/`iprefix`/`icontains`/`regex`/`hex_prefix`/`any`) → `respond` (text or `respond_hex`), with per-rule `anomaly` + `close`. Stateful **stages** (`stage`/`set_stage`) model multi-step protocols; a `regex` rule with `capture: user`/`pass` harvests credentials. Captures the full transcript. Bounded rounds + 64 KB reply cap. | — | — |
 | `ssh` | 22 | Sends archetype/identity-shaped SSH-2.0 banner immediately followed by its own `SSH_MSG_KEXINIT` (algorithm set derived from the version banner — modern OpenSSH / legacy / Dropbear — so the **server HASSH** is realistic and version-consistent, recorded as `hassh_server`). Reads client ID (flags non-printable / non-SSH / overlong), computes the client HASSH from its KEXINIT, then drops the connection. | ✓ | ✓ |
 | `ssh_interactive` | 22 | Full `golang.org/x/crypto/ssh` server with persistent ed25519 host key under `<data_dir>/tls/ssh_host_ed25519_key`. Captures every password / pubkey attempt (SHA-256 fingerprint, key type, user, client version), accepts the 3rd credential and drops into `internal/shell.Run` on the session channel. Bounded: `SessionTimeout=5min`, `MaxAuthTries=6`. Also captures non-interactive `ssh host CMD` exec lines + scans them for anomalies. | ✓ | ✓ |
 | `http` | 80 | Routes on method+path. `GET /` serves the archetype's index HTML (Moxa / SCALANCE / S7 device pages or nginx 401). `GET /login` and 12 other login-shaped paths serve a form. `POST /login` parses `application/x-www-form-urlencoded` body (accepts 6 alias names each for user/pass) and captures credentials. Computes JA4H from request line + headers. Flags 8 suspicious-URI anomalies (Log4Shell JNDI, path traversal, WordPress / `.git` / `.env` / Tomcat manager probes). | ✓ | ✓ |
@@ -993,6 +1017,11 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `oracle_tns` | 1521 | Oracle Net (TNS) listener. Captures the connect descriptor (SERVICE_NAME / SID recon) and replies REFUSE ORA-12514. | — | — |
 | `ftp_files` | 21 | Medium-interaction FTP: anonymous / `accept_creds` login, full PASV browse + RETR over a deterministic decoy tree. Flags `honeyfile-download` on bait-file retrieval + `default-credential-attempt`. | ✓ | ✓ |
 | `redis` | 6379 | RESP parser (multi-bulk + inline forms). Captures `auth_password` from `AUTH` / `HELLO ... AUTH`, plus a short list of issued `commands` (with arguments). Returns RESP errors so the client keeps trying. | — | — |
+| `memcached` | 11211 | memcached text protocol. Answers `version` / `stats` with believable counters, captures issued commands, and flags abuse: `stats` recon, writes (cache poisoning), and `flush_all` (cache wipe). | — | — |
+| `mongodb` | 27017 | MongoDB wire protocol (OP_MSG / OP_QUERY). Answers `isMaster`/`hello` + `buildInfo` with a believable version, captures the requested commands, and flags unauthenticated access. | — | — |
+| `elasticsearch` | 9200 | Elasticsearch HTTP API. Answers `GET /` with a believable cluster banner; captures probed paths and flags unauthenticated data-store access + `_search` / `_cat` enumeration. | — | — |
+| `pop3` | 110 | POP3 receive listener. Archetype-shaped `+OK` greeting, captures `USER` / `PASS` credentials (flags `default-credential-attempt`), replies `-ERR` auth failure. | ✓ | — |
+| `imap` | 143 | IMAP4rev1. Tagged-command loop: `CAPABILITY`, then captures `LOGIN` user/pass (flags `default-credential-attempt`), replies `NO` auth failure. | ✓ | — |
 | `syslog_tcp` | 514 | Reads syslog messages via both octet-counting (`<N> <msg>`) and non-transparent (newline-terminated) framing. Captures first 16 messages with PRI / facility / severity decoded. | — | — |
 | `rtsp` | 554 | Parses RTSP OPTIONS / DESCRIBE request line + headers. Captures `Authorization` (often Digest with the camera password) + `User-Agent`. Replies 401 with a Hikvision-shaped `WWW-Authenticate: Digest`. | — | — |
 | `dockerapi` | 2375 | Unauthenticated-Docker-API mimic. Routes `/_ping`, `/version`, `/info`, `/containers/json` to believable canned JSON. Captures the request line + `Authorization` header on every hit. | — | — |
@@ -1058,6 +1087,7 @@ handshake where it isn't HTTP.
 | Handler | Port | What it does | arch | id |
 |---|---|---|:-:|:-:|
 | `raw` | any | Records the datagram bytes; optionally writes a static reply. | — | — |
+| `auto` | any | Generic UDP catch-all: records the datagram, guesses the protocol from leading bytes (`protocol_guess`), flags `unknown-protocol`. **Never replies** — a UDP reply to a spoofable source would be a reflection/amplification primitive. | — | — |
 | `snmp` | 161 | gosnmp-backed SNMPv1/v2c decoder. Captures `version`, `community`, requested OID list. When an archetype is set, answers the system group (1.3.6.1.2.1.1.x: sysDescr, sysObjectID, sysName, sysContact, sysLocation, sysServices) and ifTable (1.3.6.1.2.1.2.2.1.x: ifIndex / ifDescr / ifType / ifSpeed / ifPhysAddress / ifOperStatus) from the archetype's MIB-2 view. Unknown OIDs return Null. SNMPv3 rejected. | ✓ | — |
 | `ntp` | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp + plausible reference / receive / transmit timestamps. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. | — | — |
 | `bacnet` | 47808 | BVLC + NPDU + APDU parser. Replies to Who-Is (service 0x08) with an I-Am (object instance 1234), and to a confirmed **WriteProperty** with a SimpleACK while flagging `bacnet-write-attempt` (a value-change against a control point). Other services captured but unacknowledged. | — | — |
@@ -1070,11 +1100,12 @@ handshake where it isn't HTTP.
 | `cldap` | 389 | CLDAP SearchRequest parser. Replies searchResDone; when honeynet topology is available, advertises the configured Domain Controllers in the meta. | — | — |
 | `llmnr` | 5355 | LLMNR query parser. Replies with our local IP as the A-record — classic poisoning catcher for the common Windows lookup-fallback target `wpad`. | — | — |
 | `nbns` | 137 | NetBIOS Name Service query parser. Decodes the encoded NetBIOS name; replies positive name-query response — catches SMB-relay precursors. | — | — |
+| `mdns` | 5353 | Multicast-DNS responder (RFC 6762). Parses the query, flags `mdns-service-enumeration` on DNS-SD service-discovery probes (`_services._dns-sd._udp.local`), and answers with believable PTR/SRV records. | — | — |
 | `fins` | 9600 | Omron FINS UDP frame parser. Answers CPU-data-read (`CJ2M-CPU33`), CPU-status-read (RUN/MONITOR), memory-area-read (with decoded area name + believable PV data), cycle-time-read, clock-read; generic ACK otherwise. | — | — |
 | `coap` | 5683 | RFC 7252 GET parser with bounds-checked option-TLV walker. Extracts `Uri-Path` + token; flags malformed packets. Replies 2.05 Content with a `/.well-known/core` link-format body advertising one fake `/led` resource. | — | — |
 | `knx` | 3671 | KNXnet/IP. Replies to SEARCH_REQUEST (0x0201) with a SEARCH_RESPONSE advertising an "MDT KNX IP Router" device-info DIB + a supported-service-families DIB (CORE, DEV_MGMT, TUNNELLING, ROUTING). DESCRIPTION_REQUEST gets a DESCRIPTION_RESPONSE. CONNECT_REQUEST gets status `0x24` (no more connections) so we look live without opening a tunnel. | — | — |
 | `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
-| `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query). | — | ✓ |
+| `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query, **DGA-suspected** domains, and **encrypted-DNS** recognition — DoH / DoT / DNSCrypt probes). | — | ✓ |
 
 ### Small services (TCP + UDP)
 
@@ -1190,6 +1221,17 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `correlate:icmp_sweep` — one source pinged N distinct virtual host
   IPs inside `correlate.icmp_sweep.window`. Tagged `T1018` (remote
   system discovery).
+- `correlate:path_enumeration` — one source requested N **distinct HTTP
+  URL paths** in the window (content discovery / dirbusting / forced
+  browsing that per-request UA fingerprinting misses when the UA is
+  spoofed). Tagged `T1595.003` / `T1083`.
+- `correlate:dns_enumeration` — one source queried N **distinct DNS names**
+  in the window (subdomain brute force / NXDOMAIN flood / DGA churn).
+  Tagged `T1590.002` / `T1568.002`.
+- `correlate:beacon` — regularly-spaced call-home contact from one source:
+  after `min_hits` samples the inter-arrival jitter (stddev/mean) is below
+  `max_jitter_pct` over a mean interval ≥ 1s — C2 beaconing. Sub-second
+  bursts and irregular timing are excluded. Tagged `T1071`.
 - `scananalysis:profile` — per-source nmap fingerprint once a source
   crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
   `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),
@@ -1220,10 +1262,15 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   the handler serves a believable fake shell (canned output, never
   executed) so the attacker reveals recon commands.
 - `protocol_anomaly` / `event.anomalies` — handler-flagged protocol
-  misuse (SSH non-printable / overlong banners, HTTP unknown methods +
-  suspicious URIs, DNS tunneling shapes, ICMP abnormal payloads, the
-  14-marker interactive-shell TTP scanner). Routed separately so a SIEM
-  rule can pivot on the marker.
+  misuse: SSH non-printable / overlong banners; HTTP unknown methods,
+  suspicious URIs, **malformed/duplicate-Host headers** and
+  **impossible-browser** UA spoofing; DNS tunneling shapes, **DGA-suspected**
+  domains and **encrypted-DNS** (DoH / DoT / DNSCrypt) recognition;
+  **Kerberoasting** + **SPN/LDAP/AS-REP-roast** enumeration; **sensitive
+  MSRPC interface binds** (SAMR / LSARPC / srvsvc / svcctl-PsExec / winreg /
+  DRSUAPI-DCSync / netlogon); post-auth **FTP** abuse (uploads / SITE EXEC /
+  FTP-bounce); ICMP abnormal payloads; and the 14-marker interactive-shell
+  TTP scanner. Routed separately so a SIEM rule can pivot on the marker.
 - `dnscanary:amplifier_probe` — DNS source sent an ANY-type query or
   exceeded the per-window query threshold. Meta: `queries`,
   `any_queries`, `triggered_by_any`.
@@ -1234,6 +1281,17 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `sniffer:arp_scan` — ARP request flood from one MAC.
 - `sniffer:arp_reply_unsolicited` — ARP reply with no preceding request
   (possible cache poisoning).
+- `sniffer:tcp_*_scan` / `sniffer:udp_scan` — stealth + volume scans seen
+  on the wire (SYN / NULL / FIN / Xmas / ACK / Maimon / UDP) that never
+  complete a session, over **both IPv4 and IPv6**. Tagged `T1046` / `T1595.001`.
+- `sniffer:ip_fragmented` — fragmented-IP scan evasion (IPv4 + IPv6).
+- `sniffer:encapsulation` — covert tunnelling on the segment: GRE / IP-in-IP /
+  EtherIP / L2TPv3 / 6in4 / 6to4 / ISATAP / DS-Lite / GRE-over-IPv6 / VXLAN /
+  GENEVE / Teredo. Tagged `T1572` / `T1095`.
+- `sniffer:icmp_tunnel` — an ICMP / ICMPv6 echo carrying a large, high-entropy
+  payload (ptunnel / icmpsh / Loki). Tagged `T1095` / `T1572`.
+- `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+): a
+  root-bridge / topology-manipulation tell. Tagged `T1557`.
 - `listener:*:tarpit_start|tarpit_end|tarpit_drop` — tarpit lifecycle.
 
 ## Outbound channels
