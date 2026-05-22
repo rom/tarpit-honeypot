@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — web UI now auto-updates (live view during a scan)
+- The web UI is server-rendered and its strict CSP forbids JavaScript, so
+  it never refreshed on its own — during a port scan the page sat static
+  until you reloaded (the footer literally said "refresh for latest"). It
+  now emits an HTML `<meta http-equiv="refresh">` every
+  `ui.refresh_seconds` (default **10s**, `0` disables) so the dashboard /
+  events views update live. (The event→store→UI data path itself was fine;
+  the gap was purely the missing auto-refresh.)
+
 ### Added — per-channel `enabled` toggle
 - Channels accept `enabled: false` to stay **defined but off** — not built,
   not type-validated, so an outbound sink that needs external infra (an

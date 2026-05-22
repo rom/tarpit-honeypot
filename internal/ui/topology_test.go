@@ -14,9 +14,10 @@ import (
 func uiTmpl(t *testing.T) *template.Template {
 	t.Helper()
 	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"fmtTime": func(any) string { return "" },
-		"join":    func([]int) string { return "" },
-		"hexdump": hexDump,
+		"fmtTime":        func(any) string { return "" },
+		"join":           func([]int) string { return "" },
+		"hexdump":        hexDump,
+		"refreshSeconds": func() int { return 0 },
 	}).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)

@@ -63,6 +63,7 @@ sensor:
 ui:
   enabled: true
   bind: 127.0.0.1:8088
+  refresh_seconds: 10   # live views auto-refresh every 10s (0 = off)
   # Non-loopback binds REQUIRE both tls_cert+tls_key AND auth_token_env.
   # tls_cert: /etc/tarpit-honeypot/ui.crt
   # tls_key:  /etc/tarpit-honeypot/ui.key

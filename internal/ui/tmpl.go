@@ -4,6 +4,7 @@ const tmpls = `
 {{ define "head" }}<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
+{{ if gt (refreshSeconds) 0 }}<meta http-equiv="refresh" content="{{ refreshSeconds }}">{{ end }}
 <title>tarpit-honeypot</title>
 <style>
 body { font: 14px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; margin: 1.5rem; color: #111; background: #fafafa; }
@@ -57,7 +58,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
-{{ define "foot" }}<p class="note">read-only view · refresh for latest</p></body></html>{{ end }}
+{{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }}</p></body></html>{{ end }}
 
 {{ define "bars" }}<table class="chart">
 {{ range . }}<tr>

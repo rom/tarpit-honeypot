@@ -278,6 +278,23 @@ type UI struct {
 	// even when true the actions require an auth token (auth_token_env), so
 	// a tokenless loopback UI stays read-only.
 	AllowDeviceActions bool `yaml:"allow_device_actions"`
+	// RefreshSeconds sets the auto-refresh interval (HTML meta-refresh, since
+	// the strict CSP forbids JS) for the live UI views. nil/omitted = 10s;
+	// 0 = disabled. So the console updates during a scan without a manual
+	// reload, while operators can still turn it off.
+	RefreshSeconds *int `yaml:"refresh_seconds"`
+}
+
+// UIRefreshInterval returns the effective auto-refresh interval in seconds
+// (default 10; a configured value <= 0 disables it).
+func (u UI) UIRefreshInterval() int {
+	if u.RefreshSeconds == nil {
+		return 10
+	}
+	if *u.RefreshSeconds < 0 {
+		return 0
+	}
+	return *u.RefreshSeconds
 }
 
 type Sensor struct {

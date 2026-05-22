@@ -1278,7 +1278,11 @@ in event meta.
 
 ## Web UI
 
-Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`.
+Enabled via `ui.enabled: true`. Default bind `127.0.0.1:8088`. The strict
+CSP forbids JavaScript, so the views **auto-refresh** with an HTML
+`<meta http-equiv="refresh">` every `ui.refresh_seconds` (default 10s) —
+the console updates live during a scan without a manual reload; set
+`refresh_seconds: 0` to disable.
 
 Endpoints:
 

@@ -58,6 +58,7 @@ type Sample struct {
 type Server struct {
 	cfg           config.UI
 	store         *store.Store
+	refresh       int // auto-refresh seconds for live views (0 = off)
 	authToken     string
 	srv           *http.Server
 	tmpl          *template.Template
@@ -135,7 +136,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if st == nil {
 		return nil, errors.New("ui: store is required")
 	}
-	s := &Server{cfg: cfg, store: st}
+	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval()}
 	if cfg.AuthTokenEnv != "" {
 		s.authToken = os.Getenv(cfg.AuthTokenEnv)
 		if s.authToken == "" {
@@ -151,7 +152,8 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			}
 			return strings.Join(p, ", ")
 		},
-		"hexdump": hexDump,
+		"hexdump":        hexDump,
+		"refreshSeconds": func() int { return s.refresh },
 	}).Parse(tmpls)
 	if err != nil {
 		return nil, err

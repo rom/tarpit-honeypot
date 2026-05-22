@@ -92,10 +92,12 @@ ui:
   tls_cert: ""
   tls_key:  ""
   auth_token_env: ""    # env var holding the bearer token
+  refresh_seconds: 10   # live-view auto-refresh; 0 = off (omit = 10s default)
 ```
 
 - Bind to anything non-loopback **requires both** `tls_cert + tls_key` and `auth_token_env`. Validation rejects the config otherwise.
 - The UI is strictly read-only — no write endpoints.
+- **Auto-refresh:** the strict CSP forbids JavaScript, so the views update via an HTML `<meta http-equiv="refresh">` every `refresh_seconds` (default **10s**, so the console updates during a scan without a manual reload). Set `refresh_seconds: 0` to disable.
 - `/metrics` requires the same auth as the rest of the UI (the `/healthz` endpoint is the only auth-bypass route).
 
 ---

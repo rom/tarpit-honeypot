@@ -44,3 +44,21 @@ func TestEnabledChannelStillValidated(t *testing.T) {
 		t.Error("an enabled webhook with no url must still fail validation")
 	}
 }
+
+func TestUIRefreshInterval(t *testing.T) {
+	if got := (UI{}).UIRefreshInterval(); got != 10 {
+		t.Errorf("omitted refresh_seconds: got %d, want default 10", got)
+	}
+	zero := 0
+	if got := (UI{RefreshSeconds: &zero}).UIRefreshInterval(); got != 0 {
+		t.Errorf("refresh_seconds:0 should disable (0), got %d", got)
+	}
+	five := 5
+	if got := (UI{RefreshSeconds: &five}).UIRefreshInterval(); got != 5 {
+		t.Errorf("refresh_seconds:5 got %d", got)
+	}
+	neg := -1
+	if got := (UI{RefreshSeconds: &neg}).UIRefreshInterval(); got != 0 {
+		t.Errorf("negative refresh_seconds should disable (0), got %d", got)
+	}
+}
