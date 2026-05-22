@@ -57,23 +57,41 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	}
 
 	var user, pass string
-	gotUser, gotPass := false, false
+	passAttempts := 0
+	loggedIn := false
+	clientIP := hostFromAddr(conn.RemoteAddr())
 	var transcript []byte
+	var commands []string
+	res.Meta = map[string]any{}
 loop:
-	for i := 0; i < 24; i++ {
+	for i := 0; i < 40; i++ {
 		line, err := readFTPLine(br, cfg.ReadBytes)
 		if err != nil {
 			break
 		}
 		transcript = append(transcript, line...)
 		cmd, arg := splitFTPCmd(line)
+		if loggedIn && cmd != "" {
+			commands = append(commands, strings.TrimSpace(line))
+		}
 		switch cmd {
 		case "USER":
-			user, gotUser = arg, true
+			user = arg
 			_, _ = conn.Write([]byte("331 Please specify the password.\r\n"))
 		case "PASS":
-			pass, gotPass = arg, true
-			_, _ = conn.Write([]byte("530 Login incorrect.\r\n"))
+			pass = arg
+			passAttempts++
+			// First attempt fails (we capture the credential); a retry is
+			// accepted so the session continues and post-auth TTPs surface.
+			if passAttempts == 1 {
+				res.Meta["user_line"] = strings.TrimSpace(user)
+				res.Meta["pass_line"] = strings.TrimSpace(pass)
+				flagDefaultCred(&res, strings.TrimSpace(user), strings.TrimSpace(pass))
+				_, _ = conn.Write([]byte("530 Login incorrect.\r\n"))
+			} else {
+				loggedIn = true
+				_, _ = conn.Write([]byte("230 Login successful.\r\n"))
+			}
 		case "FEAT":
 			_, _ = conn.Write([]byte(buildFTPFeat(feat)))
 		case "SYST":
@@ -88,20 +106,82 @@ loop:
 		case "":
 			// ignore blank lines
 		default:
-			_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
-		}
-		if gotUser && gotPass {
-			break
+			if loggedIn {
+				f.handlePostAuth(conn, &res, cmd, arg, clientIP)
+			} else {
+				_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
+			}
 		}
 	}
 
-	res.Meta = map[string]any{
-		"user_line": strings.TrimSpace(user),
-		"pass_line": strings.TrimSpace(pass),
+	if len(commands) > 0 {
+		res.Meta["ftp_commands"] = commands
 	}
 	res.Payload = transcript
-	flagDefaultCred(&res, strings.TrimSpace(user), strings.TrimSpace(pass))
 	return res, nil
+}
+
+// handlePostAuth answers a logged-in FTP command believably (without ever
+// opening a data connection or touching the filesystem) and flags the
+// intent: uploads (malware drop), downloads, SITE EXEC, deletes, and the
+// FTP-bounce PORT primitive.
+func (f *ftp) handlePostAuth(conn net.Conn, res *Result, cmd, arg, clientIP string) {
+	switch cmd {
+	case "PWD", "XPWD":
+		_, _ = conn.Write([]byte("257 \"/\" is the current directory\r\n"))
+	case "CWD", "XCWD", "CDUP":
+		_, _ = conn.Write([]byte("250 Directory successfully changed.\r\n"))
+	case "TYPE", "MODE", "STRU", "NOOP", "OPTS":
+		_, _ = conn.Write([]byte("200 OK.\r\n"))
+	case "PASV", "EPSV":
+		// Advertise passive mode but never actually open the data port.
+		_, _ = conn.Write([]byte("227 Entering Passive Mode (127,0,0,1,0,0).\r\n"))
+	case "PORT", "EPRT":
+		// Active mode: a PORT pointing at a third party is the FTP-bounce
+		// scan primitive (CWE-... / nmap -b).
+		if ip := portCmdIP(arg); ip != "" && ip != clientIP {
+			flagAnomaly(res, "ftp-bounce-scan")
+			res.Meta["ftp_bounce_target"] = ip
+		}
+		_, _ = conn.Write([]byte("200 PORT command successful.\r\n"))
+	case "LIST", "NLST", "MLSD", "MLST":
+		flagAnomaly(res, "ftp-listing")
+		_, _ = conn.Write([]byte("425 Failed to establish connection.\r\n"))
+	case "RETR":
+		flagAnomaly(res, "ftp-download-attempt")
+		_, _ = conn.Write([]byte("550 Failed to open file.\r\n"))
+	case "STOR", "STOU", "APPE":
+		// Upload = malware / webshell drop attempt.
+		flagAnomaly(res, "ftp-upload-attempt")
+		_, _ = conn.Write([]byte("553 Could not create file.\r\n"))
+	case "DELE", "RMD", "XRMD":
+		flagAnomaly(res, "ftp-delete-attempt")
+		_, _ = conn.Write([]byte("550 Permission denied.\r\n"))
+	case "MKD", "XMKD":
+		_, _ = conn.Write([]byte("257 Directory created.\r\n"))
+	case "RNFR":
+		_, _ = conn.Write([]byte("350 Ready for destination name.\r\n"))
+	case "RNTO":
+		_, _ = conn.Write([]byte("250 Rename successful.\r\n"))
+	case "SITE":
+		// SITE EXEC / SITE CHMOD are classic FTP RCE / privilege primitives.
+		flagAnomaly(res, "ftp-site-command")
+		_, _ = conn.Write([]byte("500 Unknown SITE command.\r\n"))
+	case "SIZE", "MDTM":
+		_, _ = conn.Write([]byte("550 Could not get file status.\r\n"))
+	default:
+		_, _ = conn.Write([]byte("502 Command not implemented.\r\n"))
+	}
+}
+
+// portCmdIP extracts the dotted IP from an FTP PORT argument
+// ("h1,h2,h3,h4,p1,p2"), or "" if malformed.
+func portCmdIP(arg string) string {
+	parts := strings.Split(arg, ",")
+	if len(parts) < 4 {
+		return ""
+	}
+	return parts[0] + "." + parts[1] + "." + parts[2] + "." + parts[3]
 }
 
 // buildFTPFeat renders an RFC 2389 FEAT reply: a 211-Features: header, one

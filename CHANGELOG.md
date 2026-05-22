@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — deeper FTP interaction (post-auth session capture)
+- The FTP handler no longer stops at the login: it captures the first
+  credential (still 530), then accepts a retry (230) and drives a logged-in
+  session, recording every command in `ftp_commands` and flagging intent —
+  `ftp-upload-attempt` (malware/webshell drop, T1105), `ftp-download-attempt`
+  (T1020), `ftp-site-command` (SITE EXEC RCE, T1059), `ftp-bounce-scan`
+  (a PORT pointing at a third party, T1090/T1046, with the target in meta),
+  `ftp-delete-attempt`, and `ftp-listing`. No data connection is ever opened
+  and the filesystem is never touched.
+
 ### Added — generic `auto` catch-all handler (TCP + UDP)
 - New `auto` handler for protocols the sensor doesn't explicitly model: it
   captures the client's opening message, guesses the protocol from the

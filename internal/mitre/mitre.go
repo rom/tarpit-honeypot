@@ -85,6 +85,13 @@ var exactRules = map[string]Tag{
 	"correlate:beacon": {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A probe to an unmodelled port on the generic catch-all = service scan.
 	"unknown-protocol": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Post-auth FTP abuse.
+	"ftp-upload-attempt":   {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"ftp-download-attempt": {Techniques: []string{"T1020"}, Tactics: []string{"exfiltration"}},
+	"ftp-site-command":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"ftp-bounce-scan":      {Techniques: []string{"T1090", "T1046"}, Tactics: []string{"command-and-control", "discovery"}},
+	"ftp-delete-attempt":   {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"ftp-listing":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.
