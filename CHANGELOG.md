@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — new protocol handlers: MongoDB, Elasticsearch
+- **MongoDB** (TCP 27017) speaks the wire protocol: parses the OP_MSG /
+  OP_QUERY header, answers the hello/isMaster handshake with a hand-built
+  BSON document, captures the command (OP_MSG) or collection (OP_QUERY),
+  and flags data-access commands (`mongodb-data-access`: find / aggregate /
+  listDatabases / …). T1213 / T1110.001.
+- **Elasticsearch** (TCP 9200) returns a believable cluster banner on `/`
+  and flags recon (`elasticsearch-recon`: `_cat`, `_cluster/health`,
+  `_nodes`) and data access (`elasticsearch-data-access`: `_search`,
+  `_all`). T1213 / T1046.
+
 ### Added — new protocol handlers: POP3, IMAP, memcached
 - **POP3** (TCP 110) and **IMAP** (TCP 143) mail handlers greet, walk the
   login (USER/PASS, APOP, LOGIN incl. quoted args, AUTHENTICATE), capture

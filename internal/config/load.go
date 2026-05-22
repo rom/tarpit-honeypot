@@ -31,6 +31,7 @@ var tcpHandlers = map[string]bool{
 	"dcerpc": true, "ldap": true, "kerberos": true,
 	"postgres": true, "mysql": true, "redis": true,
 	"memcached": true, "pop3": true, "imap": true,
+	"mongodb": true, "elasticsearch": true,
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,

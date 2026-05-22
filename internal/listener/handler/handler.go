@@ -239,6 +239,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &pop3{}, nil
 	case "imap":
 		return &imap{}, nil
+	case "mongodb":
+		return &mongodb{}, nil
+	case "elasticsearch":
+		return &elasticsearch{}, nil
 	case "syslog_tcp":
 		return &syslogTCP{}, nil
 	case "rtsp":
