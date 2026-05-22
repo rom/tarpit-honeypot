@@ -1353,6 +1353,10 @@ Endpoints:
   meta table, plus download links for the connection **pcap**, the
   **session recording** (asciinema cast, when present), and an "all pcaps +
   sessions from this source IP" ZIP.
+- `/timeline` — **attack timeline**: per-source chronological event sequences
+  (top sources by volume), each showing the attacker's progression with
+  severity colouring + the ATT&CK tactics touched (distinct from the flat
+  `/events` table).
 - `/attack` — **ATT&CK mapping** view: a kill-chain-ordered tactic timeline
   (with the techniques nested under each tactic), a top-technique heatmap,
   and the recent `storyline:multi_stage` kill-chain progressions. Techniques

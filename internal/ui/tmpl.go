@@ -55,7 +55,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/attack">att&amp;ck</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }}</p></body></html>{{ end }}
@@ -85,6 +85,22 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 <h2>top sources</h2>
 {{ if .Sources }}{{ template "bars" .Sources }}{{ else }}<p class="note">none</p>{{ end }}
 <p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
+
+<h2>by ATT&amp;CK tactic</h2>
+{{ if .Tactics }}{{ template "bars" .Tactics }}<p class="note">Full kill-chain view at <a href="/attack">att&amp;ck</a>.</p>{{ else }}<p class="note">none</p>{{ end }}
+
+<h2>by handler</h2>
+{{ if .Handlers }}{{ template "bars" .Handlers }}{{ else }}<p class="note">none</p>{{ end }}
+
+<h2>top source countries</h2>
+{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment (set sensor.geoip)</p>{{ end }}
+
+<h2>top source ASNs</h2>
+{{ if .ASNs }}{{ template "bars" .ASNs }}{{ else }}<p class="note">no ASN enrichment</p>{{ end }}
+
+<h2>top tools / scanners</h2>
+{{ if .Tools }}{{ template "bars" .Tools }}{{ else }}<p class="note">none identified</p>{{ end }}
+{{ if .Scanned }}<p class="note">tactic / geo / ASN / tool / handler charts from a scan of {{ .Scanned }} recent events.</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "attack" }}{{ template "head" . }}
@@ -108,6 +124,25 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 {{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "timeline" }}{{ template "head" . }}
+<h1>attack timeline — last 24 hours</h1>
+<p class="note">Per-source event sequences (top {{ len .Sources }} sources by volume), time-ordered, so you can read each attacker's progression. Severity colors the rule; chips are the ATT&amp;CK tactics touched.</p>
+{{ if .Sources }}{{ range .Sources }}
+<div class="net">
+  <h3><a href="/profiles/{{ .Source }}">{{ .Source }}</a> <span class="meta">{{ .Count }} events · {{ fmtTime .FirstSeen }} → {{ fmtTime .LastSeen }}</span></h3>
+  <div class="meta">tactics: {{ if .Tactics }}{{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}{{ else }}—{{ end }}</div>
+  <table>
+  {{ range .Events }}<tr>
+    <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+    <td class="sev-{{ .Severity }}">{{ .RuleID }}</td>
+    <td>{{ .Handler }}{{ if .Port }}:{{ .Port }}{{ end }}</td>
+    <td>{{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}</td>
+  </tr>{{ end }}
+  </table>
+  {{ if gt .Truncated 0 }}<p class="note">… {{ .Truncated }} earlier event(s) not shown — <a href="/events?source={{ .Source }}">see all</a></p>{{ end }}
+</div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "health" }}{{ template "head" . }}

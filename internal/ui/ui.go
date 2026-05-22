@@ -180,6 +180,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/attack", s.handleAttack)
+	mux.HandleFunc("/timeline", s.handleTimeline)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/topology", s.handleTopology)
 	mux.HandleFunc("/hosts", s.handleHosts)
@@ -298,8 +299,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	d := buildDashboard(sum, hours)
+	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
+	// from a bounded scan of the window.
+	if evs, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
+		enrichDashboard(&d, evs)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "index", buildDashboard(sum, hours)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "index", d); err != nil {
 		slog.Warn("ui: render index", "err", err)
 	}
 }

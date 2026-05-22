@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -26,6 +27,14 @@ type dashboard struct {
 	Rules    []barRow
 	Sources  []barRow
 	Trend    []barRow
+	// Enrichment charts (filled by enrichDashboard from a scan of recent
+	// events; the store's SQL summary only covers severity/rule/source).
+	Tactics   []barRow
+	Countries []barRow
+	ASNs      []barRow
+	Tools     []barRow
+	Handlers  []barRow
+	Scanned   int
 }
 
 func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
@@ -66,6 +75,36 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 		d.Trend = append(d.Trend, barRow{Label: h.Hour.Format("01-02 15h"), Count: h.Count, Pct: pct(h.Count, maxH)})
 	}
 	return d
+}
+
+// enrichDashboard adds the cross-cutting charts that need per-event meta
+// (ATT&CK tactics, geo country, ASN, tool, handler) by scanning a window of
+// events — the SQL summary only aggregates severity / rule / source.
+func enrichDashboard(d *dashboard, evs []*event.Event) {
+	d.Scanned = len(evs)
+	tac, country, asn, tool, handler := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
+	for _, ev := range evs {
+		for _, t := range eventTag(ev).Tactics {
+			tac[t]++
+		}
+		if c, _ := ev.Meta["geo_country"].(string); c != "" {
+			country[c]++
+		}
+		if a := asnLabel(ev.Meta); a != "" {
+			asn[a]++
+		}
+		for _, tl := range metaStrings(ev.Meta, "tools") {
+			tool[tl]++
+		}
+		if ev.Handler != "" {
+			handler[ev.Handler]++
+		}
+	}
+	d.Tactics = topBars(tac, 14, "")
+	d.Countries = topBars(country, 10, "")
+	d.ASNs = topBars(asn, 10, "")
+	d.Tools = topBars(tool, 10, "")
+	d.Handlers = topBars(handler, 12, "")
 }
 
 func topBars(m map[string]int, n int, hrefPrefix string) []barRow {

@@ -45,6 +45,14 @@ type chainRow struct {
 	Chain  string
 }
 
+// eventTag recomputes the ATT&CK Tag for a stored event exactly as the live
+// router does: handler/rule base lookup refined by the event's anomaly
+// markers. The store doesn't persist the technique list, so views that need
+// it recompute from rule_id + handler + meta.anomalies.
+func eventTag(ev *event.Event) mitre.Tag {
+	return mitre.Augment(mitre.Lookup(ev.RuleID, ev.Handler), metaStrings(ev.Meta, "anomalies"))
+}
+
 // buildAttackView aggregates ATT&CK techniques + tactics across the events.
 func buildAttackView(since time.Time, evs []*event.Event) attackView {
 	v := attackView{Since: since}
@@ -60,7 +68,7 @@ func buildAttackView(since time.Time, evs []*event.Event) attackView {
 				v.Chains = append(v.Chains, chainRow{Time: ev.Time, Source: ev.Source.IP, Chain: chain})
 			}
 		}
-		tag := mitre.Augment(mitre.Lookup(ev.RuleID, ev.Handler), metaStrings(ev.Meta, "anomalies"))
+		tag := eventTag(ev)
 		if len(tag.Techniques) == 0 && len(tag.Tactics) == 0 {
 			continue
 		}

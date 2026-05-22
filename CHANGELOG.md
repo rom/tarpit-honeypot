@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: attack timeline + richer summary
+- New **`/timeline`** view: per-source chronological event sequences (top
+  sources by volume), each showing the attacker's progression with severity
+  colouring + the ATT&CK tactics touched — distinct from the flat `/events`
+  firehose.
+- The **summary** page gained charts for ATT&CK tactic, handler, source
+  country, source ASN, and identified tool/scanner (from a bounded scan of
+  recent events; the SQL summary only covers severity/rule/source).
+
 ### Added — web UI: ATT&CK mapping + sensor health dashboards
 - New **`/attack`** view: a kill-chain-ordered tactic timeline (techniques
   nested per tactic), a top-technique heatmap, and the recent
