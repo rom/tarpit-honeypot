@@ -569,15 +569,22 @@ type topoHostView struct {
 	OS       string            `json:"os,omitempty"`
 	MAC      string            `json:"mac,omitempty"`
 	Services []topoServiceView `json:"services,omitempty"`
+	// Activity overlay (events targeting this host IP in the window).
+	Events    int       `json:"events"`
+	Attackers int       `json:"attackers"`
+	MaxSev    string    `json:"max_severity,omitempty"`
+	LastSeen  time.Time `json:"last_seen,omitempty"`
 }
 
 type topoNetworkView struct {
-	ID      string         `json:"id"`
-	CIDR    string         `json:"cidr,omitempty"`
-	Gateway string         `json:"gateway,omitempty"`
-	DNS     string         `json:"dns,omitempty"`
-	Domain  string         `json:"domain,omitempty"`
-	Hosts   []topoHostView `json:"hosts"`
+	ID        string         `json:"id"`
+	CIDR      string         `json:"cidr,omitempty"`
+	Gateway   string         `json:"gateway,omitempty"`
+	DNS       string         `json:"dns,omitempty"`
+	Domain    string         `json:"domain,omitempty"`
+	Hosts     []topoHostView `json:"hosts"`
+	Events    int            `json:"events"`
+	Attackers int            `json:"attackers"`
 }
 
 // topologyView builds a serializable snapshot of the honeynet topology.
@@ -605,11 +612,86 @@ func (s *Server) topologyView() []topoNetworkView {
 
 type topologyPage struct {
 	Networks []topoNetworkView
+	Active   bool // any activity overlaid?
 }
 
-func (s *Server) handleTopology(w http.ResponseWriter, _ *http.Request) {
+// hostActivity aggregates events targeting each honeynet host IP (by dest IP)
+// over the window: event count, distinct attacker count, max severity, and
+// last-seen — the infrastructure-map activity overlay.
+type hostActivity struct {
+	Events    int
+	MaxSev    string
+	LastSeen  time.Time
+	attackers map[string]bool
+}
+
+func aggregateHostActivity(evs []*event.Event) map[string]*hostActivity {
+	m := map[string]*hostActivity{}
+	for _, ev := range evs {
+		ip := ev.Dest.IP
+		if ip == "" {
+			continue
+		}
+		a := m[ip]
+		if a == nil {
+			a = &hostActivity{attackers: map[string]bool{}}
+			m[ip] = a
+		}
+		a.Events++
+		if ev.Source.IP != "" {
+			a.attackers[ev.Source.IP] = true
+		}
+		if sevRank(ev.Severity.String()) > sevRank(a.MaxSev) {
+			a.MaxSev = ev.Severity.String()
+		}
+		if ev.Time.After(a.LastSeen) {
+			a.LastSeen = ev.Time
+		}
+	}
+	return m
+}
+
+// overlayActivity stamps per-host activity onto the topology view and reports
+// whether any host saw traffic.
+func overlayActivity(nets []topoNetworkView, act map[string]*hostActivity) bool {
+	any := false
+	for i := range nets {
+		netEvents, netAtk := 0, map[string]bool{}
+		for j := range nets[i].Hosts {
+			h := &nets[i].Hosts[j]
+			a := act[h.IP]
+			if a == nil {
+				continue
+			}
+			any = true
+			h.Events = a.Events
+			h.Attackers = len(a.attackers)
+			h.MaxSev = a.MaxSev
+			h.LastSeen = a.LastSeen
+			netEvents += a.Events
+			for atk := range a.attackers {
+				netAtk[atk] = true
+			}
+		}
+		nets[i].Events = netEvents
+		nets[i].Attackers = len(netAtk)
+	}
+	return any
+}
+
+func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
+	nets := s.topologyView()
+	page := topologyPage{Networks: nets}
+	// Infrastructure-map activity overlay: events targeting each host IP.
+	if len(nets) > 0 {
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		if evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000}); err == nil {
+			page.Active = overlayActivity(nets, aggregateHostActivity(evs))
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "topology", topologyPage{Networks: s.topologyView()}); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "topology", page); err != nil {
 		slog.Warn("ui: render topology", "err", err)
 	}
 }

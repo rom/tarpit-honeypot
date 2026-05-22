@@ -470,11 +470,12 @@ so this is safe to copy into a ticket. Raw YAML also at <a href="/api/config">/a
 networks of hosts + services the sensor answers for) to populate this view.
 JSON at <a href="/api/topology">/api/topology</a>.</p>
 {{ else }}
-<p class="note">Virtual networks the sensor presents. Each host answers on its own
-IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</a>.</p>
+<p class="note">Infrastructure map: virtual networks the sensor presents, with live
+attack activity (last 24h) overlaid per host. JSON at <a href="/api/topology">/api/topology</a>.
+{{ if not .Active }}<br>No attack activity recorded against these hosts yet.{{ end }}</p>
 {{ range .Networks }}
 <div class="net">
-  <h3>{{ .ID }}{{ if .CIDR }} — {{ .CIDR }}{{ end }}</h3>
+  <h3>{{ .ID }}{{ if .CIDR }} — {{ .CIDR }}{{ end }}{{ if .Events }} <span class="sev-high">⚠ {{ .Events }} events / {{ .Attackers }} attacker(s)</span>{{ end }}</h3>
   <div class="meta">
     {{ if .Domain }}domain {{ .Domain }} · {{ end }}
     {{ if .Gateway }}gw {{ .Gateway }} · {{ end }}
@@ -486,8 +487,10 @@ IP/MAC with the listed services. JSON at <a href="/api/topology">/api/topology</
     <div class="hostline">{{ .IP }}{{ if .Hostname }} · {{ .Hostname }}{{ end }}
       {{ if .OS }}<span class="os">({{ .OS }})</span>{{ end }}
       {{ if .MAC }}<span class="os">{{ .MAC }}</span>{{ end }}
+      {{ if .Events }}<span class="tag bad sev-{{ .MaxSev }}">{{ .Events }} events · {{ .Attackers }} attacker(s) · {{ .MaxSev }}</span>{{ else }}<span class="tag">quiet</span>{{ end }}
     </div>
     {{ range .Services }}<span class="svc">{{ .Port }}/{{ .Handler }}</span>{{ end }}
+    {{ if .Events }}<span class="note">last hit {{ fmtTime .LastSeen }} · <a href="/events?source=&amp;rule=">events</a></span>{{ end }}
   </div>
   {{ end }}
 </div>

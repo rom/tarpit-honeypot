@@ -8,6 +8,12 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: infrastructure-map activity overlay
+- `/topology` is now an **infrastructure map**: each honeynet host shows live
+  attack activity (last 24h) overlaid — event count, distinct attacker count,
+  max severity, last-seen — with a per-network rollup, so the operator sees
+  which decoys / fake-AD / OT / cloud traps are under attack at a glance.
+
 ### Added — web UI: correlation, tunnels, advanced search
 - New **`/correlation`** view: per-source pivot chains (IP → fingerprints →
   User-Agents → ASN/country → domains → tools → credentials → malware →

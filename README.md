@@ -1384,8 +1384,11 @@ Endpoints:
   single source IP). The events list links the current filter to it.
 - `/hosts?q=&status=` — learned hosts (IPv4/IPv6/MAC), filterable by
   substring + allow/seen status.
-- `/topology` — the virtual networks / hosts / services the sensor
-  presents (rendered from the resolved honeynet topology).
+- `/topology` — **infrastructure map**: the virtual networks / hosts /
+  services the sensor presents, with live attack activity (last 24h)
+  overlaid per host (event count, distinct attackers, max severity,
+  last-seen) + a per-network rollup — so you see which decoys / fake-AD /
+  OT / cloud traps are under attack.
 - `/alerting` — how events are forwarded (channels + destinations,
   routes, allowlist).
 - `/errors?since=` — operational / health events (listener or
