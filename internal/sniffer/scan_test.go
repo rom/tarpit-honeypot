@@ -78,6 +78,26 @@ func TestParseIPv4AndTCP(t *testing.T) {
 	}
 }
 
+func TestParseUDPAndScanKind(t *testing.T) {
+	// UDP header: src(2) dst(2) len(2) csum(2).
+	seg := make([]byte, 8)
+	binary.BigEndian.PutUint16(seg[2:4], 53)
+	port, ok := parseUDP(seg)
+	if !ok || port != 53 {
+		t.Errorf("parseUDP = (%d,%v); want (53,true)", port, ok)
+	}
+	if _, ok := parseUDP(seg[:7]); ok {
+		t.Error("parseUDP accepted a runt header")
+	}
+	// UDP scans are volume-gated (not stealth) and carry their own rule id.
+	if scanUDP.stealth() {
+		t.Error("scanUDP must not be treated as a stealth probe")
+	}
+	if scanUDP.ruleID() != "sniffer:udp_scan" {
+		t.Errorf("scanUDP.ruleID() = %q; want sniffer:udp_scan", scanUDP.ruleID())
+	}
+}
+
 func TestOSGuessFromTTL(t *testing.T) {
 	cases := []struct {
 		ttl   byte

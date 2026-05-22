@@ -179,9 +179,9 @@ Stealth + volume TCP scans observed on the wire that never establish a
 session: `sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
 `tcp_fin_scan` (`-sF`), `tcp_xmas_scan` (`-sX`), `tcp_ack_scan`
 (`-sA`; `-sW` Window scan shares the ACK probe on the wire),
-`tcp_maimon_scan` (`-sM`, FIN+ACK, volume-gated), plus
-`sniffer:ip_fragmented` (`-f`) and `sniffer:arp_scan` → T1046 / T1595.001.
-(Also feeds passive OS fingerprinting, see §5.)
+`tcp_maimon_scan` (`-sM`, FIN+ACK, volume-gated), `sniffer:udp_scan`
+(`-sU`, volume), plus `sniffer:ip_fragmented` (`-f`) and `sniffer:arp_scan`
+→ T1046 / T1595.001. (Also feeds passive OS fingerprinting, see §5.)
 
 ### 4d. Correlator aggregates (`internal/correlate`)
 

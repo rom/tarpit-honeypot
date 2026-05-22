@@ -8,12 +8,13 @@ documented in `docs/`).
 
 ## [Unreleased]
 
-### Added — nmap Maimon scan (`-sM`) detection + fingerprint coverage docs
+### Added — nmap Maimon (`-sM`) + UDP (`-sU`) scan detection + coverage docs
 - The packet-capture layer now classifies the nmap Maimon scan
   (`sniffer:tcp_maimon_scan` — bare FIN+ACK to a port, volume-gated so a
-  normal connection teardown can't trip it), mapped to ATT&CK T1046 /
-  T1595.001. (`-sW` Window scan was already caught — it shares the ACK
-  probe on the wire with `-sA`.)
+  normal connection teardown can't trip it) and the UDP port scan
+  (`sniffer:udp_scan` — one source spraying many distinct UDP ports),
+  both mapped to ATT&CK T1046 / T1595.001. (`-sW` Window scan was already
+  caught — it shares the ACK probe on the wire with `-sA`.)
 - `docs/attribution.md` gained a **coverage & limitations** matrix mapping
   every requested client-fingerprint signal to its status (covered via
   JA3/JA4/JA4H/HASSH/TTL, partial, or infeasible-for-a-passive-no-JS-sensor

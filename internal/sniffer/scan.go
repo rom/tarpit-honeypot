@@ -21,6 +21,7 @@ const (
 	scanSYN             // SYN without ACK              — nmap -sS (volume)
 	scanACK             // ACK without SYN              — nmap -sA / -sW (volume)
 	scanMaimon          // FIN+ACK                      — nmap -sM (volume)
+	scanUDP             // UDP datagram                 — nmap -sU (volume)
 )
 
 func (k scanKind) ruleID() string {
@@ -37,6 +38,8 @@ func (k scanKind) ruleID() string {
 		return "sniffer:tcp_ack_scan"
 	case scanMaimon:
 		return "sniffer:tcp_maimon_scan"
+	case scanUDP:
+		return "sniffer:udp_scan"
 	}
 	return ""
 }
@@ -166,6 +169,14 @@ func parseTCP(l4 []byte) (dstPort uint16, flags byte, ok bool) {
 		return 0, 0, false
 	}
 	return binary.BigEndian.Uint16(l4[2:4]), l4[13], true
+}
+
+// parseUDP pulls the destination port out of a UDP datagram header.
+func parseUDP(l4 []byte) (dstPort uint16, ok bool) {
+	if len(l4) < 8 { // UDP header is 8 bytes
+		return 0, false
+	}
+	return binary.BigEndian.Uint16(l4[2:4]), true
 }
 
 // scanTracker aggregates per-source scan probes over a sliding window and

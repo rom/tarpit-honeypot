@@ -302,27 +302,41 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 		// Non-initial fragments carry no usable L4 header.
 		return
 	}
-	if info.proto != 6 { // TCP only
-		return
+	switch info.proto {
+	case 6: // TCP
+		port, flags, ok := parseTCP(info.payload)
+		if !ok {
+			return
+		}
+		kind := classifyTCP(flags)
+		if kind == scanNone {
+			return
+		}
+		count, fire := s.tcp.observe(info.srcIP, port, kind, now)
+		if !fire {
+			return
+		}
+		ev := s.newIPEvent(kind.ruleID(), s.sev, info.srcIP, "tcp")
+		ev.Meta["distinct_ports"] = count
+		ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+		ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
+		addTTLGuess(ev, info.ttl)
+		send(ctx, bus, ev)
+	case 17: // UDP — nmap -sU sprays datagrams across many ports
+		port, ok := parseUDP(info.payload)
+		if !ok {
+			return
+		}
+		count, fire := s.tcp.observe(info.srcIP, port, scanUDP, now)
+		if !fire {
+			return
+		}
+		ev := s.newIPEvent(scanUDP.ruleID(), s.sev, info.srcIP, "udp")
+		ev.Meta["distinct_ports"] = count
+		ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+		addTTLGuess(ev, info.ttl)
+		send(ctx, bus, ev)
 	}
-	port, flags, ok := parseTCP(info.payload)
-	if !ok {
-		return
-	}
-	kind := classifyTCP(flags)
-	if kind == scanNone {
-		return
-	}
-	count, fire := s.tcp.observe(info.srcIP, port, kind, now)
-	if !fire {
-		return
-	}
-	ev := s.newIPEvent(kind.ruleID(), s.sev, info.srcIP, "tcp")
-	ev.Meta["distinct_ports"] = count
-	ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
-	ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
-	addTTLGuess(ev, info.ttl)
-	send(ctx, bus, ev)
 }
 
 // addTTLGuess stamps the observed IP TTL and the passive OS-family guess
