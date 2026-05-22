@@ -111,6 +111,11 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	}
 	res.Meta["tls_version"] = tlsVersionName(state.Version)
 	res.Meta["sni"] = state.ServerName
+	// DNS-over-TLS (RFC 7858): TLS on port 853, or an ALPN of "dot". DNS
+	// tunnelled inside TLS evades plaintext DNS monitoring (T1572 / T1071.004).
+	if state.NegotiatedProtocol == "dot" || localPort(conn) == 853 {
+		flagAnomaly(&res, "dns-over-tls")
+	}
 	if ja3Hash != "" {
 		res.Meta["ja3"] = ja3Hash
 		res.Meta["ja3_raw"] = ja3Raw
@@ -399,6 +404,15 @@ func safeFilename(s string) string {
 		return "default"
 	}
 	return string(out)
+}
+
+// localPort returns the local (server-side) TCP port a connection was
+// accepted on, or 0 — used to recognize port-defined protocols like DoT (853).
+func localPort(conn net.Conn) int {
+	if a, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		return a.Port
+	}
+	return 0
 }
 
 func tlsVersionName(v uint16) string {

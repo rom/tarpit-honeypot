@@ -8,15 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
-### Added — DNS-over-HTTPS (DoH) detection
-- The HTTP handler now flags DNS-over-HTTPS request shapes (`dns-over-https`
-  anomaly): the RFC 8484 `/dns-query` path or the `application/dns-message`
-  media type in an Accept/Content-Type header — DNS tunnelled inside HTTPS
-  to evade DNS monitoring (ATT&CK T1572 / T1071.004). (DNS tunnelling /
-  exfil over plain DNS, oversize/ANY amplifier probes, NULL/TXT
-  tunnelling-qtypes, and high-entropy labels were already detected by the
-  DNS handler + canary; mDNS / LLMNR / NBNS / CLDAP have dedicated
-  handlers.)
+### Added — encrypted-DNS detection (DoH / DoT / DNSCrypt) + mDNS handler
+- The HTTP handler flags **DNS-over-HTTPS** (`dns-over-https`): the RFC 8484
+  `/dns-query` path or the `application/dns-message` media type.
+- The TLS handler flags **DNS-over-TLS** (`dns-over-tls`): a connection on
+  port 853 or an ALPN of `dot`.
+- The DNS handler + canary flag **DNSCrypt** (`dnscrypt-probe`): the
+  `<v>.dnscrypt-cert.<provider>` certificate lookup.
+- All three map to ATT&CK T1572 / T1071.004 (DNS tunnelled inside an
+  encrypted channel to evade plaintext DNS monitoring).
+- New **mDNS handler** (UDP 5353, RFC 6762): observes multicast-DNS / DNS-SD
+  queries, flags `mdns-service-enumeration` for the `_services._dns-sd._udp`
+  discovery sweep (T1046), and answers `.local` A queries to draw a
+  follow-up connection. (LLMNR / NBNS / CLDAP already had handlers; plain
+  DNS tunnelling / exfil / amplifier probes were already detected.)
 
 ### Added — sniffer L2/tunnelling detection (encapsulation + spanning-tree)
 - The packet-capture layer now flags **tunnelling / overlay traffic**

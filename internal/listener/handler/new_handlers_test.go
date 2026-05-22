@@ -147,6 +147,26 @@ func TestLLMNRPoisonReply(t *testing.T) {
 	}
 }
 
+func TestMDNSServiceEnumeration(t *testing.T) {
+	pc := &fakePacketConn{laddr: &net.UDPAddr{IP: net.IPv4(192, 0, 2, 50), Port: 5353}}
+	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 7), Port: 5353}
+	// PTR query for "_services._dns-sd._udp.local" — the DNS-SD sweep.
+	pkt := []byte{0xab, 0xcd, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+		9, '_', 's', 'e', 'r', 'v', 'i', 'c', 'e', 's',
+		7, '_', 'd', 'n', 's', '-', 's', 'd',
+		4, '_', 'u', 'd', 'p',
+		5, 'l', 'o', 'c', 'a', 'l', 0,
+		0, 12, 0, 1} // PTR, IN
+	res, _ := (&mdns{}).Handle(context.Background(), pkt, src, pc, config.Listener{})
+	if res.Meta["qname"] != "_services._dns-sd._udp.local" {
+		t.Errorf("qname = %v", res.Meta["qname"])
+	}
+	anoms, _ := res.Meta["anomalies"].([]string)
+	if !containsStr(anoms, "mdns-service-enumeration") {
+		t.Errorf("expected mdns-service-enumeration anomaly; got %v", anoms)
+	}
+}
+
 func TestFINSCPURead(t *testing.T) {
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 9600}

@@ -595,6 +595,11 @@ func dnsQueryAnomalies(name string, qtype uint16, msgLen int) []string {
 	if qtype == 251 || qtype == 252 {
 		out = append(out, "dns-zone-transfer")
 	}
+	// DNSCrypt certificate lookup ("<v>.dnscrypt-cert.<provider>") — a tell
+	// that an encrypted-DNS (DNSCrypt) channel is being set up.
+	if strings.Contains(name, "dnscrypt-cert.") {
+		out = append(out, "dnscrypt-probe")
+	}
 	if msgLen > 512 {
 		out = append(out, "dns-oversize-query")
 	}

@@ -45,6 +45,11 @@ func TestDNSAnomalies(t *testing.T) {
 	if a := dnsAnomalies("x.com", 1, 600); !has(a, "dns-oversize-query") {
 		t.Errorf("oversize query not flagged: %v", a)
 	}
+
+	// DNSCrypt certificate lookup.
+	if a := dnsAnomalies("2.dnscrypt-cert.example.com", 16, 60); !has(a, "dnscrypt-probe") {
+		t.Errorf("dnscrypt-cert query not flagged: %v", a)
+	}
 }
 
 func TestLooksEncodedLabel(t *testing.T) {

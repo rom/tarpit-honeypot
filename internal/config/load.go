@@ -48,6 +48,7 @@ var udpHandlers = map[string]bool{
 	"bacnet": true, "tftp": true, "ipmi": true,
 	"syslog_udp": true, "radius": true, "sip": true,
 	"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
+	"mdns": true,
 	"dns":  true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,

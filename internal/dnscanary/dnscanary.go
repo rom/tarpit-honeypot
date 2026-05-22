@@ -271,6 +271,12 @@ func dnsAnomalies(name string, qtype uint16, msgLen int) []string {
 	if qtype == 10 || qtype == 16 { // NULL, TXT
 		out = append(out, "dns-tunneling-qtype")
 	}
+	// DNSCrypt clients fetch the resolver certificate via a TXT query for
+	// "<version>.dnscrypt-cert.<provider>" before tunnelling DNS over an
+	// encrypted channel — a reliable tell that DNSCrypt is in use.
+	if strings.Contains(name, "dnscrypt-cert.") {
+		out = append(out, "dnscrypt-probe")
+	}
 	if msgLen > 512 {
 		out = append(out, "dns-oversize-query")
 	}
