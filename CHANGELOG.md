@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — SNMP: walkable MIB, profiles, topology table, walk rate-limit/tarpit
+- The `snmp` handler now answers from an **ordered, walkable MIB** with proper
+  lexicographic GetNext + bounded GetBulk, so real `snmpwalk` / `snmpbulkwalk`
+  actually traverse the tree (the old handler "cheated" GetNext, stalling a
+  walk). Exposes the system group, `ifNumber` + full `ifTable`, the ip group,
+  and the **`ipNetToMediaTable` (ARP table) synthesized from the honeynet
+  topology** — so a walk enumerates the artificial L2/L3 inventory.
+- **`listener.snmp.mib_profile`** (`minimal` | `host` | `network` | `full`)
+  selects the exposed subtrees.
+- **`listener.snmp.walk_rate_per_min`** + **`walk_tarpit`** rate-limit / tarpit
+  per-source SNMP walks, flagging `snmp-walk-rate-exceeded` (T1046).
+
 ### Added — interaction-depth guardrails (`interaction:`) + CLI
 - New `interaction:` config block makes "this signal is infeasible in
   low-interaction mode" an explicit guardrail instead of a docs footnote:

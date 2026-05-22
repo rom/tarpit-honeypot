@@ -562,6 +562,29 @@ Allowlisted source IPs **don't** trigger outbound channels (webhook, syslog, SMS
 
 ---
 
+## `listener.snmp:` — walkable SNMP MIB, profiles, walk rate-limit/tarpit
+
+The `snmp` UDP handler answers from a **walkable** MIB, so real `snmpwalk` / `snmpbulkwalk` traverse it (proper lexicographic GetNext + bounded GetBulk). Per-listener:
+
+```yaml
+- id: snmp-bait
+  proto: udp
+  bind: 0.0.0.0:161
+  handler: snmp
+  snmp:
+    mib_profile: network      # minimal | host (default) | network | full
+    walk_rate_per_min: 200    # cap GetNext/GetBulk varbinds per source IP / min (0 = unlimited)
+    walk_tarpit: 750ms        # delay over-limit responses instead of dropping (slows mass walkers)
+```
+
+- **`mib_profile`** — which subtrees the MIB exposes: `minimal` (system group), `host` (+ `ifNumber` + full `ifTable`), `network` (+ ip group + the `ipNetToMediaTable` ARP table synthesized from the honeynet topology, so a walk enumerates the artificial L2/L3 inventory), `full` (everything modelled). Default `host`.
+- **`walk_rate_per_min`** — per-source walk budget. Over it, the walk step is **dropped** (or tarpitted), and `snmp-walk-rate-exceeded` (T1046) is flagged.
+- **`walk_tarpit`** — when set, over-limit walk responses are delayed by this duration instead of dropped, slowing a mass walker to a crawl while keeping it engaged.
+
+SetRequest is always captured + flagged (`snmp-set-attempt`) and never applied; SNMPv3 is rejected.
+
+---
+
 ## `interaction:` — interaction depth + experimental-feature guardrails
 
 The docs note that some signals are infeasible in a low-interaction emulator. The `interaction:` block makes that a **hard guardrail** rather than an assumption: experimental / high-interaction capture knobs only unlock in `medium_experimental` mode, and setting one in `low` mode is a config **error** (not a silent downgrade).

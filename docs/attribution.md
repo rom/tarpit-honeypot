@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **242 static mappings** (31 exact rules + 92 handler tags + 119
+There are **243 static mappings** (31 exact rules + 92 handler tags + 120
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -180,7 +180,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 Handlers without an explicit tag (`raw`, `auto`, `scripted`, `lua`) fall back
 to the `listener:*` default **T1190 / initial-access**.
 
-### 1c. Anomaly tags (119) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (120) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -280,6 +280,7 @@ to the `listener:*` default **T1190 / initial-access**.
 | `smtp-open-relay-probe` | T1071.003 | command-and-control |
 | `smtp-user-enumeration` | T1087 | discovery |
 | `snmp-set-attempt` | T1565.001, T0836 | impact |
+| `snmp-walk-rate-exceeded` | T1046 | discovery |
 | `ssh-id-non-printable` | T1595 | reconnaissance |
 | `ssh-id-not-ssh` | T1595 | reconnaissance |
 | `ssh-id-overlong` | T1595 | reconnaissance |

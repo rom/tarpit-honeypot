@@ -208,6 +208,15 @@ listeners:
     handler: snmp
     severity: high
     read_bytes: 1500
+    snmp:
+      # Walkable MIB profile: minimal | host | network | full.
+      # network/full also publish the honeynet topology as a real
+      # ipNetToMediaTable (ARP table) that snmpwalk enumerates.
+      mib_profile: network
+      # Slow mass walkers: cap GetNext/GetBulk varbinds per source IP per
+      # minute, then tarpit each over-limit response instead of dropping.
+      walk_rate_per_min: 200
+      walk_tarpit: 750ms
 
   - id: ntp-bait
     proto: udp

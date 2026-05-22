@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
+	"sync"
+	"time"
 
 	g "github.com/gosnmp/gosnmp"
 
@@ -12,24 +13,99 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-// snmp parses incoming SNMPv1/v2c GetRequest packets, extracts the
-// community string (a frequent credential-spraying target), and replies
-// with a GetResponse populated from the configured archetype's MIB-2
-// identity (sysDescr / sysObjectID / sysName / sysContact /
-// sysLocation / ifTable). v3 is not supported (auth would be complex
-// and irrelevant for a honeypot).
+// snmp parses incoming SNMPv1/v2c Get / GetNext / GetBulk packets, extracts
+// the community string (a frequent credential-spraying target), and replies
+// from a *walkable* MIB built from the configured archetype + honeynet
+// topology (system group, ifTable, and the ipNetToMediaTable ARP view). A
+// real snmpwalk / snmpbulkwalk traverses it; the exposed subtrees are chosen
+// by listener.snmp.mib_profile, and a per-source walk rate-limit (with
+// optional tarpit) slows mass walkers. v3 is not supported (auth would be
+// complex and irrelevant for a honeypot).
 type snmp struct {
 	hosts []HoneynetHost
 	arch  *archetype.Profile
+
+	mu    sync.Mutex
+	mib   []mibEntry
+	built string // profile the cached MIB was built for ("" = not built)
+	walks map[string]*snmpWalkState
 }
+
+// snmpWalkState tracks one source's GetNext/GetBulk volume in the current
+// minute window for rate-limiting / tarpitting.
+type snmpWalkState struct {
+	windowStart time.Time
+	count       int
+}
+
+// snmpBulkCap bounds GetBulk max-repetitions so a single request can't make
+// us emit an unbounded response (and feeds the rate limiter honestly).
+const snmpBulkCap = 60
 
 func (s *snmp) Name() string { return "snmp" }
 
 // SetHoneynetView lets the listener install topology data after the
-// handler has been constructed via GetUDP.
-func (s *snmp) SetHoneynetView(v HoneynetSnapshot) { s.hosts = v.Hosts }
+// handler has been constructed via GetUDP; it invalidates the MIB cache so
+// the next request rebuilds it with the new ipNetToMediaTable.
+func (s *snmp) SetHoneynetView(v HoneynetSnapshot) {
+	s.mu.Lock()
+	s.hosts = v.Hosts
+	s.mib, s.built = nil, ""
+	s.mu.Unlock()
+}
 
-func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.PacketConn, cfg config.Listener) (Result, error) {
+// mibFor returns the cached MIB for the requested profile, rebuilding it when
+// the profile changed or the cache was invalidated. Caller must not hold s.mu.
+func (s *snmp) mibFor(profile string) []mibEntry {
+	if profile == "" {
+		profile = mibHost
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mib == nil || s.built != profile {
+		s.mib = buildSNMPMIB(s.arch, s.hosts, profile)
+		s.built = profile
+	}
+	return s.mib
+}
+
+// allowWalk applies the per-source walk rate-limit. It returns whether to
+// answer and, when over-limit-but-tarpitting, how long to delay first. steps
+// is the number of varbinds this request will emit. Caller must not hold s.mu.
+func (s *snmp) allowWalk(srcIP string, cfg config.SNMPListener, now time.Time, steps int) (allow bool, delay time.Duration, exceeded bool) {
+	if cfg.WalkRatePerMin <= 0 {
+		return true, 0, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.walks == nil {
+		s.walks = map[string]*snmpWalkState{}
+	}
+	// Opportunistic GC so the map can't grow without bound.
+	if len(s.walks) > 4096 {
+		for ip, st := range s.walks {
+			if now.Sub(st.windowStart) >= time.Minute {
+				delete(s.walks, ip)
+			}
+		}
+	}
+	st := s.walks[srcIP]
+	if st == nil || now.Sub(st.windowStart) >= time.Minute {
+		st = &snmpWalkState{windowStart: now}
+		s.walks[srcIP] = st
+	}
+	st.count += steps
+	if st.count <= cfg.WalkRatePerMin {
+		return true, 0, false
+	}
+	// Over the limit: tarpit (delay then answer) or drop.
+	if cfg.WalkTarpit > 0 {
+		return true, cfg.WalkTarpit, true
+	}
+	return false, 0, true
+}
+
+func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.PacketConn, cfg config.Listener) (Result, error) {
 	res := Result{Payload: append([]byte(nil), payload...)}
 
 	// gosnmp's SnmpPacket.UnmarshalMsg works on raw bytes via the GoSNMP
@@ -90,18 +166,37 @@ func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		}
 	}
 
-	// Only reply to GetRequest / GetNextRequest. Traps/responses (and
-	// the SetRequest above) we just log.
-	if pkt.PDUType != g.GetRequest && pkt.PDUType != g.GetNextRequest {
+	// Only reply to Get / GetNext / GetBulk. Traps/responses (and the
+	// SetRequest above) we just log.
+	if pkt.PDUType != g.GetRequest && pkt.PDUType != g.GetNextRequest && pkt.PDUType != g.GetBulkRequest {
 		return res, nil
 	}
 
-	// Build a GetResponse populated from the archetype's MIB-2 view
-	// where we have one; fall back to Null for unknown OIDs.
-	respPDUs := make([]g.SnmpPDU, 0, len(pkt.Variables))
-	for _, v := range pkt.Variables {
-		respPDUs = append(respPDUs, s.respondVarbind(v, pkt.PDUType == g.GetNextRequest))
+	mib := s.mibFor(cfg.SNMP.MIBProfile)
+	res.Meta["mib_profile"] = effectiveMIBProfile(cfg.SNMP.MIBProfile)
+	respPDUs := s.buildResponse(pkt, mib)
+
+	// Walk rate-limit / tarpit: GetNext + GetBulk are the walk primitives.
+	// Each emitted varbind counts as a step.
+	if pkt.PDUType == g.GetNextRequest || pkt.PDUType == g.GetBulkRequest {
+		allow, delay, exceeded := s.allowWalk(hostFromAddr(src), cfg.SNMP, time.Now(), len(respPDUs))
+		if exceeded {
+			flagAnomaly(&res, "snmp-walk-rate-exceeded")
+		}
+		if !allow {
+			res.Meta["snmp_walk_dropped"] = true
+			return res, nil // silently drop the over-limit walk step
+		}
+		if delay > 0 {
+			res.Meta["snmp_walk_tarpit_ms"] = int(delay / time.Millisecond)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return res, nil
+			}
+		}
 	}
+
 	respPkt := &g.SnmpPacket{
 		Version:    pkt.Version,
 		Community:  pkt.Community,
@@ -125,79 +220,97 @@ func (s *snmp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	return res, nil
 }
 
-// respondVarbind crafts a single response PDU for the given request
-// varbind. When the OID is one of the well-known MIB-2 system-group
-// or ifTable entries AND we have an archetype loaded, we answer with
-// the archetype's value; otherwise we return Null so we don't leak
-// implementation details. The matching is intentionally narrow: we
-// only answer prefixes we recognize, so a fuzzer's random OID list
-// gets honest Null replies and can't drive us into a code path we
-// haven't audited.
-func (s *snmp) respondVarbind(req g.SnmpPDU, isGetNext bool) g.SnmpPDU {
-	if s.arch == nil {
-		return g.SnmpPDU{Name: req.Name, Type: g.Null}
+// effectiveMIBProfile resolves the configured profile to the value actually
+// used (empty / invalid → the "host" default).
+func effectiveMIBProfile(p string) string {
+	if p == "" || !validMIBProfile(p) {
+		return mibHost
 	}
-	// Strip leading dot. GoSNMP returns OIDs with a leading dot in
-	// some Go versions; normalize.
-	q := strings.TrimPrefix(req.Name, ".")
-	// For GetNext we cheat: just answer like Get for system group OIDs.
-	_ = isGetNext
+	return p
+}
 
-	switch q {
-	case "1.3.6.1.2.1.1.1.0", "1.3.6.1.2.1.1.1": // sysDescr
-		return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(s.arch.SNMPSysDescr())}
-	case "1.3.6.1.2.1.1.2.0", "1.3.6.1.2.1.1.2": // sysObjectID
-		return g.SnmpPDU{Name: req.Name, Type: g.ObjectIdentifier, Value: s.arch.SNMPSysObjectID()}
-	case "1.3.6.1.2.1.1.3.0", "1.3.6.1.2.1.1.3": // sysUpTime
-		// Fixed 1-hour uptime in 1/100s.
-		return g.SnmpPDU{Name: req.Name, Type: g.TimeTicks, Value: uint32(360000)}
-	case "1.3.6.1.2.1.1.4.0", "1.3.6.1.2.1.1.4": // sysContact
-		return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(s.arch.SNMPSysContact())}
-	case "1.3.6.1.2.1.1.5.0", "1.3.6.1.2.1.1.5": // sysName
-		return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(s.arch.SNMPSysName())}
-	case "1.3.6.1.2.1.1.6.0", "1.3.6.1.2.1.1.6": // sysLocation
-		return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(s.arch.SNMPSysLocation())}
-	case "1.3.6.1.2.1.1.7.0", "1.3.6.1.2.1.1.7": // sysServices
-		// 72 = application + end-to-end + internet + physical for a switch
-		return g.SnmpPDU{Name: req.Name, Type: g.Integer, Value: 72}
+// buildResponse turns a request packet into the response varbinds, honoring
+// the PDU type: Get = exact match, GetNext = lexicographic successor, GetBulk
+// = up to max-repetitions successors per repeater varbind. Unknown OIDs (and
+// no-archetype) get Null; walking past the end returns the requested OID with
+// Null so the client terminates the walk.
+func (s *snmp) buildResponse(pkt *g.SnmpPacket, mib []mibEntry) []g.SnmpPDU {
+	switch pkt.PDUType {
+	case g.GetRequest:
+		out := make([]g.SnmpPDU, 0, len(pkt.Variables))
+		for _, v := range pkt.Variables {
+			out = append(out, mibGetVarbind(mib, v.Name))
+		}
+		return out
+	case g.GetNextRequest:
+		out := make([]g.SnmpPDU, 0, len(pkt.Variables))
+		for _, v := range pkt.Variables {
+			out = append(out, mibNextVarbind(mib, v.Name))
+		}
+		return out
+	case g.GetBulkRequest:
+		return bulkResponse(mib, pkt)
 	}
-	// ifTable: 1.3.6.1.2.1.2.2.1.<col>.<ifIndex>.
-	// Cols: 1=ifIndex, 2=ifDescr, 3=ifType, 5=ifSpeed, 6=ifPhysAddress, 8=ifOperStatus.
-	if strings.HasPrefix(q, "1.3.6.1.2.1.2.2.1.") {
-		parts := strings.Split(q[len("1.3.6.1.2.1.2.2.1."):], ".")
-		if len(parts) == 2 {
-			col := parts[0]
-			idxStr := parts[1]
-			idx, ok := atoiSafe(idxStr)
-			if !ok {
-				return g.SnmpPDU{Name: req.Name, Type: g.Null}
+	return nil
+}
+
+// bulkResponse implements GetBulk: the first NonRepeaters varbinds get a
+// single GetNext; each remaining (repeater) varbind walks forward up to
+// MaxRepetitions (capped) successive OIDs.
+func bulkResponse(mib []mibEntry, pkt *g.SnmpPacket) []g.SnmpPDU {
+	nonRep := int(pkt.NonRepeaters)
+	if nonRep < 0 {
+		nonRep = 0
+	}
+	if nonRep > len(pkt.Variables) {
+		nonRep = len(pkt.Variables)
+	}
+	maxRep := int(pkt.MaxRepetitions)
+	if maxRep < 0 || maxRep > snmpBulkCap {
+		maxRep = snmpBulkCap
+	}
+	var out []g.SnmpPDU
+	for i, v := range pkt.Variables {
+		if i < nonRep {
+			out = append(out, mibNextVarbind(mib, v.Name))
+			continue
+		}
+		cur := v.Name
+		for r := 0; r < maxRep; r++ {
+			pdu := mibNextVarbind(mib, cur)
+			out = append(out, pdu)
+			if pdu.Type == g.Null { // end of MIB for this repeater
+				break
 			}
-			for _, ifc := range s.arch.Interfaces() {
-				if ifc.Index != idx {
-					continue
-				}
-				switch col {
-				case "1":
-					return g.SnmpPDU{Name: req.Name, Type: g.Integer, Value: ifc.Index}
-				case "2":
-					return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(ifc.Descr)}
-				case "3":
-					return g.SnmpPDU{Name: req.Name, Type: g.Integer, Value: ifc.Type}
-				case "5":
-					return g.SnmpPDU{Name: req.Name, Type: g.Gauge32, Value: ifc.Speed}
-				case "6":
-					return g.SnmpPDU{Name: req.Name, Type: g.OctetString, Value: []byte(ifc.PhysMAC)}
-				case "8":
-					st := 2 // down
-					if ifc.OperUp {
-						st = 1
-					}
-					return g.SnmpPDU{Name: req.Name, Type: g.Integer, Value: st}
-				}
-			}
+			cur = pdu.Name
 		}
 	}
-	return g.SnmpPDU{Name: req.Name, Type: g.Null}
+	return out
+}
+
+// mibGetVarbind answers a Get for one OID.
+func mibGetVarbind(mib []mibEntry, name string) g.SnmpPDU {
+	oid, ok := parseOID(name)
+	if !ok {
+		return g.SnmpPDU{Name: name, Type: g.Null}
+	}
+	if e, found := mibGet(mib, oid); found {
+		return g.SnmpPDU{Name: name, Type: e.typ, Value: e.val}
+	}
+	return g.SnmpPDU{Name: name, Type: g.Null}
+}
+
+// mibNextVarbind answers a GetNext for one OID. Past the end of the MIB it
+// echoes the requested OID with Null so the client stops walking.
+func mibNextVarbind(mib []mibEntry, name string) g.SnmpPDU {
+	oid, ok := parseOID(name)
+	if !ok {
+		return g.SnmpPDU{Name: name, Type: g.Null}
+	}
+	if e, found := mibNext(mib, oid); found {
+		return g.SnmpPDU{Name: "." + e.name(), Type: e.typ, Value: e.val}
+	}
+	return g.SnmpPDU{Name: name, Type: g.Null}
 }
 
 // atoiSafe converts a decimal string to int with strict bounds — refuses

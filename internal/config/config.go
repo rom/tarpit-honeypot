@@ -475,8 +475,26 @@ type Listener struct {
 	// executing — the web-attack families. Ignored by other handlers.
 	Webapp bool `yaml:"webapp"`
 
-	HTTPS  HTTPS  `yaml:"https"`
-	Tarpit Tarpit `yaml:"tarpit"`
+	HTTPS  HTTPS        `yaml:"https"`
+	Tarpit Tarpit       `yaml:"tarpit"`
+	SNMP   SNMPListener `yaml:"snmp"`
+}
+
+// SNMPListener configures the snmp UDP handler: which MIB subtrees the
+// walkable MIB exposes, and per-source walk rate-limiting / tarpitting.
+// Ignored by every other handler.
+type SNMPListener struct {
+	// MIBProfile selects the exposed subtrees: minimal | host | network |
+	// full. Empty = "host" (system group + ifTable). network/full add the ip
+	// group + the ipNetToMediaTable, making the honeynet topology walkable.
+	MIBProfile string `yaml:"mib_profile"`
+	// WalkRatePerMin caps GetNext/GetBulk varbinds answered per source IP per
+	// minute (0 = unlimited). Over the cap a walk step is dropped — or
+	// delayed by WalkTarpit when that's set, slowing a mass walker to a crawl.
+	WalkRatePerMin int `yaml:"walk_rate_per_min"`
+	// WalkTarpit, when > 0, delays each over-limit walk response by this long
+	// instead of dropping it.
+	WalkTarpit time.Duration `yaml:"walk_tarpit"`
 }
 
 // HTTPS configures the self-signed TLS cert the https handler presents.

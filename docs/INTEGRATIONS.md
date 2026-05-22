@@ -282,7 +282,7 @@ Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-ver
 | `llmnr` | 5355 (UDP) | poisoning responder catching Windows fallback lookups |
 | `nbns` | 137 (UDP) | NetBIOS-NS responder catching SMB-relay precursors |
 | `mdns` | 5353 (UDP) | multicast-DNS responder; flags DNS-SD service enumeration |
-| `snmp` | 161 (UDP) | v1/v2c GetRequest with community capture |
+| `snmp` | 161 (UDP) | v1/v2c walkable MIB (snmpwalk/bulkwalk), community capture, topology ARP table, walk rate-limit/tarpit |
 | `ntp` | 123 (UDP) | mode-3 → mode-4; mode-7 silenced (no monlist amplifier) |
 | `tftp` | 69 (UDP) | RRQ/WRQ filename capture, ERROR access_violation reply |
 | `ipmi` | 623 (UDP) | RMCP Presence Ping → Pong |

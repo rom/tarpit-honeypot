@@ -277,9 +277,12 @@ var anomalyTags = map[string]Tag{
 	// SNMP SetRequest = write the device's running config (ACL / interface
 	// / config-copy-to-tftp). Manipulation on enterprise gear, modify-
 	// parameter on the ICS archetypes that also speak SNMP.
-	"snmp-set-attempt":      {Techniques: []string{"T1565.001", "T0836"}, Tactics: []string{"impact"}},
-	"smtp-open-relay-probe": {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
-	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"snmp-set-attempt": {Techniques: []string{"T1565.001", "T0836"}, Tactics: []string{"impact"}},
+	// A source walking the SNMP MIB faster than the configured rate =
+	// network/device enumeration via SNMP.
+	"snmp-walk-rate-exceeded": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"smtp-open-relay-probe":   {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration":   {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
 	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
 	// Encrypted-DNS channels (DoH / DoT / DNSCrypt) = DNS tunnelled inside

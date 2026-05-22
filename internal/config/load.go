@@ -422,6 +422,13 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("listener %s: scripted: %w", l.ID, err)
 			}
 		}
+		if p := l.SNMP.MIBProfile; p != "" {
+			switch p {
+			case "minimal", "host", "network", "full":
+			default:
+				return fmt.Errorf("listener %s: snmp.mib_profile must be minimal|host|network|full (got %q)", l.ID, p)
+			}
+		}
 		if l.Webapp && l.Handler != "http" && l.Handler != "https" {
 			return fmt.Errorf("listener %s: webapp requires handler http or https (got %q)", l.ID, l.Handler)
 		}
