@@ -1,0 +1,44 @@
+# tarpit-honeypot — MINIMAL quickstart.
+#
+# The smallest useful deployment: a handful of high-value baited ports, a
+# generic catch-all for everything else, events to stdout + a local SQLite
+# store, and the brute-force / port-scan correlators on. Drop this on a box,
+# point traffic at it, and watch `list-events`.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-MINIMAL.yaml
+#   tarpit-honeypot run             -c configs/tarpit-honeypot.example-MINIMAL.yaml
+
+sensor:
+  name: ""            # blank = hostname
+  data_dir: ./var
+  archetype: debian 12 # one coherent OS identity across every banner-aware handler
+
+# Low-interaction by default. Everything emitted is something this emulator
+# can really produce; experimental capture knobs stay locked.
+# See: tarpit-honeypot list-unavailable-capabilities
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,  mode: banner, handler: ssh,    severity: high }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,  mode: banner, handler: http,   severity: high }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23,  mode: banner, handler: telnet, severity: high }
+  - { id: ftp,    proto: tcp, bind: 0.0.0.0:21,  mode: banner, handler: ftp,    severity: high }
+
+  # Catch-all: capture + fingerprint anything on an unmodelled port.
+  - { id: auto, proto: tcp, bind: 0.0.0.0:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite] }

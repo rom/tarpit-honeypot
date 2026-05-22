@@ -126,6 +126,12 @@ correlate:
   brute_force: { enabled: true, attempts: 8, window: 60s, severity: high }
   slow_scan:   { enabled: true, distinct_ports: 12, window: 24h, severity: high }
   icmp_sweep:  { enabled: true, distinct_ips: 8, window: 30s, severity: high }
+  # C2 beaconing out of the plant (regular-interval call-home).
+  beacon:      { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+# OT deployments stay strictly low-interaction.
+interaction:
+  mode: low
 
 devices:
   enabled: true

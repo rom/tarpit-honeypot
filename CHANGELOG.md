@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — more example configs + refreshed existing ones
+- New ready-to-run example configs in `configs/`: `example-MINIMAL`
+  (smallest useful deployment), `example-AD-ENTERPRISE` (Windows / Active
+  Directory decoy exercising the Kerberos / LDAP / MSRPC detections),
+  `example-DATASTORES-WEB` (web app + Redis / memcached / MongoDB /
+  Elasticsearch + the path-enumeration correlator), and
+  `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned to their
+  floor). All validate with `validate-config`.
+- Refreshed the existing examples for this cycle's features: the new
+  correlators (`path_enumeration` / `dns_enumeration` / `beacon`), the
+  `interaction:` block, the new handlers (pop3 / imap / memcached / mongodb /
+  elasticsearch / mdns / auto), and the SNMP `mib_profile` / `walk_*` knobs
+  (FULL uses `medium_experimental` + the `full` MIB profile; the OT examples
+  pin `mode: low`).
+
 ### Added — SNMP: walkable MIB, profiles, topology table, walk rate-limit/tarpit
 - The `snmp` handler now answers from an **ordered, walkable MIB** with proper
   lexicographic GetNext + bounded GetBulk, so real `snmpwalk` / `snmpbulkwalk`

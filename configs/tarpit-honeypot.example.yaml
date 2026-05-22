@@ -1,9 +1,15 @@
 # tarpit-honeypot — annotated reference config (canonical default values).
 #
 # Sibling examples in this directory:
-#   tarpit-honeypot.example-FULL.yaml         every handler + feature ON (smoke-test reference)
-#   tarpit-honeypot.example-SMALL-OT.yaml     one small industrial cell
-#   tarpit-honeypot.example-ADVANCED-OT.yaml  multi-cell plant (DMZ + 3 cells)
+#   tarpit-honeypot.example-MINIMAL.yaml                smallest useful deployment
+#   tarpit-honeypot.example-FULL.yaml                   every handler + feature ON
+#   tarpit-honeypot.example-LARGE.yaml                  big multi-segment estate
+#   tarpit-honeypot.example-AD-ENTERPRISE.yaml          Windows / Active Directory decoy
+#   tarpit-honeypot.example-DATASTORES-WEB.yaml         web app + Redis/Mongo/ES/memcached
+#   tarpit-honeypot.example-LOW-INTERACTION-STRICT.yaml interaction guardrails pinned low
+#   tarpit-honeypot.example-SMALL-OT.yaml               one small industrial cell
+#   tarpit-honeypot.example-ADVANCED-OT.yaml            multi-cell plant (DMZ + 3 cells)
+#   tarpit-honeypot.example-archeservices.yaml          role bundles (webserver, adserver, …)
 #
 # Validate any of them with:
 #   tarpit-honeypot validate-config -c <file>
@@ -790,6 +796,50 @@ correlate:
     distinct_ips: 10
     window: 30s
     severity: high
+  # One source spraying many DISTINCT usernames (breadth, not depth).
+  password_spray:
+    enabled: true
+    distinct_users: 5
+    window: 300s
+    severity: high
+  # The SAME credential pair from many DISTINCT source IPs (a shared list /
+  # botnet — credential stuffing). The password is never logged.
+  credential_reuse:
+    enabled: true
+    distinct_sources: 3
+    window: 1h
+    severity: high
+  # HTTP content discovery / dirbusting: many distinct URL paths from one
+  # source (catches scanners that spoof a browser User-Agent).
+  path_enumeration:
+    enabled: true
+    distinct_paths: 50
+    window: 60s
+    severity: high
+  # DNS name enumeration: subdomain brute force / NXDOMAIN flood / DGA churn.
+  dns_enumeration:
+    enabled: true
+    distinct_names: 50
+    window: 60s
+    severity: medium
+  # C2 beaconing: regularly-spaced call-home from one source. After min_hits
+  # samples, low inter-arrival jitter over a non-trivial interval = a beacon.
+  beacon:
+    enabled: true
+    min_hits: 6
+    max_jitter_pct: 20
+    window: 1h
+    severity: high
+
+# Interaction depth + experimental-feature guardrails. low (default) means
+# every emitted capture is something this emulator can actually produce;
+# the *_experimental knobs only unlock under medium_experimental and are a
+# config error in low mode. See `tarpit-honeypot list-unavailable-capabilities`.
+interaction:
+  mode: low                      # low | medium_experimental
+  http2_probe_capture: disabled  # disabled | headers_only (needs medium_experimental)
+  ssh_kex_depth: kexinit_only    # kexinit_only | extended_experimental (needs medium_experimental)
+  browser_traps: off             # locked off — no real browser is driven
 
 dedup:
   default_window: 5m

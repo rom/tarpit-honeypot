@@ -438,7 +438,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
 - [`EXAMPLES.md`](EXAMPLES.md) — walkthrough of every example config (OT Purdue-model decoys + edge + IT), how to adapt and combine them.
-- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Also `example-LARGE.yaml` (every handler + all archeservice roles + all subsystems), `example-archeservices.yaml` (the role-bundle feature), and the OT examples (`example-FULL` / `example-ADVANCED-OT` / `example-SMALL-OT`).
+- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
 

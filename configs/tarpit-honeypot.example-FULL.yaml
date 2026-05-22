@@ -211,6 +211,15 @@ listeners:
     handler: redis
     severity: medium
     read_timeout: 10s
+  # Data stores + mail + the generic catch-all added this cycle.
+  - { id: tcp-memcached,     proto: tcp, bind: 0.0.0.0:21001, mode: banner, handler: memcached,     severity: medium, read_timeout: 10s }
+  - { id: tcp-mongodb,       proto: tcp, bind: 0.0.0.0:27017, mode: banner, handler: mongodb,       severity: medium, read_timeout: 10s }
+  - { id: tcp-elasticsearch, proto: tcp, bind: 0.0.0.0:9200,  mode: banner, handler: elasticsearch, severity: medium, read_timeout: 10s }
+  - { id: tcp-pop3,          proto: tcp, bind: 0.0.0.0:110,   mode: banner, handler: pop3,          severity: medium, read_timeout: 10s }
+  - { id: tcp-imap,          proto: tcp, bind: 0.0.0.0:143,   mode: banner, handler: imap,          severity: medium, read_timeout: 10s }
+  - { id: tcp-auto,          proto: tcp, bind: 0.0.0.0:29999, mode: banner, handler: auto,          severity: medium, read_bytes: 2048 }
+  - { id: udp-mdns,          proto: udp, bind: 0.0.0.0:5353,  mode: banner, handler: mdns,          severity: low }
+  - { id: udp-auto,          proto: udp, bind: 0.0.0.0:29998, mode: banner, handler: auto,          severity: medium, read_bytes: 2048 }
   - id: tcp-syslog_tcp
     proto: tcp
     bind: 0.0.0.0:20019
@@ -465,6 +474,11 @@ listeners:
     handler: snmp
     severity: medium
     read_timeout: 10s
+    # Walkable MIB: full subtree set + walk rate-limit/tarpit for mass walkers.
+    snmp:
+      mib_profile: full
+      walk_rate_per_min: 200
+      walk_tarpit: 500ms
   - id: udp-ntp
     proto: udp
     bind: 0.0.0.0:20049
@@ -821,6 +835,19 @@ correlate:
   # Credential reuse: the same user+pass tried from many DISTINCT sources
   # (a shared credential list / botnet — credential stuffing).
   credential_reuse: { enabled: true, distinct_sources: 3, window: 1h, severity: high }
+  # HTTP dirbusting, DNS name enumeration, and C2 beaconing.
+  path_enumeration: { enabled: true, distinct_paths: 50, window: 60s, severity: high }
+  dns_enumeration:  { enabled: true, distinct_names: 50, window: 60s, severity: medium }
+  beacon:           { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+# Interaction depth. This "everything ON" reference uses medium_experimental
+# so the experimental capture knobs are unlocked (still best-effort — see
+# `tarpit-honeypot list-unavailable-capabilities`). Most deployments want low.
+interaction:
+  mode: medium_experimental
+  http2_probe_capture: headers_only
+  ssh_kex_depth: extended_experimental
+  browser_traps: off
 
 devices:
   enabled: true

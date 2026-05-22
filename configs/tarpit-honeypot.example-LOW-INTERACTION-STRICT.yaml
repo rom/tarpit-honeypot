@@ -1,0 +1,71 @@
+# tarpit-honeypot — strict low-interaction profile.
+#
+# For deployments that must NEVER over-promise: a curated set of safe,
+# reflection-free emulators, the generic catch-all, and the interaction
+# guardrails pinned to their lowest setting. Every experimental / high-
+# interaction capture is explicitly locked off, so an operator can trust
+# that what's emitted is exactly what a low-interaction sensor can produce.
+#
+# See the honest capability matrix for this config with:
+#   tarpit-honeypot list-unavailable-capabilities -c configs/tarpit-honeypot.example-LOW-INTERACTION-STRICT.yaml
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-LOW-INTERACTION-STRICT.yaml
+
+sensor:
+  name: ""
+  data_dir: ./var
+  archetype: debian 12
+  # No interactive shell engagement, no payload execution — ever.
+  vuln_emulation: false
+
+# Interaction guardrails, all at their safe floor. Setting any of the
+# *_experimental values here would be a CONFIG ERROR in low mode (that's the
+# point — the guardrail is explicit, not a silent downgrade).
+interaction:
+  mode: low                      # low | medium_experimental
+  http2_probe_capture: disabled  # full HTTP/2 capture is not implemented in any mode
+  ssh_kex_depth: kexinit_only    # only the client KEXINIT (HASSH) is captured
+  browser_traps: off             # locked: no real browser is ever driven
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # Banner / handshake capture only — no post-login shell, no data channels.
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,  mode: banner, handler: ssh,    severity: high }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,  mode: banner, handler: http,   severity: high }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443, mode: banner, handler: https,  severity: high }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23,  mode: banner, handler: telnet, severity: high }
+  - { id: smtp,   proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high }
+
+  # UDP services that are reflection-safe by construction.
+  - { id: dns,  proto: udp, bind: 0.0.0.0:53,  mode: banner, handler: dns,  severity: medium }
+  - { id: snmp, proto: udp, bind: 0.0.0.0:161, mode: banner, handler: snmp, severity: high,
+      snmp: { mib_profile: minimal } }   # smallest MIB; no topology table
+
+  # Tarpit slot: hold scanners on a sticky connection (still low-interaction).
+  - id: ssh-tarpit
+    proto: tcp
+    bind: 0.0.0.0:2222
+    mode: tarpit
+    handler: ssh
+    severity: high
+    tarpit: { strategy: sticky, max_per_source: 4, max_total: 256, emulate: true }
+
+  # Generic catch-all for everything else: capture + fingerprint, never reply
+  # speculatively (UDP auto never replies — no amplification).
+  - { id: auto-tcp, proto: tcp, bind: 0.0.0.0:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+  - { id: auto-udp, proto: udp, bind: 0.0.0.0:9001, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  beacon:      { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite] }

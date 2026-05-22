@@ -52,6 +52,26 @@ archeservices:
     archetype: lexmark-printer
     bind: 127.0.0.50
 
+  # A mail server → SMTP (25/587) plus POP3 (110) + IMAP (143) retrieval,
+  # all capturing credentials.
+  - id: corp-mail
+    role: mailserver
+    archetype: ubuntu 24.04 lts
+    bind: 127.0.0.60
+    severity: high
+
+  # A database server → MySQL / PostgreSQL / MSSQL / Oracle / Redis plus
+  # memcached (11211) / MongoDB (27017) / Elasticsearch (9200).
+  - id: corp-db
+    role: dbserver
+    archetype: debian 12
+    bind: 127.0.0.61
+    severity: high
+
+# Strict low-interaction across the role bundles.
+interaction:
+  mode: low
+
 channels:
   - { id: console, type: stdout }
 

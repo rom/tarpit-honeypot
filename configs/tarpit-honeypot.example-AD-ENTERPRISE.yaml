@@ -1,0 +1,94 @@
+# tarpit-honeypot — Active Directory / Windows enterprise decoy.
+#
+# Stands up a believable Windows domain surface and exercises the identity
+# detections: Kerberoasting / AS-REP-roast recon (kerberos + ldap), SPN /
+# account / share enumeration (ldap), and sensitive MSRPC interface binds
+# (dcerpc → SAMR / LSARPC / svcctl-PsExec / DRSUAPI-DCSync). Adds mail
+# (pop3/imap), mDNS, and a DNS server so subdomain-enumeration / beacon
+# correlators have something to chew on.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-AD-ENTERPRISE.yaml
+#
+# Tip: `archeservices: [{ role: adserver, archetype: active-directory }]`
+# expands into this DC port set automatically — the explicit listeners below
+# are spelled out for clarity.
+
+sensor:
+  name: dc01
+  data_dir: ./var
+  archetype: active-directory   # Server-2019 identity + era-correct TLS
+  vuln_emulation: true
+
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # --- Core AD / Windows ---
+  - { id: kerberos, proto: tcp, bind: 0.0.0.0:88,   mode: banner, handler: kerberos, severity: critical, capture: true }
+  - { id: ldap,     proto: tcp, bind: 0.0.0.0:389,  mode: banner, handler: ldap,     severity: critical, capture: true }
+  - { id: ldaps,    proto: tcp, bind: 0.0.0.0:636,  mode: banner, handler: https,    severity: high }
+  - { id: gc,       proto: tcp, bind: 0.0.0.0:3268, mode: banner, handler: ldap,     severity: high }
+  - { id: smb,      proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,      severity: critical, capture: true }
+  - { id: dcerpc,   proto: tcp, bind: 0.0.0.0:135,  mode: banner, handler: dcerpc,   severity: critical, capture: true }
+  - { id: winrm,    proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,    severity: high }
+  - { id: rdp,      proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,      severity: high }
+  - { id: mssql,    proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,    severity: high }
+
+  # --- SSH engagement (capture typed AD-recon commands) ---
+  - id: ssh
+    proto: tcp
+    bind: 0.0.0.0:22
+    mode: banner
+    handler: ssh_interactive
+    severity: high
+    capture: true
+
+  # --- Mail (credential capture) ---
+  - { id: smtp, proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high }
+  - { id: pop3, proto: tcp, bind: 0.0.0.0:110, mode: banner, handler: pop3,      severity: high }
+  - { id: imap, proto: tcp, bind: 0.0.0.0:143, mode: banner, handler: imap,      severity: high }
+
+  # --- Name services ---
+  - id: dns
+    proto: udp
+    bind: 0.0.0.0:53
+    mode: banner
+    handler: dns
+    severity: high
+  - { id: mdns, proto: udp, bind: 0.0.0.0:5353, mode: banner, handler: mdns, severity: low }
+  - { id: llmnr, proto: udp, bind: 0.0.0.0:5355, mode: banner, handler: llmnr, severity: critical }
+  - { id: nbns,  proto: udp, bind: 0.0.0.0:137,  mode: banner, handler: nbns,  severity: critical }
+
+dns:
+  enabled: true
+  bind: 0.0.0.0:53
+
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force:      { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  # Password spraying across many AD accounts (low attempts each).
+  password_spray:   { enabled: true, distinct_users: 5, window: 300s, severity: high }
+  # The same leaked credential reused from many hosts (credential stuffing).
+  credential_reuse: { enabled: true, distinct_sources: 3, window: 1h, severity: high }
+  # Subdomain brute / NXDOMAIN flood against the DC's DNS.
+  dns_enumeration:  { enabled: true, distinct_names: 50, window: 60s, severity: medium }
+  # Regularly-spaced C2 call-home from a compromised-looking host.
+  beacon:           { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+  slow_scan:        { enabled: true, distinct_ports: 10, window: 24h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: high
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: { severity: ">=high" }, channels: [stdout, sqlite] }
+  - { match: {}, channels: [sqlite] }

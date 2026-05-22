@@ -49,6 +49,12 @@ listeners:
     handler: snmp
     severity: high
     read_bytes: 1500
+    # Walkable MIB incl. the ipNetToMediaTable (cell topology); tarpit mass
+    # walkers so a scanner crawling the segment slows to a halt.
+    snmp:
+      mib_profile: network
+      walk_rate_per_min: 100
+      walk_tarpit: 1s
   # Passive DHCP + device discovery on the cell.
   - id: dhcp-observer
     proto: udp
@@ -69,6 +75,17 @@ correlate:
     distinct_ips: 6
     window: 30s
     severity: high
+  # C2 beaconing from a compromised cell device (regular call-home).
+  beacon:
+    enabled: true
+    min_hits: 6
+    max_jitter_pct: 20
+    window: 1h
+    severity: high
+
+# OT honeypots should stay strictly low-interaction.
+interaction:
+  mode: low
 
 # Learned-device inventory: in a stable OT cell the device set rarely
 # changes, so strict mode (learn:false) alerts on anything not in the

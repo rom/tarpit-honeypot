@@ -689,7 +689,14 @@ correlate:
   password_spray: { enabled: true }
   credential_reuse: { enabled: true }
   icmp_sweep: { enabled: true }
+  path_enumeration: { enabled: true }
+  dns_enumeration: { enabled: true }
+  beacon: { enabled: true }
   storyline: { enabled: true }
+
+# Low-interaction by default across the estate.
+interaction:
+  mode: low
 
 devices:
   enabled: true

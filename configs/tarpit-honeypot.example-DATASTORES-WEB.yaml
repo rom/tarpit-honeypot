@@ -1,0 +1,74 @@
+# tarpit-honeypot — data-store + web-application decoy surface.
+#
+# A cloud-instance-shaped target: the fake-vulnerable web app plus the data
+# stores attackers pivot to (Redis, memcached, MongoDB, Elasticsearch,
+# MySQL, PostgreSQL). Exercises the new data-store handlers, the webapp
+# attack-class detector, the path-enumeration correlator (dirbusting that
+# spoofed UAs slip past), and the generic catch-all.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-DATASTORES-WEB.yaml
+
+sensor:
+  name: app01
+  data_dir: ./var
+  archetype: ubuntu 24.04 lts
+  vuln_emulation: true
+  payloads:
+    enabled: true   # harvest dropped webshells / malware
+
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # --- Web (fake-vulnerable app: SQLi/XSS/LFI/RFI/SSRF/SSTI/Log4Shell/…) ---
+  - id: http
+    proto: tcp
+    bind: 0.0.0.0:80
+    mode: banner
+    handler: http
+    webapp: true
+    severity: high
+    capture: true
+  - id: https
+    proto: tcp
+    bind: 0.0.0.0:443
+    mode: banner
+    handler: https
+    webapp: true
+    severity: high
+    capture: true
+
+  # --- Data stores ---
+  - { id: redis,         proto: tcp, bind: 0.0.0.0:6379,  mode: banner, handler: redis,         severity: high, capture: true }
+  - { id: memcached,     proto: tcp, bind: 0.0.0.0:11211, mode: banner, handler: memcached,     severity: high, capture: true }
+  - { id: mongodb,       proto: tcp, bind: 0.0.0.0:27017, mode: banner, handler: mongodb,       severity: high, capture: true }
+  - { id: elasticsearch, proto: tcp, bind: 0.0.0.0:9200,  mode: banner, handler: elasticsearch, severity: high, capture: true }
+  - { id: mysql,         proto: tcp, bind: 0.0.0.0:3306,  mode: banner, handler: mysql,         severity: high }
+  - { id: postgres,      proto: tcp, bind: 0.0.0.0:5432,  mode: banner, handler: postgres,      severity: high }
+
+  # --- SSH + catch-all ---
+  - { id: ssh,  proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,  severity: high }
+  - { id: auto, proto: tcp, bind: 0.0.0.0:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+
+# URL canary: a planted "backup" path no legitimate scan should know.
+url_canaries:
+  - { id: db-backup, path: /backup/db-prod.sql.gz, severity: critical }
+
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force:      { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  # Content discovery / dirbusting: many distinct URL paths from one source
+  # (catches scanners that spoof a browser User-Agent).
+  path_enumeration: { enabled: true, distinct_paths: 50, window: 60s, severity: high }
+  beacon:           { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite] }
