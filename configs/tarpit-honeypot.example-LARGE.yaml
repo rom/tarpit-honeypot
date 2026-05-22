@@ -7,6 +7,12 @@
 # the 10000+/12000+ ranges so it runs without privileged ports or
 # colliding with the archeservices below (which use real ports on
 # dedicated loopback IPs).
+#
+# ⚠ TO SEE EVENTS, SCAN THE BOUND PORTS, NOT 22/80/443. The explicit
+# listeners are on 10000+ (TCP) / 12000+ (UDP); the archeservices use real
+# ports on 127.0.1.x. A scan of the standard ports hits nothing and you'll
+# see only sensor:* lifecycle events. `show-config | grep -E 'id:|bind:'`
+# lists the id->port map; use example.yaml for a real-port scan demo.
 
 sensor:
   name: tarpit-large

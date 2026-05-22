@@ -494,6 +494,7 @@ honeypot exposed via service mesh), the sensor is fully featured.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Scanning produces no events — only `sensor:started`/`sensor:stopped` show | the listeners aren't on the ports you scanned | `example-FULL` / `example-LARGE` **remap** every service to high ports (20000+/10000+) so they run without root/conflicts, so a scan of 22/80/443 hits nothing. Scan the bound ports (`tarpit-honeypot show-config -c <cfg> \| grep -E 'id:\|bind:'` for the map), or run `example.yaml`, which binds real service ports. |
 | `sensor stopped: listen 0.0.0.0:53: bind: permission denied` | privileged port, no caps | systemd unit has `AmbientCapabilities=CAP_NET_BIND_SERVICE` already; verify with `systemctl show -p CapabilityBoundingSet tarpit-honeypot`. For Docker, `--cap-add=NET_BIND_SERVICE`. |
 | `sensor stopped: listen 0.0.0.0:53: bind: address already in use` | systemd-resolved owns :53 | Either disable systemd-resolved DNSStubListener (`/etc/systemd/resolved.conf`: `DNSStubListener=no`) or use a non-standard port and NAT. |
 | Listener events fire but `correlate:brute_force` never does | per-rule dedup window covers the burst | Lower `dedup.default_window` or set `correlate.brute_force.window` shorter. |
@@ -504,5 +505,5 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `tunnet: TUN/utun adapter not implemented on darwin` | running on macOS | macOS supports utun but no native backend yet; use `ifconfig alias` per virtual host. |
 | Prometheus `/metrics` returns 503 | UI started before sensor finished construction | wait a second after startup; the sensor lazily registers stats once it's fully up. |
 | `validate-config` rejects `format: cef` on `sqlite` channel | structured-row sinks can't take text formats | Use the format on `stdout`/`jsonlog`/`webhook`/`smtp`/`syslog` instead. |
-| `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (29 entries). |
+| `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (99 entries). |
 | `ssh_interactive` engagements piling up | crypto/ssh handshakes are CPU-heavier than banner-grab | Set `max_concurrent: 16` (or lower) on the listener to cap parallel sessions. |

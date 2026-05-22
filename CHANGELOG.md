@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Docs — clarify that example-FULL/LARGE remap ports
+- `example-FULL` (and `example-LARGE`) bind every service on high ports
+  (20000+/10000+) so they run without root/port conflicts — so scanning the
+  standard ports (22/80/443) hits nothing and only `sensor:*` lifecycle
+  events appear, which surprised operators. Added a prominent header note
+  ("scan the bound ports, not 22/80/443" + how to get the id→port map) and
+  a troubleshooting entry; `example.yaml` binds real service ports for
+  scan-and-watch demos. (No pipeline bug — events are recorded when a bound
+  port is hit; the startup log already prints each `bind=`.)
+
 ### Fixed — web UI now auto-updates (live view during a scan)
 - The web UI is server-rendered and its strict CSP forbids JavaScript, so
   it never refreshed on its own — during a port scan the page sat static

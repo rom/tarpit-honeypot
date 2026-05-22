@@ -8,6 +8,16 @@
 # for real deployments. Validate it with:
 #   tarpit-honeypot validate-config -c tarpit-honeypot.example-FULL.yaml
 #
+# ⚠ TO SEE EVENTS, SCAN THE BOUND PORTS, NOT 22/80/443. Every service here
+# is REMAPPED to ports 20000-20085 (plus 515/5354/9100/11211), so a scan of
+# the standard ports hits nothing and you'll only see sensor:* lifecycle
+# events. Generate traffic with e.g.:
+#   nmap -p 20000-20085,515,9100 <host>
+#   nc 127.0.0.1 20001        # the ssh listener
+# Run `tarpit-honeypot show-config -c <this file> | grep -E 'id:|bind:'` for
+# the id->port map. For a "scan it on real ports (22/80/443/...)" demo, use
+# configs/tarpit-honeypot.example.yaml instead.
+#
 # Generated listener block below covers all 47 TCP + 17 UDP handlers.
 
 sensor:
