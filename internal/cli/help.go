@@ -392,6 +392,33 @@ EXAMPLES
     tarpit-honeypot identify --payload '${jndi:ldap://x/a}' --handler http
 `,
 
+	"reset-db": `reset-db — empty the local databases / artifact stores
+
+SYNOPSIS
+    tarpit-honeypot reset-db [-c <config> | --data-dir <dir>] [scope flags] [--yes]
+
+DESCRIPTION
+    Clears state under the sensor's data_dir. Default scope is the event
+    store (events.db + the JSON event logs). The sensor identity
+    (.deployment-id) and TLS certs are always preserved. Destructive, so it
+    DRY-RUNS unless you pass --yes/-y. Stop the sensor first (deleting an
+    open SQLite file is unsafe).
+
+SCOPE FLAGS
+    --all         events + devices + captures + payloads + sessions + state
+    --devices     also clear devices.json (learned-device inventory)
+    --captures    also clear captures/ (per-connection pcaps)
+    --payloads    also clear payloads/ (harvested malware/shellcode)
+    --sessions    also clear sessions/ (recorded shell casts)
+    --state       also clear the persisted correlator state
+    --data-dir D  operate on D directly (skip loading the config)
+
+EXAMPLES
+    tarpit-honeypot reset-db -c cfg.yaml                 # dry-run (events)
+    tarpit-honeypot reset-db -c cfg.yaml --yes           # clear the event store
+    tarpit-honeypot reset-db --data-dir /var/lib/... --all --yes
+`,
+
 	"init": `init — write a default config skeleton
 
 SYNOPSIS

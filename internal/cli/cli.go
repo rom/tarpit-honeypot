@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/version"
 )
@@ -12,6 +13,14 @@ type command struct {
 	name string
 	desc string
 	run  func(args []string) error
+}
+
+// globalValueFlags are the space-form (`-c path`) flags that may appear
+// before the subcommand; their following token is a value, not the
+// subcommand. (`=`-form `-c=path` is a single token and needs no entry.)
+var globalValueFlags = map[string]bool{
+	"-c": true, "-i": true, "--interface": true, "--set": true,
+	"--log-level": true, "--log-format": true, "--log-file": true,
 }
 
 func Dispatch(args []string) error {
@@ -31,44 +40,76 @@ func Dispatch(args []string) error {
 		{"list-cves", "print the CVE catalog (emulation + exploit detection)", cmdListCVEs},
 		{"list-techniques", "print the MITRE ATT&CK / D3FEND coverage map", cmdListTechniques},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
+		{"reset-db", "empty the local event store / device inventory / captures", cmdResetDB},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},
 		{"completion", "print shell-completion script (bash | zsh | fish)", cmdCompletion},
 		{"help", "long-form help for a subcommand or topic", cmdHelp},
 		{"version", "print version info", cmdVersion},
 	}
+	cmdSet := map[string]command{}
+	for _, c := range cmds {
+		cmdSet[c.name] = c
+	}
 
-	// Global flags that can appear before any subcommand.
-	if len(args) > 0 {
-		switch args[0] {
-		case "--version", "-V":
+	// --version / -V is informational and accepted in any position.
+	for _, a := range args {
+		if a == "--version" || a == "-V" {
 			return cmdVersion(nil)
-		case "-h", "--help":
-			printUsage(cmds)
-			return nil
-		case "help":
-			// "help" with no arg → short usage; with an arg →
-			// route through cmdHelp so topics like
-			// `help archetypes` work.
-			if len(args) == 1 {
+		}
+	}
+
+	// Locate the subcommand token — flags (and their values) may precede it,
+	// so `-c cfg.yaml run` and `run -c cfg.yaml` are equivalent.
+	subIdx := findSubcommand(args, cmdSet)
+	if subIdx < 0 {
+		for _, a := range args {
+			if a == "-h" || a == "--help" || a == "help" {
 				printUsage(cmds)
 				return nil
 			}
-			return cmdHelp(args[1:])
 		}
-	}
-
-	if len(args) == 0 {
 		printUsage(cmds)
-		return errors.New("no subcommand given")
+		if len(args) == 0 {
+			return errors.New("no subcommand given")
+		}
+		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
 
-	for _, c := range cmds {
-		if c.name == args[0] {
-			return c.run(args[1:])
+	name := args[subIdx]
+	// All other tokens (flags from before AND after the subcommand) go to
+	// the subcommand's own flag parser, preserving order.
+	subArgs := append(append([]string(nil), args[:subIdx]...), args[subIdx+1:]...)
+
+	if name == "help" {
+		if len(subArgs) == 0 {
+			printUsage(cmds)
+			return nil
 		}
+		return cmdHelp(subArgs)
 	}
-	printUsage(cmds)
-	return fmt.Errorf("unknown subcommand %q", args[0])
+	return cmdSet[name].run(subArgs)
+}
+
+// findSubcommand returns the index of the first arg that names a subcommand,
+// skipping leading flags and the values of space-form global value-flags.
+// Returns -1 when no subcommand is present.
+func findSubcommand(args []string, cmdSet map[string]command) int {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			// A space-form value-flag consumes the next token as its value.
+			if globalValueFlags[a] && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if _, ok := cmdSet[a]; ok {
+			return i
+		}
+		// A non-flag, non-command token (e.g. an unrecognized value) — keep
+		// scanning for the subcommand.
+	}
+	return -1
 }
 
 func printUsage(cmds []command) {

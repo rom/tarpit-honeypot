@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CLI: flags in any position + `reset-db`
+- Global/subcommand flags may now appear **before or after** the
+  subcommand: `tarpit-honeypot -c cfg.yaml run` and
+  `tarpit-honeypot run -c cfg.yaml` are equivalent (the dispatcher locates
+  the subcommand token, skipping flags and their values).
+- New `reset-db` subcommand empties the local databases under `data_dir`:
+  the event store by default, or `--devices` / `--captures` / `--payloads`
+  / `--sessions` / `--state` / `--all`. Dry-runs unless `--yes`; identity
+  (`.deployment-id`) and TLS certs are always preserved; `--data-dir`
+  operates without loading a config.
+
 ### Docs — clarify that example-FULL/LARGE remap ports
 - `example-FULL` (and `example-LARGE`) bind every service on high ports
   (20000+/10000+) so they run without root/port conflicts — so scanning the
