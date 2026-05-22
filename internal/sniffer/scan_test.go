@@ -17,8 +17,9 @@ func TestClassifyTCP(t *testing.T) {
 		{flagFIN | flagPSH | flagURG, scanXmas},
 		{flagSYN, scanSYN},
 		{flagACK, scanACK},
-		{flagSYN | flagACK, scanNone}, // normal handshake reply
-		{flagPSH | flagACK, scanNone}, // normal data
+		{flagFIN | flagACK, scanMaimon}, // nmap -sM
+		{flagSYN | flagACK, scanNone},   // normal handshake reply
+		{flagPSH | flagACK, scanNone},   // normal data
 		{flagRST | flagACK, scanNone},
 		{0x40 | flagSYN, scanSYN}, // ECE bit ignored -> still SYN
 	}

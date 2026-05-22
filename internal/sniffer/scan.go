@@ -14,12 +14,13 @@ import (
 type scanKind int
 
 const (
-	scanNone scanKind = iota
-	scanNull          // no flags set                — nmap -sN
-	scanFIN           // FIN only                     — nmap -sF
-	scanXmas          // FIN+PSH+URG                  — nmap -sX
-	scanSYN           // SYN without ACK              — nmap -sS (volume)
-	scanACK           // ACK without SYN              — nmap -sA (volume)
+	scanNone   scanKind = iota
+	scanNull            // no flags set                — nmap -sN
+	scanFIN             // FIN only                     — nmap -sF
+	scanXmas            // FIN+PSH+URG                  — nmap -sX
+	scanSYN             // SYN without ACK              — nmap -sS (volume)
+	scanACK             // ACK without SYN              — nmap -sA / -sW (volume)
+	scanMaimon          // FIN+ACK                      — nmap -sM (volume)
 )
 
 func (k scanKind) ruleID() string {
@@ -34,6 +35,8 @@ func (k scanKind) ruleID() string {
 		return "sniffer:tcp_syn_scan"
 	case scanACK:
 		return "sniffer:tcp_ack_scan"
+	case scanMaimon:
+		return "sniffer:tcp_maimon_scan"
 	}
 	return ""
 }
@@ -91,6 +94,11 @@ func classifyTCP(flags byte) scanKind {
 		return scanSYN
 	case flagACK:
 		return scanACK
+	case flagFIN | flagACK:
+		// Maimon scan: FIN+ACK to a closed port. Legit teardowns also use
+		// FIN+ACK, so this is volume-gated (not stealth) — a single
+		// connection's teardown can't reach the distinct-port threshold.
+		return scanMaimon
 	}
 	return scanNone
 }

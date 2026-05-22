@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — nmap Maimon scan (`-sM`) detection + fingerprint coverage docs
+- The packet-capture layer now classifies the nmap Maimon scan
+  (`sniffer:tcp_maimon_scan` — bare FIN+ACK to a port, volume-gated so a
+  normal connection teardown can't trip it), mapped to ATT&CK T1046 /
+  T1595.001. (`-sW` Window scan was already caught — it shares the ACK
+  probe on the wire with `-sA`.)
+- `docs/attribution.md` gained a **coverage & limitations** matrix mapping
+  every requested client-fingerprint signal to its status (covered via
+  JA3/JA4/JA4H/HASSH/TTL, partial, or infeasible-for-a-passive-no-JS-sensor
+  with the reason), plus the new confidence-scoring, C2/headless
+  categories, and fingerprint-reputation/cross-sensor views.
+
 ### Added — Fingerprint reputation + cross-sensor correlation (web UI)
 - New **fingerprints** tab (`/fingerprints`, `/api/fingerprints`): an index
   of every JA3 / JA4 / JA4H / JA3S / HASSH / HASSH-server fingerprint seen

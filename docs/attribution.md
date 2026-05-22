@@ -147,10 +147,20 @@ Cheap, already-captured signals (no extra round-trips) classify the tool:
   feroxbuster, ffuf, dirsearch, wfuzz, katana, …), and **credential
   brute-forcers** (hydra, medusa, ncrack, patator, …).
 - **Vulnerability scanners specifically** are classed by `IsVulnScanner`
-  (≈31 products): Nessus / Tenable, OpenVAS / Greenbone, Qualys, Nexpose /
-  InsightVM / Rapid7, Acunetix, Netsparker / Invicti, AppScan, Nikto,
-  Nuclei, Arachni, w3af, skipfish, Wapiti, OWASP ZAP, Burp, Vega, WPScan,
-  sqlmap, commix, XSStrike, dalfox, jaeles, Metasploit, whatweb, …
+  (≈31 products): Nessus / Tenable, OpenVAS / Greenbone / GVM, Qualys,
+  Nexpose / InsightVM / Rapid7, Acunetix, Netsparker / Invicti, AppScan,
+  Nikto, Nuclei, Arachni, w3af, skipfish, Wapiti, OWASP ZAP, Burp, Vega,
+  WPScan, sqlmap, commix, XSStrike, dalfox, jaeles, Metasploit, whatweb, …
+- **C2 / red-team frameworks** (`IsC2`): Cobalt Strike, Mythic, Empire,
+  Covenant, Sliver, Havoc, Brute Ratel, Core Impact, plus webshell managers
+  (AntSword, Behinder, Godzilla) → `c2-framework` anomaly (T1071.001 / T1219).
+- **Headless-browser automation** (`IsHeadless`): Selenium, Puppeteer,
+  Playwright, headless Chrome, PhantomJS → `headless-browser` (T1595).
+- Every identification gets a coarse **`Category`** (`c2` > `vuln-scanner`
+  > `headless` > `tool`) and a **confidence** (`tool_confidence` 0-100,
+  banded high/medium/low — a self-identifying UA / in-clear SSH banner /
+  JA3 hash is *high*; a tool-specific request path or a missing/non-browser
+  UA is *medium*; a weak browser-header heuristic is *low*).
 
 When an HTTP request matches a vuln-scanner the handler raises a
 `vulnerability-scanner` anomaly (ATT&CK T1595.002 / T1190); any identified
@@ -166,10 +176,12 @@ service-probe matches, and connect-scan shape → ATT&CK T1595 + T1046.
 ### 4c. Packet-capture scan detection (`internal/sniffer`, Linux AF_PACKET)
 
 Stealth + volume TCP scans observed on the wire that never establish a
-session: `sniffer:tcp_syn_scan` / `tcp_null_scan` / `tcp_fin_scan` /
-`tcp_xmas_scan` / `tcp_ack_scan`, `sniffer:ip_fragmented`,
-`sniffer:arp_scan` → T1046 / T1595.001. (Also feeds passive OS
-fingerprinting, see §5.)
+session: `sniffer:tcp_syn_scan` (`-sS`), `tcp_null_scan` (`-sN`),
+`tcp_fin_scan` (`-sF`), `tcp_xmas_scan` (`-sX`), `tcp_ack_scan`
+(`-sA`; `-sW` Window scan shares the ACK probe on the wire),
+`tcp_maimon_scan` (`-sM`, FIN+ACK, volume-gated), plus
+`sniffer:ip_fragmented` (`-f`) and `sniffer:arp_scan` → T1046 / T1595.001.
+(Also feeds passive OS fingerprinting, see §5.)
 
 ### 4d. Correlator aggregates (`internal/correlate`)
 
@@ -194,7 +206,8 @@ anomaly, → T1595 reconnaissance) when: a tool signature matched, **or** no
 `User-Agent` was sent, **or** the UA isn't browser-shaped, **or** a
 browser-like UA arrived without the `Accept` / `Accept-Language` /
 `Accept-Encoding` set a real browser sends. The `Verdict` carries `Tools`,
-`Automation`, `Scanner` and a human-readable `Reason`.
+`Automation`, `Scanner`, `Category`, a `Confidence` (see §4a), and a
+human-readable `Reason`.
 
 ### Cryptographic / protocol fingerprints (`internal/fingerprint`)
 
@@ -212,6 +225,29 @@ learned per source by the device registry (see
 [usage.md](usage.md#archetypes)) and pair with the **passive OS guess**
 (`os_guess` from the observed IPv4 TTL) for a richer actor profile.
 
+What each encodes (so you can see which "client fingerprint" signals are
+already covered): **JA3** = TLS version + cipher list + extension list +
+curves + EC point formats (i.e. cipher *and* extension **ordering**);
+**JA4** = TLS version + ALPN + cipher/extension *counts* + sorted hashes +
+signature algorithms (ALPN, extension set, padding-extension presence);
+**JA4H** = HTTP method + version + **header ordering** + cookie presence +
+Accept-Language; **HASSH** = the SSH `KEXINIT` **algorithm/KEX/cipher/MAC**
+ordering. SNI is captured separately (`meta.sni`).
+
+### Fingerprint reputation + cross-sensor correlation (web UI)
+
+The web UI **fingerprints** tab pivots from a fingerprint value to its
+reputation: `/fingerprints` ranks every JA3 / JA4 / JA4H / JA3S / HASSH by
+event volume (with distinct-IP and distinct-sensor counts + first/last
+seen), and `/fingerprints/<kind>/<value>` is a per-fingerprint dossier —
+first/last seen, distinct source IPs, and breakdowns over **sensors (fleet
+correlation)**, top source IPs, **countries**, **ASNs**, protocols,
+destination ports (service-named), **attack types** (rules), tools, and
+**captured malware** artifact kinds. The same data is at
+`/api/fingerprints[/<kind>/<value>]`. This is the cross-sensor /
+fleet-correlation view: one client stack recurring across many sources,
+ASNs, or sensors is a strong campaign signal.
+
 ### SSH / TLS client identification
 
 `toolfp.IdentifySSH(client-id)` maps an SSH identification string
@@ -221,6 +257,34 @@ learned per source by the device registry (see
 
 **Inspect it:** `tarpit-honeypot identify --ssh SSH-2.0-libssh2_1.9.0` /
 `--ja3 <md5>`.
+
+### Coverage & limitations
+
+What client-fingerprinting signals are observable from a **passive,
+low-interaction, CGO-free, no-JavaScript** sensor that deliberately does
+*not* complete handshakes it doesn't have to:
+
+| Signal | Status | How |
+|---|---|---|
+| TLS cipher / extension **ordering** | ✅ | JA3 |
+| TLS ALPN, extension set, padding extension | ✅ | JA4 |
+| TLS SNI | ✅ | `meta.sni` |
+| Server-side TLS shape | ✅ | JA3S |
+| SSH KEX / cipher / MAC / compression algorithms + ordering | ✅ | HASSH |
+| HTTP header **ordering** + cookies | ✅ | JA4H |
+| Passive OS guess (TTL) | ✅ | `os_guess` |
+| Scan timing template (`-T0`..`-T5`) | ✅ | scananalysis cadence |
+| TCP/IP **window / options** (full p0f) | ◑ partial | TTL only; per-SYN options aren't joined to the flow |
+| SSH **auth methods / PTY** request | ✗ infeasible | the sensor drops after `KEXINIT`; no key exchange is carried |
+| HTTP/2 **SETTINGS / pseudo-header** order | ✗ infeasible | no HTTP/2 server (HTTP/1.1 bait only) |
+| Browser **canvas / WebGL / fonts / timezone / navigation timing** | ✗ infeasible | requires executing JavaScript in a real browser; the honeypot serves no live JS and the UI is no-JS by design |
+| nmap **idle / zombie scan** (`-sI`) | ✗ infeasible | by design the attacker's IP never appears on the wire — only the zombie's |
+
+"Infeasible" here means *would require turning the honeypot into a
+higher-interaction / scriptable target*, which conflicts with the threat
+model (it must remain a safe target, never a reflection/amplification
+primitive or a real browser). The ✅ rows already fingerprint the same
+underlying tool/stack the infeasible rows would, via JA3/JA4/JA4H/HASSH.
 
 ---
 

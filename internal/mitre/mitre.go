@@ -85,12 +85,13 @@ var exactRules = map[string]Tag{
 	"sniffer:arp_reply_unsolicited": {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
 	// Packet-capture scan-detection layer: stealth + volume TCP scans
 	// observed on the wire that never establish a session.
-	"sniffer:tcp_syn_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
-	"sniffer:tcp_null_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
-	"sniffer:tcp_fin_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
-	"sniffer:tcp_xmas_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
-	"sniffer:tcp_ack_scan":  {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
-	"sniffer:ip_fragmented": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"sniffer:tcp_syn_scan":    {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_null_scan":   {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_fin_scan":    {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_xmas_scan":   {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_ack_scan":    {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:tcp_maimon_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"sniffer:ip_fragmented":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
 	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.
