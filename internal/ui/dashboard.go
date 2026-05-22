@@ -94,7 +94,11 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 	}
 	out := make([]barRow, 0, len(items))
 	for _, it := range items {
-		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Href: hrefPrefix + it.k})
+		href := ""
+		if hrefPrefix != "" {
+			href = hrefPrefix + it.k
+		}
+		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Href: href})
 	}
 	return out
 }

@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — Fingerprint reputation + cross-sensor correlation (web UI)
+- New **fingerprints** tab (`/fingerprints`, `/api/fingerprints`): an index
+  of every JA3 / JA4 / JA4H / JA3S / HASSH / HASSH-server fingerprint seen
+  in the last 30 days, ranked by event volume with distinct-IP and
+  distinct-sensor counts and first/last-seen.
+- Per-fingerprint **reputation report** (`/fingerprints/<kind>/<value>`,
+  `/api/fingerprints/<kind>/<value>`): first/last seen, distinct source
+  IPs, and CSS bar-chart breakdowns (no JavaScript) over sensors (fleet
+  correlation), top source IPs, countries, ASNs, protocols, destination
+  ports (service-named), attack types (rules), tools/scanners, and captured
+  malware-artifact kinds. Attacker-profile fingerprints now link to it.
+- `store` gained a `Fingerprints` index query (one GROUP BY pass per kind,
+  UNION'd) and a fingerprint `Filter` (`FPKind`/`FPValue`) on `Query`. The
+  kind is validated against a fixed allowlist mapped to JSON paths, so only
+  the fingerprint value is ever bound as a SQL parameter (an unknown kind
+  matches nothing) — `json_extract` over `meta_json`.
+
 ### Added — Fingerprint / tool-identification confidence scoring
 - `toolfp` now scores every identification with a `Confidence` (0-100,
   banded high/medium/low by `ConfidenceLabel`): a self-identifying

@@ -55,7 +55,7 @@ td.bnum { width: 10%; text-align: right; color: #555; }
 .sparkbar { flex: 1 1 0; background: #6b8fb5; min-height: 1px; }
 </style>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }}</p></body></html>{{ end }}
@@ -214,8 +214,9 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .Fingerprints }}<h2>fingerprints</h2><table>
-{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
-</table>{{ end }}
+{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a></td></tr>{{ end }}
+</table>
+<p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
 
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<span class="tag">{{ . }}</span>{{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
@@ -247,6 +248,53 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <td><a href="/events/{{ .ID }}">details</a></td>
 </tr>{{ end }}
 </table>
+{{ template "foot" . }}{{ end }}
+
+{{ define "fingerprints" }}{{ template "head" . }}
+<h1>fingerprint reputation</h1>
+<p class="note">Network fingerprints (JA3 / JA4 / JA4H / JA3S / HASSH) seen in the
+last {{ .Window }}, ranked by event volume. A fingerprint identifies the
+client TLS/SSH stack, so the same value recurring across many source IPs,
+ASNs, or sensors is a strong tool / campaign signal. JSON at
+<a href="/api/fingerprints">/api/fingerprints</a>.</p>
+{{ if not .Rows }}<p class="note">No fingerprints recorded yet. They appear once a
+client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
+{{ else }}
+<table>
+<tr><th>kind</th><th>fingerprint</th><th>events</th><th>distinct IPs</th><th>sensors</th><th>first seen</th><th>last seen</th></tr>
+{{ range .Rows }}<tr>
+  <td>{{ .Kind }}</td>
+  <td><a href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Value }}</a></td>
+  <td>{{ .Count }}</td>
+  <td>{{ .IPs }}</td>
+  <td>{{ .Sensors }}</td>
+  <td>{{ fmtTime .FirstSeen }}</td>
+  <td>{{ fmtTime .LastSeen }}</td>
+</tr>{{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "fingerprint" }}{{ template "head" . }}
+<h1>fingerprint — {{ .Kind }}</h1>
+<div class="kv">{{ .Value }}</div>
+<div class="depl">
+  {{ .Count }} event(s){{ if .Partial }}+{{ end }} ·
+  {{ .IPs }} distinct source IP(s) ·
+  {{ len .Sensors }} sensor(s)
+</div>
+<p class="note">first seen {{ fmtTime .FirstSeen }} · last seen {{ fmtTime .LastSeen }} ·
+  <a href="/api/fingerprints/{{ .Kind }}/{{ .Value }}">JSON</a></p>
+
+{{ if .Sensors }}<h2>sensors (fleet correlation)</h2>{{ template "bars" .Sensors }}{{ end }}
+{{ if .TopIPs }}<h2>top source IPs</h2>{{ template "bars" .TopIPs }}{{ end }}
+{{ if .Countries }}<h2>countries</h2>{{ template "bars" .Countries }}{{ end }}
+{{ if .ASNs }}<h2>ASNs</h2>{{ template "bars" .ASNs }}{{ end }}
+{{ if .Protocols }}<h2>protocols</h2>{{ template "bars" .Protocols }}{{ end }}
+{{ if .Ports }}<h2>destination ports</h2>{{ template "bars" .Ports }}{{ end }}
+{{ if .Rules }}<h2>attack types (rules)</h2>{{ template "bars" .Rules }}{{ end }}
+{{ if .Tools }}<h2>tools / scanners</h2>{{ template "bars" .Tools }}{{ end }}
+{{ if .Malware }}<h2>captured malware artifacts</h2>{{ template "bars" .Malware }}{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "config" }}{{ template "head" . }}
@@ -425,7 +473,8 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <ul>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
 <li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
-<li><a href="/profiles">profiles</a> — per-source-IP attacker dossiers (threat score, tools/scanners, fingerprints, credentials tried, ATT&amp;CK, targeted services), compiled over time.</li>
+<li><a href="/profiles">profiles</a> — per-source-IP attacker dossiers (synthesized assessment + threat score, tools/scanners with identification confidence, fingerprints, credentials tried, ATT&amp;CK, targeted services), compiled over time.</li>
+<li><a href="/fingerprints">fingerprints</a> — JA3 / JA4 / JA4H / JA3S / HASSH reputation: pivot from a client TLS/SSH stack to every source IP, ASN, country, protocol, port, attack type, captured malware, and <em>which sensors in the fleet</em> observed it (cross-sensor correlation).</li>
 <li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>

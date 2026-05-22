@@ -145,9 +145,14 @@ type Filter struct {
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
-	Text   string
-	Limit  int
-	Offset int
+	Text string
+	// FPKind / FPValue restrict to events carrying a given network
+	// fingerprint (FPKind is one of the allowlisted kinds — ja3, ja4, …).
+	// An unknown FPKind matches nothing.
+	FPKind  string
+	FPValue string
+	Limit   int
+	Offset  int
 }
 
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
@@ -180,6 +185,16 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		like := "%" + f.Text + "%"
 		q += " AND (rule_id LIKE ? OR banner_sent LIKE ? OR meta_json LIKE ?)"
 		args = append(args, like, like, like)
+	}
+	if f.FPValue != "" {
+		// The path is taken from the fixed allowlist map (never user input);
+		// the value is bound as a parameter. An unknown kind matches nothing.
+		if path := fingerprintPath(f.FPKind); path != "" {
+			q += " AND json_extract(meta_json, '" + path + "') = ?"
+			args = append(args, f.FPValue)
+		} else {
+			q += " AND 0=1"
+		}
 	}
 	q += " ORDER BY time DESC"
 	if f.Limit > 0 {
