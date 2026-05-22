@@ -233,7 +233,13 @@ var anomalyTags = map[string]Tag{
 	// Nexpose / Acunetix / Nikto / Nuclei / sqlmap …) — active vuln
 	// scanning (recon) that probes for exploitable public-facing apps.
 	"vulnerability-scanner": {Techniques: []string{"T1595.002", "T1190"}, Tactics: []string{"reconnaissance", "initial-access"}},
-	"modbus-write-attempt":  {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// A recognized C2 / red-team framework beacon (Cobalt Strike, Mythic,
+	// Empire, Covenant, Sliver, Metasploit, …) — application-layer C2.
+	"c2-framework": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
+	// A headless-browser automation driver (Selenium / Puppeteer / headless
+	// Chrome / PhantomJS) — scripted recon, not a real user.
+	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"modbus-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// SNMP SetRequest = write the device's running config (ACL / interface
 	// / config-copy-to-tftp). Manipulation on enterprise gear, modify-
 	// parameter on the ICS archetypes that also speak SNMP.

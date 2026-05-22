@@ -63,3 +63,26 @@ func TestIsVulnScanner(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyC2AndHeadless(t *testing.T) {
+	for _, ua := range []string{"CobaltStrike", "Mythic", "Empire", "Covenant", "Sliver"} {
+		v := IdentifyHTTP(HTTPSignals{UserAgent: ua, Path: "/"})
+		if v.Category != "c2" {
+			t.Errorf("%q: category=%q want c2 (tools=%v)", ua, v.Category, v.Tools)
+		}
+	}
+	for _, ua := range []string{"HeadlessChrome/120", "puppeteer", "PhantomJS"} {
+		v := IdentifyHTTP(HTTPSignals{UserAgent: ua, Path: "/"})
+		if v.Category != "headless" {
+			t.Errorf("%q: category=%q want headless", ua, v.Category)
+		}
+	}
+	// A vuln scanner still classifies as vuln-scanner.
+	if IdentifyHTTP(HTTPSignals{UserAgent: "Nessus", Path: "/"}).Category != "vuln-scanner" {
+		t.Error("Nessus should classify as vuln-scanner")
+	}
+	// A browser is uncategorized.
+	if IdentifyHTTP(HTTPSignals{UserAgent: "Mozilla/5.0 Chrome/120 Safari/537", Path: "/", HeaderKeys: []string{"accept", "accept-language", "accept-encoding"}}).Category != "" {
+		t.Error("a browser must not be categorized as a tool")
+	}
+}

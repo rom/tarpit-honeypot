@@ -8,6 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — C2 / red-team / headless-browser tool detection
+- toolfp now recognizes C2 / red-team frameworks (Cobalt Strike, Mythic,
+  Empire, Covenant, Sliver, Havoc, Brute Ratel, Metasploit, Core Impact)
+  and headless-browser automation (Selenium, Puppeteer, Playwright, headless
+  Chrome, PhantomJS), and classifies every identified tool into a coarse
+  `Category` (`c2` / `vuln-scanner` / `headless` / `tool`). The http handler
+  raises a `c2-framework` (ATT&CK T1071.001 / T1219) or `headless-browser`
+  (T1595) anomaly accordingly. (SYN/connect port scanners like naabu /
+  rustscan / nmap are caught by the packet-capture + scan-analysis layers.)
+
 ### Added — CLI: flags in any position + `reset-db`
 - Global/subcommand flags may now appear **before or after** the
   subcommand: `tarpit-honeypot -c cfg.yaml run` and

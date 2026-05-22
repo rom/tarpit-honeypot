@@ -132,6 +132,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if verdict.Scanner {
 		flagAnomaly(&res, "vulnerability-scanner")
 	}
+	switch verdict.Category {
+	case "c2":
+		flagAnomaly(&res, "c2-framework")
+	case "headless":
+		flagAnomaly(&res, "headless-browser")
+	}
 	res.Meta["automation"] = verdict.Automation
 	res.Meta["automation_reason"] = verdict.Reason
 	if verdict.Automation {

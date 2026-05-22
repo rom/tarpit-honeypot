@@ -32,8 +32,55 @@ type Verdict struct {
 	// InsightVM, Acunetix, Nikto, Nuclei, sqlmap, …). Lets a SOC pivot on
 	// "a vuln scan hit us" regardless of which product.
 	Scanner bool
+	// Category is the coarse class of the strongest identified tool, for
+	// SOC pivots: "c2" (Cobalt Strike / Mythic / Empire / Covenant / …),
+	// "vuln-scanner", "headless" (Selenium / Puppeteer / headless Chrome),
+	// "tool" (any other identified tool), or "" (unidentified).
+	Category string
 	// Reason is a short human-readable explanation of the verdict.
 	Reason string
+}
+
+// c2Frameworks are command-and-control / red-team frameworks — the highest-
+// severity identification class.
+var c2Frameworks = map[string]bool{
+	"cobaltstrike": true, "metasploit": true, "mythic": true, "empire": true,
+	"covenant": true, "sliver": true, "havoc": true, "bruteratel": true,
+	"core-impact": true, "antsword": true, "behinder": true, "godzilla": true,
+}
+
+// headlessBrowsers are automation drivers masquerading as browsers.
+var headlessBrowsers = map[string]bool{
+	"headless-chrome": true, "phantomjs": true, "puppeteer": true,
+	"playwright": true, "selenium": true,
+}
+
+// IsC2 / IsHeadless classify an identified tool name.
+func IsC2(tool string) bool       { return c2Frameworks[tool] }
+func IsHeadless(tool string) bool { return headlessBrowsers[tool] }
+
+// classify returns the coarse Category for a set of identified tools,
+// preferring the most severe class.
+func classify(tools []string) string {
+	for _, t := range tools {
+		if IsC2(t) {
+			return "c2"
+		}
+	}
+	for _, t := range tools {
+		if IsVulnScanner(t) {
+			return "vuln-scanner"
+		}
+	}
+	for _, t := range tools {
+		if IsHeadless(t) {
+			return "headless"
+		}
+	}
+	if len(tools) > 0 {
+		return "tool"
+	}
+	return ""
 }
 
 // vulnScanners is the set of identified tool names that are vulnerability
@@ -133,13 +180,32 @@ var uaSignatures = map[string]string{
 	"patator":    "patator",
 	"brutespray": "brutespray",
 
-	// Exploitation frameworks / webshell managers.
-	"metasploit":   "metasploit",
-	"core impact":  "core-impact",
-	"cobaltstrike": "cobaltstrike",
-	"antsword":     "antsword",
-	"behinder":     "behinder",
-	"godzilla":     "godzilla",
+	// Exploitation / C2 / red-team frameworks + webshell managers.
+	"metasploit":        "metasploit",
+	"core impact":       "core-impact",
+	"cobaltstrike":      "cobaltstrike",
+	"cobalt strike":     "cobaltstrike",
+	"mythic":            "mythic",
+	"empire":            "empire",
+	"powershell-empire": "empire",
+	"covenant":          "covenant",
+	"sliver":            "sliver",
+	"havoc":             "havoc",
+	"brute ratel":       "bruteratel",
+	"antsword":          "antsword",
+	"behinder":          "behinder",
+	"godzilla":          "godzilla",
+
+	// Headless-browser / automation drivers (recon, scraping, exploit
+	// delivery) — never a real interactive user. (naabu/rustscan are
+	// classified below with the other scanners.)
+	"headlesschrome": "headless-chrome",
+	"headless":       "headless-chrome",
+	"phantomjs":      "phantomjs",
+	"puppeteer":      "puppeteer",
+	"playwright":     "playwright",
+	"selenium":       "selenium",
+	"webdriver":      "selenium",
 
 	// Generic HTTP libraries / scripting runtimes (lower confidence — many
 	// legit clients, but never an interactive browser).
@@ -392,6 +458,7 @@ func IdentifyHTTP(s HTTPSignals) Verdict {
 			break
 		}
 	}
+	v.Category = classify(v.Tools)
 
 	// Automation heuristic.
 	switch {
