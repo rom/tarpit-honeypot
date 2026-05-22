@@ -36,10 +36,248 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **~150 static mappings** (≈23 exact rules + ≈85 handler tags + ≈42
-anomaly tags), plus the prefix fallbacks. ICS detections use the ATT&CK for
-ICS matrix (T0814 / T0836 / T0888 / T0846 / …) alongside the Enterprise
-matrix so a SIEM expecting one ID space stays consistent.
+There are **199 static mappings** (31 exact rules + 91 handler tags + 77
+anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
+for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
+the Enterprise matrix so a SIEM expecting one ID space stays consistent.
+
+The complete catalog follows (generated from `list-techniques --json`; the
+`Augment` step *unions* the anomaly rows into the rule/handler base).
+
+### 1a. Exact rule IDs (31) — `correlate:*`, `sniffer:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+
+| rule_id | ATT&CK technique(s) | Tactic(s) |
+|---|---|---|
+| `correlate:beacon` | T1071 | command-and-control |
+| `correlate:brute_force` | T1110 | credential-access |
+| `correlate:credential_reuse` | T1110.004 | credential-access |
+| `correlate:dns_enumeration` | T1590.002, T1568.002 | reconnaissance, command-and-control |
+| `correlate:icmp_sweep` | T1018 | discovery |
+| `correlate:password_spray` | T1110.003 | credential-access |
+| `correlate:path_enumeration` | T1595.003, T1083 | reconnaissance, discovery |
+| `correlate:port_scan` | T1046 | discovery |
+| `correlate:slow_scan` | T1046 | discovery |
+| `device:changed` | T1557.002 | credential-access |
+| `device:new` | T1018 | discovery |
+| `dnscanary:amplifier` | T1498.002 | impact |
+| `dnscanary:hit` | T1071.004 | command-and-control |
+| `honeynet:profinet_dcp_identify` | T0846 | discovery |
+| `malware:capture` | T1105, T1027 | command-and-control, defense-evasion |
+| `protocol_anomaly` | T1071 | command-and-control |
+| `scananalysis:profile` | T1595, T1046 | reconnaissance, discovery |
+| `sniffer:arp_reply_unsolicited` | T1557.002 | credential-access |
+| `sniffer:arp_scan` | T1018 | discovery |
+| `sniffer:encapsulation` | T1572, T1095 | command-and-control |
+| `sniffer:goose` | T0888 | discovery |
+| `sniffer:icmp_tunnel` | T1095, T1572 | command-and-control |
+| `sniffer:ip_fragmented` | T1046 | discovery |
+| `sniffer:stp_bpdu` | T1557 | credential-access, collection |
+| `sniffer:tcp_ack_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:tcp_fin_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:tcp_maimon_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:tcp_null_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:tcp_syn_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:tcp_xmas_scan` | T1046, T1595.001 | discovery, reconnaissance |
+| `sniffer:udp_scan` | T1046, T1595.001 | discovery, reconnaissance |
+
+### 1b. Handler tags (91) — applied to every `listener:*` event by its handler
+
+| handler | ATT&CK technique(s) | Tactic(s) |
+|---|---|---|
+| `ads` | T0888, T0814 | discovery, impact |
+| `amqp` | T1110.001 | credential-access |
+| `anydesk` | T1219 | command-and-control |
+| `atg` | T0888 | discovery |
+| `bacnet` | T0814 | impact |
+| `chargen` | T1046, T1498.002 | discovery, impact |
+| `citrix_gateway` | T1190 | initial-access |
+| `citrix_ica` | T1133 | initial-access |
+| `cldap` | T1018 | discovery |
+| `coap` | T1046 | discovery |
+| `codesys` | T0814 | impact |
+| `daytime` | T1046 | discovery |
+| `dcerpc` | T1021.003 | lateral-movement |
+| `dhcp` | T1046 | discovery |
+| `discard` | T1046 | discovery |
+| `dnp3` | T0814, T0888 | impact, discovery |
+| `dns` | T1046 | discovery |
+| `dockerapi` | T1190, T1610 | initial-access, execution |
+| `echo` | T1046 | discovery |
+| `elasticsearch` | T1213, T1046 | collection, discovery |
+| `esxi` | T1190 | initial-access |
+| `ethernetip` | T0814, T0888 | impact, discovery |
+| `fins` | T0814 | impact |
+| `fortinet` | T1190 | initial-access |
+| `fox` | T0888 | discovery |
+| `ftp` | T1110.001, T1078 | credential-access, initial-access |
+| `ftp_files` | T1110.001, T1078 | credential-access, initial-access |
+| `ge_srtp` | T0888 | discovery |
+| `hartip` | T0888 | discovery |
+| `horizon` | T1190 | initial-access |
+| `http` | T1190, T1083 | initial-access, discovery |
+| `https` | T1190, T1083 | initial-access, discovery |
+| `idrac` | T1190, T1078 | initial-access |
+| `iec104` | T0814 | impact |
+| `ilo` | T1190, T1078 | initial-access |
+| `imap` | T1110.001, T1114 | credential-access, collection |
+| `intel_amt` | T1190, T1078 | initial-access |
+| `ipmi` | T1190 | initial-access |
+| `ipp` | T1190 | initial-access |
+| `kerberos` | T1558 | credential-access |
+| `knx` | T1046 | discovery |
+| `ldap` | T1110.003, T1087.002 | credential-access, discovery |
+| `llmnr` | T1557.001 | credential-access |
+| `lpd` | T1190 | initial-access |
+| `mdns` | T1557.001, T1046 | credential-access, discovery |
+| `melsec` | T0814 | impact |
+| `memcached` | T1213, T1046 | collection, discovery |
+| `mms` | T0888, T0814 | discovery, impact |
+| `modbus` | T0814, T0888 | impact, discovery |
+| `mongodb` | T1213, T1110.001 | collection, credential-access |
+| `moxa_mgmt` | T1190 | initial-access |
+| `mqtt` | T1110.001, T0830 | credential-access, lateral-movement |
+| `mssql` | T1110.001 | credential-access |
+| `mysql` | T1110.001 | credential-access |
+| `nbns` | T1557.001 | credential-access |
+| `ntp` | T1498.002 | impact |
+| `nx` | T1021 | lateral-movement |
+| `opcua` | T0814 | impact |
+| `openvpn` | T1133 | initial-access |
+| `oracle_tns` | T1110.001 | credential-access |
+| `pcworx` | T0888 | discovery |
+| `pjl` | T1190 | initial-access |
+| `pop3` | T1110.001, T1114 | credential-access, collection |
+| `postgres` | T1110.001 | credential-access |
+| `pulse` | T1190 | initial-access |
+| `qotd` | T1046 | discovery |
+| `radius` | T1110.001 | credential-access |
+| `rdp` | T1021.001, T1110.001 | lateral-movement, credential-access |
+| `redfish` | T1190, T1078 | initial-access |
+| `redis` | T1110.001 | credential-access |
+| `rlogin` | T1110.001, T1021 | credential-access, lateral-movement |
+| `rtsp` | T1190 | initial-access |
+| `s7` | T0814, T0888 | impact, discovery |
+| `s7comm_plus` | T0814, T0888 | impact, discovery |
+| `sip` | T1046 | discovery |
+| `smb` | T1021.002, T1135 | lateral-movement, discovery |
+| `smtp_recv` | T1110.003, T1114 | credential-access, collection |
+| `snmp` | T1018, T1110.001 | discovery, credential-access |
+| `ssdp` | T1018 | discovery |
+| `ssh` | T1110.001, T1078 | credential-access, initial-access |
+| `syslog_tcp` | T1078 | initial-access |
+| `syslog_udp` | T1078 | initial-access |
+| `teamviewer` | T1219 | command-and-control |
+| `telnet` | T1110.001, T1078 | credential-access, initial-access |
+| `tftp` | T1190 | initial-access |
+| `time` | T1046 | discovery |
+| `vmware_authd` | T1110.001, T1078 | credential-access, initial-access |
+| `vnc` | T1021.005, T1110.001 | lateral-movement, credential-access |
+| `winrm` | T1021.006 | lateral-movement |
+| `x11` | T1021, T1056.001 | lateral-movement, collection |
+| `xmpp` | T1071.001 | command-and-control |
+
+Handlers without an explicit tag (`raw`, `auto`, `scripted`, `lua`) fall back
+to the `listener:*` default **T1190 / initial-access**.
+
+### 1c. Anomaly tags (77) — fine-grained markers `Augment` unions onto the base
+
+| anomaly marker | ATT&CK technique(s) | Tactic(s) |
+|---|---|---|
+| `c2-framework` | T1071.001, T1219 | command-and-control |
+| `dcerpc-dcsync` | T1003.006 | credential-access |
+| `dcerpc-lsarpc-enum` | T1087.002, T1482 | discovery |
+| `dcerpc-netlogon-access` | T1210 | lateral-movement |
+| `dcerpc-samr-enum` | T1087.002 | discovery |
+| `dcerpc-srvsvc-enum` | T1135 | discovery |
+| `dcerpc-svcctl-access` | T1021.002, T1543.003 | lateral-movement, persistence |
+| `dcerpc-winreg-access` | T1012, T1003.002 | discovery, credential-access |
+| `default-credential-attempt` | T1078.001 | credential-access |
+| `dns-dga-suspected` | T1568.002 | command-and-control |
+| `dns-over-https` | T1572, T1071.004 | command-and-control |
+| `dns-over-tls` | T1572, T1071.004 | command-and-control |
+| `dns-zone-transfer` | T1590.002, T1018 | reconnaissance, discovery |
+| `dnscrypt-probe` | T1572, T1071.004 | command-and-control |
+| `elasticsearch-data-access` | T1213 | collection |
+| `elasticsearch-recon` | T1046 | discovery |
+| `ftp-bounce-scan` | T1090, T1046 | command-and-control, discovery |
+| `ftp-delete-attempt` | T1485 | impact |
+| `ftp-download-attempt` | T1020 | exfiltration |
+| `ftp-listing` | T1083 | discovery |
+| `ftp-site-command` | T1059 | execution |
+| `ftp-upload-attempt` | T1105 | command-and-control |
+| `headless-browser` | T1595 | reconnaissance |
+| `http-duplicate-host` | T1190 | initial-access |
+| `http-impossible-browser` | T1036 | defense-evasion |
+| `http-malformed-header` | T1190 | initial-access |
+| `kerberos-rc4-requested` | T1558.003 | credential-access |
+| `kerberos-tgs-request` | T1558.003 | credential-access |
+| `ldap-asrep-roast-recon` | T1558.004, T1087.002 | credential-access, discovery |
+| `ldap-enumeration` | T1087.002 | discovery |
+| `ldap-spn-enumeration` | T1558.003, T1087.002 | credential-access, discovery |
+| `mdns-service-enumeration` | T1046 | discovery |
+| `memcached-flush` | T1485 | impact |
+| `memcached-stats-probe` | T1046 | discovery |
+| `memcached-write-attempt` | T1565.001 | impact |
+| `modbus-write-attempt` | T0836, T0831 | impact |
+| `mongodb-data-access` | T1213 | collection |
+| `printer-auth-attempt` | T1110.001 | credential-access |
+| `printer-config-set` | T1565 | impact |
+| `printer-credential-access` | T1552 | credential-access |
+| `printer-cups-rce` | T1190 | initial-access |
+| `printer-filesystem-format` | T1485 | impact |
+| `printer-firmware-upload` | T1601 | defense-evasion |
+| `printer-ipp-cmd-injection` | T1059 | execution |
+| `printer-language-switch` | T1059 | execution |
+| `printer-lpd-injection` | T1059 | execution |
+| `printer-lpd-overflow` | T1190 | initial-access |
+| `printer-message-injection` | T1491 | impact |
+| `printer-password-set` | T1098 | persistence |
+| `printer-path-traversal` | T1083 | discovery |
+| `printer-postscript-exitserver` | T1059 | execution |
+| `printer-postscript-fileop` | T1059, T1005 | execution, collection |
+| `printer-postscript-setparams` | T1059 | execution |
+| `printer-rdymsg-set` | T1491 | impact |
+| `printer-servicemode` | T1078 | privilege-escalation |
+| `printer-zpl-config` | T1565 | impact |
+| `redfish-auth-attempt` | T1078 | credential-access |
+| `rlogin-attempt` | T1021 | lateral-movement |
+| `smtp-open-relay-probe` | T1071.003 | command-and-control |
+| `smtp-user-enumeration` | T1087 | discovery |
+| `snmp-set-attempt` | T1565.001, T0836 | impact |
+| `tftp-config-read` | T1602.001 | collection |
+| `tftp-write-attempt` | T1105 | command-and-control |
+| `unknown-protocol` | T1046 | discovery |
+| `vmware-authd-login` | T1110.001 | credential-access |
+| `vulnerability-scanner` | T1595.002, T1190 | reconnaissance, initial-access |
+| `webapp:cmdi` | T1059 | execution |
+| `webapp:deserialize` | T1190 | initial-access |
+| `webapp:lfi` | T1190, T1083 | initial-access, discovery |
+| `webapp:log4shell` | T1190 | initial-access |
+| `webapp:rfi_ssrf` | T1190 | initial-access |
+| `webapp:secret-file-probe` | T1083 | discovery |
+| `webapp:sqli` | T1190 | initial-access |
+| `webapp:ssti` | T1059 | execution |
+| `webapp:xss` | T1059.007 | execution |
+| `webapp:xxe` | T1190 | initial-access |
+| `x11-connection-attempt` | T1021 | lateral-movement |
+
+### 1d. Prefix fallbacks
+
+When no exact/handler/anomaly entry matches, these by-class rules apply:
+
+| Pattern | ATT&CK | Tactic |
+|---|---|---|
+| `uri-*` (suspicious-URI probes) | T1595.003, T1083 | reconnaissance, discovery |
+| `ics-*` | T0888 | discovery |
+| `printer-*` (generic) | T1083 | discovery |
+| `tool:*` (identified scanner) | T1595 | reconnaissance |
+| `automation-client` | T1595 | reconnaissance |
+| `cve:<id>` | from the CVE record (else T1190) | initial-access |
+| `canary:url:*` | T1083, T1190 | discovery, initial-access |
+| `canary:dns:*` | T1071.004 | command-and-control |
+| `canary:*` | T1083 | discovery |
+| `listener:*` (unknown handler) | T1190 | initial-access |
+| `storyline:*` | (none — aggregation, techniques carried in meta) | — |
 
 **Tactic ordering.** `mitre.Tactics()` returns the 14 Enterprise tactics in
 reconnaissance→impact order and `TacticRank()` scores them; the storyline
@@ -108,15 +346,69 @@ correlation. **EPSS** is a relative exploit-likelihood prioritization hint.
 > hint, and re-baseline it from the live dataset if you depend on it
 > operationally. CWE and CPE are stable.
 
-Worked examples:
+**Full catalog (55 records — 40 live-detectable, 15 advisory-only).** `Det`
+= a `cve:<id>` event fires on a matched exploit signature in a request;
+advisory-only records (`—`) drive vulnerable-version emulation but have no
+high-signal wire signature (ICS / auth-bypass / protocol CVEs). `Product` is
+the CPE 2.3 vendor:product. EPSS is the ~2026-05 snapshot.
 
-| CVE | Name | CWE | CPE (product) | EPSS |
-|---|---|---|---|---|
-| CVE-2021-44228 | Log4Shell | CWE-502, CWE-917 | apache:log4j | 0.94 |
-| CVE-2014-6271 | Shellshock | CWE-78 | gnu:bash | 0.94 |
-| CVE-2019-19781 | Citrix ADC | CWE-22 | citrix:application_delivery_controller | 0.97 |
-| CVE-2020-1472 | ZeroLogon | CWE-330 | microsoft:windows_server | 0.96 |
-| CVE-2024-47177 | CUPS foomatic-rip | CWE-78 | openprinting:cups-filters | 0.40 |
+| CVE | Name | CVSS | Service | CWE | Product (CPE) | EPSS | ATT&CK | Det |
+|---|---|---|---|---|---|---|---|:-:|
+| CVE-2014-6271 | Shellshock | 9.8 | `http` | CWE-78 | gnu:bash | 0.94 | T1190 | yes |
+| CVE-2017-0144 | EternalBlue | 8.1 | `smb` | CWE-20, CWE-787 | microsoft:windows | 0.94 | T1210 | yes |
+| CVE-2017-10271 | WebLogic WLS-WSAT | 7.5 | `http` | CWE-502 | oracle:weblogic_server | 0.97 | T1190 | yes |
+| CVE-2017-12615 | Tomcat PUT JSP | 8.1 | `http` | CWE-434 | apache:tomcat | 0.97 | T1190 | yes |
+| CVE-2017-5638 | Struts2 OGNL | 10 | `http` | CWE-1336, CWE-20 | apache:struts | 0.97 | T1190 | yes |
+| CVE-2017-7921 | Hikvision auth bypass | 10 | `http` | CWE-287 | hikvision:firmware | 0.90 | T1190 | yes |
+| CVE-2017-9841 | PHPUnit eval-stdin | 9.8 | `http` | CWE-94 | phpunit:phpunit | 0.97 | T1190 | yes |
+| CVE-2018-0171 | Cisco Smart Install | 9.8 | `cisco` | CWE-787 | cisco:ios | 0.90 | T1190 | — |
+| CVE-2018-10561 | GPON router auth bypass | 9.8 | `http` | CWE-287 | dasannetworks:gpon_firmware | 0.97 | T1190 | yes |
+| CVE-2018-13379 | FortiOS path traversal | 9.8 | `fortinet` | CWE-22 | fortinet:fortios | 0.97 | T1190 | yes |
+| CVE-2018-15473 | OpenSSH user enumeration | 5.3 | `ssh` | CWE-200 | openbsd:openssh | 0.55 | T1087 | — |
+| CVE-2018-7600 | Drupalgeddon2 | 9.8 | `http` | CWE-20, CWE-94 | drupal:drupal | 0.97 | T1190 | yes |
+| CVE-2019-0708 | BlueKeep | 9.8 | `rdp` | CWE-416 | microsoft:windows | 0.95 | T1210 | yes |
+| CVE-2019-11510 | Pulse Secure file read | 10 | `pulse` | CWE-22 | pulsesecure:pulse_connect_secure | 0.97 | T1190 | yes |
+| CVE-2019-18935 | Telerik UI deserialization | 9.8 | `http` | CWE-502 | telerik:ui_for_asp.net_ajax | 0.95 | T1190 | yes |
+| CVE-2019-19781 | Citrix ADC path traversal | 9.8 | `citrix_gateway` | CWE-22 | citrix:application_delivery_controller | 0.97 | T1190 | yes |
+| CVE-2020-1472 | ZeroLogon | 10 | `dcerpc` | CWE-330 | microsoft:windows_server | 0.96 | T1210 | — |
+| CVE-2020-14882 | WebLogic console RCE | 9.8 | `http` | CWE-22, CWE-94 | oracle:weblogic_server | 0.97 | T1190 | yes |
+| CVE-2020-15782 | Siemens S7-1200/1500 memory bypass | 8.1 | `s7` | CWE-787, CWE-119 | siemens:simatic_s7-1200_firmware | 0.20 | T1190 | — |
+| CVE-2020-5902 | F5 BIG-IP TMUI | 9.8 | `http` | CWE-22, CWE-94 | f5:big-ip | 0.97 | T1190 | yes |
+| CVE-2021-21972 | vSphere Client RCE | 9.8 | `http` | CWE-22, CWE-434 | vmware:vcenter_server | 0.97 | T1190 | yes |
+| CVE-2021-22681 | Rockwell Studio 5000 key | 10 | `ethernetip` | CWE-321 | rockwellautomation:studio_5000 | 0.10 | T1190 | — |
+| CVE-2021-26084 | Confluence OGNL injection | 9.8 | `http` | CWE-917 | atlassian:confluence_server | 0.97 | T1190 | yes |
+| CVE-2021-26855 | ProxyLogon | 9.8 | `http` | CWE-918 | microsoft:exchange_server | 0.97 | T1190 | yes |
+| CVE-2021-3129 | Laravel Ignition RCE | 9.8 | `http` | CWE-502 | laravel:laravel | 0.96 | T1190 | yes |
+| CVE-2021-34473 | ProxyShell | 9.8 | `http` | CWE-918 | microsoft:exchange_server | 0.97 | T1190 | yes |
+| CVE-2021-34527 | PrintNightmare | 8.8 | `dcerpc` | CWE-269, CWE-22 | microsoft:windows | 0.94 | T1210 | — |
+| CVE-2021-40539 | ManageEngine ADSelfService | 9.8 | `http` | CWE-287 | zohocorp:manageengine_adselfservice_plus | 0.95 | T1190 | yes |
+| CVE-2021-41773 | Apache path traversal | 9.8 | `http` | CWE-22 | apache:http_server | 0.97 | T1190 | yes |
+| CVE-2021-42013 | Apache 2.4.50 traversal | 9.8 | `http` | CWE-22 | apache:http_server | 0.97 | T1190 | yes |
+| CVE-2021-42278 | noPac (sAMAccountName spoofing) | 8.8 | `kerberos` | CWE-269 | microsoft:windows_server | 0.55 | T1558 | — |
+| CVE-2021-44228 | Log4Shell | 10 | `http` | CWE-502, CWE-917, CWE-20 | apache:log4j | 0.94 | T1190 | yes |
+| CVE-2022-1026 | Kyocera data disclosure | 7.1 | `http` | CWE-200, CWE-22 | kyocera:command_center_rx | 0.20 | T1190 | — |
+| CVE-2022-1161 | Rockwell Logix hidden code | 10 | `ethernetip` | CWE-94 | rockwellautomation:logix | 0.10 | T1190 | — |
+| CVE-2022-1388 | F5 iControl REST | 9.8 | `http` | CWE-306 | f5:big-ip | 0.97 | T1190 | yes |
+| CVE-2022-22965 | Spring4Shell | 9.8 | `http` | CWE-94, CWE-20 | vmware:spring_framework | 0.97 | T1190 | yes |
+| CVE-2022-26134 | Confluence OGNL | 9.8 | `http` | CWE-917 | atlassian:confluence_server | 0.97 | T1190 | yes |
+| CVE-2022-30190 | Follina MSDT | 7.8 | `http` | CWE-94 | microsoft:windows | 0.97 | T1190 | yes |
+| CVE-2022-40684 | FortiOS auth bypass | 9.8 | `fortinet` | CWE-288 | fortinet:fortios | 0.97 | T1190 | yes |
+| CVE-2023-20198 | Cisco IOS-XE Web UI | 10 | `http` | CWE-420, CWE-269 | cisco:ios_xe | 0.94 | T1190 | yes |
+| CVE-2023-22518 | Confluence setup-restore | 9.8 | `http` | CWE-863 | atlassian:confluence_data_center | 0.94 | T1190 | yes |
+| CVE-2023-26067 | Lexmark privilege escalation | 8 | `http` | CWE-20 | lexmark:firmware | 0.50 | T1190 | — |
+| CVE-2023-34362 | MOVEit Transfer SQLi | 9.8 | `http` | CWE-89 | progress:moveit_transfer | 0.94 | T1190 | yes |
+| CVE-2023-3595 | Rockwell 1756-EN2T RCE | 9.8 | `ethernetip` | CWE-787 | rockwellautomation:1756-en2t | 0.20 | T1190 | — |
+| CVE-2023-42793 | JetBrains TeamCity auth bypass | 9.8 | `http` | CWE-288 | jetbrains:teamcity | 0.97 | T1190 | yes |
+| CVE-2023-46604 | ActiveMQ OpenWire RCE | 10 | `http` | CWE-502 | apache:activemq | 0.97 | T1190 | yes |
+| CVE-2024-12510 | Xerox VersaLink pass-back | 6.7 | `http` | CWE-522 | xerox:versalink_firmware | 0.10 | T1212 | — |
+| CVE-2024-21887 | Ivanti Connect Secure | 9.1 | `pulse` | CWE-78 | ivanti:connect_secure | 0.97 | T1190 | yes |
+| CVE-2024-3273 | D-Link NAS RCE | 9.8 | `http` | CWE-78, CWE-77 | dlink:dns-320_firmware | 0.94 | T1190 | yes |
+| CVE-2024-3400 | PAN-OS GlobalProtect | 10 | `https` | CWE-78 | paloaltonetworks:pan-os | 0.95 | T1190 | yes |
+| CVE-2024-4577 | PHP-CGI argument injection | 9.8 | `http` | CWE-78, CWE-88 | php:php | 0.95 | T1190 | yes |
+| CVE-2024-47076 | libcupsfilters no-validate | 8.6 | `ipp` | CWE-20 | openprinting:libcupsfilters | 0.30 | T1190 | — |
+| CVE-2024-47175 | libppd PPD injection | 8.6 | `ipp` | CWE-20 | openprinting:libppd | 0.30 | T1190 | — |
+| CVE-2024-47176 | cups-browsed SSRF/bind | 8.6 | `ipp` | CWE-20, CWE-918 | openprinting:cups-browsed | 0.30 | T1190 | — |
+| CVE-2024-47177 | CUPS foomatic-rip RCE | 9 | `ipp` | CWE-78 | openprinting:cups-filters | 0.40 | T1190 | yes |
 
 **On the wire.** When a handler recognizes an exploit signature it emits a
 `cve:<id>` event whose meta carries `cve_name`, `cvss`, `cwe`, `cpe`,
@@ -133,7 +425,16 @@ table shows CVSS + EPSS + a `DET` column for live-detectable vs advisory;
 
 The sensor recognizes scanners at four independent layers; any one firing
 is high-signal, and together they cover application-, host- and
-network-layer scanning.
+network-layer scanning. Each layer is independent — a stealth SYN scan that
+never reaches a handler is still caught on the wire (4c), and a tool that
+spoofs its User-Agent is still caught by behaviour (4b/4d).
+
+| Layer | Package | Sees | Needs | Misses |
+|---|---|---|---|---|
+| **4a** Tool fingerprinting | `internal/toolfp` | UA / path / SSH-id / JA3 of a connection that reaches a handler | one connection | a generic client with no tell |
+| **4b** nmap profiling | `internal/scananalysis` | timing + flag shape across a source's connection stream | several connections | single-connect probes |
+| **4c** Packet-capture | `internal/sniffer` (Linux) | raw L3/L4 — stealth/closed-port scans, tunnels (IPv4+IPv6) | `CAP_NET_RAW` | nothing on the wire (decoy/stego) |
+| **4d** Correlator | `internal/correlate` | windowed per-source aggregation across all events | events in a window | a single isolated event |
 
 ### 4a. Tool fingerprinting (`internal/toolfp`)
 
@@ -211,14 +512,34 @@ harvesting) catch only the blatant cases.
 
 ### 4d. Correlator aggregates (`internal/correlate`)
 
-Windowed per-source aggregation turns many small probes into one verdict:
-`correlate:port_scan`, `correlate:slow_scan`, `correlate:icmp_sweep`,
-`correlate:path_enumeration` (HTTP dirbusting), `correlate:dns_enumeration`
-(subdomain brute / NXDOMAIN flood) (discovery), `correlate:brute_force` /
-`password_spray` / `credential_reuse` (credential-access), and
-`correlate:beacon` (regularly-spaced C2 call-home — command-and-control).
+Windowed per-source aggregation turns many small probes into one verdict.
+Each detector keys on the source IP, ages its state out per its window, and
+de-duplicates emission so a sustained scan produces one alert, not a flood.
+State checkpoints to `<data_dir>/correlate-state.json` so long-window
+detection (slow-scan, beacon) survives a restart / hot reload. Defaults
+shown are the `applyDefaults` values — all are tunable under `correlate:`
+(see [`config.md`](config.md#correlate)).
 
-**Inspect it:** `tarpit-honeypot identify --ua/--path/--ssh/--ja3 …`.
+| Rule | Fires when (default) | Window | Sev | ATT&CK |
+|---|---|---|---|---|
+| `correlate:port_scan` | 5 distinct dest ports from one source | 30s | high | T1046 |
+| `correlate:slow_scan` | 10 distinct ports (per-port aged) | 24h | high | T1046 |
+| `correlate:icmp_sweep` | 10 distinct dest IPs pinged | 60s | medium | T1018 |
+| `correlate:brute_force` | 10 attempts to one port (creds captured) | 60s | high | T1110 |
+| `correlate:password_spray` | 5 distinct usernames | 300s | high | T1110.003 |
+| `correlate:credential_reuse` | same cred pair from 3 distinct source IPs | 1h | high | T1110.004 |
+| `correlate:path_enumeration` | 50 distinct HTTP URL paths | 60s | high | T1595.003, T1083 |
+| `correlate:dns_enumeration` | 50 distinct DNS names | 60s | medium | T1590.002, T1568.002 |
+| `correlate:beacon` | ≥6 contacts, jitter ≤20%, mean interval ≥1s | 1h | high | T1071 |
+
+Alongside these, the **storyline correlator** (`storyline:multi_stage`,
+§6 / README) joins a source's events across ATT&CK *tactics* — it keys on
+the tactic tags every event already carries (not on ports), so it fires for
+a directed multi-stage intrusion even when no single windowed detector trips.
+
+**Inspect it:** `tarpit-honeypot identify --ua/--path/--ssh/--ja3 …` tests a
+single signal against 4a; `list-events --rule correlate:<name>` pulls the
+aggregates.
 
 ---
 

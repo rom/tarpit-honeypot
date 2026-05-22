@@ -83,15 +83,6 @@ var exactRules = map[string]Tag{
 	"correlate:dns_enumeration": {Techniques: []string{"T1590.002", "T1568.002"}, Tactics: []string{"reconnaissance", "command-and-control"}},
 	// Regularly-spaced call-home contact = C2 beaconing.
 	"correlate:beacon": {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
-	// A probe to an unmodelled port on the generic catch-all = service scan.
-	"unknown-protocol": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	// Post-auth FTP abuse.
-	"ftp-upload-attempt":   {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
-	"ftp-download-attempt": {Techniques: []string{"T1020"}, Tactics: []string{"exfiltration"}},
-	"ftp-site-command":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
-	"ftp-bounce-scan":      {Techniques: []string{"T1090", "T1046"}, Tactics: []string{"command-and-control", "discovery"}},
-	"ftp-delete-attempt":   {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
-	"ftp-listing":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	// A profiled scan (nmap timing/scope/probe fingerprint) is active
 	// scanning of the network from the adversary's recon phase, and
 	// network-service discovery from ours.
@@ -262,6 +253,15 @@ var handlerTags = map[string]Tag{
 // the rule_id/handler base tag.
 var anomalyTags = map[string]Tag{
 	"default-credential-attempt": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
+	// A probe to an unmodelled port caught by the generic `auto` catch-all.
+	"unknown-protocol": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Post-auth FTP abuse (uploads / downloads / SITE EXEC / FTP-bounce / …).
+	"ftp-upload-attempt":   {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"ftp-download-attempt": {Techniques: []string{"T1020"}, Tactics: []string{"exfiltration"}},
+	"ftp-site-command":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"ftp-bounce-scan":      {Techniques: []string{"T1090", "T1046"}, Tactics: []string{"command-and-control", "discovery"}},
+	"ftp-delete-attempt":   {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"ftp-listing":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	// A recognized vulnerability scanner (Nessus / OpenVAS / Qualys /
 	// Nexpose / Acunetix / Nikto / Nuclei / sqlmap …) — active vuln
 	// scanning (recon) that probes for exploitable public-facing apps.
