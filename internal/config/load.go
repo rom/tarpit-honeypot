@@ -34,6 +34,7 @@ var tcpHandlers = map[string]bool{
 	"memcached": true, "pop3": true, "imap": true,
 	"mongodb": true, "elasticsearch": true,
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
+	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -501,6 +502,28 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.Webshell.Severity == "" {
 			c.Correlate.Webshell.Severity = "critical"
+		}
+	}
+	if c.Correlate.ThreatIntelBurst.Enabled {
+		if c.Correlate.ThreatIntelBurst.Events == 0 {
+			c.Correlate.ThreatIntelBurst.Events = 4
+		}
+		if c.Correlate.ThreatIntelBurst.Window == 0 {
+			c.Correlate.ThreatIntelBurst.Window = 10 * time.Minute
+		}
+		if c.Correlate.ThreatIntelBurst.Severity == "" {
+			c.Correlate.ThreatIntelBurst.Severity = "high"
+		}
+	}
+	if c.Correlate.GeoVelocity.Enabled {
+		if c.Correlate.GeoVelocity.DistinctCountries == 0 {
+			c.Correlate.GeoVelocity.DistinctCountries = 2
+		}
+		if c.Correlate.GeoVelocity.Window == 0 {
+			c.Correlate.GeoVelocity.Window = time.Hour
+		}
+		if c.Correlate.GeoVelocity.Severity == "" {
+			c.Correlate.GeoVelocity.Severity = "high"
 		}
 	}
 	for i := range c.Channels {

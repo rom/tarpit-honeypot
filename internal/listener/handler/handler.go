@@ -261,6 +261,16 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &dockerapi{}, nil
 	case "melsec":
 		return &melsec{}, nil
+	case "jdwp":
+		return &jdwp{}, nil
+	case "rmi":
+		return &rmiRegistry{}, nil
+	case "git":
+		return &gitDaemon{}, nil
+	case "zookeeper":
+		return &zookeeper{}, nil
+	case "kafka":
+		return &kafkaBroker{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":

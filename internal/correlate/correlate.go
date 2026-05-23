@@ -44,6 +44,8 @@ type Correlator struct {
 	dataAccSev   event.Severity
 	malwareSev   event.Severity
 	webshellSev  event.Severity
+	tiBurstSev   event.Severity
+	geoVelSev    event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -72,6 +74,8 @@ type Correlator struct {
 	dataAcc   map[string]*countState // key: source IP (data-access event count)
 	malware   map[string]*countState // key: source IP (malware:capture count)
 	webshell  map[string]*countState // key: source IP (webshell event count)
+	tiBurst   map[string]*countState // key: source IP (threat-listed/Tor event count)
+	geoVel    map[string]*setState   // key: credential pair (distinct countries)
 	emitted   map[string]time.Time   // dedup of aggregate emission
 	lastGC    time.Time              // last idle-state sweep
 }
@@ -169,6 +173,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		dataAcc:   map[string]*countState{},
 		malware:   map[string]*countState{},
 		webshell:  map[string]*countState{},
+		tiBurst:   map[string]*countState{},
+		geoVel:    map[string]*setState{},
 		emitted:   map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -255,6 +261,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.DataAccess.Enabled, cfg.DataAccess.Severity, &c.dataAccSev},
 		{cfg.MalwareCampaign.Enabled, cfg.MalwareCampaign.Severity, &c.malwareSev},
 		{cfg.Webshell.Enabled, cfg.Webshell.Severity, &c.webshellSev},
+		{cfg.ThreatIntelBurst.Enabled, cfg.ThreatIntelBurst.Severity, &c.tiBurstSev},
+		{cfg.GeoVelocity.Enabled, cfg.GeoVelocity.Severity, &c.geoVelSev},
 	} {
 		if !sp.on {
 			continue
@@ -292,6 +300,13 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 			out = append(out, extra)
 		}
 	}
+	// Threat-intel burst keys on source reputation (enrichment), not a
+	// port, so it runs before the port guard to catch every flagged event.
+	if c.cfg.ThreatIntelBurst.Enabled {
+		if extra := c.checkThreatIntelBurst(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
 
 	// Everything past here keys on a destination port.
 	if ev.Dest.Port == 0 {
@@ -320,6 +335,11 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.CredReuse.Enabled {
 		if extra := c.checkReuse(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.GeoVelocity.Enabled {
+		if extra := c.checkGeoVelocity(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1080,6 +1100,12 @@ func (c *Correlator) gc(now time.Time) {
 			delete(c.exfil, ip)
 		}
 	}
+	for ip, st := range c.tiBurst {
+		if now.Sub(st.since) > effWindow(c.cfg.ThreatIntelBurst.Window, 10*time.Minute) {
+			delete(c.tiBurst, ip)
+		}
+	}
+	gcSet(c.geoVel, now, effWindow(c.cfg.GeoVelocity.Window, time.Hour))
 	for key, t := range c.emitted {
 		if now.Sub(t) > 24*time.Hour {
 			delete(c.emitted, key)
