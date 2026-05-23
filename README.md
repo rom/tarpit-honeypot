@@ -3,14 +3,18 @@
 A single static Go binary that runs a deception **and** detection sensor:
 protocol-shaped honeypots on configurable ports, OS-archetype-aware
 banners and CLI emulation, interactive SSH/Telnet engagement that captures
-every command an attacker types, MITRE ATT&CK-tagged events, cross-
-protocol attack-storyline correlation, protocol-anomaly detection, file
-/ URL / DNS canary tokens, port-scan / brute-force / slow-scan
-detectors, per-event pcap capture, hostile-input hardening + output
-sanitization, and pluggable outbound alerting.
+every command an attacker types, a **userspace TCP stack** that lets
+honeynet decoys complete fingerprint-shaped handshakes (and capture
+malformed/illegal packets) with no socket bound per host, MITRE ATT&CK /
+D3FEND-tagged events, cross-protocol attack-storyline correlation,
+protocol-anomaly + **fuzzing / DoS** detection, two dozen in-sensor
+correlators, GeoIP / ASN / threat-intel / Tor / MAC-vendor enrichment,
+file / URL / DNS canary tokens, per-event pcap capture, hostile-input
+hardening + output sanitization, and pluggable outbound alerting.
 
-CGO-free. Static builds for `linux/amd64`, `linux/arm64`, `linux/armv7`,
-`linux/armv6`, `darwin/amd64`, `darwin/arm64`.
+CGO-free. Static builds for `linux/{amd64,arm64,armv7,armv6}`,
+`darwin/{amd64,arm64}`, and `windows/{amd64,arm64}` (the portable core;
+the Linux-kernel features — AF_PACKET, TUN, fanotify — no-op elsewhere).
 
 See [`docs/design.md`](docs/design.md) for the architecture + design
 rationale covering the current implementation.
@@ -23,18 +27,18 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **96 built-in TCP/UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **82 TCP + 28 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
-  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `fins`, `coap`, `knx`, `dhcp`, `dns`
+  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `isakmp`, `dhcp`, `dns`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **99 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **102 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -253,6 +257,18 @@ rationale covering the current implementation.
   vs Windows vs network/embedded, with an estimated hop count). Inspect with `list-devices`,
   the **devices** web-UI tab, or `/api/devices`; optional UI delete /
   whitelist actions (see below).
+- **Event enrichment**: every event's source IP is decorated with
+  **GeoIP city + ASN** (MaxMind GeoLite2), **reverse DNS**, **threat-intel**
+  list membership (FireHOL / blocklist.de / custom), a **Tor-exit** flag, a
+  **net-class** tag (bogon / hosting), and — for L2-learned hosts —
+  **MAC-vendor** (IEEE OUI) lookup. All enrichment inputs are best-effort
+  (a missing file warns and is skipped, so the sensor always starts) and
+  **hot-reloaded on `SIGHUP`**. Two helper scripts ship the data:
+  `scripts/fetch-enrichment.sh` downloads + packages every database (GeoIP,
+  Tor exits, threat lists, OUI) on an internet-connected box, and
+  `scripts/install-enrichment.sh` places them at the sensor's configured
+  paths (discovered via `list-paths`) and signals the live re-read — a
+  cron/systemd-friendly fetch→transfer→install workflow.
 - **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host
   advertises itself in `lldpctl` / Cisco `show cdp neighbors` output
   with archetype-shaped MAC, hostname, system description, and
@@ -328,6 +344,19 @@ rationale covering the current implementation.
     accumulates instead of resetting.
   - **ICMP sweep**: one source pinging N distinct virtual host IPs
     within a window (`correlate:icmp_sweep`, T1018).
+  - **~20 more opt-in correlators** (`correlate:`): host-sweep,
+    service-sweep, password-spray, credential-reuse, path-enumeration
+    (dirbusting), DNS-enumeration, user-agent rotation, exploit-chain
+    (distinct CVEs), protocol-violation (fuzzing markers), session-flood,
+    C2 **beacon** (jitter analysis), exfil, fingerprint-reuse, canary-trip,
+    ICS-control, lateral-movement, OT-recon, data-access, malware-campaign,
+    and webshell — each windowed, severity-configurable, and ATT&CK-tagged.
+- **Fuzzing & DoS detection + classification** (`internal/fuzzdos`):
+  classifies abusive traffic into protocol fuzzing vs typed
+  denial-of-service — flood, malformed-storm, amplification, and
+  **slowloris** (slow / partial-request) — from per-source rate, payload
+  entropy, and the protocol-violation markers handlers raise, tagged
+  `attack:fuzzing` (T1595.002) / `attack:dos` (T1499).
 - **Scan analysis / nmap fingerprinting** (`scananalysis:profile`):
   per-source profiling of an active scan. Estimates the nmap timing
   template (`-T0` paranoid .. `-T5` insane) from inter-connection
@@ -345,20 +374,30 @@ rationale covering the current implementation.
   event.
 - **Embedded SQLite event index** for queryable history, with WAL-mode
   concurrent reads.
-- **Read-only web UI** on loopback: a 24h **dashboard** (events-per-hour
-  trend + severity / top-rule / top-source CSS bar charts, no JS) + a
-  filterable, **sortable** event table with **full-text search** over
-  rule / banner / captured meta + per-event detail with a **hex view** of
-  the captured payload, plus **profiles** (per-source-IP attacker dossiers
-  — see below),
+- **Read-only web UI** on loopback: a 24h **dashboard** opening with a
+  **traffic-counters strip** (events by transport + L2 frame counts —
+  received / ARP / IPv4 / IPv6 / TCP / UDP / ICMP — when the sniffer is up)
+  over events-per-hour trend + severity / top-rule / top-source CSS bar
+  charts (no JS) + a filterable, **sortable** event table with
+  **case-insensitive full-text search** over rule / banner / captured meta,
+  and per-event detail with a **hex view** of the captured payload. Tabs:
+  **profiles** (per-source-IP attacker dossiers — see below),
   **devices** (learned IPv4/IPv6/MAC inventory + per-device services/ports
   and learned attributes, filterable; opt-in delete/whitelist actions via
-  `ui.allow_device_actions` + an auth token — the only write endpoint,
-  off by default),
-  **topology** (the virtual networks / hosts / services presented),
-  **alerting** (how events forward), **errors** (operational/health
-  events — listener or canary-watcher stopped, accept-cap overflow),
-  **config**, and **docs** tabs. JSON at `/api/events`, `/api/summary`,
+  `ui.allow_device_actions` + an auth token — the only write endpoint, off
+  by default),
+  **topology** (the virtual networks / hosts / services, with a live
+  activity overlay), **timeline** (chronological attack view),
+  **attack** (the ATT&CK matrix the sensor covers, with **clickable,
+  described technique chips** showing which sources triggered each),
+  **correlation** (correlator aggregates + storylines), **tunnels**
+  (covert-transport / encapsulation detections), **search** (advanced
+  query), **health** (build version/commit, by-transport 24h breakdown,
+  per-name panic counts, L2 frame counters), **alerting** (how events
+  forward), **errors** (operational/health events), **config** (with a
+  **"files in use"** table — config, enrichment, and database paths +
+  present/MISSING), and **docs**. ATT&CK chips and a credential-source
+  column run throughout. JSON at `/api/events`, `/api/summary`,
   `/api/profiles`, `/api/profiles/<ip>`, `/api/config`, `/api/topology`,
   `/api/devices`, `/api/alerting`. Non-loopback binds refused without TLS +
   auth token.
@@ -405,8 +444,9 @@ rationale covering the current implementation.
   on Linux; `setuid` / `setgid` on macOS. Refuses uid 0. Pairs with
   `systemd AmbientCapabilities` (Linux) or launchd's port-binding
   helpers (macOS) for privileged port binding.
-- **Static cross-compile** for `linux/{amd64,arm64,armv7,armv6}` and
-  `darwin/{amd64,arm64}`. CGO never required.
+- **Static cross-compile** for `linux/{amd64,arm64,armv7,armv6}`,
+  `darwin/{amd64,arm64}`, and `windows/{amd64,arm64}` (the portable core;
+  Linux-kernel subsystems return clean errors elsewhere). CGO never required.
 
 ### Platform support
 
@@ -439,7 +479,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
-- [`docs/archetypes.md`](docs/archetypes.md) — the full 99-archetype catalog: every device's services/protocols and the CVEs it emulates.
+- [`docs/archetypes.md`](docs/archetypes.md) — the full 102-archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
@@ -449,22 +489,80 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 ## Status
 
-**Unreleased — protocol breadth, detection depth, covert transports.** Seven
-new handlers: `pop3`, `imap`, `memcached`, `mongodb`, `elasticsearch` (TCP),
-`mdns` (UDP), and a generic `auto` catch-all (TCP+UDP) that captures and
-fingerprints any unmodelled protocol (`unknown-protocol`). Encrypted-DNS
-recognition (DoH / DoT / DNSCrypt) and DGA-domain detection. New behavioral
-detection: HTTP (malformed/duplicate-Host headers, impossible-browser UA),
-Active Directory / Kerberos abuse (Kerberoasting, SPN / LDAP enumeration,
-AS-REP-roast recon), sensitive MSRPC interface binds (SAMR / LSARPC / DRSUAPI
-DCSync / svcctl PsExec), and deeper post-auth FTP session capture. Three new
-correlators: `path_enumeration`, `dns_enumeration`, and C2 `beacon` (jitter
-analysis). Covert-transport detection: ICMP/ICMPv6 tunnels, 6in4 / 6to4 /
-ISATAP / DS-Lite / GRE-over-IPv6 sub-typing, QUIC fingerprinting, and a new
-**IPv6 capture socket** so scans / tunnels / fragmentation are detected over
-both IP versions. The `scripted` framework gained stateful stages, more match
-modes, and credential capture. See the [CHANGELOG](CHANGELOG.md) for the full
-list.
+**Unreleased — userspace TCP stack, fuzzing/DoS, enrichment pipeline, UI
+overhaul.** A large post-v2.0 sprint. Highlights below; the
+[CHANGELOG](CHANGELOG.md) has the full per-commit detail.
+
+- **Userspace TCP stack.** The honeynet TUN adapter now embeds a userspace
+  TCP/IPv4 engine (`internal/tcpstack`): a SYN to a virtual host's
+  configured service port completes a handshake with a **SYN-ACK shaped to
+  the host archetype's stack fingerprint** (TTL, window, MSS, window-scale,
+  SACK, timestamps, and the exact option order / NOP padding `nmap -O` and
+  p0f read), then answers a single request/response from the archetype
+  banners — no `ip addr add` per host. Unbound ports RST; **malformed /
+  illegal / stealth-scan packets** (NULL/FIN/Xmas, SYN-FIN, bad checksums,
+  lying data-offsets, fragments, LAND) are captured as `honeynet:tcp_*`
+  events instead of answered, with ATT&CK + a new TCP/IP-stack CVE class.
+  See [`docs/tcp-stack.md`](docs/tcp-stack.md).
+- **Protocol breadth.** New handlers `pop3`, `imap`, `memcached`,
+  `mongodb`, `elasticsearch`, `rsync`, `gopher`, `socks`, `bgp` (TCP) and
+  `mdns`, `isakmp`, `netbios_dgram` (UDP), plus a generic `auto` catch-all
+  (TCP+UDP) that captures + fingerprints any unmodelled protocol
+  (`unknown-protocol`) — now **82 TCP + 28 UDP handlers**. Redis /
+  memcached / MongoDB / Elasticsearch and the mail / session / management
+  decoys gained deeper post-auth interaction; the fake-vulnerable web app
+  gained WordPress / phpMyAdmin / Jenkins variants.
+- **Detection depth.** Fuzzing & DoS detection + classification
+  (`internal/fuzzdos`), including **slowloris**. ~15 additional correlators
+  (host/service sweep, password-spray, credential-reuse, path/DNS
+  enumeration, UA rotation, exploit-chain, protocol-violation,
+  session-flood, C2 **beacon**, exfil, fingerprint-reuse, ICS-control,
+  lateral-movement, OT-recon, data-access, malware-campaign, webshell) —
+  about two dozen in all. HTTP request-smuggling / CONNECT-proxy misuse and
+  behavioral HTTP (malformed/duplicate-Host headers, impossible-browser
+  UA), Active Directory / Kerberos abuse (Kerberoasting, SPN/LDAP enum,
+  AS-REP-roast), sensitive MSRPC binds (SAMR / LSARPC / DRSUAPI DCSync /
+  svcctl PsExec), DGA + encrypted-DNS (DoH/DoT/DNSCrypt), and post-auth FTP
+  capture. Covert-transport detection over a new **IPv6 capture socket**:
+  ICMP/ICMPv6 tunnels, 6in4 / 6to4 / ISATAP / DS-Lite / GRE-over-IPv6,
+  QUIC, encapsulation, spanning-tree BPDUs, and nmap Maimon (`-sM`) / UDP
+  (`-sU`) scans. Scan analysis gained tool fingerprinting + scan-geometry;
+  tool/fingerprint identification gained confidence scoring.
+- **CVE catalog.** +40 web/edge/enterprise pre-auth detections, +20 OT/ICS
+  advisories, and the TCP/IP-stack class — **123 records** (66
+  live-detectable), each with CWE / CPE / EPSS. ATT&CK / D3FEND coverage
+  reached **312 mappings** (52 rules + 98 handlers + 162 anomalies).
+- **Enrichment + data pipeline.** Per-event GeoIP / ASN / rDNS joined by
+  **threat-intel** lists, **Tor-exit**, **net-class** (bogon/hosting), and
+  **MAC-vendor (OUI)** tagging — hot-reloaded on `SIGHUP`, best-effort on
+  missing files. A new `list-paths` subcommand + a "files in use" UI panel
+  enumerate every config / enrichment / database path;
+  `scripts/fetch-enrichment.sh` (download + package) and
+  `scripts/install-enrichment.sh` (on-sensor install + live re-read) form a
+  cron/systemd fetch→transfer→install workflow.
+- **Web UI overhaul.** New tabs **timeline**, **attack** (the covered
+  ATT&CK matrix with clickable, described technique chips showing which
+  sources triggered each), **correlation**, **tunnels**, advanced
+  **search**, and **health**; a topology activity overlay and a config
+  infrastructure canvas. The summary opens with a **traffic-counters
+  strip** (events + L2 frames by transport). Case-insensitive search, a
+  credential-source column, JA3/JA4 fingerprint reputation with
+  cross-sensor correlation, synthesized attacker profiles, dest-port
+  service names, and sortable rule tables; JavaScript packaged under a tight
+  CSP.
+- **Identity, archetypes & roles.** 3 PLC archetypes (Schneider M580,
+  Omron NX1P2, Mitsubishi MELSEC) — **102 archetypes**; 7 more archeservice
+  role bundles; FortiOS + vendor-PLC CLI command emulation; 11
+  device-inventory query/analysis methods via `list-devices` + the devices
+  UI.
+- **Platform & ops.** **Windows** cross-compile (amd64 + arm64) joins
+  linux + darwin. Interaction-depth guardrails (`interaction:`) +
+  `list-unavailable-capabilities`, per-channel `enabled` toggle, a
+  `reset-db` subcommand, flags accepted before or after the subcommand, a
+  new `example-FAKEWEB` config (+ refreshed examples), SNMP walkable-MIB
+  with walk rate-limit/tarpit, and a batch of DoS / robustness hardening
+  from a security audit. The `scripted` framework gained stateful stages,
+  more match modes, and credential capture.
 
 **v2.0 — printers/MFD, offline tooling, deeper detection.** A full
 printer / multi-function-device deception + detection suite: the `pjl`
@@ -634,7 +732,7 @@ subcommand.
 
 ```
 make build         # native binary in bin/
-make cross         # all four linux ELF binaries in dist/
+make cross         # all 8 targets in dist/ (linux x4, darwin x2, windows x2)
 make test          # full unit test suite
 ```
 
@@ -675,14 +773,17 @@ open http://127.0.0.1:8088
 tarpit-honeypot run            -c <config>
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
+tarpit-honeypot reset-db       -c <config>     # wipe the SQLite event index (keeps config)
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
+tarpit-honeypot list-paths     -c <config> [--format table|json|tsv] [--category <c>]
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
+tarpit-honeypot list-unavailable-capabilities -c <config>  # platform features not active here
 tarpit-honeypot list-archeservices [<role>]
 tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
@@ -767,7 +868,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 99; see [`docs/archetypes.md`](docs/archetypes.md). |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 102; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -886,7 +987,7 @@ OUI, interactive-shell CLI, TLS posture, and the initial IP TTL so the
 host is internally consistent end to end. `tarpit-honeypot help archetypes`
 prints the live list, `tarpit-honeypot list-archetypes <name>` the full
 fingerprint of one, and [`docs/archetypes.md`](docs/archetypes.md)
-documents all 99 with their services/protocols and emulated CVEs.
+documents all 102 with their services/protocols and emulated CVEs.
 
 | Category | Archetype | Config name(s) | Family | Init TTL | Signature highlights |
 |---|---|---|---|---|---|
@@ -1037,6 +1138,10 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |
 | `ipp` | 631 | IPP / CUPS printer over HTTP. Replies HTTP 200 + `application/ipp` advertising a believable MFP — **identity taken from the bound archetype** (Xerox/Lexmark/Brother/…) so IPP/SNMP/web agree — with a fuller attribute set (uuid, dns-sd-name, document-format-supported, media, toner `marker-levels`). Names the IPP operation and flags printer-admin / job-injection / server-fetch ops (`printer-ipp-admin-op`), the CUPS foomatic-rip RCE primitive (`printer-cups-rce` + `cve:CVE-2024-47177`), and command-injection metacharacters in printer/device attributes (`printer-ipp-cmd-injection`). | — | — |
 | `lpd` | 515 | Line Printer Daemon (RFC 1179). Acknowledges the command (so a client sends its control file), names the command, captures the queue + control metadata, and flags shell-metacharacter injection in any field (`printer-lpd-injection`), overlong fields (`printer-lpd-overflow`), and path traversal. Nothing is queued. | ✓ | — |
+| `rsync` | 873 | rsync daemon protocol. Sends the `@RSYNCD: <ver>` greeting, captures the module the client asks for, returns a believable fake module list on `#list`, and flags module enumeration (`rsync-module-list`) + module access (`rsync-module-access`). | — | — |
+| `gopher` | 70 | Gopher (RFC 1436). Captures the requested selector, replies with a small fake menu, and flags SSRF-shaped selectors used to smuggle other protocols through a Gopher gateway (`gopher-ssrf`). | — | — |
+| `socks` | 1080 | SOCKS4 / SOCKS5 proxy probe. Parses the greeting / connect request, captures the requested target `host:port`, and flags proxy-abuse attempts (`socks-proxy-attempt`) — it never relays. | — | — |
+| `bgp` | 179 | BGP. Parses the OPEN message (version, AS, hold-time, identifier, capabilities), captures it, replies a NOTIFICATION, and flags peering attempts (`bgp-open-attempt`) and bare probes (`bgp-probe`). | — | — |
 
 ### TCP — remote access / out-of-band management
 
@@ -1107,10 +1212,12 @@ handshake where it isn't HTTP.
 | `cldap` | 389 | CLDAP SearchRequest parser. Replies searchResDone; when honeynet topology is available, advertises the configured Domain Controllers in the meta. | — | — |
 | `llmnr` | 5355 | LLMNR query parser. Replies with our local IP as the A-record — classic poisoning catcher for the common Windows lookup-fallback target `wpad`. | — | — |
 | `nbns` | 137 | NetBIOS Name Service query parser. Decodes the encoded NetBIOS name; replies positive name-query response — catches SMB-relay precursors. | — | — |
+| `netbios_dgram` | 138 | NetBIOS Datagram Service. Parses the datagram header, decodes the source/destination NetBIOS names + the SMB mailslot / browser payload, and flags `netbios-datagram` (host enumeration / browser-protocol abuse). Captured, not answered. | — | — |
 | `mdns` | 5353 | Multicast-DNS responder (RFC 6762). Parses the query, flags `mdns-service-enumeration` on DNS-SD service-discovery probes (`_services._dns-sd._udp.local`), and answers with believable PTR/SRV records. | — | — |
 | `fins` | 9600 | Omron FINS UDP frame parser. Answers CPU-data-read (`CJ2M-CPU33`), CPU-status-read (RUN/MONITOR), memory-area-read (with decoded area name + believable PV data), cycle-time-read, clock-read; generic ACK otherwise. | — | — |
 | `coap` | 5683 | RFC 7252 GET parser with bounds-checked option-TLV walker. Extracts `Uri-Path` + token; flags malformed packets. Replies 2.05 Content with a `/.well-known/core` link-format body advertising one fake `/led` resource. | — | — |
 | `knx` | 3671 | KNXnet/IP. Replies to SEARCH_REQUEST (0x0201) with a SEARCH_RESPONSE advertising an "MDT KNX IP Router" device-info DIB + a supported-service-families DIB (CORE, DEV_MGMT, TUNNELLING, ROUTING). DESCRIPTION_REQUEST gets a DESCRIPTION_RESPONSE. CONNECT_REQUEST gets status `0x24` (no more connections) so we look live without opening a tunnel. | — | — |
+| `isakmp` | 500 | IKE / ISAKMP (VPN). Parses the ISAKMP header (initiator/responder cookies, exchange type, first SA proposal), captures it, and flags `ike-probe` — a VPN-endpoint discovery / `ike-scan` sweep. No negotiation is completed. | — | — |
 | `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
 | `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query, **DGA-suspected** domains, and **encrypted-DNS** recognition — DoH / DoT / DNSCrypt probes). | — | ✓ |
 
@@ -1239,6 +1346,14 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   after `min_hits` samples the inter-arrival jitter (stddev/mean) is below
   `max_jitter_pct` over a mean interval ≥ 1s — C2 beaconing. Sub-second
   bursts and irregular timing are excluded. Tagged `T1071`.
+- **More opt-in correlators** (`correlate:`, off unless enabled):
+  `host_sweep` / `service_sweep` (horizontal / vertical sweeps),
+  `ua_rotation` (one source cycling User-Agents), `exploit_chain` (N
+  distinct CVEs), `protocol_violation` (N distinct fuzzing / protocol-misuse
+  markers), `session_flood`, `exfil` (bulk outbound), `fingerprint_reuse`,
+  `canary_trip`, `ics_control`, `lateral_movement`, `ot_recon`,
+  `data_access`, `malware_campaign`, and `webshell` — each windowed,
+  severity-configurable, and ATT&CK-tagged (~two dozen correlators in all).
 - `scananalysis:profile` — per-source nmap fingerprint once a source
   crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
   `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),
@@ -1319,6 +1434,15 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   payload (ptunnel / icmpsh / Loki). Tagged `T1095` / `T1572`.
 - `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+): a
   root-bridge / topology-manipulation tell. Tagged `T1557`.
+- `honeynet:tcp_connect` / `tcp_request` / `tcp_malformed` / `tcp_land` —
+  the honeynet **userspace TCP stack** (`internal/tcpstack`) over a routed
+  TUN: a completed handshake to a virtual host's open port, a captured
+  request, a malformed / illegal / stealth-scan packet (NULL/FIN/Xmas,
+  SYN-FIN, bad checksums, fragments — markers in `anomalies`), or a LAND
+  attack (source == destination, `meta.cve = CVE-1999-0016`). Tagged
+  `T1046` / `T1595.001` / `T1499`. See [`docs/tcp-stack.md`](docs/tcp-stack.md).
+- `honeynet:profinet_dcp_identify` — a PROFINET-DCP Identify reached a
+  virtual industrial host (ICS recon). Tagged `T0846`.
 - `listener:*:tarpit_start|tarpit_end|tarpit_drop` — tarpit lifecycle.
 
 ## Outbound channels
@@ -1375,7 +1499,10 @@ and an interactive **correlation graph**.
 
 Endpoints:
 
-- `/` — last-24h summary: total + by severity + top rules + top sources.
+- `/` — last-24h summary: a **traffic-counters strip** (events by transport
+  + L2 frame counts — received / ARP / IPv4 / IPv6 / TCP / UDP / ICMP — when
+  the AF_PACKET sniffer is running) over total + by severity + top rules +
+  top sources.
 - `/events` — filterable table: `?source=`, `?rule=`, `?severity=high`,
   `?since=24h`, `?limit=N`. Click a column header (time / severity / rule
   / source / handler) to sort; click again to reverse (`?sort=&order=`).
@@ -1425,7 +1552,10 @@ Endpoints:
 - `/errors?since=` — operational / health events (listener or
   canary-watcher stopped, listener start error, accept-cap overflow).
 - `/config` — the effective post-defaults config (secrets shown as
-  `*_env` names, never expanded values).
+  `*_env` names, never expanded values), plus a **"files in use"** table —
+  every config / enrichment / GeoIP / database / data-dir path the sensor
+  references, with category, access (r/w), and present/MISSING status (the
+  same data as `list-paths`).
 - `/docs` — built-in reference that reflects the running deployment.
 - `/api/events`, `/api/summary`, `/api/config`, `/api/topology`,
   `/api/hosts`, `/api/alerting` — JSON equivalents.
@@ -1975,11 +2105,16 @@ Sample Prometheus scrape:
   no retransmission, congestion control, or out-of-order reassembly. Deep
   multi-segment protocol interaction still wants a real socket (bind it
   with `ip addr add` / iptables alongside the TUN).
-- **MIB-walkable SNMP topology.** SNMP topology is currently exposed
-  via event meta (`honeynet_neighbors`); a real `ipNetToMediaTable`
-  walk would need GetNext support over the full MIB-2 tree.
+- **OPC-DA (DCOM/MSRPC) full call marshaling.** The `dcerpc` handler
+  recognizes the OPC-DA interface family on bind and advertises the
+  ProgIDs via the endpoint mapper, but the full DCOM `IOPCServer` /
+  `IOPCItemMgt` call sequence (reading actual tag values) is out of scope.
+- **TLS-record-layer CVEs** (Heartbleed-class) and steganographic covert
+  channels are out of scope.
 
-Everything else from the original design is shipped.
+Everything else from the original design is shipped. (The SNMP MIB is now
+fully **walkable** — `snmpwalk` / `snmpbulkwalk` traverse the system group,
+`ifTable`, and a topology-synthesized `ipNetToMediaTable` ARP table.)
 
 ## Getting help / reporting issues
 
