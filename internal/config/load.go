@@ -35,6 +35,7 @@ var tcpHandlers = map[string]bool{
 	"mongodb": true, "elasticsearch": true,
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
+	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -58,7 +59,7 @@ var udpHandlers = map[string]bool{
 	"qotd": true, "chargen": true, "time": true,
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
-	"isakmp": true, "netbios_dgram": true,
+	"isakmp": true, "netbios_dgram": true, "stun": true,
 	"auto": true,
 }
 
@@ -524,6 +525,39 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.GeoVelocity.Severity == "" {
 			c.Correlate.GeoVelocity.Severity = "high"
+		}
+	}
+	if c.Correlate.AmplificationProbe.Enabled {
+		if c.Correlate.AmplificationProbe.DistinctServices == 0 {
+			c.Correlate.AmplificationProbe.DistinctServices = 3
+		}
+		if c.Correlate.AmplificationProbe.Window == 0 {
+			c.Correlate.AmplificationProbe.Window = 5 * time.Minute
+		}
+		if c.Correlate.AmplificationProbe.Severity == "" {
+			c.Correlate.AmplificationProbe.Severity = "high"
+		}
+	}
+	if c.Correlate.DefaultCredSweep.Enabled {
+		if c.Correlate.DefaultCredSweep.DistinctServices == 0 {
+			c.Correlate.DefaultCredSweep.DistinctServices = 3
+		}
+		if c.Correlate.DefaultCredSweep.Window == 0 {
+			c.Correlate.DefaultCredSweep.Window = 5 * time.Minute
+		}
+		if c.Correlate.DefaultCredSweep.Severity == "" {
+			c.Correlate.DefaultCredSweep.Severity = "high"
+		}
+	}
+	if c.Correlate.CVECampaign.Enabled {
+		if c.Correlate.CVECampaign.DistinctSources == 0 {
+			c.Correlate.CVECampaign.DistinctSources = 3
+		}
+		if c.Correlate.CVECampaign.Window == 0 {
+			c.Correlate.CVECampaign.Window = time.Hour
+		}
+		if c.Correlate.CVECampaign.Severity == "" {
+			c.Correlate.CVECampaign.Severity = "critical"
 		}
 	}
 	for i := range c.Channels {

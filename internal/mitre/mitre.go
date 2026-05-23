@@ -136,8 +136,11 @@ var exactRules = map[string]Tag{
 	"correlate:exfil":              {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
 	"correlate:session_flood":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	// Enrichment-driven correlators (internal/correlate/extra3.go).
-	"correlate:threat_intel_burst": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"correlate:geo_velocity":       {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
+	"correlate:threat_intel_burst":  {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"correlate:geo_velocity":        {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
+	"correlate:amplification_probe": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"correlate:default_cred_sweep":  {Techniques: []string{"T1110.001", "T1078.001"}, Tactics: []string{"credential-access"}},
+	"correlate:cve_campaign":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// Fuzzing / DoS classification (internal/fuzzdos). Fuzzing maps to
 	// vulnerability scanning; a typed flood maps to endpoint DoS.
 	"attack:fuzzing": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
@@ -507,6 +510,16 @@ var anomalyTags = map[string]Tag{
 	"git-push-attempt":       {Techniques: []string{"T1195"}, Tactics: []string{"initial-access"}},
 	"zookeeper-fourletter":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"kafka-request":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Round-two data-infra / VPN / RPC decoys (devsvc2.go).
+	"cassandra-probe":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"cassandra-auth-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"nats-connect":           {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"nats-publish":           {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	"rpcbind-query":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"rpcbind-dump":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"rpcbind-getport":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"pptp-probe":             {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"stun-binding":           {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /
