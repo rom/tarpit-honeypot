@@ -1,0 +1,139 @@
+# Data-center server farm — a large, multi-tier honeynet.
+#
+# A deliberately BIG honeynet for testing the tool at scale and for shops
+# that want a dense decoy estate: ~35 virtual servers across an application
+# tier (load balancers, web/app servers, caches, container hosts) and a
+# data + management tier (MySQL/Postgres/MSSQL, Elasticsearch/MongoDB/
+# memcached, NAS, ESXi hypervisors, iDRAC/iLO lights-out, a bastion). A real
+# server farm has east-west traffic but a tight, known management plane, so
+# any cross-tier scan, data-store access from outside the app tier, or
+# bastion brute force is the tell. `vuln_emulation: true` makes the
+# server/appliance versions look unpatched to a scanner.
+#
+# This is the "large honeynet" reference — two /24s, ~35 hosts. Route both
+# CIDRs to the sensor (TUN adapter or per-IP). Watch the devices tab fill in
+# and the `/topology` map render the farm.
+#
+#   tarpit-honeypot validate-config -c examples/datacenter-server-farm.yaml
+sensor:
+  name: dc-farm-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  jitter: { enabled: true, min_ms: 5, max_ms: 40 }
+  disk: { json_log_mb: 1024, sqlite_mb: 8192, pcap_mb: 8192, retention_days: 120 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Union of every service port across the farm.
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,    mode: banner, handler: ssh,           severity: high,     capture: true, max_concurrent: 256 }
+  - { id: ftp,    proto: tcp, bind: 0.0.0.0:21,    mode: banner, handler: ftp_files,     severity: high,     capture: true }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,    mode: banner, handler: http,  webapp: true, severity: medium, capture: true }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443,   mode: banner, handler: https, webapp: true, severity: high,   capture: true }
+  - { id: http8080, proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: http,         severity: medium }
+  - { id: smb,    proto: tcp, bind: 0.0.0.0:445,   mode: banner, handler: smb,           severity: critical, capture: true }
+  - { id: rdp,    proto: tcp, bind: 0.0.0.0:3389,  mode: banner, handler: rdp,           severity: critical, capture: true }
+  - { id: mysql,  proto: tcp, bind: 0.0.0.0:3306,  mode: banner, handler: mysql,         severity: high,     capture: true }
+  - { id: postgres, proto: tcp, bind: 0.0.0.0:5432, mode: banner, handler: postgres,     severity: high,     capture: true }
+  - { id: mssql,  proto: tcp, bind: 0.0.0.0:1433,  mode: banner, handler: mssql,         severity: high,     capture: true }
+  - { id: redis,  proto: tcp, bind: 0.0.0.0:6379,  mode: banner, handler: redis,         severity: high,     capture: true }
+  - { id: memcached, proto: tcp, bind: 0.0.0.0:11211, mode: banner, handler: memcached,  severity: high }
+  - { id: mongodb, proto: tcp, bind: 0.0.0.0:27017, mode: banner, handler: mongodb,      severity: high,     capture: true }
+  - { id: elastic, proto: tcp, bind: 0.0.0.0:9200, mode: banner, handler: elasticsearch, severity: high,     capture: true }
+  - { id: docker, proto: tcp, bind: 0.0.0.0:2375,  mode: banner, handler: dockerapi,     severity: critical, capture: true }
+  - { id: snmp,   proto: udp, bind: 0.0.0.0:161,   mode: banner, handler: snmp,          severity: low }
+
+honeynets:
+  # --- Application tier (10.40.1.0/24). ---
+  - id: dc-app
+    cidr: 10.40.1.0/24
+    gateway: 10.40.1.1
+    domain: app.dc.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.40.1.10, hostname: lb-01,  os: linux, archetype: debian-12,    services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.40.1.11, hostname: lb-02,  os: linux, archetype: debian-12,    services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.40.1.20, hostname: web-01, os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.21, hostname: web-02, os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.22, hostname: web-03, os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.23, hostname: web-04, os: linux, archetype: rhel-9,       services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.30, hostname: app-01, os: linux, archetype: debian-12,    services: [ {port: 8080, handler: http}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.31, hostname: app-02, os: linux, archetype: debian-12,    services: [ {port: 8080, handler: http}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.32, hostname: app-03, os: linux, archetype: debian-12,    services: [ {port: 8080, handler: http}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.33, hostname: app-04, os: linux, archetype: rhel-9,       services: [ {port: 8080, handler: http}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.34, hostname: app-05, os: linux, archetype: rhel-9,       services: [ {port: 8080, handler: http}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.40, hostname: docker-01, os: linux, archetype: ubuntu-24.04, services: [ {port: 2375, handler: dockerapi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.41, hostname: docker-02, os: linux, archetype: ubuntu-24.04, services: [ {port: 2375, handler: dockerapi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.1.50, hostname: cache-01,  os: linux, archetype: debian-12,    services: [ {port: 6379, handler: redis} ] }
+      - { ip: 10.40.1.51, hostname: cache-02,  os: linux, archetype: debian-12,    services: [ {port: 11211, handler: memcached} ] }
+  # --- Data + management tier (10.40.2.0/24). ---
+  - id: dc-data
+    cidr: 10.40.2.0/24
+    gateway: 10.40.2.1
+    domain: data.dc.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.40.2.10, hostname: mysql-01, os: linux, archetype: debian-12,    services: [ {port: 3306, handler: mysql}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.11, hostname: mysql-02, os: linux, archetype: debian-12,    services: [ {port: 3306, handler: mysql}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.12, hostname: pg-01,    os: linux, archetype: ubuntu-24.04, services: [ {port: 5432, handler: postgres}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.13, hostname: pg-02,    os: linux, archetype: ubuntu-24.04, services: [ {port: 5432, handler: postgres}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.14, hostname: mssql-01, os: windows, archetype: windows-server-2019, services: [ {port: 1433, handler: mssql}, {port: 3389, handler: rdp} ] }
+      - { ip: 10.40.2.20, hostname: es-01, os: linux, archetype: ubuntu-24.04, services: [ {port: 9200, handler: elasticsearch} ] }
+      - { ip: 10.40.2.21, hostname: es-02, os: linux, archetype: ubuntu-24.04, services: [ {port: 9200, handler: elasticsearch} ] }
+      - { ip: 10.40.2.22, hostname: es-03, os: linux, archetype: ubuntu-24.04, services: [ {port: 9200, handler: elasticsearch} ] }
+      - { ip: 10.40.2.30, hostname: mongo-01, os: linux, archetype: debian-12, services: [ {port: 27017, handler: mongodb} ] }
+      - { ip: 10.40.2.31, hostname: mongo-02, os: linux, archetype: debian-12, services: [ {port: 27017, handler: mongodb} ] }
+      - { ip: 10.40.2.40, hostname: nas-01, archetype: synology-dsm, services: [ {port: 445, handler: smb}, {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.40.2.41, hostname: nas-02, archetype: qnap-qts,     services: [ {port: 445, handler: smb}, {port: 8080, handler: http} ] }
+      - { ip: 10.40.2.50, hostname: esxi-01, services: [ {port: 443, handler: esxi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.51, hostname: esxi-02, services: [ {port: 443, handler: esxi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.40.2.60, hostname: idrac-01, services: [ {port: 443, handler: idrac} ] }
+      - { ip: 10.40.2.61, hostname: ilo-01,   services: [ {port: 443, handler: ilo} ] }
+      - { ip: 10.40.2.70, hostname: backup-01, os: windows, archetype: windows-server-2016, services: [ {port: 445, handler: smb}, {port: 21, handler: ftp_files} ] }
+      - { ip: 10.40.2.80, hostname: bastion-01, os: linux, archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh_interactive} ] }
+
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:      { enabled: true, attempts: 10,       window: 60s,  per_port: true, severity: high }
+  host_sweep:       { enabled: true, distinct_hosts: 12, window: 60s,  severity: high }
+  service_sweep:    { enabled: true, severity: high }
+  lateral_movement: { enabled: true, severity: critical }
+  data_access:      { enabled: true, severity: high }
+  exfil:            { enabled: true, severity: critical }
+  exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  beacon:           { enabled: true, severity: high }
+  slow_scan:        { enabled: true, distinct_ports: 12, window: 24h,  severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+allowlist:
+  - 10.40.250.0/24      # the management / orchestration plane
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.dc.example.local:6514
+    tag: dc-tarpit
+    format: ocsf
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

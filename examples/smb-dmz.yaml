@@ -1,0 +1,117 @@
+# Internet DMZ — a few small businesses' public edge.
+#
+# Small businesses rarely have a real DMZ; their "edge" is whatever the ISP
+# router forwards. This models four small shops, each a small honeynet, with
+# the surface those orgs typically (and often accidentally) expose to the
+# internet: a website + mail, plus the classic small-business mistakes — a
+# NAS (Synology/QNAP) reachable from outside, an IP camera (Hikvision), RDP
+# left open, and the firewall/router's own admin UI. That misconfigured
+# surface is exactly what mass scanners and ransomware crews look for.
+#
+# `vuln_emulation: true` so the appliances advertise their (advisory)
+# device CVEs and version scanners record exploitable boxes. Route the four
+# small public ranges to this one sensor.
+#
+#   tarpit-honeypot validate-config -c examples/smb-dmz.yaml
+sensor:
+  name: smb-dmz-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  disk: { json_log_mb: 256, sqlite_mb: 1024, pcap_mb: 2048, retention_days: 90 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Union of the ports the four shops expose.
+listeners:
+  - { id: ftp,     proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files, severity: high,   capture: true }
+  - { id: ssh,     proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,       severity: high,   capture: true }
+  - { id: telnet,  proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: telnet,    severity: high,   capture: true }
+  - { id: smtp,    proto: tcp, bind: 0.0.0.0:25,   mode: banner, handler: smtp_recv, severity: medium, capture: true }
+  - { id: http,    proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,  webapp: true, severity: high, capture: true }
+  - { id: pop3,    proto: tcp, bind: 0.0.0.0:110,  mode: banner, handler: pop3,      severity: medium, capture: true }
+  - { id: imap,    proto: tcp, bind: 0.0.0.0:143,  mode: banner, handler: imap,      severity: medium, capture: true }
+  - { id: https,   proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https, webapp: true, severity: high, capture: true }
+  - { id: smb,     proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,       severity: critical, capture: true }
+  - { id: rtsp,    proto: tcp, bind: 0.0.0.0:554,  mode: banner, handler: rtsp,      severity: high,   capture: true }
+  - { id: rdp,     proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,       severity: critical, capture: true }
+  - { id: nas-http,  proto: tcp, bind: 0.0.0.0:5000, mode: banner, handler: http,    severity: high }
+  - { id: nas-https, proto: tcp, bind: 0.0.0.0:5001, mode: banner, handler: https,   severity: high }
+  - { id: http-alt,  proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: http,    severity: high }
+  - { id: snmp,    proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,      severity: medium }
+
+honeynets:
+  # --- A law firm: website + mail + a NAS that shouldn't be reachable. ---
+  - id: hale-dorr-law
+    cidr: 198.51.100.0/28
+    gateway: 198.51.100.1
+    domain: haledorr.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 198.51.100.4, hostname: www,  os: linux, archetype: debian-12,    services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 198.51.100.5, hostname: mail, os: linux, archetype: ubuntu-24.04, services: [ {port: 25, handler: smtp_recv}, {port: 143, handler: imap}, {port: 110, handler: pop3} ] }
+      - { ip: 198.51.100.6, hostname: nas,  archetype: synology-dsm,            services: [ {port: 5000, handler: http}, {port: 5001, handler: https}, {port: 445, handler: smb}, {port: 22, handler: ssh} ] }
+      - { ip: 198.51.100.7, hostname: fw,   archetype: pfsense,                 services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+  # --- A dental clinic: website + an exposed waiting-room camera + NAS. ---
+  - id: brightsmile-dental
+    cidr: 203.0.113.0/28
+    gateway: 203.0.113.1
+    domain: brightsmile.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 203.0.113.4, hostname: www, os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 203.0.113.5, hostname: cam-waitroom, archetype: hikvision-camera, services: [ {port: 80, handler: http}, {port: 554, handler: rtsp} ] }
+      - { ip: 203.0.113.6, hostname: cam-reception, archetype: axis-camera,     services: [ {port: 80, handler: http}, {port: 554, handler: rtsp} ] }
+      - { ip: 203.0.113.7, hostname: nas, archetype: qnap-qts, services: [ {port: 8080, handler: http}, {port: 443, handler: https}, {port: 445, handler: smb} ] }
+  # --- An e-commerce shop: webapp + FTP + mail, RDP left open to admin. ---
+  - id: corner-shop
+    cidr: 192.0.2.0/28
+    gateway: 192.0.2.1
+    domain: cornershop.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 192.0.2.4, hostname: shop,  os: linux,   archetype: debian-12,           services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 21, handler: ftp_files} ] }
+      - { ip: 192.0.2.5, hostname: mail,  os: linux,   archetype: debian-12,           services: [ {port: 25, handler: smtp_recv}, {port: 143, handler: imap} ] }
+      - { ip: 192.0.2.6, hostname: admin, os: windows, archetype: windows-server-2016, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+  # --- A small accounting firm behind a MikroTik, telnet/SSH exposed. ---
+  - id: ledgerwise-acct
+    cidr: 192.0.2.16/28
+    gateway: 192.0.2.17
+    domain: ledgerwise.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 192.0.2.20, hostname: gw,  archetype: mikrotik-routeros, services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 80, handler: http} ] }
+      - { ip: 192.0.2.21, hostname: www, os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 192.0.2.22, hostname: rdp, os: windows, archetype: windows-server-2019, services: [ {port: 3389, handler: rdp} ] }
+
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:      { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  path_enumeration: { enabled: true, distinct_paths: 30, window: 60s,  severity: high }
+  exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  host_sweep:       { enabled: true, distinct_hosts: 6,  window: 60s,  severity: high }
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: notify
+    type: webhook
+    url: https://hooks.example.com/services/tarpit   # replace with your Slack/Teams/chatops webhook
+    hmac_secret_env: TARPIT_WEBHOOK_SECRET
+    min_severity: high
+
+routes:
+  - { match: { severity: ">=high" }, channels: [notify, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

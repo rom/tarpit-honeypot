@@ -1,0 +1,120 @@
+# Manufacturing IT/OT DMZ (IDMZ — Purdue level 3.5), full build-out.
+#
+# The brokered conduit between enterprise IT and the plant floor. This is
+# the richer companion to ../ot-dmz/dmz-historian-fileserver-jumphosts.yaml:
+# it models the *complete* set of IDMZ broker hosts that a mature ISA-99 /
+# IEC-62443 segmentation puts in the zone, because EVERY sanctioned IT↔OT
+# data flow is supposed to terminate here rather than cross the boundary
+# directly:
+#
+#   * RDP + SSH jump hosts        — the only interactive path into OT
+#   * patch / WSUS + AV-update    — updates flow IN, staged here
+#   * replica (forward) historian — the only DB IT is allowed to read
+#   * file-transfer server        — reports OUT, batch files IN
+#   * OPC-UA + MQTT data broker   — the live process-data conduit
+#   * reverse proxy for HMI web   — published plant dashboards
+#   * remote-access broker        — vendor/support remote sessions
+#   * firewall management         — the boundary device's own admin UI
+#
+# The IDMZ is the attacker's stepping stone from a compromised IT estate
+# toward the process, so brute force on the jump/broker hosts and ANY scan
+# of the segment are high-signal. Forward to the ENTERPRISE SIEM (not the OT
+# one) and keep `session_recording` on for the interactive hosts.
+#
+#   tarpit-honeypot validate-config -c examples/it-ot-dmz/manufacturing-idmz.yaml
+sensor:
+  name: plant-idmz-decoy
+  data_dir: /var/lib/tarpit
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true              # IDMZ brokers are often behind on patches
+  session_recording: { enabled: true }
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, capture_kb: 256, retention_days: 730 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Union of the broker ports. The conduit protocols (OPC-UA 4840, MQTT 1883)
+# are what make this an OT DMZ rather than a plain IT DMZ.
+listeners:
+  - { id: rdp,    proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,              severity: critical, capture: true }
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh_interactive,  severity: critical, capture: true }
+  - { id: winrm,  proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,            severity: high }
+  - { id: smb,    proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,              severity: critical, capture: true }
+  - { id: ftp,    proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files,        severity: high,     capture: true }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,             severity: high,     capture: true }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,            severity: high,     capture: true }
+  - { id: mssql,  proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,            severity: critical, capture: true }
+  - { id: opcua,  proto: tcp, bind: 0.0.0.0:4840, mode: banner, handler: opcua,            severity: critical, capture: true }
+  - { id: mqtt,   proto: tcp, bind: 0.0.0.0:1883, mode: banner, handler: mqtt,             severity: high,     capture: true }
+  - { id: ntp,    proto: udp, bind: 0.0.0.0:123,  mode: banner, handler: ntp,              severity: low }
+  - { id: dns,    proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,              severity: medium }
+  - { id: snmp,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,             severity: low }
+
+honeynets:
+  - id: plant-idmz
+    cidr: 172.16.62.0/24
+    gateway: 172.16.62.1
+    dns: 172.16.62.2
+    domain: idmz.plant.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      # RDP/SSH jump hosts — the sanctioned (and most-attacked) path into OT.
+      - { ip: 172.16.62.11, hostname: jump-01, os: windows, archetype: windows-server-2019, services: [ {port: 3389, handler: rdp}, {port: 22, handler: ssh_interactive}, {port: 5985, handler: winrm} ] }
+      - { ip: 172.16.62.12, hostname: jump-02, os: windows, archetype: windows-server-2019, services: [ {port: 3389, handler: rdp}, {port: 22, handler: ssh_interactive} ] }
+      # Patch / WSUS + AV-update staging (updates flow IN, staged in the IDMZ).
+      - { ip: 172.16.62.21, hostname: wsus-01,   os: windows, archetype: windows-server-2016, services: [ {port: 443, handler: https}, {port: 445, handler: smb} ] }
+      - { ip: 172.16.62.22, hostname: avdef-01,  os: windows, archetype: windows-server-2016, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      # Replica/forward historian readable from the enterprise side.
+      - { ip: 172.16.62.31, hostname: historian-dmz, os: windows, archetype: windows-server-2019, services: [ {port: 1433, handler: mssql}, {port: 443, handler: https} ] }
+      # File-transfer broker (batch files in, reports out) — fake bait files.
+      - { ip: 172.16.62.32, hostname: ft-broker,     os: linux,   archetype: rhel-9,            services: [ {port: 21, handler: ftp_files}, {port: 445, handler: smb}, {port: 22, handler: ssh_interactive} ] }
+      # Live process-data conduit: OPC-UA aggregator + MQTT broker.
+      - { ip: 172.16.62.41, hostname: opcua-gw,  os: linux, archetype: ubuntu-24.04, services: [ {port: 4840, handler: opcua}, {port: 22, handler: ssh} ] }
+      - { ip: 172.16.62.42, hostname: mqtt-broker, os: linux, archetype: debian-12,  services: [ {port: 1883, handler: mqtt} ] }
+      # Reverse proxy publishing plant HMI dashboards to IT.
+      - { ip: 172.16.62.51, hostname: hmi-proxy, os: linux, archetype: ubuntu-24.04, services: [ {port: 443, handler: https}, {port: 80, handler: http} ] }
+      # Vendor remote-access broker (support sessions terminate here).
+      - { ip: 172.16.62.52, hostname: ra-broker, os: windows, archetype: windows-server-2019, services: [ {port: 443, handler: https}, {port: 3389, handler: rdp} ] }
+      # Boundary firewall's own management interface.
+      - { ip: 172.16.62.61, hostname: idmz-fw,   os: fortios, archetype: fortigate, services: [ {port: 443, handler: fortinet}, {port: 22, handler: ssh} ] }
+
+# Most sensitive zone in the plant — trip on almost anything.
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 3, window: 60s,  severity: critical }
+  brute_force:      { enabled: true, attempts: 4,       window: 300s, severity: critical }
+  slow_scan:        { enabled: true, distinct_ports: 6, window: 24h,  severity: high }
+  host_sweep:       { enabled: true, distinct_hosts: 4, window: 60s,  severity: critical }
+  lateral_movement: { enabled: true, severity: critical }
+  ot_recon:         { enabled: true, severity: critical }
+  beacon:           { enabled: true, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: high
+
+interaction:
+  mode: low
+
+allowlist:
+  - 172.16.62.1      # the boundary firewall / sanctioned brokers
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: enterprise-soc
+    type: syslog
+    network: tcp
+    address: siem.corp.example.com:6514
+    tag: idmz-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [enterprise-soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }
