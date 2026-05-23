@@ -1,0 +1,86 @@
+# Big-data / secrets / logging platform.
+#
+# The data-and-secrets tier of a modern estate — the crown jewels after a
+# foothold. Combines `archeservices:` role bundles (bigdata = Cassandra +
+# Kafka + ZooKeeper, NATS messaging, an NFS server, a logging/ELK stack, a
+# search cluster, and a secret store) with `lua` decoys for the
+# unauthenticated web data stores attackers hunt (Vault, etcd, Kibana, Solr,
+# MinIO/S3, RabbitMQ). Exercises the cassandra / nats / rpcbind handlers and
+# the round-two Lua app decoys, plus the cve_campaign + data_access
+# correlators.
+#
+#   tarpit-honeypot validate-config -c examples/data-platform.yaml
+sensor:
+  name: data-platform-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  archetype: debian 12
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Role bundles bound to dedicated loopback IPs (overlapping ports don't
+# collide); point at routable IPs for a real deployment.
+archeservices:
+  - { id: bigdata,  role: bigdata,     archetype: debian 12,        bind: 127.0.3.1, severity: high }
+  - { id: nats,     role: natsserver,  archetype: debian 12,        bind: 127.0.3.2, severity: high }
+  - { id: nfs,      role: nfsserver,   archetype: rhel 9,           bind: 127.0.3.3, severity: high }
+  - { id: logs,     role: logserver,   archetype: ubuntu 24.04 lts, bind: 127.0.3.4, severity: high }
+  - { id: search,   role: searchserver, archetype: ubuntu 24.04 lts, bind: 127.0.3.5, severity: high }
+  - { id: secrets,  role: secretstore, archetype: debian 12,        bind: 127.0.3.6, severity: critical }
+
+# Unauthenticated data stores / dashboards via Lua scripts.
+listeners:
+  - { id: vault,    proto: tcp, bind: 0.0.0.0:8200,  mode: banner, handler: lua, script: configs/scripts/vault.lua,    severity: critical, capture: true }
+  - { id: etcd,     proto: tcp, bind: 0.0.0.0:2379,  mode: banner, handler: lua, script: configs/scripts/etcd.lua,     severity: critical, capture: true }
+  - { id: kibana,   proto: tcp, bind: 0.0.0.0:5601,  mode: banner, handler: lua, script: configs/scripts/kibana.lua,   severity: high,     capture: true }
+  - { id: solr,     proto: tcp, bind: 0.0.0.0:8983,  mode: banner, handler: lua, script: configs/scripts/solr.lua,     severity: high,     capture: true }
+  - { id: minio,    proto: tcp, bind: 0.0.0.0:9000,  mode: banner, handler: lua, script: configs/scripts/minio.lua,    severity: high,     capture: true }
+  - { id: rabbitmq, proto: tcp, bind: 0.0.0.0:15672, mode: banner, handler: lua, script: configs/scripts/rabbitmq.lua, severity: high,     capture: true }
+
+url_canaries:
+  - { id: vault-unseal-keys, path: /v1/secret/data/unseal, severity: critical }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  data_access:        { enabled: true, severity: critical }
+  exfil:              { enabled: true, severity: critical }
+  cve_campaign:       { enabled: true, distinct_sources: 3, window: 1h, severity: critical }
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 2, window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.example.internal:6514
+    tag: data-tarpit
+    format: ocsf
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

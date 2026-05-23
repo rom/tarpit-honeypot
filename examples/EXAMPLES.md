@@ -23,7 +23,10 @@ is the "everything turned on" reference.
 | Internet DMZ | [`smb-dmz.yaml`](smb-dmz.yaml) | A few small businesses' edge (4 honeynets: NAS/cameras/RDP/router exposed). |
 | Data center | [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm — ~35 hosts across two honeynets (the large-honeynet reference). |
 | DevOps | [`devops-stack.yaml`](devops-stack.yaml) | Cloud-native tooling: git/CI/containers/queues/caches/search role bundles + unauth dashboards (Grafana/Prometheus/Jupyter/Consul/CouchDB/ClickHouse). |
+| Data platform | [`data-platform.yaml`](data-platform.yaml) | Big-data/secrets/logging: Cassandra/Kafka/ZooKeeper/NATS/NFS roles + Vault/etcd/Kibana/Solr/MinIO/RabbitMQ Lua decoys. |
 | Cloud infra | [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
+| Legacy Unix | [`legacy-unix.yaml`](legacy-unix.yaml) | Solaris / AIX / Gentoo big-iron + NFS/portmapper (TTL 255, telnet/finger/rpcbind). |
+| Telecom edge | [`telecom-edge.yaml`](telecom-edge.yaml) | ISP/carrier edge: Arista/VyOS/OpenWrt gear + VPN-gateway/RADIUS/NTP roles (IKE/PPTP/BGP). |
 | Education | [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra. |
 | IT/OT DMZ | [`it-ot-dmz/manufacturing-idmz.yaml`](it-ot-dmz/manufacturing-idmz.yaml) | Full IDMZ (Purdue 3.5): jump hosts, patch/AV, historian, OPC-UA/MQTT broker, FW mgmt. |
 | OT DMZ | [`ot-dmz/dmz-historian-fileserver-jumphosts.yaml`](ot-dmz/dmz-historian-fileserver-jumphosts.yaml) | Simpler IDMZ: replica historian, file transfer, RDP/SSH jump hosts. |
@@ -162,6 +165,37 @@ decoys; URL canaries plant a `prod.tfstate` and a CI secrets file.
 **Adapt:** the role bundles bind dedicated loopback IPs so their shared
 ports (22/80/443) don't collide — point them at routable IPs for a real
 deployment, or fold them into a honeynet's `hosts`.
+
+### Big-data / secrets / logging platform
+
+[`data-platform.yaml`](data-platform.yaml)
+
+The data-and-secrets tier — the crown jewels after a foothold. Role bundles
+stand up a **Cassandra + Kafka + ZooKeeper** big-data stack, **NATS**
+messaging, an **NFS** server (SunRPC portmapper), an **ELK** logging stack
+and a **secret store**, while Lua decoys serve the unauthenticated web data
+stores attackers hunt: **Vault, etcd, Kibana, Solr, MinIO/S3, RabbitMQ**.
+Exercises the `cassandra` / `nats` / `rpcbind` handlers and the round-two
+Lua app decoys, with the `cve_campaign` + `data_access` correlators on.
+
+### Legacy Unix / big-iron
+
+[`legacy-unix.yaml`](legacy-unix.yaml)
+
+The forgotten corner: **Solaris**, **AIX** and **Gentoo** servers plus the
+NFS/portmapper surface fronting old fileshares — rarely patched, still
+running telnet/finger/rpcbind, fingerprinting with the classic **TTL 255**.
+Showcases the Solaris/AIX/Gentoo archetypes and the SunRPC `rpcbind` handler.
+
+### Telecom / ISP edge
+
+[`telecom-edge.yaml`](telecom-edge.yaml)
+
+A carrier edge: **Arista EOS** core switches, **VyOS** edge routers and
+**OpenWrt** CPE, plus the subscriber-facing **VPN gateway** (IKE/PPTP/
+OpenVPN), **RADIUS** and **NTP** infrastructure as role bundles — mass-
+scanned for default creds and VPN CVEs. Exercises the round-two network
+archetypes and the `pptp` handler, with `default_cred_sweep` on.
 
 ### Cloud / virtualization management plane
 

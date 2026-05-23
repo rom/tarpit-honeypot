@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **312 static mappings** (52 exact rules + 98 handler tags + 162
+There are **333 static mappings** (57 exact rules + 98 handler tags + 178
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -44,21 +44,25 @@ the Enterprise matrix so a SIEM expecting one ID space stays consistent.
 The complete catalog follows (generated from `list-techniques --json`; the
 `Augment` step *unions* the anomaly rows into the rule/handler base).
 
-### 1a. Exact rule IDs (52) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+### 1a. Exact rule IDs (57) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
 
 | rule_id | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
 | `attack:dos` | T1499 | impact |
 | `attack:fuzzing` | T1595.002 | reconnaissance |
+| `correlate:amplification_probe` | T1498.002 | impact |
 | `correlate:beacon` | T1071 | command-and-control |
 | `correlate:brute_force` | T1110 | credential-access |
 | `correlate:canary_trip` | T1083 | discovery |
 | `correlate:credential_reuse` | T1110.004 | credential-access |
+| `correlate:cve_campaign` | T1190 | initial-access |
 | `correlate:data_access` | T1213 | collection |
+| `correlate:default_cred_sweep` | T1110.001, T1078.001 | credential-access |
 | `correlate:dns_enumeration` | T1590.002, T1568.002 | reconnaissance, command-and-control |
 | `correlate:exfil` | T1048 | exfiltration |
 | `correlate:exploit_chain` | T1190 | initial-access |
 | `correlate:fingerprint_reuse` | T1583.005 | resource-development |
+| `correlate:geo_velocity` | T1110.004 | credential-access |
 | `correlate:host_sweep` | T1018, T1046 | discovery |
 | `correlate:icmp_sweep` | T1018 | discovery |
 | `correlate:ics_control` | T0831 | impact |
@@ -72,6 +76,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:service_sweep` | T1046 | discovery |
 | `correlate:session_flood` | T1499 | impact |
 | `correlate:slow_scan` | T1046 | discovery |
+| `correlate:threat_intel_burst` | T1595 | reconnaissance |
 | `correlate:ua_rotation` | T1595 | reconnaissance |
 | `correlate:webshell` | T1505.003, T1059 | persistence, execution |
 | `device:changed` | T1557.002 | credential-access |
@@ -204,7 +209,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `x11` | T1021, T1056.001 | lateral-movement, collection |
 | `xmpp` | T1071.001 | command-and-control |
 
-### 1c. Anomaly tags (162) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (178) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -212,6 +217,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `bgp-open-attempt` | T1190 | initial-access |
 | `bgp-probe` | T1595 | reconnaissance |
 | `c2-framework` | T1071.001, T1219 | command-and-control |
+| `cassandra-auth-attempt` | T1110.001 | credential-access |
+| `cassandra-probe` | T1046 | discovery |
 | `coap-write-attempt` | T1565 | impact |
 | `dcerpc-dcsync` | T1003.006 | credential-access |
 | `dcerpc-lsarpc-enum` | T1087.002, T1482 | discovery |
@@ -238,6 +245,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ftp-listing` | T1083 | discovery |
 | `ftp-site-command` | T1059 | execution |
 | `ftp-upload-attempt` | T1105 | command-and-control |
+| `git-push-attempt` | T1195 | initial-access |
+| `git-request` | T1213 | collection |
 | `gopher-request` | T1595 | reconnaissance |
 | `gopher-ssrf` | T1190 | initial-access |
 | `headless-browser` | T1595 | reconnaissance |
@@ -254,6 +263,9 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ip-bad-checksum` | T1595.001 | reconnaissance |
 | `ip-bad-header-len` | T1595.001 | reconnaissance |
 | `ip-fragmented` | T1046, T1595.001 | discovery, reconnaissance |
+| `jdwp-handshake-attempt` | T1190 | initial-access |
+| `jdwp-probe` | T1595 | reconnaissance |
+| `kafka-request` | T1046 | discovery |
 | `kerberos-rc4-requested` | T1558.003 | credential-access |
 | `kerberos-tgs-request` | T1558.003 | credential-access |
 | `ldap-asrep-roast-recon` | T1558.004, T1087.002 | credential-access, discovery |
@@ -267,6 +279,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `mongodb-data-access` | T1213 | collection |
 | `mssql-login-attempt` | T1110.001 | credential-access |
 | `mysql-login-attempt` | T1110.001 | credential-access |
+| `nats-connect` | T1046 | discovery |
+| `nats-publish` | T1565 | impact |
 | `netbios-datagram` | T1018 | discovery |
 | `ntp-control-query` | T1498.002 | impact |
 | `ntp-monlist-amplification` | T1498.002 | impact |
@@ -275,6 +289,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `oracle-tns-probe` | T1595 | reconnaissance |
 | `pjl-command` | T1083 | discovery |
 | `postgres-replication-connection` | T1213 | collection |
+| `pptp-probe` | T1133 | initial-access |
 | `printer-auth-attempt` | T1110.001 | credential-access |
 | `printer-config-set` | T1565 | impact |
 | `printer-credential-access` | T1552 | credential-access |
@@ -302,6 +317,10 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `redis-save` | T1059 | execution |
 | `redis-script-exec` | T1059 | execution |
 | `rlogin-attempt` | T1021 | lateral-movement |
+| `rmi-probe` | T1595 | reconnaissance |
+| `rpcbind-dump` | T1135 | discovery |
+| `rpcbind-getport` | T1046 | discovery |
+| `rpcbind-query` | T1046 | discovery |
 | `rsync-module-access` | T1213 | collection |
 | `rsync-module-list` | T1083 | discovery |
 | `rtsp-auth-attempt` | T1110.001 | credential-access |
@@ -339,6 +358,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ssh-id-non-printable` | T1595 | reconnaissance |
 | `ssh-id-not-ssh` | T1595 | reconnaissance |
 | `ssh-id-overlong` | T1595 | reconnaissance |
+| `stun-binding` | T1016 | discovery |
 | `tcp-bad-checksum` | T1595.001 | reconnaissance |
 | `tcp-bad-dataoffset` | T1595.001 | reconnaissance |
 | `tcp-data-in-syn` | T1046, T1595.001 | discovery, reconnaissance |
@@ -370,6 +390,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `webshell-command` | T1505.003, T1059 | persistence, execution |
 | `winrm-ntlm-auth` | T1110.001 | credential-access |
 | `x11-connection-attempt` | T1021 | lateral-movement |
+| `zookeeper-fourletter` | T1046 | discovery |
 
 ### 1d. Prefix fallbacks
 

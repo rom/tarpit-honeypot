@@ -133,10 +133,11 @@ a narrow job:
   `service_sweep`, `icmp_sweep`), credentials (`brute_force`,
   `password_spray`, `credential_reuse`, `geo_velocity`), web/recon
   (`path_enumeration`, `dns_enumeration`, `ua_rotation`, `exploit_chain`),
-  C2/impact (`beacon`, `session_flood`, `exfil`), enrichment-driven
-  (`threat_intel_burst`, `geo_velocity`), and the cross-protocol
-  **`storyline`** correlator that fires `storyline:multi_stage` when one
-  source touches 3+ kill-chain tactics. Adding one is a fixed recipe:
+  C2/impact (`beacon`, `session_flood`, `exfil`,
+  `amplification_probe`), enrichment-/campaign-driven (`threat_intel_burst`,
+  `geo_velocity`, `default_cred_sweep`, `cve_campaign`), and the
+  cross-protocol **`storyline`** correlator that fires `storyline:multi_stage`
+  when one source touches 3+ kill-chain tactics. Adding one is a fixed recipe:
   config struct → `load.go` defaults → state map + severity field +
   `Observe` wiring + `gc` entry + `mitre` tag + test.
 - **`internal/scananalysis`** — reconstructs an nmap scan profile (timing
