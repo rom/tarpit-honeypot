@@ -8,16 +8,27 @@ tarpit-honeypot validate-config -c examples/<path>.yaml
 ```
 
 For an extensive walkthrough of every example (what it models, how to adapt
-it, how to combine them), see [`../EXAMPLES.md`](../EXAMPLES.md).
+it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 
-### Categorized (OT / Purdue model + edge)
+### IT — office, DMZ & data center
 
 | Path | Scenario |
 |---|---|
+| [`office-network.yaml`](office-network.yaml) | Office LAN: server room + per-floor printers + ~20 workstations (large honeynet). |
+| [`enterprise-dmz.yaml`](enterprise-dmz.yaml) | Internet DMZ of a few larger corporations (bank / SaaS / manufacturer — 3 honeynets). |
+| [`smb-dmz.yaml`](smb-dmz.yaml) | Internet DMZ of a few small businesses (NAS / cameras / RDP / router exposed — 4 honeynets). |
+| [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm, ~35 hosts across two honeynets (the large-honeynet reference). |
+| [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra (large honeynet). |
+
+### OT / Purdue model + edge
+
+| Path | Scenario |
+|---|---|
+| [`it-ot-dmz/manufacturing-idmz.yaml`](it-ot-dmz/manufacturing-idmz.yaml) | Full IT/OT DMZ (level 3.5): jump hosts, patch/AV, historian, OPC-UA/MQTT broker, FW mgmt. |
+| [`ot-dmz/dmz-historian-fileserver-jumphosts.yaml`](ot-dmz/dmz-historian-fileserver-jumphosts.yaml) | Simpler IDMZ: replica historian, file transfer, RDP/SSH jump hosts. |
 | [`ot-cell/single-plc.yaml`](ot-cell/single-plc.yaml) | Simple single PLC (Siemens S7-1500) on its real control ports. |
 | [`ot-client-network/operator-and-engineering-ws.yaml`](ot-client-network/operator-and-engineering-ws.yaml) | Operator HMI workstations + one engineering workstation. |
 | [`ot-server-network/historian-appservers-ad-fileserver.yaml`](ot-server-network/historian-appservers-ad-fileserver.yaml) | Historian (SQL), app servers, OT-AD DC, file server. |
-| [`ot-dmz/dmz-historian-fileserver-jumphosts.yaml`](ot-dmz/dmz-historian-fileserver-jumphosts.yaml) | IDMZ: replica historian, file transfer, RDP/SSH jump hosts. |
 | [`edge/mikrotik-router.yaml`](edge/mikrotik-router.yaml) | MikroTik RouterOS edge-router decoy. |
 | [`edge/teltonika-rut240.yaml`](edge/teltonika-rut240.yaml) | Teltonika RUT240 industrial LTE-router decoy. |
 

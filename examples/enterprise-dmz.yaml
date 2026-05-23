@@ -1,0 +1,125 @@
+# Internet DMZ — a few larger corporations' public edge.
+#
+# Models the internet-facing DMZ tier of three sizable organisations, each
+# as its own honeynet on its own public /24: a bank, a SaaS company, and a
+# manufacturer's corporate edge. Public DMZ hosts are web/app servers, a
+# reverse proxy, mail (SMTP/IMAP/POP3), authoritative DNS, an SSH/SFTP
+# bastion, and the SSL-VPN / remote-access appliances attackers hammer
+# (FortiGate, Citrix ADC, Pulse Secure). `vuln_emulation: true` so version
+# scanners record juicy, "unpatched" builds; the services are never actually
+# exploitable, but the sensor RECOGNISES the matching CVE exploit attempts.
+#
+# The internet edge is scanned constantly, so the value here is the
+# exploit/CVE/dirbust/CVE-chain detection, not raw port-scan volume. Route
+# the three public CIDRs to this sensor (the upstream firewall NATs the
+# unused DMZ addresses here, or use the TUN adapter).
+#
+#   tarpit-honeypot validate-config -c examples/enterprise-dmz.yaml
+sensor:
+  name: enterprise-dmz-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  jitter: { enabled: true, min_ms: 5, max_ms: 40 }
+  tls_rotate: { days: 30 }
+  disk: { json_log_mb: 1024, sqlite_mb: 4096, pcap_mb: 8192, retention_days: 180 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Union of the public-facing ports across all three corporate edges.
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,        severity: high,     capture: true, max_concurrent: 128 }
+  - { id: ftp,    proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files,  severity: high,     capture: true }
+  - { id: smtp,   proto: tcp, bind: 0.0.0.0:25,   mode: banner, handler: smtp_recv,  severity: medium,   capture: true }
+  - { id: submission, proto: tcp, bind: 0.0.0.0:587, mode: banner, handler: smtp_recv, severity: medium, capture: true }
+  - { id: pop3,   proto: tcp, bind: 0.0.0.0:110,  mode: banner, handler: pop3,        severity: medium,   capture: true }
+  - { id: imap,   proto: tcp, bind: 0.0.0.0:143,  mode: banner, handler: imap,        severity: medium,   capture: true }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,  webapp: true, severity: high, capture: true }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https, webapp: true, severity: high, capture: true }
+  - { id: https-alt, proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: https, severity: high, capture: true }
+  - { id: openvpn, proto: tcp, bind: 0.0.0.0:1194, mode: banner, handler: openvpn,    severity: high }
+  - { id: dns,    proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,         severity: medium }
+
+# Planted "secret" URLs no legitimate visitor could know — a request for
+# any of these is, by itself, near-certain compromise.
+url_canaries:
+  - { id: db-backup, path: /backup/prod-db.sql.gz, severity: critical }
+  - { id: admin-key, path: /internal/api-keys.json, severity: critical }
+
+honeynets:
+  # --- Corporation 1: a bank (finance). ---
+  - id: acme-bank
+    cidr: 198.51.100.0/24
+    gateway: 198.51.100.1
+    domain: acmebank.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 198.51.100.10, hostname: www,        os: linux, archetype: rhel-9,       services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 198.51.100.11, hostname: online,      os: linux, archetype: rhel-9,       services: [ {port: 443, handler: https}, {port: 8443, handler: https} ] }
+      - { ip: 198.51.100.12, hostname: mx,          os: linux, archetype: rhel-8,       services: [ {port: 25, handler: smtp_recv}, {port: 587, handler: smtp_recv}, {port: 143, handler: imap} ] }
+      - { ip: 198.51.100.13, hostname: ns1,         os: linux, archetype: debian-12,    services: [ {port: 53, handler: dns} ] }
+      - { ip: 198.51.100.14, hostname: vpn,         os: fortios, archetype: fortigate,  services: [ {port: 443, handler: fortinet}, {port: 1194, handler: openvpn} ] }
+      - { ip: 198.51.100.15, hostname: sftp,        os: linux, archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh}, {port: 21, handler: ftp_files} ] }
+  # --- Corporation 2: a SaaS / tech company. ---
+  - id: globex-saas
+    cidr: 203.0.113.0/24
+    gateway: 203.0.113.1
+    domain: globex.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 203.0.113.10, hostname: www,    os: linux, archetype: ubuntu-24.04, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 203.0.113.11, hostname: api,    os: linux, archetype: ubuntu-24.04, services: [ {port: 443, handler: https}, {port: 8443, handler: https} ] }
+      - { ip: 203.0.113.12, hostname: app-01, os: linux, archetype: debian-12,    services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 203.0.113.13, hostname: app-02, os: linux, archetype: debian-12,    services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 203.0.113.14, hostname: gw,     os: linux, services: [ {port: 443, handler: citrix_gateway} ] }
+      - { ip: 203.0.113.15, hostname: mx,     os: linux, archetype: ubuntu-24.04, services: [ {port: 25, handler: smtp_recv}, {port: 143, handler: imap}, {port: 110, handler: pop3} ] }
+      - { ip: 203.0.113.16, hostname: bastion, os: linux, archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh_interactive} ] }
+  # --- Corporation 3: a manufacturer's corporate edge. ---
+  - id: initech-mfg
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: initech.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 192.0.2.10, hostname: www, os: windows, archetype: windows-server-2019, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 192.0.2.11, hostname: mail, os: windows, archetype: windows-server-2016, services: [ {port: 25, handler: smtp_recv}, {port: 443, handler: https} ] }
+      - { ip: 192.0.2.12, hostname: vpn,  os: linux,                                   services: [ {port: 443, handler: pulse} ] }
+      - { ip: 192.0.2.13, hostname: ns1,  os: linux,   archetype: debian-12,           services: [ {port: 53, handler: dns} ] }
+      - { ip: 192.0.2.14, hostname: ftp,  os: linux,   archetype: ubuntu-24.04,        services: [ {port: 21, handler: ftp_files}, {port: 22, handler: ssh} ] }
+
+# Internet edge: high baseline scan noise, so port-scan trips later but the
+# exploit/CVE/dirbust correlators carry the signal.
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 8,  window: 30s,  severity: medium }
+  brute_force:      { enabled: true, attempts: 12,       window: 60s,  per_port: true, severity: high }
+  path_enumeration: { enabled: true, distinct_paths: 40, window: 60s,  severity: high }
+  ua_rotation:      { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  session_flood:    { enabled: true, connections: 200,   window: 60s,  severity: medium }
+  beacon:           { enabled: true, severity: high }
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.example.net:6514
+    tag: dmz-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

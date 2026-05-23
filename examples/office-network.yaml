@@ -1,0 +1,133 @@
+# Office LAN — workstations, printers, and the server room.
+#
+# A medium business's internal network presented as one large honeynet: a
+# server room (AD domain controller, file/print/intranet/ERP servers, a
+# VoIP PBX), per-floor multi-function printers, and ~20 employee
+# workstations (Windows desktops/laptops + a few Linux/Mac dev boxes). On a
+# real office LAN the workstations talk to the file shares and the DC and
+# very little else, so anything sweeping the /16, brute-forcing RDP/SMB, or
+# moving laterally workstation-to-workstation is high-signal.
+#
+# Deploy on one VM inside the office VLAN; route the honeynet CIDR to it
+# (per-IP `ip addr add`, a bridge, or the TUN adapter). Put the real
+# helpdesk / patch-management subnet in `allowlist` so admin sweeps are
+# quiet.
+#
+#   tarpit-honeypot validate-config -c examples/office-network.yaml
+sensor:
+  name: office-lan-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  jitter: { enabled: true, min_ms: 10, max_ms: 60 }
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, retention_days: 90 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# The listener set is the union of the ports the virtual hosts expose; the
+# honeynet dispatches each virtual IP+port to its own handler instance with
+# a deployment-unique identity (so every workstation has its own SMB key,
+# every printer its own serial).
+listeners:
+  - { id: ssh,      proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,       severity: high,     capture: true }
+  - { id: http,     proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,      severity: medium,   capture: true }
+  - { id: https,    proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,     severity: high,     capture: true }
+  - { id: smb,      proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,       severity: critical, capture: true }
+  - { id: rdp,      proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,       severity: critical, capture: true }
+  - { id: winrm,    proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,     severity: high }
+  - { id: vnc,      proto: tcp, bind: 0.0.0.0:5900, mode: banner, handler: vnc,       severity: high,     capture: true }
+  - { id: kerberos, proto: tcp, bind: 0.0.0.0:88,   mode: banner, handler: kerberos,  severity: critical }
+  - { id: ldap,     proto: tcp, bind: 0.0.0.0:389,  mode: banner, handler: ldap,      severity: critical, capture: true }
+  - { id: ftp,      proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files, severity: high,     capture: true }
+  - { id: mysql,    proto: tcp, bind: 0.0.0.0:3306, mode: banner, handler: mysql,     severity: high,     capture: true }
+  - { id: pjl,      proto: tcp, bind: 0.0.0.0:9100, mode: banner, handler: pjl,       severity: high,     capture: true }
+  - { id: ipp,      proto: tcp, bind: 0.0.0.0:631,  mode: banner, handler: ipp,       severity: high }
+  - { id: lpd,      proto: tcp, bind: 0.0.0.0:515,  mode: banner, handler: lpd,       severity: high }
+  - { id: sip,      proto: udp, bind: 0.0.0.0:5060, mode: banner, handler: sip,       severity: medium }
+  - { id: snmp,     proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,      severity: medium }
+
+honeynets:
+  - id: office-lan
+    cidr: 10.20.0.0/16
+    gateway: 10.20.0.1
+    dns: 10.20.0.10
+    domain: corp.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    lldp_responder: { enabled: true, interface: eth0, interval_s: 30 }
+    hosts:
+      # --- Server room (10.20.0.10-19) ---
+      - { ip: 10.20.0.10, hostname: dc-01,    os: windows, archetype: active-directory,      services: [ {port: 88, handler: kerberos}, {port: 389, handler: ldap}, {port: 445, handler: smb}, {port: 3389, handler: rdp} ] }
+      - { ip: 10.20.0.11, hostname: file-01,   os: windows, archetype: windows-server-2019,   services: [ {port: 445, handler: smb}, {port: 3389, handler: rdp} ] }
+      - { ip: 10.20.0.12, hostname: intranet,  os: linux,   archetype: ubuntu-24.04,          services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.20.0.13, hostname: erp-db,    os: linux,   archetype: debian-12,             services: [ {port: 3306, handler: mysql}, {port: 22, handler: ssh} ] }
+      - { ip: 10.20.0.14, hostname: backup-01, os: windows, archetype: windows-server-2016,   services: [ {port: 445, handler: smb}, {port: 21, handler: ftp_files}, {port: 3389, handler: rdp} ] }
+      - { ip: 10.20.0.15, hostname: pbx-01,    os: linux,   archetype: asterisk-voip,         services: [ {port: 5060, handler: sip}, {port: 80, handler: http} ] }
+      # --- Per-floor multi-function printers (10.20.0.20-29) ---
+      - { ip: 10.20.0.20, hostname: print-floor1, archetype: hp-printer,        services: [ {port: 9100, handler: pjl}, {port: 631, handler: ipp}, {port: 515, handler: lpd}, {port: 161, handler: snmp} ] }
+      - { ip: 10.20.0.21, hostname: print-floor2, archetype: brother-printer,   services: [ {port: 9100, handler: pjl}, {port: 631, handler: ipp}, {port: 161, handler: snmp} ] }
+      - { ip: 10.20.0.22, hostname: print-floor3, archetype: xerox-versalink,   services: [ {port: 9100, handler: pjl}, {port: 631, handler: ipp}, {port: 515, handler: lpd} ] }
+      - { ip: 10.20.0.23, hostname: print-hr,     archetype: lexmark-printer,   services: [ {port: 9100, handler: pjl}, {port: 631, handler: ipp} ] }
+      # --- Employee workstations (10.20.10.0/24) — the bulk of the office.
+      # Windows desktops/laptops expose RDP + SMB; IT staff add WinRM; a few
+      # engineering/dev boxes run Linux (SSH) or a Mac (VNC/SSH). ---
+      - { ip: 10.20.10.11, hostname: ws-reception,  os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.12, hostname: ws-sales-01,   os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.13, hostname: ws-sales-02,   os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.14, hostname: ws-sales-03,   os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.15, hostname: ws-finance-01, os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.16, hostname: ws-finance-02, os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.17, hostname: ws-hr-01,      os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.18, hostname: ws-hr-02,      os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.19, hostname: ws-legal-01,   os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.20, hostname: ws-mkt-01,     os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.21, hostname: ws-mkt-02,     os: windows, archetype: windows-10, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.22, hostname: ws-exec-01,    os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.23, hostname: ws-exec-02,    os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb} ] }
+      - { ip: 10.20.10.31, hostname: ws-it-01,      os: windows, archetype: windows-11, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb}, {port: 5985, handler: winrm} ] }
+      - { ip: 10.20.10.32, hostname: ws-it-02,      os: windows, archetype: windows-server-2019, services: [ {port: 3389, handler: rdp}, {port: 445, handler: smb}, {port: 5985, handler: winrm} ] }
+      - { ip: 10.20.10.41, hostname: ws-dev-01,     os: linux,   archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh}, {port: 5900, handler: vnc} ] }
+      - { ip: 10.20.10.42, hostname: ws-dev-02,     os: linux,   archetype: debian-12,    services: [ {port: 22, handler: ssh} ] }
+      - { ip: 10.20.10.43, hostname: ws-dev-03,     os: linux,   archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh} ] }
+      - { ip: 10.20.10.44, hostname: ws-design-01,  os: linux,   archetype: ubuntu-24.04, services: [ {port: 22, handler: ssh}, {port: 5900, handler: vnc} ] }
+
+# A real office LAN scans almost nothing internally. Trip early; treat
+# lateral RDP/SMB and any subnet sweep as an incident.
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:      { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  slow_scan:        { enabled: true, distinct_ports: 12, window: 24h,  severity: high }
+  host_sweep:       { enabled: true, distinct_hosts: 10, window: 60s,  severity: high }
+  lateral_movement: { enabled: true, severity: high }
+  password_spray:   { enabled: true, severity: high }
+  icmp_sweep:       { enabled: true, severity: medium }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+allowlist:
+  - 10.20.250.0/24      # helpdesk / patch-management subnet (admin sweeps)
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.corp.example.com:6514
+    tag: office-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

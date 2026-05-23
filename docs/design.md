@@ -289,6 +289,19 @@ env overrides; `validate-config` (with `--diff`) for offline checks. The
 annotated reference is [`config.md`](config.md) + the `configs/*.example*`
 files.
 
+**Deployment scenarios.** [`examples/`](../examples/) is a library of
+complete, validated configs grouped by deployment shape — an office LAN
+(workstations + printers), internet DMZs for a few large corporations and a
+few small businesses, an IT/OT DMZ (IDMZ), a university classroom, a
+data-center server farm, and the OT Purdue-model zones + edge devices.
+They span the honeynet shapes the engine supports: a single archetype (the
+sensor *is* one device), one small honeynet, **several honeynets** in one
+sensor (modelling a few organisations side by side), and **large
+honeynets** (25–35 virtual hosts). Each host's IP+port dispatches to its own
+handler instance with a deployment-unique identity; traffic reaches the
+virtual IPs via `ip addr add` / NAT or the TUN userspace stack. The
+walkthrough is [`examples/EXAMPLES.md`](../examples/EXAMPLES.md).
+
 ## 11. CLI & signals
 
 `run`, `validate-config`, `show-config`, `test-alert`, `list-events`,
@@ -299,8 +312,8 @@ graceful drain (`shutdown.drain_timeout`). See [`cli.md`](cli.md).
 ## 12. Platforms & builds
 
 `make build` (native), `make cross` (linux/{amd64,arm64,armv7,armv6} +
-darwin/{amd64,arm64}). CGO never required (~14 MB static binary, mostly
-the pure-Go SQLite engine). The Linux-kernel features (AF_PACKET
+darwin/{amd64,arm64} + windows/{amd64,arm64}). CGO never required (~14 MB
+static binary, mostly the pure-Go SQLite engine). The Linux-kernel features (AF_PACKET
 responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
 `setresuid`) degrade to clean errors on macOS.
 
