@@ -8,6 +8,65 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
+func TestBuildTechniqueView(t *testing.T) {
+	now := time.Now()
+	evs := []*event.Event{
+		{RuleID: "listener:web", Handler: "http", Time: now, Source: event.Endpoint{IP: "2.2.2.2"},
+			Meta: map[string]any{"anomalies": []any{"webapp:sqli"}}},
+		{RuleID: "listener:web", Handler: "http", Time: now, Source: event.Endpoint{IP: "2.2.2.2"}},
+		{RuleID: "listener:ssh", Handler: "ssh", Time: now, Source: event.Endpoint{IP: "9.9.9.9"}}, // no T1190
+	}
+	v := buildTechniqueView("T1190", now.Add(-time.Hour), evs)
+	if v.ID != "T1190" || v.Description == "" {
+		t.Fatalf("technique view missing id/description: %+v", v)
+	}
+	if v.Events != 2 {
+		t.Errorf("events = %d; want 2 (the two http events)", v.Events)
+	}
+	// 2.2.2.2 must appear as a source; 9.9.9.9 (ssh, no T1190) must not.
+	var has222, has999 bool
+	for _, b := range v.Sources {
+		if b.Label == "2.2.2.2" {
+			has222 = true
+		}
+		if b.Label == "9.9.9.9" {
+			has999 = true
+		}
+	}
+	if !has222 || has999 {
+		t.Errorf("sources wrong: %+v (want 2.2.2.2, not 9.9.9.9)", v.Sources)
+	}
+	if len(v.Sources) > 0 && v.Sources[0].Href != "/profiles/2.2.2.2" {
+		t.Errorf("source href = %q; want /profiles/2.2.2.2", v.Sources[0].Href)
+	}
+}
+
+func TestValidTechniqueID(t *testing.T) {
+	for _, ok := range []string{"T1190", "T1110.001", "T0814"} {
+		if !validTechniqueID(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"", "X1190", "T", "T1190;DROP", "1190", "T11.9.9", "../etc"} {
+		if validTechniqueID(bad) {
+			t.Errorf("%q should be invalid", bad)
+		}
+	}
+}
+
+func TestExtractCredsCarriesService(t *testing.T) {
+	ev := &event.Event{Handler: "ssh", Meta: map[string]any{"username": "root", "password": "toor"}}
+	got := extractCreds(ev)
+	if len(got) != 1 || got[0].Service != "ssh" || got[0].User != "root" {
+		t.Errorf("extractCreds = %+v; want one {root, toor, ssh}", got)
+	}
+	// Falls back to the port's service name when handler is empty.
+	ev2 := &event.Event{Dest: event.Endpoint{Port: 21}, Meta: map[string]any{"user_line": "anonymous"}}
+	if g := extractCreds(ev2); len(g) != 1 || g[0].Service != "ftp" {
+		t.Errorf("port-fallback service = %+v; want ftp", g)
+	}
+}
+
 func TestBuildAttackView(t *testing.T) {
 	now := time.Now()
 	evs := []*event.Event{

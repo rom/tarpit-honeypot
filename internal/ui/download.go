@@ -9,18 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
 // openNoFollow opens a file read-only, refusing to traverse a symlink at
-// the final path component. Defense in depth: even though pcap/cast names
-// are validated to stay inside the data dir, a symlink planted there (by
-// something with local write access) must not redirect a download to an
+// the final path component (see download_unix.go / download_windows.go for
+// the per-platform implementation). Defense in depth: even though pcap/cast
+// names are validated to stay inside the data dir, a symlink planted there
+// (by something with local write access) must not redirect a download to an
 // arbitrary file.
-func openNoFollow(path string) (*os.File, error) {
-	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-}
 
 // SetDataDir wires the sensor data dir so the UI can serve recorded
 // pcaps (<dataDir>/captures/<id>.pcap) and session casts

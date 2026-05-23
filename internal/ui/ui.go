@@ -213,6 +213,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/attack", s.handleAttack)
+	mux.HandleFunc("/attack/technique", s.handleAttackTechnique)
 	mux.HandleFunc("/timeline", s.handleTimeline)
 	mux.HandleFunc("/correlation", s.handleCorrelation)
 	mux.HandleFunc("/tunnels", s.handleTunnels)

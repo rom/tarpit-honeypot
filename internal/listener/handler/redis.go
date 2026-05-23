@@ -273,7 +273,7 @@ func redisHello(ver string, resp3 bool) string {
 // replication/keyspace fields — the first thing a redis scanner reads.
 func redisINFO(ver, section string) string {
 	sections := map[string]string{
-		"server": "# Server\r\nredis_version:" + ver + "\r\nredis_mode:standalone\r\nos:Linux 5.15.0-91-generic x86_64\r\narch_bits:64\r\nrun_id:" + redisRunID(ver) + "\r\ntcp_port:6379\r\nuptime_in_seconds:864231\r\nexecutable:/usr/bin/redis-server\r\nconfig_file:/etc/redis/redis.conf\r\n",
+		"server":      "# Server\r\nredis_version:" + ver + "\r\nredis_mode:standalone\r\nos:Linux 5.15.0-91-generic x86_64\r\narch_bits:64\r\nrun_id:" + redisRunID(ver) + "\r\ntcp_port:6379\r\nuptime_in_seconds:864231\r\nexecutable:/usr/bin/redis-server\r\nconfig_file:/etc/redis/redis.conf\r\n",
 		"clients":     "# Clients\r\nconnected_clients:1\r\nblocked_clients:0\r\nmaxclients:10000\r\n",
 		"memory":      "# Memory\r\nused_memory:1048576\r\nused_memory_human:1.00M\r\nused_memory_rss:5242880\r\nmaxmemory:0\r\nmaxmemory_policy:noeviction\r\nmem_allocator:jemalloc-5.3.0\r\n",
 		"persistence": "# Persistence\r\nloading:0\r\nrdb_changes_since_last_save:0\r\nrdb_last_save_time:1700000000\r\naof_enabled:0\r\n",
@@ -299,9 +299,11 @@ func redisINFO(ver, section string) string {
 func redisRunID(seed string) string {
 	const hexd = "0123456789abcdef"
 	out := make([]byte, 40)
-	h := 0x811c9dc5
+	// FNV-1-style mix in uint32 (wraps cleanly; 32-bit-safe so the arm
+	// cross builds compile — int would overflow on 32-bit platforms).
+	h := uint32(0x811c9dc5)
 	for i := 0; i < 40; i++ {
-		h = (h ^ int(seed[i%len(seed)]) ^ (i * 7)) * 0x01000193
+		h = (h ^ uint32(seed[i%len(seed)]) ^ uint32(i*7)) * 0x01000193
 		out[i] = hexd[(h>>8)&0x0f]
 	}
 	return string(out)

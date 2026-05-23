@@ -39,6 +39,11 @@ type Correlator struct {
 	protoViolSev event.Severity
 	exfilSev     event.Severity
 	floodSev     event.Severity
+	lateralSev   event.Severity
+	otReconSev   event.Severity
+	dataAccSev   event.Severity
+	malwareSev   event.Severity
+	webshellSev  event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -62,6 +67,11 @@ type Correlator struct {
 	protoViol map[string]*setState   // key: source IP (distinct anomaly markers)
 	exfil     map[string]*byteState  // key: source IP (cumulative request bytes)
 	flood     map[string]*countState // key: source IP (connection count)
+	lateral   map[string]*setState   // key: source IP (distinct lateral handlers)
+	otRecon   map[string]*setState   // key: source IP (distinct ICS handlers)
+	dataAcc   map[string]*countState // key: source IP (data-access event count)
+	malware   map[string]*countState // key: source IP (malware:capture count)
+	webshell  map[string]*countState // key: source IP (webshell event count)
 	emitted   map[string]time.Time   // dedup of aggregate emission
 	lastGC    time.Time              // last idle-state sweep
 }
@@ -154,6 +164,11 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		protoViol: map[string]*setState{},
 		exfil:     map[string]*byteState{},
 		flood:     map[string]*countState{},
+		lateral:   map[string]*setState{},
+		otRecon:   map[string]*setState{},
+		dataAcc:   map[string]*countState{},
+		malware:   map[string]*countState{},
+		webshell:  map[string]*countState{},
 		emitted:   map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -235,6 +250,11 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.ProtocolViolation.Enabled, cfg.ProtocolViolation.Severity, &c.protoViolSev},
 		{cfg.Exfil.Enabled, cfg.Exfil.Severity, &c.exfilSev},
 		{cfg.SessionFlood.Enabled, cfg.SessionFlood.Severity, &c.floodSev},
+		{cfg.LateralMovement.Enabled, cfg.LateralMovement.Severity, &c.lateralSev},
+		{cfg.OTRecon.Enabled, cfg.OTRecon.Severity, &c.otReconSev},
+		{cfg.DataAccess.Enabled, cfg.DataAccess.Severity, &c.dataAccSev},
+		{cfg.MalwareCampaign.Enabled, cfg.MalwareCampaign.Severity, &c.malwareSev},
+		{cfg.Webshell.Enabled, cfg.Webshell.Severity, &c.webshellSev},
 	} {
 		if !sp.on {
 			continue
@@ -370,6 +390,31 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.SessionFlood.Enabled {
 		if extra := c.checkSessionFlood(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.LateralMovement.Enabled {
+		if extra := c.checkLateralMovement(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.OTRecon.Enabled {
+		if extra := c.checkOTRecon(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.DataAccess.Enabled {
+		if extra := c.checkDataAccess(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.MalwareCampaign.Enabled {
+		if extra := c.checkMalwareCampaign(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.Webshell.Enabled {
+		if extra := c.checkWebshell(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -998,6 +1043,23 @@ func (c *Correlator) gc(now time.Time) {
 	gcSet(c.exploit, now, effWindow(c.cfg.ExploitChain.Window, 10*time.Minute))
 	gcSet(c.canary, now, effWindow(c.cfg.CanaryTrip.Window, time.Hour))
 	gcSet(c.protoViol, now, effWindow(c.cfg.ProtocolViolation.Window, 5*time.Minute))
+	gcSet(c.lateral, now, effWindow(c.cfg.LateralMovement.Window, 5*time.Minute))
+	gcSet(c.otRecon, now, effWindow(c.cfg.OTRecon.Window, 5*time.Minute))
+	for ip, st := range c.dataAcc {
+		if now.Sub(st.since) > effWindow(c.cfg.DataAccess.Window, 5*time.Minute) {
+			delete(c.dataAcc, ip)
+		}
+	}
+	for ip, st := range c.malware {
+		if now.Sub(st.since) > effWindow(c.cfg.MalwareCampaign.Window, 10*time.Minute) {
+			delete(c.malware, ip)
+		}
+	}
+	for ip, st := range c.webshell {
+		if now.Sub(st.since) > effWindow(c.cfg.Webshell.Window, 10*time.Minute) {
+			delete(c.webshell, ip)
+		}
+	}
 	for k, st := range c.fpReuse {
 		if now.Sub(st.since) > effWindow(c.cfg.FingerprintReuse.Window, time.Hour) {
 			delete(c.fpReuse, k)

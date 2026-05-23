@@ -139,6 +139,12 @@ var exactRules = map[string]Tag{
 	// vulnerability scanning; a typed flood maps to endpoint DoS.
 	"attack:fuzzing": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
 	"attack:dos":     {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// Additional opt-in correlators (round 2).
+	"correlate:lateral_movement": {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"correlate:ot_recon":         {Techniques: []string{"T0846", "T0888"}, Tactics: []string{"discovery"}},
+	"correlate:data_access":      {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"correlate:malware_campaign": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"correlate:webshell":         {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -251,6 +257,13 @@ var handlerTags = map[string]Tag{
 	"citrix_ica":   {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
 
 	// Vendor management web UIs / lights-out: exploit-prone gateways.
+	// More TCP/UDP service handlers.
+	"rsync":          {Techniques: []string{"T1110.001", "T1213"}, Tactics: []string{"credential-access", "collection"}},
+	"gopher":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks":          {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp":            {Techniques: []string{"T1190", "T1018"}, Tactics: []string{"initial-access", "discovery"}},
+	"isakmp":         {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"netbios_dgram":  {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"intel_amt":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"ilo":            {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"idrac":          {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
@@ -313,6 +326,8 @@ var anomalyTags = map[string]Tag{
 	// (impossible) browser User-Agent.
 	"http-malformed-header":   {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"http-duplicate-host":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-request-smuggling":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-connect-proxy":      {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
 	"http-impossible-browser": {Techniques: []string{"T1036"}, Tactics: []string{"defense-evasion"}},
 	// Active Directory / Kerberos abuse.
 	"kerberos-tgs-request":   {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
@@ -433,6 +448,42 @@ var anomalyTags = map[string]Tag{
 	// Printer command recon + passive DHCP client observation.
 	"pjl-command":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	"dhcp-client-observed": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Redis post-auth abuse chain: CONFIG SET dir / SAVE writes a webshell or
+	// cron job; SLAVEOF + MODULE LOAD and EVAL Lua run code; FLUSH wipes data.
+	"redis-config-set":            {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-save":                  {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-replication-takeover":  {Techniques: []string{"T1059", "T1210"}, Tactics: []string{"execution", "lateral-movement"}},
+	"redis-module-load":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-script-exec":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-flush":                 {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"elasticsearch-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// Docker remote API abuse — deploy/control a container = code execution.
+	"docker-container-create": {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	"docker-remote-control":   {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	// CoAP write to an IoT resource = manipulation of a device value.
+	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
+	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	// Postgres streaming-replication connection = bulk data access.
+	"postgres-replication-connection": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	// Auth submissions / brute on services whose base tag isn't already creds.
+	"mysql-login-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"rtsp-auth-attempt":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"sip-register-probe":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"winrm-ntlm-auth":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// SIP INVITE scanning = VoIP toll-fraud / service reconnaissance.
+	"sip-invite-attempt": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// New-handler protocol-misuse markers.
+	"rsync-module-list":   {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"rsync-module-access": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"gopher-request":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"gopher-ssrf":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks-proxy-attempt": {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp-open-attempt":    {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
@@ -447,6 +498,10 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "webapp:"):
+		// Any web-attack-class marker without an explicit entry above is at
+		// least an exploit attempt against the public-facing app.
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
 	case strings.HasPrefix(a, "shell-"):
 		// Any interactive-shell TTP marker without an explicit entry above
 		// is at least command execution by an engaged attacker.
@@ -462,6 +517,103 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
 	}
 	return Tag{}
+}
+
+// techDescriptions maps an ATT&CK technique ID to a one-line plain-English
+// description, so the UI can explain what a clickable technique chip means.
+// Keyed by base technique ID; Describe falls back from a sub-technique
+// (e.g. T1110.001) to its base (T1110) on a miss. Covers the techniques the
+// honeypot's rule/handler/anomaly tables actually emit.
+var techDescriptions = map[string]string{
+	// Reconnaissance / discovery.
+	"T1595": "Active Scanning — probing the target's infrastructure for live hosts, ports, and weaknesses.",
+	"T1590": "Gather Victim Network Information — collecting details about the target's network topology.",
+	"T1018": "Remote System Discovery — enumerating other hosts on the network (by IP, ARP, name).",
+	"T1046": "Network Service Discovery — port/service scanning to find listening services.",
+	"T1083": "File and Directory Discovery — enumerating files and folders on a system.",
+	"T1087": "Account Discovery — enumerating valid user/group accounts.",
+	"T1135": "Network Share Discovery — listing shared folders/drives (SMB, etc.).",
+	"T1016": "System Network Configuration Discovery — reading local network config (interfaces, routes, ARP).",
+	"T1012": "Query Registry — reading the Windows registry for configuration/credentials.",
+	"T1482": "Domain Trust Discovery — mapping AD domain trust relationships.",
+	// Initial access / execution.
+	"T1190": "Exploit Public-Facing Application — exploiting a vulnerability in an internet-facing service.",
+	"T1133": "External Remote Services — abusing VPN/remote-access services for entry.",
+	"T1078": "Valid Accounts — authenticating with legitimate (often default/stolen) credentials.",
+	"T1059": "Command and Scripting Interpreter — running commands via a shell/interpreter.",
+	"T1610": "Deploy Container — abusing a container runtime/API to launch a malicious container.",
+	"T1505": "Server Software Component — installing a malicious server module/web shell.",
+	// Credential access.
+	"T1110": "Brute Force — guessing credentials through repeated authentication attempts.",
+	"T1557": "Adversary-in-the-Middle — intercepting/poisoning traffic to capture or relay credentials.",
+	"T1558": "Steal or Forge Kerberos Tickets — Kerberoasting / AS-REP roasting / ticket abuse.",
+	"T1552": "Unsecured Credentials — harvesting credentials left in files/config/history.",
+	"T1003": "OS Credential Dumping — extracting account credentials from the OS (LSASS, SAM, /etc/shadow).",
+	"T1212": "Exploitation for Credential Access — exploiting a flaw to obtain credentials.",
+	"T1539": "Steal Web Session Cookie — capturing a session token to impersonate a user.",
+	// Lateral movement / collection / C2.
+	"T1021": "Remote Services — moving laterally over RDP/SMB/SSH/VNC/WinRM.",
+	"T1210": "Exploitation of Remote Services — exploiting a remote service to move laterally.",
+	"T1213": "Data from Information Repositories — pulling data from a database/repository.",
+	"T1114": "Email Collection — accessing mailboxes to collect messages.",
+	"T1005": "Data from Local System — collecting files from the compromised host.",
+	"T1056": "Input Capture — keylogging/credential-prompt capture.",
+	"T1071": "Application Layer Protocol — C2 carried over HTTP/DNS/mail/etc.",
+	"T1572": "Protocol Tunneling — encapsulating traffic in another protocol to evade monitoring.",
+	"T1095": "Non-Application Layer Protocol — C2 over a non-application protocol (ICMP, raw TCP).",
+	"T1219": "Remote Access Software — using legitimate remote-access tools (TeamViewer/AnyDesk) for C2.",
+	"T1568": "Dynamic Resolution — DGA/fast-flux to locate C2 infrastructure.",
+	"T1090": "Proxy — relaying traffic through an intermediary (e.g. FTP bounce).",
+	"T1105": "Ingress Tool Transfer — downloading additional tools/malware onto the host.",
+	"T1602": "Data from Configuration Repository — pulling device configs (SNMP/TFTP).",
+	// Persistence / privilege escalation / defense evasion.
+	"T1098": "Account Manipulation — adding/altering accounts or keys to keep access.",
+	"T1136": "Create Account — creating a new account for persistence.",
+	"T1053": "Scheduled Task/Job — cron/at/systemd-timer for persistence/execution.",
+	"T1543": "Create or Modify System Process — installing a service/daemon for persistence.",
+	"T1547": "Boot or Logon Autostart Execution — autostart entry for persistence.",
+	"T1548": "Abuse Elevation Control Mechanism — sudo/SUID abuse to escalate privileges.",
+	"T1562": "Impair Defenses — disabling AV/firewall/logging.",
+	"T1070": "Indicator Removal — clearing logs/history to cover tracks.",
+	"T1036": "Masquerading — disguising activity (e.g. a spoofed/impossible User-Agent).",
+	"T1027": "Obfuscated Files or Information — encoding/packing payloads to evade detection.",
+	"T1140": "Deobfuscate/Decode Files or Information — decoding an obfuscated payload at runtime.",
+	"T1218": "System Binary Proxy Execution — living-off-the-land via signed system binaries.",
+	"T1564": "Hide Artifacts — concealing files/processes/sessions.",
+	"T1601": "Modify System Image — patching device firmware/OS image.",
+	// Impact.
+	"T1499": "Endpoint Denial of Service — exhausting a service's resources to make it unavailable.",
+	"T1498": "Network Denial of Service — flooding the network/link (incl. reflection/amplification).",
+	"T1485": "Data Destruction — deleting/wiping data.",
+	"T1486": "Data Encrypted for Impact — ransomware-style encryption.",
+	"T1491": "Defacement — altering displayed content/messages.",
+	"T1496": "Resource Hijacking — abusing compute (e.g. cryptomining).",
+	"T1565": "Data Manipulation — tampering with stored/displayed/transmitted data.",
+	"T1583": "Acquire Infrastructure — standing up attacker infra (e.g. botnet nodes).",
+	"T1020": "Automated Exfiltration — automatically transferring collected data out.",
+	"T1041": "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
+	"T1048": "Exfiltration Over Alternative Protocol — exfil over a non-C2 protocol.",
+	// ICS (ATT&CK for ICS) — control-protocol activity.
+	"T0814": "Denial of Service (ICS) — disrupting a control device's availability.",
+	"T0888": "Remote System Information Discovery (ICS) — enumerating control devices/their info.",
+	"T0830": "Adversary-in-the-Middle (ICS) — intercepting control-network traffic.",
+	"T0831": "Manipulation of Control (ICS) — altering the physical control process.",
+	"T0836": "Modify Parameter (ICS) — changing a device setpoint/parameter.",
+	"T0846": "Remote System Discovery (ICS) — discovering control devices on the segment.",
+}
+
+// Describe returns a one-line plain-English description of an ATT&CK
+// technique ID (exact match, else its base technique), or "" if unknown.
+func Describe(tid string) string {
+	if d, ok := techDescriptions[tid]; ok {
+		return d
+	}
+	if i := strings.IndexByte(tid, '.'); i > 0 {
+		if d, ok := techDescriptions[tid[:i]]; ok {
+			return d
+		}
+	}
+	return ""
 }
 
 // Augment unions the ATT&CK metadata implied by an event's anomaly markers

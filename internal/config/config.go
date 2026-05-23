@@ -509,6 +509,10 @@ type Listener struct {
 	// JSON API + the juicy paths scanners probe), detecting — never
 	// executing — the web-attack families. Ignored by other handlers.
 	Webapp bool `yaml:"webapp"`
+	// WebappVariant selects the decoy web-app persona when Webapp is on:
+	// "" / "generic" (PHP/MySQL intranet, default), "wordpress",
+	// "phpmyadmin", or "jenkins". Unknown values fall back to generic.
+	WebappVariant string `yaml:"webapp_variant"`
 
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
@@ -790,6 +794,59 @@ type Correlate struct {
 	ProtocolViolation CorrProtocolViolation `yaml:"protocol_violation"`
 	Exfil             CorrExfil             `yaml:"exfil"`
 	SessionFlood      CorrSessionFlood      `yaml:"session_flood"`
+	LateralMovement   CorrLateralMovement   `yaml:"lateral_movement"`
+	OTRecon           CorrOTRecon           `yaml:"ot_recon"`
+	DataAccess        CorrDataAccess        `yaml:"data_access"`
+	MalwareCampaign   CorrMalwareCampaign   `yaml:"malware_campaign"`
+	Webshell          CorrWebshell          `yaml:"webshell"`
+}
+
+// CorrLateralMovement detects one source probing many DISTINCT lateral-
+// movement services (RDP, SMB, WinRM, SSH, VNC, MSRPC) within a window —
+// the breadth signature of an attacker hunting a pivot host.
+type CorrLateralMovement struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrOTRecon detects an ICS/OT reconnaissance sweep: one source touching
+// many DISTINCT industrial-protocol handlers (Modbus, S7, DNP3, EtherNet/IP,
+// …) within a window — mapping a control network.
+type CorrOTRecon struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrDataAccess detects bulk data-store collection: repeated data-access
+// events (Mongo/Elasticsearch/Redis/memcached reads, SMB share listing)
+// from one source within a window.
+type CorrDataAccess struct {
+	Enabled  bool          `yaml:"enabled"`
+	Attempts int           `yaml:"attempts"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrMalwareCampaign detects repeated ingress-tool transfers: several
+// malware:capture events (distinct droppers/payloads) from one source.
+type CorrMalwareCampaign struct {
+	Enabled  bool          `yaml:"enabled"`
+	Captures int           `yaml:"captures"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrWebshell detects sustained web-shell interaction: repeated web-shell
+// access / command events from one source within a window.
+type CorrWebshell struct {
+	Enabled  bool          `yaml:"enabled"`
+	Attempts int           `yaml:"attempts"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrHostSweep detects a horizontal network sweep: one source touching
