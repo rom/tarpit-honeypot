@@ -162,3 +162,63 @@ func containsID(recs []Record, id string) bool {
 	}
 	return false
 }
+
+// TestOTAdvisoryCVEs: the OT/ICS control-protocol CVEs are catalogued as
+// advisory-only (no payload signature — binary/framed protocols), mapped to
+// the correct emulated service, and ATT&CK-tagged. ForService must surface
+// each on its protocol handler so vuln_emulation can advertise the device.
+func TestOTAdvisoryCVEs(t *testing.T) {
+	want := map[string]string{ // id -> service
+		"CVE-2021-22779": "modbus",
+		"CVE-2018-7852":  "modbus",
+		"CVE-2016-2200":  "s7",
+		"CVE-2019-10929": "s7comm_plus",
+		"CVE-2022-31806": "codesys",
+		"CVE-2020-10245": "codesys",
+		"CVE-2022-31802": "codesys",
+		"CVE-2021-27432": "opcua",
+		"CVE-2023-4346":  "knx",
+		"CVE-2015-5374":  "iec104",
+		"CVE-2019-13524": "ge_srtp",
+		"CVE-2020-6986":  "fins",
+		"CVE-2021-20591": "melsec",
+		"CVE-2022-38138": "mms",
+		"CVE-2013-2783":  "dnp3",
+		"CVE-2017-16744": "fox",
+		"CVE-2016-8367":  "pcworx",
+		"CVE-2020-16209": "hartip",
+		"CVE-2025-58428": "atg",
+		"CVE-2018-8867":  "ge_srtp",
+	}
+	if len(want) != 20 {
+		t.Fatalf("expected 20 OT CVEs in the test set, have %d", len(want))
+	}
+	for id, svc := range want {
+		rec, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s: missing from catalog", id)
+			continue
+		}
+		if rec.Service != svc {
+			t.Errorf("%s: Service = %q; want %q", id, rec.Service, svc)
+		}
+		if rec.Detectable() {
+			t.Errorf("%s: should be advisory-only (no signatures), got %d", id, len(rec.Signatures))
+		}
+		if rec.Technique == "" || rec.Tactic == "" {
+			t.Errorf("%s: missing ATT&CK Technique/Tactic", id)
+		}
+		if rec.CVSS <= 0 {
+			t.Errorf("%s: missing CVSS", id)
+		}
+		if !containsID(ForService(svc), id) {
+			t.Errorf("%s: ForService(%q) did not surface it", id, svc)
+		}
+	}
+	// Advisory-only OT records must never produce a MatchPayload hit (no
+	// false positives from a binary control frame that happens to embed an
+	// OT vendor name in ASCII).
+	if hits := MatchPayload("modbus", "schneider modicon umas read"); len(hits) != 0 {
+		t.Errorf("advisory-only OT records must not MatchPayload: %v", hits)
+	}
+}

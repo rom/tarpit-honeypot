@@ -380,6 +380,7 @@ func (s *Sensor) observeScan(ev *event.Event, payload []byte) *event.Event {
 	}
 	r := s.scanTrack.Observe(scananalysis.Observation{
 		SourceIP:    ev.Source.IP,
+		DestIP:      ev.Dest.IP,
 		DestPort:    ev.Dest.Port,
 		Handler:     ev.Handler,
 		Time:        ev.Time,
@@ -392,16 +393,34 @@ func (s *Sensor) observeScan(ev *event.Event, payload []byte) *event.Event {
 	meta := map[string]any{
 		"timing_profile": r.TimingProfile,
 		"distinct_ports": r.DistinctPorts,
+		"distinct_hosts": r.DistinctHosts,
 		"connections":    r.Conns,
 		"version_scan":   r.VersionScan,
+		"vuln_scan":      r.VulnScan,
 		"os_scan":        r.OSScan,
 		"aggressive":     r.Aggressive,
+		"confidence":     r.Confidence,
+	}
+	if r.ScanShape != "" {
+		meta["scan_shape"] = r.ScanShape
+	}
+	if r.PortOrder != "" {
+		meta["port_order"] = r.PortOrder
+	}
+	if r.Stealthy {
+		meta["stealthy"] = true
+	}
+	if r.Tool != "" {
+		meta["tool"] = r.Tool
+	}
+	if len(r.Tools) > 0 {
+		meta["tools"] = r.Tools
 	}
 	if len(r.NSEScripts) > 0 {
 		meta["nse_scripts"] = r.NSEScripts
 	}
 	sev := event.SeverityMedium
-	if r.Aggressive || r.VersionScan {
+	if r.Aggressive || r.VersionScan || r.VulnScan {
 		sev = event.SeverityHigh
 	}
 	return &event.Event{

@@ -839,6 +839,27 @@ correlate:
   path_enumeration: { enabled: true, distinct_paths: 50, window: 60s, severity: high }
   dns_enumeration:  { enabled: true, distinct_names: 50, window: 60s, severity: medium }
   beacon:           { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+  # Additional opt-in correlators (default-off; shown here enabled).
+  # host_sweep: horizontal scan — one source touching many honeynet hosts.
+  host_sweep:        { enabled: true, distinct_hosts: 10, window: 60s, severity: high }
+  # service_sweep: cross-protocol recon — many distinct service handlers.
+  service_sweep:     { enabled: true, distinct_services: 5, window: 60s, severity: medium }
+  # ua_rotation: one source cycling many distinct HTTP User-Agents (evasion).
+  ua_rotation:       { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  # exploit_chain: one source attempting many DISTINCT CVEs (mass-exploit).
+  exploit_chain:     { enabled: true, distinct_cves: 2, window: 600s, severity: critical }
+  # ics_control: repeated OT write/control commands (modbus/bacnet/...).
+  ics_control:       { enabled: true, attempts: 3, window: 300s, severity: critical }
+  # canary_trip: one source tripping many distinct canary tokens/honeyfiles.
+  canary_trip:       { enabled: true, distinct_tokens: 2, window: 1h, severity: critical }
+  # fingerprint_reuse: one JA3/JA4/HASSH fingerprint across many source IPs.
+  fingerprint_reuse: { enabled: true, distinct_sources: 5, window: 1h, severity: medium }
+  # protocol_violation: one source tripping many distinct anomaly markers.
+  protocol_violation: { enabled: true, distinct_anomalies: 5, window: 300s, severity: medium }
+  # exfil: cumulative inbound bytes from one source crossing a threshold.
+  exfil:             { enabled: true, bytes: 1048576, window: 300s, severity: high }
+  # session_flood: volumetric connection flood from one source.
+  session_flood:     { enabled: true, connections: 200, window: 60s, severity: medium }
 
 # Interaction depth. This "everything ON" reference uses medium_experimental
 # so the experimental capture knobs are unlocked (still best-effort — see
