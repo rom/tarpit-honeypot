@@ -14,7 +14,6 @@ package enrich
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -81,26 +80,28 @@ func (ts *threatSet) match(addr netip.Addr) bool {
 	return false
 }
 
+// New builds an Enricher. Enrichment databases are OPTIONAL and best-effort:
+// a configured file that is missing or unreadable is logged and skipped (the
+// sensor still starts), so an operator can declare the enrichment paths up
+// front and populate them later (fetch-enrichment.sh + install-enrichment.sh
+// + SIGHUP). New only returns an error for a non-file setup problem.
 func New(cfg Config) (*Enricher, error) {
 	e := &Enricher{}
 	if cfg.CityDB != "" {
-		r, err := maxminddb.Open(cfg.CityDB)
-		if err != nil {
-			return nil, fmt.Errorf("enrich: open city db %s: %w", cfg.CityDB, err)
+		if r, err := maxminddb.Open(cfg.CityDB); err != nil {
+			slog.Warn("enrich: geoip city db unavailable; geo enrichment off", "path", cfg.CityDB, "err", err)
+		} else {
+			e.cityDB = r
+			slog.Info("enrich: city db loaded", "path", cfg.CityDB, "build_epoch", r.Metadata.BuildEpoch)
 		}
-		e.cityDB = r
-		slog.Info("enrich: city db loaded", "path", cfg.CityDB, "build_epoch", r.Metadata.BuildEpoch)
 	}
 	if cfg.ASNDB != "" {
-		r, err := maxminddb.Open(cfg.ASNDB)
-		if err != nil {
-			if e.cityDB != nil {
-				_ = e.cityDB.Close()
-			}
-			return nil, fmt.Errorf("enrich: open asn db %s: %w", cfg.ASNDB, err)
+		if r, err := maxminddb.Open(cfg.ASNDB); err != nil {
+			slog.Warn("enrich: geoip asn db unavailable; asn enrichment off", "path", cfg.ASNDB, "err", err)
+		} else {
+			e.asnDB = r
+			slog.Info("enrich: asn db loaded", "path", cfg.ASNDB, "build_epoch", r.Metadata.BuildEpoch)
 		}
-		e.asnDB = r
-		slog.Info("enrich: asn db loaded", "path", cfg.ASNDB, "build_epoch", r.Metadata.BuildEpoch)
 	}
 	if cfg.RDNSEnabled {
 		size := cfg.RDNSCache
@@ -117,26 +118,25 @@ func New(cfg Config) (*Enricher, error) {
 		if tl.File == "" {
 			continue
 		}
-		ips, cidrs, n, err := loadIPList(tl.File)
-		if err != nil {
-			e.closeDBs()
-			return nil, fmt.Errorf("enrich: threat list %q (%s): %w", tl.Label, tl.File, err)
-		}
 		label := tl.Label
 		if label == "" {
 			label = "threat"
+		}
+		ips, cidrs, n, err := loadIPList(tl.File)
+		if err != nil {
+			slog.Warn("enrich: threat list unavailable; skipping", "label", label, "path", tl.File, "err", err)
+			continue
 		}
 		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: cidrs})
 		slog.Info("enrich: threat list loaded", "label", label, "path", tl.File, "entries", n)
 	}
 	if cfg.TorExitFile != "" {
-		ips, _, n, err := loadIPList(cfg.TorExitFile)
-		if err != nil {
-			e.closeDBs()
-			return nil, fmt.Errorf("enrich: tor exit list %s: %w", cfg.TorExitFile, err)
+		if ips, _, n, err := loadIPList(cfg.TorExitFile); err != nil {
+			slog.Warn("enrich: tor exit list unavailable; tor tagging off", "path", cfg.TorExitFile, "err", err)
+		} else {
+			e.torExit = ips
+			slog.Info("enrich: tor exit list loaded", "path", cfg.TorExitFile, "entries", n)
 		}
-		e.torExit = ips
-		slog.Info("enrich: tor exit list loaded", "path", cfg.TorExitFile, "entries", n)
 	}
 	e.netClass = cfg.NetClass
 	return e, nil
@@ -179,16 +179,6 @@ func loadIPList(path string) (ips map[string]struct{}, cidrs []netip.Prefix, n i
 		return nil, nil, 0, serr
 	}
 	return ips, cidrs, n, nil
-}
-
-// closeDBs releases any opened mmdb readers (used on a failed New()).
-func (e *Enricher) closeDBs() {
-	if e.cityDB != nil {
-		_ = e.cityDB.Close()
-	}
-	if e.asnDB != nil {
-		_ = e.asnDB.Close()
-	}
 }
 
 func (e *Enricher) Close() error {
