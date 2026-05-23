@@ -189,6 +189,23 @@ func TestCorruptPacketNeverReplies(t *testing.T) {
 	}
 }
 
+func TestLandAttackDroppedNotAnswered(t *testing.T) {
+	// A LAND packet to an open port must be captured but never answered —
+	// replying (to ourselves) is the attack.
+	st := testStack(80)
+	land := clientPkt(tHost, tHost, 80, 80, 1000, 0, SYN, nil, nil)
+	res := st.OnPacket(land)
+	if len(res.Out) != 0 {
+		t.Errorf("LAND packet drew a reply: %d packets", len(res.Out))
+	}
+	if len(res.Events) != 1 || res.Events[0].Kind != EventMalformed || !has(res.Events[0].Markers, "tcp-land") {
+		t.Fatalf("LAND not captured as malformed: %+v", res.Events)
+	}
+	if st.Stats().Flows != 0 {
+		t.Errorf("LAND packet created a flow")
+	}
+}
+
 func TestSweepReapsIdleFlows(t *testing.T) {
 	st := testStack(80)
 	st.OnPacket(clientPkt(tClient, tHost, 40000, 80, 1, 0, SYN, nil, nil))

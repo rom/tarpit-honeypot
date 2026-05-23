@@ -41,6 +41,14 @@ func TestClassifyStealthFlagCombos(t *testing.T) {
 	}
 }
 
+func TestClassifyLandAttack(t *testing.T) {
+	// A SYN whose source equals its destination (LAND, CVE-1999-0016).
+	pkt := clientPkt([4]byte{10, 0, 0, 5}, [4]byte{10, 0, 0, 5}, 80, 80, 1, 0, SYN, nil, nil)
+	if m := classifyPkt(t, pkt); !has(m, "tcp-land") {
+		t.Errorf("LAND packet not flagged: %v", m)
+	}
+}
+
 func TestClassifyDataInSyn(t *testing.T) {
 	pkt := clientPkt([4]byte{1, 2, 3, 4}, [4]byte{10, 0, 0, 5}, 1, 80, 1, 0, SYN, nil, []byte("x"))
 	if m := classifyPkt(t, pkt); !has(m, "tcp-data-in-syn") {

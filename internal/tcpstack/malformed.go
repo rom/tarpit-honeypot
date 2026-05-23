@@ -40,6 +40,13 @@ func Classify(s *Segment) []string {
 		m = append(m, "tcp-bad-checksum")
 	}
 
+	// LAND attack (CVE-1999-0016): a packet whose source equals its
+	// destination is spoofed by definition and, on a vulnerable stack,
+	// makes the host reply to itself. Never legitimate.
+	if s.SrcIP == s.DstIP {
+		m = append(m, "tcp-land")
+	}
+
 	f := s.Flags
 	syn := f&SYN != 0
 	switch {

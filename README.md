@@ -435,6 +435,7 @@ rationale covering the current implementation.
 In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 - [`docs/design.md`](docs/design.md) — architecture + design rationale covering the current implementation.
+- [`docs/tcp-stack.md`](docs/tcp-stack.md) — the honeynet userspace TCP stack: fingerprint-shaped SYN-ACK, the decoy connection state machine, malformed-packet capture, and its ATT&CK / TCP-stack-CVE mappings.
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.

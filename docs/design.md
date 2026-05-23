@@ -118,13 +118,22 @@ What makes the sensor *look real*:
   AF_PACKET ARP / ICMP / LLDP+CDP responders make the network
   discoverable; a **PROFINET-DCP** responder answers DCP Identify (L2,
   EtherType 0x8892) for industrial hosts so a PROFINET scan enumerates the
-  cell; an optional TUN device answers ICMP + TCP-RST for unbound ports.
-- **TCP/IP stack personality.** The TUN responder stamps each virtual
-  host's synthesized ICMP echo replies + closed-port RSTs with the initial
-  IP TTL of its archetype (255 OT / 128 Windows / 64 Linux-BSD) instead of
-  echoing the prober's, so `nmap -O` + traceroute hop-distance are
-  consistent with the claimed OS. Open-port SYN-ACKs still come from the
-  host kernel (a full userspace TCP/IP stack is out of scope).
+  cell; an optional TUN device terminates TCP for the whole CIDR via an
+  embedded userspace stack (no `ip addr add` per host).
+- **TCP/IP stack personality + userspace stack** (`internal/tcpstack`, see
+  [`tcp-stack.md`](tcp-stack.md)). The TUN adapter answers ICMP echo and,
+  for each virtual host's configured service ports, completes a TCP
+  handshake with a **SYN-ACK shaped to the archetype's stack fingerprint**
+  — initial TTL (255 OT / 128 Windows / 64 Linux-BSD), advertised window,
+  MSS, window-scale, SACK-permitted, timestamps, and the exact option
+  order/NOP padding nmap `-O` and p0f key on — then answers a single
+  request/response from the archetype banners. Unbound ports RST; ICMP
+  echo replies and closed-port RSTs carry the same per-host TTL so the OS
+  fingerprint is consistent across open ports, closed ports, and ping.
+  Malformed / illegal packets (NULL/FIN/Xmas, SYN-FIN, bad checksums,
+  fragments, LAND/CVE-1999-0016) are captured as `honeynet:tcp_*` events
+  rather than answered. Deliberately a decoy stack: in-order data only, one
+  request/response, no retransmission / congestion control / reassembly.
 
 ## 5. Detection layer
 
@@ -339,6 +348,13 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   (write / config-read). Catalog reached 99 archetypes; new
   [`archetypes.md`](archetypes.md) reference + a man page. Cross-package
   catalog-integrity tests.
+- **current (v2.0+)** — embedded **userspace TCP stack** over the honeynet
+  TUN (`internal/tcpstack`): per-host fingerprint-shaped SYN-ACK +
+  handshake + a single request/response on each configured service port,
+  with malformed / illegal / stealth-scan packet capture (NULL/FIN/Xmas,
+  SYN-FIN, bad checksums, fragments, LAND) and a TCP/IP-stack CVE class
+  (LAND, Teardrop, SACK-Panic, sockstress, Ripple20). See
+  [`tcp-stack.md`](tcp-stack.md).
 
 ## 14. Open risks
 
@@ -367,10 +383,14 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   response-scripting handler is the only scripting surface).
 - Hosted SaaS control plane.
 - Real code execution in any emulated service.
-- **Full userspace TCP/IP stack.** The TUN responder controls TTL on
-  synthesized RST/ICMP, but open-port SYN-ACK quirks (window/options/ISN)
-  come from the host kernel — a complete `nmap -O` match would need a
-  userspace stack.
+- **Streaming / out-of-order TCP over the userspace stack.** The TUN
+  adapter now embeds a userspace TCP stack (`internal/tcpstack`) that
+  shapes open-port SYN-ACK quirks (TTL/window/MSS/options/ISN) to the
+  archetype for a full `nmap -O` / p0f match and answers one
+  request/response — but it is a *decoy* stack: in-order data only, no
+  retransmission, congestion control, or out-of-order reassembly. Deep
+  multi-segment protocol interaction still wants a real socket. See
+  [`tcp-stack.md`](tcp-stack.md).
 - **OPC-DA (classic, DCOM/MSRPC) — full call marshaling.** The `dcerpc`
   handler now recognizes the OPC-DA interface family (OPCEnum / IOPCServer*)
   on bind, flags `ics-opc-da-probe`, and advertises OPCEnum + OPC-DA server

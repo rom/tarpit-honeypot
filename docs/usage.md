@@ -114,11 +114,11 @@ Five optional Linux-only adapters make the honeynet more discoverable **without*
 
 - **`arp_responder`** (v1.2): the sensor opens an AF_PACKET socket and answers ARP requests for every virtual host IP. `arp-scan` sees the network as populated.
 - **`icmp_responder`** (v1.3): the sensor answers IPv4 ICMP echo (ping) for every virtual host IP via the same AF_PACKET path.
-- **`tun`** (v1.5): the sensor opens a Linux TUN device. The operator routes the honeynet CIDR into the TUN. The sensor answers ICMP/ICMPv6 echo and sends TCP RST for unbound ports. `nmap -sS` reports the host as up. Synthesized replies carry each host's archetype **TTL personality** (255 OT / 128 Windows / 64 Linux), so `nmap -O` + traceroute hop-distance match the claimed OS.
+- **`tun`** (v1.5+): the sensor opens a Linux TUN device; the operator routes the honeynet CIDR into it. The sensor answers ICMP/ICMPv6 echo and embeds a **userspace TCP stack** ([`tcp-stack.md`](tcp-stack.md)) that terminates TCP for the whole CIDR — no `ip addr add` per host. For each host's `services:` ports it completes a handshake with a **SYN-ACK shaped to the archetype's stack fingerprint** (TTL/window/MSS/window-scale/SACK/timestamps/option order — what `nmap -O` and p0f read) and answers a single request/response from the archetype banners; unbound ports RST. ICMP, RST and SYN-ACK all carry the per-host **TTL personality** (255 OT / 128 Windows / 64 Linux), so the OS fingerprint is consistent across open ports, closed ports and ping. Malformed / illegal / stealth-scan packets (NULL/FIN/Xmas, SYN-FIN, bad checksums, fragments, LAND) are captured as `honeynet:tcp_*` events.
 - **`lldp_responder`** (v1.10): the sensor emits LLDP (and optionally CDP) frames so every honeynet host appears in `lldpctl` / Cisco `show cdp neighbors` output with archetype-shaped MAC + system description + family-tuned LLDP capabilities. Pairs naturally with the Moxa / SCALANCE / S7 archetypes for industrial deception.
 - **`profinet_responder`**: the sensor answers PROFINET-DCP Identify requests (L2, EtherType 0x8892) for industrial hosts, so a PROFINET scan (Siemens PRONETA / TIA Portal / nmap) enumerates the cell. Each request also raises `honeynet:profinet_dcp_identify` (ATT&CK T0846) — a strong ICS-recon signal.
 
-None of these adapters provide a full userspace TCP stack — real protocol termination still goes through real sockets. For "scanner sees the network as populated" they are sufficient.
+The ARP / ICMP / LLDP / PROFINET adapters are L2/L3 discovery only. The `tun` adapter additionally terminates TCP (handshake + one request/response) via its userspace stack — enough to fool `nmap -sV` / `-O` and p0f. For deep multi-segment protocol interaction (full login flows, file transfers, interactive shells) bind a real socket and route traffic to it.
 
 On macOS the AF_PACKET-based adapters are not available; see [Platform support](#10-platform-support) below for the `ifconfig alias` workaround.
 
@@ -170,7 +170,7 @@ ip link set tarpit0 up
 ip route add 10.50.0.0/16 dev tarpit0
 ```
 
-The sensor responds to all `nmap -sn`-style probes for that range; for actual protocol interaction, configure listeners that bind real sockets and use NAT to forward traffic from the TUN-bound network into the sensor.
+The sensor responds to all `nmap -sn`-style probes for that range, and its userspace TCP stack completes handshakes + answers a request/response on each host's `services:` ports (a believable `nmap -sV` / `-O` result) with no `ip addr add` per host. For deep multi-segment protocol interaction, additionally bind real-socket listeners and NAT traffic from the TUN-bound network into them. See [`tcp-stack.md`](tcp-stack.md) for what the stack does and doesn't emulate.
 
 ## 4. Web UI
 
