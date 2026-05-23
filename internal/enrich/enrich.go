@@ -12,11 +12,14 @@
 package enrich
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,12 +34,50 @@ type Config struct {
 	RDNSEnabled bool
 	RDNSTimeout time.Duration
 	RDNSCache   int
+	// ThreatLists are operator-supplied IP/CIDR reputation lists, each
+	// tagged with a label. A source matching any list gets a
+	// threat_intel tag (the labels) on its events.
+	ThreatLists []ThreatList
+	// TorExitFile is an operator-supplied list of Tor exit-node IPs (one
+	// per line). Matching sources get tor_exit=true.
+	TorExitFile string
+	// NetClass enables the built-in network classification (bogon /
+	// cloud-hosting) that needs no external database.
+	NetClass bool
+}
+
+// ThreatList is one labeled IP/CIDR reputation list.
+type ThreatList struct {
+	Label string
+	File  string
 }
 
 type Enricher struct {
-	cityDB *maxminddb.Reader
-	asnDB  *maxminddb.Reader
-	rdns   *rdnsCache
+	cityDB   *maxminddb.Reader
+	asnDB    *maxminddb.Reader
+	rdns     *rdnsCache
+	threat   []threatSet
+	torExit  map[string]struct{}
+	netClass bool
+}
+
+// threatSet is one loaded reputation list: exact IPs plus CIDR prefixes.
+type threatSet struct {
+	label string
+	ips   map[string]struct{}
+	cidrs []netip.Prefix
+}
+
+func (ts *threatSet) match(addr netip.Addr) bool {
+	if _, ok := ts.ips[addr.String()]; ok {
+		return true
+	}
+	for _, p := range ts.cidrs {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 func New(cfg Config) (*Enricher, error) {
@@ -71,7 +112,82 @@ func New(cfg Config) (*Enricher, error) {
 		}
 		e.rdns = newRDNSCache(size, timeout)
 	}
+	for _, tl := range cfg.ThreatLists {
+		if tl.File == "" {
+			continue
+		}
+		ips, cidrs, n, err := loadIPList(tl.File)
+		if err != nil {
+			e.closeDBs()
+			return nil, fmt.Errorf("enrich: threat list %q (%s): %w", tl.Label, tl.File, err)
+		}
+		label := tl.Label
+		if label == "" {
+			label = "threat"
+		}
+		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: cidrs})
+		slog.Info("enrich: threat list loaded", "label", label, "path", tl.File, "entries", n)
+	}
+	if cfg.TorExitFile != "" {
+		ips, _, n, err := loadIPList(cfg.TorExitFile)
+		if err != nil {
+			e.closeDBs()
+			return nil, fmt.Errorf("enrich: tor exit list %s: %w", cfg.TorExitFile, err)
+		}
+		e.torExit = ips
+		slog.Info("enrich: tor exit list loaded", "path", cfg.TorExitFile, "entries", n)
+	}
+	e.netClass = cfg.NetClass
 	return e, nil
+}
+
+// loadIPList reads a file of one IP or CIDR per line (blank lines and
+// '#' comments ignored). Exact IPs go into the returned set (keyed by the
+// canonical netip string); CIDRs go into the prefix slice. n is the count
+// of parsed entries.
+func loadIPList(path string) (ips map[string]struct{}, cidrs []netip.Prefix, n int, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer func() { _ = f.Close() }()
+	ips = map[string]struct{}{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if i := strings.IndexAny(line, " \t#"); i >= 0 { // allow trailing comments / columns
+			line = strings.TrimSpace(line[:i])
+		}
+		if strings.Contains(line, "/") {
+			if p, perr := netip.ParsePrefix(line); perr == nil {
+				cidrs = append(cidrs, p.Masked())
+				n++
+			}
+			continue
+		}
+		if a, aerr := netip.ParseAddr(line); aerr == nil {
+			ips[a.String()] = struct{}{}
+			n++
+		}
+	}
+	if serr := sc.Err(); serr != nil {
+		return nil, nil, 0, serr
+	}
+	return ips, cidrs, n, nil
+}
+
+// closeDBs releases any opened mmdb readers (used on a failed New()).
+func (e *Enricher) closeDBs() {
+	if e.cityDB != nil {
+		_ = e.cityDB.Close()
+	}
+	if e.asnDB != nil {
+		_ = e.asnDB.Close()
+	}
 }
 
 func (e *Enricher) Close() error {
@@ -154,6 +270,79 @@ func (e *Enricher) Decorate(ev *event.Event) {
 			ev.Meta["rdns"] = name
 		}
 	}
+	if len(e.threat) > 0 {
+		var hits []string
+		for i := range e.threat {
+			if e.threat[i].match(addr) {
+				hits = append(hits, e.threat[i].label)
+			}
+		}
+		if len(hits) > 0 {
+			ev.Meta["threat_intel"] = hits
+			ev.Meta["threat_intel_hit"] = true
+		}
+	}
+	if e.torExit != nil {
+		if _, ok := e.torExit[addr.String()]; ok {
+			ev.Meta["tor_exit"] = true
+		}
+	}
+	if e.netClass {
+		if cls := classifyNet(addr, ev.Meta["asn_org"]); cls != "" {
+			ev.Meta["net_class"] = cls
+		}
+	}
+}
+
+// bogons are ranges that must never appear as a legitimate public source
+// (RFC 5737 TEST-NET, RFC 6598 CGNAT, RFC 2544 benchmark, Class E, the
+// IPv6 documentation block, …). A source inside one is spoofed / martian
+// — a high-signal anomaly for a sensor on the public edge.
+var bogons = func() []netip.Prefix {
+	cidrs := []string{
+		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",
+		"192.88.99.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+		"240.0.0.0/4", "255.255.255.255/32",
+		"::/128", "2001:db8::/32", "100::/64",
+	}
+	out := make([]netip.Prefix, 0, len(cidrs))
+	for _, c := range cidrs {
+		if p, err := netip.ParsePrefix(c); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}()
+
+// hostingKeywords are AS-org substrings that mark a source as datacenter /
+// cloud infrastructure rather than a residential / corporate access network
+// — a useful triage hint (scanners and C2 ride hosting, not eyeballs).
+var hostingKeywords = []string{
+	"amazon", "aws", "google", "microsoft", "azure", "oracle", "ovh",
+	"hetzner", "digitalocean", "linode", "akamai", "cloudflare", "fastly",
+	"alibaba", "tencent", "huawei cloud", "contabo", "leaseweb", "vultr",
+	"choopa", "scaleway", "m247", "datacamp", "data center", "datacenter",
+	"hosting", "colocation", "colo", "vps", "dedicated server",
+}
+
+// classifyNet returns a coarse network class for a public source: "bogon"
+// for a reserved/martian range, "hosting" when the AS-org looks like a
+// datacenter/cloud provider, else "".
+func classifyNet(addr netip.Addr, asnOrg any) string {
+	for _, p := range bogons {
+		if p.Contains(addr) {
+			return "bogon"
+		}
+	}
+	if org, ok := asnOrg.(string); ok && org != "" {
+		lo := strings.ToLower(org)
+		for _, kw := range hostingKeywords {
+			if strings.Contains(lo, kw) {
+				return "hosting"
+			}
+		}
+	}
+	return ""
 }
 
 // rdnsCache is a tiny LRU + per-IP timeout wrapper around net.LookupAddr.

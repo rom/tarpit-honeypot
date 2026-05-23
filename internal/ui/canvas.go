@@ -175,6 +175,9 @@ func buildCollectors(c *config.Config) []collectorCard {
 	geo := geoipDetail(c.Sensor.GeoIP)
 	add("GeoIP enrichment", "enrichment", geo != "", geo)
 	add("Reverse-DNS enrichment", "enrichment", c.Sensor.RDNS.Enabled, "")
+	add("Threat-intel tagging", "enrichment", c.Sensor.ThreatIntel.Enabled && len(c.Sensor.ThreatIntel.Lists) > 0, threatIntelDetail(c.Sensor.ThreatIntel))
+	add("Tor-exit tagging", "enrichment", c.Sensor.Tor.Enabled && c.Sensor.Tor.ExitFile != "", "")
+	add("Network classification", "enrichment", c.Sensor.NetClass.Enabled, "bogon / cloud-hosting")
 
 	// --- detection ---
 	add("Risk scoring", "detection", c.Risk.Enabled, "")
@@ -182,9 +185,14 @@ func buildCollectors(c *config.Config) []collectorCard {
 	add("Correlation engine", "detection", corrN > 0, plural(corrN, "detector"))
 	canN := len(c.Canaries) + len(c.URLCanaries) + len(c.DNSCanaries)
 	add("Canary tokens", "detection", canN > 0, canaryDetail(c))
+	// Always-on per-source scan profiler (nmap timing template + tool
+	// fingerprint + scan geometry); emits scananalysis:profile.
+	add("Scan analysis", "detection", true, "nmap timing + tool fingerprint")
+	add("Client fingerprinting", "detection", hasFingerprintListener(c.Listeners), "JA3/JA4/HASSH")
 
 	// --- forensics / output ---
 	add("Payload capture", "forensics", c.Sensor.Payloads.Enabled, "")
+	add("PCAP capture", "forensics", anyCaptureListener(c.Listeners), captureDetail(c.Listeners))
 	add("Session recording", "forensics", c.Sensor.SessionRecording.Enabled, "telnet / ssh casts")
 	add("Vuln/CVE emulation", "forensics", c.Sensor.VulnEmulation, "advertise unpatched versions")
 	outN := outboundChannels(c.Channels)
@@ -224,6 +232,10 @@ func activeCorrelators(c config.Correlate) int {
 		c.PortScan.Enabled, c.BruteForce.Enabled, c.SlowScan.Enabled,
 		c.ICMPSweep.Enabled, c.PasswordSpray.Enabled, c.CredReuse.Enabled,
 		c.PathEnum.Enabled, c.DNSEnum.Enabled, c.Beacon.Enabled,
+		c.HostSweep.Enabled, c.ServiceSweep.Enabled, c.UARotation.Enabled,
+		c.ExploitChain.Enabled, c.ICSControl.Enabled, c.CanaryTrip.Enabled,
+		c.FingerprintReuse.Enabled, c.ProtocolViolation.Enabled,
+		c.Exfil.Enabled, c.SessionFlood.Enabled,
 	}
 	n := 0
 	for _, f := range flags {
@@ -232,6 +244,53 @@ func activeCorrelators(c config.Correlate) int {
 		}
 	}
 	return n
+}
+
+// threatIntelDetail summarizes the configured reputation lists.
+func threatIntelDetail(ti config.ThreatIntel) string {
+	if n := len(ti.Lists); n > 0 {
+		return plural(n, "list")
+	}
+	return ""
+}
+
+// hasFingerprintListener reports whether any listener runs a handler the
+// client-fingerprinting subsystem applies to (TLS-terminating or SSH).
+func hasFingerprintListener(ls []config.Listener) bool {
+	for _, l := range ls {
+		switch l.Handler {
+		case "https", "ssh", "ssh_interactive", "mqtt":
+			return true
+		}
+		if isTLSListener(l) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyCaptureListener reports whether any listener records a pcap.
+func anyCaptureListener(ls []config.Listener) bool {
+	for _, l := range ls {
+		if l.Capture {
+			return true
+		}
+	}
+	return false
+}
+
+// captureDetail counts how many listeners have pcap capture on.
+func captureDetail(ls []config.Listener) string {
+	n := 0
+	for _, l := range ls {
+		if l.Capture {
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	return plural(n, "listener")
 }
 
 func outboundChannels(chs []config.Channel) int {

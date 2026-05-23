@@ -318,6 +318,13 @@ type Sensor struct {
 	TLSRotate TLSRotate `yaml:"tls_rotate"`
 	GeoIP     GeoIP     `yaml:"geoip"`
 	RDNS      RDNS      `yaml:"rdns"`
+	// ThreatIntel tags source IPs that appear on operator-supplied
+	// reputation lists. Tor flags Tor exit nodes. NetClass adds a coarse
+	// built-in network classification (bogon / cloud-hosting). All three
+	// are enrichment-only — they decorate events, never block.
+	ThreatIntel ThreatIntel `yaml:"threat_intel"`
+	Tor         TorIntel    `yaml:"tor"`
+	NetClass    NetClass    `yaml:"net_class"`
 	// VulnEmulation, when true, makes banner-aware handlers advertise a
 	// known-vulnerable version / patch-level for their service (so a
 	// version scanner records an unpatched box) and recognize the
@@ -404,6 +411,34 @@ type RDNS struct {
 	Enabled   bool          `yaml:"enabled"`
 	Timeout   time.Duration `yaml:"timeout"`
 	CacheSize int           `yaml:"cache_size"`
+}
+
+// ThreatIntel tags source IPs found on operator-supplied reputation lists
+// (one IP or CIDR per line; '#' comments allowed). Each list carries a
+// label that lands in the event's threat_intel meta. Enrichment only.
+type ThreatIntel struct {
+	Enabled bool              `yaml:"enabled"`
+	Lists   []ThreatIntelList `yaml:"lists"`
+}
+
+// ThreatIntelList is one labeled reputation list file.
+type ThreatIntelList struct {
+	Label string `yaml:"label"`
+	File  string `yaml:"file"`
+}
+
+// TorIntel flags source IPs that appear in an operator-supplied Tor
+// exit-node list (tor_exit=true on the event). Enrichment only.
+type TorIntel struct {
+	Enabled  bool   `yaml:"enabled"`
+	ExitFile string `yaml:"exit_file"`
+}
+
+// NetClass enables the built-in, database-free network classification of
+// public source IPs: "bogon" for reserved/martian ranges and "hosting"
+// when the (GeoIP-ASN-derived) AS-org looks like datacenter/cloud infra.
+type NetClass struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // Jitter randomizes the latency of handler replies. min=max=0 disables.

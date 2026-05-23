@@ -8,6 +8,22 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — collectors: enrichment + canvas visibility
+- **3 new enrichment collectors** in the event-decoration pipeline
+  (`sensor:` config, enrichment-only — they tag, never block):
+  - `threat_intel` — tag source IPs found on operator-supplied IP/CIDR
+    reputation lists (each labeled); events get `threat_intel` (matched
+    labels) + `threat_intel_hit`.
+  - `tor` — flag sources in a Tor exit-node list with `tor_exit=true`.
+  - `net_class` — built-in, database-free classification of public
+    sources: `bogon` (reserved/martian ranges) or `hosting` (datacenter /
+    cloud AS-org, from the GeoIP-ASN org).
+- The web UI **config canvas** now surfaces the real-but-previously-hidden
+  background subsystems: **Scan analysis** and **Client fingerprinting**
+  (detection), **PCAP capture** (forensics), and the three new enrichment
+  collectors. The **Correlation engine** detector count now includes the
+  10 opt-in correlators added earlier.
+
 ### Added — CVE catalog: +20 OT/ICS advisories
 - The CVE catalog grows by **20 OT/ICS control-protocol records** mapped to
   the industrial handlers the honeypot emulates: Schneider Modicon UMAS/Modbus

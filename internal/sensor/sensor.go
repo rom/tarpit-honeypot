@@ -229,6 +229,9 @@ func New(cfg *config.Config) (*Sensor, error) {
 		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
 		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
 		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
+		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile: torExitFile(cfg.Sensor.Tor),
+		NetClass:    cfg.Sensor.NetClass.Enabled,
 	})
 	if err != nil {
 		for _, s := range sinks {
@@ -627,6 +630,27 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 		Proto:    "device",
 		Meta:     meta,
 	}
+}
+
+// threatListsFromConfig maps the config threat-intel lists to the enrich
+// package's input. Returns nil when disabled (no lists loaded).
+func threatListsFromConfig(ti config.ThreatIntel) []enrich.ThreatList {
+	if !ti.Enabled || len(ti.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.ThreatList, 0, len(ti.Lists))
+	for _, l := range ti.Lists {
+		out = append(out, enrich.ThreatList{Label: l.Label, File: l.File})
+	}
+	return out
+}
+
+// torExitFile returns the Tor exit-node list path when Tor tagging is on.
+func torExitFile(t config.TorIntel) string {
+	if !t.Enabled {
+		return ""
+	}
+	return t.ExitFile
 }
 
 // isBroadcastHandler reports whether a handler answers a broadcast /
