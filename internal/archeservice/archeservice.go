@@ -253,6 +253,61 @@ var roles = map[string][]Service{
 		{8201, "tcp", "https", "Vault cluster"},
 		{8500, "tcp", "http", "Consul API"},
 	},
+	"tomcatserver": {
+		{8009, "tcp", "ajp13", "AJP13 connector"},
+		{8080, "tcp", "http", "servlet container"},
+		{8443, "tcp", "https", "servlet container TLS"},
+		{8005, "tcp", "raw", "Tomcat shutdown"},
+	},
+	"erlangcluster": {
+		{4369, "tcp", "epmd", "Erlang Port Mapper"},
+		{5672, "tcp", "amqp", "RabbitMQ AMQP"},
+		{15672, "tcp", "http", "RabbitMQ management"},
+		{25672, "tcp", "raw", "Erlang distribution"},
+	},
+	"aaaserver": {
+		{49, "tcp", "tacacs", "TACACS+"},
+		{1812, "udp", "radius", "RADIUS authentication"},
+		{1813, "udp", "radius", "RADIUS accounting"},
+	},
+	"observability": {
+		{3000, "tcp", "http", "Grafana"},
+		{9090, "tcp", "http", "Prometheus"},
+		{9093, "tcp", "http", "Alertmanager"},
+		{9100, "tcp", "raw", "node exporter"},
+	},
+	"objectstore": {
+		{9000, "tcp", "http", "S3 / MinIO API"},
+		{9001, "tcp", "http", "MinIO console"},
+		{443, "tcp", "https", "S3 API (TLS)"},
+	},
+	"containerregistry": {
+		{5000, "tcp", "http", "registry v2 API"},
+		{443, "tcp", "https", "registry TLS"},
+		{2375, "tcp", "dockerapi", "Docker remote API"},
+	},
+	"k8scontrolplane": {
+		{6443, "tcp", "https", "kube-apiserver"},
+		{10250, "tcp", "https", "kubelet"},
+		{2379, "tcp", "http", "etcd client"},
+		{10259, "tcp", "https", "kube-scheduler"},
+	},
+	"sqlserver": {
+		{1433, "tcp", "mssql", "SQL Server"},
+		{1434, "udp", "mssql_browser", "SQL Browser (SSRP)"},
+		{80, "tcp", "http", "Reporting Services"},
+	},
+	"tsdbserver": {
+		{8086, "tcp", "http", "InfluxDB"},
+		{8123, "tcp", "http", "ClickHouse HTTP"},
+		{2003, "tcp", "raw", "Graphite carbon"},
+		{3000, "tcp", "http", "Grafana"},
+	},
+	"androidadb": {
+		{5555, "tcp", "adb", "Android Debug Bridge"},
+		{5037, "tcp", "raw", "adb server"},
+		{443, "tcp", "https", "MDM console"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-
