@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -89,7 +90,7 @@ func buildAttackView(since time.Time, evs []*event.Event) attackView {
 	}
 
 	v.DistinctTID = len(techCount)
-	v.TopTech = topBars(techCount, 25, "")
+	v.TopTech = topBars(techCount, 25, "/attack/technique?id=")
 
 	// Tactic timeline, ordered along the reconnaissance→impact kill chain.
 	maxTac := 0
@@ -104,7 +105,7 @@ func buildAttackView(since time.Time, evs []*event.Event) attackView {
 			continue
 		}
 		row := tacticRow{Tactic: tac, Count: c, Pct: pct(c, maxTac), Rank: rank + 1}
-		row.Techniques = topBars(tacTech[tac], 12, "")
+		row.Techniques = topBars(tacTech[tac], 12, "/attack/technique?id=")
 		v.Tactics = append(v.Tactics, row)
 	}
 
@@ -128,6 +129,102 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "attack", buildAttackView(since, evs)); err != nil {
 		slog.Warn("ui: render attack", "err", err)
+	}
+}
+
+// techniqueView is the drill-down for one ATT&CK technique: what it means,
+// which tactics it falls under here, the rules/handlers that triggered it,
+// and the source IPs responsible (with event counts).
+type techniqueView struct {
+	ID          string
+	Description string
+	Since       time.Time
+	Events      int
+	Tactics     []string
+	Sources     []barRow // source IP -> events carrying this technique
+	Rules       []barRow // rule_id -> count
+}
+
+// buildTechniqueView scans events for those whose recomputed ATT&CK tag
+// includes tid and aggregates the sources / rules / tactics behind it.
+func buildTechniqueView(tid string, since time.Time, evs []*event.Event) techniqueView {
+	v := techniqueView{ID: tid, Description: mitre.Describe(tid), Since: since}
+	srcCount := map[string]int{}
+	ruleCount := map[string]int{}
+	tacSet := map[string]struct{}{}
+	for _, ev := range evs {
+		tag := eventTag(ev)
+		if !containsStr(tag.Techniques, tid) {
+			continue
+		}
+		v.Events++
+		if ev.Source.IP != "" {
+			srcCount[ev.Source.IP]++
+		}
+		if ev.RuleID != "" {
+			ruleCount[ev.RuleID]++
+		}
+		for _, t := range tag.Tactics {
+			tacSet[t] = struct{}{}
+		}
+	}
+	for t := range tacSet {
+		v.Tactics = append(v.Tactics, t)
+	}
+	sort.Strings(v.Tactics)
+	v.Sources = topBars(srcCount, 50, "/profiles/")
+	v.Rules = topBars(ruleCount, 25, "")
+	return v
+}
+
+// containsStr reports whether xs contains s.
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// validTechniqueID guards the id query param: T followed by digits, with an
+// optional .NNN sub-technique. Keeps the drill-down to well-formed IDs.
+func validTechniqueID(s string) bool {
+	if len(s) < 4 || len(s) > 12 || s[0] != 'T' {
+		return false
+	}
+	dot := false
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '.' && !dot && i > 1 {
+			dot = true
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleAttackTechnique(w http.ResponseWriter, r *http.Request) {
+	tid := strings.TrimSpace(r.URL.Query().Get("id"))
+	if !validTechniqueID(tid) {
+		http.Error(w, "invalid technique id", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	since := time.Now().Add(-attackWindow)
+	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "technique", buildTechniqueView(tid, since, evs)); err != nil {
+		slog.Warn("ui: render technique", "err", err)
 	}
 }
 

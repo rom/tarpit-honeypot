@@ -161,7 +161,18 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 {{ if .Chains }}<table><tr><th>time</th><th>source</th><th>chain</th></tr>
 {{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
-<p class="note">JSON at <a href="/api/attack">/api/attack</a>.</p>
+<p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "technique" }}{{ template "head" . }}
+<h1>ATT&amp;CK technique — {{ .ID }}</h1>
+<p><a href="https://attack.mitre.org/techniques/{{ .ID }}/" rel="noreferrer noopener">{{ .ID }} on attack.mitre.org</a> · <a href="/attack">&larr; all techniques</a></p>
+{{ if .Description }}<div class="depl">{{ .Description }}</div>{{ else }}<p class="note">No local description for this technique.</p>{{ end }}
+<p>{{ .Events }} event(s) in the last 24h carried this technique{{ if .Tactics }} · tactic(s): {{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}{{ end }}.</p>
+<h2>sources that triggered it</h2>
+{{ if .Sources }}{{ template "bars" .Sources }}<p class="note">Source IPs link to their attacker profile.</p>{{ else }}<p class="note">none in the window</p>{{ end }}
+<h2>rules that mapped to it</h2>
+{{ if .Rules }}{{ template "bars" .Rules }}{{ else }}<p class="note">none</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "timeline" }}{{ template "head" . }}
@@ -418,15 +429,15 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<span class="tag">{{ . }}</span>{{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
 
-{{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a> {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
-{{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th></tr>
-{{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td></tr>{{ end }}
+{{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th><th>service</th></tr>
+{{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
 {{ if .Rules }}<h2>triggered rules</h2><table><tr><th><a href="{{ .RuleHeaders.Rule.Href }}">rule{{ .RuleHeaders.Rule.Arrow }}</a></th><th><a href="{{ .RuleHeaders.Count.Href }}">count{{ .RuleHeaders.Count.Arrow }}</a></th></tr>

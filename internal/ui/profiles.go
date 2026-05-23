@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
@@ -39,6 +40,9 @@ type countItem struct {
 type credPair struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
+	// Service is where the credentials were captured (the handler/protocol,
+	// e.g. "ssh", "http", "ftp"), so the operator can see the attack surface.
+	Service string `json:"service,omitempty"`
 }
 
 // Profile is the compiled dossier for one source IP.
@@ -143,8 +147,8 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 				}
 			}
 		}
-		for _, c := range extractCreds(ev.Meta) {
-			key := c.User + "\x00" + c.Pass
+		for _, c := range extractCreds(ev) {
+			key := c.User + "\x00" + c.Pass + "\x00" + c.Service
 			if _, dup := credSeen[key]; !dup && len(p.Credentials) < 100 {
 				credSeen[key] = struct{}{}
 				p.Credentials = append(p.Credentials, c)
@@ -311,7 +315,8 @@ func metaInt(meta map[string]any, key string) int {
 
 // extractCreds pulls a captured (user, pass) pair from an event's meta,
 // covering the field names the various auth handlers use.
-func extractCreds(meta map[string]any) []credPair {
+func extractCreds(ev *event.Event) []credPair {
+	meta := ev.Meta
 	if len(meta) == 0 {
 		return nil
 	}
@@ -328,7 +333,13 @@ func extractCreds(meta map[string]any) []credPair {
 	if user == "" && pass == "" {
 		return nil
 	}
-	return []credPair{{User: user, Pass: pass}}
+	// Where the credentials came from: the handler/protocol, else the
+	// well-known service name for the destination port.
+	svc := ev.Handler
+	if svc == "" && ev.Dest.Port > 0 {
+		svc = portsvc.Name(ev.Dest.Port)
+	}
+	return []credPair{{User: user, Pass: pass, Service: svc}}
 }
 
 func threatLevel(score int) string {

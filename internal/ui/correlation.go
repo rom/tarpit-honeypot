@@ -193,7 +193,7 @@ func buildCorrelationView(since time.Time, evs []*event.Event) correlationView {
 		for _, t := range metaStrings(ev.Meta, "tools") {
 			addCapped(&a.s.Tools, a.tool, t, corrMaxPerList)
 		}
-		for _, c := range extractCreds(ev.Meta) {
+		for _, c := range extractCreds(ev) {
 			label := c.User
 			if c.Pass != "" {
 				label += " : " + c.Pass

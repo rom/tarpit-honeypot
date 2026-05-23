@@ -163,3 +163,16 @@ func TestDefensesForNewTechniques(t *testing.T) {
 		t.Error("new techniques should have D3FEND mappings")
 	}
 }
+
+func TestDescribe(t *testing.T) {
+	if d := Describe("T1190"); d == "" {
+		t.Error("T1190 should have a description")
+	}
+	// Sub-technique falls back to its base.
+	if d := Describe("T1110.001"); d == "" || d != Describe("T1110") {
+		t.Errorf("T1110.001 should fall back to T1110 description, got %q", d)
+	}
+	if d := Describe("T9999"); d != "" {
+		t.Errorf("unknown technique should return empty, got %q", d)
+	}
+}

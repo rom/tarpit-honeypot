@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -182,8 +183,11 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		args = append(args, int(f.MinSeverity))
 	}
 	if f.Text != "" {
-		like := "%" + f.Text + "%"
-		q += " AND (rule_id LIKE ? OR banner_sent LIKE ? OR meta_json LIKE ?)"
+		// Case-insensitive substring across rule_id / banner / meta JSON.
+		// LOWER() on both sides makes it explicit and independent of the
+		// SQLite case_sensitive_like pragma.
+		like := "%" + strings.ToLower(f.Text) + "%"
+		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(banner_sent) LIKE ? OR LOWER(meta_json) LIKE ?)"
 		args = append(args, like, like, like)
 	}
 	if f.FPValue != "" {
