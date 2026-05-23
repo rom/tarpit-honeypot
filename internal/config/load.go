@@ -24,6 +24,7 @@ var tcpHandlers = map[string]bool{
 	"telnet": true, "ftp": true, "ftp_files": true,
 	"modbus": true, "s7": true, "iec104": true, "mqtt": true,
 	"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
+	"rsync": true, "gopher": true, "socks": true, "bgp": true,
 	"atg": true, "fox": true, "hartip": true, "pcworx": true, "mms": true,
 	"pjl": true, "lpd": true, "ads": true,
 	"opcua": true, "ethernetip": true, "smb": true,
@@ -56,6 +57,7 @@ var udpHandlers = map[string]bool{
 	"qotd": true, "chargen": true, "time": true,
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
+	"isakmp": true, "netbios_dgram": true,
 	"auto": true,
 }
 

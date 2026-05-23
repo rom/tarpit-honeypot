@@ -106,6 +106,10 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &coap{lim: newUDPReflectLimiter()}, nil
 	case "knx":
 		return &knx{lim: newUDPReflectLimiter()}, nil
+	case "isakmp":
+		return isakmp{}, nil
+	case "netbios_dgram":
+		return netbiosDgram{}, nil
 	case "dhcp":
 		return &dhcp{}, nil
 	case "dns":

@@ -509,6 +509,10 @@ type Listener struct {
 	// JSON API + the juicy paths scanners probe), detecting — never
 	// executing — the web-attack families. Ignored by other handlers.
 	Webapp bool `yaml:"webapp"`
+	// WebappVariant selects the decoy web-app persona when Webapp is on:
+	// "" / "generic" (PHP/MySQL intranet, default), "wordpress",
+	// "phpmyadmin", or "jenkins". Unknown values fall back to generic.
+	WebappVariant string `yaml:"webapp_variant"`
 
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`

@@ -189,6 +189,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &geSRTP{}, nil
 	case "codesys":
 		return &codesys{}, nil
+	case "rsync":
+		return rsyncH{}, nil
+	case "gopher":
+		return gopherH{}, nil
+	case "socks":
+		return socksH{}, nil
+	case "bgp":
+		return bgpH{}, nil
 	case "iec104":
 		return &iec104{}, nil
 	case "atg":

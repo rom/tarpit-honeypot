@@ -257,6 +257,13 @@ var handlerTags = map[string]Tag{
 	"citrix_ica":   {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
 
 	// Vendor management web UIs / lights-out: exploit-prone gateways.
+	// More TCP/UDP service handlers.
+	"rsync":          {Techniques: []string{"T1110.001", "T1213"}, Tactics: []string{"credential-access", "collection"}},
+	"gopher":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks":          {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp":            {Techniques: []string{"T1190", "T1018"}, Tactics: []string{"initial-access", "discovery"}},
+	"isakmp":         {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"netbios_dgram":  {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"intel_amt":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"ilo":            {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"idrac":          {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
@@ -467,6 +474,16 @@ var anomalyTags = map[string]Tag{
 	"winrm-ntlm-auth":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 	// SIP INVITE scanning = VoIP toll-fraud / service reconnaissance.
 	"sip-invite-attempt": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// New-handler protocol-misuse markers.
+	"rsync-module-list":   {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"rsync-module-access": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"gopher-request":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"gopher-ssrf":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks-proxy-attempt": {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp-open-attempt":    {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
@@ -481,6 +498,10 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "webapp:"):
+		// Any web-attack-class marker without an explicit entry above is at
+		// least an exploit attempt against the public-facing app.
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
 	case strings.HasPrefix(a, "shell-"):
 		// Any interactive-shell TTP marker without an explicit entry above
 		// is at least command execution by an engaged attacker.
