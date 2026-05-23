@@ -534,6 +534,23 @@ JSON at <a href="/api/config/canvas">/api/config/canvas</a>.</p>
 {{ end }}
 {{ end }}
 
+{{ if .Files }}
+<h2>files in use</h2>
+<p class="note">Config files, enrichment inputs, and databases this sensor reads, plus
+the data-dir state it writes. <b class="sev-high">MISSING</b> = a configured input
+not present on disk. Same data via <code>tarpit-honeypot list-paths</code>.</p>
+<table>
+  <tr><th>category</th><th>key</th><th>access</th><th>path</th><th>status</th></tr>
+  {{ range .Files }}<tr>
+    <td><span class="tag">{{ .Category }}</span></td>
+    <td>{{ .Key }}</td>
+    <td>{{ .Access }}</td>
+    <td><code>{{ .Path }}</code></td>
+    <td>{{ if .Exists }}present{{ else if eq .Access "write" }}pending{{ else }}<b class="sev-high">MISSING</b>{{ end }}</td>
+  </tr>{{ end }}
+</table>
+{{ end }}
+
 <h2>full configuration (YAML)</h2>
 <p class="note">Post-defaults config the sensor is running with. Secrets are shown
 as their environment-variable names (<code>*_env</code>), never expanded values,

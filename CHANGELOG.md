@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — file-path visibility + enrichment install/update workflow
+- New **`list-paths`** subcommand prints every filesystem path the config
+  references — config file(s), enrichment inputs, GeoIP/event databases, and
+  data-dir state — classified by category with read/write + present/MISSING
+  (`--json` / `--format tsv` / `--category` for tooling).
+- The web UI **`/config`** page gains a **"files in use"** table (category,
+  key, access, path, present/MISSING) from the same source.
+- `scripts/fetch-enrichment.sh` now **packages** its output: a `SHA256SUMS`
+  manifest, a single `<dir>.tar.gz` (+ `.sha256`) for easy transfer, and a
+  `suggested-config.yaml` — the "download step".
+- New **`scripts/install-enrichment.sh`** (the "install/update step", for
+  cron/systemd on the sensor): verifies the bundle checksums, asks the live
+  config where each file belongs via `list-paths --format tsv`, atomically
+  installs each downloaded file into its configured destination, and signals
+  the running sensor (SIGHUP) to re-read.
+- SIGHUP now **re-reads the enrichment databases** (GeoIP / threat-intel /
+  Tor / OUI) unconditionally — even when the config text is unchanged — by
+  hot-swapping the enricher (`Sensor.ReloadEnrichment`), so refreshed feeds
+  apply without a restart.
+
 ### Added — MAC-vendor enrichment + an enrichment-database fetcher
 - Events carrying a MAC (DHCP `client_mac`, ARP `sender_mac`, …) are now
   decorated with `mac_vendor`. `devices.LoadOUIFile` loads the full IEEE

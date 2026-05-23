@@ -80,9 +80,20 @@ sensor:
 | `oui_file` | Path to a MAC-vendor (OUI) database — the IEEE `oui.csv` or a simple `prefix,vendor` CSV. Events carrying a MAC (DHCP/ARP) get `mac_vendor`; the learned-device inventory uses it for the vendor column. Unset = a small built-in OUI table. |
 
 The GeoIP/Tor/reputation/OUI databases are operator-supplied (license and
-freshness vary). Fetch them all on an internet-connected machine with
-[`scripts/fetch-enrichment.sh`](../scripts/fetch-enrichment.sh) and copy the
-output directory to the sensor — it prints a ready-to-paste config snippet.
+freshness vary). Two-step workflow:
+
+1. **Download** (internet-connected machine):
+   [`scripts/fetch-enrichment.sh`](../scripts/fetch-enrichment.sh) downloads
+   every feed, writes `SHA256SUMS` + a `suggested-config.yaml`, and packages a
+   single `<dir>.tar.gz` for transfer.
+2. **Install/update** (on the sensor, by hand or cron/systemd):
+   [`scripts/install-enrichment.sh`](../scripts/install-enrichment.sh) verifies
+   the bundle, reads the live config via `tarpit-honeypot list-paths` to learn
+   where each file belongs, installs them atomically, and SIGHUPs the sensor —
+   which re-reads the enrichment databases without a restart.
+
+`tarpit-honeypot list-paths` (and the web UI `/config` "files in use" panel)
+show exactly which config/enrichment/database files a sensor uses.
 | `vuln_emulation` | `true` makes banner-aware handlers advertise the archetype's deliberately-unpatched version + fake patch level (e.g. `debian 12` → Apache 2.4.49 / OpenSSH 7.2 / vsFTPd 2.3.4). Per-listener `vuln_emulation` overrides it. CVE exploit-attempt detection (`cve:<id>` events) runs regardless. The service never becomes actually exploitable. |
 | `payloads` | `{enabled, max_bytes, max_total_mb}` — harvest attacker-supplied malware / shellcode / droppers to `<data_dir>/payloads/`. Classified (ELF/PE/script/shellcode), base64 droppers decoded, ingress URLs extracted; emits `malware:capture`. Collection only — nothing is executed. |
 | `sandbox` | `{seccomp, landlock, read_paths, write_paths}` — Linux kernel self-confinement applied after privilege drop. `seccomp` denies shell-spawn / module-load / debug syscalls; `landlock` makes the FS read-only except `data_dir` (+ `write_paths`). Best-effort; no-op on non-Linux. See [`docs/hardening.md`](hardening.md). |

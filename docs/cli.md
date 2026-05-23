@@ -12,6 +12,7 @@ tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--do
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json] [--stats|--conflicts|--rogues|--class C|--vendor S|--search Q|--stale D|--active D]
+tarpit-honeypot list-paths     -c <config> [--format table|json|tsv] [--category config|enrichment|database|state]
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
 tarpit-honeypot list-archeservices [<role>]
@@ -312,6 +313,33 @@ IP               MAC                VENDOR                 HOSTNAME             
 10.0.0.10        00:90:e8:11:22:33  Moxa                   plc-press            dhcp      ics-endpoint   2025-05-19 14:03
 10.0.0.50        -                  -                      -                    conn      host           2025-05-19 14:05
 ```
+
+---
+
+## `list-paths`
+
+Print every filesystem path the effective config references — config file(s),
+enrichment inputs (Tor / threat-intel / OUI), databases (GeoIP/ASN + the event
+store), and the data-dir state — with whether each currently exists. Use it to
+audit a deployment and to drive the enrichment installer.
+
+```
+tarpit-honeypot list-paths -c cfg.yaml
+tarpit-honeypot list-paths -c cfg.yaml --category enrichment
+tarpit-honeypot list-paths -c cfg.yaml --format json
+tarpit-honeypot list-paths -c cfg.yaml --format tsv   # category<TAB>key<TAB>access<TAB>exists<TAB>path
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file. |
+| `--format` | `table` | `table` \| `json` \| `tsv` (`--json` is a shortcut for `--format json`). |
+| `--category` | (all) | Filter to `config` \| `enrichment` \| `database` \| `state`. |
+
+The same inventory appears in the web UI's `/config` "files in use" panel.
+`scripts/install-enrichment.sh` consumes `--format tsv` to learn where to place
+downloaded enrichment files. See [`docs/config.md`](config.md) for the
+fetch → transfer → install workflow.
 
 ---
 
