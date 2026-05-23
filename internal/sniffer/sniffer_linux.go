@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,6 +32,57 @@ type linuxSniffer struct {
 	frag  *rateLimiter // nil unless TCPScan enabled
 	encap *rateLimiter // nil unless TCPScan enabled (encapsulation + STP dedup)
 	goose *rateLimiter // nil unless GOOSE enabled
+
+	// L2 frame counters (atomic; surfaced via Stats).
+	cFrames, cARP, cIPv4, cIPv6, cTCP, cUDP, cICMP, cOther atomic.Uint64
+}
+
+// Stats returns a snapshot of the L2 frame counters.
+func (s *linuxSniffer) Stats() Stats {
+	return Stats{
+		Frames: s.cFrames.Load(), ARP: s.cARP.Load(), IPv4: s.cIPv4.Load(),
+		IPv6: s.cIPv6.Load(), TCP: s.cTCP.Load(), UDP: s.cUDP.Load(),
+		ICMP: s.cICMP.Load(), Other: s.cOther.Load(),
+	}
+}
+
+// countL4 peeks the IP-header protocol byte of a captured frame (eth header
+// is 14 bytes on these per-ethertype sockets) and bumps the TCP/UDP/ICMP
+// counter. Coarse: it reads only the first next-header on IPv6 (extension
+// headers are not unwound) — enough for an at-a-glance traffic mix.
+func (s *linuxSniffer) countL4(frame []byte, v6 bool) {
+	var proto byte
+	if v6 {
+		if len(frame) < 21 {
+			return
+		}
+		proto = frame[20] // IPv6 next-header
+	} else {
+		if len(frame) < 24 {
+			return
+		}
+		proto = frame[23] // IPv4 protocol
+	}
+	switch proto {
+	case 6:
+		s.cTCP.Add(1)
+	case 17:
+		s.cUDP.Add(1)
+	case 1:
+		if v6 {
+			s.cOther.Add(1)
+		} else {
+			s.cICMP.Add(1)
+		}
+	case 58:
+		if v6 {
+			s.cICMP.Add(1) // ICMPv6
+		} else {
+			s.cOther.Add(1)
+		}
+	default:
+		s.cOther.Add(1)
+	}
 }
 
 type scanState struct {
@@ -139,13 +191,16 @@ func (s *linuxSniffer) Run(ctx context.Context, bus chan<- *event.Event) error {
 			continue
 		}
 		frame := buf[:n]
+		s.cFrames.Add(1)
 		// Spanning-tree BPDUs are non-IP 802.3/LLC frames on this socket.
 		if s.encap != nil && s.handleSTP(ctx, frame, bus) {
+			s.cOther.Add(1)
 			continue
 		}
 		if n < 14+28 {
 			continue
 		}
+		s.cARP.Add(1)
 		s.handleARP(ctx, frame, bus)
 	}
 }
@@ -310,6 +365,9 @@ func (s *linuxSniffer) runIPCapture(ctx context.Context, bus chan<- *event.Event
 		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
 			continue
 		}
+		s.cFrames.Add(1)
+		s.cIPv4.Add(1)
+		s.countL4(buf[:n], false)
 		s.handleIPFrame(ctx, buf[:n], bus)
 	}
 }
@@ -357,6 +415,9 @@ func (s *linuxSniffer) runIP6Capture(ctx context.Context, bus chan<- *event.Even
 		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
 			continue
 		}
+		s.cFrames.Add(1)
+		s.cIPv6.Add(1)
+		s.countL4(buf[:n], true)
 		s.handleIP6Frame(ctx, buf[:n], bus)
 	}
 }
@@ -605,6 +666,8 @@ func (s *linuxSniffer) runGOOSECapture(ctx context.Context, bus chan<- *event.Ev
 		if ll, ok := from.(*unix.SockaddrLinklayer); ok && ll.Pkttype == unix.PACKET_OUTGOING {
 			continue
 		}
+		s.cFrames.Add(1)
+		s.cOther.Add(1)
 		s.handleGOOSE(ctx, buf[:n], bus)
 	}
 }

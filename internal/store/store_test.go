@@ -192,3 +192,26 @@ func TestSummary(t *testing.T) {
 		t.Errorf("top_sources: %v", sum.TopSources)
 	}
 }
+
+func TestSummaryByProto(t *testing.T) {
+	st, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC()
+	for i, p := range []string{"tcp", "tcp", "udp", "icmp"} {
+		ev := &event.Event{ID: event.NewID(), Time: now, Sensor: "s", RuleID: "r",
+			Severity: event.SeverityLow, Proto: p, Source: event.Endpoint{IP: "1.2.3.4"}}
+		if err := st.Insert(context.Background(), ev); err != nil {
+			t.Fatalf("insert %d: %v", i, err)
+		}
+	}
+	sum, err := st.Summary(context.Background(), now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.ByProto["tcp"] != 2 || sum.ByProto["udp"] != 1 || sum.ByProto["icmp"] != 1 {
+		t.Errorf("ByProto = %v; want tcp2 udp1 icmp1", sum.ByProto)
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sort"
 	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // Sensor health dashboard. Sources: the stats provider (uptime, DB size,
@@ -16,25 +18,32 @@ import (
 // goroutines / GC are live), and the event store (recent volume).
 
 type healthView struct {
-	Available  bool // stats provider wired?
-	Uptime     string
-	GoVersion  string
-	GOMAXPROCS int
-	Goroutines int
-	MemAllocMB float64
-	MemSysMB   float64
-	NumGC      uint32
-	Panics     int
-	DBBytes    int64
-	DBSize     string
-	DiskPct    int
-	DiskKnown  bool
-	Events24h  int
-	HoneyNets  int
-	HoneyHosts int
-	Sinks      []sinkHealth
-	DropTotal  int
-	FailTotal  int
+	Available   bool // stats provider wired?
+	Version     string
+	Commit      string
+	Uptime      string
+	GoVersion   string
+	GOMAXPROCS  int
+	Goroutines  int
+	MemAllocMB  float64
+	MemSysMB    float64
+	NumGC       uint32
+	Panics      int
+	PanicByName []counter // recovered panics partitioned by safego name
+	DBBytes     int64
+	DBSize      string
+	DiskPct     int
+	DiskKnown   bool
+	Events24h   int
+	ByProto     []counter // 24h event volume by transport
+	HoneyNets   int
+	HoneyHosts  int
+	Sinks       []sinkHealth
+	DropTotal   int
+	FailTotal   int
+	// SnifferActive + Frames are the AF_PACKET L2 frame counters.
+	SnifferActive bool
+	Frames        []counter
 }
 
 type sinkHealth struct {
@@ -44,9 +53,9 @@ type sinkHealth struct {
 	Retried int
 }
 
-// buildHealthView turns a metrics snapshot + runtime + event count into the
+// buildHealthView turns a metrics snapshot + runtime + event summary into the
 // health model. metrics may be nil (stats provider not wired).
-func buildHealthView(m *Metrics, events24h int) healthView {
+func buildHealthView(m *Metrics, sum store.Summary) healthView {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	v := healthView{
@@ -56,12 +65,18 @@ func buildHealthView(m *Metrics, events24h int) healthView {
 		MemAllocMB: float64(ms.Alloc) / (1024 * 1024),
 		MemSysMB:   float64(ms.Sys) / (1024 * 1024),
 		NumGC:      ms.NumGC,
-		Events24h:  events24h,
+		Events24h:  sum.Total,
+	}
+	for _, p := range []string{"tcp", "udp", "icmp", "device"} {
+		if c := sum.ByProto[p]; c > 0 {
+			v.ByProto = append(v.ByProto, counter{Label: p, Value: c})
+		}
 	}
 	if m == nil {
 		return v
 	}
 	v.Available = true
+	frames := map[string]int{}
 
 	sinks := map[string]*sinkHealth{}
 	get := func(ch string) *sinkHealth {
@@ -92,12 +107,27 @@ func buildHealthView(m *Metrics, events24h int) healthView {
 			v.FailTotal += int(s.Value)
 		case "tarpit_sink_retried_total":
 			get(s.Labels["channel"]).Retried = int(s.Value)
+		case "tarpit_build_info":
+			v.Version, v.Commit = s.Labels["version"], s.Labels["commit"]
+		case "tarpit_sniffer_frames_total":
+			frames[s.Labels["proto"]] = int(s.Value)
+		case "tarpit_panic_recoveries_by_name_total":
+			v.PanicByName = append(v.PanicByName, counter{Label: s.Labels["name"], Value: int(s.Value)})
 		}
 	}
 	for _, sh := range sinks {
 		v.Sinks = append(v.Sinks, *sh)
 	}
 	sort.Slice(v.Sinks, func(i, j int) bool { return v.Sinks[i].Channel < v.Sinks[j].Channel })
+	sort.Slice(v.PanicByName, func(i, j int) bool { return v.PanicByName[i].Label < v.PanicByName[j].Label })
+	if _, ok := frames["all"]; ok {
+		v.SnifferActive = true
+		v.Frames = []counter{
+			{"received", frames["all"]}, {"ARP", frames["arp"]}, {"IPv4", frames["ipv4"]},
+			{"IPv6", frames["ipv6"]}, {"TCP", frames["tcp"]}, {"UDP", frames["udp"]},
+			{"ICMP", frames["icmp"]}, {"other", frames["other"]},
+		}
+	}
 	v.DBSize = humanBytes(v.DBBytes)
 	return v
 }
@@ -165,14 +195,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		snap := s.stats()
 		m = &snap
 	}
-	events := 0
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if sum, err := s.store.Summary(ctx, time.Now().Add(-24*time.Hour)); err == nil {
-		events = sum.Total
-	}
+	sum, _ := s.store.Summary(ctx, time.Now().Add(-24*time.Hour))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "health", buildHealthView(m, events)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "health", buildHealthView(m, sum)); err != nil {
 		slog.Warn("ui: render health", "err", err)
 	}
 }

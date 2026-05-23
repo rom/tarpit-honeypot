@@ -20,13 +20,26 @@ type barRow struct {
 	Class string
 }
 
+// counter is one labeled number in the summary's top counters strip.
+type counter struct {
+	Label string
+	Value int
+}
+
 // dashboard is the summary page's chart model.
 type dashboard struct {
-	Sum      store.Summary
-	Severity []barRow
-	Rules    []barRow
-	Sources  []barRow
-	Trend    []barRow
+	Sum store.Summary
+	// Counters is the at-a-glance strip at the top: event volume by
+	// transport + severity (always from the store).
+	Counters []counter
+	// Frames are the AF_PACKET sniffer's L2 frame counters (only when the
+	// sniffer is running); HasFrames gates the panel.
+	Frames    []counter
+	HasFrames bool
+	Severity  []barRow
+	Rules     []barRow
+	Sources   []barRow
+	Trend     []barRow
 	// Enrichment charts (filled by enrichDashboard from a scan of recent
 	// events; the store's SQL summary only covers severity/rule/source).
 	Tactics   []barRow

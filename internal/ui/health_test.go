@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 func TestBuildHealthView(t *testing.T) {
@@ -17,7 +19,7 @@ func TestBuildHealthView(t *testing.T) {
 		{Name: "tarpit_sink_failed_total", Labels: map[string]string{"channel": "webhook"}, Value: 1},
 		{Name: "tarpit_sink_retried_total", Labels: map[string]string{"channel": "webhook"}, Value: 7},
 	}}
-	v := buildHealthView(m, 1234)
+	v := buildHealthView(m, store.Summary{Total: 1234, ByProto: map[string]int{"tcp": 900, "udp": 300}})
 
 	if !v.Available {
 		t.Fatal("should be available with a metrics snapshot")
@@ -58,7 +60,7 @@ func TestBuildHealthView(t *testing.T) {
 }
 
 func TestBuildHealthViewNoMetrics(t *testing.T) {
-	v := buildHealthView(nil, 0)
+	v := buildHealthView(nil, store.Summary{})
 	if v.Available {
 		t.Error("should not be available without a metrics snapshot")
 	}

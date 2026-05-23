@@ -88,6 +88,21 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 				})
 			}
 		}
+		// AF_PACKET sniffer L2 frame counters (present only when running).
+		if st, ok := s.SnifferStats(); ok {
+			for proto, n := range map[string]uint64{
+				"all": st.Frames, "arp": st.ARP, "ipv4": st.IPv4, "ipv6": st.IPv6,
+				"tcp": st.TCP, "udp": st.UDP, "icmp": st.ICMP, "other": st.Other,
+			} {
+				out.Samples = append(out.Samples, ui.Sample{
+					Name:   "tarpit_sniffer_frames_total",
+					Help:   "L2 frames the AF_PACKET sniffer captured, partitioned by protocol",
+					Type:   "counter",
+					Labels: map[string]string{"proto": proto},
+					Value:  float64(n),
+				})
+			}
+		}
 		// data_dir filesystem usage (statfs; absent on non-unix).
 		if used, ok := s.DiskUsedPercent(); ok {
 			out.Samples = append(out.Samples, ui.Sample{

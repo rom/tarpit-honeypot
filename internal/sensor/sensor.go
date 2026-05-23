@@ -67,6 +67,7 @@ type Sensor struct {
 	devices     *devices.Registry
 	scanTrack   *scananalysis.Tracker
 	fuzzTrack   *fuzzdos.Tracker
+	sniffer     sniffer.Sniffer // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	payloads    *payload.Store
 	sessionRec  *sessionrec.Store
 	risk        *risk.Scorer
@@ -375,6 +376,18 @@ func (s *Sensor) Honeynet() *honeynet.Topology { return s.honeynet }
 // Devices returns the learned-device registry (nil when devices are
 // disabled). Used by the list-devices subcommand.
 func (s *Sensor) Devices() *devices.Registry { return s.devices }
+
+// SnifferStats returns the AF_PACKET sniffer's L2 frame counters, and false
+// when no sniffer is running (disabled, no CAP_NET_RAW, or non-Linux).
+func (s *Sensor) SnifferStats() (sniffer.Stats, bool) {
+	s.stateMu.RLock()
+	sn := s.sniffer
+	s.stateMu.RUnlock()
+	if sn == nil {
+		return sniffer.Stats{}, false
+	}
+	return sn.Stats(), true
+}
 
 // observeScan feeds a listener event into the scan-analysis Tracker
 // and returns a scananalysis:profile event when the source crosses the
@@ -1415,6 +1428,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 		if err != nil {
 			slog.Warn("sniffer disabled", "err", err)
 		} else {
+			s.stateMu.Lock()
+			s.sniffer = sn
+			s.stateMu.Unlock()
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

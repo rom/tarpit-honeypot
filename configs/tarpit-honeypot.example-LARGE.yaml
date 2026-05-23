@@ -18,6 +18,17 @@ sensor:
   name: tarpit-large
   deployment_id: large-ref-01
   data_dir: /var/lib/tarpit-honeypot
+  # Enrichment databases — fetch with scripts/fetch-enrichment.sh, install
+  # with scripts/install-enrichment.sh. Empty/disabled here so it runs as-is;
+  # set the paths + enabled once the DBs are in place.
+  oui_file: ""                        # MAC->vendor ("" = built-in table)
+  net_class: { enabled: true }        # bogon / cloud-hosting (no DB)
+  geoip: { city_db: "", asn_db: "" }  # MaxMind / DB-IP .mmdb paths
+  tor: { enabled: false, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: false
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
   archetype: debian 12
   vuln_emulation: true
   jitter: { enabled: true, min_ms: 5, max_ms: 40 }

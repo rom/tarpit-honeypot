@@ -65,6 +65,24 @@ sensor:
     enabled: false
     timeout: 500ms       # bounded so a stalled resolver can't back up the bus
     cache_size: 1024     # LRU cache size
+  # MAC-vendor (OUI) database: maps observed MACs (DHCP/ARP) to vendors and
+  # tags events with mac_vendor. "" = small built-in table; supply the full
+  # IEEE oui.csv for complete coverage. Fetch with scripts/fetch-enrichment.sh.
+  oui_file: ""           # e.g. /etc/tarpit-honeypot/enrichment/oui.csv
+  # Built-in (no DB) classification of public sources: bogon / cloud-hosting.
+  net_class:
+    enabled: true
+  # Tag source IPs that appear in a Tor exit-node list (tor_exit=true).
+  tor:
+    enabled: false
+    exit_file: ""        # e.g. /etc/tarpit-honeypot/enrichment/tor-exits.txt
+  # Tag source IPs found on operator-supplied reputation lists (one IP/CIDR
+  # per line; '#' comments allowed). Each list's label lands in threat_intel.
+  threat_intel:
+    enabled: false
+    lists: []
+    # - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+    # - { label: tor-exits,      file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
 
 ui:
   enabled: true
