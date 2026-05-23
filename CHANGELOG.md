@@ -20,10 +20,14 @@ documented in `docs/`).
     `payload_entropy` meta on the event, so the `protocol_violation`
     correlator and SIEM inherit it.
   - **Per-source DoS / campaign classifier** — labels the denial-of-service
-    type (`connection-flood` / `app-flood` / `volumetric` /
+    type (`slowloris` / `connection-flood` / `app-flood` / `volumetric` /
     `malformed-flood`) and a sustained fuzzing campaign (dominant
     technique), emitting `attack:dos` / `attack:fuzzing` with a confidence
     score. Complements the AF_PACKET sniffer's wire-level flood detection.
+  - **Slowloris signal**: the TCP listener stamps a `slow-request` anomaly
+    + `conn_duration_ms` on a banner connection the client held open for
+    ~the full read window while sending only a tiny/partial request; the
+    tracker aggregates these into the `slowloris` DoS classification.
 - ATT&CK mappings added for `attack:dos` (T1499) / `attack:fuzzing`
   (T1595.002) and for the 10 opt-in correlators added earlier (they were
   previously untagged). Surfaced as a "Fuzzing/DoS classifier" detection

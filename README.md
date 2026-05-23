@@ -1246,12 +1246,16 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   with a `fuzzing-<technique>` anomaly + `fuzz_technique` / `payload_entropy`
   meta (so the `protocol_violation` correlator inherits it). Meta:
   `technique`, `fuzz_count`, `confidence`. Tagged `T1595.002`.
-- `attack:dos` — a denial-of-service classified by type: `connection-flood`
-  (high connection rate), `app-flood` (one port hammered), `volumetric`
-  (bulk inbound bytes), or `malformed-flood` (a burst of malformed
-  requests). Meta: `dos_type`, `connections`, `bytes`, `confidence`.
-  Tagged `T1499` (endpoint DoS). Complements the AF_PACKET sniffer's
-  wire-level SYN/NULL/Xmas flood detection.
+- `attack:dos` — a denial-of-service classified by type: `slowloris`
+  (held-open partial requests — the client consumes the read window
+  without completing a request), `connection-flood` (high connection
+  rate), `app-flood` (one port hammered), `volumetric` (bulk inbound
+  bytes), or `malformed-flood` (a burst of malformed requests). Meta:
+  `dos_type`, `connections`, `bytes`, `confidence`. Tagged `T1499`
+  (endpoint DoS). Complements the AF_PACKET sniffer's wire-level
+  SYN/NULL/Xmas flood detection. The per-connection slow-request signal
+  (a banner connection held ~the full read window with a tiny payload) is
+  also stamped as a `slow-request` anomaly + `conn_duration_ms` meta.
 - `storyline:multi_stage` — one source touched 3+ distinct ATT&CK
   tactics in a 30-minute window. Meta carries the kill-chain-ordered
   stage list + a `"->"`-joined chain summary, so the SOC sees one

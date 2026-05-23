@@ -21,6 +21,7 @@ type srcState struct {
 	conns     int
 	bytes     int64
 	fuzz      int
+	slow      int            // held-open / partial (slowloris) connections
 	tech      map[string]int // fuzz technique histogram
 	portConns map[int]int    // conns per dest port (app-flood concentration)
 
@@ -36,6 +37,10 @@ type Observation struct {
 	Bytes    int64
 	// Fuzz is the per-payload verdict from ClassifyPayload.
 	Fuzz Verdict
+	// Slow marks a connection the client held open for ~the full read
+	// window while sending only a tiny/partial request — the slowloris
+	// (slow/partial-request) fingerprint.
+	Slow bool
 }
 
 // Result is what Observe returns when a source crosses a threshold. A
@@ -44,7 +49,7 @@ type Result struct {
 	SourceIP string
 	// DoS classification.
 	DoS     bool
-	DoSType string // connection-flood | app-flood | volumetric | malformed-flood
+	DoSType string // slowloris | connection-flood | app-flood | volumetric | malformed-flood
 	// Fuzzing-campaign classification.
 	Fuzzing   bool
 	Technique string // dominant fuzz technique across the window
@@ -64,6 +69,7 @@ const (
 	volumetricBytes    = int64(8) << 20 // 8 MiB cumulative inbound
 	malformedFlood     = 20             // fuzz payloads = flood-by-malformed
 	fuzzCampaign       = 8              // fuzz payloads = sustained campaign
+	slowlorisThreshold = 10             // held-open partial connections = slowloris
 )
 
 // NewTracker builds a Tracker. window bounds how long a source's state
@@ -113,6 +119,9 @@ func (t *Tracker) Observe(o Observation) *Result {
 		st.fuzz++
 		st.tech[o.Fuzz.Technique]++
 	}
+	if o.Slow {
+		st.slow++
+	}
 
 	var r *Result
 	ensure := func() *Result {
@@ -152,10 +161,13 @@ func (t *Tracker) Observe(o Observation) *Result {
 }
 
 // classifyDoS picks the denial-of-service label for a source's state, or
-// "" when no threshold is crossed. app-flood (one port hammered) is
+// "" when no threshold is crossed. slowloris (held-open partial requests)
+// is the most specific and checked first; app-flood (one port hammered) is
 // preferred over generic connection-flood when a single port dominates.
 func classifyDoS(st *srcState) string {
 	switch {
+	case st.slow >= slowlorisThreshold:
+		return "slowloris"
 	case maxPortConns(st) >= appFloodThreshold:
 		return "app-flood"
 	case st.conns >= connFloodThreshold:
@@ -201,6 +213,8 @@ func confidence(st *srcState, r *Result) int {
 	score := 50
 	if r.DoS {
 		switch r.DoSType {
+		case "slowloris":
+			score += pctOver(st.slow, slowlorisThreshold)
 		case "app-flood":
 			score += pctOver(maxPortConns(st), appFloodThreshold)
 		case "connection-flood":

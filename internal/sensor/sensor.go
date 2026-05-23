@@ -478,6 +478,7 @@ func (s *Sensor) observeFuzzDoS(ev *event.Event, payload []byte) []*event.Event 
 		Time:     ev.Time,
 		Bytes:    bytesIn,
 		Fuzz:     v,
+		Slow:     containsStr(ev.Anomalies, "slow-request"),
 	})
 	if r == nil {
 		return nil

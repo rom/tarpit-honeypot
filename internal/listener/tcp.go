@@ -250,6 +250,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			canaryHits = res.CanaryHits
 			cveHits = res.CVEHits
 		}
+		t.flagSlowRequest(ev, start)
 		_ = conn.Close()
 		finish(ev)
 		for _, id := range canaryHits {
@@ -352,6 +353,33 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		// We bypass finish() because the tarpit_end event is emitted from
 		// runTarpit itself; the capture write happens there.
 		t.runTarpitWithCapture(ctx, conn, bus, start, src, dst, sess)
+	}
+}
+
+// slowRequestMaxBytes caps the payload of a connection still considered a
+// held-open partial request (a large transfer is volumetric, not slow).
+const slowRequestMaxBytes = 512
+
+// flagSlowRequest records the connection duration and, when the client held
+// a banner-mode connection open for roughly one full read window while
+// sending only a tiny/partial request, stamps a slow-request anomaly. That
+// is the per-connection signal the fuzzdos tracker aggregates into a
+// slowloris (slow/partial-request) denial-of-service classification. The
+// upper bound (< 2x the timeout) excludes long interactive sessions, and
+// tarpit mode is excluded entirely (its hold is server-side, not the
+// client withholding).
+func (t *tcpListener) flagSlowRequest(ev *event.Event, start time.Time) {
+	rt := t.cfg.ReadTimeout
+	if rt <= 0 {
+		return
+	}
+	dur := time.Since(start)
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["conn_duration_ms"] = dur.Milliseconds()
+	if dur >= rt*4/5 && dur < rt*2 && ev.PayloadLen < slowRequestMaxBytes {
+		ev.Anomalies = append(ev.Anomalies, "slow-request")
 	}
 }
 

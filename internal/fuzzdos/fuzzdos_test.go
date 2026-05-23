@@ -134,6 +134,26 @@ func TestTrackerFuzzCampaignAndMalformedFlood(t *testing.T) {
 	}
 }
 
+func TestTrackerSlowloris(t *testing.T) {
+	tr := NewTracker(time.Minute)
+	base := time.Unix(1_700_000_000, 0)
+	var last *Result
+	// Held-open partial connections to port 80 — but kept under the
+	// app-flood threshold so the slowloris label is what fires.
+	for i := 0; i < slowlorisThreshold; i++ {
+		r := tr.Observe(Observation{SourceIP: "6.6.6.6", DestPort: 80, Time: base.Add(time.Duration(i) * time.Second), Slow: true})
+		if r != nil {
+			last = r
+		}
+	}
+	if last == nil || !last.DoS || last.DoSType != "slowloris" {
+		t.Fatalf("expected slowloris; got %+v", last)
+	}
+	if last.Confidence < 50 {
+		t.Errorf("confidence = %d; want >= 50", last.Confidence)
+	}
+}
+
 func TestTrackerBenignNoFire(t *testing.T) {
 	tr := NewTracker(time.Minute)
 	base := time.Unix(1_700_000_000, 0)
