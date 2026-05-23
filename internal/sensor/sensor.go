@@ -1537,14 +1537,16 @@ func (s *Sensor) Run(ctx context.Context) error {
 				}
 			}
 			cidrs := []string{hn.CIDR}
+			netID := hn.ID
 			tunCfg := tunnet.Config{
 				DeviceName: hn.TUN.Device,
 				CIDRs:      cidrs,
 				HostIPs:    hostIPs,
 				MTU:        hn.TUN.MTU,
 				Personas:   personas,
+				Hosts:      buildTUNDecoys(hn.Hosts),
+				Emit:       s.tcpDecoyEmitter(netID),
 			}
-			netID := hn.ID
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

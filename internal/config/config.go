@@ -144,12 +144,16 @@ type LLDPResponderCfg struct {
 
 // TUNCfg opens a Linux TUN device the operator can route the honeynet
 // CIDR into. The sensor responds to ICMP/ICMPv6 echo for any virtual
-// host IP and sends TCP RST for unbound ports — making `nmap`-style
-// reconnaissance see the network as alive without `ip addr add`.
+// host IP — making `nmap`-style reconnaissance see the network as alive
+// without `ip addr add`.
 //
-// For real TCP termination through the TUN we still need a userspace
-// TCP stack — see "What's NOT in v1.5" in the README. Today this is
-// L3 discovery only.
+// TCP is terminated by an embedded userspace stack (internal/tcpstack):
+// a SYN to a host's configured service port completes a handshake with a
+// SYN-ACK shaped to the host archetype's stack fingerprint (TTL, window,
+// MSS, window-scale, SACK, timestamps, option order) and answers a single
+// request/response from the archetype banners; unbound ports return RST
+// and malformed/illegal packets are captured as events. No socket need be
+// bound per virtual host.
 type TUNCfg struct {
 	Enabled bool   `yaml:"enabled"`
 	Device  string `yaml:"device"`
