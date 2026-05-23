@@ -151,6 +151,10 @@ var exactRules = map[string]Tag{
 	"correlate:data_access":      {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
 	"correlate:malware_campaign": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
 	"correlate:webshell":         {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
+	// Additional opt-in correlators (round 3).
+	"correlate:destructive_action": {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"correlate:honeytoken_spread":  {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
+	"correlate:tool_rotation":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -520,6 +524,21 @@ var anomalyTags = map[string]Tag{
 	"rpcbind-getport":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"pptp-probe":             {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
 	"stun-binding":           {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
+	// Round-three IoT / app-server / cluster / AAA / DB decoys (devsvc3.go).
+	// An exposed ADB daemon is unauthenticated RCE (OPEN shell: is the exec
+	// step); AJP forward-request is the Ghostcat carrier; epmd enumerates
+	// Erlang cluster nodes; TACACS+ is the network-gear credential gate; the
+	// SQL Browser enumerates SQL Server instances.
+	"adb-connect":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"adb-shell-open":      {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"adb-auth":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ajp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ajp-forward-request": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"epmd-query":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"epmd-names":          {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"tacacs-probe":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"tacacs-auth-start":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"mssql-browser-query": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /

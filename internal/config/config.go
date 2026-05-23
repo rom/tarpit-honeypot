@@ -813,6 +813,9 @@ type Correlate struct {
 	AmplificationProbe CorrAmplificationProbe `yaml:"amplification_probe"`
 	DefaultCredSweep   CorrDefaultCredSweep   `yaml:"default_cred_sweep"`
 	CVECampaign        CorrCVECampaign        `yaml:"cve_campaign"`
+	DestructiveAction  CorrDestructiveAction  `yaml:"destructive_action"`
+	HoneytokenSpread   CorrHoneytokenSpread   `yaml:"honeytoken_spread"`
+	ToolRotation       CorrToolRotation       `yaml:"tool_rotation"`
 }
 
 // CorrAmplificationProbe detects reflection/amplification DDoS scouting:
@@ -844,6 +847,37 @@ type CorrCVECampaign struct {
 	DistinctSources int           `yaml:"distinct_sources"`
 	Window          time.Duration `yaml:"window"`
 	Severity        string        `yaml:"severity"`
+}
+
+// CorrDestructiveAction fires when one source performs several data-
+// destruction operations (redis FLUSHALL, memcached flush_all, a printer
+// filesystem format, an FTP delete) within a window — a hands-on-keyboard
+// impact action that warrants immediate escalation.
+type CorrDestructiveAction struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrHoneytokenSpread fires when the SAME canary token (URL / DNS / file /
+// credential) is tripped by several DISTINCT source IPs within a window — the
+// planted token has leaked and is being used broadly.
+type CorrHoneytokenSpread struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctSources int           `yaml:"distinct_sources"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
+}
+
+// CorrToolRotation fires when one source is identified running several
+// DISTINCT attack tools / scanners within a window — the tool analogue of
+// ua_rotation, marking a determined adversary cycling tooling.
+type CorrToolRotation struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctTools int           `yaml:"distinct_tools"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
 }
 
 // CorrThreatIntelBurst fires when one source whose events enrichment tagged

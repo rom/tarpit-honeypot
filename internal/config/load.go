@@ -36,6 +36,7 @@ var tcpHandlers = map[string]bool{
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
+	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -60,7 +61,8 @@ var udpHandlers = map[string]bool{
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
 	"isakmp": true, "netbios_dgram": true, "stun": true,
-	"auto": true,
+	"mssql_browser": true,
+	"auto":          true,
 }
 
 // TCPHandlerNames returns the sorted set of handler names accepted on a
@@ -558,6 +560,39 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.CVECampaign.Severity == "" {
 			c.Correlate.CVECampaign.Severity = "critical"
+		}
+	}
+	if c.Correlate.DestructiveAction.Enabled {
+		if c.Correlate.DestructiveAction.Events == 0 {
+			c.Correlate.DestructiveAction.Events = 2
+		}
+		if c.Correlate.DestructiveAction.Window == 0 {
+			c.Correlate.DestructiveAction.Window = 10 * time.Minute
+		}
+		if c.Correlate.DestructiveAction.Severity == "" {
+			c.Correlate.DestructiveAction.Severity = "critical"
+		}
+	}
+	if c.Correlate.HoneytokenSpread.Enabled {
+		if c.Correlate.HoneytokenSpread.DistinctSources == 0 {
+			c.Correlate.HoneytokenSpread.DistinctSources = 3
+		}
+		if c.Correlate.HoneytokenSpread.Window == 0 {
+			c.Correlate.HoneytokenSpread.Window = time.Hour
+		}
+		if c.Correlate.HoneytokenSpread.Severity == "" {
+			c.Correlate.HoneytokenSpread.Severity = "high"
+		}
+	}
+	if c.Correlate.ToolRotation.Enabled {
+		if c.Correlate.ToolRotation.DistinctTools == 0 {
+			c.Correlate.ToolRotation.DistinctTools = 3
+		}
+		if c.Correlate.ToolRotation.Window == 0 {
+			c.Correlate.ToolRotation.Window = time.Hour
+		}
+		if c.Correlate.ToolRotation.Severity == "" {
+			c.Correlate.ToolRotation.Severity = "high"
 		}
 	}
 	for i := range c.Channels {
