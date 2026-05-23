@@ -156,6 +156,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Siemens PN/PN Coupler",
 		"WAGO 750-8212 PFC200",
 		"Beckhoff CX9020 (TwinCAT)",
+		"Schneider Modicon M580 (BME P58)",
+		"Omron NX1P2 (Sysmac)",
+		"Mitsubishi MELSEC iQ-R (R04CPU)",
 	}
 	got := Names()
 	if len(got) != len(want) {

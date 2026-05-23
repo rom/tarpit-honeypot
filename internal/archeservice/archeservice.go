@@ -98,6 +98,48 @@ var roles = map[string][]Service{
 		{5900, "tcp", "vnc", "VNC"},
 		{5985, "tcp", "winrm", "WinRM"},
 	},
+	"proxyserver": {
+		{3128, "tcp", "http", "Squid HTTP proxy"},
+		{8080, "tcp", "http", "HTTP proxy (alt)"},
+		{1080, "tcp", "socks", "SOCKS proxy"},
+	},
+	"vpnserver": {
+		{443, "tcp", "openvpn", "OpenVPN (TCP)"},
+		{1194, "tcp", "openvpn", "OpenVPN"},
+		{500, "udp", "isakmp", "IKE / IPsec"},
+	},
+	"monitoringserver": {
+		{161, "udp", "snmp", "SNMP poller target"},
+		{514, "udp", "syslog_udp", "Syslog collector"},
+		{80, "tcp", "http", "Monitoring web UI"},
+		{443, "tcp", "https", "Monitoring web UI (TLS)"},
+	},
+	"backupserver": {
+		{873, "tcp", "rsync", "rsync daemon"},
+		{21, "tcp", "ftp", "FTP"},
+		{445, "tcp", "smb", "SMB"},
+		{22, "tcp", "ssh", "SFTP / SSH"},
+	},
+	"iotgateway": {
+		{1883, "tcp", "mqtt", "MQTT broker"},
+		{5683, "udp", "coap", "CoAP"},
+		{80, "tcp", "http", "Device web UI"},
+		{8883, "tcp", "mqtt", "MQTT over TLS"},
+	},
+	"scadaserver": {
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{102, "tcp", "s7", "S7comm"},
+		{20000, "tcp", "dnp3", "DNP3"},
+		{80, "tcp", "http", "HMI web UI"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"routerserver": {
+		{179, "tcp", "bgp", "BGP"},
+		{22, "tcp", "ssh", "SSH management"},
+		{23, "tcp", "telnet", "Telnet CLI"},
+		{161, "udp", "snmp", "SNMP"},
+		{80, "tcp", "http", "Router web UI"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-

@@ -21,16 +21,20 @@ func responseTable(p *archetype.Profile) map[string]response {
 	if p != nil {
 		family = p.Family
 	}
+	// Any PLC (S7 by name, or a "plc"-quirk archetype of any vendor) gets
+	// the vendor-aware PLC console rather than a host shell.
+	if isPLCProfile(p) {
+		return plcResponses(p)
+	}
 	switch family {
 	case "moxa":
 		return moxaResponses(p)
 	case "siemens":
-		if isPLCProfile(p) {
-			return plcResponses(p)
-		}
 		return siemensResponses(p)
 	case "cisco":
 		return ciscoResponses(p)
+	case "fortios":
+		return fortiosResponses(p)
 	case "mikrotik":
 		return routerosResponses(p)
 	case "windows":

@@ -212,21 +212,29 @@ func ciscoResponses(p *archetype.Profile) map[string]response {
 // ---- Siemens S7 PLC console ----
 
 func plcResponses(p *archetype.Profile) map[string]response {
+	vendor := "SIMATIC"
 	model := "S7-1500"
 	fw := "V2.9.2"
 	if p != nil {
 		if n := p.SNMPSysName(); n != "" {
 			model = n
 		}
-		if strings.Contains(p.Name, "1200") {
+		switch {
+		case strings.Contains(p.Name, "1200"):
 			model = "S7-1200"
 			fw = "V4.5.1"
+		case p.Family == "schneider":
+			vendor, fw = "Schneider Modicon", "V3.40"
+		case p.Family == "omron":
+			vendor, fw = "Omron Sysmac", "V1.49"
+		case p.Family == "mitsubishi":
+			vendor, fw = "Mitsubishi MELSEC", "V1.290"
 		}
 	}
 	return map[string]response{
 		"?":    {static: "Available: info, show, diag, exit\r\n"},
 		"help": {static: "Available: info, show, diag, exit\r\n"},
-		"info": {static: "SIMATIC " + model + "\r\nFirmware: " + fw + "\r\nMLFB: 6ES7 515-2AM01-0AB0\r\nSerial: S C-X1U...\r\nOperating mode: RUN\r\n"},
+		"info": {static: vendor + " " + model + "\r\nFirmware: " + fw + "\r\nSerial: S C-X1U...\r\nOperating mode: RUN\r\n"},
 		"show": {dyn: func(a []string) string {
 			if len(a) < 2 {
 				return "show {cpu|mode|diag|hardware}\r\n"
@@ -246,5 +254,39 @@ func plcResponses(p *archetype.Profile) map[string]response {
 		"diag": {static: "Diagnostic buffer: no faults.\r\n"},
 		"stop": {static: "% Mode change requires PG/key-switch authorization.\r\n"},
 		"run":  {static: "% Mode change requires PG/key-switch authorization.\r\n"},
+	}
+}
+
+// ---- Fortinet FortiOS (FortiGate) CLI ----
+
+func fortiosResponses(p *archetype.Profile) map[string]response {
+	host := "FortiGate"
+	if p != nil {
+		if n := p.SNMPSysName(); n != "" {
+			host = n
+		}
+	}
+	return map[string]response{
+		"?": {static: "get      Get dynamic and system information\r\nshow     Show configuration\r\ndiagnose Diagnose facility\r\nexecute  Execute commands\r\nexit     Exit\r\n"},
+		"get": {dyn: func(a []string) string {
+			sub := strings.ToLower(strings.Join(a[1:], " "))
+			switch {
+			case strings.HasPrefix(sub, "system status"):
+				return "Version: FortiGate-100F v7.2.5,build1517,230810 (GA.F)\r\nSerial-Number: FGT100F" + "TK20001234\r\nHostname: " + host + "\r\nOperation Mode: NAT\r\nCurrent HA mode: standalone\r\nSystem time: Mon Jan  1 00:00:00 2024\r\n"
+			case strings.HasPrefix(sub, "system performance"):
+				return "CPU states: 2% user 1% system 0% nice 97% idle\r\nMemory: 38% used\r\nUptime: 47 days\r\n"
+			case strings.HasPrefix(sub, "system interface"):
+				return "== [ port1 ]\r\nname: port1   ip: 192.168.1.99 255.255.255.0   status: up\r\n== [ port2 ]\r\nname: port2   ip: 0.0.0.0 0.0.0.0   status: down\r\n"
+			case strings.HasPrefix(sub, "router info routing-table"):
+				return "S* 0.0.0.0/0 [10/0] via 192.168.1.1, port1\r\nC  192.168.1.0/24 is directly connected, port1\r\n"
+			}
+			return "Unknown action 0\r\n"
+		}},
+		"show": {static: "config system global\r\n    set hostname \"" + host + "\"\r\n    set admin-sport 443\r\nend\r\n"},
+		"diagnose": {dyn: func(a []string) string {
+			return "diagnose: " + strings.Join(a[1:], " ") + ": permission denied (read-only admin)\r\n"
+		}},
+		"execute": {static: "execute: command requires read-write privileges\r\n"},
+		"config":  {static: "command parse error before 'config'\r\nCommand fail. Return code -61\r\n"},
 	}
 }
