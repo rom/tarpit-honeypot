@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: traffic counters + richer health page
+- The **summary** page opens with an at-a-glance counters strip — event
+  volume by transport (TCP / UDP / ICMP) + high/critical from the store —
+  plus a raw **L2 frame** row (received / ARP / IPv4 / IPv6 / TCP / UDP /
+  ICMP) when the AF_PACKET sniffer is running. The sniffer now counts frames
+  per protocol (`tarpit_sniffer_frames_total{proto=...}`); `store.Summary`
+  gained a `ByProto` breakdown.
+- The **health** page adds build version/commit, a 24h by-transport
+  breakdown, per-name panic counts, and the sniffer's L2 frame counters.
+- The enrichment keys (`oui_file`, `geoip`, `tor`, `net_class`,
+  `threat_intel`) are now shown in the example configs (run-safe: empty/
+  disabled by default).
+
 ### Added — file-path visibility + enrichment install/update workflow
 - New **`list-paths`** subcommand prints every filesystem path the config
   references — config file(s), enrichment inputs, GeoIP/event databases, and
