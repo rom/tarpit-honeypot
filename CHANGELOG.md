@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — MAC-vendor enrichment + an enrichment-database fetcher
+- Events carrying a MAC (DHCP `client_mac`, ARP `sender_mac`, …) are now
+  decorated with `mac_vendor`. `devices.LoadOUIFile` loads the full IEEE
+  OUI registry (`oui.csv`) — configured via `sensor.oui_file` — and it
+  upgrades vendor resolution everywhere (event enrichment + the learned-
+  device inventory); a small built-in OUI table is the fallback. Surfaced
+  as a "MAC vendor (OUI)" collector on the config canvas.
+- New standalone operator tool **`scripts/fetch-enrichment.sh`**: run it on
+  an internet-connected machine to download the enrichment databases — Tor
+  exit list, IP-reputation feeds (blocklist.de, abuse.ch, Spamhaus DROP,
+  FireHOL), GeoIP/ASN (DB-IP lite by default, MaxMind GeoLite2 with a
+  license key), and the IEEE OUI database — into a directory you can
+  transfer to an air-gapped/restricted-egress sensor. It prints a
+  ready-to-paste config snippet wiring every file.
+
 ### Added — web UI: case-insensitive search, credential source, clickable ATT&CK
 - Full-text search is now explicitly case-insensitive (LOWER on both sides).
 - The attacker-profile **"credentials tried"** table shows the

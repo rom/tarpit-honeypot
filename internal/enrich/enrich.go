@@ -25,6 +25,7 @@ import (
 
 	"github.com/oschwald/maxminddb-golang"
 
+	"github.com/rom/tarpit-honeypot/internal/devices"
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
@@ -208,7 +209,13 @@ func (e *Enricher) Close() error {
 // don't have meaningful geolocation and the rdns lookup would just
 // return an internal name (or hang).
 func (e *Enricher) Decorate(ev *event.Event) {
-	if e == nil || ev == nil || ev.Source.IP == "" {
+	if e == nil || ev == nil {
+		return
+	}
+	// MAC-vendor enrichment runs regardless of source IP — DHCP/ARP events
+	// often carry a MAC with a zeroed or private source address.
+	decorateMAC(ev)
+	if ev.Source.IP == "" {
 		return
 	}
 	addr, err := netip.ParseAddr(ev.Source.IP)
@@ -291,6 +298,29 @@ func (e *Enricher) Decorate(ev *event.Event) {
 		if cls := classifyNet(addr, ev.Meta["asn_org"]); cls != "" {
 			ev.Meta["net_class"] = cls
 		}
+	}
+}
+
+// decorateMAC tags an event with the OUI vendor of any MAC it carries
+// (client_mac / sender_mac / mac), via the devices OUI table — the small
+// built-in set, or the full IEEE registry when one was loaded with
+// devices.LoadOUIFile. Sets ev.Meta["mac_vendor"].
+func decorateMAC(ev *event.Event) {
+	if ev.Meta == nil {
+		return
+	}
+	var mac string
+	for _, k := range []string{"client_mac", "sender_mac", "mac"} {
+		if s, ok := ev.Meta[k].(string); ok && s != "" {
+			mac = s
+			break
+		}
+	}
+	if mac == "" {
+		return
+	}
+	if v := devices.VendorForMAC(mac); v != "" {
+		ev.Meta["mac_vendor"] = v
 	}
 }
 

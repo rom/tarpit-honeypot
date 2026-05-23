@@ -74,6 +74,7 @@ func TestBuildConfigCanvasCollectors(t *testing.T) {
 		// always-on / config-derived collectors:
 		"Scan analysis",          // always running
 		"Fuzzing/DoS classifier", // always running
+		"MAC vendor (OUI)",       // always available (built-in table)
 		"Client fingerprinting",  // ssh + https listeners present
 		"PCAP capture",           // https listener has capture: true
 	}

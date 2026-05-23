@@ -142,3 +142,28 @@ func TestLoadIPListParsing(t *testing.T) {
 		t.Errorf("cidrs = %v; want one /24", cidrs)
 	}
 }
+
+func TestMACVendorEnrichment(t *testing.T) {
+	e, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A DHCP-shaped event: zeroed source IP, MAC in meta (built-in OUI table).
+	ev := &event.Event{Source: event.Endpoint{IP: "0.0.0.0"}, Meta: map[string]any{"client_mac": "00:90:e8:11:22:33"}}
+	e.Decorate(ev)
+	if ev.Meta["mac_vendor"] != "Moxa" {
+		t.Errorf("mac_vendor = %v; want Moxa", ev.Meta["mac_vendor"])
+	}
+	// sender_mac (ARP) is also recognized; runs even with no source IP.
+	ev2 := &event.Event{Meta: map[string]any{"sender_mac": "00:0c:29:aa:bb:cc"}}
+	e.Decorate(ev2)
+	if ev2.Meta["mac_vendor"] != "VMware" {
+		t.Errorf("mac_vendor = %v; want VMware", ev2.Meta["mac_vendor"])
+	}
+	// No MAC -> no tag.
+	ev3 := &event.Event{Source: event.Endpoint{IP: "8.8.8.8"}, Meta: map[string]any{}}
+	e.Decorate(ev3)
+	if _, ok := ev3.Meta["mac_vendor"]; ok {
+		t.Errorf("mac_vendor set on a MAC-less event: %v", ev3.Meta)
+	}
+}

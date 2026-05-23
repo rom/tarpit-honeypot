@@ -84,6 +84,10 @@ sensor:
   # the GeoIP ASN db is loaded).
   net_class:
     enabled: true
+  # MAC-vendor (OUI) database for mapping observed MACs to vendors. Unset =
+  # a small built-in table. Fetch the full IEEE DB with
+  # scripts/fetch-enrichment.sh.
+  oui_file: ""   # e.g. /etc/tarpit-honeypot/enrichment/oui.csv
 
 ui:
   enabled: true

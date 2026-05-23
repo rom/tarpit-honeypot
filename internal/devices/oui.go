@@ -1,9 +1,88 @@
 package devices
 
 import (
+	"encoding/csv"
+	"fmt"
+	"io"
 	"net/netip"
+	"os"
 	"strings"
+	"sync/atomic"
 )
+
+// loadedOUI holds the full IEEE OUI registry when an operator supplies one
+// via LoadOUIFile. It is consulted before the small built-in ouiTable, so a
+// loaded database upgrades vendor resolution everywhere VendorForMAC is
+// called (the device inventory + event enrichment). Lock-free reads.
+var loadedOUI atomic.Pointer[map[string]string]
+
+// LoadOUIFile loads a MAC-vendor (OUI) database from path and makes it the
+// primary source for VendorForMAC. It accepts the IEEE oui.csv format
+// (Registry,Assignment,Organization Name,…; MA-L rows only) and a simple
+// "prefix,vendor" CSV. Returns the number of OUIs loaded. Intended to be
+// called once at startup before events flow.
+func LoadOUIFile(path string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
+	r.LazyQuotes = true
+	r.ReuseRecord = true
+	m := map[string]string{}
+	for {
+		rec, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			continue // tolerate a malformed line rather than abort the load
+		}
+		if prefix, vendor := parseOUIRecord(rec); prefix != "" && vendor != "" {
+			m[prefix] = vendor
+		}
+	}
+	if len(m) == 0 {
+		return 0, fmt.Errorf("no OUI entries parsed from %s", path)
+	}
+	loadedOUI.Store(&m)
+	return len(m), nil
+}
+
+// parseOUIRecord extracts a (24-bit OUI prefix, vendor) pair from one CSV
+// record, or ("","") to skip it (header, MA-M/MA-S blocks, blank lines).
+func parseOUIRecord(rec []string) (string, string) {
+	if len(rec) >= 3 && rec[0] == "MA-L" {
+		return ouiPrefixFromHex(rec[1]), strings.TrimSpace(rec[2])
+	}
+	if len(rec) >= 2 {
+		if p := ouiPrefixFromHex(rec[0]); p != "" {
+			return p, strings.TrimSpace(rec[1])
+		}
+	}
+	return "", ""
+}
+
+// ouiPrefixFromHex normalizes the first three octets of a hex MAC/OUI string
+// (any separators) into "xx:xx:xx" lowercase, or "" if it lacks 6 hex digits.
+func ouiPrefixFromHex(s string) string {
+	var h []byte
+	for i := 0; i < len(s) && len(h) < 6; i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f':
+			h = append(h, c)
+		case c >= 'A' && c <= 'F':
+			h = append(h, c+32)
+		}
+	}
+	if len(h) < 6 {
+		return ""
+	}
+	return string(h[0:2]) + ":" + string(h[2:4]) + ":" + string(h[4:6])
+}
 
 // normalizeMAC lowercases a MAC and renders it as colon-separated
 // xx:xx:xx:xx:xx:xx. Accepts colon-, dash-, and dot-separated forms;
@@ -51,10 +130,10 @@ func lessIP(a, b string) bool {
 }
 
 // VendorForMAC returns the vendor name for a MAC's OUI (first 3 bytes),
-// or "" if unknown. The table is a small curated set of the OUIs most
-// relevant to the gear this sensor models (the device archetypes) plus
-// the big virtualization / cloud vendors a learned-device scan would
-// commonly turn up. It is NOT the full IEEE registry.
+// or "" if unknown. When an operator has loaded the full IEEE registry via
+// LoadOUIFile it is consulted first; otherwise a small curated built-in
+// table covers the gear this sensor models (the device archetypes) plus the
+// big virtualization / cloud vendors a learned-device scan commonly returns.
 //
 // A "locally administered" MAC (bit 0x02 of the first octet set) — the
 // kind VMs, containers, and our own honeynet hosts use — is reported
@@ -65,6 +144,12 @@ func VendorForMAC(mac string) string {
 		return ""
 	}
 	oui := mac[0:8] // "xx:xx:xx"
+	// A loaded full IEEE database (if any) wins over the built-in table.
+	if lm := loadedOUI.Load(); lm != nil {
+		if v, ok := (*lm)[oui]; ok {
+			return v
+		}
+	}
 	if v, ok := ouiTable[oui]; ok {
 		return v
 	}

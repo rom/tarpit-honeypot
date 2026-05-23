@@ -246,6 +246,17 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
+	// Load the full MAC-vendor (OUI) database if one is configured, so both
+	// the device inventory and event enrichment resolve vendors from it. Off
+	// the hot path; failure is non-fatal (the built-in table still applies).
+	if p := cfg.Sensor.OUIFile; p != "" {
+		if n, err := devices.LoadOUIFile(p); err != nil {
+			slog.Warn("oui database load failed; using built-in table", "path", p, "err", err)
+		} else {
+			slog.Info("oui database loaded", "path", p, "entries", n)
+		}
+	}
+
 	var devReg *devices.Registry
 	devSev := event.SeverityHigh
 	if cfg.Devices.Enabled {
