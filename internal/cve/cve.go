@@ -737,6 +737,54 @@ var catalog = []Record{
 		Technique: "T1499", Tactic: "impact",
 		Description: "Improper input validation in GE PACSystems (CPE3xx/4xx, RSTi-EP) lets crafted packets render the controller unavailable.",
 	},
+
+	// --- TCP/IP-stack attacks. These ride the honeynet's userspace TCP
+	// stack (internal/tcpstack) rather than an application handler, so
+	// Service is "tcp". LAND is recognized live (a SYN whose source
+	// IP:port equals the destination — the tcp-land anomaly — is dropped,
+	// never answered); the fragment-class entries pair with the
+	// ip-fragmented anomaly; the rest are advisory references for the
+	// stack-fingerprint surface a scanner probes. ---
+	{
+		ID: "CVE-1999-0015", Name: "Teardrop overlapping-fragment DoS", CVSS: 5.0, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Overlapping IP fragment offsets crash a vulnerable reassembly path (Teardrop). The userspace stack flags fragmented input (ip-fragmented) instead of reassembling it.",
+	},
+	{
+		ID: "CVE-1999-0016", Name: "LAND same-source/dest DoS", CVSS: 5.0, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "A spoofed SYN whose source IP:port equals the destination makes a vulnerable stack reply to itself, wedging the CPU (LAND). Detected live as the tcp-land anomaly and dropped.",
+	},
+	{
+		ID: "CVE-2004-0230", Name: "TCP RST/SYN in-window DoS", CVSS: 5.0, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Blind in-window RST/SYN injection tears down established TCP sessions (the slipping-in-the-window class) without being on-path.",
+	},
+	{
+		ID: "CVE-2008-4609", Name: "TCP sockstress state exhaustion", CVSS: 7.1, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Completing handshakes then advertising a zero/tiny window exhausts the target's connection-state memory (sockstress). The decoy bounds its flow table with an idle reaper.",
+	},
+	{
+		ID: "CVE-2016-5696", Name: "Linux off-path TCP injection", CVSS: 5.9, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "The Linux global TCP challenge-ACK rate limit is a side channel that lets an off-path attacker infer sequence numbers and reset/inject connections blind.",
+	},
+	{
+		ID: "CVE-2018-5391", Name: "FragmentSmack IP-fragment DoS", CVSS: 7.5, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Crafted IP fragments with worst-case reassembly cost drive CPU to 100% (FragmentSmack). The userspace stack flags fragments (ip-fragmented) and never reassembles.",
+	},
+	{
+		ID: "CVE-2019-11477", Name: "SACK Panic", CVSS: 7.5, Service: "tcp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "A crafted run of TCP Selective-ACKs with a low MSS overflows the Linux kernel SKB structure and panics the host (SACK Panic).",
+	},
+	{
+		ID: "CVE-2020-11896", Name: "Ripple20 Treck TCP/IP RCE", CVSS: 10.0, Service: "tcp",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Remote code execution in the Treck embedded TCP/IP stack via crafted IP/UDP packets (Ripple20) — the OT/IoT device class the honeynet emulates.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -868,6 +916,15 @@ var cveExtra = map[string]struct {
 	"CVE-2020-16209": {[]string{"CWE-787", "CWE-120"}, "cpe:2.3:a:fieldcommgroup:hipserver:*", 0.08},
 	"CVE-2025-58428": {[]string{"CWE-78"}, "cpe:2.3:o:veeder-root:tls4b_firmware:*", 0.05},
 	"CVE-2018-8867":  {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe330_firmware:*", 0.03},
+	// TCP/IP-stack attacks.
+	"CVE-1999-0015":  {[]string{"CWE-400"}, "", 0.02},
+	"CVE-1999-0016":  {[]string{"CWE-400"}, "", 0.02},
+	"CVE-2004-0230":  {[]string{"CWE-400"}, "", 0.04},
+	"CVE-2008-4609":  {[]string{"CWE-400"}, "", 0.05},
+	"CVE-2016-5696":  {[]string{"CWE-203"}, "cpe:2.3:o:linux:linux_kernel:*", 0.04},
+	"CVE-2018-5391":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.05},
+	"CVE-2019-11477": {[]string{"CWE-190", "CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.06},
+	"CVE-2020-11896": {[]string{"CWE-787"}, "cpe:2.3:o:treck:tcp_ip:*", 0.10},
 }
 
 func init() {

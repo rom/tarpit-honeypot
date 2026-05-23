@@ -416,11 +416,13 @@ func (s *Stack) Stats() Stats {
 	}
 }
 
-// corrupt reports whether a segment's problem is structural corruption
-// (bad checksum, truncation, fragmentation) as opposed to a deliberate
-// stealth-scan flag combination with otherwise valid framing.
+// corrupt reports whether a segment must be dropped without any reply:
+// structural corruption (bad checksum, truncation, fragmentation) or a
+// spoofed src==dst LAND packet (answering it is the attack). A pure
+// stealth-scan flag combination with otherwise valid framing is NOT
+// corrupt — a closed port still RSTs it for believability.
 func corrupt(s *Segment) bool {
-	return !s.IPChecksumOK || s.MF || s.FragOff != 0 ||
+	return s.SrcIP == s.DstIP || !s.IPChecksumOK || s.MF || s.FragOff != 0 ||
 		s.TCPShort || s.BadDataOff || !s.TCPChecksumOK
 }
 

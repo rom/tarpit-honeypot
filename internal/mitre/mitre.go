@@ -148,6 +148,15 @@ var exactRules = map[string]Tag{
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
+	// Honeynet userspace TCP stack (internal/tcpstack). A completed
+	// handshake to a virtual host's open port is service discovery; a
+	// captured request is a probe; a malformed/illegal packet is a
+	// crafted stealth scan (refined by its anomaly markers); a LAND
+	// packet (src==dst) is an endpoint-DoS attempt (CVE-1999-0016).
+	"honeynet:tcp_connect":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"honeynet:tcp_request":   {Techniques: []string{"T1046", "T1595"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"honeynet:tcp_malformed": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"honeynet:tcp_land":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 }
 
 // handlerTags is the listener-handler -> ATT&CK lookup. Handlers
@@ -484,6 +493,24 @@ var anomalyTags = map[string]Tag{
 	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
+	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
+	// are crafted active scanning; corrupt-framing probes (bad checksum /
+	// data-offset / truncation) are IDS-evasion-shaped recon; a LAND
+	// packet (src==dst, CVE-1999-0016) is an endpoint-DoS attempt.
+	"tcp-null":           {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-fin-scan":       {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-xmas":           {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-syn-fin":        {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-syn-rst":        {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-data-in-syn":    {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"tcp-bad-checksum":   {Techniques: []string{"T1595.001"}, Tactics: []string{"reconnaissance"}},
+	"tcp-bad-dataoffset": {Techniques: []string{"T1595.001"}, Tactics: []string{"reconnaissance"}},
+	"tcp-truncated":      {Techniques: []string{"T1595.001"}, Tactics: []string{"reconnaissance"}},
+	"tcp-land":           {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"ip-bad-checksum":    {Techniques: []string{"T1595.001"}, Tactics: []string{"reconnaissance"}},
+	"ip-bad-header-len":  {Techniques: []string{"T1595.001"}, Tactics: []string{"reconnaissance"}},
+	"ip-fragmented":      {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
@@ -515,6 +542,10 @@ func AnomalyTag(a string) Tag {
 	case strings.HasPrefix(a, "tool:"):
 		// An identified scanning/attack tool — active scanning recon.
 		return Tag{Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}}
+	case strings.HasPrefix(a, "tcp-"), strings.HasPrefix(a, "ip-"):
+		// Any userspace-stack packet anomaly without an explicit entry is
+		// at least a crafted scan probe against the IP/TCP layer.
+		return Tag{Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}}
 	}
 	return Tag{}
 }
@@ -710,6 +741,7 @@ var d3fend = map[string][]string{
 	"T1557": {"D3-NTA"},                    // adversary-in-the-middle
 	"T1558": {"D3-MFA", "D3-DUC"},          // steal/forge Kerberos tickets
 	"T1498": {"D3-ITF"},                    // network denial of service
+	"T1499": {"D3-ITF", "D3-NTA"},          // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1135": {"D3-DNR", "D3-DO"},           // network share discovery
 	"T1087": {"D3-DUC"},                    // account discovery
 	"T1114": {"D3-NTA"},                    // email collection

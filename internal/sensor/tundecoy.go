@@ -169,6 +169,14 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 			meta["anomalies"] = ev.Markers
 			payloadLen = len(ev.Raw)
 			payloadB64 = base64.StdEncoding.EncodeToString(ev.Raw)
+			// A LAND packet (source == destination) is a recognized
+			// endpoint-DoS CVE, not just a crafted probe — promote it to
+			// its own high-severity rule with the CVE reference.
+			if markersContain(ev.Markers, "tcp-land") {
+				rule = "honeynet:tcp_land"
+				sev = event.SeverityHigh
+				meta["cve"] = "CVE-1999-0016"
+			}
 		default:
 			return
 		}
@@ -194,6 +202,15 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 }
 
 func ipString(b [4]byte) string { return net.IP(b[:]).String() }
+
+func markersContain(markers []string, want string) bool {
+	for _, m := range markers {
+		if m == want {
+			return true
+		}
+	}
+	return false
+}
 
 func smtpGreeting(prof *archetype.Profile) string {
 	host, product := "mail", ""

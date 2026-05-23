@@ -434,12 +434,22 @@ honeynets:
       enabled: false              # CAP_NET_ADMIN required
       device: ""
       mtu: 1500
-      # TCP/IP stack personality: the TUN responder stamps each host's
-      # synthesized ICMP echo replies + closed-port RSTs with the initial
-      # IP TTL of that host's archetype (64 Linux / 128 Windows / 255 OT),
-      # derived automatically from the host's `archetype:` (or `os:`). This
-      # keeps nmap -O / traceroute hop-distance consistent. Open-port
-      # SYN-ACKs still come from the kernel stack (no userspace TCP stack).
+      # The TUN adapter answers ICMP echo and embeds a userspace TCP stack
+      # (internal/tcpstack) that terminates TCP for the whole CIDR — no
+      # `ip addr add` per host. For each host's `services:` ports it
+      # completes a handshake with a SYN-ACK shaped to the host archetype's
+      # stack fingerprint (TTL/window/MSS/window-scale/SACK/timestamps/
+      # option order — what nmap -O / p0f read) and answers a single
+      # request/response from the archetype banners; unbound ports RST.
+      # ICMP, RST and SYN-ACK all carry the per-host archetype TTL
+      # (64 Linux / 128 Windows / 255 OT), derived from `archetype:` (or
+      # `os:`), so the OS fingerprint is consistent across open ports,
+      # closed ports, and ping. Malformed / illegal / stealth-scan packets
+      # (NULL/FIN/Xmas, SYN-FIN, bad checksums, fragments, LAND) are
+      # captured as honeynet:tcp_* events. There is no extra config: the
+      # open-port set + banners come from each host's `services:` below.
+      # See docs/tcp-stack.md for the full design. Decoy stack: in-order
+      # data only, one request/response, no retransmit/reassembly.
 
     hosts:
       - ip: 10.99.0.10

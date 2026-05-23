@@ -124,6 +124,37 @@ func TestAnomalyTagPrefixes(t *testing.T) {
 	}
 }
 
+// TestTCPStackCoverage guards the userspace-TCP-stack ATT&CK mappings: the
+// rule_ids, the explicit packet anomalies, the tcp-/ip- prefix fallback,
+// and the LAND -> endpoint-DoS attribution.
+func TestTCPStackCoverage(t *testing.T) {
+	if got := Lookup("honeynet:tcp_malformed", "").Techniques; !contains(got, "T1046") || !contains(got, "T1595.001") {
+		t.Errorf("tcp_malformed = %v; want T1046 + T1595.001", got)
+	}
+	if got := Lookup("honeynet:tcp_land", "").Techniques; len(got) != 1 || got[0] != "T1499" {
+		t.Errorf("tcp_land = %v; want [T1499]", got)
+	}
+	for _, m := range []string{"tcp-null", "tcp-fin-scan", "tcp-xmas", "tcp-syn-fin", "ip-fragmented"} {
+		if !contains(AnomalyTag(m).Techniques, "T1595.001") {
+			t.Errorf("%q should map to active-scanning T1595.001: %v", m, AnomalyTag(m).Techniques)
+		}
+	}
+	if !contains(AnomalyTag("tcp-land").Techniques, "T1499") {
+		t.Errorf("tcp-land should map to endpoint DoS T1499")
+	}
+	// Prefix fallback for any future tcp-/ip- marker.
+	if !contains(AnomalyTag("tcp-future-marker").Techniques, "T1046") {
+		t.Errorf("tcp- prefix fallback missing")
+	}
+	if !contains(AnomalyTag("ip-future-marker").Techniques, "T1595.001") {
+		t.Errorf("ip- prefix fallback missing")
+	}
+	// LAND maps to an endpoint-DoS D3FEND control.
+	if d := DefensesFor([]string{"T1499"}); len(d) == 0 {
+		t.Errorf("T1499 should have a D3FEND mapping")
+	}
+}
+
 // TestShellAndInteractiveCoverage guards the post-login TTP capture: every
 // shell-* marker must carry an ATT&CK technique (explicit or via the shell-
 // prefix fallback), and ssh_interactive must map like ssh (not the T1190
