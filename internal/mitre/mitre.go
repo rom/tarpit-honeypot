@@ -139,6 +139,12 @@ var exactRules = map[string]Tag{
 	// vulnerability scanning; a typed flood maps to endpoint DoS.
 	"attack:fuzzing": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
 	"attack:dos":     {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// Additional opt-in correlators (round 2).
+	"correlate:lateral_movement": {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"correlate:ot_recon":         {Techniques: []string{"T0846", "T0888"}, Tactics: []string{"discovery"}},
+	"correlate:data_access":      {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"correlate:malware_campaign": {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"correlate:webshell":         {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -313,6 +319,8 @@ var anomalyTags = map[string]Tag{
 	// (impossible) browser User-Agent.
 	"http-malformed-header":   {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"http-duplicate-host":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-request-smuggling":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"http-connect-proxy":      {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
 	"http-impossible-browser": {Techniques: []string{"T1036"}, Tactics: []string{"defense-evasion"}},
 	// Active Directory / Kerberos abuse.
 	"kerberos-tgs-request":   {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
@@ -433,6 +441,32 @@ var anomalyTags = map[string]Tag{
 	// Printer command recon + passive DHCP client observation.
 	"pjl-command":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	"dhcp-client-observed": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Redis post-auth abuse chain: CONFIG SET dir / SAVE writes a webshell or
+	// cron job; SLAVEOF + MODULE LOAD and EVAL Lua run code; FLUSH wipes data.
+	"redis-config-set":            {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-save":                  {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-replication-takeover":  {Techniques: []string{"T1059", "T1210"}, Tactics: []string{"execution", "lateral-movement"}},
+	"redis-module-load":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-script-exec":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-flush":                 {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"elasticsearch-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// Docker remote API abuse — deploy/control a container = code execution.
+	"docker-container-create": {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	"docker-remote-control":   {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	// CoAP write to an IoT resource = manipulation of a device value.
+	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
+	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	// Postgres streaming-replication connection = bulk data access.
+	"postgres-replication-connection": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	// Auth submissions / brute on services whose base tag isn't already creds.
+	"mysql-login-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"rtsp-auth-attempt":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"sip-register-probe":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"winrm-ntlm-auth":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// SIP INVITE scanning = VoIP toll-fraud / service reconnaissance.
+	"sip-invite-attempt": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 }
 
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.

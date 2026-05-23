@@ -256,3 +256,85 @@ func TestExtraCorrelatorsDisabledByDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestLateralMovementFires(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		LateralMovement: config.CorrLateralMovement{Enabled: true, DistinctServices: 3, Window: time.Minute, Severity: "high"},
+	})
+	now := time.Now().UTC()
+	var last []*event.Event
+	for i, h := range []string{"rdp", "smb", "winrm"} {
+		ev := mkEvent("1.1.1.1", 1000+i, now.Add(time.Duration(i)*time.Second))
+		ev.Handler = h
+		last = cor.Observe(ev)
+	}
+	if aggregate(last, "correlate:lateral_movement") == nil {
+		t.Fatalf("lateral_movement did not fire: %v", last)
+	}
+}
+
+func TestOTReconFires(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		OTRecon: config.CorrOTRecon{Enabled: true, DistinctServices: 3, Window: time.Minute, Severity: "high"},
+	})
+	now := time.Now().UTC()
+	var last []*event.Event
+	for i, h := range []string{"modbus", "s7", "dnp3"} {
+		ev := mkEvent("2.2.2.2", 500+i, now.Add(time.Duration(i)*time.Second))
+		ev.Handler = h
+		last = cor.Observe(ev)
+	}
+	if aggregate(last, "correlate:ot_recon") == nil {
+		t.Fatalf("ot_recon did not fire: %v", last)
+	}
+}
+
+func TestDataAccessFires(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		DataAccess: config.CorrDataAccess{Enabled: true, Attempts: 3, Window: time.Minute, Severity: "high"},
+	})
+	now := time.Now().UTC()
+	var last []*event.Event
+	for i := 0; i < 3; i++ {
+		ev := mkEvent("3.3.3.3", 27017, now.Add(time.Duration(i)*time.Second))
+		ev.Handler = "mongodb"
+		ev.Anomalies = []string{"mongodb-data-access"}
+		last = cor.Observe(ev)
+	}
+	if aggregate(last, "correlate:data_access") == nil {
+		t.Fatalf("data_access did not fire: %v", last)
+	}
+}
+
+func TestMalwareCampaignFires(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		MalwareCampaign: config.CorrMalwareCampaign{Enabled: true, Captures: 2, Window: time.Minute, Severity: "critical"},
+	})
+	now := time.Now().UTC()
+	var last []*event.Event
+	for i := 0; i < 2; i++ {
+		ev := mkEvent("4.4.4.4", 80, now.Add(time.Duration(i)*time.Second))
+		ev.RuleID = "malware:capture"
+		last = cor.Observe(ev)
+	}
+	if aggregate(last, "correlate:malware_campaign") == nil {
+		t.Fatalf("malware_campaign did not fire: %v", last)
+	}
+}
+
+func TestWebshellFires(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		Webshell: config.CorrWebshell{Enabled: true, Attempts: 2, Window: time.Minute, Severity: "critical"},
+	})
+	now := time.Now().UTC()
+	var last []*event.Event
+	for i := 0; i < 2; i++ {
+		ev := mkEvent("5.5.5.5", 80, now.Add(time.Duration(i)*time.Second))
+		ev.Handler = "http"
+		ev.Anomalies = []string{"webshell-command"}
+		last = cor.Observe(ev)
+	}
+	if aggregate(last, "correlate:webshell") == nil {
+		t.Fatalf("webshell did not fire: %v", last)
+	}
+}

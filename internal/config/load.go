@@ -446,6 +446,61 @@ func (c *Config) applyDefaults() {
 			c.Correlate.SessionFlood.Severity = "medium"
 		}
 	}
+	if c.Correlate.LateralMovement.Enabled {
+		if c.Correlate.LateralMovement.DistinctServices == 0 {
+			c.Correlate.LateralMovement.DistinctServices = 3
+		}
+		if c.Correlate.LateralMovement.Window == 0 {
+			c.Correlate.LateralMovement.Window = 300 * time.Second
+		}
+		if c.Correlate.LateralMovement.Severity == "" {
+			c.Correlate.LateralMovement.Severity = "high"
+		}
+	}
+	if c.Correlate.OTRecon.Enabled {
+		if c.Correlate.OTRecon.DistinctServices == 0 {
+			c.Correlate.OTRecon.DistinctServices = 3
+		}
+		if c.Correlate.OTRecon.Window == 0 {
+			c.Correlate.OTRecon.Window = 300 * time.Second
+		}
+		if c.Correlate.OTRecon.Severity == "" {
+			c.Correlate.OTRecon.Severity = "high"
+		}
+	}
+	if c.Correlate.DataAccess.Enabled {
+		if c.Correlate.DataAccess.Attempts == 0 {
+			c.Correlate.DataAccess.Attempts = 5
+		}
+		if c.Correlate.DataAccess.Window == 0 {
+			c.Correlate.DataAccess.Window = 300 * time.Second
+		}
+		if c.Correlate.DataAccess.Severity == "" {
+			c.Correlate.DataAccess.Severity = "high"
+		}
+	}
+	if c.Correlate.MalwareCampaign.Enabled {
+		if c.Correlate.MalwareCampaign.Captures == 0 {
+			c.Correlate.MalwareCampaign.Captures = 2
+		}
+		if c.Correlate.MalwareCampaign.Window == 0 {
+			c.Correlate.MalwareCampaign.Window = 600 * time.Second
+		}
+		if c.Correlate.MalwareCampaign.Severity == "" {
+			c.Correlate.MalwareCampaign.Severity = "critical"
+		}
+	}
+	if c.Correlate.Webshell.Enabled {
+		if c.Correlate.Webshell.Attempts == 0 {
+			c.Correlate.Webshell.Attempts = 2
+		}
+		if c.Correlate.Webshell.Window == 0 {
+			c.Correlate.Webshell.Window = 600 * time.Second
+		}
+		if c.Correlate.Webshell.Severity == "" {
+			c.Correlate.Webshell.Severity = "critical"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {

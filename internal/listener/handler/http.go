@@ -71,6 +71,7 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	contentType := ""
 	malformedHeader := false
 	hostCount := 0
+	transferEnc := false
 	sawBlank := false
 	for i, line := range strings.Split(string(buf.Bytes()), "\r\n") {
 		if i == 0 {
@@ -120,6 +121,8 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			contentLen = n
 		case strings.HasPrefix(lower, "content-type:"):
 			contentType = strings.TrimSpace(line[13:])
+		case strings.HasPrefix(lower, "transfer-encoding:"):
+			transferEnc = true
 		}
 	}
 	// Read the request body (capped) so POSTed login-form credentials
@@ -177,6 +180,15 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if hostCount > 1 {
 		// Multiple Host headers is a request-smuggling / cache-poisoning tell.
 		flagAnomaly(&res, "http-duplicate-host")
+	}
+	if transferEnc && contentLen > 0 {
+		// Both Transfer-Encoding and Content-Length present = the CL.TE / TE.CL
+		// ambiguity front-ends and back-ends disagree on — HTTP request smuggling.
+		flagAnomaly(&res, "http-request-smuggling")
+	}
+	if extractMethod(firstLine) == "CONNECT" {
+		// CONNECT to an origin server (not a proxy) = open-proxy / tunnel abuse.
+		flagAnomaly(&res, "http-connect-proxy")
 	}
 	if impossibleBrowser(userAgent, headerKeys) {
 		// The UA claims a full browser but the request is missing the
