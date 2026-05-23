@@ -394,6 +394,241 @@ var catalog = []Record{
 		Technique: "T1558", Tactic: "credential-access",
 		Description: "AD sAMAccountName spoofing chained with CVE-2021-42287 for Domain Admin.",
 	},
+	// ---- Additional detectable web / appliance exploit signatures ----
+	// Edge-device & enterprise-app pre-auth chains scanned en masse. Each
+	// signature is a distinctive request-path or payload token from the
+	// public PoC, kept high-signal so MatchPayload stays near-zero on
+	// benign traffic.
+	{
+		ID: "CVE-2023-35078", Name: "Ivanti EPMM API auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/mifs/aad/api/v2/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Endpoint Manager Mobile (MobileIron Core) unauthenticated API access.",
+	},
+	{
+		ID: "CVE-2023-38035", Name: "Ivanti Sentry MICS auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/mics/services/configservice"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Sentry MICS administrative interface authentication bypass to RCE.",
+	},
+	{
+		ID: "CVE-2024-1709", Name: "ScreenConnect auth bypass", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/setupwizard.aspx/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "ConnectWise ScreenConnect path-confusion authentication bypass (admin takeover).",
+	},
+	{
+		ID: "CVE-2023-22515", Name: "Confluence broken access control", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/setup/setupadministrator.action"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence broken access control — create admin / takeover.",
+	},
+	{
+		ID: "CVE-2024-23897", Name: "Jenkins CLI arbitrary file read", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cli?remoting=false"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Jenkins CLI args4j expandAtFiles arbitrary file read (to RCE).",
+	},
+	{
+		ID: "CVE-2024-27198", Name: "JetBrains TeamCity auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{";.jsp?jsp=/app/rest"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "JetBrains TeamCity request-routing authentication bypass (admin token / RCE).",
+	},
+	{
+		ID: "CVE-2022-22954", Name: "VMware Workspace ONE SSTI", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/catalog-portal/ui/oauth/verify"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "VMware Workspace ONE Access server-side template injection RCE.",
+	},
+	{
+		ID: "CVE-2021-21985", Name: "vCenter vSAN H5 RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/ui/h5-vsan/rest/proxy/service/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "VMware vCenter Server vSAN Health (H5) plugin unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2019-2725", Name: "WebLogic async deserialization", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/_async/asyncresponseservice"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Oracle WebLogic Server async/WLS9 XML deserialization RCE.",
+	},
+	{
+		ID: "CVE-2023-46747", Name: "F5 BIG-IP TMUI SSRF RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/tmui/login.jsp/..;/mgmt/tm/util/bash", "/tmui/login.jsp/..;/mgmt/shared/authn/login"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "F5 BIG-IP TMUI AJP request-smuggling SSRF authentication bypass to RCE.",
+	},
+	{
+		ID: "CVE-2021-22005", Name: "vCenter analytics file upload", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/analytics/telemetry/ph/api/hyper/send"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "VMware vCenter Server analytics service arbitrary file upload to RCE.",
+	},
+	{
+		ID: "CVE-2020-3452", Name: "Cisco ASA/FTD WebVPN file read", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/+cscoe+/files/file_list.json?path="},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Cisco ASA/FTD WebVPN directory traversal unauthenticated file read.",
+	},
+	{
+		ID: "CVE-2022-29464", Name: "WSO2 arbitrary file upload RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/fileupload/toolsany"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WSO2 Carbon (API Manager / Identity Server) unrestricted file upload RCE.",
+	},
+	{
+		ID: "CVE-2021-35587", Name: "Oracle Access Manager deserialization", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/oam/server/opensso/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Oracle Access Manager OpenSSO agent unauthenticated deserialization RCE.",
+	},
+	{
+		ID: "CVE-2024-21893", Name: "Ivanti Connect Secure SSRF", CVSS: 8.2, Service: "pulse",
+		Signatures: []string{"/dana-ws/saml20.ws"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Connect Secure SAML component SSRF (chained to unauth RCE).",
+	},
+	{
+		ID: "CVE-2023-3519", Name: "Citrix NetScaler RCE", CVSS: 9.8, Service: "citrix_gateway",
+		Signatures: []string{"/gwtest/formssso?event=start&target="},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Citrix NetScaler ADC/Gateway unauthenticated stack-overflow RCE.",
+	},
+	{
+		ID: "CVE-2022-27925", Name: "Zimbra mboximport traversal", CVSS: 7.2, Service: "http",
+		Signatures: []string{"/service/extension/backup/mboximport"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Zimbra Collaboration mboximport ZIP path traversal to webshell RCE.",
+	},
+	{
+		ID: "CVE-2023-27350", Name: "PaperCut auth bypass RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/app?service=page/setupcompleted"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "PaperCut MF/NG SetupCompleted authentication bypass to scripted RCE.",
+	},
+	{
+		ID: "CVE-2024-0204", Name: "GoAnywhere MFT auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/initialaccountsetup.xhtml"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Fortra GoAnywhere MFT admin-portal forced-browsing authentication bypass.",
+	},
+	{
+		ID: "CVE-2023-0669", Name: "GoAnywhere MFT pre-auth RCE", CVSS: 7.2, Service: "http",
+		Signatures: []string{"/goanywhere/lic/accept"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Fortra GoAnywhere MFT license-response servlet deserialization RCE.",
+	},
+	{
+		ID: "CVE-2018-11776", Name: "Struts2 namespace OGNL (S2-057)", CVSS: 8.1, Service: "http",
+		Signatures: []string{"(#_memberaccess"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Struts2 namespace/results OGNL injection RCE (S2-057).",
+	},
+	{
+		ID: "CVE-2017-12149", Name: "JBoss invoker deserialization", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/invoker/jmxinvokerservlet", "/invoker/readonly"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "RedHat JBoss AS/EAP HTTPInvoker ReadOnlyAccessFilter Java deserialization RCE.",
+	},
+	{
+		ID: "CVE-2021-29441", Name: "Alibaba Nacos auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/nacos/v1/auth/users?page"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Alibaba Nacos User-Agent authentication bypass — add admin / config theft.",
+	},
+	{
+		ID: "CVE-2022-44877", Name: "CWP Control Web Panel RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/login/index.php?login=$(", "/login/index.php?login=%24%28"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Control Web Panel (CWP) login parameter unauthenticated command injection.",
+	},
+	{
+		ID: "CVE-2015-1427", Name: "Elasticsearch Groovy RCE", CVSS: 9.8, Service: "elasticsearch",
+		Signatures: []string{"java.lang.math.class.forname", "\"lang\":\"groovy\""},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Elasticsearch Groovy scripting-engine sandbox escape remote code execution.",
+	},
+	{
+		ID: "CVE-2014-3120", Name: "Elasticsearch MVEL RCE", CVSS: 7.5, Service: "elasticsearch",
+		Signatures: []string{"mvel", "\"script\":\"import "},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Elasticsearch default dynamic MVEL scripting remote code execution.",
+	},
+	// ---- Additional advisory-only records (binary/version/non-HTTP) ----
+	// No single TCP-side exploit string (heap overflows, NTLM relay, version
+	// gates); these advertise the unpatched product + give cve:<id> events
+	// and vuln_emulation advisories an ATT&CK mapping via Lookup.
+	{
+		ID: "CVE-2023-4966", Name: "Citrix Bleed", CVSS: 9.4, Service: "citrix_gateway",
+		Technique: "T1539", Tactic: "credential-access",
+		Description: "Citrix NetScaler ADC/Gateway session-token memory disclosure (CitrixBleed).",
+	},
+	{
+		ID: "CVE-2024-55591", Name: "FortiOS auth bypass", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiOS/FortiProxy Node.js websocket authentication bypass to super-admin.",
+	},
+	{
+		ID: "CVE-2022-42475", Name: "FortiOS SSL-VPN heap overflow", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiOS SSL-VPN pre-auth heap buffer overflow remote code execution.",
+	},
+	{
+		ID: "CVE-2023-27997", Name: "FortiOS XORtigate", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiOS SSL-VPN pre-auth heap overflow (XORtigate) remote code execution.",
+	},
+	{
+		ID: "CVE-2025-0282", Name: "Ivanti Connect Secure RCE", CVSS: 9.0, Service: "pulse",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Ivanti Connect Secure/Policy Secure pre-auth stack buffer overflow RCE.",
+	},
+	{
+		ID: "CVE-2024-47575", Name: "FortiManager FortiJump", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiManager fgfmd missing authentication for critical function (FortiJump).",
+	},
+	{
+		ID: "CVE-2022-26809", Name: "Windows RPC runtime RCE", CVSS: 9.8, Service: "dcerpc",
+		Technique: "T1210", Tactic: "lateral-movement",
+		Description: "Microsoft Windows RPC runtime (rpcrt4) remote code execution.",
+	},
+	{
+		ID: "CVE-2019-1040", Name: "Windows NTLM tampering (Drop the MIC)", CVSS: 6.5, Service: "dcerpc",
+		Technique: "T1557", Tactic: "credential-access",
+		Description: "Windows NTLM MIC tampering enabling relay to privileged services.",
+	},
+	{
+		ID: "CVE-2020-1350", Name: "SIGRed Windows DNS RCE", CVSS: 10.0, Service: "dns",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Microsoft Windows DNS Server SIG record integer overflow wormable RCE.",
+	},
+	{
+		ID: "CVE-2016-10033", Name: "PHPMailer transport RCE", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "PHPMailer mailSend Sendmail argument injection remote code execution.",
+	},
+	{
+		ID: "CVE-2017-7494", Name: "SambaCry", CVSS: 9.8, Service: "smb",
+		Technique: "T1210", Tactic: "lateral-movement",
+		Description: "Samba is_known_pipename() arbitrary shared-library load remote code execution.",
+	},
+	{
+		ID: "CVE-2024-6387", Name: "regreSSHion", CVSS: 8.1, Service: "ssh",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "OpenSSH sshd signal-handler race condition pre-auth remote code execution.",
+	},
+	{
+		ID: "CVE-2021-21974", Name: "ESXi OpenSLP heap overflow (ESXiArgs)", CVSS: 8.8, Service: "esxi",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VMware ESXi OpenSLP heap overflow remote code execution (ESXiArgs ransomware).",
+	},
+	{
+		ID: "CVE-2023-46805", Name: "Ivanti Connect Secure auth bypass", CVSS: 8.2, Service: "pulse",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Ivanti Connect Secure web-component authentication bypass (chained with CVE-2024-21887).",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -463,6 +698,47 @@ var cveExtra = map[string]struct {
 	"CVE-2024-47175": {[]string{"CWE-20"}, "cpe:2.3:a:openprinting:libppd:*", 0.30},
 	"CVE-2024-47176": {[]string{"CWE-20", "CWE-918"}, "cpe:2.3:a:openprinting:cups-browsed:*", 0.30},
 	"CVE-2024-47177": {[]string{"CWE-78"}, "cpe:2.3:a:openprinting:cups-filters:*", 0.40},
+	// --- additions ---
+	"CVE-2023-35078": {[]string{"CWE-287"}, "cpe:2.3:a:ivanti:endpoint_manager_mobile:*", 0.96},
+	"CVE-2023-38035": {[]string{"CWE-306"}, "cpe:2.3:a:ivanti:sentry:*", 0.85},
+	"CVE-2024-1709":  {[]string{"CWE-288"}, "cpe:2.3:a:connectwise:screenconnect:*", 0.97},
+	"CVE-2023-22515": {[]string{"CWE-863"}, "cpe:2.3:a:atlassian:confluence_data_center:*", 0.94},
+	"CVE-2024-23897": {[]string{"CWE-22"}, "cpe:2.3:a:jenkins:jenkins:*", 0.94},
+	"CVE-2024-27198": {[]string{"CWE-288"}, "cpe:2.3:a:jetbrains:teamcity:*", 0.94},
+	"CVE-2022-22954": {[]string{"CWE-94", "CWE-1336"}, "cpe:2.3:a:vmware:workspace_one_access:*", 0.97},
+	"CVE-2021-21985": {[]string{"CWE-94"}, "cpe:2.3:a:vmware:vcenter_server:*", 0.96},
+	"CVE-2019-2725":  {[]string{"CWE-502"}, "cpe:2.3:a:oracle:weblogic_server:*", 0.96},
+	"CVE-2023-46747": {[]string{"CWE-288"}, "cpe:2.3:a:f5:big-ip:*", 0.96},
+	"CVE-2021-22005": {[]string{"CWE-434"}, "cpe:2.3:a:vmware:vcenter_server:*", 0.97},
+	"CVE-2020-3452":  {[]string{"CWE-22"}, "cpe:2.3:o:cisco:adaptive_security_appliance:*", 0.96},
+	"CVE-2022-29464": {[]string{"CWE-434"}, "cpe:2.3:a:wso2:api_manager:*", 0.95},
+	"CVE-2021-35587": {[]string{"CWE-502"}, "cpe:2.3:a:oracle:access_manager:*", 0.85},
+	"CVE-2024-21893": {[]string{"CWE-918"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.96},
+	"CVE-2023-3519":  {[]string{"CWE-787"}, "cpe:2.3:a:citrix:netscaler_application_delivery_controller:*", 0.94},
+	"CVE-2022-27925": {[]string{"CWE-22"}, "cpe:2.3:a:zimbra:collaboration:*", 0.94},
+	"CVE-2023-27350": {[]string{"CWE-284"}, "cpe:2.3:a:papercut:papercut_mf:*", 0.96},
+	"CVE-2024-0204":  {[]string{"CWE-425"}, "cpe:2.3:a:fortra:goanywhere_managed_file_transfer:*", 0.95},
+	"CVE-2023-0669":  {[]string{"CWE-502"}, "cpe:2.3:a:fortra:goanywhere_managed_file_transfer:*", 0.94},
+	"CVE-2018-11776": {[]string{"CWE-1336", "CWE-20"}, "cpe:2.3:a:apache:struts:*", 0.97},
+	"CVE-2017-12149": {[]string{"CWE-502"}, "cpe:2.3:a:redhat:jboss_enterprise_application_platform:*", 0.95},
+	"CVE-2021-29441": {[]string{"CWE-290"}, "cpe:2.3:a:alibaba:nacos:*", 0.90},
+	"CVE-2022-44877": {[]string{"CWE-78"}, "cpe:2.3:a:control-webpanel:webpanel:*", 0.96},
+	"CVE-2015-1427":  {[]string{"CWE-94"}, "cpe:2.3:a:elastic:elasticsearch:*", 0.90},
+	"CVE-2014-3120":  {[]string{"CWE-94"}, "cpe:2.3:a:elastic:elasticsearch:*", 0.85},
+	"CVE-2023-4966":  {[]string{"CWE-119", "CWE-200"}, "cpe:2.3:a:citrix:netscaler_application_delivery_controller:*", 0.94},
+	"CVE-2024-55591": {[]string{"CWE-288"}, "cpe:2.3:o:fortinet:fortios:*", 0.90},
+	"CVE-2022-42475": {[]string{"CWE-787"}, "cpe:2.3:o:fortinet:fortios:*", 0.90},
+	"CVE-2023-27997": {[]string{"CWE-787", "CWE-122"}, "cpe:2.3:o:fortinet:fortios:*", 0.85},
+	"CVE-2025-0282":  {[]string{"CWE-121"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.85},
+	"CVE-2024-47575": {[]string{"CWE-306"}, "cpe:2.3:a:fortinet:fortimanager:*", 0.90},
+	"CVE-2022-26809": {[]string{"CWE-787"}, "cpe:2.3:o:microsoft:windows:*", 0.50},
+	"CVE-2019-1040":  {[]string{"CWE-345"}, "cpe:2.3:o:microsoft:windows:*", 0.30},
+	"CVE-2020-1350":  {[]string{"CWE-787"}, "cpe:2.3:o:microsoft:windows_server:*", 0.50},
+	"CVE-2016-10033": {[]string{"CWE-88"}, "cpe:2.3:a:phpmailer_project:phpmailer:*", 0.90},
+	"CVE-2017-7494":  {[]string{"CWE-94"}, "cpe:2.3:a:samba:samba:*", 0.80},
+	"CVE-2024-6387":  {[]string{"CWE-364"}, "cpe:2.3:a:openbsd:openssh:*", 0.40},
+	"CVE-2021-21974": {[]string{"CWE-787"}, "cpe:2.3:o:vmware:esxi:*", 0.85},
+	"CVE-2023-46805": {[]string{"CWE-287"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.96},
 }
 
 func init() {

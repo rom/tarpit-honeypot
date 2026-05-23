@@ -110,3 +110,55 @@ func TestAdvisoryOnlyLookup(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchPayloadNewWebCVEs(t *testing.T) {
+	cases := map[string]string{
+		"GET /mifs/aad/api/v2/authorized/users HTTP/1.1": "CVE-2023-35078",
+		"GET /SetupWizard.aspx/x HTTP/1.1":               "CVE-2024-1709",
+		"POST /setup/setupadministrator.action HTTP/1.1": "CVE-2023-22515",
+		"GET /cli?remoting=false HTTP/1.1":               "CVE-2024-23897",
+		"GET /catalog-portal/ui/oauth/verify HTTP/1.1":   "CVE-2022-22954",
+		"GET /_async/AsyncResponseService HTTP/1.1":      "CVE-2019-2725",
+		"POST /fileupload/toolsAny/x.jsp HTTP/1.1":       "CVE-2022-29464",
+		"GET /goanywhere/lic/accept HTTP/1.1":            "CVE-2023-0669",
+		"GET /invoker/JMXInvokerServlet HTTP/1.1":        "CVE-2017-12149",
+		"GET /login/index.php?login=$(id) HTTP/1.1":      "CVE-2022-44877",
+	}
+	for payload, want := range cases {
+		hits := MatchPayload("http", payload)
+		found := false
+		for _, r := range hits {
+			if r.ID == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("payload %q: want %s in %v", payload, want, hits)
+		}
+	}
+}
+
+// TestMatchPayloadServiceScoped: appliance- and product-scoped signatures
+// must fire on their handler (and ES on the elasticsearch handler) but not
+// leak onto an unrelated benign HTTP request.
+func TestMatchPayloadServiceScoped(t *testing.T) {
+	if hits := MatchPayload("pulse", "GET /dana-ws/saml20.ws HTTP/1.1"); !containsID(hits, "CVE-2024-21893") {
+		t.Errorf("pulse SSRF not matched: %v", hits)
+	}
+	if hits := MatchPayload("citrix_gateway", "GET /gwtest/formssso?event=start&target=x HTTP/1.1"); !containsID(hits, "CVE-2023-3519") {
+		t.Errorf("citrix RCE not matched: %v", hits)
+	}
+	es := `POST /_search {"script":{"lang":"groovy","inline":"java.lang.Math.class.forName('x')"}}`
+	if hits := MatchPayload("elasticsearch", es); !containsID(hits, "CVE-2015-1427") {
+		t.Errorf("elasticsearch groovy RCE not matched: %v", hits)
+	}
+}
+
+func containsID(recs []Record, id string) bool {
+	for _, r := range recs {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
+}
