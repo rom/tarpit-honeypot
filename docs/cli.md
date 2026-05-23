@@ -11,7 +11,7 @@ tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
-tarpit-honeypot list-devices   -c <config> [--json]
+tarpit-honeypot list-devices   -c <config> [--json] [--stats|--conflicts|--rogues|--class C|--vendor S|--search Q|--stale D|--active D]
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
 tarpit-honeypot list-archeservices [<role>]
@@ -280,19 +280,37 @@ applies the configured allow-list. Use `--json` to snapshot a baseline.
 ```
 tarpit-honeypot list-devices -c cfg.yaml
 tarpit-honeypot list-devices -c cfg.yaml --json > baseline.json
+tarpit-honeypot list-devices -c cfg.yaml --stats
+tarpit-honeypot list-devices -c cfg.yaml --conflicts
+tarpit-honeypot list-devices -c cfg.yaml --rogues
+tarpit-honeypot list-devices -c cfg.yaml --class ics-endpoint
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file. |
-| `--json` | off | Emit the inventory as JSON instead of a table. |
+| `--json` | off | Emit the output as JSON instead of a table (works with every mode below). |
+| `--stats` | off | Print an aggregate summary (total / allow-listed / rogue; by source; by class) instead of the table. |
+| `--conflicts` | off | List IPs bound to multiple MACs — possible ARP spoofing / impersonation. |
+| `--rogues` | off | Show only non-allow-listed (rogue) devices. |
+| `--class <c>` | — | Show only devices of an inferred class (`scanner` / `ics-endpoint` / `network-device` / `web-host` / `host`). |
+| `--vendor <s>` | — | Show only devices whose OUI vendor contains the substring. |
+| `--search <q>` | — | Show only devices matching the substring (ip / mac / hostname / vendor / attrs). |
+| `--stale <dur>` | — | Show only devices NOT seen within the duration (e.g. `24h`). |
+| `--active <dur>` | — | Show only devices seen within the duration (e.g. `1h`). |
+
+The selector flags (`--rogues` / `--class` / `--vendor` / `--search` / `--stale` /
+`--active`) pick which slice of the inventory to list (the first one set wins).
+`--stats` and `--conflicts` are standalone report modes. All of these are also
+surfaced in the web UI's **/devices** tab (a summary panel + an IP/MAC-conflict
+warning), available as JSON at `/api/devices/summary`.
 
 Output:
 
 ```
-IP               MAC                VENDOR                 HOSTNAME             SOURCE    LAST SEEN
-10.0.0.10        00:90:e8:11:22:33  Moxa                   plc-press            dhcp      2025-05-19 14:03
-10.0.0.50        -                  -                      -                    conn      2025-05-19 14:05
+IP               MAC                VENDOR                 HOSTNAME             SOURCE    CLASS          LAST SEEN
+10.0.0.10        00:90:e8:11:22:33  Moxa                   plc-press            dhcp      ics-endpoint   2025-05-19 14:03
+10.0.0.50        -                  -                      -                    conn      host           2025-05-19 14:05
 ```
 
 ---

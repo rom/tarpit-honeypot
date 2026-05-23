@@ -29,6 +29,43 @@ func TestDevicesTemplateRenders(t *testing.T) {
 	}
 }
 
+func TestDevicesSummaryPanelRenders(t *testing.T) {
+	p := hostsPage{
+		Enabled: true,
+		Hosts:   []HostView{{Key: "10.0.0.9", IP: "10.0.0.9", Source: "conn", Count: 1}},
+		Summary: &HostsSummary{
+			Total: 5, Allowed: 3, Rogue: 2,
+			BySource: []LabeledCount{{"arp", 3}, {"conn", 2}},
+			ByClass:  []LabeledCount{{"ics-endpoint", 1}, {"scanner", 1}},
+			Conflicts: []HostConflict{
+				{IP: "10.0.0.50", MACs: []string{"00:90:e8:01:02:03", "aa:bb:cc:dd:ee:ff"}},
+			},
+		},
+	}
+	var b strings.Builder
+	if err := uiTmpl(t).ExecuteTemplate(&b, "devices", p); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{
+		"inventory:", "allow-listed", "rogue", "arp=3", "ics-endpoint=1",
+		"IP/MAC conflicts", "10.0.0.50", "00:90:e8:01:02:03", "aa:bb:cc:dd:ee:ff",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("devices summary panel missing %q", want)
+		}
+	}
+	// With no conflicts, the conflict warning must not render.
+	p.Summary.Conflicts = nil
+	b.Reset()
+	if err := uiTmpl(t).ExecuteTemplate(&b, "devices", p); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "IP/MAC conflicts") {
+		t.Error("conflict panel should not render when there are no conflicts")
+	}
+}
+
 func TestDevicesTemplateActionsEnabled(t *testing.T) {
 	p := hostsPage{Enabled: true, ActionsEnabled: true, Token: "secret-tok", Hosts: []HostView{
 		{Key: "10.0.0.9", IP: "10.0.0.9", Source: "conn", Count: 1},

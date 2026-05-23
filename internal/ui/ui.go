@@ -68,6 +68,7 @@ type Server struct {
 	fullConfig    *config.Config
 	topo          *honeynet.Topology
 	hosts         HostsProvider
+	hostsSummary  HostsSummaryProvider
 	deviceActions DeviceActions
 	dataDir       string
 }
@@ -102,6 +103,38 @@ func (s *Server) SetHostsProvider(p HostsProvider) { s.hosts = p }
 
 // HostsProvider returns a snapshot of every host the sensor has learned.
 type HostsProvider func() []HostView
+
+// SetHostsSummaryProvider wires an aggregate view of the learned-device
+// inventory (totals + by-source/by-class breakdown + IP/MAC conflicts) so
+// the /devices tab can render a summary panel. nil disables the panel. A
+// closure keeps the ui package decoupled from internal/devices.
+func (s *Server) SetHostsSummaryProvider(p HostsSummaryProvider) { s.hostsSummary = p }
+
+// HostsSummaryProvider returns the aggregate inventory view.
+type HostsSummaryProvider func() HostsSummary
+
+// HostsSummary is the at-a-glance device panel: counts plus the IPs that
+// resolve to more than one MAC (an ARP-spoof / impersonation signal).
+type HostsSummary struct {
+	Total     int            `json:"total"`
+	Allowed   int            `json:"allowed"`
+	Rogue     int            `json:"rogue"`
+	BySource  []LabeledCount `json:"by_source,omitempty"`
+	ByClass   []LabeledCount `json:"by_class,omitempty"`
+	Conflicts []HostConflict `json:"conflicts,omitempty"`
+}
+
+// LabeledCount is a sorted (label, count) pair for the breakdown bars.
+type LabeledCount struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// HostConflict is one IP bound to multiple MACs in the inventory.
+type HostConflict struct {
+	IP   string   `json:"ip"`
+	MACs []string `json:"macs"`
+}
 
 // HostView is one row in the /devices table.
 type HostView struct {
@@ -204,6 +237,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/topology", s.handleAPITopology)
 	mux.HandleFunc("/api/hosts", s.handleAPIHosts)
 	mux.HandleFunc("/api/devices", s.handleAPIHosts)
+	mux.HandleFunc("/api/devices/summary", s.handleAPIHostsSummary)
+	mux.HandleFunc("/api/hosts/summary", s.handleAPIHostsSummary)
 	mux.HandleFunc("/api/alerting", s.handleAPIAlerting)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/static/", s.handleStatic)
@@ -728,8 +763,17 @@ func (s *Server) hostsView() []HostView {
 	return s.hosts()
 }
 
+func (s *Server) hostsSummaryView() *HostsSummary {
+	if s.hostsSummary == nil {
+		return nil
+	}
+	v := s.hostsSummary()
+	return &v
+}
+
 type hostsPage struct {
 	Hosts          []HostView
+	Summary        *HostsSummary // aggregate panel (nil when no provider)
 	Enabled        bool
 	Query          string // substring filter (ip/mac/hostname/vendor/source)
 	Status         string // "" | "seen" | "allow"
@@ -744,6 +788,7 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 	hosts := filterHosts(s.hostsView(), q, status)
 	p := hostsPage{
 		Hosts:          hosts,
+		Summary:        s.hostsSummaryView(),
 		Enabled:        s.fullConfig != nil && s.fullConfig.Devices.Enabled,
 		Query:          r.URL.Query().Get("q"),
 		Status:         status,
@@ -787,6 +832,15 @@ func filterHosts(in []HostView, q, status string) []HostView {
 func (s *Server) handleAPIHosts(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.hostsView())
+}
+
+func (s *Server) handleAPIHostsSummary(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	sum := s.hostsSummaryView()
+	if sum == nil {
+		sum = &HostsSummary{}
+	}
+	_ = json.NewEncoder(w).Encode(sum)
 }
 
 // handleDeviceAction performs a device delete / whitelist. It is opt-in

@@ -571,6 +571,21 @@ attack activity (last 24h) overlaid per host. JSON at <a href="/api/topology">/a
 <code>devices.enabled: true</code> to learn devices from DHCP, the ARP sniffer,
 broadcast/multicast discovery, and connection source IPs.</p>{{ end }}
 {{ if .Notice }}<p class="depl">{{ .Notice }}</p>{{ end }}
+{{ with .Summary }}
+<div class="depl">
+  inventory: <b>{{ .Total }}</b> total · <b>{{ .Allowed }}</b> allow-listed · <b>{{ .Rogue }}</b> rogue
+  {{ if .BySource }}<br>by source: {{ range .BySource }}<span class="tag">{{ .Label }}={{ .Count }}</span>{{ end }}{{ end }}
+  {{ if .ByClass }}<br>by class: {{ range .ByClass }}<span class="tag">{{ .Label }}={{ .Count }}</span>{{ end }}{{ end }}
+</div>
+{{ if .Conflicts }}
+<div class="depl"><b>&#9888; IP/MAC conflicts</b> — one address claimed by multiple MACs (possible ARP spoof / impersonation):
+<table>
+  <tr><th>ip</th><th>macs</th></tr>
+  {{ range .Conflicts }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ range .MACs }}<span class="tag">{{ . }}</span>{{ end }}</td></tr>{{ end }}
+</table>
+</div>
+{{ end }}
+{{ end }}
 <form method="get" action="/devices">
   filter: <input type="text" name="q" value="{{ .Query }}" placeholder="ip / mac / hostname / vendor / service" size="28">
   status: <select name="status">

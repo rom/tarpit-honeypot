@@ -469,11 +469,11 @@ func (r *Registry) Count() int {
 
 // Stats is an at-a-glance summary of the learned inventory.
 type Stats struct {
-	Total    int            // all learned devices
-	Allowed  int            // matching the operator allow-list
-	Rogue    int            // Total - Allowed (would raise device:new)
-	BySource map[string]int // first-seen source (dhcp/arp/conn/...) -> count
-	ByClass  map[string]int // inferred class (scanner/ics-endpoint/...) -> count
+	Total    int            `json:"total"`     // all learned devices
+	Allowed  int            `json:"allowed"`   // matching the operator allow-list
+	Rogue    int            `json:"rogue"`     // Total - Allowed (would raise device:new)
+	BySource map[string]int `json:"by_source"` // first-seen source (dhcp/arp/conn/...) -> count
+	ByClass  map[string]int `json:"by_class"`  // inferred class (scanner/ics-endpoint/...) -> count
 }
 
 // Stats summarizes the inventory: totals plus a breakdown by first-seen
@@ -611,8 +611,8 @@ func (r *Registry) Search(q string) []Device {
 // MAC in the inventory — the signature of ARP spoofing, a NAT/clone, or a
 // re-used static IP. The MACs are sorted.
 type Conflict struct {
-	IP   string
-	MACs []string
+	IP   string   `json:"ip"`
+	MACs []string `json:"macs"`
 }
 
 // Conflicts returns every IP that maps to multiple distinct MACs across the
