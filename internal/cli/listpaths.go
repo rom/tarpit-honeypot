@@ -17,10 +17,14 @@ import (
 func cmdListPaths(args []string) error {
 	fs := flag.NewFlagSet("list-paths", flag.ContinueOnError)
 	cfgPath := fs.String("c", "/etc/tarpit-honeypot/config.yaml", "path to config file")
-	asJSON := fs.Bool("json", false, "emit the path inventory as JSON")
+	asJSON := fs.Bool("json", false, "shortcut for --format json")
+	format := fs.String("format", "table", "output format: table | json | tsv")
 	category := fs.String("category", "", "filter to one category: config | enrichment | database | state")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *asJSON {
+		*format = "json"
 	}
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -40,10 +44,22 @@ func cmdListPaths(args []string) error {
 		rows = append(rows, pathOut{PathRef: p, Exists: statErr == nil})
 	}
 
-	if *asJSON {
+	switch *format {
+	case "json":
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(rows)
+	case "tsv":
+		// Stable machine format for scripts (the enrichment installer):
+		// category<TAB>key<TAB>access<TAB>exists<TAB>path
+		for _, r := range rows {
+			access := "read"
+			if r.Writable {
+				access = "write"
+			}
+			fmt.Printf("%s\t%s\t%s\t%t\t%s\n", r.Category, r.Key, access, r.Exists, r.Path)
+		}
+		return nil
 	}
 
 	if len(rows) == 0 {

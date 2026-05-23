@@ -112,6 +112,12 @@ func (s *Sensor) curSinks() []sink.Sink {
 	return s.sinks
 }
 
+func (s *Sensor) curEnricher() *enrich.Enricher {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.enrich
+}
+
 func New(cfg *config.Config) (*Sensor, error) {
 	name := cfg.Sensor.Name
 	if name == "" {
@@ -226,16 +232,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
-	enr, err := enrich.New(enrich.Config{
-		CityDB:      cfg.Sensor.GeoIP.CityDB,
-		ASNDB:       cfg.Sensor.GeoIP.ASNDB,
-		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
-		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
-		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
-		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
-		TorExitFile: torExitFile(cfg.Sensor.Tor),
-		NetClass:    cfg.Sensor.NetClass.Enabled,
-	})
+	enr, err := enrich.New(enrichConfigFor(cfg))
 	if err != nil {
 		for _, s := range sinks {
 			_ = s.Close()
@@ -365,8 +362,8 @@ func (s *Sensor) riskEvent(src *event.Event, level string, score float64) *event
 		Proto:    src.Proto,
 		Meta:     map[string]any{"score": score, "trigger_rule": src.RuleID},
 	}
-	if s.enrich != nil {
-		s.enrich.Decorate(e)
+	if en := s.curEnricher(); en != nil {
+		en.Decorate(e)
 	}
 	return e
 }
@@ -736,6 +733,21 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 		Source:   event.Endpoint{IP: d.IP},
 		Proto:    "device",
 		Meta:     meta,
+	}
+}
+
+// enrichConfigFor builds the enricher input from the sensor config. Shared
+// by New and ReloadEnrichment so a SIGHUP re-reads the same set of files.
+func enrichConfigFor(cfg *config.Config) enrich.Config {
+	return enrich.Config{
+		CityDB:      cfg.Sensor.GeoIP.CityDB,
+		ASNDB:       cfg.Sensor.GeoIP.ASNDB,
+		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
+		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
+		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
+		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile: torExitFile(cfg.Sensor.Tor),
+		NetClass:    cfg.Sensor.NetClass.Enabled,
 	}
 }
 
@@ -1175,6 +1187,37 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	return nil
 }
 
+// ReloadEnrichment re-reads the enrichment databases (GeoIP, threat-intel,
+// Tor exit list, OUI) from the paths in the CURRENT config and hot-swaps the
+// enricher. Unlike Reload it does not depend on a config diff — the file
+// CONTENTS may have changed (e.g. the enrichment installer refreshed them)
+// while the config text is identical — so SIGHUP calls it unconditionally.
+// Safe to call concurrently with the bus loop (the enricher is swapped under
+// the same lock the bus loop reads it through).
+func (s *Sensor) ReloadEnrichment() error {
+	cfg := s.curConfig()
+	if p := cfg.Sensor.OUIFile; p != "" {
+		if n, err := devices.LoadOUIFile(p); err != nil {
+			slog.Warn("reload: oui database re-read failed", "path", p, "err", err)
+		} else {
+			slog.Info("reload: oui database re-read", "path", p, "entries", n)
+		}
+	}
+	enr, err := enrich.New(enrichConfigFor(cfg))
+	if err != nil {
+		return err
+	}
+	s.stateMu.Lock()
+	old := s.enrich
+	s.enrich = enr
+	s.stateMu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	slog.Info("reload: enrichment databases re-read")
+	return nil
+}
+
 // emitOpEvent pushes an operational/health event (listener stopped,
 // canary watcher stopped, listener start error, …) onto the bus so it is
 // stored + routed and surfaces in the web UI's /errors view. Non-blocking
@@ -1242,11 +1285,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 						slog.Error("bus loop panic recovered", "panic", r, "event_id", ev.ID)
 					}
 				}()
-				// Snapshot the hot-swappable router + correlator once per
-				// event so a concurrent Reload() can't race us mid-event.
+				// Snapshot the hot-swappable router + correlator + enricher
+				// once per event so a concurrent Reload() can't race us.
 				rt := s.curRouter()
 				co := s.curCorrelator()
-				s.enrich.Decorate(ev)
+				en := s.curEnricher()
+				en.Decorate(ev)
 				// ATT&CK-tag the event before correlation so the
 				// storyline correlator can build its tactic chain from
 				// the same techniques every downstream sees. D3FEND
@@ -1301,7 +1345,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 				}
 				for _, out := range co.Observe(ev) {
 					if out != ev {
-						s.enrich.Decorate(out)
+						en.Decorate(out)
 					}
 					rt.Dispatch(out)
 					s.scoreRisk(rt, out)
@@ -1625,8 +1669,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 	if s.store != nil {
 		_ = s.store.Close()
 	}
-	if s.enrich != nil {
-		_ = s.enrich.Close()
+	if en := s.curEnricher(); en != nil {
+		_ = en.Close()
 	}
 	if s.devices != nil {
 		if err := s.devices.Save(); err != nil {

@@ -155,6 +155,12 @@ func cmdRun(args []string) error {
 				return
 			case <-hupCh:
 				slog.Info("SIGHUP received; reloading config", "paths", f.paths())
+				// Always re-read enrichment files: their contents may have
+				// changed (the enrichment installer refreshed them) even when
+				// the config text is identical.
+				if err := s.ReloadEnrichment(); err != nil {
+					slog.Warn("reload: enrichment re-read failed; keeping previous", "err", err)
+				}
 				newCfg, err := config.LoadManyWithOverrides(f.paths(), f.overrideSets())
 				if err != nil {
 					slog.Error("reload: config invalid; keeping running config", "err", err)

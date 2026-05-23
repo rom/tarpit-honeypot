@@ -178,14 +178,12 @@ else
 	echo "[geoip] skipped (SKIP_GEOIP=1)"
 fi
 
-# ---- summary + ready-to-paste config ---------------------------------------
-echo
-echo "Done: $ok ok, $fail failed. Manifest: $MANIFEST"
-echo
-echo "Transfer the '$OUT' directory to the sensor (scp/rsync/USB), then load it"
-echo "from the config (adjust the destination path to where you placed it):"
-cat <<YAML
-
+# ---- write a suggested config snippet into the bundle ----------------------
+# (The install step reads the sensor's REAL config for destinations; this is
+# a starting point for a fresh sensor. File names below are the canonical
+# bundle names the installer maps from.)
+SNIPPET="$OUT/suggested-config.yaml"
+cat >"$SNIPPET" <<'YAML'
 sensor:
   oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
   geoip:
@@ -204,5 +202,43 @@ sensor:
       - { label: spamhaus-drop,  file: /etc/tarpit-honeypot/enrichment/threat/spamhaus-drop.txt }
       - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
 YAML
+
+# ---- checksums + single-file archive for easy transfer ---------------------
+if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then SHA="shasum -a 256"
+else SHA=""; fi
+if [ -n "$SHA" ]; then
+	(cd "$OUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 $SHA >SHA256SUMS) || true
+fi
+
+ARCHIVE=""
+if [ "${NO_ARCHIVE:-}" != "1" ]; then
+	ARCHIVE="${OUT%/}.tar.gz"
+	if tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null; then
+		[ -n "$SHA" ] && $SHA "$ARCHIVE" >"$ARCHIVE.sha256" || true
+	else
+		echo "warning: failed to create archive $ARCHIVE" >&2
+		ARCHIVE=""
+	fi
+fi
+
+# ---- summary ---------------------------------------------------------------
+echo
+echo "Done: $ok ok, $fail failed."
+echo "  bundle dir : $OUT"
+echo "  manifest   : $MANIFEST"
+echo "  checksums  : $OUT/SHA256SUMS"
+echo "  config     : $SNIPPET"
+[ -n "$ARCHIVE" ] && echo "  archive    : $ARCHIVE  (+ ${ARCHIVE}.sha256)"
+echo
+echo "Transfer to the sensor, then run the install/update step there:"
+if [ -n "$ARCHIVE" ]; then
+	echo "  scp '$ARCHIVE'* sensor:/tmp/"
+	echo "  ssh sensor 'tar -xzf /tmp/$(basename "$ARCHIVE") -C /tmp"
+	echo "              sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
+else
+	echo "  rsync -a '$OUT/' sensor:/tmp/$(basename "${OUT%/}")/"
+	echo "  ssh sensor 'sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
+fi
 
 [ "$fail" -eq 0 ]
