@@ -325,6 +325,11 @@ type Sensor struct {
 	ThreatIntel ThreatIntel `yaml:"threat_intel"`
 	Tor         TorIntel    `yaml:"tor"`
 	NetClass    NetClass    `yaml:"net_class"`
+	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
+	// or a simple "prefix,vendor" CSV — used to map observed MAC addresses
+	// to vendors. Unset = a small built-in table. Fetch the full DB with
+	// scripts/fetch-enrichment.sh.
+	OUIFile string `yaml:"oui_file"`
 	// VulnEmulation, when true, makes banner-aware handlers advertise a
 	// known-vulnerable version / patch-level for their service (so a
 	// version scanner records an unpatched box) and recognize the

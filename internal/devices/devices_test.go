@@ -1,6 +1,8 @@
 package devices
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -330,5 +332,51 @@ func TestConflictsDetectsIPCollision(t *testing.T) {
 	}
 	if cs[0].MACs[0] != "00:90:e8:01:02:03" || cs[0].MACs[1] != "aa:bb:cc:dd:ee:ff" {
 		t.Errorf("conflict MACs not sorted: %+v", cs[0].MACs)
+	}
+}
+
+func TestLoadOUIFileAndLookup(t *testing.T) {
+	dir := t.TempDir()
+	// IEEE oui.csv shape (header + MA-L rows + an MA-M row to skip).
+	body := "Registry,Assignment,Organization Name,Organization Address\r\n" +
+		"MA-L,AABBCC,\"Acme Robotics, Inc.\",\"1 Way, Town\"\r\n" +
+		"MA-L,001122,Globex PLC,Addr\r\n" +
+		"MA-M,DDEEF0,Should Be Skipped,Addr\r\n"
+	p := filepath.Join(dir, "oui.csv")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	n, err := LoadOUIFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { loadedOUI.Store(nil) }) // don't leak into sibling tests
+	if n != 2 {
+		t.Errorf("loaded %d OUIs; want 2 (MA-M skipped)", n)
+	}
+	if v := VendorForMAC("aa:bb:cc:11:22:33"); v != "Acme Robotics, Inc." {
+		t.Errorf("loaded OUI lookup = %q; want Acme Robotics, Inc.", v)
+	}
+	if v := VendorForMAC("00:11:22:33:44:55"); v != "Globex PLC" {
+		t.Errorf("loaded OUI lookup = %q; want Globex PLC", v)
+	}
+	// An OUI absent from the loaded DB falls back to the built-in table.
+	if v := VendorForMAC("00:90:e8:01:02:03"); v != "Moxa" {
+		t.Errorf("built-in fallback = %q; want Moxa", v)
+	}
+}
+
+func TestOUIPrefixFromHex(t *testing.T) {
+	cases := map[string]string{
+		"AABBCC":      "aa:bb:cc",
+		"00:90:E8":    "00:90:e8",
+		"00-90-e8-11": "00:90:e8",
+		"Registry":    "", // header word, not enough hex
+		"zz":          "",
+	}
+	for in, want := range cases {
+		if got := ouiPrefixFromHex(in); got != want {
+			t.Errorf("ouiPrefixFromHex(%q) = %q; want %q", in, got, want)
+		}
 	}
 }

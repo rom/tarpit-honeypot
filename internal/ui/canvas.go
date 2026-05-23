@@ -178,6 +178,7 @@ func buildCollectors(c *config.Config) []collectorCard {
 	add("Threat-intel tagging", "enrichment", c.Sensor.ThreatIntel.Enabled && len(c.Sensor.ThreatIntel.Lists) > 0, threatIntelDetail(c.Sensor.ThreatIntel))
 	add("Tor-exit tagging", "enrichment", c.Sensor.Tor.Enabled && c.Sensor.Tor.ExitFile != "", "")
 	add("Network classification", "enrichment", c.Sensor.NetClass.Enabled, "bogon / cloud-hosting")
+	add("MAC vendor (OUI)", "enrichment", true, ouiDetail(c.Sensor.OUIFile))
 
 	// --- detection ---
 	add("Risk scoring", "detection", c.Risk.Enabled, "")
@@ -319,6 +320,15 @@ func canaryDetail(c *config.Config) string {
 		parts = append(parts, plural(n, "DNS"))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// ouiDetail notes whether MAC-vendor mapping uses a loaded full DB or the
+// built-in table.
+func ouiDetail(path string) string {
+	if path != "" {
+		return "IEEE OUI DB"
+	}
+	return "built-in table"
 }
 
 func geoipDetail(g config.GeoIP) string {
