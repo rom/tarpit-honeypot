@@ -1,0 +1,83 @@
+# Application / build / container tier.
+#
+# The middle tier of a modern estate — the servlet containers, message
+# clusters, CI/CD and container control plane an attacker pivots through after
+# a foothold. Combines `archeservices:` role bundles (tomcatserver = AJP13
+# connector, erlangcluster = Erlang Port Mapper + RabbitMQ, k8scontrolplane,
+# containerregistry, objectstore) with `lua` decoys for the exposed dev-infra
+# dashboards attackers hunt (Jenkins, GitLab, SonarQube, Keycloak, Traefik).
+# Exercises the round-three ajp13 / epmd handlers and the honeytoken_spread +
+# tool_rotation correlators.
+#
+#   tarpit-honeypot validate-config -c examples/app-platform.yaml
+sensor:
+  name: app-platform-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  archetype: fedora-40
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Role bundles bound to dedicated loopback IPs (overlapping ports don't
+# collide); point at routable IPs for a real deployment.
+archeservices:
+  - { id: tomcat,   role: tomcatserver,      archetype: fedora-40,          bind: 127.0.4.1, severity: high }
+  - { id: erlang,   role: erlangcluster,     archetype: amazon-linux-2023,  bind: 127.0.4.2, severity: high }
+  - { id: k8s,      role: k8scontrolplane,   archetype: amazon-linux-2023,  bind: 127.0.4.3, severity: critical }
+  - { id: registry, role: containerregistry, archetype: amazon-linux-2023,  bind: 127.0.4.4, severity: high }
+  - { id: objects,  role: objectstore,       archetype: amazon-linux-2023,  bind: 127.0.4.5, severity: high }
+
+# Exposed dev-infra dashboards via Lua scripts.
+listeners:
+  - { id: jenkins,   proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/jenkins.lua,   severity: critical, capture: true }
+  - { id: gitlab,    proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/gitlab.lua,    severity: high,     capture: true }
+  - { id: sonarqube, proto: tcp, bind: 0.0.0.0:9000, mode: banner, handler: lua, script: configs/scripts/sonarqube.lua, severity: high,     capture: true }
+  - { id: keycloak,  proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/keycloak.lua,  severity: critical, capture: true }
+  - { id: traefik,   proto: tcp, bind: 0.0.0.0:8082, mode: banner, handler: lua, script: configs/scripts/traefik.lua,   severity: medium,   capture: true }
+
+url_canaries:
+  - { id: ci-deploy-token, path: /api/v4/projects/1/trigger/pipeline, severity: critical }
+
+correlate:
+  port_scan:         { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:       { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  data_access:       { enabled: true, severity: critical }
+  cve_campaign:      { enabled: true, distinct_sources: 3, window: 1h, severity: critical }
+  honeytoken_spread: { enabled: true, distinct_sources: 3, window: 1h, severity: high }
+  tool_rotation:     { enabled: true, distinct_tools: 3,   window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.example.internal:6514
+    tag: app-tarpit
+    format: ocsf
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

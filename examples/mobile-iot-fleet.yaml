@@ -1,0 +1,72 @@
+# Mobile / IoT device fleet.
+#
+# The soft underbelly of many networks: Android set-top boxes and phones with
+# ADB left open (the ADB.Miner / Mirai-class RCE surface), Raspberry Pi SBCs,
+# OpenWrt and Huawei edge gear. Showcases the round-three `adb` handler and the
+# `androidadb` role bundle alongside a small IoT honeynet, plus the
+# destructive_action + tool_rotation + default_cred_sweep correlators.
+#
+#   tarpit-honeypot validate-config -c examples/mobile-iot-fleet.yaml
+sensor:
+  name: mobile-iot-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  archetype: raspberry-pi-os
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# The mobile-device-management role expands to ADB + adb-server + an MDM
+# console; bound to a loopback IP for the demo.
+archeservices:
+  - { id: mdm, role: androidadb, archetype: raspberry-pi-os, bind: 127.0.5.1, severity: critical }
+
+# Direct ADB exposure (the classic IoT botnet entry point) + a couple of
+# exposed IoT dashboards via Lua.
+listeners:
+  - { id: adb,      proto: tcp, bind: 0.0.0.0:5555, mode: banner, handler: adb,      severity: critical, capture: true }
+  - { id: influxdb, proto: tcp, bind: 0.0.0.0:8086, mode: banner, handler: lua, script: configs/scripts/influxdb.lua, severity: high, capture: true }
+  - { id: nacos,    proto: tcp, bind: 0.0.0.0:8848, mode: banner, handler: lua, script: configs/scripts/nacos.lua,    severity: high, capture: true }
+
+honeynets:
+  - id: iot-fleet
+    cidr: 10.80.0.0/16
+    gateway: 10.80.0.1
+    domain: iot.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.80.0.10, hostname: android-tv-01, os: linux, archetype: raspberry-pi-os, services: [ {port: 5555, handler: adb}, {port: 22, handler: ssh} ] }
+      - { ip: 10.80.0.11, hostname: pi-sensor-01,  os: linux, archetype: raspberry-pi-os, services: [ {port: 22, handler: ssh}, {port: 80, handler: http} ] }
+      - { ip: 10.80.0.20, hostname: openwrt-ap,    os: linux, archetype: openwrt,         services: [ {port: 22, handler: ssh}, {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.80.0.30, hostname: huawei-cpe,    os: linux, archetype: huawei-vrp,      services: [ {port: 23, handler: telnet}, {port: 161, handler: snmp} ] }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  host_sweep:         { enabled: true, distinct_hosts: 3,  window: 60s,  severity: high }
+  default_cred_sweep: { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  destructive_action: { enabled: true, events: 2, window: 10m, severity: critical }
+  tool_rotation:      { enabled: true, distinct_tools: 3, window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

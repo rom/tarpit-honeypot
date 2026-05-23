@@ -1,0 +1,91 @@
+# Network-edge AAA + remote-access tier.
+#
+# The control plane of the network itself: TACACS+ / RADIUS that gate every
+# router and switch, the VPN concentrators, and the SQL Server estate behind
+# them. Showcases the round-three `tacacs` and `mssql_browser` handlers (via
+# the aaaserver / sqlserver role bundles) and a honeynet of the new network-
+# security-appliance archetypes (Huawei VRP, Zyxel, DrayTek, Citrix NetScaler,
+# Sophos XG), plus the honeytoken_spread + tool_rotation + amplification_probe
+# correlators.
+#
+#   tarpit-honeypot validate-config -c examples/network-aaa-edge.yaml
+sensor:
+  name: network-aaa-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  archetype: huawei-vrp
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# AAA, VPN and SQL Server role bundles on dedicated loopback IPs.
+archeservices:
+  - { id: aaa, role: aaaserver,  archetype: huawei-vrp,       bind: 127.0.6.1, severity: high }
+  - { id: vpn, role: vpngateway, archetype: citrix-netscaler, bind: 127.0.6.2, severity: high }
+  - { id: sql, role: sqlserver,  archetype: sophos-xg,        bind: 127.0.6.3, severity: high }
+
+# Direct exposure of the network-gear credential gate + SQL Server discovery.
+listeners:
+  - { id: tacacs,        proto: tcp, bind: 0.0.0.0:49,   mode: banner, handler: tacacs,        severity: high, capture: true }
+  - { id: mssql_browser, proto: udp, bind: 0.0.0.0:1434, mode: banner, handler: mssql_browser, severity: medium, capture: true }
+  - { id: mssql,         proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,         severity: high, capture: true }
+
+honeynets:
+  - id: network-edge
+    cidr: 10.90.0.0/16
+    gateway: 10.90.0.1
+    domain: edge.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.90.0.10, hostname: core-rtr,   os: linux, archetype: huawei-vrp,       services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 161, handler: snmp} ] }
+      - { ip: 10.90.0.11, hostname: fw-perim,    os: linux, archetype: zyxel-usg,        services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.90.0.12, hostname: branch-rtr,  os: linux, archetype: draytek-vigor,    services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.90.0.13, hostname: vpn-gw,      os: linux, archetype: citrix-netscaler, services: [ {port: 443, handler: citrix_gateway}, {port: 22, handler: ssh} ] }
+      - { ip: 10.90.0.14, hostname: ngfw,        os: linux, archetype: sophos-xg,        services: [ {port: 4444, handler: https}, {port: 22, handler: ssh} ] }
+
+url_canaries:
+  - { id: vpn-session-token, path: /oauth/idp/.well-known/openid-configuration, severity: high }
+
+correlate:
+  port_scan:           { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:         { enabled: true, attempts: 6,        window: 60s,  per_port: true, severity: high }
+  host_sweep:          { enabled: true, distinct_hosts: 4,  window: 60s,  severity: high }
+  amplification_probe: { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  honeytoken_spread:   { enabled: true, distinct_sources: 3, window: 1h, severity: high }
+  tool_rotation:       { enabled: true, distinct_tools: 3,   window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: nms
+    type: syslog
+    network: udp
+    address: nms.example.internal:514
+    tag: edge-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [nms, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }
