@@ -1,0 +1,91 @@
+# tarpit-honeypot — fake web application decoy.
+#
+# A single believable public web server (Ubuntu + Apache/PHP shaped) running
+# the built-in fake-vulnerable web app: a home page, login, search, product
+# lookup, file download/view, a JSON user API, robots.txt, and the juicy
+# paths scanners always probe (/.env, /.git/config, config.php.bak,
+# phpinfo.php, /admin). It RECOGNIZES — never executes — the web-attack
+# families (SQLi / XSS / LFI / RFI / SSRF / command injection / SSTI /
+# Log4Shell and the CVE exploit signatures) and harvests any dropped
+# webshell / payload.
+#
+# This is the focused counterpart to example-DATASTORES-WEB.yaml (which adds
+# the data stores attackers pivot to). It leans on the web-oriented
+# correlators: dirbusting, User-Agent rotation, CVE chaining, fuzzing, and
+# connection floods.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-FAKEWEB.yaml
+#   tarpit-honeypot run             -c configs/tarpit-honeypot.example-FAKEWEB.yaml
+
+sensor:
+  name: web01
+  data_dir: ./var
+  # Identity the banners/TLS/Server-header are shaped after. vuln_emulation
+  # advertises an unpatched build so a version scanner records a juicy target
+  # (the service is never actually exploitable).
+  archetype: ubuntu 24.04 lts
+  vuln_emulation: true
+  payloads:
+    enabled: true   # harvest dropped webshells / uploaded payloads
+
+interaction:
+  mode: low         # the fake web app runs fully at low interaction
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # --- The fake-vulnerable web app on HTTP + HTTPS ---
+  - id: http
+    proto: tcp
+    bind: 0.0.0.0:80
+    mode: banner
+    handler: http
+    webapp: true       # turn the bare HTTP banner into the full fake app
+    severity: high
+    capture: true      # record request/response bytes to <data_dir>/captures
+  - id: https
+    proto: tcp
+    bind: 0.0.0.0:443
+    mode: banner
+    handler: https     # self-signs a cert shaped by the archetype's TLS posture
+    webapp: true
+    severity: high
+    capture: true
+
+  # A real web box almost always has SSH — present it for a believable
+  # surface (credential capture only; never accepts a login).
+  - { id: ssh, proto: tcp, bind: 0.0.0.0:22, mode: banner, handler: ssh, severity: high }
+
+# Planted "secret" URLs no legitimate visitor could know. A request for any
+# of these is, by itself, a near-certain compromise signal (critical).
+url_canaries:
+  - { id: db-backup,  path: /backup/db-prod.sql.gz, severity: critical }
+  - { id: admin-key,  path: /admin/api-keys.json,   severity: critical }
+  - { id: wp-config,  path: /wp-config.php.bak,      severity: critical }
+
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  # Web login brute force (per-port so :80 and :443 are tracked separately).
+  brute_force:      { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  # Content discovery / dirbusting — many distinct URL paths from one source
+  # (catches scanners that spoof a browser User-Agent).
+  path_enumeration: { enabled: true, distinct_paths: 40, window: 60s, severity: high }
+  # Scanner evasion: one source cycling through many distinct User-Agents.
+  ua_rotation:      { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  # Mass-exploit run: one source attempting several DISTINCT CVEs.
+  exploit_chain:    { enabled: true, distinct_cves: 2, window: 600s, severity: critical }
+  # Fuzzing: one source tripping many distinct protocol-misuse markers.
+  protocol_violation: { enabled: true, distinct_anomalies: 5, window: 300s, severity: medium }
+  # Volumetric abuse / connection flood from a single source.
+  session_flood:    { enabled: true, connections: 200, window: 60s, severity: medium }
+  # C2 call-home: regularly-spaced beacons (e.g. an implant dropped via RCE).
+  beacon:           { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite] }
