@@ -56,6 +56,14 @@ documented in `docs/`).
   source/class), `ByClass`, `ByVendor`, `Rogues`, `Active`, `Stale`,
   `Search`, and `Conflicts` (one IP bound to multiple MACs — a persistent
   ARP-spoof / impersonation signal).
+- Surfaced to operators in two places:
+  - **`list-devices`** gains `--stats`, `--conflicts`, `--rogues`,
+    `--class`, `--vendor`, `--search`, `--stale`, and `--active` (all
+    honoring `--json`).
+  - The web UI **`/devices`** tab now opens with a summary panel (total /
+    allow-listed / rogue, by-source and by-class breakdown) and a
+    highlighted **IP/MAC-conflict** warning; JSON at
+    `/api/devices/summary`.
 
 ### Added — CVE catalog: +40 detections
 - The in-source CVE catalog grows by **40 records** (now covering the

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"sync"
 	"syscall"
 
@@ -120,6 +121,16 @@ func cmdRun(args []string) error {
 				}
 				return out
 			})
+			srv.SetHostsSummaryProvider(func() ui.HostsSummary {
+				st := dr.Stats()
+				sum := ui.HostsSummary{Total: st.Total, Allowed: st.Allowed, Rogue: st.Rogue}
+				sum.BySource = labeledCounts(st.BySource)
+				sum.ByClass = labeledCounts(st.ByClass)
+				for _, c := range dr.Conflicts() {
+					sum.Conflicts = append(sum.Conflicts, ui.HostConflict{IP: c.IP, MACs: c.MACs})
+				}
+				return sum
+			})
 			srv.SetDeviceActions(dr)
 		}
 		wg.Add(1)
@@ -182,4 +193,15 @@ func cmdRun(args []string) error {
 	slog.Info("tarpit-honeypot stopped")
 	_ = fmt.Sprintf
 	return nil
+}
+
+// labeledCounts converts a name->count map into a slice sorted by name,
+// for the device-summary breakdown bars in the web UI.
+func labeledCounts(m map[string]int) []ui.LabeledCount {
+	out := make([]ui.LabeledCount, 0, len(m))
+	for k, v := range m {
+		out = append(out, ui.LabeledCount{Label: k, Count: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out
 }
