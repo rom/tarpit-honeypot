@@ -64,6 +64,28 @@ input.tablefilter { margin: .3rem 0; padding: .15rem .35rem; font: inherit; widt
 /* JS-only / no-JS toggles */
 .nojs-note { color: #b36b00; font-size: 12px; }
 html.js .nojs-note { display: none; }
+/* config infrastructure canvas: port cards + collector pills */
+.canvas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
+.pcard { background: #fff; border: 1px solid #e3e3e3; border-left: 4px solid #6b8fb5; border-radius: 4px; padding: .4rem .55rem; }
+.pcard.mode-tarpit { border-left-color: #b00020; }
+.pcard.mode-drop { border-left-color: #888; }
+.pcard.mode-banner { border-left-color: #2a9d4a; }
+.pcard-top { display: flex; align-items: baseline; justify-content: space-between; }
+.pcard-port { font-size: 1.15rem; font-weight: 700; color: #111; }
+.pcard-svc { font-weight: 600; color: #333; margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard-meta { color: #777; font-size: 11px; margin: .05rem 0 .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proto { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0 .3rem; border-radius: 3px; color: #fff; }
+.proto-tcp { background: #4a6fa5; }
+.proto-udp { background: #b07d2a; }
+.ctag { display: inline-block; background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; padding: 0 .3rem; margin: .1rem .2rem 0 0; font-size: 10px; color: #555; }
+.ctag.tls { background: #e6f0ff; border-color: #b8d0f0; color: #1a4f9c; }
+.ctag.cap { background: #fff0e6; border-color: #f0c8a0; color: #9c5a1a; }
+.coll-group { margin: .35rem 0; }
+.coll-cat { display: inline-block; width: 9rem; color: #555; font-size: 12px; vertical-align: top; }
+.coll { display: inline-block; border-radius: 10px; padding: .05rem .5rem; margin: .12rem .2rem; font-size: 12px; border: 1px solid #ccc; background: #eee; color: #777; }
+.coll.on { background: #e6f4ea; border-color: #9bd0ad; color: #1a7f37; font-weight: 600; }
+.coll.off { background: #f3f3f3; border-color: #ddd; color: #999; }
+.coll-detail { color: #4a8a60; font-weight: 400; font-size: 11px; }
 svg.graph { background: #fff; border: 1px solid #eee; border-radius: 4px; }
 svg.graph .edge { stroke: #cbd3df; stroke-width: 1; }
 svg.graph .node { fill: #6b8fb5; }
@@ -474,6 +496,34 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
 
 {{ define "config" }}{{ template "head" . }}
 <h1>effective configuration</h1>
+{{ with .Canvas }}
+<h2>infrastructure canvas</h2>
+<p class="note">What this sensor is actually running: {{ .ListenerCount }} listener(s)
+({{ .TCPCount }} tcp / {{ .UDPCount }} udp) · {{ .ActiveCollector }} active collector(s).
+JSON at <a href="/api/config/canvas">/api/config/canvas</a>.</p>
+{{ if .Listeners }}
+<div class="canvas-grid">
+  {{ range .Listeners }}
+  <div class="pcard mode-{{ .Mode }}">
+    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span></div>
+    <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
+    <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>
+    <div>{{ if .TLS }}<span class="ctag tls">tls</span>{{ end }}{{ if .Capture }}<span class="ctag cap">pcap</span>{{ end }}{{ if .Archetype }}<span class="ctag">{{ .Archetype }}</span>{{ end }}</div>
+  </div>
+  {{ end }}
+</div>
+{{ else }}<p class="note">No listeners configured.</p>{{ end }}
+
+<h2>collectors</h2>
+<p class="note">Background subsystems — <span class="coll on">green</span> = active, <span class="coll off">grey</span> = available but off.</p>
+{{ range .Groups }}
+<div class="coll-group"><span class="coll-cat">{{ .Title }}</span>
+  {{ range .Items }}<span class="coll {{ if .Active }}on{{ else }}off{{ end }}" title="{{ .Detail }}">{{ .Name }}{{ if and .Active .Detail }} <span class="coll-detail">{{ .Detail }}</span>{{ end }}</span>{{ end }}
+</div>
+{{ end }}
+{{ end }}
+
+<h2>full configuration (YAML)</h2>
 <p class="note">Post-defaults config the sensor is running with. Secrets are shown
 as their environment-variable names (<code>*_env</code>), never expanded values,
 so this is safe to copy into a ticket. Raw YAML also at <a href="/api/config">/api/config</a>.</p>

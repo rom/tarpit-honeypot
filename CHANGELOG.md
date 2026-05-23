@@ -8,6 +8,58 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CVE catalog: +40 detections
+- The in-source CVE catalog grows by **40 records** (now covering the
+  edge-device / enterprise-app pre-auth chains attackers mass-scan):
+  - **26 exploit-signature records** (recognized live by `MatchPayload` →
+    `cve:<id>` events): Ivanti EPMM/Sentry/Connect-Secure, ConnectWise
+    ScreenConnect, Confluence broken-access-control, Jenkins CLI, JetBrains
+    TeamCity, VMware vCenter/Workspace ONE, Oracle WebLogic/Access Manager,
+    F5 TMUI SSRF, Cisco ASA WebVPN, WSO2, Fortra GoAnywhere, Apache Struts2
+    S2-057, JBoss invoker, Alibaba Nacos, CWP, Citrix NetScaler RCE, Zimbra,
+    PaperCut, and Elasticsearch Groovy/MVEL scripting RCE (the last two now
+    matched on the `elasticsearch` handler).
+  - **14 advisory-only records** (banner / patch-level + ATT&CK mapping):
+    CitrixBleed, the FortiOS SSL-VPN chain + FortiManager FortiJump, SambaCry,
+    SIGRed, regreSSHion, ESXiArgs, and the Windows RPC/NTLM relay flaws.
+  - Each new record carries CWE / CPE 2.3 / EPSS cross-references.
+
+### Added — protocol handlers: 20 richer service decoys
+- Twenty banner-mode handlers now answer more of their protocol's real
+  command surface so a scanner that goes past the first banner keeps getting
+  believable replies (still no real exploitability, no UDP amplification):
+  - **redis** answers `INFO` / `CONFIG GET` / `CLIENT` / `HELLO` / `COMMAND`
+    / `DBSIZE` / `SCAN` / `ACL` / `LOLWUT` (was `-ERR`); **memcached** emits a
+    full `stats` block + `stats settings|items|slabs`; **mongodb** answers
+    `buildInfo` / `listDatabases` / `ping` and an auth-required error for
+    data-access commands; **elasticsearch** serves cluster/indices/nodes JSON
+    and matches the Groovy/MVEL RCE payloads.
+  - **imap** / **pop3** / **smtp_recv** gained SASL `AUTHENTICATE`
+    (PLAIN/LOGIN/CRAM-MD5) credential capture, fuller `CAPABILITY`/`CAPA`,
+    `STARTTLS`/`STLS`, and SMTP `CHUNKING`/`BDAT`.
+  - **rtsp** / **sip** are now method-aware (OPTIONS→200 Public/Allow,
+    DESCRIBE/REGISTER/INVITE→401 Digest to harvest creds, sipvicious
+    detection); **mqtt** runs a post-CONNACK session (SUBSCRIBE/PUBLISH/PING
+    + wildcard-harvest flag); **coap** flags write-method probes.
+  - **telnet** does proper IAC option negotiation (clean credential capture +
+    TERMINAL-TYPE); **vnc** adds the RFB 3.3 handshake; **ntp** flags
+    mode-6/7 amplification recon (still never replies); **xmpp** decodes SASL
+    PLAIN creds; **dockerapi** lists containers/images/networks and flags
+    container-takeover POSTs; **mysql**/**postgres** flag SSL/auth-plugin and
+    replication/cancel; **oracle_tns** answers the `COMMAND=version` probe;
+    **winrm** drives NTLM type1→type2→type3 to harvest the AD domain/user.
+  - Per-deployment version pools added for redis / memcached / mongodb /
+    elasticsearch (no banner clustering across sensors).
+
+### Added — web UI: config infrastructure canvas
+- The **`/config`** page now opens with an **infrastructure canvas**: a
+  port-card grid (port · service · handler · mode, badged tls/pcap/archetype,
+  coloured by drop/banner/tarpit) showing exactly which ports/services are
+  listening, plus **collector pills** grouped by category (passive capture,
+  network responders, enrichment, detection, forensics, output) marking each
+  background subsystem active vs available-but-off. JSON at
+  `/api/config/canvas`; the full effective YAML still follows below.
+
 ### Changed — web UI: packaged JavaScript + relaxed-but-tight CSP
 - The UI now ships a small **packaged JS layer** (`internal/ui/static/app.js`,
   embedded in the binary via `go:embed`, served same-origin from `/static/`

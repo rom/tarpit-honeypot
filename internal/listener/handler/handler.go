@@ -234,17 +234,17 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "mysql":
 		return &mysql{id: deps.Identity, arch: deps.Archetype}, nil
 	case "redis":
-		return &redis{}, nil
+		return &redis{id: deps.Identity}, nil
 	case "memcached":
-		return &memcached{}, nil
+		return &memcached{id: deps.Identity}, nil
 	case "pop3":
 		return &pop3{}, nil
 	case "imap":
 		return &imap{}, nil
 	case "mongodb":
-		return &mongodb{}, nil
+		return &mongodb{id: deps.Identity}, nil
 	case "elasticsearch":
-		return &elasticsearch{}, nil
+		return &elasticsearch{id: deps.Identity}, nil
 	case "syslog_tcp":
 		return &syslogTCP{}, nil
 	case "rtsp":

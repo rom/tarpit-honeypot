@@ -96,11 +96,21 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	if len(respBody) >= 32 {
 		capFlags := binary.LittleEndian.Uint32(respBody[0:4])
 		res.Meta["client_caps"] = capFlags
+		const (
+			clientSSL        = 0x00000800
+			clientPluginAuth = 0x00080000
+		)
+		if capFlags&clientSSL != 0 {
+			// The client asked to switch to TLS (which we don't terminate);
+			// note it — many libmysqlclient-based scanners set this.
+			res.Meta["ssl_requested"] = true
+		}
 		p := 32
 		nullEnd := indexByte(respBody[p:], 0)
 		if nullEnd > 0 {
 			res.Meta["username"] = string(respBody[p : p+nullEnd])
 			p += nullEnd + 1
+			flagAnomaly(&res, "mysql-login-attempt")
 		}
 		// Auth-response: either length-encoded (CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA)
 		// or 1-byte length + bytes (default). Most clients send 1 byte len.
@@ -112,11 +122,21 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 				p += alen
 			}
 		}
-		// Optional database name (null-terminated string).
+		// Optional database name (null-terminated, present with CLIENT_CONNECT_WITH_DB).
 		if p < len(respBody) {
 			dbEnd := indexByte(respBody[p:], 0)
 			if dbEnd > 0 {
 				res.Meta["database"] = string(respBody[p : p+dbEnd])
+				p += dbEnd + 1
+			} else if dbEnd == 0 {
+				p++ // empty db name
+			}
+		}
+		// Optional client auth-plugin name (CLIENT_PLUGIN_AUTH) — tells us
+		// whether the client expects mysql_native_password vs caching_sha2.
+		if capFlags&clientPluginAuth != 0 && p < len(respBody) {
+			if pEnd := indexByte(respBody[p:], 0); pEnd > 0 {
+				res.Meta["auth_plugin"] = string(respBody[p : p+pEnd])
 			}
 		}
 	}

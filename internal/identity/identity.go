@@ -276,6 +276,52 @@ func (i *Identity) MySQLVersion() string {
 	return pool[r.Intn(len(pool))]
 }
 
+// RedisVersion returns a deployment-unique Redis version string, reported
+// in the INFO server section so two sensors don't cluster on one banner.
+func (i *Identity) RedisVersion() string {
+	pool := []string{"6.0.16", "6.2.14", "7.0.15", "7.2.4", "7.4.1"}
+	r := i.deterministicRand("redis-version")
+	return pool[r.Intn(len(pool))]
+}
+
+// MemcachedVersion returns a deployment-unique memcached version string.
+func (i *Identity) MemcachedVersion() string {
+	pool := []string{"1.5.22", "1.6.18", "1.6.21", "1.6.31"}
+	r := i.deterministicRand("memcached-version")
+	return pool[r.Intn(len(pool))]
+}
+
+// MongoVersion returns a deployment-unique MongoDB version string, with the
+// matching maxWireVersion the handshake should advertise for that release.
+func (i *Identity) MongoVersion() (version string, maxWire int32) {
+	pool := []struct {
+		v    string
+		wire int32
+	}{
+		{"4.4.29", 9},
+		{"5.0.26", 13},
+		{"6.0.14", 17},
+		{"7.0.8", 21},
+	}
+	r := i.deterministicRand("mongo-version")
+	p := pool[r.Intn(len(pool))]
+	return p.v, p.wire
+}
+
+// ElasticVersion returns a deployment-unique Elasticsearch version string
+// with its matching Lucene version.
+func (i *Identity) ElasticVersion() (number, lucene string) {
+	pool := []struct{ es, lc string }{
+		{"7.10.2", "8.7.0"},
+		{"7.17.0", "8.11.1"},
+		{"8.6.2", "9.4.2"},
+		{"8.11.3", "9.8.0"},
+	}
+	r := i.deterministicRand("elastic-version")
+	p := pool[r.Intn(len(pool))]
+	return p.es, p.lc
+}
+
 // Bytes returns a deterministic byte slice of length n, derived from the
 // seed + label. Same (label, n) -> same bytes for one deployment.
 func (i *Identity) Bytes(label string, n int) []byte {

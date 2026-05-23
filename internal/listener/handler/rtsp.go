@@ -67,18 +67,42 @@ func (r *rtsp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		}
 	}
 	res.Meta["method"] = method
-	// CSeq is taken from the attacker's request and reflected into
-	// our 401 — sanitize so a CRLF-laden CSeq value can't smuggle
-	// extra headers (TCP-only so no UDP-style spoofing, but a
-	// downstream proxy / cache could still be confused).
-	resp := "RTSP/1.0 401 Unauthorized\r\n" +
-		"CSeq: " + safe.SanitizeHeader(cseq) + "\r\n" +
-		"WWW-Authenticate: Digest realm=\"camera\", nonce=\"deadbeefcafebabe\", algorithm=\"MD5\", stale=\"FALSE\"\r\n" +
-		"Server: HikvisionDS-2CD2T46G2-2I/V5.7.3\r\n" +
-		"Content-Length: 0\r\n\r\n"
+	// Every reflected value is attacker-controlled; SanitizeHeader strips
+	// CR/LF/NUL so a crafted CSeq can't smuggle extra headers (TCP-only, but
+	// a downstream proxy/cache could still be confused).
+	scseq := safe.SanitizeHeader(cseq)
+	const server = "Server: Hipcam RealServer/V1.0\r\n"
+	var resp string
+	switch method {
+	case "OPTIONS":
+		// A real RTSP server answers OPTIONS unauthenticated, advertising the
+		// methods it supports — what a camera scanner reads first.
+		resp = "RTSP/1.0 200 OK\r\n" +
+			"CSeq: " + scseq + "\r\n" +
+			"Public: OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN, GET_PARAMETER, SET_PARAMETER\r\n" +
+			server + "\r\n"
+		res.BannerSent = "rtsp 200 OPTIONS"
+	case "GET_PARAMETER", "SET_PARAMETER":
+		resp = "RTSP/1.0 200 OK\r\nCSeq: " + scseq + "\r\n" + server + "Content-Length: 0\r\n\r\n"
+		res.BannerSent = "rtsp 200 " + method
+	default:
+		// DESCRIBE / SETUP / PLAY / … require auth on a real camera: reply
+		// 401 with a Digest challenge so the scanner sends credentials next
+		// (captured from the Authorization header on the follow-up).
+		resp = "RTSP/1.0 401 Unauthorized\r\n" +
+			"CSeq: " + scseq + "\r\n" +
+			"WWW-Authenticate: Digest realm=\"camera\", nonce=\"deadbeefcafebabe\", algorithm=\"MD5\", stale=\"FALSE\"\r\n" +
+			"WWW-Authenticate: Basic realm=\"camera\"\r\n" +
+			server + "Content-Length: 0\r\n\r\n"
+		res.BannerSent = "rtsp 401 Digest"
+		if auth != "" {
+			// A captured Authorization header on a DESCRIBE/SETUP is a
+			// credential-submission attempt worth flagging.
+			flagAnomaly(&res, "rtsp-auth-attempt")
+		}
+	}
 	if _, err := conn.Write([]byte(resp)); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
-	res.BannerSent = "rtsp 401 Digest"
 	return res, nil
 }

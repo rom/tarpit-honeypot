@@ -58,6 +58,12 @@ func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 				_, _ = conn.Write([]byte{'N'})
 				res.Meta["gssenc_request"] = true
 				continue
+			case 0x04D2162E: // CancelRequest (sent on a side connection)
+				res.Meta["cancel_request"] = true
+				if len(body) >= 12 {
+					res.Meta["cancel_backend_pid"] = binary.BigEndian.Uint32(body[4:8])
+				}
+				return res, nil
 			}
 		}
 
@@ -70,6 +76,11 @@ func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 			if len(params) > 0 {
 				res.Meta["startup_params"] = params
 				pgUser = params["user"]
+				// A replication startup is how pg_basebackup / a rogue
+				// standby clones the whole cluster — high-signal.
+				if r := params["replication"]; r != "" && r != "false" && r != "0" {
+					flagAnomaly(&res, "postgres-replication-connection")
+				}
 			}
 		}
 

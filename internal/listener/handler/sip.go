@@ -55,34 +55,80 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 			res.Meta["cseq"] = strings.TrimSpace(line[5:])
 		}
 	}
-	// Reply 200 OK echoing Via/From/To/Call-ID/CSeq. SECURITY: every
-	// echoed value is attacker-controlled (SIP headers from the
-	// request). Without SanitizeHeader, CRLF in any of them lets an
-	// off-path attacker (UDP source-IP-spoofable) inject arbitrary
-	// SIP/HTTP-shaped headers and even a body into a packet sent to
-	// any IP they choose — a reflection / amplification primitive
-	// against a third party. SanitizeHeader strips CR/LF/NUL.
-	reply := fmt.Sprintf("SIP/2.0 200 OK\r\n"+
+	// Identify SIP scanners by their User-Agent (sipvicious / friendly-scanner
+	// / sipcli are the dominant PBX-enumeration tools).
+	if ua := strings.ToLower(valueOr(res.Meta, "user_agent", "")); ua != "" {
+		if strings.Contains(ua, "friendly-scanner") || strings.Contains(ua, "sipvicious") ||
+			strings.Contains(ua, "sipcli") || strings.Contains(ua, "sip-scan") {
+			flagAnomaly(&res, "tool:sipvicious")
+		}
+	}
+
+	// Method-aware reply. SECURITY: every echoed value is attacker-controlled
+	// (SIP headers from the request). Without SanitizeHeader, CRLF in any of
+	// them lets an off-path attacker (UDP source-IP-spoofable) inject
+	// arbitrary SIP/HTTP-shaped headers and even a body into a packet sent to
+	// any IP they choose — a reflection / amplification primitive against a
+	// third party. SanitizeHeader strips CR/LF/NUL.
+	sVia := safe.SanitizeHeader(via)
+	sFrom := safe.SanitizeHeader(valueOr(res.Meta, "from", ""))
+	sTo := safe.SanitizeHeader(valueOr(res.Meta, "to", ""))
+	sCallID := safe.SanitizeHeader(valueOr(res.Meta, "call_id", ""))
+	sCSeq := safe.SanitizeHeader(valueOr(res.Meta, "cseq", ""))
+
+	status, extra := "200 OK", ""
+	switch method {
+	case "REGISTER", "INVITE", "SUBSCRIBE":
+		// Real PBXs challenge these — reply 401 with a Digest nonce so the
+		// scanner's enumeration/brute loop sends credentials next (captured
+		// from the follow-up Authorization header).
+		status = "401 Unauthorized"
+		extra = "WWW-Authenticate: Digest realm=\"asterisk\", nonce=\"" + sipNonce(sCallID) + "\", algorithm=MD5\r\n"
+		if method == "REGISTER" {
+			flagAnomaly(&res, "sip-register-probe")
+		}
+		if method == "INVITE" {
+			flagAnomaly(&res, "sip-invite-attempt") // toll-fraud / call-spam primitive
+		}
+	}
+	reply := fmt.Sprintf("SIP/2.0 %s\r\n"+
 		"Via: %s\r\n"+
 		"From: %s\r\n"+
 		"To: %s;tag=as%x\r\n"+
 		"Call-ID: %s\r\n"+
 		"CSeq: %s\r\n"+
-		"Server: Asterisk/16.16.2\r\n"+
+		"Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REGISTER, SUBSCRIBE, NOTIFY\r\n"+
+		"%s"+
+		"Server: Asterisk PBX 16.16.2\r\n"+
 		"Content-Length: 0\r\n\r\n",
-		safe.SanitizeHeader(via),
-		safe.SanitizeHeader(valueOr(res.Meta, "from", "")),
-		safe.SanitizeHeader(valueOr(res.Meta, "to", "")),
-		len(payload),
-		safe.SanitizeHeader(valueOr(res.Meta, "call_id", "")),
-		safe.SanitizeHeader(valueOr(res.Meta, "cseq", "")),
-	)
+		status, sVia, sFrom, sTo, len(payload), sCallID, sCSeq, extra)
 	if _, err := pc.WriteTo([]byte(reply), src); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
-	res.BannerSent = "sip 200 OK"
+	res.BannerSent = "sip " + status
 	_ = cfg
 	return res, nil
+}
+
+// sipNonce derives a stable-looking Digest nonce from the request's Call-ID
+// (already sanitized) so each challenge differs without leaking anything.
+func sipNonce(seed string) string {
+	const hexd = "0123456789abcdef"
+	h := uint32(0x811c9dc5)
+	for i := 0; i < len(seed); i++ {
+		h = (h ^ uint32(seed[i])) * 0x01000193
+	}
+	if seed == "" {
+		h = 0xdeadbeef
+	}
+	out := make([]byte, 16)
+	for i := range out {
+		out[i] = hexd[(h>>(uint(i%8)*4))&0x0f]
+		if i%4 == 3 {
+			h *= 0x01000193
+		}
+	}
+	return string(out)
 }
 
 func valueOr(m map[string]any, k, def string) string {
