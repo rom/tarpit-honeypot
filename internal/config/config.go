@@ -744,6 +744,119 @@ type Correlate struct {
 	PathEnum      CorrPathEnum      `yaml:"path_enumeration"`
 	DNSEnum       CorrDNSEnum       `yaml:"dns_enumeration"`
 	Beacon        CorrBeacon        `yaml:"beacon"`
+	// Additional opt-in correlators (all default-off; enable per deployment).
+	HostSweep         CorrHostSweep         `yaml:"host_sweep"`
+	ServiceSweep      CorrServiceSweep      `yaml:"service_sweep"`
+	UARotation        CorrUARotation        `yaml:"ua_rotation"`
+	ExploitChain      CorrExploitChain      `yaml:"exploit_chain"`
+	ICSControl        CorrICSControl        `yaml:"ics_control"`
+	CanaryTrip        CorrCanaryTrip        `yaml:"canary_trip"`
+	FingerprintReuse  CorrFingerprintReuse  `yaml:"fingerprint_reuse"`
+	ProtocolViolation CorrProtocolViolation `yaml:"protocol_violation"`
+	Exfil             CorrExfil             `yaml:"exfil"`
+	SessionFlood      CorrSessionFlood      `yaml:"session_flood"`
+}
+
+// CorrHostSweep detects a horizontal network sweep: one source touching
+// many DISTINCT destination (honeynet) hosts within a window — the breadth
+// axis the vertical port_scan correlator can't see. Complements icmp_sweep
+// (which keys on ICMP) by catching TCP/UDP host discovery.
+type CorrHostSweep struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctHosts int           `yaml:"distinct_hosts"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
+}
+
+// CorrServiceSweep detects cross-protocol reconnaissance: one source
+// interacting with many DISTINCT service handlers (ssh, http, modbus, smb,
+// …) within a window — a service-discovery pass rather than a port count.
+type CorrServiceSweep struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrUARotation detects User-Agent rotation: one source presenting many
+// DISTINCT HTTP User-Agent strings within a window — scanner evasion / a
+// tool cycling identities that per-request fingerprinting misses.
+type CorrUARotation struct {
+	Enabled        bool          `yaml:"enabled"`
+	DistinctAgents int           `yaml:"distinct_agents"`
+	Window         time.Duration `yaml:"window"`
+	Severity       string        `yaml:"severity"`
+}
+
+// CorrExploitChain detects one source attempting many DISTINCT CVEs within
+// a window — a vuln-chaining / mass-exploit run, a much stronger signal
+// than a single cve:* hit.
+type CorrExploitChain struct {
+	Enabled      bool          `yaml:"enabled"`
+	DistinctCVEs int           `yaml:"distinct_cves"`
+	Window       time.Duration `yaml:"window"`
+	Severity     string        `yaml:"severity"`
+}
+
+// CorrICSControl detects OT manipulation: repeated control / write / restart
+// commands to industrial-protocol handlers (Modbus write, BACnet
+// WriteProperty, DNP3 operate, …) from one source within a window — the
+// "manipulation of control" stage of an ICS attack.
+type CorrICSControl struct {
+	Enabled  bool          `yaml:"enabled"`
+	Attempts int           `yaml:"attempts"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrCanaryTrip detects one source tripping many DISTINCT canary tokens /
+// honeyfile URLs within a window — systematic decoy harvesting, an
+// unambiguous hands-on-keyboard signal.
+type CorrCanaryTrip struct {
+	Enabled        bool          `yaml:"enabled"`
+	DistinctTokens int           `yaml:"distinct_tokens"`
+	Window         time.Duration `yaml:"window"`
+	Severity       string        `yaml:"severity"`
+}
+
+// CorrFingerprintReuse detects the same client fingerprint (JA3 / JA4 /
+// HASSH) arriving from many DISTINCT source IPs within a window — a botnet
+// or shared tool fronted by a rotating-IP pool.
+type CorrFingerprintReuse struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctSources int           `yaml:"distinct_sources"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
+}
+
+// CorrProtocolViolation detects fuzzing: one source tripping many DISTINCT
+// protocol-misuse anomaly markers within a window (malformed frames,
+// out-of-spec methods) — the signature of a protocol fuzzer.
+type CorrProtocolViolation struct {
+	Enabled           bool          `yaml:"enabled"`
+	DistinctAnomalies int           `yaml:"distinct_anomalies"`
+	Window            time.Duration `yaml:"window"`
+	Severity          string        `yaml:"severity"`
+}
+
+// CorrExfil detects bulk inbound transfer: cumulative request bytes from one
+// source crossing a byte threshold within a window — data staging / a large
+// upload (malware drop, oversized POST) against the decoy.
+type CorrExfil struct {
+	Enabled  bool          `yaml:"enabled"`
+	Bytes    int64         `yaml:"bytes"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrSessionFlood detects volumetric abuse: one source opening many
+// connections within a short window regardless of port spread — a
+// connection flood / DoS probe / aggressive tarpit engagement.
+type CorrSessionFlood struct {
+	Enabled     bool          `yaml:"enabled"`
+	Connections int           `yaml:"connections"`
+	Window      time.Duration `yaml:"window"`
+	Severity    string        `yaml:"severity"`
 }
 
 // CorrBeacon detects C2 beaconing: repeated, regularly-spaced contact from

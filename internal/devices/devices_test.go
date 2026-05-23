@@ -231,3 +231,104 @@ func TestDeviceClassification(t *testing.T) {
 		t.Errorf("port sweep should classify as scanner; got %q", r.List()[0].Attrs["class"])
 	}
 }
+
+func TestGetCountAndFindByIP(t *testing.T) {
+	r := New(Config{Learn: false})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	r.Observe(Observation{IP: "10.0.0.5", MAC: "00:90:e8:01:02:03", Source: SourceDHCP, Time: now})
+	r.Observe(Observation{IP: "10.0.0.6", Source: SourceConn, Time: now})
+
+	if r.Count() != 2 {
+		t.Errorf("Count = %d; want 2", r.Count())
+	}
+	// Get by MAC key, any case/separator.
+	if d, ok := r.Get("0090.e801.0203"); !ok || d.IP != "10.0.0.5" {
+		t.Errorf("Get by normalized MAC failed: %+v ok=%v", d, ok)
+	}
+	// Get by IP key (the conn-only device).
+	if _, ok := r.Get("10.0.0.6"); !ok {
+		t.Error("Get by IP key failed")
+	}
+	// FindByIP resolves the MAC-keyed device by its IP field.
+	if d, ok := r.FindByIP("10.0.0.5"); !ok || d.MAC != "00:90:e8:01:02:03" {
+		t.Errorf("FindByIP failed: %+v ok=%v", d, ok)
+	}
+	if _, ok := r.FindByIP("203.0.113.9"); ok {
+		t.Error("FindByIP of unknown IP should be false")
+	}
+}
+
+func TestStatsRoguesAndByClass(t *testing.T) {
+	r := New(Config{Allow: []string{"10.0.0.0/24"}, Learn: false})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	// In-CIDR (allowed) ICS endpoint.
+	r.Observe(Observation{IP: "10.0.0.10", Source: SourceConn, Service: "modbus", Port: 502, Time: now})
+	// Out-of-CIDR (rogue) web host.
+	r.Observe(Observation{IP: "192.168.5.5", Source: SourceConn, Service: "http", Port: 80, Time: now})
+	r.Observe(Observation{IP: "192.168.5.5", Source: SourceConn, Service: "https", Port: 443, Time: now})
+
+	st := r.Stats()
+	if st.Total != 2 || st.Allowed != 1 || st.Rogue != 1 {
+		t.Errorf("Stats totals = %+v; want Total2 Allowed1 Rogue1", st)
+	}
+	if st.ByClass["ics-endpoint"] != 1 || st.ByClass["web-host"] != 1 {
+		t.Errorf("Stats.ByClass = %v; want one ics-endpoint + one web-host", st.ByClass)
+	}
+	if st.BySource["conn"] != 2 {
+		t.Errorf("Stats.BySource[conn] = %d; want 2", st.BySource["conn"])
+	}
+
+	if ics := r.ByClass("ics-endpoint"); len(ics) != 1 || ics[0].IP != "10.0.0.10" {
+		t.Errorf("ByClass(ics-endpoint) = %+v", ics)
+	}
+	rogues := r.Rogues()
+	if len(rogues) != 1 || rogues[0].IP != "192.168.5.5" {
+		t.Errorf("Rogues = %+v; want only 192.168.5.5", rogues)
+	}
+}
+
+func TestActiveStaleSearchVendor(t *testing.T) {
+	r := New(Config{Learn: false})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	// Fresh device (Siemens OUI) and a stale one.
+	r.Observe(Observation{IP: "10.0.0.10", MAC: "28:63:36:aa:bb:cc", Hostname: "plc-line1", Source: SourceARP, Time: now})
+	r.Observe(Observation{IP: "10.0.0.20", Source: SourceConn, Time: now.Add(-2 * time.Hour)})
+
+	if act := r.Active(time.Hour, now); len(act) != 1 || act[0].IP != "10.0.0.10" {
+		t.Errorf("Active(1h) = %+v; want only the fresh device", act)
+	}
+	if stale := r.Stale(time.Hour, now); len(stale) != 1 || stale[0].IP != "10.0.0.20" {
+		t.Errorf("Stale(1h) = %+v; want only the quiet device", stale)
+	}
+	// Search across hostname, vendor, IP.
+	if got := r.Search("line1"); len(got) != 1 || got[0].IP != "10.0.0.10" {
+		t.Errorf("Search(line1) = %+v", got)
+	}
+	if got := r.ByVendor("siemens"); len(got) != 1 || got[0].IP != "10.0.0.10" {
+		t.Errorf("ByVendor(siemens) = %+v", got)
+	}
+	if got := r.Search(""); got != nil {
+		t.Errorf("Search(empty) should be nil, got %+v", got)
+	}
+}
+
+func TestConflictsDetectsIPCollision(t *testing.T) {
+	r := New(Config{Learn: false})
+	now := time.Unix(1_700_000_000, 0).UTC()
+	// Two distinct MACs claiming the same IP — an ARP-spoof signature.
+	r.Observe(Observation{IP: "10.0.0.50", MAC: "00:90:e8:01:02:03", Source: SourceARP, Time: now})
+	r.Observe(Observation{IP: "10.0.0.50", MAC: "aa:bb:cc:dd:ee:ff", Source: SourceARP, Time: now})
+	// An unrelated single-MAC device must not show as a conflict.
+	r.Observe(Observation{IP: "10.0.0.60", MAC: "00:90:e8:09:09:09", Source: SourceARP, Time: now})
+
+	cs := r.Conflicts()
+	if len(cs) != 1 {
+		t.Fatalf("Conflicts = %+v; want exactly one IP collision", cs)
+	}
+	if cs[0].IP != "10.0.0.50" || len(cs[0].MACs) != 2 {
+		t.Errorf("conflict = %+v; want 10.0.0.50 with 2 MACs", cs[0])
+	}
+	if cs[0].MACs[0] != "00:90:e8:01:02:03" || cs[0].MACs[1] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("conflict MACs not sorted: %+v", cs[0].MACs)
+	}
+}

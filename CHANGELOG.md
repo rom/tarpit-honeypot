@@ -8,6 +8,55 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CVE catalog: +20 OT/ICS advisories
+- The CVE catalog grows by **20 OT/ICS control-protocol records** mapped to
+  the industrial handlers the honeypot emulates: Schneider Modicon UMAS/Modbus
+  (CVE-2021-22779, CVE-2018-7852), Siemens S7-1500 (CVE-2016-2200) and
+  S7CommPlus MITM (CVE-2019-10929), CODESYS V2/V3 runtime + gateway
+  (CVE-2022-31806, CVE-2020-10245, CVE-2022-31802), OPC UA .NET
+  (CVE-2021-27432), KNX (CVE-2023-4346), Siemens SIPROTEC EN100 / IEC-104
+  (CVE-2015-5374), GE PACSystems SRTP (CVE-2019-13524, CVE-2018-8867), Omron
+  FINS (CVE-2020-6986), Mitsubishi MELSEC iQ-R (CVE-2021-20591), TMW IEC-61850
+  MMS (CVE-2022-38138), TMW DNP3 (CVE-2013-2783), Tridium Niagara Fox
+  (CVE-2017-16744), Phoenix Contact PCWorx (CVE-2016-8367), FieldComm HART-IP
+  (CVE-2020-16209), and Veeder-Root ATG (CVE-2025-58428). Advisory-only
+  (binary control protocols have no safe substring signature), each with
+  CWE / CPE 2.3 / EPSS cross-references and an ATT&CK mapping; surfaced by the
+  matching handler under `vuln_emulation` and via `Lookup`.
+
+### Added — scan analysis: tool fingerprinting + scan geometry
+- `scananalysis` gains **scanner/exploitation-tool fingerprinting**
+  (masscan, zgrab/zmap, nuclei, nikto, sqlmap, gobuster/dirbuster, ffuf,
+  wpscan, nessus, qualys, acunetix, nmap-nse) from self-identifying
+  User-Agents, plus more nmap service probes (RTSP, SIP, TLS ClientHello,
+  Java-RMI) and vuln-scan NSE signatures (`/.env`, `/manager/html`,
+  `/actuator`, `/wp-login.php`, HNAP).
+- The per-source `Tracker` now reports **scan geometry**: `ScanShape`
+  (vertical / horizontal / block from host×port breadth), `PortOrder`
+  (sequential vs random), `DistinctHosts`, a fingerprinted `Tool`/`Tools`,
+  a `Stealthy` flag (-T0/-T1 cadence), a `VulnScan` flag, and a 0–100
+  `Confidence` score. The sensor's `scananalysis:profile` event carries all
+  of these in its meta.
+
+### Added — correlators: 10 new detectors
+- The in-sensor correlation engine adds **10 opt-in detectors** (all
+  default-off, configured under `correlate:`): `host_sweep` (horizontal
+  scan across honeynet hosts), `service_sweep` (cross-protocol recon),
+  `ua_rotation` (User-Agent cycling), `exploit_chain` (multiple distinct
+  CVEs from one source), `ics_control` (repeated OT write/control commands),
+  `canary_trip` (multiple distinct canary tokens), `fingerprint_reuse`
+  (one JA3/JA4/HASSH across many source IPs), `protocol_violation`
+  (fuzzing — many distinct anomaly markers), `exfil` (cumulative inbound
+  bytes), and `session_flood` (connection flood). Each emits a
+  `correlate:<name>` aggregate event with windowed, memory-bounded state.
+
+### Added — device inventory: 11 query/analysis methods
+- The learned-device `Registry` gains query/analysis methods powering richer
+  rogue-device review: `Get`, `FindByIP`, `Count`, `Stats` (totals + by
+  source/class), `ByClass`, `ByVendor`, `Rogues`, `Active`, `Stale`,
+  `Search`, and `Conflicts` (one IP bound to multiple MACs — a persistent
+  ARP-spoof / impersonation signal).
+
 ### Added — CVE catalog: +40 detections
 - The in-source CVE catalog grows by **40 records** (now covering the
   edge-device / enterprise-app pre-auth chains attackers mass-scan):

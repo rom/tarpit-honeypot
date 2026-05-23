@@ -629,6 +629,114 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Ivanti Connect Secure web-component authentication bypass (chained with CVE-2024-21887).",
 	},
+	// ---- OT / ICS control-protocol advisories ----
+	// Binary control-protocol exploits (Modbus/UMAS, S7, CODESYS, OPC UA,
+	// DNP3, IEC-104, FINS, MELSEC, MMS, Fox, GE-SRTP, PCWorx, HART-IP, ATG,
+	// KNX). No safe substring signature exists for these framed/binary
+	// protocols, so they are advisory-only: the matching OT handler /
+	// archetype advertises the unpatched controller under vuln_emulation,
+	// and Lookup gives the cve:<id> event an ATT&CK mapping. Verified
+	// against CISA ICS advisories + NVD (2026-05 snapshot).
+	{
+		ID: "CVE-2021-22779", Name: "Schneider Modicon UMAS auth bypass", CVSS: 9.8, Service: "modbus",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Schneider Electric Modicon M340/M580 UMAS (over Modbus/502) authentication bypass enabling unauthenticated read/write control.",
+	},
+	{
+		ID: "CVE-2018-7852", Name: "Schneider Modicon Modbus DoS", CVSS: 7.5, Service: "modbus",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Schneider Electric Modicon M340 denial of service via crafted Modbus/UMAS packets that halt the controller.",
+	},
+	{
+		ID: "CVE-2016-2200", Name: "Siemens S7-1500 web DoS", CVSS: 7.5, Service: "s7",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Siemens SIMATIC S7-1500 CPU integrated web server denial of service (defect mode) via crafted packets.",
+	},
+	{
+		ID: "CVE-2019-10929", Name: "Siemens S7-1500 S7CommPlus MITM", CVSS: 5.3, Service: "s7comm_plus",
+		Technique: "T1557", Tactic: "credential-access",
+		Description: "Siemens SIMATIC S7-1500 weak S7CommPlus integrity protection lets an on-path attacker modify TIA Portal<->PLC traffic on port 102.",
+	},
+	{
+		ID: "CVE-2022-31806", Name: "CODESYS V2 runtime no default auth", CVSS: 9.8, Service: "codesys",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "CODESYS Control V2 runtime ships without password protection by default, permitting unauthenticated control and DoS.",
+	},
+	{
+		ID: "CVE-2020-10245", Name: "CODESYS V3 web-server heap overflow", CVSS: 10.0, Service: "codesys",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "CODESYS V3 web server (CmpWebServerHandlerV3) heap buffer overflow enabling unauthenticated remote code execution / crash.",
+	},
+	{
+		ID: "CVE-2022-31802", Name: "CODESYS Gateway V2 auth bypass", CVSS: 9.8, Service: "codesys",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "CODESYS Gateway Server V2 compares only a password prefix, so a truncated password authenticates (auth bypass).",
+	},
+	{
+		ID: "CVE-2021-27432", Name: "OPC UA .NET uncontrolled recursion DoS", CVSS: 7.5, Service: "opcua",
+		Technique: "T1499", Tactic: "impact",
+		Description: "OPC Foundation UA .NET Standard/Legacy uncontrolled recursion on crafted messages causes a stack-overflow denial of service.",
+	},
+	{
+		ID: "CVE-2023-4346", Name: "KNX BCU-key device lockout", CVSS: 7.5, Service: "knx",
+		Technique: "T1499", Tactic: "impact",
+		Description: "An attacker on the KNX bus can set a BCU key on KNX devices, permanently locking out legitimate access (KNXlock).",
+	},
+	{
+		ID: "CVE-2015-5374", Name: "Siemens SIPROTEC EN100 DoS", CVSS: 7.8, Service: "iec104",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Crafted UDP/50000 packets brick the Siemens SIPROTEC EN100 (IEC-104) Ethernet module until manual reboot (used by Industroyer).",
+	},
+	{
+		ID: "CVE-2019-13524", Name: "GE PACSystems RX3i halt DoS", CVSS: 7.5, Service: "ge_srtp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Crafted SRTP packets force GE PACSystems RX3i controllers into halt mode (denial of service requiring battery pull + reboot).",
+	},
+	{
+		ID: "CVE-2020-6986", Name: "Omron CJ-series FINS DoS", CVSS: 7.5, Service: "fins",
+		Technique: "T1499", Tactic: "impact",
+		Description: "A burst of crafted packets to the Omron CJ-series FINS/Ethernet module causes a service fault (denial of service).",
+	},
+	{
+		ID: "CVE-2021-20591", Name: "Mitsubishi MELSEC iQ-R session DoS", CVSS: 5.3, Service: "melsec",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Improper session management in Mitsubishi MELSEC iQ-R lets an attacker exhaust connection slots, blocking legitimate MELSOFT clients.",
+	},
+	{
+		ID: "CVE-2022-38138", Name: "Triangle MicroWorks 61850 MMS DoS", CVSS: 7.5, Service: "mms",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Uninitialized-pointer flaw in the widely-OEM'd TMW IEC-61850 (MMS) library crashes peers on crafted MMS messages.",
+	},
+	{
+		ID: "CVE-2013-2783", Name: "Triangle MicroWorks DNP3 infinite loop", CVSS: 7.1, Service: "dnp3",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Project Robus: a crafted DNP3 TCP packet drives TMW DNP3 libraries / SCADA Data Gateway into an infinite loop (DoS).",
+	},
+	{
+		ID: "CVE-2017-16744", Name: "Tridium Niagara path traversal", CVSS: 6.6, Service: "fox",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Path traversal in Tridium Niagara AX/Niagara 4 (Fox/platform) enables arbitrary file read and privilege escalation.",
+	},
+	{
+		ID: "CVE-2016-8367", Name: "Phoenix Contact ILC missing auth", CVSS: 9.8, Service: "pcworx",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Phoenix Contact ILC 1xx controllers (PCWorx) expose read/write of PLC variables without authentication.",
+	},
+	{
+		ID: "CVE-2020-16209", Name: "FieldComm HART-IP hipserver overflow", CVSS: 9.8, Service: "hartip",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Stack buffer overflow in the FieldComm Group HART-IP reference server (hipserver) allows unauthenticated RCE / DoS.",
+	},
+	{
+		ID: "CVE-2025-58428", Name: "Veeder-Root TLS4B ATG command injection", CVSS: 9.9, Service: "atg",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Veeder-Root TLS4B automatic-tank-gauge interface lets a remote attacker run system-level OS commands (command injection).",
+	},
+	{
+		ID: "CVE-2018-8867", Name: "GE PACSystems input-validation DoS", CVSS: 7.5, Service: "ge_srtp",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Improper input validation in GE PACSystems (CPE3xx/4xx, RSTi-EP) lets crafted packets render the controller unavailable.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -739,6 +847,27 @@ var cveExtra = map[string]struct {
 	"CVE-2024-6387":  {[]string{"CWE-364"}, "cpe:2.3:a:openbsd:openssh:*", 0.40},
 	"CVE-2021-21974": {[]string{"CWE-787"}, "cpe:2.3:o:vmware:esxi:*", 0.85},
 	"CVE-2023-46805": {[]string{"CWE-287"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.96},
+	// --- OT / ICS control-protocol advisories ---
+	"CVE-2021-22779": {[]string{"CWE-287", "CWE-863"}, "cpe:2.3:o:schneider-electric:modicon_m580_firmware:*", 0.10},
+	"CVE-2018-7852":  {[]string{"CWE-20"}, "cpe:2.3:o:schneider-electric:modicon_m340_firmware:*", 0.03},
+	"CVE-2016-2200":  {[]string{"CWE-20"}, "cpe:2.3:o:siemens:simatic_s7-1500_cpu_firmware:*", 0.05},
+	"CVE-2019-10929": {[]string{"CWE-924", "CWE-300"}, "cpe:2.3:o:siemens:simatic_s7-1500_cpu_firmware:*", 0.02},
+	"CVE-2022-31806": {[]string{"CWE-306", "CWE-1188"}, "cpe:2.3:a:codesys:control_runtime_system:*", 0.15},
+	"CVE-2020-10245": {[]string{"CWE-787", "CWE-122"}, "cpe:2.3:a:codesys:codesys:*", 0.10},
+	"CVE-2022-31802": {[]string{"CWE-287"}, "cpe:2.3:a:codesys:gateway_server:*", 0.10},
+	"CVE-2021-27432": {[]string{"CWE-674"}, "cpe:2.3:a:opcfoundation:ua-.netstandard:*", 0.05},
+	"CVE-2023-4346":  {[]string{"CWE-1390", "CWE-640"}, "cpe:2.3:o:knx:knx_devices:*", 0.02},
+	"CVE-2015-5374":  {[]string{"CWE-20", "CWE-400"}, "cpe:2.3:o:siemens:en100_ethernet_module_firmware:*", 0.05},
+	"CVE-2019-13524": {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe310_firmware:*", 0.03},
+	"CVE-2020-6986":  {[]string{"CWE-400"}, "cpe:2.3:o:omron:cj2m_cpu_firmware:*", 0.03},
+	"CVE-2021-20591": {[]string{"CWE-300", "CWE-404"}, "cpe:2.3:o:mitsubishielectric:melsec_iq-r_series:*", 0.02},
+	"CVE-2022-38138": {[]string{"CWE-824"}, "cpe:2.3:a:trianglemicroworks:tmw_iec_61850:*", 0.03},
+	"CVE-2013-2783":  {[]string{"CWE-835", "CWE-20"}, "cpe:2.3:a:trianglemicroworks:scada_data_gateway:*", 0.04},
+	"CVE-2017-16744": {[]string{"CWE-22"}, "cpe:2.3:a:tridium:niagara:*", 0.05},
+	"CVE-2016-8367":  {[]string{"CWE-306"}, "cpe:2.3:o:phoenixcontact:ilc_151_eth_firmware:*", 0.05},
+	"CVE-2020-16209": {[]string{"CWE-787", "CWE-120"}, "cpe:2.3:a:fieldcommgroup:hipserver:*", 0.08},
+	"CVE-2025-58428": {[]string{"CWE-78"}, "cpe:2.3:o:veeder-root:tls4b_firmware:*", 0.05},
+	"CVE-2018-8867":  {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe330_firmware:*", 0.03},
 }
 
 func init() {

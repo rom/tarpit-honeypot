@@ -422,6 +422,259 @@ func (r *Registry) List() []Device {
 	return out
 }
 
+// Get returns the device stored under a registry key (its MAC if known,
+// else its IP). It also tries the normalized-MAC form so callers can pass
+// a MAC in any case/separator style. Used by the web UI's per-device view.
+func (r *Registry) Get(key string) (Device, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, k := range []string{key, normalizeMAC(key)} {
+		if d, ok := r.byKey[k]; ok {
+			return *d, true
+		}
+	}
+	return Device{}, false
+}
+
+// FindByIP returns the most-recently-seen device currently bound to ip.
+// Unlike Get it searches by the IP field rather than the registry key, so
+// it resolves MAC-keyed devices too (the common case once ARP/DHCP is seen).
+func (r *Registry) FindByIP(ip string) (Device, bool) {
+	if ip == "" {
+		return Device{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var best *Device
+	for _, d := range r.byKey {
+		if d.IP != ip {
+			continue
+		}
+		if best == nil || d.LastSeen.After(best.LastSeen) {
+			best = d
+		}
+	}
+	if best == nil {
+		return Device{}, false
+	}
+	return *best, true
+}
+
+// Count returns the number of learned devices.
+func (r *Registry) Count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.byKey)
+}
+
+// Stats is an at-a-glance summary of the learned inventory.
+type Stats struct {
+	Total    int            // all learned devices
+	Allowed  int            // matching the operator allow-list
+	Rogue    int            // Total - Allowed (would raise device:new)
+	BySource map[string]int // first-seen source (dhcp/arp/conn/...) -> count
+	ByClass  map[string]int // inferred class (scanner/ics-endpoint/...) -> count
+}
+
+// Stats summarizes the inventory: totals plus a breakdown by first-seen
+// source and inferred device class. Powers the dashboard's device panel.
+func (r *Registry) Stats() Stats {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := Stats{BySource: map[string]int{}, ByClass: map[string]int{}}
+	for _, d := range r.byKey {
+		s.Total++
+		if r.isAllowed(d) {
+			s.Allowed++
+		}
+		s.BySource[string(d.Source)]++
+		if c := d.Attrs["class"]; c != "" {
+			s.ByClass[c]++
+		} else {
+			s.ByClass["unknown"]++
+		}
+	}
+	s.Rogue = s.Total - s.Allowed
+	return s
+}
+
+// ByClass returns the devices whose learned class attribute equals class
+// (e.g. "scanner", "ics-endpoint", "network-device", "web-host", "host"),
+// sorted by IP. See classify for how the class is inferred.
+func (r *Registry) ByClass(class string) []Device {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if d.Attrs["class"] == class {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// ByVendor returns the devices whose OUI-derived vendor contains sub
+// (case-insensitive), sorted by IP. Useful for spotting all devices from
+// one manufacturer (e.g. every "Siemens" PLC) on the segment.
+func (r *Registry) ByVendor(sub string) []Device {
+	sub = strings.ToLower(strings.TrimSpace(sub))
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if sub != "" && strings.Contains(strings.ToLower(d.Vendor), sub) {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// Rogues returns the devices that are NOT on the operator allow-list —
+// the hosts that would (or did) raise a device:new alert. This is the
+// core rogue-device view for the segment the sensor sits on.
+func (r *Registry) Rogues() []Device {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if !r.isAllowed(d) {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// Active returns devices last seen within the given duration of now (a
+// zero now means time.Now). Use it to scope the inventory to what is
+// currently live on the wire.
+func (r *Registry) Active(within time.Duration, now time.Time) []Device {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	cutoff := now.Add(-within)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if d.LastSeen.After(cutoff) {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// Stale returns devices NOT seen within the given duration of now (a zero
+// now means time.Now) — hosts that have gone quiet, useful for spotting
+// decommissioned gear still in the baseline or a device that dropped off.
+func (r *Registry) Stale(within time.Duration, now time.Time) []Device {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	cutoff := now.Add(-within)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if !d.LastSeen.After(cutoff) {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// Search returns devices matching q (case-insensitive substring) across
+// IP, MAC, hostname, vendor, and learned attribute values — the free-text
+// lookup behind the web UI's device search box.
+func (r *Registry) Search(q string) []Device {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Device
+	for _, d := range r.byKey {
+		if deviceMatches(d, q) {
+			out = append(out, *d)
+		}
+	}
+	sortDevices(out)
+	return out
+}
+
+// Conflict reports one IP address that is currently bound to more than one
+// MAC in the inventory — the signature of ARP spoofing, a NAT/clone, or a
+// re-used static IP. The MACs are sorted.
+type Conflict struct {
+	IP   string
+	MACs []string
+}
+
+// Conflicts returns every IP that maps to multiple distinct MACs across the
+// learned devices, sorted by IP. This is a higher-confidence impersonation
+// signal than a single device:changed rebind because it persists in the
+// baseline (two live identities claiming one address).
+func (r *Registry) Conflicts() []Conflict {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	byIP := map[string]map[string]struct{}{}
+	for _, d := range r.byKey {
+		if d.IP == "" || d.MAC == "" {
+			continue
+		}
+		if byIP[d.IP] == nil {
+			byIP[d.IP] = map[string]struct{}{}
+		}
+		byIP[d.IP][d.MAC] = struct{}{}
+	}
+	var out []Conflict
+	for ip, macs := range byIP {
+		if len(macs) < 2 {
+			continue
+		}
+		c := Conflict{IP: ip}
+		for m := range macs {
+			c.MACs = append(c.MACs, m)
+		}
+		sort.Strings(c.MACs)
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return lessIP(out[i].IP, out[j].IP) })
+	return out
+}
+
+// deviceMatches reports whether any of a device's identity/attribute fields
+// contains the (already-lowercased) query.
+func deviceMatches(d *Device, q string) bool {
+	if strings.Contains(strings.ToLower(d.IP), q) ||
+		strings.Contains(strings.ToLower(d.MAC), q) ||
+		strings.Contains(strings.ToLower(d.Hostname), q) ||
+		strings.Contains(strings.ToLower(d.Vendor), q) {
+		return true
+	}
+	for _, v := range d.Attrs {
+		if strings.Contains(strings.ToLower(v), q) {
+			return true
+		}
+	}
+	return false
+}
+
+// sortDevices orders a device slice by IP then MAC, matching List().
+func sortDevices(out []Device) {
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].IP != out[j].IP {
+			return lessIP(out[i].IP, out[j].IP)
+		}
+		return out[i].MAC < out[j].MAC
+	})
+}
+
 // Save persists the inventory to <data_dir>/devices.json if a path is
 // configured and the inventory changed since the last save.
 func (r *Registry) Save() error {

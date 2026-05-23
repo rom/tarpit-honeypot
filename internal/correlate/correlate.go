@@ -28,6 +28,17 @@ type Correlator struct {
 	pathSev   event.Severity
 	dnsSev    event.Severity
 	beaconSev event.Severity
+	// Additional opt-in correlators.
+	hostSweepSev event.Severity
+	svcSweepSev  event.Severity
+	uaRotSev     event.Severity
+	exploitSev   event.Severity
+	icsSev       event.Severity
+	canarySev    event.Severity
+	fpReuseSev   event.Severity
+	protoViolSev event.Severity
+	exfilSev     event.Severity
+	floodSev     event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -40,8 +51,31 @@ type Correlator struct {
 	dnsEnum  map[string]*setState       // key: source IP (distinct DNS names)
 	beacon   map[string]*beaconState    // key: source IP (call-home timestamps)
 	story    map[string]*storylineState // key: source IP
-	emitted  map[string]time.Time       // dedup of aggregate emission
-	lastGC   time.Time                  // last idle-state sweep
+	// Additional opt-in correlator state.
+	hostSweep map[string]*setState   // key: source IP (distinct dest hosts)
+	svcSweep  map[string]*setState   // key: source IP (distinct handlers)
+	uaRot     map[string]*setState   // key: source IP (distinct user-agents)
+	exploit   map[string]*setState   // key: source IP (distinct CVE ids)
+	ics       map[string]*countState // key: source IP (control-command count)
+	canary    map[string]*setState   // key: source IP (distinct canary tokens)
+	fpReuse   map[string]*reuseState // key: fingerprint value (distinct sources)
+	protoViol map[string]*setState   // key: source IP (distinct anomaly markers)
+	exfil     map[string]*byteState  // key: source IP (cumulative request bytes)
+	flood     map[string]*countState // key: source IP (connection count)
+	emitted   map[string]time.Time   // dedup of aggregate emission
+	lastGC    time.Time              // last idle-state sweep
+}
+
+// countState tracks a per-source count within a window (control commands,
+// connection volume). byteState tracks cumulative bytes within a window.
+type countState struct {
+	since time.Time
+	count int
+}
+
+type byteState struct {
+	since time.Time
+	bytes int64
 }
 
 // beaconState holds the recent contact timestamps for one source so the
@@ -99,18 +133,28 @@ type sweepState struct {
 
 func New(cfg config.Correlate) (*Correlator, error) {
 	c := &Correlator{
-		cfg:      cfg,
-		scan:     map[string]*scanState{},
-		brute:    map[string]*bruteState{},
-		slow:     map[string]*slowState{},
-		sweep:    map[string]*sweepState{},
-		spray:    map[string]*sprayState{},
-		reuse:    map[string]*reuseState{},
-		pathEnum: map[string]*setState{},
-		dnsEnum:  map[string]*setState{},
-		beacon:   map[string]*beaconState{},
-		story:    map[string]*storylineState{},
-		emitted:  map[string]time.Time{},
+		cfg:       cfg,
+		scan:      map[string]*scanState{},
+		brute:     map[string]*bruteState{},
+		slow:      map[string]*slowState{},
+		sweep:     map[string]*sweepState{},
+		spray:     map[string]*sprayState{},
+		reuse:     map[string]*reuseState{},
+		pathEnum:  map[string]*setState{},
+		dnsEnum:   map[string]*setState{},
+		beacon:    map[string]*beaconState{},
+		story:     map[string]*storylineState{},
+		hostSweep: map[string]*setState{},
+		svcSweep:  map[string]*setState{},
+		uaRot:     map[string]*setState{},
+		exploit:   map[string]*setState{},
+		ics:       map[string]*countState{},
+		canary:    map[string]*setState{},
+		fpReuse:   map[string]*reuseState{},
+		protoViol: map[string]*setState{},
+		exfil:     map[string]*byteState{},
+		flood:     map[string]*countState{},
+		emitted:   map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
 		s, err := event.ParseSeverity(cfg.PortScan.Severity)
@@ -174,6 +218,32 @@ func New(cfg config.Correlate) (*Correlator, error) {
 			return nil, err
 		}
 		c.beaconSev = s
+	}
+	// Additional opt-in correlators: parse each enabled detector's severity.
+	for _, sp := range []struct {
+		on  bool
+		sev string
+		dst *event.Severity
+	}{
+		{cfg.HostSweep.Enabled, cfg.HostSweep.Severity, &c.hostSweepSev},
+		{cfg.ServiceSweep.Enabled, cfg.ServiceSweep.Severity, &c.svcSweepSev},
+		{cfg.UARotation.Enabled, cfg.UARotation.Severity, &c.uaRotSev},
+		{cfg.ExploitChain.Enabled, cfg.ExploitChain.Severity, &c.exploitSev},
+		{cfg.ICSControl.Enabled, cfg.ICSControl.Severity, &c.icsSev},
+		{cfg.CanaryTrip.Enabled, cfg.CanaryTrip.Severity, &c.canarySev},
+		{cfg.FingerprintReuse.Enabled, cfg.FingerprintReuse.Severity, &c.fpReuseSev},
+		{cfg.ProtocolViolation.Enabled, cfg.ProtocolViolation.Severity, &c.protoViolSev},
+		{cfg.Exfil.Enabled, cfg.Exfil.Severity, &c.exfilSev},
+		{cfg.SessionFlood.Enabled, cfg.SessionFlood.Severity, &c.floodSev},
+	} {
+		if !sp.on {
+			continue
+		}
+		s, err := event.ParseSeverity(sp.sev)
+		if err != nil {
+			return nil, err
+		}
+		*sp.dst = s
 	}
 	return c, nil
 }
@@ -250,6 +320,56 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.Beacon.Enabled {
 		if extra := c.checkBeacon(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.HostSweep.Enabled {
+		if extra := c.checkHostSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ServiceSweep.Enabled {
+		if extra := c.checkServiceSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.UARotation.Enabled {
+		if extra := c.checkUARotation(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ExploitChain.Enabled {
+		if extra := c.checkExploitChain(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ICSControl.Enabled {
+		if extra := c.checkICSControl(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.CanaryTrip.Enabled {
+		if extra := c.checkCanaryTrip(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.FingerprintReuse.Enabled {
+		if extra := c.checkFingerprintReuse(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ProtocolViolation.Enabled {
+		if extra := c.checkProtocolViolation(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.Exfil.Enabled {
+		if extra := c.checkExfil(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.SessionFlood.Enabled {
+		if extra := c.checkSessionFlood(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -870,9 +990,46 @@ func (c *Correlator) gc(now time.Time) {
 			delete(c.story, ip)
 		}
 	}
+	// Additional opt-in correlator state: evict idle entries past each
+	// detector's window so the maps don't grow unbounded.
+	gcSet(c.hostSweep, now, effWindow(c.cfg.HostSweep.Window, time.Minute))
+	gcSet(c.svcSweep, now, effWindow(c.cfg.ServiceSweep.Window, time.Minute))
+	gcSet(c.uaRot, now, effWindow(c.cfg.UARotation.Window, 5*time.Minute))
+	gcSet(c.exploit, now, effWindow(c.cfg.ExploitChain.Window, 10*time.Minute))
+	gcSet(c.canary, now, effWindow(c.cfg.CanaryTrip.Window, time.Hour))
+	gcSet(c.protoViol, now, effWindow(c.cfg.ProtocolViolation.Window, 5*time.Minute))
+	for k, st := range c.fpReuse {
+		if now.Sub(st.since) > effWindow(c.cfg.FingerprintReuse.Window, time.Hour) {
+			delete(c.fpReuse, k)
+		}
+	}
+	for ip, st := range c.ics {
+		if now.Sub(st.since) > effWindow(c.cfg.ICSControl.Window, 5*time.Minute) {
+			delete(c.ics, ip)
+		}
+	}
+	for ip, st := range c.flood {
+		if now.Sub(st.since) > effWindow(c.cfg.SessionFlood.Window, time.Minute) {
+			delete(c.flood, ip)
+		}
+	}
+	for ip, st := range c.exfil {
+		if now.Sub(st.since) > effWindow(c.cfg.Exfil.Window, 5*time.Minute) {
+			delete(c.exfil, ip)
+		}
+	}
 	for key, t := range c.emitted {
 		if now.Sub(t) > 24*time.Hour {
 			delete(c.emitted, key)
+		}
+	}
+}
+
+// gcSet evicts setState entries whose window has elapsed.
+func gcSet(m map[string]*setState, now time.Time, window time.Duration) {
+	for k, st := range m {
+		if now.Sub(st.since) > window {
+			delete(m, k)
 		}
 	}
 }

@@ -336,6 +336,116 @@ func (c *Config) applyDefaults() {
 			c.Correlate.Beacon.Severity = "high"
 		}
 	}
+	if c.Correlate.HostSweep.Enabled {
+		if c.Correlate.HostSweep.DistinctHosts == 0 {
+			c.Correlate.HostSweep.DistinctHosts = 10
+		}
+		if c.Correlate.HostSweep.Window == 0 {
+			c.Correlate.HostSweep.Window = 60 * time.Second
+		}
+		if c.Correlate.HostSweep.Severity == "" {
+			c.Correlate.HostSweep.Severity = "high"
+		}
+	}
+	if c.Correlate.ServiceSweep.Enabled {
+		if c.Correlate.ServiceSweep.DistinctServices == 0 {
+			c.Correlate.ServiceSweep.DistinctServices = 5
+		}
+		if c.Correlate.ServiceSweep.Window == 0 {
+			c.Correlate.ServiceSweep.Window = 60 * time.Second
+		}
+		if c.Correlate.ServiceSweep.Severity == "" {
+			c.Correlate.ServiceSweep.Severity = "medium"
+		}
+	}
+	if c.Correlate.UARotation.Enabled {
+		if c.Correlate.UARotation.DistinctAgents == 0 {
+			c.Correlate.UARotation.DistinctAgents = 4
+		}
+		if c.Correlate.UARotation.Window == 0 {
+			c.Correlate.UARotation.Window = 300 * time.Second
+		}
+		if c.Correlate.UARotation.Severity == "" {
+			c.Correlate.UARotation.Severity = "medium"
+		}
+	}
+	if c.Correlate.ExploitChain.Enabled {
+		if c.Correlate.ExploitChain.DistinctCVEs == 0 {
+			c.Correlate.ExploitChain.DistinctCVEs = 2
+		}
+		if c.Correlate.ExploitChain.Window == 0 {
+			c.Correlate.ExploitChain.Window = 600 * time.Second
+		}
+		if c.Correlate.ExploitChain.Severity == "" {
+			c.Correlate.ExploitChain.Severity = "critical"
+		}
+	}
+	if c.Correlate.ICSControl.Enabled {
+		if c.Correlate.ICSControl.Attempts == 0 {
+			c.Correlate.ICSControl.Attempts = 3
+		}
+		if c.Correlate.ICSControl.Window == 0 {
+			c.Correlate.ICSControl.Window = 300 * time.Second
+		}
+		if c.Correlate.ICSControl.Severity == "" {
+			c.Correlate.ICSControl.Severity = "critical"
+		}
+	}
+	if c.Correlate.CanaryTrip.Enabled {
+		if c.Correlate.CanaryTrip.DistinctTokens == 0 {
+			c.Correlate.CanaryTrip.DistinctTokens = 2
+		}
+		if c.Correlate.CanaryTrip.Window == 0 {
+			c.Correlate.CanaryTrip.Window = time.Hour
+		}
+		if c.Correlate.CanaryTrip.Severity == "" {
+			c.Correlate.CanaryTrip.Severity = "critical"
+		}
+	}
+	if c.Correlate.FingerprintReuse.Enabled {
+		if c.Correlate.FingerprintReuse.DistinctSources == 0 {
+			c.Correlate.FingerprintReuse.DistinctSources = 5
+		}
+		if c.Correlate.FingerprintReuse.Window == 0 {
+			c.Correlate.FingerprintReuse.Window = time.Hour
+		}
+		if c.Correlate.FingerprintReuse.Severity == "" {
+			c.Correlate.FingerprintReuse.Severity = "medium"
+		}
+	}
+	if c.Correlate.ProtocolViolation.Enabled {
+		if c.Correlate.ProtocolViolation.DistinctAnomalies == 0 {
+			c.Correlate.ProtocolViolation.DistinctAnomalies = 5
+		}
+		if c.Correlate.ProtocolViolation.Window == 0 {
+			c.Correlate.ProtocolViolation.Window = 300 * time.Second
+		}
+		if c.Correlate.ProtocolViolation.Severity == "" {
+			c.Correlate.ProtocolViolation.Severity = "medium"
+		}
+	}
+	if c.Correlate.Exfil.Enabled {
+		if c.Correlate.Exfil.Bytes == 0 {
+			c.Correlate.Exfil.Bytes = 1 << 20 // 1 MiB
+		}
+		if c.Correlate.Exfil.Window == 0 {
+			c.Correlate.Exfil.Window = 300 * time.Second
+		}
+		if c.Correlate.Exfil.Severity == "" {
+			c.Correlate.Exfil.Severity = "high"
+		}
+	}
+	if c.Correlate.SessionFlood.Enabled {
+		if c.Correlate.SessionFlood.Connections == 0 {
+			c.Correlate.SessionFlood.Connections = 200
+		}
+		if c.Correlate.SessionFlood.Window == 0 {
+			c.Correlate.SessionFlood.Window = 60 * time.Second
+		}
+		if c.Correlate.SessionFlood.Severity == "" {
+			c.Correlate.SessionFlood.Severity = "medium"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {
