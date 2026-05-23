@@ -8,6 +8,45 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: case-insensitive search, credential source, clickable ATT&CK
+- Full-text search is now explicitly case-insensitive (LOWER on both sides).
+- The attacker-profile **"credentials tried"** table shows the
+  service/protocol each credential was captured on.
+- ATT&CK technique chips are **clickable** → `/attack/technique?id=<TID>`, a
+  drill-down with a plain-English description (`mitre.Describe`) plus the
+  tactics, source IPs, and rules behind that technique.
+
+### Added — detection breadth
+- **+5 in-sensor correlators**: `lateral_movement`, `ot_recon`,
+  `data_access`, `malware_campaign`, `webshell` (all opt-in).
+- **HTTP protocol-misuse**: request-smuggling (TE+CL ambiguity) and
+  CONNECT open-proxy detection.
+- **+ATT&CK coverage**: a technique-description map; tags for the new
+  correlators / `attack:*` events; and ~30 previously-untagged
+  protocol-misuse markers (redis drop chain, docker deploy, NTP
+  amplification, postgres replication, SIP/RTSP/WinRM auth, …).
+
+### Added — protocol handlers + fake-web variants
+- **+6 handlers**: rsync (873), gopher (70), SOCKS4/5 (1080), BGP (179)
+  over TCP; IKE/ISAKMP (500) and NetBIOS-DGRAM (138) over UDP.
+- **webapp variants**: `webapp_variant` selects a decoy persona —
+  `wordpress`, `phpmyadmin`, or `jenkins` — over the shared attack-class
+  detection + credential capture.
+
+### Added — device identity
+- **+7 archeservice role bundles**: proxyserver, vpnserver,
+  monitoringserver, backupserver, iotgateway, scadaserver, routerserver.
+- **+3 PLC archetypes**: Schneider Modicon M580, Omron NX1P2, Mitsubishi
+  MELSEC iQ-R (with their OT CVEs advertised under vuln_emulation).
+- **+CLI command emulation**: a FortiOS (FortiGate) command family, and a
+  vendor-aware PLC console for non-Siemens PLCs.
+
+### Added — Windows builds
+- `make cross` now also builds `windows/amd64` and `windows/arm64`. The
+  raw-L2 deception layers stay Linux-only (no-op elsewhere); the protocol
+  emulators, correlators, web UI, and file canaries run on Windows. Fixed
+  a 32-bit integer overflow that also blocked the arm cross builds.
+
 ### Added — fuzzing & DoS detection + classification
 - New always-on `internal/fuzzdos` detector with two halves:
   - **Per-payload fuzzing classifier** — scores each request's byte

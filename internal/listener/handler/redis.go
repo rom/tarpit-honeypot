@@ -299,9 +299,11 @@ func redisINFO(ver, section string) string {
 func redisRunID(seed string) string {
 	const hexd = "0123456789abcdef"
 	out := make([]byte, 40)
-	h := 0x811c9dc5
+	// FNV-1-style mix in uint32 (wraps cleanly; 32-bit-safe so the arm
+	// cross builds compile — int would overflow on 32-bit platforms).
+	h := uint32(0x811c9dc5)
 	for i := 0; i < 40; i++ {
-		h = (h ^ int(seed[i%len(seed)]) ^ (i * 7)) * 0x01000193
+		h = (h ^ uint32(seed[i%len(seed)]) ^ uint32(i*7)) * 0x01000193
 		out[i] = hexd[(h>>8)&0x0f]
 	}
 	return string(out)
