@@ -1,0 +1,159 @@
+package archetype
+
+import "crypto/tls"
+
+// enterprise3Archetypes adds cloud-Linux, SBC/IoT, and more
+// network/security-appliance personas: Amazon Linux, Fedora, Raspberry Pi OS,
+// VMware vCenter, Citrix NetScaler, Huawei VRP, Zyxel, DrayTek, Grandstream,
+// Sophos. Merged into the registry by init(). Each carries its own family so
+// it is exempt from the distro-completeness guard (like the round-two legacy-
+// Unix personas) while still presenting a coherent fingerprint surface.
+var enterprise3Archetypes = map[string]*Profile{
+	"amazon-linux-2023": {
+		Name: "amazon-linux-2023", DisplayName: "Amazon Linux 2023", Family: "amazonlinux",
+		sshBanner:    "SSH-2.0-OpenSSH_8.7",
+		httpServer:   "Apache/2.4.62 (Amazon)",
+		cliPrompt:    "[ec2-user@ip-10-0-0-12 ~]$ ",
+		snmpSysDescr: "Linux ip-10-0-0-12 6.1.79-99.167.amzn2023.x86_64 #1 SMP x86_64 GNU/Linux",
+		snmpSysName:  "ip-10-0-0-12", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 80, Handler: "http"}, {Port: 443, Handler: "https"},
+		},
+		quirks: []string{"cloud", "aws"},
+	},
+	"fedora-40": {
+		Name: "fedora-40", DisplayName: "Fedora 40", Family: "fedora",
+		sshBanner:    "SSH-2.0-OpenSSH_9.6",
+		httpServer:   "Apache/2.4.62 (Fedora Linux)",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		cliPrompt:    "[root@fedora ~]# ",
+		snmpSysDescr: "Linux fedora 6.8.11-300.fc40.x86_64 #1 SMP x86_64 GNU/Linux",
+		snmpSysName:  "fedora", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 80, Handler: "http"}, {Port: 443, Handler: "https"},
+		},
+		quirks: []string{"leading-edge"},
+	},
+	"raspberry-pi-os": {
+		Name: "raspberry-pi-os", DisplayName: "Raspberry Pi OS (Debian)", Family: "raspbian",
+		sshBanner:    "SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u2",
+		httpServer:   "lighttpd/1.4.69",
+		cliPrompt:    "pi@raspberrypi:~ $ ",
+		snmpSysDescr: "Linux raspberrypi 6.6.31+rpt-rpi-v8 #1 SMP aarch64 GNU/Linux",
+		snmpSysName:  "raspberrypi", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 80, Handler: "http"},
+		},
+		quirks: []string{"arm", "sbc"},
+	},
+	"vmware-vcenter": {
+		Name: "vmware-vcenter", DisplayName: "VMware vCenter Server Appliance", Family: "vmware",
+		sshBanner:    "SSH-2.0-OpenSSH_8.8",
+		httpServer:   "envoy",
+		httpTitle:    "VMware vSphere",
+		httpBodyHTML: "<html><head><title>VMware vSphere</title></head><body>vSphere Client</body></html>",
+		cliPrompt:    "root@vcsa [ ~ ]# ",
+		snmpSysDescr: "VMware vCenter Server Appliance 8.0.2 (Photon OS)",
+		snmpSysName:  "vcsa", snmpSysObjectID: ".1.3.6.1.4.1.6876",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "vSphere Client"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"hypervisor-mgmt"},
+	},
+	"citrix-netscaler": {
+		Name: "citrix-netscaler", DisplayName: "Citrix NetScaler ADC", Family: "citrix",
+		sshBanner:    "SSH-2.0-OpenSSH_8.0",
+		httpServer:   "NetScaler",
+		httpTitle:    "Citrix Gateway",
+		httpBodyHTML: "<html><head><title>Citrix Gateway</title></head><body>NetScaler AAA</body></html>",
+		cliPrompt:    "> ",
+		snmpSysDescr: "NetScaler NS14.1: Build 21.57.nc, Date: Mar 21 2024",
+		snmpSysName:  "netscaler", snmpSysObjectID: ".1.3.6.1.4.1.5951",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "citrix_gateway", Note: "Gateway/AAA portal"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"adc"},
+	},
+	"huawei-vrp": {
+		Name: "huawei-vrp", DisplayName: "Huawei VRP (router/switch)", Family: "huawei",
+		macOUI:       [3]byte{0x00, 0xe0, 0xfc}, // Huawei
+		sshBanner:    "SSH-2.0-HUAWEI-1.5",
+		httpServer:   "Huawei",
+		telnetBanner: "\r\nLogin authentication\r\n\r\nUsername:",
+		loginPrompt:  "Username:",
+		cliPrompt:    "<Huawei>",
+		snmpSysDescr: "Huawei Versatile Routing Platform Software VRP (R) software, Version 8.180",
+		snmpSysName:  "Huawei", snmpSysObjectID: ".1.3.6.1.4.1.2011",
+		icmpTTL: 255,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 23, Handler: "telnet"}, {Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"vrp"},
+	},
+	"zyxel-usg": {
+		Name: "zyxel-usg", DisplayName: "Zyxel USG FLEX firewall", Family: "zyxel",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		httpServer:   "Zyxel",
+		httpTitle:    "USG FLEX",
+		httpBodyHTML: "<html><head><title>USG FLEX</title></head><body>Zyxel Web Configurator</body></html>",
+		cliPrompt:    "Router> ",
+		snmpSysDescr: "ZyXEL USG FLEX 200 firmware V5.37(ABUV.0)",
+		snmpSysName:  "usgflex", snmpSysObjectID: ".1.3.6.1.4.1.890",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "Web Configurator"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"smb-firewall"},
+	},
+	"draytek-vigor": {
+		Name: "draytek-vigor", DisplayName: "DrayTek Vigor router", Family: "draytek",
+		sshBanner:    "SSH-2.0-dropbear_2019.78",
+		httpServer:   "DrayTek",
+		httpTitle:    "Vigor Router",
+		httpBodyHTML: "<html><head><title>Vigor Router</title></head><body>DrayTek Web Management</body></html>",
+		snmpSysDescr: "DrayTek Vigor2962 router firmware 4.3.2.6",
+		snmpSysName:  "Vigor", snmpSysObjectID: ".1.3.6.1.4.1.7367",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http"}, {Port: 443, Handler: "https"},
+		},
+		quirks: []string{"soho-router"},
+	},
+	"grandstream-ucm": {
+		Name: "grandstream-ucm", DisplayName: "Grandstream UCM (VoIP PBX)", Family: "grandstream",
+		httpServer:   "Grandstream",
+		httpTitle:    "Grandstream Device Web GUI",
+		httpBodyHTML: "<html><head><title>Grandstream Device Web GUI</title></head><body>UCM6300</body></html>",
+		snmpSysDescr: "Grandstream UCM6304 PBX firmware 1.0.25.13",
+		snmpSysName:  "ucm6304", snmpSysObjectID: ".1.3.6.1.4.1.27975",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "PBX web GUI"}, {Port: 5060, Handler: "sip", Note: "SIP"},
+		},
+		quirks: []string{"voip-pbx"},
+	},
+	"sophos-xg": {
+		Name: "sophos-xg", DisplayName: "Sophos XG firewall", Family: "sophos",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		httpServer:   "xxxxxxxx-xxxxx",
+		httpTitle:    "Sophos Firewall",
+		httpBodyHTML: "<html><head><title>Sophos</title></head><body>Sophos Firewall Webadmin</body></html>",
+		cliPrompt:    "console> ",
+		snmpSysDescr: "Sophos Firewall SFOS 20.0.1 MR-1",
+		snmpSysName:  "sophos", snmpSysObjectID: ".1.3.6.1.4.1.2604",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 4444, Handler: "https", Note: "Webadmin"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"ngfw"},
+	},
+}

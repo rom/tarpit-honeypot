@@ -279,6 +279,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &rpcbind{}, nil
 	case "pptp":
 		return &pptp{}, nil
+	case "adb":
+		return &adb{}, nil
+	case "ajp13":
+		return &ajp13{}, nil
+	case "epmd":
+		return &epmd{}, nil
+	case "tacacs":
+		return &tacacs{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":

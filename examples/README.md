@@ -20,9 +20,12 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm, ~35 hosts across two honeynets (the large-honeynet reference). |
 | [`devops-stack.yaml`](devops-stack.yaml) | Cloud-native tooling: git/CI/containers/queues/caches/search role bundles + unauth Grafana/Prometheus/Jupyter/Consul/CouchDB/ClickHouse Lua decoys. |
 | [`data-platform.yaml`](data-platform.yaml) | Big-data/secrets/logging: Cassandra/Kafka/ZooKeeper/NATS/NFS roles + Vault/etcd/Kibana/Solr/MinIO/RabbitMQ Lua decoys. |
+| [`app-platform.yaml`](app-platform.yaml) | App/build/container tier: tomcatserver (AJP13) + erlangcluster (epmd) + k8s/registry/objectstore roles + Jenkins/GitLab/SonarQube/Keycloak/Traefik Lua decoys. |
+| [`mobile-iot-fleet.yaml`](mobile-iot-fleet.yaml) | Android/IoT fleet: exposed ADB (5555) + androidadb role + Raspberry Pi/OpenWrt/Huawei honeynet. |
 | [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
 | [`legacy-unix.yaml`](legacy-unix.yaml) | Solaris / AIX / Gentoo big-iron + NFS/portmapper honeynet (TTL 255). |
 | [`telecom-edge.yaml`](telecom-edge.yaml) | ISP/carrier edge: Arista/VyOS/OpenWrt gear + VPN-gateway/RADIUS/NTP roles. |
+| [`network-aaa-edge.yaml`](network-aaa-edge.yaml) | Network control plane: TACACS+/RADIUS (aaaserver) + SQL Browser (sqlserver) + Huawei/Zyxel/DrayTek/NetScaler/Sophos honeynet. |
 | [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra (large honeynet). |
 
 ### OT / Purdue model + edge

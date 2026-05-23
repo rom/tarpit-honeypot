@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **333 static mappings** (57 exact rules + 98 handler tags + 178
+There are **346 static mappings** (60 exact rules + 98 handler tags + 188
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -44,7 +44,7 @@ the Enterprise matrix so a SIEM expecting one ID space stays consistent.
 The complete catalog follows (generated from `list-techniques --json`; the
 `Augment` step *unions* the anomaly rows into the rule/handler base).
 
-### 1a. Exact rule IDs (57) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+### 1a. Exact rule IDs (60) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
 
 | rule_id | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -58,11 +58,13 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:cve_campaign` | T1190 | initial-access |
 | `correlate:data_access` | T1213 | collection |
 | `correlate:default_cred_sweep` | T1110.001, T1078.001 | credential-access |
+| `correlate:destructive_action` | T1485 | impact |
 | `correlate:dns_enumeration` | T1590.002, T1568.002 | reconnaissance, command-and-control |
 | `correlate:exfil` | T1048 | exfiltration |
 | `correlate:exploit_chain` | T1190 | initial-access |
 | `correlate:fingerprint_reuse` | T1583.005 | resource-development |
 | `correlate:geo_velocity` | T1110.004 | credential-access |
+| `correlate:honeytoken_spread` | T1078 | credential-access |
 | `correlate:host_sweep` | T1018, T1046 | discovery |
 | `correlate:icmp_sweep` | T1018 | discovery |
 | `correlate:ics_control` | T0831 | impact |
@@ -77,6 +79,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:session_flood` | T1499 | impact |
 | `correlate:slow_scan` | T1046 | discovery |
 | `correlate:threat_intel_burst` | T1595 | reconnaissance |
+| `correlate:tool_rotation` | T1595 | reconnaissance |
 | `correlate:ua_rotation` | T1595 | reconnaissance |
 | `correlate:webshell` | T1505.003, T1059 | persistence, execution |
 | `device:changed` | T1557.002 | credential-access |
@@ -209,10 +212,15 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `x11` | T1021, T1056.001 | lateral-movement, collection |
 | `xmpp` | T1071.001 | command-and-control |
 
-### 1c. Anomaly tags (178) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (188) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
+| `adb-auth` | T1190 | initial-access |
+| `adb-connect` | T1190 | initial-access |
+| `adb-shell-open` | T1059 | execution |
+| `ajp-forward-request` | T1190 | initial-access |
+| `ajp-probe` | T1595 | reconnaissance |
 | `bacnet-write-attempt` | T0836, T0831 | impact |
 | `bgp-open-attempt` | T1190 | initial-access |
 | `bgp-probe` | T1595 | reconnaissance |
@@ -239,6 +247,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `elasticsearch-data-access` | T1213 | collection |
 | `elasticsearch-recon` | T1046 | discovery |
 | `elasticsearch-write-attempt` | T1565.001 | impact |
+| `epmd-names` | T1018 | discovery |
+| `epmd-query` | T1046 | discovery |
 | `ftp-bounce-scan` | T1090, T1046 | command-and-control, discovery |
 | `ftp-delete-attempt` | T1485 | impact |
 | `ftp-download-attempt` | T1020 | exfiltration |
@@ -277,6 +287,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `memcached-write-attempt` | T1565.001 | impact |
 | `modbus-write-attempt` | T0836, T0831 | impact |
 | `mongodb-data-access` | T1213 | collection |
+| `mssql-browser-query` | T1046 | discovery |
 | `mssql-login-attempt` | T1110.001 | credential-access |
 | `mysql-login-attempt` | T1110.001 | credential-access |
 | `nats-connect` | T1046 | discovery |
@@ -359,6 +370,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ssh-id-not-ssh` | T1595 | reconnaissance |
 | `ssh-id-overlong` | T1595 | reconnaissance |
 | `stun-binding` | T1016 | discovery |
+| `tacacs-auth-start` | T1110.001 | credential-access |
+| `tacacs-probe` | T1595 | reconnaissance |
 | `tcp-bad-checksum` | T1595.001 | reconnaissance |
 | `tcp-bad-dataoffset` | T1595.001 | reconnaissance |
 | `tcp-data-in-syn` | T1046, T1595.001 | discovery, reconnaissance |

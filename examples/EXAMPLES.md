@@ -24,9 +24,12 @@ is the "everything turned on" reference.
 | Data center | [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm — ~35 hosts across two honeynets (the large-honeynet reference). |
 | DevOps | [`devops-stack.yaml`](devops-stack.yaml) | Cloud-native tooling: git/CI/containers/queues/caches/search role bundles + unauth dashboards (Grafana/Prometheus/Jupyter/Consul/CouchDB/ClickHouse). |
 | Data platform | [`data-platform.yaml`](data-platform.yaml) | Big-data/secrets/logging: Cassandra/Kafka/ZooKeeper/NATS/NFS roles + Vault/etcd/Kibana/Solr/MinIO/RabbitMQ Lua decoys. |
+| App / build tier | [`app-platform.yaml`](app-platform.yaml) | Servlet/cluster/CI/container tier: tomcatserver (AJP13) + erlangcluster (epmd) + k8s/registry/objectstore roles + Jenkins/GitLab/SonarQube/Keycloak/Traefik Lua decoys. |
+| Mobile / IoT | [`mobile-iot-fleet.yaml`](mobile-iot-fleet.yaml) | Android/IoT fleet: exposed ADB (5555) + androidadb role + Raspberry Pi/OpenWrt/Huawei honeynet (destructive_action / default_cred_sweep). |
 | Cloud infra | [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
 | Legacy Unix | [`legacy-unix.yaml`](legacy-unix.yaml) | Solaris / AIX / Gentoo big-iron + NFS/portmapper (TTL 255, telnet/finger/rpcbind). |
 | Telecom edge | [`telecom-edge.yaml`](telecom-edge.yaml) | ISP/carrier edge: Arista/VyOS/OpenWrt gear + VPN-gateway/RADIUS/NTP roles (IKE/PPTP/BGP). |
+| Network AAA edge | [`network-aaa-edge.yaml`](network-aaa-edge.yaml) | Network control plane: TACACS+/RADIUS (aaaserver) + SQL Browser (sqlserver) + Huawei/Zyxel/DrayTek/NetScaler/Sophos appliance honeynet. |
 | Education | [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra. |
 | IT/OT DMZ | [`it-ot-dmz/manufacturing-idmz.yaml`](it-ot-dmz/manufacturing-idmz.yaml) | Full IDMZ (Purdue 3.5): jump hosts, patch/AV, historian, OPC-UA/MQTT broker, FW mgmt. |
 | OT DMZ | [`ot-dmz/dmz-historian-fileserver-jumphosts.yaml`](ot-dmz/dmz-historian-fileserver-jumphosts.yaml) | Simpler IDMZ: replica historian, file transfer, RDP/SSH jump hosts. |
@@ -178,6 +181,28 @@ stores attackers hunt: **Vault, etcd, Kibana, Solr, MinIO/S3, RabbitMQ**.
 Exercises the `cassandra` / `nats` / `rpcbind` handlers and the round-two
 Lua app decoys, with the `cve_campaign` + `data_access` correlators on.
 
+### Application / build / container tier
+
+[`app-platform.yaml`](app-platform.yaml)
+
+The middle tier an attacker pivots through. Role bundles stand up a
+**tomcatserver** (AJP13 connector), an **erlangcluster** (Erlang Port Mapper +
+RabbitMQ), the **k8s control plane**, a **container registry** and an
+**object store**, while Lua decoys serve the exposed dev-infra dashboards:
+**Jenkins, GitLab, SonarQube, Keycloak, Traefik**. Exercises the round-three
+`ajp13` / `epmd` handlers with the `honeytoken_spread` + `tool_rotation`
+correlators on.
+
+### Mobile / IoT device fleet
+
+[`mobile-iot-fleet.yaml`](mobile-iot-fleet.yaml)
+
+The soft underbelly: Android boxes with **ADB** (5555) left open — the
+ADB.Miner / Mirai-class RCE surface — plus Raspberry Pi SBCs, OpenWrt and
+Huawei edge gear in a small honeynet. Showcases the round-three `adb` handler
+and the `androidadb` role, with `destructive_action`, `default_cred_sweep` and
+`tool_rotation` on.
+
 ### Legacy Unix / big-iron
 
 [`legacy-unix.yaml`](legacy-unix.yaml)
@@ -196,6 +221,18 @@ A carrier edge: **Arista EOS** core switches, **VyOS** edge routers and
 OpenVPN), **RADIUS** and **NTP** infrastructure as role bundles — mass-
 scanned for default creds and VPN CVEs. Exercises the round-two network
 archetypes and the `pptp` handler, with `default_cred_sweep` on.
+
+### Network-edge AAA + remote access
+
+[`network-aaa-edge.yaml`](network-aaa-edge.yaml)
+
+The control plane of the network itself: **TACACS+** / **RADIUS** (the
+`aaaserver` role) gating every router and switch, the **VPN** concentrators,
+and the **SQL Server** estate (the `sqlserver` role exposes the SSRP browser).
+A honeynet runs the new network-security-appliance archetypes — **Huawei VRP,
+Zyxel USG, DrayTek Vigor, Citrix NetScaler, Sophos XG**. Exercises the round-
+three `tacacs` / `mssql_browser` handlers with `honeytoken_spread`,
+`tool_rotation` and `amplification_probe` on.
 
 ### Cloud / virtualization management plane
 

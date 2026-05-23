@@ -181,6 +181,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Check Point Gaia firewall",
 		"Dell iDRAC 9 (lights-out)",
 		"HPE iLO 5 (lights-out)",
+		// Cloud-Linux / SBC / more network-security appliances.
+		"Amazon Linux 2023",
+		"Fedora 40",
+		"Raspberry Pi OS (Debian)",
+		"VMware vCenter Server Appliance",
+		"Citrix NetScaler ADC",
+		"Huawei VRP (router/switch)",
+		"Zyxel USG FLEX firewall",
+		"DrayTek Vigor router",
+		"Grandstream UCM (VoIP PBX)",
+		"Sophos XG firewall",
 	}
 	got := Names()
 	if len(got) != len(want) {
