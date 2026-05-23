@@ -188,6 +188,7 @@ func buildCollectors(c *config.Config) []collectorCard {
 	// Always-on per-source scan profiler (nmap timing template + tool
 	// fingerprint + scan geometry); emits scananalysis:profile.
 	add("Scan analysis", "detection", true, "nmap timing + tool fingerprint")
+	add("Fuzzing/DoS classifier", "detection", true, "payload entropy + flood typing")
 	add("Client fingerprinting", "detection", hasFingerprintListener(c.Listeners), "JA3/JA4/HASSH")
 
 	// --- forensics / output ---

@@ -72,9 +72,10 @@ func TestBuildConfigCanvasCollectors(t *testing.T) {
 		"Device inventory", "Risk scoring", "Correlation engine",
 		"ARP responder", "ICMP echo responder", "Event forwarding",
 		// always-on / config-derived collectors:
-		"Scan analysis",         // always running
-		"Client fingerprinting", // ssh + https listeners present
-		"PCAP capture",          // https listener has capture: true
+		"Scan analysis",          // always running
+		"Fuzzing/DoS classifier", // always running
+		"Client fingerprinting",  // ssh + https listeners present
+		"PCAP capture",           // https listener has capture: true
 	}
 	for _, n := range wantActive {
 		if !state[n] {
