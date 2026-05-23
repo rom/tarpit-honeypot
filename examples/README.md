@@ -18,6 +18,8 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`enterprise-dmz.yaml`](enterprise-dmz.yaml) | Internet DMZ of a few larger corporations (bank / SaaS / manufacturer — 3 honeynets). |
 | [`smb-dmz.yaml`](smb-dmz.yaml) | Internet DMZ of a few small businesses (NAS / cameras / RDP / router exposed — 4 honeynets). |
 | [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm, ~35 hosts across two honeynets (the large-honeynet reference). |
+| [`devops-stack.yaml`](devops-stack.yaml) | Cloud-native tooling: git/CI/containers/queues/caches/search role bundles + unauth Grafana/Prometheus/Jupyter/Consul/CouchDB/ClickHouse Lua decoys. |
+| [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
 | [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra (large honeynet). |
 
 ### OT / Purdue model + edge

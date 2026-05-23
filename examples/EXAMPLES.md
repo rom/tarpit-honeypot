@@ -22,6 +22,8 @@ is the "everything turned on" reference.
 | Internet DMZ | [`enterprise-dmz.yaml`](enterprise-dmz.yaml) | A few larger corporations' public edge (3 honeynets: bank / SaaS / manufacturer). |
 | Internet DMZ | [`smb-dmz.yaml`](smb-dmz.yaml) | A few small businesses' edge (4 honeynets: NAS/cameras/RDP/router exposed). |
 | Data center | [`datacenter-server-farm.yaml`](datacenter-server-farm.yaml) | Multi-tier server farm — ~35 hosts across two honeynets (the large-honeynet reference). |
+| DevOps | [`devops-stack.yaml`](devops-stack.yaml) | Cloud-native tooling: git/CI/containers/queues/caches/search role bundles + unauth dashboards (Grafana/Prometheus/Jupyter/Consul/CouchDB/ClickHouse). |
+| Cloud infra | [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
 | Education | [`university-classroom.yaml`](university-classroom.yaml) | University CS teaching lab: ~30 student/instructor machines + lab infra. |
 | IT/OT DMZ | [`it-ot-dmz/manufacturing-idmz.yaml`](it-ot-dmz/manufacturing-idmz.yaml) | Full IDMZ (Purdue 3.5): jump hosts, patch/AV, historian, OPC-UA/MQTT broker, FW mgmt. |
 | OT DMZ | [`ot-dmz/dmz-historian-fileserver-jumphosts.yaml`](ot-dmz/dmz-historian-fileserver-jumphosts.yaml) | Simpler IDMZ: replica historian, file transfer, RDP/SSH jump hosts. |
@@ -143,6 +145,37 @@ that. Watch the `/topology` map render the farm and the devices tab fill in.
 
 **Adapt:** the densest example — duplicate the host rows to grow it further;
 keep the management plane in `allowlist`.
+
+### DevOps / cloud-native tooling
+
+[`devops-stack.yaml`](devops-stack.yaml)
+
+The internal tooling tier attackers pivot to after a foothold: source
+control, CI, container orchestration (Docker API / Kubernetes), message
+queues (Kafka/ZooKeeper), caches, search, and Java app servers (RMI/JDWP) —
+expressed as **`archeservice` role bundles** — alongside the
+unauthenticated web dashboards and data stores that are so often left open,
+served by **Lua scripts** (Grafana, Prometheus, Jupyter, Consul, CouchDB,
+ClickHouse). Exercises the developer/data-infra handlers and the Lua app
+decoys; URL canaries plant a `prod.tfstate` and a CI secrets file.
+
+**Adapt:** the role bundles bind dedicated loopback IPs so their shared
+ports (22/80/443) don't collide — point them at routable IPs for a real
+deployment, or fold them into a honeynet's `hosts`.
+
+### Cloud / virtualization management plane
+
+[`cloud-virtualization.yaml`](cloud-virtualization.yaml)
+
+A honeynet of the hypervisor / storage / appliance personas a private cloud
+runs: VMware **ESXi** hosts, **Proxmox** nodes, a **TrueNAS** box, a
+**macOS** build agent, and the **Juniper / Palo Alto / F5 / SonicWall /
+Netgear** edge appliances — each fingerprinting as itself via the cloud
+archetypes. The management plane is tightly scoped, so brute force on the
+hypervisor/appliance UIs and any scan are high-signal.
+
+**Adapt:** keep your orchestration/backup plane in `allowlist`; swap
+appliance archetypes to your fleet.
 
 ---
 

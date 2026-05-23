@@ -1,0 +1,106 @@
+# Virtualization / cloud-infra estate — the management plane.
+#
+# A honeynet of the hypervisor, NAS and security-appliance personas a real
+# private cloud / colo runs: VMware ESXi hosts + vCenter, a Proxmox node, a
+# TrueNAS box, a macOS build agent, and the edge/security appliances
+# (Juniper SRX, Palo Alto, F5 BIG-IP, SonicWall, Netgear). This management
+# plane is high value and tightly scoped, so any scan of it, brute force on
+# the hypervisor/appliance UIs, or appliance-CVE probe is high-signal.
+# Showcases the cloud/appliance archetypes (each fingerprints as itself).
+#
+#   tarpit-honeypot validate-config -c examples/cloud-virtualization.yaml
+sensor:
+  name: cloud-mgmt-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true              # appliances advertise their (advisory) CVEs
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, retention_days: 180 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Union of the management-plane ports.
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,          severity: high,     capture: true }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,         severity: medium,   capture: true }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,        severity: high,     capture: true }
+  - { id: smb,    proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,          severity: high,     capture: true }
+  - { id: vnc,    proto: tcp, bind: 0.0.0.0:5900, mode: banner, handler: vnc,          severity: high,     capture: true }
+  - { id: authd,  proto: tcp, bind: 0.0.0.0:902,  mode: banner, handler: vmware_authd, severity: high,     capture: true }
+  - { id: pve,    proto: tcp, bind: 0.0.0.0:8006, mode: banner, handler: https,        severity: high,     capture: true }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: telnet,       severity: high,     capture: true }
+  - { id: snmp,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,         severity: low }
+
+honeynets:
+  - id: cloud-mgmt
+    cidr: 10.60.0.0/16
+    gateway: 10.60.0.1
+    domain: mgmt.cloud.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      # --- Hypervisors + control (10.60.0.x) ---
+      - { ip: 10.60.0.10, hostname: esxi-01, archetype: vmware-esxi, services: [ {port: 443, handler: esxi}, {port: 902, handler: vmware_authd}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.0.11, hostname: esxi-02, archetype: vmware-esxi, services: [ {port: 443, handler: esxi}, {port: 902, handler: vmware_authd}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.0.12, hostname: esxi-03, archetype: vmware-esxi, services: [ {port: 443, handler: esxi}, {port: 902, handler: vmware_authd} ] }
+      - { ip: 10.60.0.20, hostname: pve-01,  archetype: proxmox-ve,  services: [ {port: 8006, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.0.21, hostname: pve-02,  archetype: proxmox-ve,  services: [ {port: 8006, handler: https}, {port: 22, handler: ssh} ] }
+      # --- Storage (10.60.0.3x) ---
+      - { ip: 10.60.0.30, hostname: truenas-01, archetype: truenas-core, services: [ {port: 443, handler: https}, {port: 445, handler: smb}, {port: 22, handler: ssh} ] }
+      # --- A macOS build agent (10.60.0.4x) ---
+      - { ip: 10.60.0.40, hostname: mac-build-01, archetype: macos-sonoma, services: [ {port: 22, handler: ssh}, {port: 5900, handler: vnc} ] }
+      # --- Edge / security appliances (10.60.1.x) ---
+      - { ip: 10.60.1.1, hostname: srx-edge,   archetype: juniper-srx,    services: [ {port: 22, handler: ssh}, {port: 443, handler: https}, {port: 23, handler: telnet} ] }
+      - { ip: 10.60.1.2, hostname: pan-fw,     archetype: paloalto-panos, services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.1.3, hostname: bigip-ltm,  archetype: f5-bigip,       services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.1.4, hostname: sonicwall,  archetype: sonicwall-tz,   services: [ {port: 443, handler: https}, {port: 22, handler: ssh} ] }
+      - { ip: 10.60.1.5, hostname: branch-gw,  archetype: netgear-nighthawk, services: [ {port: 80, handler: http}, {port: 443, handler: https}, {port: 23, handler: telnet} ] }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 6,        window: 60s,  per_port: true, severity: critical }
+  host_sweep:         { enabled: true, distinct_hosts: 5,  window: 60s,  severity: high }
+  exploit_chain:      { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  lateral_movement:   { enabled: true, severity: critical }
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 2, window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+allowlist:
+  - 10.60.250.0/24      # the orchestration / backup plane
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.cloud.example.local:6514
+    tag: cloud-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

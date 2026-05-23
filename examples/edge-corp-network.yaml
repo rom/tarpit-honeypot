@@ -8,6 +8,20 @@
 sensor:
   name: edge-honeypot-01
   data_dir: /var/lib/tarpit-honeypot
+  # Enrichment — canonical paths (run-safe: missing files are skipped, so
+  # this validates/runs as-is). Populate with scripts/fetch-enrichment.sh +
+  # scripts/install-enrichment.sh on the sensor, then SIGHUP. Feeds GeoIP /
+  # ASN / threat-intel / Tor / MAC-vendor tags + the threat_intel_burst and
+  # geo_velocity correlators.
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
   drop_user: tarpit
   drop_group: tarpit
   jitter:

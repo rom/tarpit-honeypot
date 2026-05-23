@@ -27,7 +27,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **82 TCP + 28 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **87 TCP + 28 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -38,7 +38,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **102 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **112 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -450,41 +450,47 @@ rationale covering the current implementation.
 
 ### Platform support
 
-| Subsystem | Linux | macOS | Notes |
-|---|---|---|---|
-| All TCP/UDP protocol handlers | yes | yes | pure Go |
-| Archetypes, ATT&CK, storyline, anomaly | yes | yes | pure Go |
-| Interactive shell + `ssh_interactive` | yes | yes | crypto/ssh, pure Go |
-| File canaries (write/remove/rename/chmod) | yes | yes | fsnotify (inotify on Linux, kqueue on darwin) |
-| File canaries (read/OPEN events) | yes | — | linux-only, needs fanotify |
-| URL canaries, DNS canaries, DNS amplifier detection | yes | yes | pure Go |
-| Per-event pcap capture | yes | yes | synthesized libpcap, no raw sockets |
-| Outbound channels (webhook/smtp/syslog/twilio/sns/snmptrap/mqtt) | yes | yes | pure Go |
-| Privilege drop | yes | yes | `setresuid` on Linux, `setuid` on darwin |
-| seccomp syscall filter (`sensor.sandbox.seccomp`) | yes | — | pure-Go BPF denylist |
-| Landlock FS restriction (`sensor.sandbox.landlock`) | yes | — | Linux 5.13+; best-effort |
-| ARP responder | yes | — | needs AF_PACKET; on macOS use `ifconfig <iface> alias <ip>` |
-| ICMP responder | yes | — | needs AF_PACKET; aliased IPs answer ICMP echo natively |
-| LLDP / CDP responder | yes | — | needs AF_PACKET; `/dev/bpf` backend planned |
-| AF_PACKET ARP-scan sniffer | yes | — | `/dev/bpf` backend planned |
-| TUN adapter for honeynet L3 | yes | — | utun backend planned; use `ifconfig alias` as workaround |
-| Userspace TCP stack over TUN (`internal/tcpstack`) | yes | — | fingerprint-shaped SYN-ACK + handshake + 1 req/resp; captures malformed packets; pure Go, OS-agnostic logic |
+The whole **deception + detection core** is pure Go and runs on Linux,
+macOS and Windows. The Linux-kernel integrations (AF_PACKET, TUN, fanotify,
+seccomp, Landlock, `setresuid`) degrade with a clean error and a documented
+workaround on the other platforms. Static binaries ship for
+`linux/{amd64,arm64,armv7,armv6}`, `darwin/{amd64,arm64}` and
+`windows/{amd64,arm64}` (`make cross`).
+
+| Subsystem | Linux | macOS | Windows | Notes |
+|---|---|---|---|---|
+| All TCP/UDP protocol handlers (87 TCP + 28 UDP) | yes | yes | yes | pure Go |
+| Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
+| In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
+| Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
+| Interactive shell + `ssh_interactive` + Lua scripts | yes | yes | yes | crypto/ssh + gopher-lua, pure Go |
+| Embedded SQLite + web UI + outbound channels | yes | yes | yes | pure Go (modernc.org/sqlite) |
+| File canaries (write/remove/rename/chmod) | yes | yes | yes | fsnotify (inotify / kqueue / ReadDirectoryChangesW) |
+| File canaries (read/OPEN events) | yes | — | — | Linux-only, needs fanotify |
+| Per-event pcap capture | yes | yes | yes | synthesized libpcap, no raw sockets |
+| Privilege drop | yes | yes | — | `setresuid` on Linux, `setuid` on darwin |
+| seccomp syscall filter (`sensor.sandbox.seccomp`) | yes | — | — | pure-Go BPF denylist |
+| Landlock FS restriction (`sensor.sandbox.landlock`) | yes | — | — | Linux 5.13+; best-effort |
+| ARP / ICMP / LLDP-CDP / PROFINET-DCP responders | yes | — | — | needs AF_PACKET; on macOS use `ifconfig <iface> alias <ip>` |
+| AF_PACKET sniffer (ARP-scan + L2/L3 stealth scans) | yes | — | — | `/dev/bpf` (macOS) / Npcap (Windows) backends planned |
+| TUN adapter + userspace TCP stack (`internal/tcpstack`) | yes | — | — | fingerprint-shaped SYN-ACK + handshake + 1 req/resp + malformed-packet capture; the stack logic itself is pure/OS-agnostic, only the TUN I/O is Linux |
 
 ## Documentation
 
 In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 - [`docs/design.md`](docs/design.md) — architecture + design rationale covering the current implementation.
+- [`docs/internals.md`](docs/internals.md) — how a packet becomes an alert: the runtime data flow (producers → event bus → enrichment + detection pipeline → sinks) and what each module does.
 - [`docs/tcp-stack.md`](docs/tcp-stack.md) — the honeynet userspace TCP stack: fingerprint-shaped SYN-ACK, the decoy connection state machine, malformed-packet capture, and its ATT&CK / TCP-stack-CVE mappings.
 - [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
-- [`docs/archetypes.md`](docs/archetypes.md) — the full 102-archetype catalog: every device's services/protocols and the CVEs it emulates.
+- [`docs/archetypes.md`](docs/archetypes.md) — the full archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
-- [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index.
+- [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, a **DevOps / cloud-native** tooling surface, a **virtualization management plane**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets, and all but the tiniest enable enrichment. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index.
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
@@ -493,6 +499,21 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 overhaul.** A large post-v2.0 sprint. Highlights below; the
 [CHANGELOG](CHANGELOG.md) has the full per-commit detail.
 
+- **Breadth + depth round.** Five more protocol decoys — `jdwp` (Java Debug
+  Wire Protocol, unauth RCE), `rmi` (Java RMI / deserialization), `git`
+  (git daemon), `zookeeper`, `kafka` — taking the catalog to **87 TCP + 28
+  UDP handlers**. Two enrichment-driven correlators: `threat_intel_burst`
+  (sustained activity from a threat-intel / Tor-flagged source) and
+  `geo_velocity` (one credential from 2+ GeoIP countries — impossible
+  travel). Ten new archetypes (macOS, Alpine, Proxmox, TrueNAS, VMware
+  ESXi, Juniper SRX, Palo Alto, F5 BIG-IP, SonicWall, Netgear) → **112
+  archetypes**; ten new `archeservice` role bundles (gitserver, ciserver,
+  javaappserver, containerhost, messagequeue, cacheserver, searchserver,
+  nasserver, cameraserver, bastion) → **30 roles**; ten new Lua
+  dynamic-response scripts (nntp, clamd, beanstalkd, mpd + the CouchDB /
+  Consul / Prometheus / Grafana / Jupyter / ClickHouse unauth-dashboard
+  decoys) → **22 scripts**. New [`docs/internals.md`](docs/internals.md)
+  documents the runtime data flow end to end.
 - **Userspace TCP stack.** The honeynet TUN adapter now embeds a userspace
   TCP/IPv4 engine (`internal/tcpstack`): a SYN to a virtual host's
   configured service port completes a handshake with a **SYN-ACK shaped to
@@ -868,7 +889,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 102; see [`docs/archetypes.md`](docs/archetypes.md). |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 112; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -987,7 +1008,7 @@ OUI, interactive-shell CLI, TLS posture, and the initial IP TTL so the
 host is internally consistent end to end. `tarpit-honeypot help archetypes`
 prints the live list, `tarpit-honeypot list-archetypes <name>` the full
 fingerprint of one, and [`docs/archetypes.md`](docs/archetypes.md)
-documents all 102 with their services/protocols and emulated CVEs.
+documents the archetype catalog with their services/protocols and emulated CVEs.
 
 | Category | Archetype | Config name(s) | Family | Init TTL | Signature highlights |
 |---|---|---|---|---|---|

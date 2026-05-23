@@ -5,6 +5,7 @@ This directory has these reference documents:
 | File | When to read |
 |---|---|
 | [`design.md`](design.md) | The architecture + design rationale covering the current implementation: deception + detection layers, event pipeline, persistence, self-confinement, delivered phases, open risks. |
+| [`internals.md`](internals.md) | How a packet becomes an alert: the runtime data flow — producers → the event bus → the ordered enrichment + detection pipeline → sinks — and what each module does. Read with the source. |
 | [`tcp-stack.md`](tcp-stack.md) | The honeynet userspace TCP stack (`internal/tcpstack`): fingerprint-shaped SYN-ACK, the decoy connection state machine, malformed/illegal-packet capture, per-host config, and the ATT&CK / TCP-stack-CVE mappings. |
 | [`usage.md`](usage.md) | First. Quickstart, daily ops, honeynet patterns, archetypes, interactive engagement, ATT&CK / storyline / anomaly, web UI, systemd, launchd (macOS), Docker, platform support, troubleshooting. |
 | [`config.md`](config.md) | When writing or auditing a YAML config. Section-by-section reference with defaults and rationale. |
