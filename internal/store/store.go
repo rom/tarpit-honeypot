@@ -278,6 +278,7 @@ type Summary struct {
 	Total      int            `json:"total"`
 	BySeverity map[string]int `json:"by_severity"`
 	ByRule     map[string]int `json:"by_rule"`
+	ByProto    map[string]int `json:"by_proto"` // tcp / udp / icmp / device / ...
 	TopSources []SourceCount  `json:"top_sources"`
 }
 
@@ -376,7 +377,7 @@ func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]HourBucke
 }
 
 func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
-	sum := Summary{Since: since, BySeverity: map[string]int{}, ByRule: map[string]int{}}
+	sum := Summary{Since: since, BySeverity: map[string]int{}, ByRule: map[string]int{}, ByProto: map[string]int{}}
 	sinceNS := since.UTC().UnixNano()
 
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE time >= ?`, sinceNS).Scan(&sum.Total); err != nil {
@@ -409,6 +410,21 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
 			return sum, err
 		}
 		sum.ByRule[rid] = c
+	}
+	rows.Close()
+
+	rows, err = s.db.QueryContext(ctx, `SELECT proto, COUNT(*) FROM events WHERE time >= ? AND proto != '' GROUP BY proto`, sinceNS)
+	if err != nil {
+		return sum, err
+	}
+	for rows.Next() {
+		var proto string
+		var c int
+		if err := rows.Scan(&proto, &c); err != nil {
+			rows.Close()
+			return sum, err
+		}
+		sum.ByProto[proto] = c
 	}
 	rows.Close()
 

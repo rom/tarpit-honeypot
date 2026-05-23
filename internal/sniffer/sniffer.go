@@ -14,11 +14,27 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
+// Stats is a snapshot of the L2 frame counters the sniffer accumulates
+// while capturing — surfaced on the web UI summary + health pages.
+type Stats struct {
+	Frames uint64 `json:"frames"` // total frames received across all capture sockets
+	ARP    uint64 `json:"arp"`
+	IPv4   uint64 `json:"ipv4"`
+	IPv6   uint64 `json:"ipv6"`
+	TCP    uint64 `json:"tcp"`
+	UDP    uint64 `json:"udp"`
+	ICMP   uint64 `json:"icmp"`
+	Other  uint64 `json:"other"`
+}
+
 // Sniffer is the cross-platform interface. The platform file decides the
 // concrete implementation; on non-Linux the constructor returns an error
 // rather than a working object.
 type Sniffer interface {
 	Run(ctx context.Context, bus chan<- *event.Event) error
+	// Stats returns the running L2 frame counters (zero value before any
+	// capture; safe to call concurrently).
+	Stats() Stats
 }
 
 // New is implemented in sniffer_linux.go / sniffer_other.go.

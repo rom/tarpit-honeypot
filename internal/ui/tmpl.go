@@ -86,6 +86,11 @@ html.js .nojs-note { display: none; }
 .coll.on { background: #e6f4ea; border-color: #9bd0ad; color: #1a7f37; font-weight: 600; }
 .coll.off { background: #f3f3f3; border-color: #ddd; color: #999; }
 .coll-detail { color: #4a8a60; font-weight: 400; font-size: 11px; }
+.counters { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
+.counter { min-width: 6rem; background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; padding: .35rem .6rem; text-align: center; }
+.counter b { display: block; font-size: 20px; line-height: 1.1; color: #2c3e50; }
+.counter span { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: .03em; }
+.counter-cat { align-self: center; width: 6.5rem; color: #555; font-size: 12px; }
 svg.graph { background: #fff; border: 1px solid #eee; border-radius: 4px; }
 svg.graph .edge { stroke: #cbd3df; stroke-width: 1; }
 svg.graph .node { fill: #6b8fb5; }
@@ -109,6 +114,11 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 {{ define "index" }}{{ template "head" . }}
 <h1>tarpit-honeypot — last 24 hours</h1>
 <p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
+
+<div class="counters">{{ range .Counters }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+{{ if .HasFrames }}
+<div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+{{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 <h2>events per hour</h2>
 {{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
@@ -269,19 +279,25 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 
 <h2>process</h2>
 <table>
+{{ if .Version }}<tr><th>build</th><td>{{ .Version }}{{ if .Commit }} ({{ .Commit }}){{ end }}</td></tr>{{ end }}
 <tr><th>uptime</th><td>{{ if .Uptime }}{{ .Uptime }}{{ else }}n/a{{ end }}</td></tr>
 <tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }}</td></tr>
 <tr><th>goroutines</th><td>{{ .Goroutines }}</td></tr>
 <tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ .NumGC }} GC cycles</td></tr>
-<tr><th class="{{ if gt .Panics 0 }}sev-high{{ end }}">recovered panics</th><td>{{ .Panics }}</td></tr>
+<tr><th class="{{ if gt .Panics 0 }}sev-high{{ end }}">recovered panics</th><td>{{ .Panics }}{{ if .PanicByName }} ({{ range .PanicByName }}{{ .Label }}={{ .Value }} {{ end }}){{ end }}</td></tr>
 </table>
 
 <h2>storage</h2>
 <table>
 <tr><th>event DB</th><td>{{ .DBSize }}</td></tr>
 {{ if .DiskKnown }}<tr><th class="{{ if gt .DiskPct 90 }}sev-high{{ end }}">data_dir disk</th><td>{{ .DiskPct }}% used</td></tr>{{ else }}<tr><th>data_dir disk</th><td>n/a (no statfs on this platform)</td></tr>{{ end }}
-<tr><th>events / 24h</th><td>{{ .Events24h }}</td></tr>
+<tr><th>events / 24h</th><td>{{ .Events24h }}{{ if .ByProto }} ({{ range .ByProto }}{{ .Label }}={{ .Value }} {{ end }}){{ end }}</td></tr>
 </table>
+
+<h2>L2 capture (sniffer)</h2>
+{{ if .SnifferActive }}<div class="counters">{{ range .Frames }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<p class="note">Frames seen on the AF_PACKET capture sockets since start.</p>
+{{ else }}<p class="note">sniffer not running (disabled, no CAP_NET_RAW, or non-Linux) — no L2 frame counters.</p>{{ end }}
 
 <h2>event delivery (sinks)</h2>
 {{ if .Sinks }}<table><tr><th>channel</th><th>dropped</th><th>failed</th><th>retried</th></tr>

@@ -352,6 +352,31 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := buildDashboard(sum, hours)
+	// Top counters strip: event volume by transport + severity (from the
+	// store), plus the sniffer's raw L2 frame counters when it's running.
+	d.Counters = []counter{
+		{"events", sum.Total},
+		{"TCP", sum.ByProto["tcp"]},
+		{"UDP", sum.ByProto["udp"]},
+		{"ICMP", sum.ByProto["icmp"]},
+		{"high", sum.BySeverity["high"]},
+		{"critical", sum.BySeverity["critical"]},
+	}
+	if s.stats != nil {
+		fr := map[string]int{}
+		for _, smp := range s.stats().Samples {
+			if smp.Name == "tarpit_sniffer_frames_total" {
+				fr[smp.Labels["proto"]] = int(smp.Value)
+			}
+		}
+		if _, ok := fr["all"]; ok { // sniffer running
+			d.HasFrames = true
+			d.Frames = []counter{
+				{"received", fr["all"]}, {"ARP", fr["arp"]}, {"IPv4", fr["ipv4"]},
+				{"IPv6", fr["ipv6"]}, {"TCP", fr["tcp"]}, {"UDP", fr["udp"]}, {"ICMP", fr["icmp"]},
+			}
+		}
+	}
 	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
 	// from a bounded scan of the window.
 	if evs, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {

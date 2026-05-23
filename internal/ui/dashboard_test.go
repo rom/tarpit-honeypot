@@ -74,6 +74,24 @@ func TestDashboardTemplateRenders(t *testing.T) {
 	}
 }
 
+func TestSummaryCountersRender(t *testing.T) {
+	tmpl := uiTmpl(t)
+	d := buildDashboard(store.Summary{Total: 5, ByProto: map[string]int{"tcp": 3, "udp": 2}}, nil)
+	d.Counters = []counter{{"events", 5}, {"TCP", 3}, {"UDP", 2}}
+	d.HasFrames = true
+	d.Frames = []counter{{"received", 100}, {"ARP", 10}, {"TCP", 60}}
+	var b strings.Builder
+	if err := tmpl.ExecuteTemplate(&b, "index", d); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{`class="counters"`, ">events<", ">TCP<", "L2 frames (sniffer)", ">received<", ">100<"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("counters strip missing %q", want)
+		}
+	}
+}
+
 func TestEventDetailHexRenders(t *testing.T) {
 	tmpl := uiTmpl(t)
 	ev := &event.Event{ID: "x", RuleID: "r", Severity: event.SeverityHigh, Time: time.Now(),
