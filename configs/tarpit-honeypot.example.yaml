@@ -54,34 +54,44 @@ sensor:
     pcap_mb: 1024       # total cap for the captures directory
     capture_kb: 64      # per-session cap before truncation
     retention_days: 0   # 0 = no time-based retention; otherwise events / files / db rows older than this are pruned hourly
-  # Source-IP enrichment. Each event's meta gets geo_country / geo_city /
-  # asn / asn_org / rdns when configured. Loopback + RFC 1918 / RFC 4193
-  # private sources are not enriched. The .mmdb files must be supplied by
-  # the operator (MaxMind GeoLite2 license restricts redistribution).
+  # Source-IP / event enrichment. Each event's meta gets geo_country /
+  # geo_city / asn / asn_org / rdns / mac_vendor / threat_intel / tor_exit /
+  # net_class when configured. Loopback + RFC 1918 / RFC 4193 private sources
+  # are not geo/rdns-enriched.
+  #
+  # The database FILES below are operator-supplied. They're best-effort: a
+  # configured path that doesn't exist yet is logged and skipped (the sensor
+  # still starts), so you can declare the canonical paths now, then populate
+  # them later and SIGHUP to apply — no restart, no config edit:
+  #   1) on an internet host:  scripts/fetch-enrichment.sh /tmp/enrichment-data
+  #   2) copy the bundle to the sensor, then:
+  #      sudo scripts/install-enrichment.sh /tmp/enrichment-data -c <this file>
+  # `tarpit-honeypot list-paths -c <this file>` shows every path + present/MISSING.
   geoip:
-    city_db: ""          # e.g. /var/lib/GeoLite2-City.mmdb
-    asn_db:  ""          # e.g. /var/lib/GeoLite2-ASN.mmdb
+    city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb
+    asn_db:  /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb
   rdns:
     enabled: false
     timeout: 500ms       # bounded so a stalled resolver can't back up the bus
     cache_size: 1024     # LRU cache size
   # MAC-vendor (OUI) database: maps observed MACs (DHCP/ARP) to vendors and
-  # tags events with mac_vendor. "" = small built-in table; supply the full
-  # IEEE oui.csv for complete coverage. Fetch with scripts/fetch-enrichment.sh.
-  oui_file: ""           # e.g. /etc/tarpit-honeypot/enrichment/oui.csv
+  # tags events with mac_vendor. Unset = small built-in table.
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
   # Built-in (no DB) classification of public sources: bogon / cloud-hosting.
   net_class:
     enabled: true
   # Tag source IPs that appear in a Tor exit-node list (tor_exit=true).
   tor:
-    enabled: false
-    exit_file: ""        # e.g. /etc/tarpit-honeypot/enrichment/tor-exits.txt
+    enabled: true
+    exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt
   # Tag source IPs found on operator-supplied reputation lists (one IP/CIDR
   # per line; '#' comments allowed). Each list's label lands in threat_intel.
+  # Labels match the file names scripts/fetch-enrichment.sh writes.
   threat_intel:
-    enabled: false
-    lists: []
-    # - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
     # - { label: tor-exits,      file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
 
 ui:

@@ -120,9 +120,26 @@ func TestDecorateSkipsPrivateAndLoopback(t *testing.T) {
 	}
 }
 
-func TestNewMissingListErrors(t *testing.T) {
-	if _, err := New(Config{ThreatLists: []ThreatList{{Label: "x", File: "/no/such/file"}}}); err == nil {
-		t.Error("expected error for a missing threat list file")
+// A missing enrichment file is best-effort: New must succeed (warn + skip)
+// so the sensor still starts and the file can be installed + reloaded later.
+func TestNewMissingFilesAreSkipped(t *testing.T) {
+	e, err := New(Config{
+		CityDB:      "/no/such/city.mmdb",
+		TorExitFile: "/no/such/tor.txt",
+		ThreatLists: []ThreatList{{Label: "x", File: "/no/such/list.txt"}},
+		NetClass:    true,
+	})
+	if err != nil {
+		t.Fatalf("missing files should not fail New: %v", err)
+	}
+	// The skipped sources simply don't tag; net_class (no file) still works.
+	ev := evt("203.0.113.50")
+	e.Decorate(ev)
+	if _, ok := ev.Meta["threat_intel_hit"]; ok {
+		t.Errorf("missing threat list should not tag: %v", ev.Meta)
+	}
+	if ev.Meta["net_class"] != "bogon" {
+		t.Errorf("net_class should still work without files: %v", ev.Meta)
 	}
 }
 
