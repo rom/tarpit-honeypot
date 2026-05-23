@@ -101,6 +101,7 @@ func cmdRun(args []string) error {
 		}
 		srv.SetStatsProvider(buildStatsProvider(s))
 		srv.SetConfig(cfg)
+		srv.SetConfigPaths(f.paths())
 		srv.SetTopology(s.Honeynet())
 		srv.SetDataDir(cfg.Sensor.DataDir)
 		if dr := s.Devices(); dr != nil {

@@ -65,3 +65,24 @@ func TestConfigTemplateRenders(t *testing.T) {
 		t.Errorf("nav missing config link")
 	}
 }
+
+func TestConfigFilesPanelRenders(t *testing.T) {
+	page := configPage{
+		YAML: "sensor: {}\n",
+		Files: []fileRow{
+			{Category: "enrichment", Key: "oui_file", Path: "/etc/thp/oui.csv", Access: "read", Exists: true},
+			{Category: "enrichment", Key: "tor.exit_file", Path: "/etc/thp/tor.txt", Access: "read", Exists: false},
+			{Category: "state", Key: "events_db", Path: "/var/lib/thp/events.db", Access: "write", Exists: false},
+		},
+	}
+	var b strings.Builder
+	if err := uiTmpl(t).ExecuteTemplate(&b, "config", page); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{"files in use", "oui_file", "/etc/thp/oui.csv", "tor.exit_file", "MISSING", "pending"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("config files panel missing %q", want)
+		}
+	}
+}

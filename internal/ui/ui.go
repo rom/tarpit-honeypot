@@ -71,7 +71,12 @@ type Server struct {
 	hostsSummary  HostsSummaryProvider
 	deviceActions DeviceActions
 	dataDir       string
+	configPaths   []string // config file path(s), for the /config "files in use" panel
 }
+
+// SetConfigPaths wires the config file path(s) so the /config page can list
+// them alongside the enrichment/database files. Optional.
+func (s *Server) SetConfigPaths(paths []string) { s.configPaths = paths }
 
 // deviceActionsEnabled reports whether the opt-in device write actions are
 // usable: the operator set the flag, an auth token is configured (so a
@@ -570,7 +575,7 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 // expanded values), so the output is safe to display.
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	yamlStr := s.configYAML()
-	page := configPage{YAML: yamlStr, Canvas: buildConfigCanvas(s.fullConfig)}
+	page := configPage{YAML: yamlStr, Canvas: buildConfigCanvas(s.fullConfig), Files: s.configFileRows()}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
 		slog.Warn("ui: render config", "err", err)
@@ -607,6 +612,35 @@ func (s *Server) configYAML() string {
 type configPage struct {
 	YAML   string
 	Canvas configCanvas
+	Files  []fileRow
+}
+
+// fileRow is one config/enrichment/database/state path the sensor uses,
+// for the config page's "files in use" panel.
+type fileRow struct {
+	Category string `json:"category"`
+	Key      string `json:"key"`
+	Path     string `json:"path"`
+	Access   string `json:"access"` // read | write
+	Exists   bool   `json:"exists"`
+}
+
+// configFileRows builds the path-inventory rows for the config page + API,
+// stat-ing each path for presence.
+func (s *Server) configFileRows() []fileRow {
+	if s.fullConfig == nil {
+		return nil
+	}
+	var rows []fileRow
+	for _, p := range s.fullConfig.Paths(s.configPaths...) {
+		access := "read"
+		if p.Writable {
+			access = "write"
+		}
+		_, statErr := os.Stat(p.Path)
+		rows = append(rows, fileRow{Category: p.Category, Key: p.Key, Path: p.Path, Access: access, Exists: statErr == nil})
+	}
+	return rows
 }
 
 // ---- topology tab ----

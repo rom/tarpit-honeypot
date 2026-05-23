@@ -35,6 +35,7 @@ func Dispatch(args []string) error {
 		{"export-pcap", "copy one event's per-connection pcap out of the captures dir", cmdExportPcap},
 		{"list-honeynets", "print the configured artificial networks + hosts + services", cmdListHoneynets},
 		{"list-devices", "print the learned-device inventory (devices.json)", cmdListDevices},
+		{"list-paths", "print all config / enrichment / database / state file paths (+ --json)", cmdListPaths},
 		{"list-archetypes", "print the device/OS archetype catalog (name for detail)", cmdListArchetypes},
 		{"list-handlers", "print the protocol handlers valid in a listener", cmdListHandlers},
 		{"list-archeservices", "print the service roles (webserver, adserver, …)", cmdListArcheservices},
