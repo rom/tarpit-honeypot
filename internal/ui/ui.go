@@ -199,6 +199,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/fingerprints/", s.handleAPIFingerprint)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
+	mux.HandleFunc("/api/config/canvas", s.handleAPIConfigCanvas)
 	mux.HandleFunc("/api/attack", s.handleAPIAttack)
 	mux.HandleFunc("/api/topology", s.handleAPITopology)
 	mux.HandleFunc("/api/hosts", s.handleAPIHosts)
@@ -527,15 +528,24 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(sum)
 }
 
-// handleConfig renders the effective config as YAML in a read-only
-// page. Secrets are env-var names (never expanded values), so the
-// output is safe to display.
+// handleConfig renders the effective config: an at-a-glance "infrastructure
+// canvas" (which ports/services are listening and which collectors are
+// active) followed by the full YAML. Secrets are env-var names (never
+// expanded values), so the output is safe to display.
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	yamlStr := s.configYAML()
+	page := configPage{YAML: yamlStr, Canvas: buildConfigCanvas(s.fullConfig)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "config", configPage{YAML: yamlStr}); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
 		slog.Warn("ui: render config", "err", err)
 	}
+}
+
+// handleAPIConfigCanvas returns the listener/collector board as JSON for
+// tooling (drift checks, dashboards).
+func (s *Server) handleAPIConfigCanvas(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(buildConfigCanvas(s.fullConfig))
 }
 
 // handleAPIConfig returns the effective config as raw YAML for tooling
@@ -559,7 +569,8 @@ func (s *Server) configYAML() string {
 }
 
 type configPage struct {
-	YAML string
+	YAML   string
+	Canvas configCanvas
 }
 
 // ---- topology tab ----
