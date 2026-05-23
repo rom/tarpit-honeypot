@@ -808,6 +808,30 @@ type Correlate struct {
 	DataAccess        CorrDataAccess        `yaml:"data_access"`
 	MalwareCampaign   CorrMalwareCampaign   `yaml:"malware_campaign"`
 	Webshell          CorrWebshell          `yaml:"webshell"`
+	ThreatIntelBurst  CorrThreatIntelBurst  `yaml:"threat_intel_burst"`
+	GeoVelocity       CorrGeoVelocity       `yaml:"geo_velocity"`
+}
+
+// CorrThreatIntelBurst fires when one source whose events enrichment tagged
+// as known-bad infrastructure (threat-intel list member or Tor exit)
+// produces several events within a window — sustained activity from a
+// flagged origin, whatever service it touches. Needs the enrichment layer
+// (threat_intel / tor) configured.
+type CorrThreatIntelBurst struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrGeoVelocity fires when the SAME credential pair is tried from two or
+// more DISTINCT GeoIP countries within a window — "impossible travel" /
+// credential stuffing across geographies. Needs GeoIP enrichment.
+type CorrGeoVelocity struct {
+	Enabled           bool          `yaml:"enabled"`
+	DistinctCountries int           `yaml:"distinct_countries"`
+	Window            time.Duration `yaml:"window"`
+	Severity          string        `yaml:"severity"`
 }
 
 // CorrLateralMovement detects one source probing many DISTINCT lateral-

@@ -70,6 +70,9 @@ func init() {
 	for k, p := range printerArchetypes {
 		registry[k] = p
 	}
+	for k, p := range cloudArchetypes {
+		registry[k] = p
+	}
 }
 
 // Profile is the resolved per-deployment / per-listener / per-host

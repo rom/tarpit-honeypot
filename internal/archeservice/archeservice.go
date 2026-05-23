@@ -140,6 +140,61 @@ var roles = map[string][]Service{
 		{161, "udp", "snmp", "SNMP"},
 		{80, "tcp", "http", "Router web UI"},
 	},
+	"gitserver": {
+		{9418, "tcp", "git", "git daemon protocol"},
+		{22, "tcp", "ssh", "git over SSH"},
+		{80, "tcp", "http", "git smart-HTTP / web UI"},
+		{443, "tcp", "https", "git smart-HTTP (TLS) / web UI"},
+	},
+	"ciserver": {
+		{8080, "tcp", "http", "CI web UI (Jenkins/GitLab)"},
+		{443, "tcp", "https", "CI web UI (TLS)"},
+		{22, "tcp", "ssh", "git/agent SSH"},
+	},
+	"javaappserver": {
+		{8080, "tcp", "http", "servlet container"},
+		{443, "tcp", "https", "servlet container (TLS)"},
+		{1099, "tcp", "rmi", "Java RMI registry"},
+		{8000, "tcp", "jdwp", "Java Debug Wire Protocol"},
+	},
+	"containerhost": {
+		{2375, "tcp", "dockerapi", "Docker API (plaintext)"},
+		{2376, "tcp", "dockerapi", "Docker API (TLS)"},
+		{6443, "tcp", "https", "Kubernetes API server"},
+		{10250, "tcp", "https", "kubelet API"},
+	},
+	"messagequeue": {
+		{5672, "tcp", "amqp", "AMQP / RabbitMQ"},
+		{1883, "tcp", "mqtt", "MQTT"},
+		{9092, "tcp", "kafka", "Kafka broker"},
+		{2181, "tcp", "zookeeper", "ZooKeeper"},
+		{8161, "tcp", "http", "broker web console"},
+	},
+	"cacheserver": {
+		{6379, "tcp", "redis", "Redis"},
+		{11211, "tcp", "memcached", "Memcached"},
+	},
+	"searchserver": {
+		{9200, "tcp", "elasticsearch", "Elasticsearch HTTP API"},
+		{5601, "tcp", "http", "Kibana"},
+	},
+	"nasserver": {
+		{445, "tcp", "smb", "SMB"},
+		{873, "tcp", "rsync", "rsync daemon"},
+		{5000, "tcp", "http", "NAS web UI"},
+		{5001, "tcp", "https", "NAS web UI (TLS)"},
+		{22, "tcp", "ssh", "SFTP / SSH"},
+	},
+	"cameraserver": {
+		{554, "tcp", "rtsp", "RTSP stream"},
+		{80, "tcp", "http", "camera web UI"},
+		{443, "tcp", "https", "camera web UI (TLS)"},
+	},
+	"bastion": {
+		{22, "tcp", "ssh", "SSH jump host"},
+		{3389, "tcp", "rdp", "RDP gateway"},
+		{443, "tcp", "https", "web SSH/RDP portal"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-

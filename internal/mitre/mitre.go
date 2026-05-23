@@ -135,6 +135,9 @@ var exactRules = map[string]Tag{
 	"correlate:protocol_violation": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
 	"correlate:exfil":              {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
 	"correlate:session_flood":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// Enrichment-driven correlators (internal/correlate/extra3.go).
+	"correlate:threat_intel_burst": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"correlate:geo_velocity":       {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
 	// Fuzzing / DoS classification (internal/fuzzdos). Fuzzing maps to
 	// vulnerability scanning; a typed flood maps to endpoint DoS.
 	"attack:fuzzing": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
@@ -493,6 +496,17 @@ var anomalyTags = map[string]Tag{
 	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	// Developer / data-infrastructure service decoys (internal/listener/handler/devsvc.go).
+	// An exposed JDWP handshake is unauthenticated RCE; RMI is the Java
+	// deserialization entry point; git clone/push is source access / supply
+	// chain; ZooKeeper four-letter words + Kafka metadata are cluster recon.
+	"jdwp-handshake-attempt": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"jdwp-probe":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"rmi-probe":              {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"git-request":            {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"git-push-attempt":       {Techniques: []string{"T1195"}, Tactics: []string{"initial-access"}},
+	"zookeeper-fourletter":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"kafka-request":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /
@@ -570,6 +584,7 @@ var techDescriptions = map[string]string{
 	// Initial access / execution.
 	"T1190": "Exploit Public-Facing Application — exploiting a vulnerability in an internet-facing service.",
 	"T1133": "External Remote Services — abusing VPN/remote-access services for entry.",
+	"T1195": "Supply Chain Compromise — tampering with code/dependencies (e.g. a malicious git push) before delivery.",
 	"T1078": "Valid Accounts — authenticating with legitimate (often default/stolen) credentials.",
 	"T1059": "Command and Scripting Interpreter — running commands via a shell/interpreter.",
 	"T1610": "Deploy Container — abusing a container runtime/API to launch a malicious container.",

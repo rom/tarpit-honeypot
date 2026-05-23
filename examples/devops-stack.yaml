@@ -1,0 +1,100 @@
+# DevOps / cloud-native target surface.
+#
+# A decoy for the internal tooling tier attackers pivot to after a foothold:
+# source control, CI, container orchestration, message queues, caches,
+# search, Java app servers, and the observability dashboards that are so
+# often left unauthenticated. It combines two mechanisms:
+#
+#   * `archeservices:` role bundles (bound to dedicated loopback IPs so
+#     their shared ports don't collide) for the multi-port services, and
+#   * `lua` dynamic-response scripts for the unauth web dashboards / data
+#     stores (Grafana, Prometheus, Jupyter, Consul, CouchDB, ClickHouse).
+#
+# This exercises the developer/data-infra handlers (git, rmi, jdwp, kafka,
+# zookeeper) via the role bundles, the new Lua app decoys, and the
+# enrichment-driven correlators. The juicy unauth dashboards + a git/CI/
+# container surface are exactly what post-exploitation tooling looks for.
+#
+#   tarpit-honeypot validate-config -c examples/devops-stack.yaml
+sensor:
+  name: devops-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  archetype: ubuntu 24.04 lts
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Role bundles → the right ports + handlers + (with the archetype) banners.
+# Each binds a dedicated loopback IP so their overlapping ports (22, 443,
+# 80) don't collide; point a real deployment at routable IPs instead.
+archeservices:
+  - { id: scm,        role: gitserver,     archetype: debian 12,       bind: 127.0.2.1, severity: high }
+  - { id: ci,         role: ciserver,      archetype: debian 12,       bind: 127.0.2.2, severity: high }
+  - { id: appsvr,     role: javaappserver, archetype: debian 12,       bind: 127.0.2.3, severity: high }
+  - { id: containers, role: containerhost, archetype: ubuntu 24.04 lts, bind: 127.0.2.4, severity: critical }
+  - { id: queue,      role: messagequeue,  archetype: debian 12,       bind: 127.0.2.5, severity: high }
+  - { id: cache,      role: cacheserver,   archetype: debian 12,       bind: 127.0.2.6, severity: high }
+  - { id: search,     role: searchserver,  archetype: ubuntu 24.04 lts, bind: 127.0.2.7, severity: high }
+  - { id: nas,        role: nasserver,     archetype: truenas-core,    bind: 127.0.2.8, severity: high }
+
+# Unauthenticated web dashboards / data stores via Lua scripts. An exposed
+# one of these is frequently direct code execution or full data access.
+listeners:
+  - { id: grafana,    proto: tcp, bind: 0.0.0.0:3000, mode: banner, handler: lua, script: configs/scripts/grafana.lua,    severity: high,     capture: true }
+  - { id: prometheus, proto: tcp, bind: 0.0.0.0:9090, mode: banner, handler: lua, script: configs/scripts/prometheus.lua, severity: medium,   capture: true }
+  - { id: jupyter,    proto: tcp, bind: 0.0.0.0:8888, mode: banner, handler: lua, script: configs/scripts/jupyter.lua,    severity: critical, capture: true }
+  - { id: consul,     proto: tcp, bind: 0.0.0.0:8500, mode: banner, handler: lua, script: configs/scripts/consul.lua,     severity: high,     capture: true }
+  - { id: couchdb,    proto: tcp, bind: 0.0.0.0:5984, mode: banner, handler: lua, script: configs/scripts/couchdb.lua,    severity: high,     capture: true }
+  - { id: clickhouse, proto: tcp, bind: 0.0.0.0:8123, mode: banner, handler: lua, script: configs/scripts/clickhouse.lua, severity: high,     capture: true }
+
+# Planted secrets in the repos / object stores no real client would request.
+url_canaries:
+  - { id: ci-secrets,  path: /admin/secrets.yaml,        severity: critical }
+  - { id: tfstate,     path: /terraform/prod.tfstate,    severity: critical }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  service_sweep:      { enabled: true, severity: high }
+  exploit_chain:      { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  data_access:        { enabled: true, severity: high }
+  exfil:              { enabled: true, severity: critical }
+  beacon:             { enabled: true, severity: high }
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 2, window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: soc
+    type: syslog
+    network: tcp
+    address: siem.example.internal:6514
+    tag: devops-tarpit
+    format: ocsf
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [soc, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }

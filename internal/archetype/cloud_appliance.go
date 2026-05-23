@@ -1,0 +1,177 @@
+package archetype
+
+import "crypto/tls"
+
+// cloudArchetypes adds modern host, hypervisor, NAS and network-appliance
+// personas that the original catalog lacked: macOS, Alpine, Proxmox,
+// TrueNAS, VMware ESXi, and the Juniper / Palo Alto / F5 / SonicWall /
+// Netgear edge devices. Merged into the registry by init().
+var cloudArchetypes = map[string]*Profile{
+	"macos-sonoma": {
+		Name: "macos-sonoma", DisplayName: "macOS Sonoma 14", Family: "macos",
+		macOUI:       [3]byte{0x3c, 0x07, 0x54}, // Apple
+		sshBanner:    "SSH-2.0-OpenSSH_9.8",
+		httpServer:   "Apache/2.4.58 (Unix)",
+		cliPrompt:    "mac% ",
+		snmpSysDescr: "Darwin macbook.local 23.5.0 Darwin Kernel Version 23.5.0 RELEASE_ARM64_T6000 arm64",
+		snmpSysName:  "macbook", snmpSysObjectID: ".1.3.6.1.4.1.63",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh", Note: "Remote Login"},
+			{Port: 88, Handler: "kerberos", Note: "local KDC"},
+			{Port: 445, Handler: "smb", Note: "File Sharing"},
+			{Port: 5900, Handler: "vnc", Note: "Screen Sharing"},
+		},
+		quirks: []string{"darwin"},
+	},
+	"alpine-3.20": {
+		Name: "alpine-3.20", DisplayName: "Alpine Linux 3.20", Family: "alpine",
+		sshBanner:    "SSH-2.0-OpenSSH_9.7",
+		httpServer:   "nginx/1.26.2",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		cliPrompt:    "alpine:~# ",
+		snmpSysDescr: "Linux alpine 6.6.32-0-lts #1-Alpine SMP x86_64 GNU/Linux",
+		snmpSysName:  "alpine", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 80, Handler: "http"}, {Port: 443, Handler: "https"},
+		},
+		quirks: []string{"musl-libc"},
+	},
+	"proxmox-ve": {
+		Name: "proxmox-ve", DisplayName: "Proxmox VE 8 (Debian)", Family: "proxmox",
+		macOUI:       [3]byte{0x52, 0x54, 0x00}, // QEMU/KVM
+		sshBanner:    "SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3",
+		httpServer:   "pve-api-daemon/3.0",
+		httpTitle:    "Proxmox Virtual Environment",
+		httpBodyHTML: "<html><head><title>Proxmox Virtual Environment</title></head><body>Proxmox VE login</body></html>",
+		cliPrompt:    "root@pve:~# ",
+		snmpSysDescr: "Linux pve 6.8.12-1-pve #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+		snmpSysName:  "pve", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 8006, Handler: "https", Note: "PVE web UI"}, {Port: 22, Handler: "ssh"},
+			{Port: 3128, Handler: "http", Note: "SPICE proxy"},
+		},
+	},
+	"truenas-core": {
+		Name: "truenas-core", DisplayName: "TrueNAS CORE (FreeBSD)", Family: "truenas",
+		sshBanner:    "SSH-2.0-OpenSSH_9.3 FreeBSD-20230719",
+		httpServer:   "nginx",
+		httpTitle:    "TrueNAS",
+		httpBodyHTML: "<html><head><title>TrueNAS</title></head><body>TrueNAS CORE</body></html>",
+		cliPrompt:    "root@truenas[~]# ",
+		snmpSysDescr: "FreeBSD truenas.local 13.1-RELEASE-p9 TrueNAS amd64",
+		snmpSysName:  "truenas", snmpSysObjectID: ".1.3.6.1.4.1.50536",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "web UI"}, {Port: 80, Handler: "http"},
+			{Port: 445, Handler: "smb", Note: "SMB shares"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"freebsd"},
+	},
+	"vmware-esxi": {
+		Name: "vmware-esxi", DisplayName: "VMware ESXi 8.0", Family: "esxi",
+		macOUI:       [3]byte{0x00, 0x50, 0x56}, // VMware
+		sshBanner:    "SSH-2.0-OpenSSH_8.8",
+		httpServer:   "VMware ESXi/8.0.0",
+		httpTitle:    "VMware ESXi",
+		httpBodyHTML: "<html><head><title>VMware ESXi</title></head><body>ID_EESX_Welcome</body></html>",
+		cliPrompt:    "[root@esxi:~] ",
+		snmpSysDescr: "VMware ESXi 8.0.0 build-21495797",
+		snmpSysName:  "esxi", snmpSysObjectID: ".1.3.6.1.4.1.6876",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "esxi", Note: "host UI / SOAP API"}, {Port: 902, Handler: "vmware_authd", Note: "authd"},
+			{Port: 22, Handler: "ssh", Note: "ESXi Shell"},
+		},
+	},
+	"juniper-srx": {
+		Name: "juniper-srx", DisplayName: "Juniper SRX (JunOS)", Family: "juniper",
+		macOUI:       [3]byte{0x00, 0x05, 0x85}, // Juniper
+		sshBanner:    "SSH-2.0-OpenSSH_7.4",
+		httpServer:   "lighttpd",
+		httpTitle:    "Juniper J-Web",
+		cliPrompt:    "root@srx> ",
+		loginPrompt:  "login: ",
+		telnetBanner: "\r\nJUNOS 21.4R3 built 2023-...\r\n\r\nlogin: ",
+		snmpSysDescr: "Juniper Networks, Inc. srx340 internet router, kernel JUNOS 21.4R3",
+		snmpSysName:  "srx", snmpSysObjectID: ".1.3.6.1.4.1.2636.1.1.1.2.61",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"}, {Port: 23, Handler: "telnet"},
+			{Port: 443, Handler: "https", Note: "J-Web"}, {Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"junos"},
+	},
+	"paloalto-panos": {
+		Name: "paloalto-panos", DisplayName: "Palo Alto PAN-OS firewall", Family: "paloalto",
+		macOUI:       [3]byte{0x00, 0x1b, 0x17}, // Palo Alto
+		sshBanner:    "SSH-2.0-OpenSSH_8.0",
+		httpServer:   "nginx",
+		httpTitle:    "GlobalProtect Portal",
+		httpBodyHTML: "<html><head><title>GlobalProtect Portal</title></head><body>GlobalProtect</body></html>",
+		cliPrompt:    "admin@PA-VM> ",
+		snmpSysDescr: "Palo Alto Networks PA-VM series firewall PAN-OS 11.1.2",
+		snmpSysName:  "PA-VM", snmpSysObjectID: ".1.3.6.1.4.1.25461.2.3.39",
+		icmpTTL:  64,
+		tls:      TLSPosture{MinVersion: tls.VersionTLS12},
+		cveVulns: []string{"CVE-2024-3400"},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "mgmt / GlobalProtect"}, {Port: 22, Handler: "ssh"},
+		},
+	},
+	"f5-bigip": {
+		Name: "f5-bigip", DisplayName: "F5 BIG-IP (TMOS)", Family: "f5",
+		macOUI:       [3]byte{0x00, 0x01, 0xd7}, // F5
+		sshBanner:    "SSH-2.0-OpenSSH_8.0",
+		httpServer:   "Apache",
+		httpTitle:    "BIG-IP Configuration Utility",
+		httpBodyHTML: "<html><head><title>BIG-IP&reg; - Configuration Utility</title></head><body>BIG-IP</body></html>",
+		cliPrompt:    "[admin@bigip:Active:Standalone] ~ # ",
+		snmpSysDescr: "BIG-IP Virtual Edition : Linux 3.10.0 : BIG-IP software release 16.1.0",
+		snmpSysName:  "bigip", snmpSysObjectID: ".1.3.6.1.4.1.3375.2.1.3.4.43",
+		icmpTTL:  64,
+		tls:      TLSPosture{MinVersion: tls.VersionTLS12},
+		cveVulns: []string{"CVE-2022-1388", "CVE-2020-5902"},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "TMUI / iControl"}, {Port: 22, Handler: "ssh"},
+		},
+	},
+	"sonicwall-tz": {
+		Name: "sonicwall-tz", DisplayName: "SonicWall TZ (SonicOS)", Family: "sonicwall",
+		macOUI:       [3]byte{0x00, 0x06, 0xb1}, // SonicWall
+		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		httpServer:   "SonicWALL",
+		httpTitle:    "SonicWall - Authentication",
+		httpBodyHTML: "<html><head><title>SonicWall - Authentication</title></head><body>SonicOS</body></html>",
+		cliPrompt:    "TZ370> ",
+		snmpSysDescr: "SonicWall TZ370 SonicOS Enhanced 7.0.1",
+		snmpSysName:  "sonicwall", snmpSysObjectID: ".1.3.6.1.4.1.8741.2.1.1",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "mgmt / SSL-VPN"}, {Port: 22, Handler: "ssh"},
+		},
+	},
+	"netgear-nighthawk": {
+		Name: "netgear-nighthawk", DisplayName: "Netgear Nighthawk router", Family: "netgear",
+		macOUI:       [3]byte{0x00, 0x14, 0x6c}, // Netgear
+		httpServer:   "uhttpd",
+		httpTitle:    "NETGEAR Router",
+		httpBodyHTML: "<html><head><title>NETGEAR Router</title></head><body>NETGEAR genie</body></html>",
+		telnetBanner: "\r\nNetgear Nighthawk R7000\r\nlogin: ",
+		loginPrompt:  "login: ",
+		cliPrompt:    "# ",
+		snmpSysDescr: "Netgear Nighthawk R7000 (V1.0.11.136)",
+		snmpSysName:  "Nighthawk", snmpSysObjectID: ".1.3.6.1.4.1.4526.100",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "router admin"}, {Port: 443, Handler: "https"},
+			{Port: 23, Handler: "telnet", Note: "debug telnet"},
+		},
+		quirks: []string{"soho-router"},
+	},
+}

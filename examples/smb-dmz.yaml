@@ -16,6 +16,20 @@
 sensor:
   name: smb-dmz-decoy
   data_dir: /var/lib/tarpit-honeypot
+  # Enrichment — canonical paths (run-safe: missing files are skipped, so
+  # this validates/runs as-is). Populate with scripts/fetch-enrichment.sh +
+  # scripts/install-enrichment.sh on the sensor, then SIGHUP. Feeds GeoIP /
+  # ASN / threat-intel / Tor / MAC-vendor tags + the threat_intel_burst and
+  # geo_velocity correlators.
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
   drop_user: tarpit
   drop_group: tarpit
   interfaces: [eth0]
@@ -98,6 +112,9 @@ correlate:
   path_enumeration: { enabled: true, distinct_paths: 30, window: 60s,  severity: high }
   exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
   host_sweep:       { enabled: true, distinct_hosts: 6,  window: 60s,  severity: high }
+  # Enrichment-driven (need the sensor.geoip / threat_intel / tor blocks above).
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 2, window: 1h, severity: high }
 
 interaction:
   mode: low

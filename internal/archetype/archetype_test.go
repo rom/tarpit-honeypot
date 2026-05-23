@@ -159,6 +159,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Schneider Modicon M580 (BME P58)",
 		"Omron NX1P2 (Sysmac)",
 		"Mitsubishi MELSEC iQ-R (R04CPU)",
+		// Cloud hosts / hypervisors / NAS / network appliances.
+		"macOS Sonoma 14",
+		"Alpine Linux 3.20",
+		"Proxmox VE 8 (Debian)",
+		"TrueNAS CORE (FreeBSD)",
+		"VMware ESXi 8.0",
+		"Juniper SRX (JunOS)",
+		"Palo Alto PAN-OS firewall",
+		"F5 BIG-IP (TMOS)",
+		"SonicWall TZ (SonicOS)",
+		"Netgear Nighthawk router",
 	}
 	got := Names()
 	if len(got) != len(want) {
