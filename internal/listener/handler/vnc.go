@@ -52,21 +52,36 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		"client_version": string(clientVer),
 	}
 
-	// SecurityTypes: 1 type, type=2 (VNC auth).
-	if _, err := conn.Write([]byte{1, 2}); err != nil {
-		res.Meta["write_err"] = err.Error()
-		return res, nil
-	}
-	// Client picks a security type (1 byte).
-	sel := make([]byte, 1)
-	if _, err := io.ReadFull(conn, sel); err != nil {
-		res.Meta["read_err"] = err.Error()
-		return res, nil
-	}
-	res.Meta["security_type_selected"] = sel[0]
-	if sel[0] != 2 {
-		// Client picked something we didn't offer; just close.
-		return res, nil
+	// The security-handshake form depends on the negotiated RFB version. In
+	// RFB 3.3 the SERVER chooses the single security type and sends it as a
+	// 4-byte value; only in 3.7+ does the server send a type LIST the client
+	// picks from. Embedded KVM-over-IP / IPMI VNC commonly speaks 3.3, so a
+	// 3.7-only handshake is a honeypot tell against those clients.
+	if rfbMinor(clientVer) <= 3 {
+		res.Meta["rfb_security"] = "3.3"
+		// Server-chosen security type = 2 (VNC auth), 4-byte big-endian.
+		if _, err := conn.Write([]byte{0, 0, 0, 2}); err != nil {
+			res.Meta["write_err"] = err.Error()
+			return res, nil
+		}
+	} else {
+		res.Meta["rfb_security"] = "3.7+"
+		// SecurityTypes: 1 type, type=2 (VNC auth).
+		if _, err := conn.Write([]byte{1, 2}); err != nil {
+			res.Meta["write_err"] = err.Error()
+			return res, nil
+		}
+		// Client picks a security type (1 byte).
+		sel := make([]byte, 1)
+		if _, err := io.ReadFull(conn, sel); err != nil {
+			res.Meta["read_err"] = err.Error()
+			return res, nil
+		}
+		res.Meta["security_type_selected"] = sel[0]
+		if sel[0] != 2 {
+			// Client picked something we didn't offer; just close.
+			return res, nil
+		}
 	}
 
 	// Send a fresh 16-byte challenge per connection — that's what a real
@@ -93,6 +108,32 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	_, _ = conn.Write([]byte{0, 0, 0, 1})
 	res.BannerSent = "rfb 003.008 + VNC auth failed"
 	return res, nil
+}
+
+// rfbMinor parses the minor number from an RFB version string of the form
+// "RFB 003.008\n" (here 8). Returns 8 (a safe 3.7+ default) on a malformed
+// string so we never accidentally drop into the 3.3 path for junk input.
+func rfbMinor(ver []byte) int {
+	s := string(ver)
+	dot := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			dot = i
+			break
+		}
+	}
+	if dot < 0 || dot+4 > len(s) {
+		return 8
+	}
+	n := 0
+	for i := dot + 1; i < dot+4; i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 8
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 func byteToHex(b []byte) string {

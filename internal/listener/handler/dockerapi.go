@@ -78,6 +78,19 @@ func (d *dockerapi) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		}
 	}
 
+	// Flag the API calls that take over the host: creating a container
+	// (commonly with a host-root bind mount / privileged flag), exec'ing
+	// into one, or starting one — the cryptominer / container-escape chain.
+	low := strings.ToLower(stripped)
+	if method == "POST" {
+		switch {
+		case strings.Contains(low, "/containers/create") || strings.Contains(low, "/exec"):
+			flagAnomaly(&res, "docker-container-create")
+		case strings.Contains(low, "/start") || strings.Contains(low, "/images/create"):
+			flagAnomaly(&res, "docker-remote-control")
+		}
+	}
+
 	var body, contentType string
 	status := "200 OK"
 	switch {
@@ -85,13 +98,19 @@ func (d *dockerapi) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		body = "OK"
 		contentType = "text/plain"
 	case method == "GET" && strings.HasSuffix(stripped, "/version"):
-		body = `{"Version":"24.0.7","ApiVersion":"1.43","Os":"linux","Arch":"amd64"}`
+		body = `{"Platform":{"Name":"Docker Engine - Community"},"Version":"24.0.7","ApiVersion":"1.43","MinAPIVersion":"1.12","GitCommit":"311b9ff","GoVersion":"go1.20.10","Os":"linux","Arch":"amd64","KernelVersion":"5.15.0-91-generic"}`
 		contentType = "application/json"
 	case method == "GET" && strings.HasSuffix(stripped, "/info"):
-		body = `{"Containers":3,"Running":1,"Images":12,"ServerVersion":"24.0.7","OperatingSystem":"Ubuntu 22.04.3 LTS"}`
+		body = `{"ID":"7T3K:2QZ4:...","Containers":3,"ContainersRunning":1,"ContainersPaused":0,"ContainersStopped":2,"Images":12,"Driver":"overlay2","ServerVersion":"24.0.7","KernelVersion":"5.15.0-91-generic","OperatingSystem":"Ubuntu 22.04.3 LTS","Architecture":"x86_64","NCPU":4,"MemTotal":8253628416,"Name":"app-prod-01"}`
 		contentType = "application/json"
 	case method == "GET" && strings.HasPrefix(stripped, "/containers"):
-		body = `[]`
+		body = `[{"Id":"3f1c8a2b9d4e","Names":["/web"],"Image":"nginx:1.25","ImageID":"sha256:a1b2c3","Command":"nginx -g 'daemon off;'","State":"running","Status":"Up 6 days","Ports":[{"PrivatePort":80,"PublicPort":8080,"Type":"tcp"}]}]`
+		contentType = "application/json"
+	case method == "GET" && strings.HasPrefix(stripped, "/images"):
+		body = `[{"Id":"sha256:a1b2c3","RepoTags":["nginx:1.25"],"Size":187654321},{"Id":"sha256:d4e5f6","RepoTags":["redis:7.2"],"Size":138765432}]`
+		contentType = "application/json"
+	case method == "GET" && strings.HasPrefix(stripped, "/networks"):
+		body = `[{"Name":"bridge","Id":"b1a2","Driver":"bridge","Scope":"local"},{"Name":"host","Id":"h0st","Driver":"host","Scope":"local"},{"Name":"none","Id":"n0ne","Driver":"null","Scope":"local"}]`
 		contentType = "application/json"
 	case method == "POST" || method == "DELETE" || method == "PUT":
 		status = "401 Unauthorized"

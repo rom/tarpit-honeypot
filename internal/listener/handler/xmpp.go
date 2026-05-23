@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"net"
 	"strings"
 
@@ -106,6 +107,16 @@ func (x *xmpp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			_, _ = conn.Write([]byte(`<proceed xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>`))
 		} else if bytes.Contains(next.Bytes(), []byte("<auth")) {
 			res.Meta["auth_attempt"] = next.String()
+			// Decode the SASL credential blob so harvested user/pass land in
+			// meta (PLAIN is base64(authzid \0 authcid \0 passwd)).
+			if mech := xmppAttr(next.String(), "mechanism"); mech != "" {
+				res.Meta["auth_mech"] = mech
+			}
+			if user, pass, ok := xmppDecodePLAIN(next.String()); ok {
+				res.Meta["auth_user"] = user
+				res.Meta["auth_pass"] = pass
+				flagDefaultCred(&res, user, pass)
+			}
 			// SASL failure so the scanner sees "this is a real
 			// server that rejected my creds".
 			_, _ = conn.Write([]byte(`<failure xmlns='urn:ietf:params:xml:ns:xmpp-sasl'><not-authorized/></failure>`))
@@ -113,6 +124,33 @@ func (x *xmpp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	}
 	_, _ = conn.Write([]byte(`</stream:stream>`))
 	return res, nil
+}
+
+// xmppDecodePLAIN pulls the base64 text out of a <auth ...>BLOB</auth> stanza
+// and decodes a SASL PLAIN credential (authzid \0 authcid \0 passwd). Returns
+// ok=false for any other mechanism or malformed input.
+func xmppDecodePLAIN(stanza string) (user, pass string, ok bool) {
+	gt := strings.IndexByte(stanza, '>')
+	if gt < 0 {
+		return "", "", false
+	}
+	end := strings.Index(stanza, "</auth>")
+	if end < 0 || end <= gt+1 {
+		return "", "", false
+	}
+	blob := strings.TrimSpace(stanza[gt+1 : end])
+	if blob == "" || blob == "=" {
+		return "", "", false
+	}
+	raw, err := base64.StdEncoding.DecodeString(blob)
+	if err != nil {
+		return "", "", false
+	}
+	segs := strings.Split(string(raw), "\x00")
+	if len(segs) < 3 {
+		return "", "", false
+	}
+	return segs[1], segs[2], true
 }
 
 // xmppAttr extracts a single XML attribute value from an open-stream

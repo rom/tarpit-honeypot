@@ -72,6 +72,7 @@ func (o *oracleTNS) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 	// (after a 26-byte fixed header in classic TNS; we just scan for
 	// the "(DESCRIPTION" marker to be version-robust).
 	desc := extractTNSDescriptor(body)
+	cmd := ""
 	if desc != "" {
 		res.Meta["connect_descriptor"] = safe.SanitizeForLog(desc)
 		if svc := tnsField(desc, "SERVICE_NAME"); svc != "" {
@@ -80,16 +81,47 @@ func (o *oracleTNS) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		if sid := tnsField(desc, "SID"); sid != "" {
 			res.Meta["sid"] = safe.SanitizeForLog(sid)
 		}
+		cmd = strings.ToLower(tnsField(desc, "COMMAND"))
+		if cmd != "" {
+			res.Meta["tns_command"] = safe.SanitizeForLog(cmd)
+		}
+	}
+	flagAnomaly(&res, "oracle-tns-probe")
+
+	// The `tnscmd`/nmap oracle-tns-version probe sends a CONNECT carrying
+	// (COMMAND=version|status|services|ping). A real listener answers those
+	// with a DATA packet (the version banner / status), NOT a refuse — so
+	// answering one keeps the version scan fooled.
+	switch cmd {
+	case "version", "status", "services", "ping", "reload":
+		data := o.buildVersionData()
+		if _, err := conn.Write(data); err != nil {
+			res.Meta["write_err"] = err.Error()
+		}
+		res.BannerSent = "oracle TNS listener version data"
+		return res, nil
 	}
 
-	// Reply REFUSE with ORA-12514.
+	// Otherwise REFUSE with ORA-12514 (unknown service) — what a real
+	// listener returns for a service-name connect it doesn't host.
 	refuse := o.buildRefuse("(DESCRIPTION=(ERR=12514)(VSNNUM=0)(ERROR_STACK=(ERROR=(CODE=12514)(EMFI=4))))")
 	if _, err := conn.Write(refuse); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = "oracle TNS refuse ORA-12514"
-	flagAnomaly(&res, "oracle-tns-probe")
 	return res, nil
+}
+
+// buildVersionData assembles a TNS DATA packet carrying a believable listener
+// version banner — the response shape the oracle-tns-version probe parses.
+func (o *oracleTNS) buildVersionData() []byte {
+	banner := "(DESCRIPTION=(TMP=)(VSNNUM=318767104)(ERR=0)(ALIAS=LISTENER))" +
+		"\nTNSLSNR for Linux: Version 19.0.0.0.0 - Production\n" +
+		"TNS for Linux: Version 19.0.0.0.0 - Production\n"
+	// DATA packet body: 2-byte data flags (0x0000) + payload.
+	body := []byte{0x00, 0x00}
+	body = append(body, []byte(banner)...)
+	return wrapTNS(tnsData, body)
 }
 
 func (o *oracleTNS) buildRefuse(data string) []byte {

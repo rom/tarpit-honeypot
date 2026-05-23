@@ -42,7 +42,16 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 
 	if mode != 3 {
 		// Don't reply to non-client requests. Especially: never reply to
-		// mode 7 (private / monlist) — that's the classic amplifier.
+		// mode 7 (private / monlist) or mode 6 (control) — those are the
+		// classic NTP amplifiers. We DON'T answer (no reflection), but we do
+		// flag the recon so an analyst sees the amplification probe.
+		switch mode {
+		case 7:
+			// mode 7 with REQ_MON_GETLIST(_1) is the monlist amplifier.
+			flagAnomaly(&res, "ntp-monlist-amplification")
+		case 6:
+			flagAnomaly(&res, "ntp-control-query")
+		}
 		return res, nil
 	}
 

@@ -50,9 +50,9 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 			banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "
 		}
 	}
-	res := Result{}
+	res := Result{Meta: map[string]any{}}
 	if _, err := conn.Write(telnetIAC); err != nil {
-		res.Meta = map[string]any{"write_err": err.Error()}
+		res.Meta["write_err"] = err.Error()
 		return res, nil
 	}
 	if _, err := conn.Write([]byte(banner)); err != nil {
@@ -71,17 +71,19 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	if cap <= 0 {
 		cap = 256
 	}
-	user, _ := readBoundedLineFromReader(br, cap)
+	// A real telnet client interleaves IAC option negotiation with the
+	// login bytes; readTelnetLine consumes those (and answers them) so the
+	// captured username/password aren't polluted with 0xff option bytes —
+	// a honeypot that logs raw IAC garbage is an easy tell.
+	user, _ := readTelnetLine(br, conn, cap, &res)
 	user = strings.TrimRight(user, "\r\n")
 	// Standard /bin/login prompt sequence.
 	_, _ = conn.Write([]byte("Password: "))
-	pass, _ := readBoundedLineFromReader(br, cap)
+	pass, _ := readTelnetLine(br, conn, cap, &res)
 	pass = strings.TrimRight(pass, "\r\n")
 
-	res.Meta = map[string]any{
-		"user_attempt": safe.SanitizeForLog(user),
-		"pass_attempt": safe.SanitizeForLog(pass),
-	}
+	res.Meta["user_attempt"] = safe.SanitizeForLog(user)
+	res.Meta["pass_attempt"] = safe.SanitizeForLog(pass)
 	res.Payload = []byte(user + "\n" + pass)
 	flagDefaultCred(&res, user, pass)
 	if hasNonPrintable(user) || hasNonPrintable(pass) {
@@ -133,6 +135,117 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		}
 	}
 	return res, nil
+}
+
+// Telnet protocol bytes (RFC 854 / 1091).
+const (
+	telIAC      = 0xff
+	telSE       = 0xf0
+	telSB       = 0xfa
+	telWILL     = 0xfb
+	telWONT     = 0xfc
+	telDO       = 0xfd
+	telDONT     = 0xfe
+	telOptEcho  = 0x01
+	telOptSGA   = 0x03
+	telOptTType = 0x18 // TERMINAL-TYPE
+)
+
+// readTelnetLine reads one line, transparently consuming and answering IAC
+// option negotiation so it never lands in the captured credential. It also
+// harvests the client's TERMINAL-TYPE subnegotiation into res.Meta.
+func readTelnetLine(br *bufio.Reader, conn net.Conn, max int, res *Result) (string, error) {
+	if max <= 0 || max > 4096 {
+		max = 4096
+	}
+	out := make([]byte, 0, 64)
+	for len(out) < max {
+		b, err := br.ReadByte()
+		if err != nil {
+			return string(out), err
+		}
+		if b != telIAC {
+			if b == '\n' {
+				break
+			}
+			out = append(out, b)
+			continue
+		}
+		cmd, err := br.ReadByte()
+		if err != nil {
+			return string(out), err
+		}
+		switch cmd {
+		case telWILL, telWONT, telDO, telDONT:
+			opt, err := br.ReadByte()
+			if err != nil {
+				return string(out), err
+			}
+			telnetNegotiate(conn, cmd, opt)
+		case telSB:
+			sub := readTelnetSubneg(br)
+			// TERMINAL-TYPE IS (option 0x18, sub-cmd 0x00) carries the
+			// client's emulation string (xterm, VT100, PuTTY, …).
+			if len(sub) >= 2 && sub[0] == telOptTType && sub[1] == 0x00 && res != nil {
+				res.Meta["terminal_type"] = safe.SanitizeForLog(string(sub[2:]))
+			}
+		case telIAC:
+			out = append(out, telIAC) // escaped literal 0xff
+		default:
+			// 2-byte command (NOP / GA / AYT / …) — nothing to consume.
+		}
+	}
+	return string(out), nil
+}
+
+// telnetNegotiate sends a minimal, consistent reply to a client option
+// negotiation so the session looks real: we honour ECHO + SGA (already
+// announced WILL), ask for TERMINAL-TYPE, and refuse everything else.
+func telnetNegotiate(conn net.Conn, cmd, opt byte) {
+	switch cmd {
+	case telDO:
+		if opt == telOptEcho || opt == telOptSGA {
+			return // already WILL — no reply needed
+		}
+		_, _ = conn.Write([]byte{telIAC, telWONT, opt})
+	case telWILL:
+		if opt == telOptTType {
+			// We sent DO TERMINAL-TYPE; ask the client to send its type.
+			_, _ = conn.Write([]byte{telIAC, telSB, telOptTType, 0x01, telIAC, telSE})
+			return
+		}
+		_, _ = conn.Write([]byte{telIAC, telDONT, opt})
+	}
+	// WONT / DONT need no reply.
+}
+
+// readTelnetSubneg reads an IAC SB … IAC SE subnegotiation body (excluding
+// the trailing IAC SE), bounded so a peer can't stream forever.
+func readTelnetSubneg(br *bufio.Reader) []byte {
+	out := make([]byte, 0, 32)
+	for len(out) < 256 {
+		b, err := br.ReadByte()
+		if err != nil {
+			return out
+		}
+		if b == telIAC {
+			n, err := br.ReadByte()
+			if err != nil {
+				return out
+			}
+			if n == telSE {
+				return out
+			}
+			if n == telIAC {
+				out = append(out, telIAC) // escaped 0xff inside subneg
+				continue
+			}
+			// Unexpected command inside SB — stop.
+			return out
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 // readBoundedLineFromReader is the telnet-handler-local bounded read
