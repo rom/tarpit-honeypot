@@ -228,12 +228,17 @@ rationale covering the current implementation.
   full message family — Dest-Unreachable, Frag-Needed-with-MTU (PMTUD),
   Time-Exceeded (traceroute), Redirect, Param-Problem, IPv6 NDP — and
   `internal/icmp.Anomalies` flags ICMP tunneling, oversize payloads, and
-  teardrop / overlapping-fragment evasion. The honeynet **TUN responder**
-  (`internal/tunnet`) shares the same TTL personality: its synthesized
-  echo replies + closed-port RSTs carry the per-host archetype TTL instead
-  of echoing the prober's, so `nmap -O` against a virtual host's closed
-  ports + ping matches the claimed OS. (Open-port SYN-ACKs still come from
-  the kernel — a full userspace TCP/IP stack is out of scope.)
+  teardrop / overlapping-fragment evasion. The honeynet **TUN adapter**
+  (`internal/tunnet`) shares the same TTL personality and adds an embedded
+  **userspace TCP stack** (`internal/tcpstack`): synthesized echo replies,
+  closed-port RSTs, **and** open-port SYN-ACKs carry the per-host archetype
+  TTL, and the SYN-ACK's window / MSS / window-scale / SACK / timestamps /
+  option order are shaped to the archetype's stack — so `nmap -O` / p0f
+  against a virtual host (open *and* closed ports + ping) match the claimed
+  OS, the handshake completes, and a single request/response is answered,
+  all without `ip addr add` per host. Malformed / illegal packets (bad
+  checksums, NULL/FIN/Xmas, SYN-FIN, truncation, fragments) are captured
+  as events rather than answered.
 - **Device learning + "new device" alerts**: an opt-in learned-device
   registry (`devices.enabled`) records every host seen via DHCP (MAC +
   hostname + DHCP fingerprint), the ARP sniffer, **broadcast/multicast
@@ -423,6 +428,7 @@ rationale covering the current implementation.
 | LLDP / CDP responder | yes | — | needs AF_PACKET; `/dev/bpf` backend planned |
 | AF_PACKET ARP-scan sniffer | yes | — | `/dev/bpf` backend planned |
 | TUN adapter for honeynet L3 | yes | — | utun backend planned; use `ifconfig alias` as workaround |
+| Userspace TCP stack over TUN (`internal/tcpstack`) | yes | — | fingerprint-shaped SYN-ACK + handshake + 1 req/resp; captures malformed packets; pure Go, OS-agnostic logic |
 
 ## Documentation
 
@@ -1684,11 +1690,14 @@ the IP so an operator can confirm uniqueness:
   10.99.0.20  mac=5e:1f:7d:3d:8b:08  hostname=dc-01        os=windows ...
 ```
 
-**Limitation:** ARP responding alone is L2 discovery. To route TCP /
-UDP traffic for the virtual IPs into the sensor's real sockets, the
-operator still needs `ip addr add` or iptables redirection (or a
-TUN-based adapter — planned for v1.3). Without that, scanners running
-`arp-scan` see a populated network but TCP probes get nowhere.
+**Limitation:** ARP responding alone is L2 discovery. To make the virtual
+IPs answer TCP probes, route the honeynet CIDR into the **TUN adapter**
+(`honeynet.tun.enabled`), whose embedded userspace stack completes
+handshakes and answers a request/response for each host's configured
+ports. To instead route into the sensor's real socket handlers (full
+multi-segment protocol interaction), the operator needs `ip addr add` or
+iptables redirection. Without either, scanners running `arp-scan` see a
+populated network but TCP probes get nowhere.
 
 ### ICMP echo responder (Linux)
 
@@ -1954,13 +1963,17 @@ Sample Prometheus scrape:
 - **fanotify on Windows.** ETW-based read detection would be the
   equivalent path.
 - **L2 sniffer on Windows.** Would need Npcap (license-sensitive).
-- **Full TCP termination over TUN.** The TUN adapter is an L3
-  responder — it answers ICMP/ICMPv6 echo and TCP RST so the network
-  appears alive. Real TCP termination would need a pure-userspace TCP
-  stack (gvisor's netstack would be the natural fit, but their module
-  ships Bazel-only files Go's build can't handle today). For actual
-  protocol interaction with virtual host services, the operator still
-  needs `ip addr add` or iptables alongside the TUN.
+- **Out-of-order / streaming TCP reassembly over TUN.** The TUN adapter
+  now embeds a userspace TCP stack (`internal/tcpstack`): SYNs to a
+  virtual host's configured ports complete a fingerprint-shaped handshake
+  (TTL / window / MSS / wscale / SACK / timestamps / option order matched
+  to the host archetype) and answer a single request/response from the
+  archetype banners, while unbound ports RST and malformed/illegal
+  packets are captured as events — no `ip addr add` per host. It is
+  deliberately a *decoy* stack: in-order data only, one request/response,
+  no retransmission, congestion control, or out-of-order reassembly. Deep
+  multi-segment protocol interaction still wants a real socket (bind it
+  with `ip addr add` / iptables alongside the TUN).
 - **MIB-walkable SNMP topology.** SNMP topology is currently exposed
   via event meta (`honeynet_neighbors`); a real `ipNetToMediaTable`
   walk would need GetNext support over the full MIB-2 tree.

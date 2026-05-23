@@ -62,25 +62,72 @@ func TestBuildEchoReplyV4StampsTTLAndSwaps(t *testing.T) {
 	}
 }
 
-func TestBuildRSTV4StampsTTL(t *testing.T) {
-	src := [4]byte{1, 2, 3, 4}
-	dst := [4]byte{10, 0, 0, 5}
-	out := buildRSTV4(src, dst, 40000, 80, 0x11223344, 255)
+// TCP RST / SYN-ACK generation moved to the userspace stack
+// (internal/tcpstack); see its packet_test.go and stack_test.go.
 
-	if out[8] != 255 {
-		t.Errorf("RST TTL = %d; want 255", out[8])
+func TestNewStackRstsClosedPorts(t *testing.T) {
+	// A tunnet stack built from an empty decoy map must RST any SYN — the
+	// legacy "every port closed" behavior the L3 responder used to provide.
+	st := newStack(nil)
+	syn := buildSynV4([4]byte{1, 2, 3, 4}, [4]byte{10, 0, 0, 5}, 40000, 80, 0x11223344)
+	res := st.OnPacket(syn)
+	if len(res.Out) != 1 {
+		t.Fatalf("closed-port SYN produced %d packets; want 1 RST", len(res.Out))
 	}
-	if out[9] != 6 {
-		t.Errorf("RST proto = %d; want 6 (TCP)", out[9])
+	rst := res.Out[0]
+	if rst[20+13] != 0x14 {
+		t.Errorf("RST flags = %#02x; want 0x14 (RST+ACK)", rst[20+13])
 	}
-	if out[20+13] != 0x14 {
-		t.Errorf("RST flags = %#02x; want 0x14 (RST+ACK)", out[20+13])
-	}
-	// ack = client_seq + 1
-	if ack := binary.BigEndian.Uint32(out[20+8 : 20+12]); ack != 0x11223345 {
+	if ack := binary.BigEndian.Uint32(rst[20+8 : 20+12]); ack != 0x11223345 {
 		t.Errorf("RST ack = %#x; want client_seq+1", ack)
 	}
-	if internetChecksum(out[:20]) != 0 {
+	if internetChecksum(rst[:20]) != 0 {
 		t.Errorf("RST IP checksum invalid")
 	}
+}
+
+// buildSynV4 is a minimal client SYN (no options) for the tunnet-level test.
+func buildSynV4(src, dst [4]byte, sport, dport uint16, seq uint32) []byte {
+	pkt := make([]byte, 40)
+	pkt[0] = 0x45
+	binary.BigEndian.PutUint16(pkt[2:4], 40)
+	pkt[8] = 64
+	pkt[9] = 6
+	copy(pkt[12:16], src[:])
+	copy(pkt[16:20], dst[:])
+	binary.BigEndian.PutUint16(pkt[10:12], internetChecksum(pkt[:20]))
+	t := pkt[20:]
+	binary.BigEndian.PutUint16(t[0:2], sport)
+	binary.BigEndian.PutUint16(t[2:4], dport)
+	binary.BigEndian.PutUint32(t[4:8], seq)
+	t[12] = 0x50
+	t[13] = 0x02 // SYN
+	binary.BigEndian.PutUint16(t[14:16], 0xffff)
+	binary.BigEndian.PutUint16(t[16:18], tcpCsumForTest(src[:], dst[:], t))
+	return pkt
+}
+
+// tcpCsumForTest mirrors the stack's pseudo-header TCP checksum so the
+// synthetic SYN parses as well-formed.
+func tcpCsumForTest(src, dst, tcp []byte) uint16 {
+	var sum uint32
+	add := func(s []byte) {
+		for i := 0; i+1 < len(s); i += 2 {
+			sum += uint32(s[i])<<8 | uint32(s[i+1])
+		}
+		if len(s)%2 == 1 {
+			sum += uint32(s[len(s)-1]) << 8
+		}
+	}
+	pseudo := make([]byte, 12)
+	copy(pseudo[0:4], src)
+	copy(pseudo[4:8], dst)
+	pseudo[9] = 6
+	binary.BigEndian.PutUint16(pseudo[10:12], uint16(len(tcp)))
+	add(pseudo)
+	add(tcp)
+	for sum>>16 != 0 {
+		sum = (sum & 0xffff) + (sum >> 16)
+	}
+	return ^uint16(sum)
 }

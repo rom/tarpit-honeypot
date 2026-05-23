@@ -743,12 +743,16 @@ honeynets:
       interface: ""
       interval_s: 30
       include_cdp: false   # also emit Cisco CDP frames for cdp-aware scanners
-    # Linux-only L3 adapter. Opens a TUN device; operator routes the
-    # honeynet CIDR through it. Sensor answers ICMP/ICMPv6 echo for
-    # virtual host IPs and sends TCP RST for unbound ports — so
-    # `nmap -sS` reports the host as alive without `ip addr add`.
-    # CAP_NET_ADMIN required. macOS supports utun but no native
-    # backend yet — use `ifconfig alias` as a workaround.
+    # Linux-only adapter. Opens a TUN device; operator routes the honeynet
+    # CIDR through it. The sensor answers ICMP/ICMPv6 echo for virtual host
+    # IPs, and an embedded userspace TCP stack completes handshakes on each
+    # host's `services` ports with a SYN-ACK shaped to the host archetype's
+    # stack fingerprint (TTL/window/MSS/wscale/SACK/timestamps/option order
+    # — what `nmap -O` / p0f read), answers a single request/response from
+    # the archetype banners, RSTs unbound ports, and captures malformed /
+    # illegal packets (NULL/FIN/Xmas, SYN-FIN, bad checksums, fragments) as
+    # events — all without `ip addr add` per host. CAP_NET_ADMIN required.
+    # macOS supports utun but no native backend yet — use `ifconfig alias`.
     tun:
       enabled: false
       device: ""           # blank = kernel-chosen (e.g. tun0)

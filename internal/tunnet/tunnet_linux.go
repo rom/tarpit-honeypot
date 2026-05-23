@@ -1,19 +1,18 @@
 //go:build linux
 
 // Package tunnet opens a Linux TUN device, claims the honeynet IP range
-// at the L3 layer, and answers low-level reconnaissance probes (ICMP
-// echo for IPv4, ICMPv6 echo for IPv6, TCP RST for unbound ports) so
-// the artificial network appears alive without the operator running
-// `ip addr add` for every virtual host IP.
+// at the L3 layer, and answers reconnaissance probes (ICMP echo for
+// IPv4, ICMPv6 echo for IPv6) so the artificial network appears alive
+// without the operator running `ip addr add` for every virtual host IP.
 //
-// Scope intentionally limited: this is an IP-layer responder, NOT a
-// userspace TCP stack. Real protocol termination for honeynet hosts
-// still flows through the regular socket listeners (which require
-// either `ip addr add`, iptables DNAT, or the operator routing the
-// TUN destination back into the sensor via NAT). For SYN scans alone
-// the TUN responder is enough — `nmap` reports the host as up with
-// the configured ports either closed (RST) or, when an actual handler
-// is bound via a sibling listener, open.
+// TCP is handled by the embedded userspace stack (internal/tcpstack):
+// SYNs to a host's configured open ports complete a handshake and get a
+// fingerprint-shaped SYN-ACK (TTL/window/MSS/options matched to the
+// host's archetype) plus a single request/response, while unbound ports
+// answer with RST and malformed/illegal packets are captured as events.
+// This makes the honeynet a believable decoy under `nmap -sV`/`-O` and
+// p0f without a real socket bound per virtual host. The legacy RST-only
+// behavior is preserved automatically when a host exposes no open ports.
 //
 // CAP_NET_ADMIN is required to create the TUN device; the existing
 // systemd unit already grants it via AmbientCapabilities.
@@ -29,8 +28,10 @@ import (
 	"net/netip"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"github.com/rom/tarpit-honeypot/internal/tcpstack"
 	"golang.org/x/sys/unix"
 )
 
@@ -46,6 +47,27 @@ type Config struct {
 	// the host's own TTL (instead of echoing the prober's) makes nmap -O
 	// + traceroute hop-distance consistent with the host's archetype.
 	Personas map[string]int
+
+	// Hosts supplies the per-host userspace-TCP decoy behavior (open
+	// ports, OS fingerprint, banners). Hosts absent here still answer
+	// ICMP and RST every TCP port (legacy L3 behavior).
+	Hosts map[string]HostDecoy
+	// Emit publishes a userspace-stack event (handshake / request /
+	// malformed packet) to the sensor bus. nil drops them.
+	Emit func(tcpstack.Event)
+}
+
+// HostDecoy describes how one virtual host terminates TCP: which ports
+// accept, the OS fingerprint the SYN-ACK is shaped to, and the bytes the
+// decoy speaks. Banners are sent right after the handshake (server-first
+// services like SSH/FTP/SMTP); Replies answer the first client request
+// (client-first services like HTTP). A port present in Ports but in
+// neither map completes the handshake then stays silent — still "open".
+type HostDecoy struct {
+	Profile tcpstack.OSProfile
+	Ports   map[uint16]bool
+	Banners map[uint16][]byte
+	Replies map[uint16][]byte
 }
 
 // Adapter holds the TUN fd, the parsed host-IP set, and runs the
@@ -62,12 +84,14 @@ type Adapter struct {
 	ttlV4 map[[4]byte]byte
 	ttlV6 map[[16]byte]byte
 
+	stack *tcpstack.Stack
+	emit  func(tcpstack.Event)
+
 	mu     sync.Mutex
 	closed bool
 
 	pktsIn      uint64
 	icmpReplies uint64
-	tcpRsts     uint64
 }
 
 // New opens the TUN device + parses the host IPs. The caller must invoke
@@ -112,6 +136,8 @@ func New(cfg Config) (*Adapter, error) {
 			}
 		}
 	}
+	a.emit = cfg.Emit
+	a.stack = newStack(cfg.Hosts)
 	slog.Info("tunnet up",
 		"device", name,
 		"cidrs", cfg.CIDRs,
@@ -132,6 +158,20 @@ func (a *Adapter) Run(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		a.Close()
+	}()
+	// Reap idle half-open / lingering flows so a SYN flood can't grow the
+	// stack's flow table without bound.
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				a.stack.Sweep()
+			}
+		}
 	}()
 	buf := make([]byte, a.mtu)
 	for {
@@ -197,7 +237,7 @@ func (a *Adapter) handleIPv4(pkt []byte) {
 	case 1:
 		a.handleICMPv4(pkt, ihl, src, dst)
 	case 6:
-		a.handleTCPv4(pkt, ihl, src, dst)
+		a.handleTCPv4(pkt)
 	}
 }
 
@@ -232,51 +272,50 @@ func buildEchoReplyV4(pkt []byte, ihl int, src, dst [4]byte, ttl byte) []byte {
 	return reply
 }
 
-func (a *Adapter) handleTCPv4(pkt []byte, ihl int, src, dst [4]byte) {
-	tcp := pkt[ihl:]
-	if len(tcp) < 20 {
-		return
+// newStack builds the userspace TCP engine from the per-host decoy map.
+// The Profile/Open/Responder closures index an IPv4-keyed copy so the hot
+// path never reparses host-IP strings. With an empty map the stack RSTs
+// every TCP port (the legacy L3 responder behavior).
+func newStack(hosts map[string]HostDecoy) *tcpstack.Stack {
+	decoys := make(map[[4]byte]HostDecoy, len(hosts))
+	for ipStr, d := range hosts {
+		if addr, err := netip.ParseAddr(ipStr); err == nil && addr.Is4() {
+			decoys[addr.As4()] = d
+		}
 	}
-	flags := tcp[13]
-	if flags&0x02 == 0 || flags&0x10 != 0 {
-		return
-	}
-	srcPort := binary.BigEndian.Uint16(tcp[0:2])
-	dstPort := binary.BigEndian.Uint16(tcp[2:4])
-	clientSeq := binary.BigEndian.Uint32(tcp[4:8])
-
-	out := buildRSTV4(src, dst, srcPort, dstPort, clientSeq, a.ttlFor4(dst))
-	if _, err := unix.Write(a.tunFD, out); err != nil {
-		slog.Debug("tunnet write tcp", "err", err)
-		return
-	}
-	a.tcpRsts++
+	return tcpstack.NewStack(tcpstack.Config{
+		Profile: func(dst [4]byte) tcpstack.OSProfile {
+			if d, ok := decoys[dst]; ok && d.Profile.Name != "" {
+				return d.Profile
+			}
+			return tcpstack.ProfileFor("")
+		},
+		Open: func(dst [4]byte, port uint16) bool {
+			d, ok := decoys[dst]
+			return ok && d.Ports[port]
+		},
+		Responder: tcpstack.Responder{
+			Banner:  func(dst [4]byte, port uint16) []byte { return decoys[dst].Banners[port] },
+			Respond: func(dst [4]byte, port uint16, _ []byte) []byte { return decoys[dst].Replies[port] },
+		},
+	})
 }
 
-// buildRSTV4 synthesizes a RST+ACK for a SYN to an unbound port, with the
-// IP TTL set to our host persona so a closed-port probe fingerprints the
-// host consistently with its archetype.
-func buildRSTV4(src, dst [4]byte, srcPort, dstPort uint16, clientSeq uint32, ttl byte) []byte {
-	out := make([]byte, 40)
-	out[0] = 0x45
-	binary.BigEndian.PutUint16(out[2:4], 40)
-	binary.BigEndian.PutUint16(out[6:8], 0x4000) // DF
-	out[8] = ttl
-	out[9] = 6
-	copy(out[12:16], dst[:])
-	copy(out[16:20], src[:])
-	binary.BigEndian.PutUint16(out[10:12], internetChecksum(out[:20]))
-	t := out[20:]
-	binary.BigEndian.PutUint16(t[0:2], dstPort)
-	binary.BigEndian.PutUint16(t[2:4], srcPort)
-	binary.BigEndian.PutUint32(t[4:8], 0)
-	binary.BigEndian.PutUint32(t[8:12], clientSeq+1)
-	t[12] = 0x50
-	t[13] = 0x14 // RST + ACK
-	binary.BigEndian.PutUint16(t[14:16], 0)
-	binary.BigEndian.PutUint16(t[18:20], 0)
-	binary.BigEndian.PutUint16(t[16:18], tcpChecksumV4(dst[:], src[:], t))
-	return out
+// handleTCPv4 feeds the segment to the userspace stack and writes back any
+// synthesized packets (SYN-ACK, data, FIN, RST), emitting the handshake,
+// request and malformed-packet events the stack surfaces.
+func (a *Adapter) handleTCPv4(pkt []byte) {
+	res := a.stack.OnPacket(pkt)
+	for _, p := range res.Out {
+		if _, err := unix.Write(a.tunFD, p); err != nil {
+			slog.Debug("tunnet write tcp", "err", err)
+		}
+	}
+	if a.emit != nil {
+		for i := range res.Events {
+			a.emit(res.Events[i])
+		}
+	}
 }
 
 func (a *Adapter) handleIPv6(pkt []byte) {
@@ -329,11 +368,18 @@ func (a *Adapter) Close() error {
 		_ = unix.Close(a.tunFD)
 		a.tunFD = -1
 	}
+	var st tcpstack.Stats
+	if a.stack != nil {
+		st = a.stack.Stats()
+	}
 	slog.Info("tunnet down",
 		"device", a.tunName,
 		"packets_in", a.pktsIn,
 		"icmp_replies", a.icmpReplies,
-		"tcp_rsts", a.tcpRsts,
+		"tcp_handshakes", st.Handshakes,
+		"tcp_requests", st.Requests,
+		"tcp_rsts", st.Resets,
+		"tcp_malformed", st.Malformed,
 	)
 	return nil
 }
@@ -412,15 +458,6 @@ func internetChecksum(b []byte) uint16 {
 		sum = (sum & 0xffff) + (sum >> 16)
 	}
 	return ^uint16(sum)
-}
-
-func tcpChecksumV4(src, dst net.IP, tcp []byte) uint16 {
-	pseudo := make([]byte, 12)
-	copy(pseudo[0:4], src)
-	copy(pseudo[4:8], dst)
-	pseudo[9] = 6
-	binary.BigEndian.PutUint16(pseudo[10:], uint16(len(tcp)))
-	return sumOver(pseudo, tcp)
 }
 
 func icmpv6Checksum(src, dst net.IP, icmp []byte) uint16 {

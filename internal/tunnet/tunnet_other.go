@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"runtime"
+
+	"github.com/rom/tarpit-honeypot/internal/tcpstack"
 )
 
 // macOS supports utun devices via PF_SYSTEM + UTUN_CONTROL_NAME and a
@@ -27,6 +29,18 @@ type Config struct {
 	HostIPs    []string
 	MTU        int
 	Personas   map[string]int // host IP -> initial IP TTL (0 = default 64)
+	Hosts      map[string]HostDecoy
+	Emit       func(tcpstack.Event)
+}
+
+// HostDecoy mirrors the Linux definition so the sensor builds the same
+// config on every platform; the userspace TCP stack is Linux-only at
+// runtime (this backend returns an error from New).
+type HostDecoy struct {
+	Profile tcpstack.OSProfile
+	Ports   map[uint16]bool
+	Banners map[uint16][]byte
+	Replies map[uint16][]byte
 }
 
 type Adapter struct{}
