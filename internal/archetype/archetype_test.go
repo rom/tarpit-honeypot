@@ -30,8 +30,8 @@ func TestLookupCommonForms(t *testing.T) {
 }
 
 func TestLookupUnknown(t *testing.T) {
-	if p := Lookup("solaris 11"); p != nil {
-		t.Errorf("Lookup(solaris 11) = %v; want nil", p)
+	if p := Lookup("haiku-os 1"); p != nil {
+		t.Errorf("Lookup(haiku-os 1) = %v; want nil", p)
 	}
 	if p := Lookup(""); p != nil {
 		t.Errorf("Lookup(empty) = %v; want nil", p)
@@ -170,6 +170,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"F5 BIG-IP (TMOS)",
 		"SonicWall TZ (SonicOS)",
 		"Netgear Nighthawk router",
+		// Legacy Unix / alt-Linux / more appliances.
+		"Oracle Solaris 11",
+		"IBM AIX 7.2",
+		"Gentoo Linux",
+		"OPNsense firewall",
+		"VyOS router",
+		"OpenWrt router",
+		"Arista EOS switch",
+		"Check Point Gaia firewall",
+		"Dell iDRAC 9 (lights-out)",
+		"HPE iLO 5 (lights-out)",
 	}
 	got := Names()
 	if len(got) != len(want) {
