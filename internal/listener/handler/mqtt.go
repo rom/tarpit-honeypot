@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -117,9 +118,103 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	connack := []byte{0x20, 0x02, 0x00, 0x00}
 	if _, err := conn.Write(connack); err != nil {
 		meta["write_err"] = err.Error()
+		res.BannerSent = "mqtt CONNACK accepted"
+		return res, nil
 	}
 	res.BannerSent = "mqtt CONNACK accepted"
+
+	// Post-CONNACK session: answer the control packets a real broker would so
+	// a scanner/brute-forcer that proceeds past the handshake keeps talking —
+	// SUBSCRIBE (and wildcard data-harvesting), PUBLISH, PINGREQ keepalives.
+	mqttSession(conn, br, &res, meta)
 	return res, nil
+}
+
+// mqttSession reads a bounded number of post-CONNACK control packets and
+// answers them like a broker would, capturing subscribed/published topics.
+func mqttSession(conn net.Conn, br *bufio.Reader, res *Result, meta map[string]any) {
+	var subTopics, pubTopics []string
+	defer func() {
+		if len(subTopics) > 0 {
+			meta["subscribed_topics"] = subTopics
+		}
+		if len(pubTopics) > 0 {
+			meta["published_topics"] = pubTopics
+		}
+	}()
+	for i := 0; i < 8; i++ {
+		first, err := br.ReadByte()
+		if err != nil {
+			break
+		}
+		remLen, err := readVarint(br)
+		if err != nil || remLen > 8192 {
+			break
+		}
+		body := make([]byte, remLen)
+		if _, err := io.ReadFull(br, body); err != nil {
+			break
+		}
+		res.Payload = append(res.Payload, body...)
+		switch first & 0xF0 {
+		case 0x80: // SUBSCRIBE
+			if len(body) < 2 {
+				return
+			}
+			pktID := body[0:2]
+			idx := 2
+			for idx+2 <= len(body) {
+				topic, ni, ok := readMQTTString(body, idx)
+				if !ok {
+					break
+				}
+				idx = ni
+				if idx < len(body) { // requested QoS byte
+					idx++
+				}
+				subTopics = append(subTopics, topic)
+				if strings.ContainsAny(topic, "#+") || strings.HasPrefix(topic, "$SYS") {
+					flagAnomaly(res, "mqtt-wildcard-subscribe")
+				}
+			}
+			// SUBACK: type 0x90, remlen = 2 (pktID) + 1 granted QoS per topic.
+			n := len(subTopics)
+			if n == 0 {
+				n = 1
+			}
+			suback := []byte{0x90, byte(2 + n)}
+			suback = append(suback, pktID...)
+			for j := 0; j < n; j++ {
+				suback = append(suback, 0x00) // granted QoS 0
+			}
+			if _, err := conn.Write(suback); err != nil {
+				return
+			}
+		case 0xA0: // UNSUBSCRIBE
+			if len(body) >= 2 {
+				_, _ = conn.Write(append([]byte{0xB0, 0x02}, body[0:2]...)) // UNSUBACK
+			}
+		case 0x30: // PUBLISH
+			qos := (first >> 1) & 0x03
+			topic, ni, ok := readMQTTString(body, 0)
+			if ok {
+				pubTopics = append(pubTopics, topic)
+				if qos > 0 && ni+2 <= len(body) {
+					pktID := body[ni : ni+2]
+					_, _ = conn.Write(append([]byte{0x40, 0x02}, pktID...)) // PUBACK
+				}
+			}
+			flagAnomaly(res, "mqtt-publish")
+		case 0xC0: // PINGREQ
+			if _, err := conn.Write([]byte{0xD0, 0x00}); err != nil { // PINGRESP
+				return
+			}
+		case 0xE0: // DISCONNECT
+			return
+		default:
+			return
+		}
+	}
 }
 
 func readVarint(br *bufio.Reader) (int, error) {

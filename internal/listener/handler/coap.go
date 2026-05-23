@@ -31,6 +31,8 @@ const (
 	coapTypeCON = 0
 	coapTypeACK = 2
 
+	coapCodeDeleted     = 0x42 // 2.02 (Deleted)
+	coapCodeChanged     = 0x44 // 2.04 (Changed)
 	coapCodeContent     = 0x45 // 2.05 (Content)
 	coapCodeBadRequest  = 0x80 // 4.00
 	coapCodeUnsupported = 0xa1 // 5.01
@@ -129,9 +131,25 @@ func (c *coap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		res.Meta["uri_path"] = string(uriPath)
 	}
 
-	// Reply with /.well-known/core listing one fake LED resource —
-	// looks like a real CoAP IoT device to common scanners.
-	body := []byte(`</.well-known/core>;rt="core",</led>;rt="oic.r.switch.binary";if="oic.if.a"`)
+	// Method-aware reply (code: 0x01 GET, 0x02 POST, 0x03 PUT, 0x04 DELETE).
+	// Writes against an exposed CoAP device are actuation attempts (toggling
+	// a relay, reflashing config) — flag them and answer as a real device
+	// would, but never act.
+	switch code {
+	case 0x02, 0x03: // POST / PUT
+		flagAnomaly(&res, "coap-write-attempt")
+		return c.reply(payload, mid, token, coapCodeChanged, nil, src, pc, res)
+	case 0x04: // DELETE
+		flagAnomaly(&res, "coap-write-attempt")
+		return c.reply(payload, mid, token, coapCodeDeleted, nil, src, pc, res)
+	}
+
+	// GET: reply with /.well-known/core listing a believable set of resources
+	// — looks like a real CoAP IoT device to common scanners.
+	body := []byte(`</.well-known/core>;rt="core",` +
+		`</led>;rt="oic.r.switch.binary";if="oic.if.a",` +
+		`</sensors/temp>;rt="oic.r.temperature";if="oic.if.s",` +
+		`</3/0>;rt="oma.lwm2m";ct=11543`)
 	return c.reply(payload, mid, token, coapCodeContent, body, src, pc, res)
 }
 

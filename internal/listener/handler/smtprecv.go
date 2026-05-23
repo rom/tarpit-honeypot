@@ -114,6 +114,17 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			if ended {
 				fmt.Fprintf(conn, "250 OK: queued as 0xdeadbeef\r\n")
 			}
+		case "BDAT":
+			// CHUNKING (RFC 3030): "BDAT <size> [LAST]" — read and discard a
+			// bounded chunk, then accept it like a real MTA would.
+			readBDATChunk(arg, br)
+			fmt.Fprintf(conn, "250 OK\r\n")
+		case "HELP":
+			fmt.Fprintf(conn, "214 2.0.0 https://www.postfix.org/\r\n")
+		case "NOOP":
+			fmt.Fprintf(conn, "250 OK\r\n")
+		case "ETRN":
+			fmt.Fprintf(conn, "250 OK\r\n")
 		case "RSET":
 			fmt.Fprintf(conn, "250 OK\r\n")
 		case "QUIT":
@@ -169,8 +180,8 @@ func isExternalAddr(addr string) bool {
 // no STARTTLS, since we never negotiate TLS. Archetypes whose MTA differs
 // (Exchange, sendmail) override via Profile.smtpExtensions.
 var defaultSMTPExtensions = []string{
-	"PIPELINING", "SIZE 10240000", "VRFY", "AUTH PLAIN LOGIN",
-	"ENHANCEDSTATUSCODES", "8BITMIME", "DSN",
+	"PIPELINING", "SIZE 10240000", "VRFY", "ETRN", "AUTH PLAIN LOGIN CRAM-MD5",
+	"ENHANCEDSTATUSCODES", "8BITMIME", "DSN", "CHUNKING", "SMTPUTF8",
 }
 
 // buildSMTPEHLO renders a multiline 250 EHLO reply: the greeting host on
@@ -252,8 +263,47 @@ func (s *smtpRecv) handleAuth(arg string, br *bufio.Reader, conn net.Conn, meta 
 			meta["auth_pass"] = string(p)
 		}
 		fmt.Fprintf(conn, "535 Authentication failed\r\n")
+	case "CRAM-MD5":
+		// Server sends a base64 challenge; client replies base64("user
+		// space hmac-md5-hex"). We can't recover the plaintext password,
+		// but the username + the HMAC (offline-crackable) are worth capturing.
+		fmt.Fprintf(conn, "334 PDEyMzQ1Njc4OUBtYWlsPg==\r\n") // base64 "<123456789@mail>"
+		l, _ := br.ReadString('\n')
+		if raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(l)); err == nil {
+			if sp := strings.IndexByte(string(raw), ' '); sp > 0 {
+				meta["auth_user"] = string(raw[:sp])
+				meta["auth_cram_response"] = string(raw[sp+1:])
+			}
+		}
+		fmt.Fprintf(conn, "535 Authentication failed\r\n")
 	default:
 		fmt.Fprintf(conn, "504 Unsupported authentication mechanism\r\n")
+	}
+}
+
+// readBDATChunk consumes a CHUNKING BDAT chunk: the arg is "<size> [LAST]";
+// we read (and discard) up to a bounded number of the announced bytes so the
+// stream stays aligned, never buffering an unbounded chunk.
+func readBDATChunk(arg string, br *bufio.Reader) {
+	f := strings.Fields(arg)
+	if len(f) == 0 {
+		return
+	}
+	n := 0
+	for _, c := range f[0] {
+		if c < '0' || c > '9' {
+			return
+		}
+		n = n*10 + int(c-'0')
+		if n > 65536 {
+			n = 65536
+			break
+		}
+	}
+	for i := 0; i < n; i++ {
+		if _, err := br.ReadByte(); err != nil {
+			return
+		}
 	}
 }
 
