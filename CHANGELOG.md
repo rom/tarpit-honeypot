@@ -8,6 +8,43 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fuzzing & DoS detection + classification
+- New always-on `internal/fuzzdos` detector with two halves:
+  - **Per-payload fuzzing classifier** — scores each request's byte
+    structure (Shannon entropy, printable ratio, single-byte runs, null
+    floods, format-string specifiers, gross oversize) and labels the
+    technique: `buffer-overflow`, `format-string`, `null-flood`,
+    `oversize`, `high-entropy`, or `binary-garbage`. Binary protocols
+    aren't entropy-judged (they look that way normally). A positive
+    verdict stamps a `fuzzing-<technique>` anomaly + `fuzz_technique` /
+    `payload_entropy` meta on the event, so the `protocol_violation`
+    correlator and SIEM inherit it.
+  - **Per-source DoS / campaign classifier** — labels the denial-of-service
+    type (`connection-flood` / `app-flood` / `volumetric` /
+    `malformed-flood`) and a sustained fuzzing campaign (dominant
+    technique), emitting `attack:dos` / `attack:fuzzing` with a confidence
+    score. Complements the AF_PACKET sniffer's wire-level flood detection.
+- ATT&CK mappings added for `attack:dos` (T1499) / `attack:fuzzing`
+  (T1595.002) and for the 10 opt-in correlators added earlier (they were
+  previously untagged). Surfaced as a "Fuzzing/DoS classifier" detection
+  card on the config canvas.
+
+### Added — collectors: enrichment + canvas visibility
+- **3 new enrichment collectors** in the event-decoration pipeline
+  (`sensor:` config, enrichment-only — they tag, never block):
+  - `threat_intel` — tag source IPs found on operator-supplied IP/CIDR
+    reputation lists (each labeled); events get `threat_intel` (matched
+    labels) + `threat_intel_hit`.
+  - `tor` — flag sources in a Tor exit-node list with `tor_exit=true`.
+  - `net_class` — built-in, database-free classification of public
+    sources: `bogon` (reserved/martian ranges) or `hosting` (datacenter /
+    cloud AS-org, from the GeoIP-ASN org).
+- The web UI **config canvas** now surfaces the real-but-previously-hidden
+  background subsystems: **Scan analysis** and **Client fingerprinting**
+  (detection), **PCAP capture** (forensics), and the three new enrichment
+  collectors. The **Correlation engine** detector count now includes the
+  10 opt-in correlators added earlier.
+
 ### Added — CVE catalog: +20 OT/ICS advisories
 - The CVE catalog grows by **20 OT/ICS control-protocol records** mapped to
   the industrial handlers the honeypot emulates: Schneider Modicon UMAS/Modbus

@@ -71,13 +71,23 @@ func TestBuildConfigCanvasCollectors(t *testing.T) {
 		"Packet sniffer (ARP/L2 scan)", "TCP stealth-scan detector",
 		"Device inventory", "Risk scoring", "Correlation engine",
 		"ARP responder", "ICMP echo responder", "Event forwarding",
+		// always-on / config-derived collectors:
+		"Scan analysis",          // always running
+		"Fuzzing/DoS classifier", // always running
+		"Client fingerprinting",  // ssh + https listeners present
+		"PCAP capture",           // https listener has capture: true
 	}
 	for _, n := range wantActive {
 		if !state[n] {
 			t.Errorf("collector %q should be active", n)
 		}
 	}
-	wantOff := []string{"GOOSE monitor (IEC 61850)", "GeoIP enrichment", "Payload capture", "PROFINET DCP responder"}
+	wantOff := []string{
+		"GOOSE monitor (IEC 61850)", "GeoIP enrichment", "Payload capture",
+		"PROFINET DCP responder",
+		// new enrichment collectors, all opt-in and unset in the sample:
+		"Threat-intel tagging", "Tor-exit tagging", "Network classification",
+	}
 	for _, n := range wantOff {
 		if state[n] {
 			t.Errorf("collector %q should be inactive", n)

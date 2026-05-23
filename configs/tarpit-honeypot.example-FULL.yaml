@@ -66,6 +66,24 @@ sensor:
     enabled: false
     timeout: 500ms
     cache_size: 1024
+  # Threat-intel tagging: tag source IPs found on operator-supplied
+  # reputation lists (one IP/CIDR per line; '#' comments allowed). Each
+  # list's label lands in the event's threat_intel meta. Enrichment only.
+  threat_intel:
+    enabled: false
+    lists:
+      - { label: abuse-ch,    file: /etc/tarpit-honeypot/intel/abuse-ch.txt }
+      - { label: blocklist-de, file: /etc/tarpit-honeypot/intel/blocklist-de.txt }
+  # Tor-exit tagging: flag sources in an operator-supplied exit-node list
+  # (tor_exit=true on the event).
+  tor:
+    enabled: false
+    exit_file: /etc/tarpit-honeypot/intel/tor-exits.txt
+  # Network classification (no external DB): tag public sources "bogon"
+  # (reserved/martian range) or "hosting" (datacenter/cloud AS-org, when
+  # the GeoIP ASN db is loaded).
+  net_class:
+    enabled: true
 
 ui:
   enabled: true

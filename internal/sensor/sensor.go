@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
@@ -64,6 +66,7 @@ type Sensor struct {
 	enrich      *enrich.Enricher
 	devices     *devices.Registry
 	scanTrack   *scananalysis.Tracker
+	fuzzTrack   *fuzzdos.Tracker
 	payloads    *payload.Store
 	sessionRec  *sessionrec.Store
 	risk        *risk.Scorer
@@ -229,6 +232,9 @@ func New(cfg *config.Config) (*Sensor, error) {
 		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
 		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
 		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
+		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile: torExitFile(cfg.Sensor.Tor),
+		NetClass:    cfg.Sensor.NetClass.Enabled,
 	})
 	if err != nil {
 		for _, s := range sinks {
@@ -293,6 +299,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		devices:     devReg,
 		deviceSev:   devSev,
 		scanTrack:   scananalysis.NewTracker(5 * time.Minute),
+		fuzzTrack:   fuzzdos.NewTracker(60 * time.Second),
 		payloads:    payloadStore,
 		sessionRec:  sessRec,
 		risk:        newRiskScorer(cfg.Risk),
@@ -433,6 +440,97 @@ func (s *Sensor) observeScan(ev *event.Event, payload []byte) *event.Event {
 		Proto:    "tcp",
 		Meta:     meta,
 	}
+}
+
+// observeFuzzDoS classifies fuzzing and denial-of-service activity. It
+// runs the stateless payload classifier — stamping a fuzzing-<technique>
+// anomaly + meta on the event in place so the protocol_violation
+// correlator and downstream SIEM inherit it — and feeds the per-source
+// Tracker, returning attack:dos / attack:fuzzing events when a source
+// crosses a flood / campaign threshold. Must run before the correlator so
+// the in-place anomaly is visible to it.
+func (s *Sensor) observeFuzzDoS(ev *event.Event, payload []byte) []*event.Event {
+	if s.fuzzTrack == nil || ev == nil || ev.Source.IP == "" {
+		return nil
+	}
+	if !strings.HasPrefix(ev.RuleID, "listener:") {
+		return nil
+	}
+	v := fuzzdos.ClassifyPayload(payload, ev.Handler)
+	if v.Fuzzing {
+		marker := "fuzzing-" + v.Technique
+		if !containsStr(ev.Anomalies, marker) {
+			ev.Anomalies = append(ev.Anomalies, marker)
+		}
+		if ev.Meta == nil {
+			ev.Meta = map[string]any{}
+		}
+		ev.Meta["fuzz_technique"] = v.Technique
+		ev.Meta["payload_entropy"] = math.Round(v.Entropy*100) / 100
+	}
+	bytesIn := int64(len(payload))
+	if int64(ev.PayloadLen) > bytesIn {
+		bytesIn = int64(ev.PayloadLen)
+	}
+	r := s.fuzzTrack.Observe(fuzzdos.Observation{
+		SourceIP: ev.Source.IP,
+		DestPort: ev.Dest.Port,
+		Time:     ev.Time,
+		Bytes:    bytesIn,
+		Fuzz:     v,
+	})
+	if r == nil {
+		return nil
+	}
+	var out []*event.Event
+	if r.DoS {
+		out = append(out, &event.Event{
+			ID:       event.NewID(),
+			Time:     ev.Time,
+			Sensor:   s.name,
+			RuleID:   "attack:dos",
+			Severity: event.SeverityHigh,
+			Source:   ev.Source,
+			Proto:    ev.Proto,
+			Meta: map[string]any{
+				"dos_type":    r.DoSType,
+				"connections": r.Conns,
+				"bytes":       r.Bytes,
+				"window_s":    int(r.Window.Seconds()),
+				"confidence":  r.Confidence,
+			},
+		})
+	}
+	if r.Fuzzing {
+		out = append(out, &event.Event{
+			ID:       event.NewID(),
+			Time:     ev.Time,
+			Sensor:   s.name,
+			RuleID:   "attack:fuzzing",
+			Severity: event.SeverityHigh,
+			Source:   ev.Source,
+			Proto:    ev.Proto,
+			Handler:  ev.Handler,
+			Meta: map[string]any{
+				"technique":  r.Technique,
+				"fuzz_count": r.FuzzCount,
+				"dest_port":  ev.Dest.Port,
+				"window_s":   int(r.Window.Seconds()),
+				"confidence": r.Confidence,
+			},
+		})
+	}
+	return out
+}
+
+// containsStr reports whether xs contains s.
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // observePayload harvests malware / shellcode / ingress URLs from an
@@ -627,6 +725,27 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 		Proto:    "device",
 		Meta:     meta,
 	}
+}
+
+// threatListsFromConfig maps the config threat-intel lists to the enrich
+// package's input. Returns nil when disabled (no lists loaded).
+func threatListsFromConfig(ti config.ThreatIntel) []enrich.ThreatList {
+	if !ti.Enabled || len(ti.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.ThreatList, 0, len(ti.Lists))
+	for _, l := range ti.Lists {
+		out = append(out, enrich.ThreatList{Label: l.Label, File: l.File})
+	}
+	return out
+}
+
+// torExitFile returns the Tor exit-node list path when Tor tagging is on.
+func torExitFile(t config.TorIntel) string {
+	if !t.Enabled {
+		return ""
+	}
+	return t.ExitFile
 }
 
 // isBroadcastHandler reports whether a handler answers a broadcast /
@@ -1160,6 +1279,13 @@ func (s *Sensor) Run(ctx context.Context) error {
 				if scanEv := s.observeScan(ev, payloadBytes); scanEv != nil {
 					rt.Dispatch(scanEv)
 					s.scoreRisk(rt, scanEv)
+				}
+				// Fuzzing / DoS classification: stamps a fuzzing-<technique>
+				// anomaly on ev in place (so the correlator below sees it)
+				// and emits attack:dos / attack:fuzzing on a flood/campaign.
+				for _, fdEv := range s.observeFuzzDoS(ev, payloadBytes) {
+					rt.Dispatch(fdEv)
+					s.scoreRisk(rt, fdEv)
 				}
 				for _, out := range co.Observe(ev) {
 					if out != ev {

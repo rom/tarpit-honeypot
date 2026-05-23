@@ -124,6 +124,21 @@ var exactRules = map[string]Tag{
 	// / impersonation on the segment.
 	"device:changed":       {Techniques: []string{"T1557.002"}, Tactics: []string{"credential-access"}},
 	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	// Additional opt-in correlators.
+	"correlate:host_sweep":         {Techniques: []string{"T1018", "T1046"}, Tactics: []string{"discovery"}},
+	"correlate:service_sweep":      {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:ua_rotation":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"correlate:exploit_chain":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"correlate:ics_control":        {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"correlate:canary_trip":        {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"correlate:fingerprint_reuse":  {Techniques: []string{"T1583.005"}, Tactics: []string{"resource-development"}},
+	"correlate:protocol_violation": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	"correlate:exfil":              {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"correlate:session_flood":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// Fuzzing / DoS classification (internal/fuzzdos). Fuzzing maps to
+	// vulnerability scanning; a typed flood maps to endpoint DoS.
+	"attack:fuzzing": {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	"attack:dos":     {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
