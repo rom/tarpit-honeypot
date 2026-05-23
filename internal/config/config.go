@@ -793,23 +793,57 @@ type Correlate struct {
 	DNSEnum       CorrDNSEnum       `yaml:"dns_enumeration"`
 	Beacon        CorrBeacon        `yaml:"beacon"`
 	// Additional opt-in correlators (all default-off; enable per deployment).
-	HostSweep         CorrHostSweep         `yaml:"host_sweep"`
-	ServiceSweep      CorrServiceSweep      `yaml:"service_sweep"`
-	UARotation        CorrUARotation        `yaml:"ua_rotation"`
-	ExploitChain      CorrExploitChain      `yaml:"exploit_chain"`
-	ICSControl        CorrICSControl        `yaml:"ics_control"`
-	CanaryTrip        CorrCanaryTrip        `yaml:"canary_trip"`
-	FingerprintReuse  CorrFingerprintReuse  `yaml:"fingerprint_reuse"`
-	ProtocolViolation CorrProtocolViolation `yaml:"protocol_violation"`
-	Exfil             CorrExfil             `yaml:"exfil"`
-	SessionFlood      CorrSessionFlood      `yaml:"session_flood"`
-	LateralMovement   CorrLateralMovement   `yaml:"lateral_movement"`
-	OTRecon           CorrOTRecon           `yaml:"ot_recon"`
-	DataAccess        CorrDataAccess        `yaml:"data_access"`
-	MalwareCampaign   CorrMalwareCampaign   `yaml:"malware_campaign"`
-	Webshell          CorrWebshell          `yaml:"webshell"`
-	ThreatIntelBurst  CorrThreatIntelBurst  `yaml:"threat_intel_burst"`
-	GeoVelocity       CorrGeoVelocity       `yaml:"geo_velocity"`
+	HostSweep          CorrHostSweep          `yaml:"host_sweep"`
+	ServiceSweep       CorrServiceSweep       `yaml:"service_sweep"`
+	UARotation         CorrUARotation         `yaml:"ua_rotation"`
+	ExploitChain       CorrExploitChain       `yaml:"exploit_chain"`
+	ICSControl         CorrICSControl         `yaml:"ics_control"`
+	CanaryTrip         CorrCanaryTrip         `yaml:"canary_trip"`
+	FingerprintReuse   CorrFingerprintReuse   `yaml:"fingerprint_reuse"`
+	ProtocolViolation  CorrProtocolViolation  `yaml:"protocol_violation"`
+	Exfil              CorrExfil              `yaml:"exfil"`
+	SessionFlood       CorrSessionFlood       `yaml:"session_flood"`
+	LateralMovement    CorrLateralMovement    `yaml:"lateral_movement"`
+	OTRecon            CorrOTRecon            `yaml:"ot_recon"`
+	DataAccess         CorrDataAccess         `yaml:"data_access"`
+	MalwareCampaign    CorrMalwareCampaign    `yaml:"malware_campaign"`
+	Webshell           CorrWebshell           `yaml:"webshell"`
+	ThreatIntelBurst   CorrThreatIntelBurst   `yaml:"threat_intel_burst"`
+	GeoVelocity        CorrGeoVelocity        `yaml:"geo_velocity"`
+	AmplificationProbe CorrAmplificationProbe `yaml:"amplification_probe"`
+	DefaultCredSweep   CorrDefaultCredSweep   `yaml:"default_cred_sweep"`
+	CVECampaign        CorrCVECampaign        `yaml:"cve_campaign"`
+}
+
+// CorrAmplificationProbe detects reflection/amplification DDoS scouting:
+// one source touching several DISTINCT amplifier services (chargen / NTP /
+// DNS / SSDP / memcached / SNMP / …) within a window — enumerating
+// reflectors before a campaign.
+type CorrAmplificationProbe struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrDefaultCredSweep detects an automated default-credential botnet
+// (Mirai-class): one source tripping `default-credential-attempt` across
+// several DISTINCT services within a window.
+type CorrDefaultCredSweep struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrCVECampaign detects a mass-exploit / worm: the SAME CVE exploit
+// signature arriving from several DISTINCT source IPs within a window (the
+// inverse of exploit_chain, which is many CVEs from one source).
+type CorrCVECampaign struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctSources int           `yaml:"distinct_sources"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
 }
 
 // CorrThreatIntelBurst fires when one source whose events enrichment tagged

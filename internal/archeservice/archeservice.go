@@ -195,6 +195,64 @@ var roles = map[string][]Service{
 		{3389, "tcp", "rdp", "RDP gateway"},
 		{443, "tcp", "https", "web SSH/RDP portal"},
 	},
+	"timeserver": {
+		{123, "udp", "ntp", "NTP"},
+		{37, "tcp", "time", "TIME (RFC 868)"},
+		{37, "udp", "time", "TIME (RFC 868)"},
+		{13, "tcp", "daytime", "DAYTIME"},
+	},
+	"radiusserver": {
+		{1812, "udp", "radius", "RADIUS authentication"},
+		{1813, "udp", "radius", "RADIUS accounting"},
+		{80, "tcp", "http", "admin web UI"},
+	},
+	"nfsserver": {
+		{111, "tcp", "rpcbind", "SunRPC portmapper"},
+		{2049, "tcp", "raw", "NFS"},
+		{20048, "tcp", "raw", "mountd"},
+	},
+	"vpngateway": {
+		{500, "udp", "isakmp", "IKE / IPsec"},
+		{4500, "udp", "isakmp", "IPsec NAT-T"},
+		{1194, "tcp", "openvpn", "OpenVPN"},
+		{1723, "tcp", "pptp", "PPTP control"},
+		{443, "tcp", "https", "SSL-VPN portal"},
+	},
+	"bigdata": {
+		{9042, "tcp", "cassandra", "Cassandra CQL"},
+		{2181, "tcp", "zookeeper", "ZooKeeper"},
+		{9092, "tcp", "kafka", "Kafka broker"},
+		{8088, "tcp", "http", "YARN ResourceManager"},
+		{9870, "tcp", "http", "HDFS NameNode UI"},
+	},
+	"natsserver": {
+		{4222, "tcp", "nats", "NATS client"},
+		{8222, "tcp", "http", "NATS monitoring"},
+		{6222, "tcp", "raw", "NATS cluster route"},
+	},
+	"streamserver": {
+		{554, "tcp", "rtsp", "RTSP"},
+		{8554, "tcp", "rtsp", "RTSP (alt)"},
+		{8000, "tcp", "http", "stream web UI"},
+		{1935, "tcp", "raw", "RTMP"},
+	},
+	"loadbalancer": {
+		{80, "tcp", "http", "HTTP frontend"},
+		{443, "tcp", "https", "HTTPS frontend"},
+		{8080, "tcp", "http", "backend / alt"},
+		{8404, "tcp", "http", "HAProxy stats"},
+	},
+	"logserver": {
+		{514, "udp", "syslog_udp", "syslog"},
+		{601, "tcp", "syslog_tcp", "syslog (RFC 5425/6587)"},
+		{9200, "tcp", "elasticsearch", "Elasticsearch"},
+		{5601, "tcp", "http", "Kibana"},
+	},
+	"secretstore": {
+		{8200, "tcp", "https", "Vault API"},
+		{8201, "tcp", "https", "Vault cluster"},
+		{8500, "tcp", "http", "Consul API"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-

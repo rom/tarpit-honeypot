@@ -1,0 +1,88 @@
+# Telecom / ISP edge honeynet.
+#
+# A carrier/ISP edge: routing + switching gear (Arista EOS, VyOS, OpenWrt
+# CPE) and the subscriber-facing AAA / VPN / time infrastructure. This kind
+# of gear is mass-scanned for default creds and VPN CVEs and is a prized
+# pivot. Combines a honeynet of the network archetypes with `archeservices:`
+# for the VPN gateway (IKE/PPTP/OpenVPN), RADIUS, and NTP services —
+# exercising the round-two network archetypes and the pptp handler.
+#
+#   tarpit-honeypot validate-config -c examples/telecom-edge.yaml
+sensor:
+  name: telecom-edge-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  disk: { json_log_mb: 512, sqlite_mb: 2048, pcap_mb: 4096, retention_days: 180 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Subscriber-facing AAA / VPN / time infra (dedicated loopback IPs).
+archeservices:
+  - { id: vpn,    role: vpngateway,  archetype: vyos,      bind: 127.0.4.1, severity: high }
+  - { id: radius, role: radiusserver, archetype: debian 12, bind: 127.0.4.2, severity: high }
+  - { id: ntp,    role: timeserver,  archetype: debian 12, bind: 127.0.4.3, severity: low }
+
+# The network-gear honeynet.
+listeners:
+  - { id: ssh,    proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,    severity: high,   capture: true }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: telnet, severity: high,   capture: true }
+  - { id: http,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,   severity: medium, capture: true }
+  - { id: https,  proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,  severity: high,   capture: true }
+  - { id: bgp,    proto: tcp, bind: 0.0.0.0:179,  mode: banner, handler: bgp,    severity: high,   capture: true }
+  - { id: snmp,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,   severity: low }
+
+honeynets:
+  - id: telecom-edge
+    cidr: 10.80.0.0/16
+    gateway: 10.80.0.1
+    domain: edge.isp.example
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    lldp_responder: { enabled: true, interface: eth0, interval_s: 30, include_cdp: true }
+    hosts:
+      - { ip: 10.80.0.2, hostname: core-sw-01, archetype: arista-eos, services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 443, handler: https}, {port: 161, handler: snmp} ] }
+      - { ip: 10.80.0.3, hostname: core-sw-02, archetype: arista-eos, services: [ {port: 22, handler: ssh}, {port: 443, handler: https} ] }
+      - { ip: 10.80.0.4, hostname: edge-rtr-01, archetype: vyos,      services: [ {port: 22, handler: ssh}, {port: 443, handler: https}, {port: 179, handler: bgp}, {port: 161, handler: snmp} ] }
+      - { ip: 10.80.0.5, hostname: edge-rtr-02, archetype: vyos,      services: [ {port: 22, handler: ssh}, {port: 179, handler: bgp} ] }
+      - { ip: 10.80.1.10, hostname: cpe-001, archetype: openwrt, services: [ {port: 22, handler: ssh}, {port: 80, handler: http}, {port: 443, handler: https} ] }
+      - { ip: 10.80.1.11, hostname: cpe-002, archetype: openwrt, services: [ {port: 80, handler: http}, {port: 23, handler: telnet} ] }
+      - { ip: 10.80.1.12, hostname: cpe-003, archetype: openwrt, services: [ {port: 80, handler: http}, {port: 443, handler: https} ] }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 6,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  host_sweep:         { enabled: true, distinct_hosts: 8,  window: 60s,  severity: high }
+  default_cred_sweep: { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  threat_intel_burst: { enabled: true, events: 5, window: 10m, severity: high }
+  beacon:             { enabled: true, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: low
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

@@ -1,0 +1,79 @@
+# Legacy Unix / big-iron honeynet.
+#
+# The forgotten corner of many enterprises: Solaris and AIX servers, a
+# Gentoo box, and the NFS/portmapper surface that still front-ends old
+# fileshares. These hosts are rarely patched, run telnet/finger/rpcbind, and
+# fingerprint with the classic TTL 255 — exactly the soft, high-value
+# targets a patient attacker looks for. Showcases the Solaris/AIX/Gentoo
+# archetypes and the SunRPC portmapper handler.
+#
+#   tarpit-honeypot validate-config -c examples/legacy-unix.yaml
+sensor:
+  name: legacy-unix-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  drop_user: tarpit
+  drop_group: tarpit
+  interfaces: [eth0]
+  vuln_emulation: true
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+  disk: { json_log_mb: 256, sqlite_mb: 1024, pcap_mb: 2048, retention_days: 180 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  - { id: ssh,     proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,       severity: high,     capture: true }
+  - { id: telnet,  proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: telnet,    severity: high,     capture: true }
+  - { id: http,    proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,      severity: medium,   capture: true }
+  - { id: https,   proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,     severity: medium,   capture: true }
+  - { id: ftp,     proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,       severity: high,     capture: true }
+  - { id: rpcbind, proto: tcp, bind: 0.0.0.0:111,  mode: banner, handler: rpcbind,   severity: high,     capture: true }
+  - { id: smb,     proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,       severity: high,     capture: true }
+
+honeynets:
+  - id: legacy-unix
+    cidr: 10.70.0.0/16
+    gateway: 10.70.0.1
+    domain: legacy.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.70.0.10, hostname: sun-billing,  os: solaris, archetype: solaris-11, services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 111, handler: rpcbind} ] }
+      - { ip: 10.70.0.11, hostname: sun-oracle,    os: solaris, archetype: solaris-11, services: [ {port: 22, handler: ssh}, {port: 111, handler: rpcbind} ] }
+      - { ip: 10.70.0.20, hostname: aix-erp,       os: aix,     archetype: aix-7,      services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 111, handler: rpcbind} ] }
+      - { ip: 10.70.0.21, hostname: aix-db2,       os: aix,     archetype: aix-7,      services: [ {port: 22, handler: ssh}, {port: 111, handler: rpcbind} ] }
+      - { ip: 10.70.0.30, hostname: nfs-archive,   os: linux,   archetype: gentoo,     services: [ {port: 111, handler: rpcbind}, {port: 445, handler: smb}, {port: 21, handler: ftp} ] }
+      - { ip: 10.70.0.31, hostname: gentoo-build,  os: linux,   archetype: gentoo,     services: [ {port: 22, handler: ssh}, {port: 80, handler: http}, {port: 443, handler: https} ] }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 6,        window: 60s,  per_port: true, severity: high }
+  host_sweep:         { enabled: true, distinct_hosts: 4,  window: 60s,  severity: high }
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+  exploit_chain:      { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

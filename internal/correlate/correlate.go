@@ -46,6 +46,9 @@ type Correlator struct {
 	webshellSev  event.Severity
 	tiBurstSev   event.Severity
 	geoVelSev    event.Severity
+	ampSev       event.Severity
+	defCredSev   event.Severity
+	cveCampSev   event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -76,6 +79,9 @@ type Correlator struct {
 	webshell  map[string]*countState // key: source IP (webshell event count)
 	tiBurst   map[string]*countState // key: source IP (threat-listed/Tor event count)
 	geoVel    map[string]*setState   // key: credential pair (distinct countries)
+	amp       map[string]*setState   // key: source IP (distinct amplifier services)
+	defCred   map[string]*setState   // key: source IP (distinct default-cred services)
+	cveCamp   map[string]*reuseState // key: cve id (distinct source IPs)
 	emitted   map[string]time.Time   // dedup of aggregate emission
 	lastGC    time.Time              // last idle-state sweep
 }
@@ -175,6 +181,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		webshell:  map[string]*countState{},
 		tiBurst:   map[string]*countState{},
 		geoVel:    map[string]*setState{},
+		amp:       map[string]*setState{},
+		defCred:   map[string]*setState{},
+		cveCamp:   map[string]*reuseState{},
 		emitted:   map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -263,6 +272,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.Webshell.Enabled, cfg.Webshell.Severity, &c.webshellSev},
 		{cfg.ThreatIntelBurst.Enabled, cfg.ThreatIntelBurst.Severity, &c.tiBurstSev},
 		{cfg.GeoVelocity.Enabled, cfg.GeoVelocity.Severity, &c.geoVelSev},
+		{cfg.AmplificationProbe.Enabled, cfg.AmplificationProbe.Severity, &c.ampSev},
+		{cfg.DefaultCredSweep.Enabled, cfg.DefaultCredSweep.Severity, &c.defCredSev},
+		{cfg.CVECampaign.Enabled, cfg.CVECampaign.Severity, &c.cveCampSev},
 	} {
 		if !sp.on {
 			continue
@@ -340,6 +352,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.GeoVelocity.Enabled {
 		if extra := c.checkGeoVelocity(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.AmplificationProbe.Enabled {
+		if extra := c.checkAmplificationProbe(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.DefaultCredSweep.Enabled {
+		if extra := c.checkDefaultCredSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.CVECampaign.Enabled {
+		if extra := c.checkCVECampaign(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1106,6 +1133,13 @@ func (c *Correlator) gc(now time.Time) {
 		}
 	}
 	gcSet(c.geoVel, now, effWindow(c.cfg.GeoVelocity.Window, time.Hour))
+	gcSet(c.amp, now, effWindow(c.cfg.AmplificationProbe.Window, 5*time.Minute))
+	gcSet(c.defCred, now, effWindow(c.cfg.DefaultCredSweep.Window, 5*time.Minute))
+	for k, st := range c.cveCamp {
+		if now.Sub(st.since) > effWindow(c.cfg.CVECampaign.Window, time.Hour) {
+			delete(c.cveCamp, k)
+		}
+	}
 	for key, t := range c.emitted {
 		if now.Sub(t) > 24*time.Hour {
 			delete(c.emitted, key)

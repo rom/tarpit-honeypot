@@ -88,7 +88,7 @@ func ProfileFor(family string) OSProfile {
 	switch normFamily(family) {
 	case "windows":
 		return profiles["windows"]
-	case "bsd", "freebsd", "openbsd", "netbsd", "darwin", "macos", "pfsense", "truenas":
+	case "bsd", "freebsd", "openbsd", "netbsd", "darwin", "macos", "pfsense", "truenas", "opnsense":
 		return profiles["bsd"]
 	case "ot", "ics", "embedded", "moxa", "siemens", "cisco",
 		"hirschmann", "westermo", "phoenix", "schneider", "omron", "mitsubishi",

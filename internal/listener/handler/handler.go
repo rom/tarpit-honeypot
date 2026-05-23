@@ -271,6 +271,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &zookeeper{}, nil
 	case "kafka":
 		return &kafkaBroker{}, nil
+	case "cassandra":
+		return &cassandra{}, nil
+	case "nats":
+		return &natsBroker{}, nil
+	case "rpcbind":
+		return &rpcbind{}, nil
+	case "pptp":
+		return &pptp{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":
