@@ -363,6 +363,63 @@ var roles = map[string][]Service{
 		{80, "tcp", "http", "device web"},
 		{21, "tcp", "ftp", "FTP"},
 	},
+	"lightsout": {
+		{443, "tcp", "redfish", "Redfish/web"},
+		{623, "udp", "ipmi", "IPMI"},
+		{22, "tcp", "ssh", "SMASH CLP"},
+		{80, "tcp", "http", "BMC web"},
+	},
+	"consoleserver": {
+		{9999, "tcp", "lantronix", "Lantronix setup"},
+		{23, "tcp", "telnet", "console"},
+		{22, "tcp", "ssh", "SSH"},
+		{80, "tcp", "http", "web"},
+	},
+	"kvmoverip": {
+		{443, "tcp", "https", "KVM web"},
+		{5900, "tcp", "vnc", "KVM viewer"},
+		{5930, "tcp", "spice", "SPICE"},
+		{22, "tcp", "ssh", "SSH"},
+	},
+	"remotedesktop": {
+		{3389, "tcp", "rdp", "RDP"},
+		{5900, "tcp", "vnc", "VNC"},
+		{5631, "tcp", "pcanywhere", "pcAnywhere"},
+		{4899, "tcp", "radmin", "Radmin"},
+	},
+	"vdibroker": {
+		{4172, "tcp", "pcoip", "PCoIP"},
+		{1494, "tcp", "citrix_ica", "Citrix ICA"},
+		{443, "tcp", "https", "broker"},
+		{8443, "tcp", "https", "Blast/alt"},
+	},
+	"rserviceshost": {
+		{512, "tcp", "rexec", "rexec"},
+		{513, "tcp", "rlogin", "rlogin"},
+		{514, "tcp", "rsh", "rsh"},
+	},
+	"thirdpartyrat": {
+		{5938, "tcp", "teamviewer", "TeamViewer"},
+		{7070, "tcp", "anydesk", "AnyDesk"},
+		{5631, "tcp", "pcanywhere", "pcAnywhere"},
+		{6129, "tcp", "dameware", "DameWare MRC"},
+	},
+	"mainframe": {
+		{23, "tcp", "tn3270", "TN3270"},
+		{992, "tcp", "tn3270", "TN3270 (TLS)"},
+		{446, "tcp", "raw", "DB2 DRDA"},
+	},
+	"applemgmt": {
+		{3283, "tcp", "ard", "Apple Remote Desktop"},
+		{5900, "tcp", "vnc", "screen sharing"},
+		{22, "tcp", "ssh", "SSH"},
+	},
+	"pdumanagement": {
+		{161, "udp", "snmp", "SNMP"},
+		{23, "tcp", "telnet", "console"},
+		{80, "tcp", "http", "web"},
+		{443, "tcp", "https", "web (TLS)"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-

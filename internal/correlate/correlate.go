@@ -55,6 +55,9 @@ type Correlator struct {
 	plcProgSev    event.Severity
 	modeChgSev    event.Severity
 	otKillSev     event.Severity
+	remoteToolSev event.Severity
+	oobMgmtSev    event.Severity
+	remoteExecSev event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -94,6 +97,9 @@ type Correlator struct {
 	plcProg    map[string]*countState // key: source IP (program-download count)
 	modeChg    map[string]*countState // key: source IP (mode-change count)
 	otKill     map[string]*setState   // key: source IP (recon+control tokens)
+	remoteTool map[string]*setState   // key: source IP (distinct remote tools)
+	oobMgmt    map[string]*setState   // key: source IP (distinct OOB mgmt surfaces)
+	remoteExec map[string]*countState // key: source IP (cleartext remote-exec count)
 	emitted    map[string]time.Time   // dedup of aggregate emission
 	lastGC     time.Time              // last idle-state sweep
 }
@@ -202,6 +208,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		plcProg:    map[string]*countState{},
 		modeChg:    map[string]*countState{},
 		otKill:     map[string]*setState{},
+		remoteTool: map[string]*setState{},
+		oobMgmt:    map[string]*setState{},
+		remoteExec: map[string]*countState{},
 		emitted:    map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -299,6 +308,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
 		{cfg.ICSModeChange.Enabled, cfg.ICSModeChange.Severity, &c.modeChgSev},
 		{cfg.OTKillChain.Enabled, cfg.OTKillChain.Severity, &c.otKillSev},
+		{cfg.RemoteToolSweep.Enabled, cfg.RemoteToolSweep.Severity, &c.remoteToolSev},
+		{cfg.OOBMgmtAccess.Enabled, cfg.OOBMgmtAccess.Severity, &c.oobMgmtSev},
+		{cfg.RemoteExecCommand.Enabled, cfg.RemoteExecCommand.Severity, &c.remoteExecSev},
 	} {
 		if !sp.on {
 			continue
@@ -421,6 +433,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.OTKillChain.Enabled {
 		if extra := c.checkOTKillChain(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.RemoteToolSweep.Enabled {
+		if extra := c.checkRemoteToolSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.OOBMgmtAccess.Enabled {
+		if extra := c.checkOOBMgmtAccess(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.RemoteExecCommand.Enabled {
+		if extra := c.checkRemoteExecCommand(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1214,6 +1241,13 @@ func (c *Correlator) gc(now time.Time) {
 	for k, st := range c.modeChg {
 		if now.Sub(st.since) > effWindow(c.cfg.ICSModeChange.Window, 10*time.Minute) {
 			delete(c.modeChg, k)
+		}
+	}
+	gcSet(c.remoteTool, now, effWindow(c.cfg.RemoteToolSweep.Window, 5*time.Minute))
+	gcSet(c.oobMgmt, now, effWindow(c.cfg.OOBMgmtAccess.Window, 5*time.Minute))
+	for k, st := range c.remoteExec {
+		if now.Sub(st.since) > effWindow(c.cfg.RemoteExecCommand.Window, 10*time.Minute) {
+			delete(c.remoteExec, k)
 		}
 	}
 	for key, t := range c.emitted {

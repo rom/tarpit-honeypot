@@ -203,6 +203,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"SEL-751 (protection relay)",
 		"SMA Sunny (solar inverter)",
 		"Bachmann M1 (controller)",
+		// Remote-access / out-of-band management personas.
+		"Supermicro BMC (IPMI/Redfish)",
+		"Lenovo XClarity Controller (XCC)",
+		"Cisco UCS CIMC",
+		"HPE Onboard Administrator",
+		"Oracle/Sun ILOM",
+		"Fujitsu iRMC",
+		"Lantronix SLC console server",
+		"Opengear console server",
+		"Raritan Dominion KX (KVM)",
+		"APC Network Management Card (rPDU)",
 	}
 	got := Names()
 	if len(got) != len(want) {

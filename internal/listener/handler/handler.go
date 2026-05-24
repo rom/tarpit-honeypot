@@ -293,6 +293,26 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &secsGEM{}, nil
 	case "pcom":
 		return &pcom{}, nil
+	case "rexec":
+		return &rexec{}, nil
+	case "rsh":
+		return &rsh{}, nil
+	case "pcanywhere":
+		return &pcanywhere{}, nil
+	case "radmin":
+		return &radmin{}, nil
+	case "dameware":
+		return &dameware{}, nil
+	case "pcoip":
+		return &pcoip{}, nil
+	case "spice":
+		return &spice{}, nil
+	case "lantronix":
+		return &lantronix{}, nil
+	case "tn3270":
+		return &tn3270{}, nil
+	case "ard":
+		return &ard{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":

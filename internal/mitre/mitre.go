@@ -159,6 +159,10 @@ var exactRules = map[string]Tag{
 	"correlate:plc_program_download": {Techniques: []string{"T0843"}, Tactics: []string{"impact"}},
 	"correlate:ics_mode_change":      {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
 	"correlate:ot_kill_chain":        {Techniques: []string{"T0846", "T0831"}, Tactics: []string{"discovery", "impact"}},
+	// Remote-access / OOB-management correlators (round 5).
+	"correlate:remote_tool_sweep":   {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"correlate:oob_mgmt_access":     {Techniques: []string{"T1190", "T1133"}, Tactics: []string{"initial-access"}},
+	"correlate:remote_exec_command": {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -560,6 +564,19 @@ var anomalyTags = map[string]Tag{
 	"profinet-connect":       {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-probe":           {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-connect":         {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	// Round-five remote-access / OOB-management decoys (remoteoob.go).
+	"rexec-attempt":    {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"rexec-command":    {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
+	"rsh-attempt":      {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"rsh-command":      {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
+	"pcanywhere-probe": {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"radmin-probe":     {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"dameware-probe":   {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"ard-probe":        {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
+	"pcoip-probe":      {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"spice-probe":      {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
+	"lantronix-probe":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"tn3270-probe":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /

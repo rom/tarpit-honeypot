@@ -819,6 +819,38 @@ type Correlate struct {
 	PLCProgramDownload CorrPLCProgramDownload `yaml:"plc_program_download"`
 	ICSModeChange      CorrICSModeChange      `yaml:"ics_mode_change"`
 	OTKillChain        CorrOTKillChain        `yaml:"ot_kill_chain"`
+	RemoteToolSweep    CorrRemoteToolSweep    `yaml:"remote_tool_sweep"`
+	OOBMgmtAccess      CorrOOBMgmtAccess      `yaml:"oob_mgmt_access"`
+	RemoteExecCommand  CorrRemoteExecCommand  `yaml:"remote_exec_command"`
+}
+
+// CorrRemoteToolSweep fires when one source probes several DISTINCT third-party
+// remote-control / VDI tools (TeamViewer, AnyDesk, Radmin, DameWare, pcAnywhere,
+// PCoIP, SPICE, ARD, …) within a window — hunting a remote-control foothold.
+type CorrRemoteToolSweep struct {
+	Enabled       bool          `yaml:"enabled"`
+	DistinctTools int           `yaml:"distinct_tools"`
+	Window        time.Duration `yaml:"window"`
+	Severity      string        `yaml:"severity"`
+}
+
+// CorrOOBMgmtAccess fires when one source touches several DISTINCT out-of-band /
+// lights-out management surfaces (IPMI/Redfish/iLO/iDRAC/AMT/console servers)
+// within a window — targeting the management plane.
+type CorrOOBMgmtAccess struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrRemoteExecCommand fires when a source executes a command over a cleartext
+// remote-exec channel (rexec / rsh) — hands-on code execution in the clear.
+type CorrRemoteExecCommand struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrPLCProgramDownload fires when a source downloads logic / firmware to a

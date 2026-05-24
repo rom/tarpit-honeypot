@@ -1,0 +1,82 @@
+# Data-center out-of-band / lights-out management plane.
+#
+# The management network most defenders forget: the BMCs (Supermicro / Lenovo /
+# Cisco UCS / Oracle ILOM / Fujitsu), the serial console servers and the KVM-
+# over-IP switches that grant full out-of-band control of every server. Combines
+# `archeservices:` role bundles (lightsout, consoleserver, kvmoverip) with `lua`
+# decoys for the BMC web UIs and a honeynet of the round-five OOB archetypes.
+# Exercises the redfish / ipmi / lantronix / spice handlers and the
+# oob_mgmt_access correlator.
+#
+#   tarpit-honeypot validate-config -c examples/datacenter-oob.yaml
+sensor:
+  name: datacenter-oob-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  archetype: supermicro-bmc
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: bmc,     role: lightsout,      archetype: supermicro-bmc,  bind: 127.0.20.1, severity: critical }
+  - { id: console, role: consoleserver,  archetype: lantronix-slc,   bind: 127.0.20.2, severity: high }
+  - { id: kvm,     role: kvmoverip,      archetype: raritan-kx,      bind: 127.0.20.3, severity: high }
+
+# Direct OOB exposure + BMC web decoys.
+listeners:
+  - { id: lantronix,   proto: tcp, bind: 0.0.0.0:9999, mode: banner, handler: lantronix, severity: high, capture: true }
+  - { id: spice,       proto: tcp, bind: 0.0.0.0:5930, mode: banner, handler: spice,     severity: high, capture: true }
+  - { id: supermicro,  proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/supermicro-ipmi.lua, severity: high, capture: true }
+  - { id: ilom,        proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: lua, script: configs/scripts/ilom.lua,            severity: high, capture: true }
+  - { id: cimc,        proto: tcp, bind: 0.0.0.0:8444, mode: banner, handler: lua, script: configs/scripts/cimc.lua,            severity: high, capture: true }
+  - { id: xclarity,    proto: tcp, bind: 0.0.0.0:8445, mode: banner, handler: lua, script: configs/scripts/xclarity.lua,        severity: high, capture: true }
+
+honeynets:
+  - id: oob-mgmt
+    cidr: 10.130.0.0/16
+    gateway: 10.130.0.1
+    domain: oob.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.130.0.10, hostname: bmc-smc-01,  os: embedded, archetype: supermicro-bmc,  services: [ {port: 443, handler: redfish}, {port: 623, handler: ipmi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.130.0.11, hostname: bmc-xcc-01,  os: embedded, archetype: lenovo-xcc,      services: [ {port: 443, handler: redfish}, {port: 623, handler: ipmi} ] }
+      - { ip: 10.130.0.12, hostname: bmc-cimc-01, os: embedded, archetype: cisco-ucs-cimc,  services: [ {port: 443, handler: redfish}, {port: 623, handler: ipmi}, {port: 80, handler: http} ] }
+      - { ip: 10.130.0.13, hostname: bmc-ilom-01, os: embedded, archetype: oracle-ilom,     services: [ {port: 443, handler: redfish}, {port: 623, handler: ipmi}, {port: 22, handler: ssh} ] }
+      - { ip: 10.130.0.14, hostname: bmc-irmc-01, os: embedded, archetype: fujitsu-irmc,    services: [ {port: 443, handler: redfish}, {port: 623, handler: ipmi} ] }
+      - { ip: 10.130.0.20, hostname: console-01,  os: embedded, archetype: opengear-cm,     services: [ {port: 22, handler: ssh}, {port: 443, handler: https}, {port: 23, handler: telnet} ] }
+
+url_canaries:
+  - { id: bmc-default-creds, path: /redfish/v1/AccountService/Accounts, severity: critical }
+
+correlate:
+  port_scan:      { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:    { enabled: true, attempts: 6,        window: 60s,  per_port: true, severity: high }
+  host_sweep:     { enabled: true, distinct_hosts: 4,  window: 60s,  severity: high }
+  oob_mgmt_access: { enabled: true, distinct_services: 3, window: 5m, severity: critical }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

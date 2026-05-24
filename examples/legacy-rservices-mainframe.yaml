@@ -1,0 +1,63 @@
+# Legacy cleartext access: r-services, mainframe & console/PDU management.
+#
+# The deprecated-but-still-running corner: the Berkeley r-services (rexec/rsh/
+# rlogin) that carry credentials and commands in the clear, an IBM mainframe
+# TN3270 logon, the serial console servers, and the power (PDU) management
+# cards. Combines the rserviceshost / mainframe / consoleserver / pdumanagement
+# role bundles with direct decoys and `lua` console decoys. Exercises the
+# rexec / rsh / tn3270 / lantronix handlers and the remote_exec_command +
+# oob_mgmt_access correlators.
+#
+#   tarpit-honeypot validate-config -c examples/legacy-rservices-mainframe.yaml
+sensor:
+  name: legacy-rservices-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  archetype: solaris-11
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: rsvc,    role: rserviceshost,  archetype: solaris-11,   bind: 127.0.22.1, severity: high }
+  - { id: mf,      role: mainframe,      archetype: solaris-11,   bind: 127.0.22.2, severity: high }
+  - { id: console, role: consoleserver,  archetype: lantronix-slc, bind: 127.0.22.3, severity: high }
+  - { id: pdu,     role: pdumanagement,  archetype: apc-nmc,      bind: 127.0.22.4, severity: medium }
+
+# Direct cleartext-access decoys + console/PDU web decoys.
+listeners:
+  - { id: rexec,     proto: tcp, bind: 0.0.0.0:512,  mode: banner, handler: rexec,     severity: high, capture: true }
+  - { id: rsh,       proto: tcp, bind: 0.0.0.0:514,  mode: banner, handler: rsh,       severity: high, capture: true }
+  - { id: tn3270,    proto: tcp, bind: 0.0.0.0:23,   mode: banner, handler: tn3270,    severity: high, capture: true }
+  - { id: lantronix, proto: tcp, bind: 0.0.0.0:9999, mode: banner, handler: lantronix, severity: high, capture: true }
+  - { id: cockpit,   proto: tcp, bind: 0.0.0.0:9090, mode: banner, handler: lua, script: configs/scripts/cockpit.lua,     severity: high, capture: true }
+  - { id: opengear,  proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/opengear.lua,    severity: high, capture: true }
+  - { id: apc,       proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/apc-nmc.lua,     severity: medium, capture: true }
+  - { id: raritan,   proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: lua, script: configs/scripts/raritan-kvm.lua, severity: high, capture: true }
+
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 6,        window: 60s,  per_port: true, severity: high }
+  remote_exec_command: { enabled: true, events: 1, window: 10m, severity: critical }
+  oob_mgmt_access:     { enabled: true, distinct_services: 3, window: 5m, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }
