@@ -35,11 +35,12 @@ type worker struct {
 }
 
 type Router struct {
-	workers map[string]*worker
-	routes  []config.Route
-	dedup   *filter.Dedup
-	allow   *filter.Allowlist
-	wg      sync.WaitGroup
+	workers   map[string]*worker
+	routes    []config.Route
+	dedup     *filter.Dedup
+	allow     *filter.Allowlist
+	overrides *config.SeverityOverrideSet
+	wg        sync.WaitGroup
 }
 
 func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
@@ -73,12 +74,44 @@ func New(cfg *config.Config, sinks []sink.Sink) (*Router, error) {
 		return nil, err
 	}
 
+	overrides, err := config.CompileSeverityOverrides(cfg.SeverityOverrides)
+	if err != nil {
+		return nil, err
+	}
+	if !overrides.Empty() {
+		slog.Info("severity overrides active", "rules", overrides.Len(),
+			"note", "matching events are reported at the configured level and marked as a local override")
+	}
+
 	return &Router{
-		workers: workers,
-		routes:  cfg.Routes,
-		dedup:   filter.NewDedup(cfg.Dedup.DefaultWindow),
-		allow:   allow,
+		workers:   workers,
+		routes:    cfg.Routes,
+		dedup:     filter.NewDedup(cfg.Dedup.DefaultWindow),
+		allow:     allow,
+		overrides: overrides,
 	}, nil
+}
+
+// applySeverityOverride re-maps ev.Severity per the configured overrides,
+// marking the event (and recording the original level + matching rule in Meta)
+// when the level actually changes. Idempotent.
+func (r *Router) applySeverityOverride(ev *event.Event) {
+	if r.overrides.Empty() || ev.SeverityOverridden {
+		return
+	}
+	sev, match, ok := r.overrides.Apply(ev.RuleID)
+	if !ok || sev == ev.Severity {
+		return
+	}
+	orig := ev.Severity
+	ev.Severity = sev
+	ev.SeverityOverridden = true
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["default_severity"] = orig.String()
+	ev.Meta["severity_override_rule"] = match
+	slog.Debug("severity overridden", "rule_id", ev.RuleID, "from", orig.String(), "to", sev.String(), "match", match)
 }
 
 // Start spins up one goroutine per sink. Call before any Dispatch.
@@ -118,6 +151,10 @@ func (r *Router) Stop() {
 // sinks (stdout, jsonlog, sqlite) always receive the event so the local
 // store stays complete.
 func (r *Router) Dispatch(ev *event.Event) {
+	// Apply the operator's severity overrides first, so the new level drives
+	// route matching, per-channel min-severity, the local store, and every
+	// sink — and the event carries the override marker downstream.
+	r.applySeverityOverride(ev)
 	// Stamp ATT&CK + D3FEND metadata before anything else — every
 	// downstream (SIEM, MQTT, webhook, jsonlog) consumes the same
 	// techniques / tactics / defenses view of the event. This is the

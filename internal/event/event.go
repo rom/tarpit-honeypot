@@ -109,6 +109,12 @@ type Event struct {
 	// (e.g. "ssh-banner-non-printable", "http-method-unknown") so a
 	// SIEM rule can route them separately from normal triggers.
 	Anomalies []string `json:"anomalies,omitempty"`
+	// SeverityOverridden is true when a config `severity_overrides` rule
+	// changed this event's severity from its built-in default. The original
+	// level and the matching rule pattern are recorded in Meta
+	// ("default_severity", "severity_override_rule") so logs / sinks / the
+	// web UI can show that the reported severity is a local operator choice.
+	SeverityOverridden bool `json:"severity_overridden,omitempty"`
 }
 
 func NewID() string {

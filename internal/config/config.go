@@ -27,9 +27,13 @@ type Config struct {
 	Allowlist     []string       `yaml:"allowlist"`
 	Channels      []Channel      `yaml:"channels"`
 	Routes        []Route        `yaml:"routes"`
-	Devices       Devices        `yaml:"devices"`
-	Risk          RiskScoring    `yaml:"risk"`
-	Interaction   Interaction    `yaml:"interaction"`
+	// SeverityOverrides re-map the reported severity of matching rule_ids
+	// (an operator's local risk judgement). Applied in the router; the event
+	// is marked as an override. See severity.go.
+	SeverityOverrides []SeverityOverride `yaml:"severity_overrides"`
+	Devices           Devices            `yaml:"devices"`
+	Risk              RiskScoring        `yaml:"risk"`
+	Interaction       Interaction        `yaml:"interaction"`
 
 	// archeservicesExpanded guards expandArcheservices so it runs once even
 	// if applyDefaults is invoked more than once on the same Config.
