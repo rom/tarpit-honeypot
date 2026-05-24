@@ -7,7 +7,7 @@ every command an attacker types, a **userspace TCP stack** that lets
 honeynet decoys complete fingerprint-shaped handshakes (and capture
 malformed/illegal packets) with no socket bound per host, MITRE ATT&CK /
 D3FEND-tagged events, cross-protocol attack-storyline correlation,
-protocol-anomaly + **fuzzing / DoS** detection, two dozen in-sensor
+protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
 correlators, GeoIP / ASN / threat-intel / Tor / MAC-vendor enrichment,
 file / URL / DNS canary tokens, per-event pcap capture, hostile-input
 hardening + output sanitization, and pluggable outbound alerting.
@@ -27,7 +27,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **108 TCP + 32 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **112 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -38,7 +38,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **152 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **162 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -300,9 +300,11 @@ rationale covering the current implementation.
   Hikvision, plus ICS advisories for Siemens S7 and Rockwell Logix). SIEMs
   pivot on these IDs directly. Each `cve:<id>` event also carries the
   **CWE** weakness class, the affected-product **CPE 2.3**, and an **EPSS**
-  exploit-probability snapshot. See [`docs/attribution.md`](docs/attribution.md)
-  for the full ATT&CK / D3FEND / CVE / CWE / CPE / EPSS reference plus the
-  scanner-detection and client-classifier capabilities.
+  exploit-probability snapshot. A named **CWE catalog** maps every referenced
+  weakness class to its title (`tarpit-honeypot list-cves --cwe`). See
+  [`docs/attribution.md`](docs/attribution.md) for the full ATT&CK / D3FEND /
+  CVE / CWE / CPE / EPSS reference plus the scanner-detection and
+  client-classifier capabilities.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-
@@ -378,7 +380,11 @@ rationale covering the current implementation.
   **traffic-counters strip** (events by transport + L2 frame counts —
   received / ARP / IPv4 / IPv6 / TCP / UDP / ICMP — when the sniffer is up)
   over events-per-hour trend + severity / top-rule / top-source CSS bar
-  charts (no JS) + a filterable, **sortable** event table with
+  charts (no JS) — progressively enhanced into **interactive SVG charts** by a
+  packaged, **dependency-free charting library** (`charts.js`: bar / pie /
+  histogram / scatter / line / stacked-area / heatmap / topology / network /
+  sankey / timeline / GeoIP source-map / session-replay / credential charts,
+  served same-origin under a strict CSP — no CDN) + a filterable, **sortable** event table with
   **case-insensitive full-text search** over rule / banner / captured meta,
   and per-event detail with a **hex view** of the captured payload. Tabs:
   **profiles** (per-source-IP attacker dossiers — see below),
@@ -387,13 +393,20 @@ rationale covering the current implementation.
   `ui.allow_device_actions` + an auth token — the only write endpoint, off
   by default),
   **topology** (the virtual networks / hosts / services, with a live
-  activity overlay), **timeline** (chronological attack view),
+  activity overlay **and a node-link honeynet topology graph**),
+  **charts** (a full analytics gallery — severity pie, events-per-hour line,
+  stacked-severity area, top source/rule/tactic/country/ASN/tool bars, threat
+  & protocol heatmaps, an account heatmap, a GeoIP attack source map, and a
+  credential-attempt chart, all from the packaged charting library),
+  **timeline** (chronological attack view),
   **attack** (the ATT&CK matrix the sensor covers, with **clickable,
   described technique chips** showing which sources triggered each),
   **correlation** (correlator aggregates + storylines), **tunnels**
   (covert-transport / encapsulation detections), **search** (advanced
-  query), **health** (build version/commit, by-transport 24h breakdown,
-  per-name panic counts, L2 frame counters), **alerting** (how events
+  query), **health** (build version/commit, runtime — CPU count, heap
+  objects, GC pause/next-GC — by-transport 24h breakdown, per-name panic
+  counts, sink delivery, L2 frame counters, plus transport/sink/frame
+  charts), **alerting** (how events
   forward), **errors** (operational/health events), **config** (with a
   **"files in use"** table — config, enrichment, and database paths +
   present/MISSING), and **docs**. ATT&CK chips and a credential-source
@@ -459,7 +472,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (108 TCP + 32 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (112 TCP + 33 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -499,32 +512,30 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 overhaul.** A large post-v2.0 sprint. Highlights below; the
 [CHANGELOG](CHANGELOG.md) has the full per-commit detail.
 
-- **Breadth + depth (five rounds).** Thirty more protocol decoys across
+- **Breadth + depth (six rounds).** Thirty-five more protocol decoys across
   data-infra (`jdwp`, `rmi`, `git`, `zookeeper`, `kafka`, `cassandra`, `nats`,
   `rpcbind`, `pptp`, `stun`), IoT/app/AAA (`adb`, `ajp13`, `epmd`, `tacacs`,
   `mssql_browser`), OT/ICS (`fins_tcp`, `secs_gem`, `pcom` (Unitronics),
-  `profinet`, `wdbrpc` (VxWorks)) and remote-access / out-of-band management
+  `profinet`, `wdbrpc` (VxWorks)), remote-access / out-of-band management
   (`rexec`, `rsh`, `pcanywhere`, `radmin`, `dameware`, `pcoip`, `spice`,
-  `lantronix`, `tn3270` (mainframe), `ard`) — taking the catalog to
-  **108 TCP + 32 UDP handlers**. Fourteen enrichment-/campaign-/OT-/remote-
-  access-driven correlators: `threat_intel_burst`, `geo_velocity`,
-  `amplification_probe`, `default_cred_sweep`, `cve_campaign`,
-  `destructive_action`, `honeytoken_spread`, `tool_rotation`, the OT set
-  `plc_program_download` (Stuxnet/Triton), `ics_mode_change` and `ot_kill_chain`
-  (discovery → manipulation), plus `remote_tool_sweep` (third-party RAT
-  hunting), `oob_mgmt_access` (management-plane targeting) and
-  `remote_exec_command` (cleartext RCE). Fifty new archetypes — cloud/host
-  (macOS, Alpine, Proxmox, TrueNAS, ESXi, Amazon Linux, Fedora, …), network/
-  edge appliances (Juniper, Palo Alto, F5, SonicWall, NetScaler, Sophos, Huawei,
-  Zyxel, DrayTek, …), OT/ICS (Triconex/HIMA safety, Yokogawa/Emerson DCS, GE/
-  Rockwell/B&R PLCs, SEL relay, SMA inverter) and out-of-band management
-  (Supermicro/Lenovo/Cisco-UCS/Oracle-ILOM/Fujitsu BMCs, Lantronix/Opengear
-  console servers, Raritan KVM, APC PDU) → **152 archetypes**; fifty new
-  `archeservice` role bundles → **70 roles**; fifty new Lua dynamic-response
-  scripts (data-store dashboards + ICS web UIs + the round-five BMC/console
-  consoles: Supermicro/ILOM/XCC/CIMC/Opengear/Raritan/APC/Guacamole/
-  ScreenConnect/Cockpit) → **62 scripts**. New [`docs/internals.md`](docs/internals.md)
-  documents the runtime data flow end to end.
+  `lantronix`, `tn3270` (mainframe), `ard`) and VoIP/telephony (`sip_tcp`,
+  `sccp`, `h323`, `asterisk_ami`, `iax2`) — taking the catalog to
+  **112 TCP + 33 UDP handlers**. Seventeen enrichment-/campaign-/OT-/remote-
+  access-/VoIP-driven correlators including the OT set `plc_program_download`
+  (Stuxnet/Triton), `ics_mode_change`, `ot_kill_chain`, the remote-access set
+  `remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`, and the VoIP
+  set `toll_fraud` (premium/international call origination — T1657 Financial
+  Theft), `voip_enum` and `pbx_control` (PBX takeover). Sixty new archetypes —
+  cloud/host, network/edge appliances, OT/ICS (Triconex/HIMA safety, Yokogawa/
+  Emerson DCS, GE/Rockwell/B&R PLCs, SEL relay, SMA inverter), out-of-band
+  management (Supermicro/Lenovo/Cisco-UCS/Oracle-ILOM/Fujitsu BMCs, console
+  servers, Raritan KVM, APC PDU) and VoIP (Cisco CUCM, Avaya, Mitel, 3CX,
+  FreePBX, FreeSWITCH, Ribbon/AudioCodes SBCs, Yealink/Polycom phones)
+  → **162 archetypes**; sixty new `archeservice` role bundles → **80 roles**;
+  sixty new Lua dynamic-response scripts (data-store dashboards + ICS web UIs +
+  BMC/console consoles + VoIP admin consoles: FreePBX/CUCM/3CX/FusionPBX/
+  Issabel/VICIdial/Yealink/Polycom/Avaya/VoIPmonitor) → **72 scripts**. New
+  [`docs/internals.md`](docs/internals.md) documents the runtime data flow end to end.
 - **Userspace TCP stack.** The honeynet TUN adapter now embeds a userspace
   TCP/IPv4 engine (`internal/tcpstack`): a SYN to a virtual host's
   configured service port completes a handshake with a **SYN-ACK shaped to
@@ -550,7 +561,7 @@ overhaul.** A large post-v2.0 sprint. Highlights below; the
   enumeration, UA rotation, exploit-chain, protocol-violation,
   session-flood, C2 **beacon**, exfil, fingerprint-reuse, ICS-control,
   lateral-movement, OT-recon, data-access, malware-campaign, webshell) —
-  about two dozen in all. HTTP request-smuggling / CONNECT-proxy misuse and
+  about three dozen in all. HTTP request-smuggling / CONNECT-proxy misuse and
   behavioral HTTP (malformed/duplicate-Host headers, impossible-browser
   UA), Active Directory / Kerberos abuse (Kerberoasting, SPN/LDAP enum,
   AS-REP-roast), sensitive MSRPC binds (SAMR / LSARPC / DRSUAPI DCSync /
@@ -900,7 +911,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 152; see [`docs/archetypes.md`](docs/archetypes.md). |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 162; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |
@@ -1385,7 +1396,7 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   markers), `session_flood`, `exfil` (bulk outbound), `fingerprint_reuse`,
   `canary_trip`, `ics_control`, `lateral_movement`, `ot_recon`,
   `data_access`, `malware_campaign`, and `webshell` — each windowed,
-  severity-configurable, and ATT&CK-tagged (~two dozen correlators in all).
+  severity-configurable, and ATT&CK-tagged (~three dozen correlators in all).
 - `scananalysis:profile` — per-source nmap fingerprint once a source
   crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
   `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),

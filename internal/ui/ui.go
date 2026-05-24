@@ -224,6 +224,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/tunnels", s.handleTunnels)
 	mux.HandleFunc("/search", s.handleSearch)
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/charts", s.handleCharts)
 	mux.HandleFunc("/topology", s.handleTopology)
 	mux.HandleFunc("/hosts", s.handleHosts)
 	mux.HandleFunc("/devices", s.handleHosts)
@@ -381,6 +382,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// from a bounded scan of the window.
 	if evs, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
+	}
+	// A compact visual overview (charts.js); the full gallery lives at /charts.
+	if len(d.Severity) > 0 {
+		d.Charts = append(d.Charts, chartFigure("pie", "Severity", barsToPie(d.Severity, true)))
+	}
+	if len(hours) > 0 {
+		d.Charts = append(d.Charts, trendLine(hours))
+	}
+	if len(d.Sources) > 0 {
+		d.Charts = append(d.Charts, chartFigure("hbar", "Top sources", barsToBar(d.Sources)))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "index", d); err != nil {
@@ -726,6 +737,7 @@ func (s *Server) topologyView() []topoNetworkView {
 type topologyPage struct {
 	Networks []topoNetworkView
 	Active   bool // any activity overlaid?
+	Graph    chartFig
 }
 
 // hostActivity aggregates events targeting each honeynet host IP (by dest IP)
@@ -795,6 +807,9 @@ func overlayActivity(nets []topoNetworkView, act map[string]*hostActivity) bool 
 func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	nets := s.topologyView()
 	page := topologyPage{Networks: nets}
+	if len(nets) > 0 {
+		page.Graph = buildTopologyGraph(nets)
+	}
 	// Infrastructure-map activity overlay: events targeting each host IP.
 	if len(nets) > 0 {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)

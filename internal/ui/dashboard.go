@@ -48,6 +48,8 @@ type dashboard struct {
 	Tools     []barRow
 	Handlers  []barRow
 	Scanned   int
+	// Charts are charts.js figures rendered alongside the CSS bars (JS on).
+	Charts []chartFig
 }
 
 func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {

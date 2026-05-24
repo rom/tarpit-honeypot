@@ -1,0 +1,505 @@
+package ui
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"sort"
+	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/store"
+)
+
+// handleCharts renders the analytics page: every chart type the packaged
+// charts.js supports, driven by the same 24h data as the summary dashboard.
+func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	since := time.Now().Add(-24 * time.Hour)
+	sum, err := s.store.Summary(ctx, since)
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	hours, _ := s.store.EventsPerHour(ctx, since)
+	d := buildDashboard(sum, hours)
+	var evs []*event.Event
+	if e, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
+		evs = e
+		enrichDashboard(&d, evs)
+	}
+	page := buildAnalytics(d, hours, evs)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "charts", page); err != nil {
+		slog.Warn("ui: render charts", "err", err)
+	}
+}
+
+// chartFig is a server-emitted charts.js figure: a chart type + base64-encoded
+// JSON config the packaged charts.js renders client-side. base64 keeps the JSON
+// out of HTML-escaping's way and matches the existing data-graph-b64 pattern.
+// The "chartfig" template block renders it with a no-JS fallback.
+type chartFig struct {
+	Type  string
+	Title string
+	B64   string
+}
+
+func chartFigure(typ, title string, data any) chartFig {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return chartFig{Type: typ, Title: title}
+	}
+	return chartFig{Type: typ, Title: title, B64: base64.StdEncoding.EncodeToString(b)}
+}
+
+// chartSection groups figures under a heading on the analytics page.
+type chartSection struct {
+	Heading string
+	Figs    []chartFig
+}
+
+type chartsPage struct {
+	Sections []chartSection
+	Scanned  int
+	Empty    bool
+}
+
+// --- chart JSON shapes (match the schemas documented in charts.js) ---------
+
+type chBar struct {
+	Label string `json:"label"`
+	Value int    `json:"value"`
+	Sev   string `json:"sev,omitempty"`
+}
+type chSlice struct {
+	Label string `json:"label"`
+	Value int    `json:"value"`
+	Color string `json:"color,omitempty"`
+}
+type chPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+type chMapPt struct {
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	Count int     `json:"count"`
+	Label string  `json:"label,omitempty"`
+	Sev   string  `json:"sev,omitempty"`
+}
+type chNode struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Group string `json:"group,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	OS    string `json:"os,omitempty"`
+}
+type chEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+type chCred struct {
+	User  string `json:"user"`
+	Pass  string `json:"pass"`
+	Count int    `json:"count"`
+}
+
+func sevColor(s string) string {
+	switch s {
+	case "low":
+		return "#6b8fb5"
+	case "medium":
+		return "#d59a3a"
+	case "high":
+		return "#c0506a"
+	case "critical":
+		return "#b00020"
+	}
+	return ""
+}
+
+// barsToBar / barsToPie adapt the dashboard's []barRow charts to chart configs.
+func barsToBar(rows []barRow) any {
+	out := make([]chBar, 0, len(rows))
+	for _, r := range rows {
+		sev := ""
+		if len(r.Class) > 4 && r.Class[:4] == "sev-" {
+			sev = r.Class[4:]
+		}
+		out = append(out, chBar{Label: r.Label, Value: r.Count, Sev: sev})
+	}
+	return map[string]any{"series": out}
+}
+func barsToPie(rows []barRow, sevColors bool) any {
+	out := make([]chSlice, 0, len(rows))
+	for _, r := range rows {
+		c := ""
+		if sevColors {
+			c = sevColor(r.Label)
+		}
+		out = append(out, chSlice{Label: r.Label, Value: r.Count, Color: c})
+	}
+	return map[string]any{"slices": out, "donut": true}
+}
+
+// trendLine renders events-per-hour as a time-series line.
+func trendLine(hours []store.HourBucket) chartFig {
+	pts := make([]chPoint, 0, len(hours))
+	for _, h := range hours {
+		pts = append(pts, chPoint{X: float64(h.Hour.UnixMilli()), Y: float64(h.Count)})
+	}
+	return chartFigure("line", "Events per hour (24h)", map[string]any{
+		"series": []map[string]any{{"name": "events", "points": pts, "color": "#4a6fa5"}},
+		"xType":  "time",
+	})
+}
+
+// severityArea renders a stacked area of event volume by severity over time.
+func severityArea(evs []*event.Event) chartFig {
+	sevCols := []string{"low", "medium", "high", "critical"}
+	buckets := map[int64]map[string]int{}
+	for _, ev := range evs {
+		hk := ev.Time.Truncate(time.Hour).UnixMilli()
+		m := buckets[hk]
+		if m == nil {
+			m = map[string]int{}
+			buckets[hk] = m
+		}
+		m[ev.Severity.String()]++
+	}
+	keys := make([]int64, 0, len(buckets))
+	for k := range buckets {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	vals := map[string][]int{}
+	for _, s := range sevCols {
+		vals[s] = make([]int, len(keys))
+	}
+	for i, k := range keys {
+		for _, s := range sevCols {
+			vals[s][i] = buckets[k][s]
+		}
+	}
+	series := make([]map[string]any, 0, len(sevCols))
+	for _, s := range sevCols {
+		series = append(series, map[string]any{"name": s, "values": vals[s], "color": sevColor(s)})
+	}
+	return chartFigure("area", "Severity over time (stacked)", map[string]any{"x": keys, "series": series, "xType": "time"})
+}
+
+// matrixHeatmap builds rows×cols heatmap cells from a label->col->count map,
+// keeping the top n rows by total.
+func matrixHeatmap(typ, title string, cols []string, counts map[string]map[string]int, n int, unit string) chartFig {
+	totals := map[string]int{}
+	for r, m := range counts {
+		for _, c := range m {
+			totals[r] += c
+		}
+	}
+	rows := topKeys(totals, n)
+	cells := make([][]int, len(rows))
+	for i, r := range rows {
+		cells[i] = make([]int, len(cols))
+		for j, c := range cols {
+			cells[i][j] = counts[r][c]
+		}
+	}
+	return chartFigure(typ, title, map[string]any{"rows": rows, "cols": cols, "cells": cells, "unit": unit})
+}
+
+// sourceMap aggregates events by GeoIP coordinate into attack-source bubbles.
+func sourceMap(evs []*event.Event) (chartFig, bool) {
+	type agg struct {
+		lat, lon float64
+		count    int
+		sev      string
+		label    string
+	}
+	m := map[string]*agg{}
+	for _, ev := range evs {
+		lat, ok1 := metaFloat(ev.Meta, "geo_lat")
+		lon, ok2 := metaFloat(ev.Meta, "geo_lon")
+		if !ok1 || !ok2 || (lat == 0 && lon == 0) {
+			continue
+		}
+		key := fmt.Sprintf("%.0f,%.0f", lat, lon)
+		a := m[key]
+		if a == nil {
+			label, _ := ev.Meta["geo_city"].(string)
+			if label == "" {
+				label, _ = ev.Meta["geo_country"].(string)
+			}
+			if label == "" {
+				label = ev.Source.IP
+			}
+			a = &agg{lat: lat, lon: lon, label: label}
+			m[key] = a
+		}
+		a.count++
+		if sevRank(ev.Severity.String()) > sevRank(a.sev) {
+			a.sev = ev.Severity.String()
+		}
+	}
+	if len(m) == 0 {
+		return chartFig{}, false
+	}
+	pts := make([]chMapPt, 0, len(m))
+	for _, a := range m {
+		pts = append(pts, chMapPt{Lat: a.lat, Lon: a.lon, Count: a.count, Label: a.label, Sev: a.sev})
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i].Count > pts[j].Count })
+	return chartFigure("sourcemap", "Attack source map (GeoIP)", map[string]any{"points": pts}), true
+}
+
+// credCharts builds the credential-attempt chart and the account heatmap
+// (top usernames × service) from captured credentials.
+func credCharts(evs []*event.Event) (creds chartFig, account chartFig, ok bool) {
+	pair := map[string]*chCred{}
+	userSvc := map[string]map[string]int{}
+	svcSet := map[string]int{}
+	for _, ev := range evs {
+		for _, c := range extractCreds(ev) {
+			if c.User == "" && c.Pass == "" {
+				continue
+			}
+			k := c.User + "\x00" + c.Pass
+			if pair[k] == nil {
+				pair[k] = &chCred{User: c.User, Pass: c.Pass}
+			}
+			pair[k].Count++
+			if c.Service != "" {
+				if userSvc[c.User] == nil {
+					userSvc[c.User] = map[string]int{}
+				}
+				userSvc[c.User][c.Service]++
+				svcSet[c.Service]++
+			}
+		}
+	}
+	if len(pair) == 0 {
+		return chartFig{}, chartFig{}, false
+	}
+	attempts := make([]chCred, 0, len(pair))
+	for _, c := range pair {
+		attempts = append(attempts, *c)
+	}
+	sort.Slice(attempts, func(i, j int) bool { return attempts[i].Count > attempts[j].Count })
+	creds = chartFigure("creds", "Credential attempts (top users + user×password)", map[string]any{"attempts": attempts})
+	cols := topKeys(svcSet, 12)
+	account = matrixHeatmap("heatmap", "Account heatmap (username × service)", cols, userSvc, 18, "tries")
+	return creds, account, true
+}
+
+// buildAnalytics assembles the /charts analytics page from the dashboard model,
+// the hourly trend, and a scan of recent events.
+func buildAnalytics(d dashboard, hours []store.HourBucket, evs []*event.Event) chartsPage {
+	p := chartsPage{Scanned: len(evs)}
+	sevCols := []string{"low", "medium", "high", "critical"}
+
+	// Overview.
+	overview := chartSection{Heading: "Overview"}
+	if len(d.Severity) > 0 {
+		overview.Figs = append(overview.Figs, chartFigure("pie", "Events by severity", barsToPie(d.Severity, true)))
+	}
+	if len(hours) > 0 {
+		overview.Figs = append(overview.Figs, trendLine(hours))
+	}
+	if len(evs) > 0 {
+		overview.Figs = append(overview.Figs, severityArea(evs))
+	}
+	if len(d.Sources) > 0 {
+		overview.Figs = append(overview.Figs, chartFigure("hbar", "Top source IPs", barsToBar(d.Sources)))
+	}
+	if len(d.Rules) > 0 {
+		overview.Figs = append(overview.Figs, chartFigure("hbar", "Top rules", barsToBar(d.Rules)))
+	}
+	if len(overview.Figs) > 0 {
+		p.Sections = append(p.Sections, overview)
+	}
+
+	// ATT&CK & threats.
+	threat := chartSection{Heading: "ATT&CK & threats"}
+	if len(d.Tactics) > 0 {
+		threat.Figs = append(threat.Figs, chartFigure("hbar", "By ATT&CK tactic", barsToBar(d.Tactics)))
+	}
+	tacSev := map[string]map[string]int{}
+	for _, ev := range evs {
+		for _, t := range eventTag(ev).Tactics {
+			if tacSev[t] == nil {
+				tacSev[t] = map[string]int{}
+			}
+			tacSev[t][ev.Severity.String()]++
+		}
+	}
+	if len(tacSev) > 0 {
+		threat.Figs = append(threat.Figs, matrixHeatmap("heatmap", "Threat heatmap (tactic × severity)", sevCols, tacSev, 16, "events"))
+	}
+	if len(threat.Figs) > 0 {
+		p.Sections = append(p.Sections, threat)
+	}
+
+	// Protocols.
+	proto := chartSection{Heading: "Protocols"}
+	if len(d.Handlers) > 0 {
+		proto.Figs = append(proto.Figs, chartFigure("bar", "By handler", barsToBar(d.Handlers)))
+	}
+	hSev := map[string]map[string]int{}
+	for _, ev := range evs {
+		if ev.Handler == "" {
+			continue
+		}
+		if hSev[ev.Handler] == nil {
+			hSev[ev.Handler] = map[string]int{}
+		}
+		hSev[ev.Handler][ev.Severity.String()]++
+	}
+	if len(hSev) > 0 {
+		proto.Figs = append(proto.Figs, matrixHeatmap("heatmap", "Protocol heatmap (handler × severity)", sevCols, hSev, 16, "events"))
+	}
+	if len(proto.Figs) > 0 {
+		p.Sections = append(p.Sections, proto)
+	}
+
+	// Geography.
+	geo := chartSection{Heading: "Geography & infrastructure"}
+	if fig, ok := sourceMap(evs); ok {
+		geo.Figs = append(geo.Figs, fig)
+	}
+	if len(d.Countries) > 0 {
+		geo.Figs = append(geo.Figs, chartFigure("hbar", "Top source countries", barsToBar(d.Countries)))
+	}
+	if len(d.ASNs) > 0 {
+		geo.Figs = append(geo.Figs, chartFigure("hbar", "Top source ASNs", barsToBar(d.ASNs)))
+	}
+	if len(geo.Figs) > 0 {
+		p.Sections = append(p.Sections, geo)
+	}
+
+	// Credentials & tooling.
+	cred := chartSection{Heading: "Credentials & tooling"}
+	if c, acct, ok := credCharts(evs); ok {
+		cred.Figs = append(cred.Figs, c, acct)
+	}
+	if len(d.Tools) > 0 {
+		cred.Figs = append(cred.Figs, chartFigure("hbar", "Top tools / scanners", barsToBar(d.Tools)))
+	}
+	if len(cred.Figs) > 0 {
+		p.Sections = append(p.Sections, cred)
+	}
+
+	p.Empty = len(p.Sections) == 0
+	return p
+}
+
+// buildTopologyGraph turns the honeynet topology into a node-link graph: one
+// column per network, a gateway node plus the host nodes, edges host->gateway.
+func buildTopologyGraph(nets []topoNetworkView) chartFig {
+	var nodes []chNode
+	var edges []chEdge
+	for _, n := range nets {
+		gw := "gw:" + n.ID
+		glabel := n.Gateway
+		if glabel == "" {
+			glabel = n.ID + " gw"
+		}
+		nodes = append(nodes, chNode{ID: gw, Label: glabel, Group: n.ID, Kind: "gateway"})
+		if n.DNS != "" {
+			dns := "dns:" + n.ID
+			nodes = append(nodes, chNode{ID: dns, Label: n.DNS, Group: n.ID, Kind: "resolver"})
+			edges = append(edges, chEdge{From: dns, To: gw})
+		}
+		for _, h := range n.Hosts {
+			id := n.ID + "/" + h.IP
+			label := h.IP
+			if h.Hostname != "" {
+				label = h.Hostname
+			}
+			nodes = append(nodes, chNode{ID: id, Label: label, Group: n.ID, Kind: "host", OS: h.OS})
+			edges = append(edges, chEdge{From: id, To: gw})
+		}
+	}
+	return chartFigure("topology", "Honeynet topology", map[string]any{"nodes": nodes, "edges": edges})
+}
+
+// healthCharts builds the small charts shown on the health page.
+func healthCharts(v healthView) []chartFig {
+	var out []chartFig
+	if len(v.ByProto) > 0 {
+		out = append(out, chartFigure("pie", "Events by transport (24h)", countersToPie(v.ByProto)))
+	}
+	if len(v.Sinks) > 0 {
+		var rows []chBar
+		for _, sh := range v.Sinks {
+			rows = append(rows, chBar{Label: sh.Channel, Value: sh.Dropped + sh.Failed})
+		}
+		out = append(out, chartFigure("hbar", "Sink dropped+failed events", map[string]any{"series": rows}))
+	}
+	if v.SnifferActive && len(v.Frames) > 0 {
+		out = append(out, chartFigure("bar", "L2 frames by protocol", countersToBar(v.Frames)))
+	}
+	return out
+}
+
+func countersToPie(cs []counter) any {
+	out := make([]chSlice, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, chSlice{Label: c.Label, Value: c.Value})
+	}
+	return map[string]any{"slices": out}
+}
+func countersToBar(cs []counter) any {
+	out := make([]chBar, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, chBar{Label: c.Label, Value: c.Value})
+	}
+	return map[string]any{"series": out}
+}
+
+// --- small helpers ---------------------------------------------------------
+
+func topKeys(m map[string]int, n int) []string {
+	type kv struct {
+		k string
+		v int
+	}
+	items := make([]kv, 0, len(m))
+	for k, v := range m {
+		items = append(items, kv{k, v})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].v != items[j].v {
+			return items[i].v > items[j].v
+		}
+		return items[i].k < items[j].k
+	})
+	if len(items) > n {
+		items = items[:n]
+	}
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = it.k
+	}
+	return out
+}
+
+func metaFloat(m map[string]any, key string) (float64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v, true
+	case json.Number:
+		f, err := v.Float64()
+		return f, err == nil
+	case int:
+		return float64(v), true
+	}
+	return 0, false
+}

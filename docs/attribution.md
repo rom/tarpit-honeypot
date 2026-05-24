@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **379 static mappings** (66 exact rules + 98 handler tags + 215
+There are **392 static mappings** (69 exact rules + 98 handler tags + 225
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -44,7 +44,7 @@ the Enterprise matrix so a SIEM expecting one ID space stays consistent.
 The complete catalog follows (generated from `list-techniques --json`; the
 `Augment` step *unions* the anomaly rows into the rule/handler base).
 
-### 1a. Exact rule IDs (66) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+### 1a. Exact rule IDs (69) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
 
 | rule_id | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -76,6 +76,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:ot_recon` | T0846, T0888 | discovery |
 | `correlate:password_spray` | T1110.003 | credential-access |
 | `correlate:path_enumeration` | T1595.003, T1083 | reconnaissance, discovery |
+| `correlate:pbx_control` | T1059 | execution |
 | `correlate:plc_program_download` | T0843 | impact |
 | `correlate:port_scan` | T1046 | discovery |
 | `correlate:protocol_violation` | T1595.002 | reconnaissance |
@@ -85,8 +86,10 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:session_flood` | T1499 | impact |
 | `correlate:slow_scan` | T1046 | discovery |
 | `correlate:threat_intel_burst` | T1595 | reconnaissance |
+| `correlate:toll_fraud` | T1657 | impact |
 | `correlate:tool_rotation` | T1595 | reconnaissance |
 | `correlate:ua_rotation` | T1595 | reconnaissance |
+| `correlate:voip_enum` | T1046 | discovery |
 | `correlate:webshell` | T1505.003, T1059 | persistence, execution |
 | `device:changed` | T1557.002 | credential-access |
 | `device:new` | T1018 | discovery |
@@ -218,7 +221,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `x11` | T1021, T1056.001 | lateral-movement, collection |
 | `xmpp` | T1071.001 | command-and-control |
 
-### 1c. Anomaly tags (215) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (225) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -227,6 +230,9 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `adb-shell-open` | T1059 | execution |
 | `ajp-forward-request` | T1190 | initial-access |
 | `ajp-probe` | T1595 | reconnaissance |
+| `ami-command` | T1059 | execution |
+| `ami-login` | T1110.001 | credential-access |
+| `ami-originate` | T1657 | impact |
 | `ard-probe` | T1219 | command-and-control |
 | `bacnet-write-attempt` | T0836, T0831 | impact |
 | `bgp-open-attempt` | T1190 | initial-access |
@@ -271,6 +277,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `git-request` | T1213 | collection |
 | `gopher-request` | T1595 | reconnaissance |
 | `gopher-ssrf` | T1190 | initial-access |
+| `h323-probe` | T1595 | reconnaissance |
+| `h323-setup` | T1595 | reconnaissance |
 | `headless-browser` | T1595 | reconnaissance |
 | `honeyfile-download` | T1005 | collection |
 | `http-connect-proxy` | T1090 | command-and-control |
@@ -281,6 +289,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `http-method-unknown` | T1595 | reconnaissance |
 | `http-request-line-non-printable` | T1595 | reconnaissance |
 | `http-request-smuggling` | T1190 | initial-access |
+| `iax2-probe` | T1046 | discovery |
 | `ike-probe` | T1595 | reconnaissance |
 | `ip-bad-checksum` | T1595.001 | reconnaissance |
 | `ip-bad-header-len` | T1595.001 | reconnaissance |
@@ -361,6 +370,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `rsync-module-access` | T1213 | collection |
 | `rsync-module-list` | T1083 | discovery |
 | `rtsp-auth-attempt` | T1110.001 | credential-access |
+| `sccp-probe` | T1046 | discovery |
+| `sccp-register` | T1046 | discovery |
 | `secs-probe` | T0888 | discovery |
 | `secs-program-send` | T0843 | impact |
 | `secs-remote-command` | T0855 | impact |
@@ -388,7 +399,9 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `shell-ps-encoded` | T1059.001, T1027 | execution, defense-evasion |
 | `shell-reverse-shell` | T1059 | execution |
 | `shell-shadow-read` | T1003.008 | credential-access |
+| `sip-auth-attempt` | T1110.001 | credential-access |
 | `sip-invite-attempt` | T1595 | reconnaissance |
+| `sip-options-scan` | T1595 | reconnaissance |
 | `sip-register-probe` | T1110.001 | credential-access |
 | `smtp-open-relay-probe` | T1071.003 | command-and-control |
 | `smtp-user-enumeration` | T1087 | discovery |
@@ -523,6 +536,35 @@ correlation. **EPSS** is a relative exploit-likelihood prioritization hint.
 > FIRST.org republishes EPSS daily. Treat the value as a relative-priority
 > hint, and re-baseline it from the live dataset if you depend on it
 > operationally. CWE and CPE are stable.
+
+### CWE weakness-class catalog
+
+`internal/cve.CWEName` maps every referenced CWE id to its title — the CWE
+analogue of `mitre.Describe` for ATT&CK techniques — so events, the CLI and
+the docs render "CWE-89 — SQL Injection" rather than a bare id. The catalog's
+records span **45 CWE classes**; `tarpit-honeypot list-cves --cwe`
+(`--cwe --json` for tooling) prints the full set with per-class CVE counts. The
+most common:
+
+| CWE | Weakness class | CVEs |
+|---|---|---|
+| CWE-20 | Improper Input Validation | 16 |
+| CWE-22 | Path Traversal | 14 |
+| CWE-787 | Out-of-bounds Write | 13 |
+| CWE-94 | Code Injection | 12 |
+| CWE-502 | Deserialization of Untrusted Data | 9 |
+| CWE-400 | Uncontrolled Resource Consumption | 8 |
+| CWE-78 | OS Command Injection | 8 |
+| CWE-287 | Improper Authentication | 7 |
+| CWE-288 | Authentication Bypass (Alternate Path) | 6 |
+| CWE-306 | Missing Authentication for Critical Function | 5 |
+| CWE-434 | Unrestricted Upload of Dangerous File | 4 |
+| CWE-918 | Server-Side Request Forgery (SSRF) | 4 |
+| CWE-1336 | Server-Side Template Injection (SSTI) | 3 |
+| CWE-200 | Exposure of Sensitive Information | 3 |
+| CWE-269 | Improper Privilege Management | 3 |
+
+(15 of 45 shown — run `list-cves --cwe` for the complete catalog.)
 
 **TCP/IP-stack class (`Service: "tcp"`).** Alongside the application-layer
 CVEs, the catalog carries the classic TCP/IP-stack attacks the honeynet's

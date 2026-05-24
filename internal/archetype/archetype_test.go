@@ -214,6 +214,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Opengear console server",
 		"Raritan Dominion KX (KVM)",
 		"APC Network Management Card (rPDU)",
+		// VoIP / telephony personas.
+		"FreePBX (Sangoma)",
+		"Cisco Unified CM (CUCM)",
+		"Avaya Aura Communication Manager",
+		"Mitel MiVoice Business",
+		"3CX Phone System",
+		"FreeSWITCH",
+		"Ribbon SBC (session border controller)",
+		"AudioCodes Mediant gateway",
+		"Yealink IP phone",
+		"Poly/Polycom VVX phone",
 	}
 	got := Names()
 	if len(got) != len(want) {

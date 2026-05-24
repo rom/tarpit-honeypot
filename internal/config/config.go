@@ -822,6 +822,38 @@ type Correlate struct {
 	RemoteToolSweep    CorrRemoteToolSweep    `yaml:"remote_tool_sweep"`
 	OOBMgmtAccess      CorrOOBMgmtAccess      `yaml:"oob_mgmt_access"`
 	RemoteExecCommand  CorrRemoteExecCommand  `yaml:"remote_exec_command"`
+	TollFraud          CorrTollFraud          `yaml:"toll_fraud"`
+	VoIPEnum           CorrVoIPEnum           `yaml:"voip_enum"`
+	PBXControl         CorrPBXControl         `yaml:"pbx_control"`
+}
+
+// CorrTollFraud fires when one source makes several call-placement attempts
+// (SIP INVITE scanning or AMI Originate) within a window — toll-fraud probing
+// (premium / international call origination).
+type CorrTollFraud struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrVoIPEnum fires when one source touches several DISTINCT VoIP protocols
+// (SIP / SCCP / H.323 / IAX2 / AMI) within a window — telephony reconnaissance.
+type CorrVoIPEnum struct {
+	Enabled          bool          `yaml:"enabled"`
+	DistinctServices int           `yaml:"distinct_services"`
+	Window           time.Duration `yaml:"window"`
+	Severity         string        `yaml:"severity"`
+}
+
+// CorrPBXControl fires when one source makes several administrative
+// manager-interface interactions (AMI login / command) within a window — an
+// attempt to take over the PBX.
+type CorrPBXControl struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrRemoteToolSweep fires when one source probes several DISTINCT third-party

@@ -1,0 +1,63 @@
+# VoIP PBX (Asterisk / FreePBX).
+#
+# The classic internet-exposed phone system: an Asterisk-based PBX with SIP,
+# the Asterisk Manager Interface and IAX2 trunking, plus the web admin consoles.
+# Exposed PBXs are monetized through toll fraud (premium / international call
+# origination) and full takeover via the manager interface. Combines the
+# pbxserver / voicemail / conferencebridge role bundles with direct decoys and
+# `lua` admin decoys. Exercises the sip_tcp / asterisk_ami / iax2 handlers and
+# the toll_fraud + pbx_control correlators.
+#
+#   tarpit-honeypot validate-config -c examples/voip-pbx.yaml
+sensor:
+  name: voip-pbx-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  archetype: freepbx
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: pbx,    role: pbxserver,        archetype: freepbx,      bind: 127.0.30.1, severity: high }
+  - { id: vm,     role: voicemail,        archetype: freepbx,      bind: 127.0.30.2, severity: medium }
+  - { id: conf,   role: conferencebridge, archetype: asterisk-voip, bind: 127.0.30.3, severity: medium }
+
+# Direct telephony decoys + PBX admin web decoys.
+listeners:
+  - { id: sip,      proto: tcp, bind: 0.0.0.0:5060, mode: banner, handler: sip_tcp,      severity: high,     capture: true }
+  - { id: ami,      proto: tcp, bind: 0.0.0.0:5038, mode: banner, handler: asterisk_ami, severity: critical, capture: true }
+  - { id: iax2,     proto: udp, bind: 0.0.0.0:4569, mode: banner, handler: iax2,         severity: high,     capture: true }
+  - { id: freepbx,  proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/freepbx.lua,   severity: high, capture: true }
+  - { id: fusionpbx, proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/fusionpbx.lua, severity: high, capture: true }
+  - { id: vicidial, proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/vicidial.lua,  severity: high, capture: true }
+
+url_canaries:
+  - { id: ami-manager-conf, path: "/admin/config.php?display=manager", severity: critical }
+
+correlate:
+  port_scan:    { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  brute_force:  { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  toll_fraud:   { enabled: true, events: 5, window: 5m, severity: high }
+  pbx_control:  { enabled: true, events: 3, window: 10m, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

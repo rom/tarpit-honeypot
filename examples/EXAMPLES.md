@@ -47,6 +47,9 @@ is the "everything turned on" reference.
 | Data-center OOB | [`datacenter-oob.yaml`](datacenter-oob.yaml) | Lights-out plane: Supermicro/Lenovo/Cisco-UCS/ILOM/Fujitsu BMCs + console/KVM roles + BMC web decoys (oob_mgmt_access). |
 | Remote access | [`remote-access-gateway.yaml`](remote-access-gateway.yaml) | RDP/VNC + Radmin/DameWare/pcAnywhere/PCoIP/ARD + Guacamole/ScreenConnect decoys (remote_tool_sweep). |
 | Legacy / mainframe | [`legacy-rservices-mainframe.yaml`](legacy-rservices-mainframe.yaml) | Cleartext rexec/rsh + TN3270 mainframe + console/PDU mgmt (remote_exec_command / oob_mgmt_access). |
+| VoIP PBX | [`voip-pbx.yaml`](voip-pbx.yaml) | Asterisk/FreePBX: SIP/AMI/IAX2 + pbxserver/voicemail roles + FreePBX/FusionPBX/VICIdial decoys (toll_fraud / pbx_control). |
+| Enterprise UC | [`enterprise-telephony.yaml`](enterprise-telephony.yaml) | Cisco/Avaya/Mitel: SCCP/H.323/SIP + callmanager/unifiedcomms roles + CUCM/Avaya decoys + phone honeynet (voip_enum). |
+| VoIP edge SBC | [`voip-edge-sbc.yaml`](voip-edge-sbc.yaml) | Carrier edge: Ribbon/AudioCodes SBC/gateways + IP phones + sbc/voipgateway/ipphone roles. |
 | SIEM | [`siem-integration.yaml`](siem-integration.yaml) | Same events to JSON/CEF/LEEF/OCSF sinks. |
 
 ---
@@ -431,6 +434,35 @@ The deprecated-but-still-running corner: the Berkeley **r-services** (`rexec` /
 cards. The `rserviceshost` / `mainframe` / `consoleserver` / `pdumanagement`
 role bundles plus console/PDU web decoys, with the `remote_exec_command` +
 `oob_mgmt_access` correlators on.
+
+### VoIP PBX (Asterisk / FreePBX)
+
+[`voip-pbx.yaml`](voip-pbx.yaml)
+
+The classic internet-exposed phone system: an Asterisk-based PBX speaking
+**SIP**, the **Asterisk Manager Interface** (full PBX control) and **IAX2**
+trunking, with the FreePBX / FusionPBX / VICIdial admin consoles. The
+`pbxserver` / `voicemail` / `conferencebridge` role bundles with the
+`toll_fraud` (premium / international call origination) and `pbx_control`
+(manager-interface takeover) correlators on.
+
+### Enterprise unified communications
+
+[`enterprise-telephony.yaml`](enterprise-telephony.yaml)
+
+The corporate telephony plane: a **Cisco Unified CM** cluster (SCCP / SIP),
+**Avaya** and **Mitel** call managers, and a desk-phone fleet, with a honeynet
+of the round-six UC archetypes and the CUCM / Avaya admin decoys. Exercises
+the `sccp` / `h323` / `sip_tcp` handlers with the `voip_enum` correlator on.
+
+### VoIP carrier edge — SBCs & gateways
+
+[`voip-edge-sbc.yaml`](voip-edge-sbc.yaml)
+
+The SIP-trunk edge: **Ribbon** / **AudioCodes** session border controllers and
+media gateways facing the carrier, plus the desk-phone fleet behind them. The
+`sbc` / `voipgateway` / `ipphone` role bundles with `voip_enum` + `toll_fraud`
+on.
 
 ### Edge devices — MikroTik & Teltonika
 

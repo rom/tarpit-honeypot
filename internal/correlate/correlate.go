@@ -58,6 +58,9 @@ type Correlator struct {
 	remoteToolSev event.Severity
 	oobMgmtSev    event.Severity
 	remoteExecSev event.Severity
+	tollFraudSev  event.Severity
+	voipEnumSev   event.Severity
+	pbxCtrlSev    event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -100,6 +103,9 @@ type Correlator struct {
 	remoteTool map[string]*setState   // key: source IP (distinct remote tools)
 	oobMgmt    map[string]*setState   // key: source IP (distinct OOB mgmt surfaces)
 	remoteExec map[string]*countState // key: source IP (cleartext remote-exec count)
+	tollFraud  map[string]*countState // key: source IP (call-placement count)
+	voipEnum   map[string]*setState   // key: source IP (distinct VoIP protocols)
+	pbxCtrl    map[string]*countState // key: source IP (PBX admin-action count)
 	emitted    map[string]time.Time   // dedup of aggregate emission
 	lastGC     time.Time              // last idle-state sweep
 }
@@ -211,6 +217,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		remoteTool: map[string]*setState{},
 		oobMgmt:    map[string]*setState{},
 		remoteExec: map[string]*countState{},
+		tollFraud:  map[string]*countState{},
+		voipEnum:   map[string]*setState{},
+		pbxCtrl:    map[string]*countState{},
 		emitted:    map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -311,6 +320,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.RemoteToolSweep.Enabled, cfg.RemoteToolSweep.Severity, &c.remoteToolSev},
 		{cfg.OOBMgmtAccess.Enabled, cfg.OOBMgmtAccess.Severity, &c.oobMgmtSev},
 		{cfg.RemoteExecCommand.Enabled, cfg.RemoteExecCommand.Severity, &c.remoteExecSev},
+		{cfg.TollFraud.Enabled, cfg.TollFraud.Severity, &c.tollFraudSev},
+		{cfg.VoIPEnum.Enabled, cfg.VoIPEnum.Severity, &c.voipEnumSev},
+		{cfg.PBXControl.Enabled, cfg.PBXControl.Severity, &c.pbxCtrlSev},
 	} {
 		if !sp.on {
 			continue
@@ -448,6 +460,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.RemoteExecCommand.Enabled {
 		if extra := c.checkRemoteExecCommand(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.TollFraud.Enabled {
+		if extra := c.checkTollFraud(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.VoIPEnum.Enabled {
+		if extra := c.checkVoIPEnum(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.PBXControl.Enabled {
+		if extra := c.checkPBXControl(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1248,6 +1275,17 @@ func (c *Correlator) gc(now time.Time) {
 	for k, st := range c.remoteExec {
 		if now.Sub(st.since) > effWindow(c.cfg.RemoteExecCommand.Window, 10*time.Minute) {
 			delete(c.remoteExec, k)
+		}
+	}
+	gcSet(c.voipEnum, now, effWindow(c.cfg.VoIPEnum.Window, 5*time.Minute))
+	for k, st := range c.tollFraud {
+		if now.Sub(st.since) > effWindow(c.cfg.TollFraud.Window, 5*time.Minute) {
+			delete(c.tollFraud, k)
+		}
+	}
+	for k, st := range c.pbxCtrl {
+		if now.Sub(st.since) > effWindow(c.cfg.PBXControl.Window, 10*time.Minute) {
+			delete(c.pbxCtrl, k)
 		}
 	}
 	for key, t := range c.emitted {

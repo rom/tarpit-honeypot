@@ -1,0 +1,69 @@
+# VoIP carrier edge: SBCs, gateways & IP phones.
+#
+# The SIP-trunk edge: session border controllers and media gateways that face
+# the carrier, plus the desk-phone fleet behind them. Combines the sbc /
+# voipgateway / ipphone role bundles with a honeynet of the round-six SBC /
+# gateway / phone archetypes and `lua` decoys. Exercises the sip_tcp / h323
+# handlers and the voip_enum + toll_fraud correlators.
+#
+#   tarpit-honeypot validate-config -c examples/voip-edge-sbc.yaml
+sensor:
+  name: voip-edge-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  archetype: ribbon-sbc
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: sbc, role: sbc,         archetype: ribbon-sbc,    bind: 127.0.32.1, severity: high }
+  - { id: gw,  role: voipgateway, archetype: audiocodes,    bind: 127.0.32.2, severity: high }
+  - { id: ph,  role: ipphone,     archetype: yealink-phone, bind: 127.0.32.3, severity: medium }
+
+listeners:
+  - { id: sip,   proto: tcp, bind: 0.0.0.0:5060, mode: banner, handler: sip_tcp, severity: high, capture: true }
+  - { id: sips,  proto: tcp, bind: 0.0.0.0:5061, mode: banner, handler: sip_tcp, severity: high, capture: true }
+  - { id: h323,  proto: tcp, bind: 0.0.0.0:1720, mode: banner, handler: h323,    severity: high, capture: true }
+  - { id: tcx,   proto: tcp, bind: 0.0.0.0:5001, mode: banner, handler: lua, script: configs/scripts/3cx.lua,            severity: high, capture: true }
+  - { id: yealink, proto: tcp, bind: 0.0.0.0:80, mode: banner, handler: lua, script: configs/scripts/yealink-phone.lua, severity: medium, capture: true }
+  - { id: polycom, proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/polycom-phone.lua, severity: medium, capture: true }
+
+honeynets:
+  - id: voip-edge
+    cidr: 10.150.0.0/16
+    gateway: 10.150.0.1
+    domain: sip.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.150.0.10, hostname: sbc-01,     os: linux,    archetype: ribbon-sbc,    services: [ {port: 5060, handler: sip_tcp}, {port: 5061, handler: sip_tcp}, {port: 443, handler: https} ] }
+      - { ip: 10.150.0.11, hostname: gw-mediant,  os: embedded, archetype: audiocodes,    services: [ {port: 5060, handler: sip_tcp}, {port: 1720, handler: h323}, {port: 80, handler: http} ] }
+      - { ip: 10.150.0.20, hostname: phone-3001,  os: embedded, archetype: yealink-phone, services: [ {port: 5060, handler: sip_tcp}, {port: 80, handler: http} ] }
+      - { ip: 10.150.0.21, hostname: phone-3002,  os: embedded, archetype: polycom-vvx,   services: [ {port: 5060, handler: sip_tcp}, {port: 80, handler: http} ] }
+
+correlate:
+  port_scan:  { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  voip_enum:  { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  toll_fraud: { enabled: true, events: 5, window: 5m, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

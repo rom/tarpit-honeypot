@@ -118,6 +118,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &profinet{}, nil
 	case "wdbrpc":
 		return &wdbrpc{lim: newUDPReflectLimiter()}, nil
+	case "iax2":
+		return &iax2{}, nil
 	case "dhcp":
 		return &dhcp{}, nil
 	case "dns":

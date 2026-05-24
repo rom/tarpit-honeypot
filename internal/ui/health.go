@@ -24,9 +24,13 @@ type healthView struct {
 	Uptime      string
 	GoVersion   string
 	GOMAXPROCS  int
+	NumCPU      int
 	Goroutines  int
 	MemAllocMB  float64
 	MemSysMB    float64
+	HeapObjects uint64
+	NextGCMB    float64
+	GCPauseMs   float64
 	NumGC       uint32
 	Panics      int
 	PanicByName []counter // recovered panics partitioned by safego name
@@ -44,6 +48,7 @@ type healthView struct {
 	// SnifferActive + Frames are the AF_PACKET L2 frame counters.
 	SnifferActive bool
 	Frames        []counter
+	Charts        []chartFig
 }
 
 type sinkHealth struct {
@@ -59,13 +64,17 @@ func buildHealthView(m *Metrics, sum store.Summary) healthView {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	v := healthView{
-		GoVersion:  runtime.Version(),
-		GOMAXPROCS: runtime.GOMAXPROCS(0),
-		Goroutines: runtime.NumGoroutine(),
-		MemAllocMB: float64(ms.Alloc) / (1024 * 1024),
-		MemSysMB:   float64(ms.Sys) / (1024 * 1024),
-		NumGC:      ms.NumGC,
-		Events24h:  sum.Total,
+		GoVersion:   runtime.Version(),
+		GOMAXPROCS:  runtime.GOMAXPROCS(0),
+		NumCPU:      runtime.NumCPU(),
+		Goroutines:  runtime.NumGoroutine(),
+		MemAllocMB:  float64(ms.Alloc) / (1024 * 1024),
+		MemSysMB:    float64(ms.Sys) / (1024 * 1024),
+		HeapObjects: ms.HeapObjects,
+		NextGCMB:    float64(ms.NextGC) / (1024 * 1024),
+		GCPauseMs:   float64(ms.PauseTotalNs) / 1e6,
+		NumGC:       ms.NumGC,
+		Events24h:   sum.Total,
 	}
 	for _, p := range []string{"tcp", "udp", "icmp", "device"} {
 		if c := sum.ByProto[p]; c > 0 {
@@ -198,8 +207,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	sum, _ := s.store.Summary(ctx, time.Now().Add(-24*time.Hour))
+	v := buildHealthView(m, sum)
+	v.Charts = healthCharts(v)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "health", buildHealthView(m, sum)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "health", v); err != nil {
 		slog.Warn("ui: render health", "err", err)
 	}
 }

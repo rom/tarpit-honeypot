@@ -95,10 +95,48 @@ svg.graph { background: #fff; border: 1px solid #eee; border-radius: 4px; }
 svg.graph .edge { stroke: #cbd3df; stroke-width: 1; }
 svg.graph .node { fill: #6b8fb5; }
 svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
+/* charts.js: dependency-free SVG charting library */
+figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: #fff; border: 1px solid #eee; border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
+figcaption.tc-cap, .tc-cap { font-weight: 600; color: #444; margin-bottom: .3rem; font-size: .95rem; }
+svg.tc { background: #fff; max-width: 100%; height: auto; }
+svg.tc text { font: 11px ui-monospace, monospace; }
+.tc-grid { stroke: #eef1f5; stroke-width: 1; }
+.tc-lane { stroke: #eef1f5; stroke-width: 1; stroke-dasharray: 2 3; }
+.tc-ax { fill: #777; }
+.tc-axt { fill: #555; font-weight: 600; text-anchor: middle; }
+.tc-val { fill: #555; }
+.tc-barrect:hover, .tc-slice:hover, .tc-cell:hover, .tc-pt:hover, .tc-src:hover { opacity: .82; }
+.tc-slice { stroke: #fff; stroke-width: 1; }
+.tc-pt { stroke: #fff; stroke-width: .5; }
+.tc-pl { stroke-linejoin: round; stroke-linecap: round; }
+.tc-cellv { fill: #234; font-size: 10px; }
+.tc-cellv.hi { fill: #fff; }
+.tc-node { stroke: #fff; stroke-width: 1.2; fill: #6b8fb5; }
+.tc-node.k-gateway { fill: #b35900; }
+.tc-node.k-resolver { fill: #2a9d4a; }
+.tc-node.k-attacker { fill: #b00020; }
+.tc-nlabel { font: 10px ui-monospace, monospace; fill: #333; }
+.tc-grouphdr { fill: #888; font-weight: 700; font-size: 11px; }
+.tc-edge { stroke: #cbd3df; stroke-width: 1.2; }
+.tc-snode { stroke: #fff; }
+.tc-tev { stroke: #fff; stroke-width: 1; }
+.tc-ocean { fill: #f3f7fb; stroke: #dde6f0; }
+.tc-grat { stroke: #e1e9f2; stroke-width: 1; }
+.tc-grat-lbl { fill: #aab4c0; font-size: 9px; }
+.tc-src { stroke-width: 1; }
+.tc-legend { margin-top: .35rem; font-size: 11px; color: #555; }
+.tc-leg { margin-right: .8rem; white-space: nowrap; }
+.tc-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.tc-replay { background: #1e1e2e; color: #cdd6f4; font: 12px ui-monospace, monospace; border-radius: 4px; padding: .5rem .6rem; max-height: 340px; overflow: auto; }
+.tc-rline { white-space: pre-wrap; word-break: break-all; padding: .05rem 0; }
+.tc-rline.dir-out { color: #a6adc8; }
+.tc-rts { color: #6c7086; margin-right: .6rem; }
 </style>
 <script src="/static/app.js" defer></script>
+<script src="/static/charts.js" defer></script>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -110,6 +148,17 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
   <td class="bnum">{{ .Count }}</td>
 </tr>{{ end }}
 </table>{{ end }}
+
+{{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
+
+{{ define "charts" }}{{ template "head" . }}
+<h1>analytics</h1>
+{{ if .Empty }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}
+{{ range .Sections }}<h2>{{ .Heading }}</h2>
+<div class="charts-grid">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ end }}
+<p class="note">All charts are rendered client-side by the packaged charts.js (no external libraries) · derived from a scan of {{ .Scanned }} recent events. With JavaScript off, each figure shows a fallback note.</p>
+{{ template "foot" . }}{{ end }}
 
 {{ define "index" }}{{ template "head" . }}
 <h1>tarpit-honeypot — last 24 hours</h1>
@@ -123,6 +172,10 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 <h2>events per hour</h2>
 {{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
 <p class="note">last 24h, one bar per hour</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+
+{{ if .Charts }}<h2>visual overview</h2>
+<div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
+<p class="note">Full interactive analytics — bar / pie / heatmap / source map / credential / timeline — at <a href="/charts">charts</a>.</p>{{ end }}
 
 <h2>by severity</h2>
 {{ if .Severity }}{{ template "bars" .Severity }}{{ else }}<p class="note">none</p>{{ end }}
@@ -281,9 +334,10 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 <table>
 {{ if .Version }}<tr><th>build</th><td>{{ .Version }}{{ if .Commit }} ({{ .Commit }}){{ end }}</td></tr>{{ end }}
 <tr><th>uptime</th><td>{{ if .Uptime }}{{ .Uptime }}{{ else }}n/a{{ end }}</td></tr>
-<tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }}</td></tr>
+<tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }} · {{ .NumCPU }} CPU(s)</td></tr>
 <tr><th>goroutines</th><td>{{ .Goroutines }}</td></tr>
-<tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ .NumGC }} GC cycles</td></tr>
+<tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ printf "%.0f" .HeapObjects }} heap objects</td></tr>
+<tr><th>garbage collector</th><td>{{ .NumGC }} cycles · {{ printf "%.1f" .GCPauseMs }} ms total pause · next at {{ printf "%.1f" .NextGCMB }} MiB</td></tr>
 <tr><th class="{{ if gt .Panics 0 }}sev-high{{ end }}">recovered panics</th><td>{{ .Panics }}{{ if .PanicByName }} ({{ range .PanicByName }}{{ .Label }}={{ .Value }} {{ end }}){{ end }}</td></tr>
 </table>
 
@@ -308,7 +362,9 @@ svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
 
 {{ if .Available }}<h2>honeynet</h2>
 <p>{{ .HoneyNets }} network(s) · {{ .HoneyHosts }} virtual host(s)</p>{{ end }}
-<p class="note">Prometheus-format metrics at <a href="/metrics">/metrics</a>.</p>
+{{ if .Charts }}<h2>charts</h2>
+<div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>{{ end }}
+<p class="note">Prometheus-format metrics at <a href="/metrics">/metrics</a>. Full analytics at <a href="/charts">charts</a>.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "events" }}{{ template "head" . }}
@@ -584,6 +640,7 @@ JSON at <a href="/api/topology">/api/topology</a>.</p>
 <p class="note">Infrastructure map: virtual networks the sensor presents, with live
 attack activity (last 24h) overlaid per host. JSON at <a href="/api/topology">/api/topology</a>.
 {{ if not .Active }}<br>No attack activity recorded against these hosts yet.{{ end }}</p>
+{{ if .Graph.B64 }}{{ template "chartfig" .Graph }}{{ end }}
 {{ range .Networks }}
 <div class="net">
   <h3>{{ .ID }}{{ if .CIDR }} — {{ .CIDR }}{{ end }}{{ if .Events }} <span class="sev-high">⚠ {{ .Events }} events / {{ .Attackers }} attacker(s)</span>{{ end }}</h3>

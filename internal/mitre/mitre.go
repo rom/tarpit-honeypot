@@ -163,6 +163,10 @@ var exactRules = map[string]Tag{
 	"correlate:remote_tool_sweep":   {Techniques: []string{"T1219"}, Tactics: []string{"command-and-control"}},
 	"correlate:oob_mgmt_access":     {Techniques: []string{"T1190", "T1133"}, Tactics: []string{"initial-access"}},
 	"correlate:remote_exec_command": {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
+	// VoIP / telephony correlators (round 6).
+	"correlate:toll_fraud":  {Techniques: []string{"T1657"}, Tactics: []string{"impact"}},
+	"correlate:voip_enum":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"correlate:pbx_control": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -577,6 +581,17 @@ var anomalyTags = map[string]Tag{
 	"spice-probe":      {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"lantronix-probe":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"tn3270-probe":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// Round-six VoIP / telephony decoys (voip.go).
+	"sip-options-scan": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"sip-auth-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"sccp-probe":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"sccp-register":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"h323-probe":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"h323-setup":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ami-login":        {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ami-command":      {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"ami-originate":    {Techniques: []string{"T1657"}, Tactics: []string{"impact"}},
+	"iax2-probe":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /
@@ -704,6 +719,7 @@ var techDescriptions = map[string]string{
 	"T1486": "Data Encrypted for Impact — ransomware-style encryption.",
 	"T1491": "Defacement — altering displayed content/messages.",
 	"T1496": "Resource Hijacking — abusing compute (e.g. cryptomining).",
+	"T1657": "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
 	"T1565": "Data Manipulation — tampering with stored/displayed/transmitted data.",
 	"T1583": "Acquire Infrastructure — standing up attacker infra (e.g. botnet nodes).",
 	"T1020": "Automated Exfiltration — automatically transferring collected data out.",
@@ -831,6 +847,7 @@ var d3fend = map[string][]string{
 	"T1558": {"D3-MFA", "D3-DUC"},          // steal/forge Kerberos tickets
 	"T1498": {"D3-ITF"},                    // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},          // endpoint denial of service (LAND / sockstress / SACK-panic class)
+	"T1657": {"D3-NTA", "D3-ITF"},          // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},           // network share discovery
 	"T1087": {"D3-DUC"},                    // account discovery
 	"T1114": {"D3-NTA"},                    // email collection
