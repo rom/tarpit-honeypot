@@ -81,9 +81,32 @@ var specs = map[string]protoSpec{
 			{"non-printable", []byte("SSH-2.0-\x00\x00\x00\x00\r\n"), "ssh-id-non-printable"},
 		},
 	},
-	"ftp":       {ServerFirst: true, Probe: []byte("USER anonymous\r\n"), Banner: []string{"220"}, EmulateOK: func(r []byte) bool { return startsWith(r, "220") }},
-	"smtp_recv": {ServerFirst: true, Probe: []byte("EHLO probe\r\n"), Banner: []string{"220"}, EmulateOK: func(r []byte) bool { return startsWith(r, "220") }},
-	"telnet":    {ServerFirst: true, Banner: nil, EmulateOK: func(r []byte) bool { return len(r) > 0 }},
+	"ftp": {
+		ServerFirst: true, Probe: []byte("USER anonymous\r\n"), Banner: []string{"220"},
+		EmulateOK: func(r []byte) bool { return startsWith(r, "220") },
+		Smart: []namedBytes{
+			{"overlong-user", []byte("USER " + strings.Repeat("A", 4000) + "\r\n")},
+			{"binary-command", append([]byte{0x00, 0x01, 0x02, 0xff}, []byte(" anonymous\r\n")...)},
+			{"traversal-arg", []byte("RETR " + strings.Repeat("../", 2000) + "etc/passwd\r\n")},
+		},
+	},
+	"smtp_recv": {
+		ServerFirst: true, Probe: []byte("EHLO probe\r\n"), Banner: []string{"220"},
+		EmulateOK: func(r []byte) bool { return startsWith(r, "220") },
+		Smart: []namedBytes{
+			{"overlong-helo", []byte("EHLO " + strings.Repeat("A", 4000) + "\r\n")},
+			{"binary-command", append([]byte{0x00, 0x01, 0x02}, []byte(" MAIL FROM:<a>\r\n")...)},
+			{"rcpt-flood", []byte(strings.Repeat("RCPT TO:<a@b>\r\n", 200))},
+		},
+	},
+	"telnet": {
+		ServerFirst: true, Banner: nil, EmulateOK: func(r []byte) bool { return len(r) > 0 },
+		Smart: []namedBytes{
+			{"iac-do-storm", bytes.Repeat([]byte{0xff, 0xfd, 0x01}, 300)},
+			{"overlong-line", []byte(strings.Repeat("A", 4000) + "\r\n")},
+			{"binary-creds", append([]byte("root\r\n"), bytes.Repeat([]byte{0x00, 0x01}, 100)...)},
+		},
+	},
 	"redis": {
 		Probe: []byte("PING\r\n"),
 		EmulateOK: func(r []byte) bool {
@@ -92,6 +115,7 @@ var specs = map[string]protoSpec{
 		Smart: []namedBytes{
 			{"giant-multibulk", []byte("*99999999\r\n")},
 			{"giant-bulklen", []byte("$99999999\r\n")},
+			{"inline-overlong", []byte("GET " + strings.Repeat("A", 5000) + "\r\n")},
 		},
 	},
 	"sip_tcp": sipSpec(),

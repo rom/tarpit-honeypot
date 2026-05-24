@@ -1,6 +1,7 @@
 package testharness
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -12,6 +13,145 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestEventAnomaliesMergesFieldAndMeta(t *testing.T) {
+	cases := []struct {
+		name string
+		e    apiEvent
+		want []string
+	}{
+		{"field only", apiEvent{Anomalies: []string{"a"}}, []string{"a"}},
+		{"meta []string", apiEvent{Meta: map[string]any{"anomalies": []string{"b"}}}, []string{"b"}},
+		{"meta []any (json)", apiEvent{Meta: map[string]any{"anomalies": []any{"c", "d"}}}, []string{"c", "d"}},
+		{"both", apiEvent{Anomalies: []string{"a"}, Meta: map[string]any{"anomalies": []any{"b"}}}, []string{"a", "b"}},
+		{"none", apiEvent{}, nil},
+	}
+	for _, tc := range cases {
+		got := eventAnomalies(tc.e)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: eventAnomalies = %v; want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestMatchers(t *testing.T) {
+	// Anomaly carried under meta (as the stored API returns it).
+	metaEv := apiEvent{RuleID: "listener:ssh", Meta: map[string]any{"anomalies": []any{"ssh-id-not-ssh"}}}
+	if !MatchAnomaly("ssh-id-not-ssh")(metaEv) {
+		t.Error("MatchAnomaly should match a marker carried under meta.anomalies")
+	}
+	if MatchAnomaly("nope")(metaEv) {
+		t.Error("MatchAnomaly matched a marker that is not present")
+	}
+	if !MatchRulePrefix("listener:")(metaEv) || MatchRulePrefix("scan:")(metaEv) {
+		t.Error("MatchRulePrefix prefix logic wrong")
+	}
+	// Tool attribution via meta.tools ([]any from JSON, and []string).
+	if !MatchTool("sqlmap")(apiEvent{Meta: map[string]any{"tools": []any{"sqlmap"}}}) {
+		t.Error("MatchTool should match meta.tools ([]any)")
+	}
+	if !MatchTool("nmap")(apiEvent{Meta: map[string]any{"tools": []string{"nmap"}}}) {
+		t.Error("MatchTool should match meta.tools ([]string)")
+	}
+	// Tool attribution via anomaly markers.
+	if !MatchTool("nmap")(apiEvent{Anomalies: []string{"tool:nmap"}}) {
+		t.Error("MatchTool should match a tool: anomaly")
+	}
+	if !MatchTool("nessus")(apiEvent{Meta: map[string]any{"anomalies": []any{"vulnerability-scanner"}}}) {
+		t.Error("MatchTool should treat a vulnerability-scanner marker as a tool hit")
+	}
+	if MatchTool("nmap")(apiEvent{Anomalies: []string{"ssh-id-not-ssh"}}) {
+		t.Error("MatchTool matched an unrelated anomaly")
+	}
+}
+
+func TestScanPortsDefaultAndConfigured(t *testing.T) {
+	// Explicit list wins verbatim.
+	cfg := &Config{ScanPorts: []int{1, 2, 3}}
+	if got := scanPorts(cfg); len(got) != 3 || got[0] != 1 {
+		t.Errorf("explicit scan_ports = %v; want [1 2 3]", got)
+	}
+	// Derived: endpoint ports first, then the common set, deduped.
+	cfg = &Config{Endpoints: []Endpoint{{Port: 2222}, {Port: 22}, {Port: 2222}}}
+	got := scanPorts(cfg)
+	seen := map[int]int{}
+	for _, p := range got {
+		seen[p]++
+	}
+	if got[0] != 2222 {
+		t.Errorf("derived ports should start with endpoint ports; got %v", got)
+	}
+	for _, want := range []int{2222, 22, 80, 443} {
+		if seen[want] == 0 {
+			t.Errorf("derived ports missing %d: %v", want, got)
+		}
+	}
+	for p, n := range seen {
+		if n != 1 {
+			t.Errorf("derived ports has duplicate %d (x%d)", p, n)
+		}
+	}
+}
+
+func TestHostsInCIDR(t *testing.T) {
+	if hostsInCIDR("", 256) != nil || hostsInCIDR("not-a-cidr", 256) != nil {
+		t.Error("empty/invalid CIDR should yield no hosts")
+	}
+	got := hostsInCIDR("10.9.0.0/30", 256) // .0 net, .1, .2, .3 broadcast
+	if len(got) != 2 || got[0] != "10.9.0.1" || got[1] != "10.9.0.2" {
+		t.Errorf("/30 usable hosts = %v; want [10.9.0.1 10.9.0.2]", got)
+	}
+	if h := hostsInCIDR("10.0.0.0/24", 5); len(h) > 5 {
+		t.Errorf("max not respected: got %d hosts", len(h))
+	}
+}
+
+func TestFuzzDeterminism(t *testing.T) {
+	a := randBytes(caseRand(99, "fuzz-dumb/ssh"))
+	b := randBytes(caseRand(99, "fuzz-dumb/ssh"))
+	if !bytes.Equal(a, b) {
+		t.Error("same seed + case id must reproduce identical fuzz input")
+	}
+	c := randBytes(caseRand(99, "fuzz-dumb/http"))
+	if bytes.Equal(a, c) {
+		t.Error("different case ids should diverge")
+	}
+	d := randBytes(caseRand(100, "fuzz-dumb/ssh"))
+	if bytes.Equal(a, d) {
+		t.Error("different seeds should diverge")
+	}
+}
+
+func TestCaseRetriesOverride(t *testing.T) {
+	cfg := &Config{Retries: 1, RetriesByCase: map[string]int{"fuzz-smart/http": 5}}
+	if cfg.CaseRetries("fuzz-smart/http") != 5 {
+		t.Error("per-case retry override not applied")
+	}
+	if cfg.CaseRetries("unit/port-open/ssh") != 1 {
+		t.Error("global retry fallback wrong")
+	}
+}
+
+func TestProtocolSpecsWellFormed(t *testing.T) {
+	for name, sp := range specs {
+		if !sp.ServerFirst && sp.Probe == nil {
+			t.Errorf("spec %q: client-first protocol needs a Probe to elicit a response", name)
+		}
+		if sp.EmulateOK == nil {
+			t.Errorf("spec %q: missing EmulateOK", name)
+		}
+		for _, s := range sp.Smart {
+			if s.Name == "" || len(s.Bytes) == 0 {
+				t.Errorf("spec %q: smart shape %q has empty name/bytes", name, s.Name)
+			}
+		}
+		for _, m := range sp.Misimpl {
+			if m.Name == "" || len(m.Bytes) == 0 {
+				t.Errorf("spec %q: misimpl case %q has empty name/bytes", name, m.Name)
+			}
+		}
+	}
+}
 
 func TestDurationUnmarshal(t *testing.T) {
 	ok := map[string]time.Duration{

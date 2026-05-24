@@ -22,9 +22,14 @@ ui:
   bind: 127.0.0.1:8088        # serves /healthz (readiness) + /api/events (verify)
 
 listeners:
-  - { id: ssh,    proto: tcp, bind: 127.0.0.1:2222, mode: banner, handler: ssh,    severity: high }
-  - { id: http,   proto: tcp, bind: 127.0.0.1:8000, mode: banner, handler: http,   severity: high }
-  - { id: modbus, proto: tcp, bind: 127.0.0.1:5020, mode: banner, handler: modbus, severity: high }
+  - { id: ssh,    proto: tcp, bind: 127.0.0.1:2222, mode: banner, handler: ssh,       severity: high }
+  - { id: http,   proto: tcp, bind: 127.0.0.1:8000, mode: banner, handler: http,      severity: high }
+  - { id: ftp,    proto: tcp, bind: 127.0.0.1:2121, mode: banner, handler: ftp,       severity: high }
+  - { id: telnet, proto: tcp, bind: 127.0.0.1:2323, mode: banner, handler: telnet,    severity: high }
+  - { id: smtp,   proto: tcp, bind: 127.0.0.1:2525, mode: banner, handler: smtp_recv, severity: medium }
+  - { id: redis,  proto: tcp, bind: 127.0.0.1:6390, mode: banner, handler: redis,     severity: high }
+  - { id: modbus, proto: tcp, bind: 127.0.0.1:5020, mode: banner, handler: modbus,    severity: high }
+  - { id: sip,    proto: tcp, bind: 127.0.0.1:5060, mode: banner, handler: sip_tcp,   severity: high }
 
   # Catch-all so port scans see more than the modelled ports.
   - { id: auto, proto: tcp, bind: 127.0.0.1:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }

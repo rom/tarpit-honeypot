@@ -5,7 +5,19 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"time"
 )
+
+// fuzzTimeout caps a single fuzz exchange. Crash detection is via the liveness
+// re-check after each input, not the response read, so a short bound keeps a
+// high iteration count practical even against connection-holding handlers.
+func fuzzTimeout(cfg *Config) time.Duration {
+	t := cfg.Timeout.D()
+	if t > 600*time.Millisecond {
+		t = 600 * time.Millisecond
+	}
+	return t
+}
 
 func init() {
 	// fuzz-dumb: protocol-unaware random input. The aim is to crash or hang
@@ -21,11 +33,12 @@ func init() {
 					ep, _ := r.Target.Endpoint(e.Label)
 					rng := caseRand(r.Cfg.Seed, "fuzz-dumb/"+e.Label)
 					n := r.Cfg.FuzzIterations
+					ft := fuzzTimeout(r.Cfg)
 					for i := 0; i < n; i++ {
 						if ctx.Err() != nil {
 							return StatusSkip, "interrupted", nil
 						}
-						_, _ = probe(ctx, r.Target, ep, randBytes(rng)) // per-input errors are expected
+						_, _ = probeTimed(ctx, r.Target, ep, randBytes(rng), ft) // per-input errors are expected
 						if !r.Target.Alive(ctx) {
 							return StatusCrash, fmt.Sprintf("target died after input %d/%d (seed %d — replay with --seed)", i+1, n, r.Cfg.Seed), nil
 						}
@@ -57,12 +70,13 @@ func init() {
 					ep, _ := r.Target.Endpoint(e.Label)
 					sp, _ := specFor(ep)
 					rng := caseRand(r.Cfg.Seed, "fuzz-smart/"+e.Label)
+					ft := fuzzTimeout(r.Cfg)
 					for i := 0; i < r.Cfg.FuzzIterations; i++ {
 						if ctx.Err() != nil {
 							return StatusSkip, "interrupted", nil
 						}
 						base := sp.Smart[i%len(sp.Smart)]
-						_, _ = probe(ctx, r.Target, ep, mutate(rng, base.Bytes))
+						_, _ = probeTimed(ctx, r.Target, ep, mutate(rng, base.Bytes), ft)
 						if !r.Target.Alive(ctx) {
 							return StatusCrash, fmt.Sprintf("target died on %q-class input (seed %d)", base.Name, r.Cfg.Seed), nil
 						}

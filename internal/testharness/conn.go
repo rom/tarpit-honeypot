@@ -55,12 +55,20 @@ func exchange(conn net.Conn, send []byte, timeout time.Duration) ([]byte, error)
 
 // probe dials an endpoint, performs one exchange, and closes the connection.
 func probe(ctx context.Context, t *Target, e Endpoint, send []byte) ([]byte, error) {
+	return probeTimed(ctx, t, e, send, t.cfg.Timeout.D())
+}
+
+// probeTimed is probe with an explicit per-exchange timeout. Crash-hunting
+// cases (fuzz) use a short one: they only need the input delivered and the
+// connection to complete, not a full read — server-first honeypots that hold
+// the socket open would otherwise cost a full I/O timeout per input.
+func probeTimed(ctx context.Context, t *Target, e Endpoint, send []byte, timeout time.Duration) ([]byte, error) {
 	conn, err := t.Dial(ctx, e)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	return exchange(conn, send, t.cfg.Timeout.D())
+	return exchange(conn, send, timeout)
 }
 
 // tcpConnect reports whether a TCP port accepts a connection (a scan probe).
