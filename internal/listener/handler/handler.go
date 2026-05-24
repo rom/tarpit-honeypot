@@ -287,6 +287,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &epmd{}, nil
 	case "tacacs":
 		return &tacacs{}, nil
+	case "fins_tcp":
+		return &finsTCP{}, nil
+	case "secs_gem":
+		return &secsGEM{}, nil
+	case "pcom":
+		return &pcom{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":

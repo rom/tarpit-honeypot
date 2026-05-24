@@ -155,6 +155,10 @@ var exactRules = map[string]Tag{
 	"correlate:destructive_action": {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
 	"correlate:honeytoken_spread":  {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"correlate:tool_rotation":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// OT/ICS correlators (round 4). ATT&CK for ICS matrix.
+	"correlate:plc_program_download": {Techniques: []string{"T0843"}, Tactics: []string{"impact"}},
+	"correlate:ics_mode_change":      {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
+	"correlate:ot_kill_chain":        {Techniques: []string{"T0846", "T0831"}, Tactics: []string{"discovery", "impact"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -539,6 +543,23 @@ var anomalyTags = map[string]Tag{
 	"tacacs-probe":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"tacacs-auth-start":   {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 	"mssql-browser-query": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Round-four OT/ICS decoys (icsdecoys.go) — ATT&CK for ICS. Omron FINS/TCP,
+	// SEMI HSMS/SECS-GEM, Unitronics PCOM, PROFINET-IO, VxWorks WDB.
+	"fins-tcp-probe":         {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"fins-tcp-write-attempt": {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
+	"fins-run-mode-change":   {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
+	"fins-program-download":  {Techniques: []string{"T0843"}, Tactics: []string{"impact"}},
+	"secs-probe":             {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"secs-program-send":      {Techniques: []string{"T0843"}, Tactics: []string{"impact"}},
+	"secs-remote-command":    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"pcom-probe":             {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"pcom-write-attempt":     {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
+	"pcom-mode-change":       {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
+	"pcom-program-download":  {Techniques: []string{"T0843"}, Tactics: []string{"impact"}},
+	"profinet-io-probe":      {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"profinet-connect":       {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"wdbrpc-probe":           {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"wdbrpc-connect":         {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	// Userspace TCP/IP-stack (internal/tcpstack) packet anomalies. The
 	// classic stealth scans (NULL/FIN/Xmas) and illegal flag combinations
 	// are crafted active scanning; corrupt-framing probes (bad checksum /
@@ -678,6 +699,10 @@ var techDescriptions = map[string]string{
 	"T0831": "Manipulation of Control (ICS) — altering the physical control process.",
 	"T0836": "Modify Parameter (ICS) — changing a device setpoint/parameter.",
 	"T0846": "Remote System Discovery (ICS) — discovering control devices on the segment.",
+	"T0843": "Program Download (ICS) — downloading new logic/firmware to a controller.",
+	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
+	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
+	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
 
 // Describe returns a one-line plain-English description of an ATT&CK
@@ -799,6 +824,10 @@ var d3fend = map[string][]string{
 	"T0830": {"D3-NTA"},                    // ICS: adversary-in-the-middle
 	"T0836": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: modify parameter
 	"T0831": {"D3-NTA", "D3-DE"},           // ICS: manipulation of control
+	"T0843": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: program download
+	"T0858": {"D3-NTA", "D3-DE"},           // ICS: change operating mode
+	"T0855": {"D3-NTA", "D3-DE"},           // ICS: unauthorized command message
+	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},           // command & scripting interpreter
 	"T1056": {"D3-NTA"},                    // input capture (keylogging via X11)
 	"T1219": {"D3-NTA", "D3-OTF"},          // remote access software

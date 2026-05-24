@@ -23,6 +23,7 @@ var icsHandlers = map[string]bool{
 	"ethernetip": true, "opcua": true, "bacnet": true, "fins": true, "melsec": true,
 	"mms": true, "codesys": true, "ge_srtp": true, "atg": true, "fox": true,
 	"hartip": true, "pcworx": true, "knx": true, "profinet": true,
+	"fins_tcp": true, "secs_gem": true, "pcom": true,
 }
 
 // checkLateralMovement detects one source probing DistinctServices distinct

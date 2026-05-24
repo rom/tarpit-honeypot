@@ -816,6 +816,38 @@ type Correlate struct {
 	DestructiveAction  CorrDestructiveAction  `yaml:"destructive_action"`
 	HoneytokenSpread   CorrHoneytokenSpread   `yaml:"honeytoken_spread"`
 	ToolRotation       CorrToolRotation       `yaml:"tool_rotation"`
+	PLCProgramDownload CorrPLCProgramDownload `yaml:"plc_program_download"`
+	ICSModeChange      CorrICSModeChange      `yaml:"ics_mode_change"`
+	OTKillChain        CorrOTKillChain        `yaml:"ot_kill_chain"`
+}
+
+// CorrPLCProgramDownload fires when a source downloads logic / firmware to a
+// controller (SECS process-program, PCOM/FINS program write, an S7/CODESYS
+// download) — the Stuxnet / Triton manipulation step, almost never legitimate
+// against an exposed PLC.
+type CorrPLCProgramDownload struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrICSModeChange fires when a source changes a controller's operating mode
+// (RUN / STOP / PROGRAM) — a change-operating-mode / denial-of-control action.
+type CorrICSModeChange struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrOTKillChain fires when one source both reconnoiters an ICS protocol and
+// issues a control / program / mode command within the window — the
+// discovery -> manipulation transition of the ICS kill chain.
+type CorrOTKillChain struct {
+	Enabled  bool          `yaml:"enabled"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrAmplificationProbe detects reflection/amplification DDoS scouting:

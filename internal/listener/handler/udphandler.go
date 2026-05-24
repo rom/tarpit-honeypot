@@ -114,6 +114,10 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &stun{lim: newUDPReflectLimiter()}, nil
 	case "mssql_browser":
 		return &mssqlBrowser{lim: newUDPReflectLimiter()}, nil
+	case "profinet":
+		return &profinet{}, nil
+	case "wdbrpc":
+		return &wdbrpc{lim: newUDPReflectLimiter()}, nil
 	case "dhcp":
 		return &dhcp{}, nil
 	case "dns":

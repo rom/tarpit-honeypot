@@ -52,6 +52,9 @@ type Correlator struct {
 	destructSev   event.Severity
 	honeytokenSev event.Severity
 	toolRotSev    event.Severity
+	plcProgSev    event.Severity
+	modeChgSev    event.Severity
+	otKillSev     event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -88,6 +91,9 @@ type Correlator struct {
 	destruct   map[string]*countState // key: source IP (data-destruction op count)
 	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
 	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
+	plcProg    map[string]*countState // key: source IP (program-download count)
+	modeChg    map[string]*countState // key: source IP (mode-change count)
+	otKill     map[string]*setState   // key: source IP (recon+control tokens)
 	emitted    map[string]time.Time   // dedup of aggregate emission
 	lastGC     time.Time              // last idle-state sweep
 }
@@ -193,6 +199,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		destruct:   map[string]*countState{},
 		honeytoken: map[string]*reuseState{},
 		toolRot:    map[string]*setState{},
+		plcProg:    map[string]*countState{},
+		modeChg:    map[string]*countState{},
+		otKill:     map[string]*setState{},
 		emitted:    map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
@@ -287,6 +296,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.DestructiveAction.Enabled, cfg.DestructiveAction.Severity, &c.destructSev},
 		{cfg.HoneytokenSpread.Enabled, cfg.HoneytokenSpread.Severity, &c.honeytokenSev},
 		{cfg.ToolRotation.Enabled, cfg.ToolRotation.Severity, &c.toolRotSev},
+		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
+		{cfg.ICSModeChange.Enabled, cfg.ICSModeChange.Severity, &c.modeChgSev},
+		{cfg.OTKillChain.Enabled, cfg.OTKillChain.Severity, &c.otKillSev},
 	} {
 		if !sp.on {
 			continue
@@ -394,6 +406,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.ToolRotation.Enabled {
 		if extra := c.checkToolRotation(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.PLCProgramDownload.Enabled {
+		if extra := c.checkPLCProgramDownload(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ICSModeChange.Enabled {
+		if extra := c.checkICSModeChange(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.OTKillChain.Enabled {
+		if extra := c.checkOTKillChain(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1176,6 +1203,17 @@ func (c *Correlator) gc(now time.Time) {
 	for k, st := range c.honeytoken {
 		if now.Sub(st.since) > effWindow(c.cfg.HoneytokenSpread.Window, time.Hour) {
 			delete(c.honeytoken, k)
+		}
+	}
+	gcSet(c.otKill, now, effWindow(c.cfg.OTKillChain.Window, 10*time.Minute))
+	for k, st := range c.plcProg {
+		if now.Sub(st.since) > effWindow(c.cfg.PLCProgramDownload.Window, 10*time.Minute) {
+			delete(c.plcProg, k)
+		}
+	}
+	for k, st := range c.modeChg {
+		if now.Sub(st.since) > effWindow(c.cfg.ICSModeChange.Window, 10*time.Minute) {
+			delete(c.modeChg, k)
 		}
 	}
 	for key, t := range c.emitted {
