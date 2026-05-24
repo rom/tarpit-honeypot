@@ -425,6 +425,15 @@ rationale covering the current implementation.
 - **Routing**: per-channel rate-limit, min-severity gate, severity-match
   route expressions (`>=high`, `<medium`, `=critical`), IP/CIDR allowlist
   (outbound-only — local sinks always receive).
+- **Operator severity overrides**: when you know an event is worse (or less
+  worse) in *your* environment than the built-in default, re-map its reported
+  level by `rule_id` (exact or `prefix:*`) in `severity_overrides:`. Applied at
+  the dispatch chokepoint so it drives routing, per-channel min-severity, the
+  store and every sink — and the event is marked as a **local override** (a log
+  line, `severity_overridden` + `meta.default_severity`/`severity_override_rule`
+  on the event, and an `⌾ override` badge in the web UI) so it's never silent.
+  See [`docs/config.md`](docs/config.md#severity_overrides--operator-pinned-per-rule-severity)
+  and [`docs/usage.md`](docs/usage.md#adjusting-an-events-severity-for-your-environment).
 - **Outbound channels**: `webhook` (HMAC-SHA256), `discord` (severity
   embeds), `smtp` (STARTTLS), `syslog` (RFC 5424 over local/tcp/udp/unix +
   **TLS** with octet-counting), `mqtt` (tcp/tls brokers), `twilio` (SMS),

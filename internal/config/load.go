@@ -726,6 +726,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Severity overrides: rule non-empty, severity parseable. Compiling here
+	// surfaces a typo at load/validate time rather than first dispatch.
+	if _, err := CompileSeverityOverrides(c.SeverityOverrides); err != nil {
+		return err
+	}
+
 	// Archeservice role bundles (validated before the listeners they
 	// expanded into).
 	if err := c.validateArcheservices(); err != nil {

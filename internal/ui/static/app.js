@@ -201,8 +201,56 @@
     return root;
   }
 
+  // ---- toggleable widgets ------------------------------------------------
+  // Each chart figure becomes a show/hide widget; the choice persists in
+  // localStorage per page + chart so an operator can curate which views a
+  // page shows. State is a class on the figure (CSS hides the contents), so
+  // it works regardless of whether charts.js has rendered yet.
+  function setupWidgets() {
+    var figs = document.querySelectorAll("figure[data-chart]");
+    Array.prototype.forEach.call(figs, function (fig, i) {
+      var name = fig.getAttribute("data-chart-title") || ("widget-" + i);
+      var key = "tcw:" + location.pathname + ":" + name;
+      var hidden = false;
+      try { hidden = localStorage.getItem(key) === "1"; } catch (e) { /* private mode */ }
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "widget-toggle";
+      function apply() {
+        fig.classList.toggle("widget-hidden", hidden);
+        btn.textContent = hidden ? "show" : "hide";
+        btn.setAttribute("aria-expanded", hidden ? "false" : "true");
+      }
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation(); // don't trigger chart zoom
+        hidden = !hidden;
+        try { localStorage.setItem(key, hidden ? "1" : "0"); } catch (e) { /* ignore */ }
+        apply();
+      });
+      fig.insertBefore(btn, fig.firstChild);
+      apply();
+    });
+  }
+
+  // ---- tooltip help ------------------------------------------------------
+  // Any element with data-help gets a small "?" affordance whose native title
+  // shows the help text on hover/focus (CSP-safe; no custom tooltip layer).
+  function setupHelp() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-help]"), function (el) {
+      if (el.querySelector(".help")) return;
+      var q = document.createElement("span");
+      q.className = "help";
+      q.textContent = "?";
+      q.tabIndex = 0;
+      q.setAttribute("role", "note");
+      q.title = el.getAttribute("data-help");
+      el.appendChild(document.createTextNode(" "));
+      el.appendChild(q);
+    });
+  }
+
   ready(function () {
-    [setupRefresh, setupSort, setupFilter, setupGraphs].forEach(function (fn) {
+    [setupRefresh, setupSort, setupFilter, setupGraphs, setupWidgets, setupHelp].forEach(function (fn) {
       try { fn(); } catch (e) { /* never break the page */ }
     });
   });
