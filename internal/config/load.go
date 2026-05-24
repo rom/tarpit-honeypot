@@ -38,6 +38,9 @@ var tcpHandlers = map[string]bool{
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
 	"fins_tcp": true, "secs_gem": true, "pcom": true,
+	"rexec": true, "rsh": true, "pcanywhere": true, "radmin": true,
+	"dameware": true, "pcoip": true, "spice": true, "lantronix": true,
+	"tn3270": true, "ard": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -624,6 +627,39 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.OTKillChain.Severity == "" {
 			c.Correlate.OTKillChain.Severity = "critical"
+		}
+	}
+	if c.Correlate.RemoteToolSweep.Enabled {
+		if c.Correlate.RemoteToolSweep.DistinctTools == 0 {
+			c.Correlate.RemoteToolSweep.DistinctTools = 3
+		}
+		if c.Correlate.RemoteToolSweep.Window == 0 {
+			c.Correlate.RemoteToolSweep.Window = 5 * time.Minute
+		}
+		if c.Correlate.RemoteToolSweep.Severity == "" {
+			c.Correlate.RemoteToolSweep.Severity = "high"
+		}
+	}
+	if c.Correlate.OOBMgmtAccess.Enabled {
+		if c.Correlate.OOBMgmtAccess.DistinctServices == 0 {
+			c.Correlate.OOBMgmtAccess.DistinctServices = 3
+		}
+		if c.Correlate.OOBMgmtAccess.Window == 0 {
+			c.Correlate.OOBMgmtAccess.Window = 5 * time.Minute
+		}
+		if c.Correlate.OOBMgmtAccess.Severity == "" {
+			c.Correlate.OOBMgmtAccess.Severity = "high"
+		}
+	}
+	if c.Correlate.RemoteExecCommand.Enabled {
+		if c.Correlate.RemoteExecCommand.Events == 0 {
+			c.Correlate.RemoteExecCommand.Events = 1
+		}
+		if c.Correlate.RemoteExecCommand.Window == 0 {
+			c.Correlate.RemoteExecCommand.Window = 10 * time.Minute
+		}
+		if c.Correlate.RemoteExecCommand.Severity == "" {
+			c.Correlate.RemoteExecCommand.Severity = "critical"
 		}
 	}
 	for i := range c.Channels {
