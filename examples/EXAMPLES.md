@@ -44,6 +44,9 @@ is the "everything turned on" reference.
 | OT safety/DCS | [`ot-safety-dcs.yaml`](ot-safety-dcs.yaml) | Process plant: Triconex/HIMA SIS + Yokogawa/Emerson DCS + Ignition/WinCC/CODESYS decoys (plc_program_download / ot_kill_chain). |
 | OT power grid | [`ot-power-grid.yaml`](ot-power-grid.yaml) | Substation: SEL relays (IEC 61850 MMS/DNP3/IEC-104) + SMA/GE + relay/historian/inverter web decoys. |
 | OT discrete mfg | [`ot-discrete-mfg.yaml`](ot-discrete-mfg.yaml) | Factory cell / fab: fins_tcp/secs_gem/pcom/wdbrpc + Omron/Rockwell/Unitronics roles + HMI decoys. |
+| Data-center OOB | [`datacenter-oob.yaml`](datacenter-oob.yaml) | Lights-out plane: Supermicro/Lenovo/Cisco-UCS/ILOM/Fujitsu BMCs + console/KVM roles + BMC web decoys (oob_mgmt_access). |
+| Remote access | [`remote-access-gateway.yaml`](remote-access-gateway.yaml) | RDP/VNC + Radmin/DameWare/pcAnywhere/PCoIP/ARD + Guacamole/ScreenConnect decoys (remote_tool_sweep). |
+| Legacy / mainframe | [`legacy-rservices-mainframe.yaml`](legacy-rservices-mainframe.yaml) | Cleartext rexec/rsh + TN3270 mainframe + console/PDU mgmt (remote_exec_command / oob_mgmt_access). |
 | SIEM | [`siem-integration.yaml`](siem-integration.yaml) | Same events to JSON/CEF/LEEF/OCSF sinks. |
 
 ---
@@ -395,6 +398,39 @@ The factory floor: directly exposes the round-four OT handlers — **`fins_tcp`*
 the `omronplc` / `semiconductorfab` / `unitronicsplc` / `vxworksdevice` role
 bundles and HMI web decoys, with the OT program-download / mode-change /
 kill-chain correlators on.
+
+### Data-center out-of-band / lights-out plane
+
+[`datacenter-oob.yaml`](datacenter-oob.yaml)
+
+The management network defenders forget: the **BMCs** (Supermicro / Lenovo XCC /
+Cisco UCS CIMC / Oracle ILOM / Fujitsu iRMC), the **serial console servers** and
+the **KVM-over-IP** switches that grant full out-of-band control of every
+server. The `lightsout` / `consoleserver` / `kvmoverip` role bundles plus
+`redfish` / `ipmi` / `lantronix` / `spice` decoys and the BMC web decoys, with
+the `oob_mgmt_access` correlator on.
+
+### Remote-access exposure — jump hosts, RATs & VDI
+
+[`remote-access-gateway.yaml`](remote-access-gateway.yaml)
+
+The remote-access surface an attacker hunts for a foothold: RDP/VNC jump hosts,
+third-party remote-control tools (**Radmin / DameWare / pcAnywhere / Apple Remote
+Desktop**), **VDI** brokers (PCoIP / Citrix / SPICE) and the clientless gateways
+(**Guacamole**, **ScreenConnect** — the CVE-2024-1709 setup-bypass path is a
+high-signal canary). The `remotedesktop` / `thirdpartyrat` / `vdibroker` /
+`applemgmt` role bundles with the `remote_tool_sweep` correlator on.
+
+### Legacy cleartext access & mainframe
+
+[`legacy-rservices-mainframe.yaml`](legacy-rservices-mainframe.yaml)
+
+The deprecated-but-still-running corner: the Berkeley **r-services** (`rexec` /
+`rsh` capture credentials and commands in the clear), an IBM mainframe
+**TN3270** logon, the serial **console servers** and the **PDU** management
+cards. The `rserviceshost` / `mainframe` / `consoleserver` / `pdumanagement`
+role bundles plus console/PDU web decoys, with the `remote_exec_command` +
+`oob_mgmt_access` correlators on.
 
 ### Edge devices — MikroTik & Teltonika
 

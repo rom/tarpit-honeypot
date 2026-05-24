@@ -137,7 +137,8 @@ a narrow job:
   `amplification_probe`, `destructive_action`), enrichment-/campaign-driven
   (`threat_intel_burst`, `geo_velocity`, `default_cred_sweep`, `cve_campaign`,
   `honeytoken_spread`, `tool_rotation`), OT/ICS (`ics_control`, `ot_recon`,
-  `plc_program_download`, `ics_mode_change`, `ot_kill_chain`), and the
+  `plc_program_download`, `ics_mode_change`, `ot_kill_chain`), remote-access /
+  OOB (`remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`), and the
   cross-protocol **`storyline`** correlator that fires `storyline:multi_stage`
   when one source touches 3+ kill-chain tactics. Adding one is a fixed recipe:
   config struct → `load.go` defaults → state map + severity field +

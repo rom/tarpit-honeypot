@@ -36,7 +36,7 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **364 static mappings** (63 exact rules + 98 handler tags + 203
+There are **379 static mappings** (66 exact rules + 98 handler tags + 215
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
@@ -44,7 +44,7 @@ the Enterprise matrix so a SIEM expecting one ID space stays consistent.
 The complete catalog follows (generated from `list-techniques --json`; the
 `Augment` step *unions* the anomaly rows into the rule/handler base).
 
-### 1a. Exact rule IDs (63) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+### 1a. Exact rule IDs (66) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
 
 | rule_id | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -71,6 +71,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:ics_mode_change` | T0858 | impact |
 | `correlate:lateral_movement` | T1021 | lateral-movement |
 | `correlate:malware_campaign` | T1105 | command-and-control |
+| `correlate:oob_mgmt_access` | T1190, T1133 | initial-access |
 | `correlate:ot_kill_chain` | T0846, T0831 | discovery, impact |
 | `correlate:ot_recon` | T0846, T0888 | discovery |
 | `correlate:password_spray` | T1110.003 | credential-access |
@@ -78,6 +79,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:plc_program_download` | T0843 | impact |
 | `correlate:port_scan` | T1046 | discovery |
 | `correlate:protocol_violation` | T1595.002 | reconnaissance |
+| `correlate:remote_exec_command` | T1059, T1021 | execution, lateral-movement |
+| `correlate:remote_tool_sweep` | T1219 | command-and-control |
 | `correlate:service_sweep` | T1046 | discovery |
 | `correlate:session_flood` | T1499 | impact |
 | `correlate:slow_scan` | T1046 | discovery |
@@ -215,7 +218,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `x11` | T1021, T1056.001 | lateral-movement, collection |
 | `xmpp` | T1071.001 | command-and-control |
 
-### 1c. Anomaly tags (203) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (215) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -224,6 +227,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `adb-shell-open` | T1059 | execution |
 | `ajp-forward-request` | T1190 | initial-access |
 | `ajp-probe` | T1595 | reconnaissance |
+| `ard-probe` | T1219 | command-and-control |
 | `bacnet-write-attempt` | T0836, T0831 | impact |
 | `bgp-open-attempt` | T1190 | initial-access |
 | `bgp-probe` | T1595 | reconnaissance |
@@ -231,6 +235,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `cassandra-auth-attempt` | T1110.001 | credential-access |
 | `cassandra-probe` | T1046 | discovery |
 | `coap-write-attempt` | T1565 | impact |
+| `dameware-probe` | T1219 | command-and-control |
 | `dcerpc-dcsync` | T1003.006 | credential-access |
 | `dcerpc-lsarpc-enum` | T1087.002, T1482 | discovery |
 | `dcerpc-netlogon-access` | T1210 | lateral-movement |
@@ -285,6 +290,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `kafka-request` | T1046 | discovery |
 | `kerberos-rc4-requested` | T1558.003 | credential-access |
 | `kerberos-tgs-request` | T1558.003 | credential-access |
+| `lantronix-probe` | T1190 | initial-access |
 | `ldap-asrep-roast-recon` | T1558.004, T1087.002 | credential-access, discovery |
 | `ldap-enumeration` | T1087.002 | discovery |
 | `ldap-spn-enumeration` | T1558.003, T1087.002 | credential-access, discovery |
@@ -305,6 +311,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `nx-probe` | T1595 | reconnaissance |
 | `openvpn-probe` | T1595 | reconnaissance |
 | `oracle-tns-probe` | T1595 | reconnaissance |
+| `pcanywhere-probe` | T1219 | command-and-control |
+| `pcoip-probe` | T1021 | lateral-movement |
 | `pcom-mode-change` | T0858 | impact |
 | `pcom-probe` | T0888 | discovery |
 | `pcom-program-download` | T0843 | impact |
@@ -333,6 +341,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `printer-zpl-config` | T1565 | impact |
 | `profinet-connect` | T0846 | discovery |
 | `profinet-io-probe` | T0846 | discovery |
+| `radmin-probe` | T1219 | command-and-control |
 | `redfish-auth-attempt` | T1078 | credential-access |
 | `redis-config-set` | T1059 | execution |
 | `redis-flush` | T1485 | impact |
@@ -340,11 +349,15 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `redis-replication-takeover` | T1059, T1210 | execution, lateral-movement |
 | `redis-save` | T1059 | execution |
 | `redis-script-exec` | T1059 | execution |
+| `rexec-attempt` | T1021 | lateral-movement |
+| `rexec-command` | T1059, T1021 | execution, lateral-movement |
 | `rlogin-attempt` | T1021 | lateral-movement |
 | `rmi-probe` | T1595 | reconnaissance |
 | `rpcbind-dump` | T1135 | discovery |
 | `rpcbind-getport` | T1046 | discovery |
 | `rpcbind-query` | T1046 | discovery |
+| `rsh-attempt` | T1021 | lateral-movement |
+| `rsh-command` | T1059, T1021 | execution, lateral-movement |
 | `rsync-module-access` | T1213 | collection |
 | `rsync-module-list` | T1083 | discovery |
 | `rtsp-auth-attempt` | T1110.001 | credential-access |
@@ -382,6 +395,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `snmp-set-attempt` | T1565.001, T0836 | impact |
 | `snmp-walk-rate-exceeded` | T1046 | discovery |
 | `socks-proxy-attempt` | T1090 | command-and-control |
+| `spice-probe` | T1021 | lateral-movement |
 | `ssh-id-non-printable` | T1595 | reconnaissance |
 | `ssh-id-not-ssh` | T1595 | reconnaissance |
 | `ssh-id-overlong` | T1595 | reconnaissance |
@@ -401,6 +415,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `telnet-credential-non-printable` | T1595 | reconnaissance |
 | `tftp-config-read` | T1602.001 | collection |
 | `tftp-write-attempt` | T1105 | command-and-control |
+| `tn3270-probe` | T1190 | initial-access |
 | `udp-amplifier-probe` | T1498.002 | impact |
 | `unknown-protocol` | T1046 | discovery |
 | `vmware-authd-login` | T1110.001 | credential-access |

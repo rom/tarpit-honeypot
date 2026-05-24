@@ -50,6 +50,9 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`ot-safety-dcs.yaml`](ot-safety-dcs.yaml) | OT safety + DCS — Triconex/HIMA SIS + Yokogawa/Emerson DCS + Ignition/WinCC/CODESYS decoys; plc_program_download / ics_mode_change / ot_kill_chain. |
 | [`ot-power-grid.yaml`](ot-power-grid.yaml) | OT power grid — SEL relays (IEC 61850 MMS / DNP3 / IEC-104) + SMA/GE + relay/historian/inverter web decoys. |
 | [`ot-discrete-mfg.yaml`](ot-discrete-mfg.yaml) | OT discrete mfg / fab — fins_tcp / secs_gem / pcom / wdbrpc + Omron/Rockwell/Unitronics/VxWorks roles + HMI decoys. |
+| [`datacenter-oob.yaml`](datacenter-oob.yaml) | Out-of-band / lights-out plane — Supermicro/Lenovo/Cisco-UCS/ILOM/Fujitsu BMCs + console/KVM roles + BMC web decoys (oob_mgmt_access). |
+| [`remote-access-gateway.yaml`](remote-access-gateway.yaml) | Remote-access exposure — RDP/VNC + Radmin/DameWare/pcAnywhere/PCoIP/ARD + Guacamole/ScreenConnect (remote_tool_sweep). |
+| [`legacy-rservices-mainframe.yaml`](legacy-rservices-mainframe.yaml) | Legacy cleartext access — rexec/rsh + TN3270 mainframe + console/PDU mgmt (remote_exec_command / oob_mgmt_access). |
 | [`siem-integration.yaml`](siem-integration.yaml) | Output-format showcase: same events to JSON, CEF (ArcSight), LEEF (QRadar), OCSF (Snowflake) sinks. |
 
 The base [`configs/tarpit-honeypot.example.yaml`](../configs/tarpit-honeypot.example.yaml) is the "everything turned on" reference; the examples here pick subsets for specific deployment shapes.

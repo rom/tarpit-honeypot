@@ -1,0 +1,65 @@
+# Remote-access exposure: jump hosts + remote-control + VDI.
+#
+# The remote-access surface an attacker hunts for a foothold: RDP/VNC jump
+# hosts, third-party remote-control tools (Radmin / DameWare / pcAnywhere /
+# Apple Remote Desktop), VDI brokers (PCoIP / Citrix / SPICE) and the clientless
+# gateways (Guacamole / ScreenConnect). Combines the remotedesktop / thirdpartyrat
+# / vdibroker / applemgmt role bundles with direct decoys and `lua` gateway
+# decoys. Exercises the round-five remote-access handlers and the
+# remote_tool_sweep correlator.
+#
+#   tarpit-honeypot validate-config -c examples/remote-access-gateway.yaml
+sensor:
+  name: remote-access-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  archetype: windows-server-2022
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: rdp,    role: remotedesktop, archetype: windows-server-2022, bind: 127.0.21.1, severity: high }
+  - { id: rats,   role: thirdpartyrat, archetype: windows-server-2022, bind: 127.0.21.2, severity: high }
+  - { id: vdi,    role: vdibroker,     archetype: windows-server-2022, bind: 127.0.21.3, severity: high }
+  - { id: apple,  role: applemgmt,     archetype: macos-sonoma-14,     bind: 127.0.21.4, severity: medium }
+
+# Direct third-party remote-control / VDI decoys + clientless gateways.
+listeners:
+  - { id: radmin,       proto: tcp, bind: 0.0.0.0:4899, mode: banner, handler: radmin,     severity: high, capture: true }
+  - { id: dameware,     proto: tcp, bind: 0.0.0.0:6129, mode: banner, handler: dameware,   severity: high, capture: true }
+  - { id: pcanywhere,   proto: tcp, bind: 0.0.0.0:5631, mode: banner, handler: pcanywhere, severity: high, capture: true }
+  - { id: pcoip,        proto: tcp, bind: 0.0.0.0:4172, mode: banner, handler: pcoip,      severity: medium, capture: true }
+  - { id: ard,          proto: tcp, bind: 0.0.0.0:3283, mode: banner, handler: ard,        severity: medium, capture: true }
+  - { id: guacamole,    proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/guacamole.lua,     severity: high, capture: true }
+  - { id: screenconnect, proto: tcp, bind: 0.0.0.0:8040, mode: banner, handler: lua, script: configs/scripts/screenconnect.lua, severity: critical, capture: true }
+
+url_canaries:
+  - { id: screenconnect-bypass, path: /SetupWizard.aspx/x, severity: critical }
+
+correlate:
+  port_scan:         { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:       { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  remote_tool_sweep: { enabled: true, distinct_tools: 3,  window: 5m, severity: high }
+  threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }
