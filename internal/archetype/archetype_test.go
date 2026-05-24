@@ -192,6 +192,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"DrayTek Vigor router",
 		"Grandstream UCM (VoIP PBX)",
 		"Sophos XG firewall",
+		// OT/ICS device personas (safety/DCS/PLC/relay/inverter).
+		"Schneider Triconex Tricon (SIS)",
+		"HIMA HIMax (safety PLC)",
+		"GE PACSystems RX3i (PLC)",
+		"Yokogawa CENTUM VP (DCS)",
+		"Emerson DeltaV (DCS controller)",
+		"Rockwell MicroLogix 1400 (PLC)",
+		"B&R X20 (PLC)",
+		"SEL-751 (protection relay)",
+		"SMA Sunny (solar inverter)",
+		"Bachmann M1 (controller)",
 	}
 	got := Names()
 	if len(got) != len(want) {

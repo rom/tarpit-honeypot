@@ -47,6 +47,9 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`edge-corp-network.yaml`](edge-corp-network.yaml) | Corporate edge — IT honeypots + AD-style honeynet, SIEM via syslog/CEF, web UI on loopback, retention. |
 | [`raspberry-pi-zero.yaml`](raspberry-pi-zero.yaml) | Minimal embedded sensor: tripwire-only listeners, no UI, no SQLite, jsonlog + webhook only. |
 | [`ot-substation.yaml`](ot-substation.yaml) | OT / ICS focus — Modbus / S7 / IEC-104 / BACnet, port-scan correlator tuned tight, SNMP-trap to NMS. |
+| [`ot-safety-dcs.yaml`](ot-safety-dcs.yaml) | OT safety + DCS — Triconex/HIMA SIS + Yokogawa/Emerson DCS + Ignition/WinCC/CODESYS decoys; plc_program_download / ics_mode_change / ot_kill_chain. |
+| [`ot-power-grid.yaml`](ot-power-grid.yaml) | OT power grid — SEL relays (IEC 61850 MMS / DNP3 / IEC-104) + SMA/GE + relay/historian/inverter web decoys. |
+| [`ot-discrete-mfg.yaml`](ot-discrete-mfg.yaml) | OT discrete mfg / fab — fins_tcp / secs_gem / pcom / wdbrpc + Omron/Rockwell/Unitronics/VxWorks roles + HMI decoys. |
 | [`siem-integration.yaml`](siem-integration.yaml) | Output-format showcase: same events to JSON, CEF (ArcSight), LEEF (QRadar), OCSF (Snowflake) sinks. |
 
 The base [`configs/tarpit-honeypot.example.yaml`](../configs/tarpit-honeypot.example.yaml) is the "everything turned on" reference; the examples here pick subsets for specific deployment shapes.

@@ -136,7 +136,8 @@ a narrow job:
   C2/impact (`beacon`, `session_flood`, `exfil`,
   `amplification_probe`, `destructive_action`), enrichment-/campaign-driven
   (`threat_intel_burst`, `geo_velocity`, `default_cred_sweep`, `cve_campaign`,
-  `honeytoken_spread`, `tool_rotation`), and the
+  `honeytoken_spread`, `tool_rotation`), OT/ICS (`ics_control`, `ot_recon`,
+  `plc_program_download`, `ics_mode_change`, `ot_kill_chain`), and the
   cross-protocol **`storyline`** correlator that fires `storyline:multi_stage`
   when one source touches 3+ kill-chain tactics. Adding one is a fixed recipe:
   config struct → `load.go` defaults → state map + severity field +

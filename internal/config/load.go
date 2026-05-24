@@ -37,6 +37,7 @@ var tcpHandlers = map[string]bool{
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
+	"fins_tcp": true, "secs_gem": true, "pcom": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -61,8 +62,8 @@ var udpHandlers = map[string]bool{
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
 	"isakmp": true, "netbios_dgram": true, "stun": true,
-	"mssql_browser": true,
-	"auto":          true,
+	"mssql_browser": true, "profinet": true, "wdbrpc": true,
+	"auto": true,
 }
 
 // TCPHandlerNames returns the sorted set of handler names accepted on a
@@ -593,6 +594,36 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.ToolRotation.Severity == "" {
 			c.Correlate.ToolRotation.Severity = "high"
+		}
+	}
+	if c.Correlate.PLCProgramDownload.Enabled {
+		if c.Correlate.PLCProgramDownload.Events == 0 {
+			c.Correlate.PLCProgramDownload.Events = 1
+		}
+		if c.Correlate.PLCProgramDownload.Window == 0 {
+			c.Correlate.PLCProgramDownload.Window = 10 * time.Minute
+		}
+		if c.Correlate.PLCProgramDownload.Severity == "" {
+			c.Correlate.PLCProgramDownload.Severity = "critical"
+		}
+	}
+	if c.Correlate.ICSModeChange.Enabled {
+		if c.Correlate.ICSModeChange.Events == 0 {
+			c.Correlate.ICSModeChange.Events = 1
+		}
+		if c.Correlate.ICSModeChange.Window == 0 {
+			c.Correlate.ICSModeChange.Window = 10 * time.Minute
+		}
+		if c.Correlate.ICSModeChange.Severity == "" {
+			c.Correlate.ICSModeChange.Severity = "critical"
+		}
+	}
+	if c.Correlate.OTKillChain.Enabled {
+		if c.Correlate.OTKillChain.Window == 0 {
+			c.Correlate.OTKillChain.Window = 10 * time.Minute
+		}
+		if c.Correlate.OTKillChain.Severity == "" {
+			c.Correlate.OTKillChain.Severity = "critical"
 		}
 	}
 	for i := range c.Channels {

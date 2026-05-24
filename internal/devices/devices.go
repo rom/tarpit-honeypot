@@ -336,7 +336,8 @@ var icsServices = map[string]bool{
 	"modbus": true, "s7": true, "s7comm_plus": true, "iec104": true, "dnp3": true,
 	"ethernetip": true, "opcua": true, "bacnet": true, "fins": true, "melsec": true,
 	"mms": true, "codesys": true, "ge_srtp": true, "atg": true, "fox": true,
-	"hartip": true, "pcworx": true, "knx": true,
+	"hartip": true, "pcworx": true, "knx": true, "profinet": true,
+	"fins_tcp": true, "secs_gem": true, "pcom": true,
 }
 
 var netServices = map[string]bool{

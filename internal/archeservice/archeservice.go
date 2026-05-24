@@ -308,6 +308,61 @@ var roles = map[string][]Service{
 		{5037, "tcp", "raw", "adb server"},
 		{443, "tcp", "https", "MDM console"},
 	},
+	"plccontroller": {
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{102, "tcp", "s7", "S7comm"},
+		{44818, "tcp", "ethernetip", "EtherNet/IP"},
+		{34964, "udp", "profinet", "PROFINET-IO"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"scadahmi": {
+		{80, "tcp", "http", "HMI web"},
+		{443, "tcp", "https", "HMI web (TLS)"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{47808, "udp", "bacnet", "BACnet"},
+	},
+	"historian": {
+		{1433, "tcp", "mssql", "historian SQL"},
+		{80, "tcp", "http", "historian web"},
+		{4840, "tcp", "opcua", "OPC-UA"},
+	},
+	"safetyplc": {
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "SIS web"},
+		{1502, "udp", "raw", "Triconex TSAA"},
+	},
+	"substation": {
+		{102, "tcp", "mms", "IEC 61850 MMS"},
+		{20000, "tcp", "dnp3", "DNP3"},
+		{2404, "tcp", "iec104", "IEC 60870-5-104"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"buildingautomation": {
+		{47808, "udp", "bacnet", "BACnet"},
+		{1911, "tcp", "fox", "Niagara Fox"},
+		{80, "tcp", "http", "BMS web"},
+		{4840, "tcp", "opcua", "OPC-UA"},
+	},
+	"omronplc": {
+		{9600, "tcp", "fins_tcp", "Omron FINS/TCP"},
+		{9600, "udp", "fins", "Omron FINS/UDP"},
+		{80, "tcp", "http", "PLC web"},
+	},
+	"semiconductorfab": {
+		{5000, "tcp", "secs_gem", "SECS/GEM (HSMS)"},
+		{80, "tcp", "http", "equipment web"},
+		{443, "tcp", "https", "equipment web (TLS)"},
+	},
+	"unitronicsplc": {
+		{20256, "tcp", "pcom", "Unitronics PCOM"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "PLC web"},
+	},
+	"vxworksdevice": {
+		{17185, "udp", "wdbrpc", "VxWorks WDB agent"},
+		{80, "tcp", "http", "device web"},
+		{21, "tcp", "ftp", "FTP"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-
