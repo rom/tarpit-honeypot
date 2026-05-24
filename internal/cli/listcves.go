@@ -16,8 +16,22 @@ func cmdListCVEs(args []string) error {
 	fs := flag.NewFlagSet("list-cves", flag.ContinueOnError)
 	service := fs.String("service", "", "filter by service/handler (e.g. http, fortinet, s7)")
 	asJSON := fs.Bool("json", false, "emit as JSON instead of a table")
+	cweMode := fs.Bool("cwe", false, "list the CWE weakness-class catalog (id, CVE count, name) instead")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	if *cweMode {
+		cwes := cve.CWEs()
+		if *asJSON {
+			return writeJSON(cwes)
+		}
+		fmt.Printf("%-10s %5s  %s\n", "CWE", "CVES", "WEAKNESS CLASS")
+		for _, c := range cwes {
+			fmt.Printf("%-10s %5d  %s\n", c.ID, c.Count, dash(c.Name))
+		}
+		fmt.Printf("\n%d CWE weakness class(es) referenced by the CVE catalog.\n", len(cwes))
+		return nil
 	}
 
 	all := cve.All()
