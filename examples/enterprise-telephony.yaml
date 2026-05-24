@@ -1,0 +1,74 @@
+# Enterprise unified communications (Cisco / Avaya / Mitel).
+#
+# The corporate telephony plane: a Cisco Unified CM call-control cluster (SCCP /
+# SIP), Avaya / Mitel call managers, and a fleet of desk phones. Combines the
+# callmanager / unifiedcomms role bundles with a honeynet of the round-six UC
+# archetypes and `lua` admin decoys. Exercises the sccp / h323 / sip_tcp
+# handlers and the voip_enum correlator.
+#
+#   tarpit-honeypot validate-config -c examples/enterprise-telephony.yaml
+sensor:
+  name: enterprise-telephony-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  archetype: cisco-cucm
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: cucm, role: callmanager,  archetype: cisco-cucm,    bind: 127.0.31.1, severity: high }
+  - { id: uc,   role: unifiedcomms, archetype: mitel-mivoice, bind: 127.0.31.2, severity: high }
+
+listeners:
+  - { id: sccp, proto: tcp, bind: 0.0.0.0:2000, mode: banner, handler: sccp,    severity: high, capture: true }
+  - { id: sip,  proto: tcp, bind: 0.0.0.0:5060, mode: banner, handler: sip_tcp, severity: high, capture: true }
+  - { id: h323, proto: tcp, bind: 0.0.0.0:1720, mode: banner, handler: h323,    severity: high, capture: true }
+  - { id: cucm-web, proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: lua, script: configs/scripts/cucm.lua,      severity: high, capture: true }
+  - { id: avaya-web, proto: tcp, bind: 0.0.0.0:443, mode: banner, handler: lua, script: configs/scripts/avaya-web.lua, severity: high, capture: true }
+
+honeynets:
+  - id: telephony
+    cidr: 10.140.0.0/16
+    gateway: 10.140.0.1
+    domain: voice.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.140.0.10, hostname: cucm-pub,   os: linux,    archetype: cisco-cucm,    services: [ {port: 2000, handler: sccp}, {port: 5060, handler: sip_tcp}, {port: 8443, handler: https} ] }
+      - { ip: 10.140.0.11, hostname: avaya-sm,    os: linux,    archetype: avaya-aura,    services: [ {port: 5060, handler: sip_tcp}, {port: 1720, handler: h323}, {port: 443, handler: https} ] }
+      - { ip: 10.140.0.12, hostname: mitel-mcd,   os: linux,    archetype: mitel-mivoice, services: [ {port: 5060, handler: sip_tcp}, {port: 443, handler: https} ] }
+      - { ip: 10.140.0.20, hostname: phone-2001,  os: embedded, archetype: yealink-phone, services: [ {port: 5060, handler: sip_tcp}, {port: 80, handler: http} ] }
+      - { ip: 10.140.0.21, hostname: phone-2002,  os: embedded, archetype: polycom-vvx,   services: [ {port: 5060, handler: sip_tcp}, {port: 80, handler: http} ] }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  brute_force: { enabled: true, attempts: 8,        window: 60s,  per_port: true, severity: high }
+  host_sweep:  { enabled: true, distinct_hosts: 3,  window: 60s,  severity: high }
+  voip_enum:   { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  toll_fraud:  { enabled: true, events: 5, window: 5m, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

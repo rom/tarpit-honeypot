@@ -53,6 +53,9 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`datacenter-oob.yaml`](datacenter-oob.yaml) | Out-of-band / lights-out plane — Supermicro/Lenovo/Cisco-UCS/ILOM/Fujitsu BMCs + console/KVM roles + BMC web decoys (oob_mgmt_access). |
 | [`remote-access-gateway.yaml`](remote-access-gateway.yaml) | Remote-access exposure — RDP/VNC + Radmin/DameWare/pcAnywhere/PCoIP/ARD + Guacamole/ScreenConnect (remote_tool_sweep). |
 | [`legacy-rservices-mainframe.yaml`](legacy-rservices-mainframe.yaml) | Legacy cleartext access — rexec/rsh + TN3270 mainframe + console/PDU mgmt (remote_exec_command / oob_mgmt_access). |
+| [`voip-pbx.yaml`](voip-pbx.yaml) | VoIP PBX — Asterisk/FreePBX SIP/AMI/IAX2 + pbxserver/voicemail roles + FreePBX/FusionPBX/VICIdial decoys (toll_fraud / pbx_control). |
+| [`enterprise-telephony.yaml`](enterprise-telephony.yaml) | Enterprise UC — Cisco/Avaya/Mitel SCCP/H.323/SIP + callmanager/unifiedcomms roles + phone honeynet (voip_enum). |
+| [`voip-edge-sbc.yaml`](voip-edge-sbc.yaml) | VoIP carrier edge — Ribbon/AudioCodes SBC/gateways + IP phones + sbc/voipgateway/ipphone roles. |
 | [`siem-integration.yaml`](siem-integration.yaml) | Output-format showcase: same events to JSON, CEF (ArcSight), LEEF (QRadar), OCSF (Snowflake) sinks. |
 
 The base [`configs/tarpit-honeypot.example.yaml`](../configs/tarpit-honeypot.example.yaml) is the "everything turned on" reference; the examples here pick subsets for specific deployment shapes.
