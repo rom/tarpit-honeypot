@@ -201,12 +201,26 @@ harness has a spec for:
 | `http` | no | yes | oversized-uri, huge-content-length, many-headers, te-cl-smuggle | `http-method-unknown`, `http-request-line-non-printable` |
 | `https` | no | yes | — | — |
 | `ssh` | yes | yes | overlong-id, non-printable-id | `ssh-id-not-ssh`, `ssh-id-non-printable` |
-| `ftp` | yes | yes | overlong-user, binary-command, traversal-arg | — |
+| `ftp` | yes | yes | overlong-user, binary-command, traversal-arg | `ftp-upload-attempt`, `ftp-download-attempt` |
 | `smtp_recv` | yes | yes | overlong-helo, binary-command, rcpt-flood | — |
-| `telnet` | yes | yes | iac-do-storm, overlong-line, binary-creds | — |
+| `telnet` | yes | yes | iac-do-storm, overlong-line, binary-creds | `telnet-credential-non-printable` |
 | `redis` | no | yes | giant-multibulk, giant-bulklen, inline-overlong | — |
 | `sip_tcp` | no | yes | no-headers, giant-cseq | `sip-invite-attempt` |
 | `modbus` | no | yes | bad-length, bad-function | `modbus-write-attempt` |
+| `rlogin` | no | yes | overlong-user, no-nulls | `rlogin-attempt` |
+| `rsh` | no | yes | overlong-user, no-nulls | `rsh-command` |
+| `rexec` | no | yes | overlong-pass, no-nulls | `rexec-command` |
+| `tftp` | no | yes | bad-opcode, truncated, overlong-filename | `tftp-write-attempt`, `tftp-config-read` |
+| `syslog_tcp` | no | yes¹ | oversized-msg, binary-msg, octet-count-overflow | — |
+| `syslog_udp` | no | yes¹ | oversized-msg, binary-msg, empty-pri | — |
+
+¹ `syslog_tcp` / `syslog_udp` are **accept-only**: they record what they are sent
+and never reply, so `unit/banner` and `emulate` treat an empty response as
+healthy (a non-reply is the correct behavior, not a missing banner).
+
+`tftp` and `syslog_udp` are UDP handlers (configure the endpoint with
+`proto: udp`); the rest are TCP. As UDP, they run only in **network** mode —
+module mode is tcp-only.
 
 An endpoint with an unknown handler still gets `unit`, `fuzz-dumb`, and
 `reliability` coverage (port-open, a non-empty-banner check, and random-input

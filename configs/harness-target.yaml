@@ -30,6 +30,10 @@ listeners:
   - { id: redis,  proto: tcp, bind: 127.0.0.1:6390, mode: banner, handler: redis,     severity: high }
   - { id: modbus, proto: tcp, bind: 127.0.0.1:5020, mode: banner, handler: modbus,    severity: high }
   - { id: sip,    proto: tcp, bind: 127.0.0.1:5060, mode: banner, handler: sip_tcp,   severity: high }
+  - { id: rlogin, proto: tcp, bind: 127.0.0.1:5513, mode: banner, handler: rlogin,     severity: high }
+  - { id: rsh,    proto: tcp, bind: 127.0.0.1:5514, mode: banner, handler: rsh,        severity: high }
+  - { id: syslog, proto: tcp, bind: 127.0.0.1:5140, mode: banner, handler: syslog_tcp, severity: low }
+  - { id: tftp,   proto: udp, bind: 127.0.0.1:6969, mode: banner, handler: tftp,       severity: high }
 
   # Catch-all so port scans see more than the modelled ports.
   - { id: auto, proto: tcp, bind: 127.0.0.1:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }

@@ -381,3 +381,82 @@ func TestMutate(t *testing.T) {
 		_ = mutate(caseRand(s, "one"), []byte{0x41})
 	}
 }
+
+// TestNewProtocolSpecsGenerateCases checks the newly-added handlers produce the
+// expected protocol-aware cases (emulate / fuzz-smart / misimpl), and that the
+// existing ftp/telnet specs now carry misimpl coverage — so a config that names
+// these handlers gets real coverage rather than the generic fallback.
+func TestNewProtocolSpecsGenerateCases(t *testing.T) {
+	cfg := &Config{
+		Mode: "network", Host: "127.0.0.1",
+		Endpoints: []Endpoint{
+			{Label: "rlogin", Proto: "tcp", Port: 513, Handler: "rlogin"},
+			{Label: "rsh", Proto: "tcp", Port: 514, Handler: "rsh"},
+			{Label: "rexec", Proto: "tcp", Port: 512, Handler: "rexec"},
+			{Label: "tftp", Proto: "udp", Port: 69, Handler: "tftp"},
+			{Label: "syslogt", Proto: "tcp", Port: 601, Handler: "syslog_tcp"},
+			{Label: "syslogu", Proto: "udp", Port: 514, Handler: "syslog_udp"},
+			{Label: "ftp", Proto: "tcp", Port: 21, Handler: "ftp"},
+			{Label: "telnet", Proto: "tcp", Port: 23, Handler: "telnet"},
+		},
+	}
+	cfg.ApplyDefaults()
+	ids := caseIDSet(Build(cfg))
+	for _, want := range []string{
+		"emulate/rlogin", "misimpl/rlogin/connect", "fuzz-smart/rlogin",
+		"emulate/rsh", "misimpl/rsh/command", "fuzz-smart/rsh",
+		"emulate/rexec", "misimpl/rexec/command",
+		"emulate/tftp", "misimpl/tftp/write-attempt", "misimpl/tftp/config-read", "fuzz-smart/tftp",
+		"unit/banner/tftp",
+		"emulate/syslogt", "fuzz-smart/syslogt",
+		"emulate/syslogu", "fuzz-smart/syslogu", "fuzz-dumb/syslogu",
+		"misimpl/ftp/upload-attempt", "misimpl/ftp/download-attempt",
+		"misimpl/telnet/binary-credentials",
+	} {
+		if !ids[want] {
+			t.Errorf("expected case %q to be generated", want)
+		}
+	}
+}
+
+// TestModuleNewProtocolsRespond drives the real rlogin/rsh/rexec/syslog_tcp
+// handlers in-process (module mode) to confirm the new specs' probes elicit a
+// protocol-compatible response — and that the accept-only syslog passes
+// unit/banner via the NoReply path rather than failing on an empty reply.
+func TestModuleNewProtocolsRespond(t *testing.T) {
+	cfg := &Config{
+		Mode: "module",
+		Endpoints: []Endpoint{
+			{Label: "rlogin", Proto: "tcp", Handler: "rlogin"},
+			{Label: "rsh", Proto: "tcp", Handler: "rsh"},
+			{Label: "rexec", Proto: "tcp", Handler: "rexec"},
+			{Label: "syslog", Proto: "tcp", Handler: "syslog_tcp"},
+		},
+		Categories: []string{"unit", "emulate"},
+		Timeout:    Duration(300 * time.Millisecond),
+		Quiet:      true,
+	}
+	cfg.ApplyDefaults()
+	r, err := NewRunner(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Result{}
+	for _, res := range rr.Results {
+		byID[res.CaseID] = res
+	}
+	for _, id := range []string{
+		"unit/banner/rlogin", "emulate/rlogin",
+		"unit/banner/rsh", "emulate/rsh",
+		"unit/banner/rexec", "emulate/rexec",
+		"unit/banner/syslog", "emulate/syslog",
+	} {
+		if byID[id].Status != StatusPass {
+			t.Errorf("%s = %s (%s); want pass", id, byID[id].Status, byID[id].Detail)
+		}
+	}
+}
