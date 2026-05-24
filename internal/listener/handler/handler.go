@@ -313,6 +313,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &tn3270{}, nil
 	case "ard":
 		return &ard{}, nil
+	case "sip_tcp":
+		return &sipTCP{}, nil
+	case "sccp":
+		return &sccp{}, nil
+	case "h323":
+		return &h323{}, nil
+	case "asterisk_ami":
+		return &asteriskAMI{}, nil
 	case "xmpp":
 		return &xmpp{}, nil
 	case "amqp":

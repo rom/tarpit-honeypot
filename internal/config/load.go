@@ -41,6 +41,7 @@ var tcpHandlers = map[string]bool{
 	"rexec": true, "rsh": true, "pcanywhere": true, "radmin": true,
 	"dameware": true, "pcoip": true, "spice": true, "lantronix": true,
 	"tn3270": true, "ard": true,
+	"sip_tcp": true, "sccp": true, "h323": true, "asterisk_ami": true,
 	"xmpp": true, "amqp": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
@@ -65,7 +66,7 @@ var udpHandlers = map[string]bool{
 	"fins": true,
 	"coap": true, "knx": true, "dhcp": true,
 	"isakmp": true, "netbios_dgram": true, "stun": true,
-	"mssql_browser": true, "profinet": true, "wdbrpc": true,
+	"mssql_browser": true, "profinet": true, "wdbrpc": true, "iax2": true,
 	"auto": true,
 }
 
@@ -660,6 +661,39 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.RemoteExecCommand.Severity == "" {
 			c.Correlate.RemoteExecCommand.Severity = "critical"
+		}
+	}
+	if c.Correlate.TollFraud.Enabled {
+		if c.Correlate.TollFraud.Events == 0 {
+			c.Correlate.TollFraud.Events = 5
+		}
+		if c.Correlate.TollFraud.Window == 0 {
+			c.Correlate.TollFraud.Window = 5 * time.Minute
+		}
+		if c.Correlate.TollFraud.Severity == "" {
+			c.Correlate.TollFraud.Severity = "high"
+		}
+	}
+	if c.Correlate.VoIPEnum.Enabled {
+		if c.Correlate.VoIPEnum.DistinctServices == 0 {
+			c.Correlate.VoIPEnum.DistinctServices = 3
+		}
+		if c.Correlate.VoIPEnum.Window == 0 {
+			c.Correlate.VoIPEnum.Window = 5 * time.Minute
+		}
+		if c.Correlate.VoIPEnum.Severity == "" {
+			c.Correlate.VoIPEnum.Severity = "high"
+		}
+	}
+	if c.Correlate.PBXControl.Enabled {
+		if c.Correlate.PBXControl.Events == 0 {
+			c.Correlate.PBXControl.Events = 3
+		}
+		if c.Correlate.PBXControl.Window == 0 {
+			c.Correlate.PBXControl.Window = 10 * time.Minute
+		}
+		if c.Correlate.PBXControl.Severity == "" {
+			c.Correlate.PBXControl.Severity = "high"
 		}
 	}
 	for i := range c.Channels {
