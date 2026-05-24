@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -137,7 +135,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 				_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
 				break
 			}
-			ln, hostPortReply, err := f.openPASV(conn)
+			ln, hostPortReply, err := ftpPasvListen(conn)
 			if err != nil {
 				_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 				break
@@ -206,48 +204,9 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	return res, nil
 }
 
-// openPASV opens an ephemeral TCP listener for the data channel and
-// returns the "h1,h2,h3,h4,p1,p2" string the 227 reply needs. The
-// host octets are taken from the control connection's local address
-// so the client connects back to us.
-func (f *ftpFiles) openPASV(conn net.Conn) (net.Listener, string, error) {
-	la, ok := conn.LocalAddr().(*net.TCPAddr)
-	if !ok || la.IP.To4() == nil {
-		// PASV in classic form is IPv4-only; bail (client can use EPSV
-		// in a future extension). Listen anyway on loopback for the
-		// reply shape.
-		la = &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}
-	}
-	ln, err := net.Listen("tcp4", net.JoinHostPort(la.IP.String(), "0"))
-	if err != nil {
-		return nil, "", err
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ip := la.IP.To4()
-	reply := fmt.Sprintf("%d,%d,%d,%d,%d,%d", ip[0], ip[1], ip[2], ip[3], port>>8, port&0xff)
-	return ln, reply, nil
-}
-
-// acceptData accepts the single data connection on the PASV listener
-// with a short deadline, then closes the listener.
-func (f *ftpFiles) acceptData(ln net.Listener) net.Conn {
-	if ln == nil {
-		return nil
-	}
-	if tl, ok := ln.(*net.TCPListener); ok {
-		_ = tl.SetDeadline(time.Now().Add(10 * time.Second))
-	}
-	dc, err := ln.Accept()
-	_ = ln.Close()
-	if err != nil {
-		return nil
-	}
-	return dc
-}
-
 func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, files *fakefiles.Set, dir string, nameOnly bool) {
 	_, _ = conn.Write([]byte("150 Here comes the directory listing.\r\n"))
-	dc := f.acceptData(ln)
+	dc := ftpAcceptData(ln)
 	if dc == nil {
 		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 		return
@@ -270,7 +229,7 @@ func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, files *fakefiles.Se
 
 func (f *ftpFiles) serveRetr(conn net.Conn, ln net.Listener, file fakefiles.File) {
 	_, _ = conn.Write([]byte("150 Opening BINARY mode data connection for " + file.Name + ".\r\n"))
-	dc := f.acceptData(ln)
+	dc := ftpAcceptData(ln)
 	if dc == nil {
 		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 		return

@@ -4,13 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"net"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/fakefiles"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 type ftp struct {
@@ -63,6 +68,8 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	var transcript []byte
 	var commands []string
 	res.Meta = map[string]any{}
+	sess := &ftpSession{conn: conn, res: &res, files: fakefiles.Default(f.id), cwd: "/", clientIP: clientIP}
+	defer sess.closeData()
 loop:
 	for i := 0; i < 40; i++ {
 		line, err := readFTPLine(br, cfg.ReadBytes)
@@ -107,7 +114,7 @@ loop:
 			// ignore blank lines
 		default:
 			if loggedIn {
-				f.handlePostAuth(conn, &res, cmd, arg, clientIP)
+				sess.post(cmd, arg)
 			} else {
 				_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
 			}
@@ -121,57 +128,287 @@ loop:
 	return res, nil
 }
 
-// handlePostAuth answers a logged-in FTP command believably (without ever
-// opening a data connection or touching the filesystem) and flags the
-// intent: uploads (malware drop), downloads, SITE EXEC, deletes, and the
-// FTP-bounce PORT primitive.
-func (f *ftp) handlePostAuth(conn net.Conn, res *Result, cmd, arg, clientIP string) {
+// ftpSession carries the per-connection control + data state so the post-auth
+// command handlers can change directory, open a PASV data channel, and
+// list/transfer files coherently — while still flagging every abusive intent
+// (upload, download, delete, SITE, FTP-bounce) for the sensor.
+type ftpSession struct {
+	conn     net.Conn
+	res      *Result
+	files    *fakefiles.Set
+	cwd      string
+	clientIP string
+	dataLn   net.Listener // open PASV/EPSV listener awaiting the data connection
+}
+
+func (s *ftpSession) reply(line string) { _, _ = s.conn.Write([]byte(line + "\r\n")) }
+
+func (s *ftpSession) closeData() {
+	if s.dataLn != nil {
+		_ = s.dataLn.Close()
+		s.dataLn = nil
+	}
+}
+
+// post answers one logged-in FTP command. The decoy now models a small
+// virtual filesystem (internal/fakefiles): CWD/CDUP/PWD track a coherent
+// working directory, and LIST/NLST/MLSD/RETR transfer believable content over
+// a PASV data channel. Abusive intents are still flagged for detection; a
+// retrieved bait file raises honeyfile-download; uploads are captured.
+func (s *ftpSession) post(cmd, arg string) {
 	switch cmd {
 	case "PWD", "XPWD":
-		_, _ = conn.Write([]byte("257 \"/\" is the current directory\r\n"))
-	case "CWD", "XCWD", "CDUP":
-		_, _ = conn.Write([]byte("250 Directory successfully changed.\r\n"))
-	case "TYPE", "MODE", "STRU", "NOOP", "OPTS":
-		_, _ = conn.Write([]byte("200 OK.\r\n"))
-	case "PASV", "EPSV":
-		// Advertise passive mode but never actually open the data port.
-		_, _ = conn.Write([]byte("227 Entering Passive Mode (127,0,0,1,0,0).\r\n"))
+		s.reply(`257 "` + s.cwd + `" is the current directory`)
+	case "CWD", "XCWD":
+		s.cwd = resolveDir(s.cwd, arg)
+		s.reply("250 Directory successfully changed.")
+	case "CDUP":
+		s.cwd = resolveDir(s.cwd, "..")
+		s.reply("250 Directory successfully changed.")
+	case "TYPE", "MODE", "STRU", "OPTS":
+		s.reply("200 OK.")
+	case "NOOP":
+		s.reply("200 NOOP ok.")
+	case "PASV":
+		s.openPasv(false)
+	case "EPSV":
+		s.openPasv(true)
 	case "PORT", "EPRT":
-		// Active mode: a PORT pointing at a third party is the FTP-bounce
-		// scan primitive (CWE-... / nmap -b).
-		if ip := portCmdIP(arg); ip != "" && ip != clientIP {
-			flagAnomaly(res, "ftp-bounce-scan")
-			res.Meta["ftp_bounce_target"] = ip
+		// Active mode: a PORT/EPRT pointing at a third party is the FTP-bounce
+		// scan primitive (nmap -b). We accept the command but never dial out
+		// (the honeypot makes no outbound connections); a real data transfer
+		// needs PASV. A third-party target is recorded as a bounce attempt.
+		if ip := dataCmdIP(cmd, arg); ip != "" && ip != s.clientIP {
+			flagAnomaly(s.res, "ftp-bounce-scan")
+			s.res.Meta["ftp_bounce_target"] = ip
 		}
-		_, _ = conn.Write([]byte("200 PORT command successful.\r\n"))
-	case "LIST", "NLST", "MLSD", "MLST":
-		flagAnomaly(res, "ftp-listing")
-		_, _ = conn.Write([]byte("425 Failed to establish connection.\r\n"))
+		s.reply("200 " + cmd + " command successful.")
+	case "LIST", "NLST", "MLSD":
+		flagAnomaly(s.res, "ftp-listing")
+		s.serveList(cmd)
+	case "MLST":
+		s.reply("250- " + s.cwd)
+		s.reply("250 End")
 	case "RETR":
-		flagAnomaly(res, "ftp-download-attempt")
-		_, _ = conn.Write([]byte("550 Failed to open file.\r\n"))
+		flagAnomaly(s.res, "ftp-download-attempt")
+		s.serveRetr(arg)
 	case "STOR", "STOU", "APPE":
-		// Upload = malware / webshell drop attempt.
-		flagAnomaly(res, "ftp-upload-attempt")
-		_, _ = conn.Write([]byte("553 Could not create file.\r\n"))
+		// Upload = malware / webshell drop attempt; capture what's pushed.
+		flagAnomaly(s.res, "ftp-upload-attempt")
+		s.recvStor(arg)
 	case "DELE", "RMD", "XRMD":
-		flagAnomaly(res, "ftp-delete-attempt")
-		_, _ = conn.Write([]byte("550 Permission denied.\r\n"))
+		flagAnomaly(s.res, "ftp-delete-attempt")
+		s.reply("550 Permission denied.")
 	case "MKD", "XMKD":
-		_, _ = conn.Write([]byte("257 Directory created.\r\n"))
+		s.reply(`257 "` + joinPath(s.cwd, arg) + `" created.`)
 	case "RNFR":
-		_, _ = conn.Write([]byte("350 Ready for destination name.\r\n"))
+		s.reply("350 Ready for destination name.")
 	case "RNTO":
-		_, _ = conn.Write([]byte("250 Rename successful.\r\n"))
+		s.reply("250 Rename successful.")
 	case "SITE":
 		// SITE EXEC / SITE CHMOD are classic FTP RCE / privilege primitives.
-		flagAnomaly(res, "ftp-site-command")
-		_, _ = conn.Write([]byte("500 Unknown SITE command.\r\n"))
-	case "SIZE", "MDTM":
-		_, _ = conn.Write([]byte("550 Could not get file status.\r\n"))
+		flagAnomaly(s.res, "ftp-site-command")
+		s.reply("500 Unknown SITE command.")
+	case "SIZE":
+		if file, ok := s.files.Lookup(s.cwd, arg); ok {
+			s.reply("213 " + strconv.FormatInt(file.Size, 10))
+		} else {
+			s.reply("550 Could not get file status.")
+		}
+	case "MDTM":
+		if file, ok := s.files.Lookup(s.cwd, arg); ok {
+			s.reply("213 " + file.ModTime.UTC().Format("20060102150405"))
+		} else {
+			s.reply("550 Could not get file status.")
+		}
+	case "STAT":
+		s.reply("211 End of status.")
+	case "REST":
+		s.reply("350 Restart position accepted.")
+	case "ALLO":
+		s.reply("202 No storage allocation necessary.")
+	case "ABOR":
+		s.reply("226 ABOR successful.")
 	default:
-		_, _ = conn.Write([]byte("502 Command not implemented.\r\n"))
+		s.reply("502 Command not implemented.")
 	}
+}
+
+// openPasv opens the data listener and sends the 227 (PASV) or 229 (EPSV)
+// reply pointing the client back at the freshly-bound ephemeral port.
+func (s *ftpSession) openPasv(extended bool) {
+	ln, hostPort, err := ftpPasvListen(s.conn)
+	if err != nil {
+		s.reply("425 Can't open data connection.")
+		return
+	}
+	s.closeData()
+	s.dataLn = ln
+	if extended {
+		port := ln.Addr().(*net.TCPAddr).Port
+		s.reply(fmt.Sprintf("229 Entering Extended Passive Mode (|||%d|).", port))
+		return
+	}
+	s.reply("227 Entering Passive Mode (" + hostPort + ").")
+}
+
+// data accepts (and consumes) the single pending PASV data connection.
+func (s *ftpSession) data() net.Conn {
+	dc := ftpAcceptData(s.dataLn)
+	s.dataLn = nil // PASV listener is single-use
+	return dc
+}
+
+func (s *ftpSession) serveList(cmd string) {
+	if s.dataLn == nil {
+		s.reply("425 Use PASV first.")
+		return
+	}
+	s.reply("150 Here comes the directory listing.")
+	dc := s.data()
+	if dc == nil {
+		s.reply("425 Can't open data connection.")
+		return
+	}
+	var buf bytes.Buffer
+	for _, e := range s.files.List(s.cwd) {
+		if e.Name == ".." {
+			continue
+		}
+		switch cmd {
+		case "NLST":
+			buf.WriteString(e.Name + "\r\n")
+		case "MLSD":
+			buf.WriteString(formatMLSD(e) + "\r\n")
+		default:
+			buf.WriteString(fakefiles.FormatUnixListing(e) + "\r\n")
+		}
+	}
+	_, _ = dc.Write(buf.Bytes())
+	_ = dc.Close()
+	s.reply("226 Directory send OK.")
+}
+
+func (s *ftpSession) serveRetr(name string) {
+	file, ok := s.files.Lookup(s.cwd, name)
+	if !ok {
+		s.reply("550 Failed to open file.")
+		return
+	}
+	// Grabbing a bait file (id_rsa, credentials.txt, …) is a far stronger
+	// signal than a listing.
+	if file.Bait {
+		flagAnomaly(s.res, "honeyfile-download")
+	}
+	if s.dataLn == nil {
+		s.reply("425 Use PASV first.")
+		return
+	}
+	s.reply("150 Opening BINARY mode data connection for " + file.Name + ".")
+	dc := s.data()
+	if dc == nil {
+		s.reply("425 Can't open data connection.")
+		return
+	}
+	_, _ = dc.Write(file.Body(64 * 1024)) // truncated so a "48MB backup" isn't really served
+	_ = dc.Close()
+	s.reply("226 Transfer complete.")
+}
+
+func (s *ftpSession) recvStor(name string) {
+	if s.dataLn == nil {
+		s.reply("425 Use PASV first.")
+		return
+	}
+	s.reply("150 Ok to send data.")
+	dc := s.data()
+	if dc == nil {
+		s.reply("425 Can't open data connection.")
+		return
+	}
+	const cap = 64 << 10
+	_ = dc.SetReadDeadline(time.Now().Add(10 * time.Second))
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	for len(buf) < cap {
+		n, err := dc.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+	_ = dc.Close()
+	s.res.Meta["ftp_upload_name"] = safe.SanitizeForLog(joinPath(s.cwd, name))
+	s.res.Meta["ftp_upload_size"] = len(buf)
+	if len(buf) > 0 {
+		prev := buf
+		if len(prev) > 512 {
+			prev = prev[:512]
+		}
+		s.res.Meta["ftp_upload_preview"] = safe.SanitizeForLog(string(prev))
+	}
+	s.reply("226 Transfer complete.")
+}
+
+// formatMLSD renders one entry as an MLSD machine-listing fact line. Our decoy
+// directories use the 4096 size convention.
+func formatMLSD(f fakefiles.File) string {
+	typ := "file"
+	if f.Size == 4096 {
+		typ = "dir"
+	}
+	return fmt.Sprintf("type=%s;size=%d;modify=%s; %s", typ, f.Size, f.ModTime.UTC().Format("20060102150405"), f.Name)
+}
+
+// dataCmdIP extracts the dotted IP an active-mode command points at: PORT uses
+// the "h1,h2,h3,h4,p1,p2" form, EPRT the "|proto|addr|port|" form.
+func dataCmdIP(cmd, arg string) string {
+	if cmd == "PORT" {
+		return portCmdIP(arg)
+	}
+	parts := strings.Split(arg, "|") // EPRT |<net-prt>|<addr>|<tcp-port>|
+	if len(parts) >= 3 {
+		return parts[2]
+	}
+	return ""
+}
+
+// ftpPasvListen opens an ephemeral IPv4 TCP listener for a passive-mode data
+// channel and returns the "h1,h2,h3,h4,p1,p2" string a 227 reply needs (host
+// octets from the control connection's local address so the client connects
+// back to us).
+func ftpPasvListen(conn net.Conn) (net.Listener, string, error) {
+	la, ok := conn.LocalAddr().(*net.TCPAddr)
+	if !ok || la.IP.To4() == nil {
+		la = &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}
+	}
+	ln, err := net.Listen("tcp4", net.JoinHostPort(la.IP.String(), "0"))
+	if err != nil {
+		return nil, "", err
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ip := la.IP.To4()
+	reply := fmt.Sprintf("%d,%d,%d,%d,%d,%d", ip[0], ip[1], ip[2], ip[3], port>>8, port&0xff)
+	return ln, reply, nil
+}
+
+// ftpAcceptData accepts the single data connection on a PASV listener with a
+// short deadline, then closes the listener.
+func ftpAcceptData(ln net.Listener) net.Conn {
+	if ln == nil {
+		return nil
+	}
+	if tl, ok := ln.(*net.TCPListener); ok {
+		_ = tl.SetDeadline(time.Now().Add(10 * time.Second))
+	}
+	dc, err := ln.Accept()
+	_ = ln.Close()
+	if err != nil {
+		return nil
+	}
+	return dc
 }
 
 // portCmdIP extracts the dotted IP from an FTP PORT argument

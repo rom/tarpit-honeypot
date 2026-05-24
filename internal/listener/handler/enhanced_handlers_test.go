@@ -133,6 +133,39 @@ func TestTelnetStripsIAC(t *testing.T) {
 	}
 }
 
+func TestTelnetCapturesOptions(t *testing.T) {
+	var in []byte
+	// IAC SB TERMINAL-TYPE IS "xterm-256color" IAC SE
+	in = append(in, telIAC, telSB, telOptTType, 0x00)
+	in = append(in, []byte("xterm-256color")...)
+	in = append(in, telIAC, telSE)
+	// IAC SB NAWS 0 132 0 43 IAC SE  (132x43 window)
+	in = append(in, telIAC, telSB, telOptNAWS, 0x00, 0x84, 0x00, 0x2b, telIAC, telSE)
+	// IAC SB NEW-ENVIRON IS VAR "USER" VALUE "root" IAC SE
+	in = append(in, telIAC, telSB, telOptNewEnv, 0x00, 0x00)
+	in = append(in, []byte("USER")...)
+	in = append(in, 0x01)
+	in = append(in, []byte("root")...)
+	in = append(in, telIAC, telSE)
+	// Then the login lines (must still be captured cleanly).
+	in = append(in, []byte("admin\r\npw\r\n")...)
+
+	res := runConn(t, &telnet{}, string(in))
+	if res.Meta["terminal_type"] != "xterm-256color" {
+		t.Errorf("terminal_type = %v; want xterm-256color", res.Meta["terminal_type"])
+	}
+	if res.Meta["window_size"] != "132x43" {
+		t.Errorf("window_size = %v; want 132x43", res.Meta["window_size"])
+	}
+	env, _ := res.Meta["telnet_env"].(map[string]string)
+	if env["USER"] != "root" {
+		t.Errorf("telnet_env[USER] = %q; want root (env=%v)", env["USER"], env)
+	}
+	if res.Meta["user_attempt"] != "admin" {
+		t.Errorf("username not captured cleanly with options present: %v", res.Meta["user_attempt"])
+	}
+}
+
 func TestVNCRfb33Path(t *testing.T) {
 	client, server := pipePair(t)
 	cfg := config.Listener{ReadTimeout: time.Second}
