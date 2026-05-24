@@ -74,9 +74,12 @@ html.js .nojs-note { display: none; }
 .pcard-port { font-size: 1.15rem; font-weight: 700; color: #111; }
 .pcard-svc { font-weight: 600; color: #333; margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcard-meta { color: #777; font-size: 11px; margin: .05rem 0 .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proto { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0 .3rem; border-radius: 3px; color: #fff; }
+.proto { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0 .3rem; border-radius: 3px; color: #fff; background: #6a6f7a; }
 .proto-tcp { background: #4a6fa5; }
 .proto-udp { background: #b07d2a; }
+.proto-icmp { background: #2a9d4a; }
+.proto-l2 { background: #7a5cc0; }
+.ovr { display: inline-block; background: #fff4e6; border: 1px solid #f0c890; color: #9c5a1a; border-radius: 3px; padding: 0 .35rem; font-size: 11px; font-weight: 600; cursor: help; }
 .ctag { display: inline-block; background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; padding: 0 .3rem; margin: .1rem .2rem 0 0; font-size: 10px; color: #555; }
 .ctag.tls { background: #e6f0ff; border-color: #b8d0f0; color: #1a4f9c; }
 .ctag.cap { background: #fff0e6; border-color: #f0c8a0; color: #9c5a1a; }
@@ -132,6 +135,17 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 .tc-rline { white-space: pre-wrap; word-break: break-all; padding: .05rem 0; }
 .tc-rline.dir-out { color: #a6adc8; }
 .tc-rts { color: #6c7086; margin-right: .6rem; }
+/* click-to-zoom: a figure enlarges to an overlay; click again / Esc closes */
+.tc-zoomable { cursor: zoom-in; }
+figure.tc-zoom { position: fixed; inset: 3vh 3vw; z-index: 1000; margin: 0; overflow: auto; cursor: zoom-out; box-shadow: 0 0 0 100vmax rgba(20,24,33,.5); }
+figure.tc-zoom svg.tc { max-height: 90vh; width: 100%; }
+/* toggleable widgets: a per-figure show/hide control with persisted state */
+.widget-toggle { float: right; font: inherit; font-size: 11px; cursor: pointer; border: 1px solid #ccd; background: #f3f5f8; border-radius: 3px; padding: 0 .4rem; color: #556; }
+figure.widget-hidden { padding-bottom: .35rem; }
+figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden .tc-replay, figure.widget-hidden table, figure.widget-hidden .note, figure.widget-hidden p { display: none; }
+/* tooltip help: a "?" badge whose native title carries the help text */
+.help { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; font-size: 10px; font-weight: 700; color: #fff; background: #8a93a0; border-radius: 50%; cursor: help; vertical-align: middle; }
+.help:hover, .help:focus { background: #4a6fa5; outline: none; }
 </style>
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
@@ -152,7 +166,7 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 {{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
 
 {{ define "charts" }}{{ template "head" . }}
-<h1>analytics</h1>
+<h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics</h1>
 {{ if .Empty }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}
 {{ range .Sections }}<h2>{{ .Heading }}</h2>
 <div class="charts-grid">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
@@ -388,20 +402,20 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 <table>
   <tr>
     <th><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
-    <th><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
+    <th data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
     <th><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
     <th><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
-    <th>dest</th>
+    <th data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
     <th><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
     <th></th>
   </tr>
   {{ range .Events }}
   <tr>
     <td>{{ fmtTime .Time }}</td>
-    <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+    <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td>{{ .RuleID }}</td>
     <td>{{ .Source.IP }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
-    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}</td>
+    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} <span class="proto proto-{{ .Proto }}" title="transport: {{ .Proto }}">{{ .Proto }}</span>{{ end }}</td>
     <td>{{ .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
   </tr>
@@ -415,10 +429,10 @@ svg.tc text { font: 11px ui-monospace, monospace; }
   <tr><th>time</th><td>{{ fmtTime .Time }}</td></tr>
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
-  <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}</td></tr>
+  <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
   <tr><th>source</th><td>{{ .Source.IP }}:{{ .Source.Port }}</td></tr>
   <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
-  <tr><th>proto</th><td>{{ .Proto }}</td></tr>
+  <tr><th>proto</th><td>{{ if .Proto }}<span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
 </table>
 

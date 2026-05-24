@@ -38,3 +38,23 @@ func TestHeadIncludesChartsJS(t *testing.T) {
 		t.Error("head template does not load charts.js")
 	}
 }
+
+func TestStaticJSFeaturesPresent(t *testing.T) {
+	s := &Server{}
+	get := func(p string) string {
+		r := httptest.NewRequest(http.MethodGet, p, nil)
+		w := httptest.NewRecorder()
+		s.handleStatic(w, r)
+		return w.Body.String()
+	}
+	charts := get("/static/charts.js")
+	if !strings.Contains(charts, "enableZoom") || !strings.Contains(charts, "tc-zoom") {
+		t.Error("charts.js missing click-to-zoom")
+	}
+	app := get("/static/app.js")
+	for _, want := range []string{"setupWidgets", "setupHelp", "widget-toggle", "data-help"} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.js missing %q (widget toggle / tooltip help)", want)
+		}
+	}
+}

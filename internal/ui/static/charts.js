@@ -413,6 +413,23 @@ window.TarpitCharts = (function () {
     container.appendChild(node);
     if (node._legend) container.appendChild(legend(node._legend));
     container.classList.add("tc-rendered");
+    enableZoom(container);
+  }
+  // enableZoom: click a chart to toggle an enlarged overlay; click again (or
+  // Escape) to restore. Attached once per container.
+  function enableZoom(container) {
+    if (container._tcZoom) return;
+    container._tcZoom = true;
+    container.classList.add("tc-zoomable");
+    container.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest(".widget-toggle")) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel).length > 0) return; // don't fight text selection
+      container.classList.toggle("tc-zoom");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") container.classList.remove("tc-zoom");
+    });
   }
   function decode(el) {
     var b = el.getAttribute("data-chart-b64");
