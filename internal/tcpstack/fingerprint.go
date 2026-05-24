@@ -92,7 +92,9 @@ func ProfileFor(family string) OSProfile {
 		return profiles["bsd"]
 	case "ot", "ics", "embedded", "moxa", "siemens", "cisco",
 		"hirschmann", "westermo", "phoenix", "schneider", "omron", "mitsubishi",
-		"abb", "beckhoff", "honeywell", "wago", "advantech", "teltonika":
+		"abb", "beckhoff", "honeywell", "wago", "advantech", "teltonika",
+		"triconex", "hima", "ge", "yokogawa", "emerson", "rockwell", "br",
+		"sel", "sma", "bachmann":
 		return profiles["ot"]
 	default:
 		return profiles["linux"]

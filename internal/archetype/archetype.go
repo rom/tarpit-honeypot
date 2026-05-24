@@ -79,6 +79,9 @@ func init() {
 	for k, p := range enterprise3Archetypes {
 		registry[k] = p
 	}
+	for k, p := range enterprise4Archetypes {
+		registry[k] = p
+	}
 }
 
 // Profile is the resolved per-deployment / per-listener / per-host
