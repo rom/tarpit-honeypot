@@ -88,6 +88,11 @@ func (t *Target) Restart(ctx context.Context) error {
 func (t *Target) Stop() { t.kill() }
 
 func (t *Target) spawn(ctx context.Context) error {
+	if t.cfg.Spawn.Config != "" {
+		if _, err := os.Stat(t.cfg.Spawn.Config); err != nil {
+			return fmt.Errorf("spawn config %s: %w", t.cfg.Spawn.Config, err)
+		}
+	}
 	args := []string{"run"}
 	if t.cfg.Spawn.Config != "" {
 		args = append(args, "-c", t.cfg.Spawn.Config)
@@ -116,8 +121,21 @@ func (t *Target) kill() {
 	}
 }
 
+// procExited reports whether a managed target process has terminated (Wait has
+// set its ProcessState) and a short description of how, for a clear error.
+func (t *Target) procExited() (bool, string) {
+	t.mu.Lock()
+	p := t.proc
+	t.mu.Unlock()
+	if p != nil && p.ProcessState != nil {
+		return true, p.ProcessState.String()
+	}
+	return false, ""
+}
+
 // waitReady polls until the target answers (health URL or any TCP endpoint),
-// bounded by Spawn.ReadyTimeout.
+// bounded by Spawn.ReadyTimeout. A managed target that exits before becoming
+// ready fails fast with a clear message instead of waiting out the timeout.
 func (t *Target) waitReady(ctx context.Context) error {
 	deadline := time.Now().Add(t.cfg.Spawn.ReadyTimeout.D())
 	for time.Now().Before(deadline) {
@@ -126,6 +144,9 @@ func (t *Target) waitReady(ctx context.Context) error {
 		}
 		if t.ready() {
 			return nil
+		}
+		if exited, how := t.procExited(); exited {
+			return fmt.Errorf("target process exited before becoming ready (%s); check spawn.config and the target output above", how)
 		}
 		time.Sleep(150 * time.Millisecond)
 	}

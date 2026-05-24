@@ -148,6 +148,7 @@ func verifyScan(ctx context.Context, r *Run, matchers ...func(apiEvent) bool) (S
 	if r.API == nil {
 		return StatusPass, "completed (set verify.url to confirm detection)"
 	}
+	time.Sleep(800 * time.Millisecond) // let the correlator window close + the event persist
 	for _, m := range matchers {
 		det, checked := r.API.Detected(ctx, m)
 		if !checked {
