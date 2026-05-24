@@ -95,8 +95,46 @@ svg.graph { background: #fff; border: 1px solid #eee; border-radius: 4px; }
 svg.graph .edge { stroke: #cbd3df; stroke-width: 1; }
 svg.graph .node { fill: #6b8fb5; }
 svg.graph .nlabel { font: 11px ui-monospace, monospace; fill: #333; }
+/* charts.js: dependency-free SVG charting library */
+figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: #fff; border: 1px solid #eee; border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
+figcaption.tc-cap, .tc-cap { font-weight: 600; color: #444; margin-bottom: .3rem; font-size: .95rem; }
+svg.tc { background: #fff; max-width: 100%; height: auto; }
+svg.tc text { font: 11px ui-monospace, monospace; }
+.tc-grid { stroke: #eef1f5; stroke-width: 1; }
+.tc-lane { stroke: #eef1f5; stroke-width: 1; stroke-dasharray: 2 3; }
+.tc-ax { fill: #777; }
+.tc-axt { fill: #555; font-weight: 600; text-anchor: middle; }
+.tc-val { fill: #555; }
+.tc-barrect:hover, .tc-slice:hover, .tc-cell:hover, .tc-pt:hover, .tc-src:hover { opacity: .82; }
+.tc-slice { stroke: #fff; stroke-width: 1; }
+.tc-pt { stroke: #fff; stroke-width: .5; }
+.tc-pl { stroke-linejoin: round; stroke-linecap: round; }
+.tc-cellv { fill: #234; font-size: 10px; }
+.tc-cellv.hi { fill: #fff; }
+.tc-node { stroke: #fff; stroke-width: 1.2; fill: #6b8fb5; }
+.tc-node.k-gateway { fill: #b35900; }
+.tc-node.k-resolver { fill: #2a9d4a; }
+.tc-node.k-attacker { fill: #b00020; }
+.tc-nlabel { font: 10px ui-monospace, monospace; fill: #333; }
+.tc-grouphdr { fill: #888; font-weight: 700; font-size: 11px; }
+.tc-edge { stroke: #cbd3df; stroke-width: 1.2; }
+.tc-snode { stroke: #fff; }
+.tc-tev { stroke: #fff; stroke-width: 1; }
+.tc-ocean { fill: #f3f7fb; stroke: #dde6f0; }
+.tc-grat { stroke: #e1e9f2; stroke-width: 1; }
+.tc-grat-lbl { fill: #aab4c0; font-size: 9px; }
+.tc-src { stroke-width: 1; }
+.tc-legend { margin-top: .35rem; font-size: 11px; color: #555; }
+.tc-leg { margin-right: .8rem; white-space: nowrap; }
+.tc-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.tc-replay { background: #1e1e2e; color: #cdd6f4; font: 12px ui-monospace, monospace; border-radius: 4px; padding: .5rem .6rem; max-height: 340px; overflow: auto; }
+.tc-rline { white-space: pre-wrap; word-break: break-all; padding: .05rem 0; }
+.tc-rline.dir-out { color: #a6adc8; }
+.tc-rts { color: #6c7086; margin-right: .6rem; }
 </style>
 <script src="/static/app.js" defer></script>
+<script src="/static/charts.js" defer></script>
 </head><body>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
