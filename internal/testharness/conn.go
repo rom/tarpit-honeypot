@@ -60,7 +60,7 @@ func probe(ctx context.Context, t *Target, e Endpoint, send []byte) ([]byte, err
 		return nil, err
 	}
 	defer conn.Close()
-	return exchange(conn, send, t.cfg.Timeout)
+	return exchange(conn, send, t.cfg.Timeout.D())
 }
 
 // tcpConnect reports whether a TCP port accepts a connection (a scan probe).

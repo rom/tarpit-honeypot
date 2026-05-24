@@ -60,7 +60,7 @@ func portScan(ctx context.Context, r *Run, shuffle bool) (Status, string, error)
 		if ctx.Err() != nil {
 			return StatusSkip, "interrupted", nil
 		}
-		if tcpConnect(ctx, r.Cfg.Host, p, r.Cfg.Timeout) {
+		if tcpConnect(ctx, r.Cfg.Host, p, r.Cfg.Timeout.D()) {
 			open++
 		}
 	}
@@ -86,7 +86,7 @@ func hostSweep(ctx context.Context, r *Run) (Status, string, error) {
 		if ctx.Err() != nil {
 			return StatusSkip, "interrupted", nil
 		}
-		if tcpConnect(ctx, h, port, r.Cfg.Timeout) {
+		if tcpConnect(ctx, h, port, r.Cfg.Timeout.D()) {
 			up++
 		}
 	}

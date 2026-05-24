@@ -9,7 +9,40 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestDurationUnmarshal(t *testing.T) {
+	ok := map[string]time.Duration{
+		"0":     0,                       // bare zero (the natural value that plain time.Duration rejects)
+		"30":    30 * time.Second,        // bare int => seconds
+		"1.5":   1500 * time.Millisecond, // bare float => seconds
+		"0s":    0,
+		"30m":   30 * time.Minute,
+		"500ms": 500 * time.Millisecond,
+		"2h45m": 2*time.Hour + 45*time.Minute,
+		`"3s"`:  3 * time.Second, // quoted string
+		"null":  0,
+		`""`:    0,
+	}
+	for in, want := range ok {
+		var d Duration
+		if err := yaml.Unmarshal([]byte(in), &d); err != nil {
+			t.Errorf("Unmarshal(%q) error: %v", in, err)
+			continue
+		}
+		if d.D() != want {
+			t.Errorf("Unmarshal(%q) = %s; want %s", in, d.D(), want)
+		}
+	}
+	for _, in := range []string{"bogus", "30x", "[]"} {
+		var d Duration
+		if err := yaml.Unmarshal([]byte(in), &d); err == nil {
+			t.Errorf("Unmarshal(%q) = %s; want an error", in, d.D())
+		}
+	}
+}
 
 func TestConfigValidate(t *testing.T) {
 	bad := []*Config{
@@ -175,7 +208,7 @@ func TestModuleBackend(t *testing.T) {
 }
 
 func TestRunCaseRetries(t *testing.T) {
-	cfg := &Config{Mode: "module", Retries: 2, Timeout: time.Second}
+	cfg := &Config{Mode: "module", Retries: 2, Timeout: Duration(time.Second)}
 	cfg.ApplyDefaults()
 	cfg.Retries = 2
 	r, _ := NewRunner(cfg, nil)

@@ -8,6 +8,53 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Duration is a config time span that unmarshals from either a Go duration
+// string ("30m", "3s", "500ms") or a bare number (interpreted as seconds, so a
+// natural `duration: 0` works — plain yaml.v3 rejects an int for time.Duration).
+type Duration time.Duration
+
+// D returns the value as a time.Duration.
+func (d Duration) D() time.Duration { return time.Duration(d) }
+
+// String renders the value like a time.Duration (e.g. for log/error messages).
+func (d Duration) String() string { return time.Duration(d).String() }
+
+// UnmarshalYAML accepts a duration string or a number of seconds. A bare
+// number (int or float) is taken as seconds; a string goes through
+// time.ParseDuration; null/empty is zero.
+func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Tag {
+	case "!!null":
+		*d = 0
+		return nil
+	case "!!int", "!!float":
+		var secs float64
+		if err := node.Decode(&secs); err != nil {
+			return fmt.Errorf("duration %q: %w", node.Value, err)
+		}
+		*d = Duration(secs * float64(time.Second))
+		return nil
+	default:
+		var s string
+		if err := node.Decode(&s); err != nil {
+			return fmt.Errorf("duration: want a string like \"30m\" or a number of seconds: %w", err)
+		}
+		if s == "" {
+			*d = 0
+			return nil
+		}
+		v, err := time.ParseDuration(s)
+		if err != nil {
+			return fmt.Errorf("duration %q: %w", s, err)
+		}
+		*d = Duration(v)
+		return nil
+	}
+}
+
+// MarshalYAML emits the canonical duration string.
+func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
+
 // Config drives the harness. Every field is settable in the YAML config and
 // most are overridable on the command line.
 type Config struct {
@@ -36,14 +83,14 @@ type Config struct {
 	// Rounds is the number of full passes over the selected cases (default 1).
 	Rounds int `yaml:"rounds"`
 	// Duration is a wall-clock bound; the run stops cleanly when exceeded
-	// (0 = run to completion / Rounds).
-	Duration time.Duration `yaml:"duration"`
+	// (0 = run to completion / Rounds). String ("30m") or seconds.
+	Duration Duration `yaml:"duration"`
 	// Retries is the global per-case retry count on fail/crash (default 1).
 	// RetriesByCase overrides it for a specific case id.
 	Retries       int            `yaml:"retries"`
 	RetriesByCase map[string]int `yaml:"retries_by_case"`
-	// Timeout is the per-exchange I/O timeout (default 3s).
-	Timeout time.Duration `yaml:"timeout"`
+	// Timeout is the per-exchange I/O timeout (default 3s). String ("3s") or seconds.
+	Timeout Duration `yaml:"timeout"`
 	// Concurrency is how many cases run in parallel (default 1 = deterministic).
 	Concurrency int `yaml:"concurrency"`
 
@@ -83,11 +130,11 @@ type Endpoint struct {
 
 // SpawnCfg manages a target sensor process.
 type SpawnCfg struct {
-	Binary       string        `yaml:"binary"`        // path to the tarpit-honeypot binary
-	Config       string        `yaml:"config"`        // -c config passed to `run`
-	Args         []string      `yaml:"args"`          // extra args
-	ReadyTimeout time.Duration `yaml:"ready_timeout"` // wait this long for ports to open
-	HealthURL    string        `yaml:"health_url"`    // optional readiness probe (e.g. http://127.0.0.1:8088/healthz)
+	Binary       string   `yaml:"binary"`        // path to the tarpit-honeypot binary
+	Config       string   `yaml:"config"`        // -c config passed to `run`
+	Args         []string `yaml:"args"`          // extra args
+	ReadyTimeout Duration `yaml:"ready_timeout"` // wait this long for ports to open (string or seconds)
+	HealthURL    string   `yaml:"health_url"`    // optional readiness probe (e.g. http://127.0.0.1:8088/healthz)
 }
 
 // VerifyCfg points the harness at the target's read-only API.
@@ -137,7 +184,7 @@ func (c *Config) ApplyDefaults() {
 		c.Retries = 1
 	}
 	if c.Timeout <= 0 {
-		c.Timeout = 3 * time.Second
+		c.Timeout = Duration(3 * time.Second)
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = 1
@@ -149,7 +196,7 @@ func (c *Config) ApplyDefaults() {
 		c.Seed = DefaultSeed
 	}
 	if c.Spawn.ReadyTimeout <= 0 {
-		c.Spawn.ReadyTimeout = 10 * time.Second
+		c.Spawn.ReadyTimeout = Duration(10 * time.Second)
 	}
 }
 

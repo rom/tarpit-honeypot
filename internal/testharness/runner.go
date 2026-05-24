@@ -97,7 +97,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 
 	var deadline time.Time
 	if r.cfg.Duration > 0 {
-		deadline = rr.Started.Add(r.cfg.Duration)
+		deadline = rr.Started.Add(r.cfg.Duration.D())
 	}
 	total := len(cases) * r.cfg.Rounds
 	var mu sync.Mutex
@@ -187,7 +187,7 @@ func safeRun(ctx context.Context, c Case, run *Run) (st Status, detail string, e
 // caseTimeout caps a single case so a hung target can't block the run; cases
 // also enforce their own (shorter) per-exchange timeout.
 func (r *Runner) caseTimeout() time.Duration {
-	t := time.Duration(r.cfg.FuzzIterations+8) * r.cfg.Timeout * 2
+	t := time.Duration(r.cfg.FuzzIterations+8) * r.cfg.Timeout.D() * 2
 	if t < 2*time.Minute {
 		t = 2 * time.Minute
 	}
