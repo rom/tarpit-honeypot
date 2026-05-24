@@ -19,9 +19,37 @@ correlate:     { ... }     # port-scan / brute-force / slow-scan
 honeynets:     [ ... ]     # artificial networks of virtual hosts
 dedup:         { ... }     # event dedup window
 allowlist:     [ ... ]     # source IPs that bypass outbound alerts
-channels:      [ ... ]     # output sinks (stdout, syslog, webhook, sns, ...)
-routes:        [ ... ]     # severity / honeynet / rule predicates -> channels
+channels:          [ ... ] # output sinks (stdout, syslog, webhook, sns, ...)
+routes:            [ ... ] # severity / honeynet / rule predicates -> channels
+severity_overrides:[ ... ] # operator re-map of reported severity per rule_id
+dedup:             { ... } # per (source, rule) dedup window for outbound sinks
+allowlist:         [ ... ] # source IPs that bypass outbound alerts
+devices:           { ... } # learned-device inventory + new-device alerts
+risk:              { ... } # decaying per-source threat score
+interaction:       { ... } # interaction depth + experimental-feature guardrails
 ```
+
+Every section is optional. The table below is the at-a-glance map; each section
+has its own reference further down.
+
+| Section | Kind | Purpose |
+|---|---|---|
+| `sensor` | map | identity, data dir, disk caps, enrichment, jitter, archetype |
+| `ui` | map | read-only web UI bind / auth / TLS |
+| `listeners` | list | TCP/UDP honeypots (mode + handler + port) |
+| `archeservices` | list | service-role bundles that expand into listeners |
+| `canaries` / `url_canaries` / `dns_canaries` | list | filesystem / HTTP-path / DNS honey-tokens |
+| `dns` | map | DNS canary/resolver listener |
+| `sniffer` | map | AF_PACKET L2 ARP/scan detector (Linux) |
+| `correlate` | map | in-sensor aggregate detectors (scan, brute, OT, VoIP, …) |
+| `honeynets` | list | artificial networks of virtual hosts/services |
+| `channels` | list | output sinks |
+| `routes` | list | match predicates → channels |
+| `severity_overrides` | list | re-map reported severity per `rule_id` |
+| `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
+| `devices` | map | learned-device inventory + new-device alerts |
+| `risk` | map | decaying per-source threat score |
+| `interaction` | map | interaction depth + experimental guardrails |
 
 ---
 
@@ -489,6 +517,17 @@ channels:
     rate_limit_per_min: 0          # 0 = unlimited
 ```
 
+Common fields (every channel type):
+
+| Field | Meaning | Default |
+|---|---|---|
+| `id` | unique channel name (referenced by `routes`) | required |
+| `type` | sink kind (see the table below) | required |
+| `enabled` | build the sink? `false` = defined-but-dormant | true |
+| `format` | wire format: `json` / `cef` / `leef` / `ocsf` | json |
+| `min_severity` | drop events below this level for this channel | low |
+| `rate_limit_per_min` | cap outbound sends/min (0 = unlimited) | 0 |
+
 `enabled: false` keeps a channel **defined but off** — it is neither built
 nor type-validated at startup, so an outbound sink that needs external infra
 (an MQTT broker, a webhook secret, a SIEM collector) can ship in a config
@@ -534,6 +573,23 @@ Type-specific fields (all optional unless noted):
       community_env: SNMP_TRAP_COMMUNITY, enterprise_oid: "1.3.6.1.4.1.65535" }
 ```
 
+### Channel types
+
+| Type | Direction | Key fields | Formats | Use |
+|---|---|---|---|---|
+| `stdout` | local | — | json | console / journald |
+| `jsonlog` | local | (writes under `sensor.data_dir`) | json | newline-JSON event log |
+| `sqlite` | local | (writes under `sensor.data_dir`) | json only | powers the web UI + `list-events` / search |
+| `syslog` | outbound | `network`, `address`, `tag` | json / cef / leef / ocsf | SIEM via syslog (cleartext if tcp/udp — see note) |
+| `webhook` | outbound | `url`, `hmac_secret_env` | json / cef / leef / ocsf | HMAC-signed HTTP POST |
+| `smtp` | outbound | `host`, `port`, `from`, `to`, `*_env` creds | json / cef / leef / ocsf | email (STARTTLS) |
+| `twilio` | outbound | `account_sid_env`, `auth_token_env`, `from`, `to` | json only | SMS paging |
+| `sns` | outbound | `topic_arn`, `access_key_env`, `secret_key_env` | json only | AWS SNS (hand-rolled Sigv4) |
+| `snmptrap` | outbound | `host`, `community_env`, `enterprise_oid` | json only | SNMPv2c trap to an NMS |
+
+> Secrets are read from environment variables (the `*_env` fields), never
+> stored inline, so `show-config` and the config file never leak them.
+
 ### Output formats
 
 - `json` (default) — every channel's wire shape was JSON through v1.3.
@@ -573,6 +629,118 @@ routes:
 | `rule_id` | exact match on `rule_id` | `"correlate:port_scan"` |
 
 Empty `match: {}` matches every event (useful for a catch-all archive channel).
+
+A second, longer example — OR semantics via multiple routes, a catch-all
+archive, and a paging path:
+
+```yaml
+routes:
+  # page on anything critical, or any recognised CVE exploit attempt
+  - match: { severity: ">=critical" }
+    channels: [pagerduty]
+  - match: { rule_id: "correlate:cve_campaign" }
+    channels: [pagerduty]
+  # send >=high to the SOC SIEM
+  - match: { severity: ">=high" }
+    channels: [soc-syslog]
+  # archive everything locally
+  - match: {}
+    channels: [stdout, jsonlog, sqlite]
+```
+
+---
+
+## `severity_overrides:` — operator-pinned per-rule severity
+
+You sometimes know better than the built-in default whether an event matters
+*in your environment*. `severity_overrides` re-maps the **reported** severity
+of matching events, so a quiet rule can be raised (page on it) or a noisy one
+lowered (archive it) without patching source. It is applied in the router — the
+single dispatch chokepoint — so the new level drives `routes` matching,
+per-channel `min_severity`, the local store, and every sink.
+
+```yaml
+severity_overrides:
+  - rule: correlate:port_scan      # an internal scanner you can't allowlist
+    severity: low
+  - rule: "cve:*"                  # treat any recognised CVE attempt as worst
+    severity: critical
+  - rule: listener:ssh-bait        # SSH brute force matters more to you
+    severity: high
+  - rule: "attack:dos"
+    severity: medium
+```
+
+### Fields
+
+| Field | Meaning | Values |
+|---|---|---|
+| `rule` | the event `rule_id` to match | exact id, or a trailing-`*` prefix |
+| `severity` | the level matching events are reported at | `low` / `medium` / `high` / `critical` |
+
+`rule` accepts either an **exact** `rule_id` (`correlate:port_scan`,
+`cve:CVE-2021-44228`, `listener:http-bait`) or a **prefix** ending in `*`
+(`cve:*`, `correlate:*`, `attack:*`, `canary:*`). Listener-hit events use the
+id `listener:<listener-id>`; correlators use `correlate:<name>`; CVE attempts
+`cve:<id>`. Discover ids from the events table, `list-events`, or the `rule`
+column of `list-techniques`.
+
+### Precedence
+
+| Situation | Winner |
+|---|---|
+| an exact id and a prefix both match | the **exact** id |
+| two prefixes both match | the **longest** (most specific) prefix |
+| no rule matches | the built-in default severity (unchanged) |
+| the override equals the default | no-op (the event is not marked) |
+
+### Severity levels
+
+| Level | Rank | Typical meaning |
+|---|---|---|
+| `low` | 1 | informational / recon noise |
+| `medium` | 2 | notable but not urgent |
+| `high` | 3 | likely-malicious — investigate |
+| `critical` | 4 | act now (exploit attempt, ICS manipulation, leaked token) |
+
+`routes` operators (`>=high`, …) and a channel's `min_severity` see the
+**overridden** level, so an override changes what pages and what is archived.
+
+### How the override is shown (never silent)
+
+| Where | Marker |
+|---|---|
+| logs | `severity overrides active` (rule count) at start; a `severity overridden` debug line per applied event |
+| events | `severity_overridden: true` + `meta.default_severity` + `meta.severity_override_rule`, carried to every sink |
+| web UI | an `⌾ override` badge in the events table (tooltip: default + rule) and a spelled-out note on the event detail |
+
+### Recipes
+
+```yaml
+# Quiet your own vuln scanner's noise (when you can't allowlist its IP):
+severity_overrides:
+  - rule: "correlate:*"
+    severity: low
+
+# Make every ICS/OT manipulation critical regardless of the protocol default:
+severity_overrides:
+  - rule: correlate:ot_kill_chain
+    severity: critical
+  - rule: correlate:plc_program_download
+    severity: critical
+  - rule: correlate:ics_mode_change
+    severity: critical
+
+# Raise one listener's events, lower a chatty discovery rule:
+severity_overrides:
+  - rule: "listener:mainframe"     # listener events are listener:<listener id>
+    severity: high
+  - rule: correlate:host_sweep
+    severity: low
+```
+
+`validate-config` rejects an unknown `severity` or an empty `rule` at load, so a
+typo never silently disables an override.
 
 ---
 

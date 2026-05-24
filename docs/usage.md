@@ -95,14 +95,60 @@ network needed) so you can discover what the sensor can impersonate and
 detect, and tune detections:
 
 ```bash
-./bin/tarpit-honeypot list-archetypes                 # all 99 device personas
+./bin/tarpit-honeypot list-archetypes                 # all 162 device personas
 ./bin/tarpit-honeypot list-archetypes xerox-versalink # one archetype's full fingerprint
 ./bin/tarpit-honeypot list-handlers --proto tcp       # handlers valid on a listener
 ./bin/tarpit-honeypot list-cves --service ipp         # emulated/detected CVEs by service
+./bin/tarpit-honeypot list-cves --cwe                 # the CWE weakness-class catalog
 ./bin/tarpit-honeypot list-techniques --kind anomaly  # MITRE ATT&CK -> D3FEND coverage
 # Triage a log line: what would the sensor make of this?
 ./bin/tarpit-honeypot identify --ua "sqlmap/1.7" --payload '${jndi:ldap://x/a}'
 ```
+
+### Adjusting an event's severity for your environment
+
+The built-in severity of a rule is a sensible default, but **you** know your
+environment. If an event matters more (page on it) or less (archive it) than
+the default, pin its reported level with `severity_overrides` — no source
+change, no rebuild.
+
+1. **Find the `rule_id`.** Open the event in the web UI (the *rule* column /
+   detail page), or list recent ones:
+
+   ```bash
+   ./bin/tarpit-honeypot list-events --limit 20      # rule_id column
+   ```
+
+   Examples: `correlate:port_scan`, `listener:ssh-bait`, `cve:CVE-2021-44228`.
+
+2. **Add the override** to the config (exact id, or a trailing-`*` prefix):
+
+   ```yaml
+   severity_overrides:
+     - rule: correlate:port_scan   # a scanner you can't allowlist — quiet it
+       severity: low
+     - rule: "cve:*"               # any recognised CVE attempt — page on it
+       severity: critical
+   ```
+
+3. **Validate, then hot-reload** (no restart needed):
+
+   ```bash
+   ./bin/tarpit-honeypot validate-config -c /etc/tarpit-honeypot/config.yaml
+   sudo systemctl reload tarpit-honeypot     # or: kill -HUP <pid>
+   ```
+
+   The log prints `severity overrides active rules=N` on (re)load.
+
+4. **Verify.** New matching events report the new level and are clearly marked
+   as a *local override* — an `⌾ override` badge in the events table (tooltip:
+   the default level + the rule), the override spelled out on the event detail,
+   and `severity_overridden: true` + `meta.default_severity` /
+   `meta.severity_override_rule` carried to every sink (jsonlog, SQLite,
+   syslog/CEF/LEEF/OCSF, webhook, …). The override drives routing too, so a
+   raised event now reaches a high-`min_severity` paging channel. See
+   [`config.md`](config.md#severity_overrides--operator-pinned-per-rule-severity)
+   for matching precedence and recipes.
 
 ## 3. Honeynets
 
