@@ -136,7 +136,7 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -148,6 +148,17 @@ svg.tc text { font: 11px ui-monospace, monospace; }
   <td class="bnum">{{ .Count }}</td>
 </tr>{{ end }}
 </table>{{ end }}
+
+{{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
+
+{{ define "charts" }}{{ template "head" . }}
+<h1>analytics</h1>
+{{ if .Empty }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}
+{{ range .Sections }}<h2>{{ .Heading }}</h2>
+<div class="charts-grid">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ end }}
+<p class="note">All charts are rendered client-side by the packaged charts.js (no external libraries) · derived from a scan of {{ .Scanned }} recent events. With JavaScript off, each figure shows a fallback note.</p>
+{{ template "foot" . }}{{ end }}
 
 {{ define "index" }}{{ template "head" . }}
 <h1>tarpit-honeypot — last 24 hours</h1>
@@ -161,6 +172,10 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 <h2>events per hour</h2>
 {{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
 <p class="note">last 24h, one bar per hour</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+
+{{ if .Charts }}<h2>visual overview</h2>
+<div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
+<p class="note">Full interactive analytics — bar / pie / heatmap / source map / credential / timeline — at <a href="/charts">charts</a>.</p>{{ end }}
 
 <h2>by severity</h2>
 {{ if .Severity }}{{ template "bars" .Severity }}{{ else }}<p class="note">none</p>{{ end }}
@@ -319,9 +334,10 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 <table>
 {{ if .Version }}<tr><th>build</th><td>{{ .Version }}{{ if .Commit }} ({{ .Commit }}){{ end }}</td></tr>{{ end }}
 <tr><th>uptime</th><td>{{ if .Uptime }}{{ .Uptime }}{{ else }}n/a{{ end }}</td></tr>
-<tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }}</td></tr>
+<tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }} · {{ .NumCPU }} CPU(s)</td></tr>
 <tr><th>goroutines</th><td>{{ .Goroutines }}</td></tr>
-<tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ .NumGC }} GC cycles</td></tr>
+<tr><th>memory</th><td>{{ printf "%.1f" .MemAllocMB }} MiB in use · {{ printf "%.1f" .MemSysMB }} MiB from OS · {{ printf "%.0f" .HeapObjects }} heap objects</td></tr>
+<tr><th>garbage collector</th><td>{{ .NumGC }} cycles · {{ printf "%.1f" .GCPauseMs }} ms total pause · next at {{ printf "%.1f" .NextGCMB }} MiB</td></tr>
 <tr><th class="{{ if gt .Panics 0 }}sev-high{{ end }}">recovered panics</th><td>{{ .Panics }}{{ if .PanicByName }} ({{ range .PanicByName }}{{ .Label }}={{ .Value }} {{ end }}){{ end }}</td></tr>
 </table>
 
@@ -346,7 +362,9 @@ svg.tc text { font: 11px ui-monospace, monospace; }
 
 {{ if .Available }}<h2>honeynet</h2>
 <p>{{ .HoneyNets }} network(s) · {{ .HoneyHosts }} virtual host(s)</p>{{ end }}
-<p class="note">Prometheus-format metrics at <a href="/metrics">/metrics</a>.</p>
+{{ if .Charts }}<h2>charts</h2>
+<div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>{{ end }}
+<p class="note">Prometheus-format metrics at <a href="/metrics">/metrics</a>. Full analytics at <a href="/charts">charts</a>.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "events" }}{{ template "head" . }}
@@ -622,6 +640,7 @@ JSON at <a href="/api/topology">/api/topology</a>.</p>
 <p class="note">Infrastructure map: virtual networks the sensor presents, with live
 attack activity (last 24h) overlaid per host. JSON at <a href="/api/topology">/api/topology</a>.
 {{ if not .Active }}<br>No attack activity recorded against these hosts yet.{{ end }}</p>
+{{ if .Graph.B64 }}{{ template "chartfig" .Graph }}{{ end }}
 {{ range .Networks }}
 <div class="net">
   <h3>{{ .ID }}{{ if .CIDR }} — {{ .CIDR }}{{ end }}{{ if .Events }} <span class="sev-high">⚠ {{ .Events }} events / {{ .Attackers }} attacker(s)</span>{{ end }}</h3>
