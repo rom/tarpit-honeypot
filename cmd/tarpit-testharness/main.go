@@ -188,13 +188,13 @@ func runCmd(args []string) error {
 		cfg.Rounds = *rounds
 	}
 	if *duration > 0 {
-		cfg.Duration = *duration
+		cfg.Duration = testharness.Duration(*duration)
 	}
 	if *retries >= 0 {
 		cfg.Retries = *retries
 	}
 	if *timeout > 0 {
-		cfg.Timeout = *timeout
+		cfg.Timeout = testharness.Duration(*timeout)
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency

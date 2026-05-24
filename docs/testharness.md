@@ -284,6 +284,10 @@ reports:
 db: harness-results.db        # append every run here
 ```
 
+Durations (`duration`, `timeout`, `spawn.ready_timeout`) accept either a Go
+duration string (`30m`, `3s`, `500ms`) or a bare number of seconds — so the
+natural `duration: 0` is valid (it means "no bound").
+
 ### `Config` fields
 
 | Field | Default | Meaning |

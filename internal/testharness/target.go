@@ -119,7 +119,7 @@ func (t *Target) kill() {
 // waitReady polls until the target answers (health URL or any TCP endpoint),
 // bounded by Spawn.ReadyTimeout.
 func (t *Target) waitReady(ctx context.Context) error {
-	deadline := time.Now().Add(t.cfg.Spawn.ReadyTimeout)
+	deadline := time.Now().Add(t.cfg.Spawn.ReadyTimeout.D())
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -204,7 +204,7 @@ func (t *Target) Dial(ctx context.Context, e Endpoint) (net.Conn, error) {
 	if t.cfg.Mode == "module" {
 		return t.dialModule(ctx, e)
 	}
-	d := net.Dialer{Timeout: t.cfg.Timeout}
+	d := net.Dialer{Timeout: t.cfg.Timeout.D()}
 	return d.DialContext(ctx, e.Proto, t.addr(e))
 }
 
@@ -214,7 +214,7 @@ func (t *Target) dialModule(ctx context.Context, e Endpoint) (net.Conn, error) {
 		return nil, err
 	}
 	client, server := net.Pipe()
-	lc := config.Listener{Handler: e.Handler, ReadTimeout: t.cfg.Timeout}
+	lc := config.Listener{Handler: e.Handler, ReadTimeout: t.cfg.Timeout.D()}
 	go func() {
 		defer func() {
 			_ = recover() // a handler bug must surface as no-response, not a harness crash
