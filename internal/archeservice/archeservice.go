@@ -420,6 +420,60 @@ var roles = map[string][]Service{
 		{80, "tcp", "http", "web"},
 		{443, "tcp", "https", "web (TLS)"},
 	},
+	"pbxserver": {
+		{5060, "tcp", "sip_tcp", "SIP/TCP"},
+		{5060, "udp", "sip", "SIP/UDP"},
+		{5038, "tcp", "asterisk_ami", "Asterisk Manager"},
+		{4569, "udp", "iax2", "IAX2"},
+		{80, "tcp", "http", "PBX web"},
+	},
+	"sipproxy": {
+		{5060, "tcp", "sip_tcp", "SIP/TCP"},
+		{5061, "tcp", "sip_tcp", "SIP-TLS"},
+		{5060, "udp", "sip", "SIP/UDP"},
+	},
+	"voipgateway": {
+		{1720, "tcp", "h323", "H.323"},
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{443, "tcp", "https", "gateway web"},
+	},
+	"callmanager": {
+		{2000, "tcp", "sccp", "SCCP/Skinny"},
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{443, "tcp", "https", "web"},
+		{8443, "tcp", "https", "admin"},
+	},
+	"ipphone": {
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{80, "tcp", "http", "phone web"},
+		{443, "tcp", "https", "phone web (TLS)"},
+	},
+	"sbc": {
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{5061, "tcp", "sip_tcp", "SIP-TLS"},
+		{443, "tcp", "https", "web"},
+		{22, "tcp", "ssh", "SSH"},
+	},
+	"contactcenter": {
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{8088, "tcp", "http", "dialer web"},
+		{443, "tcp", "https", "agent portal"},
+	},
+	"voicemail": {
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{143, "tcp", "imap", "voicemail IMAP"},
+		{110, "tcp", "pop3", "voicemail POP3"},
+	},
+	"conferencebridge": {
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{1720, "tcp", "h323", "H.323"},
+		{80, "tcp", "http", "conference web"},
+	},
+	"unifiedcomms": {
+		{5222, "tcp", "xmpp", "XMPP"},
+		{5060, "tcp", "sip_tcp", "SIP"},
+		{443, "tcp", "https", "UC web"},
+	},
 }
 
 // Lookup returns the service set for a role (case- and separator-
