@@ -1,0 +1,76 @@
+# Discrete manufacturing / semiconductor fab.
+#
+# The factory floor of discrete manufacturing: Omron / Rockwell / Unitronics
+# PLCs, semiconductor tool equipment (SECS/GEM over HSMS), and the VxWorks gear
+# scattered across the cell. Directly exposes the round-four OT handlers
+# (fins_tcp, secs_gem, pcom, wdbrpc) and combines the omronplc / semiconductorfab
+# / unitronicsplc / vxworksdevice role bundles with `lua` HMI decoys. Exercises
+# the plc_program_download / ics_mode_change / ot_kill_chain correlators.
+#
+#   tarpit-honeypot validate-config -c examples/ot-discrete-mfg.yaml
+sensor:
+  name: ot-discrete-mfg-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  archetype: rockwell-micrologix
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Role bundles exercising the new ICS handlers, on dedicated loopback IPs.
+archeservices:
+  - { id: omron,  role: omronplc,         archetype: rockwell-micrologix, bind: 127.0.12.1, severity: high }
+  - { id: fab,    role: semiconductorfab, archetype: bachmann-m1,         bind: 127.0.12.2, severity: high }
+  - { id: vision, role: unitronicsplc,    archetype: br-x20,              bind: 127.0.12.3, severity: critical }
+  - { id: vxw,    role: vxworksdevice,    archetype: br-x20,              bind: 127.0.12.4, severity: high }
+
+# Direct exposure of the OT control protocols + a couple of HMI web decoys.
+listeners:
+  - { id: fins,     proto: tcp, bind: 0.0.0.0:9600,  mode: banner, handler: fins_tcp,  severity: high,     capture: true }
+  - { id: secs,     proto: tcp, bind: 0.0.0.0:5000,  mode: banner, handler: secs_gem,  severity: high,     capture: true }
+  - { id: pcom,     proto: tcp, bind: 0.0.0.0:20256, mode: banner, handler: pcom,      severity: critical, capture: true }
+  - { id: wdb,      proto: udp, bind: 0.0.0.0:17185, mode: banner, handler: wdbrpc,    severity: high,     capture: true }
+  - { id: hmi,      proto: tcp, bind: 0.0.0.0:80,    mode: banner, handler: lua, script: configs/scripts/hmi-panel.lua, severity: high, capture: true }
+  - { id: moxa,     proto: tcp, bind: 0.0.0.0:8080,  mode: banner, handler: lua, script: configs/scripts/moxa-web.lua,  severity: medium, capture: true }
+
+honeynets:
+  - id: factory-cell
+    cidr: 10.120.0.0/16
+    gateway: 10.120.0.1
+    domain: cell.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.120.0.10, hostname: ab-micrologix, os: embedded, archetype: rockwell-micrologix, services: [ {port: 44818, handler: ethernetip}, {port: 80, handler: http} ] }
+      - { ip: 10.120.0.11, hostname: br-x20-line,   os: embedded, archetype: br-x20,              services: [ {port: 502, handler: modbus}, {port: 80, handler: http} ] }
+      - { ip: 10.120.0.12, hostname: vision-plc,    os: embedded, archetype: rockwell-micrologix, services: [ {port: 20256, handler: pcom}, {port: 502, handler: modbus} ] }
+      - { ip: 10.120.0.20, hostname: wind-m1,       os: embedded, archetype: bachmann-m1,         services: [ {port: 80, handler: http}, {port: 502, handler: modbus} ] }
+
+correlate:
+  port_scan:            { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  ot_recon:             { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  default_cred_sweep:   { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  plc_program_download: { enabled: true, events: 1, window: 10m, severity: critical }
+  ics_mode_change:      { enabled: true, events: 1, window: 10m, severity: critical }
+  ot_kill_chain:        { enabled: true, window: 10m, severity: critical }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

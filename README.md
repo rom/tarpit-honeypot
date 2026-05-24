@@ -27,7 +27,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **95 TCP + 30 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **98 TCP + 32 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -38,7 +38,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **132 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **142 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -459,7 +459,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (95 TCP + 30 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (98 TCP + 32 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -499,29 +499,32 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 overhaul.** A large post-v2.0 sprint. Highlights below; the
 [CHANGELOG](CHANGELOG.md) has the full per-commit detail.
 
-- **Breadth + depth (three rounds).** Fifteen more protocol decoys — `jdwp`,
+- **Breadth + depth (four rounds).** Twenty more protocol decoys — `jdwp`,
   `rmi`, `git`, `zookeeper`, `kafka`, `cassandra`, `nats`, `rpcbind`
-  (SunRPC/NFS-enum), `pptp`, `stun` (UDP), plus `adb` (Android Debug Bridge —
+  (SunRPC/NFS-enum), `pptp`, `stun` (UDP), `adb` (Android Debug Bridge —
   unauth IoT RCE), `ajp13` (Ghostcat), `epmd` (Erlang cluster enum), `tacacs`
-  (network-gear AAA) and `mssql_browser` (SQL Server SSRP, UDP) — taking the
-  catalog to **95 TCP + 30 UDP handlers**. Eight enrichment-/campaign-driven
-  correlators: `threat_intel_burst` (activity from a threat-intel/Tor
-  source), `geo_velocity` (one credential from 2+ GeoIP countries),
-  `amplification_probe` (enumerating DDoS reflectors), `default_cred_sweep`
-  (Mirai-class default-cred botnet), `cve_campaign` (one CVE from many
-  sources — mass-exploit/worm), `destructive_action` (data-destruction
-  escalation), `honeytoken_spread` (a leaked canary token in broad use) and
-  `tool_rotation` (one source cycling many attack tools). Thirty new
-  archetypes — cloud/host/appliance (macOS, Alpine, Proxmox, TrueNAS, ESXi,
-  Juniper, Palo Alto, F5, SonicWall, Netgear, Amazon Linux, Fedora, VMware
-  vCenter, Citrix NetScaler, Sophos) and legacy-Unix/alt-Linux/edge/IoT
-  (Solaris, AIX, Gentoo, OPNsense, VyOS, OpenWrt, Arista EOS, Check Point,
-  Dell iDRAC, HPE iLO, Raspberry Pi, Huawei VRP, Zyxel, DrayTek, Grandstream)
-  → **132 archetypes**; thirty new `archeservice` role bundles → **50 roles**;
-  thirty new Lua dynamic-response scripts (NNTP/clamd/beanstalkd/MPD + the
-  CouchDB/Consul/Prometheus/Grafana/Vault/Kibana/MinIO/… and the round-three
-  Jenkins/GitLab/SonarQube/Kubernetes/Keycloak/Traefik/Spark/Nacos unauth-
-  dashboard decoys) → **42 scripts**. New [`docs/internals.md`](docs/internals.md)
+  (network-gear AAA), `mssql_browser` (SQL Server SSRP, UDP), plus an OT round:
+  `fins_tcp` (Omron), `secs_gem` (SECS/GEM semiconductor equipment), `pcom`
+  (Unitronics), `profinet` and `wdbrpc` (VxWorks WDB, UDP) — taking the catalog
+  to **98 TCP + 32 UDP handlers**. Eleven enrichment-/campaign-/OT-driven
+  correlators: `threat_intel_burst` (activity from a threat-intel/Tor source),
+  `geo_velocity` (one credential from 2+ GeoIP countries), `amplification_probe`
+  (enumerating DDoS reflectors), `default_cred_sweep` (Mirai-class default-cred
+  botnet), `cve_campaign` (mass-exploit/worm), `destructive_action`
+  (data-destruction escalation), `honeytoken_spread` (a leaked canary token in
+  broad use), `tool_rotation` (one source cycling many attack tools), plus the
+  OT set `plc_program_download` (logic/firmware download — Stuxnet/Triton),
+  `ics_mode_change` (RUN/STOP/PROGRAM) and `ot_kill_chain`
+  (discovery → manipulation). Forty new archetypes — cloud/host/appliance
+  (macOS, Alpine, Proxmox, TrueNAS, ESXi, Juniper, Palo Alto, F5, SonicWall,
+  Amazon Linux, Fedora, vCenter, NetScaler, Sophos), legacy-Unix/edge/IoT
+  (Solaris, AIX, Gentoo, OPNsense, VyOS, OpenWrt, Arista, Check Point, iDRAC,
+  iLO, Raspberry Pi, Huawei VRP, Zyxel, DrayTek, Grandstream) and OT/ICS
+  (Triconex/HIMA safety, Yokogawa/Emerson DCS, GE/Rockwell/B&R PLCs, SEL relay,
+  SMA inverter, Bachmann) → **142 archetypes**; forty new `archeservice` role
+  bundles → **60 roles**; forty new Lua dynamic-response scripts (data-store
+  dashboards + the round-four ICS web UIs: Ignition/WinCC/CODESYS/Niagara/SEL/
+  SMA/Moxa/BMS/PI/HMI) → **52 scripts**. New [`docs/internals.md`](docs/internals.md)
   documents the runtime data flow end to end.
 - **Userspace TCP stack.** The honeynet TUN adapter now embeds a userspace
   TCP/IPv4 engine (`internal/tcpstack`): a SYN to a virtual host's
@@ -898,7 +901,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 132; see [`docs/archetypes.md`](docs/archetypes.md). |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 142; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |

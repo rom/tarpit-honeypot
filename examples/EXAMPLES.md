@@ -41,6 +41,9 @@ is the "everything turned on" reference.
 | IT edge | [`edge-corp-network.yaml`](edge-corp-network.yaml) | Corporate edge: IT honeypots + AD honeynet + SIEM. |
 | Minimal | [`raspberry-pi-zero.yaml`](raspberry-pi-zero.yaml) | Tripwire-only embedded sensor (no UI/SQLite). |
 | OT (flat) | [`ot-substation.yaml`](ot-substation.yaml) | Flat ICS segment: Modbus/S7/IEC-104/BACnet. |
+| OT safety/DCS | [`ot-safety-dcs.yaml`](ot-safety-dcs.yaml) | Process plant: Triconex/HIMA SIS + Yokogawa/Emerson DCS + Ignition/WinCC/CODESYS decoys (plc_program_download / ot_kill_chain). |
+| OT power grid | [`ot-power-grid.yaml`](ot-power-grid.yaml) | Substation: SEL relays (IEC 61850 MMS/DNP3/IEC-104) + SMA/GE + relay/historian/inverter web decoys. |
+| OT discrete mfg | [`ot-discrete-mfg.yaml`](ot-discrete-mfg.yaml) | Factory cell / fab: fins_tcp/secs_gem/pcom/wdbrpc + Omron/Rockwell/Unitronics roles + HMI decoys. |
 | SIEM | [`siem-integration.yaml`](siem-integration.yaml) | Same events to JSON/CEF/LEEF/OCSF sinks. |
 
 ---
@@ -359,6 +362,39 @@ SCADA/batch app servers, and a file server (`smb` + `ftp`).
 **Adapt:** the historian is the highest-value target — keep its
 `severity: critical`. The `allowlist` treats intra-tier traffic as expected;
 tighten or remove it per your segmentation.
+
+### OT process plant — safety + DCS
+
+[`ot-safety-dcs.yaml`](ot-safety-dcs.yaml)
+
+The highest-consequence tier: **Triconex** and **HIMA** safety-instrumented
+systems and a **Yokogawa / Emerson** DCS, with `safetyplc` / `plccontroller` /
+`scadahmi` / `historian` role bundles and Lua decoys for the **Ignition**,
+**WinCC** and **CODESYS WebVisu** consoles. Exercises the `profinet` handler
+and the `plc_program_download`, `ics_mode_change` and `ot_kill_chain`
+correlators — the program-download / change-operating-mode TTPs of the
+highest-impact ICS attacks.
+
+### OT power grid — substation
+
+[`ot-power-grid.yaml`](ot-power-grid.yaml)
+
+The grid-protection tier: **Schweitzer (SEL)** protection relays speaking
+**IEC 61850 MMS / DNP3 / IEC 60870-5-104**, a process historian and
+distributed **SMA** solar inverters, with relay / historian / inverter web
+decoys. Showcases the round-four power archetypes (SEL-751, SMA, GE
+PACSystems) with `ot_kill_chain` + `ics_mode_change` on.
+
+### OT discrete manufacturing — factory cell / fab
+
+[`ot-discrete-mfg.yaml`](ot-discrete-mfg.yaml)
+
+The factory floor: directly exposes the round-four OT handlers — **`fins_tcp`**
+(Omron), **`secs_gem`** (SECS/GEM semiconductor equipment), **`pcom`**
+(Unitronics, the water-utility PLC) and **`wdbrpc`** (VxWorks WDB) — alongside
+the `omronplc` / `semiconductorfab` / `unitronicsplc` / `vxworksdevice` role
+bundles and HMI web decoys, with the OT program-download / mode-change /
+kill-chain correlators on.
 
 ### Edge devices — MikroTik & Teltonika
 

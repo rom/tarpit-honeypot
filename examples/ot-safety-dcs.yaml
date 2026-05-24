@@ -1,0 +1,84 @@
+# Process plant: safety + DCS tier.
+#
+# The highest-consequence corner of an OT estate — the safety-instrumented
+# systems (Triconex / HIMA) and the distributed control system (Yokogawa /
+# Emerson) that run the physical process. Combines `archeservices:` role
+# bundles (safetyplc, plccontroller, scadahmi, historian) with `lua` decoys for
+# the exposed SCADA/HMI consoles attackers find (Ignition, WinCC, CODESYS
+# WebVisu) and a honeynet of the round-four OT archetypes. Exercises the
+# profinet handler (via plccontroller) and the plc_program_download /
+# ics_mode_change / ot_kill_chain correlators.
+#
+#   tarpit-honeypot validate-config -c examples/ot-safety-dcs.yaml
+sensor:
+  name: ot-safety-dcs-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  # Enrichment — canonical paths (run-safe: missing files are skipped).
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  archetype: triconex-tricon
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# OT role bundles bound to dedicated loopback IPs (overlapping control ports
+# don't collide); point at routable IPs for a real deployment.
+archeservices:
+  - { id: sis,    role: safetyplc,     archetype: triconex-tricon,  bind: 127.0.10.1, severity: critical }
+  - { id: plc,    role: plccontroller, archetype: rockwell-micrologix, bind: 127.0.10.2, severity: high }
+  - { id: hmi,    role: scadahmi,      archetype: yokogawa-centum,  bind: 127.0.10.3, severity: high }
+  - { id: histn,  role: historian,     archetype: emerson-deltav,   bind: 127.0.10.4, severity: high }
+
+# Exposed SCADA / HMI consoles via Lua decoys.
+listeners:
+  - { id: ignition,  proto: tcp, bind: 0.0.0.0:8088, mode: banner, handler: lua, script: configs/scripts/ignition.lua,    severity: critical, capture: true }
+  - { id: wincc,     proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/wincc.lua,       severity: high,     capture: true }
+  - { id: codesys,   proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/codesys-web.lua, severity: high,     capture: true }
+
+honeynets:
+  - id: plant-floor
+    cidr: 10.100.0.0/16
+    gateway: 10.100.0.1
+    domain: plant.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.100.0.10, hostname: sis-tricon,  os: embedded, archetype: triconex-tricon, services: [ {port: 502, handler: modbus}, {port: 80, handler: http} ] }
+      - { ip: 10.100.0.11, hostname: sis-himax,   os: embedded, archetype: hima-himax,      services: [ {port: 502, handler: modbus}, {port: 80, handler: http} ] }
+      - { ip: 10.100.0.20, hostname: dcs-centum,  os: embedded, archetype: yokogawa-centum, services: [ {port: 80, handler: http}, {port: 502, handler: modbus} ] }
+      - { ip: 10.100.0.21, hostname: dcs-deltav,  os: embedded, archetype: emerson-deltav,  services: [ {port: 44818, handler: ethernetip}, {port: 80, handler: http} ] }
+
+url_canaries:
+  - { id: sis-bypass-key, path: /system/safety/override, severity: critical }
+
+correlate:
+  port_scan:            { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  ot_recon:             { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  ics_control:          { enabled: true, attempts: 2, window: 5m, severity: critical }
+  plc_program_download: { enabled: true, events: 1, window: 10m, severity: critical }
+  ics_mode_change:      { enabled: true, events: 1, window: 10m, severity: critical }
+  ot_kill_chain:        { enabled: true, window: 10m, severity: critical }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+
+routes:
+  - { match: { severity: ">=low" }, channels: [jsonlog, sqlite, stdout] }

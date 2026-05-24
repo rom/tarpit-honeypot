@@ -1,0 +1,81 @@
+# Electrical substation / power-grid edge.
+#
+# The grid-protection tier: Schweitzer (SEL) protection relays speaking IEC
+# 61850 MMS / DNP3 / IEC 60870-5-104, a process historian, and distributed
+# solar inverters. Combines the `substation` + `historian` role bundles with
+# `lua` decoys for the relay and inverter web UIs and a honeynet of the round-
+# four power archetypes (SEL-751, SMA, GE). Exercises the mms / dnp3 / iec104
+# handlers and the ot_kill_chain + ics_mode_change correlators.
+#
+#   tarpit-honeypot validate-config -c examples/ot-power-grid.yaml
+sensor:
+  name: ot-power-grid-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  archetype: sel-751
+  vuln_emulation: true
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+archeservices:
+  - { id: bay,   role: substation, archetype: sel-751,        bind: 127.0.11.1, severity: critical }
+  - { id: histn, role: historian,  archetype: ge-pacsystems,  bind: 127.0.11.2, severity: high }
+
+listeners:
+  - { id: sel-web,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/sel-relay-web.lua, severity: high, capture: true }
+  - { id: hist-web,  proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/historian-web.lua, severity: high, capture: true }
+  - { id: solar-web, proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/solar-web.lua,     severity: medium, capture: true }
+
+honeynets:
+  - id: substation
+    cidr: 10.110.0.0/16
+    gateway: 10.110.0.1
+    domain: grid.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - { ip: 10.110.0.10, hostname: relay-feeder-1, os: embedded, archetype: sel-751,       services: [ {port: 102, handler: mms}, {port: 20000, handler: dnp3}, {port: 23, handler: telnet} ] }
+      - { ip: 10.110.0.11, hostname: relay-feeder-2, os: embedded, archetype: sel-751,       services: [ {port: 102, handler: mms}, {port: 2404, handler: iec104} ] }
+      - { ip: 10.110.0.20, hostname: pv-inverter-1,  os: embedded, archetype: sma-inverter,  services: [ {port: 80, handler: http}, {port: 502, handler: modbus} ] }
+      - { ip: 10.110.0.30, hostname: rtu-pacsystems, os: embedded, archetype: ge-pacsystems, services: [ {port: 18245, handler: ge_srtp}, {port: 502, handler: modbus} ] }
+
+url_canaries:
+  - { id: relay-settings-export, path: /settings/export, severity: high }
+
+correlate:
+  port_scan:         { enabled: true, distinct_ports: 4,  window: 30s,  severity: high }
+  host_sweep:        { enabled: true, distinct_hosts: 3,  window: 60s,  severity: high }
+  ot_recon:          { enabled: true, distinct_services: 3, window: 5m, severity: high }
+  ics_mode_change:   { enabled: true, events: 1, window: 10m, severity: critical }
+  ot_kill_chain:     { enabled: true, window: 10m, severity: critical }
+  honeytoken_spread: { enabled: true, distinct_sources: 3, window: 1h, severity: high }
+
+devices:
+  enabled: true
+  learn: true
+  severity: medium
+
+interaction:
+  mode: low
+
+channels:
+  - { id: stdout,  type: stdout,  min_severity: low }
+  - { id: jsonlog, type: jsonlog, min_severity: low }
+  - { id: sqlite,  type: sqlite,  min_severity: low }
+  - id: nms
+    type: syslog
+    network: udp
+    address: nms.example.internal:514
+    tag: grid-tarpit
+    format: cef
+    min_severity: medium
+
+routes:
+  - { match: { severity: ">=high" }, channels: [nms, jsonlog, sqlite, stdout] }
+  - { match: { severity: ">=low" },  channels: [jsonlog, sqlite, stdout] }
