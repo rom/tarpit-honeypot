@@ -14,6 +14,7 @@ This directory has these reference documents:
 | [`attribution.md`](attribution.md) | In depth: the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings stamped on every event, plus the scanner-detection layers and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H). |
 | [`hardening.md`](hardening.md) | The layered self-confinement model — privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd. |
 | [`INTEGRATIONS.md`](INTEGRATIONS.md) | When wiring the sensor into SIEMs, IoT pipelines, pagers, K8s, launchd, ATT&CK pivots. Channel-by-channel cookbook + protocol handler catalog. |
+| [`testharness.md`](testharness.md) | The `tarpit-testharness` QA/reliability harness that exercises the sensor — network (managed/external) or in-process module backends; unit/fuzz/emulate/misimpl/scan/fingerprint categories; selection, retries+restart, rounds/time bounds, reports, and the results database. |
 | [`tarpit-honeypot.1`](tarpit-honeypot.1) | Man page. Render with `man ./docs/tarpit-honeypot.1`; install to `/usr/share/man/man1/`. |
 
 The annotated example config at [`../configs/tarpit-honeypot.example.yaml`](../configs/tarpit-honeypot.example.yaml) is the canonical source of truth for default values. The top-level [`../README.md`](../README.md) is the project overview, including platform support matrix and per-version status block.
