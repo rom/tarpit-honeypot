@@ -1,0 +1,40 @@
+# tarpit-honeypot — TARGET sensor for the test harness (tarpit-testharness).
+#
+# A small, loopback-only sensor the harness spawns and drives. High ports, so it
+# needs no privileges; the web UI/API is on so the harness can verify detection
+# (verify.url -> /api/events). Pair it with a harness config whose endpoints
+# match these ports and whose spawn.config points here — see
+# configs/harness.example.yaml and docs/testharness.md.
+#
+#   tarpit-honeypot validate-config -c configs/harness-target.yaml
+#   tarpit-testharness run -c configs/harness.example.yaml --progress
+
+sensor:
+  name: harness-target
+  data_dir: ./var/harness     # created on first run
+  archetype: debian 12        # one coherent OS identity across banner-aware handlers
+
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088        # serves /healthz (readiness) + /api/events (verify)
+
+listeners:
+  - { id: ssh,    proto: tcp, bind: 127.0.0.1:2222, mode: banner, handler: ssh,    severity: high }
+  - { id: http,   proto: tcp, bind: 127.0.0.1:8000, mode: banner, handler: http,   severity: high }
+  - { id: modbus, proto: tcp, bind: 127.0.0.1:5020, mode: banner, handler: modbus, severity: high }
+
+  # Catch-all so port scans see more than the modelled ports.
+  - { id: auto, proto: tcp, bind: 127.0.0.1:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+
+channels:
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [sqlite] }

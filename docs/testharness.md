@@ -42,6 +42,15 @@ tarpit-testharness run     --target 127.0.0.1 --endpoint ssh=tcp:2222:ssh --case
 tarpit-testharness history -db harness-results.db
 ```
 
+The repo ships a ready-to-run pair: [`configs/harness.example.yaml`](../configs/harness.example.yaml)
+(the harness config — spawns the sensor and verifies detection) and
+[`configs/harness-target.yaml`](../configs/harness-target.yaml) (the small
+loopback sensor it drives). After `make build` + building the harness:
+
+```bash
+bin/tarpit-testharness run -c configs/harness.example.yaml --progress
+```
+
 Quickstart against a handler in-process (no sensor process, no privileges):
 
 ```bash

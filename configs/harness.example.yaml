@@ -1,0 +1,54 @@
+# tarpit-testharness — example harness config.
+#
+# Spawns the sensor (configs/harness-target.yaml), drives it on the wire, and
+# verifies detection via its web API. Everything here is overridable on the CLI.
+# See docs/testharness.md for the full reference.
+#
+#   go build -o bin/tarpit-testharness ./cmd/tarpit-testharness
+#   make build                       # builds bin/tarpit-honeypot (the target)
+#   bin/tarpit-testharness run -c configs/harness.example.yaml --progress
+#
+# Prefer not to spawn? Delete the `spawn:` block, start the target yourself
+# (tarpit-honeypot run -c configs/harness-target.yaml), and the harness will
+# dial the external instance instead.
+
+mode: network
+host: 127.0.0.1
+
+# Spawn + manage the target sensor (omit `binary` to test an external one).
+spawn:
+  binary: ./bin/tarpit-honeypot
+  config: ./configs/harness-target.yaml
+  ready_timeout: 15s
+  health_url: http://127.0.0.1:8088/healthz
+
+# Must match the ports in configs/harness-target.yaml.
+endpoints:
+  - { label: ssh,    proto: tcp, port: 2222, handler: ssh }
+  - { label: http,   proto: tcp, port: 8000, handler: http }
+  - { label: modbus, proto: tcp, port: 5020, handler: modbus }
+
+# Scope + budget (empty = all cases / all categories).
+categories: []
+cases: []
+rounds: 1
+duration: 0            # wall-clock bound, e.g. 30m (0 = run to completion)
+concurrency: 1
+
+# Resilience.
+retries: 1
+timeout: 3s
+
+# Fuzzing.
+fuzz_iterations: 64
+seed: 0                # 0 => the built-in default seed (still reproducible)
+
+# Confirm the honeypot actually recorded the misimpl/scan/fingerprint activity.
+verify:
+  url: http://127.0.0.1:8088
+
+# Output.
+progress: true
+reports:
+  - { format: text, path: "-" }
+db: ./var/harness-results.db
