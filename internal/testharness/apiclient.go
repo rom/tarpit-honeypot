@@ -76,10 +76,30 @@ func (c *APIClient) Detected(ctx context.Context, match func(apiEvent) bool) (ma
 	return false, true
 }
 
+// eventAnomalies returns an event's anomaly markers from both the first-class
+// Anomalies field and meta["anomalies"]. The sensor's stored/queried events
+// carry them under meta (the SQLite store does not persist the top-level field),
+// while live events populate the field — so checking both is robust either way.
+// JSON-decoded meta slices arrive as []any, so handle that too.
+func eventAnomalies(e apiEvent) []string {
+	out := append([]string(nil), e.Anomalies...)
+	switch v := e.Meta["anomalies"].(type) {
+	case []string:
+		out = append(out, v...)
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
 // MatchAnomaly matches an event carrying a specific anomaly marker.
 func MatchAnomaly(marker string) func(apiEvent) bool {
 	return func(e apiEvent) bool {
-		for _, a := range e.Anomalies {
+		for _, a := range eventAnomalies(e) {
 			if a == marker {
 				return true
 			}
@@ -105,7 +125,14 @@ func MatchTool(tool string) func(apiEvent) bool {
 				}
 			}
 		}
-		for _, a := range e.Anomalies {
+		if tl, ok := e.Meta["tools"].([]string); ok {
+			for _, s := range tl {
+				if strings.Contains(strings.ToLower(s), tool) {
+					return true
+				}
+			}
+		}
+		for _, a := range eventAnomalies(e) {
 			la := strings.ToLower(a)
 			if strings.Contains(la, tool) || la == "vulnerability-scanner" || strings.HasPrefix(la, "tool:") {
 				return true

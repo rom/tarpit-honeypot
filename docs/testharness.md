@@ -42,6 +42,15 @@ tarpit-testharness run     --target 127.0.0.1 --endpoint ssh=tcp:2222:ssh --case
 tarpit-testharness history -db harness-results.db
 ```
 
+The repo ships a ready-to-run pair: [`configs/harness.example.yaml`](../configs/harness.example.yaml)
+(the harness config — spawns the sensor and verifies detection) and
+[`configs/harness-target.yaml`](../configs/harness-target.yaml) (the small
+loopback sensor it drives). After `make build` + building the harness:
+
+```bash
+bin/tarpit-testharness run -c configs/harness.example.yaml --progress
+```
+
 Quickstart against a handler in-process (no sensor process, no privileges):
 
 ```bash
@@ -170,7 +179,7 @@ reproducible and diff-able across builds.
 | `fuzz-smart` | `fuzz-smart/<label>` | all | Protocol-**aware** malformed input (oversized fields, bad lengths, illegal framing) mutated around known-bad shapes. Known protocols only. |
 | `scan` | `scan/portscan-seq`, `scan/portscan-rand`, `scan/host-sweep`, `scan/ping-sweep`, `scan/arp-sweep` | network | Sequential + randomized TCP port scans; TCP host sweep, ICMP ping sweep, ARP sweep across `sweep_cidr`. |
 | `fingerprint` | `fingerprint/http-<tool>`, `fingerprint/ssh-scanner`, `fingerprint/nmap-sV` | network | Emit traffic mimicking a known scanner/tool and confirm the client-classification layer detects it. |
-| `reliability` | `reliability/soak/<label>` | all | 50 rapid sequential sessions; the endpoint must stay responsive (no leak/wedge), ≥ 90 % healthy. |
+| `reliability` | `reliability/soak/<label>` | all | 50 rapid connect/close cycles; the endpoint must stay responsive (no fd leak / accept-loop wedge), ≥ 90 % healthy, with liveness re-checked along the way. |
 
 The `fingerprint` HTTP cases cover nmap, nessus, openvas, nikto, nuclei, sqlmap,
 masscan, metasploit, zgrab, and wpscan (by User-Agent). If the real `nmap`
@@ -192,10 +201,10 @@ harness has a spec for:
 | `http` | no | yes | oversized-uri, huge-content-length, many-headers, te-cl-smuggle | `http-method-unknown`, `http-request-line-non-printable` |
 | `https` | no | yes | — | — |
 | `ssh` | yes | yes | overlong-id, non-printable-id | `ssh-id-not-ssh`, `ssh-id-non-printable` |
-| `ftp` | yes | yes | — | — |
-| `smtp_recv` | yes | yes | — | — |
-| `telnet` | yes | yes | — | — |
-| `redis` | no | yes | giant-multibulk, giant-bulklen | — |
+| `ftp` | yes | yes | overlong-user, binary-command, traversal-arg | — |
+| `smtp_recv` | yes | yes | overlong-helo, binary-command, rcpt-flood | — |
+| `telnet` | yes | yes | iac-do-storm, overlong-line, binary-creds | — |
+| `redis` | no | yes | giant-multibulk, giant-bulklen, inline-overlong | — |
 | `sip_tcp` | no | yes | no-headers, giant-cseq | `sip-invite-attempt` |
 | `modbus` | no | yes | bad-length, bad-function | `modbus-write-attempt` |
 

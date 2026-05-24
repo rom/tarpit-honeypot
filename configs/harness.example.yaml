@@ -1,0 +1,71 @@
+# tarpit-testharness — example harness config.
+#
+# Spawns the sensor (configs/harness-target.yaml), drives it on the wire, and
+# verifies detection via its web API. Everything here is overridable on the CLI.
+# See docs/testharness.md for the full reference.
+#
+#   go build -o bin/tarpit-testharness ./cmd/tarpit-testharness
+#   make build                       # builds bin/tarpit-honeypot (the target)
+#   bin/tarpit-testharness run -c configs/harness.example.yaml --progress
+#
+# Prefer not to spawn? Delete the `spawn:` block, start the target yourself
+# (tarpit-honeypot run -c configs/harness-target.yaml), and the harness will
+# dial the external instance instead.
+
+mode: network
+host: 127.0.0.1
+
+# Spawn + manage the target sensor (omit `binary` to test an external one).
+spawn:
+  binary: ./bin/tarpit-honeypot
+  config: ./configs/harness-target.yaml
+  ready_timeout: 15s
+  health_url: http://127.0.0.1:8088/healthz
+
+# Must match the ports in configs/harness-target.yaml. Each endpoint with a
+# known handler gets unit + emulate + dumb/smart fuzz + misimpl + reliability
+# coverage; scan + fingerprint cases run once for the whole target.
+endpoints:
+  - { label: ssh,    proto: tcp, port: 2222, handler: ssh }
+  - { label: http,   proto: tcp, port: 8000, handler: http }
+  - { label: ftp,    proto: tcp, port: 2121, handler: ftp }
+  - { label: telnet, proto: tcp, port: 2323, handler: telnet }
+  - { label: smtp,   proto: tcp, port: 2525, handler: smtp_recv }
+  - { label: redis,  proto: tcp, port: 6390, handler: redis }
+  - { label: modbus, proto: tcp, port: 5020, handler: modbus }
+  - { label: sip,    proto: tcp, port: 5060, handler: sip_tcp }
+
+# Scope + budget (empty = all cases / all categories).
+categories: []
+cases: []
+rounds: 1
+duration: 0            # wall-clock bound, e.g. 30m (0 = run to completion)
+concurrency: 6         # run cases in parallel (1 = deterministic ordering)
+
+# Resilience.
+retries: 1
+retries_by_case:       # spend more attempts on the flakier fuzz cases
+  fuzz-smart/http: 2
+  fuzz-dumb/http: 2
+timeout: 1s            # per-exchange I/O bound (loopback is fast; fuzz caps lower)
+
+# Fuzzing. Crank these up (and `rounds` / `duration`) for a deeper soak.
+fuzz_iterations: 32
+seed: 0                # 0 => the built-in default seed (still reproducible)
+
+# Port scans probe these; empty would derive endpoint ports + a common set.
+scan_ports: [21, 22, 23, 25, 80, 443, 2121, 2222, 2323, 2525, 5020, 5060, 6390, 8000, 9000]
+# sweep_cidr: 192.168.56.0/28   # host/ping/ARP sweeps (needs a real network)
+
+# Confirm the honeypot actually recorded the misimpl/scan/fingerprint activity.
+verify:
+  url: http://127.0.0.1:8088
+
+# Output.
+progress: true
+reports:
+  - { format: text,  path: "-" }
+  - { format: json,  path: ./var/harness.json }
+  - { format: junit, path: ./var/harness.xml }
+  - { format: md,    path: ./var/harness.md }
+db: ./var/harness-results.db

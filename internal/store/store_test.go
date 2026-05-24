@@ -2,11 +2,94 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
+
+func TestAnomaliesRoundTrip(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	e := mkEvent("x", "9.9.9.9", "listener:ssh", event.SeverityHigh, time.Now().UTC())
+	e.Anomalies = []string{"ssh-id-not-ssh", "ssh-id-non-printable"}
+	if err := s.Insert(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Anomalies) != 2 || got.Anomalies[0] != "ssh-id-not-ssh" {
+		t.Errorf("anomalies lost in Get round trip: %v", got.Anomalies)
+	}
+	rows, err := s.Query(ctx, Filter{Since: time.Now().Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || len(rows[0].Anomalies) != 2 {
+		t.Errorf("anomalies lost in Query round trip: %+v", rows)
+	}
+}
+
+func TestMigrateAddsAnomaliesColumn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.db")
+	// Create a DB with the pre-anomalies schema (no anomalies column).
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE events (
+  id TEXT PRIMARY KEY, time INTEGER NOT NULL, sensor TEXT, rule_id TEXT,
+  severity INTEGER, src_ip TEXT, src_port INTEGER, dst_ip TEXT, dst_port INTEGER,
+  proto TEXT, handler TEXT, banner_sent TEXT, payload_b64 TEXT, payload_len INTEGER,
+  meta_json TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	// A realistic old row: the pre-migration Insert always wrote every column
+	// (empty strings, not NULL), so mirror that.
+	if _, err := db.Exec(`INSERT INTO events
+(id, time, sensor, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
+ proto, handler, banner_sent, payload_b64, payload_len, meta_json)
+VALUES ('old', 1, 's', 'r', 1, '', 0, '', 0, 'tcp', '', '', '', 0, '')`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	// Opening via the store must migrate (add the column) without error.
+	s, err := Open(dir, 0)
+	if err != nil {
+		t.Fatalf("open/migrate old db: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	old, err := s.Get(ctx, "old")
+	if err != nil {
+		t.Fatalf("read old row after migration: %v", err)
+	}
+	if len(old.Anomalies) != 0 {
+		t.Errorf("old row should have no anomalies, got %v", old.Anomalies)
+	}
+	e := mkEvent("new", "1.2.3.4", "listener:http", event.SeverityHigh, time.Now().UTC())
+	e.Anomalies = []string{"http-method-unknown"}
+	if err := s.Insert(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Anomalies) != 1 || got.Anomalies[0] != "http-method-unknown" {
+		t.Errorf("post-migration anomalies round trip failed: %v", got.Anomalies)
+	}
+}
 
 func mkEvent(id, srcIP, rule string, sev event.Severity, t time.Time) *event.Event {
 	return &event.Event{

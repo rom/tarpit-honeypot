@@ -2,6 +2,7 @@ package testharness
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -52,8 +53,9 @@ func init() {
 		return out
 	})
 
-	// reliability: rapid sequential connections to confirm the endpoint stays
-	// responsive (no leak / wedge under repeated short-lived sessions).
+	// reliability: rapid open/close connection churn to confirm the endpoint
+	// stays responsive (no fd leak / accept-loop wedge under repeated
+	// short-lived sessions). Liveness is re-checked periodically and at the end.
 	RegisterGen(CatReliability, func(cfg *Config) []Case {
 		var out []Case
 		for _, e := range cfg.Endpoints {
@@ -63,28 +65,26 @@ func init() {
 				Title: "soak: " + e.Label,
 				Fn: func(ctx context.Context, r *Run) (Status, string, error) {
 					ep, _ := r.Target.Endpoint(e.Label)
-					spec, known := specFor(ep)
-					var probeBytes []byte
-					if known && !spec.ServerFirst {
-						probeBytes = spec.Probe
-					}
 					const rounds = 50
 					ok := 0
 					for i := 0; i < rounds; i++ {
 						if ctx.Err() != nil {
 							break
 						}
-						if resp, err := probe(ctx, r.Target, ep, probeBytes); err == nil && len(resp) >= 0 {
+						if endpointResponds(ctx, r.Target, ep) {
 							ok++
 						}
-						if !r.Target.Alive(ctx) {
-							return StatusCrash, "target died during soak", nil
+						if i%10 == 9 && !r.Target.Alive(ctx) {
+							return StatusCrash, fmt.Sprintf("target died during soak (after %d/%d connections)", i+1, rounds), nil
 						}
 					}
-					if ok < rounds*9/10 {
-						return StatusFail, "only " + itoa(ok) + "/" + itoa(rounds) + " soak connections succeeded", nil
+					if !r.Target.Alive(ctx) {
+						return StatusCrash, "target unresponsive after soak", nil
 					}
-					return StatusPass, itoa(ok) + "/" + itoa(rounds) + " connections healthy", nil
+					if ok < rounds*9/10 {
+						return StatusFail, itoa(ok) + "/" + itoa(rounds) + " soak connections succeeded", nil
+					}
+					return StatusPass, itoa(ok) + "/" + itoa(rounds) + " rapid connections healthy", nil
 				},
 			})
 		}

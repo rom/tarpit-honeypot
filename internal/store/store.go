@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS events (
   banner_sent TEXT,
   payload_b64 TEXT,
   payload_len INTEGER,
-  meta_json TEXT
+  meta_json TEXT,
+  anomalies TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
@@ -70,6 +71,10 @@ func Open(dataDir string, capMB int) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("store: schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	// The DB holds captured payloads, source IPs, and harvested
 	// credentials — restrict it (and its WAL/SHM siblings, created by the
 	// schema write above) to owner-only. Best-effort: a chmod failure
@@ -78,6 +83,43 @@ func Open(dataDir string, capMB int) (*Store, error) {
 		_ = os.Chmod(p, 0o600)
 	}
 	return &Store{db: db, path: path, capMB: capMB}, nil
+}
+
+// migrate applies additive schema changes to a database created by an earlier
+// release. ADD COLUMN is cheap and leaves the new column NULL for old rows.
+func migrate(db *sql.DB) error {
+	has, err := hasColumn(db, "events", "anomalies")
+	if err != nil {
+		return fmt.Errorf("store: inspect schema: %w", err)
+	}
+	if !has {
+		if _, err := db.Exec(`ALTER TABLE events ADD COLUMN anomalies TEXT`); err != nil {
+			return fmt.Errorf("store: add anomalies column: %w", err)
+		}
+	}
+	return nil
+}
+
+func hasColumn(db *sql.DB, table, col string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid, notnull, pk int
+			name, ctype      string
+			dflt             any
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == col {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -99,15 +141,21 @@ func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
 			metaJSON = string(b)
 		}
 	}
+	anomaliesJSON := ""
+	if len(ev.Anomalies) > 0 {
+		if b, err := json.Marshal(ev.Anomalies); err == nil {
+			anomaliesJSON = string(b)
+		}
+	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT OR REPLACE INTO events
 (id, time, sensor, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
- proto, handler, banner_sent, payload_b64, payload_len, meta_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
-		metaJSON,
+		metaJSON, anomaliesJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("store insert: %w", err)
@@ -159,7 +207,7 @@ type Filter struct {
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	q := `SELECT id, time, sensor, rule_id, severity, src_ip, src_port,
                 dst_ip, dst_port, proto, handler, banner_sent,
-                payload_b64, payload_len, meta_json
+                payload_b64, payload_len, meta_json, anomalies
           FROM events WHERE 1=1`
 	var args []any
 	if !f.Since.IsZero() {
@@ -232,7 +280,7 @@ func (s *Store) Get(ctx context.Context, id string) (*event.Event, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, time, sensor, rule_id, severity, src_ip, src_port,
        dst_ip, dst_port, proto, handler, banner_sent,
-       payload_b64, payload_len, meta_json
+       payload_b64, payload_len, meta_json, anomalies
 FROM events WHERE id = ?`, id)
 	return scanRow(row)
 }
@@ -244,12 +292,13 @@ type rowScanner interface {
 func scanRow(r rowScanner) (*event.Event, error) {
 	var (
 		id, sensor, ruleID, srcIP, dstIP, proto, handler, banner, payloadB64, metaJSON string
+		anomaliesJSON                                                                  sql.NullString
 		timeNS                                                                         int64
 		sev, srcPort, dstPort, payloadLen                                              int
 	)
 	if err := r.Scan(&id, &timeNS, &sensor, &ruleID, &sev,
 		&srcIP, &srcPort, &dstIP, &dstPort,
-		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON); err != nil {
+		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON, &anomaliesJSON); err != nil {
 		return nil, err
 	}
 	ev := &event.Event{
@@ -268,6 +317,9 @@ func scanRow(r rowScanner) (*event.Event, error) {
 	}
 	if metaJSON != "" {
 		_ = json.Unmarshal([]byte(metaJSON), &ev.Meta)
+	}
+	if anomaliesJSON.Valid && anomaliesJSON.String != "" {
+		_ = json.Unmarshal([]byte(anomaliesJSON.String), &ev.Anomalies)
 	}
 	return ev, nil
 }
