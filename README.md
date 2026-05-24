@@ -7,7 +7,7 @@ every command an attacker types, a **userspace TCP stack** that lets
 honeynet decoys complete fingerprint-shaped handshakes (and capture
 malformed/illegal packets) with no socket bound per host, MITRE ATT&CK /
 D3FEND-tagged events, cross-protocol attack-storyline correlation,
-protocol-anomaly + **fuzzing / DoS** detection, two dozen in-sensor
+protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
 correlators, GeoIP / ASN / threat-intel / Tor / MAC-vendor enrichment,
 file / URL / DNS canary tokens, per-event pcap capture, hostile-input
 hardening + output sanitization, and pluggable outbound alerting.
@@ -300,9 +300,11 @@ rationale covering the current implementation.
   Hikvision, plus ICS advisories for Siemens S7 and Rockwell Logix). SIEMs
   pivot on these IDs directly. Each `cve:<id>` event also carries the
   **CWE** weakness class, the affected-product **CPE 2.3**, and an **EPSS**
-  exploit-probability snapshot. See [`docs/attribution.md`](docs/attribution.md)
-  for the full ATT&CK / D3FEND / CVE / CWE / CPE / EPSS reference plus the
-  scanner-detection and client-classifier capabilities.
+  exploit-probability snapshot. A named **CWE catalog** maps every referenced
+  weakness class to its title (`tarpit-honeypot list-cves --cwe`). See
+  [`docs/attribution.md`](docs/attribution.md) for the full ATT&CK / D3FEND /
+  CVE / CWE / CPE / EPSS reference plus the scanner-detection and
+  client-classifier capabilities.
 - **Attack-storyline correlator** (`storyline:multi_stage`): fires
   when a single source IP touches 3+ distinct ATT&CK tactics inside
   a 30-minute window. The emitted event carries the kill-chain-
@@ -378,7 +380,11 @@ rationale covering the current implementation.
   **traffic-counters strip** (events by transport + L2 frame counts —
   received / ARP / IPv4 / IPv6 / TCP / UDP / ICMP — when the sniffer is up)
   over events-per-hour trend + severity / top-rule / top-source CSS bar
-  charts (no JS) + a filterable, **sortable** event table with
+  charts (no JS) — progressively enhanced into **interactive SVG charts** by a
+  packaged, **dependency-free charting library** (`charts.js`: bar / pie /
+  histogram / scatter / line / stacked-area / heatmap / topology / network /
+  sankey / timeline / GeoIP source-map / session-replay / credential charts,
+  served same-origin under a strict CSP — no CDN) + a filterable, **sortable** event table with
   **case-insensitive full-text search** over rule / banner / captured meta,
   and per-event detail with a **hex view** of the captured payload. Tabs:
   **profiles** (per-source-IP attacker dossiers — see below),
@@ -387,13 +393,20 @@ rationale covering the current implementation.
   `ui.allow_device_actions` + an auth token — the only write endpoint, off
   by default),
   **topology** (the virtual networks / hosts / services, with a live
-  activity overlay), **timeline** (chronological attack view),
+  activity overlay **and a node-link honeynet topology graph**),
+  **charts** (a full analytics gallery — severity pie, events-per-hour line,
+  stacked-severity area, top source/rule/tactic/country/ASN/tool bars, threat
+  & protocol heatmaps, an account heatmap, a GeoIP attack source map, and a
+  credential-attempt chart, all from the packaged charting library),
+  **timeline** (chronological attack view),
   **attack** (the ATT&CK matrix the sensor covers, with **clickable,
   described technique chips** showing which sources triggered each),
   **correlation** (correlator aggregates + storylines), **tunnels**
   (covert-transport / encapsulation detections), **search** (advanced
-  query), **health** (build version/commit, by-transport 24h breakdown,
-  per-name panic counts, L2 frame counters), **alerting** (how events
+  query), **health** (build version/commit, runtime — CPU count, heap
+  objects, GC pause/next-GC — by-transport 24h breakdown, per-name panic
+  counts, sink delivery, L2 frame counters, plus transport/sink/frame
+  charts), **alerting** (how events
   forward), **errors** (operational/health events), **config** (with a
   **"files in use"** table — config, enrichment, and database paths +
   present/MISSING), and **docs**. ATT&CK chips and a credential-source
@@ -548,7 +561,7 @@ overhaul.** A large post-v2.0 sprint. Highlights below; the
   enumeration, UA rotation, exploit-chain, protocol-violation,
   session-flood, C2 **beacon**, exfil, fingerprint-reuse, ICS-control,
   lateral-movement, OT-recon, data-access, malware-campaign, webshell) —
-  about two dozen in all. HTTP request-smuggling / CONNECT-proxy misuse and
+  about three dozen in all. HTTP request-smuggling / CONNECT-proxy misuse and
   behavioral HTTP (malformed/duplicate-Host headers, impossible-browser
   UA), Active Directory / Kerberos abuse (Kerberoasting, SPN/LDAP enum,
   AS-REP-roast), sensitive MSRPC binds (SAMR / LSARPC / DRSUAPI DCSync /
@@ -1383,7 +1396,7 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   markers), `session_flood`, `exfil` (bulk outbound), `fingerprint_reuse`,
   `canary_trip`, `ics_control`, `lateral_movement`, `ot_recon`,
   `data_access`, `malware_campaign`, and `webshell` — each windowed,
-  severity-configurable, and ATT&CK-tagged (~two dozen correlators in all).
+  severity-configurable, and ATT&CK-tagged (~three dozen correlators in all).
 - `scananalysis:profile` — per-source nmap fingerprint once a source
   crosses the confidence threshold. Meta: `timing_profile` (`-T0`..
   `-T5`), `distinct_ports`, `connections`, `version_scan` (`-sV`),

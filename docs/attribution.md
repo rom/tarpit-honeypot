@@ -537,6 +537,35 @@ correlation. **EPSS** is a relative exploit-likelihood prioritization hint.
 > hint, and re-baseline it from the live dataset if you depend on it
 > operationally. CWE and CPE are stable.
 
+### CWE weakness-class catalog
+
+`internal/cve.CWEName` maps every referenced CWE id to its title — the CWE
+analogue of `mitre.Describe` for ATT&CK techniques — so events, the CLI and
+the docs render "CWE-89 — SQL Injection" rather than a bare id. The catalog's
+records span **45 CWE classes**; `tarpit-honeypot list-cves --cwe`
+(`--cwe --json` for tooling) prints the full set with per-class CVE counts. The
+most common:
+
+| CWE | Weakness class | CVEs |
+|---|---|---|
+| CWE-20 | Improper Input Validation | 16 |
+| CWE-22 | Path Traversal | 14 |
+| CWE-787 | Out-of-bounds Write | 13 |
+| CWE-94 | Code Injection | 12 |
+| CWE-502 | Deserialization of Untrusted Data | 9 |
+| CWE-400 | Uncontrolled Resource Consumption | 8 |
+| CWE-78 | OS Command Injection | 8 |
+| CWE-287 | Improper Authentication | 7 |
+| CWE-288 | Authentication Bypass (Alternate Path) | 6 |
+| CWE-306 | Missing Authentication for Critical Function | 5 |
+| CWE-434 | Unrestricted Upload of Dangerous File | 4 |
+| CWE-918 | Server-Side Request Forgery (SSRF) | 4 |
+| CWE-1336 | Server-Side Template Injection (SSTI) | 3 |
+| CWE-200 | Exposure of Sensitive Information | 3 |
+| CWE-269 | Improper Privilege Management | 3 |
+
+(15 of 45 shown — run `list-cves --cwe` for the complete catalog.)
+
 **TCP/IP-stack class (`Service: "tcp"`).** Alongside the application-layer
 CVEs, the catalog carries the classic TCP/IP-stack attacks the honeynet's
 userspace stack (`internal/tcpstack`, see [`tcp-stack.md`](tcp-stack.md))

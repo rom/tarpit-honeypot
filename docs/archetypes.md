@@ -1,6 +1,6 @@
 # Archetype catalog
 
-`tarpit-honeypot` ships **99** OS / device *archetypes*. An archetype is a
+`tarpit-honeypot` ships **162** OS / device *archetypes*. An archetype is a
 coherent identity — the banners, SNMP MIB-2 identity, MAC vendor OUI, TLS
 posture, ICMP TTL, default service map, web-UI body, and advertised
 CVEs — that a real instance of a given operating system or device would
@@ -33,33 +33,157 @@ Every archetype below lists the CVEs it advertises. Run
 
 ## Catalog at a glance
 
+The full catalog (every archetype, complete and current) is below; `tarpit-honeypot list-archetypes` prints it at runtime and `list-archetypes <name>` shows one archetype's full fingerprint. The deep-dive sections that follow describe representative archetypes per family.
+
 | Archetype | Name (`sensor.archetype`) | Family | Services |
 |---|---|---|---|
-| Debian 10 (buster) | `debian-10` | debian | 0 |
-| Debian 11 (bullseye) | `debian-11` | debian | 0 |
-| Debian 12 (bookworm) | `debian-12` | debian | 0 |
-| Debian 13 (trixie) | `debian-13` | debian | 0 |
-| Debian 9 (stretch) | `debian-9` | debian | 0 |
-| Ubuntu 24.04 LTS | `ubuntu-24.04` | ubuntu | 0 |
-| Ubuntu 26.04 LTS | `ubuntu-26.04` | ubuntu | 0 |
+| 3CX Phone System | `3cx` | 3cx | 4 |
+| ABB AC500 PLC (PM573) | `abb-ac500` | abb | 6 |
+| ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
+| ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
+| Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
+| Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
+| Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
 | AlmaLinux 9 | `almalinux-9` | rhel | 1 |
+| Alpine Linux 3.20 | `alpine-3.20` | alpine | 3 |
+| Amazon Linux 2023 | `amazon-linux-2023` | amazonlinux | 3 |
+| APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
+| Arch Linux | `arch-linux` | arch | 1 |
+| Arista EOS switch | `arista-eos` | arista | 4 |
+| Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
+| AudioCodes Mediant gateway | `audiocodes` | audiocodes | 4 |
+| Avaya Aura Communication Manager | `avaya-aura` | avaya | 4 |
+| Axis network camera | `axis-camera` | axis | 2 |
+| B&R X20 (PLC) | `br-x20` | br | 4 |
+| Bachmann M1 (controller) | `bachmann-m1` | bachmann | 4 |
+| Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 4 |
+| Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
+| Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
 | CentOS 6 | `centos-6` | rhel | 0 |
 | CentOS 7 | `centos-7` | rhel | 0 |
 | CentOS 8 | `centos-8` | rhel | 0 |
 | CentOS Stream 10 | `centos-stream-10` | rhel | 0 |
+| Check Point Gaia firewall | `checkpoint-gaia` | checkpoint | 2 |
+| Cisco Catalyst 2960 (IOS 15) | `cisco-catalyst-2960` | cisco | 5 |
+| Cisco Catalyst 9300 (IOS-XE 17) | `cisco-catalyst-9300` | cisco | 5 |
+| Cisco Catalyst IE-3400 (IOS-XE 17) | `cisco-ie-3400` | cisco | 6 |
+| Cisco Industrial Ethernet 2000 (IOS 15) | `cisco-ie-2000` | cisco | 6 |
+| Cisco IR1101 (industrial router, IOS-XE) | `cisco-ir1101` | cisco | 6 |
+| Cisco UCS CIMC | `cisco-ucs-cimc` | ciscoucs | 4 |
+| Cisco Unified CM (CUCM) | `cisco-cucm` | ciscocucm | 4 |
+| Citrix NetScaler ADC | `citrix-netscaler` | citrix | 2 |
+| Debian 10 (buster) | `debian-10` | debian | 0 |
+| Debian 11 (bullseye) | `debian-11` | debian | 0 |
+| Debian 12 (bookworm) | `debian-12` | debian | 0 |
+| Debian 13 (trixie) | `debian-13` | debian | 0 |
+| Debian 9 (stretch) | `debian-9` | debian | 0 |
+| Dell iDRAC 9 (lights-out) | `dell-idrac` | dell | 2 |
+| DrayTek Vigor router | `draytek-vigor` | draytek | 2 |
+| Emerson DeltaV (DCS controller) | `emerson-deltav` | emerson | 4 |
+| Epson WorkForce Pro (MFP) | `epson-workforce` | printer | 6 |
+| F5 BIG-IP (TMOS) | `f5-bigip` | f5 | 2 |
+| Fedora 40 | `fedora-40` | fedora | 3 |
+| Fortinet FortiGate (FortiOS) | `fortigate` | fortios | 4 |
+| FreeBSD 13 | `freebsd-13` | bsd | 2 |
+| FreeBSD 14 | `freebsd-14` | bsd | 1 |
+| FreePBX (Sangoma) | `freepbx` | freepbx | 5 |
+| FreeSWITCH | `freeswitch` | freeswitch | 4 |
+| Fujitsu iRMC | `fujitsu-irmc` | fujitsu | 3 |
+| GE PACSystems RX3i (PLC) | `ge-pacsystems` | ge | 4 |
+| Gentoo Linux | `gentoo` | gentoo | 3 |
+| Grandstream UCM (VoIP PBX) | `grandstream-ucm` | grandstream | 2 |
+| Hikvision IP camera | `hikvision-camera` | hikvision | 3 |
+| HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
+| Hirschmann EAGLE20 (industrial firewall) | `hirschmann-eagle20` | hirschmann | 3 |
+| Hirschmann RS20 (Classic managed switch) | `hirschmann-rs20` | hirschmann | 4 |
+| Hirschmann RSP35 (HiOS managed switch) | `hirschmann-rsp35` | hirschmann | 5 |
+| Honeywell ControlEdge 900 (PLC/RTU) | `honeywell-controledge` | honeywell | 5 |
+| Honeywell Experion C300 (DCS controller) | `honeywell-experion` | honeywell | 3 |
+| HP LaserJet (network printer) | `hp-printer` | printer | 6 |
+| HPE iLO 5 (lights-out) | `hpe-ilo` | hp | 2 |
+| HPE Onboard Administrator | `hpe-oa` | hpeoa | 3 |
+| Huawei VRP (router/switch) | `huawei-vrp` | huawei | 3 |
+| IBM AIX 7.2 | `aix-7` | aix | 3 |
+| Juniper SRX (JunOS) | `juniper-srx` | juniper | 4 |
+| Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
+| Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
+| Lantronix SLC console server | `lantronix-slc` | lantronix | 4 |
+| Lenovo XClarity Controller (XCC) | `lenovo-xcc` | lenovo | 3 |
+| Lexmark MX622 (MFP) | `lexmark-printer` | printer | 6 |
+| macOS Sonoma 14 | `macos-sonoma` | macos | 4 |
+| MikroTik RouterOS (RB750Gr3, 6.49.10) | `mikrotik-routeros` | mikrotik | 7 |
+| Mitel MiVoice Business | `mitel-mivoice` | mitel | 3 |
+| Mitsubishi MELSEC iQ-R (R04CPU) | `mitsubishi-melsec-iq-r` | mitsubishi | 3 |
+| Moxa AWK-3131A (industrial wireless AP) | `moxa-awk-3131a` | moxa | 5 |
+| Moxa EDS-208 | `moxa-eds-208` | moxa | 3 |
+| Moxa EDS-405A (managed switch) | `moxa-eds-405a` | moxa | 4 |
+| Moxa EDS-G516E (gigabit managed switch) | `moxa-eds-g516e` | moxa | 5 |
+| Moxa MGate MB3180 (Modbus gateway) | `moxa-mgate-mb3180` | moxa | 4 |
+| Moxa NPort 5210 | `moxa-nport-5210` | moxa | 5 |
+| Moxa NPort 5650-8 (serial device server) | `moxa-nport-5650` | moxa | 6 |
+| Netgear Nighthawk router | `netgear-nighthawk` | netgear | 3 |
+| Omron NX1P2 (Sysmac) | `omron-nx1p2` | omron | 4 |
+| Omron PLC (FINS) | `omron-plc` | ics | 3 |
+| OpenBSD 7.5 | `openbsd-7.5` | bsd | 2 |
+| OpenBSD 7.6 | `openbsd-7.6` | bsd | 1 |
+| Opengear console server | `opengear-cm` | opengear | 4 |
+| OpenWrt router | `openwrt` | openwrt | 3 |
+| OPNsense firewall | `opnsense` | opnsense | 2 |
 | Oracle Linux 8 | `oracle-linux-8` | rhel | 1 |
 | Oracle Linux 9 | `oracle-linux-9` | rhel | 1 |
+| Oracle Solaris 11 | `solaris-11` | solaris | 4 |
+| Oracle/Sun ILOM | `oracle-ilom` | ilom | 3 |
+| Palo Alto PAN-OS firewall | `paloalto-panos` | paloalto | 2 |
+| pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
+| Phoenix Contact FL MGUARD (security router) | `phoenix-fl-mguard` | phoenix | 3 |
+| Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 3 |
+| Poly/Polycom VVX phone | `polycom-vvx` | polycom | 3 |
+| Proxmox VE 8 (Debian) | `proxmox-ve` | proxmox | 3 |
+| QNAP Turbo NAS (QTS) | `qnap-qts` | qnap | 5 |
+| Raritan Dominion KX (KVM) | `raritan-kx` | raritan | 4 |
+| Raspberry Pi OS (Debian) | `raspberry-pi-os` | raspbian | 2 |
 | Red Hat Enterprise Linux 10 | `rhel-10` | rhel | 0 |
 | Red Hat Enterprise Linux 8 | `rhel-8` | rhel | 0 |
 | Red Hat Enterprise Linux 9 | `rhel-9` | rhel | 0 |
+| Ribbon SBC (session border controller) | `ribbon-sbc` | ribbon | 4 |
+| Ricoh IM C3000 (MFP) | `ricoh-mfp` | printer | 6 |
+| Rockwell MicroLogix 1400 (PLC) | `rockwell-micrologix` | rockwell | 4 |
 | Rocky Linux 9 | `rocky-9` | rhel | 1 |
-| Arch Linux | `arch-linux` | arch | 1 |
-| FreeBSD 13 | `freebsd-13` | bsd | 2 |
-| FreeBSD 14 | `freebsd-14` | bsd | 1 |
-| OpenBSD 7.5 | `openbsd-7.5` | bsd | 2 |
-| OpenBSD 7.6 | `openbsd-7.6` | bsd | 1 |
-| Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
+| Schneider Modicon M340 PLC | `schneider-modicon` | ics | 4 |
+| Schneider Modicon M580 (BME P58) | `schneider-modicon-m580` | schneider | 5 |
+| Schneider Triconex Tricon (SIS) | `triconex-tricon` | triconex | 3 |
+| SEL-751 (protection relay) | `sel-751` | sel | 4 |
+| Sharp MX-3071 (MFP) | `sharp-mfp` | printer | 6 |
+| Siemens PN/PN Coupler | `siemens-pn-pn-coupler` | siemens | 3 |
+| Siemens S7-1200 PLC | `siemens-s7-1200` | siemens | 3 |
+| Siemens S7-1500 PLC | `siemens-s7-1500` | siemens | 5 |
+| Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 4 |
+| Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 3 |
+| Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 5 |
+| SMA Sunny (solar inverter) | `sma-inverter` | sma | 4 |
+| SonicWall TZ (SonicOS) | `sonicwall-tz` | sonicwall | 2 |
+| Sophos XG firewall | `sophos-xg` | sophos | 2 |
+| Supermicro BMC (IPMI/Redfish) | `supermicro-bmc` | supermicro | 4 |
+| Synology DiskStation (DSM) | `synology-dsm` | synology | 5 |
+| Teltonika RUT240 (RutOS, LTE router) | `teltonika-rut240` | teltonika | 4 |
+| Teltonika RUT955 (industrial router, GPS) | `teltonika-rut955` | teltonika | 5 |
+| Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
+| Teltonika RUTX11 (LTE Cat6 router) | `teltonika-rutx11` | teltonika | 4 |
+| Teltonika TRB140 (LTE gateway) | `teltonika-trb140` | teltonika | 4 |
+| TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
+| Ubiquiti EdgeRouter (EdgeOS) | `ubiquiti-edgerouter` | ubiquiti | 3 |
+| Ubuntu 24.04 LTS | `ubuntu-24.04` | ubuntu | 0 |
+| Ubuntu 26.04 LTS | `ubuntu-26.04` | ubuntu | 0 |
+| VMware ESXi 8.0 | `vmware-esxi` | esxi | 3 |
+| VMware vCenter Server Appliance | `vmware-vcenter` | vmware | 2 |
+| VyOS router | `vyos` | vyos | 3 |
+| WAGO 750-8212 PFC200 | `wago-750-pfc` | wago | 7 |
+| Westermo Ibex (industrial wireless) | `westermo-ibex` | westermo | 4 |
+| Westermo Lynx (WeOS managed switch) | `westermo-lynx` | westermo | 5 |
+| Westermo Merlin-4400 (cellular router) | `westermo-merlin-4400` | westermo | 4 |
+| Westermo RedFox (rugged managed switch) | `westermo-redfox` | westermo | 5 |
+| Westermo Viper (EN50155 rail switch) | `westermo-viper` | westermo | 4 |
 | Windows 10 | `windows-10` | windows | 5 |
 | Windows 11 | `windows-11` | windows | 5 |
 | Windows 7 | `windows-7` | windows | 4 |
@@ -70,70 +194,11 @@ Every archetype below lists the CVEs it advertises. Run
 | Windows Server 2016 | `windows-server-2016` | windows | 6 |
 | Windows Server 2019 | `windows-server-2019` | windows | 7 |
 | Windows Server 2022 | `windows-server-2022` | windows | 7 |
-| Cisco Catalyst 2960 (IOS 15) | `cisco-catalyst-2960` | cisco | 5 |
-| Cisco Catalyst 9300 (IOS-XE 17) | `cisco-catalyst-9300` | cisco | 5 |
-| Cisco Catalyst IE-3400 (IOS-XE 17) | `cisco-ie-3400` | cisco | 6 |
-| Cisco IR1101 (industrial router, IOS-XE) | `cisco-ir1101` | cisco | 6 |
-| Cisco Industrial Ethernet 2000 (IOS 15) | `cisco-ie-2000` | cisco | 6 |
-| MikroTik RouterOS (RB750Gr3, 6.49.10) | `mikrotik-routeros` | mikrotik | 7 |
-| Ubiquiti EdgeRouter (EdgeOS) | `ubiquiti-edgerouter` | ubiquiti | 3 |
-| pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
-| Fortinet FortiGate (FortiOS) | `fortigate` | fortios | 4 |
-| Synology DiskStation (DSM) | `synology-dsm` | synology | 5 |
-| QNAP Turbo NAS (QTS) | `qnap-qts` | qnap | 5 |
-| Hikvision IP camera | `hikvision-camera` | hikvision | 3 |
-| Axis network camera | `axis-camera` | axis | 2 |
-| Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
-| Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
-| Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
-| Epson WorkForce Pro (MFP) | `epson-workforce` | printer | 6 |
-| HP LaserJet (network printer) | `hp-printer` | printer | 6 |
-| Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
-| Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
-| Lexmark MX622 (MFP) | `lexmark-printer` | printer | 6 |
-| Ricoh IM C3000 (MFP) | `ricoh-mfp` | printer | 6 |
-| Sharp MX-3071 (MFP) | `sharp-mfp` | printer | 6 |
 | Xerox VersaLink C405 (MFP) | `xerox-versalink` | printer | 6 |
+| Yealink IP phone | `yealink-phone` | yealink | 3 |
+| Yokogawa CENTUM VP (DCS) | `yokogawa-centum` | yokogawa | 4 |
 | Zebra ZT411 (label printer) | `zebra-printer` | printer | 3 |
-| Siemens PN/PN Coupler | `siemens-pn-pn-coupler` | siemens | 3 |
-| Siemens S7-1200 PLC | `siemens-s7-1200` | siemens | 3 |
-| Siemens S7-1500 PLC | `siemens-s7-1500` | siemens | 5 |
-| Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 4 |
-| Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 3 |
-| Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 5 |
-| Moxa AWK-3131A (industrial wireless AP) | `moxa-awk-3131a` | moxa | 5 |
-| Moxa EDS-208 | `moxa-eds-208` | moxa | 3 |
-| Moxa EDS-405A (managed switch) | `moxa-eds-405a` | moxa | 4 |
-| Moxa EDS-G516E (gigabit managed switch) | `moxa-eds-g516e` | moxa | 5 |
-| Moxa MGate MB3180 (Modbus gateway) | `moxa-mgate-mb3180` | moxa | 4 |
-| Moxa NPort 5210 | `moxa-nport-5210` | moxa | 5 |
-| Moxa NPort 5650-8 (serial device server) | `moxa-nport-5650` | moxa | 6 |
-| Westermo Ibex (industrial wireless) | `westermo-ibex` | westermo | 4 |
-| Westermo Lynx (WeOS managed switch) | `westermo-lynx` | westermo | 5 |
-| Westermo Merlin-4400 (cellular router) | `westermo-merlin-4400` | westermo | 4 |
-| Westermo RedFox (rugged managed switch) | `westermo-redfox` | westermo | 5 |
-| Westermo Viper (EN50155 rail switch) | `westermo-viper` | westermo | 4 |
-| Teltonika RUT240 (RutOS, LTE router) | `teltonika-rut240` | teltonika | 4 |
-| Teltonika RUT955 (industrial router, GPS) | `teltonika-rut955` | teltonika | 5 |
-| Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
-| Teltonika RUTX11 (LTE Cat6 router) | `teltonika-rutx11` | teltonika | 4 |
-| Teltonika TRB140 (LTE gateway) | `teltonika-trb140` | teltonika | 4 |
-| Hirschmann EAGLE20 (industrial firewall) | `hirschmann-eagle20` | hirschmann | 3 |
-| Hirschmann RS20 (Classic managed switch) | `hirschmann-rs20` | hirschmann | 4 |
-| Hirschmann RSP35 (HiOS managed switch) | `hirschmann-rsp35` | hirschmann | 5 |
-| Phoenix Contact FL MGUARD (security router) | `phoenix-fl-mguard` | phoenix | 3 |
-| Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 3 |
-| Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
-| ABB AC500 PLC (PM573) | `abb-ac500` | abb | 6 |
-| ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
-| ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
-| Honeywell ControlEdge 900 (PLC/RTU) | `honeywell-controledge` | honeywell | 5 |
-| Honeywell Experion C300 (DCS controller) | `honeywell-experion` | honeywell | 3 |
-| WAGO 750-8212 PFC200 | `wago-750-pfc` | wago | 7 |
-| Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 4 |
-| Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
-| Omron PLC (FINS) | `omron-plc` | ics | 3 |
-| Schneider Modicon M340 PLC | `schneider-modicon` | ics | 4 |
+| Zyxel USG FLEX firewall | `zyxel-usg` | zyxel | 2 |
 
 ## Linux distributions
 
