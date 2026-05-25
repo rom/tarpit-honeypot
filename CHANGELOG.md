@@ -8,6 +8,27 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — interactive-shell host realism (post-login)
+- The emulated POSIX shell (ssh_interactive / telnet) now presents a believable,
+  internally-consistent host state derived deterministically from the archetype,
+  instead of the same hardcoded values on every honeypot (which fingerprinted
+  the decoy). New `internal/shell/hoststate.go`.
+- `uptime` / `w` / `who` / `last` show a stable, per-host login user, source,
+  boot time, and load average (uptime advances with the clock); `date` is
+  current; the values differ across hosts but stay consistent across commands
+  and reconnects.
+- `ifconfig` / `ip addr` / `ip link` / `ip route` / `route` / `arp` render the
+  archetype's interfaces with a per-host IP, gateway, and MAC (MAC OUI from the
+  archetype), all agreeing with each other. New `ip` subcommands + `route` /
+  `arp` / `last`.
+- `ps` is built from the archetype's default services — base procs (systemd,
+  kthreadd, journald, sshd) plus the role daemons a host of that role runs
+  (nginx / mysqld / postgres / redis / postfix / vsftpd / dockerd / ...), the
+  login shell, and ps itself.
+- `history` is a believable root command history. Two hosts now look like two
+  different machines; one host stays self-consistent. Unit-tested (realism,
+  per-host distinctness + stability, service→daemon mapping).
+
 ### Added — IOC export: STIX 2.1 / TAXII 2.1 / MISP push
 - The fleet's observed indicators (the intel store) are now exportable to
   standard threat-intel tooling. New `internal/stix` and `internal/misp`.
