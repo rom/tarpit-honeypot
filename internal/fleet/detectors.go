@@ -153,10 +153,12 @@ func (c *Correlator) observeCVELocked(ev *event.Event, sid string, now time.Time
 	}
 	a.fired = true
 	scope, cov, sev := c.coverageLocked(len(a.sensors))
-	return c.event("fleet:cve-wave", sev, ev.Source, map[string]any{
+	meta := map[string]any{
 		"cve": cve, "sensor_count": len(a.sensors), "source_count": len(a.sources),
 		"sensors": c.list(a.sensors), "scope": scope, "coverage": cov,
-	})
+	}
+	copyCVEMeta(ev, meta)
+	return c.event("fleet:cve-wave", sev, ev.Source, meta)
 }
 
 // observeSubnetLocked: several distinct IPs from one source block (/24, /64)

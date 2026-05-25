@@ -916,11 +916,13 @@ var cveExtra = map[string]struct {
 	"CVE-2020-16209": {[]string{"CWE-787", "CWE-120"}, "cpe:2.3:a:fieldcommgroup:hipserver:*", 0.08},
 	"CVE-2025-58428": {[]string{"CWE-78"}, "cpe:2.3:o:veeder-root:tls4b_firmware:*", 0.05},
 	"CVE-2018-8867":  {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe330_firmware:*", 0.03},
-	// TCP/IP-stack attacks.
-	"CVE-1999-0015":  {[]string{"CWE-400"}, "", 0.02},
-	"CVE-1999-0016":  {[]string{"CWE-400"}, "", 0.02},
-	"CVE-2004-0230":  {[]string{"CWE-400"}, "", 0.04},
-	"CVE-2008-4609":  {[]string{"CWE-400"}, "", 0.05},
+	// TCP/IP-stack attacks (Teardrop / LAND / TCP-RST / sockstress). NVD tags
+	// these OS network-stack DoS flaws to OS kernels; the decoy presents a Linux
+	// TCP/IP stack, so linux_kernel is the representative affected product.
+	"CVE-1999-0015":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.02},
+	"CVE-1999-0016":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.02},
+	"CVE-2004-0230":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.04},
+	"CVE-2008-4609":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.05},
 	"CVE-2016-5696":  {[]string{"CWE-203"}, "cpe:2.3:o:linux:linux_kernel:*", 0.04},
 	"CVE-2018-5391":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.05},
 	"CVE-2019-11477": {[]string{"CWE-190", "CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.06},

@@ -179,6 +179,41 @@ var exactRules = map[string]Tag{
 	"honeynet:tcp_request":   {Techniques: []string{"T1046", "T1595"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"honeynet:tcp_malformed": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"honeynet:tcp_land":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// Cross-sensor correlation (internal/fleet) — patterns visible only once
+	// events from many sensors converge on an aggregator. Each maps to the
+	// underlying attacker behaviour the pattern reveals. The volume-only
+	// fleet:rollup / fleet:sensor-untrusted operational events are intentionally
+	// left unmapped (no attacker technique).
+	"fleet:source-multi-sensor":    {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:asn-multi-sensor":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:fingerprint-shared":     {Techniques: []string{"T1583.005"}, Tactics: []string{"resource-development"}},
+	"fleet:payload-campaign":       {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"fleet:credential-campaign":    {Techniques: []string{"T1110.004"}, Tactics: []string{"credential-access"}},
+	"fleet:cve-wave":               {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"fleet:subnet-coordinated":     {Techniques: []string{"T1595", "T1583.005"}, Tactics: []string{"reconnaissance", "resource-development"}},
+	"fleet:outlier-sensor":         {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:scan-trajectory":        {Techniques: []string{"T1595.001", "T1046"}, Tactics: []string{"reconnaissance", "discovery"}},
+	"fleet:synchronized-burst":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:first-fleet-contact":    {Techniques: []string{"T1583"}, Tactics: []string{"resource-development"}},
+	"fleet:identity-pivot":         {Techniques: []string{"T1583.005"}, Tactics: []string{"resource-development"}},
+	"fleet:geo-distributed-actor":  {Techniques: []string{"T1583.005"}, Tactics: []string{"resource-development"}},
+	"fleet:target-profile-match":   {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"fleet:honeytoken-spread":      {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
+	"fleet:cve-emergence":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"fleet:cross-protocol-actor":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"fleet:fingerprint-asn-spread": {Techniques: []string{"T1583.005"}, Tactics: []string{"resource-development"}},
+	"fleet:threat-intel-surge":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:tool-campaign":          {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:c2-shared":              {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	"fleet:user-agent-shared":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:tactic-convergence":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"fleet:recidivist-network":     {Techniques: []string{"T1583"}, Tactics: []string{"resource-development"}},
+	"fleet:port-campaign":          {Techniques: []string{"T1046", "T1595"}, Tactics: []string{"discovery", "reconnaissance"}},
+	"fleet:credential-spray-fleet": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"fleet:asn-org-campaign":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// The egress allowlist refused an outbound dial from a handler — an
+	// attempted SSRF / relay / exfil / C2 channel through the decoy.
+	"egress:denied": {Techniques: []string{"T1090", "T1071"}, Tactics: []string{"command-and-control"}},
 }
 
 // handlerTags is the listener-handler -> ATT&CK lookup. Handlers
@@ -721,7 +756,7 @@ var techDescriptions = map[string]string{
 	"T1496": "Resource Hijacking — abusing compute (e.g. cryptomining).",
 	"T1657": "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
 	"T1565": "Data Manipulation — tampering with stored/displayed/transmitted data.",
-	"T1583": "Acquire Infrastructure — standing up attacker infra (e.g. botnet nodes).",
+	"T1583": "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
 	"T1020": "Automated Exfiltration — automatically transferring collected data out.",
 	"T1041": "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
 	"T1048": "Exfiltration Over Alternative Protocol — exfil over a non-C2 protocol.",
@@ -875,6 +910,8 @@ var d3fend = map[string][]string{
 	"T1552": {"D3-DUC", "D3-NTA"},          // unsecured credentials (printer password read)
 	"T1005": {"D3-DO", "D3-NTA"},           // data from local system (PostScript file read)
 	"T1601": {"D3-NTA", "D3-DE"},           // modify system image (printer firmware upload)
+	"T1583": {"D3-NTA", "D3-DNR"},          // acquire infrastructure (botnet / ASN seen fleet-wide)
+	"T1090": {"D3-NTA", "D3-OTF"},          // proxy (SSRF / relay through the decoy; egress:denied)
 }
 
 // CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,
