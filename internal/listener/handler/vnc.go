@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	crand "crypto/rand"
+	"encoding/binary"
 	"io"
 	"net"
 
@@ -11,7 +12,8 @@ import (
 )
 
 type vnc struct {
-	id *identity.Identity
+	id          *identity.Identity
+	acceptCreds string // "" / "none" / "defaults" / "any" — gates the post-auth session
 }
 
 func (v *vnc) Name() string { return "vnc" }
@@ -110,10 +112,142 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	res.Meta["auth_response_hex"] = byteToHex(response)
 	flagAnomaly(&res, "vnc-auth-attempt")
 
+	// When the deployment lets attackers "in" (accept_creds any/defaults), accept
+	// the auth and run a post-auth RFB session: send a ServerInit and capture the
+	// client's keystrokes + clipboard (ClientCutText). Otherwise reject as a real
+	// password-protected server would. The DES response is captured for offline
+	// cracking either way.
+	if v.acceptCreds == "any" || v.acceptCreds == "defaults" {
+		if _, err := conn.Write([]byte{0, 0, 0, 0}); err != nil { // SecurityResult = OK
+			res.Meta["write_err"] = err.Error()
+			return res, nil
+		}
+		res.Meta["auth_accepted"] = true
+		flagAnomaly(&res, "vnc-session")
+		v.runVNCSession(conn, &res)
+		res.BannerSent = "rfb 003.008 + VNC auth accepted (session)"
+		return res, nil
+	}
 	// SecurityResult = 1 (failed).
 	_, _ = conn.Write([]byte{0, 0, 0, 1})
 	res.BannerSent = "rfb 003.008 + VNC auth failed"
 	return res, nil
+}
+
+// runVNCSession plays the post-auth RFB server role: read ClientInit, send a
+// ServerInit (framebuffer geometry + pixel format + desktop name), then read a
+// bounded number of client messages, capturing typed keys (KeyEvent) and
+// clipboard pastes (ClientCutText) — both high-value (passwords / commands /
+// pasted secrets). Defensive: every read is bounded and a parse it can't follow
+// just ends the session.
+func (v *vnc) runVNCSession(conn net.Conn, res *Result) {
+	hdr := make([]byte, 1)
+	if _, err := io.ReadFull(conn, hdr); err != nil { // ClientInit (shared-flag)
+		return
+	}
+	if _, err := conn.Write(serverInit("honeypot")); err != nil {
+		return
+	}
+	var typed []byte
+	defer func() {
+		if len(typed) > 0 {
+			res.Meta["keystrokes"] = string(typed)
+		}
+	}()
+	for i := 0; i < 64; i++ {
+		mt := make([]byte, 1)
+		if _, err := io.ReadFull(conn, mt); err != nil {
+			return
+		}
+		switch mt[0] {
+		case 0: // SetPixelFormat: 3 pad + 16
+			if !skipN(conn, 19) {
+				return
+			}
+		case 2: // SetEncodings: 1 pad + 2 count + count*4
+			b := make([]byte, 3)
+			if _, err := io.ReadFull(conn, b); err != nil {
+				return
+			}
+			n := int(b[1])<<8 | int(b[2])
+			if n < 0 || n > 4096 || !skipN(conn, n*4) {
+				return
+			}
+		case 3: // FramebufferUpdateRequest: 9
+			if !skipN(conn, 9) {
+				return
+			}
+		case 4: // KeyEvent: down-flag(1) + pad(2) + keysym(4)
+			b := make([]byte, 7)
+			if _, err := io.ReadFull(conn, b); err != nil {
+				return
+			}
+			if b[0] == 1 { // key down
+				keysym := binary.BigEndian.Uint32(b[3:7])
+				if c := keysymToASCII(keysym); c != 0 && len(typed) < 4096 {
+					typed = append(typed, c)
+				}
+			}
+		case 5: // PointerEvent: button(1) + x(2) + y(2)
+			if !skipN(conn, 5) {
+				return
+			}
+		case 6: // ClientCutText: 3 pad + length(4) + text
+			b := make([]byte, 7)
+			if _, err := io.ReadFull(conn, b); err != nil {
+				return
+			}
+			n := int(binary.BigEndian.Uint32(b[3:7]))
+			if n < 0 || n > 1<<16 {
+				return
+			}
+			text := make([]byte, n)
+			if _, err := io.ReadFull(conn, text); err != nil {
+				return
+			}
+			res.Meta["clipboard"] = string(text)
+			flagAnomaly(res, "vnc-clipboard-capture")
+		default:
+			return // unknown message type — end the session
+		}
+	}
+}
+
+// serverInit builds an RFB ServerInit: 1024x768, 32bpp true-colour pixel format,
+// then the desktop name.
+func serverInit(name string) []byte {
+	out := make([]byte, 0, 24+len(name))
+	out = append(out, 0x04, 0x00, 0x03, 0x00) // width=1024, height=768
+	// pixel format: bpp=32, depth=24, big-endian=0, true-colour=1,
+	// r/g/b-max=255, r/g/b-shift=16/8/0, 3 pad.
+	out = append(out, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0)
+	nl := make([]byte, 4)
+	binary.BigEndian.PutUint32(nl, uint32(len(name)))
+	out = append(out, nl...)
+	return append(out, []byte(name)...)
+}
+
+// skipN reads and discards n bytes, reporting success.
+func skipN(conn net.Conn, n int) bool {
+	if n == 0 {
+		return true
+	}
+	_, err := io.CopyN(io.Discard, conn, int64(n))
+	return err == nil
+}
+
+// keysymToASCII maps an X11 keysym to a captured byte: printable ASCII maps to
+// itself; Return/Tab/Space to their controls; everything else to 0 (skip).
+func keysymToASCII(k uint32) byte {
+	switch {
+	case k >= 0x20 && k <= 0x7e:
+		return byte(k)
+	case k == 0xff0d: // Return
+		return '\n'
+	case k == 0xff09: // Tab
+		return '\t'
+	}
+	return 0
 }
 
 // rfbMinor parses the minor number from an RFB version string of the form

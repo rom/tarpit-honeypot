@@ -225,7 +225,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "smb":
 		return &smb{id: deps.Identity}, nil
 	case "vnc":
-		return &vnc{id: deps.Identity}, nil
+		return &vnc{id: deps.Identity, acceptCreds: deps.AcceptCreds}, nil
 	case "smtp_recv":
 		return newSMTPRecv(deps), nil
 	case "rdp":

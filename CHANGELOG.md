@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — handlers: deeper Kerberos + VNC interaction
+- **Kerberos** now records the requested **enctypes**, then drives a second
+  round: after `KDC_ERR_PREAUTH_REQUIRED` it reads the client's pre-auth retry
+  and captures the offline-crackable encrypted timestamp
+  (`preauth_enc_timestamp_hex`, `kerberos-preauth-bruteforce`) before answering
+  `KDC_ERR_PREAUTH_FAILED`.
+- **VNC**: with `accept_creds: any|defaults` on the listener, the handler now
+  **accepts** the auth and runs a post-auth RFB session — sends a ServerInit and
+  captures the client's **keystrokes** (KeyEvents) and **clipboard**
+  (ClientCutText) as `keystrokes` / `clipboard` (`vnc-session` /
+  `vnc-clipboard-capture`). Default (`none`) still rejects, and the
+  `(challenge, DES-response)` pair is captured for offline cracking either way.
+
 ### Added — testharness: self-trust controls + evidence-integrity category
 - The runner now **self-checks** before each run: synthetic positive / negative
   / error / panic controls go through the real execution path and must classify
