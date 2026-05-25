@@ -827,6 +827,10 @@ fleet:
   port_campaign_sources: 5 # >= N sources on one dest port ...
   port_campaign_sensors: 3 #   ... across >= N sensors -> fleet:port-campaign
   port_campaign_exclude: [22, 80, 443]  # ubiquitous ports to ignore
+  cred_spray_passwords: 5  # >= N distinct passwords for one username ...
+  cred_spray_sensors: 2    #   ... across >= N sensors -> fleet:credential-spray-fleet
+  asn_org_asns: 2          # >= N distinct ASNs under one AS-org ...
+  asn_org_sensors: 5       #   ... across >= N sensors -> fleet:asn-org-campaign
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
   # downward intel feedback (serving side; needs ingest:) — see intel_feed:
@@ -865,6 +869,8 @@ The detectors, by the vantage axis they exploit:
 | `fleet:tactic-convergence` | one **MITRE technique** from >= `tactic_sources` sources across >= `tactic_sensors` sensors | a coordinated push on a TTP (above the CVE/tool level) |
 | `fleet:recidivist-network` | an **ASN** active in >= `recidivist_windows` distinct `recidivist_bucket`s | a network that keeps coming back day after day (persistence, not breadth) |
 | `fleet:port-campaign` | one **dest port** (not in `port_campaign_exclude`) from >= `port_campaign_sources` sources across >= `port_campaign_sensors` sensors | a service-targeted campaign (e.g. a new botnet on tcp/23) |
+| `fleet:credential-spray-fleet` | one **username** tried with >= `cred_spray_passwords` distinct passwords across >= `cred_spray_sensors` sensors | a distributed brute-force of a single account, spread to stay under per-node thresholds |
+| `fleet:asn-org-campaign` | one **AS-org** spanning >= `asn_org_asns` distinct ASNs across >= `asn_org_sensors` sensors | a provider-wide campaign that ASN-number keying misses |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the

@@ -290,6 +290,10 @@ func New(cfg *config.Config) (*Sensor, error) {
 			PortCampaignSources: cfg.Fleet.PortCampaignSources,
 			PortCampaignSensors: cfg.Fleet.PortCampaignSensors,
 			PortCampaignExclude: cfg.Fleet.PortCampaignExclude,
+			CredSprayPasswords:  cfg.Fleet.CredSprayPasswords,
+			CredSpraySensors:    cfg.Fleet.CredSpraySensors,
+			AsnOrgASNs:          cfg.Fleet.AsnOrgASNs,
+			AsnOrgSensors:       cfg.Fleet.AsnOrgSensors,
 
 			MaxList: cfg.Fleet.MaxList,
 		})

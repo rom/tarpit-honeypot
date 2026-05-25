@@ -823,3 +823,52 @@ func TestPortCampaignExcludesUbiquitous(t *testing.T) {
 		t.Fatal("fired for an excluded ubiquitous port (443)")
 	}
 }
+
+func TestCredentialSprayFleet(t *testing.T) {
+	c := New(Config{Enabled: true, CredSprayPasswords: 3, CredSpraySensors: 2, CredSensors: 99, SourceSensors: 99})
+	cr := func(sid, ip, pass string) *event.Event {
+		return ev(sid, ip, map[string]any{"username": "admin", "password": pass})
+	}
+	c.Observe(cr("s1", "1.1.1.1", "p1"))
+	c.Observe(cr("s1", "2.2.2.2", "p2"))
+	a := findAlert(c.Observe(cr("s2", "3.3.3.3", "p3")), "fleet:credential-spray-fleet")
+	if a == nil {
+		t.Fatal("did not fire for one user / 3 passwords / 2 sensors")
+	}
+	if pc, _ := a.Meta["password_count"].(int); pc != 3 {
+		t.Errorf("password_count = %d; want 3", pc)
+	}
+	if u, _ := a.Meta["username"].(string); u != "admin" {
+		t.Errorf("username = %q", u)
+	}
+}
+
+func TestAsnOrgCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, AsnOrgASNs: 2, AsnOrgSensors: 2, ASNSensors: 99, SourceSensors: 99})
+	o := func(sid, ip, asn string) *event.Event {
+		return ev(sid, ip, map[string]any{"asn": asn, "asn_org": "BadCloud Inc"})
+	}
+	c.Observe(o("s1", "1.1.1.1", "AS1"))
+	a := findAlert(c.Observe(o("s2", "2.2.2.2", "AS2")), "fleet:asn-org-campaign")
+	if a == nil {
+		t.Fatal("did not fire for one org / 2 ASNs / 2 sensors")
+	}
+	if ac, _ := a.Meta["asn_count"].(int); ac != 2 {
+		t.Errorf("asn_count = %d; want 2", ac)
+	}
+	if org, _ := a.Meta["asn_org"].(string); org != "BadCloud Inc" {
+		t.Errorf("asn_org = %q", org)
+	}
+}
+
+func TestAsnOrgNeedsMultipleASNs(t *testing.T) {
+	// One org but a single ASN is just asn-multi-sensor territory, not this.
+	c := New(Config{Enabled: true, AsnOrgASNs: 2, AsnOrgSensors: 2, ASNSensors: 99, SourceSensors: 99})
+	o := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"asn": "AS1", "asn_org": "OneCloud"})
+	}
+	c.Observe(o("s1", "1.1.1.1"))
+	if a := findAlert(c.Observe(o("s2", "2.2.2.2")), "fleet:asn-org-campaign"); a != nil {
+		t.Fatal("fired for a single ASN")
+	}
+}

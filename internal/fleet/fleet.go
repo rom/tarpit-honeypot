@@ -141,6 +141,14 @@ type Config struct {
 	PortCampaignSensors int   // ... across >= N sensors
 	PortCampaignExclude []int // ports too ubiquitous to be a signal (default 22/80/443)
 
+	// Credential spray: one username attacked with many passwords fleet-wide.
+	CredSprayPasswords int // >= N distinct passwords for one username ...
+	CredSpraySensors   int // ... across >= N sensors
+
+	// ASN-org campaign: one AS-org (provider) spanning several ASNs fleet-wide.
+	AsnOrgASNs    int // >= N distinct ASNs under one org ...
+	AsnOrgSensors int // ... across >= N sensors
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -292,6 +300,18 @@ func (c *Config) withDefaults() {
 	if c.PortCampaignExclude == nil {
 		c.PortCampaignExclude = []int{22, 80, 443}
 	}
+	if c.CredSprayPasswords <= 0 {
+		c.CredSprayPasswords = 5
+	}
+	if c.CredSpraySensors <= 0 {
+		c.CredSpraySensors = 2
+	}
+	if c.AsnOrgASNs <= 0 {
+		c.AsnOrgASNs = 2
+	}
+	if c.AsnOrgSensors <= 0 {
+		c.AsnOrgSensors = 5
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -351,6 +371,8 @@ type Correlator struct {
 	uas        map[string]*actor // key: user-agent (shared UA)
 	tactics    map[string]*actor // key: MITRE technique id (tactic convergence)
 	ports      map[string]*actor // key: dest port (port campaign)
+	credSpray  map[string]*actor // key: username (credential spray; extra = passwords)
+	asnOrgs    map[string]*actor // key: asn_org (asn-org campaign; extra = ASNs)
 
 	recid       map[string]*recidEntry // key: ASN (recidivist network — long horizon)
 	portExclude map[int]bool           // ports too ubiquitous for port-campaign
@@ -395,6 +417,8 @@ func New(cfg Config) *Correlator {
 		uas:          map[string]*actor{},
 		tactics:      map[string]*actor{},
 		ports:        map[string]*actor{},
+		credSpray:    map[string]*actor{},
+		asnOrgs:      map[string]*actor{},
 		recid:        map[string]*recidEntry{},
 		sensorStats:  map[string]*sensorStat{},
 		trajectories: map[string]*trajectory{},
@@ -460,6 +484,8 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = append(out, c.observeTacticConvergenceLocked(ev, sid, now)...)
 	out = add(out, c.observeRecidivistLocked(ev, sid, now))
 	out = add(out, c.observePortCampaignLocked(ev, sid, now))
+	out = add(out, c.observeCredSprayLocked(ev, sid, now))
+	out = add(out, c.observeAsnOrgLocked(ev, sid, now))
 	return out
 }
 
@@ -509,7 +535,7 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
 		c.pivots, c.geoFP, c.geoCred, c.profiles, c.tokens, c.crossProto, c.fpASN,
-		c.surge, c.toolc, c.c2, c.uas, c.tactics, c.ports,
+		c.surge, c.toolc, c.c2, c.uas, c.tactics, c.ports, c.credSpray, c.asnOrgs,
 	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {

@@ -198,6 +198,12 @@ type FleetConfig struct {
 	PortCampaignSources int   `yaml:"port_campaign_sources"` // >= N distinct sources on one port ...
 	PortCampaignSensors int   `yaml:"port_campaign_sensors"` // ... across >= N sensors
 	PortCampaignExclude []int `yaml:"port_campaign_exclude"` // ubiquitous ports to ignore (default 22/80/443)
+	// Credential spray: one username attacked with many passwords fleet-wide.
+	CredSprayPasswords int `yaml:"cred_spray_passwords"` // >= N distinct passwords for one user ...
+	CredSpraySensors   int `yaml:"cred_spray_sensors"`   // ... across >= N sensors
+	// ASN-org campaign: one provider spanning several ASNs fleet-wide.
+	AsnOrgASNs    int `yaml:"asn_org_asns"`    // >= N distinct ASNs under one org ...
+	AsnOrgSensors int `yaml:"asn_org_sensors"` // ... across >= N sensors
 	// Downward intel feedback (serving side). When this node both runs fleet
 	// correlation and accepts ingest, it derives indicators from its fleet:*
 	// findings and serves them at GET <ingest>/intel for child nodes to pull.
