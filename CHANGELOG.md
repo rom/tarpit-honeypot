@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — testharness: self-trust controls + evidence-integrity category
+- The runner now **self-checks** before each run: synthetic positive / negative
+  / error / panic controls go through the real execution path and must classify
+  correctly, and case selection must be deterministic — otherwise the run aborts
+  rather than risk a false all-green. After the run it asserts the **accounting
+  invariant** (every dispatched case recorded exactly one result). Both appear
+  in the report's Environment block and the JSON `info` (self_check / expected /
+  recorded).
+- New **`integrity`** category (needs `verify.url`): `integrity/capture/<label>`
+  sends a unique marker and confirms the sensor recorded it faithfully;
+  `integrity/no-drop-under-load/<label>` sends a 20-connection burst and confirms
+  all are recorded (no dropped events under load). Covers http/https/ftp/
+  smtp_recv/telnet/imap/pop3; skips cleanly without the API.
+
 ### Changed — handlers: protocol depth (RDP TLS/NLA, Oracle version, MQTT CONNACK)
 - **RDP** now completes the TLS handshake after selecting `PROTOCOL_SSL`
   (previously it advertised SSL then left the client's handshake unanswered).

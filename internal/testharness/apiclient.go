@@ -96,6 +96,62 @@ func eventAnomalies(e apiEvent) []string {
 	return out
 }
 
+// Count returns how many recent events match a predicate, and checked=false
+// when the API was unreachable (caller should skip). Used by capture-fidelity /
+// no-dropped-events checks.
+func (c *APIClient) Count(ctx context.Context, match func(apiEvent) bool) (n int, checked bool) {
+	evs, err := c.Events(ctx, "10m", 5000)
+	if err != nil {
+		return 0, false
+	}
+	for _, e := range evs {
+		if match(e) {
+			n++
+		}
+	}
+	return n, true
+}
+
+// MatchMetaContains matches an event whose recorded fields contain sub anywhere
+// — used to confirm the sensor faithfully captured a unique marker the harness
+// sent (evidence integrity), regardless of which protocol field it landed in.
+func MatchMetaContains(sub string) func(apiEvent) bool {
+	return func(e apiEvent) bool {
+		if strings.Contains(e.RuleID, sub) || strings.Contains(e.Handler, sub) {
+			return true
+		}
+		return metaContains(e.Meta, sub)
+	}
+}
+
+// metaContains reports whether any string anywhere in v (recursively through
+// maps / slices) contains sub.
+func metaContains(v any, sub string) bool {
+	switch t := v.(type) {
+	case string:
+		return strings.Contains(t, sub)
+	case []string:
+		for _, s := range t {
+			if strings.Contains(s, sub) {
+				return true
+			}
+		}
+	case []any:
+		for _, x := range t {
+			if metaContains(x, sub) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, x := range t {
+			if metaContains(x, sub) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // MatchAnomaly matches an event carrying a specific anomaly marker.
 func MatchAnomaly(marker string) func(apiEvent) bool {
 	return func(e apiEvent) bool {

@@ -81,6 +81,16 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	if len(cases) == 0 {
 		return nil, fmt.Errorf("no test cases selected (check --cases / --categories / endpoints)")
 	}
+	// Fool-proofing: before touching the target, prove the harness can still
+	// tell pass from fail (a positive/negative/error control) and that case
+	// selection is deterministic. A broken harness must refuse to run rather
+	// than silently report all-green.
+	if err := selfCheck(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.checkDeterministic(); err != nil {
+		return nil, err
+	}
 	rr := &RunResult{
 		Started:     time.Now(),
 		Seed:        r.cfg.Seed,
@@ -104,6 +114,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		rr.Info.Binary = binaryInfo(r.cfg.Spawn.Binary)
 	}
 	rr.Info.Baseline = snapshotEndpoints(ctx, r.target, r.cfg)
+	rr.Info.SelfCheck = "passed"
 	sampler := startSampler(r.target.PID)
 
 	var deadline time.Time
@@ -113,6 +124,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	total := len(cases) * r.cfg.Rounds
 	var mu sync.Mutex
 	done := 0
+	dispatched := 0
 	stop := false
 
 	for round := 1; round <= r.cfg.Rounds && !stop; round++ {
@@ -129,6 +141,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			}
 			c, round := c, round
 			sem <- struct{}{}
+			dispatched++
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -150,6 +163,11 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	rr.Info.Resources = sampler.Stop()
 	rr.Info.Final = snapshotEndpoints(ctx, r.target, r.cfg)
 	rr.Info.StoppedHow = r.stoppedHow(ctx, stop, deadline)
+	// accounting invariant: every dispatched (case,round) must have recorded
+	// exactly one result. A mismatch means a result was lost — a harness bug,
+	// surfaced rather than hidden.
+	rr.Info.Expected = dispatched
+	rr.Info.Recorded = len(rr.Results)
 	return rr, nil
 }
 
@@ -215,6 +233,57 @@ func safeRun(ctx context.Context, c Case, run *Run) (st Status, detail string, e
 		}
 	}()
 	return c.Fn(ctx, run)
+}
+
+// classify reduces a case execution to the Status the runner would record,
+// folding a returned error into StatusError exactly as runCase does. Used by
+// selfCheck (and a single source of truth for that mapping).
+func classify(st Status, err error) Status {
+	if err != nil {
+		return StatusError
+	}
+	return st
+}
+
+// selfCheck runs synthetic positive/negative/error/panic controls through the
+// real execution path (safeRun + the error-folding classify) and verifies each
+// is classified as expected. If the harness can no longer tell a pass from a
+// fail, the whole run is aborted — this is the guard against a silently-broken
+// harness reporting all-green ("nothing ran, so nothing failed").
+func selfCheck(ctx context.Context) error {
+	controls := []struct {
+		name string
+		fn   func(context.Context, *Run) (Status, string, error)
+		want Status
+	}{
+		{"positive", func(context.Context, *Run) (Status, string, error) { return StatusPass, "ok", nil }, StatusPass},
+		{"negative", func(context.Context, *Run) (Status, string, error) { return StatusFail, "finding", nil }, StatusFail},
+		{"error", func(context.Context, *Run) (Status, string, error) { return StatusPass, "", fmt.Errorf("boom") }, StatusError},
+		{"panic", func(context.Context, *Run) (Status, string, error) { panic("self-check panic") }, StatusError},
+	}
+	for _, c := range controls {
+		st, _, err := safeRun(ctx, Case{ID: "selftest/" + c.name, Fn: c.fn}, &Run{})
+		if got := classify(st, err); got != c.want {
+			return fmt.Errorf("harness self-check failed: %q control classified as %s, want %s (the harness cannot reliably tell pass from fail)", c.name, got, c.want)
+		}
+	}
+	return nil
+}
+
+// checkDeterministic verifies case selection is reproducible — building +
+// selecting the configured cases twice must yield the identical ordered id set.
+// Non-determinism would make findings non-reproducible across runs and seeds.
+func (r *Runner) checkDeterministic() error {
+	a, b := r.Cases(), r.Cases()
+	if len(a) != len(b) {
+		return fmt.Errorf("harness self-check failed: case selection is non-deterministic (%d vs %d cases)", len(a), len(b))
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID {
+			return fmt.Errorf("harness self-check failed: case order is non-deterministic at %d (%q vs %q)", i, a[i].ID, b[i].ID)
+		}
+	}
+	return nil
 }
 
 // caseTimeout caps a single case so a hung target can't block the run; cases

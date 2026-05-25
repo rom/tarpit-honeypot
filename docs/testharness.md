@@ -184,15 +184,17 @@ reproducible and diff-able across builds.
 | `reliability` | `reliability/soak/<label>` | all | 50 rapid connect/close cycles; the endpoint must stay responsive (no fd leak / accept-loop wedge), ≥ 90 % healthy, with liveness re-checked along the way. |
 | `resilience` | `resilience/oversize/<label>`, `resilience/half-open/<label>`, `resilience/flood/<label>`, `resilience/slowloris/<label>` | all | **Fail-safe under abuse** — the sensor must not become the victim: a 2 MiB unterminated input (bounded buffers / no OOM), 40 abrupt half-open connects, a 64-way concurrent connection flood, and a slow-drip session that must not starve other clients — staying alive and responsive throughout. |
 | `containment` | `containment/no-egress`, `containment/path-traversal/<label>` | all | **Do-no-harm** — feed the sensor an attacker-chosen target address and confirm it makes **no outbound connection** (SSRF / open-relay / reflector safety, via a canary listener); ask file-surface protocols (http/ftp) for `../../etc/passwd` and confirm no real host-file content is disclosed. |
+| `integrity` | `integrity/capture/<label>`, `integrity/no-drop-under-load/<label>` | network (needs `verify.url`) | **Evidence integrity** — send a unique marker and confirm the sensor recorded it faithfully (capture fidelity); send a 20-connection burst of distinct markers and confirm **all** are recorded (no dropped events under load). Skips cleanly without the API. http/https/ftp/smtp_recv/telnet/imap/pop3. |
 
 The `fingerprint` HTTP cases cover nmap, nessus, openvas, nikto, nuclei, sqlmap,
 masscan, metasploit, zgrab, and wpscan (by User-Agent). If the real `nmap`
 binary is on `PATH`, an extra `fingerprint/nmap-sV` case runs an actual `-sV`
 service scan against the configured ports.
 
-`misimpl`, `scan`, and `fingerprint` need the sensor's API (`verify.url`) to
-confirm detection; without it they **skip** cleanly (scans report "completed"),
-and `misimpl`/fuzz still verify the target did not crash.
+`misimpl`, `scan`, `fingerprint`, and `integrity` need the sensor's API
+(`verify.url`) to confirm detection / capture; without it they **skip** cleanly
+(scans report "completed"), and `misimpl`/fuzz still verify the target did not
+crash.
 
 ### Protocol knowledge
 
@@ -456,6 +458,16 @@ This is the "additional info collected from the program under test" that makes a
 fail-safe harness auditable. Drift uses the *banner line* (not the whole reply),
 so per-connection nonces (e.g. the SSH KEXINIT cookie) are not mistaken for a
 changed decoy.
+
+**Harness self-trust.** Before touching the target, the runner runs synthetic
+positive / negative / error / panic controls through the same execution path
+real cases use and verifies each is classified correctly — if the harness can no
+longer tell a pass from a fail it **aborts** rather than risk reporting a false
+all-green ("nothing ran, so nothing failed"). It also confirms case selection is
+deterministic. After the run it checks the **accounting invariant** — every
+dispatched `(case, round)` produced exactly one recorded result. Both are shown
+in the report's Environment block (`self-check passed; accounting N/N results
+recorded`) and a mismatch is surfaced loudly.
 
 ---
 
