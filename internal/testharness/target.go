@@ -190,6 +190,13 @@ func (t *Target) anyTCP() bool {
 
 // Alive reports whether the target still responds — used to distinguish a
 // crashed/hung target from an ordinary case finding.
+//
+// For a target we own (managed spawn) the process being up IS the liveness
+// signal: a single slow or missed /healthz under concurrent fuzz load must not
+// be mistaken for a crash, since that would needlessly kill + respawn the
+// sensor mid-run and fail every other in-flight case. Only a process that has
+// actually exited is dead. For an external target there is no process to check,
+// so we probe readiness but tolerate a transient miss before giving up.
 func (t *Target) Alive(ctx context.Context) bool {
 	if t.cfg.Mode == "module" {
 		return true
@@ -198,11 +205,20 @@ func (t *Target) Alive(ctx context.Context) bool {
 		t.mu.Lock()
 		p := t.proc
 		t.mu.Unlock()
-		if p == nil || (p.ProcessState != nil && p.ProcessState.Exited()) {
+		return p != nil && (p.ProcessState == nil || !p.ProcessState.Exited())
+	}
+	for i := 0; i < 3; i++ { // external: tolerate one slow/missed probe
+		if ctx.Err() != nil {
 			return false
 		}
+		if t.ready() {
+			return true
+		}
+		if i < 2 {
+			time.Sleep(150 * time.Millisecond)
+		}
 	}
-	return t.ready()
+	return false
 }
 
 func (t *Target) addr(e Endpoint) string {

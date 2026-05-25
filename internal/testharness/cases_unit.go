@@ -42,6 +42,9 @@ func init() {
 						return StatusFail, "no response: " + err.Error(), nil
 					}
 					if len(resp) == 0 {
+						if known && spec.NoReply {
+							return StatusPass, "accept-only service (no banner by design); reachable", nil
+						}
 						return StatusFail, "empty response", nil
 					}
 					if known && len(spec.Banner) > 0 && !containsAll(resp, spec.Banner) {

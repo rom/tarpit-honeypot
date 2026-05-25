@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -23,13 +24,17 @@ type telnet struct {
 
 func (t *telnet) Name() string { return "telnet" }
 
-// IAC option negotiation: WILL ECHO, WILL SGA. Then a fake login prompt.
-// Read a bounded amount, then close. Captures the username (and password if
-// the client is fast enough to send it before the read cap).
+// IAC option negotiation. We announce WILL ECHO + WILL SUPPRESS-GO-AHEAD (so
+// we drive the line like a real login service) and ask the client to report
+// its TERMINAL-TYPE, window size (NAWS) and environment (NEW-ENVIRON) —
+// fingerprint-grade detail, and NEW-ENVIRON commonly leaks the attacker's
+// USER. The client's replies are harvested into res.Meta by readTelnetLine.
 var telnetIAC = []byte{
-	0xff, 0xfb, 0x01, // IAC WILL ECHO
-	0xff, 0xfb, 0x03, // IAC WILL SUPPRESS-GO-AHEAD
-	0xff, 0xfd, 0x18, // IAC DO TERMINAL-TYPE
+	telIAC, telWILL, telOptEcho, // WILL ECHO
+	telIAC, telWILL, telOptSGA, // WILL SUPPRESS-GO-AHEAD
+	telIAC, telDO, telOptTType, // DO TERMINAL-TYPE
+	telIAC, telDO, telOptNAWS, // DO NAWS (window size)
+	telIAC, telDO, telOptNewEnv, // DO NEW-ENVIRON (env vars)
 }
 
 func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
@@ -139,16 +144,19 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 
 // Telnet protocol bytes (RFC 854 / 1091).
 const (
-	telIAC      = 0xff
-	telSE       = 0xf0
-	telSB       = 0xfa
-	telWILL     = 0xfb
-	telWONT     = 0xfc
-	telDO       = 0xfd
-	telDONT     = 0xfe
-	telOptEcho  = 0x01
-	telOptSGA   = 0x03
-	telOptTType = 0x18 // TERMINAL-TYPE
+	telIAC       = 0xff
+	telSE        = 0xf0
+	telSB        = 0xfa
+	telWILL      = 0xfb
+	telWONT      = 0xfc
+	telDO        = 0xfd
+	telDONT      = 0xfe
+	telOptEcho   = 0x01
+	telOptSGA    = 0x03
+	telOptTType  = 0x18 // TERMINAL-TYPE
+	telOptNAWS   = 0x1f // 31 negotiate-about-window-size
+	telOptTSpeed = 0x20 // 32 terminal-speed
+	telOptNewEnv = 0x27 // 39 new-environ (RFC 1572)
 )
 
 // readTelnetLine reads one line, transparently consuming and answering IAC
@@ -183,12 +191,7 @@ func readTelnetLine(br *bufio.Reader, conn net.Conn, max int, res *Result) (stri
 			}
 			telnetNegotiate(conn, cmd, opt)
 		case telSB:
-			sub := readTelnetSubneg(br)
-			// TERMINAL-TYPE IS (option 0x18, sub-cmd 0x00) carries the
-			// client's emulation string (xterm, VT100, PuTTY, …).
-			if len(sub) >= 2 && sub[0] == telOptTType && sub[1] == 0x00 && res != nil {
-				res.Meta["terminal_type"] = safe.SanitizeForLog(string(sub[2:]))
-			}
+			parseTelnetSubneg(readTelnetSubneg(br), res)
 		case telIAC:
 			out = append(out, telIAC) // escaped literal 0xff
 		default:
@@ -200,7 +203,9 @@ func readTelnetLine(br *bufio.Reader, conn net.Conn, max int, res *Result) (stri
 
 // telnetNegotiate sends a minimal, consistent reply to a client option
 // negotiation so the session looks real: we honour ECHO + SGA (already
-// announced WILL), ask for TERMINAL-TYPE, and refuse everything else.
+// announced WILL); when the client agrees to TERMINAL-TYPE / TERMINAL-SPEED /
+// NEW-ENVIRON we ask it to SEND the value; NAWS arrives unsolicited; and we
+// refuse everything else.
 func telnetNegotiate(conn net.Conn, cmd, opt byte) {
 	switch cmd {
 	case telDO:
@@ -209,14 +214,106 @@ func telnetNegotiate(conn net.Conn, cmd, opt byte) {
 		}
 		_, _ = conn.Write([]byte{telIAC, telWONT, opt})
 	case telWILL:
-		if opt == telOptTType {
-			// We sent DO TERMINAL-TYPE; ask the client to send its type.
-			_, _ = conn.Write([]byte{telIAC, telSB, telOptTType, 0x01, telIAC, telSE})
-			return
+		switch opt {
+		case telOptTType, telOptTSpeed:
+			// SEND sub-command (1): "send me your value".
+			_, _ = conn.Write([]byte{telIAC, telSB, opt, 0x01, telIAC, telSE})
+		case telOptNewEnv:
+			// SEND (2) with an empty var list = "send all variables".
+			_, _ = conn.Write([]byte{telIAC, telSB, telOptNewEnv, 0x02, telIAC, telSE})
+		case telOptNAWS:
+			// The client volunteers SB NAWS after WILL; no request needed.
+		default:
+			_, _ = conn.Write([]byte{telIAC, telDONT, opt})
 		}
-		_, _ = conn.Write([]byte{telIAC, telDONT, opt})
 	}
 	// WONT / DONT need no reply.
+}
+
+// parseTelnetSubneg harvests a client IAC SB … SE subnegotiation body (option
+// byte first) into res.Meta: TERMINAL-TYPE / TERMINAL-SPEED strings, the NAWS
+// window size, and NEW-ENVIRON variables (which often carry the attacker's
+// USER, DISPLAY, etc.).
+func parseTelnetSubneg(sub []byte, res *Result) {
+	if res == nil || len(sub) == 0 {
+		return
+	}
+	switch sub[0] {
+	case telOptTType:
+		if len(sub) >= 2 && sub[1] == 0x00 { // IS
+			res.Meta["terminal_type"] = safe.SanitizeForLog(string(sub[2:]))
+		}
+	case telOptTSpeed:
+		if len(sub) >= 2 && sub[1] == 0x00 { // IS
+			res.Meta["terminal_speed"] = safe.SanitizeForLog(string(sub[2:]))
+		}
+	case telOptNAWS:
+		if len(sub) >= 5 {
+			w := int(sub[1])<<8 | int(sub[2])
+			h := int(sub[3])<<8 | int(sub[4])
+			res.Meta["window_size"] = fmt.Sprintf("%dx%d", w, h)
+		}
+	case telOptNewEnv:
+		if len(sub) >= 2 && sub[1] == 0x00 { // IS
+			if env := parseNewEnviron(sub[2:]); len(env) > 0 {
+				clean := make(map[string]string, len(env))
+				for k, v := range env {
+					clean[safe.SanitizeForLog(k)] = safe.SanitizeForLog(v)
+				}
+				res.Meta["telnet_env"] = clean
+			}
+		}
+	}
+}
+
+// parseNewEnviron decodes an RFC 1572 NEW-ENVIRON IS body (the bytes after the
+// IS command) into name→value pairs. Type codes: VAR=0, VALUE=1, ESC=2,
+// USERVAR=3; a name/value text run ends at the next type byte.
+func parseNewEnviron(b []byte) map[string]string {
+	out := map[string]string{}
+	i := 0
+	curName := ""
+	haveName := false
+	readText := func() string {
+		var sb []byte
+		for i < len(b) {
+			c := b[i]
+			if c == 0 || c == 1 || c == 3 { // VAR / VALUE / USERVAR boundary
+				break
+			}
+			if c == 2 && i+1 < len(b) { // ESC — next byte is literal
+				i++
+				sb = append(sb, b[i])
+				i++
+				continue
+			}
+			sb = append(sb, c)
+			i++
+		}
+		return string(sb)
+	}
+	for i < len(b) {
+		switch b[i] {
+		case 0, 3: // VAR / USERVAR
+			i++
+			curName = readText()
+			haveName = curName != ""
+			if haveName {
+				if _, ok := out[curName]; !ok {
+					out[curName] = ""
+				}
+			}
+		case 1: // VALUE
+			i++
+			val := readText()
+			if haveName {
+				out[curName] = val
+			}
+		default:
+			i++
+		}
+	}
+	return out
 }
 
 // readTelnetSubneg reads an IAC SB … IAC SE subnegotiation body (excluding

@@ -34,6 +34,10 @@ endpoints:
   - { label: redis,  proto: tcp, port: 6390, handler: redis }
   - { label: modbus, proto: tcp, port: 5020, handler: modbus }
   - { label: sip,    proto: tcp, port: 5060, handler: sip_tcp }
+  - { label: rlogin, proto: tcp, port: 5513, handler: rlogin }
+  - { label: rsh,    proto: tcp, port: 5514, handler: rsh }
+  - { label: syslog, proto: tcp, port: 5140, handler: syslog_tcp }
+  - { label: tftp,   proto: udp, port: 6969, handler: tftp }
 
 # Scope + budget (empty = all cases / all categories).
 categories: []
@@ -54,7 +58,7 @@ fuzz_iterations: 32
 seed: 0                # 0 => the built-in default seed (still reproducible)
 
 # Port scans probe these; empty would derive endpoint ports + a common set.
-scan_ports: [21, 22, 23, 25, 80, 443, 2121, 2222, 2323, 2525, 5020, 5060, 6390, 8000, 9000]
+scan_ports: [21, 22, 23, 25, 80, 443, 2121, 2222, 2323, 2525, 5020, 5060, 5140, 5513, 5514, 6390, 8000, 9000]
 # sweep_cidr: 192.168.56.0/28   # host/ping/ARP sweeps (needs a real network)
 
 # Confirm the honeypot actually recorded the misimpl/scan/fingerprint activity.

