@@ -8,6 +8,24 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — in-product documentation + new guides (version 2.1.0)
+- The web UI **docs** tab now renders the full documentation in-product: the
+  Markdown guides are embedded in the binary (`docs` package), `/docs` lists a
+  documentation library, and `/docs/<name>` serves each guide via a compact,
+  dependency-free Markdown→HTML renderer (headings with slug ids, fenced code,
+  lists, blockquotes, GFM tables, inline code/bold/italic/links) under the
+  strict CSP; internal `.md` links are rewritten to `/docs/<name>` and unknown
+  names 404.
+- New guides: `docs/fleet.md` (roles, topologies, the 27 `fleet:*` detectors,
+  broad-vs-targeted, downward intel, tuning, troubleshooting), `docs/ioc.md`
+  (the IOC store, `ioc:<type>` events, exports), `docs/threat-intel-exports.md`
+  (STIX 2.1 / TAXII 2.1 / MISP, the downward feed, CEF/LEEF/OCSF sinks),
+  `docs/FAQ.md`, and `docs/webui.md` (the web-UI walkthrough).
+- Refreshed the man page, `docs/cli.md`, `docs/README.md`, `docs/usage.md`
+  (new Fleet and IOC sections), `docs/internals.md` (the fleet/ingest/intel data
+  flow, persisted ATT&CK/D3FEND columns, the package map), and the root README
+  for the fleet / IOC / threat-intel features. Version bumped to **2.1.0**.
+
 ### Added — IOC retention (tied to retention_days)
 - The hourly retention runner now also prunes stale indicators from the `iocs`
   table — those not seen for `sensor.disk.retention_days` (last-seen basis, the
