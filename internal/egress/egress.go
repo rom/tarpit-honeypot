@@ -154,11 +154,18 @@ func DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, network, addr)
 }
 
-// HTTPClient returns an http.Client governed by the default policy (unrestricted
-// if none installed).
+// HTTPClient returns an http.Client governed by the default policy. It binds to
+// the package-level DialContext (which resolves the current default on every
+// dial), so a client built before SetDefault still enforces once a policy is
+// installed — order-independent.
 func HTTPClient(timeout time.Duration) *http.Client {
-	if p := def.Load(); p != nil {
-		return p.HTTPClient(timeout)
-	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{Timeout: timeout, Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}}
 }

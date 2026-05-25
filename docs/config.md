@@ -643,6 +643,36 @@ routes:
 
 Empty `match: {}` matches every event (useful for a catch-all archive channel).
 
+## `forward:` — ship events to aggregator node(s)
+
+Forwards this node's events to one or more parent **aggregators** for fleet-wide
+correlation (same-source / same-AS hitting many sensors, shared infrastructure,
+campaigns). Distinct from `channels:` — forwarding is batched, queued, signed,
+and dedup-keyed. Listing several targets **fans out** (HA, or a site SOC plus a
+global hub); each target has its own queue + retry.
+
+```yaml
+forward:
+  - id: site-agg
+    url: https://agg-site.corp/ingest   # parent ingest endpoint
+    token_env: TARPIT_FWD_TOKEN         # bearer auth from env
+    hmac_secret_env: TARPIT_FWD_HMAC    # optional body signature
+    min_severity: low                   # forward all (default) ... | high | critical
+    max_batch: 500                      # flush after N events (default 500)
+    max_age: 2s                         # ...or at least this often (default 2s)
+    queue_size: 4096                    # in-memory buffer; full sheds load + counts
+  - { id: global, url: https://hub.corp/ingest, min_severity: high }   # fan-out
+```
+
+Events ship as NDJSON over HTTPS **through the egress allowlist** (each
+`forward.url` host is allowlisted automatically, so forwarding works under
+`egress.enforce`). Each event carries the originating `sensor_id` (stable
+deployment id) and a `hops` chain stamped per node, so the aggregator dedups by
+`sensor_id:id` and detects loops. Delivery is at-least-once toward the parent
+(bounded retry keeping the batch); a full queue sheds load with a counter, like
+the sinks. (Disk-spool durability across restarts and the aggregator ingest
+endpoint are the next increments.)
+
 ## `egress:` — outbound containment (do-no-harm)
 
 A honeypot must never become an SSRF pivot, open relay, reflector, or exfil

@@ -736,6 +736,23 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Forward targets: id + url required, ids unique, min_severity parseable.
+	seenFwd := map[string]bool{}
+	for _, f := range c.Forward {
+		if f.ID == "" || f.URL == "" {
+			return fmt.Errorf("forward target: id and url are required")
+		}
+		if seenFwd[f.ID] {
+			return fmt.Errorf("forward target %q: duplicate id", f.ID)
+		}
+		seenFwd[f.ID] = true
+		if f.MinSeverity != "" {
+			if _, err := event.ParseSeverity(f.MinSeverity); err != nil {
+				return fmt.Errorf("forward target %q: %w", f.ID, err)
+			}
+		}
+	}
+
 	// Archeservice role bundles (validated before the listeners they
 	// expanded into).
 	if err := c.validateArcheservices(); err != nil {

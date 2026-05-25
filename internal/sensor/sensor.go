@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/forward"
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -75,6 +77,7 @@ type Sensor struct {
 	deviceSev   event.Severity
 	seenSources map[string]struct{} // bus-loop-only: source:first_seen dedup
 	bus         chan *event.Event
+	forward     *forward.Group // fleet event forwarding (nil when no targets)
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
@@ -182,11 +185,23 @@ func New(cfg *config.Config) (*Sensor, error) {
 				egPol.Allow(d)
 			}
 		}
+		for _, f := range cfg.Forward {
+			if d := forwardDest(f.URL); d != "" {
+				egPol.Allow(d)
+			}
+		}
 		for _, d := range cfg.Sensor.Egress.Allow {
 			egPol.Allow(d)
 		}
 		egress.SetDefault(egPol)
 		slog.Info("egress allowlist enabled", "channels", len(cfg.Channels), "extra_allow", len(cfg.Sensor.Egress.Allow))
+	}
+
+	// Fleet forwarding: ship this node's events to parent aggregator(s).
+	var fwdGroup *forward.Group
+	if fwds := buildForwarders(cfg, id); len(fwds) > 0 {
+		fwdGroup = forward.NewGroup(fwds...)
+		slog.Info("fleet forwarding enabled", "targets", len(fwds), "node", id.Seed())
 	}
 
 	var sinks []sink.Sink
@@ -335,6 +350,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		risk:        newRiskScorer(cfg.Risk),
 		seenSources: map[string]struct{}{},
 		bus:         make(chan *event.Event, 1024),
+		forward:     fwdGroup,
 		listeners:   map[string]*listenerHandle{},
 	}
 	// A refused outbound connection is a high-severity finding: it means a
@@ -348,6 +364,66 @@ func New(cfg *config.Config) (*Sensor, error) {
 		})
 	}
 	return s, nil
+}
+
+// buildForwarders constructs the fleet forwarders from the config (resolving
+// token / HMAC secrets from env, stamping this node's id).
+func buildForwarders(cfg *config.Config, id *identity.Identity) []*forward.Forwarder {
+	var out []*forward.Forwarder
+	for _, f := range cfg.Forward {
+		if !f.On() {
+			continue
+		}
+		t := forward.Target{
+			ID: f.ID, URL: f.URL, NodeID: id.Seed(),
+			MaxBatch: f.MaxBatch, MaxAge: f.MaxAge, QueueSize: f.QueueSize, Timeout: f.Timeout,
+		}
+		if f.TokenEnv != "" {
+			t.Token = os.Getenv(f.TokenEnv)
+		}
+		if f.HMACSecretEnv != "" {
+			t.HMACSecret = []byte(os.Getenv(f.HMACSecretEnv))
+		}
+		if f.MinSeverity != "" {
+			if sev, err := event.ParseSeverity(f.MinSeverity); err == nil {
+				t.MinSeverity = sev
+			}
+		}
+		out = append(out, forward.NewForwarder(t))
+	}
+	return out
+}
+
+// forwardDest extracts the "host:port" of a forward target URL for the egress
+// allowlist.
+func forwardDest(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		if u.Scheme == "http" {
+			port = "80"
+		} else {
+			port = "443"
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port)
+}
+
+// dispatch sends an event to the routing/sink fan-out and, when fleet
+// forwarding is configured, to the parent aggregator(s). It stamps the
+// originating sensor id (the fleet dedup key) when not already set — a
+// forwarded event arriving at an aggregator keeps its original SensorID.
+func (s *Sensor) dispatch(rt *router.Router, ev *event.Event) {
+	if ev.SensorID == "" {
+		ev.SensorID = s.identity.Seed()
+	}
+	rt.Dispatch(ev)
+	if s.forward != nil {
+		s.forward.Send(ev)
+	}
 }
 
 // newRiskScorer returns a configured per-source risk scorer, or nil when
@@ -1331,6 +1407,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 
 	s.curRouter().Start(ctx)
 
+	// Fleet forwarders: drain the per-target queues until shutdown.
+	if s.forward != nil && !s.forward.Empty() {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.forward.Run(ctx) }()
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1363,7 +1445,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// First-seen: emit source:first_seen the first time a source
 				// produces a >= medium event (opt-in, low-noise).
 				if fs := s.observeFirstSeen(ev); fs != nil {
-					rt.Dispatch(fs)
+					s.dispatch(rt, fs)
 					s.scoreRisk(rt, fs)
 				}
 				// Decode the captured payload once; share it with the
@@ -1378,14 +1460,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// the registry and emit device:new for never-before-
 				// seen, non-allow-listed hosts.
 				if devNew := s.observeDevice(ev); devNew != nil {
-					rt.Dispatch(devNew)
+					s.dispatch(rt, devNew)
 					s.scoreRisk(rt, devNew)
 				}
 				// Payload harvesting: extract malware / shellcode /
 				// ingress URLs from the captured bytes; persist
 				// artifacts and emit malware:capture when one is found.
 				if mw := s.observePayload(ev, payloadBytes); mw != nil {
-					rt.Dispatch(mw)
+					s.dispatch(rt, mw)
 					s.scoreRisk(rt, mw)
 				}
 				// Scan analysis: feed listener events into the
@@ -1393,21 +1475,21 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// source's timing / scope / probe variety crosses the
 				// confidence threshold.
 				if scanEv := s.observeScan(ev, payloadBytes); scanEv != nil {
-					rt.Dispatch(scanEv)
+					s.dispatch(rt, scanEv)
 					s.scoreRisk(rt, scanEv)
 				}
 				// Fuzzing / DoS classification: stamps a fuzzing-<technique>
 				// anomaly on ev in place (so the correlator below sees it)
 				// and emits attack:dos / attack:fuzzing on a flood/campaign.
 				for _, fdEv := range s.observeFuzzDoS(ev, payloadBytes) {
-					rt.Dispatch(fdEv)
+					s.dispatch(rt, fdEv)
 					s.scoreRisk(rt, fdEv)
 				}
 				for _, out := range co.Observe(ev) {
 					if out != ev {
 						en.Decorate(out)
 					}
-					rt.Dispatch(out)
+					s.dispatch(rt, out)
 					s.scoreRisk(rt, out)
 				}
 			}()

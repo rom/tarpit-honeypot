@@ -126,11 +126,7 @@ func TestForwarderDelivers(t *testing.T) {
 	if evs[0].Hops[len(evs[0].Hops)-1] != "sensorA" {
 		t.Errorf("forwarded event not stamped with node id: %v", evs[0].Hops)
 	}
-	cancel()
-	time.Sleep(20 * time.Millisecond)
-	if sent, _, _ := f.Stats(); sent != 2 {
-		t.Errorf("sent = %d; want 2", sent)
-	}
+	pollSent(t, f, 2) // POST completes shortly after the server receives it
 }
 
 func TestForwarderRetries(t *testing.T) {
@@ -154,10 +150,24 @@ func TestForwarderRetries(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		waitRecv(t, got)
 	}
-	time.Sleep(50 * time.Millisecond)
-	if sent, _, failed := f.Stats(); sent != 1 || failed != 0 {
-		t.Errorf("after retry: sent=%d failed=%d; want 1/0", sent, failed)
+	pollSent(t, f, 1)
+	if _, _, failed := f.Stats(); failed != 0 {
+		t.Errorf("after retry: failed=%d; want 0", failed)
 	}
+}
+
+// pollSent waits for the forwarder's sent counter to reach want.
+func pollSent(t *testing.T, f *Forwarder, want int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if sent, _, _ := f.Stats(); sent >= want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	sent, _, _ := f.Stats()
+	t.Fatalf("sent = %d; want %d", sent, want)
 }
 
 func TestForwarderMinSeverity(t *testing.T) {

@@ -27,6 +27,10 @@ type Config struct {
 	Allowlist     []string       `yaml:"allowlist"`
 	Channels      []Channel      `yaml:"channels"`
 	Routes        []Route        `yaml:"routes"`
+	// Forward ships this node's events to parent aggregator node(s) for
+	// fleet-wide correlation. Multiple targets fan out (HA, or a site SOC plus
+	// a global hub). See internal/forward.
+	Forward []ForwardTarget `yaml:"forward"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -39,6 +43,23 @@ type Config struct {
 	// if applyDefaults is invoked more than once on the same Config.
 	archeservicesExpanded bool
 }
+
+// ForwardTarget is one parent aggregator this node ships events to.
+type ForwardTarget struct {
+	ID            string        `yaml:"id"`
+	URL           string        `yaml:"url"`             // parent ingest endpoint, e.g. https://agg/ingest
+	TokenEnv      string        `yaml:"token_env"`       // bearer token read from this env var
+	HMACSecretEnv string        `yaml:"hmac_secret_env"` // optional body-signature key from this env var
+	MinSeverity   string        `yaml:"min_severity"`    // low|medium|high|critical (empty = forward all)
+	MaxBatch      int           `yaml:"max_batch"`       // flush after N events (default 500)
+	MaxAge        time.Duration `yaml:"max_age"`         // flush at least this often (default 2s)
+	QueueSize     int           `yaml:"queue_size"`      // in-memory buffer depth (default 4096)
+	Timeout       time.Duration `yaml:"timeout"`         // per-POST timeout (default 10s)
+	Enabled       *bool         `yaml:"enabled"`         // nil/true = active; false = defined but off
+}
+
+// On reports whether the forward target is active.
+func (f ForwardTarget) On() bool { return f.Enabled == nil || *f.Enabled }
 
 // Archeservice declares a service role to stand up. At load time it expands
 // into one Listener per port the role exposes (see internal/archeservice),
