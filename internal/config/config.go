@@ -35,6 +35,11 @@ type Config struct {
 	// aggregator). Composes with Listeners + Forward, so a node can be a sensor,
 	// a mid-tier aggregator, and forward upward all at once. See internal/ingest.
 	Ingest IngestConfig `yaml:"ingest"`
+	// Fleet is the cross-sensor correlator that runs over the merged (local +
+	// ingested) stream, surfacing one source IP / ASN / fingerprint touching
+	// several sensors within a window — a pattern no single sensor can see. It
+	// defaults on wherever Ingest is enabled. See internal/fleet.
+	Fleet FleetConfig `yaml:"fleet"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -76,6 +81,33 @@ type IngestConfig struct {
 	MaxBodyMB     int           `yaml:"max_body_mb"`  // reject larger batches (default 32)
 	MaxHops       int           `yaml:"max_hops"`     // drop events that traversed more nodes (default 8)
 	DedupWindow   time.Duration `yaml:"dedup_window"` // sensor_id:id dedup TTL (default 10m)
+}
+
+// FleetConfig tunes the cross-sensor correlator. The thresholds are "within a
+// window"; zero values fall back to the internal/fleet defaults (window 1h,
+// source_sensors 3, asn_sensors 5, fp_sensors 3, fp_sources 5, max_list 50).
+type FleetConfig struct {
+	// Enabled overrides the default: nil = auto (on when ingest is enabled),
+	// true = force on, false = force off. Cross-sensor correlation is only
+	// meaningful where events from several sensors converge, so an aggregator
+	// gets it for free while a leaf sensor stays off unless forced on.
+	Enabled       *bool         `yaml:"enabled"`
+	Window        time.Duration `yaml:"window"`         // how long an identity's activity is remembered
+	SourceSensors int           `yaml:"source_sensors"` // one source IP on >= N sensors -> alert
+	ASNSensors    int           `yaml:"asn_sensors"`    // one ASN on >= N sensors -> alert
+	FPSensors     int           `yaml:"fp_sensors"`     // one fingerprint on >= N sensors ...
+	FPSources     int           `yaml:"fp_sources"`     // ... and >= M distinct sources -> alert
+	MaxList       int           `yaml:"max_list"`       // cap the sensor/source list in alert meta
+}
+
+// On reports whether the fleet correlator should run. It defaults on for any
+// node that accepts ingest (where cross-sensor correlation is meaningful); an
+// explicit enabled value overrides that.
+func (f FleetConfig) On(ingestEnabled bool) bool {
+	if f.Enabled != nil {
+		return *f.Enabled
+	}
+	return ingestEnabled
 }
 
 // Archeservice declares a service role to stand up. At load time it expands

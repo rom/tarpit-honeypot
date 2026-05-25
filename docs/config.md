@@ -45,6 +45,9 @@ has its own reference further down.
 | `honeynets` | list | artificial networks of virtual hosts/services |
 | `channels` | list | output sinks |
 | `routes` | list | match predicates → channels |
+| `forward` | list | ship events to parent aggregator node(s) |
+| `ingest` | map | accept events from child nodes (aggregator endpoint) |
+| `fleet` | map | cross-sensor correlation over the merged stream |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
 | `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
 | `devices` | map | learned-device inventory + new-device alerts |
@@ -702,6 +705,47 @@ a `sqlite` channel + route so forwarded events are stored and visible in the UI;
 add `forward:` to relay onward to a higher tier. Store rows now carry the
 originating `sensor_id` (stable, survives identical hostnames) alongside the
 sensor name.
+
+## `fleet:` — cross-sensor correlation (aggregator)
+
+A single sensor only ever sees one vantage point. Once events from many sensors
+converge on an aggregator (via `ingest:`), the **fleet** correlator runs over
+the merged local + ingested stream and surfaces patterns no one node can see:
+the same attacker identity hammering several honeypots at once. It keys events
+by identity, tracks the distinct sensors (and, for fingerprints, the distinct
+sources) each identity touches within a window, and emits a high-severity
+`fleet:*` event the first time an identity crosses a breadth threshold (once per
+window). The alerts flow through the same pipeline as everything else (store, UI,
+routes, risk scoring, and onward `forward:`).
+
+It is **on by default wherever `ingest:` is enabled** (where the patterns can
+appear); a leaf sensor stays off. Set `fleet.enabled` explicitly to force it on
+or off.
+
+```yaml
+fleet:
+  enabled: true        # default: on when ingest is enabled; set false to opt out
+  window: 1h           # how long an identity's activity is remembered
+  source_sensors: 3    # one source IP on >= N sensors -> fleet:source-multi-sensor
+  asn_sensors: 5       # one ASN on >= N sensors -> fleet:asn-multi-sensor
+  fp_sensors: 3        # one ja3/ja4/hassh on >= N sensors ...
+  fp_sources: 5        #   ... AND >= M distinct sources -> fleet:fingerprint-shared
+  max_list: 50         # cap the sensor/source list carried in the alert meta
+```
+
+The three detectors:
+
+| Event | Fires when | Reads |
+|-------|-----------|-------|
+| `fleet:source-multi-sensor` | one **source IP** seen on >= `source_sensors` sensors | a single attacker sweeping the fleet |
+| `fleet:asn-multi-sensor` | one **ASN** seen on >= `asn_sensors` sensors | coordinated / distributed from one network (needs GeoIP-ASN enrichment) |
+| `fleet:fingerprint-shared` | one **ja3/ja4/hassh** on >= `fp_sensors` sensors **and** >= `fp_sources` distinct sources | a shared toolkit / botnet — IPs differ, client stack is identical |
+
+Each alert carries the triggering `source`, the breadth counts, the (capped,
+sorted) `sensors` / `sources` lists, and the `window`. The fleet detectors run
+*after* enrichment, so the ASN detector sees the `asn` tag; configure
+`sensor.geoip.asn_db` on the aggregator for `fleet:asn-multi-sensor`. `fleet:*`
+events are never re-correlated (loop guard).
 
 ## `egress:` — outbound containment (do-no-harm)
 

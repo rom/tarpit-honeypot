@@ -24,6 +24,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/fleet"
 	"github.com/rom/tarpit-honeypot/internal/forward"
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
@@ -77,7 +78,8 @@ type Sensor struct {
 	deviceSev   event.Severity
 	seenSources map[string]struct{} // bus-loop-only: source:first_seen dedup
 	bus         chan *event.Event
-	forward     *forward.Group // fleet event forwarding (nil when no targets)
+	forward     *forward.Group    // fleet event forwarding (nil when no targets)
+	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
 
 	ingestSeen    *ttlSet // dedup for events admitted via IngestBatch (aggregator)
 	ingestMaxHops int     // drop forwarded events that traversed more nodes than this
@@ -209,6 +211,23 @@ func New(cfg *config.Config) (*Sensor, error) {
 	ingestMaxHops := cfg.Ingest.MaxHops
 	if ingestMaxHops <= 0 {
 		ingestMaxHops = 8
+	}
+
+	// Fleet correlator: cross-sensor patterns over the merged stream. On by
+	// default wherever this node ingests (where the patterns can appear); a
+	// leaf sensor stays off unless fleet.enabled forces it on.
+	var fleetCorr *fleet.Correlator
+	if cfg.Fleet.On(cfg.Ingest.Enabled) {
+		fleetCorr = fleet.New(fleet.Config{
+			Enabled:       true,
+			Window:        cfg.Fleet.Window,
+			SourceSensors: cfg.Fleet.SourceSensors,
+			ASNSensors:    cfg.Fleet.ASNSensors,
+			FPSensors:     cfg.Fleet.FPSensors,
+			FPSources:     cfg.Fleet.FPSources,
+			MaxList:       cfg.Fleet.MaxList,
+		})
+		slog.Info("fleet correlation enabled", "node", id.Seed())
 	}
 
 	var sinks []sink.Sink
@@ -358,6 +377,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		seenSources:   map[string]struct{}{},
 		bus:           make(chan *event.Event, 1024),
 		forward:       fwdGroup,
+		fleet:         fleetCorr,
 		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
 		ingestMaxHops: ingestMaxHops,
 		listeners:     map[string]*listenerHandle{},
@@ -1441,6 +1461,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 				rt := s.curRouter()
 				co := s.curCorrelator()
 				en := s.curEnricher()
+				// Stamp the originating sensor id up front so it's consistent
+				// for fleet correlation, dispatch, and forwarding. An event
+				// ingested from a child node keeps its original SensorID.
+				if ev.SensorID == "" {
+					ev.SensorID = s.identity.Seed()
+				}
 				en.Decorate(ev)
 				// ATT&CK-tag the event before correlation so the
 				// storyline correlator can build its tactic chain from
@@ -1500,6 +1526,17 @@ func (s *Sensor) Run(ctx context.Context) error {
 					}
 					s.dispatch(rt, out)
 					s.scoreRisk(rt, out)
+				}
+				// Fleet correlation: cross-sensor patterns (one source /
+				// ASN / fingerprint touching several sensors) over the
+				// merged local + ingested stream. Runs after enrichment so
+				// the ASN tag is present.
+				if s.fleet != nil {
+					for _, fe := range s.fleet.Observe(ev) {
+						en.Decorate(fe)
+						s.dispatch(rt, fe)
+						s.scoreRisk(rt, fe)
+					}
 				}
 			}()
 		}

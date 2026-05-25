@@ -8,6 +8,29 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: cross-sensor correlation (`fleet:`) — phase 2
+- The aggregator now runs a **cross-sensor correlator** over the merged
+  local + ingested stream, surfacing the attacker-identity patterns no single
+  sensor can see. On by default wherever `ingest:` is enabled; `fleet.enabled`
+  forces it on/off. New `internal/fleet` package.
+- Three detectors, each emitting a high-severity event the first time an
+  identity crosses its breadth threshold within `window` (once per window):
+  - `fleet:source-multi-sensor` — one **source IP** on >= `source_sensors` (3)
+    distinct sensors (a single attacker sweeping the fleet).
+  - `fleet:asn-multi-sensor` — one **ASN** on >= `asn_sensors` (5) sensors
+    (coordinated / distributed from one network; needs GeoIP-ASN enrichment).
+  - `fleet:fingerprint-shared` — one **ja3/ja4/hassh** on >= `fp_sensors` (3)
+    sensors AND >= `fp_sources` (5) distinct sources (shared toolkit / botnet:
+    the IPs differ but the client stack is identical).
+- Each alert carries the triggering source, the breadth counts, the (capped,
+  sorted) `sensors` / `sources` lists, and the `window`. The detectors run after
+  enrichment (so the ASN tag is present) and after the in-sensor correlators;
+  `fleet:*` output is never re-correlated (loop guard). Alerts flow through the
+  normal pipeline (store / UI / routes / risk scoring / onward `forward:`).
+  Verified end-to-end: two `sensor_id`s sharing a source IP through one
+  aggregator's `ingest:` produced `fleet:source-multi-sensor` in the store/API
+  with `sensor_count: 2` and the contributing sensor list.
+
 ### Added — fleet aggregation: `ingest:` endpoint (phase 1c)
 - A node can now be an **aggregator**: an authenticated HTTP `ingest:` endpoint
   (bearer token, optional HMAC, optional TLS) accepts batches forwarded by child
