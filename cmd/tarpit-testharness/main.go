@@ -6,8 +6,8 @@
 // deliberate mis-implementation, port/host/ping/ARP sweeps, and client
 // fingerprint triggers. Run it fully automated, quiet, or with progress;
 // bound it by rounds or wall-clock time; it retries (restarting the target)
-// on failures/crashes, writes reports (text/json/junit/md), and records every
-// run + result in a SQLite database keyed by tool version + time.
+// on failures/crashes, writes reports (text/json/junit/md/csv/rtf/pdf), and
+// records every run + result in a SQLite database keyed by tool version + time.
 //
 //	tarpit-testharness list   -c harness.yaml
 //	tarpit-testharness run     -c harness.yaml --progress
@@ -162,7 +162,7 @@ func runCmd(args []string) error {
 	quiet := fs.Bool("quiet", false, "no output (run fully in the background)")
 	progress := fs.Bool("progress", false, "print a line per case as it completes")
 	var reports multiFlag
-	fs.Var(&reports, "report", "report as format[=path], repeatable (text|json|junit|md; path '-'/empty = stdout)")
+	fs.Var(&reports, "report", "report as format[=path], repeatable (text|json|junit|md|csv|rtf|pdf; path '-'/empty = stdout)")
 	dbPath := fs.String("db", "", "SQLite results database to append this run to")
 	if err := fs.Parse(args); err != nil {
 		return err

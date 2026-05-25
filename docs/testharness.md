@@ -10,8 +10,9 @@ mis-implementation, port/host/ping/ARP sweeps, and client-fingerprint triggers.
 
 It runs fully automated (auto input + restarts), quiet in the background, or with
 per-case progress; is bounded by rounds and/or wall-clock time; retries
-(restarting the target) on failures/crashes; writes reports (text/json/junit/md);
-and records every run + result in a SQLite database keyed by tool version + time.
+(restarting the target) on failures/crashes; writes reports
+(text/json/junit/md/csv/rtf/pdf); and records every run + result in a SQLite
+database keyed by tool version + time.
 
 For the sensor itself see [`usage.md`](usage.md), [`cli.md`](cli.md), and
 [`config.md`](config.md). This document covers only the harness.
@@ -143,7 +144,7 @@ Run the selected cases. In addition to the common flags:
 | `-verify-token <tok>` | — | API auth token (prefer the config/env; see Security). |
 | `-quiet` | off | No output (run fully in the background). |
 | `-progress` | off | Print a line per case as it completes. |
-| `-report fmt[=path]` | text→stdout | Report to write; repeatable. `fmt` ∈ `text\|json\|junit\|md`; path `-`/empty = stdout. |
+| `-report fmt[=path]` | text→stdout | Report to write; repeatable. `fmt` ∈ `text\|json\|junit\|md\|csv\|rtf\|pdf`; path `-`/empty = stdout. |
 | `-db <path>` | — | SQLite results database to append this run to. |
 
 Output modes: **quiet** prints nothing; **progress** prints every case; the
@@ -304,6 +305,8 @@ reports:
   - { format: text,  path: "-" }       # "-" or "" = stdout
   - { format: junit, path: harness.xml }
   - { format: md,    path: harness.md }
+  - { format: csv,   path: harness.csv } # one row per result, for spreadsheets
+  - { format: pdf,   path: harness.pdf } # self-contained printable report
 db: harness-results.db        # append every run here
 ```
 
@@ -367,7 +370,7 @@ natural `duration: 0` is valid (it means "no bound").
 
 | Field | Meaning |
 |---|---|
-| `format` | `text`, `json`, `junit`, or `md`. |
+| `format` | `text`, `json`, `junit`, `md`, `csv`, `rtf`, or `pdf`. |
 | `path` | Output file; `-` or empty = stdout. |
 
 ---
@@ -428,6 +431,29 @@ once. With no `--report` and not `--quiet`, a text summary goes to stdout.
 | `json` | Full structured result (every case, status, attempts, duration) for tooling. |
 | `junit` | JUnit XML for CI — `fail`/`crash` → `<failure>`, `error` → `<error>`, `skip` → `<skipped>`. |
 | `md` | Markdown summary + findings table for a PR/issue. |
+| `csv` | One row per `(case, round)` result (`case_id, category, endpoint, round, attempt, status, duration_ms, started, detail`) for spreadsheets / pivots. |
+| `rtf` | Rich-text summary that opens directly in Word / Pages / WordPad. |
+| `pdf` | Self-contained, paginated PDF (no external tooling) for archiving or sharing a printable report. |
+
+The same run can emit all of them at once — list one `--report` per format
+(CLI) or one entry per `reports[]` item (config).
+
+### Where reports are stored
+
+Each report goes exactly where its `path` says:
+
+- **A file path** (e.g. `--report pdf=./var/harness.pdf` or `path: ./var/harness.pdf`)
+  writes/overwrites that file. Relative paths resolve against the **current
+  working directory** of the `tarpit-testharness` process; the directory must
+  already exist. The example configs write under `./var/`.
+- **`-` or empty** writes to **stdout** (handy for `text`/`json`/`md`; pipe it
+  on). Binary-ish formats (`pdf`, `rtf`) are best given a real file path.
+- **No `--report` at all** (and not `--quiet`) prints a single `text` summary to
+  **stdout** — nothing is written to disk.
+
+The machine-readable run history is separate from these report files: it is the
+SQLite **results database** at `--db <path>` / `db:` (see below), which is
+appended to — not overwritten — on every run.
 
 ---
 

@@ -145,7 +145,7 @@ type VerifyCfg struct {
 
 // ReportCfg is one report to write.
 type ReportCfg struct {
-	Format string `yaml:"format"` // text | json | junit | md
+	Format string `yaml:"format"` // text | json | junit | md | csv | rtf | pdf
 	Path   string `yaml:"path"`   // "-" = stdout
 }
 
@@ -233,9 +233,9 @@ func (c *Config) Validate() error {
 	}
 	for _, rep := range c.Reports {
 		switch rep.Format {
-		case "text", "json", "junit", "md":
+		case "text", "json", "junit", "md", "csv", "rtf", "pdf":
 		default:
-			return fmt.Errorf("report format %q: must be text|json|junit|md", rep.Format)
+			return fmt.Errorf("report format %q: must be text|json|junit|md|csv|rtf|pdf", rep.Format)
 		}
 	}
 	return nil
