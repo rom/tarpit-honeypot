@@ -78,6 +78,8 @@ type Event struct {
 	ID            string         `json:"id"`
 	Time          time.Time      `json:"time"`
 	Sensor        string         `json:"sensor"`
+	SensorID      string         `json:"sensor_id,omitempty"` // stable deployment id of the originating sensor (fleet dedup key with ID)
+	Hops          []string       `json:"hops,omitempty"`      // node ids this event traversed (fleet loop/dup guard + provenance)
 	RuleID        string         `json:"rule_id"`
 	Severity      Severity       `json:"severity"`
 	Source        Endpoint       `json:"source"`
