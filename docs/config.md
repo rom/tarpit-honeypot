@@ -655,7 +655,8 @@ outbound connection.
 ```yaml
 sensor:
   egress:
-    enabled: true            # off by default → egress unrestricted (no change)
+    enabled: true            # in-process guard: route sink dials through the allowlist
+    enforce: true            # + OS-level nftables backstop (Linux; needs nft + CAP_NET_ADMIN)
     allow:                   # extra destinations not modeled as a channel:
       - collector.corp:8443  #   a central event collector (fleet forwarding)
       - 10.20.0.0/16         #   an IOC / threat-intel feed range
@@ -663,11 +664,29 @@ sensor:
 
 The allowlist is the union of: every configured outbound **channel**'s
 destination (webhook / syslog / smtp / sns / discord / twilio — derived
-automatically) plus `allow` (a host, `host:port`, or CIDR). The dialing sinks
-route through this guard, so legitimate forwarding/export keeps working while
-anything off the list is denied. The allowlist updates additively on config
-reload. (MQTT brokers reached via the paho client dial outside the in-process
-guard; allowlist them at the OS firewall if you enforce egress there too.)
+automatically) plus `allow` (a host, `host:port`, or CIDR). Off by default →
+egress unrestricted (no behavior change).
+
+Two enforcement layers:
+
+- **`enabled`** — the in-process guard: the dialing sinks route through the
+  allowlist, so legitimate forwarding/export keeps working while a sink dial to
+  anything off the list (e.g. an SSRF redirect) is refused and recorded as a
+  high-severity `egress:denied` event. Updates additively on config reload.
+- **`enforce`** — additionally installs an **nftables** OUTPUT chain (Linux only;
+  needs the `nft` binary + `CAP_NET_ADMIN`, installed at startup before the
+  privilege drop / sandbox) that drops the sensor's packets to anything off the
+  allowlist. It is scoped to the sensor's **uid** via `meta skuid`, so the rest
+  of the host is untouched (run with `drop_user` so the scope is the sensor
+  alone, not every root process), and permits established connections (listeners
+  reply), loopback, and DNS to the system resolvers. This is the hard backstop —
+  it catches even a raw `net.Dial` or a library (e.g. the MQTT paho client) that
+  dials outside the in-process guard. `enforce` implies `enabled`.
+
+Caveat: the firewall allowlists hostnames by their resolved IP at install time;
+for a destination with rotating DNS, allowlist its CIDR in `allow`. Cleanup on
+shutdown is best-effort (a uid-scoped, harmless-when-down table superseded on the
+next start).
 
 A second, longer example — OR semantics via multiple routes, a catch-all
 archive, and a paging path:

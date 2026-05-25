@@ -64,6 +64,21 @@ func (p *Policy) Allow(dest string) {
 	p.hosts[strings.ToLower(dest)] = true
 }
 
+// Entries returns the allowlist as strings (hosts, host:ports, and CIDRs) — the
+// source of truth the OS-level firewall mirrors.
+func (p *Policy) Entries() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make([]string, 0, len(p.hosts)+len(p.cidrs))
+	for h := range p.hosts {
+		out = append(out, h)
+	}
+	for _, c := range p.cidrs {
+		out = append(out, c.String())
+	}
+	return out
+}
+
 // Allowed reports whether addr ("host:port") is permitted.
 func (p *Policy) Allowed(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)

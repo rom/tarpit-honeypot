@@ -383,7 +383,16 @@ type Sensor struct {
 type EgressPolicy struct {
 	Enabled bool     `yaml:"enabled"`
 	Allow   []string `yaml:"allow"`
+	// Enforce additionally installs an OS-level nftables firewall (Linux, needs
+	// the nft binary + CAP_NET_ADMIN at startup) that drops the sensor's
+	// outbound packets to anything off the allowlist — the hard backstop under
+	// the in-process guard, catching even a raw net.Dial. Implies Enabled.
+	Enforce bool `yaml:"enforce"`
 }
+
+// On reports whether the in-process egress guard should be built (either the
+// soft guard or the OS firewall is requested).
+func (e EgressPolicy) On() bool { return e.Enabled || e.Enforce }
 
 // SessionRecording configures interactive-session capture. Off by default.
 type SessionRecording struct {

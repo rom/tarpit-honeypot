@@ -175,7 +175,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 	// other outbound connection is refused. Off unless enabled, in which case
 	// egress is unrestricted (no behavior change).
 	var egPol *egress.Policy
-	if cfg.Sensor.Egress.Enabled {
+	if cfg.Sensor.Egress.On() {
 		egPol = egress.New()
 		for _, ch := range cfg.Channels {
 			for _, d := range sink.Dests(ch) {

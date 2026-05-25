@@ -20,6 +20,13 @@ documented in `docs/`).
   guarded DialContext + HTTPClient); the dialing sinks route through it. Off by
   default (egress unrestricted) so there's no behavior change until enabled; the
   allowlist updates additively on config reload.
+- `egress.enforce` adds an OS-level **nftables** backstop (Linux; needs `nft` +
+  CAP_NET_ADMIN, installed at startup before privilege drop / sandbox) that drops
+  the sensor's outbound packets to anything off the allowlist — scoped to the
+  sensor's uid via `meta skuid` (the rest of the host is untouched), permitting
+  established connections, loopback, and DNS to the system resolvers. This is the
+  hard backstop that catches even a raw `net.Dial` or a library (e.g. the MQTT
+  paho client) that dials outside the in-process guard.
 
 ### Changed — handlers: deeper Kerberos + VNC interaction
 - **Kerberos** now records the requested **enctypes**, then drives a second

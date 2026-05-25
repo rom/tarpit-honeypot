@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"sort"
+	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/privdrop"
 	"github.com/rom/tarpit-honeypot/internal/sandbox"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
@@ -59,6 +63,32 @@ func cmdRun(args []string) error {
 			"honeynets", len(cfg.Honeynets),
 		)
 		return nil
+	}
+
+	// Install the OS-level egress firewall while still privileged (needs
+	// CAP_NET_ADMIN) and before the seccomp sandbox blocks exec — scoped to the
+	// uid the sensor will run as. The in-process allowlist (built in New) is the
+	// source of truth; the firewall is the hard backstop.
+	if cfg.Sensor.Egress.Enforce {
+		if p := egress.Default(); p != nil {
+			uid := egressUID(cfg.Sensor.DropUser)
+			fc := egress.FirewallConfig{UID: uid, Entries: p.Entries(), Resolvers: egress.SystemResolvers()}
+			ictx, icancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := egress.InstallFirewall(ictx, fc)
+			icancel()
+			if err != nil {
+				slog.Warn("egress firewall not installed (in-process guard still active)", "err", err)
+			} else {
+				slog.Info("egress firewall installed", "uid", uid, "allowlist", len(fc.Entries))
+				defer func() {
+					rctx, rcancel := context.WithTimeout(context.Background(), 5*time.Second)
+					if err := egress.RemoveFirewall(rctx, ""); err != nil {
+						slog.Warn("egress firewall cleanup failed (uid-scoped table left for next start)", "err", err)
+					}
+					rcancel()
+				}()
+			}
+		}
 	}
 
 	if err := privdrop.Drop(cfg.Sensor.DropUser, cfg.Sensor.DropGroup); err != nil {
@@ -211,4 +241,17 @@ func labeledCounts(m map[string]int) []ui.LabeledCount {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+// egressUID resolves the uid the sensor will run as (drop_user, else current),
+// so the egress firewall can be scoped to exactly the sensor's own traffic.
+func egressUID(dropUser string) int {
+	if dropUser != "" {
+		if u, err := user.Lookup(dropUser); err == nil {
+			if id, err := strconv.Atoi(u.Uid); err == nil {
+				return id
+			}
+		}
+	}
+	return os.Getuid()
 }
