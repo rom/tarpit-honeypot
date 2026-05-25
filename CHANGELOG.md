@@ -8,6 +8,80 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — in-product documentation + new guides (version 2.1.0)
+- The web UI **docs** tab now renders the full documentation in-product: the
+  Markdown guides are embedded in the binary (`docs` package), `/docs` lists a
+  documentation library, and `/docs/<name>` serves each guide via a compact,
+  dependency-free Markdown→HTML renderer (headings with slug ids, fenced code,
+  lists, blockquotes, GFM tables, inline code/bold/italic/links) under the
+  strict CSP; internal `.md` links are rewritten to `/docs/<name>` and unknown
+  names 404.
+- New guides: `docs/fleet.md` (roles, topologies, the 27 `fleet:*` detectors,
+  broad-vs-targeted, downward intel, tuning, troubleshooting), `docs/ioc.md`
+  (the IOC store, `ioc:<type>` events, exports), `docs/threat-intel-exports.md`
+  (STIX 2.1 / TAXII 2.1 / MISP, the downward feed, CEF/LEEF/OCSF sinks),
+  `docs/FAQ.md`, and `docs/webui.md` (the web-UI walkthrough).
+- Refreshed the man page, `docs/cli.md`, `docs/README.md`, `docs/usage.md`
+  (new Fleet and IOC sections), `docs/internals.md` (the fleet/ingest/intel data
+  flow, persisted ATT&CK/D3FEND columns, the package map), and the root README
+  for the fleet / IOC / threat-intel features. Version bumped to **2.1.0**.
+
+### Added — IOC retention (tied to retention_days)
+- The hourly retention runner now also prunes stale indicators from the `iocs`
+  table — those not seen for `sensor.disk.retention_days` (last-seen basis, the
+  same age cap as the event store), reported as `ioc_rows` in the prune log. An
+  indicator kept fresh by continued sightings survives. Unit-tested.
+
+### Added — worked fleet topology example configs
+- `examples/fleet/` — a tiered, validated reference deployment: `leaf-sensor.yaml`
+  (edge decoy that forwards full + subscribes to the intel feed under
+  `egress.enforce`), `site-aggregator.yaml` (ingest + trust + fleet + IOC +
+  serve-intel, rolling up to the hub), and `global-hub.yaml` (wide fleet windows
+  + IOC + MISP push + STIX/TAXII + CEF→SIEM), with a `README.md` topology
+  diagram. Listed in `examples/EXAMPLES.md`; all three pass `validate-config`.
+
+### Changed — web UI brought up to date with the fleet / IOC / mitre features
+- **Event detail** (`/events/<id>`) now shows an ATT&CK / D3FEND section
+  (technique chips link to the technique view, with hover descriptions; tactics +
+  D3FEND defenses listed) — from the persisted columns, recomputed for
+  pre-migration events.
+- **Config canvas** (`/config`, `/api/config/canvas`) gained a "Fleet /
+  aggregation" group surfacing the new subsystems with live state: fleet
+  correlation (+ detector count), fleet forwarding (full/rollup target mix),
+  ingest endpoint, trust scoring, intel feed serving + subscribing, MISP push,
+  and the IOC store.
+- The template function map is now a single shared `tmplFuncs` (used by the
+  server and all view tests) so they can't drift; added a `techDesc` helper
+  (mitre.Describe).
+
+### Added — indicator-of-compromise (IOC) store, events, and web-UI tab
+- New `internal/ioc` distils the indicators every event already carries — source
+  IPs, ja3/ja4/hassh fingerprints, ASNs, DNS names, CVE ids, captured-payload
+  SHA-256s, harvested C2 URLs, credentials, MACs — into a de-duplicated IOC
+  store (new `iocs` sqlite table: type+value → first/last seen, count, max
+  severity, last rule/source), with `Store.UpsertIOC` / `QueryIOCs` /
+  `IOCSummary`.
+- The first sighting of a **high-value** indicator (sha256 / url / domain /
+  ja3 / ja4 / hassh / cve / credential by default) emits an `ioc:<type>` event —
+  stored locally **and forwarded** to aggregators like any event; a forwarded
+  `ioc:*` re-yields its indicator so a parent harvests child IOCs even in rollup
+  mode. Configurable under `ioc:` (`emit_types`); on by default with a store.
+- New web-UI **iocs** tab (`/iocs` + `/api/iocs`): per-type breakdown bar chart
+  (each bar filters by type) and the indicator list (value, count, first/last
+  seen, severity, last rule) — each row links to the events that exhibited it.
+  Linked from the nav + `/docs`.
+- Verified end-to-end: an ingest batch populated the IOC store and emitted
+  `ioc:credential/cve/ja3/sha256/url` (bare IPs tracked, not emitted); the tab
+  and `/api/iocs` render them. Unit-tested (extractor incl. forwarded-ioc
+  propagation; store upsert/query/summary).
+
+### Added — persist ATT&CK / D3FEND in the event store
+- The event store now persists `mitre_techniques` / `mitre_tactics` /
+  `mitre_defenses` (schema + additive migration), so `/api/events`, the event
+  log, and the IOC/event views carry the same ATT&CK + D3FEND attribution the
+  streaming sinks already get. Verified: a stored `cve:*` event now reports
+  `T1190` + its D3FEND set via `/api/events`.
+
 ### Added — ATT&CK / D3FEND / CVE cross-reference coverage for the new features
 - **Fleet detectors mapped to ATT&CK + D3FEND** — all 27 `fleet:*` detectors
   (and `egress:denied`) now resolve to ATT&CK technique(s)/tactic(s) and the

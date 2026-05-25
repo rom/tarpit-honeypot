@@ -50,6 +50,7 @@ has its own reference further down.
 | `fleet` | map | cross-sensor correlation over the merged stream |
 | `intel_feed` | map | subscribe to a parent's downward fleet-intel feed |
 | `misp` | map | push the fleet's observed IOCs to a MISP instance |
+| `ioc` | map | indicator-of-compromise store + ioc:* events |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
 | `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
 | `devices` | map | learned-device inventory + new-device alerts |
@@ -100,7 +101,7 @@ sensor:
 | `deployment_id` | Stable random seed feeding every "fixed" handler string. Auto-generated to `<data_dir>/.deployment-id` on first run. Override here to align two sensors that should look identical. |
 | `archetype` | OS-shaped banner profile (e.g. `debian 12`, `Ubuntu 24.04 LTS`, `Red Hat Enterprise Linux 9`). Pins SSH / HTTP / FTP / Telnet / SMTP / MySQL banners to values consistent with a stock install of that distro, so a scanner can't catch the sensor by spotting a version-vs-distro mismatch. Blank = fall back to the deployment-id-keyed variant pool. See `tarpit-honeypot help archetypes` for the list. |
 | `drop_user` / `drop_group` | After privileged setup, drop to this uid/gid. Refuses uid 0. Linux only — non-Linux warns and ignores. |
-| `disk.retention_days` | Hourly runner deletes events / files / DB rows older than this. 0 disables time-based pruning (size caps still apply). |
+| `disk.retention_days` | Hourly runner deletes events / files / DB rows (and IOC indicators not seen) older than this. 0 disables time-based pruning (size caps still apply). |
 | `jitter` | Per-handler-reply sleep `[min_ms, max_ms]`. Defeats microsecond-identical-latency scanner fingerprinting. |
 | `shutdown.drain_timeout` | After SIGTERM, accept sockets close immediately but in-flight handlers get this long to finish before force-cancel. |
 | `tls_rotate.days` | Auto-regenerate the HTTPS handler's self-signed cert if older than this. 0 = stable cert (stable SNI hash → leakable identifier). |
@@ -951,6 +952,39 @@ misp:
   distribution: "0"               # MISP distribution level (0 = your org only)
   threat_level: "2"               # threat_level_id
 ```
+
+## `ioc:` — indicator-of-compromise store + feed
+
+Every event already carries indicators — source IPs, ja3/ja4/hassh fingerprints,
+ASNs, DNS names, CVE ids, captured-payload SHA-256s, harvested C2 URLs,
+credentials, MACs. The IOC layer distils them into a **de-duplicated indicator
+store** (type + value → first/last seen, count, max severity, last rule/source),
+surfaced on the web UI's **iocs** tab and `GET /api/iocs`, and exportable offline
+with `export-iocs`. The first time a **high-value** indicator is seen it also
+emits an `ioc:<type>` event, which is stored locally and **forwarded** to
+aggregators like any event (so a parent harvests child IOCs even in `rollup`
+mode). On by default wherever an event store exists.
+
+```yaml
+ioc:
+  enabled: true        # default: on when a sqlite store is configured
+  emit_types:          # first-sight types that emit an ioc:<type> event
+    - sha256
+    - url
+    - domain
+    - ja3
+    - ja4
+    - hassh
+    - cve
+    - credential
+```
+
+Bare `ip` / `asn` / `mac` are tracked in the store but not emitted as events by
+default (too voluminous, and already on every event); add them to `emit_types`
+to change that. The ATT&CK/D3FEND attribution is persisted per event, so the
+`iocs` tab, the event log, and `/api/events` all carry the techniques/defenses.
+Stale indicators — not seen for `sensor.disk.retention_days` — are pruned by the
+hourly retention runner (last-seen basis), the same age cap as the event store.
 
 ## `egress:` — outbound containment (do-no-harm)
 

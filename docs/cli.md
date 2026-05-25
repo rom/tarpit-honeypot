@@ -1,6 +1,6 @@
 # CLI Reference
 
-The binary is a single static executable. Invoke it as `tarpit-honeypot <subcommand> [flags]`. See [`docs/usage.md`](usage.md) for higher-level scenarios and [`docs/config.md`](config.md) for the YAML schema each `-c` flag points at.
+The binary is a single static executable. Invoke it as `tarpit-honeypot <subcommand> [flags]`. See [`docs/usage.md`](usage.md) for higher-level scenarios and [`docs/config.md`](config.md) for the YAML schema each `-c` flag points at. For the fleet-specific commands see [`docs/fleet.md`](fleet.md); for the IOC / threat-intel exports see [`docs/ioc.md`](ioc.md) and [`docs/threat-intel-exports.md`](threat-intel-exports.md).
 
 ```
 tarpit-honeypot run            -c <config> [--dry-run] [common flags]
@@ -79,7 +79,7 @@ tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
 | `--dry-run` | off | Load + validate config, construct the sensor end-to-end, exit before binding any listener. CI-friendly. |
 | Common flags | — | See "Common flags" at the top. |
 
-The sensor brings up, in order: SQLite store + retention pruner; capture manager (when any listener has `capture: true`); sinks; router workers; correlator (port-scan / brute-force / slow-scan / spray / path- + dns-enumeration / beacon + storyline); per-listener accept loops (with hot-reload tracking); canary watchers (fanotify on Linux for OPEN events, fsnotify everywhere else for write/remove/rename/chmod); DNS canary listener; ARP / ICMP / LLDP / TUN responders per honeynet (Linux only); AF_PACKET sniffer — IPv4 + IPv6 + L2 (Linux only); Web UI + `/metrics` endpoint.
+The sensor brings up, in order: SQLite store (+ retention pruner, which also prunes the IOC store) + the IOC extractor; capture manager (when any listener has `capture: true`); sinks; router workers; correlator (port-scan / brute-force / slow-scan / spray / path- + dns-enumeration / beacon + storyline); the fleet stack when configured — the `ingest:` endpoint (accepts forwarded events), the cross-sensor `fleet:*` correlator (auto-on with ingest), per-sensor trust scoring, the downward intel feed server (`/intel`, `/intel/stix`, `/taxii2/…`), the MISP pusher, and — on a leaf — the event forwarder and the `intel_feed:` subscriber; per-listener accept loops (with hot-reload tracking); canary watchers (fanotify on Linux for OPEN events, fsnotify everywhere else for write/remove/rename/chmod); DNS canary listener; ARP / ICMP / LLDP / TUN responders per honeynet (Linux only); AF_PACKET sniffer — IPv4 + IPv6 + L2 (Linux only); Web UI + `/metrics` endpoint.
 
 ### Signals
 
@@ -99,7 +99,7 @@ Privileged setup happens **before** `drop_user`/`drop_group` takes effect:
 
 The systemd unit pre-grants the necessary `AmbientCapabilities` so the drop is safe.
 
-On **macOS**, the AF_PACKET/TUN steps are no-ops (Linux-only — see [`docs/usage.md` §12](usage.md#12-platform-support)). Privileged port binding works as on any BSD-derived system: bind as root, then `setuid` to the configured `drop_user` (uses `syscall.Setuid`, which on darwin also drops the saved-uid so a later `setuid(0)` regain attempt fails). launchd's `<SoftResourceLimits>` and `<UserName>` keys can replace `AmbientCapabilities`.
+On **macOS**, the AF_PACKET/TUN steps are no-ops (Linux-only — see [`docs/usage.md` §14](usage.md#14-platform-support)). Privileged port binding works as on any BSD-derived system: bind as root, then `setuid` to the configured `drop_user` (uses `syscall.Setuid`, which on darwin also drops the saved-uid so a later `setuid(0)` regain attempt fails). launchd's `<SoftResourceLimits>` and `<UserName>` keys can replace `AmbientCapabilities`.
 
 ---
 
@@ -455,6 +455,11 @@ tarpit-honeypot list-fleet-rules --json
 |---|---|---|
 | `--json` | off | Emit the catalog as JSON (id, summary, config keys). |
 
+The same catalog is documented narratively in [`docs/fleet.md`](fleet.md), grouped
+by detection axis (breadth, shared-artifact campaign, coordination, temporal,
+novelty, identity/infrastructure, …). Fleet detection only fires on an
+**aggregator** — a node with `ingest:` receiving events from several sensors.
+
 ---
 
 ## `export-iocs`
@@ -475,6 +480,12 @@ tarpit-honeypot export-iocs -c cfg.yaml --format csv --since 720h
 | `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
 | `--since <dur>` | `168h` | Derive IOCs from fleet findings newer than this. |
 | `--format stix\|csv\|txt\|json` | `stix` | STIX 2.1 bundle, CSV (`kind,value,reason`), plain values, or raw JSON. |
+
+`export-iocs` derives from the stored `fleet:*` findings (the curated, cross-sensor
+indicators); the live `/api/iocs` endpoint and the **iocs** UI tab expose the
+broader per-sensor IOC store. See [`docs/ioc.md`](ioc.md) for the two layers and
+[`docs/threat-intel-exports.md`](threat-intel-exports.md) for the STIX/TAXII/MISP
+field mappings.
 
 ---
 
@@ -561,7 +572,7 @@ Print version + build commit + build date. Used by ops tooling to confirm the bi
 
 ```
 tarpit-honeypot version
-# tarpit-honeypot 1.10 (commit a1b2c3d, built 2026-05-19T18:30:00Z)
+# tarpit-honeypot 2.1.0 (commit a1b2c3d, built 2026-05-19T18:30:00Z)
 
 tarpit-honeypot --version
 tarpit-honeypot -V

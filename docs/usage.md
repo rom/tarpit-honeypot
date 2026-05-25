@@ -166,7 +166,7 @@ Five optional Linux-only adapters make the honeynet more discoverable **without*
 
 The ARP / ICMP / LLDP / PROFINET adapters are L2/L3 discovery only. The `tun` adapter additionally terminates TCP (handshake + one request/response) via its userspace stack — enough to fool `nmap -sV` / `-O` and p0f. For deep multi-segment protocol interaction (full login flows, file transfers, interactive shells) bind a real socket and route traffic to it.
 
-On macOS the AF_PACKET-based adapters are not available; see [Platform support](#10-platform-support) below for the `ifconfig alias` workaround.
+On macOS the AF_PACKET-based adapters are not available; see [Platform support](#14-platform-support) below for the `ifconfig alias` workaround.
 
 ### Pattern A — virtual hosts behind one listener (the simplest setup)
 
@@ -220,26 +220,39 @@ The sensor responds to all `nmap -sn`-style probes for that range, and its users
 
 ## 4. Web UI
 
-Default bind is `127.0.0.1:8088`. Enable in `ui:`. Endpoints:
+Default bind is `127.0.0.1:8088`. Enable in `ui:`. The console is read-only,
+server-rendered (strict CSP, no external JS), and auto-refreshes. Key endpoints:
 
 - `/` — last-24h summary (event counts by severity, top rules, top sources)
 - `/events?source=<ip>&rule=<id>&severity=<sev>&since=24h&limit=N` —
   filterable event table; click a column header (time / severity / rule /
   source / handler) to sort, click again to reverse (`?sort=&order=`)
-- `/events/<id>` — full event detail (banner sent, base64 payload, meta)
-- `/hosts?q=<substr>&status=seen|allow` — learned hosts, filterable
+- `/events/<id>` — full event detail (banner sent, hexdump payload, the
+  **ATT&CK / D3FEND** attribution, downloads)
+- `/search`, `/timeline` — full-text search and a chronological timeline
+- `/attack` — live ATT&CK coverage from observed events; `/correlation` — per-source pivot chains
+- `/fleet` — cross-sensor `fleet:*` findings (aggregator-only); `/iocs` — the de-duplicated IOC store
+- `/profiles`, `/fingerprints` — attacker dossiers and JA3/JA4/HASSH reputation
+- `/devices?q=<substr>&status=seen|allow` — learned hosts, filterable
 - `/topology` — the virtual networks / hosts / services the sensor presents
+- `/charts`, `/health` — analytics figures and sensor health
 - `/alerting` — how events are forwarded (channels / routes / allowlist)
 - `/errors?since=168h` — operational / health events (listener or
   canary-watcher stopped, listener start error, accept-cap overflow)
-- `/config` — the effective running config (secrets shown as `*_env` names)
-- `/docs` — built-in reference reflecting this deployment
-- `/api/events`, `/api/summary`, `/api/config`, `/api/topology`,
-  `/api/hosts`, `/api/alerting` — JSON equivalents
+- `/config` — the effective running config + the infrastructure canvas (secrets shown as `*_env` names)
+- `/docs` — the documentation library; `/docs/<name>` renders each guide
+  in-product (the same Markdown shipped under `docs/`). See [`webui.md`](webui.md)
+  for a full tab-by-tab walkthrough.
+- `/api/events`, `/api/summary`, `/api/config`, `/api/config/canvas`,
+  `/api/topology`, `/api/devices`, `/api/alerting`, `/api/fleet`,
+  `/api/iocs`, `/api/profiles`, `/api/fingerprints` — JSON equivalents
 - `/metrics` — Prometheus text-format (v1.3+)
 - `/healthz` — liveness check (bypasses auth)
 
-Non-loopback binds are rejected at validate-time unless both `tls_cert + tls_key` and `auth_token_env` are configured. There is **no write endpoint** — the UI cannot delete events, change config, or trigger alerts.
+On an aggregator the same bind also serves the bearer-gated threat-intel exports
+(`/intel`, `/intel/stix`, `/taxii2/…`).
+
+Non-loopback binds are rejected at validate-time unless both `tls_cert + tls_key` and `auth_token_env` are configured. The only write path is the opt-in, token-gated device delete/whitelist (`ui.allow_device_actions`) — the UI cannot change config, delete events, or trigger alerts.
 
 ## 5. systemd integration
 
@@ -523,7 +536,90 @@ tunnelling (`sniffer:encapsulation` — GRE / 6in4 / 6to4 / ISATAP / DS-Lite /
 GRE-over-IPv6 / VXLAN / …, `sniffer:icmp_tunnel`), and spanning-tree abuse
 (`sniffer:stp_bpdu`) — over **both IPv4 and IPv6**.
 
-## 12. Platform support
+## 12. Fleet & aggregation
+
+A single sensor sees its own slice of the internet. Point several at one
+**aggregator** and the cross-sensor correlator surfaces patterns no single
+honeypot can: one source/ASN/fingerprint sweeping many sensors, a malware hash or
+credential recurring across sites, a CVE wave, a coordinated /24, a network
+returning across days. Same binary, different config — events flow up, intel
+flows down. Full guide: [`fleet.md`](fleet.md).
+
+A **leaf** forwards its events upward:
+
+```yaml
+forward:
+  enabled: true
+  url: https://agg.corp:8470/ingest   # the aggregator's ingest endpoint
+  token_env: TARPIT_FLEET_TOKEN
+  min_severity: low                   # or mode: rollup for a periodic summary
+```
+
+An **aggregator** accepts them and auto-runs the `fleet:*` correlator:
+
+```yaml
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470
+  token_env: TARPIT_FLEET_TOKEN       # constant-time bearer check
+  tls_cert: /etc/tarpit/agg.crt       # required for a non-loopback bind
+  tls_key:  /etc/tarpit/agg.key
+fleet:
+  enabled: true                       # auto-on with ingest
+  serve_intel: true                   # serve the downward intel feed (default on)
+```
+
+Verify findings are landing:
+
+```bash
+tarpit-honeypot list-events -c agg.yaml --fleet --since 24h   # cross-sensor findings
+tarpit-honeypot list-fleet-rules                              # the detector catalog
+curl -s http://127.0.0.1:8088/api/fleet | jq .                # JSON of /fleet
+```
+
+The 27 `fleet:*` detectors span breadth, shared-artifact campaigns, coordination,
+temporal patterns, novelty, and identity/infrastructure links; each finding is
+classified **broad** (internet-wide background, down-weighted) vs **targeted** (a
+specific subset of your fleet). Tune the thresholds under `fleet.*` (see
+[`config.md`](config.md) and `list-fleet-rules`). If detectors never fire, the
+usual cause is events from only one `sensor_id` — breadth detection needs
+**several** sensors converging via `ingest:` (see [`fleet.md`](fleet.md#9-troubleshooting)).
+
+## 13. IOCs & threat-intel exports
+
+Every event is mined for typed, de-duplicated **indicators of compromise** —
+source IPs, ASNs, JA3/JA4/HASSH fingerprints, DNS names, CVE ids, captured-payload
+SHA-256s, harvested C2 URLs, credentials, and MACs — tracked with first/last-seen
+and counts in the SQLite store. Browse them in the **iocs** UI tab or as JSON:
+
+```bash
+curl -s 'http://127.0.0.1:8088/api/iocs?type=sha256&since=168h' | jq .
+```
+
+First sightings of the high-value types are also logged as `ioc:<type>` events
+(stored locally and forwarded upward, so an aggregator harvests child IOCs even in
+rollup mode). Configure which types emit under `ioc.emit_types`. Full detail:
+[`ioc.md`](ioc.md).
+
+Getting intel **out** — every path speaks a standard format
+([`threat-intel-exports.md`](threat-intel-exports.md)):
+
+```bash
+# Offline blocklist / STIX bundle from the stored fleet findings (any node):
+tarpit-honeypot export-iocs -c cfg.yaml --since 720h --format txt > blocklist.txt
+tarpit-honeypot export-iocs -c cfg.yaml --format stix > fleet-iocs.json
+
+# Live, on an aggregator that serves intel (bearer-gated):
+curl -H "Authorization: Bearer $TOKEN" https://agg:8470/intel/stix
+curl -H "Authorization: Bearer $TOKEN" https://agg:8470/taxii2/api/collections/fleet-iocs/objects/
+```
+
+Push to MISP with a `misp:` block, pull into a TIP via STIX/TAXII, and stream the
+ATT&CK/D3FEND-tagged **events** to a SIEM via `channels:` with `format: cef | leef
+| ocsf`. A common split: events → SIEM (detection), curated IOC bundle →
+STIX/TAXII/MISP (blocking/enrichment).
+
+## 14. Platform support
 
 The sensor builds and runs on Linux (amd64 / arm64 / armv7 / armv6) and
 macOS (amd64 / arm64). Every protocol handler, archetype, ATT&CK
@@ -556,7 +652,7 @@ For macOS deployments where only the protocol handlers + archetype
 deception matter (typical: dev/research workstation, cloud-instance
 honeypot exposed via service mesh), the sensor is fully featured.
 
-## 13. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -565,7 +661,7 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `sensor stopped: listen 0.0.0.0:53: bind: address already in use` | systemd-resolved owns :53 | Either disable systemd-resolved DNSStubListener (`/etc/systemd/resolved.conf`: `DNSStubListener=no`) or use a non-standard port and NAT. |
 | Listener events fire but `correlate:brute_force` never does | per-rule dedup window covers the burst | Lower `dedup.default_window` or set `correlate.brute_force.window` shorter. |
 | `arp_responder disabled: need CAP_NET_RAW` | running as a non-privileged user without the cap | Pair `User=tarpit` with `AmbientCapabilities=CAP_NET_RAW` in the unit. |
-| `arp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | See §12 — use `ifconfig alias` per honeynet host or run the responder on a Linux gateway. |
+| `arp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | See §14 — use `ifconfig alias` per honeynet host or run the responder on a Linux gateway. |
 | `lldp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | LLDP advertising is unavailable on macOS today; the rest of the deception still works. |
 | TUN listener fails with `open /dev/net/tun: no such file` | running inside an unprivileged container | `docker run --device=/dev/net/tun --cap-add=NET_ADMIN ...` |
 | `tunnet: TUN/utun adapter not implemented on darwin` | running on macOS | macOS supports utun but no native backend yet; use `ifconfig alias` per virtual host. |

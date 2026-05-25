@@ -45,12 +45,29 @@ CREATE TABLE IF NOT EXISTS events (
   payload_b64 TEXT,
   payload_len INTEGER,
   meta_json TEXT,
-  anomalies TEXT
+  anomalies TEXT,
+  mitre_techniques TEXT,
+  mitre_tactics TEXT,
+  mitre_defenses TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
 CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
+CREATE TABLE IF NOT EXISTS iocs (
+  type TEXT NOT NULL,
+  value TEXT NOT NULL,
+  first_seen INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  count INTEGER NOT NULL,
+  severity INTEGER,
+  last_rule TEXT,
+  last_sensor TEXT,
+  last_source TEXT,
+  PRIMARY KEY (type, value)
+);
+CREATE INDEX IF NOT EXISTS idx_iocs_last_seen ON iocs(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type);
 `
 
 // Open creates (if necessary) and opens the events database under dataDir.
@@ -111,6 +128,28 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`); err != nil {
 		return fmt.Errorf("store: index sensor_id: %w", err)
 	}
+	// ATT&CK / D3FEND attribution, persisted so /api/events + the UI carry the
+	// same techniques/tactics/defenses the streaming sinks already get.
+	for _, col := range []string{"mitre_techniques", "mitre_tactics", "mitre_defenses"} {
+		if err := addColumn(db, "events", col, "TEXT"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addColumn adds a column to a table if a database from an earlier release
+// doesn't already have it (fresh DBs get it from the schema const).
+func addColumn(db *sql.DB, table, col, typ string) error {
+	has, err := hasColumn(db, table, col)
+	if err != nil {
+		return fmt.Errorf("store: inspect %s.%s: %w", table, col, err)
+	}
+	if !has {
+		if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ); err != nil {
+			return fmt.Errorf("store: add %s.%s: %w", table, col, err)
+		}
+	}
 	return nil
 }
 
@@ -150,29 +189,40 @@ func (s *Store) DB() *sql.DB { return s.db }
 const insertSQL = `
 INSERT OR REPLACE INTO events
 (id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
- proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies,
+ mitre_techniques, mitre_tactics, mitre_defenses)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // eventCols flattens an event into the insertSQL bind parameters.
 func eventCols(ev *event.Event) []any {
-	metaJSON := ""
-	if len(ev.Meta) > 0 {
-		if b, err := json.Marshal(ev.Meta); err == nil {
-			metaJSON = string(b)
-		}
-	}
-	anomaliesJSON := ""
-	if len(ev.Anomalies) > 0 {
-		if b, err := json.Marshal(ev.Anomalies); err == nil {
-			anomaliesJSON = string(b)
-		}
-	}
 	return []any{
 		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
-		metaJSON, anomaliesJSON,
+		jsonOrEmpty(ev.Meta), jsonOrEmpty(ev.Anomalies),
+		jsonOrEmpty(ev.MitreTechniques), jsonOrEmpty(ev.MitreTactics), jsonOrEmpty(ev.MitreDefenses),
 	}
+}
+
+// jsonOrEmpty marshals a non-empty slice/map to JSON, or returns "".
+func jsonOrEmpty(v any) string {
+	switch t := v.(type) {
+	case []string:
+		if len(t) == 0 {
+			return ""
+		}
+	case map[string]any:
+		if len(t) == 0 {
+			return ""
+		}
+	case nil:
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
@@ -258,7 +308,8 @@ type Filter struct {
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	q := `SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
                 dst_ip, dst_port, proto, handler, banner_sent,
-                payload_b64, payload_len, meta_json, anomalies
+                payload_b64, payload_len, meta_json, anomalies,
+                mitre_techniques, mitre_tactics, mitre_defenses
           FROM events WHERE 1=1`
 	var args []any
 	if !f.Since.IsZero() {
@@ -331,7 +382,8 @@ func (s *Store) Get(ctx context.Context, id string) (*event.Event, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
        dst_ip, dst_port, proto, handler, banner_sent,
-       payload_b64, payload_len, meta_json, anomalies
+       payload_b64, payload_len, meta_json, anomalies,
+       mitre_techniques, mitre_tactics, mitre_defenses
 FROM events WHERE id = ?`, id)
 	return scanRow(row)
 }
@@ -344,12 +396,14 @@ func scanRow(r rowScanner) (*event.Event, error) {
 	var (
 		id, sensor, ruleID, srcIP, dstIP, proto, handler, banner, payloadB64, metaJSON string
 		sensorID, anomaliesJSON                                                        sql.NullString
+		techJSON, tacJSON, defJSON                                                     sql.NullString
 		timeNS                                                                         int64
 		sev, srcPort, dstPort, payloadLen                                              int
 	)
 	if err := r.Scan(&id, &timeNS, &sensor, &sensorID, &ruleID, &sev,
 		&srcIP, &srcPort, &dstIP, &dstPort,
-		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON, &anomaliesJSON); err != nil {
+		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON, &anomaliesJSON,
+		&techJSON, &tacJSON, &defJSON); err != nil {
 		return nil, err
 	}
 	ev := &event.Event{
@@ -372,6 +426,15 @@ func scanRow(r rowScanner) (*event.Event, error) {
 	}
 	if anomaliesJSON.Valid && anomaliesJSON.String != "" {
 		_ = json.Unmarshal([]byte(anomaliesJSON.String), &ev.Anomalies)
+	}
+	if techJSON.Valid && techJSON.String != "" {
+		_ = json.Unmarshal([]byte(techJSON.String), &ev.MitreTechniques)
+	}
+	if tacJSON.Valid && tacJSON.String != "" {
+		_ = json.Unmarshal([]byte(tacJSON.String), &ev.MitreTactics)
+	}
+	if defJSON.Valid && defJSON.String != "" {
+		_ = json.Unmarshal([]byte(defJSON.String), &ev.MitreDefenses)
 	}
 	return ev, nil
 }

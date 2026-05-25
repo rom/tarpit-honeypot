@@ -10,14 +10,7 @@ import (
 // headWithRefresh renders the shared head with a given refresh interval.
 func headWithRefresh(t *testing.T, secs int) string {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"fmtTime":        func(any) string { return "" },
-		"join":           func([]int) string { return "" },
-		"hexdump":        hexDump,
-		"refreshSeconds": func() int { return secs },
-		"svcName":        func(int) string { return "" },
-		"confLabel":      func(int) string { return "" },
-	}).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return secs })).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

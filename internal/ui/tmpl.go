@@ -34,6 +34,25 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .docs code { background: #f0f0f0; padding: 0 .25rem; border-radius: 3px; }
 .docs ul { margin: .3rem 0 .8rem 1.2rem; padding: 0; }
 .docs li { margin: .12rem 0; }
+/* docs index: a card grid linking the embedded guides */
+.doclib { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
+.doccard { display: block; background: #fff; border: 1px solid #e3e3e3; border-left: 4px solid #6b8fb5; border-radius: 4px; padding: .45rem .6rem; text-decoration: none; color: #1a4f9c; }
+.doccard:hover { border-left-color: #1a4f9c; background: #f7faff; }
+.doccard b { display: block; }
+.doccard span { display: block; color: #666; font-size: 12px; margin-top: .15rem; }
+/* rendered Markdown (a single embedded doc) */
+.mddoc { max-width: 60rem; }
+.mddoc h1 { font-size: 1.4rem; margin: .3rem 0 1rem; }
+.mddoc h2 { font-size: 1.1rem; }
+.mddoc h3 { font-size: 1rem; color: #444; margin: 1rem 0 .35rem; }
+.mddoc p { margin: .5rem 0; }
+.mddoc code { background: #f0f0f0; padding: 0 .25rem; border-radius: 3px; }
+.mddoc pre { background: #f6f8fa; border: 1px solid #e3e3e3; border-radius: 4px; padding: .6rem .8rem; overflow-x: auto; }
+.mddoc pre code { background: none; padding: 0; }
+.mddoc table { margin: .6rem 0; }
+.mddoc blockquote { margin: .6rem 0; padding: .3rem .8rem; border-left: 3px solid #ccd; background: #f7f8fa; color: #444; }
+.mddoc hr { border: none; border-top: 1px solid #e3e3e3; margin: 1.2rem 0; }
+.mddoc .docnav { margin-bottom: .8rem; }
 .depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
 .threat-low { color: #555; }
 .threat-elevated { color: #b36b00; font-weight: 600; }
@@ -150,7 +169,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -329,6 +348,45 @@ an aggregator receiving events from several sensors via <code>ingest:</code>.)</
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
+{{ define "iocs" }}{{ template "head" . }}
+<h1>indicators of compromise</h1>
+<p class="note">De-duplicated indicators distilled from every event: source IPs,
+TLS/SSH fingerprints, ASNs, DNS names, CVE ids, captured-payload SHA-256s,
+harvested C2 URLs, credentials, MACs. First sightings of the high-value types are
+also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON at
+<a href="/api/iocs">/api/iocs</a>.</p>
+<form method="get" action="/iocs">
+  type: <input type="text" name="type" value="{{ .TypeFilter }}" placeholder="sha256" size="10">
+  contains: <input type="text" name="q" placeholder="value substring" size="16">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="168h" size="6">
+  <button type="submit">filter</button>
+  <a href="/iocs">reset</a>
+</form>
+{{ if not .IOCs }}
+<p class="note">No indicators in the window yet.</p>
+{{ else }}
+<h2>by type</h2>
+<p class="note">Each bar filters to that indicator type.</p>
+{{ template "bars" .Counts }}
+<h2>indicators ({{ .Total }})</h2>
+<table>
+  <tr><th>type</th><th>value</th><th>count</th><th>sev</th><th>first seen</th><th>last seen</th><th>last rule</th><th></th></tr>
+  {{ range .IOCs }}
+  <tr>
+    <td><a href="/iocs?type={{ .Type }}">{{ .Type }}</a></td>
+    <td class="mono">{{ .Value }}</td>
+    <td>{{ .Count }}</td>
+    <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+    <td>{{ fmtTime .FirstSeen }}</td>
+    <td>{{ fmtTime .LastSeen }}</td>
+    <td>{{ .LastRule }}</td>
+    <td><a href="{{ .Link }}">events</a></td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
 {{ define "tunnels" }}{{ template "head" . }}
 <h1>tunnels &amp; covert transport — last 24 hours</h1>
 <p class="note">Detections of tunnelling / covert channels the sensor observes. <strong>These are detections, not established tunnels</strong> — the honeypot terminates connections, it doesn't carry SSH/SOCKS/k8s/service-mesh pivots. See <a href="/docs">docs</a> and <code>list-unavailable-capabilities</code> for what is and isn't captured.</p>
@@ -472,6 +530,12 @@ an aggregator receiving events from several sensors via <code>ingest:</code>.)</
   <tr><th>proto</th><td>{{ if .Proto }}<span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
 </table>
+
+{{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
+  <tr><th>techniques</th><td>{{ range .MitreTechniques }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a> {{ end }}</td></tr>
+  {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
 
 <h2>downloads</h2>
 <ul>
@@ -864,6 +928,13 @@ and the sensor never becomes a reflection/amplification primitive.</p>
 device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .UIBind }}</code>
 </p>
 
+<h2>full documentation</h2>
+<p>The complete guides, rendered in-product (the same Markdown shipped under
+<code>docs/</code>). Start with the <a href="/docs/webui">web UI walkthrough</a>.</p>
+<div class="doclib">
+{{ range .Docs }}<a class="doccard" href="/docs/{{ .Name }}"><b>{{ .Title }}</b>{{ if .Desc }}<span>{{ .Desc }}</span>{{ end }}</a>{{ end }}
+</div>
+
 <h2>tabs</h2>
 <ul>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
@@ -873,6 +944,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/fleet">fleet</a> — cross-sensor (fleet:*) findings: one source / ASN / fingerprint / payload / credential / CVE / tool / port / technique across many sensors, shared C2, novel infra, persistent networks. Aggregator-only (needs <code>ingest:</code>).</li>
+<li><a href="/iocs">iocs</a> — de-duplicated indicators of compromise (IPs, fingerprints, ASNs, domains, CVEs, payload hashes, C2 URLs, credentials, MACs) with first/last-seen + counts; first sightings of high-value types are logged as <code>ioc:*</code> events.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
 <li><a href="/errors">errors</a> — operational / health events (listener or canary-watcher stopped, accept-cap overflow).</li>
 <li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>
@@ -939,6 +1011,13 @@ auth token. The only optional write action is device delete/whitelist, gated beh
 <li>The sensor refuses to be a reflection/amplification primitive (bounded small-service
 replies, NTP mode-7 silent, no unbounded DNS answers).</li>
 </ul>
+</div>
+{{ template "foot" . }}{{ end }}
+
+{{ define "doc" }}{{ template "head" . }}
+<div class="docs mddoc">
+<p class="docnav"><a href="/docs">&larr; documentation index</a></p>
+{{ .Body }}
 </div>
 {{ template "foot" . }}{{ end }}
 `

@@ -47,11 +47,13 @@ func (r *Runner) tick(ctx context.Context) {
 	jsonlogPruned := pruneDir(r.JSONLogDir, cutoff)
 	capturePruned := pruneDir(r.CapturesDir, cutoff)
 	dbPruned := pruneDB(ctx, r.DB, cutoff)
-	if jsonlogPruned > 0 || capturePruned > 0 || dbPruned > 0 {
+	iocPruned := pruneIOCs(ctx, r.DB, cutoff)
+	if jsonlogPruned > 0 || capturePruned > 0 || dbPruned > 0 || iocPruned > 0 {
 		slog.Info("retention prune",
 			"jsonlog_files", jsonlogPruned,
 			"capture_files", capturePruned,
 			"db_rows", dbPruned,
+			"ioc_rows", iocPruned,
 			"cutoff", cutoff.Format(time.RFC3339),
 		)
 	}
@@ -99,6 +101,22 @@ func pruneDB(ctx context.Context, db *sql.DB, cutoff time.Time) int64 {
 	res, err := db.ExecContext(ctx, `DELETE FROM events WHERE time < ?`, cutoff.UTC().UnixNano())
 	if err != nil {
 		slog.Warn("retention: db delete", "err", err)
+		return 0
+	}
+	n, _ := res.RowsAffected()
+	return n
+}
+
+// pruneIOCs drops indicators not seen since the cutoff (an IOC kept fresh by
+// continued sightings survives; one stale for the whole retention window is
+// dropped). Keyed on last_seen, the same age basis as the event prune.
+func pruneIOCs(ctx context.Context, db *sql.DB, cutoff time.Time) int64 {
+	if db == nil {
+		return 0
+	}
+	res, err := db.ExecContext(ctx, `DELETE FROM iocs WHERE last_seen < ?`, cutoff.UTC().UnixNano())
+	if err != nil {
+		slog.Warn("retention: ioc delete", "err", err)
 		return 0
 	}
 	n, _ := res.RowsAffected()

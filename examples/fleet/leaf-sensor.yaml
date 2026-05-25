@@ -1,0 +1,53 @@
+# Fleet topology — TIER 1: leaf sensor
+#
+# A lightweight honeypot at the edge. It runs the protocol decoys, contains its
+# own egress (do-no-harm), and FORWARDS every event up to the site aggregator —
+# it keeps no local store and runs no UI, so it stays cheap to deploy many of.
+# Cross-sensor correlation, the IOC store, and the dashboards live one tier up
+# (see site-aggregator.yaml), which is where the events converge.
+#
+# It also SUBSCRIBES to the site aggregator's downward intel feed, so fleet-wide
+# knowledge (hot IPs / ASNs / fingerprints) tags this leaf's events locally —
+# events flow up, intel flows down.
+#
+# Secrets come from the environment (never the file):
+#   export TARPIT_FWD_TOKEN=...     # bearer token the aggregator's ingest accepts
+#   export TARPIT_FWD_HMAC=...      # optional body-signature key
+#
+#   tarpit-honeypot validate-config -c examples/fleet/leaf-sensor.yaml
+sensor:
+  name: leaf-dmz-01
+  data_dir: /var/lib/tarpit-honeypot
+  archetype: "ubuntu 24.04 lts"
+  # Contain: the only outbound the decoy may make is to its forward + intel
+  # endpoints (auto-allowlisted) — everything else is refused + reported.
+  egress:
+    enabled: true
+    enforce: true
+
+listeners:
+  - { id: ssh, proto: tcp, bind: 0.0.0.0:22, handler: ssh, mode: banner, capture: true }
+  - { id: telnet, proto: tcp, bind: 0.0.0.0:23, handler: telnet, mode: banner, capture: true }
+  - { id: http, proto: tcp, bind: 0.0.0.0:80, handler: http, mode: banner, webapp: true }
+  - { id: https, proto: tcp, bind: 0.0.0.0:443, handler: https, mode: banner, webapp: true }
+
+# Ship everything to the site aggregator (full stream).
+forward:
+  - id: site
+    url: https://agg-site.corp:8470/ingest
+    token_env: TARPIT_FWD_TOKEN
+    hmac_secret_env: TARPIT_FWD_HMAC
+    min_severity: low
+
+# Pull the aggregator's derived fleet intel back down.
+intel_feed:
+  enabled: true
+  url: https://agg-site.corp:8470/intel
+  token_env: TARPIT_FWD_TOKEN
+  poll: 60s
+
+# A local jsonlog tail for the operator; the source of truth is the aggregator.
+channels:
+  - { id: log, type: jsonlog }
+routes:
+  - { match: {}, channels: [log] }

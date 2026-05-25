@@ -327,3 +327,71 @@ func TestInsertBatch(t *testing.T) {
 		t.Errorf("empty batch: %v", err)
 	}
 }
+
+func TestMitrePersists(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	ev := mkEvent("m1", "1.2.3.4", "cve:CVE-2021-44228", event.SeverityCritical, time.Now().UTC())
+	ev.MitreTechniques = []string{"T1190"}
+	ev.MitreTactics = []string{"initial-access"}
+	ev.MitreDefenses = []string{"D3-NTA", "D3-ITF"}
+	if err := s.Insert(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.MitreTechniques) != 1 || got.MitreTechniques[0] != "T1190" {
+		t.Errorf("techniques = %v; want [T1190]", got.MitreTechniques)
+	}
+	if len(got.MitreTactics) != 1 || got.MitreTactics[0] != "initial-access" {
+		t.Errorf("tactics = %v", got.MitreTactics)
+	}
+	if len(got.MitreDefenses) != 2 {
+		t.Errorf("defenses = %v; want 2", got.MitreDefenses)
+	}
+	// An event with no mitre tags round-trips with nil slices (not [""]).
+	plain := mkEvent("m2", "5.6.7.8", "listener:http", event.SeverityLow, time.Now().UTC())
+	if err := s.Insert(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	g2, _ := s.Get(ctx, "m2")
+	if len(g2.MitreTechniques) != 0 {
+		t.Errorf("plain event techniques = %v; want empty", g2.MitreTechniques)
+	}
+}
+
+func TestUpsertAndQueryIOC(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	isNew, err := s.UpsertIOC(ctx, "sha256", "deadbeef", "malware:capture", "sid", "1.1.1.1", event.SeverityHigh, now)
+	if err != nil || !isNew {
+		t.Fatalf("first upsert: isNew=%v err=%v; want true/nil", isNew, err)
+	}
+	isNew, err = s.UpsertIOC(ctx, "sha256", "deadbeef", "malware:capture", "sid", "2.2.2.2", event.SeverityCritical, now.Add(time.Minute))
+	if err != nil || isNew {
+		t.Fatalf("second upsert: isNew=%v; want false", isNew)
+	}
+	rows, err := s.QueryIOCs(ctx, IOCFilter{Type: "sha256", Limit: 10})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("query: %d rows err=%v", len(rows), err)
+	}
+	r := rows[0]
+	if r.Count != 2 || r.Severity != event.SeverityCritical || r.LastSource != "2.2.2.2" {
+		t.Errorf("row = %+v; want count 2, sev critical, last_source 2.2.2.2", r)
+	}
+	sum, _ := s.IOCSummary(ctx, time.Time{})
+	if sum["sha256"] != 1 {
+		t.Errorf("summary sha256 = %d; want 1", sum["sha256"])
+	}
+}

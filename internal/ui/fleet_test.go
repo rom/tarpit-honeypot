@@ -20,14 +20,7 @@ func fleetTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"fmtTime":        func(tm time.Time) string { return tm.UTC().Format(time.RFC3339) },
-		"join":           func([]int) string { return "" },
-		"hexdump":        hexDump,
-		"refreshSeconds": func() int { return 0 },
-		"svcName":        func(int) string { return "" },
-		"confLabel":      func(int) string { return "" },
-	}).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 })).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}
