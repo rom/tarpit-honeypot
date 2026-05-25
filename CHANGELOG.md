@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — handlers: protocol depth (RDP TLS/NLA, Oracle version, MQTT CONNACK)
+- **RDP** now completes the TLS handshake after selecting `PROTOCOL_SSL`
+  (previously it advertised SSL then left the client's handshake unanswered).
+  It records JA3/JA3S and best-effort harvests the CredSSP/NLA **NTLMSSP**
+  domain/user + offline-crackable NetNTLM response (`rdp-ntlm-auth`).
+- **Oracle TNS** version banner + VSNNUM are now derived per deployment from a
+  believable 11g–21c spread, instead of a hardcoded `19.0.0.0.0` (a fingerprint
+  tell across sensors).
+- **MQTT** CONNACK is version-aware: v3.1/3.1.1 get a 2-byte reply, v5 the
+  3-byte (properties-length) reply, and an unsupported protocol level is
+  rejected with `0x01` (`mqtt-unsupported-protocol-level`) — previously every
+  client got an identical v3 "accepted".
+
 ### Added — handlers: in-protocol STARTTLS (SMTP / IMAP / POP3)
 - **SMTP** (25) now advertises `STARTTLS` in EHLO and performs a real TLS
   upgrade on the command (was a `454` refusal); **IMAP** (143) advertises +

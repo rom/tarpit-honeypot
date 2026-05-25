@@ -229,7 +229,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "smtp_recv":
 		return newSMTPRecv(deps), nil
 	case "rdp":
-		return &rdp{}, nil
+		return newRDP(deps), nil
 	case "winrm":
 		return &winrm{}, nil
 	case "dcerpc":
@@ -343,7 +343,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "mssql":
 		return &mssql{id: deps.Identity}, nil
 	case "oracle_tns":
-		return &oracleTNS{}, nil
+		return &oracleTNS{id: deps.Identity}, nil
 	case "teamviewer":
 		return &teamviewer{}, nil
 	case "anydesk":

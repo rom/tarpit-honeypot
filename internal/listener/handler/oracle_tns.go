@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
@@ -23,9 +24,41 @@ import (
 // TNS packet header (8 bytes, big-endian):
 //
 //	length(2) checksum(2) type(1) reserved(1) hdrchecksum(2)
-type oracleTNS struct{}
+type oracleTNS struct{ id *identity.Identity }
 
 func (o *oracleTNS) Name() string { return "oracle_tns" }
+
+// oracleVer is a believable listener version + its matching VSNNUM (the packed
+// version Oracle reports: major<<24 | minor<<20 | patch<<12 | port<<8 | update).
+type oracleVer struct {
+	ver    string
+	vsnnum uint32
+}
+
+func oracleVersions() []oracleVer {
+	mk := func(maj, min, pat, port, pu uint32, s string) oracleVer {
+		return oracleVer{ver: s, vsnnum: maj<<24 | min<<20 | pat<<12 | port<<8 | pu}
+	}
+	return []oracleVer{
+		mk(19, 0, 0, 0, 0, "19.0.0.0.0"),
+		mk(21, 0, 0, 0, 0, "21.0.0.0.0"),
+		mk(18, 0, 0, 0, 0, "18.0.0.0.0"),
+		mk(12, 2, 0, 1, 0, "12.2.0.1.0"),
+		mk(12, 1, 0, 2, 0, "12.1.0.2.0"),
+		mk(11, 2, 0, 4, 0, "11.2.0.4.0"),
+	}
+}
+
+// version picks a per-deployment listener version so a scanner correlating
+// Oracle banners across sensors sees a believable spread rather than a single
+// hardcoded build.
+func (o *oracleTNS) version() oracleVer {
+	pool := oracleVersions()
+	if o.id == nil {
+		return pool[0]
+	}
+	return pool[int(o.id.Derive("oracle-tns-version").Uint32("pick"))%len(pool)]
+}
 
 const (
 	tnsConnect = 1
@@ -115,9 +148,10 @@ func (o *oracleTNS) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 // buildVersionData assembles a TNS DATA packet carrying a believable listener
 // version banner — the response shape the oracle-tns-version probe parses.
 func (o *oracleTNS) buildVersionData() []byte {
-	banner := "(DESCRIPTION=(TMP=)(VSNNUM=318767104)(ERR=0)(ALIAS=LISTENER))" +
-		"\nTNSLSNR for Linux: Version 19.0.0.0.0 - Production\n" +
-		"TNS for Linux: Version 19.0.0.0.0 - Production\n"
+	v := o.version()
+	banner := "(DESCRIPTION=(TMP=)(VSNNUM=" + itoa(int(v.vsnnum)) + ")(ERR=0)(ALIAS=LISTENER))" +
+		"\nTNSLSNR for Linux: Version " + v.ver + " - Production\n" +
+		"TNS for Linux: Version " + v.ver + " - Production\n"
 	// DATA packet body: 2-byte data flags (0x0000) + payload.
 	body := []byte{0x00, 0x00}
 	body = append(body, []byte(banner)...)
