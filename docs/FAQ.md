@@ -47,6 +47,18 @@ core sensor + handlers run anywhere Go runs; non-Linux just no-ops those layers.
 `list-unavailable-capabilities -c <cfg>` prints what's inactive on the current
 host.
 
+**Does it replace my IDS / firewall?**
+No — it complements them. An IDS inspects *real* traffic and lives with false
+positives; this is a *sensor on space nothing should touch*, so a single hit is
+high-confidence with near-zero noise. Run it alongside your IDS/firewall and feed
+its events into the same SIEM.
+
+**How is it versioned / is it stable?**
+Single-binary infrastructure, so semver is applied loosely — the contract is the
+**YAML schema + CLI surface** documented in `docs/`. The SQLite schema
+self-migrates additively on open, so upgrading the binary doesn't need a manual
+migration. `tarpit-honeypot version` prints the build.
+
 ## Getting started
 
 **How do I try it in a minute?**
@@ -91,6 +103,63 @@ Yes — see [`usage.md` §5](usage.md#5-systemd-integration) (a shipped unit wit
 the right `AmbientCapabilities`) and [`usage.md` §6](usage.md#6-docker) (a
 ~14 MB scratch image). `tarpit-honeypot init` writes a defaulted config skeleton
 to start from.
+
+## Configuration
+
+**How is the config put together / can I split it across files?**
+Four layers, applied in order: the base YAML (`-c`), then sibling `conf.d/*.yaml`
+deep-merged in lexical order, then `TARPIT_<KEY_PATH>` environment variables, then
+`--set key.path=value` (wins). So you can keep a shared base and override per-host
+bits in `conf.d/` or the environment without forking the file. See
+[`cli.md`](cli.md).
+
+**How are secrets and tokens kept out of the config?**
+Every secret is a `*_env` reference (`ui.auth_token_env`, `ingest.token_env`,
+`misp.key_env`, …) — the value comes from the environment, never the file. They
+are **never** expanded in `show-config` output or logs, so config is safe to paste
+in a ticket.
+
+**Can I override one setting without editing the file?**
+Yes — `--set sensor.name=edge-1` (repeatable, auto-typed) or
+`TARPIT_SENSOR_NAME=edge-1` in the environment. Handy for templating one config
+across a fleet.
+
+**What's `sensor.deployment_id` and should I set it?**
+A stable random seed that feeds every "fixed" string a handler emits (so two
+sensors look different to scanners). Leave it blank and it's auto-generated and
+persisted to `<data_dir>/.deployment-id` on first run. Set it explicitly only to
+make two sensors present an *identical* fingerprint on purpose.
+
+## Sensor placement & networking
+
+**Where should I put a sensor?**
+On address space nothing legitimate should touch — unused IPs on an internal
+VLAN, a DMZ, or a public IP. The value comes from that: any connection is
+inherently suspicious, so false positives are near-zero. Cover more unused space
+(more virtual hosts / claimed IPs) for more signal.
+
+**How do I attract traffic to it?**
+Bind the real service ports on the sensor's IP, claim unused IPs with the
+honeynet `arp_responder` (the sensor answers ARP for a free address), or
+NAT/`REDIRECT` unused ports on a gateway to the sensor. The honeynet dispatch is
+per-destination-IP, so one bound port can serve many virtual hosts. See
+[`INTEGRATIONS.md`](INTEGRATIONS.md).
+
+**Can I run it on a cloud VM?**
+Yes. Bind the listeners on the public interface, open exactly the
+security-group/firewall ports you want probed, and keep the UI on loopback (or
+behind TLS + an auth token). Nothing about the core needs a special host.
+
+**Does it need outbound internet?**
+No, for core operation. Only the channels and feeds you configure (SIEM webhooks,
+SMTP, MISP, intel pull) dial out — and those go through the `egress` allowlist,
+with `egress.enforce` adding an OS-level backstop. A blocked dial is logged as
+`egress:denied`.
+
+**Can I run several instances on one host?**
+Yes — give each its own `sensor.data_dir` and non-overlapping binds (listeners +
+UI). They're independent processes; aggregate them with a fleet `ingest:` node if
+you want one view.
 
 ## Honeynets & virtual hosts
 
@@ -187,6 +256,24 @@ exploit) to ATT&CK technique(s)/tactic(s), and each technique to its D3FEND
 countermeasures. The router stamps them at dispatch (so every sink sees them) and
 the store persists them (so `/api/events` and the UI carry them). Audit the
 coverage with `tarpit-honeypot list-techniques`.
+
+**What do the severity levels mean?**
+`low` / `medium` / `high` / `critical`. Each rule ships a sensible default —
+recon/connects sit low, auth attempts and exploit signatures sit high, canary
+trips and honeytoken hits sit critical — and severity gates routing/min-severity
+and weights the per-source risk score. Re-map any rule for your environment with
+`severity_overrides:`.
+
+**What's the difference between `drop`, `banner`, and `tarpit` modes?**
+`drop` accepts and immediately closes (records the connect only); `banner` runs
+the protocol handler (real reply + captured request); `tarpit` holds the
+connection open to waste the client's time. `tarpit.emulate: true` runs the
+handler first, *then* tarpits the same connection.
+
+**Does it deduplicate repeated events?**
+Yes — a `dedup` window collapses identical repeated events, and outbound sinks
+have their own per-`(source, rule)` window so one hammering source doesn't flood a
+channel. The local store still records the full picture.
 
 **What CVEs does it know about?**
 A curated catalog of 100+ entries (run `tarpit-honeypot list-cves`), each with
@@ -339,6 +426,17 @@ auth-free liveness check.
 Yes — the **docs** tab lists a documentation library and renders each guide at
 `/docs/<name>` (the same Markdown shipped under `docs/`).
 
+**Can I query the database directly?**
+Yes — `<data_dir>/events.db` is plain SQLite (WAL mode); open it read-only with
+any SQLite client. The schema lives in `internal/store/store.go`. For
+programmatic use prefer `/api/events` or `list-events`, which apply the same
+filters.
+
+**Does the UI update on its own?**
+Yes — every page auto-refreshes via `<meta refresh>` at `ui.refresh_seconds`
+(default 10; `0` disables), so the console stays live during an attack with no
+JavaScript required.
+
 ## Fleet & aggregation
 
 **What's the difference between a sensor and an aggregator?**
@@ -389,6 +487,12 @@ An aggregator serves a downward intel feed (`/intel`, plus STIX/TAXII); sensors
 subscribe with `intel_feed:` and the indicators tag their events (setting
 `fleet_intel` + `threat_intel_hit`, which drives the existing tarpit/risk/burst
 machinery). Events flow up, intel flows down.
+
+**Can sensors in a fleet run different configs / archetypes?**
+Yes — each sensor is independent (its own listeners, archetypes, honeynets). The
+aggregator keys on the stable `sensor_id`, so a heterogeneous fleet (a Windows-AD
+decoy here, an OT cell there, a DMZ web host elsewhere) correlates fine; in fact
+diverse vantage points sharpen the cross-sensor signal.
 
 **Why aren't my `fleet:*` detectors firing?**
 Cross-sensor detection needs events from **several** `sensor_id`s converging via
@@ -553,6 +657,16 @@ Copy `sensor.data_dir`. Because the store runs in WAL mode, take a consistent
 snapshot (stop the sensor, or use SQLite's online backup / `VACUUM INTO`) rather
 than copying `events.db` mid-write. The stable `sensor_id` file lives there too —
 keep it so the deployment's fleet identity survives a rebuild.
+
+**How do I rotate an auth token or other secret?**
+Secrets are `*_env` references, so rotate the value in the environment (or your
+secret manager) and restart — `SIGHUP` re-reads the environment for most. Because
+the secret never lives in the YAML, there's no file to scrub.
+
+**How do I wipe the store and start fresh?**
+`tarpit-honeypot reset-db -c <cfg>` empties the local event store / device
+inventory / captures while keeping your config. Useful after a test run or before
+handing a box on; the schema is recreated on next start.
 
 **Where do I look when something's wrong?**
 The **errors** UI tab and the structured `slog` output (journal under systemd)
