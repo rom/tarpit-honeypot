@@ -75,6 +75,8 @@ cases:
   - fuzz-smart
   - scan
   - reliability
+  - resilience
+  - containment
   - fingerprint/http-*
   - fingerprint/ssh-scanner
 rounds: 1
