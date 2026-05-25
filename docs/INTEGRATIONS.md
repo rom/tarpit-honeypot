@@ -434,7 +434,7 @@ Set the systemd unit's `ProtectSystem=strict` (it's there by default) and use `R
 
 The `darwin/{amd64,arm64}` binaries support every feature except the
 four Linux-kernel-specific ones (AF_PACKET, fanotify, Linux TUN,
-setresuid) — see [`usage.md` §12](usage.md#12-platform-support). A
+setresuid) — see [`usage.md` §14](usage.md#14-platform-support). A
 minimal launchd plist:
 
 ```xml

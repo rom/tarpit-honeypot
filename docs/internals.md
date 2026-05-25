@@ -20,16 +20,25 @@ Everything is one process; the "modules" are Go packages under
  TUN userspace TCP (tcpstack) ├──►  s.bus  ──► for ev := ─► 4. devices.Observe                   syslog/CEF/LEEF/OCSF
  file / URL / DNS canaries    │   (chan, buffered)          5. payload harvest                   webhook / discord
  device discovery (DHCP/bcast)│                              6. scananalysis.Observe              smtp / twilio / sns
- risk + operational events    ┘                             7. fuzzdos.Observe                   snmptrap / mqtt
-                                                            8. correlate.Observe                      ▲
-                                                            9. risk.Observe                           │
-                                                           10. router.Dispatch ──► D3FEND + routing ──┘
-                              side outputs:  captures/*.pcap · sessions/*.cast · payloads/* · devices.json · corr-state
+ risk + operational events    │                             7. fuzzdos.Observe                   snmptrap / mqtt
+ ingest: forwarded events ────┤                             8. correlate.Observe                      ▲
+   (child sensors, aggregator)│                             9. fleet.Observe   (aggregator) ─┐        │
+                              ┘                             10. ioc.Extract    ──► IOC store  │        │
+                                                           11. risk.Observe                  │        │
+                                                           12. router.Dispatch ──► D3FEND + routing ──┘
+                                                                    │                        │
+                              side outputs:  captures/*.pcap ·      ├─► forward (events up)  └─► intel.Store
+                              sessions/*.cast · payloads/* ·        └─► (to parent aggregator)    (/intel down)
+                              devices.json · corr-state · events.db (mitre cols + iocs table)
 ```
 
 The producers and the pipeline live in [`internal/sensor`](../internal/sensor);
 `Sensor.Run` builds the bus consumer (the `for ev := range s.bus` loop) and
-starts every producer.
+starts every producer. On an **aggregator**, the `ingest:` endpoint
+([`internal/ingest`](../internal/ingest)) admits events forwarded by child
+sensors onto the *same* `s.bus`, so a remote observation flows through the
+identical pipeline as a local one — only then can the `fleet.Observe` stage
+correlate across sensors. See §6.
 
 ---
 
@@ -47,8 +56,10 @@ on:
 | `Proto` / `Handler` | producer | handler-based ATT&CK lookup, correlators |
 | `Meta map[string]any` | producer + every pipeline stage (enrichment writes geo/threat/mac; handlers write captured fields) | everything; the UI renders it |
 | `Anomalies []string` | handlers (`flagAnomaly`) + fuzzdos | the protocol-violation correlator + per-marker ATT&CK augmentation |
-| `MitreTechniques` / `Tactics` / `Defenses` | the pipeline (`mitre`) | sinks / SIEM pivots / the storyline correlator |
+| `MitreTechniques` / `Tactics` / `Defenses` | the pipeline (`mitre`) | sinks / SIEM pivots / the storyline correlator; **persisted** in the store (`mitre_*` columns) so `/api/events` and the CEF/LEEF/OCSF sinks carry them |
 | `PayloadBase64` / `PayloadLen` | producer | payload harvest + scan-analysis (decoded once) |
+| `SensorID` | the originating node (`dispatch` stamps it from the deployment id) | the **fleet** dedup/attribution key — survives a hostname change; how cross-sensor breadth is counted |
+| `Hops` | each forwarder appends its id | the ingest loop-guard (drop on cycle or > `ingest.max_hops`) and multi-tier rollup |
 
 A producer fills in what it knows and puts the pointer on `s.bus`
 non-blockingly (`select { case s.bus <- ev: default: }` for the
@@ -111,13 +122,25 @@ them to the risk scorer.
    ([`internal/correlate`](../internal/correlate)) returns the original
    event plus any aggregates that fired (see §4). Derived aggregates are
    re-enriched before dispatch.
-9. **Risk scoring** — `risk.Observe` ([`internal/risk`](../internal/risk))
-   folds every dispatched event into a per-source decaying score and emits
-   `risk:elevated|high|critical` on a threshold crossing.
-10. **Routing** — `router.Dispatch` ([`internal/router`](../internal/router))
+9. **Fleet correlation** — `fleet.Observe(ev)`
+   ([`internal/fleet`](../internal/fleet)), only when configured (an
+   aggregator). Cross-sensor detectors over the *merged* local + ingested
+   stream emit `fleet:*` findings; each is enriched, fed to the downward
+   `intel.Store`, then dispatched. Runs after enrichment so the ASN/geo tags
+   are present. See §6.
+10. **IOC extraction** — `ioc.Extract(ev)`
+    ([`internal/ioc`](../internal/ioc)) pulls typed indicators (ip / asn /
+    ja3 / ja4 / hassh / domain / cve / sha256 / url / credential / mac),
+    upserts each into the de-duplicated IOC store, and emits an `ioc:<type>`
+    event the first time a high-value indicator is seen (stored + forwarded).
+11. **Risk scoring** — `risk.Observe` ([`internal/risk`](../internal/risk))
+    folds every dispatched event into a per-source decaying score and emits
+    `risk:elevated|high|critical` on a threshold crossing.
+12. **Routing** — `router.Dispatch` ([`internal/router`](../internal/router))
     stamps `MitreDefenses` (D3FEND), applies dedup + per-channel rate limit
-    + severity/match routing + the outbound allowlist, and hands the event
-    to each matching sink.
+    + severity/match routing + the outbound allowlist, hands the event to
+    each matching sink, and — when forwarding is configured — ships it to the
+    parent aggregator(s) via `forward`.
 
 ---
 
@@ -180,7 +203,10 @@ queue.
 Side outputs are written outside the bus, by the producers:
 - **`sqlite`** ([`internal/store`](../internal/store)) — the queryable event
   index that powers `list-events` and the **web UI** ([`internal/ui`](../internal/ui),
-  read-only, reads the store + live snapshots).
+  read-only, reads the store + live snapshots). The schema self-migrates
+  additively on open (an `addColumn` helper backfills the `mitre_techniques` /
+  `mitre_tactics` / `mitre_defenses` columns and creates the `iocs` table on an
+  older store), so an upgrade never needs a manual migration step.
 - **captures/** — per-connection pcap (synthesized, no raw sockets).
 - **sessions/** — asciinema casts of interactive shell sessions
   ([`internal/sessionrec`](../internal/sessionrec)).
@@ -190,7 +216,53 @@ Side outputs are written outside the bus, by the producers:
 
 ---
 
-## 6. Concurrency & hot reload
+## 6. Fleet, IOC & threat-intel (aggregation)
+
+The same binary scales from one box to a fleet by adding three optional edges to
+the pipeline above. **Events flow up; intel flows down.**
+
+- **Forward (leaf → up)** — [`internal/forward`](../internal/forward).
+  `dispatch` mirrors every routed event to a `forward.Group` of HTTPS targets.
+  `mode: rollup` ships a periodic `fleet:rollup` summary instead of each event;
+  each forwarder appends this node's id to `ev.Hops` (the loop-guard key) and the
+  send dials through the egress allowlist.
+- **Ingest (→ aggregator)** — [`internal/ingest`](../internal/ingest) +
+  `Sensor.IngestBatch`. The bearer-gated `ingest:` endpoint admits batches onto
+  the **same `s.bus`**: each event is checked for being well-formed
+  (`malformedEvent`), trust-admitted (rate limit + quarantine), loop-guarded
+  (`Hops` cycle / `max_hops`), and deduped (`sensor_id:id` TTL set) before it
+  joins the local stream. This is why fleet detection works — local and remote
+  observations run the identical pipeline.
+- **Fleet correlator** — [`internal/fleet`](../internal/fleet) (stage 9). 27
+  cross-sensor detectors across breadth, shared-artifact campaigns, coordination,
+  temporal, novelty, and identity/infrastructure axes (catalog:
+  `fleet.Catalog()` / `list-fleet-rules`). Breadth/wave findings carry a
+  `coverage` ratio and a **broad-vs-targeted** scope (`sensors_hit /
+  active_sensors` against `fleet.broad_coverage`) so internet-wide background
+  noise is down-weighted. See [`fleet.md`](fleet.md).
+- **Downward intel** — [`internal/intel`](../internal/intel). On a serving
+  aggregator, `intel.Store` accumulates indicators derived from `fleet:*`
+  findings and exposes them as `/intel` (JSON), `/intel/stix` (STIX 2.1, UUIDv5
+  ids), and `/taxii2/…`. A child runs `intel.Puller`, which overlays the feed
+  onto its enricher so matching events get `fleet_intel` **and**
+  `threat_intel_hit` set — re-using the existing tarpit / risk / burst machinery.
+- **Trust** — [`internal/trust`](../internal/trust). Per-sensor windowed
+  counters drive a score that rate-limits and can `quarantine_below` a threshold;
+  a fabricated-looking stream raises `fleet:sensor-untrusted`.
+- **IOC store** — [`internal/ioc`](../internal/ioc) (stage 10) + the `iocs` table
+  in [`internal/store`](../internal/store) (`UpsertIOC` / `QueryIOCs` /
+  `IOCSummary`). A forwarded `ioc:*` event re-yields its indicator at the
+  receiver, so an aggregator harvests child IOCs even in rollup mode. See
+  [`ioc.md`](ioc.md).
+- **MISP** — [`internal/misp`](../internal/misp) pushes delta indicators from the
+  intel store; [`threat-intel-exports.md`](threat-intel-exports.md) covers the
+  field mappings and auth.
+
+For volume, the sqlite sink batches transactional inserts (`Store.InsertBatch`)
+and the store runs WAL mode; bound it with `disk.retention_days` /
+`disk.sqlite_mb` and cap per-sensor injection with `ingest.trust.rate_per_sec`.
+
+## 7. Concurrency & hot reload
 
 - **One reader.** All detection state (correlator maps, risk, devices,
   scananalysis, fuzzdos) is mutated by the single bus-consumer goroutine,
@@ -211,7 +283,7 @@ Side outputs are written outside the bus, by the producers:
 
 ---
 
-## 7. Package map
+## 8. Package map
 
 | Concern | Packages |
 |---|---|
@@ -219,8 +291,9 @@ Side outputs are written outside the bus, by the producers:
 | Event model + bus | `event`, `sensor` |
 | Enrichment | `enrich` (+ `devices` OUI) |
 | Detection | `correlate`, `scananalysis`, `fuzzdos`, `payload`, `devices`, `cve`, `risk`, `mitre`, `toolfp`, `fingerprint` |
+| Fleet / aggregation | `forward`, `ingest`, `fleet`, `intel`, `trust`, `ioc`, `misp` |
 | Identity / deception | `identity`, `archetype`, `archeservice`, `shell`, `luaengine`, `fakefiles`, `sessionrec` |
-| Output | `router`, `sink`, `store`, `format`, `ui` |
+| Output | `router`, `sink`, `store`, `format`, `ui` (incl. `/docs` Markdown renderer + embedded `docs` package) |
 | Safety / lifecycle | `safe`, `safego`, `sandbox`, `privdrop`, `retention`, `config` |
 
 See [`design.md`](design.md) for the *why* (architecture rationale and
