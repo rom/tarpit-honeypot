@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   time INTEGER NOT NULL,
   sensor TEXT NOT NULL,
+  sensor_id TEXT,
   rule_id TEXT NOT NULL,
   severity INTEGER NOT NULL,
   src_ip TEXT,
@@ -97,6 +98,19 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("store: add anomalies column: %w", err)
 		}
 	}
+	hasSID, err := hasColumn(db, "events", "sensor_id")
+	if err != nil {
+		return fmt.Errorf("store: inspect schema: %w", err)
+	}
+	if !hasSID {
+		if _, err := db.Exec(`ALTER TABLE events ADD COLUMN sensor_id TEXT`); err != nil {
+			return fmt.Errorf("store: add sensor_id column: %w", err)
+		}
+	}
+	// Index after the column exists (covers both fresh + migrated DBs).
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`); err != nil {
+		return fmt.Errorf("store: index sensor_id: %w", err)
+	}
 	return nil
 }
 
@@ -149,10 +163,10 @@ func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT OR REPLACE INTO events
-(id, time, sensor, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
+(id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
  proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.RuleID, int(ev.Severity),
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
 		metaJSON, anomaliesJSON,
@@ -205,7 +219,7 @@ type Filter struct {
 }
 
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
-	q := `SELECT id, time, sensor, rule_id, severity, src_ip, src_port,
+	q := `SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
                 dst_ip, dst_port, proto, handler, banner_sent,
                 payload_b64, payload_len, meta_json, anomalies
           FROM events WHERE 1=1`
@@ -278,7 +292,7 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 
 func (s *Store) Get(ctx context.Context, id string) (*event.Event, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, time, sensor, rule_id, severity, src_ip, src_port,
+SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
        dst_ip, dst_port, proto, handler, banner_sent,
        payload_b64, payload_len, meta_json, anomalies
 FROM events WHERE id = ?`, id)
@@ -292,11 +306,11 @@ type rowScanner interface {
 func scanRow(r rowScanner) (*event.Event, error) {
 	var (
 		id, sensor, ruleID, srcIP, dstIP, proto, handler, banner, payloadB64, metaJSON string
-		anomaliesJSON                                                                  sql.NullString
+		sensorID, anomaliesJSON                                                        sql.NullString
 		timeNS                                                                         int64
 		sev, srcPort, dstPort, payloadLen                                              int
 	)
-	if err := r.Scan(&id, &timeNS, &sensor, &ruleID, &sev,
+	if err := r.Scan(&id, &timeNS, &sensor, &sensorID, &ruleID, &sev,
 		&srcIP, &srcPort, &dstIP, &dstPort,
 		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON, &anomaliesJSON); err != nil {
 		return nil, err
@@ -305,6 +319,7 @@ func scanRow(r rowScanner) (*event.Event, error) {
 		ID:            id,
 		Time:          time.Unix(0, timeNS).UTC(),
 		Sensor:        sensor,
+		SensorID:      sensorID.String,
 		RuleID:        ruleID,
 		Severity:      event.Severity(sev),
 		Source:        event.Endpoint{IP: srcIP, Port: srcPort},

@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: `ingest:` endpoint (phase 1c)
+- A node can now be an **aggregator**: an authenticated HTTP `ingest:` endpoint
+  (bearer token, optional HMAC, optional TLS) accepts batches forwarded by child
+  sensors and feeds them into the same pipeline as local events, so the store /
+  UI / correlators see the whole fleet. Composes with `listeners:` + `forward:`
+  (a node can be sensor + mid-tier aggregator + upstream forwarder = multi-level).
+- Admitted events are **deduped** by `sensor_id:id` and **loop-guarded** (an
+  event whose hop chain already includes this node, or that exceeds `max_hops`,
+  is dropped), so a fan-out / multi-path topology can't double-count.
+- The event store now persists the originating **`sensor_id`** (a migration adds
+  the column + index to existing DBs) — stable origin attribution even when
+  sensors share a hostname. New `internal/ingest` package.
+  Verified end-to-end: sensor A → aggregator B; B's API shows A's events tagged
+  with A's sensor_id, distinct from B's own.
+
 ### Added — fleet forwarding (`forward:`) — phase 1 of central aggregation
 - A sensor can now ship its events to one or more parent **aggregator** nodes
   for fleet-wide correlation. `forward:` lists targets; multiple targets fan out

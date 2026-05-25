@@ -79,6 +79,9 @@ type Sensor struct {
 	bus         chan *event.Event
 	forward     *forward.Group // fleet event forwarding (nil when no targets)
 
+	ingestSeen    *ttlSet // dedup for events admitted via IngestBatch (aggregator)
+	ingestMaxHops int     // drop forwarded events that traversed more nodes than this
+
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
 	// stateMu guards the four fields that Reload() hot-swaps (cfg, router,
@@ -202,6 +205,10 @@ func New(cfg *config.Config) (*Sensor, error) {
 	if fwds := buildForwarders(cfg, id); len(fwds) > 0 {
 		fwdGroup = forward.NewGroup(fwds...)
 		slog.Info("fleet forwarding enabled", "targets", len(fwds), "node", id.Seed())
+	}
+	ingestMaxHops := cfg.Ingest.MaxHops
+	if ingestMaxHops <= 0 {
+		ingestMaxHops = 8
 	}
 
 	var sinks []sink.Sink
@@ -329,29 +336,31 @@ func New(cfg *config.Config) (*Sensor, error) {
 	}
 
 	s := &Sensor{
-		cfg:         cfg,
-		name:        name,
-		sinks:       sinks,
-		router:      r,
-		correlator:  cor,
-		store:       st,
-		captureMgr:  capMgr,
-		identity:    id,
-		jitter:      jit,
-		archetype:   arch,
-		honeynet:    topo,
-		enrich:      enr,
-		devices:     devReg,
-		deviceSev:   devSev,
-		scanTrack:   scananalysis.NewTracker(5 * time.Minute),
-		fuzzTrack:   fuzzdos.NewTracker(60 * time.Second),
-		payloads:    payloadStore,
-		sessionRec:  sessRec,
-		risk:        newRiskScorer(cfg.Risk),
-		seenSources: map[string]struct{}{},
-		bus:         make(chan *event.Event, 1024),
-		forward:     fwdGroup,
-		listeners:   map[string]*listenerHandle{},
+		cfg:           cfg,
+		name:          name,
+		sinks:         sinks,
+		router:        r,
+		correlator:    cor,
+		store:         st,
+		captureMgr:    capMgr,
+		identity:      id,
+		jitter:        jit,
+		archetype:     arch,
+		honeynet:      topo,
+		enrich:        enr,
+		devices:       devReg,
+		deviceSev:     devSev,
+		scanTrack:     scananalysis.NewTracker(5 * time.Minute),
+		fuzzTrack:     fuzzdos.NewTracker(60 * time.Second),
+		payloads:      payloadStore,
+		sessionRec:    sessRec,
+		risk:          newRiskScorer(cfg.Risk),
+		seenSources:   map[string]struct{}{},
+		bus:           make(chan *event.Event, 1024),
+		forward:       fwdGroup,
+		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
+		ingestMaxHops: ingestMaxHops,
+		listeners:     map[string]*listenerHandle{},
 	}
 	// A refused outbound connection is a high-severity finding: it means a
 	// handler (or a tampered config) tried to make the sensor connect somewhere

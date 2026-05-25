@@ -18,6 +18,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/egress"
+	"github.com/rom/tarpit-honeypot/internal/ingest"
 	"github.com/rom/tarpit-honeypot/internal/privdrop"
 	"github.com/rom/tarpit-honeypot/internal/sandbox"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
@@ -169,6 +170,43 @@ func cmdRun(args []string) error {
 			defer wg.Done()
 			if err := srv.ListenAndServe(rootCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("ui stopped", "err", err)
+			}
+		}()
+	}
+
+	// Aggregator ingest endpoint: accept events forwarded by child nodes.
+	if cfg.Ingest.Enabled {
+		token := os.Getenv(cfg.Ingest.TokenEnv)
+		if token == "" {
+			cancel()
+			wg.Wait()
+			return fmt.Errorf("ingest: env %s is empty", cfg.Ingest.TokenEnv)
+		}
+		ic := ingest.Config{Token: token, MaxBody: int64(cfg.Ingest.MaxBodyMB) << 20}
+		if cfg.Ingest.HMACSecretEnv != "" {
+			ic.HMACSecret = []byte(os.Getenv(cfg.Ingest.HMACSecretEnv))
+		}
+		isrv := &http.Server{Addr: cfg.Ingest.Bind, Handler: ingest.New(ic, s.IngestBatch).Mux()}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-rootCtx.Done()
+			sctx, sc := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = isrv.Shutdown(sctx)
+			sc()
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slog.Info("ingest endpoint up", "bind", cfg.Ingest.Bind, "tls", cfg.Ingest.TLSCert != "")
+			var err error
+			if cfg.Ingest.TLSCert != "" {
+				err = isrv.ListenAndServeTLS(cfg.Ingest.TLSCert, cfg.Ingest.TLSKey)
+			} else {
+				err = isrv.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("ingest stopped", "err", err)
 			}
 		}()
 	}

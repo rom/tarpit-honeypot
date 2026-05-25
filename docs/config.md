@@ -673,6 +673,36 @@ deployment id) and a `hops` chain stamped per node, so the aggregator dedups by
 the sinks. (Disk-spool durability across restarts and the aggregator ingest
 endpoint are the next increments.)
 
+## `ingest:` — accept events from child nodes (aggregator)
+
+Turns a node into an **aggregator**: it accepts batches forwarded by child
+sensors (their `forward:` targets point here) and feeds them into the same
+pipeline as local events — so the store, web UI, and correlators see the whole
+fleet. Composes with `listeners:` and `forward:`, so one node can be a sensor, a
+mid-tier aggregator, and forward upward at once (multi-level).
+
+```yaml
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470            # where to accept forwarded batches
+  token_env: TARPIT_INGEST_TOKEN  # required bearer token (an unauthenticated
+                                  # ingest endpoint is rejected at validation)
+  hmac_secret_env: ...          # optional: verify the body HMAC the child signs
+  tls_cert: ...                 # optional TLS (cert+key together)
+  tls_key: ...
+  max_body_mb: 32               # reject larger batches (default 32)
+  max_hops: 8                   # drop events that traversed more nodes (loop guard)
+  dedup_window: 10m             # sensor_id:id dedup TTL (default 10m)
+```
+
+Admitted events are deduped by `sensor_id:id` and loop-guarded (an event whose
+hop chain already includes this node, or that exceeds `max_hops`, is dropped) —
+so a fan-out / multi-path topology can't double-count. Pair the aggregator with
+a `sqlite` channel + route so forwarded events are stored and visible in the UI;
+add `forward:` to relay onward to a higher tier. Store rows now carry the
+originating `sensor_id` (stable, survives identical hostnames) alongside the
+sensor name.
+
 ## `egress:` — outbound containment (do-no-harm)
 
 A honeypot must never become an SSRF pivot, open relay, reflector, or exfil
