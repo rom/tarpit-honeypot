@@ -392,23 +392,95 @@ For each source IP: **GeoIP** city + **ASN** (+ org), reverse DNS,
 **threat-intel** list membership (`threat_intel_hit`), a **Tor-exit** flag, a
 **net-class** tag (bogon/hosting), and — for L2-learned hosts — **MAC vendor**
 (IEEE OUI). All optional, best-effort (a missing file warns and is skipped), and
-hot-reloaded on `SIGHUP`.
+hot-reloaded on `SIGHUP`. Configure the paths under `sensor.geoip` / `oui_file` /
+`tor` / `threat_intel` / `net_class` (see [`config.md`](config.md)).
 
-**Where do I get the databases?**
-They're operator-supplied (not bundled). `scripts/fetch-enrichment.sh` downloads
-and packages them on an internet-connected box (MaxMind GeoLite2 city/ASN, Tor
-exit list, FireHOL / blocklist.de threat lists, the IEEE OUI table);
-`scripts/install-enrichment.sh` places them at the configured paths (discovered
-via `list-paths`) and signals a re-read.
+**Where do the databases come from?**
+They're operator-supplied — public feeds, not bundled with the binary. Two
+shipped scripts manage them as a deliberate two-stage, air-gap-friendly workflow:
+`scripts/fetch-enrichment.sh` downloads them on an internet-connected box, and
+`scripts/install-enrichment.sh` places them on the sensor and reloads it. You can
+also fetch/manage the files by hand and just point the config at them.
+
+**What does `fetch-enrichment.sh` do?**
+Run it on an **internet-connected machine** (not the sensor); it needs only bash
++ curl-or-wget (+ tar/gunzip for GeoIP). It downloads into a bundle directory
+(default `./enrichment-data`):
+
+- **Tor exit list** — `check.torproject.org` → `tor-exits.txt`
+- **IEEE MAC-vendor OUI** — `standards-oui.ieee.org` → `oui.csv`
+- **IP-reputation feeds** → `threat/` — blocklist.de, abuse.ch Feodo, Spamhaus
+  DROP, FireHOL level-1
+- **GeoIP city + ASN** → `geoip/city.mmdb`, `geoip/asn.mmdb` — MaxMind GeoLite2
+  if `MAXMIND_LICENSE_KEY` is set, otherwise the no-key **DB-IP "lite"** databases
+  (same MaxMind-DB format the sensor reads)
+
+It writes atomically (a failed feed never clobbers a good copy), and emits a
+`MANIFEST.txt`, a `SHA256SUMS`, a `suggested-config.yaml` snippet, and a single
+`enrichment-data.tar.gz` (+ `.sha256`) for easy transfer. Useful env vars:
+`MAXMIND_LICENSE_KEY` (use GeoLite2), `SKIP_GEOIP=1` (skip the large GeoIP
+files), `NO_ARCHIVE=1`, `INSECURE=1`.
+
+```bash
+# on a connected box:
+MAXMIND_LICENSE_KEY=… scripts/fetch-enrichment.sh ./enrichment-data
+```
+
+**What does `install-enrichment.sh` do?**
+Run it **on the sensor** against a bundle (the directory or its `.tar.gz`). It:
+
+1. verifies the bundle's `SHA256SUMS` (refuses to install on mismatch; `--skip-verify` to override),
+2. asks the **running config** where each file belongs via
+   `tarpit-honeypot list-paths --format tsv` — so destinations always match the
+   live config (no hard-coded paths), and it only touches `read`-access
+   enrichment inputs, never sensor-written state,
+3. atomically copies each file into its configured destination, and
+4. signals the sensor to re-read (`SIGHUP`).
+
+```bash
+# on the sensor:
+sudo scripts/install-enrichment.sh /tmp/enrichment-data -c /etc/tarpit-honeypot/config.yaml
+```
+
+Flags: `-c CONFIG`, `--bin PATH` (locate the binary), `--dry-run` (show the plan,
+change nothing), `--no-reload`, `--reload-cmd "systemctl reload tarpit-honeypot"`,
+`--skip-verify`. It maps the canonical bundle names (`oui.csv`, `tor-exits.txt`,
+`geoip/*.mmdb`, `threat/<label>.txt`) onto the config keys (`oui_file`,
+`tor.exit_file`, `geoip.city_db`/`asn_db`, `threat_intel:<label>`), so only the
+inputs you've actually configured get installed.
+
+**What's the end-to-end import workflow?**
+Fetch on a connected box → transfer the bundle → install on the sensor (which
+reloads itself):
+
+```bash
+# 1. connected box
+scripts/fetch-enrichment.sh ./enrichment-data
+# 2. transfer (the script prints the exact scp/rsync line for your bundle)
+scp enrichment-data.tar.gz* sensor:/tmp/
+# 3. sensor
+ssh sensor 'tar -xzf /tmp/enrichment-data.tar.gz -C /tmp && \
+            sudo scripts/install-enrichment.sh /tmp/enrichment-data -c /etc/tarpit-honeypot/config.yaml'
+```
+
+**Do I need a MaxMind license for GeoIP?**
+No. Without `MAXMIND_LICENSE_KEY` the fetch script grabs the no-key **DB-IP lite**
+city/ASN databases (same `.mmdb` format the sensor reads). Set the key to use
+**GeoLite2** instead, or `SKIP_GEOIP=1` to skip GeoIP entirely (the geo/ASN
+fields are then just absent).
 
 **Can it run fully offline / air-gapped?**
-Yes. The sensor never phones home, and the fetch/install split is built for
-air-gap: fetch on a connected host, transfer the bundle, install on the sensor.
-With no enrichment files it still starts — the fields are just absent.
+Yes — that's what the split is for. The sensor never phones home; only the
+*fetch* step needs the internet, on a separate box. Transfer the bundle (verified
+by `SHA256SUMS`) and install it. With no enrichment files the sensor still starts;
+the fields are simply absent.
 
-**How do I refresh threat-intel lists?**
-Re-install (or drop new files in place) and `SIGHUP` — the lists hot-reload.
-Indicators learned by the fleet can also flow back as a downward intel feed (see
+**How do I keep the databases fresh?**
+Schedule both ends: a cron job runs `fetch-enrichment.sh` on the connected box and
+syncs the bundle, and a sensor-side cron/systemd-timer runs
+`install-enrichment.sh` (which `SIGHUP`s the sensor, so the lists hot-reload with
+no restart). Use `--reload-cmd` if you manage the process with systemd. Fleet
+knowledge can also flow back as a downward intel feed (see
 [`fleet.md`](fleet.md#6-downward-intel-feedback)).
 
 ## ICS / OT
