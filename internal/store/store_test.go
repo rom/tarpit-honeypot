@@ -327,3 +327,41 @@ func TestInsertBatch(t *testing.T) {
 		t.Errorf("empty batch: %v", err)
 	}
 }
+
+func TestMitrePersists(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	ev := mkEvent("m1", "1.2.3.4", "cve:CVE-2021-44228", event.SeverityCritical, time.Now().UTC())
+	ev.MitreTechniques = []string{"T1190"}
+	ev.MitreTactics = []string{"initial-access"}
+	ev.MitreDefenses = []string{"D3-NTA", "D3-ITF"}
+	if err := s.Insert(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.MitreTechniques) != 1 || got.MitreTechniques[0] != "T1190" {
+		t.Errorf("techniques = %v; want [T1190]", got.MitreTechniques)
+	}
+	if len(got.MitreTactics) != 1 || got.MitreTactics[0] != "initial-access" {
+		t.Errorf("tactics = %v", got.MitreTactics)
+	}
+	if len(got.MitreDefenses) != 2 {
+		t.Errorf("defenses = %v; want 2", got.MitreDefenses)
+	}
+	// An event with no mitre tags round-trips with nil slices (not [""]).
+	plain := mkEvent("m2", "5.6.7.8", "listener:http", event.SeverityLow, time.Now().UTC())
+	if err := s.Insert(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	g2, _ := s.Get(ctx, "m2")
+	if len(g2.MitreTechniques) != 0 {
+		t.Errorf("plain event techniques = %v; want empty", g2.MitreTechniques)
+	}
+}
