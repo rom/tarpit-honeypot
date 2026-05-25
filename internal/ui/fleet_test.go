@@ -60,6 +60,9 @@ func TestHandleFleet(t *testing.T) {
 	for _, want := range []string{
 		"fleet correlation", "fleet:source-multi-sensor", "fleet:c2-shared",
 		"source=203.0.113.7", "sensor_count=4", "targeted",
+		// each detector bar links to its filtered event log
+		`href="/events?rule=fleet%3Asource-multi-sensor"`,
+		"findings over time", // the timeline chart heading
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fleet page missing %q", want)

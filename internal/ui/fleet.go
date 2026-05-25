@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -13,12 +14,6 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
-
-// fleetRuleCount is one detector's hit count in the window.
-type fleetRuleCount struct {
-	Rule  string
-	Count int
-}
 
 // fleetFinding is one fleet:* alert rendered for the panel.
 type fleetFinding struct {
@@ -30,15 +25,18 @@ type fleetFinding struct {
 }
 
 type fleetPage struct {
-	Counts   []fleetRuleCount
+	Counts   []barRow // per-detector breakdown (bars; each links to filtered events)
+	Timeline []barRow // findings-over-time (bucketed bars)
 	Findings []fleetFinding
 	Total    int
 	SinceStr string
 }
 
 // handleFleet renders the cross-sensor (fleet:*) findings panel: a per-detector
-// hit count plus the recent findings with a compact summary of each.
+// breakdown bar chart (each bar links to the filtered event log), a
+// findings-over-time chart, and the recent findings with a compact summary.
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
+	since := fleetSince(r)
 	evs, err := s.fleetEvents(r)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
@@ -54,23 +52,90 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			Summary: fleetSummary(ev), ID: ev.ID,
 		})
 	}
-	cs := make([]fleetRuleCount, 0, len(counts))
-	for k, v := range counts {
-		cs = append(cs, fleetRuleCount{Rule: k, Count: v})
-	}
-	sort.Slice(cs, func(i, j int) bool {
-		if cs[i].Count != cs[j].Count {
-			return cs[i].Count > cs[j].Count
-		}
-		return cs[i].Rule < cs[j].Rule
-	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "fleet", fleetPage{
-		Counts: cs, Findings: findings, Total: len(findings),
+		Counts:   detectorBars(counts),
+		Timeline: fleetTimeline(findings, since, time.Now().UTC()),
+		Findings: findings, Total: len(findings),
 		SinceStr: r.URL.Query().Get("since"),
 	}); err != nil {
 		slog.Warn("ui: render fleet", "err", err)
 	}
+}
+
+// detectorBars turns the per-detector counts into bar rows (sorted desc), each
+// linking to the filtered event log for that exact rule.
+func detectorBars(counts map[string]int) []barRow {
+	max := 0
+	for _, v := range counts {
+		if v > max {
+			max = v
+		}
+	}
+	rows := make([]barRow, 0, len(counts))
+	for rule, c := range counts {
+		ruleID := "fleet:" + rule
+		pct := 0
+		if max > 0 {
+			pct = c * 100 / max
+		}
+		rows = append(rows, barRow{
+			Label: ruleID, Count: c, Pct: pct,
+			Href: "/events?rule=" + url.QueryEscape(ruleID),
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Count != rows[j].Count {
+			return rows[i].Count > rows[j].Count
+		}
+		return rows[i].Label < rows[j].Label
+	})
+	return rows
+}
+
+// fleetTimeline buckets findings across the window into ~24 bars.
+func fleetTimeline(findings []fleetFinding, since time.Duration, now time.Time) []barRow {
+	if len(findings) == 0 || since <= 0 {
+		return nil
+	}
+	const buckets = 24
+	bucketDur := since / buckets
+	if bucketDur < time.Minute {
+		bucketDur = time.Minute
+	}
+	n := int(since/bucketDur) + 1
+	start := now.Add(-since)
+	counts := make([]int, n)
+	max := 0
+	for _, f := range findings {
+		idx := int(f.Time.Sub(start) / bucketDur)
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= n {
+			idx = n - 1
+		}
+		counts[idx]++
+		if counts[idx] > max {
+			max = counts[idx]
+		}
+	}
+	layout := "15:04"
+	if since > 48*time.Hour {
+		layout = "01-02 15h"
+	}
+	rows := make([]barRow, 0, n)
+	for i, c := range counts {
+		pct := 0
+		if max > 0 {
+			pct = c * 100 / max
+		}
+		rows = append(rows, barRow{
+			Label: start.Add(time.Duration(i) * bucketDur).UTC().Format(layout),
+			Count: c, Pct: pct,
+		})
+	}
+	return rows
 }
 
 // handleAPIFleet returns the window's fleet:* events as JSON.
@@ -84,17 +149,22 @@ func (s *Server) handleAPIFleet(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(evs)
 }
 
-// fleetEvents queries the window and keeps only fleet:* findings (newest first).
-func (s *Server) fleetEvents(r *http.Request) ([]*event.Event, error) {
+// fleetSince parses the ?since= window (default 24h).
+func fleetSince(r *http.Request) time.Duration {
 	since := 24 * time.Hour
 	if v := r.URL.Query().Get("since"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			since = d
 		}
 	}
+	return since
+}
+
+// fleetEvents queries the window and keeps only fleet:* findings (newest first).
+func (s *Server) fleetEvents(r *http.Request) ([]*event.Event, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-since), Limit: 2000})
+	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-fleetSince(r)), Limit: 2000})
 	if err != nil {
 		return nil, err
 	}

@@ -10,11 +10,15 @@ documented in `docs/`).
 
 ### Added — web UI: dedicated fleet panel
 - New `/fleet` page (and `/api/fleet` JSON) surfacing the cross-sensor
-  `fleet:*` findings: a per-detector hit-count table plus a findings list with a
-  compact, per-detector summary (primary identity + breadth counts + broad/
-  targeted scope), each linking to the full event. `since` filter; linked from
-  the nav and `/docs`. Verified live (renders the findings; non-fleet events are
-  excluded). Unit-tested (handler render + the summary/number formatting).
+  `fleet:*` findings: a **per-detector breakdown bar chart** where each bar
+  links to that detector's filtered event log (`/events?rule=fleet:<name>`), a
+  **findings-over-time bar chart** (bucketed across the window), and a findings
+  list with a compact, per-detector summary (primary identity + breadth counts +
+  broad/targeted scope) linking to each full event. Server-rendered CSS bars (no
+  JS, CSP-safe). `since` filter; linked from the nav and `/docs`. Verified live
+  (charts + per-detector links render and resolve; non-fleet events excluded).
+  Unit-tested (handler render, the detector-link href, and summary/number
+  formatting).
 
 ### Added — two more fleet correlators (credential-spray / asn-org)
 - **`fleet:credential-spray-fleet`** — one username tried with >=

@@ -309,10 +309,10 @@ more. Runs on an aggregator with <code>ingest:</code> enabled. JSON at
 an aggregator receiving events from several sensors via <code>ingest:</code>.)</p>
 {{ else }}
 <h2>detectors fired</h2>
-<table class="chart">
-  <tr><th>detector</th><th>count</th></tr>
-  {{ range .Counts }}<tr><td>fleet:{{ .Rule }}</td><td>{{ .Count }}</td></tr>{{ end }}
-</table>
+<p class="note">Each bar links to the matching events.</p>
+{{ template "bars" .Counts }}
+<h2>findings over time</h2>
+{{ if .Timeline }}{{ template "bars" .Timeline }}{{ else }}<p class="note">—</p>{{ end }}
 <h2>findings ({{ .Total }})</h2>
 <table>
   <tr><th>time (utc)</th><th>severity</th><th>detector</th><th>summary</th><th></th></tr>
