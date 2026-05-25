@@ -47,6 +47,18 @@ core sensor + handlers run anywhere Go runs; non-Linux just no-ops those layers.
 `list-unavailable-capabilities -c <cfg>` prints what's inactive on the current
 host.
 
+**Does it replace my IDS / firewall?**
+No — it complements them. An IDS inspects *real* traffic and lives with false
+positives; this is a *sensor on space nothing should touch*, so a single hit is
+high-confidence with near-zero noise. Run it alongside your IDS/firewall and feed
+its events into the same SIEM.
+
+**How is it versioned / is it stable?**
+Single-binary infrastructure, so semver is applied loosely — the contract is the
+**YAML schema + CLI surface** documented in `docs/`. The SQLite schema
+self-migrates additively on open, so upgrading the binary doesn't need a manual
+migration. `tarpit-honeypot version` prints the build.
+
 ## Getting started
 
 **How do I try it in a minute?**
@@ -91,6 +103,63 @@ Yes — see [`usage.md` §5](usage.md#5-systemd-integration) (a shipped unit wit
 the right `AmbientCapabilities`) and [`usage.md` §6](usage.md#6-docker) (a
 ~14 MB scratch image). `tarpit-honeypot init` writes a defaulted config skeleton
 to start from.
+
+## Configuration
+
+**How is the config put together / can I split it across files?**
+Four layers, applied in order: the base YAML (`-c`), then sibling `conf.d/*.yaml`
+deep-merged in lexical order, then `TARPIT_<KEY_PATH>` environment variables, then
+`--set key.path=value` (wins). So you can keep a shared base and override per-host
+bits in `conf.d/` or the environment without forking the file. See
+[`cli.md`](cli.md).
+
+**How are secrets and tokens kept out of the config?**
+Every secret is a `*_env` reference (`ui.auth_token_env`, `ingest.token_env`,
+`misp.key_env`, …) — the value comes from the environment, never the file. They
+are **never** expanded in `show-config` output or logs, so config is safe to paste
+in a ticket.
+
+**Can I override one setting without editing the file?**
+Yes — `--set sensor.name=edge-1` (repeatable, auto-typed) or
+`TARPIT_SENSOR_NAME=edge-1` in the environment. Handy for templating one config
+across a fleet.
+
+**What's `sensor.deployment_id` and should I set it?**
+A stable random seed that feeds every "fixed" string a handler emits (so two
+sensors look different to scanners). Leave it blank and it's auto-generated and
+persisted to `<data_dir>/.deployment-id` on first run. Set it explicitly only to
+make two sensors present an *identical* fingerprint on purpose.
+
+## Sensor placement & networking
+
+**Where should I put a sensor?**
+On address space nothing legitimate should touch — unused IPs on an internal
+VLAN, a DMZ, or a public IP. The value comes from that: any connection is
+inherently suspicious, so false positives are near-zero. Cover more unused space
+(more virtual hosts / claimed IPs) for more signal.
+
+**How do I attract traffic to it?**
+Bind the real service ports on the sensor's IP, claim unused IPs with the
+honeynet `arp_responder` (the sensor answers ARP for a free address), or
+NAT/`REDIRECT` unused ports on a gateway to the sensor. The honeynet dispatch is
+per-destination-IP, so one bound port can serve many virtual hosts. See
+[`INTEGRATIONS.md`](INTEGRATIONS.md).
+
+**Can I run it on a cloud VM?**
+Yes. Bind the listeners on the public interface, open exactly the
+security-group/firewall ports you want probed, and keep the UI on loopback (or
+behind TLS + an auth token). Nothing about the core needs a special host.
+
+**Does it need outbound internet?**
+No, for core operation. Only the channels and feeds you configure (SIEM webhooks,
+SMTP, MISP, intel pull) dial out — and those go through the `egress` allowlist,
+with `egress.enforce` adding an OS-level backstop. A blocked dial is logged as
+`egress:denied`.
+
+**Can I run several instances on one host?**
+Yes — give each its own `sensor.data_dir` and non-overlapping binds (listeners +
+UI). They're independent processes; aggregate them with a fleet `ingest:` node if
+you want one view.
 
 ## Honeynets & virtual hosts
 
@@ -188,6 +257,24 @@ countermeasures. The router stamps them at dispatch (so every sink sees them) an
 the store persists them (so `/api/events` and the UI carry them). Audit the
 coverage with `tarpit-honeypot list-techniques`.
 
+**What do the severity levels mean?**
+`low` / `medium` / `high` / `critical`. Each rule ships a sensible default —
+recon/connects sit low, auth attempts and exploit signatures sit high, canary
+trips and honeytoken hits sit critical — and severity gates routing/min-severity
+and weights the per-source risk score. Re-map any rule for your environment with
+`severity_overrides:`.
+
+**What's the difference between `drop`, `banner`, and `tarpit` modes?**
+`drop` accepts and immediately closes (records the connect only); `banner` runs
+the protocol handler (real reply + captured request); `tarpit` holds the
+connection open to waste the client's time. `tarpit.emulate: true` runs the
+handler first, *then* tarpits the same connection.
+
+**Does it deduplicate repeated events?**
+Yes — a `dedup` window collapses identical repeated events, and outbound sinks
+have their own per-`(source, rule)` window so one hammering source doesn't flood a
+channel. The local store still records the full picture.
+
 **What CVEs does it know about?**
 A curated catalog of 100+ entries (run `tarpit-honeypot list-cves`), each with
 CVSS, CWE, CPE, EPSS, and the ATT&CK technique. Vuln-emulation (advertise an
@@ -195,19 +282,10 @@ unpatched version + recognize the matching exploit) is per-listener
 (`sensor.vuln_emulation`); exploit-attempt detection (`cve:<id>` events) runs
 regardless.
 
-**What's a tarpit and when should I use one?**
-A tarpit holds a connection open to waste a scanner's/worm's time —
-`mode: tarpit` with `strategy: sticky` (hold), `trickle` (one byte every N s), or
-`keepalive` (slow nulls). With `tarpit.emulate: true` the handler runs first
-(real banner + captured request) and *then* tarpits, so any emulator becomes a
-tarpit. Use it on commodity-scanned ports where slowing mass tooling is worth
-more than a clean banner.
-
-**What are canary tokens?**
-Tripwires that fire the instant they're touched: **file** canaries (fsnotify +
-Linux fanotify catches plain reads), **URL** canaries (a secret path on any
-HTTP/S listener), and **DNS** canaries (any subdomain of a registered name).
-Mint them with `tarpit-honeypot gen-token --type=dns|url|hex`.
+**What's a tarpit, and what are canary tokens?**
+Two deception features with their own sections below — see [Tarpits](#tarpits)
+(holding connections open to waste attacker time) and
+[Canary tokens](#canary-tokens) (file/URL/DNS tripwires).
 
 **Does it record attacker sessions?**
 With `sensor.session_recording`, interactive `telnet` / `ssh_interactive`
@@ -233,6 +311,79 @@ Put admin/patch-management/monitoring sources in `allowlist` (suppresses
 forwarding/alerting for those IPs; local events still recorded), and tune the
 correlator thresholds. On a fleet, the broad-vs-targeted classifier already
 down-weights internet-wide background scanning.
+
+## Tarpits
+
+**What is a tarpit?**
+A listener in `mode: tarpit` holds the connection open instead of answering and
+hanging up — so a scanner, worm, or brute-forcer spends its time and sockets on
+you instead of on real targets. It's the "honeypot wastes the attacker's day"
+half of the name.
+
+**What strategies are there?**
+Set `tarpit.strategy:`:
+- `sticky` — accept and never read/write; the kernel's TCP keepalive eventually
+  notices a dead peer. The cheapest way to pin a persistent scanner.
+- `trickle` — write one byte of `tarpit.trickle.text` every
+  `tarpit.trickle.byte_interval` (e.g. 2s), cycling — banner-grabbers wait
+  forever for content.
+- `keepalive` — write a NUL byte every `tarpit.keepalive.interval` (e.g. 30s) —
+  minimal-bandwidth persistent presence.
+
+**Can a tarpit still capture what the attacker sent?**
+Yes — set `tarpit.emulate: true` and the listener runs its real `handler:` first
+(genuine banner + captured request), *then* tarpits the same connection. Any
+emulator becomes a tarpit, and the captured banner/request rides on the
+`tarpit_start` event (`tarpit_emulated_handler` in meta).
+
+**Won't holding connections open exhaust the sensor?**
+Cap them: `tarpit.max_per_source` limits concurrent held connections per source
+(with overall accept caps via `max_concurrent`). Tarpits are TCP-only and never
+amplify, so they can't be turned into a reflection primitive.
+
+**What events does a tarpit emit?**
+`listener:<id>:tarpit_start`, `tarpit_end`, and `tarpit_drop` mark the lifecycle,
+so you can see how long each engagement lasted and how many were shed at the cap.
+
+**When should I use one?**
+On commodity-scanned ports where slowing mass tooling is worth more than a clean
+banner — and `emulate: true` gives you both. Mix tarpit and banner listeners
+across your decoys.
+
+## Canary tokens
+
+**What's a canary token?**
+An unguessable tripwire embedded somewhere it should never be touched — a file, a
+URL, a DNS name. The instant it's accessed, the sensor emits a high/critical
+event. There's nothing to tune for false positives: a hit *is* the signal.
+
+**What kinds are there?**
+- **File canaries** (`canaries:`) — honeyfiles watched via fsnotify
+  (modify/remove/rename/chmod); on Linux with the capability, fanotify also
+  catches plain `OPEN`/reads that fsnotify can't. Fires `canary:<id>`.
+- **URL canaries** (`url_canaries:`) — a secret path; any HTTP/HTTPS handler that
+  sees it (query string stripped) fires `canary:url:<id>` *in addition to* the
+  normal listener event.
+- **DNS canaries** (`dns:` + `dns_canaries:`) — a minimal DNS listener that
+  answers NXDOMAIN but fires `canary:dns:<id>` on any subdomain of a registered
+  name, so even a *resolution attempt* trips it.
+
+**How do I create the tokens?**
+`tarpit-honeypot gen-token --type=dns|url|hex [--label LBL] [--bits N]
+[--domain D]` mints an unguessable value; paste it into a `url_canaries:` /
+`dns_canaries:` block (or name a honeyfile) and embed it in fake docs, emails,
+configs, or scripts.
+
+**Where should I plant them?**
+Anywhere an attacker who's already inside would look: a `passwords.xlsx` on a
+share, a fake `.env`/API path in a repo or web root, a `db-host` DNS name in a
+deploy script. Because DNS resolution alone trips a DNS canary, those reach even
+into egress-filtered networks.
+
+**How are these different from honeytokens?**
+A canary is bait *you* place and watch. A **honeytoken** is a per-deployment-unique
+secret the fake web app *serves* (a DB password, an `AKIA…` AWS key) — register it
+in your SIEM and alert if it ever shows up in real auth logs.
 
 ## Enrichment
 
@@ -339,6 +490,17 @@ auth-free liveness check.
 Yes — the **docs** tab lists a documentation library and renders each guide at
 `/docs/<name>` (the same Markdown shipped under `docs/`).
 
+**Can I query the database directly?**
+Yes — `<data_dir>/events.db` is plain SQLite (WAL mode); open it read-only with
+any SQLite client. The schema lives in `internal/store/store.go`. For
+programmatic use prefer `/api/events` or `list-events`, which apply the same
+filters.
+
+**Does the UI update on its own?**
+Yes — every page auto-refreshes via `<meta refresh>` at `ui.refresh_seconds`
+(default 10; `0` disables), so the console stays live during an attack with no
+JavaScript required.
+
 ## Fleet & aggregation
 
 **What's the difference between a sensor and an aggregator?**
@@ -389,6 +551,12 @@ An aggregator serves a downward intel feed (`/intel`, plus STIX/TAXII); sensors
 subscribe with `intel_feed:` and the indicators tag their events (setting
 `fleet_intel` + `threat_intel_hit`, which drives the existing tarpit/risk/burst
 machinery). Events flow up, intel flows down.
+
+**Can sensors in a fleet run different configs / archetypes?**
+Yes — each sensor is independent (its own listeners, archetypes, honeynets). The
+aggregator keys on the stable `sensor_id`, so a heterogeneous fleet (a Windows-AD
+decoy here, an OT cell there, a DMZ web host elsewhere) correlates fine; in fact
+diverse vantage points sharpen the cross-sensor signal.
 
 **Why aren't my `fleet:*` detectors firing?**
 Cross-sensor detection needs events from **several** `sensor_id`s converging via
@@ -554,6 +722,16 @@ snapshot (stop the sensor, or use SQLite's online backup / `VACUUM INTO`) rather
 than copying `events.db` mid-write. The stable `sensor_id` file lives there too —
 keep it so the deployment's fleet identity survives a rebuild.
 
+**How do I rotate an auth token or other secret?**
+Secrets are `*_env` references, so rotate the value in the environment (or your
+secret manager) and restart — `SIGHUP` re-reads the environment for most. Because
+the secret never lives in the YAML, there's no file to scrub.
+
+**How do I wipe the store and start fresh?**
+`tarpit-honeypot reset-db -c <cfg>` empties the local event store / device
+inventory / captures while keeping your config. Useful after a test run or before
+handing a box on; the schema is recreated on next start.
+
 **Where do I look when something's wrong?**
 The **errors** UI tab and the structured `slog` output (journal under systemd)
 cover operational/health events; the [`usage.md` §15](usage.md#15-troubleshooting)
@@ -642,3 +820,106 @@ with ingest) and your thresholds. See [`fleet.md` §9](fleet.md#9-troubleshootin
 The web UI **errors** tab and the structured `slog` output (journal under
 systemd) for operational/health events; [`usage.md` §15](usage.md#15-troubleshooting)
 is the symptom→fix table.
+
+## Glossary
+
+- **Aggregator** — a node with `ingest:` that accepts forwarded events from many
+  sensors and runs the cross-sensor `fleet:*` correlator over the merged stream.
+- **Allowlist** — source IPs/CIDRs whose events are still recorded locally but
+  suppressed from forwarding/alerting (e.g. your own scanners); distinct from the
+  egress allowlist.
+- **Anomaly marker** — a per-request flag a handler raises (`uri-log4shell-jndi`,
+  `ssh-id-non-printable`, `modbus-write-attempt`) that rides on the event and
+  refines its ATT&CK tags.
+- **Archetype** — an OS/device personality that pins every fingerprint (banners,
+  SNMP identity, MAC OUI, TLS posture, ICMP TTL, advertised CVEs) to one coherent
+  machine. `list-archetypes`.
+- **Archeservice** — a service *role* (`webserver`, `adserver`, …) that expands into
+  the right listeners for that role. `list-archeservices`.
+- **ATT&CK / D3FEND** — MITRE's adversary-technique matrix and its
+  defensive-countermeasure counterpart; every event is tagged with both.
+- **Banner mode** — a listener that runs its protocol handler (a believable reply
+  plus a captured request). Contrast `drop` and `tarpit`.
+- **Broad vs targeted** — a fleet finding's scope: *broad* = internet-wide
+  background (down-weighted), *targeted* = a specific subset of your fleet.
+- **Canary token** — an unguessable file/URL/DNS tripwire that fires the instant
+  it's touched. See [Canary tokens](#canary-tokens).
+- **Capture / pcap** — optional per-connection synthesized libpcap under
+  `<data_dir>/captures/`; pull it with `export-pcap`.
+- **Channel** — a configured outbound destination (syslog, webhook, smtp, mqtt,
+  twilio, sns, snmptrap, discord) plus the local stdout/jsonlog/sqlite sinks.
+- **Correlator** — a windowed, multi-event detector (`correlate:*`) that fires when
+  a per-source pattern crosses a threshold (port-scan, brute-force, beacon).
+- **Coverage** — a fleet finding's `sensors_hit / active_sensors` ratio, the basis
+  of the broad-vs-targeted call.
+- **CVE / CWE / CPE / EPSS** — the vulnerability id, weakness class,
+  affected-product identifier, and exploit-probability score stamped on `cve:*`
+  events.
+- **Dedup** — the window that collapses identical repeated events (with a separate
+  per-`(source, rule)` window for outbound sinks).
+- **deployment_id** — a stable random seed (persisted to
+  `<data_dir>/.deployment-id`) that makes every "fixed" handler string unique per
+  sensor.
+- **Device learning** — the opt-in registry of hosts seen on the segment; raises
+  `device:new` for never-before-seen, non-allow-listed devices.
+- **Egress allowlist** — the outbound destinations the sensor may dial
+  (`egress.allow`); `egress.enforce` adds an nftables backstop and a block is
+  logged `egress:denied`.
+- **Enrichment** — per-source decoration (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) added
+  to every event; optional and hot-reloaded.
+- **Event** — the one record type for every interaction: id, time,
+  sensor/sensor_id, rule_id, severity, source/dest, proto/handler, payload,
+  anomalies, ATT&CK/D3FEND.
+- **Fleet** — several sensors aggregated so cross-sensor patterns surface; events
+  flow up, intel flows down.
+- **Fleet detector** — a cross-sensor rule (`fleet:*`) only an aggregator fires.
+  `list-fleet-rules`.
+- **Forwarder** — a node with `forward:` that ships its events to one or more parent
+  aggregators (full or `rollup`).
+- **Handler** — the protocol emulator bound to a listener (`ssh`, `http`, `modbus`,
+  …). `list-handlers`.
+- **Honeynet** — a virtual network (CIDR + gateway + hosts) the sensor presents
+  without an OS interface per host.
+- **Honeytoken** — a per-deployment-unique secret the fake web app serves (DB
+  password, AWS key) so you can alert if it surfaces in real logs.
+- **Intel feed** — the downward indicators an aggregator serves (`/intel`, STIX,
+  TAXII) that sensors subscribe to via `intel_feed:`.
+- **IOC** — a typed, de-duplicated indicator of compromise
+  (ip/asn/ja3/domain/cve/sha256/url/credential/mac) mined from events. See
+  [`ioc.md`](ioc.md).
+- **JA3 / JA4 / JA4H / JA3S / HASSH** — TLS client/server and SSH client stack
+  fingerprints, stable across GREASE shuffling.
+- **net-class** — an enrichment tag classifying a source network (bogon, hosting, …).
+- **Risk score** — a decaying per-source threat score that emits
+  `risk:elevated|high|critical` on a threshold crossing.
+- **Rollup** — a forwarding mode that ships a periodic `fleet:rollup` summary
+  instead of every event.
+- **Route** — a `routes:` rule matching events (by severity/fields) to the channels
+  that should receive them.
+- **rule_id** — the event's stable type key (`listener:ssh-bait`,
+  `correlate:port_scan`, `cve:<id>`, `fleet:*`, `ioc:*`).
+- **Sandbox** — the Linux self-confinement layer: a seccomp syscall denylist plus a
+  Landlock read-only-FS policy (`sensor.sandbox`).
+- **Sensor** — a node with `listeners:` that presents decoys and emits events; the
+  base role.
+- **sensor_id** — the stable per-deployment id (the fleet dedup/attribution key)
+  that survives a hostname change.
+- **Severity** — `low | medium | high | critical`; gates routing/min-severity and
+  weights the risk score. Re-map with `severity_overrides:`.
+- **Sink** — the delivery side of a channel (where an event is written/sent), each
+  with a bounded retry queue.
+- **Sniffer** — the Linux AF_PACKET layer that catches L2 abuse and L3/L4 stealth
+  scans that never complete a connection.
+- **Storyline** — the cross-protocol correlator (`storyline:multi_stage`) that fires
+  when one source touches 3+ ATT&CK tactics in a window.
+- **Tarpit** — a listener that holds a connection open to waste attacker time. See
+  [Tarpits](#tarpits).
+- **Trust scoring** — per-sensor windowed scoring on an aggregator that rate-limits
+  and can quarantine a noisy/compromised sensor (`ingest.trust`).
+- **TUN / userspace TCP stack** — the Linux adapter + pure-Go stack that lets
+  virtual hosts complete fingerprint-shaped handshakes with no socket per host.
+- **Virtual host** — one decoy machine inside a honeynet (its own IP/MAC/identity
+  and service list).
+- **Vuln emulation** — advertising an archetype's deliberately-unpatched version (+
+  fake patch level) so a scanner records an exploitable box
+  (`sensor.vuln_emulation`).
