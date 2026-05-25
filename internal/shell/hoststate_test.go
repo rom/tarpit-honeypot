@@ -80,3 +80,29 @@ func TestHostStateDistinctAndStable(t *testing.T) {
 		t.Errorf("same archetype not stable: %s/%s vs %s/%s", a.ip, a.mac, a2.ip, a2.mac)
 	}
 }
+
+func TestUnameFlags(t *testing.T) {
+	arch := archetype.Lookup("debian 12")
+	hs := deriveHost(arch)
+	cases := map[string]string{
+		"uname":     "Linux\r\n",
+		"uname -s":  "Linux\r\n",
+		"uname -n":  hs.host + "\r\n",
+		"uname -r":  "5.10.0-amd64\r\n",
+		"uname -m":  "x86_64\r\n",
+		"uname -sr": "Linux 5.10.0-amd64\r\n",
+	}
+	for cmd, want := range cases {
+		if got, _ := OneShot(arch, cmd); got != want {
+			t.Errorf("%q = %q; want %q", cmd, got, want)
+		}
+	}
+	// -a stays the full string; -n agrees with the hostname builtin.
+	full, _ := OneShot(arch, "uname -a")
+	if !strings.Contains(full, "Linux") || !strings.Contains(full, "GNU/Linux") {
+		t.Errorf("uname -a = %q", full)
+	}
+	if hn, _ := OneShot(arch, "hostname"); hn != hs.host+"\r\n" {
+		t.Errorf("hostname = %q; want %q", hn, hs.host+"\r\n")
+	}
+}

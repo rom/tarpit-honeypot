@@ -98,6 +98,80 @@ func deriveHost(p *archetype.Profile) hostState {
 	}
 }
 
+// unameResponse builds a flag-aware `uname`: bare uname prints the kernel name,
+// -a the full string, and -s/-n/-r/-v/-m/-o (in any combination, in canonical
+// order) the matching field — parsed from the archetype's full uname string so
+// `uname -r` agrees with `uname -a` and `uname -n` agrees with `hostname`.
+func unameResponse(full, host string) func([]string) string {
+	sysname, release, version, machine, os := parseUname(full)
+	return func(argv []string) string {
+		flags := map[rune]bool{}
+		for _, a := range argv[1:] {
+			if strings.HasPrefix(a, "-") {
+				for _, c := range a[1:] {
+					flags[c] = true
+				}
+			}
+		}
+		if flags['a'] {
+			return full + "\r\n"
+		}
+		var parts []string
+		if flags['s'] {
+			parts = append(parts, sysname)
+		}
+		if flags['n'] {
+			parts = append(parts, host)
+		}
+		if flags['r'] {
+			parts = append(parts, release)
+		}
+		if flags['v'] {
+			parts = append(parts, version)
+		}
+		if flags['m'] || flags['p'] || flags['i'] {
+			parts = append(parts, machine)
+		}
+		if flags['o'] {
+			parts = append(parts, os)
+		}
+		if len(parts) == 0 { // bare uname, or only unknown flags -> kernel name
+			return sysname + "\r\n"
+		}
+		return strings.Join(parts, " ") + "\r\n"
+	}
+}
+
+// parseUname splits a full uname string
+// ("<sysname> <node> <release> <version...> <machine> <os>") into fields,
+// falling back to sensible Linux defaults for anything it can't find.
+func parseUname(full string) (sysname, release, version, machine, os string) {
+	sysname, release, version, machine, os = "Linux", "5.10.0-amd64", "#1 SMP", "x86_64", "GNU/Linux"
+	fields := strings.Fields(full)
+	if len(fields) == 0 {
+		return
+	}
+	sysname = fields[0]
+	if len(fields) >= 3 {
+		release = fields[2]
+	}
+	archIdx := -1
+	for i, f := range fields {
+		switch f {
+		case "x86_64", "aarch64", "armv7l", "armv6l", "i686", "i386", "mips", "mips64", "ppc64le", "s390x", "riscv64":
+			machine = f
+			archIdx = i
+		}
+	}
+	if archIdx > 3 {
+		version = strings.Join(fields[3:archIdx], " ")
+	}
+	if archIdx >= 0 && archIdx+1 < len(fields) {
+		os = strings.Join(fields[archIdx+1:], " ")
+	}
+	return
+}
+
 func deriveMAC(p *archetype.Profile, r *rng) string {
 	var oui [3]byte
 	if p != nil && p.HasMACOUI() {

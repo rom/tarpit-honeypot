@@ -108,7 +108,7 @@ admin:x:1000:1000:admin,,,:/home/admin:/bin/bash
 		"whoami":    {static: "root\r\n"},
 		"id":        {static: "uid=0(root) gid=0(root) groups=0(root)\r\n"},
 		"hostname":  {static: host + "\r\n"},
-		"uname":     {static: kernel + "\r\n"},
+		"uname":     {dyn: unameResponse(kernel, host)},
 		"pwd":       {static: "/root\r\n"},
 		"uptime":    {dyn: func([]string) string { return hs.uptime() }},
 		"date":      {dyn: func([]string) string { return hs.date() }},
