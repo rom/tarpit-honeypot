@@ -1,0 +1,55 @@
+# Fleet topology — TIER 3: global hub
+#
+# The top of a multi-tier fleet. It ingests the rollups (and any full streams)
+# from the site aggregators, correlates over the whole estate with wider windows,
+# maintains the global IOC store, and feeds the SOC's tooling:
+#   - serves STIX 2.1 + a TAXII 2.1 read API at /intel/stix and /taxii2/
+#   - pushes new IOCs to MISP (delta events)
+#   - exports every event to the SIEM as CEF over syslog
+#
+#   export TARPIT_INGEST_TOKEN=...   # token site aggregators present
+#   export TARPIT_MISP_KEY=...       # MISP automation key
+#
+#   tarpit-honeypot validate-config -c examples/fleet/global-hub.yaml
+sensor:
+  name: hub
+  data_dir: /var/lib/tarpit-honeypot
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  net_class: { enabled: true }
+
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470
+  token_env: TARPIT_INGEST_TOKEN
+  trust: { enabled: true, quarantine_below: 0.3 }
+
+# Wider windows for the global view; a fleet-wide source/CVE/fingerprint is
+# higher-signal at this tier.
+fleet:
+  enabled: true
+  serve_intel: true
+  window: 6h
+  source_sensors: 5
+  cve_sensors: 5
+
+ioc:
+  enabled: true
+
+# Push the global IOCs to MISP (egress-allowlisted; add it to egress.allow if you
+# enable egress.enforce here).
+misp:
+  enabled: true
+  url: https://misp.corp
+  key_env: TARPIT_MISP_KEY
+  interval: 5m
+  event_info: "tarpit-honeypot global fleet IOCs"
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8080
+
+channels:
+  - { id: db, type: sqlite }
+  - { id: siem, type: syslog, network: tcp, address: siem.corp:514, format: cef }
+routes:
+  - { match: {}, channels: [db, siem] }

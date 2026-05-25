@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — worked fleet topology example configs
+- `examples/fleet/` — a tiered, validated reference deployment: `leaf-sensor.yaml`
+  (edge decoy that forwards full + subscribes to the intel feed under
+  `egress.enforce`), `site-aggregator.yaml` (ingest + trust + fleet + IOC +
+  serve-intel, rolling up to the hub), and `global-hub.yaml` (wide fleet windows
+  + IOC + MISP push + STIX/TAXII + CEF→SIEM), with a `README.md` topology
+  diagram. Listed in `examples/EXAMPLES.md`; all three pass `validate-config`.
+
 ### Changed — web UI brought up to date with the fleet / IOC / mitre features
 - **Event detail** (`/events/<id>`) now shows an ATT&CK / D3FEND section
   (technique chips link to the technique view, with hover descriptions; tactics +

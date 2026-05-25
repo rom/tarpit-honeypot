@@ -51,6 +51,9 @@ is the "everything turned on" reference.
 | Enterprise UC | [`enterprise-telephony.yaml`](enterprise-telephony.yaml) | Cisco/Avaya/Mitel: SCCP/H.323/SIP + callmanager/unifiedcomms roles + CUCM/Avaya decoys + phone honeynet (voip_enum). |
 | VoIP edge SBC | [`voip-edge-sbc.yaml`](voip-edge-sbc.yaml) | Carrier edge: Ribbon/AudioCodes SBC/gateways + IP phones + sbc/voipgateway/ipphone roles. |
 | SIEM | [`siem-integration.yaml`](siem-integration.yaml) | Same events to JSON/CEF/LEEF/OCSF sinks. |
+| Fleet (tier 1) | [`fleet/leaf-sensor.yaml`](fleet/leaf-sensor.yaml) | Edge decoy: forwards everything up, contains egress, subscribes to the downward intel feed. |
+| Fleet (tier 2) | [`fleet/site-aggregator.yaml`](fleet/site-aggregator.yaml) | Site collector: ingest + trust scoring, cross-sensor `fleet:*`, IOC store, serves intel/STIX/TAXII, rolls up to the hub. |
+| Fleet (tier 3) | [`fleet/global-hub.yaml`](fleet/global-hub.yaml) | Global: wide `fleet:` windows, IOC store, MISP push, STIX/TAXII feed, CEF→SIEM. See [`fleet/README.md`](fleet/README.md). |
 
 ---
 

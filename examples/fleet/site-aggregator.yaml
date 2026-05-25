@@ -1,0 +1,63 @@
+# Fleet topology — TIER 2: site aggregator
+#
+# Accepts forwarded events from the site's leaf sensors (ingest:), runs the full
+# cross-sensor correlator over the merged stream (fleet:* findings no single leaf
+# can see), distils a de-duplicated IOC store, serves a downward intel feed +
+# STIX/TAXII back to the leaves, scores the trustworthiness of each child stream,
+# and ROLLS UP to the global hub (one summary/minute instead of every event).
+#
+# This node is a sensor too — add listeners: to also present decoys here.
+#
+#   export TARPIT_INGEST_TOKEN=...   # token leaves present (their TARPIT_FWD_TOKEN)
+#   export TARPIT_INGEST_HMAC=...    # optional body-signature key
+#   export TARPIT_FWD_TOKEN=...      # token the global hub's ingest accepts
+#
+#   tarpit-honeypot validate-config -c examples/fleet/site-aggregator.yaml
+sensor:
+  name: agg-site
+  data_dir: /var/lib/tarpit-honeypot
+  # ASN/geo enrichment here powers fleet:asn-* / geo-distributed-actor and the
+  # IOC store's asn indicators (populate with scripts/fetch-enrichment.sh).
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  net_class: { enabled: true }
+
+# Aggregator endpoint: accept child batches + serve the intel/STIX/TAXII feed.
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470
+  token_env: TARPIT_INGEST_TOKEN
+  hmac_secret_env: TARPIT_INGEST_HMAC
+  # Score child streams; quarantine a node whose stream looks fabricated and cap
+  # per-sensor injection so one bad/compromised leaf can't overwhelm the store.
+  trust:
+    enabled: true
+    quarantine_below: 0.3
+    rate_per_sec: 500
+
+# Cross-sensor correlation + downward intel feed (both default on with ingest;
+# shown explicitly). Tune thresholds to taste — see `list-fleet-rules`.
+fleet:
+  enabled: true
+  serve_intel: true
+
+# De-duplicated IOC store + ioc:* events (forwarded up with everything else).
+ioc:
+  enabled: true
+
+# Roll up to the global hub: one fleet:rollup summary per minute, mediums+.
+forward:
+  - id: global
+    url: https://hub.corp:8470/ingest
+    token_env: TARPIT_FWD_TOKEN
+    mode: rollup
+    rollup_interval: 60s
+    min_severity: medium
+
+# Local store + dashboards (loopback; front with a TLS reverse proxy for remote).
+ui:
+  enabled: true
+  bind: 127.0.0.1:8080
+channels:
+  - { id: db, type: sqlite }
+routes:
+  - { match: {}, channels: [db] }
