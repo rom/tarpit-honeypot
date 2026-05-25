@@ -25,8 +25,9 @@ type Target struct {
 	cfg  *Config
 	deps handler.Deps // module mode
 
-	mu   sync.Mutex
-	proc *exec.Cmd // managed network target
+	mu     sync.Mutex
+	proc   *exec.Cmd     // managed network target
+	exited chan struct{} // closed by the reaper goroutine when proc terminates
 }
 
 // NewTarget builds a target for the config (does not start it).
@@ -103,34 +104,51 @@ func (t *Target) spawn(ctx context.Context) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("spawn %s: %w", t.cfg.Spawn.Binary, err)
 	}
+	exited := make(chan struct{})
 	t.mu.Lock()
 	t.proc = cmd
+	t.exited = exited
 	t.mu.Unlock()
-	go func() { _ = cmd.Wait() }() // reap; Alive() checks ProcessState
+	// Reap the child and signal its exit. cmd.Wait() sets cmd.ProcessState
+	// before we close(exited), so a reader that first observes the closed
+	// channel may then read ProcessState race-free (the close establishes
+	// happens-before). Reading ProcessState without this would race with Wait.
+	go func() { _ = cmd.Wait(); close(exited) }()
 	return nil
 }
 
 func (t *Target) kill() {
 	t.mu.Lock()
-	p := t.proc
-	t.proc = nil
+	p, exited := t.proc, t.exited
+	t.proc, t.exited = nil, nil
 	t.mu.Unlock()
-	if p != nil && p.Process != nil {
-		_ = p.Process.Kill()
-		_, _ = p.Process.Wait()
+	if p == nil || p.Process == nil {
+		return
+	}
+	_ = p.Process.Kill()
+	if exited != nil {
+		<-exited // let the reaper's Wait return — don't Wait twice on the same proc
 	}
 }
 
-// procExited reports whether a managed target process has terminated (Wait has
-// set its ProcessState) and a short description of how, for a clear error.
+// procExited reports whether a managed target process has terminated, and a
+// short description of how, for a clear error.
 func (t *Target) procExited() (bool, string) {
 	t.mu.Lock()
-	p := t.proc
+	p, exited := t.proc, t.exited
 	t.mu.Unlock()
-	if p != nil && p.ProcessState != nil {
-		return true, p.ProcessState.String()
+	if p == nil || exited == nil {
+		return false, ""
 	}
-	return false, ""
+	select {
+	case <-exited:
+		if p.ProcessState != nil { // safe: Wait() set it before closing exited
+			return true, p.ProcessState.String()
+		}
+		return true, "exited"
+	default:
+		return false, ""
+	}
 }
 
 // waitReady polls until the target answers (health URL or any TCP endpoint),
@@ -203,9 +221,17 @@ func (t *Target) Alive(ctx context.Context) bool {
 	}
 	if t.Managed() {
 		t.mu.Lock()
-		p := t.proc
+		p, exited := t.proc, t.exited
 		t.mu.Unlock()
-		return p != nil && (p.ProcessState == nil || !p.ProcessState.Exited())
+		if p == nil {
+			return false
+		}
+		select {
+		case <-exited:
+			return false // the process has terminated
+		default:
+			return true // still running — the process being up is the signal
+		}
 	}
 	for i := 0; i < 3; i++ { // external: tolerate one slow/missed probe
 		if ctx.Err() != nil {
