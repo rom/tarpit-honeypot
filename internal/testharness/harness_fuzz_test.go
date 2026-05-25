@@ -8,6 +8,7 @@ package testharness
 //	go test ./internal/testharness -run x -fuzz FuzzMutateSmart -fuzztime 30s
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -93,6 +94,45 @@ func FuzzRandBytesStable(f *testing.F) {
 		}
 		if len(a) > 16384 {
 			t.Fatalf("randBytes len %d exceeds the 16384 bound", len(a))
+		}
+	})
+}
+
+// FuzzConfigLoad: parsing + defaulting + validating an arbitrary YAML config
+// must never panic (it's the first thing a CLI run does with operator input).
+func FuzzConfigLoad(f *testing.F) {
+	f.Add([]byte("mode: module\nendpoints:\n  - {label: a, proto: tcp, handler: http}\n"))
+	f.Add([]byte("mode: network\nhost: 127.0.0.1\nrounds: 3\ntimeout: 2s\n"))
+	f.Add([]byte("duration: 30\nfuzz_iterations: 64\n"))
+	f.Add([]byte(""))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var c Config
+		if err := yaml.Unmarshal(data, &c); err != nil {
+			return // a parse error is a fine outcome
+		}
+		c.ApplyDefaults()
+		_ = c.Validate() // must terminate without panicking on any parsed config
+	})
+}
+
+// FuzzAPIEventsDecode: the detection client decodes honeypot-shaped JSON and
+// runs the matchers over it — neither the decode nor the matchers may panic on
+// arbitrary input.
+func FuzzAPIEventsDecode(f *testing.F) {
+	f.Add([]byte(`[{"rule_id":"listener:ssh","meta":{"anomalies":["ssh-id-not-ssh"],"tools":["nmap"]}}]`))
+	f.Add([]byte(`[{"anomalies":["tool:masscan"]}]`))
+	f.Add([]byte(`[]`))
+	f.Add([]byte(`not json`))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var evs []apiEvent
+		if err := json.Unmarshal(data, &evs); err != nil {
+			return
+		}
+		for _, e := range evs {
+			_ = eventAnomalies(e)
+			_ = MatchAnomaly("x")(e)
+			_ = MatchRulePrefix("listener:")(e)
+			_ = MatchTool("nmap")(e)
 		}
 	})
 }
