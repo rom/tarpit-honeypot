@@ -32,7 +32,7 @@ func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	br := bufio.NewReader(conn)
 	var commands []string
 	for i := 0; i < 12; i++ {
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			if i == 0 {
 				res.Meta["read_err"] = err.Error()
@@ -76,10 +76,13 @@ func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		case "NAMESPACE":
 			_, _ = conn.Write([]byte("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n" + tag + " OK NAMESPACE completed.\r\n"))
 		case "STARTTLS":
-			// We don't negotiate TLS — a real LOGINDISABLED-until-TLS server
-			// still accepts the command; we answer OK then the client would
-			// start TLS (which we can't), so most fall back to plaintext LOGIN.
-			_, _ = conn.Write([]byte(tag + " OK Begin TLS negotiation now.\r\n"))
+			// We don't negotiate TLS, so refuse honestly rather than answer OK
+			// and then leave the client's TLS ClientHello to be read as
+			// plaintext IMAP (a broken-handshake fingerprint). STARTTLS is not
+			// advertised in the capability set either, keeping the two
+			// consistent. A TLS-only client stays away; a plaintext client
+			// proceeds to LOGIN, which we still capture.
+			_, _ = conn.Write([]byte(tag + " NO [PRIVACYREQUIRED] STARTTLS not available.\r\n"))
 		case "AUTHENTICATE":
 			m.handleIMAPAuth(rest, br, conn, tag, &res)
 		case "LIST", "LSUB":
@@ -125,7 +128,7 @@ func (m *imap) handleIMAPAuth(rest string, br *bufio.Reader, conn net.Conn, tag 
 			blob = f[1] // SASL-IR inline
 		} else {
 			_, _ = conn.Write([]byte("+ \r\n"))
-			line, _ := br.ReadString('\n')
+			line, _ := readLineCapped(br, maxLineBytes)
 			blob = strings.TrimRight(line, "\r\n")
 		}
 		// PLAIN: base64(authzid \0 authcid \0 passwd)
@@ -140,9 +143,9 @@ func (m *imap) handleIMAPAuth(rest string, br *bufio.Reader, conn net.Conn, tag 
 		_, _ = conn.Write([]byte(tag + " NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"))
 	case "LOGIN":
 		_, _ = conn.Write([]byte("+ " + base64.StdEncoding.EncodeToString([]byte("Username:")) + "\r\n"))
-		uLine, _ := br.ReadString('\n')
+		uLine, _ := readLineCapped(br, maxLineBytes)
 		_, _ = conn.Write([]byte("+ " + base64.StdEncoding.EncodeToString([]byte("Password:")) + "\r\n"))
-		pLine, _ := br.ReadString('\n')
+		pLine, _ := readLineCapped(br, maxLineBytes)
 		if u, err := base64.StdEncoding.DecodeString(strings.TrimRight(uLine, "\r\n")); err == nil {
 			res.Meta["auth_user"] = string(u)
 		}

@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — handlers: fail-safe line caps, honest IMAP STARTTLS, wider credential capture
+- Text-protocol handlers (**imap**, **pop3**, **smtp_recv**, **elasticsearch**,
+  **gopher**) now read command/header lines through a bounded reader
+  (`readLineCapped`, 8 KiB) instead of `bufio.ReadString('\n')`, so a
+  newline-less flood can no longer drive an unbounded allocation inside the read
+  deadline window.
+- **IMAP STARTTLS** no longer answers `OK` and then leaves the client's TLS
+  ClientHello to be read as plaintext (a broken-handshake fingerprint). It now
+  refuses honestly (`NO [PRIVACYREQUIRED] STARTTLS not available`), consistent
+  with the unadvertised capability and with the existing SMTP/FTP behaviour.
+- Broader credential / auth capture: **mqtt** runs CONNECT username+password
+  through the default-credential corpus (`mqtt-credential-attempt`); **winrm**
+  runs captured HTTP **Basic** creds through it too; **vnc** now records the
+  auth *challenge* alongside the response (the pair is needed to crack offline)
+  and flags `vnc-auth-attempt`; **kerberos** extracts the principal/realm
+  (the sprayed username) and flags `kerberos-principal-probe`.
+
+### Added — testharness: resilience + containment categories, run-info, more report formats & protocol specs
+- Two new fail-safe/fool-proof categories: **resilience** (oversize input,
+  half-open churn, connection flood, slow-drip starvation — the sensor must not
+  become the victim) and **containment** (no-egress canary + path-traversal —
+  do-no-harm). Both run in module and network modes.
+- Reports can now be emitted as **csv**, **rtf**, and **pdf** in addition to
+  text/json/junit/md (the PDF is hand-rolled — no new dependency).
+- Every run now records **before/during/after** context (host + Go env, config
+  summary, spawned-binary sha256, a sampled RSS/goroutine envelope, and
+  baseline-vs-final endpoint snapshots that flag drift / went-dark), surfaced in
+  the reports and the JSON `info` object.
+- Deep protocol specs (emulate/fuzz-smart/misimpl) added for **imap**, **pop3**,
+  **mysql**, **postgres**, **vnc**, **memcached**, **mqtt**, and **ldap**.
+
 ### Added — web UI: traffic counters + richer health page
 - The **summary** page opens with an at-a-glance counters strip — event
   volume by transport (TCP / UDP / ICMP) + high/critical from the store —

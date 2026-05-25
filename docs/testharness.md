@@ -217,6 +217,14 @@ harness has a spec for:
 | `tftp` | no | yes | bad-opcode, truncated, overlong-filename | `tftp-write-attempt`, `tftp-config-read` |
 | `syslog_tcp` | no | yes¹ | oversized-msg, binary-msg, octet-count-overflow | — |
 | `syslog_udp` | no | yes¹ | oversized-msg, binary-msg, empty-pri | — |
+| `imap` | yes | yes | overlong-tag, huge-literal, binary-command | — |
+| `pop3` | yes | yes | overlong-user, binary-command | — |
+| `mysql` | yes | yes | oversized-login, bad-length | — |
+| `postgres` | no | yes | oversized-startup, bad-length | — |
+| `vnc` | yes | yes | bad-version, short-version, binary-version | — |
+| `memcached` | no | yes | oversized-get, huge-set, binary | — |
+| `mqtt` | no | yes | oversize-remlen, bad-proto-name, truncated | — |
+| `ldap` | no | yes | bad-ber-length, truncated-bind, overlong-dn | — |
 
 ¹ `syslog_tcp` / `syslog_udp` are **accept-only**: they record what they are sent
 and never reply, so `unit/banner` and `emulate` treat an empty response as

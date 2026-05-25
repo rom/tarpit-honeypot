@@ -8,6 +8,7 @@
 package handler
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -373,4 +374,31 @@ func withTimeout(conn net.Conn, d time.Duration) {
 	deadline := time.Now().Add(d)
 	_ = conn.SetReadDeadline(deadline)
 	_ = conn.SetWriteDeadline(deadline)
+}
+
+// maxLineBytes caps a single text-protocol line read. The read deadline bounds
+// how long a client can take, but not how much memory an unterminated flood can
+// accumulate before it fires; this bounds the allocation. 8 KiB is generous for
+// any command / header line we model.
+const maxLineBytes = 8192
+
+// readLineCapped reads through the next '\n' but never more than max bytes,
+// returning what it read (including the '\n' when present), plus any read
+// error. A line that reaches the cap is returned as-is with a nil error — it is
+// treated as a (truncated) line rather than allowed to grow without bound. This
+// mirrors bufio.Reader.ReadString('\n') for the callers' purposes while making
+// a newline-less flood safe.
+func readLineCapped(br *bufio.Reader, max int) (string, error) {
+	buf := make([]byte, 0, 128)
+	for len(buf) < max {
+		c, err := br.ReadByte()
+		if err != nil {
+			return string(buf), err
+		}
+		buf = append(buf, c)
+		if c == '\n' {
+			break
+		}
+	}
+	return string(buf), nil
 }

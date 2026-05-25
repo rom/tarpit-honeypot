@@ -102,16 +102,25 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			idx = idx2
 		}
 	}
+	var mqUser, mqPass string
 	if flags&0x80 != 0 {
 		if user, idx2, ok := readMQTTString(body, idx); ok {
 			meta["username"] = user
+			mqUser = user
 			idx = idx2
 		}
 	}
 	if flags&0x40 != 0 {
 		if pass, _, ok := readMQTTString(body, idx); ok {
 			meta["password"] = pass
+			mqPass = pass
 		}
+	}
+	// Cleartext MQTT credentials — record the attempt and check the default-
+	// credential corpus so an IoT broker brute-force is detected like any other.
+	if mqUser != "" {
+		flagAnomaly(&res, "mqtt-credential-attempt")
+		flagDefaultCred(&res, mqUser, mqPass)
 	}
 
 	// CONNACK: fixed header (type=0x20, remlen=2) + session_present(0) + return_code(0)

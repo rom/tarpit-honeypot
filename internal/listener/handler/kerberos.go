@@ -61,6 +61,16 @@ func (k *kerberos) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	default:
 		res.Meta["message_type"] = "unknown"
 	}
+	// Capture the principal/realm/service names (the GeneralString components of
+	// cname/realm/sname). Kerberos pre-auth carries no cleartext password, so
+	// the username being sprayed IS the credential signal here — record it and
+	// flag the request so AS-REP-roasting / password-spray / user-enumeration
+	// against the KDC is detectable.
+	if names := kerberosStrings(body); len(names) > 0 {
+		res.Meta["principals"] = names
+		res.Meta["principal"] = names[0]
+		flagAnomaly(&res, "kerberos-principal-probe")
+	}
 	// RC4-HMAC (etype 23 = 0x17) in the requested etype list is the
 	// offline-crack downgrade Kerberoasting / AS-REP roasting rely on
 	// (modern Windows defaults to AES 17/18). DER INTEGER 23 = 02 01 17.
@@ -79,6 +89,30 @@ func (k *kerberos) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	}
 	res.BannerSent = "kerberos KRB-ERROR (preauth required)"
 	return res, nil
+}
+
+// kerberosStrings pulls the GeneralString values (DER tag 0x1B) out of a
+// Kerberos message — these are the realm + principal/service name components,
+// i.e. the username an AS-REP-roast / password spray is targeting. Bounded to
+// short, printable, single-length-byte strings (principal components are well
+// under 128 bytes) so a malformed message can't drive an unbounded scan.
+func kerberosStrings(b []byte) []string {
+	var out []string
+	for i := 0; i+1 < len(b) && len(out) < 16; {
+		if b[i] == 0x1B {
+			n := int(b[i+1])
+			if n > 0 && n < 128 && i+2+n <= len(b) {
+				s := b[i+2 : i+2+n]
+				if !hasNonPrintable(string(s)) {
+					out = append(out, string(s))
+					i += 2 + n
+					continue
+				}
+			}
+		}
+		i++
+	}
+	return out
 }
 
 // buildKRBError is intentionally minimal — most scanners just check the

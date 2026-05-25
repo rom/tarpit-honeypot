@@ -43,6 +43,7 @@ func (w *winrm) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	}
 	res.Payload = head
 	authz := winrmParseRequest(head, res.Meta)
+	winrmFlagBasic(&res)
 
 	// NTLM (Negotiate) Type 1 -> send a Type 2 challenge and read the Type 3.
 	if tok := negotiateToken(authz); tok != nil && isNTLMType(tok, 1) {
@@ -60,6 +61,7 @@ func (w *winrm) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		if len(head2) > 0 {
 			res.Payload = append(res.Payload, head2...)
 			authz2 := winrmParseRequest(head2, res.Meta)
+			winrmFlagBasic(&res)
 			if tok3 := negotiateToken(authz2); tok3 != nil && isNTLMType(tok3, 3) {
 				if dom, user, nt := parseNTLMType3(tok3); user != "" {
 					res.Meta["ntlm_domain"] = dom
@@ -86,6 +88,19 @@ func (w *winrm) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	}
 	res.BannerSent = "winrm 401 Negotiate+Basic"
 	return res, nil
+}
+
+// winrmFlagBasic runs any captured cleartext HTTP Basic credentials through the
+// default-credential corpus, so a Basic-auth spray against WinRM is detected
+// like any other default-credential attempt. (NTLM creds are a hash and are
+// flagged separately as winrm-ntlm-auth.)
+func winrmFlagBasic(res *Result) {
+	u, _ := res.Meta["basic_user"].(string)
+	if u == "" {
+		return
+	}
+	p, _ := res.Meta["basic_pass"].(string)
+	flagDefaultCred(res, u, p)
 }
 
 // readHTTPHead reads an HTTP request head (through the blank CRLFCRLF line),
