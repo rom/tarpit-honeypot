@@ -19,76 +19,179 @@ func (k *kerberos) Name() string { return "kerberos" }
 // sends is almost always an AS-REQ (0x6A in DER-tagged form via
 // [APPLICATION 10]).
 //
-// We capture the principal name + service name + encryption types
-// claimed, and reply with a generic KRB-ERROR (KDC_ERR_PREAUTH_REQUIRED
-// = 25) which triggers a pre-auth round that we don't continue. That's
-// enough to be classified as a KDC and to log the brute-force username.
+// We capture the principal name + service name + encryption types claimed,
+// reply KRB-ERROR(KDC_ERR_PREAUTH_REQUIRED=25), then read the pre-auth retry:
+// a client that comes back with a PA-ENC-TIMESTAMP is brute-forcing, and that
+// encrypted timestamp is offline-crackable to recover the password — so we
+// capture it before answering KDC_ERR_PREAUTH_FAILED.
 func (k *kerberos) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
-	res := Result{}
+	res := Result{Meta: map[string]any{}}
 
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, lenBuf); err != nil {
-		res.Meta = map[string]any{"read_err": err.Error()}
+	body, ok := readKRB(conn)
+	if !ok {
+		res.Meta["read_err"] = "short or oversized first message"
 		return res, nil
 	}
-	msgLen := binary.BigEndian.Uint32(lenBuf)
-	if msgLen < 4 || msgLen > 65535 {
-		res.Meta = map[string]any{"bad_length": msgLen}
-		return res, nil
-	}
-	body := make([]byte, msgLen)
-	if _, err := io.ReadFull(conn, body); err != nil {
-		res.Meta = map[string]any{"read_err": err.Error()}
-		return res, nil
-	}
-	res.Payload = append(lenBuf, body...)
+	res.Payload = append(res.Payload, krbFrame(body)...)
+	k.analyzeKRB(body, &res)
 
+	// Reply with KDC_ERR_PREAUTH_REQUIRED so a real client (or a brute-forcer)
+	// retries with a PA-ENC-TIMESTAMP.
+	if _, err := conn.Write(krbFrame(buildKRBError(25))); err != nil {
+		res.Meta["write_err"] = err.Error()
+		return res, nil
+	}
+	res.BannerSent = "kerberos KRB-ERROR (preauth required)"
+
+	// Pre-auth retry: capture the encrypted timestamp (crackable to the
+	// password) and answer KDC_ERR_PREAUTH_FAILED.
+	body2, ok := readKRB(conn)
+	if !ok {
+		return res, nil
+	}
+	res.Payload = append(res.Payload, krbFrame(body2)...)
+	if blob := paEncTimestamp(body2); blob != nil {
+		res.Meta["preauth_enc_timestamp_hex"] = byteToHex(blob)
+		flagAnomaly(&res, "kerberos-preauth-bruteforce")
+		_, _ = conn.Write(krbFrame(buildKRBError(24))) // KDC_ERR_PREAUTH_FAILED
+		res.BannerSent = "kerberos KRB-ERROR (preauth failed)"
+	}
+	return res, nil
+}
+
+// analyzeKRB records the message type, principal/realm/service names, and the
+// requested encryption types from a KDC-REQ, flagging the Kerberoasting /
+// roasting tells.
+func (k *kerberos) analyzeKRB(body []byte, res *Result) {
 	if len(body) < 1 {
-		return res, nil
+		return
 	}
 	tag := body[0]
-	res.Meta = map[string]any{"asn1_tag": tag}
+	res.Meta["asn1_tag"] = tag
 	switch tag {
 	case 0x6A:
 		res.Meta["message_type"] = "AS-REQ"
 	case 0x6C:
 		res.Meta["message_type"] = "TGS-REQ"
-		// A TGS-REQ asks for a service ticket; on a honeypot KDC no
-		// legitimate client does this — it's the Kerberoasting primitive
-		// (request service tickets to crack offline).
-		flagAnomaly(&res, "kerberos-tgs-request")
+		// A TGS-REQ asks for a service ticket; on a honeypot KDC no legitimate
+		// client does this — it's the Kerberoasting primitive (request service
+		// tickets to crack offline).
+		flagAnomaly(res, "kerberos-tgs-request")
 	default:
 		res.Meta["message_type"] = "unknown"
 	}
-	// Capture the principal/realm/service names (the GeneralString components of
-	// cname/realm/sname). Kerberos pre-auth carries no cleartext password, so
-	// the username being sprayed IS the credential signal here — record it and
-	// flag the request so AS-REP-roasting / password-spray / user-enumeration
-	// against the KDC is detectable.
 	if names := kerberosStrings(body); len(names) > 0 {
 		res.Meta["principals"] = names
 		res.Meta["principal"] = names[0]
-		flagAnomaly(&res, "kerberos-principal-probe")
+		flagAnomaly(res, "kerberos-principal-probe")
 	}
-	// RC4-HMAC (etype 23 = 0x17) in the requested etype list is the
-	// offline-crack downgrade Kerberoasting / AS-REP roasting rely on
-	// (modern Windows defaults to AES 17/18). DER INTEGER 23 = 02 01 17.
-	if bytes.Contains(body, []byte{0x02, 0x01, 0x17}) {
-		res.Meta["rc4_requested"] = true
-		flagAnomaly(&res, "kerberos-rc4-requested")
+	if ets := kerberosEnctypes(body); len(ets) > 0 {
+		res.Meta["enctypes"] = ets
+		for _, e := range ets {
+			if e == "rc4-hmac" {
+				// RC4 in the requested etype list is the offline-crack downgrade
+				// Kerberoasting / AS-REP roasting rely on (modern Windows
+				// defaults to AES 17/18).
+				res.Meta["rc4_requested"] = true
+				flagAnomaly(res, "kerberos-rc4-requested")
+			}
+		}
 	}
+}
 
-	// Reply with a KRB-ERROR(KDC_ERR_PREAUTH_REQUIRED). Minimal:
-	// the client only needs the error-code byte to know to retry.
-	krbErr := buildKRBError(25)
-	out := append(make([]byte, 4), krbErr...)
-	binary.BigEndian.PutUint32(out, uint32(len(krbErr)))
-	if _, err := conn.Write(out); err != nil {
-		res.Meta["write_err"] = err.Error()
+// readKRB reads one length-prefixed Kerberos message body (4-byte big-endian
+// length + DER), bounded.
+func readKRB(conn net.Conn) ([]byte, bool) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
+		return nil, false
 	}
-	res.BannerSent = "kerberos KRB-ERROR (preauth required)"
-	return res, nil
+	n := binary.BigEndian.Uint32(lenBuf)
+	if n < 4 || n > 65535 {
+		return nil, false
+	}
+	body := make([]byte, n)
+	if _, err := io.ReadFull(conn, body); err != nil {
+		return nil, false
+	}
+	return body, true
+}
+
+// krbFrame prepends the 4-byte big-endian length to a Kerberos message.
+func krbFrame(body []byte) []byte {
+	out := make([]byte, 4+len(body))
+	binary.BigEndian.PutUint32(out, uint32(len(body)))
+	copy(out[4:], body)
+	return out
+}
+
+// kerberosEnctypes returns the named encryption types requested in a KDC-REQ
+// (best-effort: scans for the DER INTEGER encodings of the common etypes, which
+// are specific enough to be reliable).
+func kerberosEnctypes(body []byte) []string {
+	var out []string
+	for _, e := range []struct {
+		v    byte
+		name string
+	}{{0x12, "aes256-cts"}, {0x11, "aes128-cts"}, {0x17, "rc4-hmac"}} {
+		if bytes.Contains(body, []byte{0x02, 0x01, e.v}) {
+			out = append(out, e.name)
+		}
+	}
+	return out
+}
+
+// paEncTimestamp extracts the EncryptedData octets of a PA-ENC-TIMESTAMP
+// padata (the offline-crackable encrypted timestamp), or nil if absent.
+// PA-DATA ::= SEQUENCE { [1] padata-type INTEGER(2), [2] padata-value OCTET STRING }.
+func paEncTimestamp(body []byte) []byte {
+	idx := bytes.Index(body, []byte{0xA1, 0x03, 0x02, 0x01, 0x02}) // [1] padata-type = 2
+	if idx < 0 {
+		return nil
+	}
+	j := idx + 5
+	if j >= len(body) || body[j] != 0xA2 { // [2] padata-value
+		return nil
+	}
+	_, vhdr, ok := derLen(body, j+1)
+	if !ok {
+		return nil
+	}
+	k := j + 1 + vhdr
+	if k >= len(body) || body[k] != 0x04 { // OCTET STRING
+		return nil
+	}
+	olen, ohdr, ok := derLen(body, k+1)
+	if !ok || olen <= 0 || olen > 4096 {
+		return nil
+	}
+	start := k + 1 + ohdr
+	if start+olen > len(body) {
+		return nil
+	}
+	return body[start : start+olen]
+}
+
+// derLen reads a DER length at b[i], returning the length value and the number
+// of bytes the length field occupies.
+func derLen(b []byte, i int) (n, hdr int, ok bool) {
+	if i >= len(b) {
+		return 0, 0, false
+	}
+	l := b[i]
+	if l < 0x80 {
+		return int(l), 1, true
+	}
+	nb := int(l & 0x7f)
+	if nb == 0 || nb > 4 || i+1+nb > len(b) {
+		return 0, 0, false
+	}
+	v := 0
+	for k := 0; k < nb; k++ {
+		v = v<<8 | int(b[i+1+k])
+	}
+	return v, 1 + nb, true
 }
 
 // kerberosStrings pulls the GeneralString values (DER tag 0x1B) out of a
