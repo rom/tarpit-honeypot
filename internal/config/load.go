@@ -736,6 +736,38 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Forward targets: id + url required, ids unique, min_severity parseable.
+	seenFwd := map[string]bool{}
+	for _, f := range c.Forward {
+		if f.ID == "" || f.URL == "" {
+			return fmt.Errorf("forward target: id and url are required")
+		}
+		if seenFwd[f.ID] {
+			return fmt.Errorf("forward target %q: duplicate id", f.ID)
+		}
+		seenFwd[f.ID] = true
+		if f.MinSeverity != "" {
+			if _, err := event.ParseSeverity(f.MinSeverity); err != nil {
+				return fmt.Errorf("forward target %q: %w", f.ID, err)
+			}
+		}
+	}
+
+	// Ingest (aggregator endpoint): bind + auth required when enabled — an
+	// unauthenticated endpoint that injects events into the store/correlation is
+	// not safe, so a token is mandatory.
+	if c.Ingest.Enabled {
+		if c.Ingest.Bind == "" {
+			return fmt.Errorf("ingest: bind is required when enabled")
+		}
+		if c.Ingest.TokenEnv == "" {
+			return fmt.Errorf("ingest: token_env is required when enabled (an unauthenticated ingest endpoint is unsafe)")
+		}
+		if (c.Ingest.TLSCert == "") != (c.Ingest.TLSKey == "") {
+			return fmt.Errorf("ingest: tls_cert and tls_key must be set together")
+		}
+	}
+
 	// Archeservice role bundles (validated before the listeners they
 	// expanded into).
 	if err := c.validateArcheservices(); err != nil {

@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: `ingest:` endpoint (phase 1c)
+- A node can now be an **aggregator**: an authenticated HTTP `ingest:` endpoint
+  (bearer token, optional HMAC, optional TLS) accepts batches forwarded by child
+  sensors and feeds them into the same pipeline as local events, so the store /
+  UI / correlators see the whole fleet. Composes with `listeners:` + `forward:`
+  (a node can be sensor + mid-tier aggregator + upstream forwarder = multi-level).
+- Admitted events are **deduped** by `sensor_id:id` and **loop-guarded** (an
+  event whose hop chain already includes this node, or that exceeds `max_hops`,
+  is dropped), so a fan-out / multi-path topology can't double-count.
+- The event store now persists the originating **`sensor_id`** (a migration adds
+  the column + index to existing DBs) — stable origin attribution even when
+  sensors share a hostname. New `internal/ingest` package.
+  Verified end-to-end: sensor A → aggregator B; B's API shows A's events tagged
+  with A's sensor_id, distinct from B's own.
+
+### Added — fleet forwarding (`forward:`) — phase 1 of central aggregation
+- A sensor can now ship its events to one or more parent **aggregator** nodes
+  for fleet-wide correlation. `forward:` lists targets; multiple targets fan out
+  (HA, or a site SOC + a global hub), each with its own batching queue + retry.
+- Events ship as NDJSON over HTTPS **through the egress allowlist** (each
+  `forward.url` is allowlisted automatically, so forwarding works under
+  `egress.enforce`), bearer-token + optional HMAC authenticated.
+- Every event now carries the originating `sensor_id` (stable deployment id) and
+  a `hops` chain stamped per node — the fleet dedup key (`sensor_id:id`) and a
+  loop/provenance guard. The forwarder stamps `hops` on a copy, never mutating
+  the shared event the sinks see; a full queue sheds load with a counter.
+- New `internal/forward` package (Forwarder + fan-out Group + shared NDJSON codec
+  + HMAC sign/verify, reused by the future aggregator ingest endpoint).
+  Verified end-to-end: a sensor forwarded its listener / CVE / lifecycle events
+  to a parent with `sensor_id` + `hops` and the auth/batch headers.
+
 ### Added — egress containment (outbound allowlist)
 - New `sensor.egress` block: when enabled, the sensor's outbound telemetry is
   permitted to **exactly** its configured channel destinations (webhook / syslog

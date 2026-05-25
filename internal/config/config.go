@@ -27,6 +27,14 @@ type Config struct {
 	Allowlist     []string       `yaml:"allowlist"`
 	Channels      []Channel      `yaml:"channels"`
 	Routes        []Route        `yaml:"routes"`
+	// Forward ships this node's events to parent aggregator node(s) for
+	// fleet-wide correlation. Multiple targets fan out (HA, or a site SOC plus
+	// a global hub). See internal/forward.
+	Forward []ForwardTarget `yaml:"forward"`
+	// Ingest accepts events forwarded by child nodes (this node acting as an
+	// aggregator). Composes with Listeners + Forward, so a node can be a sensor,
+	// a mid-tier aggregator, and forward upward all at once. See internal/ingest.
+	Ingest IngestConfig `yaml:"ingest"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -38,6 +46,36 @@ type Config struct {
 	// archeservicesExpanded guards expandArcheservices so it runs once even
 	// if applyDefaults is invoked more than once on the same Config.
 	archeservicesExpanded bool
+}
+
+// ForwardTarget is one parent aggregator this node ships events to.
+type ForwardTarget struct {
+	ID            string        `yaml:"id"`
+	URL           string        `yaml:"url"`             // parent ingest endpoint, e.g. https://agg/ingest
+	TokenEnv      string        `yaml:"token_env"`       // bearer token read from this env var
+	HMACSecretEnv string        `yaml:"hmac_secret_env"` // optional body-signature key from this env var
+	MinSeverity   string        `yaml:"min_severity"`    // low|medium|high|critical (empty = forward all)
+	MaxBatch      int           `yaml:"max_batch"`       // flush after N events (default 500)
+	MaxAge        time.Duration `yaml:"max_age"`         // flush at least this often (default 2s)
+	QueueSize     int           `yaml:"queue_size"`      // in-memory buffer depth (default 4096)
+	Timeout       time.Duration `yaml:"timeout"`         // per-POST timeout (default 10s)
+	Enabled       *bool         `yaml:"enabled"`         // nil/true = active; false = defined but off
+}
+
+// On reports whether the forward target is active.
+func (f ForwardTarget) On() bool { return f.Enabled == nil || *f.Enabled }
+
+// IngestConfig is the aggregator-side endpoint that accepts forwarded events.
+type IngestConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	Bind          string        `yaml:"bind"`            // host:port to accept batches on
+	TokenEnv      string        `yaml:"token_env"`       // required bearer token (from env)
+	HMACSecretEnv string        `yaml:"hmac_secret_env"` // optional body-signature verification
+	TLSCert       string        `yaml:"tls_cert"`        // optional TLS
+	TLSKey        string        `yaml:"tls_key"`
+	MaxBodyMB     int           `yaml:"max_body_mb"`  // reject larger batches (default 32)
+	MaxHops       int           `yaml:"max_hops"`     // drop events that traversed more nodes (default 8)
+	DedupWindow   time.Duration `yaml:"dedup_window"` // sensor_id:id dedup TTL (default 10m)
 }
 
 // Archeservice declares a service role to stand up. At load time it expands
