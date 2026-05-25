@@ -261,6 +261,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 			ProfileSources:      cfg.Fleet.ProfileSources,
 			ProfileSensors:      cfg.Fleet.ProfileSensors,
 
+			HoneytokenSensors:   cfg.Fleet.HoneytokenSensors,
+			CVEEmergenceSensors: cfg.Fleet.CVEEmergenceSensors,
+			CrossProtoHandlers:  cfg.Fleet.CrossProtoHandlers,
+			CrossProtoSensors:   cfg.Fleet.CrossProtoSensors,
+			FPASNs:              cfg.Fleet.FPASNs,
+			FPASNSensors:        cfg.Fleet.FPASNSensors,
+
 			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())

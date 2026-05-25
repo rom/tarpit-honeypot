@@ -599,3 +599,93 @@ func TestTargetProfileMatch(t *testing.T) {
 		t.Errorf("source_count = %d; want 2", sc)
 	}
 }
+
+func TestHoneytokenSpread(t *testing.T) {
+	c := New(Config{Enabled: true, HoneytokenSensors: 2, SourceSensors: 99})
+	tk := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "canary:url:secret-token"
+		return e
+	}
+	if a := findAlert(c.Observe(tk("s1", "1.1.1.1")), "fleet:honeytoken-spread"); a != nil {
+		t.Fatal("fired at one sensor")
+	}
+	a := findAlert(c.Observe(tk("s2", "2.2.2.2")), "fleet:honeytoken-spread")
+	if a == nil {
+		t.Fatal("did not fire when the token reached 2 sensors")
+	}
+	if a.Severity != event.SeverityCritical {
+		t.Errorf("severity = %v; want critical", a.Severity)
+	}
+	if tok, _ := a.Meta["token"].(string); tok != "canary:url:secret-token" {
+		t.Errorf("token = %q", tok)
+	}
+}
+
+func TestCVEEmergence(t *testing.T) {
+	c := New(Config{Enabled: true, CVEEmergenceSensors: 2, CVESensors: 99, Window: time.Hour})
+	ce := func(sid, ip, id string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "cve:" + id
+		return e
+	}
+	c.Observe(ce("s1", "1.1.1.1", "CVE-2026-0001"))
+	a := findAlert(c.Observe(ce("s2", "2.2.2.2", "CVE-2026-0001")), "fleet:cve-emergence")
+	if a == nil {
+		t.Fatal("did not fire for a novel CVE on 2 sensors")
+	}
+	if got, _ := a.Meta["cve"].(string); got != "CVE-2026-0001" {
+		t.Errorf("cve = %q", got)
+	}
+}
+
+func TestCVEEmergenceEstablishedSilent(t *testing.T) {
+	c := New(Config{Enabled: true, CVEEmergenceSensors: 2, CVESensors: 99, Window: time.Hour})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	ce := func(sid, ip, id string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "cve:" + id
+		return e
+	}
+	c.Observe(ce("s1", "1.1.1.1", "CVE-OLD")) // first contact at t0
+	now = now.Add(2 * time.Hour)              // established beyond the window
+	c.Observe(ce("s2", "2.2.2.2", "CVE-OLD"))
+	if a := findAlert(c.Observe(ce("s3", "3.3.3.3", "CVE-OLD")), "fleet:cve-emergence"); a != nil {
+		t.Fatal("fired for an established (non-novel) CVE")
+	}
+}
+
+func TestCrossProtocolActor(t *testing.T) {
+	c := New(Config{Enabled: true, CrossProtoHandlers: 3, CrossProtoSensors: 2, SourceSensors: 99})
+	h := func(sid, handler string) *event.Event {
+		e := ev(sid, "5.5.5.5", nil)
+		e.Handler = handler
+		return e
+	}
+	c.Observe(h("s1", "ssh"))
+	c.Observe(h("s1", "http"))
+	a := findAlert(c.Observe(h("s2", "redis")), "fleet:cross-protocol-actor")
+	if a == nil {
+		t.Fatal("did not fire for one source across 3 services / 2 sensors")
+	}
+	if hc, _ := a.Meta["handler_count"].(int); hc != 3 {
+		t.Errorf("handler_count = %d; want 3", hc)
+	}
+}
+
+func TestFingerprintASNSpread(t *testing.T) {
+	c := New(Config{Enabled: true, FPASNs: 3, FPASNSensors: 2, FPSensors: 99, ASNSensors: 99})
+	f := func(sid, ip, asn string) *event.Event {
+		return ev(sid, ip, map[string]any{"ja3": "JX", "asn": asn})
+	}
+	c.Observe(f("s1", "1.1.1.1", "AS1"))
+	c.Observe(f("s1", "2.2.2.2", "AS2"))
+	a := findAlert(c.Observe(f("s2", "3.3.3.3", "AS3")), "fleet:fingerprint-asn-spread")
+	if a == nil {
+		t.Fatal("did not fire for one fingerprint from 3 ASNs / 2 sensors")
+	}
+	if ac, _ := a.Meta["asn_count"].(int); ac != 3 {
+		t.Errorf("asn_count = %d; want 3", ac)
+	}
+}

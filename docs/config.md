@@ -806,6 +806,12 @@ fleet:
   profile_cves: 2          # a playbook is a set of >= N CVEs ...
   profile_sources: 3       #   ... shared by >= N sources ...
   profile_sensors: 2       #   ... across >= N sensors -> fleet:target-profile-match
+  honeytoken_sensors: 2    # same canary token on >= N sensors -> fleet:honeytoken-spread
+  cve_emergence_sensors: 2 # a brand-new CVE on >= N sensors -> fleet:cve-emergence
+  cross_proto_handlers: 4  # one source on >= N distinct services ...
+  cross_proto_sensors: 2   #   ... across >= N sensors -> fleet:cross-protocol-actor
+  fp_asns: 3               # one fingerprint from >= N distinct ASNs ...
+  fp_asn_sensors: 2        #   ... across >= N sensors -> fleet:fingerprint-asn-spread
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
   # downward intel feedback (serving side; needs ingest:) — see intel_feed:
@@ -833,6 +839,10 @@ The detectors, by the vantage axis they exploit:
 | `fleet:identity-pivot` | one composite identity (fingerprint/credential + a 2nd attribute) from >= `pivot_sources` IPs across >= `pivot_sensors` sensors | one actor behind rotating IPs — the link survives the IP change |
 | `fleet:geo-distributed-actor` | one fingerprint/credential from >= `geo_countries` countries across >= `geo_sensors` sensors | fleet-scale impossible travel — a distributed proxy / botnet (needs GeoIP) |
 | `fleet:target-profile-match` | >= `profile_sources` sources independently running the same >= `profile_cves`-CVE playbook across >= `profile_sensors` sensors | a shared toolkit / runbook, even without a shared fingerprint |
+| `fleet:honeytoken-spread` | the same **canary token** tripped on >= `honeytoken_sensors` sensors | a planted token has leaked and is propagating — the fleet blast radius |
+| `fleet:cve-emergence` | a **brand-new CVE** (novel within `first_seen_horizon`) on >= `cve_emergence_sensors` sensors | an n-day going live fleet-wide — the first wave of a freshly-weaponised vuln |
+| `fleet:cross-protocol-actor` | one **source** on >= `cross_proto_handlers` distinct services across >= `cross_proto_sensors` sensors | fleet-wide service enumeration by a single actor |
+| `fleet:fingerprint-asn-spread` | one **fingerprint** from >= `fp_asns` distinct ASNs across >= `fp_asn_sensors` sensors | a toolkit run from many networks (the network-of-origin axis) |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the

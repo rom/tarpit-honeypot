@@ -8,6 +8,25 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — four more fleet correlators
+- **`fleet:honeytoken-spread`** (the one detector from the design not yet built)
+  — the same canary token tripped on >= `honeytoken_sensors` (2) sensors: a
+  planted token has leaked and is propagating across the fleet (critical).
+- **`fleet:cve-emergence`** — a brand-new CVE, novel within `first_seen_horizon`,
+  reaching >= `cve_emergence_sensors` (2) sensors: an n-day going live fleet-wide
+  (distinct from `cve-wave`, which fires for any CVE crossing breadth).
+- **`fleet:cross-protocol-actor`** — one source touching >= `cross_proto_handlers`
+  (4) distinct services across >= `cross_proto_sensors` (2) sensors: fleet-wide
+  service enumeration by a single actor (the cross-sensor analogue of the
+  in-sensor service-sweep).
+- **`fleet:fingerprint-asn-spread`** — one fingerprint operated from >= `fp_asns`
+  (3) distinct ASNs across >= `fp_asn_sensors` (2) sensors: a toolkit run from
+  many networks (complements fingerprint-shared's source axis and
+  geo-distributed-actor's country axis with the network-of-origin axis).
+- All configurable under `fleet:`, reusing the windowed actor model + once-per-
+  window firing + loop guard; CVE-emergence reuses the long-horizon novelty
+  memory. Unit-tested per detector (incl. the novel-vs-established CVE split).
+
 ### Added — fleet aggregation: sensor trust scoring + store scale-out (phase 4)
 - **Sensor trust scoring + admission control** (`ingest.trust`, new
   `internal/trust`). The aggregator scores each child sensor's stream health

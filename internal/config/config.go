@@ -165,6 +165,16 @@ type FleetConfig struct {
 	ProfileCVEs    int `yaml:"profile_cves"`    // a playbook needs >= N CVEs to be a combination
 	ProfileSources int `yaml:"profile_sources"` // >= N distinct sources sharing it ...
 	ProfileSensors int `yaml:"profile_sensors"` // ... across >= N sensors
+	// Honeytoken spread: same canary token tripped across the fleet.
+	HoneytokenSensors int `yaml:"honeytoken_sensors"` // same token on >= N sensors
+	// CVE emergence: a brand-new CVE reaching several sensors (n-day going live).
+	CVEEmergenceSensors int `yaml:"cve_emergence_sensors"`
+	// Cross-protocol actor: one source enumerating many services fleet-wide.
+	CrossProtoHandlers int `yaml:"cross_proto_handlers"` // >= N distinct handlers ...
+	CrossProtoSensors  int `yaml:"cross_proto_sensors"`  // ... across >= N sensors
+	// Fingerprint-ASN spread: one fingerprint operated from many networks.
+	FPASNs       int `yaml:"fp_asns"`        // one fingerprint from >= N distinct ASNs ...
+	FPASNSensors int `yaml:"fp_asn_sensors"` // ... across >= N sensors
 	// Downward intel feedback (serving side). When this node both runs fleet
 	// correlation and accepts ingest, it derives indicators from its fleet:*
 	// findings and serves them at GET <ingest>/intel for child nodes to pull.

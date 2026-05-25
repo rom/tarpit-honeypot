@@ -96,6 +96,22 @@ type Config struct {
 	ProfileSources int // >= N distinct sources sharing it ...
 	ProfileSensors int // ... across >= N sensors
 
+	// Honeytoken spread: the same canary token tripped across the fleet.
+	HoneytokenSensors int // same canary token on >= N sensors -> alert
+
+	// CVE emergence: a brand-new CVE (novel within FirstSeenHorizon) reaching
+	// several sensors — an n-day going live fleet-wide.
+	CVEEmergenceSensors int
+
+	// Cross-protocol actor: one source touching many distinct services across
+	// the fleet (fleet-wide service enumeration by a single actor).
+	CrossProtoHandlers int // >= N distinct handlers ...
+	CrossProtoSensors  int // ... across >= N sensors
+
+	// Fingerprint ASN spread: one fingerprint operated from many networks.
+	FPASNs       int // one ja3/ja4/hassh from >= N distinct ASNs ...
+	FPASNSensors int // ... across >= N sensors
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -187,6 +203,24 @@ func (c *Config) withDefaults() {
 	if c.ProfileSensors <= 0 {
 		c.ProfileSensors = 2
 	}
+	if c.HoneytokenSensors <= 0 {
+		c.HoneytokenSensors = 2
+	}
+	if c.CVEEmergenceSensors <= 0 {
+		c.CVEEmergenceSensors = 2
+	}
+	if c.CrossProtoHandlers <= 0 {
+		c.CrossProtoHandlers = 4
+	}
+	if c.CrossProtoSensors <= 0 {
+		c.CrossProtoSensors = 2
+	}
+	if c.FPASNs <= 0 {
+		c.FPASNs = 3
+	}
+	if c.FPASNSensors <= 0 {
+		c.FPASNSensors = 2
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -199,6 +233,7 @@ type actor struct {
 	sensors map[string]struct{}
 	sources map[string]struct{}
 	geos    map[string]struct{} // distinct countries; lazily allocated (geo detector only)
+	extra   map[string]struct{} // a detector-specific 3rd dimension (handlers / ASNs); lazy
 	last    time.Time
 	fired   bool
 }
@@ -225,22 +260,26 @@ type Correlator struct {
 	cfg Config
 	mu  sync.Mutex
 
-	sources  map[string]*actor // key: source IP
-	asns     map[string]*actor // key: ASN
-	fps      map[string]*actor // key: "<kind>:<value>" (ja3/ja4/hassh)
-	payloads map[string]*actor // key: artifact sha256
-	creds    map[string]*actor // key: "<user>\x00<pass>"
-	cves     map[string]*actor // key: CVE id
-	subnets  map[string]*actor // key: source block ("a.b.c.0/24" | ".../64")
-	pivots   map[string]*actor // key: composite multi-attribute identity
-	geoFP    map[string]*actor // key: "<kind>:<value>" fingerprint (geo)
-	geoCred  map[string]*actor // key: "<user>\x00<pass>" (geo)
-	profiles map[string]*actor // key: sorted CVE-set playbook signature
+	sources    map[string]*actor // key: source IP
+	asns       map[string]*actor // key: ASN
+	fps        map[string]*actor // key: "<kind>:<value>" (ja3/ja4/hassh)
+	payloads   map[string]*actor // key: artifact sha256
+	creds      map[string]*actor // key: "<user>\x00<pass>"
+	cves       map[string]*actor // key: CVE id
+	subnets    map[string]*actor // key: source block ("a.b.c.0/24" | ".../64")
+	pivots     map[string]*actor // key: composite multi-attribute identity
+	geoFP      map[string]*actor // key: "<kind>:<value>" fingerprint (geo)
+	geoCred    map[string]*actor // key: "<user>\x00<pass>" (geo)
+	profiles   map[string]*actor // key: sorted CVE-set playbook signature
+	tokens     map[string]*actor // key: canary token rule_id (honeytoken spread)
+	crossProto map[string]*actor // key: source IP (cross-protocol actor; extra = handlers)
+	fpASN      map[string]*actor // key: "<kind>:<value>" fingerprint (extra = ASNs)
 
 	sensorStats  map[string]*sensorStat // key: sensor id
 	trajectories map[string]*trajectory // key: source IP (address-walk tracking)
 	seenASN      map[string]*seenEntry  // long-horizon novelty memory (ASN)
 	seenFP       map[string]*seenEntry  // long-horizon novelty memory (fingerprint)
+	seenCVE      map[string]*seenEntry  // long-horizon novelty memory (CVE — emergence)
 	srcCVEs      map[string]*cveSet     // per-source CVE set (target-profile)
 
 	lastBurstFire time.Time // synchronized-burst cooldown
@@ -267,10 +306,14 @@ func New(cfg Config) *Correlator {
 		geoFP:        map[string]*actor{},
 		geoCred:      map[string]*actor{},
 		profiles:     map[string]*actor{},
+		tokens:       map[string]*actor{},
+		crossProto:   map[string]*actor{},
+		fpASN:        map[string]*actor{},
 		sensorStats:  map[string]*sensorStat{},
 		trajectories: map[string]*trajectory{},
 		seenASN:      map[string]*seenEntry{},
 		seenFP:       map[string]*seenEntry{},
+		seenCVE:      map[string]*seenEntry{},
 		srcCVEs:      map[string]*cveSet{},
 		now:          time.Now,
 	}
@@ -314,6 +357,10 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = add(out, c.observePivotLocked(ev, sid, now))
 	out = append(out, c.observeGeoLocked(ev, sid, now)...)
 	out = add(out, c.observeProfileLocked(ev, sid, now))
+	out = add(out, c.observeHoneytokenLocked(ev, sid, now))
+	out = add(out, c.observeCVEEmergenceLocked(ev, sid, now))
+	out = add(out, c.observeCrossProtoLocked(ev, sid, now))
+	out = append(out, c.observeFPASNLocked(ev, sid, now)...)
 	return out
 }
 
@@ -362,7 +409,7 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	cutoff := now.Add(-c.cfg.Window)
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
-		c.pivots, c.geoFP, c.geoCred, c.profiles,
+		c.pivots, c.geoFP, c.geoCred, c.profiles, c.tokens, c.crossProto, c.fpASN,
 	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {
@@ -386,7 +433,7 @@ func (c *Correlator) pruneLocked(now time.Time) {
 		}
 	}
 	horizon := now.Add(-c.cfg.FirstSeenHorizon)
-	for _, m := range []map[string]*seenEntry{c.seenASN, c.seenFP} {
+	for _, m := range []map[string]*seenEntry{c.seenASN, c.seenFP, c.seenCVE} {
 		for k, e := range m {
 			if e.last.Before(horizon) {
 				delete(m, k)
