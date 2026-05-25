@@ -9,9 +9,9 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/format"
 	"github.com/rom/tarpit-honeypot/internal/safe"
@@ -52,8 +52,7 @@ func (s *smtpSink) ID() string { return s.id }
 
 func (s *smtpSink) Send(ctx context.Context, ev *event.Event) error {
 	addr := net.JoinHostPort(s.host, fmt.Sprintf("%d", s.port))
-	d := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := egress.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}

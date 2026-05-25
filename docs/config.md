@@ -643,6 +643,32 @@ routes:
 
 Empty `match: {}` matches every event (useful for a catch-all archive channel).
 
+## `egress:` — outbound containment (do-no-harm)
+
+A honeypot must never become an SSRF pivot, open relay, reflector, or exfil
+channel — but its own telemetry has to leave the box (forwarding to a SIEM,
+exporting IOCs). `egress` reconciles the two: when enabled it builds an
+**allowlist** of exactly the destinations the sensor is permitted to dial, and
+refuses (and records, as a high-severity `egress:denied` event) every other
+outbound connection.
+
+```yaml
+sensor:
+  egress:
+    enabled: true            # off by default → egress unrestricted (no change)
+    allow:                   # extra destinations not modeled as a channel:
+      - collector.corp:8443  #   a central event collector (fleet forwarding)
+      - 10.20.0.0/16         #   an IOC / threat-intel feed range
+```
+
+The allowlist is the union of: every configured outbound **channel**'s
+destination (webhook / syslog / smtp / sns / discord / twilio — derived
+automatically) plus `allow` (a host, `host:port`, or CIDR). The dialing sinks
+route through this guard, so legitimate forwarding/export keeps working while
+anything off the list is denied. The allowlist updates additively on config
+reload. (MQTT brokers reached via the paho client dial outside the in-process
+guard; allowlist them at the OS firewall if you enforce egress there too.)
+
 A second, longer example — OR semantics via multiple routes, a catch-all
 archive, and a paging path:
 

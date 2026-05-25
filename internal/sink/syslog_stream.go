@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/format"
 )
@@ -67,20 +68,25 @@ func newStreamSyslog(ch config.Channel, f format.Formatter) (Sink, error) {
 func (s *streamSyslog) ID() string { return s.id }
 
 func (s *streamSyslog) connect() error {
-	d := &net.Dialer{Timeout: 5 * time.Second}
-	var (
-		c   net.Conn
-		err error
-	)
-	if s.network == "tls" {
-		c, err = tls.DialWithDialer(d, "tcp", s.address, s.tlsCfg)
-	} else {
-		c, err = d.Dial("tcp", s.address)
-	}
+	// Dial through the egress allowlist (raw TCP), then TLS-wrap when configured,
+	// so the collector address is governed by the same policy as every other
+	// outbound socket.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	raw, err := egress.DialContext(ctx, "tcp", s.address)
 	if err != nil {
 		return err
 	}
-	s.conn = c
+	if s.network == "tls" {
+		tc := tls.Client(raw, s.tlsCfg)
+		if err := tc.Handshake(); err != nil {
+			_ = raw.Close()
+			return err
+		}
+		s.conn = tc
+		return nil
+	}
+	s.conn = raw
 	return nil
 }
 

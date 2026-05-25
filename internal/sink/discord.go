@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
@@ -41,7 +42,7 @@ func newDiscord(ch config.Channel) (Sink, error) {
 	if to == 0 {
 		to = 5 * time.Second
 	}
-	return &discordSink{id: ch.ID, url: u, client: &http.Client{Timeout: to}}, nil
+	return &discordSink{id: ch.ID, url: u, client: egress.HTTPClient(to)}, nil
 }
 
 func (d *discordSink) ID() string { return d.id }
