@@ -718,6 +718,41 @@ add `forward:` to relay onward to a higher tier. Store rows now carry the
 originating `sensor_id` (stable, survives identical hostnames) alongside the
 sensor name.
 
+**Trust scoring + admission control (`ingest.trust`).** Ingest is
+authenticated, but a shared token can't tell a healthy child from a
+misconfigured or compromised one fabricating events. The scorer keeps per-sensor
+windowed counters (accepted / deduped / dropped / malformed), derives a 0..1
+trust score, and raises a high-severity `fleet:sensor-untrusted` event when a
+node's score falls. A *malformed* event — missing `sensor_id`/`id`, an
+out-of-range severity, or a timestamp implausibly far in the future — is dropped
+and penalised hard. On by default wherever `ingest:` is enabled.
+
+```yaml
+ingest:
+  trust:
+    enabled: true            # default on when ingest is enabled
+    window: 5m               # counter window
+    min_events: 50           # don't score below this volume
+    alert_below: 0.5         # emit fleet:sensor-untrusted under this score
+    quarantine_below: 0.0    # refuse a sensor under this score (0 = alert only)
+    rate_per_sec: 0          # per-sensor admission cap (0 = unlimited); protects the store
+    burst: 0                 # token-bucket burst (default = rate_per_sec)
+```
+
+With `quarantine_below` set, a low-trust node is **refused** (its events dropped
+before the dedup set / bus) until its window rolls and it's re-evaluated.
+`rate_per_sec` caps how fast any one sensor can inject events — so a single
+flooding (or compromised) node can't overwhelm the aggregator's store.
+
+**Store scale.** The store is SQLite in WAL mode with batched transactional
+inserts (the aggregator commits ingested events in one transaction, not per
+row), which carries a busy aggregator comfortably. For larger fleets, scale
+*horizontally* rather than vertically: ship `mode: rollup` to a higher tier (see
+`forward:`) so the top stores summaries not raw events, cap per-sensor volume
+with `ingest.trust.rate_per_sec`, bound size with `sensor.disk.retention_days` /
+`sqlite_mb`, and push to an external TSDB/SIEM via a `channels:` sink
+(syslog / webhook / mqtt / sns).
+
 ## `fleet:` — cross-sensor correlation (aggregator)
 
 A single sensor only ever sees one vantage point. Once events from many sensors

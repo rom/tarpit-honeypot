@@ -90,6 +90,30 @@ type IngestConfig struct {
 	MaxBodyMB     int           `yaml:"max_body_mb"`  // reject larger batches (default 32)
 	MaxHops       int           `yaml:"max_hops"`     // drop events that traversed more nodes (default 8)
 	DedupWindow   time.Duration `yaml:"dedup_window"` // sensor_id:id dedup TTL (default 10m)
+	// Trust scores each child sensor's stream and can rate-limit / quarantine a
+	// node whose stream looks fabricated. See internal/trust.
+	Trust TrustConfig `yaml:"trust"`
+}
+
+// TrustConfig tunes per-sensor trust scoring + admission control at the ingest
+// endpoint. On by default wherever ingest is enabled.
+type TrustConfig struct {
+	Enabled         *bool         `yaml:"enabled"`          // nil = on when ingest is enabled
+	Window          time.Duration `yaml:"window"`           // counter window (default 5m)
+	MinEvents       int           `yaml:"min_events"`       // min volume before scoring (default 50)
+	AlertBelow      float64       `yaml:"alert_below"`      // fleet:sensor-untrusted below this score (default 0.5)
+	QuarantineBelow float64       `yaml:"quarantine_below"` // refuse a sensor below this score (0 = never)
+	RatePerSec      int           `yaml:"rate_per_sec"`     // per-sensor admission cap (0 = unlimited)
+	Burst           int           `yaml:"burst"`            // token-bucket burst (default = rate_per_sec)
+}
+
+// On reports whether trust scoring should run. Defaults on wherever ingest is
+// enabled (where there are child streams to score).
+func (t TrustConfig) On(ingestEnabled bool) bool {
+	if t.Enabled != nil {
+		return *t.Enabled
+	}
+	return ingestEnabled
 }
 
 // FleetConfig tunes the cross-sensor correlator. The thresholds are "within a

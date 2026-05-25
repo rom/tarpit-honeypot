@@ -147,11 +147,17 @@ func (s *Store) DB() *sql.DB { return s.db }
 
 // Insert persists an event. Errors that look transient (busy / locked) are
 // returned so the caller's retry logic (or worker drop) can handle them.
-func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
+const insertSQL = `
+INSERT OR REPLACE INTO events
+(id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
+ proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+// eventCols flattens an event into the insertSQL bind parameters.
+func eventCols(ev *event.Event) []any {
 	metaJSON := ""
 	if len(ev.Meta) > 0 {
-		b, err := json.Marshal(ev.Meta)
-		if err == nil {
+		if b, err := json.Marshal(ev.Meta); err == nil {
 			metaJSON = string(b)
 		}
 	}
@@ -161,18 +167,49 @@ func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
 			anomaliesJSON = string(b)
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `
-INSERT OR REPLACE INTO events
-(id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
- proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	return []any{
 		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
 		metaJSON, anomaliesJSON,
-	)
-	if err != nil {
+	}
+}
+
+func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
+	if _, err := s.db.ExecContext(ctx, insertSQL, eventCols(ev)...); err != nil {
 		return fmt.Errorf("store insert: %w", err)
+	}
+	s.maybePrune(ctx)
+	return nil
+}
+
+// InsertBatch persists many events in one transaction — the throughput path for
+// an aggregator ingesting from many sensors (sqlite per-row commits are slow;
+// one prepared statement in one txn is far cheaper). Errors are returned so the
+// caller can fall back to per-event inserts.
+func (s *Store) InsertBatch(ctx context.Context, evs []*event.Event) error {
+	if len(evs) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store batch: begin: %w", err)
+	}
+	stmt, err := tx.PrepareContext(ctx, insertSQL)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("store batch: prepare: %w", err)
+	}
+	for _, ev := range evs {
+		if _, err := stmt.ExecContext(ctx, eventCols(ev)...); err != nil {
+			_ = stmt.Close()
+			_ = tx.Rollback()
+			return fmt.Errorf("store batch: exec: %w", err)
+		}
+	}
+	_ = stmt.Close()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store batch: commit: %w", err)
 	}
 	s.maybePrune(ctx)
 	return nil

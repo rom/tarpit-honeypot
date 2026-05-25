@@ -44,6 +44,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/trust"
 	"github.com/rom/tarpit-honeypot/internal/tunnet"
 	"github.com/rom/tarpit-honeypot/internal/version"
 )
@@ -84,8 +85,9 @@ type Sensor struct {
 	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
 	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
 
-	ingestSeen    *ttlSet // dedup for events admitted via IngestBatch (aggregator)
-	ingestMaxHops int     // drop forwarded events that traversed more nodes than this
+	ingestSeen    *ttlSet       // dedup for events admitted via IngestBatch (aggregator)
+	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
+	trust         *trust.Scorer // per-sensor trust scoring + admission (nil when disabled)
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
@@ -272,6 +274,20 @@ func New(cfg *config.Config) (*Sensor, error) {
 		intelStore = intel.NewStore(cfg.Fleet.IntelTTL, cfg.Fleet.IntelMax)
 	}
 
+	// Trust scoring + admission control over ingested child streams.
+	var trustScorer *trust.Scorer
+	if cfg.Ingest.Trust.On(cfg.Ingest.Enabled) {
+		t := cfg.Ingest.Trust
+		trustScorer = trust.New(trust.Config{
+			Enabled: true, Window: t.Window, MinEvents: t.MinEvents,
+			AlertBelow: t.AlertBelow, QuarantineBelow: t.QuarantineBelow,
+			RatePerSec: t.RatePerSec, Burst: t.Burst,
+		})
+		if trustScorer != nil {
+			slog.Info("sensor trust scoring enabled", "rate_per_sec", t.RatePerSec, "quarantine_below", t.QuarantineBelow)
+		}
+	}
+
 	var sinks []sink.Sink
 	for _, ch := range cfg.Channels {
 		if !ch.On() {
@@ -423,6 +439,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		intelStore:    intelStore,
 		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
 		ingestMaxHops: ingestMaxHops,
+		trust:         trustScorer,
 		listeners:     map[string]*listenerHandle{},
 	}
 	// A refused outbound connection is a high-severity finding: it means a

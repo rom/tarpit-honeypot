@@ -8,6 +8,31 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: sensor trust scoring + store scale-out (phase 4)
+- **Sensor trust scoring + admission control** (`ingest.trust`, new
+  `internal/trust`). The aggregator scores each child sensor's stream health
+  with per-sensor windowed counters (accepted / deduped / dropped / malformed),
+  derives a 0..1 trust score, and emits a high-severity `fleet:sensor-untrusted`
+  event when a node's score falls. A **malformed** event (missing `sensor_id` /
+  `id`, out-of-range severity, or a timestamp implausibly far in the future) is
+  dropped and penalised hard — the strongest "this stream is fabricated" signal.
+  On by default wherever `ingest:` is enabled.
+- `quarantine_below` refuses a low-trust node's events (before the dedup set /
+  bus) until its window rolls; `rate_per_sec` caps per-sensor injection rate
+  (token bucket) so one flooding/compromised node can't overwhelm the store.
+- **Store scale-out** — `store.InsertBatch` commits many events in one
+  transaction, and the SQLite sink now batches writes (flush by size/age, and on
+  Close) — the throughput path for a busy aggregator. Durable across shutdown
+  (the sensor drains the router, then closes the sink — which flushes — before
+  closing the store). Docs spell out horizontal scale: rollup to a higher tier,
+  per-sensor rate caps, retention bounds, and external-SIEM `channels`.
+- Verified end-to-end against a live aggregator: well-formed events stored via
+  the batching sink; a stream of malformed events was dropped and raised
+  `fleet:sensor-untrusted`; and a quarantined sensor's subsequent well-formed
+  event was refused. Unit tests cover the scorer (healthy / malformed-alert /
+  quarantine / window-roll / rate-limit), the ingest integration, and
+  `store.InsertBatch`.
+
 ### Added — fleet aggregation: multi-level rollups + downward intel feedback (phase 3)
 - **Multi-level rollups** — a `forward:` target can now ship `mode: rollup`
   instead of `full`: one `fleet:rollup` event per `rollup_interval` (default 60s)
