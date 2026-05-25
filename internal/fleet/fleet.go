@@ -69,6 +69,33 @@ type Config struct {
 	// (internet background) and downgraded to medium; below it is "targeted".
 	BroadCoverage float64
 
+	// Scan trajectory: one source walking the address space across sensors.
+	TrajectoryHits      int     // distinct destinations before evaluating
+	TrajectorySensors   int     // ... spanning >= N sensors
+	TrajectoryMonotonic float64 // fraction of time-ordered steps moving one way
+
+	// Synchronized burst: many sensors spiking in the same short window.
+	BurstWindow    time.Duration // the short spike window
+	BurstMinEvents int           // a sensor is "spiking" at >= N events in BurstWindow
+	BurstSensors   int           // fire when >= N sensors spike together
+
+	// First fleet contact: a brand-new ASN / fingerprint reaching the fleet.
+	FirstContactSensors int           // novel identity must reach >= N sensors
+	FirstSeenHorizon    time.Duration // how long an identity is remembered as "seen"
+
+	// Identity pivot: one actor across rotating IPs, linked by shared attributes.
+	PivotSources int // >= N distinct IPs ...
+	PivotSensors int // ... across >= N sensors
+
+	// Geo-distributed actor: one fingerprint / credential from many countries.
+	GeoCountries int // >= N distinct countries ...
+	GeoSensors   int // ... across >= N sensors
+
+	// Target-profile match: the same multi-CVE playbook from distinct sources.
+	ProfileCVEs    int // a playbook needs >= N CVEs to count as a combination
+	ProfileSources int // >= N distinct sources sharing it ...
+	ProfileSensors int // ... across >= N sensors
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -115,6 +142,51 @@ func (c *Config) withDefaults() {
 	if c.BroadCoverage <= 0 {
 		c.BroadCoverage = 0.8
 	}
+	if c.TrajectoryHits <= 0 {
+		c.TrajectoryHits = 8
+	}
+	if c.TrajectorySensors <= 0 {
+		c.TrajectorySensors = 3
+	}
+	if c.TrajectoryMonotonic <= 0 {
+		c.TrajectoryMonotonic = 0.8
+	}
+	if c.BurstWindow <= 0 {
+		c.BurstWindow = 5 * time.Minute
+	}
+	if c.BurstMinEvents <= 0 {
+		c.BurstMinEvents = 20
+	}
+	if c.BurstSensors <= 0 {
+		c.BurstSensors = 3
+	}
+	if c.FirstContactSensors <= 0 {
+		c.FirstContactSensors = 3
+	}
+	if c.FirstSeenHorizon <= 0 {
+		c.FirstSeenHorizon = 7 * 24 * time.Hour
+	}
+	if c.PivotSources <= 0 {
+		c.PivotSources = 5
+	}
+	if c.PivotSensors <= 0 {
+		c.PivotSensors = 3
+	}
+	if c.GeoCountries <= 0 {
+		c.GeoCountries = 3
+	}
+	if c.GeoSensors <= 0 {
+		c.GeoSensors = 2
+	}
+	if c.ProfileCVEs <= 0 {
+		c.ProfileCVEs = 2
+	}
+	if c.ProfileSources <= 0 {
+		c.ProfileSources = 3
+	}
+	if c.ProfileSensors <= 0 {
+		c.ProfileSensors = 2
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -126,6 +198,7 @@ func (c *Config) withDefaults() {
 type actor struct {
 	sensors map[string]struct{}
 	sources map[string]struct{}
+	geos    map[string]struct{} // distinct countries; lazily allocated (geo detector only)
 	last    time.Time
 	fired   bool
 }
@@ -135,12 +208,16 @@ func newActor() *actor {
 }
 
 // sensorStat is a per-sensor windowed counter, used by the coverage classifier
-// (total active sensors) and the peer-relative outlier detector.
+// (total active sensors), the peer-relative outlier detector, and the
+// synchronized-burst detector (the short rolling bucket).
 type sensorStat struct {
 	total int
 	high  int
 	last  time.Time
 	fired bool
+
+	recentCount int       // events in the current burst bucket
+	recentStart time.Time // when the current burst bucket opened
 }
 
 // Correlator holds the windowed per-identity state. Safe for concurrent use.
@@ -155,8 +232,18 @@ type Correlator struct {
 	creds    map[string]*actor // key: "<user>\x00<pass>"
 	cves     map[string]*actor // key: CVE id
 	subnets  map[string]*actor // key: source block ("a.b.c.0/24" | ".../64")
+	pivots   map[string]*actor // key: composite multi-attribute identity
+	geoFP    map[string]*actor // key: "<kind>:<value>" fingerprint (geo)
+	geoCred  map[string]*actor // key: "<user>\x00<pass>" (geo)
+	profiles map[string]*actor // key: sorted CVE-set playbook signature
 
-	sensorStats map[string]*sensorStat // key: sensor id
+	sensorStats  map[string]*sensorStat // key: sensor id
+	trajectories map[string]*trajectory // key: source IP (address-walk tracking)
+	seenASN      map[string]*seenEntry  // long-horizon novelty memory (ASN)
+	seenFP       map[string]*seenEntry  // long-horizon novelty memory (fingerprint)
+	srcCVEs      map[string]*cveSet     // per-source CVE set (target-profile)
+
+	lastBurstFire time.Time // synchronized-burst cooldown
 
 	now func() time.Time // overridable in tests
 }
@@ -168,16 +255,24 @@ func New(cfg Config) *Correlator {
 	}
 	cfg.withDefaults()
 	return &Correlator{
-		cfg:         cfg,
-		sources:     map[string]*actor{},
-		asns:        map[string]*actor{},
-		fps:         map[string]*actor{},
-		payloads:    map[string]*actor{},
-		creds:       map[string]*actor{},
-		cves:        map[string]*actor{},
-		subnets:     map[string]*actor{},
-		sensorStats: map[string]*sensorStat{},
-		now:         time.Now,
+		cfg:          cfg,
+		sources:      map[string]*actor{},
+		asns:         map[string]*actor{},
+		fps:          map[string]*actor{},
+		payloads:     map[string]*actor{},
+		creds:        map[string]*actor{},
+		cves:         map[string]*actor{},
+		subnets:      map[string]*actor{},
+		pivots:       map[string]*actor{},
+		geoFP:        map[string]*actor{},
+		geoCred:      map[string]*actor{},
+		profiles:     map[string]*actor{},
+		sensorStats:  map[string]*sensorStat{},
+		trajectories: map[string]*trajectory{},
+		seenASN:      map[string]*seenEntry{},
+		seenFP:       map[string]*seenEntry{},
+		srcCVEs:      map[string]*cveSet{},
+		now:          time.Now,
 	}
 }
 
@@ -213,6 +308,12 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = add(out, c.observeCVELocked(ev, sid, now))
 	out = add(out, c.observeSubnetLocked(ev, sid, now))
 	out = add(out, c.observeOutlierLocked(sid))
+	out = add(out, c.observeTrajectoryLocked(ev, sid, now))
+	out = add(out, c.observeBurstLocked(sid, now))
+	out = append(out, c.observeFirstContactLocked(ev, sid, now)...)
+	out = add(out, c.observePivotLocked(ev, sid, now))
+	out = append(out, c.observeGeoLocked(ev, sid, now)...)
+	out = add(out, c.observeProfileLocked(ev, sid, now))
 	return out
 }
 
@@ -255,10 +356,14 @@ func touch(m map[string]*actor, key, sid, src string, now time.Time) *actor {
 }
 
 // pruneLocked drops identities + sensors idle longer than the window so
-// thresholds are "within a window" and memory stays bounded.
+// thresholds are "within a window" and memory stays bounded. The novelty
+// memory (seenASN/seenFP) uses the longer FirstSeenHorizon instead.
 func (c *Correlator) pruneLocked(now time.Time) {
 	cutoff := now.Add(-c.cfg.Window)
-	for _, m := range []map[string]*actor{c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets} {
+	for _, m := range []map[string]*actor{
+		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
+		c.pivots, c.geoFP, c.geoCred, c.profiles,
+	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {
 				delete(m, k)
@@ -268,6 +373,24 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	for k, s := range c.sensorStats {
 		if s.last.Before(cutoff) {
 			delete(c.sensorStats, k)
+		}
+	}
+	for k, t := range c.trajectories {
+		if t.last.Before(cutoff) {
+			delete(c.trajectories, k)
+		}
+	}
+	for k, s := range c.srcCVEs {
+		if s.last.Before(cutoff) {
+			delete(c.srcCVEs, k)
+		}
+	}
+	horizon := now.Add(-c.cfg.FirstSeenHorizon)
+	for _, m := range []map[string]*seenEntry{c.seenASN, c.seenFP} {
+		for k, e := range m {
+			if e.last.Before(horizon) {
+				delete(m, k)
+			}
 		}
 	}
 }

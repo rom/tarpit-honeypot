@@ -19,6 +19,15 @@ func ev(sensorID, srcIP string, meta map[string]any) *event.Event {
 	}
 }
 
+// evd builds an event with a destination IP and timestamp (for the trajectory
+// detector, which keys on the time-ordered sequence of destinations).
+func evd(sid, srcIP, destIP string, when time.Time) *event.Event {
+	e := ev(sid, srcIP, nil)
+	e.Dest = event.Endpoint{IP: destIP}
+	e.Time = when
+	return e
+}
+
 // findAlert returns the first emitted event with the given rule id, or nil.
 func findAlert(out []*event.Event, ruleID string) *event.Event {
 	for _, e := range out {
@@ -27,6 +36,17 @@ func findAlert(out []*event.Event, ruleID string) *event.Event {
 		}
 	}
 	return nil
+}
+
+// collectAlert drives Observe over many events and returns the last alert of
+// the given rule id (for detectors that fire mid-sequence amid other output).
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDisabledReturnsNil(t *testing.T) {
@@ -420,5 +440,162 @@ func TestOutlierNeedsPeers(t *testing.T) {
 				t.Fatal("fired without enough peers to compare")
 			}
 		}
+	}
+}
+
+func TestScanTrajectory(t *testing.T) {
+	c := New(Config{Enabled: true, TrajectoryHits: 4, TrajectorySensors: 2, TrajectoryMonotonic: 0.8, SourceSensors: 99})
+	base := time.Unix(1_700_000_000, 0)
+	sensors := []string{"s1", "s2"}
+	var got *event.Event
+	for i := 0; i < 5; i++ {
+		dest := fmt.Sprintf("10.0.0.%d", i+1) // ascending walk of the address space
+		e := evd(sensors[i%2], "9.9.9.9", dest, base.Add(time.Duration(i)*time.Second))
+		for _, out := range c.Observe(e) {
+			if out.RuleID == "fleet:scan-trajectory" {
+				got = out
+			}
+		}
+	}
+	if got == nil {
+		t.Fatal("scan-trajectory did not fire for an ascending address walk")
+	}
+	if d, _ := got.Meta["direction"].(string); d != "ascending" {
+		t.Errorf("direction = %q; want ascending", d)
+	}
+	if nt, _ := got.Meta["next_target"].(string); nt != "10.0.0.5" {
+		t.Errorf("next_target = %q; want 10.0.0.5", nt)
+	}
+	if dd, _ := got.Meta["distinct_dests"].(int); dd != 4 {
+		t.Errorf("distinct_dests = %d; want 4", dd)
+	}
+}
+
+func TestSynchronizedBurst(t *testing.T) {
+	c := New(Config{Enabled: true, BurstWindow: time.Minute, BurstMinEvents: 3, BurstSensors: 2})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	var got *event.Event
+	n := 0
+	fire := func(sid string) {
+		n++
+		for _, e := range c.Observe(ev(sid, fmt.Sprintf("8.%d.0.1", n), nil)) {
+			if e.RuleID == "fleet:synchronized-burst" {
+				got = e
+			}
+		}
+	}
+	for i := 0; i < 3; i++ {
+		fire("s1")
+	}
+	for i := 0; i < 3; i++ {
+		fire("s2")
+	}
+	if got == nil {
+		t.Fatal("synchronized-burst did not fire when 2 sensors spiked together")
+	}
+	if sc, _ := got.Meta["sensor_count"].(int); sc != 2 {
+		t.Errorf("sensor_count = %d; want 2", sc)
+	}
+}
+
+func TestFirstFleetContact(t *testing.T) {
+	c := New(Config{Enabled: true, FirstContactSensors: 2, ASNSensors: 99})
+	m := func() map[string]any { return map[string]any{"asn": "AS-NEW"} }
+	if a := findAlert(c.Observe(ev("s1", "1.1.1.1", m())), "fleet:first-fleet-contact"); a != nil {
+		t.Fatal("fired at one sensor")
+	}
+	a := findAlert(c.Observe(ev("s2", "2.2.2.2", m())), "fleet:first-fleet-contact")
+	if a == nil {
+		t.Fatal("did not fire for a novel ASN reaching 2 sensors")
+	}
+	if k, _ := a.Meta["kind"].(string); k != "asn" {
+		t.Errorf("kind = %q; want asn", k)
+	}
+	if id, _ := a.Meta["identity"].(string); id != "AS-NEW" {
+		t.Errorf("identity = %q; want AS-NEW", id)
+	}
+}
+
+func TestFirstContactNotNovelAfterWindow(t *testing.T) {
+	c := New(Config{Enabled: true, FirstContactSensors: 2, ASNSensors: 99, Window: time.Hour})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	old := func(sid, ip string) *event.Event { return ev(sid, ip, map[string]any{"asn": "AS-OLD"}) }
+	c.Observe(old("s1", "1.1.1.1")) // first contact recorded at t0
+	now = now.Add(2 * time.Hour)    // beyond the novelty window
+	c.Observe(old("s2", "2.2.2.2"))
+	if a := findAlert(c.Observe(old("s3", "3.3.3.3")), "fleet:first-fleet-contact"); a != nil {
+		t.Fatal("fired for an established (non-novel) ASN")
+	}
+}
+
+func TestIdentityPivot(t *testing.T) {
+	c := New(Config{Enabled: true, PivotSources: 3, PivotSensors: 2})
+	// ja3 (strong) + tool (secondary) = a 2-attribute link that survives IP rotation.
+	attrs := func() map[string]any { return map[string]any{"ja3": "J1", "tools": []string{"nmap"}} }
+	c.Observe(ev("s1", "10.0.0.1", attrs()))
+	c.Observe(ev("s1", "10.0.0.2", attrs()))
+	a := findAlert(c.Observe(ev("s2", "10.0.0.3", attrs())), "fleet:identity-pivot")
+	if a == nil {
+		t.Fatal("did not fire for one identity across 3 IPs / 2 sensors")
+	}
+	ids, _ := a.Meta["identity"].([]string)
+	if !containsStr(ids, "ja3=J1") || !containsStr(ids, "tool=nmap") {
+		t.Errorf("identity = %v; want ja3=J1 + tool=nmap", ids)
+	}
+	if sc, _ := a.Meta["source_count"].(int); sc != 3 {
+		t.Errorf("source_count = %d; want 3", sc)
+	}
+}
+
+func TestIdentityPivotNeedsStrongAttr(t *testing.T) {
+	// UA + tool alone (no fingerprint/credential) must not link.
+	c := New(Config{Enabled: true, PivotSources: 2, PivotSensors: 2})
+	weak := func() map[string]any { return map[string]any{"user_agent": "curl/8", "tools": []string{"nmap"}} }
+	c.Observe(ev("s1", "10.0.0.1", weak()))
+	if a := findAlert(c.Observe(ev("s2", "10.0.0.2", weak())), "fleet:identity-pivot"); a != nil {
+		t.Fatal("linked on weak attributes only")
+	}
+}
+
+func TestGeoDistributedActor(t *testing.T) {
+	c := New(Config{Enabled: true, GeoCountries: 3, GeoSensors: 2})
+	g := func(country string) map[string]any { return map[string]any{"ja3": "JG", "geo_country": country} }
+	c.Observe(ev("s1", "10.0.0.1", g("US")))
+	c.Observe(ev("s1", "10.0.0.2", g("DE")))
+	a := findAlert(c.Observe(ev("s2", "10.0.0.3", g("BR"))), "fleet:geo-distributed-actor")
+	if a == nil {
+		t.Fatal("did not fire for one fingerprint from 3 countries / 2 sensors")
+	}
+	if by, _ := a.Meta["by"].(string); by != "fingerprint" {
+		t.Errorf("by = %q; want fingerprint", by)
+	}
+	if cc, _ := a.Meta["country_count"].(int); cc != 3 {
+		t.Errorf("country_count = %d; want 3", cc)
+	}
+}
+
+func TestTargetProfileMatch(t *testing.T) {
+	c := New(Config{Enabled: true, ProfileCVEs: 2, ProfileSources: 2, ProfileSensors: 2, CVESensors: 99})
+	cve := func(sid, ip, id string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "cve:" + id
+		return e
+	}
+	// Two sources independently run the same A+B CVE playbook, across 2 sensors.
+	c.Observe(cve("s1", "1.1.1.1", "CVE-A"))
+	c.Observe(cve("s1", "1.1.1.1", "CVE-B"))
+	c.Observe(cve("s2", "2.2.2.2", "CVE-A"))
+	a := findAlert(c.Observe(cve("s2", "2.2.2.2", "CVE-B")), "fleet:target-profile-match")
+	if a == nil {
+		t.Fatal("did not fire for a shared multi-CVE playbook across sensors")
+	}
+	pb, _ := a.Meta["playbook"].([]string)
+	if len(pb) != 2 || !containsStr(pb, "CVE-A") || !containsStr(pb, "CVE-B") {
+		t.Errorf("playbook = %v; want [CVE-A CVE-B]", pb)
+	}
+	if sc, _ := a.Meta["source_count"].(int); sc != 2 {
+		t.Errorf("source_count = %d; want 2", sc)
 	}
 }

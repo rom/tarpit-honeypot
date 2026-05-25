@@ -742,6 +742,23 @@ fleet:
   outlier_min_events: 100  # min high-sev events before a node is an outlier candidate
   outlier_factor: 4        # ... and its high-sev count must exceed this x the peer median
   outlier_min_peers: 3     # need at least this many other sensors to compare against
+  # temporal — sequence / timing only visible across the fleet:
+  trajectory_hits: 8       # one source walking >= N destinations in address order ...
+  trajectory_sensors: 3    #   ... across >= N sensors -> fleet:scan-trajectory
+  trajectory_monotonic: 0.8  # fraction of time-ordered steps moving one way
+  burst_window: 5m         # short spike window for fleet:synchronized-burst
+  burst_min_events: 20     # a sensor is "spiking" at >= N events in burst_window ...
+  burst_sensors: 3         #   ... fire when >= N sensors spike together
+  # novelty / linking / geo / playbook:
+  first_contact_sensors: 3 # a brand-new ASN/fingerprint on >= N sensors -> fleet:first-fleet-contact
+  first_seen_horizon: 168h # how long an identity is remembered as "seen" (novelty memory)
+  pivot_sources: 5         # one composite identity from >= N IPs ...
+  pivot_sensors: 3         #   ... across >= N sensors -> fleet:identity-pivot
+  geo_countries: 3         # one fingerprint/credential from >= N countries ...
+  geo_sensors: 2           #   ... across >= N sensors -> fleet:geo-distributed-actor
+  profile_cves: 2          # a playbook is a set of >= N CVEs ...
+  profile_sources: 3       #   ... shared by >= N sources ...
+  profile_sensors: 2       #   ... across >= N sensors -> fleet:target-profile-match
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
   max_list: 50           # cap the sensor/source list carried in the alert meta
@@ -759,12 +776,18 @@ The detectors, by the vantage axis they exploit:
 | `fleet:cve-wave` | the same **CVE** on >= `cve_sensors` sensors | a worm / mass-exploitation wave; coverage tells targeted from internet-wide |
 | `fleet:subnet-coordinated` | >= `subnet_sources` IPs from one **/24 (or /64)** covering >= `subnet_sensors` sensors | the one-IP-per-target botnet that slips under every per-sensor threshold |
 | `fleet:outlier-sensor` | a **sensor**'s high-sev volume crosses `outlier_min_events` and exceeds `outlier_factor` x the peer median | that node was specifically found / targeted — only visible with peer baselines |
+| `fleet:scan-trajectory` | one **source** hitting >= `trajectory_hits` destinations in address order across >= `trajectory_sensors` sensors | the scan's direction + rate, and the **next target** it's about to reach — only the merged view shows the walk |
+| `fleet:synchronized-burst` | >= `burst_sensors` sensors each see >= `burst_min_events` within `burst_window` | a fleet-wide changepoint — the moment a new campaign / exploit goes live (no shared source needed) |
+| `fleet:first-fleet-contact` | a **brand-new ASN / fingerprint** (unseen for `first_seen_horizon`) reaching >= `first_contact_sensors` sensors | new infrastructure spinning up against the deployment |
+| `fleet:identity-pivot` | one composite identity (fingerprint/credential + a 2nd attribute) from >= `pivot_sources` IPs across >= `pivot_sensors` sensors | one actor behind rotating IPs — the link survives the IP change |
+| `fleet:geo-distributed-actor` | one fingerprint/credential from >= `geo_countries` countries across >= `geo_sensors` sensors | fleet-scale impossible travel — a distributed proxy / botnet (needs GeoIP) |
+| `fleet:target-profile-match` | >= `profile_sources` sources independently running the same >= `profile_cves`-CVE playbook across >= `profile_sensors` sensors | a shared toolkit / runbook, even without a shared fingerprint |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the
-ASN detector sees the `asn` tag — configure `sensor.geoip.asn_db` on the
-aggregator for `fleet:asn-multi-sensor`. `fleet:*` events are never
-re-correlated (loop guard).
+ASN / geo detectors see the `asn` / `geo_country` tags — configure
+`sensor.geoip.asn_db` (and city DB for geo) on the aggregator. `fleet:*` events
+are never re-correlated (loop guard).
 
 **Broad vs targeted.** Every public honeypot is scanned constantly by
 Censys/Shodan/etc., so a naive breadth alert is noisy. The breadth/wave

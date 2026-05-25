@@ -8,6 +8,42 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: temporal / novelty / linking correlators (phase 2c)
+- **`fleet:scan-trajectory`** — one source hitting sensors' destination IPs in
+  (numeric) address order over time: the merged view reconstructs the scan's
+  direction, rate (median stride), and the **next target** it's about to reach.
+  Fires at >= `trajectory_hits` (8) destinations across >= `trajectory_sensors`
+  (3) sensors with >= `trajectory_monotonic` (0.8) of time-ordered steps moving
+  one way.
+- **`fleet:synchronized-burst`** — >= `burst_sensors` (3) sensors each seeing >=
+  `burst_min_events` (20) within `burst_window` (5m), regardless of source
+  overlap: a fleet-level changepoint marking the moment a new campaign / exploit
+  goes live. One alert per window (cooldown).
+- **`fleet:first-fleet-contact`** — a brand-new ASN or fingerprint, unseen
+  anywhere in the fleet within `first_seen_horizon` (7d), that immediately
+  reaches >= `first_contact_sensors` (3) sensors: new infrastructure spinning up.
+  Keyed on ASN / fingerprint (not raw IP) so the novelty memory stays bounded.
+- **`fleet:identity-pivot`** — one actor behind rotating IPs, linked by a
+  composite identity (a fingerprint or credential **plus** a second attribute,
+  so it's stronger than a single shared fingerprint); fires at >= `pivot_sources`
+  (5) distinct IPs across >= `pivot_sensors` (3) sensors.
+- **`fleet:geo-distributed-actor`** — one fingerprint/credential appearing from
+  >= `geo_countries` (3) countries across >= `geo_sensors` (2) sensors:
+  fleet-scale impossible travel (distributed proxy / botnet). Needs GeoIP country
+  enrichment on the aggregator.
+- **`fleet:target-profile-match`** — >= `profile_sources` (3) distinct sources
+  independently running the same >= `profile_cves` (2)-CVE playbook across >=
+  `profile_sensors` (2) sensors: a shared toolkit / runbook even without a shared
+  fingerprint.
+- All thresholds configurable under `fleet:`; new state (per-source address-walk
+  tracking, short burst buckets on the per-sensor counters, a long-horizon
+  novelty memory, composite-identity / geo / CVE-playbook actor maps) is
+  window-pruned (novelty by the longer horizon). Detectors live in a new
+  `advanced.go`. Verified end-to-end against a live aggregator: one ingest batch
+  produced all six new `fleet:*` events with correct meta — including
+  `scan-trajectory` predicting `next_target` and `geo-distributed-actor`
+  aggregating three countries.
+
 ### Added — fleet aggregation: five more cross-sensor correlators (phase 2b)
 - **`fleet:payload-campaign`** — the same malware/shellcode artifact (by
   SHA-256, parsed from `payload_artifacts`) landing on >= `payload_sensors` (2)

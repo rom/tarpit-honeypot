@@ -234,7 +234,24 @@ func New(cfg *config.Config) (*Sensor, error) {
 			OutlierFactor:    cfg.Fleet.OutlierFactor,
 			OutlierMinPeers:  cfg.Fleet.OutlierMinPeers,
 			BroadCoverage:    cfg.Fleet.BroadCoverage,
-			MaxList:          cfg.Fleet.MaxList,
+
+			TrajectoryHits:      cfg.Fleet.TrajectoryHits,
+			TrajectorySensors:   cfg.Fleet.TrajectorySensors,
+			TrajectoryMonotonic: cfg.Fleet.TrajectoryMonotonic,
+			BurstWindow:         cfg.Fleet.BurstWindow,
+			BurstMinEvents:      cfg.Fleet.BurstMinEvents,
+			BurstSensors:        cfg.Fleet.BurstSensors,
+			FirstContactSensors: cfg.Fleet.FirstContactSensors,
+			FirstSeenHorizon:    cfg.Fleet.FirstSeenHorizon,
+			PivotSources:        cfg.Fleet.PivotSources,
+			PivotSensors:        cfg.Fleet.PivotSensors,
+			GeoCountries:        cfg.Fleet.GeoCountries,
+			GeoSensors:          cfg.Fleet.GeoSensors,
+			ProfileCVEs:         cfg.Fleet.ProfileCVEs,
+			ProfileSources:      cfg.Fleet.ProfileSources,
+			ProfileSensors:      cfg.Fleet.ProfileSensors,
+
+			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())
 	}

@@ -111,7 +111,28 @@ type FleetConfig struct {
 	// BroadCoverage is the sensors_hit/total fraction at/above which a
 	// breadth/wave hit is "broad" internet background (downgraded to medium).
 	BroadCoverage float64 `yaml:"broad_coverage"`
-	MaxList       int     `yaml:"max_list"` // cap the sensor/source list in alert meta
+	// Scan trajectory (one source walking the address space across sensors).
+	TrajectoryHits      int     `yaml:"trajectory_hits"`      // distinct destinations before evaluating
+	TrajectorySensors   int     `yaml:"trajectory_sensors"`   // ... spanning >= N sensors
+	TrajectoryMonotonic float64 `yaml:"trajectory_monotonic"` // fraction of steps moving one way
+	// Synchronized burst (many sensors spiking at once).
+	BurstWindow    time.Duration `yaml:"burst_window"`     // the short spike window
+	BurstMinEvents int           `yaml:"burst_min_events"` // a sensor spikes at >= N events in the window
+	BurstSensors   int           `yaml:"burst_sensors"`    // fire when >= N sensors spike together
+	// First fleet contact (a brand-new ASN / fingerprint reaching the fleet).
+	FirstContactSensors int           `yaml:"first_contact_sensors"` // novel identity must reach >= N sensors
+	FirstSeenHorizon    time.Duration `yaml:"first_seen_horizon"`    // how long an identity is remembered as seen
+	// Identity pivot (one actor across rotating IPs, linked by shared attributes).
+	PivotSources int `yaml:"pivot_sources"` // >= N distinct IPs ...
+	PivotSensors int `yaml:"pivot_sensors"` // ... across >= N sensors
+	// Geo-distributed actor (one fingerprint / credential from many countries).
+	GeoCountries int `yaml:"geo_countries"` // >= N distinct countries ...
+	GeoSensors   int `yaml:"geo_sensors"`   // ... across >= N sensors
+	// Target-profile match (the same multi-CVE playbook from distinct sources).
+	ProfileCVEs    int `yaml:"profile_cves"`    // a playbook needs >= N CVEs to be a combination
+	ProfileSources int `yaml:"profile_sources"` // >= N distinct sources sharing it ...
+	ProfileSensors int `yaml:"profile_sensors"` // ... across >= N sensors
+	MaxList        int `yaml:"max_list"`        // cap the sensor/source list in alert meta
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any
