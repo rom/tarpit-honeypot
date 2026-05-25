@@ -239,7 +239,19 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "kerberos":
 		return &kerberos{}, nil
 	case "postgres":
-		return &postgres{}, nil
+		return newPostgres(deps), nil
+	case "smtps":
+		return newTLSWrap("smtp_recv", "smtps", deps)
+	case "imaps":
+		return newTLSWrap("imap", "imaps", deps)
+	case "pop3s":
+		return newTLSWrap("pop3", "pop3s", deps)
+	case "ldaps":
+		return newTLSWrap("ldap", "ldaps", deps)
+	case "mqtts":
+		return newTLSWrap("mqtt", "mqtts", deps)
+	case "ftps":
+		return newTLSWrap("ftp", "ftps", deps)
 	case "mysql":
 		return &mysql{id: deps.Identity, arch: deps.Archetype}, nil
 	case "redis":

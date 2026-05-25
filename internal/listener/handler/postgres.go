@@ -2,15 +2,33 @@ package handler
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"io"
 	"net"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
-type postgres struct{}
+type postgres struct {
+	tlsMgr *certManager
+	arch   *archetype.Profile
+}
+
+// newPostgres wires the cert manager so the handler can honour an SSLRequest
+// with a real TLS upgrade. Without a data dir (e.g. some module-mode callers)
+// it stays nil and the handler falls back to the plaintext 'N' refusal.
+func newPostgres(deps Deps) *postgres {
+	p := &postgres{arch: deps.Archetype}
+	if deps.DataDir != "" {
+		if m, err := newCertManager(deps.DataDir, deps.TLSRotate, deps.Identity); err == nil {
+			p.tlsMgr = m
+		}
+	}
+	return p
+}
 
 func (p *postgres) Name() string { return "postgres" }
 
@@ -25,7 +43,7 @@ func (p *postgres) Name() string { return "postgres" }
 // request (R + length=8 + 3) which makes the client send its password
 // in the clear in a PasswordMessage (p + length + password\0). We
 // capture that, then send a FATAL error response and close.
-func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
 
@@ -51,8 +69,29 @@ func (p *postgres) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 			marker := binary.BigEndian.Uint32(body[0:4])
 			switch marker {
 			case 0x04D2162F: // SSLRequest
-				_, _ = conn.Write([]byte{'N'})
 				res.Meta["ssl_request"] = true
+				// Real Postgres answers 'S' then performs a TLS handshake; do
+				// that when a cert manager is available so a libpq client with
+				// sslmode=require/verify proceeds (and we capture the cleartext
+				// password it sends post-handshake). Fall back to 'N' otherwise.
+				if p.tlsMgr != nil {
+					if tcfg, err := p.tlsMgr.serverConfig(cfg.ID, tlsHosts(cfg), p.arch); err == nil {
+						if _, err := conn.Write([]byte{'S'}); err != nil {
+							res.Meta["write_err"] = err.Error()
+							return res, nil
+						}
+						tlsConn := tls.Server(conn, tcfg)
+						if err := tlsConn.HandshakeContext(ctx); err != nil {
+							res.Meta["tls_err"] = err.Error()
+							return res, nil
+						}
+						conn = tlsConn
+						res.Meta["tls"] = true
+						res.Meta["tls_version"] = tlsVersionName(tlsConn.ConnectionState().Version)
+						continue
+					}
+				}
+				_, _ = conn.Write([]byte{'N'})
 				continue
 			case 0x04D21630: // GSSENCRequest
 				_, _ = conn.Write([]byte{'N'})

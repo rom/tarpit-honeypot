@@ -162,37 +162,38 @@ func (h *https) profileFor(cfg config.Listener) certProfile {
 		p.cn = hs[0]
 	}
 	if p.org == "" {
-		p.org = h.deriveOrg(cfg.ID)
+		p.org = deriveOrg(h.id, cfg.ID)
 	}
 	if p.keyType == "" {
-		p.keyType = h.deriveKeyType(cfg.ID)
+		p.keyType = deriveKeyType(h.id, cfg.ID)
 	}
 	return p
 }
 
 // deriveOrg picks a believable organization name deterministically from
 // the deployment seed + listener id, so each service's cert looks like
-// it belongs to a distinct (fake) company.
-func (h *https) deriveOrg(listenerID string) string {
+// it belongs to a distinct (fake) company. Shared by the https handler and
+// the certManager that backs the other TLS-bearing handlers.
+func deriveOrg(id *identity.Identity, listenerID string) string {
 	pool := []string{
 		"Internal Services", "IT Department", "Acme Corp", "Contoso Ltd",
 		"Globex", "Initech", "Umbrella Systems", "Northwind Traders",
 		"Default Company Ltd", "",
 	}
-	if h.id == nil {
+	if id == nil {
 		return pool[0]
 	}
-	idx := int(h.id.Derive("tls-org/"+listenerID).Uint32("pick")) % len(pool)
+	idx := int(id.Derive("tls-org/"+listenerID).Uint32("pick")) % len(pool)
 	return pool[idx]
 }
 
 // deriveKeyType picks ecdsa or rsa per service so a TLS-fingerprinting
 // scanner sees a mix of key algorithms across the host's services.
-func (h *https) deriveKeyType(listenerID string) string {
-	if h.id == nil {
+func deriveKeyType(id *identity.Identity, listenerID string) string {
+	if id == nil {
 		return "ecdsa"
 	}
-	if h.id.Derive("tls-keytype/"+listenerID).Uint32("pick")%4 == 0 {
+	if id.Derive("tls-keytype/"+listenerID).Uint32("pick")%4 == 0 {
 		return "rsa" // ~25% of services present an RSA cert
 	}
 	return "ecdsa"

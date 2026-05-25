@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — handlers: implicit-TLS services + PostgreSQL SSL
+- New implicit-TLS handlers **`smtps`** (465), **`imaps`** (993), **`pop3s`**
+  (995), **`ldaps`** (636), **`mqtts`** (8883), and **`ftps`** (990): a generic
+  TLS wrapper performs the handshake (self-signed cert from `<data_dir>/tls`,
+  shared with `https`; JA3/JA4 + JA3S computed) and runs the underlying protocol
+  over the encrypted channel. Previously TLS was served only by `https`.
+- **PostgreSQL** now honours an `SSLRequest` with a real TLS upgrade (answers
+  `S` then handshakes) instead of always refusing with `N`, so a libpq client
+  with `sslmode=require` proceeds and its cleartext password is captured.
+- A shared `certManager` backs all of the above, reusing the https handler's
+  on-disk cert format, per-service subject/key spread, and rotation window.
+
 ### Changed — handlers: fail-safe line caps, honest IMAP STARTTLS, wider credential capture
 - Text-protocol handlers (**imap**, **pop3**, **smtp_recv**, **elasticsearch**,
   **gopher**) now read command/header lines through a bounded reader

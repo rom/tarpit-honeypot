@@ -33,6 +33,10 @@ var tcpHandlers = map[string]bool{
 	"postgres": true, "mysql": true, "redis": true,
 	"memcached": true, "pop3": true, "imap": true,
 	"mongodb": true, "elasticsearch": true,
+	// implicit-TLS variants (993/995/465/636/8883/990): the plaintext handler
+	// run over a TLS handshake (see handler.tlsWrap).
+	"smtps": true, "imaps": true, "pop3s": true,
+	"ldaps": true, "mqtts": true, "ftps": true,
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
