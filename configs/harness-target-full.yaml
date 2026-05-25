@@ -1,0 +1,75 @@
+# tarpit-honeypot — COMPREHENSIVE target sensor for the test harness.
+#
+# A loopback-only sensor exposing a broad cross-section of services (IT, OT,
+# mail, DB, VoIP, discovery) on unprivileged high ports, with the web UI/API on
+# so the harness can verify detection. It is the target for the three companion
+# harness configs:
+#
+#   harness-full.yaml         complete test suite (all categories)
+#   harness-fuzz-dumb.yaml    protocol-unaware fuzzing of every port
+#   harness-fuzz-smart.yaml   protocol-aware fuzzing of every known protocol
+#
+#   tarpit-honeypot validate-config -c configs/harness-target-full.yaml
+#   tarpit-testharness run -c configs/harness-full.yaml --progress
+
+sensor:
+  name: harness-target-full
+  data_dir: ./var/harness-full   # created on first run
+  archetype: debian 12           # one coherent OS identity across banner-aware handlers
+
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088           # /healthz (readiness) + /api/events (detection verify)
+
+listeners:
+  # --- protocols the harness has a spec for (emulate / smart-fuzz / misimpl) ---
+  - { id: ssh,        proto: tcp, bind: 127.0.0.1:2222,  mode: banner, handler: ssh,        severity: high }
+  - { id: http,       proto: tcp, bind: 127.0.0.1:8000,  mode: banner, handler: http,       severity: high }
+  - { id: https,      proto: tcp, bind: 127.0.0.1:8443,  mode: banner, handler: https,      severity: high }
+  - { id: ftp,        proto: tcp, bind: 127.0.0.1:2121,  mode: banner, handler: ftp,        severity: high }
+  - { id: telnet,     proto: tcp, bind: 127.0.0.1:2323,  mode: banner, handler: telnet,     severity: high }
+  - { id: smtp,       proto: tcp, bind: 127.0.0.1:2525,  mode: banner, handler: smtp_recv,  severity: medium }
+  - { id: redis,      proto: tcp, bind: 127.0.0.1:6390,  mode: banner, handler: redis,      severity: high }
+  - { id: modbus,     proto: tcp, bind: 127.0.0.1:5020,  mode: banner, handler: modbus,     severity: high }
+  - { id: sip,        proto: tcp, bind: 127.0.0.1:5060,  mode: banner, handler: sip_tcp,    severity: high }
+  - { id: rlogin,     proto: tcp, bind: 127.0.0.1:5513,  mode: banner, handler: rlogin,     severity: high }
+  - { id: rsh,        proto: tcp, bind: 127.0.0.1:5514,  mode: banner, handler: rsh,        severity: high }
+  - { id: rexec,      proto: tcp, bind: 127.0.0.1:5512,  mode: banner, handler: rexec,      severity: high }
+  - { id: syslog_tcp, proto: tcp, bind: 127.0.0.1:5140,  mode: banner, handler: syslog_tcp, severity: low }
+  - { id: tftp,       proto: udp, bind: 127.0.0.1:6969,  mode: banner, handler: tftp,       severity: high }
+  - { id: syslog_udp, proto: udp, bind: 127.0.0.1:5141,  mode: banner, handler: syslog_udp, severity: low }
+
+  # --- additional services (unit + dumb-fuzz + reliability coverage) ---
+  - { id: pop3,       proto: tcp, bind: 127.0.0.1:1110,  mode: banner, handler: pop3,       severity: medium }
+  - { id: imap,       proto: tcp, bind: 127.0.0.1:1143,  mode: banner, handler: imap,       severity: medium }
+  - { id: memcached,  proto: tcp, bind: 127.0.0.1:11211, mode: banner, handler: memcached,  severity: high }
+  - { id: mysql,      proto: tcp, bind: 127.0.0.1:3306,  mode: banner, handler: mysql,      severity: high }
+  - { id: postgres,   proto: tcp, bind: 127.0.0.1:5432,  mode: banner, handler: postgres,   severity: high }
+  - { id: mongodb,    proto: tcp, bind: 127.0.0.1:27017, mode: banner, handler: mongodb,    severity: high }
+  - { id: ldap,       proto: tcp, bind: 127.0.0.1:1389,  mode: banner, handler: ldap,       severity: high }
+  - { id: vnc,        proto: tcp, bind: 127.0.0.1:5900,  mode: banner, handler: vnc,        severity: high }
+  - { id: smb,        proto: tcp, bind: 127.0.0.1:4445,  mode: banner, handler: smb,        severity: high }
+  - { id: mqtt,       proto: tcp, bind: 127.0.0.1:1883,  mode: banner, handler: mqtt,       severity: medium }
+  - { id: s7,         proto: tcp, bind: 127.0.0.1:10200, mode: banner, handler: s7,         severity: high }
+  - { id: dnp3,       proto: tcp, bind: 127.0.0.1:20000, mode: banner, handler: dnp3,       severity: high }
+  - { id: git,        proto: tcp, bind: 127.0.0.1:9418,  mode: banner, handler: git,        severity: medium }
+  - { id: dns,        proto: udp, bind: 127.0.0.1:5353,  mode: banner, handler: dns,        severity: medium }
+  - { id: snmp,       proto: udp, bind: 127.0.0.1:16100, mode: banner, handler: snmp,       severity: high }
+  - { id: ntp,        proto: udp, bind: 127.0.0.1:12300, mode: banner, handler: ntp,        severity: low }
+  - { id: bacnet,     proto: udp, bind: 127.0.0.1:47808, mode: banner, handler: bacnet,     severity: high }
+
+  # Catch-all so port scans see more than the modelled ports.
+  - { id: auto,       proto: tcp, bind: 127.0.0.1:9000,  mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
+
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+
+channels:
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [sqlite] }

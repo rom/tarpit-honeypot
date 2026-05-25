@@ -1,0 +1,101 @@
+# tarpit-testharness — COMPLETE test suite (every category).
+#
+# Spawns the comprehensive target (configs/harness-target-full.yaml) and runs
+# ALL categories — unit, emulate, misimpl, fuzz-dumb, fuzz-smart, scan,
+# fingerprint, reliability — confirming detection against the target's web API.
+#
+# Endpoints here are the protocols the harness fully models (it has a probe +
+# emulation spec for each, so every category produces a meaningful case) plus a
+# few server-first services for extra unit/fuzz/reliability breadth. To fuzz
+# EVERY port — including the binary/discovery services the harness has no probe
+# for — use harness-fuzz-dumb.yaml / harness-fuzz-smart.yaml instead.
+#
+#   go build -o bin/tarpit-testharness ./cmd/tarpit-testharness
+#   make build                       # builds bin/tarpit-honeypot (the target)
+#   bin/tarpit-testharness run -c configs/harness-full.yaml --progress
+#
+# Detection note: unit/emulate/fuzz/reliability and the misimpl + fingerprint
+# detection checks pass cleanly at concurrency 1. The `scan` port-scan check can
+# intermittently report "did NOT flag the scan" on a full pass — the honeypot
+# DOES correlate it, but its single correlation event can age out of the API's
+# recent-events window behind the run's event volume before the scan's verify
+# query. Confirm it on its own with:
+#   bin/tarpit-testharness run -c configs/harness-full.yaml --category scan --concurrency 1
+#
+# Exit code: 0 = no findings, 1 = findings, 2 = setup error.
+
+mode: network
+host: 127.0.0.1
+
+spawn:
+  binary: ./bin/tarpit-honeypot
+  config: ./configs/harness-target-full.yaml
+  ready_timeout: 20s
+  health_url: http://127.0.0.1:8088/healthz
+
+# The harness has a full protocol spec for these (emulate + smart-fuzz +
+# misimpl), except pop3/imap/mysql/vnc which are server-first and contribute
+# unit + dumb-fuzz + reliability coverage. (https is intentionally excluded —
+# the harness speaks plaintext and can't complete a TLS handshake; fuzz it via
+# harness-fuzz-dumb.yaml.)
+endpoints:
+  - { label: ssh,        proto: tcp, port: 2222,  handler: ssh }
+  - { label: http,       proto: tcp, port: 8000,  handler: http }
+  - { label: ftp,        proto: tcp, port: 2121,  handler: ftp }
+  - { label: telnet,     proto: tcp, port: 2323,  handler: telnet }
+  - { label: smtp,       proto: tcp, port: 2525,  handler: smtp_recv }
+  - { label: redis,      proto: tcp, port: 6390,  handler: redis }
+  - { label: modbus,     proto: tcp, port: 5020,  handler: modbus }
+  - { label: sip,        proto: tcp, port: 5060,  handler: sip_tcp }
+  - { label: rlogin,     proto: tcp, port: 5513,  handler: rlogin }
+  - { label: rsh,        proto: tcp, port: 5514,  handler: rsh }
+  - { label: rexec,      proto: tcp, port: 5512,  handler: rexec }
+  - { label: syslog_tcp, proto: tcp, port: 5140,  handler: syslog_tcp }
+  - { label: tftp,       proto: udp, port: 6969,  handler: tftp }
+  - { label: syslog_udp, proto: udp, port: 5141,  handler: syslog_udp }
+  - { label: pop3,       proto: tcp, port: 1110,  handler: pop3 }
+  - { label: imap,       proto: tcp, port: 1143,  handler: imap }
+  - { label: mysql,      proto: tcp, port: 3306,  handler: mysql }
+  - { label: vnc,        proto: tcp, port: 5900,  handler: vnc }
+
+# Scope: empty categories => every category runs.
+categories: []
+cases: []
+rounds: 1
+duration: 0            # wall-clock bound, e.g. 30m (0 = run to completion)
+# concurrency: 1 keeps the run deterministic AND keeps the sensor's event
+# pipeline from lagging behind the misimpl/scan/fingerprint detection-verify
+# window under load (a busy sensor persists the event after the check fires,
+# producing flaky "did NOT flag" findings). Crank it for the fuzz-only configs,
+# not here.
+concurrency: 1
+
+# Resilience. retries: 2 so a transient detection-verify miss is re-tried
+# against a fresh target rather than reported.
+retries: 2
+retries_by_case:
+  fuzz-smart/http: 3
+  fuzz-dumb/http: 3
+timeout: 2s
+
+# Fuzzing (modest for a single full pass; the dedicated fuzz configs crank these).
+fuzz_iterations: 32
+seed: 0                # 0 => the built-in default seed (reproducible)
+
+# Port scans probe the modelled TCP ports + the common set (the target still
+# listens on every service, so the scan sees the full surface).
+scan_ports: [21, 22, 23, 25, 80, 110, 143, 443, 445, 1110, 1143, 1389, 1883, 2121, 2222, 2323, 2525, 3306, 4445, 5020, 5060, 5140, 5432, 5512, 5513, 5514, 5900, 6390, 8000, 8443, 9000, 9418, 10200, 11211, 20000, 27017]
+# sweep_cidr: 192.168.56.0/28   # host/ping/ARP sweeps (needs a real network)
+
+# Confirm the honeypot actually recorded the misimpl/scan/fingerprint activity.
+verify:
+  url: http://127.0.0.1:8088
+
+# Output.
+progress: true
+reports:
+  - { format: text,  path: "-" }
+  - { format: json,  path: ./var/harness-full.json }
+  - { format: junit, path: ./var/harness-full.xml }
+  - { format: md,    path: ./var/harness-full.md }
+db: ./var/harness-results.db

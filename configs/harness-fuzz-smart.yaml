@@ -1,0 +1,79 @@
+# tarpit-testharness — SMART (protocol-aware) fuzzing of every known service.
+#
+# Spawns the comprehensive target (configs/harness-target-full.yaml) and runs
+# only the fuzz-smart category: protocol-aware malformed input (oversized
+# fields, bad lengths, illegal framing) mutated around known-bad shapes, with a
+# liveness re-check after each input.
+#
+# Note: smart fuzzing needs a protocol spec, so it runs for the KNOWN-protocol
+# handlers only — http, https, ssh, ftp, smtp_recv, telnet, redis, sip_tcp,
+# modbus, rlogin, rsh, rexec, tftp, syslog_tcp, syslog_udp. Endpoints with other
+# handlers (pop3, mysql, s7, dns, …) are listed for completeness but produce no
+# fuzz-smart case; drive those with configs/harness-fuzz-dumb.yaml.
+#
+#   bin/tarpit-testharness run -c configs/harness-fuzz-smart.yaml --progress
+
+mode: network
+host: 127.0.0.1
+
+spawn:
+  binary: ./bin/tarpit-honeypot
+  config: ./configs/harness-target-full.yaml
+  ready_timeout: 20s
+  health_url: http://127.0.0.1:8088/healthz
+
+endpoints:
+  - { label: ssh,        proto: tcp, port: 2222,  handler: ssh }
+  - { label: http,       proto: tcp, port: 8000,  handler: http }
+  - { label: https,      proto: tcp, port: 8443,  handler: https }
+  - { label: ftp,        proto: tcp, port: 2121,  handler: ftp }
+  - { label: telnet,     proto: tcp, port: 2323,  handler: telnet }
+  - { label: smtp,       proto: tcp, port: 2525,  handler: smtp_recv }
+  - { label: redis,      proto: tcp, port: 6390,  handler: redis }
+  - { label: modbus,     proto: tcp, port: 5020,  handler: modbus }
+  - { label: sip,        proto: tcp, port: 5060,  handler: sip_tcp }
+  - { label: rlogin,     proto: tcp, port: 5513,  handler: rlogin }
+  - { label: rsh,        proto: tcp, port: 5514,  handler: rsh }
+  - { label: rexec,      proto: tcp, port: 5512,  handler: rexec }
+  - { label: syslog_tcp, proto: tcp, port: 5140,  handler: syslog_tcp }
+  - { label: tftp,       proto: udp, port: 6969,  handler: tftp }
+  - { label: syslog_udp, proto: udp, port: 5141,  handler: syslog_udp }
+  - { label: pop3,       proto: tcp, port: 1110,  handler: pop3 }
+  - { label: imap,       proto: tcp, port: 1143,  handler: imap }
+  - { label: memcached,  proto: tcp, port: 11211, handler: memcached }
+  - { label: mysql,      proto: tcp, port: 3306,  handler: mysql }
+  - { label: postgres,   proto: tcp, port: 5432,  handler: postgres }
+  - { label: mongodb,    proto: tcp, port: 27017, handler: mongodb }
+  - { label: ldap,       proto: tcp, port: 1389,  handler: ldap }
+  - { label: vnc,        proto: tcp, port: 5900,  handler: vnc }
+  - { label: smb,        proto: tcp, port: 4445,  handler: smb }
+  - { label: mqtt,       proto: tcp, port: 1883,  handler: mqtt }
+  - { label: s7,         proto: tcp, port: 10200, handler: s7 }
+  - { label: dnp3,       proto: tcp, port: 20000, handler: dnp3 }
+  - { label: git,        proto: tcp, port: 9418,  handler: git }
+  - { label: dns,        proto: udp, port: 5353,  handler: dns }
+  - { label: snmp,       proto: udp, port: 16100, handler: snmp }
+  - { label: ntp,        proto: udp, port: 12300, handler: ntp }
+  - { label: bacnet,     proto: udp, port: 47808, handler: bacnet }
+  - { label: auto,       proto: tcp, port: 9000,  handler: auto }
+
+# Only the protocol-aware fuzzer.
+categories: [fuzz-smart]
+cases: []
+rounds: 1
+duration: 0
+concurrency: 6
+
+retries: 1
+timeout: 1s
+
+# Fuzzing: inputs are mutated around each protocol's known-bad shapes.
+fuzz_iterations: 256
+seed: 0                # recorded so any crash is replayable with --seed
+
+# Output.
+progress: true
+reports:
+  - { format: text,  path: "-" }
+  - { format: junit, path: ./var/harness-fuzz-smart.xml }
+db: ./var/harness-results.db
