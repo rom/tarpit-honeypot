@@ -8,6 +8,89 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — testharness: self-trust controls + evidence-integrity category
+- The runner now **self-checks** before each run: synthetic positive / negative
+  / error / panic controls go through the real execution path and must classify
+  correctly, and case selection must be deterministic — otherwise the run aborts
+  rather than risk a false all-green. After the run it asserts the **accounting
+  invariant** (every dispatched case recorded exactly one result). Both appear
+  in the report's Environment block and the JSON `info` (self_check / expected /
+  recorded).
+- New **`integrity`** category (needs `verify.url`): `integrity/capture/<label>`
+  sends a unique marker and confirms the sensor recorded it faithfully;
+  `integrity/no-drop-under-load/<label>` sends a 20-connection burst and confirms
+  all are recorded (no dropped events under load). Covers http/https/ftp/
+  smtp_recv/telnet/imap/pop3; skips cleanly without the API.
+
+### Changed — handlers: protocol depth (RDP TLS/NLA, Oracle version, MQTT CONNACK)
+- **RDP** now completes the TLS handshake after selecting `PROTOCOL_SSL`
+  (previously it advertised SSL then left the client's handshake unanswered).
+  It records JA3/JA3S and best-effort harvests the CredSSP/NLA **NTLMSSP**
+  domain/user + offline-crackable NetNTLM response (`rdp-ntlm-auth`).
+- **Oracle TNS** version banner + VSNNUM are now derived per deployment from a
+  believable 11g–21c spread, instead of a hardcoded `19.0.0.0.0` (a fingerprint
+  tell across sensors).
+- **MQTT** CONNACK is version-aware: v3.1/3.1.1 get a 2-byte reply, v5 the
+  3-byte (properties-length) reply, and an unsupported protocol level is
+  rejected with `0x01` (`mqtt-unsupported-protocol-level`) — previously every
+  client got an identical v3 "accepted".
+
+### Added — handlers: in-protocol STARTTLS (SMTP / IMAP / POP3)
+- **SMTP** (25) now advertises `STARTTLS` in EHLO and performs a real TLS
+  upgrade on the command (was a `454` refusal); **IMAP** (143) advertises +
+  upgrades on `STARTTLS` (replacing the first-batch honest-refusal once a cert
+  store is available); **POP3** (110) advertises + upgrades on `STLS` (was an
+  `-ERR`). After the upgrade the command loop continues over TLS and keeps
+  capturing credentials. Advertised only when a cert manager is wired and the
+  connection isn't already TLS, so the implicit-TLS variants don't offer a
+  pointless nested STARTTLS, and a TLS-less deployment never advertises it.
+- A fresh reader is created over the upgraded connection so any plaintext a
+  client pipelines after the STARTTLS command is dropped, not executed
+  (STARTTLS-injection defense).
+
+### Added — handlers: implicit-TLS services + PostgreSQL SSL
+- New implicit-TLS handlers **`smtps`** (465), **`imaps`** (993), **`pop3s`**
+  (995), **`ldaps`** (636), **`mqtts`** (8883), and **`ftps`** (990): a generic
+  TLS wrapper performs the handshake (self-signed cert from `<data_dir>/tls`,
+  shared with `https`; JA3/JA4 + JA3S computed) and runs the underlying protocol
+  over the encrypted channel. Previously TLS was served only by `https`.
+- **PostgreSQL** now honours an `SSLRequest` with a real TLS upgrade (answers
+  `S` then handshakes) instead of always refusing with `N`, so a libpq client
+  with `sslmode=require` proceeds and its cleartext password is captured.
+- A shared `certManager` backs all of the above, reusing the https handler's
+  on-disk cert format, per-service subject/key spread, and rotation window.
+
+### Changed — handlers: fail-safe line caps, honest IMAP STARTTLS, wider credential capture
+- Text-protocol handlers (**imap**, **pop3**, **smtp_recv**, **elasticsearch**,
+  **gopher**) now read command/header lines through a bounded reader
+  (`readLineCapped`, 8 KiB) instead of `bufio.ReadString('\n')`, so a
+  newline-less flood can no longer drive an unbounded allocation inside the read
+  deadline window.
+- **IMAP STARTTLS** no longer answers `OK` and then leaves the client's TLS
+  ClientHello to be read as plaintext (a broken-handshake fingerprint). It now
+  refuses honestly (`NO [PRIVACYREQUIRED] STARTTLS not available`), consistent
+  with the unadvertised capability and with the existing SMTP/FTP behaviour.
+- Broader credential / auth capture: **mqtt** runs CONNECT username+password
+  through the default-credential corpus (`mqtt-credential-attempt`); **winrm**
+  runs captured HTTP **Basic** creds through it too; **vnc** now records the
+  auth *challenge* alongside the response (the pair is needed to crack offline)
+  and flags `vnc-auth-attempt`; **kerberos** extracts the principal/realm
+  (the sprayed username) and flags `kerberos-principal-probe`.
+
+### Added — testharness: resilience + containment categories, run-info, more report formats & protocol specs
+- Two new fail-safe/fool-proof categories: **resilience** (oversize input,
+  half-open churn, connection flood, slow-drip starvation — the sensor must not
+  become the victim) and **containment** (no-egress canary + path-traversal —
+  do-no-harm). Both run in module and network modes.
+- Reports can now be emitted as **csv**, **rtf**, and **pdf** in addition to
+  text/json/junit/md (the PDF is hand-rolled — no new dependency).
+- Every run now records **before/during/after** context (host + Go env, config
+  summary, spawned-binary sha256, a sampled RSS/goroutine envelope, and
+  baseline-vs-final endpoint snapshots that flag drift / went-dark), surfaced in
+  the reports and the JSON `info` object.
+- Deep protocol specs (emulate/fuzz-smart/misimpl) added for **imap**, **pop3**,
+  **mysql**, **postgres**, **vnc**, **memcached**, **mqtt**, and **ldap**.
+
 ### Added — web UI: traffic counters + richer health page
 - The **summary** page opens with an at-a-glance counters strip — event
   volume by transport (TCP / UDP / ICMP) + high/critical from the store —

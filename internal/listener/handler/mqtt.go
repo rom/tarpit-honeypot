@@ -102,31 +102,56 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			idx = idx2
 		}
 	}
+	var mqUser, mqPass string
 	if flags&0x80 != 0 {
 		if user, idx2, ok := readMQTTString(body, idx); ok {
 			meta["username"] = user
+			mqUser = user
 			idx = idx2
 		}
 	}
 	if flags&0x40 != 0 {
 		if pass, _, ok := readMQTTString(body, idx); ok {
 			meta["password"] = pass
+			mqPass = pass
 		}
 	}
+	// Cleartext MQTT credentials — record the attempt and check the default-
+	// credential corpus so an IoT broker brute-force is detected like any other.
+	if mqUser != "" {
+		flagAnomaly(&res, "mqtt-credential-attempt")
+		flagDefaultCred(&res, mqUser, mqPass)
+	}
 
-	// CONNACK: fixed header (type=0x20, remlen=2) + session_present(0) + return_code(0)
-	connack := []byte{0x20, 0x02, 0x00, 0x00}
+	// CONNACK, version-aware. v3.1/3.1.1 (level 3/4) carry session_present +
+	// a 1-byte return code; v5 (level 5) adds a properties-length byte. An
+	// unsupported protocol level gets the "unacceptable protocol version" reject
+	// a real broker returns (0x01) — and we don't run the v3 session after it.
+	var connack []byte
+	switch protoLevel {
+	case 3, 4:
+		connack = []byte{0x20, 0x02, 0x00, 0x00} // accepted
+	case 5:
+		connack = []byte{0x20, 0x03, 0x00, 0x00, 0x00} // accepted + 0 properties
+	default:
+		connack = []byte{0x20, 0x02, 0x00, 0x01} // unacceptable protocol version
+		flagAnomaly(&res, "mqtt-unsupported-protocol-level")
+	}
 	if _, err := conn.Write(connack); err != nil {
 		meta["write_err"] = err.Error()
-		res.BannerSent = "mqtt CONNACK accepted"
+		res.BannerSent = "mqtt CONNACK"
 		return res, nil
 	}
-	res.BannerSent = "mqtt CONNACK accepted"
+	res.BannerSent = "mqtt CONNACK"
 
-	// Post-CONNACK session: answer the control packets a real broker would so
-	// a scanner/brute-forcer that proceeds past the handshake keeps talking —
-	// SUBSCRIBE (and wildcard data-harvesting), PUBLISH, PINGREQ keepalives.
-	mqttSession(conn, br, &res, meta)
+	// Post-CONNACK session: answer the control packets a real broker would so a
+	// scanner/brute-forcer that proceeds past the handshake keeps talking —
+	// SUBSCRIBE (and wildcard data-harvesting), PUBLISH, PINGREQ keepalives. The
+	// session emits v3-shaped control packets, so only run it for an accepted
+	// v3.x client (a rejected level disconnects; v5 framing differs).
+	if protoLevel == 3 || protoLevel == 4 {
+		mqttSession(conn, br, &res, meta)
+	}
 	return res, nil
 }
 

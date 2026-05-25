@@ -231,6 +231,106 @@ var specs = map[string]protoSpec{
 			{"empty-pri", []byte("<>no pri value")},
 		},
 	},
+	// IMAP4 (143/tcp). Server-first "* OK" greeting; a follow-up command
+	// exercises the parser. LOGIN/AUTHENTICATE harvest mail credentials.
+	"imap": {
+		ServerFirst: true, Probe: []byte("a1 CAPABILITY\r\n"), Banner: []string{"* OK"},
+		EmulateOK: func(r []byte) bool { return startsWith(r, "* OK") || bytes.Contains(r, []byte("CAPABILITY")) },
+		Smart: []namedBytes{
+			{"overlong-tag", []byte(strings.Repeat("a", 5000) + " CAPABILITY\r\n")},
+			{"huge-literal", []byte("a1 LOGIN {999999999}\r\n")},
+			{"binary-command", append([]byte("a1 "), bytes.Repeat([]byte{0x00, 0x01, 0x02}, 100)...)},
+		},
+		Misimpl: []misCase{{"not-imap", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// POP3 (110/tcp). Server-first "+OK" greeting; USER/PASS + SASL harvest creds.
+	"pop3": {
+		ServerFirst: true, Probe: []byte("CAPA\r\n"), Banner: []string{"+OK"},
+		EmulateOK: func(r []byte) bool { return startsWith(r, "+OK") },
+		Smart: []namedBytes{
+			{"overlong-user", []byte("USER " + strings.Repeat("A", 5000) + "\r\n")},
+			{"binary-command", append([]byte{0x00, 0x01, 0x02}, []byte(" USER x\r\n")...)},
+		},
+		Misimpl: []misCase{{"not-pop3", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// MySQL (3306/tcp). Server-first binary handshake: a 4-byte packet header
+	// then protocol version 0x0a.
+	"mysql": {
+		ServerFirst: true,
+		EmulateOK:   func(r []byte) bool { return len(r) >= 5 && r[4] == 0x0a },
+		Smart: []namedBytes{
+			{"oversized-login", append([]byte{0xff, 0xff, 0xff, 0x01}, bytes.Repeat([]byte{0x41}, 600)...)},
+			{"bad-length", []byte{0xff, 0xff, 0xff, 0x00}},
+		},
+		Misimpl: []misCase{{"http-to-mysql", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// PostgreSQL (5432/tcp). Client-first: an SSLRequest is answered with a
+	// single-byte 'N' (TLS unavailable).
+	"postgres": {
+		Probe:     []byte{0x00, 0x00, 0x00, 0x08, 0x04, 0xd2, 0x16, 0x2f},
+		EmulateOK: func(r []byte) bool { return len(r) >= 1 && (r[0] == 'N' || r[0] == 'S' || r[0] == 'E' || r[0] == 'R') },
+		Smart: []namedBytes{
+			{"oversized-startup", append([]byte{0x00, 0x00, 0xff, 0xff, 0x00, 0x03, 0x00, 0x00}, bytes.Repeat([]byte{0x41}, 300)...)},
+			{"bad-length", []byte{0xff, 0xff, 0xff, 0xff}},
+		},
+		Misimpl: []misCase{{"http-to-postgres", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// VNC / RFB (5900/tcp). Server-first version string "RFB 003.008\n".
+	"vnc": {
+		ServerFirst: true, Probe: []byte("RFB 003.008\n"), Banner: []string{"RFB "},
+		EmulateOK: func(r []byte) bool { return startsWith(r, "RFB ") },
+		Smart: []namedBytes{
+			{"bad-version", []byte("RFB 999.999\n")},
+			{"short-version", []byte("RFB\n")},
+			{"binary-version", append([]byte("RFB "), bytes.Repeat([]byte{0x00}, 64)...)},
+		},
+		Misimpl: []misCase{{"http-to-vnc", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// memcached (11211/tcp), text protocol. "version" returns "VERSION x.y.z".
+	"memcached": {
+		Probe:     []byte("version\r\n"),
+		Banner:    []string{"VERSION"},
+		EmulateOK: func(r []byte) bool { return bytes.Contains(r, []byte("VERSION")) || bytes.Contains(r, []byte("ERROR")) },
+		Smart: []namedBytes{
+			{"oversized-get", []byte("get " + strings.Repeat("k", 5000) + "\r\n")},
+			{"huge-set", []byte("set x 0 0 999999999\r\n")},
+			{"binary", []byte{0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+		},
+		Misimpl: []misCase{{"http-to-memcached", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// MQTT (1883/tcp). Client-first: a CONNECT is answered with CONNACK (0x20);
+	// the decoy harvests CONNECT username/password.
+	"mqtt": {
+		Probe:     mqttConnectProbe(),
+		EmulateOK: func(r []byte) bool { return len(r) >= 2 && r[0] == 0x20 },
+		Smart: []namedBytes{
+			{"oversize-remlen", []byte{0x10, 0xff, 0xff, 0xff, 0x7f}},
+			{"bad-proto-name", []byte{0x10, 0x0a, 0x00, 0x04, 'X', 'X', 'X', 'X', 0x04, 0x02, 0x00, 0x3c}},
+			{"truncated", []byte{0x10, 0x02, 0x00}},
+		},
+		Misimpl: []misCase{{"text-to-mqtt", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+	// LDAP (389/tcp). Client-first BER: an anonymous simple bind is answered
+	// with a bindResponse (LDAPMessage SEQUENCE, tag 0x30).
+	"ldap": {
+		Probe:     []byte{0x30, 0x0c, 0x02, 0x01, 0x01, 0x60, 0x07, 0x02, 0x01, 0x03, 0x04, 0x00, 0x80, 0x00},
+		EmulateOK: func(r []byte) bool { return len(r) >= 2 && r[0] == 0x30 },
+		Smart: []namedBytes{
+			{"bad-ber-length", []byte{0x30, 0x84, 0xff, 0xff, 0xff, 0xff}},
+			{"truncated-bind", []byte{0x30, 0x0c, 0x02, 0x01, 0x01, 0x60}},
+			{"overlong-dn", append([]byte{0x30, 0x82, 0x10, 0x00, 0x02, 0x01, 0x01, 0x60, 0x07, 0x02, 0x01, 0x03, 0x04, 0x00, 0x80, 0x00}, bytes.Repeat([]byte{0x41}, 200)...)},
+		},
+		Misimpl: []misCase{{"http-to-ldap", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
+	},
+}
+
+// mqttConnectProbe builds a minimal MQTT 3.1.1 CONNECT packet (clean session,
+// no auth) for the emulate/unit probe; a broker answers it with CONNACK.
+func mqttConnectProbe() []byte {
+	vh := []byte{0x00, 0x04, 'M', 'Q', 'T', 'T', 0x04, 0x02, 0x00, 0x3c}
+	cid := []byte{0x00, 0x07, 'h', 'a', 'r', 'n', 'e', 's', 's'}
+	body := append(append([]byte{}, vh...), cid...)
+	return append([]byte{0x10, byte(len(body))}, body...)
 }
 
 func sipSpec() protoSpec {

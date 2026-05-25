@@ -102,7 +102,13 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		return res, nil
 	}
 	res.Payload = append(res.Payload, response...)
+	// Record the challenge alongside the response: a VNC password is only
+	// offline-crackable from the (challenge, DES-response) pair, so capturing
+	// just the response is not actionable. Flag the auth attempt so a VNC
+	// default-password brute-force surfaces as an event.
+	res.Meta["challenge_hex"] = byteToHex(challenge)
 	res.Meta["auth_response_hex"] = byteToHex(response)
+	flagAnomaly(&res, "vnc-auth-attempt")
 
 	// SecurityResult = 1 (failed).
 	_, _ = conn.Write([]byte{0, 0, 0, 1})

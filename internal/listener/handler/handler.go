@@ -8,6 +8,7 @@
 package handler
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -226,9 +227,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "vnc":
 		return &vnc{id: deps.Identity}, nil
 	case "smtp_recv":
-		return &smtpRecv{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
+		return newSMTPRecv(deps), nil
 	case "rdp":
-		return &rdp{}, nil
+		return newRDP(deps), nil
 	case "winrm":
 		return &winrm{}, nil
 	case "dcerpc":
@@ -238,7 +239,19 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "kerberos":
 		return &kerberos{}, nil
 	case "postgres":
-		return &postgres{}, nil
+		return newPostgres(deps), nil
+	case "smtps":
+		return newTLSWrap("smtp_recv", "smtps", deps)
+	case "imaps":
+		return newTLSWrap("imap", "imaps", deps)
+	case "pop3s":
+		return newTLSWrap("pop3", "pop3s", deps)
+	case "ldaps":
+		return newTLSWrap("ldap", "ldaps", deps)
+	case "mqtts":
+		return newTLSWrap("mqtt", "mqtts", deps)
+	case "ftps":
+		return newTLSWrap("ftp", "ftps", deps)
 	case "mysql":
 		return &mysql{id: deps.Identity, arch: deps.Archetype}, nil
 	case "redis":
@@ -246,9 +259,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "memcached":
 		return &memcached{id: deps.Identity}, nil
 	case "pop3":
-		return &pop3{}, nil
+		return newPOP3(deps), nil
 	case "imap":
-		return &imap{}, nil
+		return newIMAP(deps), nil
 	case "mongodb":
 		return &mongodb{id: deps.Identity}, nil
 	case "elasticsearch":
@@ -330,7 +343,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "mssql":
 		return &mssql{id: deps.Identity}, nil
 	case "oracle_tns":
-		return &oracleTNS{}, nil
+		return &oracleTNS{id: deps.Identity}, nil
 	case "teamviewer":
 		return &teamviewer{}, nil
 	case "anydesk":
@@ -373,4 +386,31 @@ func withTimeout(conn net.Conn, d time.Duration) {
 	deadline := time.Now().Add(d)
 	_ = conn.SetReadDeadline(deadline)
 	_ = conn.SetWriteDeadline(deadline)
+}
+
+// maxLineBytes caps a single text-protocol line read. The read deadline bounds
+// how long a client can take, but not how much memory an unterminated flood can
+// accumulate before it fires; this bounds the allocation. 8 KiB is generous for
+// any command / header line we model.
+const maxLineBytes = 8192
+
+// readLineCapped reads through the next '\n' but never more than max bytes,
+// returning what it read (including the '\n' when present), plus any read
+// error. A line that reaches the cap is returned as-is with a nil error — it is
+// treated as a (truncated) line rather than allowed to grow without bound. This
+// mirrors bufio.Reader.ReadString('\n') for the callers' purposes while making
+// a newline-less flood safe.
+func readLineCapped(br *bufio.Reader, max int) (string, error) {
+	buf := make([]byte, 0, 128)
+	for len(buf) < max {
+		c, err := br.ReadByte()
+		if err != nil {
+			return string(buf), err
+		}
+		buf = append(buf, c)
+		if c == '\n' {
+			break
+		}
+	}
+	return string(buf), nil
 }

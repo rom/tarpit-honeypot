@@ -14,7 +14,9 @@ import (
 // the pre-auth recon commands (CAPABILITY / ID / NAMESPACE / LIST / STATUS),
 // captures LOGIN and SASL AUTHENTICATE credentials, and rejects the auth —
 // mail-credential harvesting bait. Nothing is stored or delivered.
-type imap struct{}
+type imap struct{ tlsMgr *certManager }
+
+func newIMAP(deps Deps) *imap { return &imap{tlsMgr: maybeCertMgr(deps)} }
 
 func (m *imap) Name() string { return "imap" }
 
@@ -23,16 +25,21 @@ func (m *imap) Name() string { return "imap" }
 // the declarative extensions a stock Dovecot lists.
 const imapCaps = "IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE NAMESPACE AUTH=PLAIN AUTH=LOGIN"
 
-func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
-	_, _ = conn.Write([]byte("* OK [CAPABILITY " + imapCaps + "] Dovecot ready.\r\n"))
+	// Advertise STARTTLS only when we can actually perform it.
+	caps := imapCaps
+	if m.tlsMgr != nil && !alreadyTLS(conn) {
+		caps += " STARTTLS"
+	}
+	_, _ = conn.Write([]byte("* OK [CAPABILITY " + caps + "] Dovecot ready.\r\n"))
 	res.BannerSent = "* OK IMAP4rev1 ready"
 
 	br := bufio.NewReader(conn)
 	var commands []string
 	for i := 0; i < 12; i++ {
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			if i == 0 {
 				res.Meta["read_err"] = err.Error()
@@ -69,17 +76,32 @@ func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			}
 			_, _ = conn.Write([]byte(tag + " NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"))
 		case "CAPABILITY":
-			_, _ = conn.Write([]byte("* CAPABILITY " + imapCaps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
+			_, _ = conn.Write([]byte("* CAPABILITY " + caps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
 		case "ID":
 			// Clients send their own ID; we answer with a Dovecot-shaped one.
 			_, _ = conn.Write([]byte("* ID (\"name\" \"Dovecot\")\r\n" + tag + " OK ID completed.\r\n"))
 		case "NAMESPACE":
 			_, _ = conn.Write([]byte("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n" + tag + " OK NAMESPACE completed.\r\n"))
 		case "STARTTLS":
-			// We don't negotiate TLS — a real LOGINDISABLED-until-TLS server
-			// still accepts the command; we answer OK then the client would
-			// start TLS (which we can't), so most fall back to plaintext LOGIN.
+			if m.tlsMgr == nil || alreadyTLS(conn) {
+				// Can't (or needn't) negotiate: refuse honestly rather than
+				// answer OK and leave the client's ClientHello to be read as
+				// plaintext IMAP.
+				_, _ = conn.Write([]byte(tag + " NO [PRIVACYREQUIRED] STARTTLS not available.\r\n"))
+				continue
+			}
 			_, _ = conn.Write([]byte(tag + " OK Begin TLS negotiation now.\r\n"))
+			nc, err := startTLS(ctx, conn, m.tlsMgr, cfg.ID, tlsHosts(cfg), nil)
+			if err != nil {
+				res.Meta["tls_err"] = err.Error()
+				res.Meta["commands"] = commands
+				return res, nil
+			}
+			conn = nc
+			br = bufio.NewReader(conn)
+			withTimeout(conn, cfg.ReadTimeout)
+			res.Meta["tls"] = true
+			res.Meta["starttls"] = true
 		case "AUTHENTICATE":
 			m.handleIMAPAuth(rest, br, conn, tag, &res)
 		case "LIST", "LSUB":
@@ -125,7 +147,7 @@ func (m *imap) handleIMAPAuth(rest string, br *bufio.Reader, conn net.Conn, tag 
 			blob = f[1] // SASL-IR inline
 		} else {
 			_, _ = conn.Write([]byte("+ \r\n"))
-			line, _ := br.ReadString('\n')
+			line, _ := readLineCapped(br, maxLineBytes)
 			blob = strings.TrimRight(line, "\r\n")
 		}
 		// PLAIN: base64(authzid \0 authcid \0 passwd)
@@ -140,9 +162,9 @@ func (m *imap) handleIMAPAuth(rest string, br *bufio.Reader, conn net.Conn, tag 
 		_, _ = conn.Write([]byte(tag + " NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"))
 	case "LOGIN":
 		_, _ = conn.Write([]byte("+ " + base64.StdEncoding.EncodeToString([]byte("Username:")) + "\r\n"))
-		uLine, _ := br.ReadString('\n')
+		uLine, _ := readLineCapped(br, maxLineBytes)
 		_, _ = conn.Write([]byte("+ " + base64.StdEncoding.EncodeToString([]byte("Password:")) + "\r\n"))
-		pLine, _ := br.ReadString('\n')
+		pLine, _ := readLineCapped(br, maxLineBytes)
 		if u, err := base64.StdEncoding.DecodeString(strings.TrimRight(uLine, "\r\n")); err == nil {
 			res.Meta["auth_user"] = string(u)
 		}

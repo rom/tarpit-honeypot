@@ -1,16 +1,27 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"io"
 	"net"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/cve"
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 )
 
-type rdp struct{}
+type rdp struct {
+	tlsMgr *certManager
+	arch   *archetype.Profile
+}
+
+func newRDP(deps Deps) *rdp {
+	return &rdp{tlsMgr: maybeCertMgr(deps), arch: deps.Archetype}
+}
 
 func (r *rdp) Name() string { return "rdp" }
 
@@ -26,7 +37,7 @@ func (r *rdp) Name() string { return "rdp" }
 // reply with an X.224 Connection Confirm announcing PROTOCOL_SSL only —
 // which makes most scanners attempt TLS, at which point our flow ends
 // (we can't speak full RDP).
-func (r *rdp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
 
@@ -91,9 +102,72 @@ func (r *rdp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	tpktOut := []byte{0x03, 0x00, 0x00, byte(4 + len(cc))}
 	if _, err := conn.Write(append(tpktOut, cc...)); err != nil {
 		res.Meta["write_err"] = err.Error()
+		return res, nil
 	}
 	res.BannerSent = "rdp X.224 CC + RDP_NEG_RSP(PROTOCOL_SSL)"
+
+	// Having selected PROTOCOL_SSL, a real server now performs the TLS
+	// handshake the client expects. Without a cert manager (no data dir) we
+	// stop here as before. With one, we complete the handshake — recording
+	// JA3/JA3S — and then read the CredSSP/NLA exchange, best-effort harvesting
+	// the NTLMSSP domain/user (and the offline-crackable NetNTLM response) an
+	// NLA brute-force leaks.
+	if r.tlsMgr == nil {
+		return res, nil
+	}
+	tcfg, err := r.tlsMgr.serverConfig(cfg.ID, tlsHosts(cfg), r.arch)
+	if err != nil {
+		res.Meta["cert_err"] = err.Error()
+		return res, nil
+	}
+	peeker := newPeekConn(conn)
+	ja3Hash, ja3Raw, ja4 := "", "", ""
+	if ch, ok := peeker.peekClientHello(); ok {
+		ja3Raw, ja3Hash = fingerprint.JA3(ch)
+		ja4 = fingerprint.JA4(ch)
+	}
+	capConn := newCaptureConn(peeker, 4096)
+	tlsConn := tls.Server(capConn, tcfg)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		res.Meta["tls_err"] = err.Error()
+		addFP(res.Meta, ja3Hash, ja3Raw, ja4, "", "")
+		return res, nil
+	}
+	res.Meta["tls"] = true
+	res.Meta["tls_version"] = tlsVersionName(tlsConn.ConnectionState().Version)
+	ja3sRaw, ja3sHash := "", ""
+	if sh := capConn.serverHello(); sh != nil {
+		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
+	}
+	addFP(res.Meta, ja3Hash, ja3Raw, ja4, ja3sHash, ja3sRaw)
+	res.BannerSent = "rdp TLS + CredSSP"
+
+	// Read the first post-TLS message (CredSSP TSRequest carrying SPNEGO/NTLM).
+	withTimeout(tlsConn, cfg.ReadTimeout)
+	buf := make([]byte, 4096)
+	if n, _ := tlsConn.Read(buf); n > 0 {
+		res.Payload = append(res.Payload, buf[:n]...)
+		if tok := findNTLMSSP(buf[:n]); tok != nil {
+			if dom, user, nt := parseNTLMType3(tok); user != "" {
+				res.Meta["ntlm_domain"] = dom
+				res.Meta["ntlm_user"] = user
+				if nt != "" {
+					res.Meta["ntlm_response_hex"] = nt
+				}
+				flagAnomaly(&res, "rdp-ntlm-auth")
+			}
+		}
+	}
 	return res, nil
+}
+
+// findNTLMSSP returns the slice of b starting at the NTLMSSP signature (the NTLM
+// token embedded in a CredSSP/SPNEGO blob), or nil if absent.
+func findNTLMSSP(b []byte) []byte {
+	if i := bytes.Index(b, []byte("NTLMSSP\x00")); i >= 0 {
+		return b[i:]
+	}
+	return nil
 }
 
 func extractCookie(b []byte) string {

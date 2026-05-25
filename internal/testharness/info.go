@@ -27,7 +27,14 @@ type RunInfo struct {
 	Final      []EndpointSnapshot `json:"final,omitempty"`
 	Resources  ResourceStats      `json:"resources"`
 	StoppedHow string             `json:"stopped_how,omitempty"`
+	SelfCheck  string             `json:"self_check,omitempty"`       // harness pass/fail-control result
+	Expected   int                `json:"expected_results,omitempty"` // (case,round) pairs dispatched
+	Recorded   int                `json:"recorded_results,omitempty"` // results recorded (== Expected)
 }
+
+// AccountingOK reports whether every dispatched case produced exactly one
+// recorded result (no result silently lost).
+func (in RunInfo) AccountingOK() bool { return in.Expected == in.Recorded }
 
 // HostInfo describes the machine the harness ran on.
 type HostInfo struct {
@@ -277,6 +284,13 @@ func infoLines(rr *RunResult) []string {
 	}
 	if in.Binary != nil {
 		add("  binary     %s sha256=%s (%d bytes)", in.Binary.Path, shortHash(in.Binary.SHA256), in.Binary.SizeBytes)
+	}
+	if in.SelfCheck != "" || in.Expected > 0 {
+		acct := fmt.Sprintf("%d/%d results recorded", in.Recorded, in.Expected)
+		if !in.AccountingOK() {
+			acct += " — MISMATCH (a result was lost)"
+		}
+		add("  harness    self-check %s; accounting %s", in.SelfCheck, acct)
 	}
 	r := in.Resources
 	add("resources (%s):", r.Source)

@@ -23,7 +23,7 @@ func (gopherH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	res := Result{Meta: map[string]any{}}
 
 	br := bufio.NewReader(conn)
-	selector, _ := br.ReadString('\n')
+	selector, _ := readLineCapped(br, maxLineBytes)
 	raw := strings.TrimRight(selector, "\r\n")
 	res.Payload = append([]byte(nil), []byte(selector)...)
 	res.Meta["gopher_selector"] = raw

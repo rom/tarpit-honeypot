@@ -49,8 +49,8 @@ func TestDurationStringAndMarshal(t *testing.T) {
 
 func TestAllCategories(t *testing.T) {
 	cats := AllCategories()
-	if len(cats) != 10 {
-		t.Errorf("AllCategories len = %d; want 10", len(cats))
+	if len(cats) != 11 {
+		t.Errorf("AllCategories len = %d; want 11", len(cats))
 	}
 	seen := map[Category]bool{}
 	for _, c := range cats {
@@ -59,7 +59,7 @@ func TestAllCategories(t *testing.T) {
 		}
 		seen[c] = true
 	}
-	for _, want := range []Category{CatUnit, CatEmulate, CatMisimpl, CatFuzzDumb, CatFuzzSmart, CatScan, CatFingerprint, CatReliability, CatResilience, CatContainment} {
+	for _, want := range []Category{CatUnit, CatEmulate, CatMisimpl, CatFuzzDumb, CatFuzzSmart, CatScan, CatFingerprint, CatReliability, CatResilience, CatContainment, CatIntegrity} {
 		if !seen[want] {
 			t.Errorf("missing category %s", want)
 		}

@@ -27,7 +27,7 @@ func (e *elasticsearch) Handle(_ context.Context, conn net.Conn, cfg config.List
 	res := Result{Meta: map[string]any{}}
 
 	br := bufio.NewReader(conn)
-	first, err := br.ReadString('\n')
+	first, err := readLineCapped(br, maxLineBytes)
 	if err != nil {
 		res.Meta["read_err"] = err.Error()
 		return res, nil
@@ -41,7 +41,7 @@ func (e *elasticsearch) Handle(_ context.Context, conn net.Conn, cfg config.List
 	// MVEL scripting-RCE payloads live in a POST body to _search.
 	contentLen := 0
 	for i := 0; i < 64; i++ {
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil || line == "\r\n" || line == "\n" {
 			break
 		}

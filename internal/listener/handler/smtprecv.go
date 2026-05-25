@@ -15,9 +15,14 @@ import (
 )
 
 type smtpRecv struct {
-	id   *identity.Identity
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
+	id     *identity.Identity
+	jit    *jitter.Jitterer
+	arch   *archetype.Profile
+	tlsMgr *certManager
+}
+
+func newSMTPRecv(deps Deps) *smtpRecv {
+	return &smtpRecv{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, tlsMgr: maybeCertMgr(deps)}
 }
 
 func (s *smtpRecv) Name() string { return "smtp_recv" }
@@ -49,6 +54,12 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	if len(exts) == 0 {
 		exts = defaultSMTPExtensions
 	}
+	// Advertise STARTTLS only when we can actually negotiate it (a cert manager
+	// is wired and we're not already inside TLS), keeping the advertisement
+	// honest.
+	if s.tlsMgr != nil && !alreadyTLS(conn) {
+		exts = withSTARTTLS(exts)
+	}
 	greet := "220 " + host + " ESMTP " + product + "\r\n"
 	if cfg.Banner != "" {
 		greet = cfg.Banner
@@ -62,7 +73,7 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 
 	rcpt := []string{}
 	for i := 0; i < 32; i++ {
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			res.Meta["read_err"] = err.Error()
 			break
@@ -134,8 +145,24 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			}
 			return res, nil
 		case "STARTTLS":
-			// We don't actually negotiate; reply 454 so the client falls back.
-			fmt.Fprintf(conn, "454 STARTTLS unavailable\r\n")
+			if s.tlsMgr == nil || alreadyTLS(conn) {
+				fmt.Fprintf(conn, "454 4.7.0 STARTTLS unavailable\r\n")
+				break
+			}
+			fmt.Fprintf(conn, "220 2.0.0 Ready to start TLS\r\n")
+			nc, err := startTLS(ctx, conn, s.tlsMgr, cfg.ID, tlsHosts(cfg), s.arch)
+			if err != nil {
+				res.Meta["tls_err"] = err.Error()
+				return res, nil
+			}
+			conn = nc
+			br = bufio.NewReader(conn)
+			withTimeout(conn, cfg.ReadTimeout)
+			res.Meta["tls"] = true
+			res.Meta["starttls"] = true
+			// RFC 3207: discard any state learned before the TLS upgrade.
+			delete(res.Meta, "helo")
+			rcpt = rcpt[:0]
 		case "":
 			// empty line — ignore
 		default:
@@ -176,12 +203,26 @@ func isExternalAddr(addr string) bool {
 
 // defaultSMTPExtensions is the ESMTP keyword set a stock Postfix advertises
 // in EHLO. We list only capabilities the handler actually honours (or that
-// are purely declarative) so advertising stays consistent with behaviour —
-// no STARTTLS, since we never negotiate TLS. Archetypes whose MTA differs
-// (Exchange, sendmail) override via Profile.smtpExtensions.
+// are purely declarative) so advertising stays consistent with behaviour.
+// STARTTLS is appended at runtime by withSTARTTLS when a cert manager is wired
+// (it is omitted here so a TLS-less deployment never advertises it). Archetypes
+// whose MTA differs (Exchange, sendmail) override via Profile.smtpExtensions.
 var defaultSMTPExtensions = []string{
 	"PIPELINING", "SIZE 10240000", "VRFY", "ETRN", "AUTH PLAIN LOGIN CRAM-MD5",
 	"ENHANCEDSTATUSCODES", "8BITMIME", "DSN", "CHUNKING", "SMTPUTF8",
+}
+
+// withSTARTTLS returns exts with STARTTLS appended (a fresh slice, so the
+// shared default isn't mutated), unless it is already present.
+func withSTARTTLS(exts []string) []string {
+	for _, e := range exts {
+		if strings.EqualFold(e, "STARTTLS") {
+			return exts
+		}
+	}
+	out := make([]string, len(exts), len(exts)+1)
+	copy(out, exts)
+	return append(out, "STARTTLS")
 }
 
 // buildSMTPEHLO renders a multiline 250 EHLO reply: the greeting host on
@@ -238,7 +279,7 @@ func (s *smtpRecv) handleAuth(arg string, br *bufio.Reader, conn net.Conn, meta 
 			encoded = parts[1]
 		} else {
 			fmt.Fprintf(conn, "334 \r\n")
-			line, _ := br.ReadString('\n')
+			line, _ := readLineCapped(br, maxLineBytes)
 			encoded = strings.TrimSpace(line)
 		}
 		raw, _ := base64.StdEncoding.DecodeString(encoded)
@@ -251,10 +292,10 @@ func (s *smtpRecv) handleAuth(arg string, br *bufio.Reader, conn net.Conn, meta 
 		fmt.Fprintf(conn, "535 Authentication failed\r\n")
 	case "LOGIN":
 		fmt.Fprintf(conn, "334 VXNlcm5hbWU6\r\n") // base64 "Username:"
-		l1, _ := br.ReadString('\n')
+		l1, _ := readLineCapped(br, maxLineBytes)
 		userB64 := strings.TrimSpace(l1)
 		fmt.Fprintf(conn, "334 UGFzc3dvcmQ6\r\n") // base64 "Password:"
-		l2, _ := br.ReadString('\n')
+		l2, _ := readLineCapped(br, maxLineBytes)
 		passB64 := strings.TrimSpace(l2)
 		if u, err := base64.StdEncoding.DecodeString(userB64); err == nil {
 			meta["auth_user"] = string(u)
@@ -268,7 +309,7 @@ func (s *smtpRecv) handleAuth(arg string, br *bufio.Reader, conn net.Conn, meta 
 		// space hmac-md5-hex"). We can't recover the plaintext password,
 		// but the username + the HMAC (offline-crackable) are worth capturing.
 		fmt.Fprintf(conn, "334 PDEyMzQ1Njc4OUBtYWlsPg==\r\n") // base64 "<123456789@mail>"
-		l, _ := br.ReadString('\n')
+		l, _ := readLineCapped(br, maxLineBytes)
 		if raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(l)); err == nil {
 			if sp := strings.IndexByte(string(raw), ' '); sp > 0 {
 				meta["auth_user"] = string(raw[:sp])
