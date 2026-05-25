@@ -58,9 +58,25 @@ endpoints:
   - { label: mysql,      proto: tcp, port: 3306,  handler: mysql }
   - { label: vnc,        proto: tcp, port: 5900,  handler: vnc }
 
-# Scope: empty categories => every category runs.
+# Scope: every category runs. The `cases` allow-list is every category plus the
+# UA/SSH scanner-fingerprint cases, but deliberately omits fingerprint/nmap-sV:
+# that one shells out to the real `nmap` binary (generated only when nmap is on
+# PATH), and a tarpit slows `nmap -sV` past nmap's own timeout so the process is
+# SIGKILL'd and reported as a harness error. Scanner detection is still covered
+# by the UA-based fingerprint cases. Run the real-nmap case on its own when you
+# want it:
+#   bin/tarpit-testharness run -c configs/harness-full.yaml --case fingerprint/nmap-sV
 categories: []
-cases: []
+cases:
+  - unit
+  - emulate
+  - misimpl
+  - fuzz-dumb
+  - fuzz-smart
+  - scan
+  - reliability
+  - fingerprint/http-*
+  - fingerprint/ssh-scanner
 rounds: 1
 duration: 0            # wall-clock bound, e.g. 30m (0 = run to completion)
 # concurrency: 1 keeps the run deterministic AND keeps the sensor's event
