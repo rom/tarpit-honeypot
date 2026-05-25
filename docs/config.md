@@ -710,42 +710,70 @@ sensor name.
 
 A single sensor only ever sees one vantage point. Once events from many sensors
 converge on an aggregator (via `ingest:`), the **fleet** correlator runs over
-the merged local + ingested stream and surfaces patterns no one node can see:
-the same attacker identity hammering several honeypots at once. It keys events
-by identity, tracks the distinct sensors (and, for fingerprints, the distinct
-sources) each identity touches within a window, and emits a high-severity
-`fleet:*` event the first time an identity crosses a breadth threshold (once per
-window). The alerts flow through the same pipeline as everything else (store, UI,
-routes, risk scoring, and onward `forward:`).
+the merged local + ingested stream and surfaces patterns no one node can see. It
+keys events by attacker identity *and* by shared artifact, tracks the distinct
+sensors (and, where useful, sources) each touches within a window, and emits a
+`fleet:*` event the first time a pattern crosses its threshold (once per window).
+The alerts flow through the same pipeline as everything else (store, UI, routes,
+risk scoring, and onward `forward:`).
 
 It is **on by default wherever `ingest:` is enabled** (where the patterns can
 appear); a leaf sensor stays off. Set `fleet.enabled` explicitly to force it on
-or off.
+or off. Every threshold has a sensible default — an empty `fleet: {}` (or just
+enabling `ingest:`) gets the full set.
 
 ```yaml
 fleet:
-  enabled: true        # default: on when ingest is enabled; set false to opt out
-  window: 1h           # how long an identity's activity is remembered
-  source_sensors: 3    # one source IP on >= N sensors -> fleet:source-multi-sensor
-  asn_sensors: 5       # one ASN on >= N sensors -> fleet:asn-multi-sensor
-  fp_sensors: 3        # one ja3/ja4/hassh on >= N sensors ...
-  fp_sources: 5        #   ... AND >= M distinct sources -> fleet:fingerprint-shared
-  max_list: 50         # cap the sensor/source list carried in the alert meta
+  enabled: true          # default: on when ingest is enabled; set false to opt out
+  window: 1h             # how long an identity's activity is remembered
+  # breadth — one identity hammering many sensors:
+  source_sensors: 3      # one source IP on >= N sensors -> fleet:source-multi-sensor
+  asn_sensors: 5         # one ASN on >= N sensors -> fleet:asn-multi-sensor
+  fp_sensors: 3          # one ja3/ja4/hassh on >= N sensors ...
+  fp_sources: 5          #   ... AND >= M distinct sources -> fleet:fingerprint-shared
+  # shared-artifact campaigns — the same thing recurring across sensors:
+  payload_sensors: 2     # same malware hash on >= N sensors -> fleet:payload-campaign
+  cred_sensors: 2        # same credential pair on >= N sensors -> fleet:credential-campaign
+  cve_sensors: 3         # same CVE on >= N sensors -> fleet:cve-wave
+  # coordinated infrastructure — many IPs from one block, one per target:
+  subnet_sensors: 3      # a /24 (or /64) covering >= N sensors ...
+  subnet_sources: 3      #   ... via >= M distinct IPs -> fleet:subnet-coordinated
+  # peer-relative outlier — a sensor far louder than its peers:
+  outlier_min_events: 100  # min high-sev events before a node is an outlier candidate
+  outlier_factor: 4        # ... and its high-sev count must exceed this x the peer median
+  outlier_min_peers: 3     # need at least this many other sensors to compare against
+  # broad-vs-targeted classifier:
+  broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
+  max_list: 50           # cap the sensor/source list carried in the alert meta
 ```
 
-The three detectors:
+The detectors, by the vantage axis they exploit:
 
-| Event | Fires when | Reads |
-|-------|-----------|-------|
-| `fleet:source-multi-sensor` | one **source IP** seen on >= `source_sensors` sensors | a single attacker sweeping the fleet |
-| `fleet:asn-multi-sensor` | one **ASN** seen on >= `asn_sensors` sensors | coordinated / distributed from one network (needs GeoIP-ASN enrichment) |
-| `fleet:fingerprint-shared` | one **ja3/ja4/hassh** on >= `fp_sensors` sensors **and** >= `fp_sources` distinct sources | a shared toolkit / botnet — IPs differ, client stack is identical |
+| Event | Fires when | Why an aggregator is needed |
+|-------|-----------|------------------------------|
+| `fleet:source-multi-sensor` | one **source IP** on >= `source_sensors` sensors | a single attacker sweeping the fleet |
+| `fleet:asn-multi-sensor` | one **ASN** on >= `asn_sensors` sensors | coordinated / distributed from one network (needs GeoIP-ASN enrichment) |
+| `fleet:fingerprint-shared` | one **ja3/ja4/hassh** on >= `fp_sensors` sensors **and** >= `fp_sources` sources | a shared toolkit / botnet — IPs differ, client stack is identical |
+| `fleet:payload-campaign` | the same artifact **SHA-256** on >= `payload_sensors` sensors | one malware sample on separate honeypots = one distribution campaign |
+| `fleet:credential-campaign` | the same **username:password** on >= `cred_sensors` sensors | shared stuffing list, or a **honeytoken credential** planted on A now used against B |
+| `fleet:cve-wave` | the same **CVE** on >= `cve_sensors` sensors | a worm / mass-exploitation wave; coverage tells targeted from internet-wide |
+| `fleet:subnet-coordinated` | >= `subnet_sources` IPs from one **/24 (or /64)** covering >= `subnet_sensors` sensors | the one-IP-per-target botnet that slips under every per-sensor threshold |
+| `fleet:outlier-sensor` | a **sensor**'s high-sev volume crosses `outlier_min_events` and exceeds `outlier_factor` x the peer median | that node was specifically found / targeted — only visible with peer baselines |
 
-Each alert carries the triggering `source`, the breadth counts, the (capped,
-sorted) `sensors` / `sources` lists, and the `window`. The fleet detectors run
-*after* enrichment, so the ASN detector sees the `asn` tag; configure
-`sensor.geoip.asn_db` on the aggregator for `fleet:asn-multi-sensor`. `fleet:*`
-events are never re-correlated (loop guard).
+Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
+`sources` lists, and the `window`. The detectors run *after* enrichment, so the
+ASN detector sees the `asn` tag — configure `sensor.geoip.asn_db` on the
+aggregator for `fleet:asn-multi-sensor`. `fleet:*` events are never
+re-correlated (loop guard).
+
+**Broad vs targeted.** Every public honeypot is scanned constantly by
+Censys/Shodan/etc., so a naive breadth alert is noisy. The breadth/wave
+detectors (`source-multi-sensor`, `asn-multi-sensor`, `cve-wave`) therefore add
+a `coverage` ratio (`sensors_hit / active_sensors`) and a `scope`: a hit
+spanning >= `broad_coverage` of the fleet is **broad** (internet background,
+reported `medium`); a hit on a specific subset is **targeted** (`high`). The
+shared-artifact and coordination detectors don't need this — a shared malware
+hash or honeytoken credential is never background noise.
 
 ## `egress:` — outbound containment (do-no-harm)
 

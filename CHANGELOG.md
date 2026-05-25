@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: five more cross-sensor correlators (phase 2b)
+- **`fleet:payload-campaign`** — the same malware/shellcode artifact (by
+  SHA-256, parsed from `payload_artifacts`) landing on >= `payload_sensors` (2)
+  sensors: one sample on separate honeypots is one distribution campaign. Never
+  background noise.
+- **`fleet:credential-campaign`** — the same `username:password` tried on >=
+  `cred_sensors` (2) sensors: a shared stuffing list, or — the high-value case —
+  a **honeytoken credential** planted on one node now used against others.
+- **`fleet:cve-wave`** — the same CVE exploit on >= `cve_sensors` (3) sensors:
+  a worm / mass-exploitation wave.
+- **`fleet:subnet-coordinated`** — >= `subnet_sources` (3) distinct IPs from one
+  source `/24` (or `/64`) collectively covering >= `subnet_sensors` (3) sensors:
+  the one-IP-per-target botnet that slips under every per-sensor threshold (and
+  under `source-multi-sensor`, which needs a single IP).
+- **`fleet:outlier-sensor`** — a sensor whose high-severity volume crosses
+  `outlier_min_events` (100) AND exceeds `outlier_factor` (4) x the peer median
+  (with >= `outlier_min_peers` (3) peers to compare): that node was specifically
+  found / targeted. Volume-relative, so robust to nodes running different handler
+  mixes; purely aggregator-only (needs peer baselines).
+- **Broad-vs-targeted classifier** — the breadth/wave detectors
+  (`source-/asn-multi-sensor`, `cve-wave`) now stamp a `coverage` ratio
+  (`sensors_hit / active_sensors`) and a `scope`: a hit spanning >=
+  `broad_coverage` (0.8) of the fleet is `broad` internet background (downgraded
+  to medium), a specific subset is `targeted` (high). Cuts the
+  Censys/Shodan-scanning noise that would otherwise dominate the breadth alerts.
+- All thresholds are configurable under `fleet:` with sensible defaults; the new
+  detectors reuse the windowed actor model + once-per-window firing + loop guard.
+  Verified end-to-end against a live aggregator: a single ingest batch produced
+  all five new `fleet:*` events with correct meta (hash, credential, CVE+scope,
+  `/24`, and the node-level outlier with its peer median).
+
 ### Added — fleet aggregation: cross-sensor correlation (`fleet:`) — phase 2
 - The aggregator now runs a **cross-sensor correlator** over the merged
   local + ingested stream, surfacing the attacker-identity patterns no single

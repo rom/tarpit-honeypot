@@ -97,7 +97,21 @@ type FleetConfig struct {
 	ASNSensors    int           `yaml:"asn_sensors"`    // one ASN on >= N sensors -> alert
 	FPSensors     int           `yaml:"fp_sensors"`     // one fingerprint on >= N sensors ...
 	FPSources     int           `yaml:"fp_sources"`     // ... and >= M distinct sources -> alert
-	MaxList       int           `yaml:"max_list"`       // cap the sensor/source list in alert meta
+	// Shared-artifact campaigns (same hash / credential / CVE across sensors).
+	PayloadSensors int `yaml:"payload_sensors"` // same malware artifact on >= N sensors
+	CredSensors    int `yaml:"cred_sensors"`    // same credential pair on >= N sensors
+	CVESensors     int `yaml:"cve_sensors"`     // same CVE on >= N sensors (exploit wave)
+	// Coordinated distributed infrastructure (one source block, many IPs).
+	SubnetSensors int `yaml:"subnet_sensors"` // a /24 (or /64) covering >= N sensors ...
+	SubnetSources int `yaml:"subnet_sources"` // ... via >= M distinct IPs
+	// Peer-relative outlier (a sensor far louder than its peers).
+	OutlierMinEvents int     `yaml:"outlier_min_events"` // min high-sev events to be a candidate
+	OutlierFactor    float64 `yaml:"outlier_factor"`     // must exceed this x the peer median
+	OutlierMinPeers  int     `yaml:"outlier_min_peers"`  // need at least this many peers to compare
+	// BroadCoverage is the sensors_hit/total fraction at/above which a
+	// breadth/wave hit is "broad" internet background (downgraded to medium).
+	BroadCoverage float64 `yaml:"broad_coverage"`
+	MaxList       int     `yaml:"max_list"` // cap the sensor/source list in alert meta
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any

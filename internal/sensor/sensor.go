@@ -219,13 +219,22 @@ func New(cfg *config.Config) (*Sensor, error) {
 	var fleetCorr *fleet.Correlator
 	if cfg.Fleet.On(cfg.Ingest.Enabled) {
 		fleetCorr = fleet.New(fleet.Config{
-			Enabled:       true,
-			Window:        cfg.Fleet.Window,
-			SourceSensors: cfg.Fleet.SourceSensors,
-			ASNSensors:    cfg.Fleet.ASNSensors,
-			FPSensors:     cfg.Fleet.FPSensors,
-			FPSources:     cfg.Fleet.FPSources,
-			MaxList:       cfg.Fleet.MaxList,
+			Enabled:          true,
+			Window:           cfg.Fleet.Window,
+			SourceSensors:    cfg.Fleet.SourceSensors,
+			ASNSensors:       cfg.Fleet.ASNSensors,
+			FPSensors:        cfg.Fleet.FPSensors,
+			FPSources:        cfg.Fleet.FPSources,
+			PayloadSensors:   cfg.Fleet.PayloadSensors,
+			CredSensors:      cfg.Fleet.CredSensors,
+			CVESensors:       cfg.Fleet.CVESensors,
+			SubnetSensors:    cfg.Fleet.SubnetSensors,
+			SubnetSources:    cfg.Fleet.SubnetSources,
+			OutlierMinEvents: cfg.Fleet.OutlierMinEvents,
+			OutlierFactor:    cfg.Fleet.OutlierFactor,
+			OutlierMinPeers:  cfg.Fleet.OutlierMinPeers,
+			BroadCoverage:    cfg.Fleet.BroadCoverage,
+			MaxList:          cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())
 	}
