@@ -8,6 +8,18 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — CLI surface for the fleet / IOC features
+- **`list-fleet-rules`** — prints the cross-sensor (`fleet:*`) detector catalog
+  (rule, what it detects, the `fleet.*` config keys that tune it); `--json`. A
+  new `fleet.Catalog()` is the single source of truth (guard-tested for no dupes
+  / `fleet:` prefix).
+- **`export-iocs`** — derives the fleet's IOCs from the stored `fleet:*` findings
+  and prints them as STIX 2.1 / CSV / txt (blocklist) / JSON, for piping into a
+  TIP / SIEM. The offline counterpart to the live `/intel` + `/intel/stix`
+  endpoints; reads the local event store (`--since`, `--format`).
+- **`list-events --fleet`** — tail only the `fleet:*` findings from the CLI.
+  All documented in `docs/cli.md`; unit-tested.
+
 ### Added — web UI: dedicated fleet panel
 - New `/fleet` page (and `/api/fleet` JSON) surfacing the cross-sensor
   `fleet:*` findings: a **per-detector breakdown bar chart** where each bar

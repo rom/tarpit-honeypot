@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -22,6 +23,7 @@ func cmdListEvents(args []string) error {
 	since := fs.Duration("since", 24*time.Hour, "only show events newer than this")
 	source := fs.String("source", "", "filter by source IP (exact match)")
 	rule := fs.String("rule", "", "filter by rule id (exact match)")
+	fleetOnly := fs.Bool("fleet", false, "show only cross-sensor fleet:* findings")
 	limit := fs.Int("limit", 100, "maximum events to print")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -35,12 +37,12 @@ func cmdListEvents(args []string) error {
 	// so the command works even with a tripwire-only config.
 	dbPath := filepath.Join(cfg.Sensor.DataDir, "events.db")
 	if _, err := os.Stat(dbPath); err == nil {
-		return listFromStore(cfg.Sensor.DataDir, *since, *source, *rule, *limit)
+		return listFromStore(cfg.Sensor.DataDir, *since, *source, *rule, *fleetOnly, *limit)
 	}
-	return listFromJSONL(cfg.Sensor.DataDir, *since, *source, *rule, *limit)
+	return listFromJSONL(cfg.Sensor.DataDir, *since, *source, *rule, *fleetOnly, *limit)
 }
 
-func listFromStore(dataDir string, since time.Duration, source, rule string, limit int) error {
+func listFromStore(dataDir string, since time.Duration, source, rule string, fleetOnly bool, limit int) error {
 	st, err := store.Open(dataDir, 0)
 	if err != nil {
 		return err
@@ -48,22 +50,35 @@ func listFromStore(dataDir string, since time.Duration, source, rule string, lim
 	defer st.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// The fleet:* prefix filter is applied in-memory (the store filters rule
+	// ids by exact match), so query a wider window and keep the matches.
+	queryLimit := limit
+	if fleetOnly {
+		queryLimit = 100000
+	}
 	evs, err := st.Query(ctx, store.Filter{
 		Since:    time.Now().Add(-since),
 		SourceIP: source,
 		RuleID:   rule,
-		Limit:    limit,
+		Limit:    queryLimit,
 	})
 	if err != nil {
 		return err
 	}
+	printed := 0
 	for _, ev := range evs {
+		if fleetOnly && !strings.HasPrefix(ev.RuleID, "fleet:") {
+			continue
+		}
 		printEvent(ev)
+		if printed++; printed >= limit {
+			break
+		}
 	}
 	return nil
 }
 
-func listFromJSONL(dataDir string, since time.Duration, source, rule string, limit int) error {
+func listFromJSONL(dataDir string, since time.Duration, source, rule string, fleetOnly bool, limit int) error {
 	dir := filepath.Join(dataDir, "events")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -113,6 +128,9 @@ func listFromJSONL(dataDir string, since time.Duration, source, rule string, lim
 				continue
 			}
 			if rule != "" && ev.RuleID != rule {
+				continue
+			}
+			if fleetOnly && !strings.HasPrefix(ev.RuleID, "fleet:") {
 				continue
 			}
 			printEvent(&ev)

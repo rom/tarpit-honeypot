@@ -887,6 +887,12 @@ reported `medium`); a hit on a specific subset is **targeted** (`high`). The
 shared-artifact and coordination detectors don't need this — a shared malware
 hash or honeytoken credential is never background noise.
 
+The full detector catalog (rule, what it detects, the config keys above) is
+printable with `tarpit-honeypot list-fleet-rules`. The IOCs the fleet has seen
+are exportable offline with `tarpit-honeypot export-iocs` (STIX 2.1 / CSV / txt /
+JSON), and `tarpit-honeypot list-events --fleet` tails just the `fleet:*`
+findings.
+
 ## `intel_feed:` — downward fleet-intel feedback
 
 Events flow *up*; intel flows *down*. An aggregator that runs fleet correlation

@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -870,5 +871,25 @@ func TestAsnOrgNeedsMultipleASNs(t *testing.T) {
 	c.Observe(o("s1", "1.1.1.1"))
 	if a := findAlert(c.Observe(o("s2", "2.2.2.2")), "fleet:asn-org-campaign"); a != nil {
 		t.Fatal("fired for a single ASN")
+	}
+}
+
+func TestCatalog(t *testing.T) {
+	cat := Catalog()
+	if len(cat) < 20 {
+		t.Fatalf("catalog has %d entries; want the full detector set", len(cat))
+	}
+	seen := map[string]bool{}
+	for _, r := range cat {
+		if !strings.HasPrefix(r.ID, "fleet:") {
+			t.Errorf("catalog id %q lacks fleet: prefix", r.ID)
+		}
+		if seen[r.ID] {
+			t.Errorf("duplicate catalog id %q", r.ID)
+		}
+		seen[r.ID] = true
+		if r.Summary == "" || len(r.Config) == 0 {
+			t.Errorf("catalog entry %q missing summary/config", r.ID)
+		}
 	}
 }
