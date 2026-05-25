@@ -154,3 +154,31 @@ func TestIdentifyNoSignals(t *testing.T) {
 		t.Error("expected error when no signals supplied")
 	}
 }
+
+func TestListFleetRules(t *testing.T) {
+	out, err := captureStdout(t, func() error { return cmdListFleetRules(nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"fleet:source-multi-sensor", "fleet:c2-shared", "config:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list-fleet-rules output missing %q", want)
+		}
+	}
+}
+
+func TestListFleetRulesJSON(t *testing.T) {
+	out, err := captureStdout(t, func() error { return cmdListFleetRules([]string{"--json"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"id": "fleet:port-campaign"`) && !strings.Contains(out, `"id":"fleet:port-campaign"`) {
+		t.Error("json output missing a known rule (fleet:port-campaign)")
+	}
+}
+
+func TestExportIOCsRejectsBadFormat(t *testing.T) {
+	if err := cmdExportIOCs([]string{"--format", "bogus", "-c", "/nonexistent.yaml"}); err == nil {
+		t.Fatal("expected an error for an invalid --format")
+	}
+}

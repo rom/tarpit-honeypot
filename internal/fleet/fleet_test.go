@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -870,5 +871,48 @@ func TestAsnOrgNeedsMultipleASNs(t *testing.T) {
 	c.Observe(o("s1", "1.1.1.1"))
 	if a := findAlert(c.Observe(o("s2", "2.2.2.2")), "fleet:asn-org-campaign"); a != nil {
 		t.Fatal("fired for a single ASN")
+	}
+}
+
+func TestCatalog(t *testing.T) {
+	cat := Catalog()
+	if len(cat) < 20 {
+		t.Fatalf("catalog has %d entries; want the full detector set", len(cat))
+	}
+	seen := map[string]bool{}
+	for _, r := range cat {
+		if !strings.HasPrefix(r.ID, "fleet:") {
+			t.Errorf("catalog id %q lacks fleet: prefix", r.ID)
+		}
+		if seen[r.ID] {
+			t.Errorf("duplicate catalog id %q", r.ID)
+		}
+		seen[r.ID] = true
+		if r.Summary == "" || len(r.Config) == 0 {
+			t.Errorf("catalog entry %q missing summary/config", r.ID)
+		}
+	}
+}
+
+func TestCVEWaveCarriesRiskMeta(t *testing.T) {
+	c := New(Config{Enabled: true, CVESensors: 2})
+	cve := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, map[string]any{"cvss": 10.0, "epss": 0.94, "cwe": []string{"CWE-502"}, "cpe": "cpe:2.3:a:apache:log4j:*"})
+		e.RuleID = "cve:CVE-2021-44228"
+		return e
+	}
+	c.Observe(cve("s1", "1.1.1.1"))
+	a := findAlert(c.Observe(cve("s2", "2.2.2.2")), "fleet:cve-wave")
+	if a == nil {
+		t.Fatal("cve-wave did not fire")
+	}
+	if cvss, _ := a.Meta["cvss"].(float64); cvss != 10.0 {
+		t.Errorf("cvss = %v; want 10 propagated from the cve: event", a.Meta["cvss"])
+	}
+	if epss, _ := a.Meta["epss"].(float64); epss != 0.94 {
+		t.Errorf("epss = %v; want 0.94", a.Meta["epss"])
+	}
+	if a.Meta["cwe"] == nil || a.Meta["cpe"] == nil {
+		t.Errorf("cwe/cpe not propagated: %v / %v", a.Meta["cwe"], a.Meta["cpe"])
 	}
 }

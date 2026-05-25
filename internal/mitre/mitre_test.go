@@ -207,3 +207,43 @@ func TestDescribe(t *testing.T) {
 		t.Errorf("unknown technique should return empty, got %q", d)
 	}
 }
+
+func TestFleetAndEgressMappings(t *testing.T) {
+	cases := map[string][]string{
+		"fleet:source-multi-sensor":    {"T1595"},
+		"fleet:cve-wave":               {"T1190"},
+		"fleet:fingerprint-shared":     {"T1583.005"},
+		"fleet:c2-shared":              {"T1071"},
+		"fleet:credential-spray-fleet": {"T1110"},
+		"egress:denied":                {"T1090", "T1071"},
+	}
+	for rule, wantTech := range cases {
+		got := Lookup(rule, "")
+		if len(got.Techniques) == 0 || len(got.Tactics) == 0 {
+			t.Errorf("%s: unmapped", rule)
+			continue
+		}
+		for _, w := range wantTech {
+			found := false
+			for _, x := range got.Techniques {
+				if x == w {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s: techniques %v missing %s", rule, got.Techniques, w)
+			}
+		}
+		// Every mapped technique must yield a D3FEND defense + a description.
+		if len(DefensesFor(got.Techniques)) == 0 {
+			t.Errorf("%s: no D3FEND defenses for %v", rule, got.Techniques)
+		}
+	}
+	// T1583 (acquire infrastructure) is now described + defended.
+	if Describe("T1583.005") == "" {
+		t.Error("T1583 has no description")
+	}
+	if len(DefensesFor([]string{"T1090"})) == 0 {
+		t.Error("T1090 has no D3FEND mapping")
+	}
+}

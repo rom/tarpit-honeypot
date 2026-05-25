@@ -56,10 +56,12 @@ func (c *Correlator) observeCVEEmergenceLocked(ev *event.Event, sid string, now 
 		return nil
 	}
 	e.fired = true
-	return c.event("fleet:cve-emergence", event.SeverityCritical, ev.Source, map[string]any{
+	meta := map[string]any{
 		"cve": cve, "sensor_count": len(e.sensors), "sensors": c.list(e.sensors),
 		"first_seen": e.first.UTC().Format(time.RFC3339),
-	})
+	}
+	copyCVEMeta(ev, meta)
+	return c.event("fleet:cve-emergence", event.SeverityCritical, ev.Source, meta)
 }
 
 // --- fleet:cross-protocol-actor --------------------------------------------

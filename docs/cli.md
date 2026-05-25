@@ -7,7 +7,7 @@ tarpit-honeypot run            -c <config> [--dry-run] [common flags]
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
-tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
+tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
@@ -18,6 +18,8 @@ tarpit-honeypot list-handlers  [--proto tcp|udp]
 tarpit-honeypot list-archeservices [<role>]
 tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+tarpit-honeypot list-fleet-rules [--json]
+tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot init           [-o file]
 tarpit-honeypot completion     bash | zsh | fish
@@ -184,6 +186,7 @@ tarpit-honeypot list-events -c cfg.yaml --since 24h --source 198.51.100.42
 | `--since <dur>` | `24h` | Time window relative to now. Go duration syntax (`5m`, `2h`, `7d` — actually only `m/h` for now; multiply for longer). |
 | `--source <ip>` | — | Exact-match source IP filter. |
 | `--rule <id>` | — | Exact-match rule_id filter (e.g. `listener:ssh-bait`, `correlate:port_scan`). |
+| `--fleet` | off | Show only cross-sensor `fleet:*` findings (prefix filter). |
 | `--limit <N>` | `100` | Max events to return (newest first). |
 
 Output format:
@@ -434,6 +437,44 @@ tarpit-honeypot list-techniques --json
 |---|---|---|
 | `--kind rule\|handler\|anomaly` | all | Limit to one mapping class. |
 | `--json` | off | Emit the coverage map as JSON. |
+
+---
+
+## `list-fleet-rules`
+
+Print the cross-sensor (`fleet:*`) detector catalog: every rule the aggregator's
+fleet correlator can emit, what it detects, and the `fleet.*` config keys that
+tune it. The discovery counterpart to the `fleet:` section of `docs/config.md`.
+
+```
+tarpit-honeypot list-fleet-rules
+tarpit-honeypot list-fleet-rules --json
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--json` | off | Emit the catalog as JSON (id, summary, config keys). |
+
+---
+
+## `export-iocs`
+
+Derive the fleet's indicators from the stored `fleet:*` findings and print them
+for piping into a TIP / SIEM / blocklist. The offline counterpart to the live
+`<ingest>/intel` feed and `/intel/stix` endpoint — it reads the local event
+store, so it works on any node that persists events.
+
+```
+tarpit-honeypot export-iocs -c cfg.yaml                      # STIX 2.1 bundle
+tarpit-honeypot export-iocs -c cfg.yaml --format txt          # one value per line (blocklist)
+tarpit-honeypot export-iocs -c cfg.yaml --format csv --since 720h
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
+| `--since <dur>` | `168h` | Derive IOCs from fleet findings newer than this. |
+| `--format stix\|csv\|txt\|json` | `stix` | STIX 2.1 bundle, CSV (`kind,value,reason`), plain values, or raw JSON. |
 
 ---
 

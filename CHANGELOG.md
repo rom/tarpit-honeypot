@@ -8,13 +8,48 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — ATT&CK / D3FEND / CVE cross-reference coverage for the new features
+- **Fleet detectors mapped to ATT&CK + D3FEND** — all 27 `fleet:*` detectors
+  (and `egress:denied`) now resolve to ATT&CK technique(s)/tactic(s) and the
+  D3FEND countermeasures, so they flow to the SIEM sinks (CEF/LEEF/OCSF/webhook/
+  syslog/MQTT), the UI `/attack` view, and `list-techniques`. Breadth/recon
+  patterns → T1595, shared-fingerprint/botnet → T1583.005, payload → T1105,
+  credential → T1110.x, CVE waves → T1190, C2 → T1071, egress-denied → T1090/
+  T1071, etc. The volume-only `fleet:rollup` / `fleet:sensor-untrusted` stay
+  unmapped (no attacker technique).
+- **Filled mapping gaps** — added the missing `T1583` (Acquire Infrastructure)
+  description and the `T1583` + `T1090` (Proxy) D3FEND entries that earlier rules
+  already referenced.
+- **CVE catalog → 100% CPE** — added representative `linux_kernel` CPEs for the 4
+  OS-network-stack DoS CVEs (Teardrop / LAND / TCP-RST / sockstress) that had
+  none; the catalog is now 100% CWE / CPE / EPSS covered.
+- **`fleet:cve-wave` / `fleet:cve-emergence` carry CVE risk meta** — the
+  triggering CVE's CVSS / EPSS / CWE / CPE are propagated onto the fleet finding,
+  so a wave/emergence is triageable without pivoting to the underlying event.
+
+### Added — CLI surface for the fleet / IOC features
+- **`list-fleet-rules`** — prints the cross-sensor (`fleet:*`) detector catalog
+  (rule, what it detects, the `fleet.*` config keys that tune it); `--json`. A
+  new `fleet.Catalog()` is the single source of truth (guard-tested for no dupes
+  / `fleet:` prefix).
+- **`export-iocs`** — derives the fleet's IOCs from the stored `fleet:*` findings
+  and prints them as STIX 2.1 / CSV / txt (blocklist) / JSON, for piping into a
+  TIP / SIEM. The offline counterpart to the live `/intel` + `/intel/stix`
+  endpoints; reads the local event store (`--since`, `--format`).
+- **`list-events --fleet`** — tail only the `fleet:*` findings from the CLI.
+  All documented in `docs/cli.md`; unit-tested.
+
 ### Added — web UI: dedicated fleet panel
 - New `/fleet` page (and `/api/fleet` JSON) surfacing the cross-sensor
-  `fleet:*` findings: a per-detector hit-count table plus a findings list with a
-  compact, per-detector summary (primary identity + breadth counts + broad/
-  targeted scope), each linking to the full event. `since` filter; linked from
-  the nav and `/docs`. Verified live (renders the findings; non-fleet events are
-  excluded). Unit-tested (handler render + the summary/number formatting).
+  `fleet:*` findings: a **per-detector breakdown bar chart** where each bar
+  links to that detector's filtered event log (`/events?rule=fleet:<name>`), a
+  **findings-over-time bar chart** (bucketed across the window), and a findings
+  list with a compact, per-detector summary (primary identity + breadth counts +
+  broad/targeted scope) linking to each full event. Server-rendered CSS bars (no
+  JS, CSP-safe). `since` filter; linked from the nav and `/docs`. Verified live
+  (charts + per-detector links render and resolve; non-fleet events excluded).
+  Unit-tested (handler render, the detector-link href, and summary/number
+  formatting).
 
 ### Added — two more fleet correlators (credential-spray / asn-org)
 - **`fleet:credential-spray-fleet`** — one username tried with >=

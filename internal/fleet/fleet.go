@@ -642,6 +642,21 @@ func metaStr(ev *event.Event, key string) string {
 	return s
 }
 
+// copyCVEMeta carries the triggering cve:* event's risk cross-references
+// (CVSS / EPSS / CWE / CPE, stamped by the listener from the CVE catalog) into a
+// fleet alert, so a cve-wave / cve-emergence finding is triageable without
+// pivoting to the underlying event.
+func copyCVEMeta(ev *event.Event, dst map[string]any) {
+	if ev.Meta == nil {
+		return
+	}
+	for _, k := range []string{"cvss", "epss", "cwe", "cpe"} {
+		if v, ok := ev.Meta[k]; ok {
+			dst[k] = v
+		}
+	}
+}
+
 // metaStrings coerces a meta value (string slice, or the []any a JSON round-trip
 // produces) into a []string.
 func metaStrings(ev *event.Event, key string) []string {
