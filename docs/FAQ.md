@@ -92,6 +92,32 @@ the right `AmbientCapabilities`) and [`usage.md` §6](usage.md#6-docker) (a
 ~14 MB scratch image). `tarpit-honeypot init` writes a defaulted config skeleton
 to start from.
 
+## Honeynets & virtual hosts
+
+**Do I need a real IP or interface for each virtual host?**
+No. The honeynet responders answer ARP/ICMP/LLDP for each virtual IP, and the
+TUN userspace TCP stack (`internal/tcpstack`) completes a fingerprint-shaped
+handshake and answers one request/response — all without `ip addr add` per host.
+The L2/L3 parts are Linux-only; on macOS use `ifconfig <iface> alias <ip>` per
+host. See [`tcp-stack.md`](tcp-stack.md).
+
+**How many virtual hosts can I run?**
+Many — each host is cheap (no socket or OS interface per host). Each one's
+identity (SSH banner, MySQL version, SMB challenge, MAC, …) is derived from
+`sensor.deployment_id` + the host id, so every decoy machine looks distinct.
+`tarpit-honeypot list-honeynets` prints the synthesized topology.
+
+**Does it support IPv6?**
+Yes. Listeners and honeynet hosts take IPv6 (`[::]:22`, `fd00::` host IPs), and
+the AF_PACKET sniffer detects scans, fragmentation, encapsulation, and ICMP
+tunnels over **both** IPv4 and IPv6.
+
+**Can an attacker pivot between virtual hosts?**
+No — there's no real OS behind them. The TUN stack is deliberately a *decoy*:
+in-order data only, one request/response, no routing or forwarding. Deep
+multi-segment interaction (a full SSH session, large uploads) wants a real
+socket bound alongside the TUN (`ip addr add` / a real listener).
+
 ## Deployment & safety
 
 **Will it attack other hosts / amplify traffic?**
@@ -207,6 +233,83 @@ Put admin/patch-management/monitoring sources in `allowlist` (suppresses
 forwarding/alerting for those IPs; local events still recorded), and tune the
 correlator thresholds. On a fleet, the broad-vs-targeted classifier already
 down-weights internet-wide background scanning.
+
+## Enrichment
+
+**What does enrichment add to an event?**
+For each source IP: **GeoIP** city + **ASN** (+ org), reverse DNS,
+**threat-intel** list membership (`threat_intel_hit`), a **Tor-exit** flag, a
+**net-class** tag (bogon/hosting), and — for L2-learned hosts — **MAC vendor**
+(IEEE OUI). All optional, best-effort (a missing file warns and is skipped), and
+hot-reloaded on `SIGHUP`.
+
+**Where do I get the databases?**
+They're operator-supplied (not bundled). `scripts/fetch-enrichment.sh` downloads
+and packages them on an internet-connected box (MaxMind GeoLite2 city/ASN, Tor
+exit list, FireHOL / blocklist.de threat lists, the IEEE OUI table);
+`scripts/install-enrichment.sh` places them at the configured paths (discovered
+via `list-paths`) and signals a re-read.
+
+**Can it run fully offline / air-gapped?**
+Yes. The sensor never phones home, and the fetch/install split is built for
+air-gap: fetch on a connected host, transfer the bundle, install on the sensor.
+With no enrichment files it still starts — the fields are just absent.
+
+**How do I refresh threat-intel lists?**
+Re-install (or drop new files in place) and `SIGHUP` — the lists hot-reload.
+Indicators learned by the fleet can also flow back as a downward intel feed (see
+[`fleet.md`](fleet.md#6-downward-intel-feedback)).
+
+## ICS / OT
+
+**What ICS/OT protocols does it emulate?**
+modbus, s7 / s7comm_plus, iec104, opcua, ethernetip, dnp3, bacnet, fins, knx,
+melsec, codesys, hartip, mms (IEC 61850), profinet-DCP, atg (Veeder-Root),
+ge_srtp, pcworx, ads (Beckhoff TwinCAT), plus passive L2 **GOOSE** detection.
+`tarpit-honeypot list-handlers` for the live set; OT archetypes (Moxa, SCALANCE,
+Siemens S7, Allen-Bradley, …) keep the identity coherent.
+
+**Is it safe to put in an OT segment?**
+Yes — it's passive and decoy by design: it answers but never initiates, never
+talks to a real PLC, rate-limits UDP, and refuses to be a reflection/
+amplification primitive. ICS writes / mode-changes / program-downloads are
+*detected as events*, never performed.
+
+**Can it talk to or control real PLCs?**
+No. It only *presents* ICS services and *captures* what an attacker sends. There
+is no code path to a real field device.
+
+**What OT-specific detections fire?**
+ICS-control, OT-recon, PLC program-download (Stuxnet/Triton-shaped),
+ICS-mode-change, and OT-kill-chain correlators, GOOSE / PROFINET-DCP recon
+events, and ICS-matrix ATT&CK tags on the relevant handlers.
+
+## Attacker intelligence
+
+**What does it learn about an attacker?**
+A per-source-IP **dossier** (`/profiles`): first/last seen, a severity-weighted
+threat score, identified tools/scanners, JA3/JA4/HASSH fingerprints, credentials
+tried, ATT&CK coverage, CVE attempts, and the services/ports targeted — built up
+over time. The **fingerprints** tab pivots a TLS/SSH stack to every IP/ASN/
+country/tool that used it (across the fleet).
+
+**What credentials get captured?**
+Username/password from every auth-bearing handler (SSH, FTP, HTTP/web login,
+Telnet, LDAP bind, MySQL/Postgres/MSSQL, Redis, SMB, …), matched against a
+default-credential corpus. Captured pairs ride on the brute-force aggregates and
+become `credential` IOCs.
+
+**What are JA3/JA4/HASSH and what do I do with them?**
+Client TLS (JA3/JA4) and SSH (HASSH) stack fingerprints, stable across GREASE
+shuffling. Pivot from a fingerprint to every source that used it, export them as
+IOCs, or feed them into the fleet intel — the same tuple your threat-intel feeds
+key on.
+
+**Does it identify the scanning tool?**
+Yes — nmap / masscan / sqlmap / nikto / hydra / nuclei / metasploit / gobuster /
+curl-wget-python / Mirai-style probes, with an automation-vs-human flag, from
+UA / SSH-banner / path heuristics. `tarpit-honeypot identify` runs the same
+engine offline on a string you paste. See [`attribution.md`](attribution.md).
 
 ## Web UI & API
 
@@ -350,6 +453,55 @@ record stays complete.
 **Does syslog support TLS?**
 Yes — `type: syslog, network: tls` does RFC 5424 with octet-counting over TLS.
 
+## Alerting & logging
+
+**How do I get paged on a critical event?**
+Route it to an outbound channel — `twilio` (SMS), `discord`, `webhook`, `smtp`,
+or `snmptrap` — gated by severity in `routes:`. `tarpit-honeypot test-alert`
+injects a synthetic event through the full pipeline so you can confirm the wiring
+before a real trigger.
+
+**Won't a scan flood me with alerts?**
+No — three brakes collapse bursts: a dedup window, a per-channel rate limit, and
+a min-severity gate. Your own scanners go in `allowlist` (outbound suppressed,
+local record kept), and the correlators turn many raw hits into one aggregate
+(`correlate:port_scan`, `brute_force`, …).
+
+**What do the logs look like?**
+Structured `slog` — `--log-format text|json`, to stderr or `--log-file`, level via
+`--log-level` (`--quiet`/`--verbose` shortcuts). Separately, the `jsonlog` sink
+writes rotated JSONL events and `stdout` streams them; both are local sinks that
+always receive.
+
+**Is there Prometheus / Grafana support?**
+Yes — `GET /metrics` exposes sink delivery / drops / retries, honeynet network &
+host gauges, the on-disk store size, panic counts, and L2 frame counters. Scrape
+it for dashboards and alert rules; `/healthz` is an auth-free liveness probe.
+
+## Captures & forensics
+
+**Does it capture packets?**
+Per-connection, when a TCP listener has `capture: true`: a synthesized libpcap
+file at `<data_dir>/captures/<event_id>.pcap` (pure-Go, no raw sockets). Pull one
+with `tarpit-honeypot export-pcap --event <id>`, open in Wireshark, and "Follow
+TCP Stream" reconstructs the exchange.
+
+**Can I replay an attacker's shell session?**
+Yes — with `sensor.session_recording`, interactive telnet / `ssh_interactive`
+sessions are saved as asciinema v2 casts (with timing) under
+`<data_dir>/sessions/`; the UI plays them back and the filename lands on the
+event.
+
+**Where do captured malware / payloads go?**
+`<data_dir>/payloads/` (size-capped), each with a `sha256` IOC and a
+`malware:capture` event. The event-detail page shows a hexdump and links the
+artifact.
+
+**How do I export everything from one source for analysis?**
+The event-detail page offers a ZIP of everything from that source IP (the
+per-connection pcaps, session casts, and payloads); for scripting, combine
+`/api/events` with `export-pcap`.
+
 ## Performance & scale
 
 **How much does it handle?**
@@ -436,3 +588,57 @@ marked as a local override so it's never silent.
 The CVE catalog (`internal/cve`) and archetype catalog (`internal/archetype`) are
 in-source tables; adding an entry is a small, test-backed code change. Audit the
 current coverage with `list-cves` / `list-archetypes` / `list-techniques`.
+
+## Legal & ethical
+
+**Is it legal to run a honeypot?**
+Generally yes for monitoring a network you own or operate, but wiretap, privacy,
+and computer-misuse laws vary by jurisdiction — get sign-off from legal /
+management first. This is not legal advice, and you should never deploy it on a
+network you don't control.
+
+**Does it "hack back" or entrap anyone?**
+No. It's passive: it never attacks, never initiates unsolicited outbound
+connections (telemetry is allowlisted, and `egress.enforce` adds an OS-level
+backstop), and only records what is sent to it. It presents bait but doesn't
+induce anyone to act.
+
+**How should I treat the captured data?**
+As sensitive — it can contain credentials, payloads, and attacker-supplied
+bytes. Restrict access to the `data_dir` / store, set `disk.retention_days`, and
+don't place a sensor where it would capture legitimate user traffic. Output is
+sanitized before logs/SIEM/email so captured bytes can't inject into your tools.
+
+**Can I rely on it for attribution?**
+Treat source IPs and fingerprints as *indicators*, not identities — attackers use
+proxies, Tor, and botnets. Enrichment flags (Tor-exit, hosting/bogon net-class)
+and the fleet's broad-vs-targeted scoring help you weight them, but attribution
+is always a judgement call.
+
+## Troubleshooting
+
+**I scanned it but only see `sensor:started` — no attack events.**
+You probably scanned ports it isn't bound to. Some example configs remap services
+to high ports to run without root, so a scan of 22/80/443 hits nothing. Check the
+bound ports (`tarpit-honeypot show-config -c <cfg> | grep -E 'id:|bind:'`) or run
+`configs/tarpit-honeypot.example.yaml`, which binds real service ports.
+
+**`bind: permission denied` on a low port.**
+Binding <1024 needs `CAP_NET_BIND_SERVICE` (the shipped systemd unit grants it),
+or run as root and let the sensor drop to `drop_user`/`drop_group` after setup.
+In Docker, add `--cap-add=NET_BIND_SERVICE`.
+
+**`arp_responder disabled: needs AF_PACKET (linux-only)` / `need CAP_NET_RAW`.**
+The sniffer and L2/L3 responders are Linux-only and need `CAP_NET_RAW`. Pair
+`User=tarpit` with `AmbientCapabilities=CAP_NET_RAW`; on macOS use
+`ifconfig <iface> alias <ip>` instead. See [`usage.md` §14](usage.md#14-platform-support).
+
+**My `fleet:*` detectors never fire.**
+Breadth detection needs events from **several** `sensor_id`s converging via
+`ingest:` — one sensor's events all key to one id. Check `fleet.enabled` (auto-on
+with ingest) and your thresholds. See [`fleet.md` §9](fleet.md#9-troubleshooting).
+
+**Where do I look first?**
+The web UI **errors** tab and the structured `slog` output (journal under
+systemd) for operational/health events; [`usage.md` §15](usage.md#15-troubleshooting)
+is the symptom→fix table.
