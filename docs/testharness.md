@@ -6,12 +6,14 @@ drives either the complete tool over the network (a managed instance it spawns,
 or an already-running external one) or individual protocol-handler modules
 in-process, across categorized, individually-selectable test cases: unit checks,
 dumb + smart fuzzing, protocol emulation/compatibility, deliberate
-mis-implementation, port/host/ping/ARP sweeps, and client-fingerprint triggers.
+mis-implementation, port/host/ping/ARP sweeps, client-fingerprint triggers, and
+fail-safe **resilience** (abuse/overload) + **containment** (do-no-harm) checks.
 
 It runs fully automated (auto input + restarts), quiet in the background, or with
 per-case progress; is bounded by rounds and/or wall-clock time; retries
-(restarting the target) on failures/crashes; writes reports (text/json/junit/md);
-and records every run + result in a SQLite database keyed by tool version + time.
+(restarting the target) on failures/crashes; writes reports
+(text/json/junit/md/csv/rtf/pdf); and records every run + result in a SQLite
+database keyed by tool version + time.
 
 For the sensor itself see [`usage.md`](usage.md), [`cli.md`](cli.md), and
 [`config.md`](config.md). This document covers only the harness.
@@ -143,7 +145,7 @@ Run the selected cases. In addition to the common flags:
 | `-verify-token <tok>` | — | API auth token (prefer the config/env; see Security). |
 | `-quiet` | off | No output (run fully in the background). |
 | `-progress` | off | Print a line per case as it completes. |
-| `-report fmt[=path]` | text→stdout | Report to write; repeatable. `fmt` ∈ `text\|json\|junit\|md`; path `-`/empty = stdout. |
+| `-report fmt[=path]` | text→stdout | Report to write; repeatable. `fmt` ∈ `text\|json\|junit\|md\|csv\|rtf\|pdf`; path `-`/empty = stdout. |
 | `-db <path>` | — | SQLite results database to append this run to. |
 
 Output modes: **quiet** prints nothing; **progress** prints every case; the
@@ -180,6 +182,8 @@ reproducible and diff-able across builds.
 | `scan` | `scan/portscan-seq`, `scan/portscan-rand`, `scan/host-sweep`, `scan/ping-sweep`, `scan/arp-sweep` | network | Sequential + randomized TCP port scans; TCP host sweep, ICMP ping sweep, ARP sweep across `sweep_cidr`. |
 | `fingerprint` | `fingerprint/http-<tool>`, `fingerprint/ssh-scanner`, `fingerprint/nmap-sV` | network | Emit traffic mimicking a known scanner/tool and confirm the client-classification layer detects it. |
 | `reliability` | `reliability/soak/<label>` | all | 50 rapid connect/close cycles; the endpoint must stay responsive (no fd leak / accept-loop wedge), ≥ 90 % healthy, with liveness re-checked along the way. |
+| `resilience` | `resilience/oversize/<label>`, `resilience/half-open/<label>`, `resilience/flood/<label>`, `resilience/slowloris/<label>` | all | **Fail-safe under abuse** — the sensor must not become the victim: a 2 MiB unterminated input (bounded buffers / no OOM), 40 abrupt half-open connects, a 64-way concurrent connection flood, and a slow-drip session that must not starve other clients — staying alive and responsive throughout. |
+| `containment` | `containment/no-egress`, `containment/path-traversal/<label>` | all | **Do-no-harm** — feed the sensor an attacker-chosen target address and confirm it makes **no outbound connection** (SSRF / open-relay / reflector safety, via a canary listener); ask file-surface protocols (http/ftp) for `../../etc/passwd` and confirm no real host-file content is disclosed. |
 
 The `fingerprint` HTTP cases cover nmap, nessus, openvas, nikto, nuclei, sqlmap,
 masscan, metasploit, zgrab, and wpscan (by User-Agent). If the real `nmap`
@@ -304,6 +308,8 @@ reports:
   - { format: text,  path: "-" }       # "-" or "" = stdout
   - { format: junit, path: harness.xml }
   - { format: md,    path: harness.md }
+  - { format: csv,   path: harness.csv } # one row per result, for spreadsheets
+  - { format: pdf,   path: harness.pdf } # self-contained printable report
 db: harness-results.db        # append every run here
 ```
 
@@ -367,7 +373,7 @@ natural `duration: 0` is valid (it means "no bound").
 
 | Field | Meaning |
 |---|---|
-| `format` | `text`, `json`, `junit`, or `md`. |
+| `format` | `text`, `json`, `junit`, `md`, `csv`, `rtf`, or `pdf`. |
 | `path` | Output file; `-` or empty = stdout. |
 
 ---
@@ -417,6 +423,34 @@ missing API never produces false findings.
 
 ---
 
+## What a run records about the target (before / during / after)
+
+Beyond each case's pass/fail, every run captures context about the program under
+test so a report is self-describing and reproducible. It appears in an
+**Environment & target** section of the text/markdown/RTF/PDF reports and as an
+`info` object in the JSON report.
+
+- **Before** — provenance + environment: harness host (OS/arch/CPUs/Go
+  version/hostname), a one-line config summary (mode, endpoint count, categories,
+  rounds, concurrency, fuzz iterations, timeout, seed), the spawned sensor
+  binary's **SHA-256 + size** (managed mode), and a **baseline snapshot** of every
+  endpoint (reachable?, byte count, and a hash of the identity banner).
+- **During** — a resource envelope sampled ~4×/s for the length of the run:
+  **RSS** (read from the sensor's `/proc/<pid>` when managed, else the harness
+  process — which hosts the handlers in module mode) and **goroutine count**,
+  each as start / peak / end. A peak well above the end is normal load; an *end*
+  that stays far above the *start* is the leak signal.
+- **After** — a **final snapshot** of every endpoint compared to the baseline
+  (`stable` / `DRIFTED` / `NOW UNREACHABLE`), and how the run ended (completed /
+  time-bounded / interrupted, with a warning if a managed sensor had exited).
+
+This is the "additional info collected from the program under test" that makes a
+fail-safe harness auditable. Drift uses the *banner line* (not the whole reply),
+so per-connection nonces (e.g. the SSH KEXINIT cookie) are not mistaken for a
+changed decoy.
+
+---
+
 ## Reports
 
 `--report fmt[=path]` is repeatable; the same run can emit several formats at
@@ -428,6 +462,29 @@ once. With no `--report` and not `--quiet`, a text summary goes to stdout.
 | `json` | Full structured result (every case, status, attempts, duration) for tooling. |
 | `junit` | JUnit XML for CI — `fail`/`crash` → `<failure>`, `error` → `<error>`, `skip` → `<skipped>`. |
 | `md` | Markdown summary + findings table for a PR/issue. |
+| `csv` | One row per `(case, round)` result (`case_id, category, endpoint, round, attempt, status, duration_ms, started, detail`) for spreadsheets / pivots. |
+| `rtf` | Rich-text summary that opens directly in Word / Pages / WordPad. |
+| `pdf` | Self-contained, paginated PDF (no external tooling) for archiving or sharing a printable report. |
+
+The same run can emit all of them at once — list one `--report` per format
+(CLI) or one entry per `reports[]` item (config).
+
+### Where reports are stored
+
+Each report goes exactly where its `path` says:
+
+- **A file path** (e.g. `--report pdf=./var/harness.pdf` or `path: ./var/harness.pdf`)
+  writes/overwrites that file. Relative paths resolve against the **current
+  working directory** of the `tarpit-testharness` process; the directory must
+  already exist. The example configs write under `./var/`.
+- **`-` or empty** writes to **stdout** (handy for `text`/`json`/`md`; pipe it
+  on). Binary-ish formats (`pdf`, `rtf`) are best given a real file path.
+- **No `--report` at all** (and not `--quiet`) prints a single `text` summary to
+  **stdout** — nothing is written to disk.
+
+The machine-readable run history is separate from these report files: it is the
+SQLite **results database** at `--db <path>` / `db:` (see below), which is
+appended to — not overwritten — on every run.
 
 ---
 

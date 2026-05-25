@@ -75,6 +75,8 @@ cases:
   - fuzz-smart
   - scan
   - reliability
+  - resilience
+  - containment
   - fingerprint/http-*
   - fingerprint/ssh-scanner
 rounds: 1
@@ -114,4 +116,6 @@ reports:
   - { format: json,  path: ./var/harness-full.json }
   - { format: junit, path: ./var/harness-full.xml }
   - { format: md,    path: ./var/harness-full.md }
+  - { format: csv,   path: ./var/harness-full.csv }
+  - { format: pdf,   path: ./var/harness-full.pdf }
 db: ./var/harness-results.db

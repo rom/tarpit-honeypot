@@ -247,6 +247,17 @@ func (t *Target) Alive(ctx context.Context) bool {
 	return false
 }
 
+// PID returns the managed target process id, or 0 if there is none (module /
+// external mode, or not yet/no longer running). Used for resource sampling.
+func (t *Target) PID() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.proc != nil && t.proc.Process != nil {
+		return t.proc.Process.Pid
+	}
+	return 0
+}
+
 func (t *Target) addr(e Endpoint) string {
 	return net.JoinHostPort(t.cfg.Host, strconv.Itoa(e.Port))
 }
