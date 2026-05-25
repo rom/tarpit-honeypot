@@ -10,7 +10,11 @@ D3FEND-tagged events, cross-protocol attack-storyline correlation,
 protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
 correlators, GeoIP / ASN / threat-intel / Tor / MAC-vendor enrichment,
 file / URL / DNS canary tokens, per-event pcap capture, hostile-input
-hardening + output sanitization, and pluggable outbound alerting.
+hardening + output sanitization, and pluggable outbound alerting. Sensors
+**aggregate into a fleet** — events flow up to a correlator that runs 27
+cross-sensor `fleet:*` detectors and distills **indicators of compromise**,
+which flow back down as a threat-intel feed and out as **STIX 2.1 / TAXII 2.1
+/ MISP**.
 
 CGO-free. Static builds for `linux/{amd64,arm64,armv7,armv6}`,
 `darwin/{amd64,arm64}`, and `windows/{amd64,arm64}` (the portable core;
@@ -398,22 +402,31 @@ rationale covering the current implementation.
   stacked-severity area, top source/rule/tactic/country/ASN/tool bars, threat
   & protocol heatmaps, an account heatmap, a GeoIP attack source map, and a
   credential-attempt chart, all from the packaged charting library),
+  **fingerprints** (JA3/JA4/JA4H/JA3S/HASSH reputation — pivot a client
+  TLS/SSH stack to every source IP / ASN / country / port / attack type /
+  captured malware and which fleet sensors saw it),
   **timeline** (chronological attack view),
   **attack** (the ATT&CK matrix the sensor covers, with **clickable,
   described technique chips** showing which sources triggered each),
-  **correlation** (correlator aggregates + storylines), **tunnels**
+  **correlation** (correlator aggregates + storylines),
+  **fleet** (cross-sensor `fleet:*` findings — aggregator-only),
+  **iocs** (the de-duplicated indicator store with by-type breakdown),
+  **tunnels**
   (covert-transport / encapsulation detections), **search** (advanced
   query), **health** (build version/commit, runtime — CPU count, heap
   objects, GC pause/next-GC — by-transport 24h breakdown, per-name panic
   counts, sink delivery, L2 frame counters, plus transport/sink/frame
   charts), **alerting** (how events
-  forward), **errors** (operational/health events), **config** (with a
-  **"files in use"** table — config, enrichment, and database paths +
-  present/MISSING), and **docs**. ATT&CK chips and a credential-source
-  column run throughout. JSON at `/api/events`, `/api/summary`,
-  `/api/profiles`, `/api/profiles/<ip>`, `/api/config`, `/api/topology`,
-  `/api/devices`, `/api/alerting`. Non-loopback binds refused without TLS +
-  auth token.
+  forward), **errors** (operational/health events), **config** (the
+  infrastructure canvas + a **"files in use"** table — config, enrichment, and
+  database paths + present/MISSING), and **docs** (the full documentation
+  rendered in-product — `/docs/<name>` serves each guide). ATT&CK chips and a
+  credential-source column run throughout. JSON at `/api/events`,
+  `/api/summary`, `/api/profiles`, `/api/profiles/<ip>`, `/api/fingerprints`,
+  `/api/config`, `/api/config/canvas`, `/api/topology`, `/api/devices`,
+  `/api/alerting`, `/api/fleet`, `/api/iocs`. On an aggregator the same bind
+  serves the bearer-gated `/intel`, `/intel/stix`, and `/taxii2/…` exports.
+  Non-loopback binds refused without TLS + auth token.
 - **Attacker profiles** (`/profiles`): a per-source-IP dossier compiled
   from every event that source produced — first/last seen, a
   severity-weighted **threat score**, identified **tools/scanners**
@@ -442,6 +455,34 @@ rationale covering the current implementation.
 - **Local sinks**: `stdout`, `jsonlog` (rotated JSONL), `sqlite`. These
   always receive every event so the local record stays complete even
   when an attacker matches the allowlist.
+- **Fleet correlation & aggregation**: the same binary scales from one box
+  to a fleet. A leaf **forwards** its events (`forward:`, full or periodic
+  `rollup`) to an **aggregator** (`ingest:`), which feeds them through the
+  identical pipeline as local events and runs **27 cross-sensor `fleet:*`
+  detectors** no single sensor can — one source/ASN/fingerprint sweeping many
+  sensors, a malware hash / credential / CVE recurring across sites, a
+  coordinated /24, a network returning across days — across breadth,
+  shared-artifact-campaign, coordination, temporal, novelty, and
+  identity/infrastructure axes. Each finding is scored **broad** (internet-wide
+  background, down-weighted) vs **targeted**. Per-sensor **trust scoring** rate-
+  limits and can quarantine a noisy/compromised node. `tarpit-honeypot
+  list-fleet-rules`; the **fleet** web-UI tab + `/api/fleet`. See
+  [`docs/fleet.md`](docs/fleet.md).
+- **Indicators of compromise (IOC) store**: every event is mined for typed,
+  de-duplicated indicators (`ip` / `asn` / `ja3` / `ja4` / `hassh` / `domain` /
+  `cve` / `sha256` / `url` / `credential` / `mac`) tracked with first/last-seen
+  + counts. High-value first-sights also emit a stored, forwardable
+  `ioc:<type>` event (so an aggregator harvests child IOCs even in rollup
+  mode). The **iocs** web-UI tab + `/api/iocs`; pruned on the retention runner.
+  See [`docs/ioc.md`](docs/ioc.md).
+- **Threat-intel exports**: an aggregator serves a bearer-gated downward
+  intel feed (`/intel`) and **STIX 2.1** (`/intel/stix`, deterministic UUIDv5
+  ids) + a read-only **TAXII 2.1** API (`/taxii2/…`); pushes **MISP** delta
+  events (`misp:`); and `export-iocs` prints STIX/CSV/txt/JSON offline for a
+  blocklist or TIP. Sensors subscribe to a parent's feed (`intel_feed:`) so
+  fleet knowledge flows back down and tags their events. Every event also
+  streams to a SIEM via `channels:` in **CEF / LEEF / OCSF**. See
+  [`docs/threat-intel-exports.md`](docs/threat-intel-exports.md).
 - **Full hot reload**: `SIGHUP` diffs old vs new config, hot-swaps
   channels / routes / allowlist / dedup window / correlator / canary
   lists, and per-listener restarts (added / removed / modified
@@ -504,23 +545,46 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/design.md`](docs/design.md) — architecture + design rationale covering the current implementation.
 - [`docs/internals.md`](docs/internals.md) — how a packet becomes an alert: the runtime data flow (producers → event bus → enrichment + detection pipeline → sinks) and what each module does.
 - [`docs/tcp-stack.md`](docs/tcp-stack.md) — the honeynet userspace TCP stack: fingerprint-shaped SYN-ACK, the decoy connection state machine, malformed-packet capture, and its ATT&CK / TCP-stack-CVE mappings.
-- [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, web UI, systemd, Docker, troubleshooting.
+- [`docs/usage.md`](docs/usage.md) — quickstart, daily ops, honeynet patterns, fleet roles, web UI, systemd, Docker, troubleshooting.
+- [`docs/webui.md`](docs/webui.md) — a tab-by-tab walkthrough of the read-only web console and its JSON API (also rendered in-product under the **docs** tab).
 - [`docs/config.md`](docs/config.md) — annotated YAML reference per top-level section.
 - [`docs/cli.md`](docs/cli.md) — every subcommand, flag, and signal.
+- [`docs/fleet.md`](docs/fleet.md) — build a fleet: roles, topologies, the 27 `fleet:*` detectors, broad-vs-targeted scoping, downward intel, tuning, and troubleshooting.
+- [`docs/ioc.md`](docs/ioc.md) — the indicators-of-compromise layer: what becomes an IOC, the store, `ioc:<type>` events, the `iocs` tab, and `export-iocs`.
+- [`docs/threat-intel-exports.md`](docs/threat-intel-exports.md) — every export path: STIX 2.1 / TAXII 2.1 / MISP, the downward feed, and the CEF/LEEF/OCSF SIEM sinks, with field mappings and auth.
 - [`docs/archetypes.md`](docs/archetypes.md) — the full archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
+- [`docs/FAQ.md`](docs/FAQ.md) — common questions grouped by topic (general, deployment & safety, detection, fleet, IOCs, performance, operations).
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
-- [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, a **DevOps / cloud-native** tooling surface, a **big-data / secrets / logging platform**, a **virtualization management plane**, a **legacy-Unix big-iron** estate, a **telecom / ISP edge**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets, and all but the tiniest enable enrichment. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index.
+- [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, a **DevOps / cloud-native** tooling surface, a **big-data / secrets / logging platform**, a **virtualization management plane**, a **legacy-Unix big-iron** estate, a **telecom / ISP edge**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets, and all but the tiniest enable enrichment. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index. [`examples/fleet/`](examples/fleet/) is a worked multi-tier **fleet** topology (leaf sensor → site aggregator → global hub).
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
 
-**Unreleased — userspace TCP stack, fuzzing/DoS, enrichment pipeline, UI
-overhaul.** A large post-v2.0 sprint. Highlights below; the
+**v2.1 — fleet aggregation, IOCs, threat-intel exports, in-product docs.**
+A large post-v2.0 sprint. Highlights below; the
 [CHANGELOG](CHANGELOG.md) has the full per-commit detail.
 
+- **Fleet aggregation.** Turn a set of sensors into a correlated fleet:
+  `forward:` (full or `rollup`) ships events upward; `ingest:` accepts them onto
+  the same pipeline; **27 cross-sensor `fleet:*` detectors** surface patterns no
+  single sensor can see, each scored broad-vs-targeted; per-sensor **trust
+  scoring** rate-limits/quarantines a noisy node; an aggregator serves a
+  **downward intel feed** (`/intel` + STIX/TAXII) that sensors subscribe to
+  (`intel_feed:`) so fleet knowledge flows back down. New commands
+  `list-fleet-rules` / `export-iocs`, `list-events --fleet`, a **fleet** UI tab,
+  and `/api/fleet`. ([`docs/fleet.md`](docs/fleet.md).)
+- **Indicators of compromise + threat-intel exports.** A typed, de-duplicated
+  **IOC store** mined from every event (with stored/forwarded `ioc:<type>`
+  first-sight events), an **iocs** UI tab + `/api/iocs`, and every export path:
+  **STIX 2.1 / TAXII 2.1 / MISP** plus CEF/LEEF/OCSF SIEM sinks.
+  ([`docs/ioc.md`](docs/ioc.md), [`docs/threat-intel-exports.md`](docs/threat-intel-exports.md).)
+- **Persisted ATT&CK/D3FEND + schema migration.** The store now persists the
+  `mitre_techniques`/`tactics`/`defenses` attribution (additive self-migration on
+  open) so `/api/events` and the SIEM sinks carry it; the **docs** tab renders
+  the full documentation in-product (`/docs/<name>`).
 - **Breadth + depth (six rounds).** Thirty-five more protocol decoys across
   data-infra (`jdwp`, `rmi`, `git`, `zookeeper`, `kafka`, `cassandra`, `nats`,
   `rpcbind`, `pptp`, `stun`), IoT/app/AAA (`adb`, `ajp13`, `epmd`, `tacacs`,
@@ -828,7 +892,7 @@ tarpit-honeypot show-config    -c <config>
 tarpit-honeypot reset-db       -c <config>     # wipe the SQLite event index (keeps config)
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
-tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--limit N]
+tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
@@ -839,6 +903,8 @@ tarpit-honeypot list-unavailable-capabilities -c <config>  # platform features n
 tarpit-honeypot list-archeservices [<role>]
 tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+tarpit-honeypot list-fleet-rules [--json]                  # cross-sensor fleet:* detector catalog
+tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot init           [-o <config>]
 tarpit-honeypot completion     bash|zsh|fish
@@ -846,11 +912,11 @@ tarpit-honeypot help           [subcommand|topic]
 tarpit-honeypot version
 ```
 
-The `list-archetypes`, `list-handlers`, `list-cves` and `list-techniques`
-commands dump the in-source catalogs (no config or network needed) so you
-can discover what the sensor can impersonate, which `handler:` values are
-valid, which CVEs it emulates / detects, and how each rule maps to MITRE
-ATT&CK + D3FEND. `identify` runs the same offline fingerprint engine the
+The `list-archetypes`, `list-handlers`, `list-cves`, `list-techniques` and
+`list-fleet-rules` commands dump the in-source catalogs (no config or network
+needed) so you can discover what the sensor can impersonate, which `handler:`
+values are valid, which CVEs it emulates / detects, how each rule maps to MITRE
+ATT&CK + D3FEND, and which cross-sensor `fleet:*` detectors an aggregator runs. `identify` runs the same offline fingerprint engine the
 live listener uses over a string you paste in (a User-Agent, SSH client
 id, JA3, or request payload) — handy for triaging a log line or tuning a
 detection:
@@ -2139,7 +2205,7 @@ Sample Prometheus scrape:
     - targets: ['sensor.example.internal:8088']
 ```
 
-## What's NOT in v2.0
+## What's NOT in scope (deliberate boundaries)
 
 - **Windows service registration.** The binary will run on Windows but
   there's no SCM integration yet.
