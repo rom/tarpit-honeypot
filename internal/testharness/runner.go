@@ -20,6 +20,7 @@ type RunResult struct {
 	Rounds      int
 	TimeBounded bool     // run stopped because the time bound was hit
 	Results     []Result // the final result of every (case, round) that ran
+	Info        RunInfo  // before/during/after context about the run + target
 }
 
 // Duration is the wall-clock run time.
@@ -95,6 +96,16 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	}
 	r.logf("harness: %d case(s) × %d round(s) against %s (seed %d)", len(cases), r.cfg.Rounds, rr.Target, r.cfg.Seed)
 
+	// before: provenance + environment + a baseline snapshot of each endpoint;
+	// during: a resource sampler runs for the length of the run.
+	rr.Info.Host = hostInfo()
+	rr.Info.Config = configSummary(r.cfg)
+	if r.target.Managed() {
+		rr.Info.Binary = binaryInfo(r.cfg.Spawn.Binary)
+	}
+	rr.Info.Baseline = snapshotEndpoints(ctx, r.target, r.cfg)
+	sampler := startSampler(r.target.PID)
+
 	var deadline time.Time
 	if r.cfg.Duration > 0 {
 		deadline = rr.Started.Add(r.cfg.Duration.D())
@@ -134,7 +145,29 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	}
 	rr.Finished = time.Now()
 	rr.TimeBounded = stop && !deadline.IsZero()
+	// after: close the resource envelope, snapshot the endpoints again (drift /
+	// went-dark), and record how the run ended.
+	rr.Info.Resources = sampler.Stop()
+	rr.Info.Final = snapshotEndpoints(ctx, r.target, r.cfg)
+	rr.Info.StoppedHow = r.stoppedHow(ctx, stop, deadline)
 	return rr, nil
+}
+
+func (r *Runner) stoppedHow(ctx context.Context, stopped bool, deadline time.Time) string {
+	switch {
+	case ctx.Err() != nil:
+		return "interrupted: " + ctx.Err().Error()
+	case stopped && !deadline.IsZero():
+		return "stopped at time bound"
+	default:
+		s := "completed all rounds"
+		if r.target.Managed() {
+			if exited, how := r.target.procExited(); exited {
+				s += "; WARNING: target process had exited (" + how + ")"
+			}
+		}
+		return s
+	}
 }
 
 // runCase executes one case with retry+restart on a bad outcome.

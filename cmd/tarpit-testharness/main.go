@@ -3,8 +3,9 @@
 // (a managed instance it spawns, or an external one) or individual protocol
 // handlers in-process, across categorized, individually-selectable test cases:
 // unit checks, dumb + smart fuzzing, protocol emulation/compatibility,
-// deliberate mis-implementation, port/host/ping/ARP sweeps, and client
-// fingerprint triggers. Run it fully automated, quiet, or with progress;
+// deliberate mis-implementation, port/host/ping/ARP sweeps, client
+// fingerprint triggers, and fail-safe resilience (abuse/overload) + containment
+// (do-no-harm) checks. Run it fully automated, quiet, or with progress;
 // bound it by rounds or wall-clock time; it retries (restarting the target)
 // on failures/crashes, writes reports (text/json/junit/md/csv/rtf/pdf), and
 // records every run + result in a SQLite database keyed by tool version + time.

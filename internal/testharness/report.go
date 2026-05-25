@@ -26,6 +26,7 @@ type Report struct {
 	TimeBounded bool           `json:"time_bounded"`
 	Total       int            `json:"total"`
 	Counts      map[string]int `json:"counts"`
+	Info        RunInfo        `json:"info"`
 	Results     []Result       `json:"results"`
 }
 
@@ -38,7 +39,7 @@ func toReport(rr *RunResult) Report {
 		ToolVersion: rr.ToolVersion, Target: rr.Target, Seed: rr.Seed,
 		Started: rr.Started, Finished: rr.Finished, DurationMs: rr.Duration().Milliseconds(),
 		Rounds: rr.Rounds, TimeBounded: rr.TimeBounded, Total: len(rr.Results),
-		Counts: counts, Results: rr.Results,
+		Counts: counts, Info: rr.Info, Results: rr.Results,
 	}
 }
 
@@ -116,6 +117,12 @@ func writeText(w io.Writer, rr *RunResult) error {
 			fmt.Fprintf(w, "  %-12s %d run, %d finding(s)\n", cat, tot, bad)
 		}
 	}
+	if rr.Info.present() {
+		fmt.Fprintln(w)
+		for _, ln := range infoLines(rr) {
+			fmt.Fprintln(w, ln)
+		}
+	}
 	findings := rr.Findings()
 	if len(findings) == 0 {
 		fmt.Fprintln(w, "\nNo findings. ✓")
@@ -151,6 +158,13 @@ func writeMarkdown(w io.Writer, rr *RunResult) error {
 		if counts[s] > 0 {
 			fmt.Fprintf(w, "| %s | %d |\n", s, counts[s])
 		}
+	}
+	if rr.Info.present() {
+		fmt.Fprintf(w, "\n## Environment & target\n\n```\n")
+		for _, ln := range infoLines(rr) {
+			fmt.Fprintln(w, ln)
+		}
+		fmt.Fprintf(w, "```\n")
 	}
 	findings := rr.Findings()
 	fmt.Fprintf(w, "\n## Findings (%d)\n\n", len(findings))
@@ -299,6 +313,10 @@ func reportLines(rr *RunResult) []string {
 		if tot > 0 {
 			add("  %-12s %d run, %d finding(s)", cat, tot, bad)
 		}
+	}
+	if rr.Info.present() {
+		ls = append(ls, "")
+		ls = append(ls, infoLines(rr)...)
 	}
 	findings := rr.Findings()
 	if len(findings) == 0 {
