@@ -227,7 +227,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "vnc":
 		return &vnc{id: deps.Identity}, nil
 	case "smtp_recv":
-		return &smtpRecv{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype}, nil
+		return newSMTPRecv(deps), nil
 	case "rdp":
 		return &rdp{}, nil
 	case "winrm":
@@ -259,9 +259,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "memcached":
 		return &memcached{id: deps.Identity}, nil
 	case "pop3":
-		return &pop3{}, nil
+		return newPOP3(deps), nil
 	case "imap":
-		return &imap{}, nil
+		return newIMAP(deps), nil
 	case "mongodb":
 		return &mongodb{id: deps.Identity}, nil
 	case "elasticsearch":

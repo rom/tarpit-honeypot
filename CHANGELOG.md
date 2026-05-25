@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — handlers: in-protocol STARTTLS (SMTP / IMAP / POP3)
+- **SMTP** (25) now advertises `STARTTLS` in EHLO and performs a real TLS
+  upgrade on the command (was a `454` refusal); **IMAP** (143) advertises +
+  upgrades on `STARTTLS` (replacing the first-batch honest-refusal once a cert
+  store is available); **POP3** (110) advertises + upgrades on `STLS` (was an
+  `-ERR`). After the upgrade the command loop continues over TLS and keeps
+  capturing credentials. Advertised only when a cert manager is wired and the
+  connection isn't already TLS, so the implicit-TLS variants don't offer a
+  pointless nested STARTTLS, and a TLS-less deployment never advertises it.
+- A fresh reader is created over the upgraded connection so any plaintext a
+  client pipelines after the STARTTLS command is dropped, not executed
+  (STARTTLS-injection defense).
+
 ### Added — handlers: implicit-TLS services + PostgreSQL SSL
 - New implicit-TLS handlers **`smtps`** (465), **`imaps`** (993), **`pop3s`**
   (995), **`ldaps`** (636), **`mqtts`** (8883), and **`ftps`** (990): a generic

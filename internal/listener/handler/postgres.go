@@ -21,13 +21,7 @@ type postgres struct {
 // with a real TLS upgrade. Without a data dir (e.g. some module-mode callers)
 // it stays nil and the handler falls back to the plaintext 'N' refusal.
 func newPostgres(deps Deps) *postgres {
-	p := &postgres{arch: deps.Archetype}
-	if deps.DataDir != "" {
-		if m, err := newCertManager(deps.DataDir, deps.TLSRotate, deps.Identity); err == nil {
-			p.tlsMgr = m
-		}
-	}
-	return p
+	return &postgres{arch: deps.Archetype, tlsMgr: maybeCertMgr(deps)}
 }
 
 func (p *postgres) Name() string { return "postgres" }

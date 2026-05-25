@@ -14,11 +14,13 @@ import (
 // with an APOP-capable timestamp banner, answers CAPA, walks the USER/PASS,
 // APOP and SASL AUTH (PLAIN/LOGIN) logins, captures the credentials, and
 // rejects the auth — mail-credential harvesting bait. Nothing is delivered.
-type pop3 struct{}
+type pop3 struct{ tlsMgr *certManager }
+
+func newPOP3(deps Deps) *pop3 { return &pop3{tlsMgr: maybeCertMgr(deps)} }
 
 func (p *pop3) Name() string { return "pop3" }
 
-func (p *pop3) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
 	// APOP-style banner: the <id@host> timestamp tells a scanner APOP is
@@ -67,11 +69,30 @@ func (p *pop3) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		case "AUTH":
 			p.handlePOP3Auth(arg, br, conn, &res)
 		case "CAPA":
-			_, _ = conn.Write([]byte("+OK Capability list follows\r\n" +
-				"TOP\r\nUSER\r\nSASL PLAIN LOGIN\r\nUIDL\r\nRESP-CODES\r\nPIPELINING\r\nSTLS\r\nIMPLEMENTATION Dovecot\r\n.\r\n"))
+			capa := "+OK Capability list follows\r\n" +
+				"TOP\r\nUSER\r\nSASL PLAIN LOGIN\r\nUIDL\r\nRESP-CODES\r\nPIPELINING\r\n"
+			if p.tlsMgr != nil && !alreadyTLS(conn) {
+				capa += "STLS\r\n"
+			}
+			capa += "IMPLEMENTATION Dovecot\r\n.\r\n"
+			_, _ = conn.Write([]byte(capa))
 		case "STLS":
-			// We don't negotiate TLS; advertise it but fall back to plaintext.
-			_, _ = conn.Write([]byte("-ERR TLS not available\r\n"))
+			if p.tlsMgr == nil || alreadyTLS(conn) {
+				_, _ = conn.Write([]byte("-ERR TLS not available\r\n"))
+				continue
+			}
+			_, _ = conn.Write([]byte("+OK Begin TLS negotiation\r\n"))
+			nc, err := startTLS(ctx, conn, p.tlsMgr, cfg.ID, tlsHosts(cfg), nil)
+			if err != nil {
+				res.Meta["tls_err"] = err.Error()
+				res.Meta["commands"] = commands
+				return res, nil
+			}
+			conn = nc
+			br = bufio.NewReader(conn)
+			withTimeout(conn, cfg.ReadTimeout)
+			res.Meta["tls"] = true
+			res.Meta["starttls"] = true
 		case "QUIT":
 			_, _ = conn.Write([]byte("+OK bye\r\n"))
 			res.Meta["commands"] = commands

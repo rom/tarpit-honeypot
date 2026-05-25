@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -110,4 +112,44 @@ func tlsHosts(cfg config.Listener) []string {
 		return cfg.HTTPS.Hosts
 	}
 	return []string{"localhost"}
+}
+
+// maybeCertMgr builds a cert manager from deps, or nil when no data dir is
+// configured (some module-mode callers) or the dir can't be created — handlers
+// then fall back to refusing STARTTLS / SSL rather than failing to start.
+func maybeCertMgr(deps Deps) *certManager {
+	if deps.DataDir == "" {
+		return nil
+	}
+	m, err := newCertManager(deps.DataDir, deps.TLSRotate, deps.Identity)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+// startTLS upgrades an already-greeted plaintext connection to TLS (the STARTTLS
+// flow). The caller must have written the protocol's "ready" line first. On
+// success the caller MUST build a fresh reader over the returned conn: any bytes
+// a previous buffered reader had read ahead are intentionally dropped, which is
+// the defense against STARTTLS command-injection (plaintext pipelined after the
+// STARTTLS command must never be executed post-upgrade).
+func startTLS(ctx context.Context, conn net.Conn, mgr *certManager, listenerID string, hosts []string, arch *archetype.Profile) (net.Conn, error) {
+	tcfg, err := mgr.serverConfig(listenerID, hosts, arch)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Server(conn, tcfg)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+// alreadyTLS reports whether a connection is already a TLS server connection —
+// used so the implicit-TLS variants (imaps/pop3s/smtps) refuse a pointless
+// STARTTLS-inside-TLS instead of attempting a nested handshake.
+func alreadyTLS(conn net.Conn) bool {
+	_, ok := conn.(*tls.Conn)
+	return ok
 }

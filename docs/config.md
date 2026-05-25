@@ -196,8 +196,14 @@ The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (63
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
 plaintext peers: the sensor performs the TLS handshake (presenting a self-signed
 cert from `<data_dir>/tls`, computing JA3/JA4 + JA3S like `https`) and then runs
-the underlying protocol over the encrypted channel. PostgreSQL upgrades
-opportunistically instead — it answers an `SSLRequest` with a real TLS handshake.
+the underlying protocol over the encrypted channel.
+
+Several plaintext handlers also support **opportunistic TLS** when a cert store
+is available (it is, by default — `<data_dir>/tls`): `smtp_recv` advertises and
+upgrades on `STARTTLS`, `imap` on `STARTTLS`, `pop3` on `STLS`, and `postgres`
+answers an `SSLRequest` with a real handshake. Credentials continue to be
+captured over the encrypted channel. These are advertised only when TLS can
+actually be negotiated, keeping the advertisement honest.
 
 The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515) — recognize PJL/PostScript/ZPL abuse, CUPS foomatic-rip RCE, and LPD injection; pair them with a printer archetype (`hp-printer`, `brother-printer`, `xerox-versalink`, …) so the IPP/SNMP/web identities agree. See [`archetypes.md`](archetypes.md).
 

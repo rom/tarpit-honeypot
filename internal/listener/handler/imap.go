@@ -14,7 +14,9 @@ import (
 // the pre-auth recon commands (CAPABILITY / ID / NAMESPACE / LIST / STATUS),
 // captures LOGIN and SASL AUTHENTICATE credentials, and rejects the auth —
 // mail-credential harvesting bait. Nothing is stored or delivered.
-type imap struct{}
+type imap struct{ tlsMgr *certManager }
+
+func newIMAP(deps Deps) *imap { return &imap{tlsMgr: maybeCertMgr(deps)} }
 
 func (m *imap) Name() string { return "imap" }
 
@@ -23,10 +25,15 @@ func (m *imap) Name() string { return "imap" }
 // the declarative extensions a stock Dovecot lists.
 const imapCaps = "IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE NAMESPACE AUTH=PLAIN AUTH=LOGIN"
 
-func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
-	_, _ = conn.Write([]byte("* OK [CAPABILITY " + imapCaps + "] Dovecot ready.\r\n"))
+	// Advertise STARTTLS only when we can actually perform it.
+	caps := imapCaps
+	if m.tlsMgr != nil && !alreadyTLS(conn) {
+		caps += " STARTTLS"
+	}
+	_, _ = conn.Write([]byte("* OK [CAPABILITY " + caps + "] Dovecot ready.\r\n"))
 	res.BannerSent = "* OK IMAP4rev1 ready"
 
 	br := bufio.NewReader(conn)
@@ -69,20 +76,32 @@ func (m *imap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			}
 			_, _ = conn.Write([]byte(tag + " NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"))
 		case "CAPABILITY":
-			_, _ = conn.Write([]byte("* CAPABILITY " + imapCaps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
+			_, _ = conn.Write([]byte("* CAPABILITY " + caps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
 		case "ID":
 			// Clients send their own ID; we answer with a Dovecot-shaped one.
 			_, _ = conn.Write([]byte("* ID (\"name\" \"Dovecot\")\r\n" + tag + " OK ID completed.\r\n"))
 		case "NAMESPACE":
 			_, _ = conn.Write([]byte("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n" + tag + " OK NAMESPACE completed.\r\n"))
 		case "STARTTLS":
-			// We don't negotiate TLS, so refuse honestly rather than answer OK
-			// and then leave the client's TLS ClientHello to be read as
-			// plaintext IMAP (a broken-handshake fingerprint). STARTTLS is not
-			// advertised in the capability set either, keeping the two
-			// consistent. A TLS-only client stays away; a plaintext client
-			// proceeds to LOGIN, which we still capture.
-			_, _ = conn.Write([]byte(tag + " NO [PRIVACYREQUIRED] STARTTLS not available.\r\n"))
+			if m.tlsMgr == nil || alreadyTLS(conn) {
+				// Can't (or needn't) negotiate: refuse honestly rather than
+				// answer OK and leave the client's ClientHello to be read as
+				// plaintext IMAP.
+				_, _ = conn.Write([]byte(tag + " NO [PRIVACYREQUIRED] STARTTLS not available.\r\n"))
+				continue
+			}
+			_, _ = conn.Write([]byte(tag + " OK Begin TLS negotiation now.\r\n"))
+			nc, err := startTLS(ctx, conn, m.tlsMgr, cfg.ID, tlsHosts(cfg), nil)
+			if err != nil {
+				res.Meta["tls_err"] = err.Error()
+				res.Meta["commands"] = commands
+				return res, nil
+			}
+			conn = nc
+			br = bufio.NewReader(conn)
+			withTimeout(conn, cfg.ReadTimeout)
+			res.Meta["tls"] = true
+			res.Meta["starttls"] = true
 		case "AUTHENTICATE":
 			m.handleIMAPAuth(rest, br, conn, tag, &res)
 		case "LIST", "LSUB":

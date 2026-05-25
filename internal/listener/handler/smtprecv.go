@@ -15,9 +15,14 @@ import (
 )
 
 type smtpRecv struct {
-	id   *identity.Identity
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
+	id     *identity.Identity
+	jit    *jitter.Jitterer
+	arch   *archetype.Profile
+	tlsMgr *certManager
+}
+
+func newSMTPRecv(deps Deps) *smtpRecv {
+	return &smtpRecv{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, tlsMgr: maybeCertMgr(deps)}
 }
 
 func (s *smtpRecv) Name() string { return "smtp_recv" }
@@ -48,6 +53,12 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	exts := s.arch.SMTPExtensions()
 	if len(exts) == 0 {
 		exts = defaultSMTPExtensions
+	}
+	// Advertise STARTTLS only when we can actually negotiate it (a cert manager
+	// is wired and we're not already inside TLS), keeping the advertisement
+	// honest.
+	if s.tlsMgr != nil && !alreadyTLS(conn) {
+		exts = withSTARTTLS(exts)
 	}
 	greet := "220 " + host + " ESMTP " + product + "\r\n"
 	if cfg.Banner != "" {
@@ -134,8 +145,24 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			}
 			return res, nil
 		case "STARTTLS":
-			// We don't actually negotiate; reply 454 so the client falls back.
-			fmt.Fprintf(conn, "454 STARTTLS unavailable\r\n")
+			if s.tlsMgr == nil || alreadyTLS(conn) {
+				fmt.Fprintf(conn, "454 4.7.0 STARTTLS unavailable\r\n")
+				break
+			}
+			fmt.Fprintf(conn, "220 2.0.0 Ready to start TLS\r\n")
+			nc, err := startTLS(ctx, conn, s.tlsMgr, cfg.ID, tlsHosts(cfg), s.arch)
+			if err != nil {
+				res.Meta["tls_err"] = err.Error()
+				return res, nil
+			}
+			conn = nc
+			br = bufio.NewReader(conn)
+			withTimeout(conn, cfg.ReadTimeout)
+			res.Meta["tls"] = true
+			res.Meta["starttls"] = true
+			// RFC 3207: discard any state learned before the TLS upgrade.
+			delete(res.Meta, "helo")
+			rcpt = rcpt[:0]
 		case "":
 			// empty line — ignore
 		default:
@@ -176,12 +203,26 @@ func isExternalAddr(addr string) bool {
 
 // defaultSMTPExtensions is the ESMTP keyword set a stock Postfix advertises
 // in EHLO. We list only capabilities the handler actually honours (or that
-// are purely declarative) so advertising stays consistent with behaviour —
-// no STARTTLS, since we never negotiate TLS. Archetypes whose MTA differs
-// (Exchange, sendmail) override via Profile.smtpExtensions.
+// are purely declarative) so advertising stays consistent with behaviour.
+// STARTTLS is appended at runtime by withSTARTTLS when a cert manager is wired
+// (it is omitted here so a TLS-less deployment never advertises it). Archetypes
+// whose MTA differs (Exchange, sendmail) override via Profile.smtpExtensions.
 var defaultSMTPExtensions = []string{
 	"PIPELINING", "SIZE 10240000", "VRFY", "ETRN", "AUTH PLAIN LOGIN CRAM-MD5",
 	"ENHANCEDSTATUSCODES", "8BITMIME", "DSN", "CHUNKING", "SMTPUTF8",
+}
+
+// withSTARTTLS returns exts with STARTTLS appended (a fresh slice, so the
+// shared default isn't mutated), unless it is already present.
+func withSTARTTLS(exts []string) []string {
+	for _, e := range exts {
+		if strings.EqualFold(e, "STARTTLS") {
+			return exts
+		}
+	}
+	out := make([]string, len(exts), len(exts)+1)
+	copy(out, exts)
+	return append(out, "STARTTLS")
 }
 
 // buildSMTPEHLO renders a multiline 250 EHLO reply: the greeting host on
