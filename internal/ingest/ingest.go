@@ -25,6 +25,12 @@ type Config struct {
 	Token      string // required bearer token
 	HMACSecret []byte // optional body-signature verification
 	MaxBody    int64  // reject larger batches (bytes)
+	// Intel, when set, is mounted at GET /intel — the downward fleet-intel feed
+	// (see internal/intel). It does its own bearer auth.
+	Intel http.Handler
+	// Routes are extra (pattern -> handler) mounts — the STIX/TAXII IOC export
+	// (see internal/stix). Each handler does its own bearer auth.
+	Routes map[string]http.Handler
 }
 
 // Handler serves POST /ingest (and GET /healthz).
@@ -46,6 +52,12 @@ func (h *Handler) Mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ingest", h.handleIngest)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	if h.cfg.Intel != nil {
+		mux.Handle("/intel", h.cfg.Intel)
+	}
+	for pattern, handler := range h.cfg.Routes {
+		mux.Handle(pattern, handler)
+	}
 	return mux
 }
 

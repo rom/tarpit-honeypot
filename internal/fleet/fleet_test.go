@@ -599,3 +599,276 @@ func TestTargetProfileMatch(t *testing.T) {
 		t.Errorf("source_count = %d; want 2", sc)
 	}
 }
+
+func TestHoneytokenSpread(t *testing.T) {
+	c := New(Config{Enabled: true, HoneytokenSensors: 2, SourceSensors: 99})
+	tk := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "canary:url:secret-token"
+		return e
+	}
+	if a := findAlert(c.Observe(tk("s1", "1.1.1.1")), "fleet:honeytoken-spread"); a != nil {
+		t.Fatal("fired at one sensor")
+	}
+	a := findAlert(c.Observe(tk("s2", "2.2.2.2")), "fleet:honeytoken-spread")
+	if a == nil {
+		t.Fatal("did not fire when the token reached 2 sensors")
+	}
+	if a.Severity != event.SeverityCritical {
+		t.Errorf("severity = %v; want critical", a.Severity)
+	}
+	if tok, _ := a.Meta["token"].(string); tok != "canary:url:secret-token" {
+		t.Errorf("token = %q", tok)
+	}
+}
+
+func TestCVEEmergence(t *testing.T) {
+	c := New(Config{Enabled: true, CVEEmergenceSensors: 2, CVESensors: 99, Window: time.Hour})
+	ce := func(sid, ip, id string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "cve:" + id
+		return e
+	}
+	c.Observe(ce("s1", "1.1.1.1", "CVE-2026-0001"))
+	a := findAlert(c.Observe(ce("s2", "2.2.2.2", "CVE-2026-0001")), "fleet:cve-emergence")
+	if a == nil {
+		t.Fatal("did not fire for a novel CVE on 2 sensors")
+	}
+	if got, _ := a.Meta["cve"].(string); got != "CVE-2026-0001" {
+		t.Errorf("cve = %q", got)
+	}
+}
+
+func TestCVEEmergenceEstablishedSilent(t *testing.T) {
+	c := New(Config{Enabled: true, CVEEmergenceSensors: 2, CVESensors: 99, Window: time.Hour})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	ce := func(sid, ip, id string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.RuleID = "cve:" + id
+		return e
+	}
+	c.Observe(ce("s1", "1.1.1.1", "CVE-OLD")) // first contact at t0
+	now = now.Add(2 * time.Hour)              // established beyond the window
+	c.Observe(ce("s2", "2.2.2.2", "CVE-OLD"))
+	if a := findAlert(c.Observe(ce("s3", "3.3.3.3", "CVE-OLD")), "fleet:cve-emergence"); a != nil {
+		t.Fatal("fired for an established (non-novel) CVE")
+	}
+}
+
+func TestCrossProtocolActor(t *testing.T) {
+	c := New(Config{Enabled: true, CrossProtoHandlers: 3, CrossProtoSensors: 2, SourceSensors: 99})
+	h := func(sid, handler string) *event.Event {
+		e := ev(sid, "5.5.5.5", nil)
+		e.Handler = handler
+		return e
+	}
+	c.Observe(h("s1", "ssh"))
+	c.Observe(h("s1", "http"))
+	a := findAlert(c.Observe(h("s2", "redis")), "fleet:cross-protocol-actor")
+	if a == nil {
+		t.Fatal("did not fire for one source across 3 services / 2 sensors")
+	}
+	if hc, _ := a.Meta["handler_count"].(int); hc != 3 {
+		t.Errorf("handler_count = %d; want 3", hc)
+	}
+}
+
+func TestFingerprintASNSpread(t *testing.T) {
+	c := New(Config{Enabled: true, FPASNs: 3, FPASNSensors: 2, FPSensors: 99, ASNSensors: 99})
+	f := func(sid, ip, asn string) *event.Event {
+		return ev(sid, ip, map[string]any{"ja3": "JX", "asn": asn})
+	}
+	c.Observe(f("s1", "1.1.1.1", "AS1"))
+	c.Observe(f("s1", "2.2.2.2", "AS2"))
+	a := findAlert(c.Observe(f("s2", "3.3.3.3", "AS3")), "fleet:fingerprint-asn-spread")
+	if a == nil {
+		t.Fatal("did not fire for one fingerprint from 3 ASNs / 2 sensors")
+	}
+	if ac, _ := a.Meta["asn_count"].(int); ac != 3 {
+		t.Errorf("asn_count = %d; want 3", ac)
+	}
+}
+
+func TestThreatIntelSurge(t *testing.T) {
+	c := New(Config{Enabled: true, ThreatSurgeSources: 3, ThreatSurgeSensors: 2, SourceSensors: 99})
+	flagged := func(sid, ip string) *event.Event { return ev(sid, ip, map[string]any{"threat_intel_hit": true}) }
+	c.Observe(flagged("s1", "1.1.1.1"))
+	c.Observe(flagged("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(flagged("s2", "3.3.3.3")), "fleet:threat-intel-surge")
+	if a == nil {
+		t.Fatal("did not fire for 3 flagged sources across 2 sensors")
+	}
+	if sc, _ := a.Meta["source_count"].(int); sc != 3 {
+		t.Errorf("source_count = %d; want 3", sc)
+	}
+	// An unflagged event must not contribute.
+	c2 := New(Config{Enabled: true, ThreatSurgeSources: 2, ThreatSurgeSensors: 1})
+	c2.Observe(ev("s1", "9.9.9.9", nil))
+	if a := findAlert(c2.Observe(ev("s2", "8.8.8.8", nil)), "fleet:threat-intel-surge"); a != nil {
+		t.Fatal("fired for unflagged sources")
+	}
+}
+
+func TestToolCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, ToolSensors: 2, ToolSources: 2, SourceSensors: 99})
+	tl := func(sid, ip string) *event.Event { return ev(sid, ip, map[string]any{"tools": []string{"nuclei"}}) }
+	c.Observe(tl("s1", "1.1.1.1"))
+	a := findAlert(c.Observe(tl("s2", "2.2.2.2")), "fleet:tool-campaign")
+	if a == nil {
+		t.Fatal("did not fire when one tool reached 2 sensors / 2 sources")
+	}
+	if got, _ := a.Meta["tool"].(string); got != "nuclei" {
+		t.Errorf("tool = %q", got)
+	}
+}
+
+func TestC2Shared(t *testing.T) {
+	c := New(Config{Enabled: true, C2Sensors: 2})
+	u := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"harvested_urls": []string{"http://evil.example/x.sh"}})
+	}
+	c.Observe(u("s1", "1.1.1.1"))
+	a := findAlert(c.Observe(u("s2", "2.2.2.2")), "fleet:c2-shared")
+	if a == nil {
+		t.Fatal("did not fire when one C2 URL reached 2 sensors")
+	}
+	if a.Severity != event.SeverityCritical {
+		t.Errorf("severity = %v; want critical", a.Severity)
+	}
+	if got, _ := a.Meta["url"].(string); got != "http://evil.example/x.sh" {
+		t.Errorf("url = %q", got)
+	}
+}
+
+func TestUserAgentShared(t *testing.T) {
+	c := New(Config{Enabled: true, UASensors: 2, UASources: 3, SourceSensors: 99})
+	ua := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"user_agent": "python-requests/2.31"})
+	}
+	c.Observe(ua("s1", "1.1.1.1"))
+	c.Observe(ua("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(ua("s2", "3.3.3.3")), "fleet:user-agent-shared")
+	if a == nil {
+		t.Fatal("did not fire for one UA across 2 sensors / 3 sources")
+	}
+	if got, _ := a.Meta["user_agent"].(string); got != "python-requests/2.31" {
+		t.Errorf("user_agent = %q", got)
+	}
+}
+
+func TestTacticConvergence(t *testing.T) {
+	c := New(Config{Enabled: true, TacticSources: 3, TacticSensors: 2, SourceSensors: 99})
+	tac := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.MitreTechniques = []string{"T1190"}
+		return e
+	}
+	c.Observe(tac("s1", "1.1.1.1"))
+	c.Observe(tac("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(tac("s2", "3.3.3.3")), "fleet:tactic-convergence")
+	if a == nil {
+		t.Fatal("did not fire for one technique across 3 sources / 2 sensors")
+	}
+	if got, _ := a.Meta["technique"].(string); got != "T1190" {
+		t.Errorf("technique = %q", got)
+	}
+}
+
+func TestRecidivistNetwork(t *testing.T) {
+	c := New(Config{Enabled: true, RecidivistBucket: time.Hour, RecidivistWindows: 3, ASNSensors: 99, Window: 10 * time.Minute, FirstSeenHorizon: 30 * 24 * time.Hour})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	asn := func() map[string]any { return map[string]any{"asn": "AS31337"} }
+	c.Observe(ev("s1", "1.1.1.1", asn())) // bucket 0
+	now = now.Add(time.Hour)
+	c.Observe(ev("s2", "2.2.2.2", asn())) // bucket 1
+	now = now.Add(time.Hour)
+	a := findAlert(c.Observe(ev("s1", "3.3.3.3", asn())), "fleet:recidivist-network") // bucket 2 -> 3 buckets
+	if a == nil {
+		t.Fatal("did not fire for an ASN active across 3 buckets")
+	}
+	if ab, _ := a.Meta["active_buckets"].(int); ab != 3 {
+		t.Errorf("active_buckets = %d; want 3", ab)
+	}
+}
+
+func TestPortCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, PortCampaignSources: 3, PortCampaignSensors: 2, SourceSensors: 99})
+	p := func(sid, ip string, port int) *event.Event {
+		e := ev(sid, ip, nil)
+		e.Dest = event.Endpoint{Port: port}
+		return e
+	}
+	c.Observe(p("s1", "1.1.1.1", 23))
+	c.Observe(p("s1", "2.2.2.2", 23))
+	a := findAlert(c.Observe(p("s2", "3.3.3.3", 23)), "fleet:port-campaign")
+	if a == nil {
+		t.Fatal("did not fire for port 23 across 3 sources / 2 sensors")
+	}
+	if got, _ := a.Meta["port"].(int); got != 23 {
+		t.Errorf("port = %d; want 23", got)
+	}
+}
+
+func TestPortCampaignExcludesUbiquitous(t *testing.T) {
+	c := New(Config{Enabled: true, PortCampaignSources: 2, PortCampaignSensors: 2, SourceSensors: 99})
+	p := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.Dest = event.Endpoint{Port: 443} // excluded by default
+		return e
+	}
+	c.Observe(p("s1", "1.1.1.1"))
+	if a := findAlert(c.Observe(p("s2", "2.2.2.2")), "fleet:port-campaign"); a != nil {
+		t.Fatal("fired for an excluded ubiquitous port (443)")
+	}
+}
+
+func TestCredentialSprayFleet(t *testing.T) {
+	c := New(Config{Enabled: true, CredSprayPasswords: 3, CredSpraySensors: 2, CredSensors: 99, SourceSensors: 99})
+	cr := func(sid, ip, pass string) *event.Event {
+		return ev(sid, ip, map[string]any{"username": "admin", "password": pass})
+	}
+	c.Observe(cr("s1", "1.1.1.1", "p1"))
+	c.Observe(cr("s1", "2.2.2.2", "p2"))
+	a := findAlert(c.Observe(cr("s2", "3.3.3.3", "p3")), "fleet:credential-spray-fleet")
+	if a == nil {
+		t.Fatal("did not fire for one user / 3 passwords / 2 sensors")
+	}
+	if pc, _ := a.Meta["password_count"].(int); pc != 3 {
+		t.Errorf("password_count = %d; want 3", pc)
+	}
+	if u, _ := a.Meta["username"].(string); u != "admin" {
+		t.Errorf("username = %q", u)
+	}
+}
+
+func TestAsnOrgCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, AsnOrgASNs: 2, AsnOrgSensors: 2, ASNSensors: 99, SourceSensors: 99})
+	o := func(sid, ip, asn string) *event.Event {
+		return ev(sid, ip, map[string]any{"asn": asn, "asn_org": "BadCloud Inc"})
+	}
+	c.Observe(o("s1", "1.1.1.1", "AS1"))
+	a := findAlert(c.Observe(o("s2", "2.2.2.2", "AS2")), "fleet:asn-org-campaign")
+	if a == nil {
+		t.Fatal("did not fire for one org / 2 ASNs / 2 sensors")
+	}
+	if ac, _ := a.Meta["asn_count"].(int); ac != 2 {
+		t.Errorf("asn_count = %d; want 2", ac)
+	}
+	if org, _ := a.Meta["asn_org"].(string); org != "BadCloud Inc" {
+		t.Errorf("asn_org = %q", org)
+	}
+}
+
+func TestAsnOrgNeedsMultipleASNs(t *testing.T) {
+	// One org but a single ASN is just asn-multi-sensor territory, not this.
+	c := New(Config{Enabled: true, AsnOrgASNs: 2, AsnOrgSensors: 2, ASNSensors: 99, SourceSensors: 99})
+	o := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"asn": "AS1", "asn_org": "OneCloud"})
+	}
+	c.Observe(o("s1", "1.1.1.1"))
+	if a := findAlert(c.Observe(o("s2", "2.2.2.2")), "fleet:asn-org-campaign"); a != nil {
+		t.Fatal("fired for a single ASN")
+	}
+}

@@ -1,10 +1,12 @@
 package sensor
 
 import (
+	"math"
 	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/trust"
 )
 
 // ttlSet is a bounded time-expiring set, used to dedup forwarded events by
@@ -51,27 +53,97 @@ func (s *ttlSet) addIfNew(key string) bool {
 // relayed upward, exactly like a locally-observed one. Returns per-batch counts.
 func (s *Sensor) IngestBatch(evs []*event.Event) (accepted, deduped, dropped int) {
 	me := s.identity.Seed()
+	now := timeNow()
+	var alerts []*event.Event
+	note := func(a *trust.Alert) {
+		if a != nil {
+			alerts = append(alerts, s.trustAlert(a))
+		}
+	}
 	for _, ev := range evs {
 		if ev == nil {
 			continue
 		}
+		// A malformed event (no sensor_id/id, bad severity, fabricated future
+		// timestamp) is the strongest "this stream is fabricated" signal — drop
+		// it and penalise the sender's trust hard.
+		if malformedEvent(ev, now) {
+			note(s.trust.Observe(ev.SensorID, trust.Malformed))
+			dropped++
+			continue
+		}
+		// Admission control: a quarantined or rate-exceeded sensor is refused
+		// before it can touch the dedup set or the bus.
+		if !s.trust.Admit(ev.SensorID) {
+			note(s.trust.Observe(ev.SensorID, trust.Dropped))
+			dropped++
+			continue
+		}
 		if len(ev.Hops) > s.ingestMaxHops || hopsContain(ev.Hops, me) {
+			note(s.trust.Observe(ev.SensorID, trust.Dropped))
 			dropped++
 			continue
 		}
 		key := ev.SensorID + ":" + ev.ID
 		if !s.ingestSeen.addIfNew(key) {
+			note(s.trust.Observe(ev.SensorID, trust.Deduped))
 			deduped++
 			continue
 		}
 		select {
 		case s.bus <- ev:
 			accepted++
+			note(s.trust.Observe(ev.SensorID, trust.Accepted))
 		default:
-			dropped++ // bus saturated: shed rather than block the ingest handler
+			dropped++ // bus saturated: our overload, not the sensor's fault — unscored
+		}
+	}
+	// Push any trust alerts onto the bus (non-blocking) so they're stored,
+	// routed, and can forward upward like any other fleet:* finding.
+	for _, a := range alerts {
+		select {
+		case s.bus <- a:
+		default:
 		}
 	}
 	return accepted, deduped, dropped
+}
+
+// malformedEvent flags an ingested event that can't be trusted as a real,
+// well-formed observation: missing the fleet dedup keys, an out-of-range
+// severity, or a timestamp implausibly far in the future (fabricated / clock
+// abuse). A zero timestamp is tolerated (older/hand-crafted events).
+func malformedEvent(ev *event.Event, now time.Time) bool {
+	if ev.ID == "" || ev.SensorID == "" {
+		return true
+	}
+	// Severity 0 means "absent" (tolerated); anything outside the real 1..4
+	// range is garbage.
+	if ev.Severity < 0 || ev.Severity > event.SeverityCritical {
+		return true
+	}
+	if !ev.Time.IsZero() && ev.Time.After(now.Add(24*time.Hour)) {
+		return true
+	}
+	return false
+}
+
+// trustAlert builds the fleet:sensor-untrusted event for a low-trust sensor.
+func (s *Sensor) trustAlert(a *trust.Alert) *event.Event {
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     timeNow(),
+		Sensor:   s.name,
+		SensorID: s.identity.Seed(),
+		RuleID:   "fleet:sensor-untrusted",
+		Severity: event.SeverityHigh,
+		Meta: map[string]any{
+			"sensor": a.Sensor, "score": math.Round(a.Score*100) / 100,
+			"accepted": a.Accepted, "deduped": a.Deduped,
+			"dropped": a.Dropped, "malformed": a.Malformed,
+			"quarantined": a.Quarantined,
+		},
+	}
 }
 
 func hopsContain(hops []string, id string) bool {

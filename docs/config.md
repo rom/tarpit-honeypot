@@ -48,6 +48,8 @@ has its own reference further down.
 | `forward` | list | ship events to parent aggregator node(s) |
 | `ingest` | map | accept events from child nodes (aggregator endpoint) |
 | `fleet` | map | cross-sensor correlation over the merged stream |
+| `intel_feed` | map | subscribe to a parent's downward fleet-intel feed |
+| `misp` | map | push the fleet's observed IOCs to a MISP instance |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
 | `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
 | `devices` | map | learned-device inventory + new-device alerts |
@@ -665,6 +667,10 @@ forward:
     max_age: 2s                         # ...or at least this often (default 2s)
     queue_size: 4096                    # in-memory buffer; full sheds load + counts
   - { id: global, url: https://hub.corp/ingest, min_severity: high }   # fan-out
+  - id: hub                                # multi-level: ship a rollup, not raw events
+    url: https://hub.corp/ingest
+    mode: rollup                           # one periodic summary instead of every event
+    rollup_interval: 60s                   # summary period (default 60s)
 ```
 
 Events ship as NDJSON over HTTPS **through the egress allowlist** (each
@@ -673,8 +679,15 @@ Events ship as NDJSON over HTTPS **through the egress allowlist** (each
 deployment id) and a `hops` chain stamped per node, so the aggregator dedups by
 `sensor_id:id` and detects loops. Delivery is at-least-once toward the parent
 (bounded retry keeping the batch); a full queue sheds load with a counter, like
-the sinks. (Disk-spool durability across restarts and the aggregator ingest
-endpoint are the next increments.)
+the sinks.
+
+**Rollup mode (multi-level).** A higher tier doesn't need every raw event. Set
+`mode: rollup` and the target ships one `fleet:rollup` event per
+`rollup_interval` instead: per-window counters of the top source IPs / ASNs /
+fingerprints / rules plus a severity histogram and distinct-source count. This
+keeps upward volume sane at L2/L3 while preserving the correlation **keys** (who
+was active, and how much). A node can mix targets — e.g. `full` to the site SOC,
+`rollup` to the global hub.
 
 ## `ingest:` — accept events from child nodes (aggregator)
 
@@ -705,6 +718,41 @@ a `sqlite` channel + route so forwarded events are stored and visible in the UI;
 add `forward:` to relay onward to a higher tier. Store rows now carry the
 originating `sensor_id` (stable, survives identical hostnames) alongside the
 sensor name.
+
+**Trust scoring + admission control (`ingest.trust`).** Ingest is
+authenticated, but a shared token can't tell a healthy child from a
+misconfigured or compromised one fabricating events. The scorer keeps per-sensor
+windowed counters (accepted / deduped / dropped / malformed), derives a 0..1
+trust score, and raises a high-severity `fleet:sensor-untrusted` event when a
+node's score falls. A *malformed* event — missing `sensor_id`/`id`, an
+out-of-range severity, or a timestamp implausibly far in the future — is dropped
+and penalised hard. On by default wherever `ingest:` is enabled.
+
+```yaml
+ingest:
+  trust:
+    enabled: true            # default on when ingest is enabled
+    window: 5m               # counter window
+    min_events: 50           # don't score below this volume
+    alert_below: 0.5         # emit fleet:sensor-untrusted under this score
+    quarantine_below: 0.0    # refuse a sensor under this score (0 = alert only)
+    rate_per_sec: 0          # per-sensor admission cap (0 = unlimited); protects the store
+    burst: 0                 # token-bucket burst (default = rate_per_sec)
+```
+
+With `quarantine_below` set, a low-trust node is **refused** (its events dropped
+before the dedup set / bus) until its window rolls and it's re-evaluated.
+`rate_per_sec` caps how fast any one sensor can inject events — so a single
+flooding (or compromised) node can't overwhelm the aggregator's store.
+
+**Store scale.** The store is SQLite in WAL mode with batched transactional
+inserts (the aggregator commits ingested events in one transaction, not per
+row), which carries a busy aggregator comfortably. For larger fleets, scale
+*horizontally* rather than vertically: ship `mode: rollup` to a higher tier (see
+`forward:`) so the top stores summaries not raw events, cap per-sensor volume
+with `ingest.trust.rate_per_sec`, bound size with `sensor.disk.retention_days` /
+`sqlite_mb`, and push to an external TSDB/SIEM via a `channels:` sink
+(syslog / webhook / mqtt / sns).
 
 ## `fleet:` — cross-sensor correlation (aggregator)
 
@@ -759,8 +807,36 @@ fleet:
   profile_cves: 2          # a playbook is a set of >= N CVEs ...
   profile_sources: 3       #   ... shared by >= N sources ...
   profile_sensors: 2       #   ... across >= N sensors -> fleet:target-profile-match
+  honeytoken_sensors: 2    # same canary token on >= N sensors -> fleet:honeytoken-spread
+  cve_emergence_sensors: 2 # a brand-new CVE on >= N sensors -> fleet:cve-emergence
+  cross_proto_handlers: 4  # one source on >= N distinct services ...
+  cross_proto_sensors: 2   #   ... across >= N sensors -> fleet:cross-protocol-actor
+  fp_asns: 3               # one fingerprint from >= N distinct ASNs ...
+  fp_asn_sensors: 2        #   ... across >= N sensors -> fleet:fingerprint-asn-spread
+  threat_surge_sources: 10 # >= N flagged (threat-intel/Tor) sources ...
+  threat_surge_sensors: 3  #   ... across >= N sensors -> fleet:threat-intel-surge
+  tool_sensors: 3          # one identified tool on >= N sensors ...
+  tool_sources: 3          #   ... from >= N sources -> fleet:tool-campaign
+  c2_sensors: 2            # one harvested C2/dropper URL on >= N sensors -> fleet:c2-shared
+  ua_sensors: 3            # one HTTP User-Agent on >= N sensors ...
+  ua_sources: 5            #   ... from >= N sources -> fleet:user-agent-shared
+  tactic_sources: 8        # >= N sources using one MITRE technique ...
+  tactic_sensors: 3        #   ... across >= N sensors -> fleet:tactic-convergence
+  recidivist_bucket: 24h   # time bucket ("day") for recidivist tracking ...
+  recidivist_windows: 3    #   ... alert at >= N distinct buckets -> fleet:recidivist-network
+  port_campaign_sources: 5 # >= N sources on one dest port ...
+  port_campaign_sensors: 3 #   ... across >= N sensors -> fleet:port-campaign
+  port_campaign_exclude: [22, 80, 443]  # ubiquitous ports to ignore
+  cred_spray_passwords: 5  # >= N distinct passwords for one username ...
+  cred_spray_sensors: 2    #   ... across >= N sensors -> fleet:credential-spray-fleet
+  asn_org_asns: 2          # >= N distinct ASNs under one AS-org ...
+  asn_org_sensors: 5       #   ... across >= N sensors -> fleet:asn-org-campaign
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
+  # downward intel feedback (serving side; needs ingest:) — see intel_feed:
+  serve_intel: true      # derive + serve a fleet-intel feed (default on when fleet+ingest)
+  intel_ttl: 6h          # how long a served indicator lingers
+  intel_max: 10000       # cap per indicator set (ips / asns / fingerprints)
   max_list: 50           # cap the sensor/source list carried in the alert meta
 ```
 
@@ -782,6 +858,19 @@ The detectors, by the vantage axis they exploit:
 | `fleet:identity-pivot` | one composite identity (fingerprint/credential + a 2nd attribute) from >= `pivot_sources` IPs across >= `pivot_sensors` sensors | one actor behind rotating IPs — the link survives the IP change |
 | `fleet:geo-distributed-actor` | one fingerprint/credential from >= `geo_countries` countries across >= `geo_sensors` sensors | fleet-scale impossible travel — a distributed proxy / botnet (needs GeoIP) |
 | `fleet:target-profile-match` | >= `profile_sources` sources independently running the same >= `profile_cves`-CVE playbook across >= `profile_sensors` sensors | a shared toolkit / runbook, even without a shared fingerprint |
+| `fleet:honeytoken-spread` | the same **canary token** tripped on >= `honeytoken_sensors` sensors | a planted token has leaked and is propagating — the fleet blast radius |
+| `fleet:cve-emergence` | a **brand-new CVE** (novel within `first_seen_horizon`) on >= `cve_emergence_sensors` sensors | an n-day going live fleet-wide — the first wave of a freshly-weaponised vuln |
+| `fleet:cross-protocol-actor` | one **source** on >= `cross_proto_handlers` distinct services across >= `cross_proto_sensors` sensors | fleet-wide service enumeration by a single actor |
+| `fleet:fingerprint-asn-spread` | one **fingerprint** from >= `fp_asns` distinct ASNs across >= `fp_asn_sensors` sensors | a toolkit run from many networks (the network-of-origin axis) |
+| `fleet:threat-intel-surge` | >= `threat_surge_sources` **flagged** sources (threat-intel list / Tor) across >= `threat_surge_sensors` sensors | known-bad infrastructure converging on the fleet right now (needs enrichment) |
+| `fleet:tool-campaign` | one identified **tool** (meta `tools`) on >= `tool_sensors` sensors from >= `tool_sources` sources | one tool / exploit-kit sweeping the fleet (links a campaign across differing IPs/stacks) |
+| `fleet:c2-shared` | one **harvested URL** (C2 / dropper) on >= `c2_sensors` sensors | shared command-and-control infra behind otherwise-distinct attacks |
+| `fleet:user-agent-shared` | one **User-Agent** on >= `ua_sensors` sensors from >= `ua_sources` sources | a shared HTTP scanner / tool family (the HTTP analogue of fingerprint-shared) |
+| `fleet:tactic-convergence` | one **MITRE technique** from >= `tactic_sources` sources across >= `tactic_sensors` sensors | a coordinated push on a TTP (above the CVE/tool level) |
+| `fleet:recidivist-network` | an **ASN** active in >= `recidivist_windows` distinct `recidivist_bucket`s | a network that keeps coming back day after day (persistence, not breadth) |
+| `fleet:port-campaign` | one **dest port** (not in `port_campaign_exclude`) from >= `port_campaign_sources` sources across >= `port_campaign_sensors` sensors | a service-targeted campaign (e.g. a new botnet on tcp/23) |
+| `fleet:credential-spray-fleet` | one **username** tried with >= `cred_spray_passwords` distinct passwords across >= `cred_spray_sensors` sensors | a distributed brute-force of a single account, spread to stay under per-node thresholds |
+| `fleet:asn-org-campaign` | one **AS-org** spanning >= `asn_org_asns` distinct ASNs across >= `asn_org_sensors` sensors | a provider-wide campaign that ASN-number keying misses |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the
@@ -797,6 +886,65 @@ spanning >= `broad_coverage` of the fleet is **broad** (internet background,
 reported `medium`); a hit on a specific subset is **targeted** (`high`). The
 shared-artifact and coordination detectors don't need this — a shared malware
 hash or honeytoken credential is never background noise.
+
+## `intel_feed:` — downward fleet-intel feedback
+
+Events flow *up*; intel flows *down*. An aggregator that runs fleet correlation
+derives indicators from its own `fleet:*` findings — the hot source IPs, ASNs,
+and ja3/ja4/hassh fingerprints — and serves them as a small JSON feed at GET
+`<ingest>/intel` (same bearer token as `ingest:`). This is on by default
+wherever fleet correlation **and** `ingest:` are both enabled; set
+`fleet.serve_intel: false` to opt out, and tune `fleet.intel_ttl` (how long an
+indicator lingers, default 6h) / `fleet.intel_max` (cap per set).
+
+Any node — including a leaf sensor that isn't itself an aggregator —
+**subscribes** by pointing `intel_feed:` at a parent's feed. It polls on an
+interval and hands the indicators to its enricher, which tags matching events
+with `fleet_intel` (the reasons) **and** sets `threat_intel_hit` — so the
+existing tarpit / severity / risk / `threat_intel_burst` machinery acts on
+fleet-derived knowledge with no extra wiring. Fleet knowledge thus improves
+every sensor.
+
+```yaml
+intel_feed:
+  enabled: true
+  url: https://agg-site.corp/intel   # parent feed endpoint (dialled via egress allowlist)
+  token_env: TARPIT_FWD_TOKEN        # bearer token (the parent's ingest token)
+  poll: 60s                          # poll interval (default 60s)
+```
+
+The feed URL is allowlisted automatically (like `forward.url`), so it works
+under `egress.enforce`. The puller fetches once immediately so a fresh node gets
+intel without waiting a full interval.
+
+### IOC export — STIX 2.1 / TAXII 2.1 / MISP
+
+The same fleet indicators are exportable to standard threat-intel tooling.
+Wherever a node serves intel (fleet + `ingest:`), it also exposes, on the same
+bearer-gated endpoint:
+
+- `GET /intel/stix` — a **STIX 2.1** bundle of Indicator SDOs (IPs →
+  `ipv4-addr`/`ipv6-addr` patterns, ASNs → `autonomous-system`, ja3/ja4/hassh →
+  an `x-tarpit-fingerprint` custom pattern). Indicator IDs are deterministic
+  (UUIDv5 of the pattern) so downstreams dedup cleanly.
+- A minimal read-only **TAXII 2.1** API — `GET /taxii2/` (discovery),
+  `/taxii2/api/`, `/taxii2/api/collections/`, and
+  `/taxii2/api/collections/fleet-iocs/objects/` — so a TAXII client can discover
+  and pull the `fleet-iocs` collection.
+
+To **push** to a MISP instance, add `misp:` — a delta pusher sends only
+not-yet-sent indicators as a periodic MISP event (egress-allowlisted):
+
+```yaml
+misp:
+  enabled: true
+  url: https://misp.corp          # MISP base URL
+  key_env: TARPIT_MISP_KEY        # MISP auth key from this env var
+  interval: 5m                    # push period
+  event_info: tarpit fleet IOCs   # MISP event title
+  distribution: "0"               # MISP distribution level (0 = your org only)
+  threat_level: "2"               # threat_level_id
+```
 
 ## `egress:` — outbound containment (do-no-harm)
 

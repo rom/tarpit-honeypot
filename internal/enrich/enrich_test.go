@@ -184,3 +184,42 @@ func TestMACVendorEnrichment(t *testing.T) {
 		t.Errorf("mac_vendor set on a MAC-less event: %v", ev3.Meta)
 	}
 }
+
+func TestFleetIntelOverlay(t *testing.T) {
+	e, err := New(Config{}) // no DBs; the overlay needs none
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetFleetIntel(
+		map[string]string{"203.0.113.5": "source-multi-sensor"},
+		map[string]string{"AS64500": "asn-multi-sensor"},
+		map[string]string{"ja3:abc": "fingerprint-shared"},
+	)
+	// A public source whose IP, ASN, and fingerprint all match the overlay.
+	ev := &event.Event{Source: event.Endpoint{IP: "203.0.113.5"},
+		Meta: map[string]any{"asn": "AS64500", "ja3": "abc"}}
+	e.Decorate(ev)
+	reasons, _ := ev.Meta["fleet_intel"].([]string)
+	if len(reasons) != 3 {
+		t.Fatalf("fleet_intel = %v; want 3 reasons (ip/asn/fp)", reasons)
+	}
+	if hit, _ := ev.Meta["threat_intel_hit"].(bool); !hit {
+		t.Error("threat_intel_hit not set by fleet intel")
+	}
+
+	// A non-matching public source gets no fleet_intel tag.
+	other := &event.Event{Source: event.Endpoint{IP: "198.51.100.9"}}
+	e.Decorate(other)
+	if _, ok := other.Meta["fleet_intel"]; ok {
+		t.Error("fleet_intel tagged a non-matching source")
+	}
+}
+
+func TestFleetIntelEmptyOverlayNoop(t *testing.T) {
+	e, _ := New(Config{})
+	ev := &event.Event{Source: event.Endpoint{IP: "203.0.113.5"}}
+	e.Decorate(ev)
+	if _, ok := ev.Meta["fleet_intel"]; ok {
+		t.Error("fleet_intel set with no overlay")
+	}
+}

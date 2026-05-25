@@ -150,7 +150,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -290,6 +290,43 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
     {{ if .Sessions }}<tr><th>sessions</th><td>{{ .Sessions }} recorded · <a href="/events?source={{ .IP }}">events</a></td></tr>{{ end }}
   </table>
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "fleet" }}{{ template "head" . }}
+<h1>fleet correlation</h1>
+<p class="note">Cross-sensor findings — patterns no single honeypot can see: one
+source / ASN / fingerprint / payload / credential / CVE / tool / port / technique
+hitting many sensors, shared C2, novel infrastructure, persistent networks, and
+more. Runs on an aggregator with <code>ingest:</code> enabled. JSON at
+<a href="/api/fleet">/api/fleet</a>.</p>
+<form method="get" action="/fleet">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
+  <button type="submit">filter</button>
+  <a href="/fleet">reset</a>
+</form>
+{{ if not .Findings }}
+<p class="note">No fleet correlations in the window. (Cross-sensor detection needs
+an aggregator receiving events from several sensors via <code>ingest:</code>.)</p>
+{{ else }}
+<h2>detectors fired</h2>
+<table class="chart">
+  <tr><th>detector</th><th>count</th></tr>
+  {{ range .Counts }}<tr><td>fleet:{{ .Rule }}</td><td>{{ .Count }}</td></tr>{{ end }}
+</table>
+<h2>findings ({{ .Total }})</h2>
+<table>
+  <tr><th>time (utc)</th><th>severity</th><th>detector</th><th>summary</th><th></th></tr>
+  {{ range .Findings }}
+  <tr>
+    <td>{{ fmtTime .Time }}</td>
+    <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+    <td>fleet:{{ .Rule }}</td>
+    <td>{{ .Summary }}</td>
+    <td><a href="/events/{{ .ID }}">details</a></td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "tunnels" }}{{ template "head" . }}
@@ -835,6 +872,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <li><a href="/fingerprints">fingerprints</a> — JA3 / JA4 / JA4H / JA3S / HASSH reputation: pivot from a client TLS/SSH stack to every source IP, ASN, country, protocol, port, attack type, captured malware, and <em>which sensors in the fleet</em> observed it (cross-sensor correlation).</li>
 <li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
+<li><a href="/fleet">fleet</a> — cross-sensor (fleet:*) findings: one source / ASN / fingerprint / payload / credential / CVE / tool / port / technique across many sensors, shared C2, novel infra, persistent networks. Aggregator-only (needs <code>ingest:</code>).</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
 <li><a href="/errors">errors</a> — operational / health events (listener or canary-watcher stopped, accept-cap overflow).</li>
 <li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>

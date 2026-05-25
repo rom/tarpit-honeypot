@@ -59,6 +59,23 @@ type Enricher struct {
 	threat   []threatSet
 	torExit  map[string]struct{}
 	netClass bool
+
+	// fleet intel is the downward-fed overlay (set by intel.Puller, read by
+	// Decorate): value->reason maps for source IPs, ASNs, and "<kind>:<value>"
+	// fingerprints the fleet flagged. Guarded separately so the puller can
+	// refresh it concurrently with the bus-loop Decorate.
+	fiMu   sync.RWMutex
+	fiIPs  map[string]string
+	fiASNs map[string]string
+	fiFPs  map[string]string
+}
+
+// SetFleetIntel replaces the downward fleet-intel overlay. Called by the intel
+// puller each poll; an empty/zero feed clears it.
+func (e *Enricher) SetFleetIntel(ips, asns, fps map[string]string) {
+	e.fiMu.Lock()
+	e.fiIPs, e.fiASNs, e.fiFPs = ips, asns, fps
+	e.fiMu.Unlock()
 }
 
 // threatSet is one loaded reputation list: exact IPs plus CIDR prefixes.
@@ -288,6 +305,40 @@ func (e *Enricher) Decorate(ev *event.Event) {
 		if cls := classifyNet(addr, ev.Meta["asn_org"]); cls != "" {
 			ev.Meta["net_class"] = cls
 		}
+	}
+	e.decorateFleetIntel(ev)
+}
+
+// decorateFleetIntel tags an event whose source IP, ASN, or fingerprint appears
+// in the downward fleet-intel overlay. It also sets threat_intel_hit so the
+// existing threat-intel-burst correlator and risk scoring act on fleet
+// knowledge with no extra wiring.
+func (e *Enricher) decorateFleetIntel(ev *event.Event) {
+	e.fiMu.RLock()
+	ips, asns, fps := e.fiIPs, e.fiASNs, e.fiFPs
+	e.fiMu.RUnlock()
+	if len(ips) == 0 && len(asns) == 0 && len(fps) == 0 {
+		return
+	}
+	var reasons []string
+	if r, ok := ips[ev.Source.IP]; ok {
+		reasons = append(reasons, "ip:"+r)
+	}
+	if asn, _ := ev.Meta["asn"].(string); asn != "" {
+		if r, ok := asns[asn]; ok {
+			reasons = append(reasons, "asn:"+r)
+		}
+	}
+	for _, k := range []string{"ja3", "ja4", "hassh"} {
+		if v, _ := ev.Meta[k].(string); v != "" {
+			if r, ok := fps[k+":"+v]; ok {
+				reasons = append(reasons, "fp:"+r)
+			}
+		}
+	}
+	if len(reasons) > 0 {
+		ev.Meta["fleet_intel"] = reasons
+		ev.Meta["threat_intel_hit"] = true
 	}
 }
 

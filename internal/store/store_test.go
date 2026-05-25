@@ -298,3 +298,32 @@ func TestSummaryByProto(t *testing.T) {
 		t.Errorf("ByProto = %v; want tcp2 udp1 icmp1", sum.ByProto)
 	}
 }
+
+func TestInsertBatch(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	evs := []*event.Event{
+		mkEvent("ba", "1.1.1.1", "listener:ssh", event.SeverityHigh, now.Add(-3*time.Minute)),
+		mkEvent("bb", "2.2.2.2", "listener:http", event.SeverityMedium, now.Add(-2*time.Minute)),
+		mkEvent("bc", "3.3.3.3", "cve:CVE-2021-44228", event.SeverityCritical, now.Add(-1*time.Minute)),
+	}
+	if err := s.InsertBatch(ctx, evs); err != nil {
+		t.Fatalf("InsertBatch: %v", err)
+	}
+	got, err := s.Query(ctx, Filter{Since: now.Add(-time.Hour), Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("after batch: %d events; want 3", len(got))
+	}
+	// Empty batch is a no-op, not an error.
+	if err := s.InsertBatch(ctx, nil); err != nil {
+		t.Errorf("empty batch: %v", err)
+	}
+}

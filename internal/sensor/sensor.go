@@ -29,9 +29,11 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/intel"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/misp"
 	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/retention"
@@ -43,6 +45,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/trust"
 	"github.com/rom/tarpit-honeypot/internal/tunnet"
 	"github.com/rom/tarpit-honeypot/internal/version"
 )
@@ -80,9 +83,13 @@ type Sensor struct {
 	bus         chan *event.Event
 	forward     *forward.Group    // fleet event forwarding (nil when no targets)
 	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
+	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
+	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
+	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 
-	ingestSeen    *ttlSet // dedup for events admitted via IngestBatch (aggregator)
-	ingestMaxHops int     // drop forwarded events that traversed more nodes than this
+	ingestSeen    *ttlSet       // dedup for events admitted via IngestBatch (aggregator)
+	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
+	trust         *trust.Scorer // per-sensor trust scoring + admission (nil when disabled)
 
 	rootCtx context.Context // parent ctx for listener-specific child contexts
 
@@ -195,6 +202,16 @@ func New(cfg *config.Config) (*Sensor, error) {
 				egPol.Allow(d)
 			}
 		}
+		if cfg.IntelFeed.Enabled {
+			if d := forwardDest(cfg.IntelFeed.URL); d != "" {
+				egPol.Allow(d)
+			}
+		}
+		if cfg.MISP.Enabled {
+			if d := forwardDest(cfg.MISP.URL); d != "" {
+				egPol.Allow(d)
+			}
+		}
 		for _, d := range cfg.Sensor.Egress.Allow {
 			egPol.Allow(d)
 		}
@@ -251,9 +268,58 @@ func New(cfg *config.Config) (*Sensor, error) {
 			ProfileSources:      cfg.Fleet.ProfileSources,
 			ProfileSensors:      cfg.Fleet.ProfileSensors,
 
+			HoneytokenSensors:   cfg.Fleet.HoneytokenSensors,
+			CVEEmergenceSensors: cfg.Fleet.CVEEmergenceSensors,
+			CrossProtoHandlers:  cfg.Fleet.CrossProtoHandlers,
+			CrossProtoSensors:   cfg.Fleet.CrossProtoSensors,
+			FPASNs:              cfg.Fleet.FPASNs,
+			FPASNSensors:        cfg.Fleet.FPASNSensors,
+
+			ThreatSurgeSources: cfg.Fleet.ThreatSurgeSources,
+			ThreatSurgeSensors: cfg.Fleet.ThreatSurgeSensors,
+			ToolSensors:        cfg.Fleet.ToolSensors,
+			ToolSources:        cfg.Fleet.ToolSources,
+			C2Sensors:          cfg.Fleet.C2Sensors,
+			UASensors:          cfg.Fleet.UASensors,
+			UASources:          cfg.Fleet.UASources,
+
+			TacticSources:       cfg.Fleet.TacticSources,
+			TacticSensors:       cfg.Fleet.TacticSensors,
+			RecidivistBucket:    cfg.Fleet.RecidivistBucket,
+			RecidivistWindows:   cfg.Fleet.RecidivistWindows,
+			PortCampaignSources: cfg.Fleet.PortCampaignSources,
+			PortCampaignSensors: cfg.Fleet.PortCampaignSensors,
+			PortCampaignExclude: cfg.Fleet.PortCampaignExclude,
+			CredSprayPasswords:  cfg.Fleet.CredSprayPasswords,
+			CredSpraySensors:    cfg.Fleet.CredSpraySensors,
+			AsnOrgASNs:          cfg.Fleet.AsnOrgASNs,
+			AsnOrgSensors:       cfg.Fleet.AsnOrgSensors,
+
 			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())
+	}
+
+	// Downward intel feedback (serving side): derive a fleet-intel feed from
+	// this node's own fleet:* findings, served on the ingest endpoint (run.go
+	// mounts it at /intel). Only meaningful where fleet correlation runs.
+	var intelStore *intel.Store
+	if fleetCorr != nil && cfg.Fleet.ServingIntel() {
+		intelStore = intel.NewStore(cfg.Fleet.IntelTTL, cfg.Fleet.IntelMax)
+	}
+
+	// Trust scoring + admission control over ingested child streams.
+	var trustScorer *trust.Scorer
+	if cfg.Ingest.Trust.On(cfg.Ingest.Enabled) {
+		t := cfg.Ingest.Trust
+		trustScorer = trust.New(trust.Config{
+			Enabled: true, Window: t.Window, MinEvents: t.MinEvents,
+			AlertBelow: t.AlertBelow, QuarantineBelow: t.QuarantineBelow,
+			RatePerSec: t.RatePerSec, Burst: t.Burst,
+		})
+		if trustScorer != nil {
+			slog.Info("sensor trust scoring enabled", "rate_per_sec", t.RatePerSec, "quarantine_below", t.QuarantineBelow)
+		}
 	}
 
 	var sinks []sink.Sink
@@ -404,8 +470,10 @@ func New(cfg *config.Config) (*Sensor, error) {
 		bus:           make(chan *event.Event, 1024),
 		forward:       fwdGroup,
 		fleet:         fleetCorr,
+		intelStore:    intelStore,
 		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
 		ingestMaxHops: ingestMaxHops,
+		trust:         trustScorer,
 		listeners:     map[string]*listenerHandle{},
 	}
 	// A refused outbound connection is a high-severity finding: it means a
@@ -417,6 +485,40 @@ func New(cfg *config.Config) (*Sensor, error) {
 				"network": network, "addr": addr, "reason": reason,
 			})
 		})
+	}
+
+	// Downward intel feedback (subscriber side): poll a parent's feed and hand
+	// each snapshot to the current enricher's overlay, so fleet knowledge tags
+	// this node's events. Dialled through the egress allowlist (the feed URL is
+	// allowlisted above).
+	if cfg.IntelFeed.Enabled {
+		token := ""
+		if cfg.IntelFeed.TokenEnv != "" {
+			token = os.Getenv(cfg.IntelFeed.TokenEnv)
+		}
+		s.intelPuller = intel.NewPuller(cfg.IntelFeed.URL, token, cfg.IntelFeed.Poll,
+			egress.HTTPClient(15*time.Second), func(f *intel.Feed) {
+				ips, asns, fps := f.Maps()
+				if en := s.curEnricher(); en != nil {
+					en.SetFleetIntel(ips, asns, fps)
+				}
+			})
+		slog.Info("fleet intel feed subscribed", "url", cfg.IntelFeed.URL)
+	}
+
+	// MISP push: ship the fleet's observed IOCs to a MISP instance. The IOC
+	// source is the intel store, so this only runs where fleet correlation does.
+	if cfg.MISP.Enabled && intelStore != nil {
+		key := ""
+		if cfg.MISP.KeyEnv != "" {
+			key = os.Getenv(cfg.MISP.KeyEnv)
+		}
+		s.mispPusher = misp.NewPusher(misp.Config{
+			URL: cfg.MISP.URL, Key: key, Interval: cfg.MISP.Interval,
+			EventInfo: cfg.MISP.EventInfo, Distribution: cfg.MISP.Distribution,
+			ThreatLevel: cfg.MISP.ThreatLevel, Client: egress.HTTPClient(20 * time.Second),
+		}, intelStore.IOCs)
+		slog.Info("misp push enabled", "url", cfg.MISP.URL)
 	}
 	return s, nil
 }
@@ -432,6 +534,7 @@ func buildForwarders(cfg *config.Config, id *identity.Identity) []*forward.Forwa
 		t := forward.Target{
 			ID: f.ID, URL: f.URL, NodeID: id.Seed(),
 			MaxBatch: f.MaxBatch, MaxAge: f.MaxAge, QueueSize: f.QueueSize, Timeout: f.Timeout,
+			Mode: f.Mode, RollupInterval: f.RollupInterval,
 		}
 		if f.TokenEnv != "" {
 			t.Token = os.Getenv(f.TokenEnv)
@@ -531,6 +634,10 @@ func (s *Sensor) riskEvent(src *event.Event, level string, score float64) *event
 	}
 	return e
 }
+
+// IntelStore returns the downward fleet-intel store (nil when this node isn't
+// serving a feed). run.go mounts its handler on the ingest endpoint.
+func (s *Sensor) IntelStore() *intel.Store { return s.intelStore }
 
 // Honeynet returns the configured topology, or an empty topology if none.
 // Used by the list-honeynets subcommand and the DNS canary listener.
@@ -1468,6 +1575,18 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go func() { defer wg.Done(); s.forward.Run(ctx) }()
 	}
 
+	// Downward intel feed subscriber: poll the parent until shutdown.
+	if s.intelPuller != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.intelPuller.Run(ctx) }()
+	}
+
+	// MISP IOC pusher: ship fleet indicators until shutdown.
+	if s.mispPusher != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.mispPusher.Run(ctx) }()
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1560,6 +1679,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 				if s.fleet != nil {
 					for _, fe := range s.fleet.Observe(ev) {
 						en.Decorate(fe)
+						// Feed fleet findings into the downward intel feed
+						// (served to child nodes) before dispatch.
+						if s.intelStore != nil {
+							s.intelStore.Observe(fe)
+						}
 						s.dispatch(rt, fe)
 						s.scoreRisk(rt, fe)
 					}

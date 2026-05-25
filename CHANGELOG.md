@@ -8,6 +8,161 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: dedicated fleet panel
+- New `/fleet` page (and `/api/fleet` JSON) surfacing the cross-sensor
+  `fleet:*` findings: a per-detector hit-count table plus a findings list with a
+  compact, per-detector summary (primary identity + breadth counts + broad/
+  targeted scope), each linking to the full event. `since` filter; linked from
+  the nav and `/docs`. Verified live (renders the findings; non-fleet events are
+  excluded). Unit-tested (handler render + the summary/number formatting).
+
+### Added — two more fleet correlators (credential-spray / asn-org)
+- **`fleet:credential-spray-fleet`** — one username tried with >=
+  `cred_spray_passwords` (5) distinct passwords across >= `cred_spray_sensors`
+  (2) sensors: a distributed brute-force of a single account.
+- **`fleet:asn-org-campaign`** — one AS-org spanning >= `asn_org_asns` (2)
+  distinct ASNs across >= `asn_org_sensors` (5) sensors: a provider-wide campaign
+  that ASN-number keying misses (requires >= 2 ASNs so it never duplicates
+  asn-multi-sensor). Unit-tested.
+
+### Added — three more fleet correlators (tactic / persistence / port axes)
+- **`fleet:tactic-convergence`** — one MITRE ATT&CK technique exercised by >=
+  `tactic_sources` (8) distinct sources across >= `tactic_sensors` (3) sensors:
+  a coordinated push on a TTP, abstracted above the specific CVE/tool.
+- **`fleet:recidivist-network`** — an ASN active in >= `recidivist_windows` (3)
+  distinct `recidivist_bucket`s (default 24h = "days") over the long horizon: a
+  network that keeps coming back, a persistence signal (not breadth). Keyed on
+  ASN so memory stays bounded.
+- **`fleet:port-campaign`** — one destination port probed by >=
+  `port_campaign_sources` (5) sources across >= `port_campaign_sensors` (3)
+  sensors, a service-targeted campaign (e.g. a new botnet on tcp/23). The
+  ubiquitous always-scanned ports are excluded (`port_campaign_exclude`, default
+  22/80/443) so the signal isn't drowned by routine scanning. Unit-tested per
+  detector (incl. the ubiquitous-port exclusion).
+
+### Added — four more fleet correlators (new signal axes)
+- **`fleet:threat-intel-surge`** — >= `threat_surge_sources` (10) distinct
+  enrichment-flagged sources (threat-intel list member / Tor exit) across >=
+  `threat_surge_sensors` (3) sensors: known-bad infrastructure converging on the
+  fleet (the fleet-wide complement to the in-sensor threat_intel_burst).
+- **`fleet:tool-campaign`** — one identified attack tool (meta `tools`) on >=
+  `tool_sensors` (3) sensors from >= `tool_sources` (3) sources: a tool /
+  exploit-kit sweeping the fleet, linked by tool name across differing IPs/stacks.
+- **`fleet:c2-shared`** — one harvested C2/dropper URL (meta `harvested_urls`)
+  on >= `c2_sensors` (2) sensors: shared command-and-control infrastructure
+  (critical; never background noise).
+- **`fleet:user-agent-shared`** — one HTTP User-Agent on >= `ua_sensors` (3)
+  sensors from >= `ua_sources` (5) sources: a shared HTTP scanner/tool family —
+  the HTTP-layer analogue of fingerprint-shared (catches tools with no/varying
+  TLS fingerprint). New signal axes: enrichment flags, tooling, C2 URLs, UAs.
+  Unit-tested per detector.
+
+### Added — interactive-shell host realism (post-login)
+- The emulated POSIX shell (ssh_interactive / telnet) now presents a believable,
+  internally-consistent host state derived deterministically from the archetype,
+  instead of the same hardcoded values on every honeypot (which fingerprinted
+  the decoy). New `internal/shell/hoststate.go`.
+- `uptime` / `w` / `who` / `last` show a stable, per-host login user, source,
+  boot time, and load average (uptime advances with the clock); `date` is
+  current; the values differ across hosts but stay consistent across commands
+  and reconnects.
+- `ifconfig` / `ip addr` / `ip link` / `ip route` / `route` / `arp` render the
+  archetype's interfaces with a per-host IP, gateway, and MAC (MAC OUI from the
+  archetype), all agreeing with each other. New `ip` subcommands + `route` /
+  `arp` / `last`.
+- `ps` is built from the archetype's default services — base procs (systemd,
+  kthreadd, journald, sshd) plus the role daemons a host of that role runs
+  (nginx / mysqld / postgres / redis / postfix / vsftpd / dockerd / ...), the
+  login shell, and ps itself.
+- `history` is a believable root command history. Two hosts now look like two
+  different machines; one host stays self-consistent. Unit-tested (realism,
+  per-host distinctness + stability, service→daemon mapping).
+
+### Added — IOC export: STIX 2.1 / TAXII 2.1 / MISP push
+- The fleet's observed indicators (the intel store) are now exportable to
+  standard threat-intel tooling. New `internal/stix` and `internal/misp`.
+- **STIX 2.1** — `GET /intel/stix` serves a bundle of Indicator SDOs (IPs →
+  `ipv4-addr`/`ipv6-addr`, ASNs → `autonomous-system`, ja3/ja4/hassh → an
+  `x-tarpit-fingerprint` custom pattern). Indicator IDs are deterministic
+  (UUIDv5 of the pattern) so downstreams dedup cleanly.
+- **TAXII 2.1** — a minimal read-only API (`/taxii2/` discovery, api-root,
+  collections, and the `fleet-iocs` collection's `objects/` envelope) so a TAXII
+  client can discover and pull the collection.
+- **MISP push** — a `misp:` delta pusher ships not-yet-sent indicators as a
+  periodic MISP event (ip-src / AS / ja3-fingerprint-md5 / hassh-md5
+  attributes), egress-allowlisted, with retry-on-failure rollback of the
+  sent-set. All served on the existing bearer-gated endpoint where a node serves
+  intel. Verified live (valid STIX bundle + TAXII envelopes); unit tests cover
+  STIX patterns / deterministic ids / TAXII auth and the MISP delta + mapping.
+
+### Added — four more fleet correlators
+- **`fleet:honeytoken-spread`** (the one detector from the design not yet built)
+  — the same canary token tripped on >= `honeytoken_sensors` (2) sensors: a
+  planted token has leaked and is propagating across the fleet (critical).
+- **`fleet:cve-emergence`** — a brand-new CVE, novel within `first_seen_horizon`,
+  reaching >= `cve_emergence_sensors` (2) sensors: an n-day going live fleet-wide
+  (distinct from `cve-wave`, which fires for any CVE crossing breadth).
+- **`fleet:cross-protocol-actor`** — one source touching >= `cross_proto_handlers`
+  (4) distinct services across >= `cross_proto_sensors` (2) sensors: fleet-wide
+  service enumeration by a single actor (the cross-sensor analogue of the
+  in-sensor service-sweep).
+- **`fleet:fingerprint-asn-spread`** — one fingerprint operated from >= `fp_asns`
+  (3) distinct ASNs across >= `fp_asn_sensors` (2) sensors: a toolkit run from
+  many networks (complements fingerprint-shared's source axis and
+  geo-distributed-actor's country axis with the network-of-origin axis).
+- All configurable under `fleet:`, reusing the windowed actor model + once-per-
+  window firing + loop guard; CVE-emergence reuses the long-horizon novelty
+  memory. Unit-tested per detector (incl. the novel-vs-established CVE split).
+
+### Added — fleet aggregation: sensor trust scoring + store scale-out (phase 4)
+- **Sensor trust scoring + admission control** (`ingest.trust`, new
+  `internal/trust`). The aggregator scores each child sensor's stream health
+  with per-sensor windowed counters (accepted / deduped / dropped / malformed),
+  derives a 0..1 trust score, and emits a high-severity `fleet:sensor-untrusted`
+  event when a node's score falls. A **malformed** event (missing `sensor_id` /
+  `id`, out-of-range severity, or a timestamp implausibly far in the future) is
+  dropped and penalised hard — the strongest "this stream is fabricated" signal.
+  On by default wherever `ingest:` is enabled.
+- `quarantine_below` refuses a low-trust node's events (before the dedup set /
+  bus) until its window rolls; `rate_per_sec` caps per-sensor injection rate
+  (token bucket) so one flooding/compromised node can't overwhelm the store.
+- **Store scale-out** — `store.InsertBatch` commits many events in one
+  transaction, and the SQLite sink now batches writes (flush by size/age, and on
+  Close) — the throughput path for a busy aggregator. Durable across shutdown
+  (the sensor drains the router, then closes the sink — which flushes — before
+  closing the store). Docs spell out horizontal scale: rollup to a higher tier,
+  per-sensor rate caps, retention bounds, and external-SIEM `channels`.
+- Verified end-to-end against a live aggregator: well-formed events stored via
+  the batching sink; a stream of malformed events was dropped and raised
+  `fleet:sensor-untrusted`; and a quarantined sensor's subsequent well-formed
+  event was refused. Unit tests cover the scorer (healthy / malformed-alert /
+  quarantine / window-roll / rate-limit), the ingest integration, and
+  `store.InsertBatch`.
+
+### Added — fleet aggregation: multi-level rollups + downward intel feedback (phase 3)
+- **Multi-level rollups** — a `forward:` target can now ship `mode: rollup`
+  instead of `full`: one `fleet:rollup` event per `rollup_interval` (default 60s)
+  carrying per-window top source-IP / ASN / fingerprint / rule counters, a
+  severity histogram, and the distinct-source count. Keeps upward volume sane at
+  L2/L3 while preserving the correlation keys; a node can mix `full` (to a site
+  SOC) and `rollup` (to a global hub). The accumulator is capped to bound memory.
+- **Downward intel feedback** — new `internal/intel`. An aggregator derives
+  indicators (hot source IPs, ASNs, ja3/ja4/hassh fingerprints) from its own
+  `fleet:*` findings and serves them as a small JSON feed at GET `<ingest>/intel`
+  (same bearer token; on by default where fleet correlation + `ingest:` are both
+  enabled, `fleet.serve_intel`/`intel_ttl`/`intel_max` to tune/opt-out).
+- Any node subscribes via `intel_feed:` (url + token_env + poll): it polls the
+  feed through the egress allowlist and hands the indicators to its enricher,
+  which tags matching events with `fleet_intel` **and** sets `threat_intel_hit`
+  — so the existing tarpit / severity / risk / `threat_intel_burst` machinery
+  acts on fleet-derived knowledge with no extra wiring. Events flow up; intel
+  flows down, improving every sensor.
+- Verified end-to-end against live nodes: an aggregator derived
+  `source-multi-sensor` → served the source IP at `/intel` (bearer-gated, 401
+  without a token); a leaf node subscribed, polled, and applied the indicator to
+  its enricher overlay. Unit tests cover the rollup wire shape, the intel
+  store/TTL/cap/handler-auth, `Feed.Maps`, and the enricher overlay tagging.
+
 ### Added — fleet aggregation: temporal / novelty / linking correlators (phase 2c)
 - **`fleet:scan-trajectory`** — one source hitting sensors' destination IPs in
   (numeric) address order over time: the merged view reconstructs the scan's

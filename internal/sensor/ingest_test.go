@@ -6,6 +6,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/trust"
 )
 
 func testAggregator(t *testing.T) *Sensor {
@@ -56,6 +57,41 @@ func TestIngestBatchLoopGuard(t *testing.T) {
 	})
 	if acc != 1 || drop != 2 {
 		t.Errorf("loop guard: acc=%d drop=%d; want 1/2", acc, drop)
+	}
+}
+
+func TestIngestMalformedDroppedAndScored(t *testing.T) {
+	s := testAggregator(t)
+	s.trust = trust.New(trust.Config{Enabled: true, MinEvents: 2, AlertBelow: 0.5})
+	acc, _, drop := s.IngestBatch([]*event.Event{
+		{SensorID: "depX", Severity: event.SeverityHigh},                                                // no ID -> malformed
+		{ID: "m2", SensorID: "depX", Severity: event.SeverityHigh, Time: timeNow().Add(48 * time.Hour)}, // future -> malformed
+	})
+	if acc != 0 || drop != 2 {
+		t.Fatalf("malformed batch: acc=%d drop=%d; want 0/2", acc, drop)
+	}
+	var found bool
+	for len(s.bus) > 0 {
+		if ev := <-s.bus; ev.RuleID == "fleet:sensor-untrusted" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no fleet:sensor-untrusted emitted for a malformed stream")
+	}
+}
+
+func TestIngestQuarantineRefusesSensor(t *testing.T) {
+	s := testAggregator(t)
+	s.trust = trust.New(trust.Config{Enabled: true, MinEvents: 2, QuarantineBelow: 0.9})
+	// Two malformed events tank depQ's score to 0 -> quarantined.
+	s.IngestBatch([]*event.Event{{SensorID: "depQ"}, {SensorID: "depQ"}})
+	// A subsequent well-formed event from depQ is refused.
+	acc, _, drop := s.IngestBatch([]*event.Event{
+		{ID: "ok", SensorID: "depQ", Severity: event.SeverityHigh, Hops: []string{"depQ"}},
+	})
+	if acc != 0 || drop != 1 {
+		t.Errorf("quarantined sensor: acc=%d drop=%d; want 0/1", acc, drop)
 	}
 }
 

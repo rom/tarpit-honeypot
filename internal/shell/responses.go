@@ -94,6 +94,7 @@ func posixResponses(p *archetype.Profile) map[string]response {
 			issue = strings.TrimLeft(t, "\r\n")
 		}
 	}
+	hs := deriveHost(p)
 	const fakePasswd = `root:x:0:0:root:/root:/bin/bash
 daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
 bin:x:2:2:bin:/bin:/usr/sbin/nologin
@@ -107,29 +108,32 @@ admin:x:1000:1000:admin,,,:/home/admin:/bin/bash
 		"whoami":    {static: "root\r\n"},
 		"id":        {static: "uid=0(root) gid=0(root) groups=0(root)\r\n"},
 		"hostname":  {static: host + "\r\n"},
-		"uname":     {static: kernel + "\r\n"},
+		"uname":     {dyn: unameResponse(kernel, host)},
 		"pwd":       {static: "/root\r\n"},
-		"uptime":    {static: " 14:23:01 up 47 days, 11:09,  1 user,  load average: 0.04, 0.05, 0.00\r\n"},
-		"date":      {static: "Mon May 19 14:23:01 UTC 2025\r\n"},
+		"uptime":    {dyn: func([]string) string { return hs.uptime() }},
+		"date":      {dyn: func([]string) string { return hs.date() }},
 		"echo":      {dyn: func(a []string) string { return strings.Join(a[1:], " ") + "\r\n" }},
-		"history":   {static: "    1  ls\r\n    2  uname -a\r\n    3  whoami\r\n"},
-		"w":         {static: " 14:23:01 up 47 days, 11:09,  1 user,  load average: 0.04, 0.05, 0.00\r\nUSER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT\r\nadmin    pts/0    10.0.0.5         13:01   12:22   0.01s  0.01s -bash\r\n"},
-		"who":       {static: "admin    pts/0        2025-05-19 13:01 (10.0.0.5)\r\n"},
+		"history":   {static: numberedHistory()},
+		"w":         {dyn: func([]string) string { return hs.wOutput() }},
+		"who":       {dyn: func([]string) string { return hs.whoOutput() }},
+		"last":      {dyn: func([]string) string { return hs.lastOutput() }},
 		"ls":        {dyn: lsResponse},
 		"ll":        {dyn: lsResponse},
 		"dir":       {dyn: lsResponse},
-		"cat":       {dyn: dynCat(fakePasswd, issue)},
-		"head":      {dyn: dynCat(fakePasswd, issue)},
-		"tail":      {dyn: dynCat(fakePasswd, issue)},
-		"more":      {dyn: dynCat(fakePasswd, issue)},
-		"less":      {dyn: dynCat(fakePasswd, issue)},
-		"ps":        {static: "  PID TTY          TIME CMD\r\n 1234 pts/0    00:00:00 bash\r\n 1235 pts/0    00:00:00 ps\r\n"},
+		"cat":       {dyn: dynCat(fakePasswd, issue, host)},
+		"head":      {dyn: dynCat(fakePasswd, issue, host)},
+		"tail":      {dyn: dynCat(fakePasswd, issue, host)},
+		"more":      {dyn: dynCat(fakePasswd, issue, host)},
+		"less":      {dyn: dynCat(fakePasswd, issue, host)},
+		"ps":        {dyn: func(a []string) string { return hs.ps(p, a) }},
 		"top":       {static: "Tasks:  87 total,   1 running,  86 sleeping\r\n%Cpu(s):  0.3 us,  0.2 sy,  0.0 ni, 99.5 id\r\nMiB Mem :   4096.0 total,   2548.0 free,    764.0 used\r\n"},
 		"free":      {static: "               total        used        free      shared  buff/cache   available\r\nMem:         4194304      782336     2611200       12288      800768     3128448\r\nSwap:        2097148           0     2097148\r\n"},
 		"df":        {static: "Filesystem     1K-blocks    Used Available Use% Mounted on\r\n/dev/sda1       50561300 9826276  38158888  21% /\r\ntmpfs            2097152       0   2097152   0% /dev/shm\r\n"},
 		"mount":     {static: "/dev/sda1 on / type ext4 (rw,relatime)\r\ntmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)\r\n"},
-		"ifconfig":  {static: "eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500\r\n        inet 10.0.0.10  netmask 255.255.255.0  broadcast 10.0.0.255\r\n        ether 02:42:ac:11:00:01  txqueuelen 1000  (Ethernet)\r\nlo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536\r\n        inet 127.0.0.1  netmask 255.0.0.0\r\n"},
-		"ip":        {static: "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\r\n    inet 127.0.0.1/8 scope host lo\r\n2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500\r\n    inet 10.0.0.10/24 brd 10.0.0.255 scope global eth0\r\n"},
+		"ifconfig":  {dyn: func([]string) string { return hs.ifconfig(p) }},
+		"ip":        {dyn: func(a []string) string { return hs.ipCmd(p, a) }},
+		"route":     {dyn: func([]string) string { return hs.route() }},
+		"arp":       {dyn: func([]string) string { return hs.arp() }},
 		"netstat":   {static: "Active Internet connections (only servers)\r\nProto Recv-Q Send-Q Local Address           Foreign Address         State\r\ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN\r\ntcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN\r\n"},
 		"ss":        {static: "Netid State  Local Address:Port  Peer Address:Port\r\ntcp   LISTEN 0.0.0.0:22          0.0.0.0:*\r\ntcp   LISTEN 0.0.0.0:80          0.0.0.0:*\r\n"},
 		"env":       {static: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\r\nHOME=/root\r\nUSER=root\r\nSHELL=/bin/bash\r\nTERM=xterm-256color\r\n"},
@@ -342,7 +346,7 @@ func lsResponse(argv []string) string {
 //     already flagged as anomaly upstream)
 //   - /etc/hostname    -> the archetype's hostname
 //   - any other path   -> "No such file or directory"
-func dynCat(passwd, issue string) func([]string) string {
+func dynCat(passwd, issue, host string) func([]string) string {
 	return func(argv []string) string {
 		if len(argv) < 2 {
 			return ""
@@ -356,7 +360,7 @@ func dynCat(passwd, issue string) func([]string) string {
 		case "/etc/issue":
 			return issue
 		case "/etc/hostname":
-			return "host\r\n"
+			return host + "\r\n"
 		case "/etc/os-release":
 			return "PRETTY_NAME=\"Linux\"\r\nID=linux\r\n"
 		case "/proc/cpuinfo":
@@ -364,7 +368,7 @@ func dynCat(passwd, issue string) func([]string) string {
 		case "/proc/version":
 			return "Linux version 5.10.0 #1 SMP x86_64\r\n"
 		case "/root/.bash_history":
-			return "ls\r\nuname -a\r\nps aux\r\nwhoami\r\n"
+			return rawHistory()
 		case "/root/.ssh/authorized_keys":
 			return "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... admin@host\r\n"
 		}

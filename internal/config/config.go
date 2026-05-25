@@ -40,6 +40,11 @@ type Config struct {
 	// several sensors within a window — a pattern no single sensor can see. It
 	// defaults on wherever Ingest is enabled. See internal/fleet.
 	Fleet FleetConfig `yaml:"fleet"`
+	// IntelFeed subscribes this node to a parent's downward fleet-intel feed.
+	// See internal/intel.
+	IntelFeed IntelFeed `yaml:"intel_feed"`
+	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
+	MISP MISPConfig `yaml:"misp"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -64,7 +69,13 @@ type ForwardTarget struct {
 	MaxAge        time.Duration `yaml:"max_age"`         // flush at least this often (default 2s)
 	QueueSize     int           `yaml:"queue_size"`      // in-memory buffer depth (default 4096)
 	Timeout       time.Duration `yaml:"timeout"`         // per-POST timeout (default 10s)
-	Enabled       *bool         `yaml:"enabled"`         // nil/true = active; false = defined but off
+	// Mode is "full" (default — ship every event) or "rollup" (ship one
+	// periodic fleet:rollup summary instead — per-source/ASN/fingerprint/rule
+	// counters — to keep upward volume sane at a higher tier). RollupInterval
+	// sets the summary period (default 60s).
+	Mode           string        `yaml:"mode"`
+	RollupInterval time.Duration `yaml:"rollup_interval"`
+	Enabled        *bool         `yaml:"enabled"` // nil/true = active; false = defined but off
 }
 
 // On reports whether the forward target is active.
@@ -81,6 +92,30 @@ type IngestConfig struct {
 	MaxBodyMB     int           `yaml:"max_body_mb"`  // reject larger batches (default 32)
 	MaxHops       int           `yaml:"max_hops"`     // drop events that traversed more nodes (default 8)
 	DedupWindow   time.Duration `yaml:"dedup_window"` // sensor_id:id dedup TTL (default 10m)
+	// Trust scores each child sensor's stream and can rate-limit / quarantine a
+	// node whose stream looks fabricated. See internal/trust.
+	Trust TrustConfig `yaml:"trust"`
+}
+
+// TrustConfig tunes per-sensor trust scoring + admission control at the ingest
+// endpoint. On by default wherever ingest is enabled.
+type TrustConfig struct {
+	Enabled         *bool         `yaml:"enabled"`          // nil = on when ingest is enabled
+	Window          time.Duration `yaml:"window"`           // counter window (default 5m)
+	MinEvents       int           `yaml:"min_events"`       // min volume before scoring (default 50)
+	AlertBelow      float64       `yaml:"alert_below"`      // fleet:sensor-untrusted below this score (default 0.5)
+	QuarantineBelow float64       `yaml:"quarantine_below"` // refuse a sensor below this score (0 = never)
+	RatePerSec      int           `yaml:"rate_per_sec"`     // per-sensor admission cap (0 = unlimited)
+	Burst           int           `yaml:"burst"`            // token-bucket burst (default = rate_per_sec)
+}
+
+// On reports whether trust scoring should run. Defaults on wherever ingest is
+// enabled (where there are child streams to score).
+func (t TrustConfig) On(ingestEnabled bool) bool {
+	if t.Enabled != nil {
+		return *t.Enabled
+	}
+	return ingestEnabled
 }
 
 // FleetConfig tunes the cross-sensor correlator. The thresholds are "within a
@@ -132,7 +167,80 @@ type FleetConfig struct {
 	ProfileCVEs    int `yaml:"profile_cves"`    // a playbook needs >= N CVEs to be a combination
 	ProfileSources int `yaml:"profile_sources"` // >= N distinct sources sharing it ...
 	ProfileSensors int `yaml:"profile_sensors"` // ... across >= N sensors
-	MaxList        int `yaml:"max_list"`        // cap the sensor/source list in alert meta
+	// Honeytoken spread: same canary token tripped across the fleet.
+	HoneytokenSensors int `yaml:"honeytoken_sensors"` // same token on >= N sensors
+	// CVE emergence: a brand-new CVE reaching several sensors (n-day going live).
+	CVEEmergenceSensors int `yaml:"cve_emergence_sensors"`
+	// Cross-protocol actor: one source enumerating many services fleet-wide.
+	CrossProtoHandlers int `yaml:"cross_proto_handlers"` // >= N distinct handlers ...
+	CrossProtoSensors  int `yaml:"cross_proto_sensors"`  // ... across >= N sensors
+	// Fingerprint-ASN spread: one fingerprint operated from many networks.
+	FPASNs       int `yaml:"fp_asns"`        // one fingerprint from >= N distinct ASNs ...
+	FPASNSensors int `yaml:"fp_asn_sensors"` // ... across >= N sensors
+	// Threat-intel surge: flagged infra (threat-intel list / Tor) converging.
+	ThreatSurgeSources int `yaml:"threat_surge_sources"` // >= N distinct flagged sources ...
+	ThreatSurgeSensors int `yaml:"threat_surge_sensors"` // ... across >= N sensors
+	// Tool campaign: the same identified attack tool across the fleet.
+	ToolSensors int `yaml:"tool_sensors"` // one tool on >= N sensors ...
+	ToolSources int `yaml:"tool_sources"` // ... from >= N distinct sources
+	// C2 shared: the same harvested C2 / dropper URL across the fleet.
+	C2Sensors int `yaml:"c2_sensors"` // one URL on >= N sensors
+	// User-agent shared: the same HTTP User-Agent across the fleet.
+	UASensors int `yaml:"ua_sensors"` // one UA on >= N sensors ...
+	UASources int `yaml:"ua_sources"` // ... from >= N distinct sources
+	// Tactic convergence: the same MITRE technique surging across the fleet.
+	TacticSources int `yaml:"tactic_sources"` // >= N distinct sources using one technique ...
+	TacticSensors int `yaml:"tactic_sensors"` // ... across >= N sensors
+	// Recidivist network: an ASN returning across many time buckets.
+	RecidivistBucket  time.Duration `yaml:"recidivist_bucket"`  // bucket size (default 24h)
+	RecidivistWindows int           `yaml:"recidivist_windows"` // alert at >= N distinct buckets
+	// Port campaign: a sudden fleet-wide focus on one destination port.
+	PortCampaignSources int   `yaml:"port_campaign_sources"` // >= N distinct sources on one port ...
+	PortCampaignSensors int   `yaml:"port_campaign_sensors"` // ... across >= N sensors
+	PortCampaignExclude []int `yaml:"port_campaign_exclude"` // ubiquitous ports to ignore (default 22/80/443)
+	// Credential spray: one username attacked with many passwords fleet-wide.
+	CredSprayPasswords int `yaml:"cred_spray_passwords"` // >= N distinct passwords for one user ...
+	CredSpraySensors   int `yaml:"cred_spray_sensors"`   // ... across >= N sensors
+	// ASN-org campaign: one provider spanning several ASNs fleet-wide.
+	AsnOrgASNs    int `yaml:"asn_org_asns"`    // >= N distinct ASNs under one org ...
+	AsnOrgSensors int `yaml:"asn_org_sensors"` // ... across >= N sensors
+	// Downward intel feedback (serving side). When this node both runs fleet
+	// correlation and accepts ingest, it derives indicators from its fleet:*
+	// findings and serves them at GET <ingest>/intel for child nodes to pull.
+	ServeIntel *bool         `yaml:"serve_intel"` // nil/true = serve when fleet+ingest are on
+	IntelTTL   time.Duration `yaml:"intel_ttl"`   // how long an indicator lingers (default 6h)
+	IntelMax   int           `yaml:"intel_max"`   // cap per indicator set (default 10000)
+	MaxList    int           `yaml:"max_list"`    // cap the sensor/source list in alert meta
+}
+
+// ServingIntel reports whether this node should derive + serve a fleet-intel
+// feed. Defaults on wherever fleet correlation runs; the feed is only actually
+// reachable when ingest is also enabled (it mounts on that endpoint).
+func (f FleetConfig) ServingIntel() bool { return f.ServeIntel == nil || *f.ServeIntel }
+
+// IntelFeed subscribes this node to a parent aggregator's downward fleet-intel
+// feed: it polls the feed and hands the indicators to the enricher, so fleet
+// knowledge tags this node's events (where tarpit / severity / risk / threat-
+// intel already act). Independent of fleet correlation — a leaf sensor can
+// subscribe without being an aggregator.
+type IntelFeed struct {
+	Enabled  bool          `yaml:"enabled"`
+	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
+	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
+	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
+}
+
+// MISPConfig pushes the fleet's observed indicators (the intel store) to a MISP
+// instance as periodic delta events. Meaningful only where fleet correlation
+// runs (it's the IOC source).
+type MISPConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	URL          string        `yaml:"url"`          // MISP base URL, e.g. https://misp.corp
+	KeyEnv       string        `yaml:"key_env"`      // MISP auth key from this env var
+	Interval     time.Duration `yaml:"interval"`     // push period (default 5m)
+	EventInfo    string        `yaml:"event_info"`   // MISP event title
+	Distribution string        `yaml:"distribution"` // MISP distribution level (default "0")
+	ThreatLevel  string        `yaml:"threat_level"` // threat_level_id (default "2")
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any

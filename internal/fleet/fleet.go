@@ -96,6 +96,59 @@ type Config struct {
 	ProfileSources int // >= N distinct sources sharing it ...
 	ProfileSensors int // ... across >= N sensors
 
+	// Honeytoken spread: the same canary token tripped across the fleet.
+	HoneytokenSensors int // same canary token on >= N sensors -> alert
+
+	// CVE emergence: a brand-new CVE (novel within FirstSeenHorizon) reaching
+	// several sensors — an n-day going live fleet-wide.
+	CVEEmergenceSensors int
+
+	// Cross-protocol actor: one source touching many distinct services across
+	// the fleet (fleet-wide service enumeration by a single actor).
+	CrossProtoHandlers int // >= N distinct handlers ...
+	CrossProtoSensors  int // ... across >= N sensors
+
+	// Fingerprint ASN spread: one fingerprint operated from many networks.
+	FPASNs       int // one ja3/ja4/hassh from >= N distinct ASNs ...
+	FPASNSensors int // ... across >= N sensors
+
+	// Threat-intel surge: known-bad infra (threat-intel list / Tor) converging.
+	ThreatSurgeSources int // >= N distinct flagged sources ...
+	ThreatSurgeSensors int // ... across >= N sensors
+
+	// Tool campaign: the same identified attack tool across the fleet.
+	ToolSensors int // one tool on >= N sensors ...
+	ToolSources int // ... from >= N distinct sources
+
+	// C2 shared: the same harvested C2 / dropper URL across the fleet.
+	C2Sensors int // one URL on >= N sensors
+
+	// User-agent shared: the same HTTP User-Agent across the fleet.
+	UASensors int // one UA on >= N sensors ...
+	UASources int // ... from >= N distinct sources
+
+	// Tactic convergence: the same MITRE technique surging across the fleet.
+	TacticSources int // >= N distinct sources using one technique ...
+	TacticSensors int // ... across >= N sensors
+
+	// Recidivist network: an ASN active across many distinct time buckets — a
+	// persistently-returning hostile network.
+	RecidivistBucket  time.Duration // bucket size (default 24h = "days")
+	RecidivistWindows int           // alert at >= N distinct buckets
+
+	// Port campaign: a sudden focus on one destination port.
+	PortCampaignSources int   // >= N distinct sources on one port ...
+	PortCampaignSensors int   // ... across >= N sensors
+	PortCampaignExclude []int // ports too ubiquitous to be a signal (default 22/80/443)
+
+	// Credential spray: one username attacked with many passwords fleet-wide.
+	CredSprayPasswords int // >= N distinct passwords for one username ...
+	CredSpraySensors   int // ... across >= N sensors
+
+	// ASN-org campaign: one AS-org (provider) spanning several ASNs fleet-wide.
+	AsnOrgASNs    int // >= N distinct ASNs under one org ...
+	AsnOrgSensors int // ... across >= N sensors
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -187,6 +240,78 @@ func (c *Config) withDefaults() {
 	if c.ProfileSensors <= 0 {
 		c.ProfileSensors = 2
 	}
+	if c.HoneytokenSensors <= 0 {
+		c.HoneytokenSensors = 2
+	}
+	if c.CVEEmergenceSensors <= 0 {
+		c.CVEEmergenceSensors = 2
+	}
+	if c.CrossProtoHandlers <= 0 {
+		c.CrossProtoHandlers = 4
+	}
+	if c.CrossProtoSensors <= 0 {
+		c.CrossProtoSensors = 2
+	}
+	if c.FPASNs <= 0 {
+		c.FPASNs = 3
+	}
+	if c.FPASNSensors <= 0 {
+		c.FPASNSensors = 2
+	}
+	if c.ThreatSurgeSources <= 0 {
+		c.ThreatSurgeSources = 10
+	}
+	if c.ThreatSurgeSensors <= 0 {
+		c.ThreatSurgeSensors = 3
+	}
+	if c.ToolSensors <= 0 {
+		c.ToolSensors = 3
+	}
+	if c.ToolSources <= 0 {
+		c.ToolSources = 3
+	}
+	if c.C2Sensors <= 0 {
+		c.C2Sensors = 2
+	}
+	if c.UASensors <= 0 {
+		c.UASensors = 3
+	}
+	if c.UASources <= 0 {
+		c.UASources = 5
+	}
+	if c.TacticSources <= 0 {
+		c.TacticSources = 8
+	}
+	if c.TacticSensors <= 0 {
+		c.TacticSensors = 3
+	}
+	if c.RecidivistBucket <= 0 {
+		c.RecidivistBucket = 24 * time.Hour
+	}
+	if c.RecidivistWindows <= 0 {
+		c.RecidivistWindows = 3
+	}
+	if c.PortCampaignSources <= 0 {
+		c.PortCampaignSources = 5
+	}
+	if c.PortCampaignSensors <= 0 {
+		c.PortCampaignSensors = 3
+	}
+	if c.PortCampaignExclude == nil {
+		c.PortCampaignExclude = []int{22, 80, 443}
+	}
+	if c.CredSprayPasswords <= 0 {
+		c.CredSprayPasswords = 5
+	}
+	if c.CredSpraySensors <= 0 {
+		c.CredSpraySensors = 2
+	}
+	if c.AsnOrgASNs <= 0 {
+		c.AsnOrgASNs = 2
+	}
+	if c.AsnOrgSensors <= 0 {
+		c.AsnOrgSensors = 5
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -199,6 +324,7 @@ type actor struct {
 	sensors map[string]struct{}
 	sources map[string]struct{}
 	geos    map[string]struct{} // distinct countries; lazily allocated (geo detector only)
+	extra   map[string]struct{} // a detector-specific 3rd dimension (handlers / ASNs); lazy
 	last    time.Time
 	fired   bool
 }
@@ -225,22 +351,37 @@ type Correlator struct {
 	cfg Config
 	mu  sync.Mutex
 
-	sources  map[string]*actor // key: source IP
-	asns     map[string]*actor // key: ASN
-	fps      map[string]*actor // key: "<kind>:<value>" (ja3/ja4/hassh)
-	payloads map[string]*actor // key: artifact sha256
-	creds    map[string]*actor // key: "<user>\x00<pass>"
-	cves     map[string]*actor // key: CVE id
-	subnets  map[string]*actor // key: source block ("a.b.c.0/24" | ".../64")
-	pivots   map[string]*actor // key: composite multi-attribute identity
-	geoFP    map[string]*actor // key: "<kind>:<value>" fingerprint (geo)
-	geoCred  map[string]*actor // key: "<user>\x00<pass>" (geo)
-	profiles map[string]*actor // key: sorted CVE-set playbook signature
+	sources    map[string]*actor // key: source IP
+	asns       map[string]*actor // key: ASN
+	fps        map[string]*actor // key: "<kind>:<value>" (ja3/ja4/hassh)
+	payloads   map[string]*actor // key: artifact sha256
+	creds      map[string]*actor // key: "<user>\x00<pass>"
+	cves       map[string]*actor // key: CVE id
+	subnets    map[string]*actor // key: source block ("a.b.c.0/24" | ".../64")
+	pivots     map[string]*actor // key: composite multi-attribute identity
+	geoFP      map[string]*actor // key: "<kind>:<value>" fingerprint (geo)
+	geoCred    map[string]*actor // key: "<user>\x00<pass>" (geo)
+	profiles   map[string]*actor // key: sorted CVE-set playbook signature
+	tokens     map[string]*actor // key: canary token rule_id (honeytoken spread)
+	crossProto map[string]*actor // key: source IP (cross-protocol actor; extra = handlers)
+	fpASN      map[string]*actor // key: "<kind>:<value>" fingerprint (extra = ASNs)
+	surge      map[string]*actor // key: "" (threat-intel surge — flagged infra)
+	toolc      map[string]*actor // key: tool name (tool campaign)
+	c2         map[string]*actor // key: harvested URL (shared C2)
+	uas        map[string]*actor // key: user-agent (shared UA)
+	tactics    map[string]*actor // key: MITRE technique id (tactic convergence)
+	ports      map[string]*actor // key: dest port (port campaign)
+	credSpray  map[string]*actor // key: username (credential spray; extra = passwords)
+	asnOrgs    map[string]*actor // key: asn_org (asn-org campaign; extra = ASNs)
+
+	recid       map[string]*recidEntry // key: ASN (recidivist network — long horizon)
+	portExclude map[int]bool           // ports too ubiquitous for port-campaign
 
 	sensorStats  map[string]*sensorStat // key: sensor id
 	trajectories map[string]*trajectory // key: source IP (address-walk tracking)
 	seenASN      map[string]*seenEntry  // long-horizon novelty memory (ASN)
 	seenFP       map[string]*seenEntry  // long-horizon novelty memory (fingerprint)
+	seenCVE      map[string]*seenEntry  // long-horizon novelty memory (CVE — emergence)
 	srcCVEs      map[string]*cveSet     // per-source CVE set (target-profile)
 
 	lastBurstFire time.Time // synchronized-burst cooldown
@@ -254,7 +395,7 @@ func New(cfg Config) *Correlator {
 		return nil
 	}
 	cfg.withDefaults()
-	return &Correlator{
+	c := &Correlator{
 		cfg:          cfg,
 		sources:      map[string]*actor{},
 		asns:         map[string]*actor{},
@@ -267,13 +408,31 @@ func New(cfg Config) *Correlator {
 		geoFP:        map[string]*actor{},
 		geoCred:      map[string]*actor{},
 		profiles:     map[string]*actor{},
+		tokens:       map[string]*actor{},
+		crossProto:   map[string]*actor{},
+		fpASN:        map[string]*actor{},
+		surge:        map[string]*actor{},
+		toolc:        map[string]*actor{},
+		c2:           map[string]*actor{},
+		uas:          map[string]*actor{},
+		tactics:      map[string]*actor{},
+		ports:        map[string]*actor{},
+		credSpray:    map[string]*actor{},
+		asnOrgs:      map[string]*actor{},
+		recid:        map[string]*recidEntry{},
 		sensorStats:  map[string]*sensorStat{},
 		trajectories: map[string]*trajectory{},
 		seenASN:      map[string]*seenEntry{},
 		seenFP:       map[string]*seenEntry{},
+		seenCVE:      map[string]*seenEntry{},
 		srcCVEs:      map[string]*cveSet{},
 		now:          time.Now,
 	}
+	c.portExclude = map[int]bool{}
+	for _, p := range cfg.PortCampaignExclude {
+		c.portExclude[p] = true
+	}
+	return c
 }
 
 // Observe folds one event into the fleet view and returns any fleet:* detection
@@ -314,6 +473,19 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = add(out, c.observePivotLocked(ev, sid, now))
 	out = append(out, c.observeGeoLocked(ev, sid, now)...)
 	out = add(out, c.observeProfileLocked(ev, sid, now))
+	out = add(out, c.observeHoneytokenLocked(ev, sid, now))
+	out = add(out, c.observeCVEEmergenceLocked(ev, sid, now))
+	out = add(out, c.observeCrossProtoLocked(ev, sid, now))
+	out = append(out, c.observeFPASNLocked(ev, sid, now)...)
+	out = add(out, c.observeThreatSurgeLocked(ev, sid, now))
+	out = append(out, c.observeToolCampaignLocked(ev, sid, now)...)
+	out = append(out, c.observeC2SharedLocked(ev, sid, now)...)
+	out = add(out, c.observeUASharedLocked(ev, sid, now))
+	out = append(out, c.observeTacticConvergenceLocked(ev, sid, now)...)
+	out = add(out, c.observeRecidivistLocked(ev, sid, now))
+	out = add(out, c.observePortCampaignLocked(ev, sid, now))
+	out = add(out, c.observeCredSprayLocked(ev, sid, now))
+	out = add(out, c.observeAsnOrgLocked(ev, sid, now))
 	return out
 }
 
@@ -362,7 +534,8 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	cutoff := now.Add(-c.cfg.Window)
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
-		c.pivots, c.geoFP, c.geoCred, c.profiles,
+		c.pivots, c.geoFP, c.geoCred, c.profiles, c.tokens, c.crossProto, c.fpASN,
+		c.surge, c.toolc, c.c2, c.uas, c.tactics, c.ports, c.credSpray, c.asnOrgs,
 	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {
@@ -386,11 +559,16 @@ func (c *Correlator) pruneLocked(now time.Time) {
 		}
 	}
 	horizon := now.Add(-c.cfg.FirstSeenHorizon)
-	for _, m := range []map[string]*seenEntry{c.seenASN, c.seenFP} {
+	for _, m := range []map[string]*seenEntry{c.seenASN, c.seenFP, c.seenCVE} {
 		for k, e := range m {
 			if e.last.Before(horizon) {
 				delete(m, k)
 			}
+		}
+	}
+	for k, e := range c.recid { // recidivist tracking is long-horizon, not windowed
+		if e.last.Before(horizon) {
+			delete(c.recid, k)
 		}
 	}
 }

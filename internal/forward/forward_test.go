@@ -129,6 +129,44 @@ func TestForwarderDelivers(t *testing.T) {
 	pollSent(t, f, 2) // POST completes shortly after the server receives it
 }
 
+func TestForwarderRollup(t *testing.T) {
+	got := make(chan recvd, 4)
+	srv := captureServer(t, got, func(int) int { return 200 })
+	defer srv.Close()
+
+	f := NewForwarder(Target{ID: "r1", URL: srv.URL, NodeID: "aggA",
+		Mode: "rollup", RollupInterval: 30 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.Run(ctx)
+
+	f.Enqueue(ev("e1", event.SeverityHigh)) // source 203.0.113.9
+	f.Enqueue(ev("e2", event.SeverityLow))
+	f.Enqueue(&event.Event{ID: "e3", SensorID: "depA", Severity: event.SeverityCritical,
+		RuleID: "cve:CVE-2021-44228", Source: event.Endpoint{IP: "198.51.100.7"},
+		Meta: map[string]any{"ja3": "abc"}})
+
+	r := waitRecv(t, got)
+	evs, err := DecodeBatch(bytes.NewReader(r.body))
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("rollup batch: %d events, err=%v", len(evs), err)
+	}
+	re := evs[0]
+	if re.RuleID != "fleet:rollup" {
+		t.Fatalf("rule_id = %q; want fleet:rollup", re.RuleID)
+	}
+	if tot, _ := re.Meta["total"].(float64); int(tot) != 3 {
+		t.Errorf("total = %v; want 3", re.Meta["total"])
+	}
+	if ds, _ := re.Meta["distinct_sources"].(float64); int(ds) != 2 {
+		t.Errorf("distinct_sources = %v; want 2", re.Meta["distinct_sources"])
+	}
+	if re.Severity != event.SeverityCritical { // max severity folded
+		t.Errorf("severity = %v; want critical", re.Severity)
+	}
+	pollSent(t, f, 1)
+}
+
 func TestForwarderRetries(t *testing.T) {
 	got := make(chan recvd, 8)
 	// fail the first two attempts, then accept.

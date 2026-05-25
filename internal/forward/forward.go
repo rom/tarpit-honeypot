@@ -41,7 +41,13 @@ type Target struct {
 	MaxAge      time.Duration  // flush at least this often (default 2s)
 	QueueSize   int            // in-memory buffer depth (default 4096)
 	Timeout     time.Duration  // per-POST timeout (default 10s)
-	Client      *http.Client   // nil = egress.HTTPClient(Timeout)
+	// Mode selects the upward wire shape: "full" (default) ships every event;
+	// "rollup" ships one periodic fleet:rollup summary (per-source/ASN/
+	// fingerprint/rule counters + severity histogram) instead, keeping upward
+	// volume sane at higher tiers while preserving the correlation keys.
+	Mode           string
+	RollupInterval time.Duration // rollup flush period (default 60s)
+	Client         *http.Client  // nil = egress.HTTPClient(Timeout)
 }
 
 func (t *Target) withDefaults() {
@@ -56,6 +62,9 @@ func (t *Target) withDefaults() {
 	}
 	if t.Timeout <= 0 {
 		t.Timeout = 10 * time.Second
+	}
+	if t.RollupInterval <= 0 {
+		t.RollupInterval = 60 * time.Second
 	}
 	if t.Client == nil {
 		t.Client = egress.HTTPClient(t.Timeout)
@@ -100,8 +109,13 @@ func (f *Forwarder) Stats() (sent, dropped, failed int64) {
 }
 
 // Run drains the queue, batching by size/age, until ctx is done (then it makes
-// a final flush attempt). Blocking; run it in a goroutine.
+// a final flush attempt). Blocking; run it in a goroutine. In rollup mode it
+// instead accumulates a periodic summary (see runRollup).
 func (f *Forwarder) Run(ctx context.Context) {
+	if f.t.Mode == "rollup" {
+		f.runRollup(ctx)
+		return
+	}
 	ticker := time.NewTicker(f.t.MaxAge)
 	defer ticker.Stop()
 	var batch []*event.Event
