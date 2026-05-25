@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web UI: dedicated fleet panel
+- New `/fleet` page (and `/api/fleet` JSON) surfacing the cross-sensor
+  `fleet:*` findings: a per-detector hit-count table plus a findings list with a
+  compact, per-detector summary (primary identity + breadth counts + broad/
+  targeted scope), each linking to the full event. `since` filter; linked from
+  the nav and `/docs`. Verified live (renders the findings; non-fleet events are
+  excluded). Unit-tested (handler render + the summary/number formatting).
+
+### Added — two more fleet correlators (credential-spray / asn-org)
+- **`fleet:credential-spray-fleet`** — one username tried with >=
+  `cred_spray_passwords` (5) distinct passwords across >= `cred_spray_sensors`
+  (2) sensors: a distributed brute-force of a single account.
+- **`fleet:asn-org-campaign`** — one AS-org spanning >= `asn_org_asns` (2)
+  distinct ASNs across >= `asn_org_sensors` (5) sensors: a provider-wide campaign
+  that ASN-number keying misses (requires >= 2 ASNs so it never duplicates
+  asn-multi-sensor). Unit-tested.
+
 ### Added — three more fleet correlators (tactic / persistence / port axes)
 - **`fleet:tactic-convergence`** — one MITRE ATT&CK technique exercised by >=
   `tactic_sources` (8) distinct sources across >= `tactic_sensors` (3) sensors:
