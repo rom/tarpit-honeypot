@@ -35,6 +35,11 @@ type Config struct {
 	// aggregator). Composes with Listeners + Forward, so a node can be a sensor,
 	// a mid-tier aggregator, and forward upward all at once. See internal/ingest.
 	Ingest IngestConfig `yaml:"ingest"`
+	// Fleet is the cross-sensor correlator that runs over the merged (local +
+	// ingested) stream, surfacing one source IP / ASN / fingerprint touching
+	// several sensors within a window — a pattern no single sensor can see. It
+	// defaults on wherever Ingest is enabled. See internal/fleet.
+	Fleet FleetConfig `yaml:"fleet"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -76,6 +81,68 @@ type IngestConfig struct {
 	MaxBodyMB     int           `yaml:"max_body_mb"`  // reject larger batches (default 32)
 	MaxHops       int           `yaml:"max_hops"`     // drop events that traversed more nodes (default 8)
 	DedupWindow   time.Duration `yaml:"dedup_window"` // sensor_id:id dedup TTL (default 10m)
+}
+
+// FleetConfig tunes the cross-sensor correlator. The thresholds are "within a
+// window"; zero values fall back to the internal/fleet defaults (window 1h,
+// source_sensors 3, asn_sensors 5, fp_sensors 3, fp_sources 5, max_list 50).
+type FleetConfig struct {
+	// Enabled overrides the default: nil = auto (on when ingest is enabled),
+	// true = force on, false = force off. Cross-sensor correlation is only
+	// meaningful where events from several sensors converge, so an aggregator
+	// gets it for free while a leaf sensor stays off unless forced on.
+	Enabled       *bool         `yaml:"enabled"`
+	Window        time.Duration `yaml:"window"`         // how long an identity's activity is remembered
+	SourceSensors int           `yaml:"source_sensors"` // one source IP on >= N sensors -> alert
+	ASNSensors    int           `yaml:"asn_sensors"`    // one ASN on >= N sensors -> alert
+	FPSensors     int           `yaml:"fp_sensors"`     // one fingerprint on >= N sensors ...
+	FPSources     int           `yaml:"fp_sources"`     // ... and >= M distinct sources -> alert
+	// Shared-artifact campaigns (same hash / credential / CVE across sensors).
+	PayloadSensors int `yaml:"payload_sensors"` // same malware artifact on >= N sensors
+	CredSensors    int `yaml:"cred_sensors"`    // same credential pair on >= N sensors
+	CVESensors     int `yaml:"cve_sensors"`     // same CVE on >= N sensors (exploit wave)
+	// Coordinated distributed infrastructure (one source block, many IPs).
+	SubnetSensors int `yaml:"subnet_sensors"` // a /24 (or /64) covering >= N sensors ...
+	SubnetSources int `yaml:"subnet_sources"` // ... via >= M distinct IPs
+	// Peer-relative outlier (a sensor far louder than its peers).
+	OutlierMinEvents int     `yaml:"outlier_min_events"` // min high-sev events to be a candidate
+	OutlierFactor    float64 `yaml:"outlier_factor"`     // must exceed this x the peer median
+	OutlierMinPeers  int     `yaml:"outlier_min_peers"`  // need at least this many peers to compare
+	// BroadCoverage is the sensors_hit/total fraction at/above which a
+	// breadth/wave hit is "broad" internet background (downgraded to medium).
+	BroadCoverage float64 `yaml:"broad_coverage"`
+	// Scan trajectory (one source walking the address space across sensors).
+	TrajectoryHits      int     `yaml:"trajectory_hits"`      // distinct destinations before evaluating
+	TrajectorySensors   int     `yaml:"trajectory_sensors"`   // ... spanning >= N sensors
+	TrajectoryMonotonic float64 `yaml:"trajectory_monotonic"` // fraction of steps moving one way
+	// Synchronized burst (many sensors spiking at once).
+	BurstWindow    time.Duration `yaml:"burst_window"`     // the short spike window
+	BurstMinEvents int           `yaml:"burst_min_events"` // a sensor spikes at >= N events in the window
+	BurstSensors   int           `yaml:"burst_sensors"`    // fire when >= N sensors spike together
+	// First fleet contact (a brand-new ASN / fingerprint reaching the fleet).
+	FirstContactSensors int           `yaml:"first_contact_sensors"` // novel identity must reach >= N sensors
+	FirstSeenHorizon    time.Duration `yaml:"first_seen_horizon"`    // how long an identity is remembered as seen
+	// Identity pivot (one actor across rotating IPs, linked by shared attributes).
+	PivotSources int `yaml:"pivot_sources"` // >= N distinct IPs ...
+	PivotSensors int `yaml:"pivot_sensors"` // ... across >= N sensors
+	// Geo-distributed actor (one fingerprint / credential from many countries).
+	GeoCountries int `yaml:"geo_countries"` // >= N distinct countries ...
+	GeoSensors   int `yaml:"geo_sensors"`   // ... across >= N sensors
+	// Target-profile match (the same multi-CVE playbook from distinct sources).
+	ProfileCVEs    int `yaml:"profile_cves"`    // a playbook needs >= N CVEs to be a combination
+	ProfileSources int `yaml:"profile_sources"` // >= N distinct sources sharing it ...
+	ProfileSensors int `yaml:"profile_sensors"` // ... across >= N sensors
+	MaxList        int `yaml:"max_list"`        // cap the sensor/source list in alert meta
+}
+
+// On reports whether the fleet correlator should run. It defaults on for any
+// node that accepts ingest (where cross-sensor correlation is meaningful); an
+// explicit enabled value overrides that.
+func (f FleetConfig) On(ingestEnabled bool) bool {
+	if f.Enabled != nil {
+		return *f.Enabled
+	}
+	return ingestEnabled
 }
 
 // Archeservice declares a service role to stand up. At load time it expands
