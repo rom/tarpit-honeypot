@@ -127,6 +127,20 @@ type Config struct {
 	UASensors int // one UA on >= N sensors ...
 	UASources int // ... from >= N distinct sources
 
+	// Tactic convergence: the same MITRE technique surging across the fleet.
+	TacticSources int // >= N distinct sources using one technique ...
+	TacticSensors int // ... across >= N sensors
+
+	// Recidivist network: an ASN active across many distinct time buckets — a
+	// persistently-returning hostile network.
+	RecidivistBucket  time.Duration // bucket size (default 24h = "days")
+	RecidivistWindows int           // alert at >= N distinct buckets
+
+	// Port campaign: a sudden focus on one destination port.
+	PortCampaignSources int   // >= N distinct sources on one port ...
+	PortCampaignSensors int   // ... across >= N sensors
+	PortCampaignExclude []int // ports too ubiquitous to be a signal (default 22/80/443)
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -257,6 +271,27 @@ func (c *Config) withDefaults() {
 	if c.UASources <= 0 {
 		c.UASources = 5
 	}
+	if c.TacticSources <= 0 {
+		c.TacticSources = 8
+	}
+	if c.TacticSensors <= 0 {
+		c.TacticSensors = 3
+	}
+	if c.RecidivistBucket <= 0 {
+		c.RecidivistBucket = 24 * time.Hour
+	}
+	if c.RecidivistWindows <= 0 {
+		c.RecidivistWindows = 3
+	}
+	if c.PortCampaignSources <= 0 {
+		c.PortCampaignSources = 5
+	}
+	if c.PortCampaignSensors <= 0 {
+		c.PortCampaignSensors = 3
+	}
+	if c.PortCampaignExclude == nil {
+		c.PortCampaignExclude = []int{22, 80, 443}
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -314,6 +349,11 @@ type Correlator struct {
 	toolc      map[string]*actor // key: tool name (tool campaign)
 	c2         map[string]*actor // key: harvested URL (shared C2)
 	uas        map[string]*actor // key: user-agent (shared UA)
+	tactics    map[string]*actor // key: MITRE technique id (tactic convergence)
+	ports      map[string]*actor // key: dest port (port campaign)
+
+	recid       map[string]*recidEntry // key: ASN (recidivist network — long horizon)
+	portExclude map[int]bool           // ports too ubiquitous for port-campaign
 
 	sensorStats  map[string]*sensorStat // key: sensor id
 	trajectories map[string]*trajectory // key: source IP (address-walk tracking)
@@ -333,7 +373,7 @@ func New(cfg Config) *Correlator {
 		return nil
 	}
 	cfg.withDefaults()
-	return &Correlator{
+	c := &Correlator{
 		cfg:          cfg,
 		sources:      map[string]*actor{},
 		asns:         map[string]*actor{},
@@ -353,6 +393,9 @@ func New(cfg Config) *Correlator {
 		toolc:        map[string]*actor{},
 		c2:           map[string]*actor{},
 		uas:          map[string]*actor{},
+		tactics:      map[string]*actor{},
+		ports:        map[string]*actor{},
+		recid:        map[string]*recidEntry{},
 		sensorStats:  map[string]*sensorStat{},
 		trajectories: map[string]*trajectory{},
 		seenASN:      map[string]*seenEntry{},
@@ -361,6 +404,11 @@ func New(cfg Config) *Correlator {
 		srcCVEs:      map[string]*cveSet{},
 		now:          time.Now,
 	}
+	c.portExclude = map[int]bool{}
+	for _, p := range cfg.PortCampaignExclude {
+		c.portExclude[p] = true
+	}
+	return c
 }
 
 // Observe folds one event into the fleet view and returns any fleet:* detection
@@ -409,6 +457,9 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = append(out, c.observeToolCampaignLocked(ev, sid, now)...)
 	out = append(out, c.observeC2SharedLocked(ev, sid, now)...)
 	out = add(out, c.observeUASharedLocked(ev, sid, now))
+	out = append(out, c.observeTacticConvergenceLocked(ev, sid, now)...)
+	out = add(out, c.observeRecidivistLocked(ev, sid, now))
+	out = add(out, c.observePortCampaignLocked(ev, sid, now))
 	return out
 }
 
@@ -458,7 +509,7 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
 		c.pivots, c.geoFP, c.geoCred, c.profiles, c.tokens, c.crossProto, c.fpASN,
-		c.surge, c.toolc, c.c2, c.uas,
+		c.surge, c.toolc, c.c2, c.uas, c.tactics, c.ports,
 	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {
@@ -487,6 +538,11 @@ func (c *Correlator) pruneLocked(now time.Time) {
 			if e.last.Before(horizon) {
 				delete(m, k)
 			}
+		}
+	}
+	for k, e := range c.recid { // recidivist tracking is long-horizon, not windowed
+		if e.last.Before(horizon) {
+			delete(c.recid, k)
 		}
 	}
 }

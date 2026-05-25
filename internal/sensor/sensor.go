@@ -283,6 +283,14 @@ func New(cfg *config.Config) (*Sensor, error) {
 			UASensors:          cfg.Fleet.UASensors,
 			UASources:          cfg.Fleet.UASources,
 
+			TacticSources:       cfg.Fleet.TacticSources,
+			TacticSensors:       cfg.Fleet.TacticSensors,
+			RecidivistBucket:    cfg.Fleet.RecidivistBucket,
+			RecidivistWindows:   cfg.Fleet.RecidivistWindows,
+			PortCampaignSources: cfg.Fleet.PortCampaignSources,
+			PortCampaignSensors: cfg.Fleet.PortCampaignSensors,
+			PortCampaignExclude: cfg.Fleet.PortCampaignExclude,
+
 			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())

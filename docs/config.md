@@ -820,6 +820,13 @@ fleet:
   c2_sensors: 2            # one harvested C2/dropper URL on >= N sensors -> fleet:c2-shared
   ua_sensors: 3            # one HTTP User-Agent on >= N sensors ...
   ua_sources: 5            #   ... from >= N sources -> fleet:user-agent-shared
+  tactic_sources: 8        # >= N sources using one MITRE technique ...
+  tactic_sensors: 3        #   ... across >= N sensors -> fleet:tactic-convergence
+  recidivist_bucket: 24h   # time bucket ("day") for recidivist tracking ...
+  recidivist_windows: 3    #   ... alert at >= N distinct buckets -> fleet:recidivist-network
+  port_campaign_sources: 5 # >= N sources on one dest port ...
+  port_campaign_sensors: 3 #   ... across >= N sensors -> fleet:port-campaign
+  port_campaign_exclude: [22, 80, 443]  # ubiquitous ports to ignore
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
   # downward intel feedback (serving side; needs ingest:) — see intel_feed:
@@ -855,6 +862,9 @@ The detectors, by the vantage axis they exploit:
 | `fleet:tool-campaign` | one identified **tool** (meta `tools`) on >= `tool_sensors` sensors from >= `tool_sources` sources | one tool / exploit-kit sweeping the fleet (links a campaign across differing IPs/stacks) |
 | `fleet:c2-shared` | one **harvested URL** (C2 / dropper) on >= `c2_sensors` sensors | shared command-and-control infra behind otherwise-distinct attacks |
 | `fleet:user-agent-shared` | one **User-Agent** on >= `ua_sensors` sensors from >= `ua_sources` sources | a shared HTTP scanner / tool family (the HTTP analogue of fingerprint-shared) |
+| `fleet:tactic-convergence` | one **MITRE technique** from >= `tactic_sources` sources across >= `tactic_sensors` sensors | a coordinated push on a TTP (above the CVE/tool level) |
+| `fleet:recidivist-network` | an **ASN** active in >= `recidivist_windows` distinct `recidivist_bucket`s | a network that keeps coming back day after day (persistence, not breadth) |
+| `fleet:port-campaign` | one **dest port** (not in `port_campaign_exclude`) from >= `port_campaign_sources` sources across >= `port_campaign_sensors` sensors | a service-targeted campaign (e.g. a new botnet on tcp/23) |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the

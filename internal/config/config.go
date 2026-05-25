@@ -188,6 +188,16 @@ type FleetConfig struct {
 	// User-agent shared: the same HTTP User-Agent across the fleet.
 	UASensors int `yaml:"ua_sensors"` // one UA on >= N sensors ...
 	UASources int `yaml:"ua_sources"` // ... from >= N distinct sources
+	// Tactic convergence: the same MITRE technique surging across the fleet.
+	TacticSources int `yaml:"tactic_sources"` // >= N distinct sources using one technique ...
+	TacticSensors int `yaml:"tactic_sensors"` // ... across >= N sensors
+	// Recidivist network: an ASN returning across many time buckets.
+	RecidivistBucket  time.Duration `yaml:"recidivist_bucket"`  // bucket size (default 24h)
+	RecidivistWindows int           `yaml:"recidivist_windows"` // alert at >= N distinct buckets
+	// Port campaign: a sudden fleet-wide focus on one destination port.
+	PortCampaignSources int   `yaml:"port_campaign_sources"` // >= N distinct sources on one port ...
+	PortCampaignSensors int   `yaml:"port_campaign_sensors"` // ... across >= N sensors
+	PortCampaignExclude []int `yaml:"port_campaign_exclude"` // ubiquitous ports to ignore (default 22/80/443)
 	// Downward intel feedback (serving side). When this node both runs fleet
 	// correlation and accepts ingest, it derives indicators from its fleet:*
 	// findings and serves them at GET <ingest>/intel for child nodes to pull.

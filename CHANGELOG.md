@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — three more fleet correlators (tactic / persistence / port axes)
+- **`fleet:tactic-convergence`** — one MITRE ATT&CK technique exercised by >=
+  `tactic_sources` (8) distinct sources across >= `tactic_sensors` (3) sensors:
+  a coordinated push on a TTP, abstracted above the specific CVE/tool.
+- **`fleet:recidivist-network`** — an ASN active in >= `recidivist_windows` (3)
+  distinct `recidivist_bucket`s (default 24h = "days") over the long horizon: a
+  network that keeps coming back, a persistence signal (not breadth). Keyed on
+  ASN so memory stays bounded.
+- **`fleet:port-campaign`** — one destination port probed by >=
+  `port_campaign_sources` (5) sources across >= `port_campaign_sensors` (3)
+  sensors, a service-targeted campaign (e.g. a new botnet on tcp/23). The
+  ubiquitous always-scanned ports are excluded (`port_campaign_exclude`, default
+  22/80/443) so the signal isn't drowned by routine scanning. Unit-tested per
+  detector (incl. the ubiquitous-port exclusion).
+
 ### Added — four more fleet correlators (new signal axes)
 - **`fleet:threat-intel-surge`** — >= `threat_surge_sources` (10) distinct
   enrichment-flagged sources (threat-intel list member / Tor exit) across >=

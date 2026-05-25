@@ -756,3 +756,70 @@ func TestUserAgentShared(t *testing.T) {
 		t.Errorf("user_agent = %q", got)
 	}
 }
+
+func TestTacticConvergence(t *testing.T) {
+	c := New(Config{Enabled: true, TacticSources: 3, TacticSensors: 2, SourceSensors: 99})
+	tac := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.MitreTechniques = []string{"T1190"}
+		return e
+	}
+	c.Observe(tac("s1", "1.1.1.1"))
+	c.Observe(tac("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(tac("s2", "3.3.3.3")), "fleet:tactic-convergence")
+	if a == nil {
+		t.Fatal("did not fire for one technique across 3 sources / 2 sensors")
+	}
+	if got, _ := a.Meta["technique"].(string); got != "T1190" {
+		t.Errorf("technique = %q", got)
+	}
+}
+
+func TestRecidivistNetwork(t *testing.T) {
+	c := New(Config{Enabled: true, RecidivistBucket: time.Hour, RecidivistWindows: 3, ASNSensors: 99, Window: 10 * time.Minute, FirstSeenHorizon: 30 * 24 * time.Hour})
+	now := time.Unix(1_700_000_000, 0)
+	c.now = func() time.Time { return now }
+	asn := func() map[string]any { return map[string]any{"asn": "AS31337"} }
+	c.Observe(ev("s1", "1.1.1.1", asn())) // bucket 0
+	now = now.Add(time.Hour)
+	c.Observe(ev("s2", "2.2.2.2", asn())) // bucket 1
+	now = now.Add(time.Hour)
+	a := findAlert(c.Observe(ev("s1", "3.3.3.3", asn())), "fleet:recidivist-network") // bucket 2 -> 3 buckets
+	if a == nil {
+		t.Fatal("did not fire for an ASN active across 3 buckets")
+	}
+	if ab, _ := a.Meta["active_buckets"].(int); ab != 3 {
+		t.Errorf("active_buckets = %d; want 3", ab)
+	}
+}
+
+func TestPortCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, PortCampaignSources: 3, PortCampaignSensors: 2, SourceSensors: 99})
+	p := func(sid, ip string, port int) *event.Event {
+		e := ev(sid, ip, nil)
+		e.Dest = event.Endpoint{Port: port}
+		return e
+	}
+	c.Observe(p("s1", "1.1.1.1", 23))
+	c.Observe(p("s1", "2.2.2.2", 23))
+	a := findAlert(c.Observe(p("s2", "3.3.3.3", 23)), "fleet:port-campaign")
+	if a == nil {
+		t.Fatal("did not fire for port 23 across 3 sources / 2 sensors")
+	}
+	if got, _ := a.Meta["port"].(int); got != 23 {
+		t.Errorf("port = %d; want 23", got)
+	}
+}
+
+func TestPortCampaignExcludesUbiquitous(t *testing.T) {
+	c := New(Config{Enabled: true, PortCampaignSources: 2, PortCampaignSensors: 2, SourceSensors: 99})
+	p := func(sid, ip string) *event.Event {
+		e := ev(sid, ip, nil)
+		e.Dest = event.Endpoint{Port: 443} // excluded by default
+		return e
+	}
+	c.Observe(p("s1", "1.1.1.1"))
+	if a := findAlert(c.Observe(p("s2", "2.2.2.2")), "fleet:port-campaign"); a != nil {
+		t.Fatal("fired for an excluded ubiquitous port (443)")
+	}
+}
