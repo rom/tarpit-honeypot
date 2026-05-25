@@ -34,6 +34,25 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; }
 .docs code { background: #f0f0f0; padding: 0 .25rem; border-radius: 3px; }
 .docs ul { margin: .3rem 0 .8rem 1.2rem; padding: 0; }
 .docs li { margin: .12rem 0; }
+/* docs index: a card grid linking the embedded guides */
+.doclib { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
+.doccard { display: block; background: #fff; border: 1px solid #e3e3e3; border-left: 4px solid #6b8fb5; border-radius: 4px; padding: .45rem .6rem; text-decoration: none; color: #1a4f9c; }
+.doccard:hover { border-left-color: #1a4f9c; background: #f7faff; }
+.doccard b { display: block; }
+.doccard span { display: block; color: #666; font-size: 12px; margin-top: .15rem; }
+/* rendered Markdown (a single embedded doc) */
+.mddoc { max-width: 60rem; }
+.mddoc h1 { font-size: 1.4rem; margin: .3rem 0 1rem; }
+.mddoc h2 { font-size: 1.1rem; }
+.mddoc h3 { font-size: 1rem; color: #444; margin: 1rem 0 .35rem; }
+.mddoc p { margin: .5rem 0; }
+.mddoc code { background: #f0f0f0; padding: 0 .25rem; border-radius: 3px; }
+.mddoc pre { background: #f6f8fa; border: 1px solid #e3e3e3; border-radius: 4px; padding: .6rem .8rem; overflow-x: auto; }
+.mddoc pre code { background: none; padding: 0; }
+.mddoc table { margin: .6rem 0; }
+.mddoc blockquote { margin: .6rem 0; padding: .3rem .8rem; border-left: 3px solid #ccd; background: #f7f8fa; color: #444; }
+.mddoc hr { border: none; border-top: 1px solid #e3e3e3; margin: 1.2rem 0; }
+.mddoc .docnav { margin-bottom: .8rem; }
 .depl { background: #fff; border: 1px solid #e3e3e3; border-radius: 4px; padding: .5rem .8rem; display: inline-block; }
 .threat-low { color: #555; }
 .threat-elevated { color: #b36b00; font-weight: 600; }
@@ -909,6 +928,13 @@ and the sensor never becomes a reflection/amplification primitive.</p>
 device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .UIBind }}</code>
 </p>
 
+<h2>full documentation</h2>
+<p>The complete guides, rendered in-product (the same Markdown shipped under
+<code>docs/</code>). Start with the <a href="/docs/webui">web UI walkthrough</a>.</p>
+<div class="doclib">
+{{ range .Docs }}<a class="doccard" href="/docs/{{ .Name }}"><b>{{ .Title }}</b>{{ if .Desc }}<span>{{ .Desc }}</span>{{ end }}</a>{{ end }}
+</div>
+
 <h2>tabs</h2>
 <ul>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
@@ -985,6 +1011,13 @@ auth token. The only optional write action is device delete/whitelist, gated beh
 <li>The sensor refuses to be a reflection/amplification primitive (bounded small-service
 replies, NTP mode-7 silent, no unbounded DNS answers).</li>
 </ul>
+</div>
+{{ template "foot" . }}{{ end }}
+
+{{ define "doc" }}{{ template "head" . }}
+<div class="docs mddoc">
+<p class="docnav"><a href="/docs">&larr; documentation index</a></p>
+{{ .Body }}
 </div>
 {{ template "foot" . }}{{ end }}
 `

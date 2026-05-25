@@ -243,6 +243,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/alerting", s.handleAlerting)
 	mux.HandleFunc("/errors", s.handleErrors)
 	mux.HandleFunc("/docs", s.handleDocs)
+	mux.HandleFunc("/docs/", s.handleDoc)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/profiles", s.handleAPIProfiles)
 	mux.HandleFunc("/api/profiles/", s.handleAPIProfile)
@@ -1113,34 +1114,6 @@ func (s *Server) handleAlerting(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.alertingView())
-}
-
-// ---- docs tab ----
-
-// docsPage carries the static reference plus a small "this deployment"
-// section so the docs reflect the running sensor.
-type docsPage struct {
-	Listeners int
-	Networks  int
-	Hosts     int
-	DevicesOn bool
-	UIBind    string
-}
-
-func (s *Server) handleDocs(w http.ResponseWriter, _ *http.Request) {
-	p := docsPage{UIBind: s.cfg.Bind}
-	if s.fullConfig != nil {
-		p.Listeners = len(s.fullConfig.Listeners)
-		p.Networks = len(s.fullConfig.Honeynets)
-		p.DevicesOn = s.fullConfig.Devices.Enabled
-	}
-	if s.topo != nil {
-		p.Hosts = len(s.topo.HostsInNetwork(""))
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "docs", p); err != nil {
-		slog.Warn("ui: render docs", "err", err)
-	}
 }
 
 func parseFilter(r *http.Request) store.Filter {
