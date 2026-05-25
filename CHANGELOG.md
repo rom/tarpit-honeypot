@@ -8,6 +8,20 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed — web UI brought up to date with the fleet / IOC / mitre features
+- **Event detail** (`/events/<id>`) now shows an ATT&CK / D3FEND section
+  (technique chips link to the technique view, with hover descriptions; tactics +
+  D3FEND defenses listed) — from the persisted columns, recomputed for
+  pre-migration events.
+- **Config canvas** (`/config`, `/api/config/canvas`) gained a "Fleet /
+  aggregation" group surfacing the new subsystems with live state: fleet
+  correlation (+ detector count), fleet forwarding (full/rollup target mix),
+  ingest endpoint, trust scoring, intel feed serving + subscribing, MISP push,
+  and the IOC store.
+- The template function map is now a single shared `tmplFuncs` (used by the
+  server and all view tests) so they can't drift; added a `techDesc` helper
+  (mitre.Describe).
+
 ### Added — indicator-of-compromise (IOC) store, events, and web-UI tab
 - New `internal/ioc` distils the indicators every event already carries — source
   IPs, ja3/ja4/hassh fingerprints, ASNs, DNS names, CVE ids, captured-payload

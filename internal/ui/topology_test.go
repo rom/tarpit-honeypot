@@ -9,19 +9,11 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
-	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 func uiTmpl(t *testing.T) *template.Template {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"fmtTime":        func(any) string { return "" },
-		"join":           func([]int) string { return "" },
-		"hexdump":        hexDump,
-		"refreshSeconds": func() int { return 0 },
-		"svcName":        func(int) string { return "" },
-		"confLabel":      toolfp.ConfidenceLabel,
-	}).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 })).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

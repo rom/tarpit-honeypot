@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/fleet"
+	"github.com/rom/tarpit-honeypot/internal/ioc"
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 )
 
@@ -118,6 +121,7 @@ func groupCollectors(cols []collectorCard) []collectorGroup {
 		{"responder", "Network responders"},
 		{"enrichment", "Enrichment"},
 		{"detection", "Detection"},
+		{"fleet", "Fleet / aggregation"},
 		{"forensics", "Forensics"},
 		{"output", "Output"},
 	}
@@ -192,6 +196,17 @@ func buildCollectors(c *config.Config) []collectorCard {
 	add("Fuzzing/DoS classifier", "detection", true, "payload entropy + flood typing")
 	add("Client fingerprinting", "detection", hasFingerprintListener(c.Listeners), "JA3/JA4/HASSH")
 
+	// --- fleet / aggregation ---
+	hasStore := c.UI.Enabled || hasSQLiteChannel(c.Channels)
+	add("Fleet correlation", "fleet", c.Fleet.On(c.Ingest.Enabled), fleetCorrDetail(c))
+	add("Fleet forwarding", "fleet", len(c.Forward) > 0, forwardDetail(c.Forward))
+	add("Ingest endpoint (aggregator)", "fleet", c.Ingest.Enabled, ingestDetail(c.Ingest))
+	add("Trust scoring", "fleet", c.Ingest.Trust.On(c.Ingest.Enabled), "score / quarantine child streams")
+	add("Intel feed (serving)", "fleet", c.Fleet.On(c.Ingest.Enabled) && c.Ingest.Enabled && c.Fleet.ServingIntel(), "STIX/TAXII + /intel")
+	add("Intel feed (subscribing)", "fleet", c.IntelFeed.Enabled, c.IntelFeed.URL)
+	add("MISP push", "fleet", c.MISP.Enabled, c.MISP.URL)
+	add("IOC store + ioc:* events", "fleet", c.IOC.On(hasStore), iocDetail(c.IOC))
+
 	// --- forensics / output ---
 	add("Payload capture", "forensics", c.Sensor.Payloads.Enabled, "")
 	add("PCAP capture", "forensics", anyCaptureListener(c.Listeners), captureDetail(c.Listeners))
@@ -246,6 +261,56 @@ func activeCorrelators(c config.Correlate) int {
 		}
 	}
 	return n
+}
+
+func hasSQLiteChannel(chans []config.Channel) bool {
+	for _, ch := range chans {
+		if ch.Type == "sqlite" {
+			return true
+		}
+	}
+	return false
+}
+
+func fleetCorrDetail(c *config.Config) string {
+	if !c.Fleet.On(c.Ingest.Enabled) {
+		return ""
+	}
+	return plural(len(fleet.Catalog()), "cross-sensor detector")
+}
+
+func forwardDetail(ts []config.ForwardTarget) string {
+	if len(ts) == 0 {
+		return ""
+	}
+	full, rollup := 0, 0
+	for _, t := range ts {
+		if t.Mode == "rollup" {
+			rollup++
+		} else {
+			full++
+		}
+	}
+	d := plural(len(ts), "target")
+	if rollup > 0 {
+		d += fmt.Sprintf(" (%d full, %d rollup)", full, rollup)
+	}
+	return d
+}
+
+func ingestDetail(in config.IngestConfig) string {
+	if !in.Enabled {
+		return ""
+	}
+	return "bind " + in.Bind
+}
+
+func iocDetail(c config.IOCConfig) string {
+	n := len(c.EmitTypes)
+	if n == 0 {
+		n = len(ioc.DefaultEmitTypes)
+	}
+	return plural(n, "emit type")
 }
 
 // threatIntelDetail summarizes the configured reputation lists.

@@ -31,6 +31,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
@@ -183,7 +184,19 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			return nil, fmt.Errorf("ui: env %s is empty", cfg.AuthTokenEnv)
 		}
 	}
-	t, err := template.New("").Funcs(template.FuncMap{
+	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh })).Parse(tmpls)
+	if err != nil {
+		return nil, err
+	}
+	s.tmpl = t
+	return s, nil
+}
+
+// tmplFuncs is the single source of truth for the template function map, used by
+// New and by the package tests so they can never drift. refresh supplies the
+// auto-refresh interval.
+func tmplFuncs(refresh func() int) template.FuncMap {
+	return template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 		"join": func(s []int) string {
 			var p []string
@@ -193,15 +206,11 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			return strings.Join(p, ", ")
 		},
 		"hexdump":        hexDump,
-		"refreshSeconds": func() int { return s.refresh },
+		"refreshSeconds": refresh,
 		"svcName":        portsvc.Name,
 		"confLabel":      toolfp.ConfidenceLabel,
-	}).Parse(tmpls)
-	if err != nil {
-		return nil, err
+		"techDesc":       mitre.Describe,
 	}
-	s.tmpl = t
-	return s, nil
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
@@ -571,6 +580,16 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	// Recompute ATT&CK/D3FEND for events stored before the mitre columns
+	// existed, so the detail page is consistent with the /attack view.
+	if len(ev.MitreTechniques) == 0 {
+		tag := mitre.Augment(mitre.Lookup(ev.RuleID, ev.Handler), metaStrings(ev.Meta, "anomalies"))
+		ev.MitreTechniques = tag.Techniques
+		ev.MitreTactics = tag.Tactics
+		if len(ev.MitreDefenses) == 0 {
+			ev.MitreDefenses = mitre.DefensesFor(tag.Techniques)
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "event", ev); err != nil {

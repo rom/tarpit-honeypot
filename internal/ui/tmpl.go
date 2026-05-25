@@ -512,6 +512,12 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
 </table>
 
+{{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
+  <tr><th>techniques</th><td>{{ range .MitreTechniques }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a> {{ end }}</td></tr>
+  {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+
 <h2>downloads</h2>
 <ul>
   <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
