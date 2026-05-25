@@ -8,6 +8,12 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — IOC retention (tied to retention_days)
+- The hourly retention runner now also prunes stale indicators from the `iocs`
+  table — those not seen for `sensor.disk.retention_days` (last-seen basis, the
+  same age cap as the event store), reported as `ioc_rows` in the prune log. An
+  indicator kept fresh by continued sightings survives. Unit-tested.
+
 ### Added — worked fleet topology example configs
 - `examples/fleet/` — a tiered, validated reference deployment: `leaf-sensor.yaml`
   (edge decoy that forwards full + subscribes to the intel feed under

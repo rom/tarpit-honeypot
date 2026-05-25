@@ -101,7 +101,7 @@ sensor:
 | `deployment_id` | Stable random seed feeding every "fixed" handler string. Auto-generated to `<data_dir>/.deployment-id` on first run. Override here to align two sensors that should look identical. |
 | `archetype` | OS-shaped banner profile (e.g. `debian 12`, `Ubuntu 24.04 LTS`, `Red Hat Enterprise Linux 9`). Pins SSH / HTTP / FTP / Telnet / SMTP / MySQL banners to values consistent with a stock install of that distro, so a scanner can't catch the sensor by spotting a version-vs-distro mismatch. Blank = fall back to the deployment-id-keyed variant pool. See `tarpit-honeypot help archetypes` for the list. |
 | `drop_user` / `drop_group` | After privileged setup, drop to this uid/gid. Refuses uid 0. Linux only — non-Linux warns and ignores. |
-| `disk.retention_days` | Hourly runner deletes events / files / DB rows older than this. 0 disables time-based pruning (size caps still apply). |
+| `disk.retention_days` | Hourly runner deletes events / files / DB rows (and IOC indicators not seen) older than this. 0 disables time-based pruning (size caps still apply). |
 | `jitter` | Per-handler-reply sleep `[min_ms, max_ms]`. Defeats microsecond-identical-latency scanner fingerprinting. |
 | `shutdown.drain_timeout` | After SIGTERM, accept sockets close immediately but in-flight handlers get this long to finish before force-cancel. |
 | `tls_rotate.days` | Auto-regenerate the HTTPS handler's self-signed cert if older than this. 0 = stable cert (stable SNI hash → leakable identifier). |
@@ -983,6 +983,8 @@ Bare `ip` / `asn` / `mac` are tracked in the store but not emitted as events by
 default (too voluminous, and already on every event); add them to `emit_types`
 to change that. The ATT&CK/D3FEND attribution is persisted per event, so the
 `iocs` tab, the event log, and `/api/events` all carry the techniques/defenses.
+Stale indicators — not seen for `sensor.disk.retention_days` — are pruned by the
+hourly retention runner (last-seen basis), the same age cap as the event store.
 
 ## `egress:` — outbound containment (do-no-harm)
 
