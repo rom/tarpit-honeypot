@@ -689,3 +689,70 @@ func TestFingerprintASNSpread(t *testing.T) {
 		t.Errorf("asn_count = %d; want 3", ac)
 	}
 }
+
+func TestThreatIntelSurge(t *testing.T) {
+	c := New(Config{Enabled: true, ThreatSurgeSources: 3, ThreatSurgeSensors: 2, SourceSensors: 99})
+	flagged := func(sid, ip string) *event.Event { return ev(sid, ip, map[string]any{"threat_intel_hit": true}) }
+	c.Observe(flagged("s1", "1.1.1.1"))
+	c.Observe(flagged("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(flagged("s2", "3.3.3.3")), "fleet:threat-intel-surge")
+	if a == nil {
+		t.Fatal("did not fire for 3 flagged sources across 2 sensors")
+	}
+	if sc, _ := a.Meta["source_count"].(int); sc != 3 {
+		t.Errorf("source_count = %d; want 3", sc)
+	}
+	// An unflagged event must not contribute.
+	c2 := New(Config{Enabled: true, ThreatSurgeSources: 2, ThreatSurgeSensors: 1})
+	c2.Observe(ev("s1", "9.9.9.9", nil))
+	if a := findAlert(c2.Observe(ev("s2", "8.8.8.8", nil)), "fleet:threat-intel-surge"); a != nil {
+		t.Fatal("fired for unflagged sources")
+	}
+}
+
+func TestToolCampaign(t *testing.T) {
+	c := New(Config{Enabled: true, ToolSensors: 2, ToolSources: 2, SourceSensors: 99})
+	tl := func(sid, ip string) *event.Event { return ev(sid, ip, map[string]any{"tools": []string{"nuclei"}}) }
+	c.Observe(tl("s1", "1.1.1.1"))
+	a := findAlert(c.Observe(tl("s2", "2.2.2.2")), "fleet:tool-campaign")
+	if a == nil {
+		t.Fatal("did not fire when one tool reached 2 sensors / 2 sources")
+	}
+	if got, _ := a.Meta["tool"].(string); got != "nuclei" {
+		t.Errorf("tool = %q", got)
+	}
+}
+
+func TestC2Shared(t *testing.T) {
+	c := New(Config{Enabled: true, C2Sensors: 2})
+	u := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"harvested_urls": []string{"http://evil.example/x.sh"}})
+	}
+	c.Observe(u("s1", "1.1.1.1"))
+	a := findAlert(c.Observe(u("s2", "2.2.2.2")), "fleet:c2-shared")
+	if a == nil {
+		t.Fatal("did not fire when one C2 URL reached 2 sensors")
+	}
+	if a.Severity != event.SeverityCritical {
+		t.Errorf("severity = %v; want critical", a.Severity)
+	}
+	if got, _ := a.Meta["url"].(string); got != "http://evil.example/x.sh" {
+		t.Errorf("url = %q", got)
+	}
+}
+
+func TestUserAgentShared(t *testing.T) {
+	c := New(Config{Enabled: true, UASensors: 2, UASources: 3, SourceSensors: 99})
+	ua := func(sid, ip string) *event.Event {
+		return ev(sid, ip, map[string]any{"user_agent": "python-requests/2.31"})
+	}
+	c.Observe(ua("s1", "1.1.1.1"))
+	c.Observe(ua("s1", "2.2.2.2"))
+	a := findAlert(c.Observe(ua("s2", "3.3.3.3")), "fleet:user-agent-shared")
+	if a == nil {
+		t.Fatal("did not fire for one UA across 2 sensors / 3 sources")
+	}
+	if got, _ := a.Meta["user_agent"].(string); got != "python-requests/2.31" {
+		t.Errorf("user_agent = %q", got)
+	}
+}

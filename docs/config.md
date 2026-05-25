@@ -813,6 +813,13 @@ fleet:
   cross_proto_sensors: 2   #   ... across >= N sensors -> fleet:cross-protocol-actor
   fp_asns: 3               # one fingerprint from >= N distinct ASNs ...
   fp_asn_sensors: 2        #   ... across >= N sensors -> fleet:fingerprint-asn-spread
+  threat_surge_sources: 10 # >= N flagged (threat-intel/Tor) sources ...
+  threat_surge_sensors: 3  #   ... across >= N sensors -> fleet:threat-intel-surge
+  tool_sensors: 3          # one identified tool on >= N sensors ...
+  tool_sources: 3          #   ... from >= N sources -> fleet:tool-campaign
+  c2_sensors: 2            # one harvested C2/dropper URL on >= N sensors -> fleet:c2-shared
+  ua_sensors: 3            # one HTTP User-Agent on >= N sensors ...
+  ua_sources: 5            #   ... from >= N sources -> fleet:user-agent-shared
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
   # downward intel feedback (serving side; needs ingest:) — see intel_feed:
@@ -844,6 +851,10 @@ The detectors, by the vantage axis they exploit:
 | `fleet:cve-emergence` | a **brand-new CVE** (novel within `first_seen_horizon`) on >= `cve_emergence_sensors` sensors | an n-day going live fleet-wide — the first wave of a freshly-weaponised vuln |
 | `fleet:cross-protocol-actor` | one **source** on >= `cross_proto_handlers` distinct services across >= `cross_proto_sensors` sensors | fleet-wide service enumeration by a single actor |
 | `fleet:fingerprint-asn-spread` | one **fingerprint** from >= `fp_asns` distinct ASNs across >= `fp_asn_sensors` sensors | a toolkit run from many networks (the network-of-origin axis) |
+| `fleet:threat-intel-surge` | >= `threat_surge_sources` **flagged** sources (threat-intel list / Tor) across >= `threat_surge_sensors` sensors | known-bad infrastructure converging on the fleet right now (needs enrichment) |
+| `fleet:tool-campaign` | one identified **tool** (meta `tools`) on >= `tool_sensors` sensors from >= `tool_sources` sources | one tool / exploit-kit sweeping the fleet (links a campaign across differing IPs/stacks) |
+| `fleet:c2-shared` | one **harvested URL** (C2 / dropper) on >= `c2_sensors` sensors | shared command-and-control infra behind otherwise-distinct attacks |
+| `fleet:user-agent-shared` | one **User-Agent** on >= `ua_sensors` sensors from >= `ua_sources` sources | a shared HTTP scanner / tool family (the HTTP analogue of fingerprint-shared) |
 
 Each alert carries the breadth/source counts, the (capped, sorted) `sensors` /
 `sources` lists, and the `window`. The detectors run *after* enrichment, so the

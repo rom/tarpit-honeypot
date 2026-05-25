@@ -275,6 +275,14 @@ func New(cfg *config.Config) (*Sensor, error) {
 			FPASNs:              cfg.Fleet.FPASNs,
 			FPASNSensors:        cfg.Fleet.FPASNSensors,
 
+			ThreatSurgeSources: cfg.Fleet.ThreatSurgeSources,
+			ThreatSurgeSensors: cfg.Fleet.ThreatSurgeSensors,
+			ToolSensors:        cfg.Fleet.ToolSensors,
+			ToolSources:        cfg.Fleet.ToolSources,
+			C2Sensors:          cfg.Fleet.C2Sensors,
+			UASensors:          cfg.Fleet.UASensors,
+			UASources:          cfg.Fleet.UASources,
+
 			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())

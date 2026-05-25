@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — four more fleet correlators (new signal axes)
+- **`fleet:threat-intel-surge`** — >= `threat_surge_sources` (10) distinct
+  enrichment-flagged sources (threat-intel list member / Tor exit) across >=
+  `threat_surge_sensors` (3) sensors: known-bad infrastructure converging on the
+  fleet (the fleet-wide complement to the in-sensor threat_intel_burst).
+- **`fleet:tool-campaign`** — one identified attack tool (meta `tools`) on >=
+  `tool_sensors` (3) sensors from >= `tool_sources` (3) sources: a tool /
+  exploit-kit sweeping the fleet, linked by tool name across differing IPs/stacks.
+- **`fleet:c2-shared`** — one harvested C2/dropper URL (meta `harvested_urls`)
+  on >= `c2_sensors` (2) sensors: shared command-and-control infrastructure
+  (critical; never background noise).
+- **`fleet:user-agent-shared`** — one HTTP User-Agent on >= `ua_sensors` (3)
+  sensors from >= `ua_sources` (5) sources: a shared HTTP scanner/tool family —
+  the HTTP-layer analogue of fingerprint-shared (catches tools with no/varying
+  TLS fingerprint). New signal axes: enrichment flags, tooling, C2 URLs, UAs.
+  Unit-tested per detector.
+
 ### Added — interactive-shell host realism (post-login)
 - The emulated POSIX shell (ssh_interactive / telnet) now presents a believable,
   internally-consistent host state derived deterministically from the archetype,

@@ -112,6 +112,21 @@ type Config struct {
 	FPASNs       int // one ja3/ja4/hassh from >= N distinct ASNs ...
 	FPASNSensors int // ... across >= N sensors
 
+	// Threat-intel surge: known-bad infra (threat-intel list / Tor) converging.
+	ThreatSurgeSources int // >= N distinct flagged sources ...
+	ThreatSurgeSensors int // ... across >= N sensors
+
+	// Tool campaign: the same identified attack tool across the fleet.
+	ToolSensors int // one tool on >= N sensors ...
+	ToolSources int // ... from >= N distinct sources
+
+	// C2 shared: the same harvested C2 / dropper URL across the fleet.
+	C2Sensors int // one URL on >= N sensors
+
+	// User-agent shared: the same HTTP User-Agent across the fleet.
+	UASensors int // one UA on >= N sensors ...
+	UASources int // ... from >= N distinct sources
+
 	MaxList int // cap the sensor/source list in alert meta
 }
 
@@ -221,6 +236,27 @@ func (c *Config) withDefaults() {
 	if c.FPASNSensors <= 0 {
 		c.FPASNSensors = 2
 	}
+	if c.ThreatSurgeSources <= 0 {
+		c.ThreatSurgeSources = 10
+	}
+	if c.ThreatSurgeSensors <= 0 {
+		c.ThreatSurgeSensors = 3
+	}
+	if c.ToolSensors <= 0 {
+		c.ToolSensors = 3
+	}
+	if c.ToolSources <= 0 {
+		c.ToolSources = 3
+	}
+	if c.C2Sensors <= 0 {
+		c.C2Sensors = 2
+	}
+	if c.UASensors <= 0 {
+		c.UASensors = 3
+	}
+	if c.UASources <= 0 {
+		c.UASources = 5
+	}
 	if c.MaxList <= 0 {
 		c.MaxList = 50
 	}
@@ -274,6 +310,10 @@ type Correlator struct {
 	tokens     map[string]*actor // key: canary token rule_id (honeytoken spread)
 	crossProto map[string]*actor // key: source IP (cross-protocol actor; extra = handlers)
 	fpASN      map[string]*actor // key: "<kind>:<value>" fingerprint (extra = ASNs)
+	surge      map[string]*actor // key: "" (threat-intel surge — flagged infra)
+	toolc      map[string]*actor // key: tool name (tool campaign)
+	c2         map[string]*actor // key: harvested URL (shared C2)
+	uas        map[string]*actor // key: user-agent (shared UA)
 
 	sensorStats  map[string]*sensorStat // key: sensor id
 	trajectories map[string]*trajectory // key: source IP (address-walk tracking)
@@ -309,6 +349,10 @@ func New(cfg Config) *Correlator {
 		tokens:       map[string]*actor{},
 		crossProto:   map[string]*actor{},
 		fpASN:        map[string]*actor{},
+		surge:        map[string]*actor{},
+		toolc:        map[string]*actor{},
+		c2:           map[string]*actor{},
+		uas:          map[string]*actor{},
 		sensorStats:  map[string]*sensorStat{},
 		trajectories: map[string]*trajectory{},
 		seenASN:      map[string]*seenEntry{},
@@ -361,6 +405,10 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	out = add(out, c.observeCVEEmergenceLocked(ev, sid, now))
 	out = add(out, c.observeCrossProtoLocked(ev, sid, now))
 	out = append(out, c.observeFPASNLocked(ev, sid, now)...)
+	out = add(out, c.observeThreatSurgeLocked(ev, sid, now))
+	out = append(out, c.observeToolCampaignLocked(ev, sid, now)...)
+	out = append(out, c.observeC2SharedLocked(ev, sid, now)...)
+	out = add(out, c.observeUASharedLocked(ev, sid, now))
 	return out
 }
 
@@ -410,6 +458,7 @@ func (c *Correlator) pruneLocked(now time.Time) {
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,
 		c.pivots, c.geoFP, c.geoCred, c.profiles, c.tokens, c.crossProto, c.fpASN,
+		c.surge, c.toolc, c.c2, c.uas,
 	} {
 		for k, a := range m {
 			if a.last.Before(cutoff) {

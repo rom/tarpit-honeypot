@@ -177,6 +177,17 @@ type FleetConfig struct {
 	// Fingerprint-ASN spread: one fingerprint operated from many networks.
 	FPASNs       int `yaml:"fp_asns"`        // one fingerprint from >= N distinct ASNs ...
 	FPASNSensors int `yaml:"fp_asn_sensors"` // ... across >= N sensors
+	// Threat-intel surge: flagged infra (threat-intel list / Tor) converging.
+	ThreatSurgeSources int `yaml:"threat_surge_sources"` // >= N distinct flagged sources ...
+	ThreatSurgeSensors int `yaml:"threat_surge_sensors"` // ... across >= N sensors
+	// Tool campaign: the same identified attack tool across the fleet.
+	ToolSensors int `yaml:"tool_sensors"` // one tool on >= N sensors ...
+	ToolSources int `yaml:"tool_sources"` // ... from >= N distinct sources
+	// C2 shared: the same harvested C2 / dropper URL across the fleet.
+	C2Sensors int `yaml:"c2_sensors"` // one URL on >= N sensors
+	// User-agent shared: the same HTTP User-Agent across the fleet.
+	UASensors int `yaml:"ua_sensors"` // one UA on >= N sensors ...
+	UASources int `yaml:"ua_sources"` // ... from >= N distinct sources
 	// Downward intel feedback (serving side). When this node both runs fleet
 	// correlation and accepts ingest, it derives indicators from its fleet:*
 	// findings and serves them at GET <ingest>/intel for child nodes to pull.
