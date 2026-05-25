@@ -751,6 +751,16 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("forward target %q: %w", f.ID, err)
 			}
 		}
+		switch f.Mode {
+		case "", "full", "rollup":
+		default:
+			return fmt.Errorf("forward target %q: mode must be full|rollup (got %q)", f.ID, f.Mode)
+		}
+	}
+
+	// Intel feed (downward subscriber): url required when enabled.
+	if c.IntelFeed.Enabled && c.IntelFeed.URL == "" {
+		return fmt.Errorf("intel_feed: url is required when enabled")
 	}
 
 	// Ingest (aggregator endpoint): bind + auth required when enabled — an

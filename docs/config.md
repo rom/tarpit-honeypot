@@ -48,6 +48,7 @@ has its own reference further down.
 | `forward` | list | ship events to parent aggregator node(s) |
 | `ingest` | map | accept events from child nodes (aggregator endpoint) |
 | `fleet` | map | cross-sensor correlation over the merged stream |
+| `intel_feed` | map | subscribe to a parent's downward fleet-intel feed |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
 | `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
 | `devices` | map | learned-device inventory + new-device alerts |
@@ -665,6 +666,10 @@ forward:
     max_age: 2s                         # ...or at least this often (default 2s)
     queue_size: 4096                    # in-memory buffer; full sheds load + counts
   - { id: global, url: https://hub.corp/ingest, min_severity: high }   # fan-out
+  - id: hub                                # multi-level: ship a rollup, not raw events
+    url: https://hub.corp/ingest
+    mode: rollup                           # one periodic summary instead of every event
+    rollup_interval: 60s                   # summary period (default 60s)
 ```
 
 Events ship as NDJSON over HTTPS **through the egress allowlist** (each
@@ -673,8 +678,15 @@ Events ship as NDJSON over HTTPS **through the egress allowlist** (each
 deployment id) and a `hops` chain stamped per node, so the aggregator dedups by
 `sensor_id:id` and detects loops. Delivery is at-least-once toward the parent
 (bounded retry keeping the batch); a full queue sheds load with a counter, like
-the sinks. (Disk-spool durability across restarts and the aggregator ingest
-endpoint are the next increments.)
+the sinks.
+
+**Rollup mode (multi-level).** A higher tier doesn't need every raw event. Set
+`mode: rollup` and the target ships one `fleet:rollup` event per
+`rollup_interval` instead: per-window counters of the top source IPs / ASNs /
+fingerprints / rules plus a severity histogram and distinct-source count. This
+keeps upward volume sane at L2/L3 while preserving the correlation **keys** (who
+was active, and how much). A node can mix targets — e.g. `full` to the site SOC,
+`rollup` to the global hub.
 
 ## `ingest:` — accept events from child nodes (aggregator)
 
@@ -761,6 +773,10 @@ fleet:
   profile_sensors: 2       #   ... across >= N sensors -> fleet:target-profile-match
   # broad-vs-targeted classifier:
   broad_coverage: 0.8    # hits spanning >= this fraction of the fleet are "broad" (downgraded)
+  # downward intel feedback (serving side; needs ingest:) — see intel_feed:
+  serve_intel: true      # derive + serve a fleet-intel feed (default on when fleet+ingest)
+  intel_ttl: 6h          # how long a served indicator lingers
+  intel_max: 10000       # cap per indicator set (ips / asns / fingerprints)
   max_list: 50           # cap the sensor/source list carried in the alert meta
 ```
 
@@ -797,6 +813,36 @@ spanning >= `broad_coverage` of the fleet is **broad** (internet background,
 reported `medium`); a hit on a specific subset is **targeted** (`high`). The
 shared-artifact and coordination detectors don't need this — a shared malware
 hash or honeytoken credential is never background noise.
+
+## `intel_feed:` — downward fleet-intel feedback
+
+Events flow *up*; intel flows *down*. An aggregator that runs fleet correlation
+derives indicators from its own `fleet:*` findings — the hot source IPs, ASNs,
+and ja3/ja4/hassh fingerprints — and serves them as a small JSON feed at GET
+`<ingest>/intel` (same bearer token as `ingest:`). This is on by default
+wherever fleet correlation **and** `ingest:` are both enabled; set
+`fleet.serve_intel: false` to opt out, and tune `fleet.intel_ttl` (how long an
+indicator lingers, default 6h) / `fleet.intel_max` (cap per set).
+
+Any node — including a leaf sensor that isn't itself an aggregator —
+**subscribes** by pointing `intel_feed:` at a parent's feed. It polls on an
+interval and hands the indicators to its enricher, which tags matching events
+with `fleet_intel` (the reasons) **and** sets `threat_intel_hit` — so the
+existing tarpit / severity / risk / `threat_intel_burst` machinery acts on
+fleet-derived knowledge with no extra wiring. Fleet knowledge thus improves
+every sensor.
+
+```yaml
+intel_feed:
+  enabled: true
+  url: https://agg-site.corp/intel   # parent feed endpoint (dialled via egress allowlist)
+  token_env: TARPIT_FWD_TOKEN        # bearer token (the parent's ingest token)
+  poll: 60s                          # poll interval (default 60s)
+```
+
+The feed URL is allowlisted automatically (like `forward.url`), so it works
+under `egress.enforce`. The puller fetches once immediately so a fresh node gets
+intel without waiting a full interval.
 
 ## `egress:` — outbound containment (do-no-harm)
 

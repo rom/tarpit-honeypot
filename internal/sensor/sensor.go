@@ -29,6 +29,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
+	"github.com/rom/tarpit-honeypot/internal/intel"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
@@ -80,6 +81,8 @@ type Sensor struct {
 	bus         chan *event.Event
 	forward     *forward.Group    // fleet event forwarding (nil when no targets)
 	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
+	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
+	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
 
 	ingestSeen    *ttlSet // dedup for events admitted via IngestBatch (aggregator)
 	ingestMaxHops int     // drop forwarded events that traversed more nodes than this
@@ -195,6 +198,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 				egPol.Allow(d)
 			}
 		}
+		if cfg.IntelFeed.Enabled {
+			if d := forwardDest(cfg.IntelFeed.URL); d != "" {
+				egPol.Allow(d)
+			}
+		}
 		for _, d := range cfg.Sensor.Egress.Allow {
 			egPol.Allow(d)
 		}
@@ -254,6 +262,14 @@ func New(cfg *config.Config) (*Sensor, error) {
 			MaxList: cfg.Fleet.MaxList,
 		})
 		slog.Info("fleet correlation enabled", "node", id.Seed())
+	}
+
+	// Downward intel feedback (serving side): derive a fleet-intel feed from
+	// this node's own fleet:* findings, served on the ingest endpoint (run.go
+	// mounts it at /intel). Only meaningful where fleet correlation runs.
+	var intelStore *intel.Store
+	if fleetCorr != nil && cfg.Fleet.ServingIntel() {
+		intelStore = intel.NewStore(cfg.Fleet.IntelTTL, cfg.Fleet.IntelMax)
 	}
 
 	var sinks []sink.Sink
@@ -404,6 +420,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		bus:           make(chan *event.Event, 1024),
 		forward:       fwdGroup,
 		fleet:         fleetCorr,
+		intelStore:    intelStore,
 		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
 		ingestMaxHops: ingestMaxHops,
 		listeners:     map[string]*listenerHandle{},
@@ -417,6 +434,25 @@ func New(cfg *config.Config) (*Sensor, error) {
 				"network": network, "addr": addr, "reason": reason,
 			})
 		})
+	}
+
+	// Downward intel feedback (subscriber side): poll a parent's feed and hand
+	// each snapshot to the current enricher's overlay, so fleet knowledge tags
+	// this node's events. Dialled through the egress allowlist (the feed URL is
+	// allowlisted above).
+	if cfg.IntelFeed.Enabled {
+		token := ""
+		if cfg.IntelFeed.TokenEnv != "" {
+			token = os.Getenv(cfg.IntelFeed.TokenEnv)
+		}
+		s.intelPuller = intel.NewPuller(cfg.IntelFeed.URL, token, cfg.IntelFeed.Poll,
+			egress.HTTPClient(15*time.Second), func(f *intel.Feed) {
+				ips, asns, fps := f.Maps()
+				if en := s.curEnricher(); en != nil {
+					en.SetFleetIntel(ips, asns, fps)
+				}
+			})
+		slog.Info("fleet intel feed subscribed", "url", cfg.IntelFeed.URL)
 	}
 	return s, nil
 }
@@ -432,6 +468,7 @@ func buildForwarders(cfg *config.Config, id *identity.Identity) []*forward.Forwa
 		t := forward.Target{
 			ID: f.ID, URL: f.URL, NodeID: id.Seed(),
 			MaxBatch: f.MaxBatch, MaxAge: f.MaxAge, QueueSize: f.QueueSize, Timeout: f.Timeout,
+			Mode: f.Mode, RollupInterval: f.RollupInterval,
 		}
 		if f.TokenEnv != "" {
 			t.Token = os.Getenv(f.TokenEnv)
@@ -531,6 +568,10 @@ func (s *Sensor) riskEvent(src *event.Event, level string, score float64) *event
 	}
 	return e
 }
+
+// IntelStore returns the downward fleet-intel store (nil when this node isn't
+// serving a feed). run.go mounts its handler on the ingest endpoint.
+func (s *Sensor) IntelStore() *intel.Store { return s.intelStore }
 
 // Honeynet returns the configured topology, or an empty topology if none.
 // Used by the list-honeynets subcommand and the DNS canary listener.
@@ -1468,6 +1509,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go func() { defer wg.Done(); s.forward.Run(ctx) }()
 	}
 
+	// Downward intel feed subscriber: poll the parent until shutdown.
+	if s.intelPuller != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.intelPuller.Run(ctx) }()
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1560,6 +1607,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 				if s.fleet != nil {
 					for _, fe := range s.fleet.Observe(ev) {
 						en.Decorate(fe)
+						// Feed fleet findings into the downward intel feed
+						// (served to child nodes) before dispatch.
+						if s.intelStore != nil {
+							s.intelStore.Observe(fe)
+						}
 						s.dispatch(rt, fe)
 						s.scoreRisk(rt, fe)
 					}

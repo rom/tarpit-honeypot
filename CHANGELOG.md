@@ -8,6 +8,30 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fleet aggregation: multi-level rollups + downward intel feedback (phase 3)
+- **Multi-level rollups** — a `forward:` target can now ship `mode: rollup`
+  instead of `full`: one `fleet:rollup` event per `rollup_interval` (default 60s)
+  carrying per-window top source-IP / ASN / fingerprint / rule counters, a
+  severity histogram, and the distinct-source count. Keeps upward volume sane at
+  L2/L3 while preserving the correlation keys; a node can mix `full` (to a site
+  SOC) and `rollup` (to a global hub). The accumulator is capped to bound memory.
+- **Downward intel feedback** — new `internal/intel`. An aggregator derives
+  indicators (hot source IPs, ASNs, ja3/ja4/hassh fingerprints) from its own
+  `fleet:*` findings and serves them as a small JSON feed at GET `<ingest>/intel`
+  (same bearer token; on by default where fleet correlation + `ingest:` are both
+  enabled, `fleet.serve_intel`/`intel_ttl`/`intel_max` to tune/opt-out).
+- Any node subscribes via `intel_feed:` (url + token_env + poll): it polls the
+  feed through the egress allowlist and hands the indicators to its enricher,
+  which tags matching events with `fleet_intel` **and** sets `threat_intel_hit`
+  — so the existing tarpit / severity / risk / `threat_intel_burst` machinery
+  acts on fleet-derived knowledge with no extra wiring. Events flow up; intel
+  flows down, improving every sensor.
+- Verified end-to-end against live nodes: an aggregator derived
+  `source-multi-sensor` → served the source IP at `/intel` (bearer-gated, 401
+  without a token); a leaf node subscribed, polled, and applied the indicator to
+  its enricher overlay. Unit tests cover the rollup wire shape, the intel
+  store/TTL/cap/handler-auth, `Feed.Maps`, and the enricher overlay tagging.
+
 ### Added — fleet aggregation: temporal / novelty / linking correlators (phase 2c)
 - **`fleet:scan-trajectory`** — one source hitting sensors' destination IPs in
   (numeric) address order over time: the merged view reconstructs the scan's

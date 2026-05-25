@@ -186,6 +186,12 @@ func cmdRun(args []string) error {
 		if cfg.Ingest.HMACSecretEnv != "" {
 			ic.HMACSecret = []byte(os.Getenv(cfg.Ingest.HMACSecretEnv))
 		}
+		// Mount the downward fleet-intel feed on the same authenticated endpoint
+		// when this node serves one (fleet correlation + serve_intel).
+		if st := s.IntelStore(); st != nil {
+			ic.Intel = st.Handler(token)
+			slog.Info("fleet intel feed serving", "path", "/intel")
+		}
 		isrv := &http.Server{Addr: cfg.Ingest.Bind, Handler: ingest.New(ic, s.IngestBatch).Mux()}
 		wg.Add(1)
 		go func() {

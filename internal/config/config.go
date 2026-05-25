@@ -40,6 +40,9 @@ type Config struct {
 	// several sensors within a window — a pattern no single sensor can see. It
 	// defaults on wherever Ingest is enabled. See internal/fleet.
 	Fleet FleetConfig `yaml:"fleet"`
+	// IntelFeed subscribes this node to a parent's downward fleet-intel feed.
+	// See internal/intel.
+	IntelFeed IntelFeed `yaml:"intel_feed"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -64,7 +67,13 @@ type ForwardTarget struct {
 	MaxAge        time.Duration `yaml:"max_age"`         // flush at least this often (default 2s)
 	QueueSize     int           `yaml:"queue_size"`      // in-memory buffer depth (default 4096)
 	Timeout       time.Duration `yaml:"timeout"`         // per-POST timeout (default 10s)
-	Enabled       *bool         `yaml:"enabled"`         // nil/true = active; false = defined but off
+	// Mode is "full" (default — ship every event) or "rollup" (ship one
+	// periodic fleet:rollup summary instead — per-source/ASN/fingerprint/rule
+	// counters — to keep upward volume sane at a higher tier). RollupInterval
+	// sets the summary period (default 60s).
+	Mode           string        `yaml:"mode"`
+	RollupInterval time.Duration `yaml:"rollup_interval"`
+	Enabled        *bool         `yaml:"enabled"` // nil/true = active; false = defined but off
 }
 
 // On reports whether the forward target is active.
@@ -132,7 +141,30 @@ type FleetConfig struct {
 	ProfileCVEs    int `yaml:"profile_cves"`    // a playbook needs >= N CVEs to be a combination
 	ProfileSources int `yaml:"profile_sources"` // >= N distinct sources sharing it ...
 	ProfileSensors int `yaml:"profile_sensors"` // ... across >= N sensors
-	MaxList        int `yaml:"max_list"`        // cap the sensor/source list in alert meta
+	// Downward intel feedback (serving side). When this node both runs fleet
+	// correlation and accepts ingest, it derives indicators from its fleet:*
+	// findings and serves them at GET <ingest>/intel for child nodes to pull.
+	ServeIntel *bool         `yaml:"serve_intel"` // nil/true = serve when fleet+ingest are on
+	IntelTTL   time.Duration `yaml:"intel_ttl"`   // how long an indicator lingers (default 6h)
+	IntelMax   int           `yaml:"intel_max"`   // cap per indicator set (default 10000)
+	MaxList    int           `yaml:"max_list"`    // cap the sensor/source list in alert meta
+}
+
+// ServingIntel reports whether this node should derive + serve a fleet-intel
+// feed. Defaults on wherever fleet correlation runs; the feed is only actually
+// reachable when ingest is also enabled (it mounts on that endpoint).
+func (f FleetConfig) ServingIntel() bool { return f.ServeIntel == nil || *f.ServeIntel }
+
+// IntelFeed subscribes this node to a parent aggregator's downward fleet-intel
+// feed: it polls the feed and hands the indicators to the enricher, so fleet
+// knowledge tags this node's events (where tarpit / severity / risk / threat-
+// intel already act). Independent of fleet correlation — a leaf sensor can
+// subscribe without being an aggregator.
+type IntelFeed struct {
+	Enabled  bool          `yaml:"enabled"`
+	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
+	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
+	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any
