@@ -352,6 +352,13 @@ type Sensor struct {
 	// filter + Landlock filesystem restriction). Off by default; no-ops
 	// on non-Linux.
 	Sandbox Sandbox `yaml:"sandbox"`
+	// Egress is the outbound allowlist. When enabled, the sensor's own
+	// telemetry egress (sink / forward / export channels) is permitted to
+	// exactly its configured destinations plus Allow, and every other
+	// outbound connection is refused and reported (egress:denied) — so the
+	// decoy can't be used as an SSRF pivot / relay / reflector / exfil
+	// channel. Off by default (no behavior change until turned on).
+	Egress EgressPolicy `yaml:"egress"`
 	// SessionRecording records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema v2 casts under <data_dir>/sessions/.
 	SessionRecording SessionRecording `yaml:"session_recording"`
@@ -368,6 +375,24 @@ type Sensor struct {
 	// overrides this list.
 	Interfaces []string `yaml:"interfaces"`
 }
+
+// EgressPolicy is the outbound allowlist. Configured channel destinations are
+// always permitted when enabled; Allow adds endpoints not modeled as a channel
+// (a central event collector, an IOC/threat-intel feed). Entries are a host, a
+// host:port, or a CIDR.
+type EgressPolicy struct {
+	Enabled bool     `yaml:"enabled"`
+	Allow   []string `yaml:"allow"`
+	// Enforce additionally installs an OS-level nftables firewall (Linux, needs
+	// the nft binary + CAP_NET_ADMIN at startup) that drops the sensor's
+	// outbound packets to anything off the allowlist — the hard backstop under
+	// the in-process guard, catching even a raw net.Dial. Implies Enabled.
+	Enforce bool `yaml:"enforce"`
+}
+
+// On reports whether the in-process egress guard should be built (either the
+// soft guard or the OS firewall is requested).
+func (e EgressPolicy) On() bool { return e.Enabled || e.Enforce }
 
 // SessionRecording configures interactive-session capture. Off by default.
 type SessionRecording struct {

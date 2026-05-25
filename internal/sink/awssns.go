@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
@@ -61,7 +62,7 @@ func newSNS(ch config.Channel) (Sink, error) {
 		accessKey: ak,
 		secretKey: sk,
 		sessionTk: st,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		client:    egress.HTTPClient(10 * time.Second),
 	}, nil
 }
 

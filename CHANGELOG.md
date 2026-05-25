@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — egress containment (outbound allowlist)
+- New `sensor.egress` block: when enabled, the sensor's outbound telemetry is
+  permitted to **exactly** its configured channel destinations (webhook / syslog
+  / smtp / sns / discord / twilio — i.e. central forwarding + IOC export) plus
+  `egress.allow` (a collector / feed not modeled as a channel), and **every
+  other outbound connection is refused and recorded** as a high-severity
+  `egress:denied` event — so the decoy can't be used as an SSRF pivot, open
+  relay, reflector, or exfil channel while its own telemetry keeps flowing.
+- New `internal/egress` package is the single outbound chokepoint (allowlist +
+  guarded DialContext + HTTPClient); the dialing sinks route through it. Off by
+  default (egress unrestricted) so there's no behavior change until enabled; the
+  allowlist updates additively on config reload.
+- `egress.enforce` adds an OS-level **nftables** backstop (Linux; needs `nft` +
+  CAP_NET_ADMIN, installed at startup before privilege drop / sandbox) that drops
+  the sensor's outbound packets to anything off the allowlist — scoped to the
+  sensor's uid via `meta skuid` (the rest of the host is untouched), permitting
+  established connections, loopback, and DNS to the system resolvers. This is the
+  hard backstop that catches even a raw `net.Dial` or a library (e.g. the MQTT
+  paho client) that dials outside the in-process guard.
+
 ### Changed — handlers: deeper Kerberos + VNC interaction
 - **Kerberos** now records the requested **enctypes**, then drives a second
   round: after `KDC_ERR_PREAUTH_REQUIRED` it reads the client's pre-auth retry

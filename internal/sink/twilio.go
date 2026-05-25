@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
@@ -42,7 +43,7 @@ func newTwilio(ch config.Channel) (Sink, error) {
 		authTok:  tok,
 		from:     ch.From,
 		to:       ch.To,
-		client:   &http.Client{Timeout: 10 * time.Second},
+		client:   egress.HTTPClient(10 * time.Second),
 	}, nil
 }
 

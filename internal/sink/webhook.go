@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/format"
 )
@@ -28,7 +29,7 @@ func newWebhook(ch config.Channel, f format.Formatter) (*webhookSink, error) {
 	w := &webhookSink{
 		id:        ch.ID,
 		url:       ch.URL,
-		client:    &http.Client{Timeout: ch.Timeout},
+		client:    egress.HTTPClient(ch.Timeout),
 		formatter: f,
 	}
 	if ch.HMACSecretEnv != "" {

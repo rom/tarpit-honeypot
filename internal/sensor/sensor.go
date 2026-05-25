@@ -20,6 +20,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/devices"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
+	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
@@ -168,6 +169,26 @@ func New(cfg *config.Config) (*Sensor, error) {
 		capMgr = mgr
 	}
 
+	// Egress allowlist: install before building sinks (some sinks dial at
+	// construction time) so the sensor's outbound telemetry is permitted to
+	// exactly its configured channel destinations + Egress.Allow, and every
+	// other outbound connection is refused. Off unless enabled, in which case
+	// egress is unrestricted (no behavior change).
+	var egPol *egress.Policy
+	if cfg.Sensor.Egress.On() {
+		egPol = egress.New()
+		for _, ch := range cfg.Channels {
+			for _, d := range sink.Dests(ch) {
+				egPol.Allow(d)
+			}
+		}
+		for _, d := range cfg.Sensor.Egress.Allow {
+			egPol.Allow(d)
+		}
+		egress.SetDefault(egPol)
+		slog.Info("egress allowlist enabled", "channels", len(cfg.Channels), "extra_allow", len(cfg.Sensor.Egress.Allow))
+	}
+
 	var sinks []sink.Sink
 	for _, ch := range cfg.Channels {
 		if !ch.On() {
@@ -292,7 +313,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		}
 	}
 
-	return &Sensor{
+	s := &Sensor{
 		cfg:         cfg,
 		name:        name,
 		sinks:       sinks,
@@ -315,7 +336,18 @@ func New(cfg *config.Config) (*Sensor, error) {
 		seenSources: map[string]struct{}{},
 		bus:         make(chan *event.Event, 1024),
 		listeners:   map[string]*listenerHandle{},
-	}, nil
+	}
+	// A refused outbound connection is a high-severity finding: it means a
+	// handler (or a tampered config) tried to make the sensor connect somewhere
+	// off the allowlist — an SSRF / relay / exfil attempt.
+	if egPol != nil {
+		egPol.SetOnDeny(func(network, addr, reason string) {
+			s.emitOpEvent("egress:denied", event.SeverityHigh, map[string]any{
+				"network": network, "addr": addr, "reason": reason,
+			})
+		})
+	}
+	return s, nil
 }
 
 // newRiskScorer returns a configured per-source risk scorer, or nil when
@@ -1074,6 +1106,21 @@ func (s *Sensor) stopListener(id string) {
 //     to "removed then added"): stopped, then a new instance is started.
 func (s *Sensor) Reload(newCfg *config.Config) error {
 	diff := config.DiffConfigs(s.cfg, newCfg)
+
+	// Egress allowlist is additive on reload: permit any newly-configured
+	// channel's destination so a reloaded sink isn't refused. (Removed
+	// destinations stay allowed until restart — fail-open on the operator's own
+	// telemetry, never on attacker egress.)
+	if p := egress.Default(); p != nil {
+		for _, ch := range newCfg.Channels {
+			for _, d := range sink.Dests(ch) {
+				p.Allow(d)
+			}
+		}
+		for _, d := range newCfg.Sensor.Egress.Allow {
+			p.Allow(d)
+		}
+	}
 
 	// Sinks + router + correlator first; if either fails we keep the old set.
 	var newSinks []sink.Sink
