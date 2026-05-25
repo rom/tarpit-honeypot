@@ -28,22 +28,27 @@ type hostState struct {
 	loginAt time.Time
 }
 
-// hostHistory is a believable root shell history — the kind of admin activity a
-// real box accumulates, so `history` doesn't look freshly minted.
-const hostHistory = "    1  ls -la\r\n" +
-	"    2  cd /var/log\r\n" +
-	"    3  tail -f syslog\r\n" +
-	"    4  systemctl status sshd\r\n" +
-	"    5  df -h\r\n" +
-	"    6  free -m\r\n" +
-	"    7  apt update\r\n" +
-	"    8  apt upgrade -y\r\n" +
-	"    9  vi /etc/ssh/sshd_config\r\n" +
-	"   10  systemctl restart sshd\r\n" +
-	"   11  journalctl -u nginx --since today\r\n" +
-	"   12  netstat -tulpn\r\n" +
-	"   13  crontab -l\r\n" +
-	"   14  history\r\n"
+// historyCommands is a believable root command history — the kind of admin
+// activity a real box accumulates. numberedHistory renders it for the `history`
+// builtin; rawHistory renders it for `cat ~/.bash_history`, so the two agree.
+var historyCommands = []string{
+	"ls -la", "cd /var/log", "tail -f syslog", "systemctl status sshd", "df -h",
+	"free -m", "apt update", "apt upgrade -y", "vi /etc/ssh/sshd_config",
+	"systemctl restart sshd", "journalctl -u nginx --since today", "netstat -tulpn",
+	"crontab -l", "history",
+}
+
+func numberedHistory() string {
+	var b strings.Builder
+	for i, c := range historyCommands {
+		fmt.Fprintf(&b, "%5d  %s\r\n", i+1, c)
+	}
+	return b.String()
+}
+
+func rawHistory() string {
+	return strings.Join(historyCommands, "\r\n") + "\r\n"
+}
 
 // rng is a tiny deterministic PCG-style generator seeded from the archetype.
 type rng struct{ s uint64 }

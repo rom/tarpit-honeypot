@@ -113,18 +113,18 @@ admin:x:1000:1000:admin,,,:/home/admin:/bin/bash
 		"uptime":    {dyn: func([]string) string { return hs.uptime() }},
 		"date":      {dyn: func([]string) string { return hs.date() }},
 		"echo":      {dyn: func(a []string) string { return strings.Join(a[1:], " ") + "\r\n" }},
-		"history":   {static: hostHistory},
+		"history":   {static: numberedHistory()},
 		"w":         {dyn: func([]string) string { return hs.wOutput() }},
 		"who":       {dyn: func([]string) string { return hs.whoOutput() }},
 		"last":      {dyn: func([]string) string { return hs.lastOutput() }},
 		"ls":        {dyn: lsResponse},
 		"ll":        {dyn: lsResponse},
 		"dir":       {dyn: lsResponse},
-		"cat":       {dyn: dynCat(fakePasswd, issue)},
-		"head":      {dyn: dynCat(fakePasswd, issue)},
-		"tail":      {dyn: dynCat(fakePasswd, issue)},
-		"more":      {dyn: dynCat(fakePasswd, issue)},
-		"less":      {dyn: dynCat(fakePasswd, issue)},
+		"cat":       {dyn: dynCat(fakePasswd, issue, host)},
+		"head":      {dyn: dynCat(fakePasswd, issue, host)},
+		"tail":      {dyn: dynCat(fakePasswd, issue, host)},
+		"more":      {dyn: dynCat(fakePasswd, issue, host)},
+		"less":      {dyn: dynCat(fakePasswd, issue, host)},
 		"ps":        {dyn: func(a []string) string { return hs.ps(p, a) }},
 		"top":       {static: "Tasks:  87 total,   1 running,  86 sleeping\r\n%Cpu(s):  0.3 us,  0.2 sy,  0.0 ni, 99.5 id\r\nMiB Mem :   4096.0 total,   2548.0 free,    764.0 used\r\n"},
 		"free":      {static: "               total        used        free      shared  buff/cache   available\r\nMem:         4194304      782336     2611200       12288      800768     3128448\r\nSwap:        2097148           0     2097148\r\n"},
@@ -346,7 +346,7 @@ func lsResponse(argv []string) string {
 //     already flagged as anomaly upstream)
 //   - /etc/hostname    -> the archetype's hostname
 //   - any other path   -> "No such file or directory"
-func dynCat(passwd, issue string) func([]string) string {
+func dynCat(passwd, issue, host string) func([]string) string {
 	return func(argv []string) string {
 		if len(argv) < 2 {
 			return ""
@@ -360,7 +360,7 @@ func dynCat(passwd, issue string) func([]string) string {
 		case "/etc/issue":
 			return issue
 		case "/etc/hostname":
-			return "host\r\n"
+			return host + "\r\n"
 		case "/etc/os-release":
 			return "PRETTY_NAME=\"Linux\"\r\nID=linux\r\n"
 		case "/proc/cpuinfo":
@@ -368,7 +368,7 @@ func dynCat(passwd, issue string) func([]string) string {
 		case "/proc/version":
 			return "Linux version 5.10.0 #1 SMP x86_64\r\n"
 		case "/root/.bash_history":
-			return "ls\r\nuname -a\r\nps aux\r\nwhoami\r\n"
+			return rawHistory()
 		case "/root/.ssh/authorized_keys":
 			return "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... admin@host\r\n"
 		}
