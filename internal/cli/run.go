@@ -22,6 +22,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/privdrop"
 	"github.com/rom/tarpit-honeypot/internal/sandbox"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
+	"github.com/rom/tarpit-honeypot/internal/stix"
 	"github.com/rom/tarpit-honeypot/internal/ui"
 )
 
@@ -186,11 +187,13 @@ func cmdRun(args []string) error {
 		if cfg.Ingest.HMACSecretEnv != "" {
 			ic.HMACSecret = []byte(os.Getenv(cfg.Ingest.HMACSecretEnv))
 		}
-		// Mount the downward fleet-intel feed on the same authenticated endpoint
-		// when this node serves one (fleet correlation + serve_intel).
+		// Mount the downward fleet-intel feed + STIX/TAXII IOC export on the same
+		// authenticated endpoint when this node serves a feed (fleet + serve_intel).
 		if st := s.IntelStore(); st != nil {
 			ic.Intel = st.Handler(token)
-			slog.Info("fleet intel feed serving", "path", "/intel")
+			stixH := stix.Handler(st.IOCs, token)
+			ic.Routes = map[string]http.Handler{"/intel/stix": stixH, "/taxii2/": stixH}
+			slog.Info("fleet intel feed serving", "paths", "/intel /intel/stix /taxii2/")
 		}
 		isrv := &http.Server{Addr: cfg.Ingest.Bind, Handler: ingest.New(ic, s.IngestBatch).Mux()}
 		wg.Add(1)

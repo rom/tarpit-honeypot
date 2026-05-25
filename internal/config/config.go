@@ -43,6 +43,8 @@ type Config struct {
 	// IntelFeed subscribes this node to a parent's downward fleet-intel feed.
 	// See internal/intel.
 	IntelFeed IntelFeed `yaml:"intel_feed"`
+	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
+	MISP MISPConfig `yaml:"misp"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -199,6 +201,19 @@ type IntelFeed struct {
 	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
 	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
 	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
+}
+
+// MISPConfig pushes the fleet's observed indicators (the intel store) to a MISP
+// instance as periodic delta events. Meaningful only where fleet correlation
+// runs (it's the IOC source).
+type MISPConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	URL          string        `yaml:"url"`          // MISP base URL, e.g. https://misp.corp
+	KeyEnv       string        `yaml:"key_env"`      // MISP auth key from this env var
+	Interval     time.Duration `yaml:"interval"`     // push period (default 5m)
+	EventInfo    string        `yaml:"event_info"`   // MISP event title
+	Distribution string        `yaml:"distribution"` // MISP distribution level (default "0")
+	ThreatLevel  string        `yaml:"threat_level"` // threat_level_id (default "2")
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any

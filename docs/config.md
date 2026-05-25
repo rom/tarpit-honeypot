@@ -49,6 +49,7 @@ has its own reference further down.
 | `ingest` | map | accept events from child nodes (aggregator endpoint) |
 | `fleet` | map | cross-sensor correlation over the merged stream |
 | `intel_feed` | map | subscribe to a parent's downward fleet-intel feed |
+| `misp` | map | push the fleet's observed IOCs to a MISP instance |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
 | `dedup` / `allowlist` | map / list | outbound dedup window / suppression IPs |
 | `devices` | map | learned-device inventory + new-device alerts |
@@ -888,6 +889,35 @@ intel_feed:
 The feed URL is allowlisted automatically (like `forward.url`), so it works
 under `egress.enforce`. The puller fetches once immediately so a fresh node gets
 intel without waiting a full interval.
+
+### IOC export — STIX 2.1 / TAXII 2.1 / MISP
+
+The same fleet indicators are exportable to standard threat-intel tooling.
+Wherever a node serves intel (fleet + `ingest:`), it also exposes, on the same
+bearer-gated endpoint:
+
+- `GET /intel/stix` — a **STIX 2.1** bundle of Indicator SDOs (IPs →
+  `ipv4-addr`/`ipv6-addr` patterns, ASNs → `autonomous-system`, ja3/ja4/hassh →
+  an `x-tarpit-fingerprint` custom pattern). Indicator IDs are deterministic
+  (UUIDv5 of the pattern) so downstreams dedup cleanly.
+- A minimal read-only **TAXII 2.1** API — `GET /taxii2/` (discovery),
+  `/taxii2/api/`, `/taxii2/api/collections/`, and
+  `/taxii2/api/collections/fleet-iocs/objects/` — so a TAXII client can discover
+  and pull the `fleet-iocs` collection.
+
+To **push** to a MISP instance, add `misp:` — a delta pusher sends only
+not-yet-sent indicators as a periodic MISP event (egress-allowlisted):
+
+```yaml
+misp:
+  enabled: true
+  url: https://misp.corp          # MISP base URL
+  key_env: TARPIT_MISP_KEY        # MISP auth key from this env var
+  interval: 5m                    # push period
+  event_info: tarpit fleet IOCs   # MISP event title
+  distribution: "0"               # MISP distribution level (0 = your org only)
+  threat_level: "2"               # threat_level_id
+```
 
 ## `egress:` — outbound containment (do-no-harm)
 

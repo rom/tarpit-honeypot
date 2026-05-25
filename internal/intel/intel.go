@@ -154,6 +154,31 @@ func dump(m map[string]entry, now time.Time) []Item {
 	return out
 }
 
+// IOC is one indicator flattened with its kind, for the STIX / TAXII / MISP
+// exporters. Kind is "ip", "asn", or "fingerprint" (Value keeps the
+// "<kind>:<value>" form for fingerprints).
+type IOC struct {
+	Kind   string
+	Value  string
+	Reason string
+}
+
+// IOCs returns the current indicators (pruned) flattened across the three sets.
+func (s *Store) IOCs() []IOC {
+	f := s.Snapshot()
+	out := make([]IOC, 0, len(f.IPs)+len(f.ASNs)+len(f.Fingerprints))
+	for _, it := range f.IPs {
+		out = append(out, IOC{Kind: "ip", Value: it.Value, Reason: it.Reason})
+	}
+	for _, it := range f.ASNs {
+		out = append(out, IOC{Kind: "asn", Value: it.Value, Reason: it.Reason})
+	}
+	for _, it := range f.Fingerprints {
+		out = append(out, IOC{Kind: "fingerprint", Value: it.Value, Reason: it.Reason})
+	}
+	return out
+}
+
 // Handler serves GET requests with the current feed as JSON, gated by a bearer
 // token (constant-time). Mount it on the aggregator's authenticated endpoint.
 func (s *Store) Handler(token string) http.Handler {

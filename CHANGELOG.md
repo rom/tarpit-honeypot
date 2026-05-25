@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — IOC export: STIX 2.1 / TAXII 2.1 / MISP push
+- The fleet's observed indicators (the intel store) are now exportable to
+  standard threat-intel tooling. New `internal/stix` and `internal/misp`.
+- **STIX 2.1** — `GET /intel/stix` serves a bundle of Indicator SDOs (IPs →
+  `ipv4-addr`/`ipv6-addr`, ASNs → `autonomous-system`, ja3/ja4/hassh → an
+  `x-tarpit-fingerprint` custom pattern). Indicator IDs are deterministic
+  (UUIDv5 of the pattern) so downstreams dedup cleanly.
+- **TAXII 2.1** — a minimal read-only API (`/taxii2/` discovery, api-root,
+  collections, and the `fleet-iocs` collection's `objects/` envelope) so a TAXII
+  client can discover and pull the collection.
+- **MISP push** — a `misp:` delta pusher ships not-yet-sent indicators as a
+  periodic MISP event (ip-src / AS / ja3-fingerprint-md5 / hassh-md5
+  attributes), egress-allowlisted, with retry-on-failure rollback of the
+  sent-set. All served on the existing bearer-gated endpoint where a node serves
+  intel. Verified live (valid STIX bundle + TAXII envelopes); unit tests cover
+  STIX patterns / deterministic ids / TAXII auth and the MISP delta + mapping.
+
 ### Added — four more fleet correlators
 - **`fleet:honeytoken-spread`** (the one detector from the design not yet built)
   — the same canary token tripped on >= `honeytoken_sensors` (2) sensors: a

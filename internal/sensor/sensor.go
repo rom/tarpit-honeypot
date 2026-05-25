@@ -33,6 +33,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
+	"github.com/rom/tarpit-honeypot/internal/misp"
 	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/retention"
@@ -84,6 +85,7 @@ type Sensor struct {
 	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
 	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
 	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
+	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 
 	ingestSeen    *ttlSet       // dedup for events admitted via IngestBatch (aggregator)
 	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
@@ -202,6 +204,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 		}
 		if cfg.IntelFeed.Enabled {
 			if d := forwardDest(cfg.IntelFeed.URL); d != "" {
+				egPol.Allow(d)
+			}
+		}
+		if cfg.MISP.Enabled {
+			if d := forwardDest(cfg.MISP.URL); d != "" {
 				egPol.Allow(d)
 			}
 		}
@@ -477,6 +484,21 @@ func New(cfg *config.Config) (*Sensor, error) {
 				}
 			})
 		slog.Info("fleet intel feed subscribed", "url", cfg.IntelFeed.URL)
+	}
+
+	// MISP push: ship the fleet's observed IOCs to a MISP instance. The IOC
+	// source is the intel store, so this only runs where fleet correlation does.
+	if cfg.MISP.Enabled && intelStore != nil {
+		key := ""
+		if cfg.MISP.KeyEnv != "" {
+			key = os.Getenv(cfg.MISP.KeyEnv)
+		}
+		s.mispPusher = misp.NewPusher(misp.Config{
+			URL: cfg.MISP.URL, Key: key, Interval: cfg.MISP.Interval,
+			EventInfo: cfg.MISP.EventInfo, Distribution: cfg.MISP.Distribution,
+			ThreatLevel: cfg.MISP.ThreatLevel, Client: egress.HTTPClient(20 * time.Second),
+		}, intelStore.IOCs)
+		slog.Info("misp push enabled", "url", cfg.MISP.URL)
 	}
 	return s, nil
 }
@@ -1537,6 +1559,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 	if s.intelPuller != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); s.intelPuller.Run(ctx) }()
+	}
+
+	// MISP IOC pusher: ship fleet indicators until shutdown.
+	if s.mispPusher != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.mispPusher.Run(ctx) }()
 	}
 
 	wg.Add(1)
