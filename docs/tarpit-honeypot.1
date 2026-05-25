@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-05-21" "tarpit-honeypot 2.0.0" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-05-25" "tarpit-honeypot 2.1.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -31,6 +31,21 @@ identity (banners, SNMP identity, MAC OUI, TLS posture, ICMP TTL, web UI,
 advertised CVEs) so a scanner cannot catch the sensor on an internal
 inconsistency. See
 .BR "tarpit-honeypot list-archetypes" " and " docs/archetypes.md .
+.PP
+Multiple sensors form a
+.IR fleet :
+a leaf
+.RB ( forward: )
+ships its events to an
+.I aggregator
+.RB ( ingest: ),
+which runs the cross-sensor
+.B fleet:*
+correlator over the merged stream to surface patterns no single sensor
+can see, derives indicators of compromise, and can serve them back down
+as a threat-intel feed (STIX 2.1 / TAXII 2.1 / MISP). Events flow up;
+intel flows down. See
+.BR "tarpit-honeypot list-fleet-rules" ", " docs/fleet.md ", and " docs/ioc.md .
 .SH GLOBAL FLAGS
 .TP
 .BR --version ", " -V
@@ -92,7 +107,7 @@ Emit a synthetic event through the configured channels.
 .TP
 .B list-events
 Tail / query events from the local SQLite store or JSON logs
-.RB ( --since ", " --source ", " --rule ", " --limit ).
+.RB ( --since ", " --source ", " --rule ", " --fleet ", " --limit ).
 .TP
 .B gen-token
 Print an unguessable canary token
@@ -127,6 +142,21 @@ Print the CVE catalog used for emulation + exploit detection
 Print the MITRE ATT&CK / D3FEND coverage map
 .RB ( --kind " " rule | handler | anomaly ).
 .TP
+.B list-fleet-rules
+Print the cross-sensor
+.B fleet:*
+detector catalog (id, what it detects, the
+.B fleet.*
+config keys that tune it);
+.B --json
+for machine-readable output.
+.TP
+.B export-iocs
+Derive indicators of compromise from the stored
+.B fleet:*
+findings and print them for a TIP / SIEM / blocklist
+.RB ( --format " " stix | csv | txt | json ", " --since ).
+.TP
 .B identify
 Run the offline fingerprint engine over a supplied User-Agent, path, SSH
 client id, JA3, or payload
@@ -153,8 +183,13 @@ Default configuration file.
 .TP
 .I <data_dir>/events.db
 SQLite event store (powers
-.B list-events
-and the web UI).
+.BR list-events ", " export-iocs ,
+and the web UI; also holds the de-duplicated IOC store and the persisted
+ATT&CK / D3FEND attribution).
+.TP
+.I <data_dir>/sensor_id
+Stable per-deployment id (survives hostname changes; the fleet
+dedup/attribution key).
 .TP
 .I <data_dir>/devices.json
 Learned-device inventory.
@@ -203,9 +238,13 @@ to drop privileges after binding low ports.
 .SH SEE ALSO
 Full documentation in the
 .I docs/
-directory:
-.IR README.md ", " docs/cli.md ", " docs/config.md ", " docs/usage.md ", "
-.IR docs/archetypes.md ", " docs/design.md ", " docs/hardening.md ", "
-.IR docs/INTEGRATIONS.md .
+directory (also rendered in-product under the web UI
+.B docs
+tab):
+.IR README.md ", " docs/usage.md ", " docs/webui.md ", " docs/cli.md ", "
+.IR docs/config.md ", " docs/fleet.md ", " docs/ioc.md ", "
+.IR docs/threat-intel-exports.md ", " docs/archetypes.md ", "
+.IR docs/attribution.md ", " docs/design.md ", " docs/internals.md ", "
+.IR docs/hardening.md ", " docs/INTEGRATIONS.md ", " docs/FAQ.md .
 .SH BUGS
 Report issues at https://github.com/rom/tarpit-honeypot/issues .
