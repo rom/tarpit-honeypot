@@ -150,7 +150,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
 </head><body>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -323,6 +323,45 @@ an aggregator receiving events from several sensors via <code>ingest:</code>.)</
     <td>fleet:{{ .Rule }}</td>
     <td>{{ .Summary }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
+  </tr>
+  {{ end }}
+</table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "iocs" }}{{ template "head" . }}
+<h1>indicators of compromise</h1>
+<p class="note">De-duplicated indicators distilled from every event: source IPs,
+TLS/SSH fingerprints, ASNs, DNS names, CVE ids, captured-payload SHA-256s,
+harvested C2 URLs, credentials, MACs. First sightings of the high-value types are
+also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON at
+<a href="/api/iocs">/api/iocs</a>.</p>
+<form method="get" action="/iocs">
+  type: <input type="text" name="type" value="{{ .TypeFilter }}" placeholder="sha256" size="10">
+  contains: <input type="text" name="q" placeholder="value substring" size="16">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="168h" size="6">
+  <button type="submit">filter</button>
+  <a href="/iocs">reset</a>
+</form>
+{{ if not .IOCs }}
+<p class="note">No indicators in the window yet.</p>
+{{ else }}
+<h2>by type</h2>
+<p class="note">Each bar filters to that indicator type.</p>
+{{ template "bars" .Counts }}
+<h2>indicators ({{ .Total }})</h2>
+<table>
+  <tr><th>type</th><th>value</th><th>count</th><th>sev</th><th>first seen</th><th>last seen</th><th>last rule</th><th></th></tr>
+  {{ range .IOCs }}
+  <tr>
+    <td><a href="/iocs?type={{ .Type }}">{{ .Type }}</a></td>
+    <td class="mono">{{ .Value }}</td>
+    <td>{{ .Count }}</td>
+    <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
+    <td>{{ fmtTime .FirstSeen }}</td>
+    <td>{{ fmtTime .LastSeen }}</td>
+    <td>{{ .LastRule }}</td>
+    <td><a href="{{ .Link }}">events</a></td>
   </tr>
   {{ end }}
 </table>
@@ -873,6 +912,7 @@ device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{
 <li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>
 <li><a href="/fleet">fleet</a> — cross-sensor (fleet:*) findings: one source / ASN / fingerprint / payload / credential / CVE / tool / port / technique across many sensors, shared C2, novel infra, persistent networks. Aggregator-only (needs <code>ingest:</code>).</li>
+<li><a href="/iocs">iocs</a> — de-duplicated indicators of compromise (IPs, fingerprints, ASNs, domains, CVEs, payload hashes, C2 URLs, credentials, MACs) with first/last-seen + counts; first sightings of high-value types are logged as <code>ioc:*</code> events.</li>
 <li><a href="/alerting">alerting</a> — how events are forwarded (syslog / email / webhook / SMS / SNMP).</li>
 <li><a href="/errors">errors</a> — operational / health events (listener or canary-watcher stopped, accept-cap overflow).</li>
 <li><a href="/config">config</a> — the effective running config (secrets shown as env-var names).</li>

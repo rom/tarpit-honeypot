@@ -45,6 +45,10 @@ type Config struct {
 	IntelFeed IntelFeed `yaml:"intel_feed"`
 	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
 	MISP MISPConfig `yaml:"misp"`
+	// IOC turns the indicators every event carries (IPs, fingerprints, hashes,
+	// URLs, domains, CVEs, credentials, …) into a de-duplicated IOC store and
+	// emits ioc:<type> events for the high-value first sightings. See internal/ioc.
+	IOC IOCConfig `yaml:"ioc"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -228,6 +232,21 @@ type IntelFeed struct {
 	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
 	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
 	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
+}
+
+// IOCConfig controls the indicator-of-compromise store + ioc:<type> events.
+// On by default wherever an event store exists.
+type IOCConfig struct {
+	Enabled   *bool    `yaml:"enabled"`    // nil = on when a store exists
+	EmitTypes []string `yaml:"emit_types"` // first-sight types that emit ioc:<type> (default: high-value set)
+}
+
+// On reports whether IOC tracking should run (needs a store to persist into).
+func (c IOCConfig) On(hasStore bool) bool {
+	if c.Enabled != nil {
+		return *c.Enabled && hasStore
+	}
+	return hasStore
 }
 
 // MISPConfig pushes the fleet's observed indicators (the intel store) to a MISP

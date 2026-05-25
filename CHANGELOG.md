@@ -8,6 +8,34 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — indicator-of-compromise (IOC) store, events, and web-UI tab
+- New `internal/ioc` distils the indicators every event already carries — source
+  IPs, ja3/ja4/hassh fingerprints, ASNs, DNS names, CVE ids, captured-payload
+  SHA-256s, harvested C2 URLs, credentials, MACs — into a de-duplicated IOC
+  store (new `iocs` sqlite table: type+value → first/last seen, count, max
+  severity, last rule/source), with `Store.UpsertIOC` / `QueryIOCs` /
+  `IOCSummary`.
+- The first sighting of a **high-value** indicator (sha256 / url / domain /
+  ja3 / ja4 / hassh / cve / credential by default) emits an `ioc:<type>` event —
+  stored locally **and forwarded** to aggregators like any event; a forwarded
+  `ioc:*` re-yields its indicator so a parent harvests child IOCs even in rollup
+  mode. Configurable under `ioc:` (`emit_types`); on by default with a store.
+- New web-UI **iocs** tab (`/iocs` + `/api/iocs`): per-type breakdown bar chart
+  (each bar filters by type) and the indicator list (value, count, first/last
+  seen, severity, last rule) — each row links to the events that exhibited it.
+  Linked from the nav + `/docs`.
+- Verified end-to-end: an ingest batch populated the IOC store and emitted
+  `ioc:credential/cve/ja3/sha256/url` (bare IPs tracked, not emitted); the tab
+  and `/api/iocs` render them. Unit-tested (extractor incl. forwarded-ioc
+  propagation; store upsert/query/summary).
+
+### Added — persist ATT&CK / D3FEND in the event store
+- The event store now persists `mitre_techniques` / `mitre_tactics` /
+  `mitre_defenses` (schema + additive migration), so `/api/events`, the event
+  log, and the IOC/event views carry the same ATT&CK + D3FEND attribution the
+  streaming sinks already get. Verified: a stored `cve:*` event now reports
+  `T1190` + its D3FEND set via `/api/events`.
+
 ### Added — ATT&CK / D3FEND / CVE cross-reference coverage for the new features
 - **Fleet detectors mapped to ATT&CK + D3FEND** — all 27 `fleet:*` detectors
   (and `egress:denied`) now resolve to ATT&CK technique(s)/tactic(s) and the

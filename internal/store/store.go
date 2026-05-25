@@ -54,6 +54,20 @@ CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
 CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
+CREATE TABLE IF NOT EXISTS iocs (
+  type TEXT NOT NULL,
+  value TEXT NOT NULL,
+  first_seen INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  count INTEGER NOT NULL,
+  severity INTEGER,
+  last_rule TEXT,
+  last_sensor TEXT,
+  last_source TEXT,
+  PRIMARY KEY (type, value)
+);
+CREATE INDEX IF NOT EXISTS idx_iocs_last_seen ON iocs(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type);
 `
 
 // Open creates (if necessary) and opens the events database under dataDir.

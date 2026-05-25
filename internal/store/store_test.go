@@ -365,3 +365,33 @@ func TestMitrePersists(t *testing.T) {
 		t.Errorf("plain event techniques = %v; want empty", g2.MitreTechniques)
 	}
 }
+
+func TestUpsertAndQueryIOC(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	isNew, err := s.UpsertIOC(ctx, "sha256", "deadbeef", "malware:capture", "sid", "1.1.1.1", event.SeverityHigh, now)
+	if err != nil || !isNew {
+		t.Fatalf("first upsert: isNew=%v err=%v; want true/nil", isNew, err)
+	}
+	isNew, err = s.UpsertIOC(ctx, "sha256", "deadbeef", "malware:capture", "sid", "2.2.2.2", event.SeverityCritical, now.Add(time.Minute))
+	if err != nil || isNew {
+		t.Fatalf("second upsert: isNew=%v; want false", isNew)
+	}
+	rows, err := s.QueryIOCs(ctx, IOCFilter{Type: "sha256", Limit: 10})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("query: %d rows err=%v", len(rows), err)
+	}
+	r := rows[0]
+	if r.Count != 2 || r.Severity != event.SeverityCritical || r.LastSource != "2.2.2.2" {
+		t.Errorf("row = %+v; want count 2, sev critical, last_source 2.2.2.2", r)
+	}
+	sum, _ := s.IOCSummary(ctx, time.Time{})
+	if sum["sha256"] != 1 {
+		t.Errorf("summary sha256 = %d; want 1", sum["sha256"])
+	}
+}

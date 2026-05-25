@@ -30,6 +30,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/intel"
+	"github.com/rom/tarpit-honeypot/internal/ioc"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
@@ -86,6 +87,7 @@ type Sensor struct {
 	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
 	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
 	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
+	iocEmit     map[string]bool   // indicator types whose first-sight emits an ioc:<type> event (nil = IOC off)
 
 	ingestSeen    *ttlSet       // dedup for events admitted via IngestBatch (aggregator)
 	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
@@ -308,6 +310,21 @@ func New(cfg *config.Config) (*Sensor, error) {
 		intelStore = intel.NewStore(cfg.Fleet.IntelTTL, cfg.Fleet.IntelMax)
 	}
 
+	// IOC tracking: turn the indicators every event carries into a de-duplicated
+	// IOC store + ioc:<type> events. Needs the sqlite store to persist into.
+	var iocEmit map[string]bool
+	if cfg.IOC.On(st != nil) {
+		types := cfg.IOC.EmitTypes
+		if len(types) == 0 {
+			types = ioc.DefaultEmitTypes
+		}
+		iocEmit = map[string]bool{}
+		for _, t := range types {
+			iocEmit[t] = true
+		}
+		slog.Info("ioc tracking enabled", "emit_types", len(iocEmit))
+	}
+
 	// Trust scoring + admission control over ingested child streams.
 	var trustScorer *trust.Scorer
 	if cfg.Ingest.Trust.On(cfg.Ingest.Enabled) {
@@ -474,6 +491,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		ingestSeen:    newTTLSet(cfg.Ingest.DedupWindow),
 		ingestMaxHops: ingestMaxHops,
 		trust:         trustScorer,
+		iocEmit:       iocEmit,
 		listeners:     map[string]*listenerHandle{},
 	}
 	// A refused outbound connection is a high-severity finding: it means a
@@ -581,6 +599,45 @@ func (s *Sensor) dispatch(rt *router.Router, ev *event.Event) {
 	rt.Dispatch(ev)
 	if s.forward != nil {
 		s.forward.Send(ev)
+	}
+}
+
+// observeIOCs records each indicator the event carries in the de-duplicated IOC
+// store and returns ioc:<type> events for the first sighting of an emit-type
+// indicator (dispatched + forwarded by the caller).
+func (s *Sensor) observeIOCs(en *enrich.Enricher, ev *event.Event) []*event.Event {
+	if s.iocEmit == nil || s.store == nil {
+		return nil
+	}
+	t := ev.Time
+	if t.IsZero() {
+		t = timeNow()
+	}
+	var out []*event.Event
+	for _, ind := range ioc.Extract(ev) {
+		isNew, err := s.store.UpsertIOC(context.Background(), ind.Type, ind.Value, ev.RuleID, ev.SensorID, ev.Source.IP, ev.Severity, t)
+		if err != nil || !isNew || !s.iocEmit[ind.Type] {
+			continue
+		}
+		ie := s.iocEvent(ind, ev)
+		en.Decorate(ie)
+		out = append(out, ie)
+	}
+	return out
+}
+
+// iocEvent builds the ioc:<type> first-sighting event.
+func (s *Sensor) iocEvent(ind ioc.Indicator, src *event.Event) *event.Event {
+	return &event.Event{
+		ID:       event.NewID(),
+		Time:     timeNow(),
+		Sensor:   s.name,
+		SensorID: s.identity.Seed(),
+		RuleID:   "ioc:" + ind.Type,
+		Severity: event.SeverityMedium,
+		Source:   src.Source,
+		Proto:    src.Proto,
+		Meta:     map[string]any{"ioc_type": ind.Type, "ioc_value": ind.Value, "first_rule": src.RuleID},
 	}
 }
 
@@ -1687,6 +1744,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 						s.dispatch(rt, fe)
 						s.scoreRisk(rt, fe)
 					}
+				}
+				// IOC tracking: record every indicator the event carries in
+				// the de-duplicated IOC store, and emit an ioc:<type> event
+				// (stored + forwarded) the first time a high-value indicator
+				// is seen.
+				for _, ie := range s.observeIOCs(en, ev) {
+					s.dispatch(rt, ie)
+					s.scoreRisk(rt, ie)
 				}
 			}()
 		}
