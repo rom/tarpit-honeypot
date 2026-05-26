@@ -638,12 +638,19 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 // expanded values), so the output is safe to display.
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	yamlStr := s.configYAML()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	linesOnly := r.URL.Query().Get("lines") == "only"
+	body, matches := highlightYAML(yamlStr, q, linesOnly)
 	page := configPage{
-		YAML:   yamlStr,
-		Canvas: buildConfigCanvas(s.fullConfig),
-		Files:  s.configFileRows(),
-		Themes: themePickerLinks(currentTheme(r), "/config"),
-		Sizes:  sizePickerLinks(currentSize(r), "/config"),
+		YAML:       yamlStr,
+		YAMLHTML:   body,
+		Query:      q,
+		MatchCount: matches,
+		LinesOnly:  linesOnly,
+		Canvas:     buildConfigCanvas(s.fullConfig),
+		Files:      s.configFileRows(),
+		Themes:     themePickerLinks(currentTheme(r), "/config"),
+		Sizes:      sizePickerLinks(currentSize(r), "/config"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
@@ -679,11 +686,15 @@ func (s *Server) configYAML() string {
 }
 
 type configPage struct {
-	YAML   string
-	Canvas configCanvas
-	Files  []fileRow
-	Themes []themeLink
-	Sizes  []sizeLink
+	YAML       string
+	YAMLHTML   template.HTML // YAML with case-insensitive matches wrapped in <mark>
+	Query      string        // the raw search query (echoed in the input)
+	MatchCount int           // number of substring matches across the whole YAML
+	LinesOnly  bool          // true when ?lines=only filters out non-matching lines
+	Canvas     configCanvas
+	Files      []fileRow
+	Themes     []themeLink
+	Sizes      []sizeLink
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,
