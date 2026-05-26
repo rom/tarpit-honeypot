@@ -186,6 +186,108 @@ const tmpls = `
   --ramp-0:#0a0a0a; --ramp-1:#102030; --ramp-2:#1a3855; --ramp-3:#205a85; --ramp-4:#3080c0; --ramp-5:#5aa0e0; --ramp-6:#80c0ff;
   --heatmap-zero:#0a0a0a;
 }
+/* Cobalt — saturated deep-blue dark theme. */
+:root.theme-cobalt {
+  --bg-page:#0a1929; --bg-surface:#102a42; --bg-elevated:#163455; --bg-code:#163455; --bg-code-block:#0d2237;
+  --text:#e0eaf6; --text-muted:#92a8c0; --text-faint:#5a7090; --text-strong:#c8d6e8; --heading-h2:#b0c4dc;
+  --border:#1e4068; --border-medium:#1e4068; --border-strong:#285178;
+  --link:#2faaff; --link-hover-bg:#163455;
+  --sev-low:#92a8c0; --sev-medium:#ffb648; --sev-high:#ff7088; --sev-critical:#ff4060; --sev-critical-bg:#3a1828;
+  --bar-default:#2faaff; --bar-medium:#ffb648; --bar-high:#ff7088; --bar-critical:#ff4060;
+  --accent:#2faaff; --accent-fg:#0a1929;
+  --success-fg:#5ee090; --success-bg:#0a3020; --success-border:#1a5040;
+  --warning-fg:#ffb648; --warning-bg:#3a2c0a; --warning-border:#5a4818; --warning-text:#ffb648;
+  --sortable-hover-bg:#163455; --arrow-faint:#3a5878;
+  --tag-bg:#163455; --tag-border:#285178;
+  --tag-warn-bg:#3a2c0a; --tag-warn-border:#5a4818;
+  --tag-bad-bg:#3a1828; --tag-bad-border:#5a2840;
+  --host-border:#285178; --svc-bg:#163455; --svc-border:#285178;
+  --blockquote-bg:#102a42;
+  --counter-num:#e8f0fa;
+  --chart-grid:#163455; --chart-axis-text:#92a8c0; --chart-axis-text-faint:#5a7090;
+  --chart-edge:#285178; --chart-node-default:#2faaff; --chart-node-stroke:#0a1929;
+  --chart-cell-text:#e0eaf6; --chart-cell-text-hi:#fff;
+  --chart-ocean-fill:#0d2237; --chart-ocean-stroke:#285178;
+  --chart-graticule:#163455; --chart-graticule-label:#3a5878;
+  --proto-tcp:#2faaff; --proto-udp:#ffb648; --proto-icmp:#5ee090; --proto-l2:#a888ff; --proto-default:#92a8c0;
+  --pcard-mode-banner:#5ee090; --pcard-mode-tarpit:#ff4060; --pcard-mode-drop:#5a7090;
+  --ctag-bg:#163455; --ctag-border:#285178; --ctag-text:#b0c4dc;
+  --ctag-tls-bg:#102a42; --ctag-tls-border:#1e4068; --ctag-tls-fg:#2faaff;
+  --help-badge-bg:#3a5878; --help-badge-hover-bg:#2faaff;
+  --widget-toggle-bg:#163455; --widget-toggle-fg:#92a8c0; --widget-toggle-border:#285178;
+  --palette-1:#2faaff; --palette-2:#ffb648; --palette-3:#5ee090; --palette-4:#c878ff; --palette-5:#ff7088;
+  --palette-6:#48d8e0; --palette-7:#e0d048; --palette-8:#92a8c0; --palette-9:#7088ff; --palette-10:#88d8a0;
+  --ramp-0:#0a1929; --ramp-1:#0d2540; --ramp-2:#103358; --ramp-3:#184878; --ramp-4:#266aa8; --ramp-5:#3a92d0; --ramp-6:#5ab8f0;
+  --heatmap-zero:#0a1929;
+}
+/* Sepia — warm parchment, light theme with brown accents. */
+:root.theme-sepia {
+  --bg-page:#f6efd9; --bg-surface:#fdf9eb; --bg-elevated:#f0e6c4; --bg-code:#ece1b8; --bg-code-block:#f3ead0;
+  --text:#3a2818; --text-muted:#6a4f30; --text-faint:#8b7050; --text-strong:#2a1808; --heading-h2:#5a3a20;
+  --border:#dccda0; --border-medium:#d8c890; --border-strong:#c4b080;
+  --link:#8b5a2b; --link-hover-bg:#f0e6c4;
+  --sev-low:#6a4f30; --sev-medium:#a8590a; --sev-high:#8b1a1a; --sev-critical:#6b0000; --sev-critical-bg:#f4d0c0;
+  --bar-default:#8b5a2b; --bar-medium:#c08020; --bar-high:#a83020; --bar-critical:#7a1010;
+  --accent:#8b5a2b; --accent-fg:#fdf9eb;
+  --success-fg:#506830; --success-bg:#e0e8c8; --success-border:#a8b078;
+  --warning-fg:#8c5818; --warning-bg:#f4e0a8; --warning-border:#d8b860; --warning-text:#a8590a;
+  --sortable-hover-bg:#ede0b8; --arrow-faint:#c4a878;
+  --tag-bg:#f0e0b0; --tag-border:#d4c080;
+  --tag-warn-bg:#f4e0a8; --tag-warn-border:#d8b860;
+  --tag-bad-bg:#f4d0c0; --tag-bad-border:#d49080;
+  --host-border:#c4b080; --svc-bg:#f0e0b0; --svc-border:#d4c080;
+  --blockquote-bg:#f0e6c4;
+  --counter-num:#3a2818;
+  --chart-grid:#ece1b8; --chart-axis-text:#6a4f30; --chart-axis-text-faint:#8b7050;
+  --chart-edge:#c4b080; --chart-node-default:#8b5a2b; --chart-node-stroke:#fdf9eb;
+  --chart-cell-text:#3a2818; --chart-cell-text-hi:#fdf9eb;
+  --chart-ocean-fill:#f0e6c4; --chart-ocean-stroke:#d8c890;
+  --chart-graticule:#dccda0; --chart-graticule-label:#a89070;
+  --proto-tcp:#8b5a2b; --proto-udp:#c08020; --proto-icmp:#5a7820; --proto-l2:#7a5040; --proto-default:#8b7050;
+  --pcard-mode-banner:#5a7820; --pcard-mode-tarpit:#a83020; --pcard-mode-drop:#a89070;
+  --ctag-bg:#ece1b8; --ctag-border:#d4c080; --ctag-text:#6a4f30;
+  --ctag-tls-bg:#e8d8b0; --ctag-tls-border:#c4a878; --ctag-tls-fg:#8b5a2b;
+  --help-badge-bg:#a89070; --help-badge-hover-bg:#8b5a2b;
+  --widget-toggle-bg:#f0e0b0; --widget-toggle-fg:#6a4f30; --widget-toggle-border:#d4c080;
+  --palette-1:#8b5a2b; --palette-2:#a8590a; --palette-3:#5a7820; --palette-4:#7a4068; --palette-5:#a83020;
+  --palette-6:#386870; --palette-7:#9b8020; --palette-8:#8b7050; --palette-9:#6a4090; --palette-10:#506030;
+  --ramp-0:#fdf9eb; --ramp-1:#f0e0b0; --ramp-2:#e8c878; --ramp-3:#d8a848; --ramp-4:#b88030; --ramp-5:#8b5a2b; --ramp-6:#5a3818;
+  --heatmap-zero:#fdf9eb;
+}
+/* Olive — desaturated olive drab; medium-dark green-brown surfaces. */
+:root.theme-olive {
+  --bg-page:#3a402a; --bg-surface:#494e36; --bg-elevated:#535938; --bg-code:#535938; --bg-code-block:#2f3522;
+  --text:#e0e5b8; --text-muted:#b0b890; --text-faint:#8a9068; --text-strong:#ecf0c8; --heading-h2:#c8d098;
+  --border:#5a6038; --border-medium:#5a6038; --border-strong:#6a7048;
+  --link:#cad860; --link-hover-bg:#535938;
+  --sev-low:#b0b890; --sev-medium:#e0b048; --sev-high:#e07050; --sev-critical:#d04030; --sev-critical-bg:#4a2818;
+  --bar-default:#a8b855; --bar-medium:#e0b048; --bar-high:#e07050; --bar-critical:#d04030;
+  --accent:#cad860; --accent-fg:#2c321e;
+  --success-fg:#9bc060; --success-bg:#2a3a18; --success-border:#4a5e28;
+  --warning-fg:#e0b048; --warning-bg:#3a2e10; --warning-border:#5a4820; --warning-text:#e0b048;
+  --sortable-hover-bg:#535938; --arrow-faint:#7a8050;
+  --tag-bg:#535938; --tag-border:#6a7048;
+  --tag-warn-bg:#3a2e10; --tag-warn-border:#5a4820;
+  --tag-bad-bg:#4a2818; --tag-bad-border:#6a3818;
+  --host-border:#6a7048; --svc-bg:#535938; --svc-border:#6a7048;
+  --blockquote-bg:#494e36;
+  --counter-num:#ecf0c8;
+  --chart-grid:#535938; --chart-axis-text:#b0b890; --chart-axis-text-faint:#8a9068;
+  --chart-edge:#6a7048; --chart-node-default:#a8b855; --chart-node-stroke:#3a402a;
+  --chart-cell-text:#e0e5b8; --chart-cell-text-hi:#fff;
+  --chart-ocean-fill:#2f3522; --chart-ocean-stroke:#5a6038;
+  --chart-graticule:#535938; --chart-graticule-label:#7a8050;
+  --proto-tcp:#88a868; --proto-udp:#e0b048; --proto-icmp:#9bc060; --proto-l2:#b88aa0; --proto-default:#b0b890;
+  --pcard-mode-banner:#9bc060; --pcard-mode-tarpit:#d04030; --pcard-mode-drop:#8a9068;
+  --ctag-bg:#535938; --ctag-border:#6a7048; --ctag-text:#c8d098;
+  --ctag-tls-bg:#4a5e28; --ctag-tls-border:#6a8038; --ctag-tls-fg:#cad860;
+  --help-badge-bg:#7a8050; --help-badge-hover-bg:#cad860;
+  --widget-toggle-bg:#535938; --widget-toggle-fg:#b0b890; --widget-toggle-border:#6a7048;
+  --palette-1:#a8b855; --palette-2:#e0b048; --palette-3:#9bc060; --palette-4:#b88aa0; --palette-5:#e07050;
+  --palette-6:#78a8a8; --palette-7:#e0c060; --palette-8:#b0b890; --palette-9:#a098c8; --palette-10:#88a868;
+  --ramp-0:#2f3522; --ramp-1:#3a402a; --ramp-2:#4a5028; --ramp-3:#6a7040; --ramp-4:#8a9858; --ramp-5:#a8b870; --ramp-6:#cad898;
+  --heatmap-zero:#2f3522;
+}
 /* ---- Core element styles (every color comes from a variable above). ---- */
 body { font: 14px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; margin: 1.5rem; color: var(--text); background: var(--bg-page); }
 h1 { font-size: 1.3rem; margin: 0 0 1rem; }

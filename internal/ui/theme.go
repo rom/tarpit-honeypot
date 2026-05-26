@@ -23,6 +23,9 @@ var themes = []Theme{
 	{ID: "solarized-dark", Label: "Solarized Dark", Desc: "The classic solarized palette.", Swatch: "#073642"},
 	{ID: "nord", Label: "Nord", Desc: "Cool, slightly desaturated.", Swatch: "#5e81ac"},
 	{ID: "high-contrast", Label: "High contrast", Desc: "Pure black + vivid accents (accessibility).", Swatch: "#000000"},
+	{ID: "cobalt", Label: "Cobalt", Desc: "Deep saturated blue, light text.", Swatch: "#0a1929"},
+	{ID: "sepia", Label: "Sepia", Desc: "Warm parchment with brown accents.", Swatch: "#f6efd9"},
+	{ID: "olive", Label: "Olive", Desc: "Olive drab, muted greens.", Swatch: "#494e36"},
 }
 
 // themeIDs is the set of valid theme ids, populated from themes for O(1)
