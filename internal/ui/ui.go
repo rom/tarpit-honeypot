@@ -265,6 +265,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/iocs", s.handleAPIIOCs)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/static/", s.handleStatic)
+	mux.HandleFunc("/favicon.ico", s.handleFavicon)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	s.srv = &http.Server{

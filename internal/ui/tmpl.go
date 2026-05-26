@@ -6,6 +6,9 @@ const tmpls = `
 <meta charset="utf-8">
 {{ if gt (refreshSeconds) 0 }}<meta http-equiv="refresh" content="{{ refreshSeconds }}">{{ end }}
 <title>tarpit-honeypot</title>
+<!-- Favicon: SVG for modern browsers, .ico (multi-size 16/32/48) fallback. -->
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+<link rel="alternate icon" type="image/x-icon" sizes="any" href="/favicon.ico">
 <!-- Synchronous (not defer) so the theme class lands on <html> BEFORE the body
      parses, avoiding any flash-of-default-theme on themed deployments. -->
 <script src="/static/theme.js"></script>
@@ -300,6 +303,9 @@ const tmpls = `
 html { font-size: var(--font-size-base); }
 /* ---- Core element styles (every color comes from a variable above). ---- */
 body { font: 1rem/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; margin: 1.5rem; color: var(--text); background: var(--bg-page); }
+.brand { margin: 0 0 .8rem; }
+.brand-link { display: inline-block; line-height: 0; }
+.brand-logo { display: block; height: 32px; width: auto; }
 h1 { font-size: 1.3rem; margin: 0 0 1rem; }
 h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--heading-h2); }
 nav { margin-bottom: 1rem; }
@@ -459,6 +465,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/app.js" defer></script>
 <script src="/static/charts.js" defer></script>
 </head><body>
+<header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 

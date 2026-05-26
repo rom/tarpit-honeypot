@@ -190,6 +190,27 @@ func TestCurrentSize(t *testing.T) {
 	}
 }
 
+func TestHandleFavicon(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	w := httptest.NewRecorder()
+	s.handleFavicon(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "image/x-icon" {
+		t.Errorf("Content-Type = %q; want image/x-icon", got)
+	}
+	body := w.Body.Bytes()
+	if len(body) < 100 {
+		t.Errorf("body too small: %d bytes", len(body))
+	}
+	// ICO magic: 00 00 01 00 (reserved + type=1)
+	if len(body) < 4 || body[0] != 0 || body[1] != 0 || body[2] != 1 || body[3] != 0 {
+		t.Errorf("bad ICO magic: % x", body[:4])
+	}
+}
+
 func TestSizePickerLinks(t *testing.T) {
 	links := sizePickerLinks("large", "/config")
 	if len(links) != len(sizes) {

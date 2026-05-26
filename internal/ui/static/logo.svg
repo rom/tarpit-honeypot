@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" width="360" height="64" role="img" aria-label="tarpit-honeypot">
+  <title>tarpit-honeypot</title>
+  <!-- Mark — honeycomb cell with a tar drop -->
+  <g transform="translate(4,4)">
+    <polygon points="28,0 52,14 52,42 28,56 4,42 4,14"
+             fill="#fbe5a3" stroke="#d59a3a" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M28 9 C22 19 18 27 18 33 a10 10 0 0 0 20 0 C38 27 34 19 28 9 Z"
+          fill="#1a1d23"/>
+    <ellipse cx="24" cy="31" rx="2.2" ry="3.2" fill="#3a3e4a" opacity="0.55"/>
+  </g>
+  <!-- Wordmark — currentColor so it inherits whatever color the host element has,
+       which lets the theme drive the brand text without theme-specific SVGs. -->
+  <text x="68" y="40"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="22" font-weight="700" fill="currentColor"
+        letter-spacing="-0.02em">tarpit-honeypot</text>
+</svg>
