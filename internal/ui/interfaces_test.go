@@ -78,9 +78,9 @@ func TestBuildInterfacesListenerCrossReference(t *testing.T) {
 	}
 	cfg := &config.Config{}
 	cfg.Listeners = []config.Listener{
-		{ID: "wild-tcp", Proto: "tcp", Bind: "0.0.0.0:2222"},
-		{ID: "wild-udp", Proto: "udp", Bind: "0.0.0.0:53"},
-		{ID: "lo-tcp", Proto: "tcp", Bind: loIPv4 + ":8088"},
+		{ID: "wild-tcp", Proto: "tcp", Bind: "0.0.0.0:2222", Handler: "ssh"},
+		{ID: "wild-udp", Proto: "udp", Bind: "0.0.0.0:53", Handler: "dns"},
+		{ID: "lo-tcp", Proto: "tcp", Bind: loIPv4 + ":8088", Handler: "http"},
 	}
 	cards = buildInterfaces(cfg)
 	var lo *netIfaceCard
@@ -93,19 +93,57 @@ func TestBuildInterfacesListenerCrossReference(t *testing.T) {
 	if lo == nil {
 		t.Fatal("loopback iface missing from cards")
 	}
-	// Loopback should see the two wildcard binds + the explicit lo bind.
+	// Counts: the two wildcards + the explicit lo bind.
 	if lo.BoundTCP < 2 || lo.BoundUDP < 1 {
 		t.Errorf("loopback iface should reflect wildcard + specific binds; got tcp=%d udp=%d",
 			lo.BoundTCP, lo.BoundUDP)
 	}
-	// At least one non-loopback up iface should also see the wildcards (when
-	// the host has any). Skip the assertion on host with no non-loopback
-	// interfaces — common inside minimal containers.
+	// Concrete binds: loopback gets every wildcard plus its own-IP binds.
+	var sawLoSpecific, sawWildTCP, sawWildUDP bool
+	for _, b := range lo.Binds {
+		switch {
+		case b.Port == 8088 && b.Handler == "http" && !b.Wildcard:
+			sawLoSpecific = true
+		case b.Port == 2222 && b.Wildcard && b.Proto == "tcp":
+			sawWildTCP = true
+		case b.Port == 53 && b.Wildcard && b.Proto == "udp":
+			sawWildUDP = true
+		}
+	}
+	if !sawLoSpecific {
+		t.Errorf("loopback iface missing its specific 127.x:8088 bind; got %+v", lo.Binds)
+	}
+	if !sawWildTCP || !sawWildUDP {
+		t.Errorf("loopback iface should inherit wildcard binds (wildTCP=%v wildUDP=%v); got %+v",
+			sawWildTCP, sawWildUDP, lo.Binds)
+	}
+	// Binds are sorted: tcp before udp, then by port.
+	for i := 1; i < len(lo.Binds); i++ {
+		prev, cur := lo.Binds[i-1], lo.Binds[i]
+		if prev.Proto > cur.Proto {
+			t.Errorf("binds not sorted by proto: %s before %s", prev.Proto, cur.Proto)
+		} else if prev.Proto == cur.Proto && prev.Port > cur.Port {
+			t.Errorf("binds not sorted by port within %s: %d before %d",
+				prev.Proto, prev.Port, cur.Port)
+		}
+	}
+	// At least one up non-loopback iface should also see the wildcards.
 	for _, c := range cards {
 		if c.Up && !c.Loopback {
 			if c.BoundTCP < 1 || c.BoundUDP < 1 {
 				t.Errorf("wildcard bind missing from up non-loopback %q: tcp=%d udp=%d",
 					c.Name, c.BoundTCP, c.BoundUDP)
+			}
+			// And the same wildcards should appear concretely in Binds.
+			wild := 0
+			for _, b := range c.Binds {
+				if b.Wildcard {
+					wild++
+				}
+			}
+			if wild < 2 {
+				t.Errorf("%q: expected >=2 wildcard binds in Binds; got %d (%+v)",
+					c.Name, wild, c.Binds)
 			}
 			break
 		}
