@@ -520,8 +520,8 @@ round: id, category, endpoint, round, attempts, status, detail/error, duration).
 
 ```
 RUN   STARTED              TOOL                    TOTAL  PASS  FAIL  CRASH
-2     2026-05-24 16:41:09  2.0.0 (a1b2c3d)            32    28     0      0
-1     2026-05-24 16:28:35  2.0.0 (a1b2c3d)            10     6     0      0
+2     2026-05-26 16:41:09  2.1.0 (a1b2c3d)            32    28     0      0
+1     2026-05-26 16:28:35  2.1.0 (a1b2c3d)            10     6     0      0
 ```
 
 For richer analysis, query the DB directly (e.g. fail rate of a case across
