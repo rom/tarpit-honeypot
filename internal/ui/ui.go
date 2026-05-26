@@ -244,6 +244,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/errors", s.handleErrors)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/docs/", s.handleDoc)
+	mux.HandleFunc("/theme", s.handleTheme)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/profiles", s.handleAPIProfiles)
 	mux.HandleFunc("/api/profiles/", s.handleAPIProfile)
@@ -633,9 +634,14 @@ func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
 // canvas" (which ports/services are listening and which collectors are
 // active) followed by the full YAML. Secrets are env-var names (never
 // expanded values), so the output is safe to display.
-func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	yamlStr := s.configYAML()
-	page := configPage{YAML: yamlStr, Canvas: buildConfigCanvas(s.fullConfig), Files: s.configFileRows()}
+	page := configPage{
+		YAML:   yamlStr,
+		Canvas: buildConfigCanvas(s.fullConfig),
+		Files:  s.configFileRows(),
+		Themes: themePickerLinks(currentTheme(r), "/config"),
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
 		slog.Warn("ui: render config", "err", err)
@@ -673,6 +679,7 @@ type configPage struct {
 	YAML   string
 	Canvas configCanvas
 	Files  []fileRow
+	Themes []themeLink
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,

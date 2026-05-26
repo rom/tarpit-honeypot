@@ -142,12 +142,15 @@ How events are routed outbound — the configured channels (syslog / webhook /
 email / SMS / SNMP / MQTT) and their formats.
 
 ### config (`/config`)
-The **infrastructure canvas** — every subsystem with live on/off state, grouped:
-Passive capture · Network responders · Enrichment · Detection · **Fleet /
-aggregation** (fleet correlation + detector count, fleet forwarding, ingest
-endpoint, trust scoring, intel feed serving + subscribing, MISP push, IOC store)
-· Forensics · Output — followed by the full effective YAML (secrets shown as
-env-var names, never values). `/api/config/canvas` returns the board as JSON.
+A **UI theme picker** (default · dark · solarized-dark · nord · high-contrast)
+that persists per browser via the `tarpit_theme` cookie — every element themes
+(headings, tables, charts, badges, bars). Below it, the **infrastructure canvas**
+— every subsystem with live on/off state, grouped: Passive capture · Network
+responders · Enrichment · Detection · **Fleet / aggregation** (fleet correlation
++ detector count, fleet forwarding, ingest endpoint, trust scoring, intel feed
+serving + subscribing, MISP push, IOC store) · Forensics · Output — followed by
+the full effective YAML (secrets shown as env-var names, never values).
+`/api/config/canvas` returns the board as JSON.
 
 ### errors (`/errors`)
 Operational / health events (a listener or canary watcher stopped, accept-cap
