@@ -26,6 +26,7 @@ type configCanvas struct {
 	Collectors      []collectorCard  `json:"collectors"`
 	Groups          []collectorGroup `json:"-"` // collectors grouped by category, for rendering
 	ActiveCollector int              `json:"active_collectors"`
+	Interfaces      []netIfaceCard   `json:"interfaces"`
 }
 
 // collectorGroup buckets collectors by category for the rendered board.
@@ -110,6 +111,7 @@ func buildConfigCanvas(c *config.Config) configCanvas {
 		}
 	}
 	cv.Groups = groupCollectors(cv.Collectors)
+	cv.Interfaces = buildInterfaces(c)
 	return cv
 }
 
