@@ -3,10 +3,12 @@ package egress
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -75,14 +77,26 @@ func BuildRuleset(c FirewallConfig) string {
 	return b.String()
 }
 
-// entryRules turns one allowlist entry into nft accept rule(s).
+// entryRules turns one allowlist entry into nft accept rule(s). Operator-
+// supplied values are validated (port numeric+ranged, host as IP or DNS-label)
+// before being interpolated into the nft script: a malformed entry could
+// otherwise inject arbitrary nft commands into the generated ruleset (which
+// runs under CAP_NET_ADMIN). An invalid entry is dropped with a warning.
 func entryRules(entry string) []string {
-	// CIDR.
+	// CIDR (net.ParseCIDR validates; ipnet.String() is canonical).
 	if _, ipnet, err := net.ParseCIDR(entry); err == nil {
 		return []string{fmt.Sprintf("%s daddr %s accept", famOfNet(ipnet), ipnet.String())}
 	}
 	// host:port (port-specific).
 	if host, port, err := net.SplitHostPort(entry); err == nil {
+		if !validPort(port) {
+			slog.Warn("egress firewall: invalid port in entry, skipping", "entry", entry, "port", port)
+			return nil
+		}
+		if !validHost(host) {
+			slog.Warn("egress firewall: invalid host in entry, skipping", "entry", entry, "host", host)
+			return nil
+		}
 		var out []string
 		for _, ip := range resolve(host) {
 			out = append(out, fmt.Sprintf("%s daddr %s th dport %s accept", famOf(ip), ip, port))
@@ -90,11 +104,51 @@ func entryRules(entry string) []string {
 		return out
 	}
 	// bare host / IP (any port).
+	if !validHost(entry) {
+		slog.Warn("egress firewall: invalid host in entry, skipping", "entry", entry)
+		return nil
+	}
 	var out []string
 	for _, ip := range resolve(entry) {
 		out = append(out, fmt.Sprintf("%s daddr %s accept", famOf(ip), ip))
 	}
 	return out
+}
+
+// validPort accepts a decimal TCP/UDP port number in 1..65535.
+func validPort(s string) bool {
+	if s == "" || len(s) > 5 {
+		return false
+	}
+	n, err := strconv.Atoi(s)
+	return err == nil && n >= 1 && n <= 65535
+}
+
+// validHost accepts a bare IPv4/IPv6 address (including [bracketed] IPv6) or a
+// DNS hostname using only [A-Za-z0-9._-] characters (RFC-1035-ish, plus the
+// underscore some service names use). Rejects empty, oversized, or anything
+// carrying whitespace / shell or nft metacharacters.
+func validHost(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+		s = s[1 : len(s)-1]
+	}
+	if ip := net.ParseIP(s); ip != nil {
+		return true
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func resolve(host string) []net.IP {

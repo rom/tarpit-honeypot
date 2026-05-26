@@ -70,3 +70,67 @@ func TestPolicyEntries(t *testing.T) {
 		t.Errorf("Entries = %v; want siem.example:8443 + 10.0.0.0/8", p.Entries())
 	}
 }
+
+func TestValidPort(t *testing.T) {
+	cases := []struct {
+		in string
+		ok bool
+	}{
+		{"80", true}, {"1", true}, {"65535", true},
+		{"", false}, {"0", false}, {"65536", false}, {"99999", false},
+		{"abc", false}, {"80 ", false}, {"-1", false}, {"80\n", false},
+		{"80;evil", false}, {"80\taccept", false},
+	}
+	for _, c := range cases {
+		if got := validPort(c.in); got != c.ok {
+			t.Errorf("validPort(%q) = %v; want %v", c.in, got, c.ok)
+		}
+	}
+}
+
+func TestValidHost(t *testing.T) {
+	good := []string{
+		"example.com", "siem.corp", "host-1.sub.example.com",
+		"10.0.0.1", "2001:db8::1", "[2001:db8::1]",
+		"a_record.example", "x",
+	}
+	for _, h := range good {
+		if !validHost(h) {
+			t.Errorf("validHost(%q) should be true", h)
+		}
+	}
+	bad := []string{
+		"", "foo bar", "evil;rm -rf", "evil\nrule", "evil/path",
+		"evil$(cmd)", "evil|nft", "evil\taccept", "evil`cmd`",
+		// over 253 chars
+		strings.Repeat("a", 254),
+	}
+	for _, h := range bad {
+		if validHost(h) {
+			t.Errorf("validHost(%q) should be false", h)
+		}
+	}
+}
+
+// TestEntryRulesRejectsInjection guards H1: a malformed allowlist entry must
+// not inject extra lines into the nft script that gets piped to `nft -f -`.
+func TestEntryRulesRejectsInjection(t *testing.T) {
+	cases := []string{
+		"example.com:80\naccept", // newline in port
+		"example.com:80;flush",   // semicolon in port
+		"evil;rm -rf:443",        // shell metacharacter in host
+		"evil host:443",          // space in host
+		"example.com:abc",        // non-numeric port
+		"example.com:0",          // out-of-range port
+		"example.com:99999",      // out-of-range port
+		"evil\n.example.com",     // newline in bare host
+	}
+	for _, e := range cases {
+		rules := entryRules(e)
+		for _, r := range rules {
+			if strings.ContainsAny(r, "\n;`$") {
+				t.Errorf("entryRules(%q) produced dangerous rule: %q", e, r)
+			}
+		}
+	}
+}
