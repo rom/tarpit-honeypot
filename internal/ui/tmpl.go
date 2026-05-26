@@ -1032,6 +1032,36 @@ JSON at <a href="/api/config/canvas">/api/config/canvas</a>.</p>
 {{ end }}
 {{ end }}
 
+{{ if .Canvas.Interfaces }}
+<h2>network interfaces</h2>
+<p class="note">The host's network interfaces and their addresses, cross-referenced
+against <code>sensor.interfaces</code> (the sniffer / responder pin set) and the
+listener bind addresses. A <span class="tag">pinned</span> tag marks interfaces
+explicitly enumerated in <code>sensor.interfaces</code>;
+<span class="tag">N tcp</span> / <span class="tag">N udp</span> count listener
+ports that land on the interface (including any wildcard <code>0.0.0.0</code> /
+<code>[::]</code> binds, which apply to every up interface).</p>
+<table>
+  <tr><th>name</th><th>state</th><th>addresses</th><th>MAC</th><th>MTU</th><th>sensor</th></tr>
+  {{ range .Canvas.Interfaces }}<tr>
+    <td><code>{{ .Name }}</code>{{ if .Loopback }} <span class="tag">loopback</span>{{ end }}</td>
+    <td>{{ if .Up }}<span class="coll on">up</span>{{ else }}<span class="coll off">down</span>{{ end }}</td>
+    <td>
+      {{ range .IPv4 }}<code>{{ . }}</code><br>{{ end }}
+      {{ range .IPv6 }}<code>{{ . }}</code><br>{{ end }}
+      {{ if and (not .IPv4) (not .IPv6) }}<span class="note">—</span>{{ end }}
+    </td>
+    <td>{{ if .MAC }}<code>{{ .MAC }}</code>{{ else }}<span class="note">—</span>{{ end }}</td>
+    <td>{{ if .MTU }}{{ .MTU }}{{ else }}<span class="note">—</span>{{ end }}</td>
+    <td>
+      {{ if .Pinned }}<span class="tag">pinned</span>{{ end }}
+      {{ if .BoundTCP }}<span class="tag">{{ .BoundTCP }} tcp</span>{{ end }}
+      {{ if .BoundUDP }}<span class="tag">{{ .BoundUDP }} udp</span>{{ end }}
+    </td>
+  </tr>{{ end }}
+</table>
+{{ end }}
+
 {{ if .Files }}
 <h2>files in use</h2>
 <p class="note">Config files, enrichment inputs, and databases this sensor reads, plus
