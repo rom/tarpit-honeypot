@@ -154,3 +154,39 @@ func TestStoreCapEvictsOldest(t *testing.T) {
 		}
 	}
 }
+
+// TestClampFeed guards L11: a child must not be induced to track unbounded
+// indicator sets, even if an aggregator's snapshot exceeds the per-set ceiling.
+func TestClampFeed(t *testing.T) {
+	mk := func(n int) []Item {
+		out := make([]Item, n)
+		for i := range out {
+			out[i] = Item{Value: "v"}
+		}
+		return out
+	}
+	f := &Feed{
+		IPs:          mk(maxFeedPerSet + 100),
+		ASNs:         mk(maxFeedPerSet - 1),
+		Fingerprints: mk(maxFeedPerSet * 3),
+	}
+	clampFeed(f)
+	if len(f.IPs) != maxFeedPerSet {
+		t.Errorf("IPs not clamped: %d", len(f.IPs))
+	}
+	if len(f.ASNs) != maxFeedPerSet-1 {
+		t.Errorf("ASNs under cap should be untouched: %d", len(f.ASNs))
+	}
+	if len(f.Fingerprints) != maxFeedPerSet {
+		t.Errorf("Fingerprints not clamped: %d", len(f.Fingerprints))
+	}
+}
+
+// TestNewPullerDefaultsNilClient guards L9: a nil client must not slip through
+// into an unconstrained dial; the constructor falls back to the egress one.
+func TestNewPullerDefaultsNilClient(t *testing.T) {
+	p := NewPuller("https://x/intel", "tok", 0, nil, func(*Feed) {})
+	if p.client == nil {
+		t.Error("nil client should be replaced with the egress-allowlisted default")
+	}
+}

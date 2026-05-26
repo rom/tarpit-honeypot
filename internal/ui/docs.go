@@ -55,9 +55,8 @@ type docsPage struct {
 
 // docPage carries one rendered Markdown document.
 type docPage struct {
-	Title string
-	Name  string
-	Body  template.HTML
+	Name string
+	Body template.HTML
 }
 
 func (s *Server) handleDocs(w http.ResponseWriter, _ *http.Request) {
@@ -95,7 +94,7 @@ func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	p := docPage{Title: docTitle(name), Name: name, Body: renderMarkdown(string(raw), served)}
+	p := docPage{Name: name, Body: renderMarkdown(string(raw), served)}
 	if err := s.tmpl.ExecuteTemplate(w, "doc", p); err != nil {
 		slog.Warn("ui: render doc", "err", err, "name", name)
 	}
@@ -139,13 +138,4 @@ func docLibrary() []docLink {
 		out = append(out, docLink{Name: name, Title: name})
 	}
 	return out
-}
-
-func docTitle(name string) string {
-	for _, d := range docCatalog {
-		if d.Name == name {
-			return d.Title
-		}
-	}
-	return name
 }
