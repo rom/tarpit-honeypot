@@ -275,7 +275,11 @@ func EncodeBatch(evs []*event.Event, nodeID string) ([]byte, error) {
 func DecodeBatch(r io.Reader) ([]*event.Event, error) {
 	var out []*event.Event
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // allow large events (payloads)
+	// Cap each NDJSON line at 256 KiB. A real event with a 32 KiB captured
+	// payload (the sensor's safe.AllocBytes cap) plus metadata is well under
+	// this; the previous 8 MiB ceiling let a malicious sender pack near-maximum
+	// events into a batch and pressure the aggregator's memory.
+	sc.Buffer(make([]byte, 0, 64*1024), 256*1024)
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {

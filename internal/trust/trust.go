@@ -157,8 +157,13 @@ func (s *Scorer) Admit(sid string) bool {
 	if s.cfg.RatePerSec <= 0 {
 		return true
 	}
-	// Token bucket: refill at RatePerSec up to Burst.
+	// Token bucket: refill at RatePerSec up to Burst. Clamp `elapsed` to >= 0
+	// so an NTP backstep / clock skew doesn't subtract tokens and unfairly
+	// rate-limit a legitimate child.
 	elapsed := now.Sub(st.lastFill).Seconds()
+	if elapsed < 0 {
+		elapsed = 0
+	}
 	st.lastFill = now
 	st.tokens += elapsed * float64(s.cfg.RatePerSec)
 	if st.tokens > float64(s.cfg.Burst) {

@@ -55,3 +55,35 @@ func TestExtractSkipsOperational(t *testing.T) {
 		}
 	}
 }
+
+// TestExtractForwardedIOCValidation guards L4: a forwarded ioc:* event from a
+// misbehaving child must not be able to poison the upstream store with an
+// unknown indicator kind or a bloated value.
+func TestExtractForwardedIOCValidation(t *testing.T) {
+	mk := func(typ, val string) *event.Event {
+		return &event.Event{RuleID: "ioc:" + typ, Meta: map[string]any{"ioc_type": typ, "ioc_value": val}}
+	}
+	// Known type + sane value: accepted.
+	if inds := Extract(mk("sha256", "deadbeef")); len(inds) != 1 || inds[0].Type != "sha256" {
+		t.Errorf("known type rejected: %v", inds)
+	}
+	// Unknown type: rejected.
+	if inds := Extract(mk("bogus", "anything")); len(inds) != 0 {
+		t.Errorf("unknown type %q yielded indicators: %v", "bogus", inds)
+	}
+	// Oversized value: rejected.
+	huge := make([]byte, maxIOCValueLen+1)
+	for i := range huge {
+		huge[i] = 'a'
+	}
+	if inds := Extract(mk("url", string(huge))); len(inds) != 0 {
+		t.Errorf("oversized value yielded indicators: %v", inds)
+	}
+	// Empty type/value: rejected (existing behavior preserved).
+	if inds := Extract(mk("", "x")); len(inds) != 0 {
+		t.Errorf("empty type yielded indicators: %v", inds)
+	}
+	if inds := Extract(mk("sha256", "")); len(inds) != 0 {
+		t.Errorf("empty value yielded indicators: %v", inds)
+	}
+}
