@@ -122,7 +122,10 @@ func malformedEvent(ev *event.Event, now time.Time) bool {
 	if ev.Severity < 0 || ev.Severity > event.SeverityCritical {
 		return true
 	}
-	if !ev.Time.IsZero() && ev.Time.After(now.Add(24*time.Hour)) {
+	// Tolerate up to an hour of clock skew between forwarder and aggregator;
+	// anything further forward is treated as fabricated (an attacker could
+	// otherwise dodge time-windowed correlation by post-dating).
+	if !ev.Time.IsZero() && ev.Time.After(now.Add(time.Hour)) {
 		return true
 	}
 	return false

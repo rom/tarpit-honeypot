@@ -34,6 +34,11 @@ type Config struct {
 	QuarantineBelow float64       // refuse a sensor below this score (default 0 = never)
 	RatePerSec      int           // per-sensor admission cap (0 = unlimited)
 	Burst           int           // token-bucket burst (default = RatePerSec)
+	// MaxSensors caps how many distinct sensor_ids we keep state for, so a
+	// peer spraying spoofed ids can't grow the map without bound. Idle entries
+	// (windowStart older than 2*Window) are evicted on demand; if every slot
+	// is active a new sensor's events are refused. Default 4096.
+	MaxSensors int
 }
 
 func (c *Config) withDefaults() {
@@ -48,6 +53,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.Burst <= 0 {
 		c.Burst = c.RatePerSec
+	}
+	if c.MaxSensors <= 0 {
+		c.MaxSensors = 4096
 	}
 }
 
@@ -88,25 +96,50 @@ func New(cfg Config) *Scorer {
 	return &Scorer{cfg: cfg, sensors: map[string]*stat{}, now: time.Now}
 }
 
+// getLocked returns the stat for sid, creating one if absent. Returns nil
+// when admitting a brand-new sensor would push the map past MaxSensors and no
+// idle slot is available to evict — i.e. memory protection trumps tracking the
+// extra sensor. The caller treats nil as "refuse" (Admit→false, Observe→nop).
 func (s *Scorer) getLocked(sid string, now time.Time) *stat {
-	st := s.sensors[sid]
-	if st == nil {
-		st = &stat{windowStart: now, lastFill: now, tokens: float64(s.cfg.Burst)}
-		s.sensors[sid] = st
+	if st := s.sensors[sid]; st != nil {
+		// Roll the window: reset counters and clear the alert/quarantine flags
+		// so a recovered sensor is re-evaluated fresh (quarantine is not
+		// permanent).
+		if now.Sub(st.windowStart) > s.cfg.Window {
+			st.accepted, st.deduped, st.dropped, st.malformed = 0, 0, 0, 0
+			st.windowStart = now
+			st.alerted = false
+			st.quarantined = false
+		}
+		return st
 	}
-	// Roll the window: reset counters and clear the alert/quarantine flags so a
-	// recovered sensor is re-evaluated fresh (quarantine is not permanent).
-	if now.Sub(st.windowStart) > s.cfg.Window {
-		st.accepted, st.deduped, st.dropped, st.malformed = 0, 0, 0, 0
-		st.windowStart = now
-		st.alerted = false
-		st.quarantined = false
+	if len(s.sensors) >= s.cfg.MaxSensors {
+		// Evict any sensor whose window has rolled past 2*Window — it has been
+		// idle for at least a full window and can be safely forgotten. Capped
+		// at a small batch so the eviction cost stays bounded.
+		threshold := now.Add(-2 * s.cfg.Window)
+		evicted := 0
+		for k, st := range s.sensors {
+			if st.windowStart.Before(threshold) {
+				delete(s.sensors, k)
+				evicted++
+				if evicted >= 16 {
+					break
+				}
+			}
+		}
+		if len(s.sensors) >= s.cfg.MaxSensors {
+			return nil
+		}
 	}
+	st := &stat{windowStart: now, lastFill: now, tokens: float64(s.cfg.Burst)}
+	s.sensors[sid] = st
 	return st
 }
 
 // Admit reports whether a sensor's event may be admitted: false when the sensor
-// is quarantined or has exhausted its per-sensor rate. nil scorer admits all.
+// is quarantined, has exhausted its per-sensor rate, or when the scorer is at
+// MaxSensors and can't evict to make room. nil scorer admits all.
 func (s *Scorer) Admit(sid string) bool {
 	if s == nil {
 		return true
@@ -115,14 +148,22 @@ func (s *Scorer) Admit(sid string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.getLocked(sid, now)
+	if st == nil {
+		return false // scorer is full; refuse rather than grow unbounded
+	}
 	if st.quarantined {
 		return false
 	}
 	if s.cfg.RatePerSec <= 0 {
 		return true
 	}
-	// Token bucket: refill at RatePerSec up to Burst.
+	// Token bucket: refill at RatePerSec up to Burst. Clamp `elapsed` to >= 0
+	// so an NTP backstep / clock skew doesn't subtract tokens and unfairly
+	// rate-limit a legitimate child.
 	elapsed := now.Sub(st.lastFill).Seconds()
+	if elapsed < 0 {
+		elapsed = 0
+	}
 	st.lastFill = now
 	st.tokens += elapsed * float64(s.cfg.RatePerSec)
 	if st.tokens > float64(s.cfg.Burst) {
@@ -136,7 +177,9 @@ func (s *Scorer) Admit(sid string) bool {
 }
 
 // Observe records one event outcome for a sensor and returns an Alert the first
-// time this window the sensor's score falls below AlertBelow. nil scorer no-ops.
+// time this window the sensor's score falls below AlertBelow. nil scorer no-ops;
+// also a no-op when the per-sensor cap is full (the event was already refused
+// by Admit, and we don't grow the map to score it).
 func (s *Scorer) Observe(sid string, o Outcome) *Alert {
 	if s == nil {
 		return nil
@@ -145,6 +188,9 @@ func (s *Scorer) Observe(sid string, o Outcome) *Alert {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.getLocked(sid, now)
+	if st == nil {
+		return nil
+	}
 	switch o {
 	case Accepted:
 		st.accepted++

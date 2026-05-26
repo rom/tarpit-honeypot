@@ -110,8 +110,10 @@ func (s *Store) Observe(ev *event.Event) {
 	}
 }
 
-// add records k with reason, refreshing its TTL. New keys are admitted only
-// until the per-set cap is reached so a flood can't grow the store unbounded.
+// add records k with reason, refreshing its TTL. The per-set cap bounds memory;
+// when full, the entry with the *earliest* expiry is evicted to make room. This
+// LRU-by-TTL beats refuse-when-full (which would let a one-time flood of novel
+// indicators lock out everything that arrives later until TTL).
 func (s *Store) add(m map[string]entry, k, reason string) {
 	exp := s.now().Add(s.ttl)
 	if e, ok := m[k]; ok {
@@ -121,7 +123,17 @@ func (s *Store) add(m map[string]entry, k, reason string) {
 		return
 	}
 	if len(m) >= s.max {
-		return
+		var oldestK string
+		var oldestExp time.Time
+		for kk, e := range m {
+			if oldestK == "" || e.exp.Before(oldestExp) {
+				oldestK = kk
+				oldestExp = e.exp
+			}
+		}
+		if oldestK != "" {
+			delete(m, oldestK)
+		}
 	}
 	m[k] = entry{reason: reason, exp: exp}
 }

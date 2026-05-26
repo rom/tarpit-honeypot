@@ -81,6 +81,41 @@ journalctl -u tarpit-honeypot | grep sandbox
 # sandbox: landlock filesystem restriction active  data_dir=/var/lib/tarpit-honeypot
 ```
 
+## Egress containment
+
+A honeypot must never be usable as an SSRF pivot, open relay, reflector, or
+exfil channel — but its own telemetry has to leave the box (sink/forward/intel
+endpoints). Two layers cooperate:
+
+- **In-process allowlist** (`egress.enabled`): every outbound dial inside the
+  sensor goes through a `DialContext` that consults the configured allowlist
+  (hosts, `host:port`s, CIDRs). Anything else is refused and reported as an
+  `egress:denied` event. Forward / intel-feed URLs are auto-allowlisted; for
+  MISP / webhooks / SMTP / syslog destinations, add the URL to `sensor.egress.allow`.
+- **OS-level backstop** (`egress.enforce`): an nftables `OUTPUT` chain scoped to
+  the sensor's UID (`meta skuid`) drops anything outside the allowlist, so even
+  a library that bypasses the in-process guard can't pivot. Requires Linux,
+  `nft`, and `CAP_NET_ADMIN` at install (before privilege drop).
+
+Sharp edges worth knowing:
+
+- The HTTP client built by the egress package **deliberately ignores
+  `HTTP(S)_PROXY` env vars** — under `Proxy: nil`. With Go's default
+  `ProxyFromEnvironment`, a stray proxy var would route every dial through the
+  proxy address, and the in-process allowlist would only see the proxy's
+  `host:port`, not the real destination. If you need a forward proxy, dial it
+  explicitly through a sink-specific URL (and allowlist it).
+- Hostname allowlist entries are checked **by name** at dial time — the actual
+  TCP connect goes to whatever your resolver returns. A DNS hijack can redirect
+  a name to an attacker-controlled IP. The nftables backstop (IP-based) defends
+  against this; prefer **IP/CIDR allowlist entries** for high-value destinations.
+- Allowlist values are operator-trusted. Port and host strings are validated
+  before they reach the generated nft script, so a malformed entry can't inject
+  rules — but writing the config remains a trusted operation. Treat
+  `sensor.egress.allow` like any other sensitive config.
+
+A blocked dial logs as `egress:denied` and surfaces in the **errors** UI tab.
+
 ## AppArmor
 
 ```

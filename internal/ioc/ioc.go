@@ -24,6 +24,21 @@ type Indicator struct {
 // store but not emitted (too voluminous, and already on every event).
 var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "hassh", "cve", "credential"}
 
+// knownTypes is the set of indicator types the sensor itself produces; we
+// refuse forwarded ioc:* events that declare a type outside this set, so a
+// misbehaving child can't poison the upstream store with arbitrary kinds.
+var knownTypes = map[string]bool{
+	"ip": true, "asn": true, "ja3": true, "ja4": true, "hassh": true,
+	"domain": true, "cve": true, "sha256": true, "url": true,
+	"credential": true, "mac": true,
+}
+
+// maxIOCValueLen caps the length of a forwarded indicator value. Realistic
+// values fit well within this (SHA-256 hex = 64 chars, JA3/JA4 ~32-64, even a
+// long URL ~1-2 KiB). 4 KiB is a generous ceiling against a child sensor
+// trying to bloat the IOC store with multi-MB "indicators".
+const maxIOCValueLen = 4096
+
 // Extract returns every indicator an event carries. Pure (no side effects). A
 // forwarded ioc:<type> event re-yields its carried indicator (so an aggregator
 // harvests IOCs from child ioc: events, even in rollup mode); the volume-only
@@ -33,10 +48,11 @@ func Extract(ev *event.Event) []Indicator {
 		return nil
 	}
 	if strings.HasPrefix(ev.RuleID, "ioc:") {
-		if t, v := metaStr(ev, "ioc_type"), metaStr(ev, "ioc_value"); t != "" && v != "" {
-			return []Indicator{{Type: t, Value: v}}
+		t, v := metaStr(ev, "ioc_type"), metaStr(ev, "ioc_value")
+		if t == "" || v == "" || !knownTypes[t] || len(v) > maxIOCValueLen {
+			return nil
 		}
-		return nil
+		return []Indicator{{Type: t, Value: v}}
 	}
 	if ev.RuleID == "fleet:rollup" || ev.RuleID == "fleet:sensor-untrusted" {
 		return nil

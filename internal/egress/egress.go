@@ -118,7 +118,13 @@ func (p *Policy) DialContext(ctx context.Context, network, addr string) (net.Con
 // HTTPClient returns an http.Client whose connections are governed by the policy.
 func (p *Policy) HTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		// Proxy is deliberately nil: with http.ProxyFromEnvironment a stray
+		// HTTPS_PROXY env var would route every dial through the proxy address,
+		// and our DialContext allowlist would only see "proxy_host:proxy_port",
+		// not the real destination. A node that needs to traverse a forward
+		// proxy should allowlist + dial it explicitly via a sink-specific URL,
+		// not via process env vars.
+		Proxy:                 nil,
 		DialContext:           p.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,
@@ -160,7 +166,13 @@ func DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 // installed — order-independent.
 func HTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		// Proxy is deliberately nil: with http.ProxyFromEnvironment a stray
+		// HTTPS_PROXY env var would route every dial through the proxy address,
+		// and our DialContext allowlist would only see "proxy_host:proxy_port",
+		// not the real destination. A node that needs to traverse a forward
+		// proxy should allowlist + dial it explicitly via a sink-specific URL,
+		// not via process env vars.
+		Proxy:                 nil,
 		DialContext:           DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,

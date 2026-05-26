@@ -90,3 +90,32 @@ func TestRateLimit(t *testing.T) {
 		t.Error("refilled token not admitted")
 	}
 }
+
+// TestMaxSensorsCapped guards M2: a peer spraying spoofed sensor_ids must not
+// be able to grow the scorer's per-sensor map without bound. Once the cap is
+// reached and there are no idle slots to evict, a brand-new sensor is refused.
+func TestMaxSensorsCapped(t *testing.T) {
+	s := New(Config{Enabled: true, MaxSensors: 4, Window: time.Minute, MinEvents: 1})
+	now := time.Unix(1_700_000_000, 0)
+	s.now = func() time.Time { return now }
+	for _, sid := range []string{"a", "b", "c", "d"} {
+		if !s.Admit(sid) {
+			t.Fatalf("first %d sensors should be admitted; %q refused", 4, sid)
+		}
+		s.Observe(sid, Accepted)
+	}
+	// All four slots are active (within Window) — a 5th distinct id must be
+	// refused rather than grow the map.
+	if s.Admit("e") {
+		t.Error("5th sensor admitted past MaxSensors=4 with all slots active")
+	}
+	if got := len(s.sensors); got != 4 {
+		t.Errorf("sensors len = %d after refused admit; want 4", got)
+	}
+	// Roll time past 2*Window so the existing slots are idle and eligible for
+	// eviction; the 5th sensor now fits.
+	now = now.Add(3 * time.Minute)
+	if !s.Admit("e") {
+		t.Error("5th sensor refused even after idle eviction window")
+	}
+}

@@ -68,9 +68,24 @@ func (p *Pusher) Run(ctx context.Context) {
 }
 
 func (p *Pusher) once(ctx context.Context) {
+	// Snapshot the current IOC set once: src() prunes + re-allocates each call,
+	// so we want a single view both for delta computation AND for pruning the
+	// pushed-set. Without the prune, pushed[] grows monotonically as IOCs age
+	// out of the intel store, leaking memory in long-running aggregators.
+	iocs := p.src()
+	cur := make(map[string]struct{}, len(iocs))
+	for _, ioc := range iocs {
+		cur[ioc.Kind+"|"+ioc.Value] = struct{}{}
+	}
+	for k := range p.pushed {
+		if _, ok := cur[k]; !ok {
+			delete(p.pushed, k)
+		}
+	}
+
 	var attrs []map[string]any
 	var keys []string
-	for _, ioc := range p.src() {
+	for _, ioc := range iocs {
 		key := ioc.Kind + "|" + ioc.Value
 		if _, seen := p.pushed[key]; seen {
 			continue

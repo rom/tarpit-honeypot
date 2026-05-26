@@ -23,13 +23,38 @@
 //   network, sankey, timeline, sourcemap, sessionreplay, creds.
 window.TarpitCharts = (function () {
   var NS = "http://www.w3.org/2000/svg";
+  // Read palette / ramp / severity colors from CSS variables on <html> so the
+  // active theme drives them. theme.js runs synchronously before this script,
+  // so the theme class and its overrides are already in effect.
+  function cssvar(name, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name);
+      v = v && v.trim();
+      return v || fallback;
+    } catch (e) { return fallback; }
+  }
   // Categorical palette (color-blind-friendly-ish, dark enough on white).
-  var PALETTE = ["#4a6fa5", "#b35900", "#2a9d4a", "#9c4f96", "#c0506a",
-    "#1a8f9c", "#b08a00", "#6a6f7a", "#7a5cc0", "#3a7d3a"];
+  var PALETTE = [
+    cssvar("--palette-1", "#4a6fa5"), cssvar("--palette-2", "#b35900"),
+    cssvar("--palette-3", "#2a9d4a"), cssvar("--palette-4", "#9c4f96"),
+    cssvar("--palette-5", "#c0506a"), cssvar("--palette-6", "#1a8f9c"),
+    cssvar("--palette-7", "#b08a00"), cssvar("--palette-8", "#6a6f7a"),
+    cssvar("--palette-9", "#7a5cc0"), cssvar("--palette-10", "#3a7d3a")
+  ];
   // Sequential ramp for heatmaps (low -> high).
-  var RAMP = ["#f7fbff", "#dbe9f6", "#b3d3ea", "#7fb0d6", "#4a86bd",
-    "#2a5f9e", "#143e7a"];
-  var SEV = { low: "#6b8fb5", medium: "#d59a3a", high: "#c0506a", critical: "#b00020" };
+  var RAMP = [
+    cssvar("--ramp-0", "#f7fbff"), cssvar("--ramp-1", "#dbe9f6"),
+    cssvar("--ramp-2", "#b3d3ea"), cssvar("--ramp-3", "#7fb0d6"),
+    cssvar("--ramp-4", "#4a86bd"), cssvar("--ramp-5", "#2a5f9e"),
+    cssvar("--ramp-6", "#143e7a")
+  ];
+  var SEV = {
+    low:      cssvar("--bar-default",  "#6b8fb5"),
+    medium:   cssvar("--bar-medium",   "#d59a3a"),
+    high:     cssvar("--bar-high",     "#c0506a"),
+    critical: cssvar("--bar-critical", "#b00020")
+  };
+  var HEATMAP_ZERO = cssvar("--heatmap-zero", "#f4f6f9");
 
   function el(tag, attrs, kids) {
     var e = document.createElementNS(NS, tag);
@@ -250,7 +275,7 @@ window.TarpitCharts = (function () {
     rows.forEach(function (rlab, i) {
       root.appendChild(text(P.l - 6, P.t + i * ch + ch * 0.65, rlab, "tc-ax", { "text-anchor": "end" }));
       (cells[i] || []).forEach(function (v, j) {
-        var t = max ? num(v) / max : 0, fillc = num(v) === 0 ? "#f4f6f9" : RAMP[Math.min(RAMP.length - 1, Math.floor(t * (RAMP.length - 1) + 0.001))];
+        var t = max ? num(v) / max : 0, fillc = num(v) === 0 ? HEATMAP_ZERO : RAMP[Math.min(RAMP.length - 1, Math.floor(t * (RAMP.length - 1) + 0.001))];
         var r = el("rect", { x: P.l + j * cw, y: P.t + i * ch, width: cw - 1.5, height: ch - 1.5, fill: fillc, class: "tc-cell" });
         title(r, rlab + " · " + (cols[j] || "") + ": " + fmt(v) + (d.unit ? " " + d.unit : "")); root.appendChild(r);
         if (num(v) > 0 && cw >= 30) root.appendChild(text(P.l + j * cw + cw / 2 - 0.75, P.t + i * ch + ch * 0.62, fmt(v), t > 0.6 ? "tc-cellv hi" : "tc-cellv", { "text-anchor": "middle" }));
@@ -362,7 +387,7 @@ window.TarpitCharts = (function () {
     function proj(lat, lon) { return { x: P.l + iw * (num(lon) + 180) / 360, y: P.t + ih * (90 - num(lat)) / 180 }; }
     pts.forEach(function (p) {
       var xy = proj(p.lat, p.lon), r = 3 + 11 * Math.sqrt(num(p.count) / max);
-      root.appendChild(title(el("circle", { cx: xy.x, cy: xy.y, r: r, class: "tc-src", fill: p.sev ? SEV[p.sev] : "#c0506a", "fill-opacity": 0.55, stroke: "#8a1020" }), (p.label ? p.label + " · " : "") + fmt(p.count)));
+      root.appendChild(title(el("circle", { cx: xy.x, cy: xy.y, r: r, class: "tc-src", fill: p.sev ? SEV[p.sev] : SEV.high, "fill-opacity": 0.55, stroke: SEV.critical }), (p.label ? p.label + " · " : "") + fmt(p.count)));
     });
     return root;
   };

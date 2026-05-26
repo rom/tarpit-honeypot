@@ -121,3 +121,72 @@ func TestFeedMaps(t *testing.T) {
 		t.Errorf("Maps() = %v / %v / %v", ips, asns, fps)
 	}
 }
+
+// TestStoreCapEvictsOldest guards L1: when a per-set cap is reached, the entry
+// with the earliest expiry is evicted to make room. Without LRU-by-TTL, a
+// one-time flood of novel indicators would lock out everything that arrives
+// later (refuse-when-full).
+func TestStoreCapEvictsOldest(t *testing.T) {
+	s := NewStore(time.Hour, 3) // tiny cap to trigger eviction quickly
+	now := time.Unix(1_700_000_000, 0)
+	s.now = func() time.Time { return now }
+
+	mk := func(ip string) *event.Event {
+		return &event.Event{RuleID: "fleet:source-multi-sensor", Source: event.Endpoint{IP: ip}}
+	}
+	s.Observe(mk("1.1.1.1"))
+	now = now.Add(time.Minute)
+	s.Observe(mk("2.2.2.2"))
+	now = now.Add(time.Minute)
+	s.Observe(mk("3.3.3.3"))
+	// Cap reached: a 4th distinct IP should evict the oldest (1.1.1.1).
+	now = now.Add(time.Minute)
+	s.Observe(mk("4.4.4.4"))
+
+	snap := s.Snapshot()
+	ips, _, _ := snap.Maps()
+	if _, present := ips["1.1.1.1"]; present {
+		t.Error("oldest IP not evicted after cap")
+	}
+	for _, want := range []string{"2.2.2.2", "3.3.3.3", "4.4.4.4"} {
+		if _, ok := ips[want]; !ok {
+			t.Errorf("expected %s in snapshot, got %v", want, ips)
+		}
+	}
+}
+
+// TestClampFeed guards L11: a child must not be induced to track unbounded
+// indicator sets, even if an aggregator's snapshot exceeds the per-set ceiling.
+func TestClampFeed(t *testing.T) {
+	mk := func(n int) []Item {
+		out := make([]Item, n)
+		for i := range out {
+			out[i] = Item{Value: "v"}
+		}
+		return out
+	}
+	f := &Feed{
+		IPs:          mk(maxFeedPerSet + 100),
+		ASNs:         mk(maxFeedPerSet - 1),
+		Fingerprints: mk(maxFeedPerSet * 3),
+	}
+	clampFeed(f)
+	if len(f.IPs) != maxFeedPerSet {
+		t.Errorf("IPs not clamped: %d", len(f.IPs))
+	}
+	if len(f.ASNs) != maxFeedPerSet-1 {
+		t.Errorf("ASNs under cap should be untouched: %d", len(f.ASNs))
+	}
+	if len(f.Fingerprints) != maxFeedPerSet {
+		t.Errorf("Fingerprints not clamped: %d", len(f.Fingerprints))
+	}
+}
+
+// TestNewPullerDefaultsNilClient guards L9: a nil client must not slip through
+// into an unconstrained dial; the constructor falls back to the egress one.
+func TestNewPullerDefaultsNilClient(t *testing.T) {
+	p := NewPuller("https://x/intel", "tok", 0, nil, func(*Feed) {})
+	if p.client == nil {
+		t.Error("nil client should be replaced with the egress-allowlisted default")
+	}
+}
