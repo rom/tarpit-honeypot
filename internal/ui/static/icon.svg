@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="tarpit-honeypot">
+  <title>tarpit-honeypot</title>
+  <!-- Honeycomb cell — honey-amber rim around a lighter cell -->
+  <polygon points="32,3 58,17 58,47 32,61 6,47 6,17"
+           fill="#fbe5a3" stroke="#d59a3a" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Tar drop — point at top, rounded at the bottom -->
+  <path d="M32 13 C25 25 21 33 21 40 a11 11 0 0 0 22 0 C43 33 39 25 32 13 Z"
+        fill="#1a1d23"/>
+  <!-- Subtle highlight on the drop -->
+  <ellipse cx="27" cy="38" rx="2.6" ry="4" fill="#3a3e4a" opacity="0.55"/>
+</svg>

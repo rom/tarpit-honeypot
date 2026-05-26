@@ -25,3 +25,17 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
 }
+
+// handleFavicon serves /favicon.ico (the browser default request path) from
+// the same embedded static FS, so old / non-SVG browsers find an icon without
+// the page having to advertise it.
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	data, err := staticFS.ReadFile("static/favicon.ico")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
+}

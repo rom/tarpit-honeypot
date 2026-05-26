@@ -128,3 +128,107 @@ func TestThemePickerLinks(t *testing.T) {
 		t.Errorf("active count = %d; want 1", activeCount)
 	}
 }
+
+func TestHandleSizeSetsCookieAndRedirects(t *testing.T) {
+	s := &Server{}
+	for _, id := range []string{"small", "large", "xlarge", "xxlarge"} {
+		req := httptest.NewRequest(http.MethodGet, "/size?s="+id+"&back=/events", nil)
+		w := httptest.NewRecorder()
+		s.handleSize(w, req)
+		if w.Code != http.StatusSeeOther {
+			t.Errorf("size=%s: status = %d; want 303", id, w.Code)
+		}
+		sc := w.Header().Get("Set-Cookie")
+		if !strings.Contains(sc, sizeCookieName+"="+id) {
+			t.Errorf("size=%s: Set-Cookie = %q; want %s=%s", id, sc, sizeCookieName, id)
+		}
+		if !strings.Contains(sc, "SameSite=Lax") {
+			t.Errorf("size=%s: missing SameSite=Lax: %q", id, sc)
+		}
+	}
+}
+
+func TestHandleSizeRejectsUnknown(t *testing.T) {
+	s := &Server{}
+	for _, id := range []string{"", "huge", "; evil", "DEFAULT", "../etc"} {
+		req := httptest.NewRequest(http.MethodGet, "/size?s="+url.QueryEscape(id), nil)
+		w := httptest.NewRecorder()
+		s.handleSize(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("size=%q: status = %d; want 400", id, w.Code)
+		}
+		if w.Header().Get("Set-Cookie") != "" {
+			t.Errorf("size=%q: unknown size should not set a cookie", id)
+		}
+	}
+}
+
+func TestHandleSizeNormalClearsCookie(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/size?s=normal&back=/", nil)
+	w := httptest.NewRecorder()
+	s.handleSize(w, req)
+	sc := w.Header().Get("Set-Cookie")
+	if !strings.Contains(sc, sizeCookieName+"=;") && !strings.Contains(sc, "Max-Age=0") {
+		t.Errorf("normal size should clear the cookie; got %q", sc)
+	}
+}
+
+func TestCurrentSize(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	if got := currentSize(r); got != "normal" {
+		t.Errorf("no cookie -> normal; got %q", got)
+	}
+	r.AddCookie(&http.Cookie{Name: sizeCookieName, Value: "large"})
+	if got := currentSize(r); got != "large" {
+		t.Errorf("large cookie -> large; got %q", got)
+	}
+	r2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	r2.AddCookie(&http.Cookie{Name: sizeCookieName, Value: "evil"})
+	if got := currentSize(r2); got != "normal" {
+		t.Errorf("unknown cookie -> normal; got %q", got)
+	}
+}
+
+func TestHandleFavicon(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	w := httptest.NewRecorder()
+	s.handleFavicon(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "image/x-icon" {
+		t.Errorf("Content-Type = %q; want image/x-icon", got)
+	}
+	body := w.Body.Bytes()
+	if len(body) < 100 {
+		t.Errorf("body too small: %d bytes", len(body))
+	}
+	// ICO magic: 00 00 01 00 (reserved + type=1)
+	if len(body) < 4 || body[0] != 0 || body[1] != 0 || body[2] != 1 || body[3] != 0 {
+		t.Errorf("bad ICO magic: % x", body[:4])
+	}
+}
+
+func TestSizePickerLinks(t *testing.T) {
+	links := sizePickerLinks("large", "/config")
+	if len(links) != len(sizes) {
+		t.Fatalf("links = %d; want %d", len(links), len(sizes))
+	}
+	active := 0
+	for _, l := range links {
+		if l.Active {
+			active++
+			if l.ID != "large" {
+				t.Errorf("wrong active size: %q", l.ID)
+			}
+		}
+		if !strings.HasPrefix(l.Href, "/size?s="+l.ID+"&back=/config") {
+			t.Errorf("link %q has bad href: %q", l.ID, l.Href)
+		}
+	}
+	if active != 1 {
+		t.Errorf("active count = %d; want 1", active)
+	}
+}
