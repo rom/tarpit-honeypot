@@ -245,6 +245,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/docs/", s.handleDoc)
 	mux.HandleFunc("/theme", s.handleTheme)
+	mux.HandleFunc("/size", s.handleSize)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
 	mux.HandleFunc("/api/profiles", s.handleAPIProfiles)
 	mux.HandleFunc("/api/profiles/", s.handleAPIProfile)
@@ -641,6 +642,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Canvas: buildConfigCanvas(s.fullConfig),
 		Files:  s.configFileRows(),
 		Themes: themePickerLinks(currentTheme(r), "/config"),
+		Sizes:  sizePickerLinks(currentSize(r), "/config"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
@@ -680,6 +682,7 @@ type configPage struct {
 	Canvas configCanvas
 	Files  []fileRow
 	Themes []themeLink
+	Sizes  []sizeLink
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,
