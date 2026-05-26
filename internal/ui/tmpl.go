@@ -1033,16 +1033,17 @@ JSON at <a href="/api/config/canvas">/api/config/canvas</a>.</p>
 {{ end }}
 
 {{ if .Canvas.Interfaces }}
-<h2>network interfaces</h2>
+<h2>network interfaces &amp; active addresses</h2>
 <p class="note">The host's network interfaces and their addresses, cross-referenced
 against <code>sensor.interfaces</code> (the sniffer / responder pin set) and the
-listener bind addresses. A <span class="tag">pinned</span> tag marks interfaces
-explicitly enumerated in <code>sensor.interfaces</code>;
-<span class="tag">N tcp</span> / <span class="tag">N udp</span> count listener
-ports that land on the interface (including any wildcard <code>0.0.0.0</code> /
-<code>[::]</code> binds, which apply to every up interface).</p>
+listener bind addresses. <span class="tag">pinned</span> marks interfaces
+explicitly enumerated in <code>sensor.interfaces</code>; the "active bindings"
+column lists every <code>proto:port → handler</code> tuple that lands on the
+interface — including wildcard <code>0.0.0.0</code> / <code>[::]</code> binds,
+which appear on every up interface and are flagged with a
+<span class="proto" style="background:var(--proto-default)">*</span> badge.</p>
 <table>
-  <tr><th>name</th><th>state</th><th>addresses</th><th>MAC</th><th>MTU</th><th>sensor</th></tr>
+  <tr><th>name</th><th>state</th><th>addresses</th><th>MAC</th><th>MTU</th><th>sensor</th><th>active bindings</th></tr>
   {{ range .Canvas.Interfaces }}<tr>
     <td><code>{{ .Name }}</code>{{ if .Loopback }} <span class="tag">loopback</span>{{ end }}</td>
     <td>{{ if .Up }}<span class="coll on">up</span>{{ else }}<span class="coll off">down</span>{{ end }}</td>
@@ -1057,6 +1058,9 @@ ports that land on the interface (including any wildcard <code>0.0.0.0</code> /
       {{ if .Pinned }}<span class="tag">pinned</span>{{ end }}
       {{ if .BoundTCP }}<span class="tag">{{ .BoundTCP }} tcp</span>{{ end }}
       {{ if .BoundUDP }}<span class="tag">{{ .BoundUDP }} udp</span>{{ end }}
+    </td>
+    <td>
+      {{ if .Binds }}{{ range .Binds }}<span class="ctag"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>&nbsp;{{ .Port }}{{ if .Handler }} <span class="coll-detail">{{ .Handler }}</span>{{ end }}{{ if .Wildcard }} <span class="proto" style="background:var(--proto-default)" title="wildcard 0.0.0.0 / [::] bind — present on every up interface">*</span>{{ end }}</span>{{ end }}{{ else }}<span class="note">—</span>{{ end }}
     </td>
   </tr>{{ end }}
 </table>
