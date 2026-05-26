@@ -455,6 +455,14 @@ figure.widget-hidden { padding-bottom: .35rem; }
 figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden .tc-replay, figure.widget-hidden table, figure.widget-hidden .note, figure.widget-hidden p { display: none; }
 .help { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; font-size: 0.714rem; font-weight: 700; color: #fff; background: var(--help-badge-bg); border-radius: 50%; cursor: help; vertical-align: middle; }
 .help:hover, .help:focus { background: var(--help-badge-hover-bg); outline: none; }
+/* Config-page YAML search */
+.config-search { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .3rem 0 .5rem; }
+.config-search input[type=text] { flex: 1 1 16rem; min-width: 12rem; max-width: 30rem; }
+.config-search button { font: inherit; padding: .2rem .65rem; background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent); border-radius: 3px; cursor: pointer; }
+.config-search-toggle { font-size: 0.857rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: .25rem; }
+.config-search-clear { color: var(--text-muted); font-size: 0.857rem; text-decoration: none; }
+.config-search-clear:hover { color: var(--link); text-decoration: underline; }
+.config-yaml mark { background: var(--warning-bg); color: var(--warning-fg); padding: 0 .12rem; border-radius: 2px; font-weight: 600; }
 /* Theme picker (config page) */
 .theme-picker { display: flex; flex-wrap: wrap; gap: .4rem; margin: .3rem 0 1rem; }
 .theme-picker a.themelink { display: inline-block; padding: .25rem .65rem; border-radius: 4px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text); text-decoration: none; font-size: 0.93rem; }
@@ -1087,7 +1095,14 @@ not present on disk. Same data via <code>tarpit-honeypot list-paths</code>.</p>
 <p class="note">Post-defaults config the sensor is running with. Secrets are shown
 as their environment-variable names (<code>*_env</code>), never expanded values,
 so this is safe to copy into a ticket. Raw YAML also at <a href="/api/config">/api/config</a>.</p>
-<div class="kv">{{ .YAML }}</div>
+<form class="config-search" method="get" action="/config" role="search">
+  <input id="config-q" type="text" name="q" value="{{ .Query }}" placeholder="search the YAML (case-insensitive)" autocomplete="off" spellcheck="false">
+  <label class="config-search-toggle"><input type="checkbox" name="lines" value="only"{{ if .LinesOnly }} checked{{ end }}> matching lines only</label>
+  <button type="submit">filter</button>
+  {{ if .Query }}<a href="/config" class="config-search-clear">clear</a>{{ end }}
+</form>
+{{ if .Query }}<p class="note">{{ if .MatchCount }}<b>{{ .MatchCount }}</b> match{{ if ne .MatchCount 1 }}es{{ end }} for <code>{{ .Query }}</code>{{ if .LinesOnly }} · showing matching lines only{{ end }}.{{ else }}No matches for <code>{{ .Query }}</code>.{{ end }}</p>{{ end }}
+<div class="kv config-yaml"{{ if .Query }} data-q="{{ .Query }}"{{ end }}>{{ if .YAMLHTML }}{{ .YAMLHTML }}{{ else }}{{ .YAML }}{{ end }}</div>
 {{ template "foot" . }}{{ end }}
 
 {{ define "topology" }}{{ template "head" . }}

@@ -255,3 +255,53 @@
     });
   });
 })();
+
+// Config-page YAML search — live (type-as-you-go) over the already-rendered
+// body. The no-JS path still works via the GET form: when this script runs
+// it captures the original YAML text and re-renders the box on every input
+// event, so the user sees matches highlighted without a full page reload.
+(function () {
+  var input = document.getElementById("config-q");
+  var box = document.querySelector(".config-yaml");
+  if (!input || !box) return;
+  var linesOnly = document.querySelector(".config-search-toggle input");
+
+  // Snapshot the YAML once as plain text so we can re-render cleanly after
+  // any prior filter pass (otherwise we'd inherit our own <mark> tags).
+  var raw = box.textContent;
+
+  function esc(s) {
+    return s.replace(/[&<>"']/g, function (c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+    });
+  }
+
+  function render() {
+    var q = input.value;
+    if (!q) { box.innerHTML = esc(raw); return; }
+    var needle = q.toLowerCase();
+    var only = !!(linesOnly && linesOnly.checked);
+    var out = [];
+    var lines = raw.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var low = line.toLowerCase();
+      var pos = low.indexOf(needle);
+      if (pos < 0) { if (!only) out.push(esc(line)); continue; }
+      var cursor = 0, buf = "";
+      while (pos >= 0) {
+        buf += esc(line.slice(cursor, pos));
+        buf += "<mark>" + esc(line.slice(pos, pos + q.length)) + "</mark>";
+        cursor = pos + q.length;
+        if (cursor >= line.length) break;
+        pos = low.indexOf(needle, cursor);
+      }
+      if (cursor < line.length) buf += esc(line.slice(cursor));
+      out.push(buf);
+    }
+    box.innerHTML = out.join("\n");
+  }
+
+  input.addEventListener("input", render);
+  if (linesOnly) linesOnly.addEventListener("change", render);
+})();

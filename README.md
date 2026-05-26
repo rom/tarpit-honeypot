@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/logo.svg" alt="tarpit-honeypot" height="56">
+</p>
+
 # tarpit-honeypot
 
 A single static Go binary that runs a deception **and** detection sensor:
