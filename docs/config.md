@@ -175,12 +175,20 @@ listeners:
     https:                              # only for handler: https
       hosts: ["honeypot.local"]
     tarpit:                             # only for mode: tarpit
-      strategy: sticky                  # sticky | trickle | keepalive
+      strategy: sticky                  # sticky | trickle | keepalive | jitter |
+                                          #   backoff | ssh_banner | http_headers |
+                                          #   http_chunked | echo | babble
       max_per_source: 4
       max_total: 256
       emulate: false                    # run handler: first (banner+capture), then tarpit
       trickle:    { text: "Loading...\n", byte_interval: 2s }
       keepalive:  { interval: 30s }
+      jitter:     { text: "Loading...\n", min_interval: 500ms, max_interval: 5s }
+      backoff:    { text: "Loading...\n", start: 500ms, max: 60s, factor: 2 }
+      ssh_banner: { line_interval: 2s, max_line_bytes: 32 }
+      http:       { status_line: "HTTP/1.1 200 OK", header_interval: 2s, chunk_interval: 2s, chunk_text: "." }
+      echo:       { byte_interval: 1s }
+      babble:     { byte_interval: 2s }
 ```
 
 ### Listener modes

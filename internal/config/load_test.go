@@ -87,3 +87,51 @@ func TestValidateTarpitStrategies(t *testing.T) {
 		t.Error("jitter max < min should be rejected")
 	}
 }
+
+func TestValidateTarpitStrategies(t *testing.T) {
+	mk := func(mut func(*Listener)) *Config {
+		l := Listener{
+			ID:    "tp",
+			Proto: "tcp",
+			Bind:  "0.0.0.0:9",
+			Mode:  "tarpit",
+		}
+		mut(&l)
+		c := &Config{Listeners: []Listener{l}}
+		c.applyDefaults()
+		return c
+	}
+
+	accepted := []string{
+		"sticky", "trickle", "keepalive", "jitter", "backoff",
+		"ssh_banner", "http_headers", "http_chunked", "echo", "babble",
+	}
+	for _, s := range accepted {
+		c := mk(func(l *Listener) {
+			l.Tarpit.Strategy = s
+			if s == "trickle" {
+				l.Tarpit.Trickle.Text = "x"
+			}
+		})
+		if err := c.Validate(); err != nil {
+			t.Errorf("strategy %q should validate, got: %v", s, err)
+		}
+	}
+
+	if err := mk(func(l *Listener) { l.Tarpit.Strategy = "bogus" }).Validate(); err == nil {
+		t.Error("unknown strategy should be rejected")
+	}
+	if err := mk(func(l *Listener) {
+		l.Tarpit.Strategy = "backoff"
+		l.Tarpit.Backoff.Factor = 0.5
+	}).Validate(); err == nil {
+		t.Error("backoff factor < 1 should be rejected")
+	}
+	if err := mk(func(l *Listener) {
+		l.Tarpit.Strategy = "jitter"
+		l.Tarpit.Jitter.MinInterval = 5 * time.Second
+		l.Tarpit.Jitter.MaxInterval = 1 * time.Second
+	}).Validate(); err == nil {
+		t.Error("jitter max < min should be rejected")
+	}
+}
