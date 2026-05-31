@@ -280,8 +280,15 @@ result with `tarpit-honeypot show-config`. See
 | `sticky` | Hold forever, no read/write. Kernel TCP keepalive notices dead peers. | Punish persistent scanners cheaply. |
 | `trickle` | Write 1 byte of `trickle.text` every `byte_interval`, cycling. | Make banner-grabbers wait for content. |
 | `keepalive` | Write a NUL byte every `keepalive.interval`. | Cheapest persistent presence; minimal bandwidth. |
+| `jitter` | Trickle one byte at a random interval in `[jitter.min_interval, jitter.max_interval]`. | Defeat scanners that fingerprint or time out on trickle's regular cadence. |
+| `backoff` | Trickle whose interval starts at `backoff.start`, ×`backoff.factor` each byte, capped at `backoff.max`. | Feel responsive at first so the scanner commits, then degrade. |
+| `ssh_banner` | endlessh-style: drip endless random SSH preamble lines (never the real `SSH-…` identification), one per `ssh_banner.line_interval`. | Hang SSH clients/scanners indefinitely. Pairs well with `emulate`. |
+| `http_headers` | Send a status line then endless `X-…` response headers, never the terminating blank line. | Hang HTTP clients waiting for headers/body to finish (reverse Slowloris). |
+| `http_chunked` | Complete the head with `Transfer-Encoding: chunked`, then emit one-byte chunks forever (no terminating chunk). | Make a client believe a large body is still streaming. |
+| `echo` | Read attacker input and dribble it back one byte per `echo.byte_interval`. | Keep an interactive client engaged; capture more of what they type. |
+| `babble` | Trickle endless generated printable text (not a fixed string). | Keep content-grabbers reading; pollute their capture with junk. |
 
-All three modes emit `*:tarpit_start` (configured severity) on slot acquire, `*:tarpit_end` (low severity, `duration_ms` in meta) on connection close, and `*:tarpit_drop` when per-source or total caps are hit.
+All modes emit `*:tarpit_start` (configured severity) on slot acquire, `*:tarpit_end` (low severity, `duration_ms` in meta) on connection close, and `*:tarpit_drop` when per-source or total caps are hit.
 
 **`tarpit.emulate: true`** runs the listener's `handler:` to completion first — sending the real protocol banner and capturing the attacker's request — and *then* applies the tarpit strategy on the same connection. The captured banner/request appears in the `tarpit_start` event (`tarpit_emulated_handler` in meta). Use it to make a tarpit look like a live service instead of a black hole.
 

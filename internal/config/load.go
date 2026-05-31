@@ -203,6 +203,39 @@ func (c *Config) applyDefaults() {
 			if t.Keepalive.Interval == 0 {
 				t.Keepalive.Interval = 30 * time.Second
 			}
+			if t.Jitter.MinInterval == 0 {
+				t.Jitter.MinInterval = 500 * time.Millisecond
+			}
+			if t.Jitter.MaxInterval == 0 {
+				t.Jitter.MaxInterval = 5 * time.Second
+			}
+			if t.Backoff.Start == 0 {
+				t.Backoff.Start = 500 * time.Millisecond
+			}
+			if t.Backoff.Max == 0 {
+				t.Backoff.Max = 60 * time.Second
+			}
+			if t.Backoff.Factor == 0 {
+				t.Backoff.Factor = 2
+			}
+			if t.SSHBanner.LineInterval == 0 {
+				t.SSHBanner.LineInterval = 2 * time.Second
+			}
+			if t.SSHBanner.MaxLineBytes == 0 {
+				t.SSHBanner.MaxLineBytes = 32
+			}
+			if t.HTTP.HeaderInterval == 0 {
+				t.HTTP.HeaderInterval = 2 * time.Second
+			}
+			if t.HTTP.ChunkInterval == 0 {
+				t.HTTP.ChunkInterval = 2 * time.Second
+			}
+			if t.Echo.ByteInterval == 0 {
+				t.Echo.ByteInterval = 1 * time.Second
+			}
+			if t.Babble.ByteInterval == 0 {
+				t.Babble.ByteInterval = 2 * time.Second
+			}
 		}
 	}
 	for i := range c.Canaries {
@@ -856,12 +889,21 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("listener %s: tarpit is tcp-only", l.ID)
 			}
 			switch l.Tarpit.Strategy {
-			case "sticky", "trickle", "keepalive":
+			case "sticky", "trickle", "keepalive",
+				"jitter", "backoff", "ssh_banner",
+				"http_headers", "http_chunked", "echo", "babble":
 			default:
 				return fmt.Errorf("listener %s: unknown tarpit strategy %q", l.ID, l.Tarpit.Strategy)
 			}
 			if l.Tarpit.Strategy == "trickle" && l.Tarpit.Trickle.Text == "" {
 				return fmt.Errorf("listener %s: trickle strategy requires tarpit.trickle.text", l.ID)
+			}
+			if l.Tarpit.Strategy == "backoff" && l.Tarpit.Backoff.Factor != 0 && l.Tarpit.Backoff.Factor < 1 {
+				return fmt.Errorf("listener %s: backoff strategy requires tarpit.backoff.factor >= 1", l.ID)
+			}
+			if l.Tarpit.Strategy == "jitter" && l.Tarpit.Jitter.MinInterval != 0 && l.Tarpit.Jitter.MaxInterval != 0 &&
+				l.Tarpit.Jitter.MaxInterval < l.Tarpit.Jitter.MinInterval {
+				return fmt.Errorf("listener %s: jitter strategy requires tarpit.jitter.max_interval >= min_interval", l.ID)
 			}
 		}
 		if _, err := event.ParseSeverity(l.Severity); err != nil {
