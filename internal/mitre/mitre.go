@@ -715,6 +715,45 @@ var anomalyTags = map[string]Tag{
 	"ip-fragmented":      {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 }
 
+// luaMarkerTag classifies a Lua-emulation flag (the part after "lua:") by the
+// action its suffix names, so the 80+ dynamic service scripts contribute ATT&CK
+// coverage uniformly. Checked most-severe first; falls back to a generic
+// application-probe recon tag.
+func luaMarkerTag(m string) Tag {
+	switch {
+	case strings.Contains(m, "rce") || strings.Contains(m, "code-injection") ||
+		strings.Contains(m, "command-exec") || strings.Contains(m, "cmd-exec"):
+		return Tag{Techniques: []string{"T1190", "T1059"}, Tactics: []string{"initial-access", "execution"}}
+	case strings.Contains(m, "setup-token-abuse") || strings.Contains(m, "setup-bypass") ||
+		strings.Contains(m, "auth-bypass") || strings.Contains(m, "config-push"):
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
+	case strings.Contains(m, "path-traversal"):
+		return Tag{Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}}
+	case strings.Contains(m, "ssrf"):
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
+	case strings.Contains(m, "sqli"):
+		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
+	case strings.Contains(m, "token") || strings.Contains(m, "session-replay"):
+		// A presented/replayed API token or session — use of (possibly stolen)
+		// valid credentials.
+		return Tag{Techniques: []string{"T1078", "T1528"}, Tactics: []string{"defense-evasion", "credential-access"}}
+	case strings.Contains(m, "login-attempt") || strings.Contains(m, "auth-attempt") ||
+		strings.Contains(m, "credential"):
+		return Tag{Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}}
+	case strings.Contains(m, "inference-abuse") || strings.Contains(m, "model-transfer"):
+		// Abuse of an exposed AI/compute service.
+		return Tag{Techniques: []string{"T1496"}, Tactics: []string{"impact"}}
+	case strings.Contains(m, "flow-deploy"):
+		return Tag{Techniques: []string{"T1059"}, Tactics: []string{"execution"}}
+	case strings.Contains(m, "enum") || strings.Contains(m, "recon") ||
+		strings.Contains(m, "probe") || strings.Contains(m, "unauth-access") ||
+		strings.Contains(m, "resource-access") || strings.Contains(m, "model-enum"):
+		return Tag{Techniques: []string{"T1046"}, Tactics: []string{"discovery"}}
+	}
+	// Any other lua marker is at least an application probe.
+	return Tag{Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}}
+}
+
 // AnomalyTag returns the ATT&CK Tag implied by a single anomaly marker.
 // Exact matches win; otherwise a few marker-prefix families map by class.
 func AnomalyTag(a string) Tag {
@@ -731,6 +770,11 @@ func AnomalyTag(a string) Tag {
 		// Any web-attack-class marker without an explicit entry above is at
 		// least an exploit attempt against the public-facing app.
 		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
+	case strings.HasPrefix(a, "lua:"):
+		// Markers raised by the dynamic Lua service emulations. Classify by the
+		// action the suffix describes so an operator's custom service still
+		// contributes ATT&CK coverage without a per-marker entry.
+		return luaMarkerTag(strings.TrimPrefix(a, "lua:"))
 	case strings.HasPrefix(a, "shell-"):
 		// Any interactive-shell TTP marker without an explicit entry above
 		// is at least command execution by an engaged attacker.
@@ -760,6 +804,7 @@ func AnomalyTag(a string) Tag {
 var techDescriptions = map[string]string{
 	// Reconnaissance / discovery.
 	"T1595": "Active Scanning — probing the target's infrastructure for live hosts, ports, and weaknesses.",
+	"T1592": "Gather Victim Host Information — collecting software/version/config detail about an exposed service.",
 	"T1590": "Gather Victim Network Information — collecting details about the target's network topology.",
 	"T1018": "Remote System Discovery — enumerating other hosts on the network (by IP, ARP, name).",
 	"T1046": "Network Service Discovery — port/service scanning to find listening services.",
@@ -941,6 +986,7 @@ func TacticRank(t string) int {
 // pair with it.
 var d3fend = map[string][]string{
 	"T1595": {"D3-NTA", "D3-DNR", "D3-CAA"},         // active scanning
+	"T1592": {"D3-NTA", "D3-DNR"},                   // gather victim host information
 	"T1046": {"D3-NTA", "D3-DNR", "D3-CAA"},         // network service discovery
 	"T1018": {"D3-DNR"},                             // remote system discovery
 	"T1083": {"D3-DF", "D3-DO"},                     // file & directory discovery
