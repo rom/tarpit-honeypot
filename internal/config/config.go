@@ -1176,6 +1176,8 @@ type Correlate struct {
 	DefaultCredSweep   CorrDefaultCredSweep   `yaml:"default_cred_sweep"`
 	CVECampaign        CorrCVECampaign        `yaml:"cve_campaign"`
 	DestructiveAction  CorrDestructiveAction  `yaml:"destructive_action"`
+	CloudCredTheft     CorrCloudCredTheft     `yaml:"cloud_cred_theft"`
+	SSRFCallback       CorrSSRFCallback       `yaml:"ssrf_callback"`
 	HoneytokenSpread   CorrHoneytokenSpread   `yaml:"honeytoken_spread"`
 	ToolRotation       CorrToolRotation       `yaml:"tool_rotation"`
 	PLCProgramDownload CorrPLCProgramDownload `yaml:"plc_program_download"`
@@ -1312,6 +1314,27 @@ type CorrCVECampaign struct {
 // filesystem format, an FTP delete) within a window — a hands-on-keyboard
 // impact action that warrants immediate escalation.
 type CorrDestructiveAction struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrCloudCredTheft fires when one source triggers several cloud
+// credential-theft markers within a window — IMDS / etcd secret reads, cloud
+// CLI credential grabs from the shell. Several in a row from one source means
+// active post-exploitation cloud-credential harvesting, not a stray probe.
+type CorrCloudCredTheft struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrSSRFCallback fires when one source drives several ssrf_canary callbacks
+// within a window — repeated out-of-band hits mean an attacker is actively
+// exercising an SSRF/XXE/webhook primitive, not a one-off accidental fetch.
+type CorrSSRFCallback struct {
 	Enabled  bool          `yaml:"enabled"`
 	Events   int           `yaml:"events"`
 	Window   time.Duration `yaml:"window"`

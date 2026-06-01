@@ -623,6 +623,28 @@ func (c *Config) applyDefaults() {
 			c.Correlate.DestructiveAction.Severity = "critical"
 		}
 	}
+	if c.Correlate.CloudCredTheft.Enabled {
+		if c.Correlate.CloudCredTheft.Events == 0 {
+			c.Correlate.CloudCredTheft.Events = 2
+		}
+		if c.Correlate.CloudCredTheft.Window == 0 {
+			c.Correlate.CloudCredTheft.Window = 10 * time.Minute
+		}
+		if c.Correlate.CloudCredTheft.Severity == "" {
+			c.Correlate.CloudCredTheft.Severity = "critical"
+		}
+	}
+	if c.Correlate.SSRFCallback.Enabled {
+		if c.Correlate.SSRFCallback.Events == 0 {
+			c.Correlate.SSRFCallback.Events = 3
+		}
+		if c.Correlate.SSRFCallback.Window == 0 {
+			c.Correlate.SSRFCallback.Window = 10 * time.Minute
+		}
+		if c.Correlate.SSRFCallback.Severity == "" {
+			c.Correlate.SSRFCallback.Severity = "high"
+		}
+	}
 	if c.Correlate.HoneytokenSpread.Enabled {
 		if c.Correlate.HoneytokenSpread.DistinctSources == 0 {
 			c.Correlate.HoneytokenSpread.DistinctSources = 3

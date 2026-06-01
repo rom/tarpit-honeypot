@@ -379,7 +379,9 @@ rationale covering the current implementation.
     (distinct CVEs), protocol-violation (fuzzing markers), session-flood,
     C2 **beacon** (jitter analysis), exfil, fingerprint-reuse, canary-trip,
     ICS-control, lateral-movement, OT-recon, data-access, malware-campaign,
-    and webshell — each windowed, severity-configurable, and ATT&CK-tagged.
+    webshell, **cloud-cred-theft** (IMDS/etcd/cloud-CLI credential grabs from
+    one source), and **ssrf-callback** (distinct SSRF tokens called back by
+    one source) — each windowed, severity-configurable, and ATT&CK-tagged.
 - **Fuzzing & DoS detection + classification** (`internal/fuzzdos`):
   classifies abusive traffic into protocol fuzzing vs typed
   denial-of-service — flood, malformed-storm, amplification, and
