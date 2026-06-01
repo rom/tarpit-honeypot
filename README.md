@@ -42,7 +42,7 @@ rationale covering the current implementation.
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
 - **125 TCP + 37 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
-  - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
+  - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
@@ -77,6 +77,15 @@ rationale covering the current implementation.
   the full DC port set; `printserver` + `hp-printer` → a coherent
   PJL/IPP/LPD/SNMP MFP). `tarpit-honeypot list-archeservices` lists the
   roles; `internal/archeservice`.
+- **Dynamic decoy generation from the real network** (`generate-decoys`):
+  point it at your own host / subnet (`tarpit-honeypot generate-decoys --yes
+  10.0.0.0/28 -o decoys.yaml`) and it benignly connect-scans the targets,
+  classifies each open port (port + banner + TLS cert CN), and emits a matching
+  listener config so the honeypot blends into the environment it deploys into
+  — one listener per discovered service port, ready to review and
+  `validate-config`. A TCP connect scanner only (no exploit traffic, no stealth
+  scanning), bounded by an explicit target list + host cap + the required
+  `--yes` authorization flag. `internal/decoygen`.
 - **CVE emulation + exploit-attempt capture** (`internal/cve`): the
   http/https/appliance handlers recognize known exploit signatures
   (Log4Shell, Shellshock, Spring4Shell, ProxyLogon/Shell, FortiOS /

@@ -556,6 +556,58 @@ byte-identical to the upstream FoxIO JARM corpus.
 
 ---
 
+## `generate-decoys`
+
+Scan **your own** network and emit a tarpit-honeypot listener config that
+mirrors the live services it finds, so the honeypot blends into the environment
+it is deployed in instead of exposing a tell-tale generic service set. This is
+a benign **TCP connect scanner**: it completes a normal handshake, optionally
+reads a server banner (or sends one minimal, well-formed probe for client-first
+protocols like HTTP) and a TLS cert CN, classifies the service, and closes. It
+never sends exploit traffic, never does stealth/SYN scanning, and never writes
+to the target.
+
+```
+# probe one host across the curated default port set, write a config
+tarpit-honeypot generate-decoys --yes 10.0.0.10 -o decoys.yaml
+
+# a small subnet, specific ports, stamped with an archetype
+tarpit-honeypot generate-decoys --yes --ports 22,80,443,3389 \
+    --archetype ubuntu-22 10.0.0.0/28 -o decoys.yaml
+
+# then review + validate before deploying
+tarpit-honeypot validate-config -c decoys.yaml
+```
+
+Targets are `host`, `host:port`, or a `CIDR`. One listener is generated per
+distinct open port (deduped across hosts — a honeypot is a single host that
+presents the union of the environment's service ports), with the handler chosen
+by the most common classification on that port. A discovered TLS service
+contributes its cert Common Name to the generated `https.cn` so the decoy's
+identity matches. Unknown services map to the `auto` catch-all.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--yes` | off | **Required.** Confirms you are authorized to scan the targets. Without it the command refuses. |
+| `--ports` | curated set | Comma-separated TCP ports to probe. |
+| `--timeout` | `2s` | Per-connection dial/read timeout. |
+| `--concurrency` | `64` | Max concurrent connections. |
+| `--max-hosts` | `256` | Hard cap on expanded host count (anti-mass-scan guard; a CIDR that exceeds it is refused). |
+| `--bind` | `0.0.0.0` | Bind address for the generated listeners. |
+| `--archetype` | "" | `sensor.archetype` to stamp on the output (for identity coherence). |
+| `--name` | "" | `sensor.name` for the output. |
+| `--read-timeout` | `30s` | `read_timeout` for the generated listeners. |
+| `--no-banners` | off | Skip banner / TLS-cert grabbing (faster, less faithful classification). |
+| `-o <path>` | `-` (stdout) | Output file path. |
+
+**Authorization.** `generate-decoys` actively connects to the targets. Only run
+it against networks you own or are explicitly authorized to assess; the `--yes`
+flag is a deliberate confirmation of that. The output is a starting point —
+review the binds, severities, and archetype, and wire your sinks/UI, before
+deploying.
+
+---
+
 ## `init`
 
 Write a defaulted YAML skeleton suitable as a scaffolding starting

@@ -192,6 +192,18 @@ Point it at the sensor's own
 .B https
 listener to confirm its TLS posture matches the impersonated product.
 .TP
+.B generate-decoys \fItarget...\fR
+Scan your own network (host, host:port, or CIDR) and emit a matching
+tarpit-honeypot listener config so the honeypot blends into the environment. A
+benign TCP connect scanner — no exploit traffic, no stealth scanning, no writes
+to the target. Requires
+.B --yes
+to confirm authorization; bounded by
+.RB ( --ports ", " --timeout ", " --concurrency ", " --max-hosts ", " --no-banners ", " --bind ", " --archetype ", " -o ).
+Review and
+.B validate-config
+the output before deploying.
+.TP
 .B init
 Write a default config skeleton to stdout (or
 .BR -o ).
