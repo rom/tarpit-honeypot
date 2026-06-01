@@ -37,6 +37,7 @@ type storylineState struct {
 	malware          bool // a malware:capture fired for this source
 	webshell         bool // a webshell rule/anomaly fired
 	webAttack        bool // a web-attack-class (webapp:*) anomaly fired
+	dnsTunnel        bool // a DNS tunneling / DGA / exfil anomaly fired
 	tokenReuse       bool // replayed a planted honeytoken (canary:token_used)
 	reachedObjective bool // chain touched impact / exfiltration / confirmed compromise
 	lastEmittedSize  int
@@ -129,6 +130,9 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 			st.webshell = true
 		case strings.HasPrefix(a, "webapp:"):
 			st.webAttack = true
+		case strings.HasPrefix(a, "dns-tunnel") || strings.HasPrefix(a, "dns-dga") ||
+			a == "dns-qname-overlong" || a == "dns-txt-exfil":
+			st.dnsTunnel = true
 		}
 	}
 	if strings.HasPrefix(ev.RuleID, "webshell") {
@@ -251,6 +255,9 @@ func storyPlaybook(st *storylineState) string {
 		return "cloud-credential-takeover"
 	case st.stageSeen["impact"] && (anomPrefix("redis-flush") || st.handlers["smb"]) && st.reachedObjective:
 		return "ransomware-style-destruction"
+	case st.dnsTunnel:
+		// DNS used as a covert C2 / exfiltration channel.
+		return "dns-tunneling"
 	case st.stageSeen["exfiltration"]:
 		// Data left the building (FTP download / DNS exfil / large response).
 		return "data-exfiltration"

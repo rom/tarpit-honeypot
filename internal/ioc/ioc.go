@@ -15,7 +15,7 @@ import (
 
 // Indicator is one typed IOC extracted from an event.
 type Indicator struct {
-	Type  string // ip | sha256 | url | domain | ja3 | ja4 | ja4h | ja4t | hassh | ssh-key | ssh-client | user-agent | email | cve | asn | credential | mac
+	Type  string // ip | sha256 | url | domain | ja3 | ja4 | ja4h | ja4t | hassh | ssh-key | ssh-client | user-agent | email | tool | cve | asn | credential | mac
 	Value string
 }
 
@@ -31,7 +31,7 @@ var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "ja4h",
 var knownTypes = map[string]bool{
 	"ip": true, "asn": true, "ja3": true, "ja4": true, "ja4h": true,
 	"ja4t": true, "hassh": true, "user-agent": true,
-	"ssh-key": true, "ssh-client": true, "email": true,
+	"ssh-key": true, "ssh-client": true, "email": true, "tool": true,
 	"domain": true, "cve": true, "sha256": true, "url": true,
 	"credential": true, "mac": true,
 }
@@ -75,6 +75,9 @@ func Extract(ev *event.Event) []Indicator {
 	add("hassh", metaStr(ev, "hassh"))
 	add("user-agent", metaStr(ev, "user_agent"))
 	add("ssh-client", metaStr(ev, "client_id")) // SSH client version (tool attribution)
+	for _, tool := range metaStrings(ev, "tools") {
+		add("tool", tool) // identified scanner / attack tool (attribution)
+	}
 	for _, fp := range metaStrings(ev, "ssh_pubkey_fps") {
 		add("ssh-key", fp) // offered SSH public-key fingerprint (type:SHA256:…)
 	}

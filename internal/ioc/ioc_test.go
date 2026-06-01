@@ -23,6 +23,7 @@ func TestExtract(t *testing.T) {
 			"asn": "AS64500", "ja3": "abc", "qname": "evil.example.com",
 			"ja4h": "ge11nn", "ja4t": "64240_2-4-8", "user_agent": "sqlmap/1.7",
 			"client_id": "SSH-2.0-libssh2_1.10.0", "mail_from": "<spammer@evil.test>",
+			"tools":             []string{"nmap", "sqlmap"},
 			"ssh_pubkey_fps":    []string{"ssh-rsa:SHA256:abc123"},
 			"sni":               "intranet.corp",
 			"payload_artifacts": []string{"elf:deadbeef -> x.bin"},
@@ -41,6 +42,7 @@ func TestExtract(t *testing.T) {
 		{"user-agent", "sqlmap/1.7"}, {"domain", "intranet.corp"},
 		{"ssh-client", "SSH-2.0-libssh2_1.10.0"}, {"ssh-key", "ssh-rsa:SHA256:abc123"},
 		{"email", "spammer@evil.test"},
+		{"tool", "nmap"}, {"tool", "sqlmap"},
 	} {
 		if !has(inds, want[0], want[1]) {
 			t.Errorf("missing indicator %s=%s in %v", want[0], want[1], inds)

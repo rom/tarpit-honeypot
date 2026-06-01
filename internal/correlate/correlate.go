@@ -58,6 +58,8 @@ type Correlator struct {
 	webProbeSev   event.Severity
 	sshKeySev     event.Severity
 	spamRelaySev  event.Severity
+	dnsTunnelSev  event.Severity
+	reconExpSev   event.Severity
 	honeytokenSev event.Severity
 	toolRotSev    event.Severity
 	plcProgSev    event.Severity
@@ -111,6 +113,8 @@ type Correlator struct {
 	webProbe   map[string]*setState   // key: source IP (distinct webapp:* attack classes)
 	sshKey     map[string]*setState   // key: source IP (distinct offered SSH pubkeys)
 	spamRelay  map[string]*countState // key: source IP (open-relay / rcpt-enum attempts)
+	dnsTunnel  map[string]*countState // key: source IP (DNS tunnel/DGA anomaly count)
+	reconExp   map[string]*setState   // key: source IP (recon-then-exploit progression)
 	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
 	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
 	plcProg    map[string]*countState // key: source IP (program-download count)
@@ -233,6 +237,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		webProbe:   map[string]*setState{},
 		sshKey:     map[string]*setState{},
 		spamRelay:  map[string]*countState{},
+		dnsTunnel:  map[string]*countState{},
+		reconExp:   map[string]*setState{},
 		honeytoken: map[string]*reuseState{},
 		toolRot:    map[string]*setState{},
 		plcProg:    map[string]*countState{},
@@ -344,6 +350,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.WebAttackProbe.Enabled, cfg.WebAttackProbe.Severity, &c.webProbeSev},
 		{cfg.SSHKeySpray.Enabled, cfg.SSHKeySpray.Severity, &c.sshKeySev},
 		{cfg.SpamRelay.Enabled, cfg.SpamRelay.Severity, &c.spamRelaySev},
+		{cfg.DNSTunnel.Enabled, cfg.DNSTunnel.Severity, &c.dnsTunnelSev},
+		{cfg.ReconToExploit.Enabled, cfg.ReconToExploit.Severity, &c.reconExpSev},
 		{cfg.HoneytokenSpread.Enabled, cfg.HoneytokenSpread.Severity, &c.honeytokenSev},
 		{cfg.ToolRotation.Enabled, cfg.ToolRotation.Severity, &c.toolRotSev},
 		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
@@ -492,6 +500,16 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.SpamRelay.Enabled {
 		if extra := c.checkSpamRelay(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.DNSTunnel.Enabled {
+		if extra := c.checkDNSTunnel(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ReconToExploit.Enabled {
+		if extra := c.checkReconToExploit(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1346,6 +1364,12 @@ func (c *Correlator) gc(now time.Time) {
 			delete(c.spamRelay, k)
 		}
 	}
+	for k, st := range c.dnsTunnel {
+		if now.Sub(st.since) > effWindow(c.cfg.DNSTunnel.Window, 10*time.Minute) {
+			delete(c.dnsTunnel, k)
+		}
+	}
+	gcSet(c.reconExp, now, effWindow(c.cfg.ReconToExploit.Window, 30*time.Minute))
 	for k, st := range c.honeytoken {
 		if now.Sub(st.since) > effWindow(c.cfg.HoneytokenSpread.Window, time.Hour) {
 			delete(c.honeytoken, k)

@@ -165,7 +165,8 @@ a narrow job:
   OOB (`remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`), VoIP /
   telephony (`toll_fraud`, `voip_enum`, `pbx_control`), interception /
   containers (`tls_mitm_capture`, `fp_rotation`, `container_takeover`),
-  web/SSH/mail abuse (`web_attack_probe`, `ssh_key_spray`, `spam_relay`), and the
+  web/SSH/mail abuse (`web_attack_probe`, `ssh_key_spray`, `spam_relay`),
+  DNS tunneling + scan-then-exploit (`dns_tunnel`, `recon_to_exploit`), and the
   cross-protocol **`storyline`** correlator that fires `storyline:multi_stage`
   when one source touches 3+ kill-chain tactics (classifying the chain into a
   named playbook — ransomware, OT kill-chain, cloud takeover, …). Adding one is a fixed recipe:
