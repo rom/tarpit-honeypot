@@ -1346,8 +1346,9 @@ TCP + UDP. chargen/echo are reflector favorites, so replies are strictly bounded
 <h2>tarpit modes</h2>
 <ul>
 <li><code>mode: tarpit</code> with <code>strategy: sticky | trickle | keepalive | jitter |
-backoff | ssh_banner | http_headers | http_chunked | echo | babble</code> holds the
-connection open to waste scanner/worm time.</li>
+backoff | ssh_banner | http_headers | http_chunked | echo | babble | zipbomb |
+zero_window</code> holds the connection open to waste scanner/worm time
+(<code>zipbomb</code> and <code>zero_window</code> are aggressive/opt-in).</li>
 <li><code>tarpit.emulate: true</code> runs the listener's protocol <code>handler:</code> first
 (real banner + captured request) and <em>then</em> tarpits the same connection — any
 emulator becomes a tarpit, and the captured banner/request lands in the

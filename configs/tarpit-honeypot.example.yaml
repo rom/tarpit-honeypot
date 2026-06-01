@@ -195,16 +195,19 @@ listeners:
     severity: high
     tarpit:
       # strategy options: sticky | trickle | keepalive | jitter | backoff |
-      #   ssh_banner | http_headers | http_chunked | echo | babble
+      #   ssh_banner | http_headers | http_chunked | echo | babble |
+      #   zipbomb | zero_window  (last two are aggressive/retaliatory; opt-in only)
       strategy: sticky
       max_per_source: 4
       max_total: 256
-      # jitter:     { text: "login: ", min_interval: 500ms, max_interval: 5s }
-      # backoff:    { text: "login: ", start: 500ms, max: 60s, factor: 2 }
-      # ssh_banner: { line_interval: 2s, max_line_bytes: 32 }
-      # http:       { status_line: "HTTP/1.1 200 OK", header_interval: 2s, chunk_interval: 2s, chunk_text: "." }
-      # echo:       { byte_interval: 1s }
-      # babble:     { byte_interval: 2s }
+      # jitter:      { text: "login: ", min_interval: 500ms, max_interval: 5s }
+      # backoff:     { text: "login: ", start: 500ms, max: 60s, factor: 2 }
+      # ssh_banner:  { line_interval: 2s, max_line_bytes: 32 }
+      # http:        { status_line: "HTTP/1.1 200 OK", header_interval: 2s, chunk_interval: 2s, chunk_text: "." }
+      # echo:        { byte_interval: 1s }
+      # babble:      { byte_interval: 2s }
+      # zipbomb:     { status_line: "HTTP/1.1 200 OK", decompressed_size: 10737418240, chunk_interval: 0s }
+      # zero_window: { read_buffer: 1 }
 
   - id: ftp-bait
     proto: tcp

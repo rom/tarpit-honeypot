@@ -236,6 +236,12 @@ func (c *Config) applyDefaults() {
 			if t.Babble.ByteInterval == 0 {
 				t.Babble.ByteInterval = 2 * time.Second
 			}
+			if t.ZipBomb.DecompressedSize == 0 {
+				t.ZipBomb.DecompressedSize = 10 << 30 // 10 GiB inflated
+			}
+			if t.ZeroWindow.ReadBuffer == 0 {
+				t.ZeroWindow.ReadBuffer = 1
+			}
 		}
 	}
 	for i := range c.Canaries {
@@ -891,9 +897,16 @@ func (c *Config) Validate() error {
 			switch l.Tarpit.Strategy {
 			case "sticky", "trickle", "keepalive",
 				"jitter", "backoff", "ssh_banner",
-				"http_headers", "http_chunked", "echo", "babble":
+				"http_headers", "http_chunked", "echo", "babble",
+				"zipbomb", "zero_window":
 			default:
 				return fmt.Errorf("listener %s: unknown tarpit strategy %q", l.ID, l.Tarpit.Strategy)
+			}
+			if l.Tarpit.Strategy == "zipbomb" && l.Tarpit.ZipBomb.DecompressedSize < 0 {
+				return fmt.Errorf("listener %s: zipbomb strategy requires tarpit.zipbomb.decompressed_size >= 0", l.ID)
+			}
+			if l.Tarpit.Strategy == "zero_window" && l.Tarpit.ZeroWindow.ReadBuffer < 0 {
+				return fmt.Errorf("listener %s: zero_window strategy requires tarpit.zero_window.read_buffer >= 0", l.ID)
 			}
 			if l.Tarpit.Strategy == "trickle" && l.Tarpit.Trickle.Text == "" {
 				return fmt.Errorf("listener %s: trickle strategy requires tarpit.trickle.text", l.ID)

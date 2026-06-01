@@ -1,6 +1,7 @@
 package listener
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -98,6 +99,10 @@ func (t *tcpListener) runTarpit(ctx context.Context, conn net.Conn, bus chan<- *
 		err = tarpitEcho(ctx, conn, tcfg.Echo.ByteInterval)
 	case "babble":
 		err = tarpitBabble(ctx, conn, tcfg.Babble.ByteInterval)
+	case "zipbomb":
+		err = tarpitZipBomb(ctx, conn, tcfg.ZipBomb.StatusLine, tcfg.ZipBomb.DecompressedSize, tcfg.ZipBomb.ChunkInterval)
+	case "zero_window":
+		err = tarpitZeroWindow(ctx, conn, tcfg.ZeroWindow.ReadBuffer)
 	default:
 		err = errors.New("unknown tarpit strategy")
 	}
@@ -458,6 +463,152 @@ func randomSSHLine(maxLineBytes int) []byte {
 		line[0] = 'x'
 	}
 	return append(line, '\r', '\n')
+}
+
+// tarpitZipBomb sends an HTTP response advertising Content-Encoding: gzip and
+// then streams a gzip stream that inflates to decompressedSize bytes. The
+// payload is a single repeated byte, so it compresses to almost nothing — we
+// spend negligible CPU/bandwidth while a client that auto-decompresses burns
+// CPU and memory inflating it. This is deliberately aggressive (retaliatory):
+// gate it behind explicit config and point it only at hosts you are authorized
+// to engage. It is NOT enabled by any default.
+func tarpitZipBomb(ctx context.Context, conn net.Conn, statusLine string, decompressedSize int64, chunkInterval time.Duration) error {
+	if statusLine == "" {
+		statusLine = "HTTP/1.1 200 OK"
+	}
+	if decompressedSize <= 0 {
+		decompressedSize = 10 << 30 // 10 GiB inflated
+	}
+	if chunkInterval < 0 {
+		chunkInterval = 0
+	}
+	head := statusLine + "\r\nContent-Type: text/html\r\nContent-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n"
+	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Write([]byte(head)); err != nil {
+		return err
+	}
+
+	// Gzip a long run of a single byte straight onto the wire, framed as HTTP
+	// chunks via cw. The gzip writer's small output buffers flush as chunks.
+	cw := &chunkedWriter{conn: conn}
+	zw := gzip.NewWriter(cw)
+	block := make([]byte, 32<<10) // 32 KiB of 0x00 compresses to a few bytes
+	var written int64
+	for written < decompressedSize {
+		select {
+		case <-ctx.Done():
+			_ = zw.Close()
+			return ctx.Err()
+		default:
+		}
+		n := int64(len(block))
+		if rem := decompressedSize - written; rem < n {
+			n = rem
+		}
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if _, err := zw.Write(block[:n]); err != nil {
+			return err
+		}
+		written += n
+		if chunkInterval > 0 {
+			if err := sleepCtx(ctx, chunkInterval); err != nil {
+				_ = zw.Close()
+				return err
+			}
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return cw.finish()
+}
+
+// chunkedWriter frames each Write as a single HTTP/1.1 chunk. finish emits the
+// terminating zero-length chunk.
+type chunkedWriter struct {
+	conn net.Conn
+}
+
+func (w *chunkedWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	_ = w.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, err := fmt.Fprintf(w.conn, "%x\r\n", len(p)); err != nil {
+		return 0, err
+	}
+	if _, err := w.conn.Write(p); err != nil {
+		return 0, err
+	}
+	if _, err := w.conn.Write([]byte("\r\n")); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (w *chunkedWriter) finish() error {
+	_ = w.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, err := w.conn.Write([]byte("0\r\n\r\n"))
+	return err
+}
+
+// tarpitZeroWindow is the LaBrea technique. We shrink the socket receive buffer
+// (SO_RCVBUF) as far as the kernel allows and then never read, so the kernel
+// soon advertises a TCP receive window at or near zero. A peer mid-send blocks
+// indefinitely waiting for the window to open, holding its own send buffer and
+// a connection hostage with no application-layer traffic from us at all.
+//
+// This needs the underlying *net.TCPConn (it may be wrapped by capture.Conn),
+// so we unwrap. If the connection is not a TCP socket we fall back to a plain
+// sticky hold rather than failing.
+func tarpitZeroWindow(ctx context.Context, conn net.Conn, readBuffer int) error {
+	if readBuffer <= 0 {
+		readBuffer = 1
+	}
+	if tc := underlyingTCPConn(conn); tc != nil {
+		// Best-effort: the kernel clamps to its own minimum (often a page),
+		// which is still tiny and collapses the advertised window quickly.
+		_ = tc.SetReadBuffer(readBuffer)
+	}
+	// Never read. Just block until the peer goes away or we're cancelled. We
+	// poll a long-deadline read purely to detect a dead peer (FIN/RST), not to
+	// consume data — any bytes that arrive stay in the kernel buffer, keeping
+	// the window pinned.
+	buf := make([]byte, 1)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_, err := conn.Read(buf)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
+			return err
+		}
+		// If we did read something, the window reopened by exactly that much;
+		// loop without reading more so it re-clamps.
+	}
+}
+
+// underlyingTCPConn unwraps capture.Conn (and any net.Conn that exposes the
+// common NetConn() accessor) to reach the *net.TCPConn beneath.
+func underlyingTCPConn(conn net.Conn) *net.TCPConn {
+	for {
+		switch c := conn.(type) {
+		case *net.TCPConn:
+			return c
+		case *capture.Conn:
+			conn = c.Conn
+		case interface{ NetConn() net.Conn }:
+			conn = c.NetConn()
+		default:
+			return nil
+		}
+	}
 }
 
 // dropTarpitOverflow records an event when the tarpit state refused a new

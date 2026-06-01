@@ -60,6 +60,7 @@ func TestValidateTarpitStrategies(t *testing.T) {
 	accepted := []string{
 		"sticky", "trickle", "keepalive", "jitter", "backoff",
 		"ssh_banner", "http_headers", "http_chunked", "echo", "babble",
+		"zipbomb", "zero_window",
 	}
 	for _, s := range accepted {
 		c := mk(func(l *Listener) {
