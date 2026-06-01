@@ -175,11 +175,23 @@ rationale covering the current implementation.
   credentials, and emit `http-login-attempt`.
 - **Client + server TLS fingerprinting**:
   - **JA3** + **JA4** from the TLS ClientHello (HTTPS handler).
-  - **JA3S** (server-side TLS fingerprint) from the ServerHello we send
-    back — the `(ja3, ja3s)` pair is the tuple threat-intel feeds key on.
+  - **JA3S** + **JA4S** (server-side TLS fingerprints) from the ServerHello
+    we send back — the `(ja3, ja3s)` / `(ja4, ja4s)` pairs are the tuples
+    threat-intel feeds key on.
+  - **JA4T** — TCP-layer fingerprint (window, option layout, MSS,
+    window-scale) computed from the client SYN in the userspace honeynet
+    stack and attached to `honeynet:tcp_connect` events as `ja4t`.
+  - **JARM** server fingerprint available as a library primitive
+    (`fingerprint.JARM`) for confirming a sensor's TLS posture matches the
+    product it impersonates.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
   - All are stable across browser / scanner GREASE shuffling.
+- **SNI virtual hosting**: one `https` listener can front several personas
+  via `https.vhosts` — each matched TLS SNI (exact or `*.domain` wildcard)
+  gets its own believable certificate (own CN / Org / key type), exactly as
+  a real reverse proxy would; the matched name lands in the `tls_vhost` event
+  field.
 - **Honeynets**: configure zero-to-many artificial networks via the
   `honeynets:` block. Each has a CIDR + gateway + DNS + domain + a
   list of virtual hosts; each host has an IP + hostname + OS hint +

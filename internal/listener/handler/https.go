@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,6 +80,18 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		Certificates: []tls.Certificate{*cert},
 		MinVersion:   tls.VersionTLS12,
 	}
+	// SNI virtual hosting: when vhosts are configured, pick the cert whose
+	// server_name matches the client's SNI, falling back to the default.
+	matchedSNI := ""
+	if len(cfg.HTTPS.VHosts) > 0 {
+		tlsCfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if vh, ok := matchVHost(cfg.HTTPS.VHosts, hello.ServerName); ok {
+				matchedSNI = vh.ServerName
+				return h.certFor(h.vhostProfile(cfg, vh))
+			}
+			return cert, nil
+		}
+	}
 	if h.arch != nil {
 		applyTLSPosture(tlsCfg, h.arch.TLS())
 	}
@@ -101,8 +114,10 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		}
 		return Result{Meta: meta}, nil
 	}
+	ja4s := ""
 	if sh := capConn.serverHello(); sh != nil {
 		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
+		ja4s = fingerprint.JA4S(sh)
 	}
 	state := tlsConn.ConnectionState()
 	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch, h.vuln)
@@ -127,7 +142,68 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		res.Meta["ja3s"] = ja3sHash
 		res.Meta["ja3s_raw"] = ja3sRaw
 	}
+	if ja4s != "" {
+		res.Meta["ja4s"] = ja4s
+	}
+	if matchedSNI != "" {
+		res.Meta["tls_vhost"] = matchedSNI
+	}
 	return res, nil
+}
+
+// matchVHost selects the vhost whose ServerName matches the SNI: exact match
+// wins, then a single "*.domain" wildcard matching exactly one leading label.
+func matchVHost(vhosts []config.TLSVHost, sni string) (config.TLSVHost, bool) {
+	if sni == "" {
+		return config.TLSVHost{}, false
+	}
+	sni = strings.ToLower(strings.TrimSuffix(sni, "."))
+	// Exact match first.
+	for _, vh := range vhosts {
+		if strings.ToLower(vh.ServerName) == sni {
+			return vh, true
+		}
+	}
+	// Wildcard "*.example.com" matches "foo.example.com" (one label only).
+	for _, vh := range vhosts {
+		name := strings.ToLower(vh.ServerName)
+		if !strings.HasPrefix(name, "*.") {
+			continue
+		}
+		suffix := name[1:] // ".example.com"
+		if strings.HasSuffix(sni, suffix) {
+			host := sni[:len(sni)-len(suffix)]
+			if host != "" && !strings.Contains(host, ".") {
+				return vh, true
+			}
+		}
+	}
+	return config.TLSVHost{}, false
+}
+
+// vhostProfile builds the cert profile for a matched SNI vhost, deriving
+// deployment-unique defaults keyed by the server_name so each vhost is stable
+// and distinct from the listener default and from other vhosts.
+func (h *https) vhostProfile(cfg config.Listener, vh config.TLSVHost) certProfile {
+	idKey := cfg.ID + "/vhost/" + vh.ServerName
+	p := certProfile{
+		listenerID: idKey,
+		hosts:      []string{vh.ServerName},
+		cn:         vh.CN,
+		org:        vh.Org,
+		ou:         vh.OU,
+		keyType:    vh.KeyType,
+	}
+	if p.cn == "" {
+		p.cn = vh.ServerName
+	}
+	if p.org == "" {
+		p.org = deriveOrg(h.id, idKey)
+	}
+	if p.keyType == "" {
+		p.keyType = deriveKeyType(h.id, idKey)
+	}
+	return p
 }
 
 // certProfile is the resolved, service-unique parameters for one TLS

@@ -824,6 +824,29 @@ type HTTPS struct {
 	// "these are different machines" signal to a TLS-fingerprinting
 	// scanner.
 	KeyType string `yaml:"key_type"`
+	// VHosts enables SNI-based virtual hosting: when a client's TLS SNI
+	// matches a vhost's ServerName (exact or a "*.example.com" wildcard),
+	// the handler presents that vhost's own certificate (its own CN /
+	// Org / key type) instead of the listener default. One HTTPS listener
+	// can thus front several distinct personas — e.g. mail.corp.local,
+	// vpn.corp.local — each with a believable, separate cert, exactly as a
+	// real reverse proxy / load balancer would. SNI with no match falls
+	// back to the default cert.
+	VHosts []TLSVHost `yaml:"vhosts"`
+}
+
+// TLSVHost is one SNI-selected certificate persona for an https listener.
+type TLSVHost struct {
+	// ServerName is matched against the client's TLS SNI. Exact match, or a
+	// leading-wildcard form "*.example.com" matching one label.
+	ServerName string `yaml:"server_name"`
+	// Subject fields for this vhost's cert. Blank = derived from the
+	// deployment seed + listener id + server_name (so each vhost is stable
+	// and distinct).
+	CN      string `yaml:"cn"`
+	Org     string `yaml:"org"`
+	OU      string `yaml:"ou"`
+	KeyType string `yaml:"key_type"`
 }
 
 type Tarpit struct {
