@@ -21,10 +21,21 @@ import (
 // flagging any attempt to read secrets or write/delete keys (the takeover
 // TTP). Detection only; nothing is persisted.
 type etcd struct {
-	id *identity.Identity
+	// secretVal is the per-deployment base64 service-account token served from
+	// the KV range response, derived once at construction (deployment-constant).
+	secretVal string
 }
 
 func (e *etcd) Name() string { return "etcd" }
+
+// newEtcd derives the per-deployment fake secret value once at construction so
+// it isn't recomputed (sha256 + RNG) on every range request.
+func newEtcd(id *identity.Identity) *etcd {
+	jwt := "eyJhbGciOiJSUzI1NiJ9." +
+		encodeAlpha(idBytes(id, "etcd-sa-jwt-payload", 40), honeyB64Alpha) + "." +
+		encodeAlpha(idBytes(id, "etcd-sa-jwt-sig", 43), honeyB64Alpha)
+	return &etcd{secretVal: base64.StdEncoding.EncodeToString([]byte(jwt))}
+}
 
 func (e *etcd) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
@@ -127,11 +138,7 @@ func (e *etcd) route(method, low, reqBody string, res *Result) (body, contentTyp
 		// believable per-deployment service-account JWT, base64'd — no "honey"
 		// tell, and unique per sensor, so a scanner reading the KV can't
 		// distinguish it from a real etcd or correlate two sensors.
-		jwt := "eyJhbGciOiJSUzI1NiJ9." +
-			encodeAlpha(idBytes(e.id, "etcd-sa-jwt-payload", 40), honeyB64Alpha) + "." +
-			encodeAlpha(idBytes(e.id, "etcd-sa-jwt-sig", 43), honeyB64Alpha)
-		val := base64.StdEncoding.EncodeToString([]byte(jwt))
-		body = fmt.Sprintf(`{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":%q}],"count":1}`, val)
+		body = fmt.Sprintf(`{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":%q}],"count":1}`, e.secretVal)
 	case strings.HasPrefix(low, "/v3/kv/put") || strings.HasPrefix(low, "/v3/kv/deleterange"):
 		flagAnomaly(res, "etcd-write")
 		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4712,"raft_term":2}}`

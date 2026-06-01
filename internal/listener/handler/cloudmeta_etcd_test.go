@@ -31,7 +31,7 @@ func roundTrip(t *testing.T, h Handler, req string) (string, Result) {
 }
 
 func TestCloudMetaAWSCredentialTheftFlagged(t *testing.T) {
-	resp, res := roundTrip(t, &cloudMeta{},
+	resp, res := roundTrip(t, newCloudMeta(nil),
 		"GET /latest/meta-data/iam/security-credentials/honeypot-instance-role HTTP/1.1\r\nHost: 169.254.169.254\r\n\r\n")
 	if !strings.HasPrefix(resp, "HTTP/1.1 200 OK") {
 		t.Fatalf("expected 200, got %q", resp[:min(30, len(resp))])
@@ -48,7 +48,7 @@ func TestCloudMetaAWSCredentialTheftFlagged(t *testing.T) {
 }
 
 func TestCloudMetaGCPTokenFlagged(t *testing.T) {
-	_, res := roundTrip(t, &cloudMeta{},
+	_, res := roundTrip(t, newCloudMeta(nil),
 		"GET /computeMetadata/v1/instance/service-accounts/default/token HTTP/1.1\r\nMetadata-Flavor: Google\r\n\r\n")
 	if res.Meta["cloud_provider"] != "gcp" {
 		t.Errorf("provider = %v, want gcp", res.Meta["cloud_provider"])
@@ -62,7 +62,7 @@ func TestCloudMetaGCPTokenFlagged(t *testing.T) {
 }
 
 func TestCloudMetaAzureTokenFlagged(t *testing.T) {
-	_, res := roundTrip(t, &cloudMeta{},
+	_, res := roundTrip(t, newCloudMeta(nil),
 		"GET /metadata/identity/oauth2/token?resource=https://management.azure.com/ HTTP/1.1\r\nMetadata: true\r\n\r\n")
 	if res.Meta["cloud_provider"] != "azure" {
 		t.Errorf("provider = %v, want azure", res.Meta["cloud_provider"])
@@ -73,7 +73,7 @@ func TestCloudMetaAzureTokenFlagged(t *testing.T) {
 }
 
 func TestCloudMetaBenignBrowseNotFlagged(t *testing.T) {
-	_, res := roundTrip(t, &cloudMeta{},
+	_, res := roundTrip(t, newCloudMeta(nil),
 		"GET /latest/meta-data/instance-id HTTP/1.1\r\nHost: 169.254.169.254\r\n\r\n")
 	if hasAnomaly(res, "cloud-credential-theft") {
 		t.Errorf("benign metadata browse should not flag credential theft")
@@ -81,14 +81,14 @@ func TestCloudMetaBenignBrowseNotFlagged(t *testing.T) {
 }
 
 func TestEtcdVersionHealth(t *testing.T) {
-	resp, _ := roundTrip(t, &etcd{}, "GET /version HTTP/1.1\r\nHost: x\r\n\r\n")
+	resp, _ := roundTrip(t, newEtcd(nil), "GET /version HTTP/1.1\r\nHost: x\r\n\r\n")
 	if !strings.Contains(resp, "etcdserver") {
 		t.Errorf("version probe missing etcdserver field: %q", resp)
 	}
 }
 
 func TestEtcdSecretReadFlagged(t *testing.T) {
-	_, res := roundTrip(t, &etcd{},
+	_, res := roundTrip(t, newEtcd(nil),
 		"GET /v2/keys/registry/secrets/default/default-token HTTP/1.1\r\nHost: x\r\n\r\n")
 	if !hasAnomaly(res, "etcd-secret-read") {
 		t.Errorf("secret read not flagged: %v", anomaliesOf(res))
@@ -96,7 +96,7 @@ func TestEtcdSecretReadFlagged(t *testing.T) {
 }
 
 func TestEtcdWriteFlagged(t *testing.T) {
-	_, res := roundTrip(t, &etcd{},
+	_, res := roundTrip(t, newEtcd(nil),
 		"PUT /v2/keys/foo HTTP/1.1\r\nHost: x\r\nContent-Length: 7\r\n\r\nvalue=1")
 	if !hasAnomaly(res, "etcd-write") {
 		t.Errorf("write not flagged: %v", anomaliesOf(res))
@@ -104,7 +104,7 @@ func TestEtcdWriteFlagged(t *testing.T) {
 }
 
 func TestEtcdV3RangeRead(t *testing.T) {
-	_, res := roundTrip(t, &etcd{},
+	_, res := roundTrip(t, newEtcd(nil),
 		"POST /v3/kv/range HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n{}")
 	if len(anomaliesOf(res)) == 0 {
 		t.Errorf("v3 range read should flag a range/secret read")
@@ -116,9 +116,9 @@ func TestEtcdV3RangeRead(t *testing.T) {
 // never leak a "honey" tell to the attacker.
 func TestCloudCredsPerDeploymentUniqueAndClean(t *testing.T) {
 	const req = "GET /latest/meta-data/iam/security-credentials/role HTTP/1.1\r\nHost: 169.254.169.254\r\n\r\n"
-	a1, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-A")}, req)
-	a2, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-A")}, req)
-	b1, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-B")}, req)
+	a1, _ := roundTrip(t, newCloudMeta(identity.New("dep-A")), req)
+	a2, _ := roundTrip(t, newCloudMeta(identity.New("dep-A")), req)
+	b1, _ := roundTrip(t, newCloudMeta(identity.New("dep-B")), req)
 
 	if a1 != a2 {
 		t.Errorf("creds not stable for one deployment:\n%s\nvs\n%s", a1, a2)
@@ -144,10 +144,10 @@ func TestVaultEtcdK8sNoHoneyTell(t *testing.T) {
 		h   Handler
 		req string
 	}{
-		{&vault{id: id}, "GET /v1/secret/data/prod/db HTTP/1.1\r\nHost: x\r\nX-Vault-Token: s.abc\r\n\r\n"},
-		{&vault{id: id}, "GET /v1/sys/health HTTP/1.1\r\nHost: x\r\n\r\n"},
-		{&etcd{id: id}, "GET /v2/keys/registry/secrets/default/default-token HTTP/1.1\r\nHost: x\r\n\r\n"},
-		{&k8sAPI{id: id}, "GET /api/v1/namespaces/default/secrets HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\n\r\n"},
+		{newVault(id), "GET /v1/secret/data/prod/db HTTP/1.1\r\nHost: x\r\nX-Vault-Token: s.abc\r\n\r\n"},
+		{newVault(id), "GET /v1/sys/health HTTP/1.1\r\nHost: x\r\n\r\n"},
+		{newEtcd(id), "GET /v2/keys/registry/secrets/default/default-token HTTP/1.1\r\nHost: x\r\n\r\n"},
+		{newK8sAPI(id), "GET /api/v1/namespaces/default/secrets HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\n\r\n"},
 	}
 	for _, c := range cases {
 		body, _ := roundTrip(t, c.h, c.req)
