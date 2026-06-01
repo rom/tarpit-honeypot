@@ -984,6 +984,13 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
 
+{{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<span class="tag bad">{{ . }}</span> {{ end }}</div>{{ end }}
+
+{{ if .SSHKeys }}<h2>SSH keys offered</h2><div>{{ range .SSHKeys }}<span class="tag">{{ . }}</span> {{ end }}</div>
+<p class="note">Public-key fingerprints this source presented — an SSH key reused across hosts is a strong attribution pivot.</p>{{ end }}
+
+{{ if .Emails }}<h2>SMTP senders</h2><div>{{ range .Emails }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
+
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th><th>service</th></tr>

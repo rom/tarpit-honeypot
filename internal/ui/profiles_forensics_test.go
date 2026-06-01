@@ -50,3 +50,41 @@ func TestBuildProfileForensicObservables(t *testing.T) {
 		t.Errorf("ja4t fingerprint not captured: %v", p.Fingerprints)
 	}
 }
+
+// TestBuildProfileNewSignals checks the SSH keys, SMTP senders, and
+// web-attack-class surfacing added in the second depth pass.
+func TestBuildProfileNewSignals(t *testing.T) {
+	now := time.Now()
+	evs := []*event.Event{
+		{
+			ID: "1", Time: now, RuleID: "listener:ssh", Severity: event.SeverityMedium,
+			Handler: "ssh", Source: event.Endpoint{IP: "8.8.8.8"}, Dest: event.Endpoint{Port: 22},
+			Meta: map[string]any{"ssh_pubkey_fps": []string{"ssh-rsa:SHA256:aaa", "ssh-ed25519:SHA256:bbb"}},
+		},
+		{
+			ID: "2", Time: now, RuleID: "listener:smtp", Severity: event.SeverityLow,
+			Handler: "smtp_recv", Source: event.Endpoint{IP: "8.8.8.8"}, Dest: event.Endpoint{Port: 25},
+			Meta: map[string]any{"mail_from": "<spammer@evil.test>"},
+		},
+		{
+			ID: "3", Time: now, RuleID: "listener:http", Severity: event.SeverityHigh,
+			Handler: "http", Source: event.Endpoint{IP: "8.8.8.8"}, Dest: event.Endpoint{Port: 80},
+			Anomalies: []string{"webapp:ssti", "webapp:xxe", "webapp:nosqli"},
+		},
+	}
+	p := buildProfile("8.8.8.8", evs)
+
+	if len(p.SSHKeys) != 2 {
+		t.Errorf("ssh keys = %v; want 2", p.SSHKeys)
+	}
+	if !hasStr(p.Emails, "spammer@evil.test") {
+		t.Errorf("emails missing sender: %v", p.Emails)
+	}
+	if len(p.AttackClasses) != 3 {
+		t.Errorf("attack classes = %v; want 3", p.AttackClasses)
+	}
+	// 3+ distinct web-attack classes => web application attack.
+	if p.Classification != "web application attack" {
+		t.Errorf("classification = %q; want web application attack", p.Classification)
+	}
+}
