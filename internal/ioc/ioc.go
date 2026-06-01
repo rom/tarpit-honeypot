@@ -15,20 +15,22 @@ import (
 
 // Indicator is one typed IOC extracted from an event.
 type Indicator struct {
-	Type  string // ip | sha256 | url | domain | ja3 | ja4 | hassh | cve | asn | credential | mac
+	Type  string // ip | sha256 | url | domain | ja3 | ja4 | ja4h | ja4t | hassh | user-agent | cve | asn | credential | mac
 	Value string
 }
 
 // DefaultEmitTypes are the high-value indicator types whose first sighting emits
-// a stored+forwarded ioc:<type> event. Bare IPs / ASNs / MACs are tracked in the
-// store but not emitted (too voluminous, and already on every event).
-var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "hassh", "cve", "credential"}
+// a stored+forwarded ioc:<type> event. Bare IPs / ASNs / MACs / OS-level TCP
+// fingerprints / User-Agents are tracked in the store but not emitted (too
+// voluminous, and already on every event).
+var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "ja4h", "hassh", "cve", "credential"}
 
 // knownTypes is the set of indicator types the sensor itself produces; we
 // refuse forwarded ioc:* events that declare a type outside this set, so a
 // misbehaving child can't poison the upstream store with arbitrary kinds.
 var knownTypes = map[string]bool{
-	"ip": true, "asn": true, "ja3": true, "ja4": true, "hassh": true,
+	"ip": true, "asn": true, "ja3": true, "ja4": true, "ja4h": true,
+	"ja4t": true, "hassh": true, "user-agent": true,
 	"domain": true, "cve": true, "sha256": true, "url": true,
 	"credential": true, "mac": true,
 }
@@ -67,8 +69,14 @@ func Extract(ev *event.Event) []Indicator {
 	add("asn", metaStr(ev, "asn"))
 	add("ja3", metaStr(ev, "ja3"))
 	add("ja4", metaStr(ev, "ja4"))
+	add("ja4h", metaStr(ev, "ja4h")) // HTTP client fingerprint — tool-stable, high reuse
+	add("ja4t", metaStr(ev, "ja4t")) // client TCP-stack fingerprint (OS-level)
 	add("hassh", metaStr(ev, "hassh"))
+	add("user-agent", metaStr(ev, "user_agent"))
 	add("domain", metaStr(ev, "qname"))
+	// The SNI a client offered is what it believes it is connecting to — a
+	// domain-shaped intent indicator alongside DNS query names.
+	add("domain", metaStr(ev, "sni"))
 	for _, k := range []string{"client_mac", "sender_mac", "mac"} {
 		if m := metaStr(ev, k); m != "" {
 			add("mac", m)
