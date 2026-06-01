@@ -255,6 +255,8 @@ var handlerTags = map[string]Tag{
 	// Cloud-native / container attack surface.
 	"cloud_metadata": {Techniques: []string{"T1552.005", "T1078.004"}, Tactics: []string{"credential-access", "defense-evasion"}},
 	"etcd":           {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
+	"websocket":      {Techniques: []string{"T1190", "T1071.001"}, Tactics: []string{"initial-access", "command-and-control"}},
+	"grpc":           {Techniques: []string{"T1190", "T1071"}, Tactics: []string{"initial-access", "command-and-control"}},
 	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
@@ -534,6 +536,10 @@ var anomalyTags = map[string]Tag{
 	"etcd-secret-read":       {Techniques: []string{"T1552.007"}, Tactics: []string{"credential-access"}},
 	"etcd-range-read":        {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
 	"etcd-write":             {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// WebSocket / gRPC probe surface.
+	"ws-credential-material": {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
+	"ws-command-payload":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"grpc-reflection-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.

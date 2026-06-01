@@ -276,6 +276,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &cloudMeta{}, nil
 	case "etcd":
 		return &etcd{}, nil
+	case "websocket":
+		return &websocketH{}, nil
+	case "grpc":
+		return &grpcH{}, nil
 	case "melsec":
 		return &melsec{}, nil
 	case "jdwp":
