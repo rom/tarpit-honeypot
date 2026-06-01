@@ -235,6 +235,13 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		flagAnomaly(&res, "cve:"+rec.ID)
 	}
 
+	// Web-attack-class detection over the whole request — SSTI / XXE / SSRF /
+	// deserialization / NoSQLi / GraphQL introspection / JWT-none — classes the
+	// path-only and CVE-signature checks don't catch.
+	for _, marker := range httpAttackClasses(string(res.Payload)) {
+		flagAnomaly(&res, marker)
+	}
+
 	// Method-level anomaly: legit clients use a small set; everything
 	// else (binary blobs, "ATTACK", junk) is a worth-tagging.
 	if method := extractMethod(firstLine); method != "" && !isKnownHTTPMethod(method) {

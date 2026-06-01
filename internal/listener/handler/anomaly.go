@@ -90,6 +90,59 @@ func isKnownHTTPMethod(m string) bool {
 	return false
 }
 
+// webAttackClasses scans a full HTTP request (line + headers + body, already
+// captured in the payload) for high-signal web-attack-class markers that the
+// path-only suspiciousURI / CVE-signature checks don't cover: template
+// injection, XXE, SSRF, insecure deserialization, NoSQL injection, GraphQL
+// introspection, and alg:none JWT forgery. Substrings are chosen to be
+// near-zero-FP on benign traffic. Returns the distinct webapp:* markers found.
+func httpAttackClasses(payload string) []string {
+	low := strings.ToLower(payload)
+	var out []string
+	add := func(m string) { out = appendUnique(out, m) }
+	// Server-side template injection (Jinja2/Twig/Freemarker/ERB/Velocity).
+	for _, s := range []string{"{{7*7}}", "${7*7}", "{{config", "{{request", "<%= request", "#{7*7}", "${{", "t(java.lang"} {
+		if strings.Contains(low, s) {
+			add("webapp:ssti")
+			break
+		}
+	}
+	// XML external entity.
+	if strings.Contains(low, "<!entity") || (strings.Contains(low, "<!doctype") && strings.Contains(low, "system")) {
+		add("webapp:xxe")
+	}
+	// SSRF — cloud metadata + dangerous URL schemes in a parameter.
+	for _, s := range []string{"169.254.169.254", "gopher://", "dict://", "file:///", "http://metadata", "://127.0.0.1", "://localhost", "://[::1]"} {
+		if strings.Contains(low, s) {
+			add("webapp:rfi_ssrf")
+			break
+		}
+	}
+	// Insecure deserialization — Java (AC ED 00 05 -> "rO0AB"), PHP, .NET.
+	for _, s := range []string{"ro0ab", "aced0005", "o:8:\"", "__proto__", "$type\":\"system"} {
+		if strings.Contains(low, s) {
+			add("webapp:deserialize")
+			break
+		}
+	}
+	// NoSQL injection (MongoDB operator smuggling).
+	for _, s := range []string{"$where", "$ne\":", "$ne]", "$gt\":", "$regex", "[$ne]"} {
+		if strings.Contains(low, s) {
+			add("webapp:nosqli")
+			break
+		}
+	}
+	// GraphQL introspection (schema recon).
+	if strings.Contains(low, "__schema") || strings.Contains(low, "introspectionquery") {
+		add("webapp:graphql-introspection")
+	}
+	// JWT alg:none forgery (auth bypass via unsigned token).
+	if strings.Contains(low, "\"alg\":\"none\"") || strings.Contains(low, "eyjhbgcioijub25l") {
+		add("webapp:jwt-none")
+	}
+	return out
+}
+
 // suspiciousURI flags request paths that look like exploit attempts
 // even though we don't model the underlying vulnerability — these
 // patterns are widely-scanned ones the operator wants to see in the

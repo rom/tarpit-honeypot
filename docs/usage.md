@@ -596,7 +596,11 @@ docker container create — a platform takeover).
   `uri-source-leak-probe`, `uri-mgmt-endpoint-probe`,
   `uri-secret-file-probe`, `uri-xss-or-rce-payload`,
   `http-login-attempt`; behavioral: `http-malformed-header`,
-  `http-duplicate-host`, `http-impossible-browser`
+  `http-duplicate-host`, `http-impossible-browser`; web-attack classes
+  (scanned over the whole request on every `http`/`https` listener, not just
+  the vulnerable-web emulation): `webapp:ssti`, `webapp:xxe`,
+  `webapp:rfi_ssrf`, `webapp:deserialize`, `webapp:nosqli`,
+  `webapp:graphql-introspection`, `webapp:jwt-none`
 - DNS: `dns-tunnel-suspected`, `dns-qname-overlong`, `dns-dga-suspected`,
   `dns-over-https`, `dns-over-tls`, `dnscrypt-probe`, `mdns-service-enumeration`
 - Active Directory / Kerberos: `kerberos-tgs-request`,
