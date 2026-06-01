@@ -52,6 +52,7 @@ type Event struct {
 	Payload []byte   // captured request bytes for EventRequest
 	Raw     []byte   // the raw inbound packet (EventMalformed forensics)
 	JA4T    string   // client TCP fingerprint from the SYN (EventHandshake)
+	JA4L    string   // client latency/locality fingerprint (TTL-based) (EventHandshake)
 }
 
 // Result is the outcome of feeding one packet to the stack: packets to
@@ -226,6 +227,7 @@ func (s *Stack) handleOpen(seg *Segment, pkt []byte, r *Result) {
 				SrcIP: seg.SrcIP, DstIP: seg.DstIP,
 				SrcPort: seg.SrcPort, DstPort: seg.DstPort,
 				JA4T: fingerprint.JA4T(seg.ja4tSyn()),
+				JA4L: fingerprint.JA4L(0, seg.TTL),
 			})
 		case f&RST == 0:
 			// Stray segment to an open port with no flow: a real host RSTs.

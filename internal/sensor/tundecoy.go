@@ -161,6 +161,9 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 			if ev.JA4T != "" {
 				meta["ja4t"] = ev.JA4T
 			}
+			if ev.JA4L != "" {
+				meta["ja4l"] = ev.JA4L
+			}
 		case tcpstack.EventRequest:
 			rule = "honeynet:tcp_request"
 			payloadLen = len(ev.Payload)

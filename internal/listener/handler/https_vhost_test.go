@@ -135,4 +135,8 @@ func TestHTTPSEmitsJA4S(t *testing.T) {
 	if ja4s == "" {
 		t.Fatalf("handler did not emit ja4s; meta=%v", res.Meta)
 	}
+	ja4x, _ := res.Meta["ja4x"].(string)
+	if ja4x == "" {
+		t.Fatalf("handler did not emit ja4x; meta=%v", res.Meta)
+	}
 }

@@ -12,7 +12,7 @@ OS-archetype-aware banners and CLI emulation, interactive SSH/Telnet
 engagement that captures every command an attacker types, a **userspace TCP
 stack** (IPv4 + IPv6 SYN-layer) that lets honeynet decoys complete
 fingerprint-shaped handshakes (and capture malformed/illegal packets) with
-no socket bound per host, the full **JA3/JA4/JA4S/JA4T/JA3S/JA4H/HASSH**
+no socket bound per host, the full **JA3/JA4/JA4S/JA4T/JA4X/JA4L/JA4SSH/JA3S/JA4H/HASSH**
 fingerprint family, MITRE ATT&CK / D3FEND-tagged events, cross-protocol
 attack-storyline correlation,
 protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
@@ -185,9 +185,16 @@ rationale covering the current implementation.
   - **JA4T** — TCP-layer fingerprint (window, option layout, MSS,
     window-scale) computed from the client SYN in the userspace honeynet
     stack and attached to `honeynet:tcp_connect` events as `ja4t`.
-  - **JARM** server fingerprint available as a library primitive
-    (`fingerprint.JARM`) for confirming a sensor's TLS posture matches the
-    product it impersonates.
+  - **JA4L** — latency/locality fingerprint (TTL + RTT) from the same SYN,
+    emitted as `ja4l`; a TTL or RTT inconsistent with the source IP's geo is a
+    proxied/relayed-connection tell.
+  - **JA4X** — X.509 certificate structure fingerprint (issuer/subject RDN
+    layout + extension OIDs), emitted by the https handler as `ja4x` over the
+    cert it presents; clusters certs minted by the same tooling.
+  - **JARM** + **JA4SSH** available as library primitives (`fingerprint.JARM`,
+    `fingerprint.JA4SSH`) — JARM for confirming a sensor's TLS posture matches
+    the product it impersonates, JA4SSH for SSH packet-cadence fingerprinting
+    where raw record lengths are observed.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
   - All are stable across browser / scanner GREASE shuffling.
