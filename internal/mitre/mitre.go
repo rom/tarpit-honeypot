@@ -257,6 +257,7 @@ var handlerTags = map[string]Tag{
 	"etcd":           {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
 	"websocket":      {Techniques: []string{"T1190", "T1071.001"}, Tactics: []string{"initial-access", "command-and-control"}},
 	"grpc":           {Techniques: []string{"T1190", "T1071"}, Tactics: []string{"initial-access", "command-and-control"}},
+	"ssrf_canary":    {Techniques: []string{"T1190", "T1602"}, Tactics: []string{"initial-access", "collection"}},
 	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
@@ -540,6 +541,9 @@ var anomalyTags = map[string]Tag{
 	"ws-credential-material": {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
 	"ws-command-payload":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	"grpc-reflection-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// SSRF out-of-band callback collector.
+	"ssrf-callback":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ssrf-server-side-fetch": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.

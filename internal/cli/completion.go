@@ -62,7 +62,7 @@ _tarpit_honeypot() {
             COMPREPLY=( $(compgen -W "text json" -- "${cur}") )
             return 0 ;;
         --type)
-            COMPREPLY=( $(compgen -W "dns url hex" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "dns url hex ssrf" -- "${cur}") )
             return 0 ;;
         --proto)
             COMPREPLY=( $(compgen -W "tcp udp" -- "${cur}") )
@@ -155,7 +155,7 @@ complete -c tarpit-honeypot -l version -d 'print version and exit'
 complete -c tarpit-honeypot -s V -d 'print version and exit'
 complete -c tarpit-honeypot -s h -l help -d 'show help'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
-complete -c tarpit-honeypot -n '__fish_seen_subcommand_from gen-token' -l type -x -a 'dns url hex'
+complete -c tarpit-honeypot -n '__fish_seen_subcommand_from gen-token' -l type -x -a 'dns url hex ssrf'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-handlers' -l proto -x -a 'tcp udp'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-techniques' -l kind -x -a 'rule handler anomaly'
 `

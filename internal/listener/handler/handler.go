@@ -280,6 +280,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &websocketH{}, nil
 	case "grpc":
 		return &grpcH{}, nil
+	case "ssrf_canary":
+		return &ssrfCanary{}, nil
 	case "melsec":
 		return &melsec{}, nil
 	case "jdwp":
