@@ -715,6 +715,25 @@ func (c *Config) applyDefaults() {
 			c.Correlate.SpamRelay.Severity = "medium"
 		}
 	}
+	if c.Correlate.DNSTunnel.Enabled {
+		if c.Correlate.DNSTunnel.Events == 0 {
+			c.Correlate.DNSTunnel.Events = 5
+		}
+		if c.Correlate.DNSTunnel.Window == 0 {
+			c.Correlate.DNSTunnel.Window = 10 * time.Minute
+		}
+		if c.Correlate.DNSTunnel.Severity == "" {
+			c.Correlate.DNSTunnel.Severity = "high"
+		}
+	}
+	if c.Correlate.ReconToExploit.Enabled {
+		if c.Correlate.ReconToExploit.Window == 0 {
+			c.Correlate.ReconToExploit.Window = 30 * time.Minute
+		}
+		if c.Correlate.ReconToExploit.Severity == "" {
+			c.Correlate.ReconToExploit.Severity = "high"
+		}
+	}
 	if c.Correlate.HoneytokenSpread.Enabled {
 		if c.Correlate.HoneytokenSpread.DistinctSources == 0 {
 			c.Correlate.HoneytokenSpread.DistinctSources = 3

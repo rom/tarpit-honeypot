@@ -1279,6 +1279,26 @@ type Correlate struct {
 	WebAttackProbe      CorrWebAttackProbe      `yaml:"web_attack_probe"`
 	SSHKeySpray         CorrSSHKeySpray         `yaml:"ssh_key_spray"`
 	SpamRelay           CorrSpamRelay           `yaml:"spam_relay"`
+	DNSTunnel           CorrDNSTunnel           `yaml:"dns_tunnel"`
+	ReconToExploit      CorrReconToExploit      `yaml:"recon_to_exploit"`
+}
+
+// CorrDNSTunnel fires when one source produces several DNS tunneling / DGA /
+// over-long-qname anomalies within a window — DNS-based C2 or data exfiltration.
+type CorrDNSTunnel struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrReconToExploit fires when one source first performs recon/discovery and
+// then lands a CVE exploit attempt within the window — the classic
+// scan-then-exploit progression, caught earlier than the 3-stage storyline.
+type CorrReconToExploit struct {
+	Enabled  bool          `yaml:"enabled"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrWebAttackProbe fires when one source triggers several DISTINCT web-attack

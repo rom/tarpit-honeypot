@@ -166,6 +166,8 @@ var exactRules = map[string]Tag{
 	"correlate:web_attack_probe":   {Techniques: []string{"T1190", "T1595.002"}, Tactics: []string{"initial-access", "reconnaissance"}},
 	"correlate:ssh_key_spray":      {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
 	"correlate:spam_relay":         {Techniques: []string{"T1114", "T1087.003"}, Tactics: []string{"collection", "discovery"}},
+	"correlate:dns_tunnel":         {Techniques: []string{"T1071.004", "T1048.003"}, Tactics: []string{"command-and-control", "exfiltration"}},
+	"correlate:recon_to_exploit":   {Techniques: []string{"T1595", "T1190"}, Tactics: []string{"reconnaissance", "initial-access"}},
 	"correlate:honeytoken_spread":  {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"correlate:tool_rotation":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// OT/ICS correlators (round 4). ATT&CK for ICS matrix.
