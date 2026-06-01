@@ -30,6 +30,13 @@ func ScanAnomalies(line string) []string {
 //	shell-network-recon        T1018          (remote system discovery)
 //	shell-disable-fw           T1562.004      (disable firewall)
 //	shell-encoded-payload      T1027          (obfuscated payload)
+//	shell-container-escape     T1611          (escape to host)
+//	shell-cloud-cred-theft     T1552.005      (cloud instance metadata creds)
+//	shell-local-exploit        T1068          (kernel/local privesc exploit)
+//	shell-data-staged          T1560.001      (archive collected data)
+//	shell-exfil-channel        T1048          (exfil over alt channel)
+//	shell-decode-pipe-exec     T1140          (decode + pipe to shell)
+//	shell-destruction          T1485 / T1486  (data destruction / encryption)
 func scanAnomalies(line string) []string {
 	low := strings.ToLower(line)
 	var out []string
@@ -187,6 +194,68 @@ func scanAnomalies(line string) []string {
 		strings.Contains(low, "schtasks /create") || strings.Contains(low, "new-scheduledtask") ||
 		(strings.Contains(low, "new-service") || strings.Contains(low, "sc create")) {
 		add("shell-persistence-windows")
+	}
+
+	// Container / namespace escape (T1611). Mounting the host disk,
+	// breaking out via the docker socket, the release_agent cgroup trick,
+	// or nsenter into PID 1's namespaces.
+	if strings.Contains(low, "/var/run/docker.sock") ||
+		strings.Contains(low, "release_agent") ||
+		(strings.Contains(low, "nsenter") && strings.Contains(low, "-t 1")) ||
+		(strings.Contains(low, "mount") && strings.Contains(low, "/dev/sda")) ||
+		strings.Contains(low, "docker run") && strings.Contains(low, "-v /:/") ||
+		strings.Contains(low, "chroot /host") {
+		add("shell-container-escape")
+	}
+
+	// Cloud CLI credential / metadata theft from inside the shell (T1552.005).
+	if strings.Contains(low, "169.254.169.254") ||
+		strings.Contains(low, "aws sts get-caller-identity") ||
+		strings.Contains(low, "aws s3 ") || strings.Contains(low, "aws secretsmanager") ||
+		strings.Contains(low, "gcloud auth") || strings.Contains(low, "az account get-access-token") ||
+		(strings.Contains(low, "kubectl") && strings.Contains(low, "secret")) {
+		add("shell-cloud-cred-theft")
+	}
+
+	// Kernel / local privesc exploit binaries (T1068).
+	if strings.Contains(low, "dirtypipe") || strings.Contains(low, "dirtycow") ||
+		strings.Contains(low, "pwnkit") || strings.Contains(low, "/tmp/exploit") ||
+		strings.Contains(low, "linpeas") || strings.Contains(low, "linenum") {
+		add("shell-local-exploit")
+	}
+
+	// Data staging into an archive (T1560.001) — the pre-exfil bundle step.
+	if (strings.Contains(low, "tar ") && (strings.Contains(low, "czf") || strings.Contains(low, "-cf"))) ||
+		strings.Contains(low, "zip -r") || strings.Contains(low, "7z a ") ||
+		(strings.Contains(low, "gpg") && strings.Contains(low, "--encrypt")) {
+		add("shell-data-staged")
+	}
+
+	// Exfiltration over an alternative channel (T1048) — piping data out via
+	// curl/scp/nc to an external host.
+	if (strings.Contains(low, "curl") && (strings.Contains(low, "-t ") || strings.Contains(low, "--data") || strings.Contains(low, "-f "))) ||
+		strings.Contains(low, "scp ") || strings.Contains(low, "rsync ") && strings.Contains(low, "@") ||
+		(strings.Contains(low, "nc ") && strings.Contains(low, "< ")) {
+		add("shell-exfil-channel")
+	}
+
+	// Defense evasion via decode-and-pipe-to-shell (T1140) — the
+	// base64 -d | bash / xxd -r cradle.
+	if (strings.Contains(low, "base64 -d") || strings.Contains(low, "base64 --decode") ||
+		strings.Contains(low, "xxd -r") || strings.Contains(low, "openssl enc -d")) &&
+		(strings.Contains(low, "|sh") || strings.Contains(low, "| sh") ||
+			strings.Contains(low, "|bash") || strings.Contains(low, "| bash")) {
+		add("shell-decode-pipe-exec")
+	}
+
+	// Ransomware-style mass encryption / destruction (T1486 / T1485).
+	if (strings.Contains(low, "openssl enc") && strings.Contains(low, "-aes") && strings.Contains(low, "find ")) ||
+		strings.Contains(low, "dd if=/dev/zero of=/dev/sda") ||
+		strings.Contains(low, "dd if=/dev/urandom of=/") ||
+		strings.Contains(low, "rm -rf /") || strings.Contains(low, "rm -rf --no-preserve-root") ||
+		(strings.Contains(low, ".encrypted") && strings.Contains(low, "find ")) ||
+		strings.Contains(low, "mkfs.") && strings.Contains(low, "/dev/sd") {
+		add("shell-destruction")
 	}
 
 	// Encoded payloads — long base64 / hex / url-encoded blobs in a

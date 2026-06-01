@@ -499,6 +499,13 @@ var anomalyTags = map[string]Tag{
 	"shell-defense-evade-history":  {Techniques: []string{"T1070.003"}, Tactics: []string{"defense-evasion"}},
 	"shell-defense-evade-logclean": {Techniques: []string{"T1070.002"}, Tactics: []string{"defense-evasion"}},
 	"shell-coin-miner":             {Techniques: []string{"T1496"}, Tactics: []string{"impact"}},
+	"shell-container-escape":       {Techniques: []string{"T1611"}, Tactics: []string{"privilege-escalation"}},
+	"shell-cloud-cred-theft":       {Techniques: []string{"T1552.005"}, Tactics: []string{"credential-access"}},
+	"shell-local-exploit":          {Techniques: []string{"T1068"}, Tactics: []string{"privilege-escalation"}},
+	"shell-data-staged":            {Techniques: []string{"T1560.001"}, Tactics: []string{"collection"}},
+	"shell-exfil-channel":          {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"shell-decode-pipe-exec":       {Techniques: []string{"T1140"}, Tactics: []string{"defense-evasion"}},
+	"shell-destruction":            {Techniques: []string{"T1485", "T1486"}, Tactics: []string{"impact"}},
 	// Web-shell access / command execution (http handler webshell detector).
 	"webshell-access-attempt": {Techniques: []string{"T1505.003"}, Tactics: []string{"persistence"}},
 	"webshell-command":        {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
@@ -778,6 +785,9 @@ var techDescriptions = map[string]string{
 	"T1020": "Automated Exfiltration — automatically transferring collected data out.",
 	"T1041": "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
 	"T1048": "Exfiltration Over Alternative Protocol — exfil over a non-C2 protocol.",
+	"T1611": "Escape to Host — breaking out of a container to the underlying host.",
+	"T1068": "Exploitation for Privilege Escalation — a kernel/local exploit to gain higher privileges.",
+	"T1560.001": "Archive Collected Data via Utility — staging data into an archive (tar/zip/7z) before exfil.",
 	// ICS (ATT&CK for ICS) — control-protocol activity.
 	"T0814": "Denial of Service (ICS) — disrupting a control device's availability.",
 	"T0888": "Remote System Information Discovery (ICS) — enumerating control devices/their info.",
