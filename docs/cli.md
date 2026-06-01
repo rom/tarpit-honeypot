@@ -8,7 +8,7 @@ tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
-tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
+tarpit-honeypot gen-token      --type=dns|url|hex|ssrf [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json] [--stats|--conflicts|--rogues|--class C|--vendor S|--search Q|--stale D|--active D]
@@ -202,7 +202,7 @@ The trailing parenthesized id is the event id — feed it to `export-pcap`.
 
 ## `gen-token`
 
-Generate an unguessable canary token. Three shapes for the three common bait surfaces; default 64 bits of entropy.
+Generate an unguessable canary token. Four shapes for the common bait surfaces; default 64 bits of entropy.
 
 ```
 tarpit-honeypot gen-token --type=dns --label=prod-cdb --domain=canary.example.com
@@ -213,16 +213,19 @@ tarpit-honeypot gen-token --type=url --bits=128
 
 tarpit-honeypot gen-token --type=hex --bits=256
 # 64-hex-char string
+
+tarpit-honeypot gen-token --type=ssrf --domain=oob.canary.example.com
+# http://oob.canary.example.com/ssrf/6191564a98496be6
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--type` | `dns` | `dns` / `url` / `hex`. |
+| `--type` | `dns` | `dns` / `url` / `hex` / `ssrf`. |
 | `--label` | "" | Optional human-readable suffix (DNS-safe chars only). |
 | `--bits` | `64` | Multiple of 8 between 32 and 256. |
-| `--domain` | `canary.example.com` | For `--type=dns`, the base domain to append. |
+| `--domain` | `canary.example.com` | For `--type=dns` / `--type=ssrf`, the base domain. |
 
-Paste the output into a `dns_canaries:` or `url_canaries:` block and the sensor fires the moment the token gets touched anywhere on the network.
+Paste a `dns`/`url` token into a `dns_canaries:` or `url_canaries:` block and the sensor fires the moment the token gets touched anywhere on the network. A `--type=ssrf` token is a full callback URL to plant in an SSRF parameter, webhook field, or XXE entity; point it at an `ssrf_canary` listener, which records the out-of-band fetch (token + the fetching system's `User-Agent` / `X-Forwarded-For` / `Via`) and flags `ssrf-callback` / `ssrf-server-side-fetch`.
 
 ---
 
@@ -572,7 +575,7 @@ Print version + build commit + build date. Used by ops tooling to confirm the bi
 
 ```
 tarpit-honeypot version
-# tarpit-honeypot 2.1.0 (commit a1b2c3d, built 2026-05-19T18:30:00Z)
+# tarpit-honeypot 2.2.0 (commit a1b2c3d, built 2026-06-01T18:30:00Z)
 
 tarpit-honeypot --version
 tarpit-honeypot -V

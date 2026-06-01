@@ -5,12 +5,16 @@
 # tarpit-honeypot
 
 A single static Go binary that runs a deception **and** detection sensor:
-protocol-shaped honeypots on configurable ports, OS-archetype-aware
-banners and CLI emulation, interactive SSH/Telnet engagement that captures
-every command an attacker types, a **userspace TCP stack** that lets
-honeynet decoys complete fingerprint-shaped handshakes (and capture
-malformed/illegal packets) with no socket bound per host, MITRE ATT&CK /
-D3FEND-tagged events, cross-protocol attack-storyline correlation,
+protocol-shaped honeypots on configurable ports (from SSH/HTTP/SMB through
+ICS/SCADA to the **cloud-native control plane** — Kubernetes API, etcd,
+Vault, cloud metadata — and modern transports like WebSocket and gRPC),
+OS-archetype-aware banners and CLI emulation, interactive SSH/Telnet
+engagement that captures every command an attacker types, a **userspace TCP
+stack** (IPv4 + IPv6 SYN-layer) that lets honeynet decoys complete
+fingerprint-shaped handshakes (and capture malformed/illegal packets) with
+no socket bound per host, the full **JA3/JA4/JA4S/JA4T/JA3S/JA4H/HASSH**
+fingerprint family, MITRE ATT&CK / D3FEND-tagged events, cross-protocol
+attack-storyline correlation,
 protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
 correlators, GeoIP / ASN / threat-intel / Tor / MAC-vendor enrichment,
 file / URL / DNS canary tokens, per-event pcap capture, hostile-input
@@ -37,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **112 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **125 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -547,7 +551,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (112 TCP + 33 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (125 TCP + 33 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -587,6 +591,37 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
+
+**v2.2 — cloud-native attack surface, modern transports, JA4+, IPv6 parity.**
+The latest sprint widens the honeypot toward containers/cloud, modern
+application protocols, and the full JA4+ fingerprint family. Highlights below;
+the [CHANGELOG](CHANGELOG.md) has the full per-commit detail.
+
+- **Cloud-native + container handlers.** `cloud_metadata` (AWS/GCP/Azure IMDS
+  on 169.254.169.254, serving honeytoken IAM/OAuth creds), `etcd` (KV store v2 +
+  v3 with believable cluster state), `kubernetes_api` (kube-apiserver with
+  Bearer-token capture), and `vault` (HashiCorp Vault with `X-Vault-Token`
+  capture). Each flags the credential-theft / takeover calls. A new
+  `kubernetes` archeservice role and an upgraded `containerhost` / `secretstore`
+  give ready-made listener bundles.
+- **Modern application transports.** `websocket` completes the RFC 6455
+  handshake then unmasks + captures frames; `grpc` recognizes the HTTP/2
+  preface and extracts the `/package.Service/Method` path from HEADERS.
+- **Full JA4+ TLS/TCP fingerprinting.** `ja4s` (server-side TLS) and `ja4t`
+  (client SYN: window / options / MSS / window-scale) join the existing
+  JA3/JA4/JA3S/JA4H/HASSH; `fingerprint.JARM` is exposed as a library primitive.
+- **SNI virtual hosting.** One `https` listener fronts several personas via
+  `https.vhosts` — each matched TLS SNI gets its own believable certificate.
+- **SSRF out-of-band canary.** `ssrf_canary` records when a coerced system
+  fetches a planted token URL (`gen-token --type=ssrf`), capturing the calling
+  system's identity and flagging server-side fetchers.
+- **More tarpit, deeper shell, new correlators.** The per-listener tarpit grew
+  to 12 strategies (incl. opt-in `zipbomb` / `zero_window`); the emulated shell
+  gained 7 more ATT&CK-mapped TTP detections; new `cloud_cred_theft` and
+  `ssrf_callback` correlators.
+- **IPv6 reconnaissance parity.** The honeynet TUN responder now answers IPv6
+  TCP SYNs (SYN-ACK + `honeynet:tcp_connect` event), giving v6 port scans the
+  same visibility as IPv4.
 
 **v2.1 — fleet aggregation, IOCs, threat-intel exports, in-product docs.**
 A large post-v2.0 sprint. Highlights below; the

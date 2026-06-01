@@ -233,6 +233,13 @@ By family, with the most common port. All are configurable to any port via `bind
 | `syslog_udp` | 514 | RFC 3164/5424 capture |
 | `rtsp` | 554 | RTSP/1.0 401 Digest |
 | `dockerapi` | 2375 | unauthenticated Docker daemon mimic |
+| `cloud_metadata` | 80 / link-local | AWS/GCP/Azure instance metadata (IMDS) mimic; serves honeytoken IAM/OAuth creds, flags `cloud-credential-theft` |
+| `etcd` | 2379 | etcd KV store (v2 keys + v3 range/put); flags `etcd-secret-read`/`-write` |
+| `kubernetes_api` | 6443 | kube-apiserver mimic; captures `Authorization: Bearer` token, flags `k8s-secret-enum`/`-pod-create`/`-pod-exec` |
+| `vault` | 8200 | HashiCorp Vault API mimic; captures `X-Vault-Token`, flags `vault-secret-read`/`-mount-enum` |
+| `websocket` | any | RFC 6455 handshake + frame capture; flags credential/command payloads |
+| `grpc` | any | HTTP/2 preface recognition + gRPC method-path extraction; flags reflection probes |
+| `ssrf_canary` | any | out-of-band callback collector for SSRF/XXE/webhook tokens (`gen-token --type=ssrf`); flags `ssrf-callback`/`ssrf-server-side-fetch` |
 | `xmpp` | 5222 | stream:features advertising PLAIN/SCRAM-SHA-1 |
 | `amqp` | 5672 | RabbitMQ Connection.Start, captures PLAIN creds |
 | `mssql` | 1433 | TDS pre-login + login capture |

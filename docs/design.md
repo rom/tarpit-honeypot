@@ -42,7 +42,8 @@ recipes see [`INTEGRATIONS.md`](INTEGRATIONS.md).
   *sandboxed* per-service response-scripting VM — no io/os, bounded — not
   a general plugin system that can load Go code or new channels.)
 - Active response (blocking, firewalling, retaliating). Detect, deceive,
-  delay, and alert only.
+  delay, and alert only. (The tarpit's `zipbomb` and `zero_window` strategies
+  are mildly retaliatory and are therefore opt-in, off by default; see §6.)
 - *Real* code execution. The interactive shells, PLC/CLI consoles, and
   "vulnerable" services are canned-response emulations — they capture and
   classify, they never execute attacker input or become exploitable.
@@ -90,6 +91,10 @@ What makes the sensor *look real*:
   key, VNC challenge, EtherNet/IP serial, SMTP hostname) is derived from
   `sensor.deployment_id`, so two sensors present distinct fingerprints to
   Shodan-class scanners. Plus per-reply `jitter` and HTTPS cert rotation.
+  The `https` handler's `tls.Config` also uses a `GetCertificate` callback for
+  **SNI virtual hosting**: it selects a per-SNI certificate from `https.vhosts`
+  (exact or `*.domain` wildcard match) and records the matched name in the
+  `tls_vhost` event field.
 - **Vulnerable-banner + fake-patch-level emulation** (`sensor.vuln_emulation`).
   Banner-aware handlers can advertise a deliberately-unpatched version
   (e.g. Apache 2.4.49 / OpenSSH 7.2 / vsFTPd 2.3.4) and surface a fake
@@ -101,7 +106,10 @@ What makes the sensor *look real*:
   key) and Telnet drop into a per-family canned-response console:
   POSIX shells, **PowerShell** (incl. AD cmdlets), **Windows cmd.exe**,
   **Cisco IOS**, **Moxa** / **SCALANCE** switch CLIs, and the **Siemens
-  S7 PLC** console. Every typed line is captured + TTP-scanned. Sessions
+  S7 PLC** console. Every typed line is captured + TTP-scanned; the classifier
+  adds 7 more ATT&CK-mapped TTP markers — container-escape, cloud-cred-theft,
+  local-exploit, data-staged, exfil-channel, decode-pipe-exec, destruction.
+  Sessions
   can be recorded as replayable asciinema casts
   (`sensor.session_recording`, `internal/sessionrec`).
 - **Lua dynamic responses** (`handler: lua`, `internal/luaengine`). An
@@ -134,6 +142,9 @@ What makes the sensor *look real*:
   fragments, LAND/CVE-1999-0016) are captured as `honeynet:tcp_*` events
   rather than answered. Deliberately a decoy stack: in-order data only, one
   request/response, no retransmission / congestion control / reassembly.
+  The `tunnet` L3 responder also answers **IPv6** TCP SYNs at the SYN layer
+  (SYN-ACK + `honeynet:tcp_connect` for open ports, RST for closed); the
+  stateful data phase (the full flow state machine) remains IPv4-only by design.
 
 ## 5. Detection layer
 
@@ -147,8 +158,15 @@ What turns interaction into signal:
   and replies credibly. ICS/OT coverage includes Modbus, S7 + **S7comm-Plus**,
   IEC-104, **DNP3**, EtherNet/IP, **GE-SRTP**, **CODESYS**, OPC-UA, BACnet
   (incl. WriteProperty), MELSEC, FINS; data stores include Redis, **memcached**,
-  **MongoDB**, **Elasticsearch**; mail adds **POP3** + **IMAP**. See README
-  "Protocol handlers in detail".
+  **MongoDB**, **Elasticsearch**; mail adds **POP3** + **IMAP**;
+  cloud-native / container attack surface adds **`cloud_metadata`** (AWS/GCP/Azure
+  IMDS, serves honeytoken creds), **`etcd`** (KV store), **`kubernetes_api`**
+  (kube-apiserver, captures Bearer service-account tokens), **`vault`** (HashiCorp
+  Vault, captures `X-Vault-Token`); modern transports add **`websocket`** (RFC 6455)
+  and **`grpc`** (HTTP/2 preface + method-path extraction); and **`ssrf_canary`** is
+  an out-of-band SSRF/XXE/webhook callback collector — the inverse of the inbound
+  URL/DNS canaries. All are ordinary banner-mode handlers implementing the same
+  `Handler` interface. See README "Protocol handlers in detail".
 - **Protocol-anomaly detection** (`event.anomalies`). Per-handler markers
   for malformed / smuggled / hostile input: non-printable SSH banners;
   unknown HTTP methods, suspicious URIs, **malformed/duplicate-Host headers**,
@@ -161,7 +179,11 @@ What turns interaction into signal:
 - **TLS / client fingerprinting** (`internal/fingerprint`, `internal/toolfp`):
   JA3 + JA4 (client TLS ClientHello), **JA3S** (server-side TLS — the
   ServerHello we send back; the `(ja3, ja3s)` pair is the threat-intel
-  tuple), JA4H (HTTP), HASSH (SSH), plus tool/scanner identification
+  tuple), **JA4S** (server-side TLS from the ServerHello, meta `ja4s`, emitted
+  by the `https` handler), **JA4T** (client TCP fingerprint from the SYN —
+  window / options / MSS / window-scale, meta `ja4t`, attached to
+  `honeynet:tcp_connect` events by the tcpstack/tunnet path), **JARM** (library
+  primitive), JA4H (HTTP), HASSH (SSH), plus tool/scanner identification
   (nmap/masscan/sqlmap/…/Mirai) and a human-vs-automation verdict.
 - **CVE exploit-attempt recognition** (`internal/cve`). A curated catalog
   of high-signal exploit signatures (Log4Shell, Shellshock, Spring4Shell,
@@ -188,7 +210,8 @@ What turns interaction into signal:
 - **In-sensor correlators** (`internal/correlate`): port-scan,
   brute-force (with extracted credential pairs), slow-scan (hour-scale),
   ICMP ping-sweep, password-spray, credential-reuse, **HTTP path-enumeration**,
-  **DNS-enumeration**, and **C2 beacon** (inter-arrival jitter analysis). The
+  **DNS-enumeration**, **C2 beacon** (inter-arrival jitter analysis),
+  **cloud-credential-theft**, and **SSRF-callback**. The
   PROFINET-DCP responder also emits a detection event
   (`honeynet:profinet_dcp_identify`, ATT&CK T0846) for every DCP Identify it
   observes — ICS reconnaissance on the segment.
@@ -215,11 +238,15 @@ Per listener `mode`:
 
 - `drop` — accept + immediately close (records the connect).
 - `banner` — run the configured `handler:` and capture both sides.
-- `tarpit` — hold the connection: `sticky` (never read/write),
-  `trickle` (one byte every interval), `keepalive` (slow NUL bytes),
-  bounded by `max_per_source` + `max_total`. `tarpit.emulate: true` runs
-  the handler first (real banner + captured request) then tarpits the
-  same connection — any emulator becomes a tarpit.
+- `tarpit` — hold the connection. 12 strategies (up from 3): the original
+  `sticky` (never read/write), `trickle` (one byte every interval) and
+  `keepalive` (slow NUL bytes), plus `jitter`, `backoff`, `ssh_banner`,
+  `http_headers`, `http_chunked`, `echo`, `babble`, and the two aggressive,
+  opt-in `zipbomb` and `zero_window` strategies; bounded by `max_per_source`
+  + `max_total`. `tarpit.emulate: true` runs the handler first (real banner +
+  captured request) then tarpits the same connection — any emulator becomes a
+  tarpit. The `zipbomb` and `zero_window` strategies are retaliatory and
+  therefore opt-in (see §2 / §15).
 
 ## 7. Event pipeline, enrichment, routing, channels
 
@@ -368,6 +395,17 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   SYN-FIN, bad checksums, fragments, LAND) and a TCP/IP-stack CVE class
   (LAND, Teardrop, SACK-Panic, sockstress, Ripple20). See
   [`tcp-stack.md`](tcp-stack.md).
+- **v2.2.0** — cloud-native / container attack surface: `cloud_metadata`
+  (AWS/GCP/Azure IMDS honeytoken creds), `etcd`, `kubernetes_api` (Bearer
+  service-account-token capture), `vault` (`X-Vault-Token` capture) handlers,
+  plus `websocket` (RFC 6455), `grpc` (HTTP/2 preface + method-path) and the
+  `ssrf_canary` out-of-band SSRF/XXE/webhook callback collector. Fingerprinting
+  expanded with **JA4S** (server TLS) + **JA4T** (client TCP from the SYN) +
+  **JARM**. HTTPS **SNI virtual hosting** (`https.vhosts`, `tls_vhost`).
+  Honeynet userspace TCP gains **IPv6 SYN-layer parity** (SYN-ACK/RST +
+  `honeynet:tcp_connect`; data phase stays IPv4-only). Tarpit grows from 3 to
+  12 strategies (incl. opt-in retaliatory `zipbomb` / `zero_window`). New
+  `cloud_cred_theft` + `ssrf_callback` correlators; 7 more shell TTP markers.
 
 ## 14. Open risks
 
