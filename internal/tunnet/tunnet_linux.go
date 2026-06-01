@@ -14,6 +14,13 @@
 // p0f without a real socket bound per virtual host. The legacy RST-only
 // behavior is preserved automatically when a host exposes no open ports.
 //
+// IPv6 reconnaissance gets parity at the SYN layer: an IPv6 SYN to an
+// open port of an IPv6 virtual host is answered with a SYN-ACK and
+// surfaced as a handshake event (so v6 scans are observed and
+// correlatable), and closed ports get a RST. The stateful data phase
+// (banners, request/response) remains IPv4-only — a second full TCP/IP
+// implementation is out of scope; this is detection + "looks open" parity.
+//
 // CAP_NET_ADMIN is required to create the TUN device; the existing
 // systemd unit already grants it via AmbientCapabilities.
 package tunnet
@@ -84,6 +91,12 @@ type Adapter struct {
 	ttlV4 map[[4]byte]byte
 	ttlV6 map[[16]byte]byte
 
+	// decoysV6 maps an IPv6 host to its open-port set so an IPv6 SYN to an
+	// open port can be acknowledged (SYN-ACK) and surfaced as a handshake
+	// event, giving IPv6 reconnaissance the same visibility as IPv4. The
+	// full stateful data-phase stack remains IPv4-only by design.
+	decoysV6 map[[16]byte]HostDecoy
+
 	stack *tcpstack.Stack
 	emit  func(tcpstack.Event)
 
@@ -105,14 +118,20 @@ func New(cfg Config) (*Adapter, error) {
 		return nil, err
 	}
 	a := &Adapter{
-		cfg:     cfg,
-		tunFD:   fd,
-		tunName: name,
-		mtu:     cfg.MTU,
-		hostsV4: map[[4]byte]bool{},
-		hostsV6: map[[16]byte]bool{},
-		ttlV4:   map[[4]byte]byte{},
-		ttlV6:   map[[16]byte]byte{},
+		cfg:      cfg,
+		tunFD:    fd,
+		tunName:  name,
+		mtu:      cfg.MTU,
+		hostsV4:  map[[4]byte]bool{},
+		hostsV6:  map[[16]byte]bool{},
+		ttlV4:    map[[4]byte]byte{},
+		ttlV6:    map[[16]byte]byte{},
+		decoysV6: map[[16]byte]HostDecoy{},
+	}
+	for ipStr, d := range cfg.Hosts {
+		if addr, err := netip.ParseAddr(ipStr); err == nil && addr.Is6() && !addr.Is4In6() {
+			a.decoysV6[addr.As16()] = d
+		}
 	}
 	for _, ipStr := range cfg.HostIPs {
 		addr, err := netip.ParseAddr(ipStr)
@@ -333,6 +352,78 @@ func (a *Adapter) handleIPv6(pkt []byte) {
 	switch nextHdr {
 	case 58:
 		a.handleICMPv6(pkt, src, dst)
+	case 6:
+		a.handleTCPv6(pkt, src, dst)
+	}
+}
+
+// handleTCPv6 gives IPv6 TCP reconnaissance the same visibility as IPv4: a SYN
+// to an open port of a virtual host is acknowledged (SYN-ACK) and surfaced as a
+// handshake event; a SYN to any other port gets a RST, exactly like a real
+// host. The stateful data phase (banners, request/response, the full
+// userspace stack) remains IPv4-only — this is detection + "looks open"
+// parity, not a second TCP/IP implementation.
+func (a *Adapter) handleTCPv6(pkt []byte, src, dst [16]byte) {
+	const ipv6HdrLen = 40
+	if len(pkt) < ipv6HdrLen+20 {
+		return
+	}
+	tcp := pkt[ipv6HdrLen:]
+	srcPort := binary.BigEndian.Uint16(tcp[0:2])
+	dstPort := binary.BigEndian.Uint16(tcp[2:4])
+	seq := binary.BigEndian.Uint32(tcp[4:8])
+	flags := tcp[13]
+	const synFlag, ackFlag, rstFlag = 0x02, 0x10, 0x04
+	// Only react to a bare SYN (connection attempt). Anything else from a
+	// flow we never tracked just gets a RST if it's not already one.
+	isSyn := flags&synFlag != 0 && flags&ackFlag == 0
+	d, isHost := a.decoysV6[dst]
+	open := isHost && d.Ports[dstPort]
+
+	if isSyn && open {
+		a.writeTCPv6(dst, src, dstPort, srcPort, seq+1, 0x7fffabcd, synFlag|ackFlag)
+		if a.emit != nil {
+			a.emit(tcpstack.Event{
+				Kind:   tcpstack.EventHandshake,
+				SrcIP6: src, DstIP6: dst, IsV6: true,
+				SrcPort: srcPort, DstPort: dstPort,
+			})
+		}
+		return
+	}
+	// Closed port (or stray non-SYN): mimic a real host's RST, but never
+	// answer a RST with a RST.
+	if flags&rstFlag == 0 {
+		ack := seq + 1
+		a.writeTCPv6(dst, src, dstPort, srcPort, ack, 0, rstFlag|ackFlag)
+	}
+}
+
+// writeTCPv6 synthesizes a 40-byte-header IPv6 + 20-byte-header TCP segment
+// (no options/payload) and writes it to the TUN device.
+func (a *Adapter) writeTCPv6(src, dst [16]byte, srcPort, dstPort uint16, ack, seq uint32, flags byte) {
+	const ipv6HdrLen, tcpHdrLen = 40, 20
+	pkt := make([]byte, ipv6HdrLen+tcpHdrLen)
+	// IPv6 header.
+	pkt[0] = 0x60 // version 6
+	binary.BigEndian.PutUint16(pkt[4:6], tcpHdrLen)
+	pkt[6] = 6 // next header = TCP
+	pkt[7] = a.ttlFor6(src)
+	copy(pkt[8:24], src[:])
+	copy(pkt[24:40], dst[:])
+	// TCP header.
+	tcp := pkt[ipv6HdrLen:]
+	binary.BigEndian.PutUint16(tcp[0:2], srcPort)
+	binary.BigEndian.PutUint16(tcp[2:4], dstPort)
+	binary.BigEndian.PutUint32(tcp[4:8], seq)
+	binary.BigEndian.PutUint32(tcp[8:12], ack)
+	tcp[12] = (tcpHdrLen / 4) << 4 // data offset
+	tcp[13] = flags
+	binary.BigEndian.PutUint16(tcp[14:16], 0xfaf0) // window
+	cs := tcpv6Checksum(src[:], dst[:], tcp)
+	binary.BigEndian.PutUint16(tcp[16:18], cs)
+	if _, err := unix.Write(a.tunFD, pkt); err != nil {
+		slog.Debug("tunnet write tcpv6", "err", err)
 	}
 }
 
@@ -467,6 +558,18 @@ func icmpv6Checksum(src, dst net.IP, icmp []byte) uint16 {
 	binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(icmp)))
 	pseudo[39] = 58
 	return sumOver(pseudo, icmp)
+}
+
+// tcpv6Checksum computes the TCP checksum over the IPv6 pseudo-header + segment
+// (the segment's checksum field must be zero on entry). src/dst are the source
+// and destination IPv6 addresses of the segment being sent.
+func tcpv6Checksum(src, dst []byte, tcp []byte) uint16 {
+	pseudo := make([]byte, 40)
+	copy(pseudo[0:16], src)
+	copy(pseudo[16:32], dst)
+	binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(tcp)))
+	pseudo[39] = 6 // next header = TCP
+	return sumOver(pseudo, tcp)
 }
 
 func sumOver(a, b []byte) uint16 {

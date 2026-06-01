@@ -43,6 +43,9 @@ type Event struct {
 	Kind    EventKind
 	SrcIP   [4]byte
 	DstIP   [4]byte
+	SrcIP6  [16]byte // set instead of SrcIP for IPv6 events (SrcIP zero)
+	DstIP6  [16]byte // set instead of DstIP for IPv6 events (DstIP zero)
+	IsV6    bool     // true when the IPv6 address fields are authoritative
 	SrcPort uint16
 	DstPort uint16
 	Markers []string // populated for EventMalformed

@@ -190,8 +190,8 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 			RuleID:        rule,
 			Severity:      sev,
 			Proto:         "tcp",
-			Source:        event.Endpoint{IP: ipString(ev.SrcIP), Port: int(ev.SrcPort)},
-			Dest:          event.Endpoint{IP: ipString(ev.DstIP), Port: int(ev.DstPort)},
+			Source:        event.Endpoint{IP: srcIPString(ev), Port: int(ev.SrcPort)},
+			Dest:          event.Endpoint{IP: dstIPString(ev), Port: int(ev.DstPort)},
 			Anomalies:     anomalies,
 			PayloadBase64: payloadB64,
 			PayloadLen:    payloadLen,
@@ -205,6 +205,22 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 }
 
 func ipString(b [4]byte) string { return net.IP(b[:]).String() }
+
+// srcIPString / dstIPString render the event's address, preferring the IPv6
+// fields when the event came from the IPv6 responder.
+func srcIPString(ev tcpstack.Event) string {
+	if ev.IsV6 {
+		return net.IP(ev.SrcIP6[:]).String()
+	}
+	return ipString(ev.SrcIP)
+}
+
+func dstIPString(ev tcpstack.Event) string {
+	if ev.IsV6 {
+		return net.IP(ev.DstIP6[:]).String()
+	}
+	return ipString(ev.DstIP)
+}
 
 func markersContain(markers []string, want string) bool {
 	for _, m := range markers {

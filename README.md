@@ -820,7 +820,11 @@ MQTT varint parser, DNS query parser; `make cover` / `make race`
 Each honeynet can open a Linux TUN device (`CAP_NET_ADMIN`) that
 answers ICMP/ICMPv6 echo for any virtual host IP and TCP-RST for
 unbound ports without `ip addr add`. IPv4 + IPv6 honeynet hosts and
-listener binds work uniformly. The SNMP, LDAP, and DCE-RPC handlers
+listener binds work uniformly. IPv6 reconnaissance has SYN-layer parity
+with IPv4: an IPv6 SYN to an open port is answered with a SYN-ACK and
+raised as a `honeynet:tcp_connect` event (closed ports get a RST), so v6
+port scans are observed and correlatable; the stateful data phase stays
+IPv4-only by design. The SNMP, LDAP, and DCE-RPC handlers
 now include the honeynet topology in their event meta
 (`honeynet_neighbors`, `honeynet_computer_accounts`,
 `honeynet_endpoints`) so a scanner walking those services sees an
