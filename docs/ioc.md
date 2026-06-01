@@ -30,6 +30,9 @@ On every event, the extractor (`internal/ioc`) pulls these indicator types:
 | `ja4h` | HTTP client fingerprint (`meta.ja4h`) | `ge11nn050000…` |
 | `ja4t` | client TCP-stack fingerprint (`meta.ja4t`, OS-level) | `64240_2-4-8-…` |
 | `user-agent` | HTTP `meta.user_agent` (tool attribution) | `sqlmap/1.7` |
+| `ssh-key` | offered SSH public-key fingerprint (`meta.ssh_pubkey_fps`) | `ssh-rsa:SHA256:…` |
+| `ssh-client` | SSH client version string (`meta.client_id`) | `SSH-2.0-libssh2_1.10.0` |
+| `email` | SMTP envelope sender (`meta.mail_from`) | `spammer@evil.test` |
 | `domain` | `meta.qname` (DNS) + `meta.sni` (requested SNI) | `evil.example.com` |
 | `cve` | `cve:<id>` rule | `CVE-2021-44228` |
 | `sha256` | captured-payload hash (`payload_artifacts`) | `deadbeef…` |
@@ -38,10 +41,10 @@ On every event, the extractor (`internal/ioc`) pulls these indicator types:
 | `mac` | `client_mac` / `sender_mac` / `mac` | `02:42:ac:11:00:01` |
 
 The high-value types (`sha256`, `url`, `domain`, `ja3`, `ja4`, `ja4h`, `hassh`,
-`cve`, `credential`) also emit a one-off `ioc:<type>` event on first sighting so
-they are stored and forwarded to aggregators; bare `ip` / `asn` / `mac` /
-`ja4t` / `user-agent` are tracked in the store but not emitted (too voluminous,
-and already present on every event).
+`ssh-key`, `cve`, `credential`) also emit a one-off `ioc:<type>` event on first
+sighting so they are stored and forwarded to aggregators; bare `ip` / `asn` /
+`mac` / `ja4t` / `user-agent` / `ssh-client` / `email` are tracked in the store
+but not emitted (too voluminous, and already present on every event).
 
 Each indicator is de-duplicated by `(type, value)` and tracked with **first
 seen**, **last seen**, **count**, **max severity**, and the **last rule /

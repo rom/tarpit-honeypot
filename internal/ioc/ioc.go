@@ -15,15 +15,15 @@ import (
 
 // Indicator is one typed IOC extracted from an event.
 type Indicator struct {
-	Type  string // ip | sha256 | url | domain | ja3 | ja4 | ja4h | ja4t | hassh | user-agent | cve | asn | credential | mac
+	Type  string // ip | sha256 | url | domain | ja3 | ja4 | ja4h | ja4t | hassh | ssh-key | ssh-client | user-agent | email | cve | asn | credential | mac
 	Value string
 }
 
 // DefaultEmitTypes are the high-value indicator types whose first sighting emits
 // a stored+forwarded ioc:<type> event. Bare IPs / ASNs / MACs / OS-level TCP
-// fingerprints / User-Agents are tracked in the store but not emitted (too
-// voluminous, and already on every event).
-var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "ja4h", "hassh", "cve", "credential"}
+// fingerprints / User-Agents / SSH client strings / sender emails are tracked
+// in the store but not emitted (too voluminous, and already on every event).
+var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "ja4h", "hassh", "ssh-key", "cve", "credential"}
 
 // knownTypes is the set of indicator types the sensor itself produces; we
 // refuse forwarded ioc:* events that declare a type outside this set, so a
@@ -31,6 +31,7 @@ var DefaultEmitTypes = []string{"sha256", "url", "domain", "ja3", "ja4", "ja4h",
 var knownTypes = map[string]bool{
 	"ip": true, "asn": true, "ja3": true, "ja4": true, "ja4h": true,
 	"ja4t": true, "hassh": true, "user-agent": true,
+	"ssh-key": true, "ssh-client": true, "email": true,
 	"domain": true, "cve": true, "sha256": true, "url": true,
 	"credential": true, "mac": true,
 }
@@ -73,6 +74,15 @@ func Extract(ev *event.Event) []Indicator {
 	add("ja4t", metaStr(ev, "ja4t")) // client TCP-stack fingerprint (OS-level)
 	add("hassh", metaStr(ev, "hassh"))
 	add("user-agent", metaStr(ev, "user_agent"))
+	add("ssh-client", metaStr(ev, "client_id")) // SSH client version (tool attribution)
+	for _, fp := range metaStrings(ev, "ssh_pubkey_fps") {
+		add("ssh-key", fp) // offered SSH public-key fingerprint (type:SHA256:…)
+	}
+	// SMTP envelope sender — a reusable spam/phishing attribution indicator.
+	// Strip the SMTP angle brackets and skip the null sender / non-addresses.
+	if from := strings.Trim(metaStr(ev, "mail_from"), "<> "); strings.Contains(from, "@") {
+		add("email", from)
+	}
 	add("domain", metaStr(ev, "qname"))
 	// The SNI a client offered is what it believes it is connecting to — a
 	// domain-shaped intent indicator alongside DNS query names.
