@@ -25,6 +25,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/feeds"
 	"github.com/rom/tarpit-honeypot/internal/fetcher"
 	"github.com/rom/tarpit-honeypot/internal/fleet"
 	"github.com/rom/tarpit-honeypot/internal/forward"
@@ -90,6 +91,7 @@ type Sensor struct {
 	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
 	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
 	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
+	feedsPuller *feeds.Puller     // external threat-intel feed ingestion (nil when disabled)
 	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 	iocEmit     map[string]bool   // indicator types whose first-sight emits an ioc:<type> event (nil = IOC off)
 
@@ -211,6 +213,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 		if cfg.IntelFeed.Enabled {
 			if d := forwardDest(cfg.IntelFeed.URL); d != "" {
 				egPol.Allow(d)
+			}
+		}
+		if cfg.ThreatFeeds.Enabled {
+			for _, f := range cfg.ThreatFeeds.Feeds {
+				if d := forwardDest(f.URL); d != "" {
+					egPol.Allow(d)
+				}
 			}
 		}
 		if cfg.MISP.Enabled {
@@ -536,6 +545,22 @@ func New(cfg *config.Config) (*Sensor, error) {
 				}
 			})
 		slog.Info("fleet intel feed subscribed", "url", cfg.IntelFeed.URL)
+	}
+
+	// External threat-intel feed ingestion: pull operator-configured reputation
+	// feeds (through the egress allowlist) into the enricher's external overlay.
+	if cfg.ThreatFeeds.Enabled && len(cfg.ThreatFeeds.Feeds) > 0 {
+		fl := make([]feeds.Feed, 0, len(cfg.ThreatFeeds.Feeds))
+		for _, f := range cfg.ThreatFeeds.Feeds {
+			fl = append(fl, feeds.Feed{Label: f.Label, URL: f.URL, Format: f.Format, Header: f.Header})
+		}
+		s.feedsPuller = feeds.NewPuller(fl, cfg.ThreatFeeds.Poll,
+			egress.HTTPClient(15*time.Second), func(ips map[string]string) {
+				if en := s.curEnricher(); en != nil {
+					en.SetExternalIntel(ips)
+				}
+			})
+		slog.Info("external threat feeds enabled", "feeds", len(fl))
 	}
 
 	// MISP push: ship the fleet's observed IOCs to a MISP instance. The IOC
@@ -1719,6 +1744,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 	if s.intelPuller != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); s.intelPuller.Run(ctx) }()
+	}
+
+	// External threat-feed puller: refresh reputation feeds until shutdown.
+	if s.feedsPuller != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.feedsPuller.Run(ctx) }()
 	}
 
 	// MISP IOC pusher: ship fleet indicators until shutdown.

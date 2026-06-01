@@ -853,6 +853,17 @@ sniffer:
     window: 30s
     detect_fragments: true # flag fragmented inbound probes (evasion)
 
+# External threat-intel feed ingestion. Each feed URL must be reachable under
+# the egress allowlist (it's auto-allowlisted when threat_feeds is enabled). A
+# matched source IP is tagged external_intel + threat_intel_hit, so the risk
+# scorer, tarpits, severity overrides, and the blocklist all act on it.
+threat_feeds:
+  enabled: false
+  poll: 1h
+  feeds:
+    - { label: firehol, url: "https://iplists.firehol.org/files/firehol_level1.netset", format: lines }
+    # - { label: abuseipdb, url: "https://api.abuseipdb.com/api/v2/blacklist", format: json_ips, header: "Key: ${ABUSEIPDB_KEY}" }
+
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
   brute_force: { enabled: true, attempts: 10, window: 60s, severity: high }

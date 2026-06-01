@@ -223,3 +223,35 @@ func TestFleetIntelEmptyOverlayNoop(t *testing.T) {
 		t.Error("fleet_intel set with no overlay")
 	}
 }
+
+func TestExternalIntelOverlay(t *testing.T) {
+	e, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetExternalIntel(map[string]string{"203.0.113.9": "abuseipdb,firehol"})
+
+	ev := &event.Event{Source: event.Endpoint{IP: "203.0.113.9"}}
+	e.Decorate(ev)
+	if ev.Meta["external_intel"] != "abuseipdb,firehol" {
+		t.Errorf("external_intel = %v, want abuseipdb,firehol", ev.Meta["external_intel"])
+	}
+	if hit, _ := ev.Meta["threat_intel_hit"].(bool); !hit {
+		t.Error("threat_intel_hit not set by external intel")
+	}
+
+	// A non-matching source is untagged.
+	other := &event.Event{Source: event.Endpoint{IP: "198.51.100.1"}}
+	e.Decorate(other)
+	if _, ok := other.Meta["external_intel"]; ok {
+		t.Error("external_intel tagged a non-matching source")
+	}
+
+	// Clearing the overlay stops tagging.
+	e.SetExternalIntel(nil)
+	ev2 := &event.Event{Source: event.Endpoint{IP: "203.0.113.9"}}
+	e.Decorate(ev2)
+	if _, ok := ev2.Meta["external_intel"]; ok {
+		t.Error("external_intel still tagged after clearing overlay")
+	}
+}

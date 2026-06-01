@@ -43,6 +43,10 @@ type Config struct {
 	// IntelFeed subscribes this node to a parent's downward fleet-intel feed.
 	// See internal/intel.
 	IntelFeed IntelFeed `yaml:"intel_feed"`
+	// ThreatFeeds ingests external reputation feeds (AbuseIPDB / GreyNoise /
+	// FireHOL / Spamhaus / plain IP lists) and tags matching sources
+	// external_intel + threat_intel_hit. See internal/feeds.
+	ThreatFeeds ThreatFeeds `yaml:"threat_feeds"`
 	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
 	MISP MISPConfig `yaml:"misp"`
 	// IOC turns the indicators every event carries (IPs, fingerprints, hashes,
@@ -232,6 +236,25 @@ type IntelFeed struct {
 	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
 	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
 	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
+}
+
+// ThreatFeeds configures ingestion of external IP-reputation feeds. Each feed
+// URL must be in the egress allowlist (egress.allow), since the puller dials
+// through the egress-governed client. A matched source IP is tagged
+// external_intel + threat_intel_hit so the risk / tarpit / blocklist machinery
+// treats it as hostile.
+type ThreatFeeds struct {
+	Enabled bool          `yaml:"enabled"`
+	Poll    time.Duration `yaml:"poll"` // refresh interval (default 1h)
+	Feeds   []ThreatFeed  `yaml:"feeds"`
+}
+
+// ThreatFeed is one external reputation source.
+type ThreatFeed struct {
+	Label  string `yaml:"label"`  // tag applied to matching events
+	URL    string `yaml:"url"`    // feed endpoint (must be egress-allowlisted)
+	Format string `yaml:"format"` // "lines" (default) | "json_ips"
+	Header string `yaml:"header"` // optional auth header "Name: value" (e.g. an API key)
 }
 
 // IOCConfig controls the indicator-of-compromise store + ioc:<type> events.

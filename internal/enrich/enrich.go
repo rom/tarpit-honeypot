@@ -68,6 +68,14 @@ type Enricher struct {
 	fiIPs  map[string]string
 	fiASNs map[string]string
 	fiFPs  map[string]string
+
+	// extMu guards the external-feed overlay: source IP -> label from
+	// operator-configured external reputation feeds (AbuseIPDB / GreyNoise /
+	// OTX / plain IP lists), refreshed by the feeds puller. A match tags the
+	// event external_intel + threat_intel_hit so the risk / tarpit / severity
+	// machinery acts on it, exactly like the fleet overlay.
+	extMu  sync.RWMutex
+	extIPs map[string]string
 }
 
 // SetFleetIntel replaces the downward fleet-intel overlay. Called by the intel
@@ -76,6 +84,14 @@ func (e *Enricher) SetFleetIntel(ips, asns, fps map[string]string) {
 	e.fiMu.Lock()
 	e.fiIPs, e.fiASNs, e.fiFPs = ips, asns, fps
 	e.fiMu.Unlock()
+}
+
+// SetExternalIntel replaces the external-feed overlay (source IP -> label).
+// Called by the feeds puller each poll; nil/empty clears it.
+func (e *Enricher) SetExternalIntel(ips map[string]string) {
+	e.extMu.Lock()
+	e.extIPs = ips
+	e.extMu.Unlock()
 }
 
 // threatSet is one loaded reputation list: exact IPs plus CIDR prefixes.
@@ -307,6 +323,29 @@ func (e *Enricher) Decorate(ev *event.Event) {
 		}
 	}
 	e.decorateFleetIntel(ev)
+	e.decorateExternalIntel(ev)
+}
+
+// decorateExternalIntel tags an event whose source IP appears in an external
+// reputation feed, setting external_intel (the feed label) and threat_intel_hit
+// so the downstream risk / tarpit / severity machinery treats it as hostile.
+func (e *Enricher) decorateExternalIntel(ev *event.Event) {
+	if ev == nil || ev.Source.IP == "" {
+		return
+	}
+	e.extMu.RLock()
+	ips := e.extIPs
+	e.extMu.RUnlock()
+	if len(ips) == 0 {
+		return
+	}
+	if label, ok := ips[ev.Source.IP]; ok {
+		if ev.Meta == nil {
+			ev.Meta = map[string]any{}
+		}
+		ev.Meta["external_intel"] = label
+		ev.Meta["threat_intel_hit"] = true
+	}
 }
 
 // decorateFleetIntel tags an event whose source IP, ASN, or fingerprint appears
