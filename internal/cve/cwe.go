@@ -34,6 +34,7 @@ var cweNames = map[string]string{
 	"CWE-300":  "Channel Accessible by Non-Endpoint (Adversary-in-the-Middle)",
 	"CWE-306":  "Missing Authentication for Critical Function",
 	"CWE-321":  "Use of Hard-coded Cryptographic Key",
+	"CWE-328":  "Use of Weak Hash",
 	"CWE-330":  "Use of Insufficiently Random Values",
 	"CWE-345":  "Insufficient Verification of Data Authenticity",
 	"CWE-352":  "Cross-Site Request Forgery (CSRF)",

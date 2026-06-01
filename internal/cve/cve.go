@@ -1005,6 +1005,80 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Zimbra Collaboration: the postjournal service passes SMTP recipient data to a shell, allowing unauthenticated command execution via a crafted message — exploited in the wild.",
 	},
+
+	// --- third wave: cloud/AI-infra + CMS + 2025 web exploits ---
+	{
+		ID: "CVE-2024-8190", Name: "Ivanti CSA command injection", CVSS: 7.2, Service: "http",
+		Signatures: []string{"/gsb/datetime.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Cloud Services Appliance: OS command injection via the TIMEZONE field of datetime.php — a CISA-KEV exploit chained for appliance takeover.",
+	},
+	{
+		ID: "CVE-2024-8963", Name: "Ivanti CSA path traversal", CVSS: 9.4, Service: "http",
+		Signatures: []string{"/client/index.php%3f.php", "/client/index.php?a.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Cloud Services Appliance: a path-traversal lets an unauthenticated attacker reach restricted admin endpoints; chained with CVE-2024-8190 for RCE.",
+	},
+	{
+		ID: "CVE-2024-50603", Name: "Aviatrix Controller RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"list_flightpath_destination_instances", "flightpath_destination"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Aviatrix Controller: unsanitized parameters in the flightpath API are passed to a shell, allowing unauthenticated remote code execution on the cloud network controller.",
+	},
+	{
+		ID: "CVE-2023-48022", Name: "Ray jobs API RCE (ShadowRay)", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/api/job_submission/jobs", "\"entrypoint\":"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ray (anyscale) cluster job-submission API has no authentication, so anyone who can reach the dashboard can submit an arbitrary entrypoint command — actively abused to hijack AI/GPU clusters (ShadowRay).",
+	},
+	{
+		ID: "CVE-2024-27564", Name: "ChatGPT pictureproxy SSRF", CVSS: 6.5, Service: "http",
+		Signatures: []string{"pictureproxy.php?url=", "/flreey/chatgpt"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "A widely-deployed ChatGPT PHP front-end has an SSRF in pictureproxy.php's url parameter — heavily scanned for internal-service / cloud-metadata pivoting.",
+	},
+	{
+		ID: "CVE-2025-29927", Name: "Next.js middleware auth bypass", CVSS: 9.1, Service: "http",
+		Signatures: []string{"x-middleware-subrequest"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Next.js: supplying the internal x-middleware-subrequest header skips middleware execution, bypassing authentication/authorization gates — mass-scanned after disclosure.",
+	},
+	{
+		ID: "CVE-2025-32432", Name: "Craft CMS RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"conditions/render", "configobject"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Craft CMS: a crafted conditions/render request with an attacker-controlled configObject leads to unauthenticated remote code execution; exploited in the wild.",
+	},
+	{
+		ID: "CVE-2024-9047", Name: "WordPress File Upload arbitrary file read", CVSS: 8.8, Service: "http",
+		Signatures: []string{"wfu_file_downloader.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress WP File Upload plugin: wfu_file_downloader.php allows an unauthenticated attacker to read/delete arbitrary files via path traversal.",
+	},
+	{
+		ID: "CVE-2024-10924", Name: "WordPress Really Simple Security auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"reallysimplessl/v1/two_fa", "rest_route=/reallysimplessl"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress Really Simple Security 2FA REST route can be invoked with an attacker-chosen user_id to authenticate as any user (including admin) — a mass-exploitable account takeover.",
+	},
+
+	// Advisory-only (protocol/DoS/MITM; advertised + version-emulated, the
+	// attempt recognized structurally by the handler rather than a payload string):
+	{
+		ID: "CVE-2025-24472", Name: "FortiOS/FortiProxy auth bypass", CVSS: 8.1, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "FortiOS / FortiProxy authentication bypass via a crafted CSF proxy request, granting super-admin on the firewall — a CISA-KEV edge-device exploit.",
+	},
+	{
+		ID: "CVE-2023-44487", Name: "HTTP/2 Rapid Reset DoS", CVSS: 7.5, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "HTTP/2 Rapid Reset: an attacker opens and immediately RST_STREAM-cancels a flood of streams, exhausting server resources — the record-setting 2023 DDoS technique.",
+	},
+	{
+		ID: "CVE-2024-3596", Name: "Blast-RADIUS MD5 forgery (MITM)", CVSS: 9.0, Service: "radius",
+		Technique: "T1557", Tactic: "credential-access",
+		Description: "RADIUS/UDP Access-Request integrity relies on MD5; a man-in-the-middle can forge a valid Access-Accept (Blast-RADIUS), bypassing authentication across the AAA fabric.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -1183,6 +1257,18 @@ var cveExtra = map[string]struct {
 	"CVE-2025-24813": {[]string{"CWE-44", "CWE-502"}, "cpe:2.3:a:apache:tomcat:*", 0.92},
 	"CVE-2025-32433": {[]string{"CWE-306"}, "cpe:2.3:a:erlang:otp:*", 0.94},
 	"CVE-2024-45519": {[]string{"CWE-78"}, "cpe:2.3:a:zimbra:collaboration:*", 0.94},
+	"CVE-2024-8190":  {[]string{"CWE-78"}, "cpe:2.3:a:ivanti:cloud_services_appliance:*", 0.94},
+	"CVE-2024-8963":  {[]string{"CWE-22"}, "cpe:2.3:a:ivanti:cloud_services_appliance:*", 0.94},
+	"CVE-2024-50603": {[]string{"CWE-78"}, "cpe:2.3:a:aviatrix:controller:*", 0.92},
+	"CVE-2023-48022": {[]string{"CWE-306"}, "cpe:2.3:a:anyscale:ray:*", 0.90},
+	"CVE-2024-27564": {[]string{"CWE-918"}, "cpe:2.3:a:openai:chatgpt:*", 0.90},
+	"CVE-2025-29927": {[]string{"CWE-285"}, "cpe:2.3:a:vercel:next.js:*", 0.93},
+	"CVE-2025-32432": {[]string{"CWE-94"}, "cpe:2.3:a:craftcms:craft_cms:*", 0.90},
+	"CVE-2024-9047":  {[]string{"CWE-22"}, "cpe:2.3:a:iptanus:wordpress_file_upload:*", 0.85},
+	"CVE-2024-10924": {[]string{"CWE-288"}, "cpe:2.3:a:really-simple-plugins:really_simple_security:*", 0.90},
+	"CVE-2025-24472": {[]string{"CWE-288"}, "cpe:2.3:o:fortinet:fortios:*", 0.90},
+	"CVE-2023-44487": {[]string{"CWE-400"}, "cpe:2.3:a:ietf:http:2.0", 0.80},
+	"CVE-2024-3596":  {[]string{"CWE-924", "CWE-328"}, "cpe:2.3:a:ietf:radius:*", 0.30},
 }
 
 func init() {

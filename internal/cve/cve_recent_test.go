@@ -107,3 +107,53 @@ func TestSecondWaveAdvisories(t *testing.T) {
 		}
 	}
 }
+
+// TestMatchPayloadThirdWave locks in the cloud/AI/CMS/2025 wave.
+func TestMatchPayloadThirdWave(t *testing.T) {
+	cases := []struct{ name, handler, req, want string }{
+		{"Ivanti CSA cmdi", "http",
+			"POST /gsb/datetime.php HTTP/1.1\r\n\r\nTIMEZONE=;id;", "CVE-2024-8190"},
+		{"Aviatrix RCE", "http",
+			"POST /v1/api HTTP/1.1\r\n\r\naction=list_flightpath_destination_instances&cloud_type=1", "CVE-2024-50603"},
+		{"ShadowRay", "http",
+			"POST /api/job_submission/jobs HTTP/1.1\r\n\r\n{\"entrypoint\":\"id\"}", "CVE-2023-48022"},
+		{"ChatGPT SSRF", "http",
+			"GET /pictureproxy.php?url=http://169.254.169.254/ HTTP/1.1\r\n\r\n", "CVE-2024-27564"},
+		{"Next.js bypass", "http",
+			"GET /admin HTTP/1.1\r\nx-middleware-subrequest: middleware\r\n\r\n", "CVE-2025-29927"},
+		{"Craft CMS RCE", "http",
+			"POST /index.php HTTP/1.1\r\n\r\naction=conditions/render&configObject[class]=x", "CVE-2025-32432"},
+		{"WP file upload", "http",
+			"GET /wp-content/plugins/wp-file-upload/lib/wfu_file_downloader.php?dl=../../wp-config.php HTTP/1.1\r\n\r\n", "CVE-2024-9047"},
+		{"WP RSS 2FA bypass", "http",
+			"POST /?rest_route=/reallysimplessl/v1/two_fa/skip_onboarding HTTP/1.1\r\n\r\nuser_id=1", "CVE-2024-10924"},
+	}
+	for _, c := range cases {
+		hits := MatchPayload(c.handler, c.req)
+		found := false
+		for _, h := range hits {
+			if h.ID == c.want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: expected %s; got %+v", c.name, c.want, hits)
+		}
+	}
+}
+
+func TestThirdWaveAdvisories(t *testing.T) {
+	for _, id := range []string{"CVE-2025-24472", "CVE-2023-44487", "CVE-2024-3596"} {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing", id)
+			continue
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only", id)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
