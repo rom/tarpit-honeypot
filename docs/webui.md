@@ -17,8 +17,8 @@ attribution, the fleet view, and the IOC view.
 ## The navigation
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
-fleet · iocs · tunnels · profiles · fingerprints · devices · topology · charts ·
-health · alerting · errors · config · docs`
+map · fleet · iocs · tunnels · profiles · fingerprints · devices · topology ·
+charts · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
 console stays live during an attack without JavaScript.
@@ -73,6 +73,16 @@ shared fingerprints (the linking evidence), the kill-chain it reached, the
 handlers it touched, the techniques, and how many credential attempts it made;
 a linkage graph ties campaigns ↔ fingerprints ↔ handlers. JSON at
 `/api/campaign`.
+
+### map (`/map`)
+A live **GeoIP attack map** plus geo/threat dashboards on one screen: an
+attack-source bubble map, top-country / top-ASN / network-class breakdowns,
+threat-intelligence counters (events from known-bad sources, Tor exits, feed
+matches), and a ticker of the most recent high-severity attacks with their
+origin. Geo, ASN and network-class data require `sensor.geoip` (MaxMind
+GeoLite2-City/ASN); the intel counters light up when threat feeds / the Tor
+list are configured. Auto-refreshes, so it doubles as a wall display. JSON at
+`/api/map`.
 
 ---
 
@@ -195,6 +205,7 @@ SIEM sinks, the fleet correlator, and the IOC extractor.
 |----------|---------|
 | `/api/events` | events (filterable; includes ATT&CK/D3FEND) |
 | `/api/attack`, `/api/campaign` | ATT&CK tactic/technique rollup / campaign clusters + journey |
+| `/api/map` | geo/threat dashboard: source map + country/ASN/intel rollups |
 | `/api/fleet` | cross-sensor `fleet:*` findings |
 | `/api/iocs` | the de-duplicated IOC store |
 | `/api/profiles`, `/api/fingerprints` | attacker dossiers / fingerprint reputation |

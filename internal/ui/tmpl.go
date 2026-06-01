@@ -476,7 +476,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -637,6 +637,32 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
     {{ if .Techniques }}<div><h4>techniques</h4>{{ template "bars" .Techniques }}</div>{{ end }}
   </div>
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "threatmap" }}{{ template "head" . }}
+<h1>threat map — last 24 hours</h1>
+<p class="note">Live GeoIP attack map with country / ASN / network-class breakdowns and threat-intelligence counters. Auto-refreshes, so it doubles as a wall display. Geo, ASN and intel data require <code>sensor.geoip</code> + threat-intel feeds. JSON at <a href="/api/map">/api/map</a>.</p>
+<div class="counters">{{ range .Counters }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+{{ if .HasMap }}<figure data-chart="sourcemap" data-chart-title="Attack source map (GeoIP)" data-chart-b64="{{ .MapB64 }}"><p class="note">enable JavaScript to render the map</p></figure>{{ else }}<p class="note">no geo-located events yet — set <code>sensor.geoip.city_db</code> (MaxMind GeoLite2-City) to plot attack origins.</p>{{ end }}
+<div class="cols2">
+  <div><h3>top countries</h3>{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment</p>{{ end }}</div>
+  <div><h3>top ASNs</h3>{{ if .ASNs }}{{ template "bars" .ASNs }}{{ else }}<p class="note">no ASN enrichment</p>{{ end }}</div>
+  <div><h3>network class</h3>{{ if .NetClasses }}{{ template "bars" .NetClasses }}{{ else }}<p class="note">none classified</p>{{ end }}</div>
+  <div><h3>threat-intel sources</h3>{{ if .IntelSources }}{{ template "bars" .IntelSources }}{{ else }}<p class="note">no intel matches (set threat feeds / Tor list)</p>{{ end }}</div>
+</div>
+<h2>recent high-severity attacks</h2>
+{{ if .Recent }}<table>
+<tr><th>time (utc)</th><th>source</th><th>origin</th><th>asn</th><th>sev</th><th>handler</th><th>rule</th></tr>
+{{ range .Recent }}<tr class="sev-{{ .Sev }}">
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ if .Intel }} <span class="tag bad">intel</span>{{ end }}</td>
+  <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ .Country }}</span>{{ else }}—{{ end }}</td>
+  <td>{{ if .ASN }}{{ .ASN }}{{ else }}—{{ end }}</td>
+  <td><span class="tag sev-{{ .Sev }}">{{ .Sev }}</span></td>
+  <td>{{ .Handler }}</td>
+  <td>{{ .RuleID }}</td>
+</tr>{{ end }}
+</table>{{ else }}<p class="note">no high-severity attacks in the window</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "fleet" }}{{ template "head" . }}
