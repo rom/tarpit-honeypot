@@ -16,9 +16,9 @@ attribution, the fleet view, and the IOC view.
 
 ## The navigation
 
-`summary · events · search · timeline · att&ck · correlation · fleet · iocs ·
-tunnels · profiles · fingerprints · devices · topology · charts · health ·
-alerting · errors · config · docs`
+`summary · events · search · timeline · att&ck · correlation · campaigns ·
+fleet · iocs · tunnels · profiles · fingerprints · devices · topology · charts ·
+health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
 console stays live during an attack without JavaScript.
@@ -60,6 +60,19 @@ list-techniques`.)
 Per-source **pivot chains**: IP → fingerprints → User-Agents → ASN/country →
 domains → tools → credentials → malware → sessions. The single-sensor
 counterpart to the fleet view.
+
+### campaigns (`/campaign`)
+Two lenses on the last 24h. The **attacker journey** is a sankey of the
+ATT&CK tactic→tactic transitions every source moved through (recovered from
+each source's chronological tactic sequence) — at a glance, how attackers
+progress from reconnaissance toward impact against this sensor. **Campaigns**
+link distinct source IPs into one operation when they share a strong network
+fingerprint (JA3 / JA4 / JA4H / JA3S / HASSH) — high-confidence evidence of a
+single toolset behind multiple hosts. Each campaign card shows its members, the
+shared fingerprints (the linking evidence), the kill-chain it reached, the
+handlers it touched, the techniques, and how many credential attempts it made;
+a linkage graph ties campaigns ↔ fingerprints ↔ handlers. JSON at
+`/api/campaign`.
 
 ---
 
@@ -181,6 +194,7 @@ SIEM sinks, the fleet correlator, and the IOC extractor.
 | Endpoint | Returns |
 |----------|---------|
 | `/api/events` | events (filterable; includes ATT&CK/D3FEND) |
+| `/api/attack`, `/api/campaign` | ATT&CK tactic/technique rollup / campaign clusters + journey |
 | `/api/fleet` | cross-sensor `fleet:*` findings |
 | `/api/iocs` | the de-duplicated IOC store |
 | `/api/profiles`, `/api/fingerprints` | attacker dossiers / fingerprint reputation |
