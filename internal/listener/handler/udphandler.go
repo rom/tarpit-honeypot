@@ -128,6 +128,10 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &dtls{}, nil
 	case "quic":
 		return &quicH{}, nil
+	case "netflow":
+		return &netflow{}, nil
+	case "sflow":
+		return &sflow{}, nil
 	case "auto":
 		return &autoUDP{}, nil
 	case "echo":

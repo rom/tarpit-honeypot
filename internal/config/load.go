@@ -75,6 +75,7 @@ var udpHandlers = map[string]bool{
 	"isakmp": true, "netbios_dgram": true, "stun": true,
 	"mssql_browser": true, "profinet": true, "wdbrpc": true, "iax2": true,
 	"dtls": true, "quic": true,
+	"netflow": true, "sflow": true,
 	"auto": true,
 }
 

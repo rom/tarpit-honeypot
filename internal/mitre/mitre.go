@@ -341,6 +341,8 @@ var handlerTags = map[string]Tag{
 	"isakmp":         {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
 	"dtls":           {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"quic":           {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"netflow":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"sflow":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"netbios_dgram":  {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"intel_amt":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"ilo":            {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
@@ -570,6 +572,10 @@ var anomalyTags = map[string]Tag{
 	"vault-seal-control":  {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	// Flow-export records received = network-topology reconnaissance leak.
+	"netflow-export-received": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"sflow-export-received":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"quic-initial":            {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
 	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
