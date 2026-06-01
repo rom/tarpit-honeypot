@@ -8,6 +8,53 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — fingerprint suite, active response, encrypted transports (version 2.3.0)
+
+Version bumped to **2.3.0**. This release rounds out the JA4+ fingerprint
+family, adds an active-response firewall backstop and a decoy-document canary,
+and brings encrypted-transport fingerprinting (DTLS, QUIC/HTTP-3) plus
+flow-export collectors.
+
+**Fingerprints — JA4SSH / JA4L / JA4X + live JARM**
+- `fingerprint.JA4SSH` (SSH record-length cadence), `JA4L` (latency/locality —
+  RTT + TTL), and `JA4X` (X.509 cert structure) join the JA4+ family. JA4L is
+  emitted live as `ja4l` on `honeynet:tcp_connect` events; JA4X as `ja4x` by the
+  https handler over the cert it presents; JA4SSH is a tested library primitive
+  (the SSH handlers don't expose raw record lengths to wire it live).
+- New `jarm` CLI command actively probes a TLS server (ten varied ClientHellos)
+  and prints its JARM fingerprint — point it at the sensor's own https listener
+  to confirm its TLS posture matches the impersonated product.
+
+**Active inbound response (opt-in)**
+- New `risk.block` (`internal/blocklist`): when a source crosses a configured
+  risk level, the sensor adds it to an nftables drop set for a bounded TTL, then
+  lets the kernel expire it — the honeypot analogue of fail2ban, driven by the
+  risk score. OFF by default (blocking ends the engagement); TTL-bounded so a
+  crash can't leave a host firewalled forever; loopback / link-local /
+  `never_block` CIDRs always exempt; Linux + nft + CAP_NET_ADMIN.
+
+**Decoy-document canary**
+- `gen-token --type=doc` writes a real `.docx` whose external `attachedTemplate`
+  relationship beacons the callback URL when the file is opened in Word — drop
+  it on a share named like sensitive data and "someone opened the honeydoc"
+  becomes an alert (captured by the `ssrf_canary` listener) with the opener's IP.
+
+**Encrypted-transport handlers**
+- New `dtls` UDP handler: parses the cleartext DTLS ClientHello, computes
+  JA3/JA4 over it + `dtls_version`, replies with a HelloVerifyRequest, and only
+  answers a genuine ClientHello (no reflection surface).
+- New `quic` UDP handler: decrypts the QUIC Initial packet (key schedule
+  verified byte-for-byte against the RFC 9001 Appendix A test vectors),
+  reassembles the TLS ClientHello from its CRYPTO frames, and computes JA3/JA4 +
+  `quic_version`. Capture-only — gives QUIC/HTTP-3 scans the same fingerprinting
+  the TLS handlers give HTTPS, without a QUIC transport.
+
+**Routing / flow-export collectors**
+- New `netflow` (NetFlow v5/v9 + IPFIX) and `sflow` (sFlow v5) UDP collector
+  decoys capture the exporting network's flow records / agent identity — routing
+  reconnaissance complementing the existing `bgp` handler. The `routerserver`
+  archeservice role now exposes them alongside BGP/SNMP/SSH.
+
 ### Added — cloud-native attack surface + protocol breadth (version 2.2.0)
 
 Version bumped to **2.2.0**. This release widens the honeypot toward the

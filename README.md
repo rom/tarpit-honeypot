@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **125 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **125 TCP + 37 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -565,7 +565,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (125 TCP + 33 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (125 TCP + 37 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -605,6 +605,27 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
+
+**v2.3 — full JA4+ suite, active response, encrypted-transport fingerprinting.**
+This sprint completes the JA4+ family, adds an opt-in firewall backstop and a
+decoy-document canary, and fingerprints encrypted transports. Highlights; the
+[CHANGELOG](CHANGELOG.md) has the per-commit detail.
+
+- **JA4SSH / JA4L / JA4X + live JARM.** `ja4l` (latency/locality) on
+  `honeynet:tcp_connect`, `ja4x` (cert structure) from the https handler, JA4SSH
+  as a library primitive, and a new `jarm` CLI command that probes a TLS server
+  (point it at your own sensor to confirm its TLS posture).
+- **Active inbound response** (`risk.block`, opt-in): a risk-score-driven
+  nftables drop set with a TTL — the honeypot analogue of fail2ban. Off by
+  default; loopback/link-local/`never_block` always exempt.
+- **Decoy-document canary**: `gen-token --type=doc` writes a real `.docx` that
+  beacons when opened in Word.
+- **Encrypted transports**: `dtls` (cleartext DTLS ClientHello → JA3/JA4) and
+  `quic` (decrypts the QUIC Initial — key schedule verified against the RFC 9001
+  vectors — and fingerprints the inner ClientHello), giving DTLS and
+  QUIC/HTTP-3 scans the same JA3/JA4 the TLS handlers give HTTPS.
+- **Flow-export collectors**: `netflow` (v5/v9/IPFIX) and `sflow` decoys capture
+  routing reconnaissance, alongside the existing `bgp` handler.
 
 **v2.2 — cloud-native attack surface, modern transports, JA4+, IPv6 parity.**
 The latest sprint widens the honeypot toward containers/cloud, modern
