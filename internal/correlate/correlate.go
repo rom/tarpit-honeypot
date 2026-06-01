@@ -52,6 +52,9 @@ type Correlator struct {
 	destructSev   event.Severity
 	cloudCredSev  event.Severity
 	ssrfCbSev     event.Severity
+	mitmCapSev    event.Severity
+	fpRotSev      event.Severity
+	ctrTakeSev    event.Severity
 	honeytokenSev event.Severity
 	toolRotSev    event.Severity
 	plcProgSev    event.Severity
@@ -99,6 +102,9 @@ type Correlator struct {
 	destruct   map[string]*countState // key: source IP (data-destruction op count)
 	cloudCred  map[string]*countState // key: source IP (cloud cred-theft op count)
 	ssrfCb     map[string]*setState   // key: source IP (distinct ssrf tokens)
+	mitmCap    map[string]*countState // key: source IP (tls-decrypted exploit/cred count)
+	fpRot      map[string]*setState   // key: source IP (distinct network fingerprints)
+	ctrTake    map[string]*setState   // key: source IP (distinct container/k8s control ops)
 	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
 	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
 	plcProg    map[string]*countState // key: source IP (program-download count)
@@ -215,6 +221,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		destruct:   map[string]*countState{},
 		cloudCred:  map[string]*countState{},
 		ssrfCb:     map[string]*setState{},
+		mitmCap:    map[string]*countState{},
+		fpRot:      map[string]*setState{},
+		ctrTake:    map[string]*setState{},
 		honeytoken: map[string]*reuseState{},
 		toolRot:    map[string]*setState{},
 		plcProg:    map[string]*countState{},
@@ -320,6 +329,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.DestructiveAction.Enabled, cfg.DestructiveAction.Severity, &c.destructSev},
 		{cfg.CloudCredTheft.Enabled, cfg.CloudCredTheft.Severity, &c.cloudCredSev},
 		{cfg.SSRFCallback.Enabled, cfg.SSRFCallback.Severity, &c.ssrfCbSev},
+		{cfg.TLSMITMCapture.Enabled, cfg.TLSMITMCapture.Severity, &c.mitmCapSev},
+		{cfg.FingerprintRotation.Enabled, cfg.FingerprintRotation.Severity, &c.fpRotSev},
+		{cfg.ContainerTakeover.Enabled, cfg.ContainerTakeover.Severity, &c.ctrTakeSev},
 		{cfg.HoneytokenSpread.Enabled, cfg.HoneytokenSpread.Severity, &c.honeytokenSev},
 		{cfg.ToolRotation.Enabled, cfg.ToolRotation.Severity, &c.toolRotSev},
 		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
@@ -438,6 +450,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.SSRFCallback.Enabled {
 		if extra := c.checkSSRFCallback(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.TLSMITMCapture.Enabled {
+		if extra := c.checkTLSMITMCapture(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.FingerprintRotation.Enabled {
+		if extra := c.checkFingerprintRotation(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.ContainerTakeover.Enabled {
+		if extra := c.checkContainerTakeover(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1278,6 +1305,13 @@ func (c *Correlator) gc(now time.Time) {
 		}
 	}
 	gcSet(c.ssrfCb, now, effWindow(c.cfg.SSRFCallback.Window, 10*time.Minute))
+	for k, st := range c.mitmCap {
+		if now.Sub(st.since) > effWindow(c.cfg.TLSMITMCapture.Window, 10*time.Minute) {
+			delete(c.mitmCap, k)
+		}
+	}
+	gcSet(c.fpRot, now, effWindow(c.cfg.FingerprintRotation.Window, 10*time.Minute))
+	gcSet(c.ctrTake, now, effWindow(c.cfg.ContainerTakeover.Window, 10*time.Minute))
 	for k, st := range c.honeytoken {
 		if now.Sub(st.since) > effWindow(c.cfg.HoneytokenSpread.Window, time.Hour) {
 			delete(c.honeytoken, k)
