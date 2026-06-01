@@ -155,6 +155,16 @@ Print the CVE catalog used for emulation + exploit detection
 Print the MITRE ATT&CK / D3FEND coverage map
 .RB ( --kind " " rule | handler | anomaly ).
 .TP
+.B export-navigator
+Write a MITRE ATT&CK Navigator layer (JSON) to stdout or
+.BR -o .
+Default is static coverage; with
+.B --observed
+.RB ( -c ", " --since )
+the layer is scored by per-technique event counts from the local store. Load it
+at https://mitre-attack.github.io/attack-navigator/. The web UI also serves it
+at /attack/navigator.
+.TP
 .B list-fleet-rules
 Print the cross-sensor
 .B fleet:*

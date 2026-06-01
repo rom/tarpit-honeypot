@@ -239,3 +239,30 @@ func (s *Server) handleAPIAttack(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, buildAttackView(since, evs))
 }
+
+// handleNavigator serves a MITRE ATT&CK Navigator layer scored by the
+// techniques observed in the configured window — drop the JSON into
+// https://mitre-attack.github.io/attack-navigator/ for an observed-technique
+// heatmap. ?static=1 returns the static-coverage layer instead.
+func (s *Server) handleNavigator(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("static") == "1" {
+		writeJSON(w, mitre.Navigator(nil))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	since := time.Now().Add(-attackWindow)
+	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	counts := map[string]int{}
+	for _, ev := range evs {
+		for _, t := range ev.MitreTechniques {
+			counts[t]++
+		}
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="navigator-observed.json"`)
+	writeJSON(w, mitre.Navigator(counts))
+}

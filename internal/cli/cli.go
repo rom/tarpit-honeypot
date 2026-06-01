@@ -41,6 +41,7 @@ func Dispatch(args []string) error {
 		{"list-archeservices", "print the service roles (webserver, adserver, …)", cmdListArcheservices},
 		{"list-cves", "print the CVE catalog (emulation + exploit detection)", cmdListCVEs},
 		{"list-techniques", "print the MITRE ATT&CK / D3FEND coverage map", cmdListTechniques},
+		{"export-navigator", "write a MITRE ATT&CK Navigator layer (static or --observed)", cmdExportNavigator},
 		{"list-fleet-rules", "print the cross-sensor (fleet:*) detector catalog", cmdListFleetRules},
 		{"list-unavailable-capabilities", "print disabled / infeasible high-interaction features", cmdListUnavailableCapabilities},
 		{"export-iocs", "export fleet IOCs from the store (stix | csv | txt | json)", cmdExportIOCs},

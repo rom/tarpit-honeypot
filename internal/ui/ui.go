@@ -255,6 +255,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/api/config/canvas", s.handleAPIConfigCanvas)
 	mux.HandleFunc("/api/attack", s.handleAPIAttack)
+	mux.HandleFunc("/attack/navigator", s.handleNavigator)
 	mux.HandleFunc("/api/topology", s.handleAPITopology)
 	mux.HandleFunc("/api/hosts", s.handleAPIHosts)
 	mux.HandleFunc("/api/devices", s.handleAPIHosts)
