@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/mitre"
@@ -17,6 +18,7 @@ func cmdListTechniques(args []string) error {
 	fs := flag.NewFlagSet("list-techniques", flag.ContinueOnError)
 	kind := fs.String("kind", "", "filter by kind: rule | handler | anomaly")
 	asJSON := fs.Bool("json", false, "emit as JSON instead of a table")
+	defenses := fs.Bool("defenses", false, "print the D3FEND countermeasure legend (id -> name) and exit")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -24,6 +26,24 @@ func cmdListTechniques(args []string) error {
 	case "", "rule", "handler", "anomaly":
 	default:
 		return fmt.Errorf("--kind must be rule, handler, or anomaly, got %q", *kind)
+	}
+
+	if *defenses {
+		cat := mitre.DefenseCatalog()
+		if *asJSON {
+			return writeJSON(cat)
+		}
+		ids := make([]string, 0, len(cat))
+		for id := range cat {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		fmt.Printf("%-10s %s\n", "D3FEND", "COUNTERMEASURE")
+		for _, id := range ids {
+			fmt.Printf("%-10s %s\n", id, cat[id])
+		}
+		fmt.Printf("\n%d D3FEND countermeasure(s) mapped.\n", len(ids))
+		return nil
 	}
 
 	all := mitre.Coverage()

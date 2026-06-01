@@ -577,6 +577,17 @@ cloud-credential-theft markers, and `correlate:ssrf_callback` fires when
 one source causes distinct SSRF tokens to call back. Enable and tune them
 under `correlate.*` (see [`config.md`](config.md)).
 
+Three more correlators cover the interception / container surface, same
+opt-in/windowed/severity shape: `correlate:tls_mitm_capture` (one source
+produces several `tls-decrypted-exploit` / `tls-decrypted-credentials`
+events — the `tls_intercept` MITM caught attacks inside the TLS tunnel),
+`correlate:fp_rotation` (one source presents several *distinct* network
+fingerprints — JA4, then JA3/HASSH — a single actor rotating its TLS/SSH
+stack or proxy pool to dodge fingerprint blocking), and
+`correlate:container_takeover` (one source performs several *distinct*
+container/Kubernetes control ops — secret enumeration, pod create/exec,
+docker container create — a platform takeover).
+
 **Protocol-anomaly markers** (`event.anomalies`) flagged today:
 
 - SSH: `ssh-id-non-printable`, `ssh-id-overlong`, `ssh-id-not-ssh`
@@ -585,7 +596,11 @@ under `correlate.*` (see [`config.md`](config.md)).
   `uri-source-leak-probe`, `uri-mgmt-endpoint-probe`,
   `uri-secret-file-probe`, `uri-xss-or-rce-payload`,
   `http-login-attempt`; behavioral: `http-malformed-header`,
-  `http-duplicate-host`, `http-impossible-browser`
+  `http-duplicate-host`, `http-impossible-browser`; web-attack classes
+  (scanned over the whole request on every `http`/`https` listener, not just
+  the vulnerable-web emulation): `webapp:ssti`, `webapp:xxe`,
+  `webapp:rfi_ssrf`, `webapp:deserialize`, `webapp:nosqli`,
+  `webapp:graphql-introspection`, `webapp:jwt-none`
 - DNS: `dns-tunnel-suspected`, `dns-qname-overlong`, `dns-dga-suspected`,
   `dns-over-https`, `dns-over-tls`, `dnscrypt-probe`, `mdns-service-enumeration`
 - Active Directory / Kerberos: `kerberos-tgs-request`,

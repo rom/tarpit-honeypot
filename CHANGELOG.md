@@ -8,6 +8,67 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — detection-depth pass II: more CVEs/IOCs/anomalies/correlators/playbooks/scripts (version 2.6.0)
+
+Version bumped to **2.6.0**. A second breadth/depth pass across the same
+subsystems, leaning into the IoT-botnet + web-app attack surface and the
+signals added in 2.5.0.
+
+- **+17 CVEs** (159 total): IoT/DVR/camera/NAS command-injection (D-Link,
+  TBK, AVTECH, Zyxel — Mirai-class) plus recent enterprise pre-auth RCE
+  (HugeGraph, CrushFTP, LiteSpeed, Telerik, Grafana DuckDB, Confluence,
+  FortiClient EMS, Splunk, Solr, Tomcat partial-PUT) and advisory Erlang/OTP
+  SSH + Zimbra. New CWE-44.
+- **+3 IOC types**: `ssh-key` (offered SSH public-key fingerprints, now
+  surfaced at the top level + emitted), `ssh-client` (SSH client version), and
+  `email` (SMTP envelope sender).
+- **Web-attack-class detection** on every `http`/`https` listener: `webapp:ssti`
+  / `xxe` / `rfi_ssrf` / `deserialize` / `nosqli` / `graphql-introspection` /
+  `jwt-none` — scanned over the whole request, near-zero-FP, ATT&CK/D3FEND
+  mapped.
+- **+3 correlators**: `web_attack_probe` (distinct web-attack classes),
+  `ssh_key_spray` (distinct offered SSH keys), `spam_relay` (open-relay /
+  recipient-enumeration probing).
+- **+3 storyline playbooks**: `web-vuln-fuzzing`, `data-exfiltration`,
+  `dos-amplification`; web-attack-class tracking broadens
+  `web-exploit-to-shell`.
+- **Richer profiles**: SSH public keys offered, SMTP senders, and web-attack
+  classes, with a new "web application attack" assessment band.
+- **+6 Lua scripts** (84 total): Metabase, Superset, Node-RED, ThinkPHP,
+  GeoServer, Rancher — each flagging its service-specific RCE/abuse primitive.
+
+### Added — detection-depth pass: CVEs, IOCs, profiles, D3FEND, storyline, correlators, Lua (version 2.5.0)
+
+Version bumped to **2.5.0**. A breadth-and-depth pass across the detection /
+attribution subsystems, prioritizing coverage for the handlers added in 2.4.0.
+
+- **+21 CVEs** (142 total): recent CISA-KEV / mass-exploited entries for
+  handlers we model — Confluence SSTI, Check Point / PAN-OS / Ivanti EPMM /
+  SolarWinds Serv-U / GeoServer / WhatsUp Gold / OFBiz / SAP NetWeaver, the
+  WordPress RCE/SQLi wave, Zyxel + TP-Link command injection, and advisory-only
+  Terrapin / FortiOS / Ivanti handshake exploits. New CWE names.
+- **Wider IOC extraction**: `ja4h`, `ja4t`, `user-agent`, and requested TLS
+  `sni` (as a domain) are now turned into typed indicators (ja4h emitted; the
+  rest store-tracked).
+- **Richer attacker profiles**: captured malware artifacts, harvested
+  C2/dropper URLs, requested domains/SNIs, JA4T, and a confirmed-compromise
+  banner + assessment when a source replays a planted honeytoken.
+- **D3FEND expansion**: 32 previously-unmapped ATT&CK techniques now carry
+  countermeasures; a D3FEND id→name catalog + `list-techniques --defenses`
+  legend; eight new countermeasure ids.
+- **Protocol anomalies**: `tls_intercept` now runs the decrypted client→backend
+  stream through CVE / suspicious-URI / credential detection
+  (`tls-decrypted-exploit` / `-credentials`); `dtls` raises `dtls-probe` /
+  `dtls-malformed`.
+- **Storyline**: new milestones (honeytoken reuse, web shells, tunnelled
+  exploits) and named **playbooks** (ransomware, ot-kill-chain,
+  cloud-credential-takeover, web-exploit-to-shell, edge-appliance-exploitation,
+  …) stamped on the storyline event and surfaced on `/attack`.
+- **+3 correlators**: `tls_mitm_capture`, `fp_rotation` (distinct-fingerprint
+  rotation), `container_takeover`.
+- **+6 Lua scripts** (78 total): phpMyAdmin, Adminer, Gitea, Ollama, Zabbix
+  agent, Apache RocketMQ — each flagging its service-specific abuse primitive.
+
 ### Added — active capture, threat-intel ingestion, TLS MITM, campaign/journey + threat-map UI, decoy generation (version 2.4.0)
 
 Version bumped to **2.4.0**. A feature set closing the gap to full

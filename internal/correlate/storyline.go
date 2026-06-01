@@ -32,9 +32,13 @@ type storylineState struct {
 	handlers         map[string]bool
 	cveHits          map[string]bool // CVE ids exploited along the chain
 	tools            map[string]bool // scanner/tool names fingerprinted
+	anomalies        map[string]bool // anomaly markers seen along the chain
 	hitCount         int
 	malware          bool // a malware:capture fired for this source
-	reachedObjective bool // chain touched impact / exfiltration
+	webshell         bool // a webshell rule/anomaly fired
+	webAttack        bool // a web-attack-class (webapp:*) anomaly fired
+	tokenReuse       bool // replayed a planted honeytoken (canary:token_used)
+	reachedObjective bool // chain touched impact / exfiltration / confirmed compromise
 	lastEmittedSize  int
 	lastEmittedSev   event.Severity
 }
@@ -77,6 +81,7 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 			handlers:   map[string]bool{},
 			cveHits:    map[string]bool{},
 			tools:      map[string]bool{},
+			anomalies:  map[string]bool{},
 		}
 		c.story[ev.Source.IP] = st
 	}
@@ -108,6 +113,26 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	}
 	if ev.RuleID == "malware:capture" {
 		st.malware = true
+	}
+	// A replayed honeytoken/decoy credential is the strongest possible
+	// milestone — proof the attacker used something they stole from us.
+	if ev.RuleID == "canary:token_used" {
+		st.tokenReuse = true
+		st.reachedObjective = true
+	}
+	for _, a := range ev.Anomalies {
+		st.anomalies[a] = true
+		switch {
+		case strings.HasPrefix(a, "cve:"):
+			st.cveHits[strings.TrimPrefix(a, "cve:")] = true
+		case strings.HasPrefix(a, "webshell-"):
+			st.webshell = true
+		case strings.HasPrefix(a, "webapp:"):
+			st.webAttack = true
+		}
+	}
+	if strings.HasPrefix(ev.RuleID, "webshell") {
+		st.webshell = true
 	}
 	if tools, ok := ev.Meta["tools"].([]string); ok {
 		for _, t := range tools {
@@ -153,6 +178,17 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	if st.malware {
 		meta["malware_captured"] = true
 	}
+	if st.tokenReuse {
+		meta["token_reuse"] = true
+	}
+	if st.webshell {
+		meta["webshell"] = true
+	}
+	// Name the recognizable attack pattern so a SOC sees "this is a ransomware
+	// chain" rather than re-deriving it from the tactic list each time.
+	if pb := storyPlaybook(st); pb != "" {
+		meta["playbook"] = pb
+	}
 
 	return &event.Event{
 		ID:              event.NewID(),
@@ -174,10 +210,67 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 // exploit, dropped malware, reached impact/exfiltration, or walked 5+
 // distinct tactics is Critical — the SOC's "wake someone up" tier.
 func storySeverity(st *storylineState) event.Severity {
-	if st.malware || len(st.cveHits) > 0 || st.reachedObjective || len(st.stages) >= 5 {
+	if st.malware || st.tokenReuse || st.webshell || len(st.cveHits) > 0 || st.reachedObjective || len(st.stages) >= 5 {
 		return event.SeverityCritical
 	}
 	return event.SeverityHigh
+}
+
+// storyPlaybook names the recognizable attack pattern a storyline matches,
+// from the accumulated handlers / tactics / milestones, or "" when the chain
+// doesn't fit a known playbook. Checked most-specific first.
+func storyPlaybook(st *storylineState) string {
+	hasHandler := func(names ...string) bool {
+		for _, n := range names {
+			if st.handlers[n] {
+				return true
+			}
+		}
+		return false
+	}
+	anomPrefix := func(prefix string) bool {
+		for a := range st.anomalies {
+			if strings.HasPrefix(a, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+	icsHandler := hasHandler("modbus", "s7", "s7comm_plus", "dnp3", "iec104", "ethernetip",
+		"bacnet", "opcua", "codesys", "fins", "melsec", "mms", "ge_srtp", "hartip", "pcworx", "profinet")
+	cloudHandler := hasHandler("cloud_metadata", "kubernetes_api", "vault", "etcd", "dockerapi")
+
+	switch {
+	case st.tokenReuse:
+		// The attacker came back and used something they stole from the decoy.
+		return "credential-replay-compromise"
+	case icsHandler && (anomPrefix("ics-") || anomPrefix("modbus-") || anomPrefix("fins-") ||
+		anomPrefix("pcom-") || st.stageSeen["impact"]):
+		return "ot-kill-chain"
+	case cloudHandler && st.stageSeen["credential-access"]:
+		return "cloud-credential-takeover"
+	case st.stageSeen["impact"] && (anomPrefix("redis-flush") || st.handlers["smb"]) && st.reachedObjective:
+		return "ransomware-style-destruction"
+	case st.stageSeen["exfiltration"]:
+		// Data left the building (FTP download / DNS exfil / large response).
+		return "data-exfiltration"
+	case st.stageSeen["impact"] && (anomPrefix("tcp-") || anomPrefix("ip-") || anomPrefix("ntp-") ||
+		anomPrefix("udp-") || anomPrefix("ssdp") || anomPrefix("dns-amplif")):
+		// Volumetric / DoS / reflection-amplification abuse.
+		return "dos-amplification"
+	case st.webshell || ((len(st.cveHits) > 0 || st.webAttack) && st.stageSeen["execution"]):
+		return "web-exploit-to-shell"
+	case len(st.cveHits) > 0 && hasHandler("fortinet", "pulse", "citrix_gateway"):
+		return "edge-appliance-exploitation"
+	case st.malware:
+		return "malware-delivery"
+	case st.webAttack && !st.stageSeen["execution"] && len(st.cveHits) == 0:
+		// Many web-attack classes thrown at the app but nothing landed yet.
+		return "web-vuln-fuzzing"
+	case st.stageSeen["credential-access"] && !st.stageSeen["execution"] && len(st.cveHits) == 0:
+		return "credential-harvest"
+	}
+	return ""
 }
 
 // orderTacticsByRank sorts tactic names by their position in the

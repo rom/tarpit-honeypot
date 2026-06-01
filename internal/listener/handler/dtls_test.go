@@ -64,6 +64,9 @@ func TestDTLSFingerprintsAndRepliesHVR(t *testing.T) {
 	if res.Meta["dtls_version"] != "DTLS 1.2" {
 		t.Errorf("dtls_version = %v, want DTLS 1.2", res.Meta["dtls_version"])
 	}
+	if !hasAnom(res, "dtls-probe") {
+		t.Errorf("expected dtls-probe anomaly; meta=%v", res.Meta)
+	}
 	// A HelloVerifyRequest must have been written back.
 	if len(pc.written) != 1 {
 		t.Fatalf("expected 1 reply datagram, got %d", len(pc.written))
@@ -85,5 +88,8 @@ func TestDTLSNonClientHelloStaysSilent(t *testing.T) {
 	}
 	if res.Meta["dtls"] != "non-clienthello" {
 		t.Errorf("expected non-clienthello marker, got %v", res.Meta["dtls"])
+	}
+	if !hasAnom(res, "dtls-malformed") {
+		t.Errorf("expected dtls-malformed anomaly; meta=%v", res.Meta)
 	}
 }

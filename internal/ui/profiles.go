@@ -77,7 +77,24 @@ type Profile struct {
 	CVEs         []string          `json:"cves,omitempty"`
 	Credentials  []credPair        `json:"credentials,omitempty"`
 	Sensors      []string          `json:"sensors,omitempty"`
-	Recent       []*event.Event    `json:"-"`
+	// Domains are DNS names and TLS SNIs this source asked for; URLs are
+	// C2/dropper URLs harvested from its payloads; Artifacts are captured
+	// malware-artifact descriptors (kind:sha256). These surface the forensic
+	// observables that previously lived only in per-event meta.
+	Domains   []string `json:"domains,omitempty"`
+	URLs      []string `json:"harvested_urls,omitempty"`
+	Artifacts []string `json:"artifacts,omitempty"`
+	// SSHKeys are the SSH public-key fingerprints this source offered;
+	// Emails are SMTP envelope senders it used; AttackClasses are the
+	// distinct web-attack classes (webapp:*) it threw at the app.
+	SSHKeys       []string `json:"ssh_keys,omitempty"`
+	Emails        []string `json:"emails,omitempty"`
+	AttackClasses []string `json:"attack_classes,omitempty"`
+	// TokenReuse is set when this source replayed a honeytoken/decoy
+	// credential the sensor had previously served — strong proof of
+	// compromise (a closed canary loop).
+	TokenReuse bool           `json:"token_reuse,omitempty"`
+	Recent     []*event.Event `json:"-"`
 }
 
 // buildProfile aggregates one source's events (expected newest-first) into a
@@ -94,6 +111,12 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	portSet := map[int]struct{}{}
 	ruleCount := map[string]int{}
 	credSeen := map[string]struct{}{}
+	domainSet := map[string]struct{}{}
+	urlSet := map[string]struct{}{}
+	artSet := map[string]struct{}{}
+	sshKeySet := map[string]struct{}{}
+	emailSet := map[string]struct{}{}
+	attackClassSet := map[string]struct{}{}
 	var maxSev event.Severity
 
 	for _, ev := range evs {
@@ -140,12 +163,40 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		if c := metaInt(ev.Meta, "tool_confidence"); c > p.Confidence {
 			p.Confidence = c
 		}
-		for _, fp := range []string{"ja3", "ja4", "ja4h", "ja3s", "hassh", "hassh_server"} {
+		for _, fp := range []string{"ja3", "ja4", "ja4h", "ja4t", "ja3s", "hassh", "hassh_server"} {
 			if v, ok := ev.Meta[fp].(string); ok && v != "" {
 				if _, exists := p.Fingerprints[fp]; !exists {
 					p.Fingerprints[fp] = v
 				}
 			}
+		}
+		// Forensic observables that used to live only in per-event meta.
+		for _, k := range []string{"qname", "sni"} {
+			if d, _ := ev.Meta[k].(string); d != "" {
+				domainSet[d] = struct{}{}
+			}
+		}
+		for _, u := range metaStrings(ev.Meta, "harvested_urls") {
+			urlSet[u] = struct{}{}
+		}
+		for _, a := range metaStrings(ev.Meta, "payload_artifacts") {
+			artSet[a] = struct{}{}
+		}
+		for _, k := range metaStrings(ev.Meta, "ssh_pubkey_fps") {
+			sshKeySet[k] = struct{}{}
+		}
+		if mf, _ := ev.Meta["mail_from"].(string); mf != "" {
+			if from := strings.Trim(mf, "<> "); strings.Contains(from, "@") {
+				emailSet[from] = struct{}{}
+			}
+		}
+		for _, a := range ev.Anomalies {
+			if strings.HasPrefix(a, "webapp:") {
+				attackClassSet[a] = struct{}{}
+			}
+		}
+		if ev.RuleID == "canary:token_used" {
+			p.TokenReuse = true
 		}
 		for _, c := range extractCreds(ev) {
 			key := c.User + "\x00" + c.Pass + "\x00" + c.Service
@@ -168,6 +219,12 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	p.CVEs = sortedSet(cveSet)
 	p.Handlers = sortedSet(handlerSet)
 	p.Sensors = sortedSet(sensorSet)
+	p.Domains = sortedSet(domainSet)
+	p.URLs = sortedSet(urlSet)
+	p.Artifacts = sortedSet(artSet)
+	p.SSHKeys = sortedSet(sshKeySet)
+	p.Emails = sortedSet(emailSet)
+	p.AttackClasses = sortedSet(attackClassSet)
 	p.Ports = sortedInts(portSet)
 	for r, c := range ruleCount {
 		p.Rules = append(p.Rules, countItem{Name: r, Count: c})
@@ -219,8 +276,14 @@ func (p *Profile) synthesize() {
 	}
 
 	switch {
+	case p.TokenReuse:
+		p.Classification = "confirmed compromise — honeytoken reuse"
 	case anyTool(toolfp.IsC2) || has(p.Anomalies, "c2-framework"):
 		p.Classification = "C2 / red-team framework"
+	case len(p.Artifacts) > 0 || has(p.Anomalies, "malware-capture"):
+		p.Classification = "malware delivery / staging"
+	case len(p.AttackClasses) >= 3:
+		p.Classification = "web application attack"
 	case len(p.CVEs) > 0 || anomPrefix("webapp:") || has(p.Anomalies, "printer-cups-rce") || has(p.Anomalies, "printer-ipp-cmd-injection"):
 		p.Classification = "exploitation attempt"
 	case anyTool(toolfp.IsVulnScanner) || has(p.Anomalies, "vulnerability-scanner"):
@@ -249,6 +312,21 @@ func (p *Profile) synthesize() {
 	}
 	if len(p.CVEs) > 0 {
 		extra = append(extra, fmt.Sprintf("%d CVE(s): %s", len(p.CVEs), strings.Join(p.CVEs, ", ")))
+	}
+	if len(p.Artifacts) > 0 {
+		extra = append(extra, fmt.Sprintf("%d artifact(s) captured", len(p.Artifacts)))
+	}
+	if len(p.URLs) > 0 {
+		extra = append(extra, fmt.Sprintf("%d C2/dropper URL(s)", len(p.URLs)))
+	}
+	if len(p.AttackClasses) > 0 {
+		extra = append(extra, fmt.Sprintf("%d web-attack class(es)", len(p.AttackClasses)))
+	}
+	if len(p.SSHKeys) > 0 {
+		extra = append(extra, fmt.Sprintf("%d SSH key(s) offered", len(p.SSHKeys)))
+	}
+	if p.TokenReuse {
+		extra = append(extra, "replayed a planted honeytoken")
 	}
 	suffix := ""
 	if len(extra) > 0 {

@@ -561,8 +561,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .TopTech }}{{ template "bars" .TopTech }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>recent kill-chain progressions</h2>
-{{ if .Chains }}<table><tr><th>time</th><th>source</th><th>chain</th></tr>
-{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+{{ if .Chains }}<table><tr><th>time</th><th>source</th><th>playbook</th><th>chain</th></tr>
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
 {{ template "foot" . }}{{ end }}
@@ -942,6 +942,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <h1>attacker profile — {{ .IP }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
+{{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·
@@ -974,6 +975,21 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .Artifacts }}<h2>captured artifacts</h2><div>{{ range .Artifacts }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
+<p class="note">Malware / payload artifacts the sensor captured from this source (kind:sha256). Pull the bytes from the <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts ZIP</a>.</p>{{ end }}
+
+{{ if .URLs }}<h2>harvested URLs</h2><div>{{ range .URLs }}<span class="tag warn">{{ . }}</span> {{ end }}</div>
+<p class="note">C2 / dropper URLs harvested from this source's payloads (candidate next-hop infrastructure).</p>{{ end }}
+
+{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
+
+{{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<span class="tag bad">{{ . }}</span> {{ end }}</div>{{ end }}
+
+{{ if .SSHKeys }}<h2>SSH keys offered</h2><div>{{ range .SSHKeys }}<span class="tag">{{ . }}</span> {{ end }}</div>
+<p class="note">Public-key fingerprints this source presented — an SSH key reused across hosts is a strong attribution pivot.</p>{{ end }}
+
+{{ if .Emails }}<h2>SMTP senders</h2><div>{{ range .Emails }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
 
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 

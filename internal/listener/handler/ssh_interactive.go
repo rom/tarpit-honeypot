@@ -134,6 +134,19 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 	srvConn, channels, requests, err := xssh.NewServerConn(conn, sshCfg)
 	authMu.Lock()
 	res.Meta["auth_attempts"] = authAttempts
+	// Surface the offered SSH public-key fingerprints at the top level too
+	// ("type:SHA256:…") so the IOC extractor can index them — a pubkey an
+	// actor reuses across hosts is a strong attribution indicator.
+	var pubkeyFPs []string
+	for _, a := range authAttempts {
+		if fp, _ := a["key_fp_sha256"].(string); fp != "" {
+			kt, _ := a["key_type"].(string)
+			pubkeyFPs = appendUnique(pubkeyFPs, kt+":"+fp)
+		}
+	}
+	if len(pubkeyFPs) > 0 {
+		res.Meta["ssh_pubkey_fps"] = pubkeyFPs
+	}
 	res.Meta["client_id"] = safe.SanitizeForLog(clientID)
 	if acceptedUser != "" {
 		res.Meta["accepted_user"] = safe.SanitizeForLog(acceptedUser)

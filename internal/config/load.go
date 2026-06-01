@@ -649,6 +649,72 @@ func (c *Config) applyDefaults() {
 			c.Correlate.SSRFCallback.Severity = "high"
 		}
 	}
+	if c.Correlate.TLSMITMCapture.Enabled {
+		if c.Correlate.TLSMITMCapture.Events == 0 {
+			c.Correlate.TLSMITMCapture.Events = 2
+		}
+		if c.Correlate.TLSMITMCapture.Window == 0 {
+			c.Correlate.TLSMITMCapture.Window = 10 * time.Minute
+		}
+		if c.Correlate.TLSMITMCapture.Severity == "" {
+			c.Correlate.TLSMITMCapture.Severity = "critical"
+		}
+	}
+	if c.Correlate.FingerprintRotation.Enabled {
+		if c.Correlate.FingerprintRotation.DistinctFingerprints == 0 {
+			c.Correlate.FingerprintRotation.DistinctFingerprints = 4
+		}
+		if c.Correlate.FingerprintRotation.Window == 0 {
+			c.Correlate.FingerprintRotation.Window = 10 * time.Minute
+		}
+		if c.Correlate.FingerprintRotation.Severity == "" {
+			c.Correlate.FingerprintRotation.Severity = "medium"
+		}
+	}
+	if c.Correlate.ContainerTakeover.Enabled {
+		if c.Correlate.ContainerTakeover.DistinctOps == 0 {
+			c.Correlate.ContainerTakeover.DistinctOps = 2
+		}
+		if c.Correlate.ContainerTakeover.Window == 0 {
+			c.Correlate.ContainerTakeover.Window = 10 * time.Minute
+		}
+		if c.Correlate.ContainerTakeover.Severity == "" {
+			c.Correlate.ContainerTakeover.Severity = "critical"
+		}
+	}
+	if c.Correlate.WebAttackProbe.Enabled {
+		if c.Correlate.WebAttackProbe.DistinctClasses == 0 {
+			c.Correlate.WebAttackProbe.DistinctClasses = 3
+		}
+		if c.Correlate.WebAttackProbe.Window == 0 {
+			c.Correlate.WebAttackProbe.Window = 10 * time.Minute
+		}
+		if c.Correlate.WebAttackProbe.Severity == "" {
+			c.Correlate.WebAttackProbe.Severity = "high"
+		}
+	}
+	if c.Correlate.SSHKeySpray.Enabled {
+		if c.Correlate.SSHKeySpray.DistinctKeys == 0 {
+			c.Correlate.SSHKeySpray.DistinctKeys = 5
+		}
+		if c.Correlate.SSHKeySpray.Window == 0 {
+			c.Correlate.SSHKeySpray.Window = 10 * time.Minute
+		}
+		if c.Correlate.SSHKeySpray.Severity == "" {
+			c.Correlate.SSHKeySpray.Severity = "medium"
+		}
+	}
+	if c.Correlate.SpamRelay.Enabled {
+		if c.Correlate.SpamRelay.Events == 0 {
+			c.Correlate.SpamRelay.Events = 3
+		}
+		if c.Correlate.SpamRelay.Window == 0 {
+			c.Correlate.SpamRelay.Window = 10 * time.Minute
+		}
+		if c.Correlate.SpamRelay.Severity == "" {
+			c.Correlate.SpamRelay.Severity = "medium"
+		}
+	}
 	if c.Correlate.HoneytokenSpread.Enabled {
 		if c.Correlate.HoneytokenSpread.DistinctSources == 0 {
 			c.Correlate.HoneytokenSpread.DistinctSources = 3

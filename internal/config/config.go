@@ -1239,40 +1239,110 @@ type Correlate struct {
 	DNSEnum       CorrDNSEnum       `yaml:"dns_enumeration"`
 	Beacon        CorrBeacon        `yaml:"beacon"`
 	// Additional opt-in correlators (all default-off; enable per deployment).
-	HostSweep          CorrHostSweep          `yaml:"host_sweep"`
-	ServiceSweep       CorrServiceSweep       `yaml:"service_sweep"`
-	UARotation         CorrUARotation         `yaml:"ua_rotation"`
-	ExploitChain       CorrExploitChain       `yaml:"exploit_chain"`
-	ICSControl         CorrICSControl         `yaml:"ics_control"`
-	CanaryTrip         CorrCanaryTrip         `yaml:"canary_trip"`
-	FingerprintReuse   CorrFingerprintReuse   `yaml:"fingerprint_reuse"`
-	ProtocolViolation  CorrProtocolViolation  `yaml:"protocol_violation"`
-	Exfil              CorrExfil              `yaml:"exfil"`
-	SessionFlood       CorrSessionFlood       `yaml:"session_flood"`
-	LateralMovement    CorrLateralMovement    `yaml:"lateral_movement"`
-	OTRecon            CorrOTRecon            `yaml:"ot_recon"`
-	DataAccess         CorrDataAccess         `yaml:"data_access"`
-	MalwareCampaign    CorrMalwareCampaign    `yaml:"malware_campaign"`
-	Webshell           CorrWebshell           `yaml:"webshell"`
-	ThreatIntelBurst   CorrThreatIntelBurst   `yaml:"threat_intel_burst"`
-	GeoVelocity        CorrGeoVelocity        `yaml:"geo_velocity"`
-	AmplificationProbe CorrAmplificationProbe `yaml:"amplification_probe"`
-	DefaultCredSweep   CorrDefaultCredSweep   `yaml:"default_cred_sweep"`
-	CVECampaign        CorrCVECampaign        `yaml:"cve_campaign"`
-	DestructiveAction  CorrDestructiveAction  `yaml:"destructive_action"`
-	CloudCredTheft     CorrCloudCredTheft     `yaml:"cloud_cred_theft"`
-	SSRFCallback       CorrSSRFCallback       `yaml:"ssrf_callback"`
-	HoneytokenSpread   CorrHoneytokenSpread   `yaml:"honeytoken_spread"`
-	ToolRotation       CorrToolRotation       `yaml:"tool_rotation"`
-	PLCProgramDownload CorrPLCProgramDownload `yaml:"plc_program_download"`
-	ICSModeChange      CorrICSModeChange      `yaml:"ics_mode_change"`
-	OTKillChain        CorrOTKillChain        `yaml:"ot_kill_chain"`
-	RemoteToolSweep    CorrRemoteToolSweep    `yaml:"remote_tool_sweep"`
-	OOBMgmtAccess      CorrOOBMgmtAccess      `yaml:"oob_mgmt_access"`
-	RemoteExecCommand  CorrRemoteExecCommand  `yaml:"remote_exec_command"`
-	TollFraud          CorrTollFraud          `yaml:"toll_fraud"`
-	VoIPEnum           CorrVoIPEnum           `yaml:"voip_enum"`
-	PBXControl         CorrPBXControl         `yaml:"pbx_control"`
+	HostSweep           CorrHostSweep           `yaml:"host_sweep"`
+	ServiceSweep        CorrServiceSweep        `yaml:"service_sweep"`
+	UARotation          CorrUARotation          `yaml:"ua_rotation"`
+	ExploitChain        CorrExploitChain        `yaml:"exploit_chain"`
+	ICSControl          CorrICSControl          `yaml:"ics_control"`
+	CanaryTrip          CorrCanaryTrip          `yaml:"canary_trip"`
+	FingerprintReuse    CorrFingerprintReuse    `yaml:"fingerprint_reuse"`
+	ProtocolViolation   CorrProtocolViolation   `yaml:"protocol_violation"`
+	Exfil               CorrExfil               `yaml:"exfil"`
+	SessionFlood        CorrSessionFlood        `yaml:"session_flood"`
+	LateralMovement     CorrLateralMovement     `yaml:"lateral_movement"`
+	OTRecon             CorrOTRecon             `yaml:"ot_recon"`
+	DataAccess          CorrDataAccess          `yaml:"data_access"`
+	MalwareCampaign     CorrMalwareCampaign     `yaml:"malware_campaign"`
+	Webshell            CorrWebshell            `yaml:"webshell"`
+	ThreatIntelBurst    CorrThreatIntelBurst    `yaml:"threat_intel_burst"`
+	GeoVelocity         CorrGeoVelocity         `yaml:"geo_velocity"`
+	AmplificationProbe  CorrAmplificationProbe  `yaml:"amplification_probe"`
+	DefaultCredSweep    CorrDefaultCredSweep    `yaml:"default_cred_sweep"`
+	CVECampaign         CorrCVECampaign         `yaml:"cve_campaign"`
+	DestructiveAction   CorrDestructiveAction   `yaml:"destructive_action"`
+	CloudCredTheft      CorrCloudCredTheft      `yaml:"cloud_cred_theft"`
+	SSRFCallback        CorrSSRFCallback        `yaml:"ssrf_callback"`
+	HoneytokenSpread    CorrHoneytokenSpread    `yaml:"honeytoken_spread"`
+	ToolRotation        CorrToolRotation        `yaml:"tool_rotation"`
+	PLCProgramDownload  CorrPLCProgramDownload  `yaml:"plc_program_download"`
+	ICSModeChange       CorrICSModeChange       `yaml:"ics_mode_change"`
+	OTKillChain         CorrOTKillChain         `yaml:"ot_kill_chain"`
+	RemoteToolSweep     CorrRemoteToolSweep     `yaml:"remote_tool_sweep"`
+	OOBMgmtAccess       CorrOOBMgmtAccess       `yaml:"oob_mgmt_access"`
+	RemoteExecCommand   CorrRemoteExecCommand   `yaml:"remote_exec_command"`
+	TollFraud           CorrTollFraud           `yaml:"toll_fraud"`
+	VoIPEnum            CorrVoIPEnum            `yaml:"voip_enum"`
+	PBXControl          CorrPBXControl          `yaml:"pbx_control"`
+	TLSMITMCapture      CorrTLSMITMCapture      `yaml:"tls_mitm_capture"`
+	FingerprintRotation CorrFingerprintRotation `yaml:"fingerprint_rotation"`
+	ContainerTakeover   CorrContainerTakeover   `yaml:"container_takeover"`
+	WebAttackProbe      CorrWebAttackProbe      `yaml:"web_attack_probe"`
+	SSHKeySpray         CorrSSHKeySpray         `yaml:"ssh_key_spray"`
+	SpamRelay           CorrSpamRelay           `yaml:"spam_relay"`
+}
+
+// CorrWebAttackProbe fires when one source triggers several DISTINCT web-attack
+// classes (webapp:ssti / xxe / rfi_ssrf / nosqli / deserialize / sqli / lfi /
+// cmdi / …) within a window — an actor systematically fuzzing web-app
+// vulnerability classes rather than a single targeted exploit.
+type CorrWebAttackProbe struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctClasses int           `yaml:"distinct_classes"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
+}
+
+// CorrSSHKeySpray fires when one source offers several DISTINCT SSH public keys
+// within a window — key-spraying / testing a stolen-key collection against the
+// host (rather than password brute force).
+type CorrSSHKeySpray struct {
+	Enabled      bool          `yaml:"enabled"`
+	DistinctKeys int           `yaml:"distinct_keys"`
+	Window       time.Duration `yaml:"window"`
+	Severity     string        `yaml:"severity"`
+}
+
+// CorrSpamRelay fires when one source makes several open-relay / recipient-
+// enumeration attempts against the SMTP handler within a window — a spammer
+// probing whether the server will relay or harvesting valid recipients.
+type CorrSpamRelay struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrTLSMITMCapture fires when one source produces several events where the
+// tls_intercept handler decrypted an exploit or credential out of the TLS
+// tunnel (tls-decrypted-exploit / tls-decrypted-credentials) — an attacker
+// running attacks they believed were protected by TLS.
+type CorrTLSMITMCapture struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrFingerprintRotation fires when one source presents several DISTINCT
+// network fingerprints (JA4, falling back to JA3 / HASSH) within a window —
+// a single actor rotating its TLS/SSH stack to evade fingerprint-based
+// blocking (tooling churn / proxy rotation).
+type CorrFingerprintRotation struct {
+	Enabled              bool          `yaml:"enabled"`
+	DistinctFingerprints int           `yaml:"distinct_fingerprints"`
+	Window               time.Duration `yaml:"window"`
+	Severity             string        `yaml:"severity"`
+}
+
+// CorrContainerTakeover fires when one source performs several DISTINCT
+// container / Kubernetes control operations (pod create/exec, secret
+// enumeration, docker container create / remote control) within a window —
+// an attempt to take over the container platform.
+type CorrContainerTakeover struct {
+	Enabled     bool          `yaml:"enabled"`
+	DistinctOps int           `yaml:"distinct_ops"`
+	Window      time.Duration `yaml:"window"`
+	Severity    string        `yaml:"severity"`
 }
 
 // CorrTollFraud fires when one source makes several call-placement attempts

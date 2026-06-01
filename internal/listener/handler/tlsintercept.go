@@ -6,11 +6,13 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 )
@@ -118,9 +120,41 @@ func (t *tlsIntercept) Handle(ctx context.Context, conn net.Conn, cfg config.Lis
 	}
 	if len(captured) > 0 {
 		res.Payload = captured
+		// The whole point of decrypt-and-forward is to see what TLS was
+		// hiding: run the cleartext the client sent to the backend through the
+		// same exploit / credential / suspicious-URI detection the plaintext
+		// handlers use, so an attack inside the tunnel is still attributed.
+		t.analyzeDecrypted(&res, captured)
 	}
 	res.BannerSent = "tls_intercept forwarded " + t.tic.ForwardTo
 	return res, nil
+}
+
+// analyzeDecrypted runs the decrypted client->backend bytes through CVE
+// signature matching, suspicious-URI detection, and a light credential scan,
+// flagging anomalies so an exploit or credential that arrived over TLS is
+// attributed exactly as it would be on a plaintext handler.
+func (t *tlsIntercept) analyzeDecrypted(res *Result, data []byte) {
+	svc := t.tic.InnerHandler
+	if svc == "" {
+		svc = "http" // forward mode has no inner handler; assume an HTTP-shaped service
+	}
+	s := string(data)
+	for _, rec := range cve.MatchPayload(svc, s) {
+		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		flagAnomaly(res, "cve:"+rec.ID)
+		flagAnomaly(res, "tls-decrypted-exploit")
+	}
+	// Reuse the HTTP suspicious-URI catalog against the cleartext request line.
+	if m := suspiciousURI(s); m != "" {
+		flagAnomaly(res, m)
+		flagAnomaly(res, "tls-decrypted-exploit")
+	}
+	low := strings.ToLower(s)
+	if strings.Contains(low, "authorization: basic ") || strings.Contains(low, "&password=") ||
+		strings.Contains(low, "?password=") || strings.Contains(low, "\npassword=") {
+		flagAnomaly(res, "tls-decrypted-credentials")
+	}
 }
 
 // forward proxies the decrypted client stream to the configured backend

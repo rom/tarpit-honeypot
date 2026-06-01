@@ -6,7 +6,7 @@ func TestDefensesForMapsAndDedups(t *testing.T) {
 	// T1110.001 inherits T1110's mapping; combined with T1190 the set
 	// should dedup D3-DE which both produce.
 	got := DefensesFor([]string{"T1110.001", "T1190"})
-	want := map[string]bool{"D3-MFA": true, "D3-DUC": true, "D3-DE": true, "D3-NTA": true, "D3-ITF": true}
+	want := map[string]bool{"D3-MFA": true, "D3-DUC": true, "D3-DE": true, "D3-NTA": true, "D3-ITF": true, "D3-CH": true}
 	for _, d := range got {
 		if !want[d] {
 			t.Errorf("unexpected defense %q", d)
