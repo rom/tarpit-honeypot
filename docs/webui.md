@@ -132,8 +132,14 @@ exports: [ioc.md](ioc.md).
 
 ### profiles (`/profiles`)
 Per-source-IP **attacker dossiers** compiled over time: a synthesized assessment
-+ threat score, the tools/scanners identified (with confidence), fingerprints,
-credentials tried, ATT&CK coverage, and targeted services.
++ threat score, the tools/scanners identified (with confidence), fingerprints
+(JA3/JA4/JA4H/JA4T/JA3S/HASSH), credentials tried, ATT&CK coverage, and targeted
+services. Also surfaces the forensic observables that used to live only in
+per-event meta: **captured malware artifacts** (kind:sha256), **harvested
+C2/dropper URLs**, the **domains/SNIs** the source requested, and a
+**confirmed-compromise banner** when the source replayed a planted honeytoken
+(`canary:token_used`). The assessment escalates accordingly — *honeytoken
+reuse* and *malware delivery / staging* rank above generic exploitation.
 
 ### fingerprints (`/fingerprints`)
 JA3 / JA4 / JA4H / JA3S / HASSH reputation — pivot from a client TLS/SSH stack to

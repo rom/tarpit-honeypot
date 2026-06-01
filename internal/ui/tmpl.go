@@ -942,6 +942,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <h1>attacker profile — {{ .IP }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
+{{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·
@@ -974,6 +975,14 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+
+{{ if .Artifacts }}<h2>captured artifacts</h2><div>{{ range .Artifacts }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
+<p class="note">Malware / payload artifacts the sensor captured from this source (kind:sha256). Pull the bytes from the <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts ZIP</a>.</p>{{ end }}
+
+{{ if .URLs }}<h2>harvested URLs</h2><div>{{ range .URLs }}<span class="tag warn">{{ . }}</span> {{ end }}</div>
+<p class="note">C2 / dropper URLs harvested from this source's payloads (candidate next-hop infrastructure).</p>{{ end }}
+
+{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
 
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
