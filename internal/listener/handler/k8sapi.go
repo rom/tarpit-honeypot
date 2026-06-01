@@ -19,10 +19,19 @@ import (
 // the takeover calls (listing secrets, creating pods, exec/attach). Detection
 // only; nothing is created.
 type k8sAPI struct {
-	id *identity.Identity
+	// tokenName is the per-deployment service-account token name served in the
+	// secret listing, derived once at construction (deployment-constant).
+	tokenName string
 }
 
 func (k *k8sAPI) Name() string { return "kubernetes_api" }
+
+// newK8sAPI derives the per-deployment token name once at construction.
+func newK8sAPI(id *identity.Identity) *k8sAPI {
+	return &k8sAPI{
+		tokenName: "default-token-" + encodeAlpha(idBytes(id, "k8s-token-suffix", 5), "abcdefghijklmnopqrstuvwxyz0123456789"),
+	}
+}
 
 func (k *k8sAPI) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
@@ -88,8 +97,8 @@ func (k *k8sAPI) route(method, low string, res *Result) (body, status string) {
 	case strings.Contains(low, "/secrets"):
 		flagAnomaly(res, "k8s-secret-enum")
 		if method == "GET" {
-			body = fmt.Sprintf(`{"kind":"SecretList","apiVersion":"v1","items":[{"metadata":{"name":"default-token-%s","namespace":"default"},"type":"kubernetes.io/service-account-token"}]}`,
-				encodeAlpha(idBytes(k.id, "k8s-token-suffix", 5), "abcdefghijklmnopqrstuvwxyz0123456789"))
+			body = fmt.Sprintf(`{"kind":"SecretList","apiVersion":"v1","items":[{"metadata":{"name":%q,"namespace":"default"},"type":"kubernetes.io/service-account-token"}]}`,
+				k.tokenName)
 		} else {
 			status = "403 Forbidden"
 			body = k8sForbidden("secrets")

@@ -27,10 +27,18 @@ import (
 // credentials are obviously synthetic honeytokens; if they are ever *used*
 // against your real cloud, the IOC fired.
 type cloudMeta struct {
-	id *identity.Identity
+	creds cloudCreds
 }
 
 func (c *cloudMeta) Name() string { return "cloud_metadata" }
+
+// newCloudMeta derives the per-deployment credential set once at construction.
+// The values depend only on the deployment identity (never on request data), so
+// computing them here — instead of on every request — avoids re-running ~16
+// SHA-256 + RNG derivations per metadata fetch.
+func newCloudMeta(id *identity.Identity) *cloudMeta {
+	return &cloudMeta{creds: deriveCloudCreds(id)}
+}
 
 // cloudCreds holds the per-deployment synthetic credentials cloud_metadata
 // serves. Each value is deterministic for a deployment (derived from the
@@ -45,6 +53,8 @@ type cloudCreds struct {
 	awsInstanceID  string // "i-<17 hex>"
 	awsRoleName    string
 	awsAMI         string // "ami-<17 hex>"
+	awsProfileID   string // "AIPA..." instance-profile id
+	imdsv2Token    string // IMDSv2 session token
 	gcpToken       string // "ya29...." access token
 	gcpProjectID   string // "<name>-<6 digits>"
 	azureToken     string // JWT-shaped bearer
@@ -68,6 +78,8 @@ func deriveCloudCreds(id *identity.Identity) cloudCreds {
 		awsInstanceID:  "i-0" + hexs("cloud-aws-inst", 16),
 		awsRoleName:    "app-prod-ec2-role",
 		awsAMI:         "ami-0" + hexs("cloud-aws-ami", 16),
+		awsProfileID:   "AIPA" + encodeAlpha(idBytes(id, "cloud-aws-profid", 17), honeyAWSAlpha),
+		imdsv2Token:    "AQAEA" + encodeAlpha(idBytes(id, "cloud-imdsv2", 48), honeyB64Alpha) + "==",
 		gcpToken:       "ya29.c." + encodeAlpha(idBytes(id, "cloud-gcp-token", 90), honeyB64Alpha),
 		gcpProjectID:   "prod-platform-" + digits("cloud-gcp-proj", 6),
 		azureToken:     "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9." + encodeAlpha(idBytes(id, "cloud-az-tok", 64), honeyB64Alpha),
@@ -142,7 +154,7 @@ func (c *cloudMeta) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		res.Meta["imdsv2_token_present"] = true
 	}
 
-	provider, body, contentType, status := c.route(method, path, deriveCloudCreds(c.id), &res)
+	provider, body, contentType, status := c.route(method, path, c.creds, &res)
 	res.Meta["cloud_provider"] = provider
 
 	server := "EC2ws"
@@ -178,7 +190,7 @@ func (c *cloudMeta) route(method, path string, cr cloudCreds, res *Result) (prov
 	case strings.HasPrefix(low, "/latest/api/token"):
 		// IMDSv2 token request (PUT). Hand back an opaque token.
 		provider = "aws"
-		body = "AQAEA" + encodeAlpha(idBytes(c.id, "cloud-imdsv2", 48), honeyB64Alpha) + "=="
+		body = cr.imdsv2Token
 		return
 	case strings.HasPrefix(low, "/latest/meta-data/iam/security-credentials"):
 		provider = "aws"
@@ -201,8 +213,8 @@ func (c *cloudMeta) route(method, path string, cr cloudCreds, res *Result) (prov
 			body = "10.0.0.42"
 		case strings.HasSuffix(low, "iam/info"):
 			contentType = "application/json"
-			body = fmt.Sprintf(`{"Code":"Success","InstanceProfileArn":"arn:aws:iam::%s:instance-profile/%s","InstanceProfileId":"AIPA%s"}`,
-				cr.awsAccountID, cr.awsRoleName, encodeAlpha(idBytes(c.id, "cloud-aws-profid", 17), honeyAWSAlpha))
+			body = fmt.Sprintf(`{"Code":"Success","InstanceProfileArn":"arn:aws:iam::%s:instance-profile/%s","InstanceProfileId":%q}`,
+				cr.awsAccountID, cr.awsRoleName, cr.awsProfileID)
 		default:
 			body = "ami-id\ninstance-id\ninstance-type\nlocal-ipv4\niam/\nsecurity-groups"
 		}
