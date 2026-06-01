@@ -139,6 +139,8 @@ var roles = map[string][]Service{
 		{23, "tcp", "telnet", "Telnet CLI"},
 		{161, "udp", "snmp", "SNMP"},
 		{80, "tcp", "http", "Router web UI"},
+		{2055, "udp", "netflow", "NetFlow export collector"},
+		{6343, "udp", "sflow", "sFlow export collector"},
 	},
 	"gitserver": {
 		{9418, "tcp", "git", "git daemon protocol"},

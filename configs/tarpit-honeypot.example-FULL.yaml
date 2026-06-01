@@ -910,6 +910,16 @@ risk:
   elevated: 30
   high: 75
   critical: 150
+  # Active-response backstop (opt-in, Linux + nft + CAP_NET_ADMIN). When a
+  # source crosses `level`, drop it at the host firewall for `ttl`, then let
+  # the kernel expire it. A honeypot's value is observation, so blocking ends
+  # the engagement — leave this off unless you want active inbound mitigation.
+  block:
+    enabled: false
+    level: critical          # elevated | high | critical
+    ttl: 15m                 # nftables set-element timeout
+    never_block: []          # extra IPs/CIDRs exempt (loopback+link-local always are)
+    # table: tarpit_blocklist
 
 honeynets:
   - id: corp

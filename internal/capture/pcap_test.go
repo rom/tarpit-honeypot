@@ -90,3 +90,37 @@ func TestPcapRotation(t *testing.T) {
 func timeID(i int) string {
 	return "ev-" + string(rune('a'+i))
 }
+
+func TestPcapIPv6PreservesAddresses(t *testing.T) {
+	mgr, err := NewManager(t.TempDir(), 64, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, _ := net.ResolveTCPAddr("tcp", "[2001:db8::1]:1111")
+	dst, _ := net.ResolveTCPAddr("tcp", "[2001:db8::2]:2222")
+	sess := mgr.Begin("ev-pcap-v6", src, dst)
+	sess.recordBytes(DirIn, []byte("hello"))
+	path, _, err := sess.End()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// First record's packet starts at offset 24 (global hdr) + 16 (rec hdr).
+	if len(b) < 40+40 {
+		t.Fatalf("file too short for an IPv6 packet: %d", len(b))
+	}
+	pkt := b[40:]
+	if pkt[0]>>4 != 6 {
+		t.Fatalf("expected an IPv6 packet (version 6), got version %d", pkt[0]>>4)
+	}
+	// IPv6 source address occupies bytes 8..24; must be 2001:db8::1, not zero.
+	if got := net.IP(pkt[8:24]).String(); got != "2001:db8::1" {
+		t.Errorf("captured src = %q, want 2001:db8::1 (not zeroed)", got)
+	}
+	if got := net.IP(pkt[24:40]).String(); got != "2001:db8::2" {
+		t.Errorf("captured dst = %q, want 2001:db8::2", got)
+	}
+}

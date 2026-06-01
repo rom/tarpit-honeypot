@@ -145,8 +145,11 @@ func (k *knx) buildSearchResponse(src net.Addr, pc net.PacketConn) []byte {
 	hpai[0] = 0x08
 	hpai[1] = 0x01
 	if la, ok := pc.LocalAddr().(*net.UDPAddr); ok && la != nil {
-		ip := la.IP.To4()
-		if ip != nil {
+		// KNXnet/IP HPAI carries a fixed 4-byte IPv4 address — the protocol has
+		// no IPv6 form. When bound on a v6 address we leave the IP field as
+		// 0.0.0.0, which is the KNXnet/IP "route-back" convention ("reply to the
+		// sender's address") — the correct spec behavior, not a truncated v6.
+		if ip := la.IP.To4(); ip != nil {
 			copy(hpai[2:6], ip)
 		}
 		binary.BigEndian.PutUint16(hpai[6:8], uint16(la.Port))

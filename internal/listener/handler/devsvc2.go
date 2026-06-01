@@ -226,18 +226,35 @@ func (h *stun) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	host, portStr, err := net.SplitHostPort(src.String())
 	ip := net.ParseIP(host)
-	v4 := ip.To4()
-	if err != nil || v4 == nil {
+	if err != nil || ip == nil {
 		return res, nil
 	}
 	port := 0
 	for _, c := range portStr {
 		port = port*10 + int(c-'0')
 	}
-	// XOR-MAPPED-ADDRESS: family + xport + xaddr (XORed with the magic cookie).
-	attr := []byte{0x00, 0x20, 0x00, 0x08, 0x00, 0x01}
-	attr = binary.BigEndian.AppendUint16(attr, uint16(port)^0x2112)
-	attr = append(attr, v4[0]^0x21, v4[1]^0x12, v4[2]^0xA4, v4[3]^0x42)
+	// XOR-MAPPED-ADDRESS (RFC 5389 §15.2). The port is always XORed with the
+	// high 16 bits of the magic cookie; the address is XORed with the cookie
+	// (IPv4) or the cookie+transaction-id (IPv6). STUN is heavily used by
+	// WebRTC/VoIP over IPv6, so we answer both families.
+	attr := []byte{0x00, 0x20} // XOR-MAPPED-ADDRESS attribute type
+	if v4 := ip.To4(); v4 != nil {
+		attr = append(attr, 0x00, 0x08, 0x00, 0x01) // len 8, family IPv4
+		attr = binary.BigEndian.AppendUint16(attr, uint16(port)^0x2112)
+		attr = append(attr, v4[0]^0x21, v4[1]^0x12, v4[2]^0xA4, v4[3]^0x42)
+	} else {
+		v6 := ip.To16()
+		attr = append(attr, 0x00, 0x14, 0x00, 0x02) // len 20, family IPv6
+		attr = binary.BigEndian.AppendUint16(attr, uint16(port)^0x2112)
+		// Address XOR key = magic cookie (payload[4:8]) || transaction id
+		// (payload[8:20]).
+		key := payload[4:20]
+		xaddr := make([]byte, 16)
+		for i := 0; i < 16; i++ {
+			xaddr[i] = v6[i] ^ key[i]
+		}
+		attr = append(attr, xaddr...)
+	}
 	resp := []byte{0x01, 0x01} // Binding Success Response
 	resp = binary.BigEndian.AppendUint16(resp, uint16(len(attr)))
 	resp = append(resp, payload[4:20]...) // magic cookie + txid

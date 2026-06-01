@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
+	"github.com/rom/tarpit-honeypot/internal/blocklist"
 	"github.com/rom/tarpit-honeypot/internal/canary"
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -79,6 +80,7 @@ type Sensor struct {
 	payloads    *payload.Store
 	sessionRec  *sessionrec.Store
 	risk        *risk.Scorer
+	blocker     *blocklist.Blocker // active-response nftables backstop (nil/disabled = no-op)
 	deviceSev   event.Severity
 	seenSources map[string]struct{} // bus-loop-only: source:first_seen dedup
 	bus         chan *event.Event
@@ -483,6 +485,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		payloads:      payloadStore,
 		sessionRec:    sessRec,
 		risk:          newRiskScorer(cfg.Risk),
+		blocker:       newBlocker(cfg.Risk.Block),
 		seenSources:   map[string]struct{}{},
 		bus:           make(chan *event.Event, 1024),
 		forward:       fwdGroup,
@@ -653,6 +656,24 @@ func newRiskScorer(c config.RiskScoring) *risk.Scorer {
 	})
 }
 
+// newBlocker returns the active-response nftables blocker. It is always
+// non-nil (so callers don't branch); a disabled config makes every method a
+// no-op. Block is only meaningful when risk scoring is also enabled, since it
+// is driven by risk-level crossings.
+func newBlocker(c config.Blocklist) *blocklist.Blocker {
+	return blocklist.New(blocklist.Config{
+		Enabled:    c.Enabled,
+		Level:      c.Level,
+		TTL:        c.TTL,
+		NeverBlock: c.NeverBlock,
+		Table:      c.Table,
+	})
+}
+
+// Blocker returns the active-response nftables blocker (always non-nil; a
+// no-op when disabled). run.go installs its base ruleset at startup.
+func (s *Sensor) Blocker() *blocklist.Blocker { return s.blocker }
+
 // Risk returns the per-source risk scorer (nil when disabled).
 func (s *Sensor) Risk() *risk.Scorer { return s.risk }
 
@@ -665,6 +686,21 @@ func (s *Sensor) scoreRisk(rt *router.Router, ev *event.Event) {
 	}
 	if level, score, crossed := s.risk.Observe(ev.Source.IP, ev.RuleID, int(ev.Severity), timeNow()); crossed {
 		rt.Dispatch(s.riskEvent(ev, level, score))
+		// Active response: when blocking is enabled and the source crossed into
+		// (or above) the configured level, drop it at the host firewall for the
+		// configured TTL. Best-effort and off the hot path — a block failure
+		// (no nft / not Linux / not privileged) is logged, never fatal.
+		if s.blocker.ShouldBlock(ev.Source.IP, level) {
+			go func(ip, lvl string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := s.blocker.Block(ctx, ip, lvl); err != nil {
+					slog.Warn("blocklist: failed to block source", "ip", ip, "level", lvl, "err", err)
+				} else {
+					slog.Info("blocklist: blocked source", "ip", ip, "level", lvl)
+				}
+			}(ev.Source.IP, level)
+		}
 	}
 }
 

@@ -119,6 +119,12 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
 		ja4s = fingerprint.JA4S(sh)
 	}
+	// JA4X over the certificate we presented (leaf), so an analyst can confirm
+	// our cert's structural fingerprint and cluster sensors minted alike.
+	ja4x := ""
+	if leaf := leafOf(cert); leaf != nil {
+		ja4x = fingerprint.JA4X(leaf)
+	}
 	state := tlsConn.ConnectionState()
 	res, _ := serveHTTP(tlsConn, cfg, h.urlCanaries, h.id, h.arch, h.vuln)
 	if res.Meta == nil {
@@ -145,10 +151,32 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	if ja4s != "" {
 		res.Meta["ja4s"] = ja4s
 	}
+	if ja4x != "" {
+		res.Meta["ja4x"] = ja4x
+	}
 	if matchedSNI != "" {
 		res.Meta["tls_vhost"] = matchedSNI
 	}
 	return res, nil
+}
+
+// leafOf returns the parsed leaf certificate of a tls.Certificate, parsing the
+// DER on demand when the Leaf field isn't populated.
+func leafOf(c *tls.Certificate) *x509.Certificate {
+	if c == nil {
+		return nil
+	}
+	if c.Leaf != nil {
+		return c.Leaf
+	}
+	if len(c.Certificate) == 0 {
+		return nil
+	}
+	leaf, err := x509.ParseCertificate(c.Certificate[0])
+	if err != nil {
+		return nil
+	}
+	return leaf
 }
 
 // matchVHost selects the vhost whose ServerName matches the SNI: exact match

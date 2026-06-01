@@ -12,7 +12,7 @@ OS-archetype-aware banners and CLI emulation, interactive SSH/Telnet
 engagement that captures every command an attacker types, a **userspace TCP
 stack** (IPv4 + IPv6 SYN-layer) that lets honeynet decoys complete
 fingerprint-shaped handshakes (and capture malformed/illegal packets) with
-no socket bound per host, the full **JA3/JA4/JA4S/JA4T/JA3S/JA4H/HASSH**
+no socket bound per host, the full **JA3/JA4/JA4S/JA4T/JA4X/JA4L/JA4SSH/JA3S/JA4H/HASSH**
 fingerprint family, MITRE ATT&CK / D3FEND-tagged events, cross-protocol
 attack-storyline correlation,
 protocol-anomaly + **fuzzing / DoS** detection, three dozen in-sensor
@@ -41,14 +41,14 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **125 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **125 TCP + 37 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer)**: `goose` (IEC 61850 GOOSE substation multicast detection)
-  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `isakmp`, `dhcp`, `dns`
+  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `isakmp`, `dhcp`, `dns`, `dtls`, `quic`, `netflow`, `sflow`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
@@ -185,9 +185,16 @@ rationale covering the current implementation.
   - **JA4T** — TCP-layer fingerprint (window, option layout, MSS,
     window-scale) computed from the client SYN in the userspace honeynet
     stack and attached to `honeynet:tcp_connect` events as `ja4t`.
-  - **JARM** server fingerprint available as a library primitive
-    (`fingerprint.JARM`) for confirming a sensor's TLS posture matches the
-    product it impersonates.
+  - **JA4L** — latency/locality fingerprint (TTL + RTT) from the same SYN,
+    emitted as `ja4l`; a TTL or RTT inconsistent with the source IP's geo is a
+    proxied/relayed-connection tell.
+  - **JA4X** — X.509 certificate structure fingerprint (issuer/subject RDN
+    layout + extension OIDs), emitted by the https handler as `ja4x` over the
+    cert it presents; clusters certs minted by the same tooling.
+  - **JARM** + **JA4SSH** available as library primitives (`fingerprint.JARM`,
+    `fingerprint.JA4SSH`) — JARM for confirming a sensor's TLS posture matches
+    the product it impersonates, JA4SSH for SSH packet-cadence fingerprinting
+    where raw record lengths are observed.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
   - All are stable across browser / scanner GREASE shuffling.
@@ -237,6 +244,13 @@ rationale covering the current implementation.
     unguessable path fires a separate critical event.
   - **DNS canaries**: a minimal UDP DNS listener that replies NXDOMAIN
     but fires on any subdomain of a registered name.
+  - **SSRF / out-of-band canaries**: the `ssrf_canary` handler records
+    callbacks from a coerced system (plant a `gen-token --type=ssrf` URL in an
+    SSRF param / webhook / XXE entity).
+  - **Decoy-document canaries**: `gen-token --type=doc` writes a real `.docx`
+    whose external `attachedTemplate` relationship beacons the callback URL when
+    the file is opened in Word — drop it on a share named like sensitive data
+    and "someone opened the honeydoc" becomes an alert with the opener's IP.
 - **Packet-capture sniffer** (Linux AF_PACKET, opt-in, needs CAP_NET_RAW):
   - **L2** — ARP scans (one MAC asking about many distinct IPs) and
     unsolicited replies (ARP-cache poisoning).
@@ -551,7 +565,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (125 TCP + 33 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (125 TCP + 37 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -591,6 +605,27 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
+
+**v2.3 — full JA4+ suite, active response, encrypted-transport fingerprinting.**
+This sprint completes the JA4+ family, adds an opt-in firewall backstop and a
+decoy-document canary, and fingerprints encrypted transports. Highlights; the
+[CHANGELOG](CHANGELOG.md) has the per-commit detail.
+
+- **JA4SSH / JA4L / JA4X + live JARM.** `ja4l` (latency/locality) on
+  `honeynet:tcp_connect`, `ja4x` (cert structure) from the https handler, JA4SSH
+  as a library primitive, and a new `jarm` CLI command that probes a TLS server
+  (point it at your own sensor to confirm its TLS posture).
+- **Active inbound response** (`risk.block`, opt-in): a risk-score-driven
+  nftables drop set with a TTL — the honeypot analogue of fail2ban. Off by
+  default; loopback/link-local/`never_block` always exempt.
+- **Decoy-document canary**: `gen-token --type=doc` writes a real `.docx` that
+  beacons when opened in Word.
+- **Encrypted transports**: `dtls` (cleartext DTLS ClientHello → JA3/JA4) and
+  `quic` (decrypts the QUIC Initial — key schedule verified against the RFC 9001
+  vectors — and fingerprints the inner ClientHello), giving DTLS and
+  QUIC/HTTP-3 scans the same JA3/JA4 the TLS handlers give HTTPS.
+- **Flow-export collectors**: `netflow` (v5/v9/IPFIX) and `sflow` decoys capture
+  routing reconnaissance, alongside the existing `bgp` handler.
 
 **v2.2 — cloud-native attack surface, modern transports, JA4+, IPv6 parity.**
 The latest sprint widens the honeypot toward containers/cloud, modern
@@ -1399,6 +1434,10 @@ handshake where it isn't HTTP.
 | `sip` | 5060 | SIP-over-UDP. Parses request line + headers, captures `method`, `from`, `to`, `call_id`, `cseq`, `via`, `user_agent`, `authorization`. Replies SIP 200 OK with an Asterisk-shaped Server header. | — | — |
 | `ssdp` | 1900 | UPnP M-SEARCH parser. Captures `st` (search target), `host`, `mx`, `user_agent`. Replies HTTP/1.1 200 with a TP-Link-shaped `LOCATION` + `USN` so the scanner records a router on the segment. | — | — |
 | `cldap` | 389 | CLDAP SearchRequest parser. Replies searchResDone; when honeynet topology is available, advertises the configured Domain Controllers in the meta. | — | — |
+| `dtls` | any (WebRTC/CoAPS/VPN) | Datagram-TLS receiver. Parses the cleartext DTLS ClientHello, computes **JA3/JA4** over it (same fingerprints as TLS-over-TCP) + `dtls_version`, and replies with a HelloVerifyRequest. Only answers a genuine ClientHello (no reflection surface). | `ja3` / `ja4` | — |
+| `quic` | 443 / any (HTTP-3) | QUIC / HTTP-3 receiver. Decrypts the QUIC **Initial** packet (keys derived from the public salt + connection ID per RFC 9001 — verified against the RFC test vectors), reassembles the TLS ClientHello from its CRYPTO frames, and computes **JA3/JA4** + `quic_version`. Capture-only (never replies — no reflection). Flags `quic-initial`. | `ja3` / `ja4` | — |
+| `netflow` | 2055 / 9995 / 4739 | NetFlow / IPFIX collector decoy. Parses the export header (v5 / v9 / IPFIX v10) and, for fixed-layout v5, decodes the first flows (src/dst/ports/proto/bytes) — capturing the exporting network's actual who-talks-to-whom. One-way (never replies). Flags `netflow-export-received`. | — | — |
+| `sflow` | 6343 | sFlow v5 collector decoy. Parses the datagram header (agent address, sub-agent, sequence, sample count) from a switch pointed at us. One-way (never replies). Flags `sflow-export-received`. | — | — |
 | `llmnr` | 5355 | LLMNR query parser. Replies with our local IP as the A-record — classic poisoning catcher for the common Windows lookup-fallback target `wpad`. | — | — |
 | `nbns` | 137 | NetBIOS Name Service query parser. Decodes the encoded NetBIOS name; replies positive name-query response — catches SMB-relay precursors. | — | — |
 | `netbios_dgram` | 138 | NetBIOS Datagram Service. Parses the datagram header, decodes the source/destination NetBIOS names + the SMB mailslot / browser payload, and flags `netbios-datagram` (host enumeration / browser-protocol abuse). Captured, not answered. | — | — |
@@ -1536,6 +1575,13 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   heaviest); the score halves over `half_life` of silence so quiet sources
   cool off. Meta carries `score` + `trigger_rule`; the top scorers surface
   in the web UI's `/risk` view. Fires once per escalation.
+  - **Active-response backstop** (`risk.block`, opt-in): when a source crosses
+    a configured level the sensor drops it at the host firewall (nftables) for
+    a bounded TTL, then lets the kernel expire it — the honeypot analogue of
+    fail2ban, but driven by the risk score. Off by default (blocking ends the
+    engagement); TTL-bounded so a crash can't leave a host firewalled forever;
+    loopback / link-local / `never_block` CIDRs are always exempt. Linux +
+    `nft` + `CAP_NET_ADMIN`.
 - **Operational alarms** (`sensor.alerts`): `sensor:started` / `sensor:stopped`
   (lifecycle, always on), `sensor:health` (data_dir disk crossing
   `disk_warn_percent` with hysteresis, or sinks dropping events — always

@@ -233,7 +233,7 @@ EXAMPLES
 	"gen-token": `gen-token — generate unguessable canary tokens
 
 SYNOPSIS
-    tarpit-honeypot gen-token --type=dns|url|hex|ssrf
+    tarpit-honeypot gen-token --type=dns|url|hex|ssrf|doc
         [--label LBL] [--bits N] [--domain D]
 
 DESCRIPTION

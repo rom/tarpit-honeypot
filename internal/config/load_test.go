@@ -91,3 +91,51 @@ func TestValidateTarpitStrategies(t *testing.T) {
 		t.Error("jitter max < min should be rejected")
 	}
 }
+
+func TestValidateRiskBlock(t *testing.T) {
+	mk := func(mut func(*Config)) *Config {
+		c := &Config{
+			Sensor:   Sensor{Name: "t", DataDir: "/tmp/x"},
+			Channels: []Channel{{ID: "log", Type: "stdout"}},
+		}
+		mut(c)
+		c.applyDefaults()
+		return c
+	}
+
+	// Valid: block enabled with risk enabled and a good level.
+	ok := mk(func(c *Config) {
+		c.Risk.Enabled = true
+		c.Risk.Block = Blocklist{Enabled: true, Level: "high"}
+	})
+	if err := ok.Validate(); err != nil {
+		t.Errorf("valid risk.block rejected: %v", err)
+	}
+	// Defaults applied.
+	if ok.Risk.Block.TTL == 0 || ok.Risk.Block.Table == "" {
+		t.Errorf("risk.block defaults not applied: %+v", ok.Risk.Block)
+	}
+
+	// block without risk.enabled is rejected.
+	if err := mk(func(c *Config) {
+		c.Risk.Block = Blocklist{Enabled: true, Level: "high"}
+	}).Validate(); err == nil {
+		t.Error("risk.block without risk.enabled should be rejected")
+	}
+
+	// bad level rejected.
+	if err := mk(func(c *Config) {
+		c.Risk.Enabled = true
+		c.Risk.Block = Blocklist{Enabled: true, Level: "bogus"}
+	}).Validate(); err == nil {
+		t.Error("invalid risk.block.level should be rejected")
+	}
+
+	// bad never_block entry rejected.
+	if err := mk(func(c *Config) {
+		c.Risk.Enabled = true
+		c.Risk.Block = Blocklist{Enabled: true, Level: "critical", NeverBlock: []string{"not-an-ip"}}
+	}).Validate(); err == nil {
+		t.Error("invalid never_block entry should be rejected")
+	}
+}

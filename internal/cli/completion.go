@@ -43,7 +43,7 @@ _tarpit_honeypot() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets list-devices list-archetypes list-handlers list-archeservices list-cves list-techniques identify reset-db init completion version"
+    cmds="run validate-config show-config test-alert list-events gen-token export-pcap list-honeynets list-devices list-archetypes list-handlers list-archeservices list-cves list-techniques identify jarm reset-db init completion version"
     opts="-c --set --log-level --log-format --log-file --quiet --verbose --version -V -h --help"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then
@@ -62,7 +62,7 @@ _tarpit_honeypot() {
             COMPREPLY=( $(compgen -W "text json" -- "${cur}") )
             return 0 ;;
         --type)
-            COMPREPLY=( $(compgen -W "dns url hex ssrf" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "dns url hex ssrf doc" -- "${cur}") )
             return 0 ;;
         --proto)
             COMPREPLY=( $(compgen -W "tcp udp" -- "${cur}") )
@@ -98,6 +98,7 @@ _tarpit_honeypot() {
         'list-cves:print the CVE catalog'
         'list-techniques:print ATT&CK / D3FEND coverage'
         'identify:fingerprint a UA / ssh-id / payload'
+        'jarm:probe a TLS server for its JARM fingerprint'
         'reset-db:empty the local databases'
         'init:write default config skeleton'
         'completion:print shell completion'
@@ -140,6 +141,7 @@ complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-archeservices' -
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-cves' -d 'print the CVE catalog'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'list-techniques' -d 'print ATT&CK / D3FEND coverage'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'identify' -d 'fingerprint a UA / ssh-id / payload'
+complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'jarm' -d 'probe a TLS server for its JARM fingerprint'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'reset-db' -d 'empty the local databases'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'init' -d 'write default config skeleton'
 complete -c tarpit-honeypot -n '__fish_use_subcommand' -a 'completion' -d 'print shell completion'
@@ -155,7 +157,7 @@ complete -c tarpit-honeypot -l version -d 'print version and exit'
 complete -c tarpit-honeypot -s V -d 'print version and exit'
 complete -c tarpit-honeypot -s h -l help -d 'show help'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
-complete -c tarpit-honeypot -n '__fish_seen_subcommand_from gen-token' -l type -x -a 'dns url hex ssrf'
+complete -c tarpit-honeypot -n '__fish_seen_subcommand_from gen-token' -l type -x -a 'dns url hex ssrf doc'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-handlers' -l proto -x -a 'tcp udp'
 complete -c tarpit-honeypot -n '__fish_seen_subcommand_from list-techniques' -l kind -x -a 'rule handler anomaly'
 `

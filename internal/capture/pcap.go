@@ -48,10 +48,10 @@ func writePcap(path string, s *Session) error {
 		var pkt []byte
 		switch r.dir {
 		case DirIn:
-			pkt = buildIPv4TCP(srcIP, dstIP, srcPort, dstPort, seqClient, seqServer, r.data)
+			pkt = buildIPTCP(srcIP, dstIP, srcPort, dstPort, seqClient, seqServer, r.data)
 			seqClient += uint32(len(r.data))
 		case DirOut:
-			pkt = buildIPv4TCP(dstIP, srcIP, dstPort, srcPort, seqServer, seqClient, r.data)
+			pkt = buildIPTCP(dstIP, srcIP, dstPort, srcPort, seqServer, seqClient, r.data)
 			seqServer += uint32(len(r.data))
 		default:
 			continue
@@ -70,6 +70,73 @@ func writePcap(path string, s *Session) error {
 		}
 	}
 	return nil
+}
+
+// buildIPTCP synthesizes one IP + TCP packet, choosing an IPv4 or IPv6 header
+// by address family so an IPv6 session is captured with its real addresses
+// (DLT_RAW carries either) rather than being flattened to 0.0.0.0.
+func buildIPTCP(src, dst net.IP, srcPort, dstPort int, seq, ack uint32, payload []byte) []byte {
+	if src.To4() == nil || dst.To4() == nil {
+		return buildIPv6TCP(src, dst, srcPort, dstPort, seq, ack, payload)
+	}
+	return buildIPv4TCP(src, dst, srcPort, dstPort, seq, ack, payload)
+}
+
+// buildIPv6TCP synthesizes one IPv6 + TCP packet with payload.
+func buildIPv6TCP(src, dst net.IP, srcPort, dstPort int, seq, ack uint32, payload []byte) []byte {
+	src16, dst16 := src.To16(), dst.To16()
+	if src16 == nil {
+		src16 = net.IPv6zero
+	}
+	if dst16 == nil {
+		dst16 = net.IPv6zero
+	}
+	tcpLen := 20 + len(payload)
+	pkt := make([]byte, 40+tcpLen)
+
+	// IPv6 header (40 bytes).
+	pkt[0] = 0x60 // version 6
+	binary.BigEndian.PutUint16(pkt[4:], uint16(tcpLen))
+	pkt[6] = 6  // next header = TCP
+	pkt[7] = 64 // hop limit
+	copy(pkt[8:24], src16)
+	copy(pkt[24:40], dst16)
+
+	off := 40
+	binary.BigEndian.PutUint16(pkt[off:], uint16(srcPort))
+	binary.BigEndian.PutUint16(pkt[off+2:], uint16(dstPort))
+	binary.BigEndian.PutUint32(pkt[off+4:], seq)
+	binary.BigEndian.PutUint32(pkt[off+8:], ack)
+	pkt[off+12] = 0x50                               // data offset 5
+	pkt[off+13] = 0x18                               // PSH+ACK
+	binary.BigEndian.PutUint16(pkt[off+14:], 0xffff) // window
+	copy(pkt[off+20:], payload)
+	binary.BigEndian.PutUint16(pkt[off+16:], tcpChecksum6(src16, dst16, pkt[off:]))
+	return pkt
+}
+
+// tcpChecksum6 computes the TCP checksum over the IPv6 pseudo-header + segment.
+func tcpChecksum6(src, dst net.IP, tcp []byte) uint16 {
+	pseudo := make([]byte, 40)
+	copy(pseudo[0:16], src.To16())
+	copy(pseudo[16:32], dst.To16())
+	binary.BigEndian.PutUint32(pseudo[32:], uint32(len(tcp)))
+	pseudo[39] = 6 // next header = TCP
+	var sum uint32
+	add := func(b []byte) {
+		for i := 0; i+1 < len(b); i += 2 {
+			sum += uint32(b[i])<<8 | uint32(b[i+1])
+		}
+		if len(b)%2 == 1 {
+			sum += uint32(b[len(b)-1]) << 8
+		}
+	}
+	add(pseudo)
+	add(tcp)
+	for sum>>16 != 0 {
+		sum = (sum & 0xffff) + (sum >> 16)
+	}
+	return ^uint16(sum)
 }
 
 // buildIPv4TCP synthesizes one IPv4 + TCP packet with payload. Falls back

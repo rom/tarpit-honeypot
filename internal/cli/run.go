@@ -93,6 +93,28 @@ func cmdRun(args []string) error {
 		}
 	}
 
+	// Install the active-response blocklist table (nftables) while still
+	// privileged and before seccomp blocks exec. Opt-in; TTL-bounded drop set
+	// driven by the risk scorer. A failure here is non-fatal — the sensor still
+	// observes, it just can't enforce blocks.
+	if b := s.Blocker(); b.Enabled() {
+		ictx, icancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := b.Install(ictx)
+		icancel()
+		if err != nil {
+			slog.Warn("blocklist not installed (risk blocking inactive)", "err", err)
+		} else {
+			slog.Info("blocklist installed (active inbound response enabled)")
+			defer func() {
+				rctx, rcancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := b.Remove(rctx); err != nil {
+					slog.Warn("blocklist cleanup failed (table left for next start)", "err", err)
+				}
+				rcancel()
+			}()
+		}
+	}
+
 	if err := privdrop.Drop(cfg.Sensor.DropUser, cfg.Sensor.DropGroup); err != nil {
 		return err
 	}

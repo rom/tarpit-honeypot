@@ -39,16 +39,10 @@ func (l *llmnr) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 	// asking for "wpad" / "fileshare" / a typo'd hostname. Anyone
 	// poisoning a corporate network looks for exactly these queries.
 
-	// Build a fake A-record reply pointing at our local IP. The kernel
-	// gives us the local address via pc.LocalAddr() — strip the port.
-	ourIP := pc.LocalAddr().String()
-	if i := strings.LastIndex(ourIP, ":"); i >= 0 {
-		ourIP = ourIP[:i]
-	}
-	if i := strings.LastIndex(ourIP, "["); i == 0 {
-		// IPv6 [::1]
-		ourIP = "127.0.0.1"
-	}
+	// Build a fake reply pointing at our local IP. LLMNR (RFC 4795) carries
+	// both A and AAAA queries, so we answer the requested type with the
+	// matching address family of our local address.
+	ourIP := localIPOf(pc.LocalAddr())
 	if reply := buildLLMNRAnswer(payload, name, qtype, ourIP); reply != nil {
 		if _, err := pc.WriteTo(reply, src); err != nil {
 			res.Meta["write_err"] = err.Error()
@@ -98,12 +92,30 @@ func parseLLMNRQuery(msg []byte) (string, uint16, bool) {
 	return strings.ToLower(name.String()), qtype, true
 }
 
-func buildLLMNRAnswer(query []byte, name string, qtype uint16, ipv4 string) []byte {
-	addr := net.ParseIP(ipv4)
-	if addr == nil || addr.To4() == nil {
+func buildLLMNRAnswer(query []byte, name string, qtype uint16, ourIP string) []byte {
+	addr := net.ParseIP(ourIP)
+	if addr == nil {
 		return nil
 	}
-	if qtype != 1 { // A only — AAAA / others fall through
+	// Answer the requested record type with a matching-family address:
+	// A (type 1) needs an IPv4 local address; AAAA (type 28) needs an IPv6
+	// one. If our local address isn't the right family for the query we send
+	// nothing (a real responder on a v4-only or v6-only interface behaves the
+	// same), rather than emitting a wrong-family record.
+	var rdata []byte
+	switch qtype {
+	case 1: // A
+		v4 := addr.To4()
+		if v4 == nil {
+			return nil
+		}
+		rdata = v4
+	case 28: // AAAA
+		if addr.To4() != nil {
+			return nil
+		}
+		rdata = addr.To16()
+	default:
 		return nil
 	}
 	// Echo the query + flip QR + set 1 answer.
@@ -133,10 +145,10 @@ func buildLLMNRAnswer(query []byte, name string, qtype uint16, ipv4 string) []by
 	out[3] = 0
 	binary.BigEndian.PutUint16(out[6:8], 1)
 	out = append(out, 0xC0, 0x0C)
-	out = binary.BigEndian.AppendUint16(out, 1) // A
-	out = binary.BigEndian.AppendUint16(out, 1) // IN
+	out = binary.BigEndian.AppendUint16(out, qtype) // A or AAAA, echoing the query
+	out = binary.BigEndian.AppendUint16(out, 1)     // IN
 	out = binary.BigEndian.AppendUint32(out, 30)
-	out = binary.BigEndian.AppendUint16(out, 4)
-	out = append(out, addr.To4()...)
+	out = binary.BigEndian.AppendUint16(out, uint16(len(rdata)))
+	out = append(out, rdata...)
 	return out
 }

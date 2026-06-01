@@ -402,6 +402,30 @@ func withTimeout(conn net.Conn, d time.Duration) {
 	_ = conn.SetWriteDeadline(deadline)
 }
 
+// localIPOf returns the bare IP string of a local net.Addr, correctly handling
+// both IPv4 (`1.2.3.4:port`) and IPv6 (`[::1]:port`) forms — the LastIndex(":")
+// trick mangles v6, so use the typed address when available and fall back to
+// SplitHostPort. Returns "" when no IP can be recovered.
+func localIPOf(a net.Addr) string {
+	switch v := a.(type) {
+	case *net.UDPAddr:
+		if v != nil && v.IP != nil {
+			return v.IP.String()
+		}
+	case *net.TCPAddr:
+		if v != nil && v.IP != nil {
+			return v.IP.String()
+		}
+	}
+	if a == nil {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(a.String()); err == nil {
+		return host
+	}
+	return a.String()
+}
+
 // maxLineBytes caps a single text-protocol line read. The read deadline bounds
 // how long a client can take, but not how much memory an unterminated flood can
 // accumulate before it fires; this bounds the allocation. 8 KiB is generous for

@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-06-01" "tarpit-honeypot 2.2.0" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-06-01" "tarpit-honeypot 2.3.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -112,12 +112,17 @@ Tail / query events from the local SQLite store or JSON logs
 .RB ( --since ", " --source ", " --rule ", " --fleet ", " --limit ).
 .TP
 .B gen-token
-Print an unguessable canary token
-.RB ( --type " " dns | url | hex | ssrf ).
+Print or write an unguessable canary token
+.RB ( --type " " dns | url | hex | ssrf | doc ).
 The
 .B ssrf
 type emits a callback URL to plant in an SSRF parameter, webhook field, or
-XXE entity; point it at an
+XXE entity; the
+.B doc
+type writes a decoy
+.B .docx
+.RB ( -o )
+that beacons the callback URL when opened in Word. Point either at an
 .B ssrf_canary
 listener to record out-of-band fetches.
 .TP
@@ -169,6 +174,13 @@ findings and print them for a TIP / SIEM / blocklist
 Run the offline fingerprint engine over a supplied User-Agent, path, SSH
 client id, JA3, or payload
 .RB ( --ua ", " --ssh ", " --ja3 ", " --payload ", " --handler ).
+.TP
+.B jarm \fIhost:port\fR
+Actively probe a TLS server and print its JARM fingerprint
+.RB ( --timeout ", " --sni ).
+Point it at the sensor's own
+.B https
+listener to confirm its TLS posture matches the impersonated product.
 .TP
 .B init
 Write a default config skeleton to stdout (or

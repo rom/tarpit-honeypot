@@ -74,6 +74,8 @@ var udpHandlers = map[string]bool{
 	"coap": true, "knx": true, "dhcp": true,
 	"isakmp": true, "netbios_dgram": true, "stun": true,
 	"mssql_browser": true, "profinet": true, "wdbrpc": true, "iax2": true,
+	"dtls": true, "quic": true,
+	"netflow": true, "sflow": true,
 	"auto": true,
 }
 
@@ -779,6 +781,19 @@ func (c *Config) applyDefaults() {
 			ch.Tag = "tarpit-honeypot"
 		}
 	}
+
+	// Active-response blocklist defaults (only meaningful when enabled).
+	if c.Risk.Block.Enabled {
+		if c.Risk.Block.Level == "" {
+			c.Risk.Block.Level = "critical"
+		}
+		if c.Risk.Block.TTL == 0 {
+			c.Risk.Block.TTL = 15 * time.Minute
+		}
+		if c.Risk.Block.Table == "" {
+			c.Risk.Block.Table = "tarpit_blocklist"
+		}
+	}
 }
 
 func (c *Config) Validate() error {
@@ -1290,6 +1305,23 @@ func (c *Config) Validate() error {
 		for _, id := range r.Channels {
 			if !chanByID[id] {
 				return fmt.Errorf("routes[%d]: references unknown channel %q", i, id)
+			}
+		}
+	}
+
+	// Active-response blocklist.
+	if c.Risk.Block.Enabled {
+		if !c.Risk.Enabled {
+			return fmt.Errorf("risk.block requires risk.enabled (blocking is driven by the risk score)")
+		}
+		switch c.Risk.Block.Level {
+		case "", "elevated", "high", "critical":
+		default:
+			return fmt.Errorf("risk.block.level must be elevated|high|critical (got %q)", c.Risk.Block.Level)
+		}
+		for _, n := range c.Risk.Block.NeverBlock {
+			if _, _, err := net.ParseCIDR(n); err != nil && net.ParseIP(n) == nil {
+				return fmt.Errorf("risk.block.never_block: %q is not an IP or CIDR", n)
 			}
 		}
 	}
