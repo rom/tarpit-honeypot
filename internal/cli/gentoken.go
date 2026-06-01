@@ -20,10 +20,11 @@ import (
 // but short enough to fit cleanly in subdomains, paths, and filenames.
 func cmdGenToken(args []string) error {
 	fs := flag.NewFlagSet("gen-token", flag.ContinueOnError)
-	kind := fs.String("type", "dns", "token type: dns | url | hex | ssrf")
+	kind := fs.String("type", "dns", "token type: dns | url | hex | ssrf | doc")
 	label := fs.String("label", "", "optional human-readable suffix (e.g. \"prod-cdb\")")
 	bits := fs.Int("bits", 64, "bits of entropy (multiple of 8 between 32 and 256)")
-	domain := fs.String("domain", "canary.example.com", "for --type=dns/ssrf, the base domain")
+	domain := fs.String("domain", "canary.example.com", "for --type=dns/ssrf/doc, the base domain")
+	out := fs.String("o", "", "for --type=doc, the output file (default canary-<token>.docx)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -52,10 +53,24 @@ func cmdGenToken(args []string) error {
 		// field, or XXE entity. Point it at an ssrf_canary listener.
 		base := strings.TrimPrefix(*domain, ".")
 		fmt.Printf("http://%s/ssrf/%s%s\n", base, token, suffix)
+	case "doc":
+		// A decoy Word document whose embedded external relationship points at
+		// the callback URL: opening it in Word triggers an outbound fetch the
+		// ssrf_canary / url-canary listener records. Write the .docx to disk.
+		base := strings.TrimPrefix(*domain, ".")
+		callback := fmt.Sprintf("http://%s/doc/%s%s", base, token, suffix)
+		path := *out
+		if path == "" {
+			path = "canary-" + token + suffix + ".docx"
+		}
+		if err := writeDocxCanary(path, callback); err != nil {
+			return fmt.Errorf("doc canary: %w", err)
+		}
+		fmt.Printf("wrote %s (callback: %s)\n", path, callback)
 	case "hex":
 		fmt.Println(token + suffix)
 	default:
-		return fmt.Errorf("unknown --type %q (want dns|url|hex|ssrf)", *kind)
+		return fmt.Errorf("unknown --type %q (want dns|url|hex|ssrf|doc)", *kind)
 	}
 	return nil
 }

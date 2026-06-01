@@ -244,6 +244,13 @@ rationale covering the current implementation.
     unguessable path fires a separate critical event.
   - **DNS canaries**: a minimal UDP DNS listener that replies NXDOMAIN
     but fires on any subdomain of a registered name.
+  - **SSRF / out-of-band canaries**: the `ssrf_canary` handler records
+    callbacks from a coerced system (plant a `gen-token --type=ssrf` URL in an
+    SSRF param / webhook / XXE entity).
+  - **Decoy-document canaries**: `gen-token --type=doc` writes a real `.docx`
+    whose external `attachedTemplate` relationship beacons the callback URL when
+    the file is opened in Word — drop it on a share named like sensitive data
+    and "someone opened the honeydoc" becomes an alert with the opener's IP.
 - **Packet-capture sniffer** (Linux AF_PACKET, opt-in, needs CAP_NET_RAW):
   - **L2** — ARP scans (one MAC asking about many distinct IPs) and
     unsolicited replies (ARP-cache poisoning).

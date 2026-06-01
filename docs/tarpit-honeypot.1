@@ -112,12 +112,17 @@ Tail / query events from the local SQLite store or JSON logs
 .RB ( --since ", " --source ", " --rule ", " --fleet ", " --limit ).
 .TP
 .B gen-token
-Print an unguessable canary token
-.RB ( --type " " dns | url | hex | ssrf ).
+Print or write an unguessable canary token
+.RB ( --type " " dns | url | hex | ssrf | doc ).
 The
 .B ssrf
 type emits a callback URL to plant in an SSRF parameter, webhook field, or
-XXE entity; point it at an
+XXE entity; the
+.B doc
+type writes a decoy
+.B .docx
+.RB ( -o )
+that beacons the callback URL when opened in Word. Point either at an
 .B ssrf_canary
 listener to record out-of-band fetches.
 .TP

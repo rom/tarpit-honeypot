@@ -203,7 +203,7 @@ The trailing parenthesized id is the event id — feed it to `export-pcap`.
 
 ## `gen-token`
 
-Generate an unguessable canary token. Four shapes for the common bait surfaces; default 64 bits of entropy.
+Generate an unguessable canary token. Five shapes for the common bait surfaces; default 64 bits of entropy.
 
 ```
 tarpit-honeypot gen-token --type=dns --label=prod-cdb --domain=canary.example.com
@@ -217,16 +217,22 @@ tarpit-honeypot gen-token --type=hex --bits=256
 
 tarpit-honeypot gen-token --type=ssrf --domain=oob.canary.example.com
 # http://oob.canary.example.com/ssrf/6191564a98496be6
+
+tarpit-honeypot gen-token --type=doc --domain=oob.canary.example.com --label=q4-financials -o bait.docx
+# wrote bait.docx (callback: http://oob.canary.example.com/doc/6191564a98496be6-q4-financials)
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--type` | `dns` | `dns` / `url` / `hex` / `ssrf`. |
+| `--type` | `dns` | `dns` / `url` / `hex` / `ssrf` / `doc`. |
 | `--label` | "" | Optional human-readable suffix (DNS-safe chars only). |
 | `--bits` | `64` | Multiple of 8 between 32 and 256. |
-| `--domain` | `canary.example.com` | For `--type=dns` / `--type=ssrf`, the base domain. |
+| `--domain` | `canary.example.com` | For `--type=dns` / `ssrf` / `doc`, the base domain. |
+| `-o` | "" | For `--type=doc`, the output file (default `canary-<token>.docx`). |
 
 Paste a `dns`/`url` token into a `dns_canaries:` or `url_canaries:` block and the sensor fires the moment the token gets touched anywhere on the network. A `--type=ssrf` token is a full callback URL to plant in an SSRF parameter, webhook field, or XXE entity; point it at an `ssrf_canary` listener, which records the out-of-band fetch (token + the fetching system's `User-Agent` / `X-Forwarded-For` / `Via`) and flags `ssrf-callback` / `ssrf-server-side-fetch`.
+
+A `--type=doc` token is a **decoy Word document** (`.docx`): a real, valid Office Open XML file whose `settings.xml` carries an *external* `attachedTemplate` relationship pointing at the callback URL. Word resolves that relationship on open, issuing an outbound GET the `ssrf_canary` (or any HTTP) listener records — so dropping the file on a share named like real sensitive data turns "someone opened the honeydoc" into an alert with the opener's IP and headers. The visible document text is innocuous bait; the beacon is in the relationship, not the content.
 
 ---
 
