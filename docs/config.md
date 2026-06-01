@@ -175,12 +175,23 @@ listeners:
     https:                              # only for handler: https
       hosts: ["honeypot.local"]
     tarpit:                             # only for mode: tarpit
-      strategy: sticky                  # sticky | trickle | keepalive
+      strategy: sticky                  # sticky | trickle | keepalive | jitter |
+                                          #   backoff | ssh_banner | http_headers |
+                                          #   http_chunked | echo | babble |
+                                          #   zipbomb | zero_window
       max_per_source: 4
       max_total: 256
       emulate: false                    # run handler: first (banner+capture), then tarpit
-      trickle:    { text: "Loading...\n", byte_interval: 2s }
-      keepalive:  { interval: 30s }
+      trickle:     { text: "Loading...\n", byte_interval: 2s }
+      keepalive:   { interval: 30s }
+      jitter:      { text: "Loading...\n", min_interval: 500ms, max_interval: 5s }
+      backoff:     { text: "Loading...\n", start: 500ms, max: 60s, factor: 2 }
+      ssh_banner:  { line_interval: 2s, max_line_bytes: 32 }
+      http:        { status_line: "HTTP/1.1 200 OK", header_interval: 2s, chunk_interval: 2s, chunk_text: "." }
+      echo:        { byte_interval: 1s }
+      babble:      { byte_interval: 2s }
+      zipbomb:     { status_line: "HTTP/1.1 200 OK", decompressed_size: 10737418240, chunk_interval: 0s }
+      zero_window: { read_buffer: 1 }
 ```
 
 ### Listener modes
@@ -280,8 +291,21 @@ result with `tarpit-honeypot show-config`. See
 | `sticky` | Hold forever, no read/write. Kernel TCP keepalive notices dead peers. | Punish persistent scanners cheaply. |
 | `trickle` | Write 1 byte of `trickle.text` every `byte_interval`, cycling. | Make banner-grabbers wait for content. |
 | `keepalive` | Write a NUL byte every `keepalive.interval`. | Cheapest persistent presence; minimal bandwidth. |
+| `jitter` | Trickle one byte at a random interval in `[jitter.min_interval, jitter.max_interval]`. | Defeat scanners that fingerprint or time out on trickle's regular cadence. |
+| `backoff` | Trickle whose interval starts at `backoff.start`, ×`backoff.factor` each byte, capped at `backoff.max`. | Feel responsive at first so the scanner commits, then degrade. |
+| `ssh_banner` | endlessh-style: drip endless random SSH preamble lines (never the real `SSH-…` identification), one per `ssh_banner.line_interval`. | Hang SSH clients/scanners indefinitely. Pairs well with `emulate`. |
+| `http_headers` | Send a status line then endless `X-…` response headers, never the terminating blank line. | Hang HTTP clients waiting for headers/body to finish (reverse Slowloris). |
+| `http_chunked` | Complete the head with `Transfer-Encoding: chunked`, then emit one-byte chunks forever (no terminating chunk). | Make a client believe a large body is still streaming. |
+| `echo` | Read attacker input and dribble it back one byte per `echo.byte_interval`. | Keep an interactive client engaged; capture more of what they type. |
+| `babble` | Trickle endless generated printable text (not a fixed string). | Keep content-grabbers reading; pollute their capture with junk. |
+| `zipbomb` | **Aggressive, opt-in.** HTTP response with `Content-Encoding: gzip` whose body inflates to `zipbomb.decompressed_size` bytes from a near-empty compressed payload (`zipbomb.chunk_interval` paces the chunks; 0 = blast). | Make a client that auto-decompresses burn CPU/memory. Authorized engagements only. |
+| `zero_window` | **Aggressive, opt-in.** LaBrea-style: shrink `SO_RCVBUF` to `zero_window.read_buffer` and never read, collapsing the advertised TCP window. TCP only; non-TCP falls back to a sticky hold. | Pin a sending peer's connection indefinitely with no app traffic. Authorized engagements only. |
 
-All three modes emit `*:tarpit_start` (configured severity) on slot acquire, `*:tarpit_end` (low severity, `duration_ms` in meta) on connection close, and `*:tarpit_drop` when per-source or total caps are hit.
+> **`zipbomb` and `zero_window` are retaliatory**, not merely time-wasting:
+> they consume the peer's resources or hold its connection hostage. Use only
+> against hosts you are authorized to engage. Neither is a default.
+
+All modes emit `*:tarpit_start` (configured severity) on slot acquire, `*:tarpit_end` (low severity, `duration_ms` in meta) on connection close, and `*:tarpit_drop` when per-source or total caps are hit.
 
 **`tarpit.emulate: true`** runs the listener's `handler:` to completion first — sending the real protocol banner and capturing the attacker's request — and *then* applies the tarpit strategy on the same connection. The captured banner/request appears in the `tarpit_start` event (`tarpit_emulated_handler` in meta). Use it to make a tarpit look like a live service instead of a black hole.
 

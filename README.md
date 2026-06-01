@@ -30,7 +30,9 @@ rationale covering the current implementation.
 ## Features at a glance
 
 - **TCP honeypots** in three modes: `drop`, `banner` (protocol handler),
-  or `tarpit` (sticky / trickle / keepalive). `tarpit.emulate: true`
+  or `tarpit` (sticky / trickle / keepalive / jitter / backoff / ssh_banner /
+  http_headers / http_chunked / echo / babble / zipbomb / zero_window).
+  `tarpit.emulate: true`
   runs the listener's protocol handler first (real banner + captured
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
@@ -205,8 +207,13 @@ rationale covering the current implementation.
     configured age so a long-running sensor doesn't leak a stable SNI
     cert hash.
 - **Tarpit modes**: `sticky` (hold open), `trickle` (one byte every N
-  seconds), `keepalive` (slow null bytes), with per-source and total
-  connection caps.
+  seconds), `keepalive` (slow null bytes), `jitter` / `backoff` (trickle with
+  randomized / growing intervals), `ssh_banner` (endlessh-style endless SSH
+  preamble), `http_headers` / `http_chunked` (HTTP responses that never finish),
+  `echo` (dribble the attacker's input back), `babble` (endless generated
+  text), and two opt-in aggressive modes — `zipbomb` (gzip decompression bomb)
+  and `zero_window` (LaBrea-style TCP receive-window clamp) — with per-source
+  and total connection caps.
 - **Canary tokens**:
   - **File canaries** via fsnotify (modify/remove/rename/chmod) plus
     Linux fanotify (open/read detection — catches plain `cat`).
@@ -1387,6 +1394,20 @@ honeynet with `icmp_responder.enabled: true` (needs `CAP_NET_RAW`).
 | `sticky` | Accept and never read/write. Kernel TCP keepalive will eventually notice dead peers. | — |
 | `trickle` | Write one byte of the configured `tarpit.trickle.text` every `byte_interval`. Cycles the string forever. | `trickle.text`, `trickle.byte_interval` |
 | `keepalive` | Write a NUL byte every `tarpit.keepalive.interval`. Cheapest option. | `keepalive.interval` |
+| `jitter` | Trickle one byte at a random interval in `[min_interval, max_interval]`. Defeats cadence fingerprinting. | `jitter.text`, `jitter.min_interval`, `jitter.max_interval` |
+| `backoff` | Trickle whose interval starts at `start`, ×`factor` each byte, capped at `max`. Feels live, then degrades. | `backoff.text`, `backoff.start`, `backoff.max`, `backoff.factor` |
+| `ssh_banner` | endlessh-style: drip endless random SSH preamble lines (never the real `SSH-…`), one per `line_interval`. | `ssh_banner.line_interval`, `ssh_banner.max_line_bytes` |
+| `http_headers` | Send a status line then endless `X-…` headers, never the terminating blank line. | `http.status_line`, `http.header_interval` |
+| `http_chunked` | `Transfer-Encoding: chunked` head, then one-byte chunks forever (no terminating chunk). | `http.status_line`, `http.chunk_interval`, `http.chunk_text` |
+| `echo` | Read attacker input and dribble it back one byte per `byte_interval`. | `echo.byte_interval` |
+| `babble` | Trickle endless generated printable text (not a fixed string). | `babble.byte_interval` |
+| `zipbomb` | **Aggressive, opt-in.** HTTP response advertising `Content-Encoding: gzip` whose body inflates to `decompressed_size` bytes from a near-empty compressed payload — cheap for us, costly for a client that auto-decompresses. | `zipbomb.status_line`, `zipbomb.decompressed_size`, `zipbomb.chunk_interval` |
+| `zero_window` | **Aggressive, opt-in.** LaBrea-style: shrink the socket receive buffer (`SO_RCVBUF`) to `read_buffer` and never read, collapsing the advertised TCP window so a sending peer blocks indefinitely. TCP only; non-TCP conns fall back to a sticky hold. | `zero_window.read_buffer` |
+
+> **The two aggressive modes are retaliatory.** `zipbomb` and `zero_window`
+> actively consume the peer's CPU/memory or pin its connection rather than
+> merely wasting time on your side. Enable them only against hosts you are
+> authorized to engage. Neither is selected by any default.
 
 Connection caps bound resource use: `tarpit.max_per_source` limits
 concurrent held connections from one IP and `tarpit.max_total` caps the
@@ -1400,12 +1421,22 @@ listeners:
     mode: tarpit
     severity: high
     tarpit:
-      strategy: trickle          # sticky | trickle | keepalive
+      strategy: trickle          # sticky | trickle | keepalive | jitter | backoff |
+                                 #   ssh_banner | http_headers | http_chunked | echo |
+                                 #   babble | zipbomb | zero_window
       max_per_source: 4
       max_total: 256
       emulate: false             # true = run handler: first, then tarpit
-      trickle: { text: "Loading...\n", byte_interval: 2s }
-      keepalive: { interval: 30s }
+      trickle:     { text: "Loading...\n", byte_interval: 2s }
+      keepalive:   { interval: 30s }
+      jitter:      { text: "Loading...\n", min_interval: 500ms, max_interval: 5s }
+      backoff:     { text: "Loading...\n", start: 500ms, max: 60s, factor: 2 }
+      ssh_banner:  { line_interval: 2s, max_line_bytes: 32 }
+      http:        { status_line: "HTTP/1.1 200 OK", header_interval: 2s, chunk_interval: 2s, chunk_text: "." }
+      echo:        { byte_interval: 1s }
+      babble:      { byte_interval: 2s }
+      zipbomb:     { status_line: "HTTP/1.1 200 OK", decompressed_size: 10737418240, chunk_interval: 0s }
+      zero_window: { read_buffer: 1 }
 ```
 
 All tarpit modes emit a `*:tarpit_start` event (at the listener's
