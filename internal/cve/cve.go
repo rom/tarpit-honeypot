@@ -900,6 +900,111 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Ivanti Connect Secure / Policy Secure stack-based buffer overflow exploited in the wild for unauthenticated remote code execution on the VPN appliance.",
 	},
+
+	// --- second wave: IoT/DVR/camera botnet targets + recent enterprise RCEs ---
+	{
+		ID: "CVE-2024-10914", Name: "D-Link NAS account_mgr command injection", CVSS: 9.2, Service: "http",
+		Signatures: []string{"/cgi-bin/account_mgr.cgi?cmd=cgi_user_add", "account_mgr.cgi?cmd=cgi_user_add"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "D-Link DNS-320/325/340L NAS: the `name` parameter of account_mgr.cgi's cgi_user_add is passed to a shell — unauthenticated command injection, mass-exploited by Mirai variants.",
+	},
+	{
+		ID: "CVE-2024-3721", Name: "TBK DVR command injection", CVSS: 6.3, Service: "http",
+		Signatures: []string{"/device.rsp?opt=sys&cmd=", "mdb=sss&cmd="},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "TBK DVR-4104/4216 device.rsp shell-metacharacter injection in the cmd parameter — a staple Mirai/IoT-botnet recruitment exploit.",
+	},
+	{
+		ID: "CVE-2024-7029", Name: "AVTECH IP camera command injection", CVSS: 8.7, Service: "http",
+		Signatures: []string{"/cgi-bin/supervisor/factory.cgi", "action=makeo&brightness="},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "AVTECH IP cameras: the brightness parameter of Factory.cgi is injected into a shell — used by the Corona/Mirai botnet for unauthenticated RCE on exposed cameras.",
+	},
+	{
+		ID: "CVE-2024-0769", Name: "D-Link DIR-859 path traversal", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/hedwig.cgi", "service=../../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "D-Link DIR-859 hedwig.cgi path traversal in the service parameter, disclosing credentials from the device config for full takeover.",
+	},
+	{
+		ID: "CVE-2024-29973", Name: "Zyxel NAS command injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cgi-bin/remote_help-cgi", "remote_help-cgi?type=command"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Zyxel NAS326/NAS542: the setCookie parameter of remote_help-cgi is passed to a shell — unauthenticated command injection.",
+	},
+	{
+		ID: "CVE-2024-27348", Name: "Apache HugeGraph Gremlin RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/apis/gremlin", "java.lang.runtime", "optionalthreadfactory"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache HugeGraph Server: a crafted Gremlin query escapes the sandbox via reflection (OGNL/thread-factory) for unauthenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2024-4040", Name: "CrushFTP VFS escape / template injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/webinterface/function/", "<getfeaturelist", "zip_read_max_size"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "CrushFTP server-side template injection lets an unauthenticated attacker escape the VFS sandbox to read arbitrary files (and reach RCE) — a CISA-KEV file-transfer exploit.",
+	},
+	{
+		ID: "CVE-2024-28000", Name: "LiteSpeed Cache privilege escalation", CVSS: 9.8, Service: "http",
+		Signatures: []string{"litespeed_hash", "role=administrator&litespeed"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress LiteSpeed Cache plugin: a weak hash check on the litespeed_hash cookie lets an unauthenticated attacker forge an admin session and take over the site.",
+	},
+	{
+		ID: "CVE-2024-4358", Name: "Telerik Report Server auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/startup/register", "restapi/v1.0/datadesigner"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Progress Telerik Report Server: the Startup/Register page lets an unauthenticated attacker create an admin account; chained with a deserialization bug for RCE.",
+	},
+	{
+		ID: "CVE-2024-9264", Name: "Grafana DuckDB SQL-expression RCE", CVSS: 9.4, Service: "http",
+		Signatures: []string{"/api/ds/query", "\"datasource\":{\"type\":\"__expr__\"", "duckdb"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Grafana SQL Expressions evaluate via the bundled DuckDB CLI; an authenticated-but-low-priv attacker reaches command execution / arbitrary file read through a crafted query.",
+	},
+	{
+		ID: "CVE-2024-21683", Name: "Confluence language-pack RCE", CVSS: 8.3, Service: "http",
+		Signatures: []string{"addlanguage.action", "/admin/plugins/newcode/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence Data Center: uploading a malicious JavaScript 'language' via addlanguage.action achieves authenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2023-48788", Name: "Fortinet FortiClientEMS SQL injection", CVSS: 9.3, Service: "http",
+		Signatures: []string{"fctuid"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Fortinet FortiClient EMS: a SQL injection in the FCTUID-handling stored procedure allows unauthenticated RCE via xp_cmdshell — a CISA-KEV exploit.",
+	},
+	{
+		ID: "CVE-2024-36991", Name: "Splunk Enterprise path traversal", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/en-us/modules/messaging/", "/modules/messaging/c:../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Splunk Enterprise on Windows: a path traversal in the messaging endpoint discloses arbitrary files (including the user database) to an unauthenticated attacker.",
+	},
+	{
+		ID: "CVE-2023-50386", Name: "Apache Solr backup/restore RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/solr/admin/configs?action=upload", "replication?command=restore"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Solr: a config-set upload followed by backup/restore loads an attacker-supplied JAR/class, achieving remote code execution.",
+	},
+	{
+		ID: "CVE-2025-24813", Name: "Apache Tomcat partial-PUT RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"content-range: bytes", "/uploads/4."},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache Tomcat: a partial PUT writing a session file under a path-equivalence flaw enables deserialization RCE when file-based session persistence is enabled.",
+	},
+
+	// Advisory-only (handshake/binary; advertised + version-emulated, the
+	// attempt recognized structurally by the handler):
+	{
+		ID: "CVE-2025-32433", Name: "Erlang/OTP SSH pre-auth RCE", CVSS: 10.0, Service: "ssh",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Erlang/OTP SSH daemon processes connection-protocol messages before authentication, allowing an unauthenticated attacker to run arbitrary code — a critical pre-auth RCE in OT/embedded gear.",
+	},
+	{
+		ID: "CVE-2024-45519", Name: "Zimbra postjournal RCE", CVSS: 9.8, Service: "smtp_recv",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Zimbra Collaboration: the postjournal service passes SMTP recipient data to a shell, allowing unauthenticated command execution via a crafted message — exploited in the wild.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -1061,6 +1166,23 @@ var cveExtra = map[string]struct {
 	"CVE-2023-48795": {[]string{"CWE-222", "CWE-354"}, "cpe:2.3:a:openbsd:openssh:*", 0.30},
 	"CVE-2024-21762": {[]string{"CWE-787"}, "cpe:2.3:o:fortinet:fortios:*", 0.95},
 	"CVE-2025-22457": {[]string{"CWE-787"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.94},
+	"CVE-2024-10914": {[]string{"CWE-78"}, "cpe:2.3:o:dlink:dns-320_firmware:*", 0.93},
+	"CVE-2024-3721":  {[]string{"CWE-78"}, "cpe:2.3:o:tbk:dvr4104_firmware:*", 0.94},
+	"CVE-2024-7029":  {[]string{"CWE-78"}, "cpe:2.3:o:avtech:ip_camera_firmware:*", 0.93},
+	"CVE-2024-0769":  {[]string{"CWE-22"}, "cpe:2.3:o:dlink:dir-859_firmware:*", 0.90},
+	"CVE-2024-29973": {[]string{"CWE-78"}, "cpe:2.3:o:zyxel:nas326_firmware:*", 0.90},
+	"CVE-2024-27348": {[]string{"CWE-94"}, "cpe:2.3:a:apache:hugegraph-server:*", 0.94},
+	"CVE-2024-4040":  {[]string{"CWE-1336", "CWE-22"}, "cpe:2.3:a:crushftp:crushftp:*", 0.95},
+	"CVE-2024-28000": {[]string{"CWE-640"}, "cpe:2.3:a:litespeedtech:litespeed_cache:*", 0.94},
+	"CVE-2024-4358":  {[]string{"CWE-288"}, "cpe:2.3:a:progress:telerik_report_server:*", 0.94},
+	"CVE-2024-9264":  {[]string{"CWE-94", "CWE-78"}, "cpe:2.3:a:grafana:grafana:*", 0.90},
+	"CVE-2024-21683": {[]string{"CWE-94"}, "cpe:2.3:a:atlassian:confluence_data_center:*", 0.90},
+	"CVE-2023-48788": {[]string{"CWE-89"}, "cpe:2.3:a:fortinet:forticlient_enterprise_management_server:*", 0.94},
+	"CVE-2024-36991": {[]string{"CWE-22"}, "cpe:2.3:a:splunk:splunk:*", 0.94},
+	"CVE-2023-50386": {[]string{"CWE-434", "CWE-94"}, "cpe:2.3:a:apache:solr:*", 0.85},
+	"CVE-2025-24813": {[]string{"CWE-44", "CWE-502"}, "cpe:2.3:a:apache:tomcat:*", 0.92},
+	"CVE-2025-32433": {[]string{"CWE-306"}, "cpe:2.3:a:erlang:otp:*", 0.94},
+	"CVE-2024-45519": {[]string{"CWE-78"}, "cpe:2.3:a:zimbra:collaboration:*", 0.94},
 }
 
 func init() {

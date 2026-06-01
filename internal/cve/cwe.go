@@ -10,6 +10,7 @@ import "sort"
 var cweNames = map[string]string{
 	"CWE-20":   "Improper Input Validation",
 	"CWE-22":   "Path Traversal",
+	"CWE-44":   "Path Equivalence",
 	"CWE-77":   "Command Injection",
 	"CWE-78":   "OS Command Injection",
 	"CWE-79":   "Cross-site Scripting (XSS)",

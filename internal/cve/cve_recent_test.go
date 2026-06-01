@@ -56,3 +56,54 @@ func TestRecentAdvisoryRecords(t *testing.T) {
 		}
 	}
 }
+
+// TestMatchPayloadSecondWave locks in the IoT/DVR/camera + enterprise wave.
+func TestMatchPayloadSecondWave(t *testing.T) {
+	cases := []struct{ name, handler, req, want string }{
+		{"D-Link NAS cmdi", "http",
+			"GET /cgi-bin/account_mgr.cgi?cmd=cgi_user_add&name=;id; HTTP/1.1\r\n\r\n", "CVE-2024-10914"},
+		{"TBK DVR cmdi", "http",
+			"GET /device.rsp?opt=sys&cmd=___S_O_S_T_R_E_A_MAX___&mdb=sss&cmd=cd+/tmp HTTP/1.1\r\n\r\n", "CVE-2024-3721"},
+		{"AVTECH camera", "http",
+			"GET /cgi-bin/supervisor/Factory.cgi?action=makeo&brightness=`id` HTTP/1.1\r\n\r\n", "CVE-2024-7029"},
+		{"HugeGraph gremlin", "http",
+			"POST /apis/gremlin HTTP/1.1\r\n\r\n{\"gremlin\":\"Thread.currentThread()...java.lang.Runtime\"}", "CVE-2024-27348"},
+		{"CrushFTP VFS", "http",
+			"GET /WebInterface/function/?command=zip&c2f=x HTTP/1.1\r\n\r\n<getFeatureList>", "CVE-2024-4040"},
+		{"Telerik Report Server", "http",
+			"POST /Startup/Register HTTP/1.1\r\n\r\nUsername=admin", "CVE-2024-4358"},
+		{"Confluence addlanguage", "http",
+			"POST /admin/plugins/newcode/addlanguage.action HTTP/1.1\r\n\r\n", "CVE-2024-21683"},
+		{"FortiClient EMS SQLi", "http",
+			"POST / HTTP/1.1\r\n\r\nFCTUID=x';EXEC xp_cmdshell", "CVE-2023-48788"},
+	}
+	for _, c := range cases {
+		hits := MatchPayload(c.handler, c.req)
+		found := false
+		for _, h := range hits {
+			if h.ID == c.want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: expected %s; got %+v", c.name, c.want, hits)
+		}
+	}
+}
+
+// TestSecondWaveAdvisories: the handshake/binary exploits are advisory-only.
+func TestSecondWaveAdvisories(t *testing.T) {
+	for _, id := range []string{"CVE-2025-32433", "CVE-2024-45519"} {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing", id)
+			continue
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only", id)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
