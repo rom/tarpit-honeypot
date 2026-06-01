@@ -425,7 +425,7 @@ var catalog = []Record{
 	},
 	{
 		ID: "CVE-2024-23897", Name: "Jenkins CLI arbitrary file read", CVSS: 9.8, Service: "http",
-		Signatures: []string{"/cli?remoting=false"},
+		Signatures: []string{"/cli?remoting=false", "@/etc/passwd", "connectnode @"},
 		Technique:  "T1190", Tactic: "initial-access",
 		Description: "Jenkins CLI args4j expandAtFiles arbitrary file read (to RCE).",
 	},
@@ -785,6 +785,121 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Remote code execution in the Treck embedded TCP/IP stack via crafted IP/UDP packets (Ripple20) — the OT/IoT device class the honeynet emulates.",
 	},
+
+	// --- recent (2023-2025) in-the-wild / CISA-KEV additions ---
+	{
+		ID: "CVE-2023-22527", Name: "Confluence OGNL template injection RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/template/aui/text-inline.vm", "\\u0027${"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Atlassian Confluence Data Center/Server SSTI: an unauthenticated OGNL injection into the text-inline.vm Velocity template yields remote code execution.",
+	},
+	{
+		ID: "CVE-2024-24919", Name: "Check Point Security Gateway arbitrary file read", CVSS: 8.6, Service: "http",
+		Signatures: []string{"acshell/../", "/clients/mycrl"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Check Point Quantum/CloudGuard Gateway with remote-access VPN: a path-traversal in the portal lets an unauthenticated attacker read any file (e.g. /etc/shadow), harvesting password hashes and the ike/vpn config.",
+	},
+	{
+		ID: "CVE-2024-0012", Name: "PAN-OS management auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/php/utils/createremoteappwebsession.php", "/unauth/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Palo Alto PAN-OS management web interface authentication bypass; chained with CVE-2024-9474 for root command execution on the firewall.",
+	},
+	{
+		ID: "CVE-2024-23692", Name: "Rejetto HFS template injection RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"{.exec|", "{.exec |"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Rejetto HTTP File Server 2.3m server-side template injection: an unauthenticated request with an {.exec|...} macro runs arbitrary commands.",
+	},
+	{
+		ID: "CVE-2024-28995", Name: "SolarWinds Serv-U path traversal", CVSS: 8.6, Service: "http",
+		Signatures: []string{"internaldir=..", "internaldir=%2f.."},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "SolarWinds Serv-U file transfer: a directory-traversal in the InternalDir/InternalFile parameters lets an unauthenticated attacker read arbitrary files off the host.",
+	},
+	{
+		ID: "CVE-2023-35082", Name: "Ivanti EPMM (MobileIron) API auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/mifs/asfv3/api/v2/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Ivanti Endpoint Manager Mobile (formerly MobileIron Core) authentication bypass exposing the administrative API to unauthenticated callers.",
+	},
+	{
+		ID: "CVE-2025-31324", Name: "SAP NetWeaver Visual Composer file upload RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/developmentserver/metadatauploader"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "SAP NetWeaver Visual Composer Metadata Uploader allows an unauthenticated attacker to upload a malicious binary (web shell) and achieve remote code execution.",
+	},
+	{
+		ID: "CVE-2024-36401", Name: "GeoServer OGC evaluation RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"valuereference=exec(", "exec(java.lang.runtime"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "GeoServer evaluates OGC WMS/WFS property names as Apache Commons JXPath expressions, letting an unauthenticated attacker run arbitrary code via a crafted valueReference.",
+	},
+	{
+		ID: "CVE-2024-4885", Name: "Progress WhatsUp Gold path-traversal RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/nmapi/recurringactiontrigger"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Progress WhatsUp Gold GetFileWithoutZip path traversal in the NmAPI endpoint allows unauthenticated remote code execution as the service account.",
+	},
+	{
+		ID: "CVE-2024-38856", Name: "Apache OFBiz auth bypass RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"programexport", "viewmaplist"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache OFBiz screen-rendering authentication bypass: chaining a permitted view to ProgramExport reaches the Groovy ProgramExport endpoint for unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2023-6553", Name: "WordPress Backup Migration RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/wp-content/plugins/backup-backup/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress Backup Migration plugin: an unauthenticated PHP object-injection via the content-disposition header in includes/backup-heart.php yields remote code execution.",
+	},
+	{
+		ID: "CVE-2024-27956", Name: "WordPress Automatic plugin SQLi", CVSS: 9.9, Service: "http",
+		Signatures: []string{"/wp-content/plugins/wp-automatic/inc/csv.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress WP-Automatic plugin SQL injection in the CSV import (q parameter) allowing admin-user creation and site takeover; mass-exploited.",
+	},
+	{
+		ID: "CVE-2024-25600", Name: "WordPress Bricks Builder RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/wp-json/bricks/v1/render_element"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "WordPress Bricks theme/builder unauthenticated remote code execution via eval of the render_element queryEditor parameter; widely exploited by botnets.",
+	},
+	{
+		ID: "CVE-2023-34960", Name: "Chamilo LMS command injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/main/webservices/additional_webservices.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Chamilo LMS WSConvertPpt SOAP web service passes attacker input to a shell, allowing unauthenticated command injection.",
+	},
+	{
+		ID: "CVE-2022-30525", Name: "Zyxel firewall ZTP command injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/ztp/cgi-bin/handler", "setwanportst"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Zyxel USG/ATP/VPN firewalls in ZTP mode pass the setWanPortSt mtu/data field to a shell, allowing unauthenticated remote command injection as nobody.",
+	},
+	{
+		ID: "CVE-2023-1389", Name: "TP-Link Archer AX21 command injection", CVSS: 8.8, Service: "http",
+		Signatures: []string{"country=$(", "country=%24%28", "country=`"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "TP-Link Archer AX21 router web management country field is passed unsanitized to a shell — heavily abused by Mirai/Condi botnets for IoT recruitment.",
+	},
+	// Advisory-only (binary / handshake-level exploits we advertise + version-emulate
+	// but whose attempt is recognized structurally by the handler, not by a payload string):
+	{
+		ID: "CVE-2023-48795", Name: "Terrapin SSH prefix truncation", CVSS: 5.9, Service: "ssh",
+		Technique: "T1557", Tactic: "credential-access",
+		Description: "Terrapin: a man-in-the-middle can truncate the SSH extension-negotiation by manipulating handshake sequence numbers, downgrading security (e.g. disabling keystroke-timing countermeasures).",
+	},
+	{
+		ID: "CVE-2024-21762", Name: "FortiOS SSL-VPN out-of-bounds write RCE", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "FortiOS SSL-VPN out-of-bounds write reachable pre-authentication for remote code execution on the FortiGate; a CISA-KEV edge-device exploit.",
+	},
+	{
+		ID: "CVE-2025-22457", Name: "Ivanti Connect Secure stack overflow RCE", CVSS: 9.0, Service: "pulse",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "Ivanti Connect Secure / Policy Secure stack-based buffer overflow exploited in the wild for unauthenticated remote code execution on the VPN appliance.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -927,6 +1042,25 @@ var cveExtra = map[string]struct {
 	"CVE-2018-5391":  {[]string{"CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.05},
 	"CVE-2019-11477": {[]string{"CWE-190", "CWE-400"}, "cpe:2.3:o:linux:linux_kernel:*", 0.06},
 	"CVE-2020-11896": {[]string{"CWE-787"}, "cpe:2.3:o:treck:tcp_ip:*", 0.10},
+	"CVE-2023-22527": {[]string{"CWE-917"}, "cpe:2.3:a:atlassian:confluence_data_center:*", 0.97},
+	"CVE-2024-24919": {[]string{"CWE-200", "CWE-22"}, "cpe:2.3:o:checkpoint:gaia_os:*", 0.97},
+	"CVE-2024-0012":  {[]string{"CWE-306"}, "cpe:2.3:o:paloaltonetworks:pan-os:*", 0.96},
+	"CVE-2024-23692": {[]string{"CWE-94", "CWE-1336"}, "cpe:2.3:a:rejetto:http_file_server:2.3", 0.96},
+	"CVE-2024-28995": {[]string{"CWE-22"}, "cpe:2.3:a:solarwinds:serv-u:*", 0.96},
+	"CVE-2023-35082": {[]string{"CWE-287"}, "cpe:2.3:a:ivanti:endpoint_manager_mobile:*", 0.94},
+	"CVE-2025-31324": {[]string{"CWE-434"}, "cpe:2.3:a:sap:netweaver_application_server_java:*", 0.94},
+	"CVE-2024-36401": {[]string{"CWE-94"}, "cpe:2.3:a:osgeo:geoserver:*", 0.97},
+	"CVE-2024-4885":  {[]string{"CWE-22"}, "cpe:2.3:a:progress:whatsup_gold:*", 0.94},
+	"CVE-2024-38856": {[]string{"CWE-285", "CWE-94"}, "cpe:2.3:a:apache:ofbiz:*", 0.94},
+	"CVE-2023-6553":  {[]string{"CWE-94"}, "cpe:2.3:a:migrate:backup_migration:*", 0.95},
+	"CVE-2024-27956": {[]string{"CWE-89"}, "cpe:2.3:a:valvepress:automatic:*", 0.94},
+	"CVE-2024-25600": {[]string{"CWE-94"}, "cpe:2.3:a:bricksbuilder:bricks:*", 0.95},
+	"CVE-2023-34960": {[]string{"CWE-78"}, "cpe:2.3:a:chamilo:chamilo:*", 0.94},
+	"CVE-2022-30525": {[]string{"CWE-78"}, "cpe:2.3:o:zyxel:usg_flex_firmware:*", 0.96},
+	"CVE-2023-1389":  {[]string{"CWE-78"}, "cpe:2.3:o:tp-link:archer_ax21_firmware:*", 0.96},
+	"CVE-2023-48795": {[]string{"CWE-222", "CWE-354"}, "cpe:2.3:a:openbsd:openssh:*", 0.30},
+	"CVE-2024-21762": {[]string{"CWE-787"}, "cpe:2.3:o:fortinet:fortios:*", 0.95},
+	"CVE-2025-22457": {[]string{"CWE-787"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.94},
 }
 
 func init() {
