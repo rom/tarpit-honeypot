@@ -228,7 +228,7 @@ actually be negotiated, keeping the advertisement honest.
 
 The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515) — recognize PJL/PostScript/ZPL abuse, CUPS foomatic-rip RCE, and LPD injection; pair them with a printer archetype (`hp-printer`, `brother-printer`, `xerox-versalink`, …) so the IPP/SNMP/web identities agree. See [`archetypes.md`](archetypes.md).
 
-**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `fins`, `coap`, `knx`, `dhcp`, `dns`, `auto`.
+**UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `fins`, `coap`, `knx`, `dhcp`, `dns`, `dtls`, `auto`.
 
 **Catch-all:** `auto` (TCP + UDP) is the generic handler for unmodelled protocols — it captures the client's opening message, guesses the protocol from the leading bytes (`protocol_guess`: tls / ssh / http / socks / text / binary), and raises an `unknown-protocol` anomaly so a probe on any port is still attributable. On TCP it can send an operator-set `banner` as a server-first nudge; on UDP it never replies (a UDP reply to a spoofable source is a reflection primitive). Point a wide listener at it to cover everything not explicitly modelled.
 

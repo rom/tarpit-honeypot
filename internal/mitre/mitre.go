@@ -339,6 +339,7 @@ var handlerTags = map[string]Tag{
 	"socks":          {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
 	"bgp":            {Techniques: []string{"T1190", "T1018"}, Tactics: []string{"initial-access", "discovery"}},
 	"isakmp":         {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"dtls":           {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"netbios_dgram":  {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	"intel_amt":      {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},
 	"ilo":            {Techniques: []string{"T1190", "T1078"}, Tactics: []string{"initial-access"}},

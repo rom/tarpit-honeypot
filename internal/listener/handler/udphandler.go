@@ -124,6 +124,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &dhcp{}, nil
 	case "dns":
 		return &dnsHandler{id: deps.Identity, topo: deps.HoneynetView}, nil
+	case "dtls":
+		return &dtls{}, nil
 	case "auto":
 		return &autoUDP{}, nil
 	case "echo":
