@@ -242,6 +242,10 @@ func buildDCPIdentifyResponse(st pnStation, dstMAC [6]byte, xid uint32) []byte {
 	// Device / DeviceRole = role(1) + reserved(1).
 	blocks = append(blocks, dcpBlock(dcpOptDeviceProps, dcpSubDeviceRole, 0x0000, []byte{st.role, 0x00})...)
 	// IP / IPParameter: BlockInfo 0x0001 (IP set) + ip(4)+mask(4)+gw(4).
+	// PROFINET-DCP is IPv4-only by specification — the IPParameter block carries
+	// a fixed 4-byte address. An IPv6-only honeynet host has no IPv4 to
+	// advertise, so 0.0.0.0 (the DCP "no IP set / DHCP" value) is the realistic
+	// answer, not a truncated v6 address.
 	ip := net.ParseIP(st.ip).To4()
 	if ip == nil {
 		ip = []byte{0, 0, 0, 0}

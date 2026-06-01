@@ -249,6 +249,13 @@ func (s *ftpSession) openPasv(extended bool) {
 		s.reply(fmt.Sprintf("229 Entering Extended Passive Mode (|||%d|).", port))
 		return
 	}
+	if hostPort == "" {
+		// PASV can't encode an IPv6 address (RFC 2428) — a real server tells an
+		// IPv6 client to use EPSV. We keep the listener open so an immediate
+		// EPSV retry can reuse it via the same data path.
+		s.reply("522 Network protocol not supported, use EPSV.")
+		return
+	}
 	s.reply("227 Entering Passive Mode (" + hostPort + ").")
 }
 
@@ -375,23 +382,35 @@ func dataCmdIP(cmd, arg string) string {
 	return ""
 }
 
-// ftpPasvListen opens an ephemeral IPv4 TCP listener for a passive-mode data
-// channel and returns the "h1,h2,h3,h4,p1,p2" string a 227 reply needs (host
-// octets from the control connection's local address so the client connects
-// back to us).
+// ftpPasvListen opens an ephemeral TCP listener on the control connection's
+// own address family for a passive-mode data channel. It returns the listener
+// and the "h1,h2,h3,h4,p1,p2" host-octet string a 227 (PASV) reply needs. The
+// PASV reply format can only encode IPv4, so over an IPv6 control connection
+// the host string is empty: the caller must steer the client to EPSV (229),
+// which is family-agnostic. EPSV works for both families regardless.
 func ftpPasvListen(conn net.Conn) (net.Listener, string, error) {
 	la, ok := conn.LocalAddr().(*net.TCPAddr)
-	if !ok || la.IP.To4() == nil {
+	if !ok || la.IP == nil {
 		la = &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}
 	}
-	ln, err := net.Listen("tcp4", net.JoinHostPort(la.IP.String(), "0"))
+	if v4 := la.IP.To4(); v4 != nil {
+		ln, err := net.Listen("tcp", net.JoinHostPort(la.IP.String(), "0"))
+		if err != nil {
+			return nil, "", err
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		reply := fmt.Sprintf("%d,%d,%d,%d,%d,%d", v4[0], v4[1], v4[2], v4[3], port>>8, port&0xff)
+		return ln, reply, nil
+	}
+	// IPv6 control connection — PASV can't encode the address (RFC 2428), so
+	// the host string is empty to force the caller to require EPSV. Bind the
+	// ephemeral data listener on the wildcard so it's reachable over whichever
+	// stack the host has, without depending on a specific v6 local address.
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return nil, "", err
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ip := la.IP.To4()
-	reply := fmt.Sprintf("%d,%d,%d,%d,%d,%d", ip[0], ip[1], ip[2], ip[3], port>>8, port&0xff)
-	return ln, reply, nil
+	return ln, "", nil
 }
 
 // ftpAcceptData accepts the single data connection on a PASV listener with a

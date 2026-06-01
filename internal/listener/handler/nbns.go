@@ -35,10 +35,10 @@ func (n *nbns) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	res.Meta["qtype"] = qtype
 
 	// Construct a positive name-query response pointing at our local IP.
-	ourIP := pc.LocalAddr().String()
-	if i := strings.LastIndex(ourIP, ":"); i >= 0 {
-		ourIP = ourIP[:i]
-	}
+	// NBNS (NetBIOS-over-TCP/IP) is IPv4-only by specification — the NB record
+	// carries a 4-byte address — so buildNBNSAnswer returns nil for a non-v4
+	// local address rather than emitting garbage.
+	ourIP := localIPOf(pc.LocalAddr())
 	if reply := buildNBNSAnswer(payload, ourIP); reply != nil {
 		if _, err := pc.WriteTo(reply, src); err != nil {
 			res.Meta["write_err"] = err.Error()
