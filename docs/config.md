@@ -258,7 +258,11 @@ self-signed cert (computing JA3/JA4 + JA3S over the handshake exactly like
   egress-scoped**: the backend must be in the [egress allowlist](#egress--outbound-containment-do-no-harm) or
   the sensor fails closed and reports a `forward_err` instead of dialing — the
   sensor can never be turned into an open proxy. The `forward_to` destination
-  is auto-added to the allowlist at startup.
+  is auto-added to the allowlist at startup. The decrypted client→backend bytes
+  are run through the same CVE-signature / suspicious-URI / credential detection
+  the plaintext handlers use, so an exploit or credential that arrived **inside**
+  the TLS tunnel is still attributed (`tls-decrypted-exploit`,
+  `tls-decrypted-credentials`, and the matched `cve:<id>`).
 
 ATT&CK: `T1557` (adversary-in-the-middle) + `T1040` (network sniffing).
 TCP-only; validated at config load (`forward_to` must be `host:port`;

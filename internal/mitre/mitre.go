@@ -582,6 +582,11 @@ var anomalyTags = map[string]Tag{
 	"netflow-export-received": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"sflow-export-received":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"quic-initial":            {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dtls-probe":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dtls-malformed":          {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// tls_intercept (decrypt-and-forward MITM) surfacing an attack that TLS hid.
+	"tls-decrypted-exploit":     {Techniques: []string{"T1190", "T1557"}, Tactics: []string{"initial-access", "credential-access"}},
+	"tls-decrypted-credentials": {Techniques: []string{"T1040", "T1557"}, Tactics: []string{"credential-access", "collection"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
 	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},

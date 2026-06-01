@@ -40,8 +40,10 @@ func (d *dtls) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	body, dtlsVer, ok := dtlsClientHelloBody(payload)
 	if !ok {
 		// Not a DTLS ClientHello — record the attempt and stay silent (no
-		// reply to a non-handshake datagram, so we never reflect).
+		// reply to a non-handshake datagram, so we never reflect). A
+		// non-handshake datagram to a DTLS port is junk/scan noise.
 		res.Meta["dtls"] = "non-clienthello"
+		flagAnomaly(&res, "dtls-malformed")
 		return res, nil
 	}
 
@@ -69,6 +71,9 @@ func (d *dtls) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		res.Meta["ja4"] = ja4
 	}
 	res.Meta["dtls_version"] = dtlsVersionName(dtlsVer)
+	// A DTLS ClientHello to a honeypot port is a service probe — attributable
+	// scan activity even though we don't carry the (cookie-verified) session.
+	flagAnomaly(&res, "dtls-probe")
 
 	// Reply with a HelloVerifyRequest (epoch 0) carrying a fixed-shape cookie.
 	// A real DTLS client will resend its ClientHello echoing the cookie; we
