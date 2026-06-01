@@ -8,6 +8,27 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — detection-depth pass III: cloud/AI CVEs, Lua ATT&CK mapping, more correlators/scripts (version 2.7.0)
+
+Version bumped to **2.7.0**. A third pass, this time also lifting ATT&CK/D3FEND
+coverage across the whole Lua-script layer.
+
+- **+12 CVEs** (171 total): cloud/AI infra (Ivanti CSA, Aviatrix, Ray
+  "ShadowRay") + CMS/web (ChatGPT SSRF, Next.js middleware bypass, Craft CMS,
+  WordPress File-Upload / Really-Simple-Security) + advisory FortiOS bypass,
+  HTTP/2 Rapid Reset, Blast-RADIUS. New CWE-328.
+- **Lua → ATT&CK/D3FEND mapping**: a `lua:` AnomalyTag family classifies the
+  80+ dynamic service scripts' flags (rce/login/token/traversal/ssrf/enum/…)
+  so every script now contributes ATT&CK coverage, storyline input, and D3FEND
+  stamping. Added T1592.
+- **+2 correlators**: `dns_tunnel` (DNS C2/exfil) and `recon_to_exploit`
+  (scan-then-exploit, two-stage).
+- **storyline**: `dns-tunneling` playbook.
+- **profiles**: surface the storyline playbooks attributed to a source.
+- **+1 IOC type**: `tool` (identified scanner/attack tool, for attribution).
+- **+6 Lua scripts** (90 total): WordPress, Roundcube, Splunk, pgAdmin,
+  ManageEngine, Zimbra.
+
 ### Added — detection-depth pass II: more CVEs/IOCs/anomalies/correlators/playbooks/scripts (version 2.6.0)
 
 Version bumped to **2.6.0**. A second breadth/depth pass across the same
