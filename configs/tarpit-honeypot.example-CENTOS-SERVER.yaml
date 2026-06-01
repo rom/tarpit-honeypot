@@ -1,0 +1,127 @@
+# tarpit-honeypot — small "legacy CentOS all-in-one server" decoy.
+#
+# A believable old CentOS box exposing only the classic edge services:
+#   - web      (HTTP 80 + HTTPS 443)   — full fake-vulnerable web app
+#   - SMTP     (25 + submission 587)   — mail server, captures creds + relay probes
+#   - DNS      (UDP 53)                — resolver, tunnelling/exfil detection
+#   - FTP      (21)                    — file server, captures logins, serves bait files
+# It also answers ICMP echo (ping) so a recon scan sees the host as alive.
+#
+# Every emulation / decoy / vuln-recognition feature for those services is on:
+# vulnerable-banner emulation (so version scanners flag a juicy unpatched
+# target and the follow-up exploit is recognized), the deliberately-vulnerable
+# web app + planted URL canaries, payload capture, credential capture, and the
+# matching correlators. Nothing is ever actually exploitable.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
+#   tarpit-honeypot run             -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
+
+sensor:
+  name: ""                 # blank = hostname
+  data_dir: ./var
+  # One coherent OS identity across every banner-aware handler (Apache/vsftpd/
+  # Postfix/BIND versions, TLS posture, SMTP greeting, ICMP TTL, …).
+  archetype: centos-6
+  # Advertise an unpatched build so a version scanner records a juicy target;
+  # the service is never actually exploitable, but the follow-up exploit
+  # attempt (Shellshock, the CVE catalog, web-attack classes) is recognized.
+  vuln_emulation: true
+  # Harvest dropped webshells / uploaded payloads / FTP uploads to
+  # <data_dir>/captures, classify them, and turn artifact hashes into IOCs.
+  payloads:
+    enabled: true
+
+# The web app + protocol emulations all run fully at low interaction.
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # --- Web: the full fake-vulnerable app on HTTP + HTTPS ---
+  - id: http
+    proto: tcp
+    bind: 0.0.0.0:80
+    mode: banner
+    handler: http
+    webapp: true           # bare banner -> full deceptive web app + vuln endpoints
+    severity: high
+    capture: true          # record request/response bytes to <data_dir>/captures
+  - id: https
+    proto: tcp
+    bind: 0.0.0.0:443
+    mode: banner
+    handler: https         # self-signs a cert shaped by the archetype's TLS posture
+    webapp: true
+    severity: high
+    capture: true
+
+  # --- SMTP: mail server (captures MAIL FROM/RCPT, default creds, relay probes) ---
+  - { id: smtp,        proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high, capture: true }
+  - { id: smtp-submit, proto: tcp, bind: 0.0.0.0:587, mode: banner, handler: smtp_recv, severity: high }
+
+  # --- DNS: resolver (answers A/AAAA/MX/TXT/…, runs tunnelling/exfil detection) ---
+  - { id: dns, proto: udp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high }
+
+  # --- FTP: file server (captures logins, accepts any creds, serves bait files) ---
+  - id: ftp
+    proto: tcp
+    bind: 0.0.0.0:21
+    mode: banner
+    handler: ftp_files
+    accept_creds: any      # let the "login" succeed so we see what they do next
+    severity: high
+    capture: true
+
+# Planted "secret" URLs no legitimate visitor could know — a request for any of
+# these is, by itself, a near-certain compromise signal (critical).
+url_canaries:
+  - { id: db-backup, path: /backup/db-prod.sql.gz, severity: critical }
+  - { id: wp-config, path: /wp-config.php.bak,      severity: critical }
+  - { id: env-file,  path: /.env,                   severity: critical }
+
+# Answer ICMP echo (ping) — and ARP — for the decoy host so recon sees it alive.
+# Linux + CAP_NET_RAW. Set `interface` to the NIC the traffic arrives on and the
+# host `ip` to this box's (or a routed decoy) address.
+honeynets:
+  - id: server
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: corp.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    hosts:
+      - ip: 192.0.2.10
+        hostname: mail
+        os: linux
+        archetype: centos-6
+        services:
+          - { port: 80,  handler: http }
+          - { port: 443, handler: https }
+          - { port: 25,  handler: smtp_recv }
+          - { port: 53,  handler: dns }
+          - { port: 21,  handler: ftp_files }
+
+# Detection for exactly these services — brute force, scanning, the web-attack
+# classes, mail-relay probing, DNS tunnelling, default-credential sweeps, and
+# the multi-stage / scan-then-exploit progressions.
+correlate:
+  port_scan:        { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:      { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  default_cred_sweep: { enabled: true, distinct_services: 3, window: 300s, severity: high }
+  path_enumeration: { enabled: true, distinct_paths: 40, window: 60s,  severity: high }
+  ua_rotation:      { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  web_attack_probe: { enabled: true, distinct_classes: 3, window: 600s, severity: high }
+  recon_to_exploit: { enabled: true, window: 1800s, severity: high }
+  dns_tunnel:       { enabled: true, events: 5, window: 600s, severity: high }
+  spam_relay:       { enabled: true, events: 3, window: 600s, severity: medium }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite] }

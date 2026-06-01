@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **125 TCP + 37 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **126 TCP + 37 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -52,7 +52,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, UDP): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **162 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **164 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -574,7 +574,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (125 TCP + 37 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (126 TCP + 37 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -611,9 +611,51 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/FAQ.md`](docs/FAQ.md) — common questions grouped by topic (general, deployment & safety, detection, fleet, IOCs, performance, operations).
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
 - [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, a **DevOps / cloud-native** tooling surface, a **big-data / secrets / logging platform**, a **virtualization management plane**, a **legacy-Unix big-iron** estate, a **telecom / ISP edge**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets, and all but the tiniest enable enrichment. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index. [`examples/fleet/`](examples/fleet/) is a worked multi-tier **fleet** topology (leaf sensor → site aggregator → global hub).
-- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
+- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-CENTOS-SERVER` (small legacy CentOS all-in-one: web + SMTP + DNS + FTP + ping, all emulations on), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
+
+**v2.7 — active capture, TLS-MITM, campaign/threat-map UI, decoy generation, and a deep detection pass.**
+The v2.4–2.7 line widens the platform from a sensor into a deception suite and
+then deepens detection across every subsystem. Current totals: **126 TCP + 37
+UDP protocol handlers**, **171 CVE detections**, **90 dynamic Lua service
+scripts**, **164 OS/device archetypes**, **30 single-sensor + 27 cross-sensor
+(`fleet:*`) correlators**, **18 typed IOC kinds**, and full ATT&CK +
+**20 D3FEND** countermeasure mapping. Highlights; the
+[CHANGELOG](CHANGELOG.md) has the per-commit detail.
+
+- **Active artifact capture + threat intel.** Opt-in pull of attacker-referenced
+  droppers (`payloads.fetch_urls`, size-capped, egress-allowlisted, fail-closed),
+  inbound threat-intel feed ingestion (`threat_feeds:`, tags `external_intel` /
+  `threat_intel_hit`), and honey-token reuse detection that closes the canary
+  loop (`canary:token_used`, confirmed compromise).
+- **TLS interception** (`handler: tls_intercept`). Decrypt → inner handler (a TLS
+  front for any emulated service) or decrypt-and-forward to a real backend
+  through the egress allowlist, capturing the plaintext session and running it
+  through CVE / web-attack-class / credential detection (T1557 + T1040).
+- **Campaigns, attacker journey, and a live threat map** (web UI). `/campaign`
+  links source IPs into one operation by shared fingerprint and renders the
+  kill-chain journey as a sankey; `/map` is a GeoIP attack map over
+  country/ASN/threat-intel dashboards. The storyline correlator now classifies a
+  chain into a **named playbook** (ransomware, ot-kill-chain,
+  cloud-credential-takeover, dns-tunneling, web-exploit-to-shell, …).
+- **Dynamic decoy generation** (`generate-decoys`). Benignly connect-scans your
+  own network and emits a matching listener config so the honeypot blends into
+  the environment it deploys into (TCP connect scan only, host-capped, `--yes`
+  authorization required).
+- **Detection-depth passes.** +60 recent in-the-wild CVEs (IoT/DVR/camera
+  botnet, cloud/AI infra like Ray "ShadowRay", and the 2024–2025 edge/CMS wave);
+  base-HTTP web-attack-class detection (SSTI / XXE / SSRF / deserialization /
+  NoSQLi / GraphQL-introspection / JWT-none); web-attack/SSH-key-spray/spam-relay/
+  DNS-tunnel/recon-to-exploit/container-takeover/fingerprint-rotation/TLS-MITM
+  correlators; `lua:` markers now mapped to ATT&CK/D3FEND so all 90 service
+  scripts contribute coverage; richer attacker profiles (artifacts, harvested
+  URLs, SSH keys, SMTP senders, web-attack classes, playbooks); and more IOC
+  kinds (`ja4h`/`ja4t`/`ssh-key`/`ssh-client`/`email`/`user-agent`/`tool`).
+- **Small ready-to-run example**:
+  [`configs/tarpit-honeypot.example-CENTOS-SERVER.yaml`](configs/tarpit-honeypot.example-CENTOS-SERVER.yaml)
+  — a legacy CentOS all-in-one (web + SMTP + DNS + FTP, answers ping) with every
+  emulation / decoy / vuln-recognition feature on for those services.
 
 **v2.3 — full JA4+ suite, active response, encrypted-transport fingerprinting.**
 This sprint completes the JA4+ family, adds an opt-in firewall backstop and a
