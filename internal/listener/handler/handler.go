@@ -282,6 +282,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &grpcH{}, nil
 	case "ssrf_canary":
 		return &ssrfCanary{}, nil
+	case "kubernetes_api":
+		return &k8sAPI{}, nil
+	case "vault":
+		return &vault{}, nil
 	case "melsec":
 		return &melsec{}, nil
 	case "jdwp":

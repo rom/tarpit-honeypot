@@ -40,6 +40,7 @@ var tcpHandlers = map[string]bool{
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
 	"cloud_metadata": true, "etcd": true,
 	"websocket": true, "grpc": true, "ssrf_canary": true,
+	"kubernetes_api": true, "vault": true,
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,

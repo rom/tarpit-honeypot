@@ -260,6 +260,8 @@ var handlerTags = map[string]Tag{
 	"websocket":      {Techniques: []string{"T1190", "T1071.001"}, Tactics: []string{"initial-access", "command-and-control"}},
 	"grpc":           {Techniques: []string{"T1190", "T1071"}, Tactics: []string{"initial-access", "command-and-control"}},
 	"ssrf_canary":    {Techniques: []string{"T1190", "T1602"}, Tactics: []string{"initial-access", "collection"}},
+	"kubernetes_api": {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
+	"vault":          {Techniques: []string{"T1190", "T1555"}, Tactics: []string{"initial-access", "credential-access"}},
 	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
@@ -553,6 +555,17 @@ var anomalyTags = map[string]Tag{
 	// SSRF out-of-band callback collector.
 	"ssrf-callback":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"ssrf-server-side-fetch": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// Kubernetes API server abuse.
+	"k8s-token-auth":  {Techniques: []string{"T1528"}, Tactics: []string{"credential-access"}},
+	"k8s-secret-enum": {Techniques: []string{"T1552.007"}, Tactics: []string{"credential-access"}},
+	"k8s-pod-create":  {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	"k8s-pod-exec":    {Techniques: []string{"T1609"}, Tactics: []string{"execution"}},
+	// HashiCorp Vault abuse.
+	"vault-token-auth":    {Techniques: []string{"T1528"}, Tactics: []string{"credential-access"}},
+	"vault-secret-read":   {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-mount-enum":    {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-policy-access": {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-seal-control":  {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
@@ -741,6 +754,9 @@ var techDescriptions = map[string]string{
 	"T1557": "Adversary-in-the-Middle — intercepting/poisoning traffic to capture or relay credentials.",
 	"T1558": "Steal or Forge Kerberos Tickets — Kerberoasting / AS-REP roasting / ticket abuse.",
 	"T1552": "Unsecured Credentials — harvesting credentials left in files/config/history.",
+	"T1555": "Credentials from Password Stores — reading a secret store / vault (HashiCorp Vault, KV engines).",
+	"T1528": "Steal Application Access Token — capturing a bearer / service-account token.",
+	"T1609": "Container Administration Command — abusing a container/cluster admin API to run a command (kubectl exec).",
 	"T1003": "OS Credential Dumping — extracting account credentials from the OS (LSASS, SAM, /etc/shadow).",
 	"T1212": "Exploitation for Credential Access — exploiting a flaw to obtain credentials.",
 	"T1539": "Steal Web Session Cookie — capturing a session token to impersonate a user.",
