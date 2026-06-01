@@ -33,6 +33,7 @@ On every event, the extractor (`internal/ioc`) pulls these indicator types:
 | `ssh-key` | offered SSH public-key fingerprint (`meta.ssh_pubkey_fps`) | `ssh-rsa:SHA256:…` |
 | `ssh-client` | SSH client version string (`meta.client_id`) | `SSH-2.0-libssh2_1.10.0` |
 | `email` | SMTP envelope sender (`meta.mail_from`) | `spammer@evil.test` |
+| `tool` | identified scanner / attack tool (`meta.tools`) | `sqlmap`, `nuclei` |
 | `domain` | `meta.qname` (DNS) + `meta.sni` (requested SNI) | `evil.example.com` |
 | `cve` | `cve:<id>` rule | `CVE-2021-44228` |
 | `sha256` | captured-payload hash (`payload_artifacts`) | `deadbeef…` |
@@ -43,8 +44,8 @@ On every event, the extractor (`internal/ioc`) pulls these indicator types:
 The high-value types (`sha256`, `url`, `domain`, `ja3`, `ja4`, `ja4h`, `hassh`,
 `ssh-key`, `cve`, `credential`) also emit a one-off `ioc:<type>` event on first
 sighting so they are stored and forwarded to aggregators; bare `ip` / `asn` /
-`mac` / `ja4t` / `user-agent` / `ssh-client` / `email` are tracked in the store
-but not emitted (too voluminous, and already present on every event).
+`mac` / `ja4t` / `user-agent` / `ssh-client` / `email` / `tool` are tracked in
+the store but not emitted (too voluminous, and already present on every event).
 
 Each indicator is de-duplicated by `(type, value)` and tracked with **first
 seen**, **last seen**, **count**, **max severity**, and the **last rule /

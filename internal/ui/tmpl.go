@@ -943,6 +943,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
+{{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<span class="tag bad">{{ . }}</span> {{ end }}<span class="note">recognized attack patterns from the storyline correlator</span></div>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·

@@ -90,6 +90,10 @@ type Profile struct {
 	SSHKeys       []string `json:"ssh_keys,omitempty"`
 	Emails        []string `json:"emails,omitempty"`
 	AttackClasses []string `json:"attack_classes,omitempty"`
+	// Playbooks are the named attack patterns the storyline correlator
+	// recognized for this source (e.g. ransomware-style-destruction,
+	// dns-tunneling, cloud-credential-takeover).
+	Playbooks []string `json:"playbooks,omitempty"`
 	// TokenReuse is set when this source replayed a honeytoken/decoy
 	// credential the sensor had previously served — strong proof of
 	// compromise (a closed canary loop).
@@ -117,6 +121,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	sshKeySet := map[string]struct{}{}
 	emailSet := map[string]struct{}{}
 	attackClassSet := map[string]struct{}{}
+	playbookSet := map[string]struct{}{}
 	var maxSev event.Severity
 
 	for _, ev := range evs {
@@ -198,6 +203,11 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		if ev.RuleID == "canary:token_used" {
 			p.TokenReuse = true
 		}
+		if ev.RuleID == "storyline:multi_stage" {
+			if pb, _ := ev.Meta["playbook"].(string); pb != "" {
+				playbookSet[pb] = struct{}{}
+			}
+		}
 		for _, c := range extractCreds(ev) {
 			key := c.User + "\x00" + c.Pass + "\x00" + c.Service
 			if _, dup := credSeen[key]; !dup && len(p.Credentials) < 100 {
@@ -225,6 +235,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	p.SSHKeys = sortedSet(sshKeySet)
 	p.Emails = sortedSet(emailSet)
 	p.AttackClasses = sortedSet(attackClassSet)
+	p.Playbooks = sortedSet(playbookSet)
 	p.Ports = sortedInts(portSet)
 	for r, c := range ruleCount {
 		p.Rules = append(p.Rules, countItem{Name: r, Count: c})

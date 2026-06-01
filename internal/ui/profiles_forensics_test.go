@@ -88,3 +88,21 @@ func TestBuildProfileNewSignals(t *testing.T) {
 		t.Errorf("classification = %q; want web application attack", p.Classification)
 	}
 }
+
+// TestBuildProfilePlaybooks: storyline playbooks attributed to a source are
+// collected onto its profile.
+func TestBuildProfilePlaybooks(t *testing.T) {
+	now := time.Now()
+	evs := []*event.Event{
+		{ID: "1", Time: now, RuleID: "storyline:multi_stage", Severity: event.SeverityCritical,
+			Source: event.Endpoint{IP: "9.9.9.9"},
+			Meta:   map[string]any{"playbook": "dns-tunneling"}},
+		{ID: "2", Time: now, RuleID: "storyline:multi_stage", Severity: event.SeverityCritical,
+			Source: event.Endpoint{IP: "9.9.9.9"},
+			Meta:   map[string]any{"playbook": "cloud-credential-takeover"}},
+	}
+	p := buildProfile("9.9.9.9", evs)
+	if !hasStr(p.Playbooks, "dns-tunneling") || !hasStr(p.Playbooks, "cloud-credential-takeover") {
+		t.Errorf("playbooks not collected: %v", p.Playbooks)
+	}
+}
