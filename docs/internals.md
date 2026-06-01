@@ -164,7 +164,8 @@ a narrow job:
   `plc_program_download`, `ics_mode_change`, `ot_kill_chain`), remote-access /
   OOB (`remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`), VoIP /
   telephony (`toll_fraud`, `voip_enum`, `pbx_control`), interception /
-  containers (`tls_mitm_capture`, `fp_rotation`, `container_takeover`), and the
+  containers (`tls_mitm_capture`, `fp_rotation`, `container_takeover`),
+  web/SSH/mail abuse (`web_attack_probe`, `ssh_key_spray`, `spam_relay`), and the
   cross-protocol **`storyline`** correlator that fires `storyline:multi_stage`
   when one source touches 3+ kill-chain tactics (classifying the chain into a
   named playbook — ransomware, OT kill-chain, cloud takeover, …). Adding one is a fixed recipe:

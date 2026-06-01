@@ -682,6 +682,39 @@ func (c *Config) applyDefaults() {
 			c.Correlate.ContainerTakeover.Severity = "critical"
 		}
 	}
+	if c.Correlate.WebAttackProbe.Enabled {
+		if c.Correlate.WebAttackProbe.DistinctClasses == 0 {
+			c.Correlate.WebAttackProbe.DistinctClasses = 3
+		}
+		if c.Correlate.WebAttackProbe.Window == 0 {
+			c.Correlate.WebAttackProbe.Window = 10 * time.Minute
+		}
+		if c.Correlate.WebAttackProbe.Severity == "" {
+			c.Correlate.WebAttackProbe.Severity = "high"
+		}
+	}
+	if c.Correlate.SSHKeySpray.Enabled {
+		if c.Correlate.SSHKeySpray.DistinctKeys == 0 {
+			c.Correlate.SSHKeySpray.DistinctKeys = 5
+		}
+		if c.Correlate.SSHKeySpray.Window == 0 {
+			c.Correlate.SSHKeySpray.Window = 10 * time.Minute
+		}
+		if c.Correlate.SSHKeySpray.Severity == "" {
+			c.Correlate.SSHKeySpray.Severity = "medium"
+		}
+	}
+	if c.Correlate.SpamRelay.Enabled {
+		if c.Correlate.SpamRelay.Events == 0 {
+			c.Correlate.SpamRelay.Events = 3
+		}
+		if c.Correlate.SpamRelay.Window == 0 {
+			c.Correlate.SpamRelay.Window = 10 * time.Minute
+		}
+		if c.Correlate.SpamRelay.Severity == "" {
+			c.Correlate.SpamRelay.Severity = "medium"
+		}
+	}
 	if c.Correlate.HoneytokenSpread.Enabled {
 		if c.Correlate.HoneytokenSpread.DistinctSources == 0 {
 			c.Correlate.HoneytokenSpread.DistinctSources = 3

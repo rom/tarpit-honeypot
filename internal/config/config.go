@@ -1276,6 +1276,40 @@ type Correlate struct {
 	TLSMITMCapture      CorrTLSMITMCapture      `yaml:"tls_mitm_capture"`
 	FingerprintRotation CorrFingerprintRotation `yaml:"fingerprint_rotation"`
 	ContainerTakeover   CorrContainerTakeover   `yaml:"container_takeover"`
+	WebAttackProbe      CorrWebAttackProbe      `yaml:"web_attack_probe"`
+	SSHKeySpray         CorrSSHKeySpray         `yaml:"ssh_key_spray"`
+	SpamRelay           CorrSpamRelay           `yaml:"spam_relay"`
+}
+
+// CorrWebAttackProbe fires when one source triggers several DISTINCT web-attack
+// classes (webapp:ssti / xxe / rfi_ssrf / nosqli / deserialize / sqli / lfi /
+// cmdi / …) within a window — an actor systematically fuzzing web-app
+// vulnerability classes rather than a single targeted exploit.
+type CorrWebAttackProbe struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctClasses int           `yaml:"distinct_classes"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
+}
+
+// CorrSSHKeySpray fires when one source offers several DISTINCT SSH public keys
+// within a window — key-spraying / testing a stolen-key collection against the
+// host (rather than password brute force).
+type CorrSSHKeySpray struct {
+	Enabled      bool          `yaml:"enabled"`
+	DistinctKeys int           `yaml:"distinct_keys"`
+	Window       time.Duration `yaml:"window"`
+	Severity     string        `yaml:"severity"`
+}
+
+// CorrSpamRelay fires when one source makes several open-relay / recipient-
+// enumeration attempts against the SMTP handler within a window — a spammer
+// probing whether the server will relay or harvesting valid recipients.
+type CorrSpamRelay struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
 }
 
 // CorrTLSMITMCapture fires when one source produces several events where the

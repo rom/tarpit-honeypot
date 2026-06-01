@@ -55,6 +55,9 @@ type Correlator struct {
 	mitmCapSev    event.Severity
 	fpRotSev      event.Severity
 	ctrTakeSev    event.Severity
+	webProbeSev   event.Severity
+	sshKeySev     event.Severity
+	spamRelaySev  event.Severity
 	honeytokenSev event.Severity
 	toolRotSev    event.Severity
 	plcProgSev    event.Severity
@@ -105,6 +108,9 @@ type Correlator struct {
 	mitmCap    map[string]*countState // key: source IP (tls-decrypted exploit/cred count)
 	fpRot      map[string]*setState   // key: source IP (distinct network fingerprints)
 	ctrTake    map[string]*setState   // key: source IP (distinct container/k8s control ops)
+	webProbe   map[string]*setState   // key: source IP (distinct webapp:* attack classes)
+	sshKey     map[string]*setState   // key: source IP (distinct offered SSH pubkeys)
+	spamRelay  map[string]*countState // key: source IP (open-relay / rcpt-enum attempts)
 	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
 	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
 	plcProg    map[string]*countState // key: source IP (program-download count)
@@ -224,6 +230,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		mitmCap:    map[string]*countState{},
 		fpRot:      map[string]*setState{},
 		ctrTake:    map[string]*setState{},
+		webProbe:   map[string]*setState{},
+		sshKey:     map[string]*setState{},
+		spamRelay:  map[string]*countState{},
 		honeytoken: map[string]*reuseState{},
 		toolRot:    map[string]*setState{},
 		plcProg:    map[string]*countState{},
@@ -332,6 +341,9 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.TLSMITMCapture.Enabled, cfg.TLSMITMCapture.Severity, &c.mitmCapSev},
 		{cfg.FingerprintRotation.Enabled, cfg.FingerprintRotation.Severity, &c.fpRotSev},
 		{cfg.ContainerTakeover.Enabled, cfg.ContainerTakeover.Severity, &c.ctrTakeSev},
+		{cfg.WebAttackProbe.Enabled, cfg.WebAttackProbe.Severity, &c.webProbeSev},
+		{cfg.SSHKeySpray.Enabled, cfg.SSHKeySpray.Severity, &c.sshKeySev},
+		{cfg.SpamRelay.Enabled, cfg.SpamRelay.Severity, &c.spamRelaySev},
 		{cfg.HoneytokenSpread.Enabled, cfg.HoneytokenSpread.Severity, &c.honeytokenSev},
 		{cfg.ToolRotation.Enabled, cfg.ToolRotation.Severity, &c.toolRotSev},
 		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
@@ -465,6 +477,21 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.ContainerTakeover.Enabled {
 		if extra := c.checkContainerTakeover(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.WebAttackProbe.Enabled {
+		if extra := c.checkWebAttackProbe(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.SSHKeySpray.Enabled {
+		if extra := c.checkSSHKeySpray(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.SpamRelay.Enabled {
+		if extra := c.checkSpamRelay(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1312,6 +1339,13 @@ func (c *Correlator) gc(now time.Time) {
 	}
 	gcSet(c.fpRot, now, effWindow(c.cfg.FingerprintRotation.Window, 10*time.Minute))
 	gcSet(c.ctrTake, now, effWindow(c.cfg.ContainerTakeover.Window, 10*time.Minute))
+	gcSet(c.webProbe, now, effWindow(c.cfg.WebAttackProbe.Window, 10*time.Minute))
+	gcSet(c.sshKey, now, effWindow(c.cfg.SSHKeySpray.Window, 10*time.Minute))
+	for k, st := range c.spamRelay {
+		if now.Sub(st.since) > effWindow(c.cfg.SpamRelay.Window, 10*time.Minute) {
+			delete(c.spamRelay, k)
+		}
+	}
 	for k, st := range c.honeytoken {
 		if now.Sub(st.since) > effWindow(c.cfg.HoneytokenSpread.Window, time.Hour) {
 			delete(c.honeytoken, k)
