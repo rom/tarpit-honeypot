@@ -8,6 +8,35 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — detection-depth pass II: more CVEs/IOCs/anomalies/correlators/playbooks/scripts (version 2.6.0)
+
+Version bumped to **2.6.0**. A second breadth/depth pass across the same
+subsystems, leaning into the IoT-botnet + web-app attack surface and the
+signals added in 2.5.0.
+
+- **+17 CVEs** (159 total): IoT/DVR/camera/NAS command-injection (D-Link,
+  TBK, AVTECH, Zyxel — Mirai-class) plus recent enterprise pre-auth RCE
+  (HugeGraph, CrushFTP, LiteSpeed, Telerik, Grafana DuckDB, Confluence,
+  FortiClient EMS, Splunk, Solr, Tomcat partial-PUT) and advisory Erlang/OTP
+  SSH + Zimbra. New CWE-44.
+- **+3 IOC types**: `ssh-key` (offered SSH public-key fingerprints, now
+  surfaced at the top level + emitted), `ssh-client` (SSH client version), and
+  `email` (SMTP envelope sender).
+- **Web-attack-class detection** on every `http`/`https` listener: `webapp:ssti`
+  / `xxe` / `rfi_ssrf` / `deserialize` / `nosqli` / `graphql-introspection` /
+  `jwt-none` — scanned over the whole request, near-zero-FP, ATT&CK/D3FEND
+  mapped.
+- **+3 correlators**: `web_attack_probe` (distinct web-attack classes),
+  `ssh_key_spray` (distinct offered SSH keys), `spam_relay` (open-relay /
+  recipient-enumeration probing).
+- **+3 storyline playbooks**: `web-vuln-fuzzing`, `data-exfiltration`,
+  `dos-amplification`; web-attack-class tracking broadens
+  `web-exploit-to-shell`.
+- **Richer profiles**: SSH public keys offered, SMTP senders, and web-attack
+  classes, with a new "web application attack" assessment band.
+- **+6 Lua scripts** (84 total): Metabase, Superset, Node-RED, ThinkPHP,
+  GeoServer, Rancher — each flagging its service-specific RCE/abuse primitive.
+
 ### Added — detection-depth pass: CVEs, IOCs, profiles, D3FEND, storyline, correlators, Lua (version 2.5.0)
 
 Version bumped to **2.5.0**. A breadth-and-depth pass across the detection /
