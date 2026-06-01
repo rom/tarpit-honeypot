@@ -272,6 +272,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &rtsp{}, nil
 	case "dockerapi":
 		return &dockerapi{}, nil
+	case "cloud_metadata":
+		return &cloudMeta{}, nil
+	case "etcd":
+		return &etcd{}, nil
 	case "melsec":
 		return &melsec{}, nil
 	case "jdwp":

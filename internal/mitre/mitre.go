@@ -252,7 +252,10 @@ var handlerTags = map[string]Tag{
 	"https":     {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
 	"rtsp":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dockerapi": {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
-	"ipp":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// Cloud-native / container attack surface.
+	"cloud_metadata": {Techniques: []string{"T1552.005", "T1078.004"}, Tactics: []string{"credential-access", "defense-evasion"}},
+	"etcd":           {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
+	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
 	"snmp":       {Techniques: []string{"T1018", "T1110.001"}, Tactics: []string{"discovery", "credential-access"}},
@@ -526,6 +529,11 @@ var anomalyTags = map[string]Tag{
 	// Docker remote API abuse — deploy/control a container = code execution.
 	"docker-container-create": {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
 	"docker-remote-control":   {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	// Cloud metadata / etcd — stealing IAM creds or cluster secrets.
+	"cloud-credential-theft": {Techniques: []string{"T1552.005"}, Tactics: []string{"credential-access"}},
+	"etcd-secret-read":       {Techniques: []string{"T1552.007"}, Tactics: []string{"credential-access"}},
+	"etcd-range-read":        {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"etcd-write":             {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
