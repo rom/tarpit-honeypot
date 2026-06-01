@@ -626,6 +626,12 @@ decoy-document canary, and fingerprints encrypted transports. Highlights; the
   QUIC/HTTP-3 scans the same JA3/JA4 the TLS handlers give HTTPS.
 - **Flow-export collectors**: `netflow` (v5/v9/IPFIX) and `sflow` decoys capture
   routing reconnaissance, alongside the existing `bgp` handler.
+- **Full IPv6 parity** (audited): an IPv6 attacker gets the same deceptions,
+  fingerprinting, detection, correlation, and ATT&CK attribution as IPv4. LLMNR
+  answers AAAA poisoning, STUN returns an IPv6 XOR-MAPPED-ADDRESS, pcap captures
+  real IPv6 packets, and FTP steers IPv6 clients to EPSV. Protocols that are
+  IPv4-only by specification (NBNS, KNX, PROFINET-DCP, SNMP ARP table, ARP)
+  behave correctly so.
 
 **v2.2 — cloud-native attack surface, modern transports, JA4+, IPv6 parity.**
 The latest sprint widens the honeypot toward containers/cloud, modern

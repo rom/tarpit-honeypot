@@ -8,6 +8,38 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed — IPv6 parity across handlers + capture (version 2.3.1)
+
+Version bumped to **2.3.1**. A systematic audit confirmed an IPv6 attacker now
+gets the same deceptions, fingerprinting, detection, correlation, and ATT&CK
+attribution as IPv4. Genuine gaps fixed; protocol-correct IPv4-only behavior
+left as-is with clarifying comments.
+
+- **LLMNR** now answers AAAA (type 28) poisoning queries with our IPv6 address,
+  not just A — an IPv6 `wpad` probe gets a poison reply instead of silence. The
+  buggy `LastIndex(":")` local-address parse (which mangled `[::1]:port`) is
+  replaced by a typed `localIPOf` helper shared with NBNS.
+- **STUN** returns an IPv6 XOR-MAPPED-ADDRESS (family 0x02, address XORed with
+  cookie+transaction-id per RFC 5389) instead of silently dropping IPv6 clients
+  — relevant for WebRTC/VoIP over v6.
+- **pcap capture** writes IPv6 sessions with a real IPv6 packet header carrying
+  the actual addresses (+ v6 pseudo-header checksum) instead of flattening them
+  to `0.0.0.0`.
+- **FTP** PASV can't encode IPv6 (RFC 2428), so an IPv6 control connection now
+  gets `522 use EPSV` (real-server behavior) instead of a broken `127.0.0.1` in
+  the 227 reply; EPSV (229) already works for both families.
+- Confirmed correct-as-is (IPv4-only by specification, with clarifying
+  comments): `nbns` (NetBIOS-over-TCP/IP), `knx` (KNXnet/IP HPAI route-back
+  `0.0.0.0`), PROFINET-DCP, the SNMP `ipNetToMediaTable` (IPv4 ARP table), and
+  the ARP responder.
+- Confirmed already address-family-agnostic: listener binding, source
+  extraction, the `dns` handler (A + AAAA + `fakeIPv6`), correlation, enrichment
+  (GeoIP/ASN/RDNS), the filter allowlist, the risk scorer, the blocklist
+  (`blocked4`/`blocked6` sets), MITRE attribution, and CEF/LEEF/OCSF/STIX/JSON
+  output. Adds tests for `localIPOf`, LLMNR AAAA + wrong-family guard, STUN
+  IPv6, pcap IPv6 address preservation, and the FTP v4/v6 PASV branch; documents
+  the parity status in `docs/config.md`.
+
 ### Added — fingerprint suite, active response, encrypted transports (version 2.3.0)
 
 Version bumped to **2.3.0**. This release rounds out the JA4+ fingerprint
