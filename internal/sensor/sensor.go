@@ -25,6 +25,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/fetcher"
 	"github.com/rom/tarpit-honeypot/internal/fleet"
 	"github.com/rom/tarpit-honeypot/internal/forward"
 	"github.com/rom/tarpit-honeypot/internal/fuzzdos"
@@ -78,6 +79,7 @@ type Sensor struct {
 	fuzzTrack   *fuzzdos.Tracker
 	sniffer     sniffer.Sniffer // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	payloads    *payload.Store
+	urlFetcher  *fetcher.Fetcher // opt-in active fetch of harvested ingress URLs (nil = off)
 	sessionRec  *sessionrec.Store
 	risk        *risk.Scorer
 	blocker     *blocklist.Blocker // active-response nftables backstop (nil/disabled = no-op)
@@ -455,6 +457,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 	}
 
 	var payloadStore *payload.Store
+	var urlFetcher *fetcher.Fetcher
 	if cfg.Sensor.Payloads.Enabled {
 		ps, err := payload.NewStore(filepath.Join(cfg.Sensor.DataDir, "payloads"),
 			cfg.Sensor.Payloads.MaxBytes, cfg.Sensor.Payloads.MaxTotalMB)
@@ -462,6 +465,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 			slog.Warn("payload harvesting disabled: cannot create store", "err", err)
 		} else {
 			payloadStore = ps
+		}
+		// Opt-in active fetch of harvested ingress URLs, dialing through the
+		// egress allowlist so it can't be an SSRF/exfil vector.
+		if cfg.Sensor.Payloads.FetchURLs && payloadStore != nil {
+			urlFetcher = fetcher.New(egress.Default(),
+				20*time.Second, int64(cfg.Sensor.Payloads.FetchMaxBytes))
+			slog.Info("payload url fetch enabled (active download through egress allowlist)")
 		}
 	}
 
@@ -483,6 +493,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		scanTrack:     scananalysis.NewTracker(5 * time.Minute),
 		fuzzTrack:     fuzzdos.NewTracker(60 * time.Second),
 		payloads:      payloadStore,
+		urlFetcher:    urlFetcher,
 		sessionRec:    sessRec,
 		risk:          newRiskScorer(cfg.Risk),
 		blocker:       newBlocker(cfg.Risk.Block),
@@ -948,6 +959,14 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 	}
 	if len(f.URLs) > 0 {
 		ev.Meta["harvested_urls"] = f.URLs
+		// Opt-in: actively fetch each harvested URL through the egress
+		// allowlist and fold any downloaded artifact into the finding, so a
+		// pull-based dropper is captured, not just recorded. Bounded to a few
+		// URLs per event so a flood of URLs can't fan out unboundedly.
+		if s.urlFetcher != nil {
+			fetched := s.fetchHarvestedURLs(f.URLs)
+			f.Artifacts = append(f.Artifacts, fetched...)
+		}
 	}
 
 	// Persist artifacts + build a compact descriptor list for the meta.
@@ -993,6 +1012,34 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 			"markers":          f.Markers,
 		},
 	}
+}
+
+// fetchHarvestedURLs actively downloads up to a few harvested ingress URLs
+// through the egress allowlist and returns any captured artifacts. Bounded in
+// both URL count and per-fetch time so a flood of URLs in one event can't fan
+// out into unbounded outbound work.
+func (s *Sensor) fetchHarvestedURLs(urls []string) []payload.Artifact {
+	const maxURLsPerEvent = 3
+	var out []payload.Artifact
+	seen := map[string]bool{}
+	n := 0
+	for _, u := range urls {
+		if n >= maxURLsPerEvent {
+			break
+		}
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		n++
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		art, ok := s.urlFetcher.Fetch(ctx, u)
+		cancel()
+		if ok {
+			out = append(out, art)
+		}
+	}
+	return out
 }
 
 // shellCommandText returns the attacker's interactive-shell input from an

