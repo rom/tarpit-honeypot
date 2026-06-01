@@ -126,22 +126,22 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 		flagAnomaly(res, "cloud-credential-theft")
 		// Listing vs fetching a specific role.
 		if strings.HasSuffix(strings.TrimRight(low, "/"), "security-credentials") {
-			body = "honeypot-instance-role"
+			body = "app-prod-ec2-role"
 		} else {
 			contentType = "application/json"
-			body = `{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":"ASIAHONEYTOKEN0000","SecretAccessKey":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYHONEYTOKEN","Token":"FQoGZXIvYXdzEHONEYTOKEN","Expiration":"2099-01-01T00:00:00Z"}`
+			body = `{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":"ASIA4XTPZ9QK7M2BNVRD","SecretAccessKey":"hT3kVq9mZ1cR8wPnLs6yEfBd2uXgKaQj7N0iMvCt","Token":"FQoGZXIvYXdzEBYaDPq7m2nVrK9wL3sJ4xT8cN1pBdRfGhUaKmZ","Expiration":"2099-01-01T00:00:00Z"}`
 		}
 		return
 	case strings.HasPrefix(low, "/latest/meta-data/"):
 		provider = "aws"
 		switch {
 		case strings.HasSuffix(low, "instance-id"):
-			body = "i-0honeypot00000000"
+			body = "i-0a1b2c3d4e5f60718"
 		case strings.HasSuffix(low, "local-ipv4"):
 			body = "10.0.0.42"
 		case strings.HasSuffix(low, "iam/info"):
 			contentType = "application/json"
-			body = `{"Code":"Success","InstanceProfileArn":"arn:aws:iam::000000000000:instance-profile/honeypot-instance-role","InstanceProfileId":"AIPAHONEYTOKEN0000"}`
+			body = `{"Code":"Success","InstanceProfileArn":"arn:aws:iam::481516234299:instance-profile/app-prod-ec2-role","InstanceProfileId":"AIPA4XTPZ9QK7M2BNVRDX"}`
 		default:
 			body = "ami-id\ninstance-id\ninstance-type\nlocal-ipv4\niam/\nsecurity-groups"
 		}
@@ -149,7 +149,7 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 	case strings.HasPrefix(low, "/latest/dynamic/instance-identity"):
 		provider = "aws"
 		contentType = "application/json"
-		body = `{"accountId":"000000000000","region":"us-east-1","instanceId":"i-0honeypot00000000","instanceType":"t3.medium","imageId":"ami-honeypot"}`
+		body = `{"accountId":"481516234299","region":"us-east-1","instanceId":"i-0a1b2c3d4e5f60718","instanceType":"t3.medium","imageId":"ami-0c7217cdde317cfec"}`
 		return
 
 	// --- GCP metadata -----------------------------------------------------
@@ -158,15 +158,15 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 		provider = "gcp"
 		flagAnomaly(res, "cloud-credential-theft")
 		contentType = "application/json"
-		body = `{"access_token":"ya29.honeytoken_AAAAAAAAAAAAAAAAAAAAAAAA","expires_in":3599,"token_type":"Bearer"}`
+		body = `{"access_token":"ya29.c.b0Aaekm1L4xR9tZ7qPvN3sKdWfYgHj2mUcBnXa5oQpErTiLsMv8wDgFhJk","expires_in":3599,"token_type":"Bearer"}`
 		return
 	case strings.HasPrefix(low, "/computemetadata/v1"):
 		provider = "gcp"
 		switch {
 		case strings.HasSuffix(low, "/project/project-id"):
-			body = "honeypot-project-000000"
+			body = "prod-platform-204815"
 		case strings.HasSuffix(low, "/instance/hostname"):
-			body = "app-prod-01.c.honeypot-project-000000.internal"
+			body = "app-prod-01.c.prod-platform-204815.internal"
 		default:
 			body = "instance/\nproject/"
 		}
@@ -177,12 +177,12 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 		provider = "azure"
 		flagAnomaly(res, "cloud-credential-theft")
 		contentType = "application/json"
-		body = `{"access_token":"eyJ0eXAiOiJKV1QhoneytokenAAAA","client_id":"00000000-0000-0000-0000-000000000000","expires_in":"3599","resource":"https://management.azure.com/","token_type":"Bearer"}`
+		body = `{"access_token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6Ik5xZGw5In0.eyJhdWQiOiJodHRwczovL21hbmFnZW1lbnQuYXp1cmUuY29tLyJ9.Qx7Lp2mVrK9wN3sJ4xT8cN1pBdRfGhUaKmZ","client_id":"7c4e1f08-3a92-4d6b-b15e-2f9081a6c3d4","expires_in":"3599","resource":"https://management.azure.com/","token_type":"Bearer"}`
 		return
 	case strings.HasPrefix(low, "/metadata/instance"):
 		provider = "azure"
 		contentType = "application/json"
-		body = `{"compute":{"location":"eastus","name":"app-prod-01","resourceGroupName":"honeypot-rg","subscriptionId":"00000000-0000-0000-0000-000000000000","vmId":"00000000-0000-0000-0000-000000000000"},"network":{"interface":[{"ipv4":{"ipAddress":[{"privateIpAddress":"10.0.0.42"}]}}]}}`
+		body = `{"compute":{"location":"eastus","name":"app-prod-01","resourceGroupName":"rg-platform-prod","subscriptionId":"7c4e1f08-3a92-4d6b-b15e-2f9081a6c3d4","vmId":"a3f1c8b2-9d4e-4f6a-8c1d-2b5e7f9081a6"},"network":{"interface":[{"ipv4":{"ipAddress":[{"privateIpAddress":"10.0.0.42"}]}}]}}`
 		return
 	}
 

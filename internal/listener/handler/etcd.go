@@ -118,8 +118,10 @@ func (e *etcd) route(method, low, reqBody string, res *Result) (body, contentTyp
 		} else {
 			flagAnomaly(res, "etcd-range-read")
 		}
-		// base64("/registry/secrets/default/token") -> believable k8s key.
-		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":"aG9uZXl0b2tlbi1zZXJ2aWNlYWNjb3VudC10b2tlbg=="}],"count":1}`
+		// key = base64("/registry/secrets/default/default-token"); value is a
+		// believable (synthetic) service-account JWT, base64'd — no "honey" tell,
+		// so a scanner reading the KV can't distinguish it from a real etcd.
+		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":"ZXlKaGJHY2lPaUpTVXpJMU5pSjkuZXlKemRXSWlPaUp6ZVhOMFpXMDZjMkVpZlEuS3A5bVpxM3ZSN3dMczF4Tg=="}],"count":1}`
 	case strings.HasPrefix(low, "/v3/kv/put") || strings.HasPrefix(low, "/v3/kv/deleterange"):
 		flagAnomaly(res, "etcd-write")
 		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4712,"raft_term":2}}`

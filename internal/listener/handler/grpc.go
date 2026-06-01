@@ -90,9 +90,9 @@ func (h *grpcH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	if len(paths) > 0 {
 		res.Meta["grpc_methods"] = paths
 		for _, p := range paths {
-			low := bytes.ToLower([]byte(p))
-			if bytes.Contains(low, []byte("reflection")) ||
-				bytes.Contains(low, []byte("serverreflectioninfo")) {
+			low := strings.ToLower(p)
+			if strings.Contains(low, "reflection") ||
+				strings.Contains(low, "serverreflectioninfo") {
 				flagAnomaly(&res, "grpc-reflection-probe")
 			}
 		}

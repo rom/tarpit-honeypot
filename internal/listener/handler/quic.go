@@ -269,12 +269,15 @@ func quicReassembleCrypto(b []byte) ([]byte, bool) {
 	if len(chunks) == 0 {
 		return nil, false
 	}
-	// Order by offset and concatenate contiguous data from 0.
+	// Order by offset and concatenate contiguous data from 0. Skip
+	// zero-length chunks and stop as soon as no chunk advances the cursor —
+	// otherwise a CRYPTO frame with length 0 at offset 0 would spin forever
+	// (next never advances) allocating without bound.
 	var out []byte
 	for next := uint64(0); ; {
 		found := false
 		for _, c := range chunks {
-			if c.off == next {
+			if c.off == next && len(c.data) > 0 {
 				out = append(out, c.data...)
 				next += uint64(len(c.data))
 				found = true
@@ -301,6 +304,13 @@ func quicVarint(b []byte) (uint64, int) {
 	v := uint64(b[0] & 0x3f)
 	for i := 1; i < length; i++ {
 		v = v<<8 | uint64(b[i])
+	}
+	// A QUIC varint maxes out at 2^62-1 (the 2-bit length prefix is masked
+	// off above), which always fits in an int64. Cap defensively anyway so a
+	// later int() conversion can never go negative even on a 32-bit build —
+	// the callers add these to a buffer offset.
+	if v > 1<<31 {
+		v = 1 << 31
 	}
 	return v, length
 }

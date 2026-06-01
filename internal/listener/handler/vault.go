@@ -75,7 +75,7 @@ func (v *vault) route(method, low string, res *Result) (body, status string) {
 	_, hasToken := res.Meta["vault_token"]
 	switch {
 	case strings.HasPrefix(low, "/v1/sys/health"):
-		body = `{"initialized":true,"sealed":false,"standby":false,"version":"1.15.2","cluster_name":"vault-cluster-honeypot"}`
+		body = `{"initialized":true,"sealed":false,"standby":false,"version":"1.15.2","cluster_name":"vault-cluster-7f3a91"}`
 	case strings.HasPrefix(low, "/v1/sys/seal-status"):
 		body = `{"type":"shamir","initialized":true,"sealed":false,"t":3,"n":5,"version":"1.15.2"}`
 	case strings.HasPrefix(low, "/v1/sys/unseal") || strings.HasPrefix(low, "/v1/sys/seal"):
@@ -100,8 +100,10 @@ func (v *vault) route(method, low string, res *Result) (body, status string) {
 			status = "403 Forbidden"
 			body = vaultErr("permission denied")
 		} else {
-			// A believable KV v2 secret payload (synthetic honeytoken values).
-			body = `{"request_id":"00000000-0000-0000-0000-000000000000","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"data":{"password":"honeytoken-vault-secret","username":"svc-prod"},"metadata":{"created_time":"2099-01-01T00:00:00Z","version":1}}}`
+			// A believable KV v2 secret payload. The values are synthetic bait
+			// with no "honey" tell — a scanner that reads them can't distinguish
+			// them from a real Vault secret; the detection fires on the path hit.
+			body = `{"request_id":"5b2f8c14-3a9d-4e7b-91c6-2d8f0a7e35b1","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"data":{"password":"Kp9mZq3vR7wLs1xN","username":"svc-prod"},"metadata":{"created_time":"2099-01-01T00:00:00Z","version":1}}}`
 		}
 	default:
 		status = "404 Not Found"
