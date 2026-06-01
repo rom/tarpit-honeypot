@@ -160,8 +160,18 @@ var roles = map[string][]Service{
 	"containerhost": {
 		{2375, "tcp", "dockerapi", "Docker API (plaintext)"},
 		{2376, "tcp", "dockerapi", "Docker API (TLS)"},
-		{6443, "tcp", "https", "Kubernetes API server"},
-		{10250, "tcp", "https", "kubelet API"},
+		{6443, "tcp", "kubernetes_api", "Kubernetes API server"},
+		{10250, "tcp", "kubernetes_api", "kubelet API"},
+		{2379, "tcp", "etcd", "etcd client API"},
+	},
+	// A Kubernetes control-plane node: the apiserver, the kubelet, and the
+	// etcd datastore behind it — the full cluster-takeover target surface.
+	"kubernetes": {
+		{6443, "tcp", "kubernetes_api", "Kubernetes API server"},
+		{8080, "tcp", "kubernetes_api", "insecure apiserver (legacy)"},
+		{10250, "tcp", "kubernetes_api", "kubelet API"},
+		{2379, "tcp", "etcd", "etcd client API"},
+		{2380, "tcp", "etcd", "etcd peer API"},
 	},
 	"messagequeue": {
 		{5672, "tcp", "amqp", "AMQP / RabbitMQ"},
@@ -249,7 +259,7 @@ var roles = map[string][]Service{
 		{5601, "tcp", "http", "Kibana"},
 	},
 	"secretstore": {
-		{8200, "tcp", "https", "Vault API"},
+		{8200, "tcp", "vault", "Vault API"},
 		{8201, "tcp", "https", "Vault cluster"},
 		{8500, "tcp", "http", "Consul API"},
 	},
