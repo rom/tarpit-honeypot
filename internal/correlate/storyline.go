@@ -36,6 +36,7 @@ type storylineState struct {
 	hitCount         int
 	malware          bool // a malware:capture fired for this source
 	webshell         bool // a webshell rule/anomaly fired
+	webAttack        bool // a web-attack-class (webapp:*) anomaly fired
 	tokenReuse       bool // replayed a planted honeytoken (canary:token_used)
 	reachedObjective bool // chain touched impact / exfiltration / confirmed compromise
 	lastEmittedSize  int
@@ -126,6 +127,8 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 			st.cveHits[strings.TrimPrefix(a, "cve:")] = true
 		case strings.HasPrefix(a, "webshell-"):
 			st.webshell = true
+		case strings.HasPrefix(a, "webapp:"):
+			st.webAttack = true
 		}
 	}
 	if strings.HasPrefix(ev.RuleID, "webshell") {
@@ -248,12 +251,22 @@ func storyPlaybook(st *storylineState) string {
 		return "cloud-credential-takeover"
 	case st.stageSeen["impact"] && (anomPrefix("redis-flush") || st.handlers["smb"]) && st.reachedObjective:
 		return "ransomware-style-destruction"
-	case st.webshell || (len(st.cveHits) > 0 && st.stageSeen["execution"]):
+	case st.stageSeen["exfiltration"]:
+		// Data left the building (FTP download / DNS exfil / large response).
+		return "data-exfiltration"
+	case st.stageSeen["impact"] && (anomPrefix("tcp-") || anomPrefix("ip-") || anomPrefix("ntp-") ||
+		anomPrefix("udp-") || anomPrefix("ssdp") || anomPrefix("dns-amplif")):
+		// Volumetric / DoS / reflection-amplification abuse.
+		return "dos-amplification"
+	case st.webshell || ((len(st.cveHits) > 0 || st.webAttack) && st.stageSeen["execution"]):
 		return "web-exploit-to-shell"
 	case len(st.cveHits) > 0 && hasHandler("fortinet", "pulse", "citrix_gateway"):
 		return "edge-appliance-exploitation"
 	case st.malware:
 		return "malware-delivery"
+	case st.webAttack && !st.stageSeen["execution"] && len(st.cveHits) == 0:
+		// Many web-attack classes thrown at the app but nothing landed yet.
+		return "web-vuln-fuzzing"
 	case st.stageSeen["credential-access"] && !st.stageSeen["execution"] && len(st.cveHits) == 0:
 		return "credential-harvest"
 	}

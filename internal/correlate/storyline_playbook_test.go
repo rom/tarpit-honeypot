@@ -83,3 +83,55 @@ func TestStorylineTokenReuseCompromise(t *testing.T) {
 		t.Errorf("playbook = %v; want credential-replay-compromise", story.Meta["playbook"])
 	}
 }
+
+// TestStorylineWebVulnFuzzingPlaybook: many web-attack classes without landing
+// execution is labelled web-vuln-fuzzing.
+func TestStorylineWebVulnFuzzingPlaybook(t *testing.T) {
+	c, _ := New(config.Correlate{})
+	src := event.Endpoint{IP: "203.0.113.70"}
+	now := time.Now().UTC()
+	steps := []*event.Event{
+		{Source: src, Handler: "http", RuleID: "listener:http", Time: now,
+			MitreTactics: []string{"reconnaissance"}, MitreTechniques: []string{"T1595"}},
+		{Source: src, Handler: "http", RuleID: "listener:http", Time: now.Add(time.Second),
+			MitreTactics: []string{"initial-access"}, MitreTechniques: []string{"T1190"},
+			Anomalies: []string{"webapp:ssti"}},
+		{Source: src, Handler: "http", RuleID: "listener:http", Time: now.Add(2 * time.Second),
+			MitreTactics: []string{"discovery"}, MitreTechniques: []string{"T1083"},
+			Anomalies: []string{"webapp:nosqli"}},
+	}
+	var story *event.Event
+	for _, e := range steps {
+		story = lastStory(c.Observe(e))
+	}
+	if story == nil || story.Meta["playbook"] != "web-vuln-fuzzing" {
+		t.Fatalf("playbook = %v; want web-vuln-fuzzing", story)
+	}
+}
+
+// TestStorylineDataExfilPlaybook: reaching the exfiltration stage labels the
+// chain data-exfiltration.
+func TestStorylineDataExfilPlaybook(t *testing.T) {
+	c, _ := New(config.Correlate{})
+	src := event.Endpoint{IP: "203.0.113.71"}
+	now := time.Now().UTC()
+	steps := []*event.Event{
+		{Source: src, Handler: "ftp", RuleID: "listener:ftp", Time: now,
+			MitreTactics: []string{"reconnaissance"}, MitreTechniques: []string{"T1595"}},
+		{Source: src, Handler: "ftp", RuleID: "listener:ftp", Time: now.Add(time.Second),
+			MitreTactics: []string{"credential-access"}, MitreTechniques: []string{"T1110.001"}},
+		{Source: src, Handler: "ftp", RuleID: "listener:ftp", Time: now.Add(2 * time.Second),
+			MitreTactics: []string{"exfiltration"}, MitreTechniques: []string{"T1020"},
+			Anomalies: []string{"ftp-download-attempt"}},
+	}
+	var story *event.Event
+	for _, e := range steps {
+		story = lastStory(c.Observe(e))
+	}
+	if story == nil || story.Meta["playbook"] != "data-exfiltration" {
+		t.Fatalf("playbook = %v; want data-exfiltration", story)
+	}
+	if story.Severity != event.SeverityCritical {
+		t.Errorf("exfiltration storyline should be critical; got %v", story.Severity)
+	}
+}
