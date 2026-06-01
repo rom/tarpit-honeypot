@@ -255,10 +255,11 @@ var handlerTags = map[string]Tag{
 	"amqp":            {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 
 	// Vulnerability-scanner / publicly exposed application surface.
-	"http":      {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
-	"https":     {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
-	"rtsp":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"dockerapi": {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
+	"http":          {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
+	"https":         {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
+	"tls_intercept": {Techniques: []string{"T1557", "T1040"}, Tactics: []string{"credential-access", "collection"}},
+	"rtsp":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dockerapi":     {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
 	// Cloud-native / container attack surface.
 	"cloud_metadata": {Techniques: []string{"T1552.005", "T1078.004"}, Tactics: []string{"credential-access", "defense-evasion"}},
 	"etcd":           {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},

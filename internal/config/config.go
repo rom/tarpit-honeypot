@@ -842,6 +842,35 @@ type Listener struct {
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
 	SNMP   SNMPListener `yaml:"snmp"`
+	// TLSIntercept configures the tls_intercept handler (terminate TLS, then
+	// either hand the cleartext to an internal handler or forward it to a real
+	// backend, capturing both directions). See TLSIntercept.
+	TLSIntercept TLSIntercept `yaml:"tls_intercept"`
+}
+
+// TLSIntercept configures the tls_intercept handler. It terminates TLS with a
+// believable cert (computing JA3/JA4/JA3S over the handshake) and then routes
+// the decrypted stream one of two ways:
+//
+//   - InnerHandler set, ForwardTo empty: the cleartext is handed to an internal
+//     protocol handler (e.g. "http", "redis") — a TLS front for an emulated
+//     service, generalizing the implicit-TLS wrap to any port/handler.
+//   - ForwardTo set ("host:port"): true decrypt-and-forward MITM — the
+//     cleartext is proxied bidirectionally to a real backend (dialed through
+//     the egress allowlist) and BOTH directions are captured, so the operator
+//     records the plaintext of an attacker<->real-service session while the
+//     service stays fully believable. Opt-in and egress-scoped, since it makes
+//     the sensor proxy to a live host.
+type TLSIntercept struct {
+	// InnerHandler is the plaintext handler to run over the decrypted stream
+	// when not forwarding (default "raw").
+	InnerHandler string `yaml:"inner_handler"`
+	// ForwardTo, when set to "host:port", enables decrypt-and-forward to that
+	// real backend instead of an internal handler. Must be egress-allowlisted.
+	ForwardTo string `yaml:"forward_to"`
+	// ForwardTLS, when true, re-encrypts to the backend (TLS-to-TLS MITM);
+	// otherwise the backend leg is plaintext (TLS-to-plaintext).
+	ForwardTLS bool `yaml:"forward_tls"`
 }
 
 // SNMPListener configures the snmp UDP handler: which MIB subtrees the

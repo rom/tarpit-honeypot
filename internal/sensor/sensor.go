@@ -229,6 +229,12 @@ func New(cfg *config.Config) (*Sensor, error) {
 				egPol.Allow(d)
 			}
 		}
+		// tls_intercept decrypt-and-forward backends must be reachable.
+		for _, l := range cfg.Listeners {
+			if l.Handler == "tls_intercept" && l.TLSIntercept.ForwardTo != "" {
+				egPol.Allow(l.TLSIntercept.ForwardTo)
+			}
+		}
 		for _, d := range cfg.Sensor.Egress.Allow {
 			egPol.Allow(d)
 		}

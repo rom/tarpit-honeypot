@@ -59,6 +59,8 @@ type Deps struct {
 	Script string
 	// Scripted is the declarative fake-protocol spec (handler "scripted").
 	Scripted config.ScriptedProto
+	// TLSIntercept is the per-listener config for the tls_intercept handler.
+	TLSIntercept config.TLSIntercept
 	// SessionRec records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema casts. nil = recording disabled.
 	SessionRec *sessionrec.Store
@@ -132,6 +134,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &auto{}, nil
 	case "scripted":
 		return compileScripted(deps.Scripted)
+	case "tls_intercept":
+		return newTLSIntercept(deps, deps.TLSIntercept)
 	case "lua":
 		if deps.Script == "" {
 			return nil, fmt.Errorf("lua handler requires a script: path")

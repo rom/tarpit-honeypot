@@ -1,0 +1,191 @@
+package handler
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"io"
+	"net"
+	"sync"
+	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/archetype"
+	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/egress"
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+)
+
+// errEgressUnavailable is returned when decrypt-and-forward is configured but no
+// egress policy is installed — we fail closed rather than dial unrestricted.
+var errEgressUnavailable = errors.New("tls_intercept: egress policy unavailable; refusing to forward")
+
+// tlsIntercept terminates TLS with a believable cert (computing JA3/JA4/JA3S
+// over the handshake) and then routes the decrypted stream one of two ways
+// per the listener's tls_intercept config:
+//
+//   - inner handler: hand the cleartext to an internal protocol handler — a TLS
+//     front for an emulated service on any port.
+//   - forward: proxy the cleartext to a real backend (through the egress
+//     allowlist), capturing BOTH directions — a true decrypt-and-forward MITM
+//     that records the plaintext of an attacker<->real-service session.
+//
+// The forward mode is opt-in and egress-scoped: the backend must be in the
+// egress allowlist, so the sensor can only proxy to destinations the operator
+// permitted.
+type tlsIntercept struct {
+	mgr   *certManager
+	arch  *archetype.Profile
+	inner Handler // used when not forwarding
+	tic   config.TLSIntercept
+}
+
+func newTLSIntercept(deps Deps, tic config.TLSIntercept) (Handler, error) {
+	mgr, err := newCertManager(deps.DataDir, deps.TLSRotate, deps.Identity)
+	if err != nil {
+		return nil, err
+	}
+	t := &tlsIntercept{mgr: mgr, arch: deps.Archetype, tic: tic}
+	if tic.ForwardTo == "" {
+		innerName := tic.InnerHandler
+		if innerName == "" {
+			innerName = "raw"
+		}
+		inner, err := Get(innerName, deps)
+		if err != nil {
+			return nil, err
+		}
+		t.inner = inner
+	}
+	return t, nil
+}
+
+func (t *tlsIntercept) Name() string { return "tls_intercept" }
+
+func (t *tlsIntercept) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+	withTimeout(conn, cfg.ReadTimeout)
+	tcfg, err := t.mgr.serverConfig(cfg.ID, tlsHosts(cfg), t.arch)
+	if err != nil {
+		return Result{Meta: map[string]any{"cert_err": err.Error()}}, nil
+	}
+
+	// Peek the ClientHello for JA3/JA4; capture the ServerHello for JA3S.
+	peeker := newPeekConn(conn)
+	ja3Hash, ja3Raw, ja4 := "", "", ""
+	if ch, ok := peeker.peekClientHello(); ok {
+		ja3Raw, ja3Hash = fingerprint.JA3(ch)
+		ja4 = fingerprint.JA4(ch)
+	}
+	capConn := newCaptureConn(peeker, 4096)
+	tlsConn := tls.Server(capConn, tcfg)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		meta := map[string]any{"tls_err": err.Error(), "tls_intercept": true}
+		addFP(meta, ja3Hash, ja3Raw, ja4, "", "")
+		return Result{Meta: meta}, nil
+	}
+	state := tlsConn.ConnectionState()
+	meta := map[string]any{"tls": true, "tls_intercept": true, "tls_version": tlsVersionName(state.Version)}
+	if state.ServerName != "" {
+		meta["sni"] = state.ServerName
+	}
+	ja3sRaw, ja3sHash := "", ""
+	if sh := capConn.serverHello(); sh != nil {
+		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
+	}
+	addFP(meta, ja3Hash, ja3Raw, ja4, ja3sHash, ja3sRaw)
+
+	if t.tic.ForwardTo == "" {
+		// Mode A: hand the decrypted stream to the inner handler.
+		res, herr := t.inner.Handle(ctx, tlsConn, cfg)
+		if res.Meta == nil {
+			res.Meta = map[string]any{}
+		}
+		for k, v := range meta {
+			if _, exists := res.Meta[k]; !exists {
+				res.Meta[k] = v
+			}
+		}
+		return res, herr
+	}
+
+	// Mode B: decrypt-and-forward to a real backend through the egress
+	// allowlist, capturing both directions.
+	res := Result{Meta: meta}
+	res.Meta["forward_to"] = t.tic.ForwardTo
+	captured, err := t.forward(ctx, tlsConn, cfg)
+	if err != nil {
+		res.Meta["forward_err"] = err.Error()
+		return res, nil
+	}
+	if len(captured) > 0 {
+		res.Payload = captured
+	}
+	res.BannerSent = "tls_intercept forwarded " + t.tic.ForwardTo
+	return res, nil
+}
+
+// forward proxies the decrypted client stream to the configured backend
+// (dialed through the egress allowlist) and copies both directions, returning
+// the bytes the client sent (for the event payload/pcap). Bidirectional copy
+// ends when either side closes.
+func (t *tlsIntercept) forward(ctx context.Context, client net.Conn, cfg config.Listener) ([]byte, error) {
+	pol := egress.Default()
+	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var backend net.Conn
+	var err error
+	if pol != nil {
+		backend, err = pol.DialContext(dctx, "tcp", t.tic.ForwardTo)
+	} else {
+		// No egress policy installed → fail closed; never dial unrestricted.
+		return nil, errEgressUnavailable
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer backend.Close()
+	if t.tic.ForwardTLS {
+		// Re-encrypt to the backend (TLS-to-TLS). Verification is skipped: we
+		// are intercepting, not trusting, the backend's cert.
+		bt := tls.Client(backend, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec
+		if err := bt.HandshakeContext(dctx); err != nil {
+			return nil, err
+		}
+		backend = bt
+	}
+
+	// Capture client->backend bytes via a tee; copy backend->client straight.
+	cap := &captureWriter{limit: 64 << 10}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(backend, io.TeeReader(client, cap))
+		if cw, ok := backend.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(client, backend)
+	}()
+	wg.Wait()
+	return cap.buf, nil
+}
+
+// captureWriter accumulates up to limit bytes (for the event payload), then
+// silently drops the rest so a large transfer can't grow memory unbounded.
+type captureWriter struct {
+	buf   []byte
+	limit int
+}
+
+func (c *captureWriter) Write(p []byte) (int, error) {
+	if room := c.limit - len(c.buf); room > 0 {
+		if len(p) <= room {
+			c.buf = append(c.buf, p...)
+		} else {
+			c.buf = append(c.buf, p[:room]...)
+		}
+	}
+	return len(p), nil
+}
