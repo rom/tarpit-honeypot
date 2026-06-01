@@ -3,10 +3,12 @@ package handler
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // k8sAPI emulates the Kubernetes API server (kube-apiserver, TCP 6443/8080).
@@ -16,7 +18,9 @@ import (
 // like a real apiserver, capture any Bearer token / client identity, and flag
 // the takeover calls (listing secrets, creating pods, exec/attach). Detection
 // only; nothing is created.
-type k8sAPI struct{}
+type k8sAPI struct {
+	id *identity.Identity
+}
 
 func (k *k8sAPI) Name() string { return "kubernetes_api" }
 
@@ -84,7 +88,8 @@ func (k *k8sAPI) route(method, low string, res *Result) (body, status string) {
 	case strings.Contains(low, "/secrets"):
 		flagAnomaly(res, "k8s-secret-enum")
 		if method == "GET" {
-			body = `{"kind":"SecretList","apiVersion":"v1","items":[{"metadata":{"name":"default-token-abc12","namespace":"default"},"type":"kubernetes.io/service-account-token"}]}`
+			body = fmt.Sprintf(`{"kind":"SecretList","apiVersion":"v1","items":[{"metadata":{"name":"default-token-%s","namespace":"default"},"type":"kubernetes.io/service-account-token"}]}`,
+				encodeAlpha(idBytes(k.id, "k8s-token-suffix", 5), "abcdefghijklmnopqrstuvwxyz0123456789"))
 		} else {
 			status = "403 Forbidden"
 			body = k8sForbidden("secrets")

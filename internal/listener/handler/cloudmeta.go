@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // cloudMeta emulates a cloud instance metadata service (IMDS). After an SSRF
@@ -24,9 +26,65 @@ import (
 // is the credential-theft TTP, not benign metadata browsing. The returned
 // credentials are obviously synthetic honeytokens; if they are ever *used*
 // against your real cloud, the IOC fired.
-type cloudMeta struct{}
+type cloudMeta struct {
+	id *identity.Identity
+}
 
 func (c *cloudMeta) Name() string { return "cloud_metadata" }
+
+// cloudCreds holds the per-deployment synthetic credentials cloud_metadata
+// serves. Each value is deterministic for a deployment (derived from the
+// deployment seed) but unique across deployments, so two sensors never hand
+// out the same fake key — and, like the webapp honeytokens, a served secret
+// can be registered and alerted on if it ever appears in real cloud auth logs.
+type cloudCreds struct {
+	awsAccessKeyID string // "ASIA..." STS temp key id (20 chars)
+	awsSecret      string // 40-char secret-access-key shape
+	awsToken       string // long opaque session token
+	awsAccountID   string // 12-digit account id
+	awsInstanceID  string // "i-<17 hex>"
+	awsRoleName    string
+	awsAMI         string // "ami-<17 hex>"
+	gcpToken       string // "ya29...." access token
+	gcpProjectID   string // "<name>-<6 digits>"
+	azureToken     string // JWT-shaped bearer
+	azureClientID  string // GUID
+	azureSubID     string // GUID
+	azureVMID      string // GUID
+	azureRG        string
+}
+
+// deriveCloudCreds builds the per-deployment credential set. Reuses the shared
+// idBytes/encodeAlpha helpers (see vulnweb.go) so the values match the
+// established honeytoken style and degrade gracefully when no identity is set.
+func deriveCloudCreds(id *identity.Identity) cloudCreds {
+	digits := func(label string, n int) string { return encodeAlpha(idBytes(id, label, n), "0123456789") }
+	hexs := func(label string, n int) string { return encodeAlpha(idBytes(id, label, n), "0123456789abcdef") }
+	return cloudCreds{
+		awsAccessKeyID: "ASIA" + encodeAlpha(idBytes(id, "cloud-aws-id", 16), honeyAWSAlpha),
+		awsSecret:      encodeAlpha(idBytes(id, "cloud-aws-secret", 40), honeyB64Alpha),
+		awsToken:       "FQoGZXIvYXdzE" + encodeAlpha(idBytes(id, "cloud-aws-token", 80), honeyB64Alpha),
+		awsAccountID:   digits("cloud-aws-acct", 12),
+		awsInstanceID:  "i-0" + hexs("cloud-aws-inst", 16),
+		awsRoleName:    "app-prod-ec2-role",
+		awsAMI:         "ami-0" + hexs("cloud-aws-ami", 16),
+		gcpToken:       "ya29.c." + encodeAlpha(idBytes(id, "cloud-gcp-token", 90), honeyB64Alpha),
+		gcpProjectID:   "prod-platform-" + digits("cloud-gcp-proj", 6),
+		azureToken:     "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9." + encodeAlpha(idBytes(id, "cloud-az-tok", 64), honeyB64Alpha),
+		azureClientID:  guidFrom(idBytes(id, "cloud-az-client", 16)),
+		azureSubID:     guidFrom(idBytes(id, "cloud-az-sub", 16)),
+		azureVMID:      guidFrom(idBytes(id, "cloud-az-vm", 16)),
+		azureRG:        "rg-platform-prod",
+	}
+}
+
+// guidFrom renders 16 bytes as a canonical 8-4-4-4-12 hex GUID.
+func guidFrom(b []byte) string {
+	var x [16]byte
+	copy(x[:], b)
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		x[0:4], x[4:6], x[6:8], x[8:10], x[10:16])
+}
 
 func (c *cloudMeta) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
@@ -84,7 +142,7 @@ func (c *cloudMeta) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		res.Meta["imdsv2_token_present"] = true
 	}
 
-	provider, body, contentType, status := c.route(method, path, &res)
+	provider, body, contentType, status := c.route(method, path, deriveCloudCreds(c.id), &res)
 	res.Meta["cloud_provider"] = provider
 
 	server := "EC2ws"
@@ -108,8 +166,9 @@ func (c *cloudMeta) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 }
 
 // route classifies the request by provider/path, flags credential theft, and
-// returns the synthetic body to serve.
-func (c *cloudMeta) route(method, path string, res *Result) (provider, body, contentType, status string) {
+// returns the synthetic body to serve. cr supplies the per-deployment fake
+// credentials so two sensors never serve identical keys.
+func (c *cloudMeta) route(method, path string, cr cloudCreds, res *Result) (provider, body, contentType, status string) {
 	contentType = "text/plain"
 	status = "200 OK"
 	low := strings.ToLower(path)
@@ -119,29 +178,31 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 	case strings.HasPrefix(low, "/latest/api/token"):
 		// IMDSv2 token request (PUT). Hand back an opaque token.
 		provider = "aws"
-		body = "AQAEAJ" + strings.Repeat("x", 50) + "=="
+		body = "AQAEA" + encodeAlpha(idBytes(c.id, "cloud-imdsv2", 48), honeyB64Alpha) + "=="
 		return
 	case strings.HasPrefix(low, "/latest/meta-data/iam/security-credentials"):
 		provider = "aws"
 		flagAnomaly(res, "cloud-credential-theft")
 		// Listing vs fetching a specific role.
 		if strings.HasSuffix(strings.TrimRight(low, "/"), "security-credentials") {
-			body = "app-prod-ec2-role"
+			body = cr.awsRoleName
 		} else {
 			contentType = "application/json"
-			body = `{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":"ASIA4XTPZ9QK7M2BNVRD","SecretAccessKey":"hT3kVq9mZ1cR8wPnLs6yEfBd2uXgKaQj7N0iMvCt","Token":"FQoGZXIvYXdzEBYaDPq7m2nVrK9wL3sJ4xT8cN1pBdRfGhUaKmZ","Expiration":"2099-01-01T00:00:00Z"}`
+			body = fmt.Sprintf(`{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":%q,"SecretAccessKey":%q,"Token":%q,"Expiration":"2099-01-01T00:00:00Z"}`,
+				cr.awsAccessKeyID, cr.awsSecret, cr.awsToken)
 		}
 		return
 	case strings.HasPrefix(low, "/latest/meta-data/"):
 		provider = "aws"
 		switch {
 		case strings.HasSuffix(low, "instance-id"):
-			body = "i-0a1b2c3d4e5f60718"
+			body = cr.awsInstanceID
 		case strings.HasSuffix(low, "local-ipv4"):
 			body = "10.0.0.42"
 		case strings.HasSuffix(low, "iam/info"):
 			contentType = "application/json"
-			body = `{"Code":"Success","InstanceProfileArn":"arn:aws:iam::481516234299:instance-profile/app-prod-ec2-role","InstanceProfileId":"AIPA4XTPZ9QK7M2BNVRDX"}`
+			body = fmt.Sprintf(`{"Code":"Success","InstanceProfileArn":"arn:aws:iam::%s:instance-profile/%s","InstanceProfileId":"AIPA%s"}`,
+				cr.awsAccountID, cr.awsRoleName, encodeAlpha(idBytes(c.id, "cloud-aws-profid", 17), honeyAWSAlpha))
 		default:
 			body = "ami-id\ninstance-id\ninstance-type\nlocal-ipv4\niam/\nsecurity-groups"
 		}
@@ -149,7 +210,8 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 	case strings.HasPrefix(low, "/latest/dynamic/instance-identity"):
 		provider = "aws"
 		contentType = "application/json"
-		body = `{"accountId":"481516234299","region":"us-east-1","instanceId":"i-0a1b2c3d4e5f60718","instanceType":"t3.medium","imageId":"ami-0c7217cdde317cfec"}`
+		body = fmt.Sprintf(`{"accountId":%q,"region":"us-east-1","instanceId":%q,"instanceType":"t3.medium","imageId":%q}`,
+			cr.awsAccountID, cr.awsInstanceID, cr.awsAMI)
 		return
 
 	// --- GCP metadata -----------------------------------------------------
@@ -158,15 +220,15 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 		provider = "gcp"
 		flagAnomaly(res, "cloud-credential-theft")
 		contentType = "application/json"
-		body = `{"access_token":"ya29.c.b0Aaekm1L4xR9tZ7qPvN3sKdWfYgHj2mUcBnXa5oQpErTiLsMv8wDgFhJk","expires_in":3599,"token_type":"Bearer"}`
+		body = fmt.Sprintf(`{"access_token":%q,"expires_in":3599,"token_type":"Bearer"}`, cr.gcpToken)
 		return
 	case strings.HasPrefix(low, "/computemetadata/v1"):
 		provider = "gcp"
 		switch {
 		case strings.HasSuffix(low, "/project/project-id"):
-			body = "prod-platform-204815"
+			body = cr.gcpProjectID
 		case strings.HasSuffix(low, "/instance/hostname"):
-			body = "app-prod-01.c.prod-platform-204815.internal"
+			body = "app-prod-01.c." + cr.gcpProjectID + ".internal"
 		default:
 			body = "instance/\nproject/"
 		}
@@ -177,12 +239,14 @@ func (c *cloudMeta) route(method, path string, res *Result) (provider, body, con
 		provider = "azure"
 		flagAnomaly(res, "cloud-credential-theft")
 		contentType = "application/json"
-		body = `{"access_token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6Ik5xZGw5In0.eyJhdWQiOiJodHRwczovL21hbmFnZW1lbnQuYXp1cmUuY29tLyJ9.Qx7Lp2mVrK9wN3sJ4xT8cN1pBdRfGhUaKmZ","client_id":"7c4e1f08-3a92-4d6b-b15e-2f9081a6c3d4","expires_in":"3599","resource":"https://management.azure.com/","token_type":"Bearer"}`
+		body = fmt.Sprintf(`{"access_token":%q,"client_id":%q,"expires_in":"3599","resource":"https://management.azure.com/","token_type":"Bearer"}`,
+			cr.azureToken, cr.azureClientID)
 		return
 	case strings.HasPrefix(low, "/metadata/instance"):
 		provider = "azure"
 		contentType = "application/json"
-		body = `{"compute":{"location":"eastus","name":"app-prod-01","resourceGroupName":"rg-platform-prod","subscriptionId":"7c4e1f08-3a92-4d6b-b15e-2f9081a6c3d4","vmId":"a3f1c8b2-9d4e-4f6a-8c1d-2b5e7f9081a6"},"network":{"interface":[{"ipv4":{"ipAddress":[{"privateIpAddress":"10.0.0.42"}]}}]}}`
+		body = fmt.Sprintf(`{"compute":{"location":"eastus","name":"app-prod-01","resourceGroupName":%q,"subscriptionId":%q,"vmId":%q},"network":{"interface":[{"ipv4":{"ipAddress":[{"privateIpAddress":"10.0.0.42"}]}}]}}`,
+			cr.azureRG, cr.azureSubID, cr.azureVMID)
 		return
 	}
 

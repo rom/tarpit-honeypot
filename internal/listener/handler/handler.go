@@ -273,9 +273,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "dockerapi":
 		return &dockerapi{}, nil
 	case "cloud_metadata":
-		return &cloudMeta{}, nil
+		return &cloudMeta{id: deps.Identity}, nil
 	case "etcd":
-		return &etcd{}, nil
+		return &etcd{id: deps.Identity}, nil
 	case "websocket":
 		return &websocketH{}, nil
 	case "grpc":
@@ -283,9 +283,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "ssrf_canary":
 		return &ssrfCanary{}, nil
 	case "kubernetes_api":
-		return &k8sAPI{}, nil
+		return &k8sAPI{id: deps.Identity}, nil
 	case "vault":
-		return &vault{}, nil
+		return &vault{id: deps.Identity}, nil
 	case "melsec":
 		return &melsec{}, nil
 	case "jdwp":
