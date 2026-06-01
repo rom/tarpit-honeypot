@@ -8,6 +8,50 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — active capture, threat-intel ingestion, TLS MITM, campaign/journey + threat-map UI, decoy generation (version 2.4.0)
+
+Version bumped to **2.4.0**. A feature set closing the gap to full
+honeynet/deception platforms: active artifact capture, inbound threat-intel,
+TLS interception, attacker-journey + threat-map dashboards, honey-token reuse
+detection, and a network-aware decoy generator. All outbound paths route
+through the egress allowlist and fail closed.
+
+- **MITRE ATT&CK Navigator export.** `export-navigator` CLI (static coverage or
+  `--observed` event-scored heatmap) + a `/attack/navigator` web endpoint —
+  drop the JSON into the upstream Navigator for a coverage/observed heatmap.
+- **Active malware/artifact fetch** (opt-in `payloads.fetch_urls`). The passive
+  capture store already kept what attackers uploaded; the sensor can now pull
+  attacker-referenced droppers (size-capped, http(s)-only, redirect-capped) and
+  classify them — fetched through the egress allowlist, fail-closed.
+- **Inbound threat-intel feeds** (`threat_feeds:`). Periodically pulls operator
+  IP feeds (line or JSON / AbuseIPDB shapes) through the egress allowlist and
+  tags matching sources `external_intel` / `threat_intel_hit`; keeps the last
+  good snapshot if a refresh fails.
+- **TLS interception** (`handler: tls_intercept`). Terminates TLS with a
+  believable cert (JA3/JA4 + JA3S like `https`), then either hands the
+  cleartext to an inner handler (a TLS front for any emulated service) or
+  decrypt-and-forwards to a real backend through the egress allowlist (optional
+  re-encrypt), capturing the plaintext session (64 KB cap). Opt-in and
+  egress-scoped; never an open proxy. ATT&CK T1557 + T1040.
+- **Honey-token reuse detection.** Tokens the sensor serves (honeytokens,
+  bearer/vault tokens) are tracked; when one is replayed back as a credential
+  the loop closes with a critical `canary:token_used` event (T1078).
+- **Campaigns & attacker journey** (`/campaign`). A kill-chain journey sankey
+  (tactic→tactic transitions across all sources) plus campaign clustering that
+  links distinct source IPs into one operation via shared network fingerprints
+  (JA3/JA4/JA4H/JA3S/HASSH), with a campaign↔fingerprint↔handler linkage graph.
+- **Threat map / geo dashboard** (`/map`). A live GeoIP attack map over
+  country / ASN / network-class breakdowns and threat-intel counters (known-bad
+  sources, Tor exits, feed matches) plus a recent high-severity attack ticker —
+  auto-refreshing, usable as a wall display.
+- **Dynamic decoy generation** (`generate-decoys`). Benignly connect-scans the
+  operator's own network (host / host:port / CIDR), classifies each open port
+  (port + banner + TLS cert CN), and emits a matching listener config so the
+  honeypot blends into its environment. TCP connect scan only (no exploit
+  traffic, no stealth scanning); bounded by an explicit target list, a host
+  cap, and a required `--yes` authorization flag. Generated configs pass
+  `validate-config`.
+
 ### Fixed — IPv6 parity across handlers + capture (version 2.3.1)
 
 Version bumped to **2.3.1**. A systematic audit confirmed an IPv6 attacker now
