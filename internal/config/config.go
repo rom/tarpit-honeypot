@@ -824,6 +824,29 @@ type HTTPS struct {
 	// "these are different machines" signal to a TLS-fingerprinting
 	// scanner.
 	KeyType string `yaml:"key_type"`
+	// VHosts enables SNI-based virtual hosting: when a client's TLS SNI
+	// matches a vhost's ServerName (exact or a "*.example.com" wildcard),
+	// the handler presents that vhost's own certificate (its own CN /
+	// Org / key type) instead of the listener default. One HTTPS listener
+	// can thus front several distinct personas — e.g. mail.corp.local,
+	// vpn.corp.local — each with a believable, separate cert, exactly as a
+	// real reverse proxy / load balancer would. SNI with no match falls
+	// back to the default cert.
+	VHosts []TLSVHost `yaml:"vhosts"`
+}
+
+// TLSVHost is one SNI-selected certificate persona for an https listener.
+type TLSVHost struct {
+	// ServerName is matched against the client's TLS SNI. Exact match, or a
+	// leading-wildcard form "*.example.com" matching one label.
+	ServerName string `yaml:"server_name"`
+	// Subject fields for this vhost's cert. Blank = derived from the
+	// deployment seed + listener id + server_name (so each vhost is stable
+	// and distinct).
+	CN      string `yaml:"cn"`
+	Org     string `yaml:"org"`
+	OU      string `yaml:"ou"`
+	KeyType string `yaml:"key_type"`
 }
 
 type Tarpit struct {
@@ -1153,6 +1176,8 @@ type Correlate struct {
 	DefaultCredSweep   CorrDefaultCredSweep   `yaml:"default_cred_sweep"`
 	CVECampaign        CorrCVECampaign        `yaml:"cve_campaign"`
 	DestructiveAction  CorrDestructiveAction  `yaml:"destructive_action"`
+	CloudCredTheft     CorrCloudCredTheft     `yaml:"cloud_cred_theft"`
+	SSRFCallback       CorrSSRFCallback       `yaml:"ssrf_callback"`
 	HoneytokenSpread   CorrHoneytokenSpread   `yaml:"honeytoken_spread"`
 	ToolRotation       CorrToolRotation       `yaml:"tool_rotation"`
 	PLCProgramDownload CorrPLCProgramDownload `yaml:"plc_program_download"`
@@ -1289,6 +1314,27 @@ type CorrCVECampaign struct {
 // filesystem format, an FTP delete) within a window — a hands-on-keyboard
 // impact action that warrants immediate escalation.
 type CorrDestructiveAction struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrCloudCredTheft fires when one source triggers several cloud
+// credential-theft markers within a window — IMDS / etcd secret reads, cloud
+// CLI credential grabs from the shell. Several in a row from one source means
+// active post-exploitation cloud-credential harvesting, not a stray probe.
+type CorrCloudCredTheft struct {
+	Enabled  bool          `yaml:"enabled"`
+	Events   int           `yaml:"events"`
+	Window   time.Duration `yaml:"window"`
+	Severity string        `yaml:"severity"`
+}
+
+// CorrSSRFCallback fires when one source drives several ssrf_canary callbacks
+// within a window — repeated out-of-band hits mean an attacker is actively
+// exercising an SSRF/XXE/webhook primitive, not a one-off accidental fetch.
+type CorrSSRFCallback struct {
 	Enabled  bool          `yaml:"enabled"`
 	Events   int           `yaml:"events"`
 	Window   time.Duration `yaml:"window"`

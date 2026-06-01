@@ -174,6 +174,10 @@ listeners:
     banner: ""                          # raw banner string for handler: raw
     https:                              # only for handler: https
       hosts: ["honeypot.local"]
+      vhosts:                           # optional SNI-based virtual hosting
+        - server_name: mail.corp.local  # exact, or "*.apps.corp.local" wildcard
+          cn: mail.corp.local           # blank = derived per server_name
+          # org / ou / key_type optional, same as the listener defaults
     tarpit:                             # only for mode: tarpit
       strategy: sticky                  # sticky | trickle | keepalive | jitter |
                                           #   backoff | ssh_banner | http_headers |
@@ -207,7 +211,7 @@ listeners:
 The authoritative list is `tarpit-honeypot list-handlers` (it is sourced from
 the same whitelist the validator enforces, so it never drifts).
 
-**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `smtps`, `imaps`, `pop3s`, `ldaps`, `mqtts`, `ftps`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`.
+**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `smtps`, `imaps`, `pop3s`, `ldaps`, `mqtts`, `ftps`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`.
 
 The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (636),
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
@@ -234,7 +238,7 @@ The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp
 
 **Declarative (scripted):** `scripted` — stand up a custom TCP service entirely in YAML under the listener's `scripted:` block: an optional on-connect `greeting`, then top-down `rules` matching each client message by `prefix` / `contains` / `suffix` / `iprefix` / `icontains` (case-insensitive) / `regex` (RE2) / `hex_prefix` / `any`, each writing a `respond` (or `respond_hex` for binary) with an optional per-rule `anomaly` flag and `close`. **Stateful, multi-step protocols**: a rule can require a `stage` and advance it with `set_stage` (e.g. an `auth` stage gating a `command` stage). **Credential capture**: a `regex` rule with `capture: user` / `capture: pass` records the first capture group into the attacker profile + default-credential matching. Bounded rounds + per-reply size cap; TCP-only (cannot be a spoofed-source amplifier); validated at config load.
 
-**Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
+**Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity); `https.vhosts` (SNI-based virtual hosting — each `server_name`, matched exactly or as a `*.domain` wildcard, presents its own cert with its own `cn`/`org`/`ou`/`key_type`, and the matched name is recorded in the `tls_vhost` event field). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 
 Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`docs/INTEGRATIONS.md`](INTEGRATIONS.md#protocol-handler-catalog) for per-handler defaults and behavior.
 

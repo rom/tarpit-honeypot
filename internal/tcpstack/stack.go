@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
 )
 
 // Responder supplies the decoy's application-layer bytes. Either field may
@@ -41,11 +43,15 @@ type Event struct {
 	Kind    EventKind
 	SrcIP   [4]byte
 	DstIP   [4]byte
+	SrcIP6  [16]byte // set instead of SrcIP for IPv6 events (SrcIP zero)
+	DstIP6  [16]byte // set instead of DstIP for IPv6 events (DstIP zero)
+	IsV6    bool     // true when the IPv6 address fields are authoritative
 	SrcPort uint16
 	DstPort uint16
 	Markers []string // populated for EventMalformed
 	Payload []byte   // captured request bytes for EventRequest
 	Raw     []byte   // the raw inbound packet (EventMalformed forensics)
+	JA4T    string   // client TCP fingerprint from the SYN (EventHandshake)
 }
 
 // Result is the outcome of feeding one packet to the stack: packets to
@@ -219,6 +225,7 @@ func (s *Stack) handleOpen(seg *Segment, pkt []byte, r *Result) {
 				Kind:  EventHandshake,
 				SrcIP: seg.SrcIP, DstIP: seg.DstIP,
 				SrcPort: seg.SrcPort, DstPort: seg.DstPort,
+				JA4T: fingerprint.JA4T(seg.ja4tSyn()),
 			})
 		case f&RST == 0:
 			// Stray segment to an open port with no flow: a real host RSTs.

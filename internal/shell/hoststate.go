@@ -383,6 +383,12 @@ func daemonForHandler(handler string) string {
 		return "/usr/sbin/inetd"
 	case "dockerapi":
 		return "/usr/bin/dockerd -H fd://"
+	case "etcd":
+		return "/usr/bin/etcd --data-dir=/var/lib/etcd --listen-client-urls=http://0.0.0.0:2379"
+	case "kubernetes_api":
+		return "/usr/local/bin/kube-apiserver --advertise-address=10.0.0.1 --secure-port=6443"
+	case "vault":
+		return "/usr/bin/vault server -config=/etc/vault.d/vault.hcl"
 	case "elasticsearch":
 		return "/usr/share/elasticsearch/jdk/bin/java -Xms1g -Xmx1g -Delasticsearch"
 	case "ldap", "ldaps":

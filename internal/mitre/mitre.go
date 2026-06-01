@@ -153,6 +153,8 @@ var exactRules = map[string]Tag{
 	"correlate:webshell":         {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
 	// Additional opt-in correlators (round 3).
 	"correlate:destructive_action": {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
+	"correlate:cloud_cred_theft":   {Techniques: []string{"T1552.005"}, Tactics: []string{"credential-access"}},
+	"correlate:ssrf_callback":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"correlate:honeytoken_spread":  {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"correlate:tool_rotation":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// OT/ICS correlators (round 4). ATT&CK for ICS matrix.
@@ -252,7 +254,15 @@ var handlerTags = map[string]Tag{
 	"https":     {Techniques: []string{"T1190", "T1083"}, Tactics: []string{"initial-access", "discovery"}},
 	"rtsp":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dockerapi": {Techniques: []string{"T1190", "T1610"}, Tactics: []string{"initial-access", "execution"}},
-	"ipp":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// Cloud-native / container attack surface.
+	"cloud_metadata": {Techniques: []string{"T1552.005", "T1078.004"}, Tactics: []string{"credential-access", "defense-evasion"}},
+	"etcd":           {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
+	"websocket":      {Techniques: []string{"T1190", "T1071.001"}, Tactics: []string{"initial-access", "command-and-control"}},
+	"grpc":           {Techniques: []string{"T1190", "T1071"}, Tactics: []string{"initial-access", "command-and-control"}},
+	"ssrf_canary":    {Techniques: []string{"T1190", "T1602"}, Tactics: []string{"initial-access", "collection"}},
+	"kubernetes_api": {Techniques: []string{"T1190", "T1552.007"}, Tactics: []string{"initial-access", "credential-access"}},
+	"vault":          {Techniques: []string{"T1190", "T1555"}, Tactics: []string{"initial-access", "credential-access"}},
+	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
 	// Discovery / IoT scanning.
 	"snmp":       {Techniques: []string{"T1018", "T1110.001"}, Tactics: []string{"discovery", "credential-access"}},
@@ -493,6 +503,13 @@ var anomalyTags = map[string]Tag{
 	"shell-defense-evade-history":  {Techniques: []string{"T1070.003"}, Tactics: []string{"defense-evasion"}},
 	"shell-defense-evade-logclean": {Techniques: []string{"T1070.002"}, Tactics: []string{"defense-evasion"}},
 	"shell-coin-miner":             {Techniques: []string{"T1496"}, Tactics: []string{"impact"}},
+	"shell-container-escape":       {Techniques: []string{"T1611"}, Tactics: []string{"privilege-escalation"}},
+	"shell-cloud-cred-theft":       {Techniques: []string{"T1552.005"}, Tactics: []string{"credential-access"}},
+	"shell-local-exploit":          {Techniques: []string{"T1068"}, Tactics: []string{"privilege-escalation"}},
+	"shell-data-staged":            {Techniques: []string{"T1560.001"}, Tactics: []string{"collection"}},
+	"shell-exfil-channel":          {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"shell-decode-pipe-exec":       {Techniques: []string{"T1140"}, Tactics: []string{"defense-evasion"}},
+	"shell-destruction":            {Techniques: []string{"T1485", "T1486"}, Tactics: []string{"impact"}},
 	// Web-shell access / command execution (http handler webshell detector).
 	"webshell-access-attempt": {Techniques: []string{"T1505.003"}, Tactics: []string{"persistence"}},
 	"webshell-command":        {Techniques: []string{"T1505.003", "T1059"}, Tactics: []string{"persistence", "execution"}},
@@ -526,6 +543,29 @@ var anomalyTags = map[string]Tag{
 	// Docker remote API abuse — deploy/control a container = code execution.
 	"docker-container-create": {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
 	"docker-remote-control":   {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	// Cloud metadata / etcd — stealing IAM creds or cluster secrets.
+	"cloud-credential-theft": {Techniques: []string{"T1552.005"}, Tactics: []string{"credential-access"}},
+	"etcd-secret-read":       {Techniques: []string{"T1552.007"}, Tactics: []string{"credential-access"}},
+	"etcd-range-read":        {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"etcd-write":             {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// WebSocket / gRPC probe surface.
+	"ws-credential-material": {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
+	"ws-command-payload":     {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"grpc-reflection-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// SSRF out-of-band callback collector.
+	"ssrf-callback":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ssrf-server-side-fetch": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// Kubernetes API server abuse.
+	"k8s-token-auth":  {Techniques: []string{"T1528"}, Tactics: []string{"credential-access"}},
+	"k8s-secret-enum": {Techniques: []string{"T1552.007"}, Tactics: []string{"credential-access"}},
+	"k8s-pod-create":  {Techniques: []string{"T1610"}, Tactics: []string{"execution"}},
+	"k8s-pod-exec":    {Techniques: []string{"T1609"}, Tactics: []string{"execution"}},
+	// HashiCorp Vault abuse.
+	"vault-token-auth":    {Techniques: []string{"T1528"}, Tactics: []string{"credential-access"}},
+	"vault-secret-read":   {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-mount-enum":    {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-policy-access": {Techniques: []string{"T1555"}, Tactics: []string{"credential-access"}},
+	"vault-seal-control":  {Techniques: []string{"T1485"}, Tactics: []string{"impact"}},
 	// CoAP write to an IoT resource = manipulation of a device value.
 	"coap-write-attempt": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
@@ -714,6 +754,9 @@ var techDescriptions = map[string]string{
 	"T1557": "Adversary-in-the-Middle — intercepting/poisoning traffic to capture or relay credentials.",
 	"T1558": "Steal or Forge Kerberos Tickets — Kerberoasting / AS-REP roasting / ticket abuse.",
 	"T1552": "Unsecured Credentials — harvesting credentials left in files/config/history.",
+	"T1555": "Credentials from Password Stores — reading a secret store / vault (HashiCorp Vault, KV engines).",
+	"T1528": "Steal Application Access Token — capturing a bearer / service-account token.",
+	"T1609": "Container Administration Command — abusing a container/cluster admin API to run a command (kubectl exec).",
 	"T1003": "OS Credential Dumping — extracting account credentials from the OS (LSASS, SAM, /etc/shadow).",
 	"T1212": "Exploitation for Credential Access — exploiting a flaw to obtain credentials.",
 	"T1539": "Steal Web Session Cookie — capturing a session token to impersonate a user.",
@@ -748,18 +791,21 @@ var techDescriptions = map[string]string{
 	"T1564": "Hide Artifacts — concealing files/processes/sessions.",
 	"T1601": "Modify System Image — patching device firmware/OS image.",
 	// Impact.
-	"T1499": "Endpoint Denial of Service — exhausting a service's resources to make it unavailable.",
-	"T1498": "Network Denial of Service — flooding the network/link (incl. reflection/amplification).",
-	"T1485": "Data Destruction — deleting/wiping data.",
-	"T1486": "Data Encrypted for Impact — ransomware-style encryption.",
-	"T1491": "Defacement — altering displayed content/messages.",
-	"T1496": "Resource Hijacking — abusing compute (e.g. cryptomining).",
-	"T1657": "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
-	"T1565": "Data Manipulation — tampering with stored/displayed/transmitted data.",
-	"T1583": "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
-	"T1020": "Automated Exfiltration — automatically transferring collected data out.",
-	"T1041": "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
-	"T1048": "Exfiltration Over Alternative Protocol — exfil over a non-C2 protocol.",
+	"T1499":     "Endpoint Denial of Service — exhausting a service's resources to make it unavailable.",
+	"T1498":     "Network Denial of Service — flooding the network/link (incl. reflection/amplification).",
+	"T1485":     "Data Destruction — deleting/wiping data.",
+	"T1486":     "Data Encrypted for Impact — ransomware-style encryption.",
+	"T1491":     "Defacement — altering displayed content/messages.",
+	"T1496":     "Resource Hijacking — abusing compute (e.g. cryptomining).",
+	"T1657":     "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
+	"T1565":     "Data Manipulation — tampering with stored/displayed/transmitted data.",
+	"T1583":     "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
+	"T1020":     "Automated Exfiltration — automatically transferring collected data out.",
+	"T1041":     "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
+	"T1048":     "Exfiltration Over Alternative Protocol — exfil over a non-C2 protocol.",
+	"T1611":     "Escape to Host — breaking out of a container to the underlying host.",
+	"T1068":     "Exploitation for Privilege Escalation — a kernel/local exploit to gain higher privileges.",
+	"T1560.001": "Archive Collected Data via Utility — staging data into an archive (tar/zip/7z) before exfil.",
 	// ICS (ATT&CK for ICS) — control-protocol activity.
 	"T0814": "Denial of Service (ICS) — disrupting a control device's availability.",
 	"T0888": "Remote System Information Discovery (ICS) — enumerating control devices/their info.",

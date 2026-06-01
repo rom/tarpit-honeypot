@@ -1,6 +1,10 @@
 package tcpstack
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+)
 
 // Segment is a parsed IPv4 + TCP packet. The userspace stack only speaks
 // IPv4; IPv6 reconnaissance stays in tunnet's L3 responder. Parsing is
@@ -133,6 +137,41 @@ func (s *Segment) parseOptions() {
 			i += l
 		}
 	}
+}
+
+// ja4tSyn walks the SYN's TCP options once more to build the JA4T input:
+// the advertised window, the option kinds in wire order, and the decoded MSS
+// and window-scale values. (parseOptions only recovers the timestamp, which is
+// all the stack needs to echo; JA4T wants the full option layout.)
+func (s *Segment) ja4tSyn() fingerprint.TCPSyn {
+	syn := fingerprint.TCPSyn{WindowSize: s.Window}
+	o := s.Options
+	for i := 0; i < len(o); {
+		switch o[i] {
+		case optEOL:
+			return syn
+		case optNOP:
+			syn.Options = append(syn.Options, fingerprint.TCPOpt{Kind: optNOP})
+			i++
+		default:
+			if i+1 >= len(o) {
+				return syn
+			}
+			l := int(o[i+1])
+			if l < 2 || i+l > len(o) {
+				return syn
+			}
+			syn.Options = append(syn.Options, fingerprint.TCPOpt{Kind: o[i]})
+			switch {
+			case o[i] == optMSS && l == 4:
+				syn.MSS = binary.BigEndian.Uint16(o[i+2 : i+4])
+			case o[i] == optWScale && l == 3:
+				syn.WindowScale = o[i+2]
+			}
+			i += l
+		}
+	}
+	return syn
 }
 
 // PayloadLen is the number of application bytes the segment carries; SYN

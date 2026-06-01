@@ -50,6 +50,8 @@ type Correlator struct {
 	defCredSev    event.Severity
 	cveCampSev    event.Severity
 	destructSev   event.Severity
+	cloudCredSev  event.Severity
+	ssrfCbSev     event.Severity
 	honeytokenSev event.Severity
 	toolRotSev    event.Severity
 	plcProgSev    event.Severity
@@ -95,6 +97,8 @@ type Correlator struct {
 	defCred    map[string]*setState   // key: source IP (distinct default-cred services)
 	cveCamp    map[string]*reuseState // key: cve id (distinct source IPs)
 	destruct   map[string]*countState // key: source IP (data-destruction op count)
+	cloudCred  map[string]*countState // key: source IP (cloud cred-theft op count)
+	ssrfCb     map[string]*setState   // key: source IP (distinct ssrf tokens)
 	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
 	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
 	plcProg    map[string]*countState // key: source IP (program-download count)
@@ -209,6 +213,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		defCred:    map[string]*setState{},
 		cveCamp:    map[string]*reuseState{},
 		destruct:   map[string]*countState{},
+		cloudCred:  map[string]*countState{},
+		ssrfCb:     map[string]*setState{},
 		honeytoken: map[string]*reuseState{},
 		toolRot:    map[string]*setState{},
 		plcProg:    map[string]*countState{},
@@ -312,6 +318,8 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.DefaultCredSweep.Enabled, cfg.DefaultCredSweep.Severity, &c.defCredSev},
 		{cfg.CVECampaign.Enabled, cfg.CVECampaign.Severity, &c.cveCampSev},
 		{cfg.DestructiveAction.Enabled, cfg.DestructiveAction.Severity, &c.destructSev},
+		{cfg.CloudCredTheft.Enabled, cfg.CloudCredTheft.Severity, &c.cloudCredSev},
+		{cfg.SSRFCallback.Enabled, cfg.SSRFCallback.Severity, &c.ssrfCbSev},
 		{cfg.HoneytokenSpread.Enabled, cfg.HoneytokenSpread.Severity, &c.honeytokenSev},
 		{cfg.ToolRotation.Enabled, cfg.ToolRotation.Severity, &c.toolRotSev},
 		{cfg.PLCProgramDownload.Enabled, cfg.PLCProgramDownload.Severity, &c.plcProgSev},
@@ -420,6 +428,16 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.DestructiveAction.Enabled {
 		if extra := c.checkDestructiveAction(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.CloudCredTheft.Enabled {
+		if extra := c.checkCloudCredTheft(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.SSRFCallback.Enabled {
+		if extra := c.checkSSRFCallback(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1254,6 +1272,12 @@ func (c *Correlator) gc(now time.Time) {
 			delete(c.destruct, k)
 		}
 	}
+	for k, st := range c.cloudCred {
+		if now.Sub(st.since) > effWindow(c.cfg.CloudCredTheft.Window, 10*time.Minute) {
+			delete(c.cloudCred, k)
+		}
+	}
+	gcSet(c.ssrfCb, now, effWindow(c.cfg.SSRFCallback.Window, 10*time.Minute))
 	for k, st := range c.honeytoken {
 		if now.Sub(st.since) > effWindow(c.cfg.HoneytokenSpread.Window, time.Hour) {
 			delete(c.honeytoken, k)

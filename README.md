@@ -39,7 +39,7 @@ rationale covering the current implementation.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
 - **112 TCP + 33 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`)
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `hartip`, `pcworx`, `mms` (IEC 61850), `ads` (Beckhoff TwinCAT)
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
@@ -175,11 +175,23 @@ rationale covering the current implementation.
   credentials, and emit `http-login-attempt`.
 - **Client + server TLS fingerprinting**:
   - **JA3** + **JA4** from the TLS ClientHello (HTTPS handler).
-  - **JA3S** (server-side TLS fingerprint) from the ServerHello we send
-    back — the `(ja3, ja3s)` pair is the tuple threat-intel feeds key on.
+  - **JA3S** + **JA4S** (server-side TLS fingerprints) from the ServerHello
+    we send back — the `(ja3, ja3s)` / `(ja4, ja4s)` pairs are the tuples
+    threat-intel feeds key on.
+  - **JA4T** — TCP-layer fingerprint (window, option layout, MSS,
+    window-scale) computed from the client SYN in the userspace honeynet
+    stack and attached to `honeynet:tcp_connect` events as `ja4t`.
+  - **JARM** server fingerprint available as a library primitive
+    (`fingerprint.JARM`) for confirming a sensor's TLS posture matches the
+    product it impersonates.
   - **JA4H** from the HTTP request line + headers (HTTP/HTTPS handlers).
   - **HASSH** from the SSH KEXINIT.
   - All are stable across browser / scanner GREASE shuffling.
+- **SNI virtual hosting**: one `https` listener can front several personas
+  via `https.vhosts` — each matched TLS SNI (exact or `*.domain` wildcard)
+  gets its own believable certificate (own CN / Org / key type), exactly as
+  a real reverse proxy would; the matched name lands in the `tls_vhost` event
+  field.
 - **Honeynets**: configure zero-to-many artificial networks via the
   `honeynets:` block. Each has a CIDR + gateway + DNS + domain + a
   list of virtual hosts; each host has an IP + hostname + OS hint +
@@ -367,7 +379,9 @@ rationale covering the current implementation.
     (distinct CVEs), protocol-violation (fuzzing markers), session-flood,
     C2 **beacon** (jitter analysis), exfil, fingerprint-reuse, canary-trip,
     ICS-control, lateral-movement, OT-recon, data-access, malware-campaign,
-    and webshell — each windowed, severity-configurable, and ATT&CK-tagged.
+    webshell, **cloud-cred-theft** (IMDS/etcd/cloud-CLI credential grabs from
+    one source), and **ssrf-callback** (distinct SSRF tokens called back by
+    one source) — each windowed, severity-configurable, and ATT&CK-tagged.
 - **Fuzzing & DoS detection + classification** (`internal/fuzzdos`):
   classifies abusive traffic into protocol fuzzing vs typed
   denial-of-service — flood, malformed-storm, amplification, and
@@ -806,7 +820,11 @@ MQTT varint parser, DNS query parser; `make cover` / `make race`
 Each honeynet can open a Linux TUN device (`CAP_NET_ADMIN`) that
 answers ICMP/ICMPv6 echo for any virtual host IP and TCP-RST for
 unbound ports without `ip addr add`. IPv4 + IPv6 honeynet hosts and
-listener binds work uniformly. The SNMP, LDAP, and DCE-RPC handlers
+listener binds work uniformly. IPv6 reconnaissance has SYN-layer parity
+with IPv4: an IPv6 SYN to an open port is answered with a SYN-ACK and
+raised as a `honeynet:tcp_connect` event (closed ports get a RST), so v6
+port scans are observed and correlatable; the stateful data phase stays
+IPv4-only by design. The SNMP, LDAP, and DCE-RPC handlers
 now include the honeynet topology in their event meta
 (`honeynet_neighbors`, `honeynet_computer_accounts`,
 `honeynet_endpoints`) so a scanner walking those services sees an
@@ -1262,6 +1280,13 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `syslog_tcp` | 514 | Reads syslog messages via both octet-counting (`<N> <msg>`) and non-transparent (newline-terminated) framing. Captures first 16 messages with PRI / facility / severity decoded. | — | — |
 | `rtsp` | 554 | Parses RTSP OPTIONS / DESCRIBE request line + headers. Captures `Authorization` (often Digest with the camera password) + `User-Agent`. Replies 401 with a Hikvision-shaped `WWW-Authenticate: Digest`. | — | — |
 | `dockerapi` | 2375 | Unauthenticated-Docker-API mimic. Routes `/_ping`, `/version`, `/info`, `/containers/json` to believable canned JSON. Captures the request line + `Authorization` header on every hit. | — | — |
+| `cloud_metadata` | 80 / link-local | Instance metadata service (IMDS) for AWS, GCP and Azure on one handler. Serves synthetic instance identity and **honeytoken IAM/OAuth credentials**; flags `cloud-credential-theft` when the IAM `security-credentials`, GCP `token`, or Azure `oauth2/token` paths are hit. Place behind a fake SSRF-able app or bind to 169.254.169.254. | — | — |
+| `etcd` | 2379 | etcd KV-store API (v2 `/v2/keys`, v3 `/v3/kv/range`, `/version`, `/health`, `/metrics`, member list). Returns believable cluster state incl. a base64 `/registry/secrets/...` key; flags `etcd-secret-read` / `etcd-range-read` / `etcd-write`. | — | — |
+| `websocket` | any | Completes the RFC 6455 opening handshake (computes `Sec-WebSocket-Accept`), then unmasks and captures client frames. Flags `ws-credential-material` / `ws-command-payload` on hostile first messages. Replies `426` to non-upgrade probes. | — | — |
+| `grpc` | any | Recognizes the HTTP/2 connection preface, replies with SETTINGS + ACK, then reads frames and extracts the `/package.Service/Method` path from HEADERS (no HPACK decode needed). Flags `grpc-reflection-probe`. | — | — |
+| `ssrf_canary` | any | Out-of-band callback collector — the inverse of a URL canary. Plant a token URL (`gen-token --type=ssrf`) in an SSRF param / webhook / XXE entity; when a coerced system fetches it, the callback is recorded with the token + `User-Agent` / `X-Forwarded-For` / `Via`. Flags `ssrf-callback`, and `ssrf-server-side-fetch` when the UA is an HTTP client library rather than a browser. Always returns a 1×1 GIF so the exploit chain proceeds. | — | — |
+| `kubernetes_api` | 6443 | kube-apiserver mimic. Answers `/version`, `/api`, `/apis`, `/healthz` discovery; captures the `Authorization: Bearer` service-account token; flags `k8s-secret-enum` / `k8s-pod-create` / `k8s-pod-exec` and 403s anonymous protected requests as `system:anonymous`. | `bearer_token` | — |
+| `vault` | 8200 | HashiCorp Vault API mimic. Answers `/v1/sys/health` + `/v1/sys/seal-status` like an unsealed Vault; captures `X-Vault-Token`; flags `vault-secret-read` / `vault-mount-enum` / `vault-policy-access` / `vault-seal-control`; tokenless secret reads get 403. | `vault_token` | — |
 | `melsec` | 1025 | Mitsubishi MELSEC 3E frame parser. Reads `0x5000` request header, replies `0xD000` with a fake `Q03UDVCPU` CPU model + serial. | — | — |
 | `xmpp` | 5222 | Reads the client `<stream:stream>` open, extracts `to` / `from` / `xmlns` / `version`. Replies with our own `<stream:stream>` + `<stream:features>` advertising STARTTLS + PLAIN + SCRAM-SHA-1. Captures the follow-up `<auth>` or `<starttls/>` stanza. | — | — |
 | `amqp` | 5672 | AMQP 0-9-1 / RabbitMQ. Sends Connection.Start (advertising PLAIN + AMQPLAIN) after the 8-byte protocol header. Decodes the SASL PLAIN response (`\0user\0pass`) from Connection.StartOk. Replies Connection.Close with 530 NOT_ALLOWED. | — | — |

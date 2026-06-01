@@ -50,6 +50,49 @@ func TestArcheserviceExpandsWebserver(t *testing.T) {
 	}
 }
 
+// TestAllRolesExpandAndValidate guards the whole catalog: every role must
+// expand to listeners whose handlers are in the protocol whitelist and pass
+// full config validation. This catches a new role (or an edited one) that
+// references a handler that isn't registered for its protocol.
+func TestAllRolesExpandAndValidate(t *testing.T) {
+	for _, role := range archeservice.Names() {
+		role := role
+		t.Run(role, func(t *testing.T) {
+			c := &Config{
+				Sensor:        Sensor{Name: "t", DataDir: "/tmp/x"},
+				Archeservices: []Archeservice{{ID: "svc", Role: role, Bind: "10.9.8.7"}},
+				Channels:      []Channel{{ID: "log", Type: "stdout"}},
+			}
+			c.applyDefaults()
+			if err := c.Validate(); err != nil {
+				t.Fatalf("role %q failed to expand+validate: %v", role, err)
+			}
+			svcs, _ := archeservice.Lookup(role)
+			if len(c.Listeners) != len(svcs) {
+				t.Errorf("role %q expanded to %d listeners; want %d", role, len(c.Listeners), len(svcs))
+			}
+		})
+	}
+}
+
+func TestArcheserviceExpandsKubernetes(t *testing.T) {
+	c := archeConfig(t, Archeservice{ID: "k8s", Role: "kubernetes", Bind: "10.0.0.9"})
+	want := map[string]string{
+		"10.0.0.9:6443":  "kubernetes_api",
+		"10.0.0.9:10250": "kubernetes_api",
+		"10.0.0.9:2379":  "etcd",
+	}
+	got := map[string]string{}
+	for _, l := range c.Listeners {
+		got[l.Bind] = l.Handler
+	}
+	for bind, h := range want {
+		if got[bind] != h {
+			t.Errorf("kubernetes role: bind %s handler = %q; want %q", bind, got[bind], h)
+		}
+	}
+}
+
 func TestArcheserviceExpandsADServer(t *testing.T) {
 	c := archeConfig(t, Archeservice{ID: "dc", Role: "adserver", Archetype: "active-directory", Bind: "10.0.0.5"})
 	svcs, _ := archeservice.Lookup("adserver")

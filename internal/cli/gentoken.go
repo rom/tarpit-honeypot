@@ -20,10 +20,10 @@ import (
 // but short enough to fit cleanly in subdomains, paths, and filenames.
 func cmdGenToken(args []string) error {
 	fs := flag.NewFlagSet("gen-token", flag.ContinueOnError)
-	kind := fs.String("type", "dns", "token type: dns | url | hex")
+	kind := fs.String("type", "dns", "token type: dns | url | hex | ssrf")
 	label := fs.String("label", "", "optional human-readable suffix (e.g. \"prod-cdb\")")
 	bits := fs.Int("bits", 64, "bits of entropy (multiple of 8 between 32 and 256)")
-	domain := fs.String("domain", "canary.example.com", "for --type=dns, the base domain")
+	domain := fs.String("domain", "canary.example.com", "for --type=dns/ssrf, the base domain")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -47,10 +47,15 @@ func cmdGenToken(args []string) error {
 		fmt.Printf("%s%s.%s\n", token, suffix, base)
 	case "url":
 		fmt.Printf("/__canary__/%s%s\n", token, suffix)
+	case "ssrf":
+		// A full callback URL to plant in an SSRF-able parameter, webhook
+		// field, or XXE entity. Point it at an ssrf_canary listener.
+		base := strings.TrimPrefix(*domain, ".")
+		fmt.Printf("http://%s/ssrf/%s%s\n", base, token, suffix)
 	case "hex":
 		fmt.Println(token + suffix)
 	default:
-		return fmt.Errorf("unknown --type %q (want dns|url|hex)", *kind)
+		return fmt.Errorf("unknown --type %q (want dns|url|hex|ssrf)", *kind)
 	}
 	return nil
 }

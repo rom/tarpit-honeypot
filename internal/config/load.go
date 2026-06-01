@@ -38,6 +38,9 @@ var tcpHandlers = map[string]bool{
 	"smtps": true, "imaps": true, "pop3s": true,
 	"ldaps": true, "mqtts": true, "ftps": true,
 	"syslog_tcp": true, "rtsp": true, "dockerapi": true, "melsec": true,
+	"cloud_metadata": true, "etcd": true,
+	"websocket": true, "grpc": true, "ssrf_canary": true,
+	"kubernetes_api": true, "vault": true,
 	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
@@ -619,6 +622,28 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.DestructiveAction.Severity == "" {
 			c.Correlate.DestructiveAction.Severity = "critical"
+		}
+	}
+	if c.Correlate.CloudCredTheft.Enabled {
+		if c.Correlate.CloudCredTheft.Events == 0 {
+			c.Correlate.CloudCredTheft.Events = 2
+		}
+		if c.Correlate.CloudCredTheft.Window == 0 {
+			c.Correlate.CloudCredTheft.Window = 10 * time.Minute
+		}
+		if c.Correlate.CloudCredTheft.Severity == "" {
+			c.Correlate.CloudCredTheft.Severity = "critical"
+		}
+	}
+	if c.Correlate.SSRFCallback.Enabled {
+		if c.Correlate.SSRFCallback.Events == 0 {
+			c.Correlate.SSRFCallback.Events = 3
+		}
+		if c.Correlate.SSRFCallback.Window == 0 {
+			c.Correlate.SSRFCallback.Window = 10 * time.Minute
+		}
+		if c.Correlate.SSRFCallback.Severity == "" {
+			c.Correlate.SSRFCallback.Severity = "high"
 		}
 	}
 	if c.Correlate.HoneytokenSpread.Enabled {
