@@ -30,11 +30,15 @@ func newTarpitState() *tarpitState {
 }
 
 func (s *tarpitState) tryAcquire(srcIP string, maxPerSource, maxTotal int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Check the total cap under the lock (not before it): an atomic read
+	// outside the lock races with a concurrent release(), so the per-total cap
+	// could be overshot by the number of goroutines acquiring at once. total is
+	// only ever mutated under this lock, so an in-lock check is exact.
 	if maxTotal > 0 && s.total.Load() >= int64(maxTotal) {
 		return false
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if maxPerSource > 0 && s.perSource[srcIP] >= maxPerSource {
 		return false
 	}

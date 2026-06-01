@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
@@ -143,5 +144,40 @@ func TestQUICNonInitialIgnored(t *testing.T) {
 	}
 	if res.Meta["quic"] != "no-clienthello" {
 		t.Errorf("expected no-clienthello marker, got %v", res.Meta["quic"])
+	}
+}
+
+// TestQUICReassembleZeroLenCryptoTerminates guards against the infinite-loop
+// DoS: a CRYPTO frame with length 0 at offset 0 produces a zero-length chunk;
+// the concat loop must not spin forever on it.
+func TestQUICReassembleZeroLenCryptoTerminates(t *testing.T) {
+	// Frame: type 0x06 (CRYPTO), offset varint 0x00, length varint 0x00.
+	frame := []byte{0x06, 0x00, 0x00}
+	done := make(chan struct{})
+	go func() {
+		_, _ = quicReassembleCrypto(frame)
+		close(done)
+	}()
+	select {
+	case <-done:
+		// returned — good (no infinite loop)
+	case <-time.After(2 * time.Second):
+		t.Fatal("quicReassembleCrypto hung on a zero-length CRYPTO frame (infinite loop)")
+	}
+}
+
+// TestQUICReassembleMixedChunks confirms ordered concatenation still works and
+// a zero-length chunk in the middle doesn't stall a real reassembly.
+func TestQUICReassembleMixedChunks(t *testing.T) {
+	var b []byte
+	// CRYPTO off=0 len=3 "abc"
+	b = append(b, 0x06, 0x00, 0x03, 'a', 'b', 'c')
+	// CRYPTO off=3 len=0 (zero-length; must be skipped, not stall)
+	b = append(b, 0x06, 0x03, 0x00)
+	// CRYPTO off=3 len=2 "de"
+	b = append(b, 0x06, 0x03, 0x02, 'd', 'e')
+	out, ok := quicReassembleCrypto(b)
+	if !ok || string(out) != "abcde" {
+		t.Fatalf("reassembly = %q (ok=%v), want abcde", out, ok)
 	}
 }

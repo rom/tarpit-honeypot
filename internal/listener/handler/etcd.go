@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"fmt"
 	"net"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // etcd emulates the etcd key-value store HTTP API (TCP 2379). An exposed,
@@ -17,7 +20,9 @@ import (
 // for the v2 keys API and v3 range RPC, return believable cluster data —
 // flagging any attempt to read secrets or write/delete keys (the takeover
 // TTP). Detection only; nothing is persisted.
-type etcd struct{}
+type etcd struct {
+	id *identity.Identity
+}
 
 func (e *etcd) Name() string { return "etcd" }
 
@@ -118,8 +123,15 @@ func (e *etcd) route(method, low, reqBody string, res *Result) (body, contentTyp
 		} else {
 			flagAnomaly(res, "etcd-range-read")
 		}
-		// base64("/registry/secrets/default/token") -> believable k8s key.
-		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":"aG9uZXl0b2tlbi1zZXJ2aWNlYWNjb3VudC10b2tlbg=="}],"count":1}`
+		// key = base64("/registry/secrets/default/default-token"); value is a
+		// believable per-deployment service-account JWT, base64'd — no "honey"
+		// tell, and unique per sensor, so a scanner reading the KV can't
+		// distinguish it from a real etcd or correlate two sensors.
+		jwt := "eyJhbGciOiJSUzI1NiJ9." +
+			encodeAlpha(idBytes(e.id, "etcd-sa-jwt-payload", 40), honeyB64Alpha) + "." +
+			encodeAlpha(idBytes(e.id, "etcd-sa-jwt-sig", 43), honeyB64Alpha)
+		val := base64.StdEncoding.EncodeToString([]byte(jwt))
+		body = fmt.Sprintf(`{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4711,"raft_term":2},"kvs":[{"key":"L3JlZ2lzdHJ5L3NlY3JldHMvZGVmYXVsdC9kZWZhdWx0LXRva2Vu","create_revision":2,"mod_revision":2,"version":1,"value":%q}],"count":1}`, val)
 	case strings.HasPrefix(low, "/v3/kv/put") || strings.HasPrefix(low, "/v3/kv/deleterange"):
 		flagAnomaly(res, "etcd-write")
 		body = `{"header":{"cluster_id":9081764229861876650,"member_id":12345,"revision":4712,"raft_term":2}}`

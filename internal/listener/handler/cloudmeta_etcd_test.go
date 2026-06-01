@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // roundTrip drives one HTTP request through an HTTP-shaped handler over a pipe
@@ -107,5 +108,51 @@ func TestEtcdV3RangeRead(t *testing.T) {
 		"POST /v3/kv/range HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n{}")
 	if len(anomaliesOf(res)) == 0 {
 		t.Errorf("v3 range read should flag a range/secret read")
+	}
+}
+
+// TestCloudCredsPerDeploymentUniqueAndClean asserts the served fake credentials
+// are (1) stable for one deployment, (2) unique across deployments, and (3)
+// never leak a "honey" tell to the attacker.
+func TestCloudCredsPerDeploymentUniqueAndClean(t *testing.T) {
+	const req = "GET /latest/meta-data/iam/security-credentials/role HTTP/1.1\r\nHost: 169.254.169.254\r\n\r\n"
+	a1, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-A")}, req)
+	a2, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-A")}, req)
+	b1, _ := roundTrip(t, &cloudMeta{id: identity.New("dep-B")}, req)
+
+	if a1 != a2 {
+		t.Errorf("creds not stable for one deployment:\n%s\nvs\n%s", a1, a2)
+	}
+	if a1 == b1 {
+		t.Errorf("creds not unique across deployments (both produced identical bodies)")
+	}
+	for _, body := range []string{a1, b1} {
+		low := strings.ToLower(body)
+		if strings.Contains(low, "honey") {
+			t.Errorf("served body leaks a honeypot tell: %s", body)
+		}
+		// Sanity: the AWS access-key id must still have the real ASIA prefix.
+		if !strings.Contains(body, `"AccessKeyId":"ASIA`) {
+			t.Errorf("AWS key id lost its realistic ASIA prefix: %s", body)
+		}
+	}
+}
+
+func TestVaultEtcdK8sNoHoneyTell(t *testing.T) {
+	id := identity.New("dep-X")
+	cases := []struct {
+		h   Handler
+		req string
+	}{
+		{&vault{id: id}, "GET /v1/secret/data/prod/db HTTP/1.1\r\nHost: x\r\nX-Vault-Token: s.abc\r\n\r\n"},
+		{&vault{id: id}, "GET /v1/sys/health HTTP/1.1\r\nHost: x\r\n\r\n"},
+		{&etcd{id: id}, "GET /v2/keys/registry/secrets/default/default-token HTTP/1.1\r\nHost: x\r\n\r\n"},
+		{&k8sAPI{id: id}, "GET /api/v1/namespaces/default/secrets HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\n\r\n"},
+	}
+	for _, c := range cases {
+		body, _ := roundTrip(t, c.h, c.req)
+		if strings.Contains(strings.ToLower(body), "honey") {
+			t.Errorf("%s leaks a honeypot tell: %s", c.h.Name(), body)
+		}
 	}
 }

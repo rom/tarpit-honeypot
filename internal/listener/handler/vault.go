@@ -3,10 +3,12 @@ package handler
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // vault emulates HashiCorp Vault's HTTP API (TCP 8200). Vault is the crown
@@ -16,7 +18,9 @@ import (
 // probes like a real (unsealed) Vault, capture the X-Vault-Token, and flag
 // secret reads and the dangerous sys paths (unseal, policies, mounts).
 // Detection only.
-type vault struct{}
+type vault struct {
+	id *identity.Identity
+}
 
 func (v *vault) Name() string { return "vault" }
 
@@ -75,7 +79,8 @@ func (v *vault) route(method, low string, res *Result) (body, status string) {
 	_, hasToken := res.Meta["vault_token"]
 	switch {
 	case strings.HasPrefix(low, "/v1/sys/health"):
-		body = `{"initialized":true,"sealed":false,"standby":false,"version":"1.15.2","cluster_name":"vault-cluster-honeypot"}`
+		body = fmt.Sprintf(`{"initialized":true,"sealed":false,"standby":false,"version":"1.15.2","cluster_name":"vault-cluster-%s"}`,
+			encodeAlpha(idBytes(v.id, "vault-cluster", 6), "0123456789abcdef"))
 	case strings.HasPrefix(low, "/v1/sys/seal-status"):
 		body = `{"type":"shamir","initialized":true,"sealed":false,"t":3,"n":5,"version":"1.15.2"}`
 	case strings.HasPrefix(low, "/v1/sys/unseal") || strings.HasPrefix(low, "/v1/sys/seal"):
@@ -100,8 +105,12 @@ func (v *vault) route(method, low string, res *Result) (body, status string) {
 			status = "403 Forbidden"
 			body = vaultErr("permission denied")
 		} else {
-			// A believable KV v2 secret payload (synthetic honeytoken values).
-			body = `{"request_id":"00000000-0000-0000-0000-000000000000","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"data":{"password":"honeytoken-vault-secret","username":"svc-prod"},"metadata":{"created_time":"2099-01-01T00:00:00Z","version":1}}}`
+			// A believable KV v2 secret payload. The values are synthetic bait
+			// with no "honey" tell — a scanner that reads them can't distinguish
+			// them from a real Vault secret; the detection fires on the path hit.
+			body = fmt.Sprintf(`{"request_id":%q,"lease_id":"","renewable":false,"lease_duration":2764800,"data":{"data":{"password":%q,"username":"svc-prod"},"metadata":{"created_time":"2099-01-01T00:00:00Z","version":1}}}`,
+				guidFrom(idBytes(v.id, "vault-reqid", 16)),
+				encodeAlpha(idBytes(v.id, "vault-secret-pw", 16), honeyAlnum))
 		}
 	default:
 		status = "404 Not Found"
