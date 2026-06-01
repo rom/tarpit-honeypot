@@ -59,6 +59,7 @@ var tcpHandlers = map[string]bool{
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,
+	"tls_intercept": true,
 }
 
 var udpHandlers = map[string]bool{
@@ -918,6 +919,25 @@ func (c *Config) Validate() error {
 		if l.Handler == "scripted" {
 			if err := l.Scripted.Validate(); err != nil {
 				return fmt.Errorf("listener %s: scripted: %w", l.ID, err)
+			}
+		}
+		if l.Handler == "tls_intercept" {
+			ti := l.TLSIntercept
+			if ti.ForwardTo != "" {
+				if _, _, err := net.SplitHostPort(ti.ForwardTo); err != nil {
+					return fmt.Errorf("listener %s: tls_intercept.forward_to must be host:port: %w", l.ID, err)
+				}
+			} else {
+				inner := ti.InnerHandler
+				if inner == "" {
+					inner = "raw"
+				}
+				if inner == "tls_intercept" {
+					return fmt.Errorf("listener %s: tls_intercept.inner_handler cannot be tls_intercept", l.ID)
+				}
+				if !tcpHandlers[inner] {
+					return fmt.Errorf("listener %s: tls_intercept.inner_handler %q is not a valid tcp handler", l.ID, inner)
+				}
 			}
 		}
 		if p := l.SNMP.MIBProfile; p != "" {

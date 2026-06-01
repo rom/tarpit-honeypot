@@ -413,6 +413,8 @@ svg.graph .node { fill: var(--chart-node-default); }
 svg.graph .nlabel { font: 0.786rem ui-monospace, monospace; fill: var(--text-strong); }
 figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
+.cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .6rem 1.2rem; align-items: start; }
+.cols2 h4 { margin: .2rem 0 .3rem; font-size: .9rem; color: var(--heading-h2); }
 figcaption.tc-cap, .tc-cap { font-weight: 600; color: var(--heading-h2); margin-bottom: .3rem; font-size: .95rem; }
 svg.tc { background: var(--bg-surface); max-width: 100%; height: auto; }
 svg.tc text { font: 0.786rem ui-monospace, monospace; }
@@ -474,7 +476,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -614,6 +616,53 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
     {{ if .Sessions }}<tr><th>sessions</th><td>{{ .Sessions }} recorded · <a href="/events?source={{ .IP }}">events</a></td></tr>{{ end }}
   </table>
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "campaign" }}{{ template "head" . }}
+<h1>campaigns &amp; attacker journey — last 24 hours</h1>
+<p class="note">Two lenses on the same window. <strong>Journey</strong>: the kill-chain transitions every source moved through, aggregated across all attackers. <strong>Campaigns</strong>: source IPs linked into one operation by a shared network fingerprint (JA3/JA4/JA4H/JA3S/HASSH) — strong evidence of one toolset behind multiple hosts. Recomputed live from {{ .Total }} events · {{ .Sources }} sources · {{ .Linked }} linked into multi-host campaigns. JSON at <a href="/api/campaign">/api/campaign</a>.</p>
+{{ if .JourneyB64 }}<figure data-chart="sankey" data-chart-title="Kill-chain journey — tactic→tactic transitions" data-chart-b64="{{ .JourneyB64 }}"><p class="note">enable JavaScript to render the journey graph</p></figure>{{ else }}<p class="note">no multi-stage tactic progressions in the window yet</p>{{ end }}
+{{ if .GraphB64 }}<figure data-chart="network" data-chart-title="Campaign linkage — campaign ↔ fingerprint ↔ handler" data-chart-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the linkage graph</p></figure>{{ end }}
+{{ if .Clusters }}{{ range .Clusters }}
+<div class="net">
+  <h3 class="sev-{{ .MaxSev }}">{{ if .Multi }}<span class="tag bad">campaign</span> {{ end }}{{ .ID }} <span class="meta">{{ len .Sources }} source{{ if gt (len .Sources) 1 }}s{{ end }} · {{ .Events }} events · {{ fmtTime .First }} → {{ fmtTime .Last }}{{ if .Creds }} · {{ .Creds }} cred attempts{{ end }}</span></h3>
+  <table>
+    <tr><th>sources</th><td>{{ range .Sources }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a> {{ end }}</td></tr>
+    {{ if .Links }}<tr><th>{{ if .Multi }}shared fingerprints{{ else }}fingerprints{{ end }}</th><td>{{ range .Links }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
+    {{ if .Tactics }}<tr><th>journey</th><td>{{ range $i, $t := .Tactics }}{{ if $i }} <span class="meta">→</span> {{ end }}<span class="tag">{{ $t }}</span>{{ end }}</td></tr>{{ end }}
+    {{ if .ASNs }}<tr><th>asn</th><td>{{ range .ASNs }}<span class="tag">{{ . }}</span> {{ end }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
+  </table>
+  <div class="cols2">
+    {{ if .Handlers }}<div><h4>handlers</h4>{{ template "bars" .Handlers }}</div>{{ end }}
+    {{ if .Techniques }}<div><h4>techniques</h4>{{ template "bars" .Techniques }}</div>{{ end }}
+  </div>
+</div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "threatmap" }}{{ template "head" . }}
+<h1>threat map — last 24 hours</h1>
+<p class="note">Live GeoIP attack map with country / ASN / network-class breakdowns and threat-intelligence counters. Auto-refreshes, so it doubles as a wall display. Geo, ASN and intel data require <code>sensor.geoip</code> + threat-intel feeds. JSON at <a href="/api/map">/api/map</a>.</p>
+<div class="counters">{{ range .Counters }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+{{ if .HasMap }}<figure data-chart="sourcemap" data-chart-title="Attack source map (GeoIP)" data-chart-b64="{{ .MapB64 }}"><p class="note">enable JavaScript to render the map</p></figure>{{ else }}<p class="note">no geo-located events yet — set <code>sensor.geoip.city_db</code> (MaxMind GeoLite2-City) to plot attack origins.</p>{{ end }}
+<div class="cols2">
+  <div><h3>top countries</h3>{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment</p>{{ end }}</div>
+  <div><h3>top ASNs</h3>{{ if .ASNs }}{{ template "bars" .ASNs }}{{ else }}<p class="note">no ASN enrichment</p>{{ end }}</div>
+  <div><h3>network class</h3>{{ if .NetClasses }}{{ template "bars" .NetClasses }}{{ else }}<p class="note">none classified</p>{{ end }}</div>
+  <div><h3>threat-intel sources</h3>{{ if .IntelSources }}{{ template "bars" .IntelSources }}{{ else }}<p class="note">no intel matches (set threat feeds / Tor list)</p>{{ end }}</div>
+</div>
+<h2>recent high-severity attacks</h2>
+{{ if .Recent }}<table>
+<tr><th>time (utc)</th><th>source</th><th>origin</th><th>asn</th><th>sev</th><th>handler</th><th>rule</th></tr>
+{{ range .Recent }}<tr class="sev-{{ .Sev }}">
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ if .Intel }} <span class="tag bad">intel</span>{{ end }}</td>
+  <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ .Country }}</span>{{ else }}—{{ end }}</td>
+  <td>{{ if .ASN }}{{ .ASN }}{{ else }}—{{ end }}</td>
+  <td><span class="tag sev-{{ .Sev }}">{{ .Sev }}</span></td>
+  <td>{{ .Handler }}</td>
+  <td>{{ .RuleID }}</td>
+</tr>{{ end }}
+</table>{{ else }}<p class="note">no high-severity attacks in the window</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "fleet" }}{{ template "head" . }}

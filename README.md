@@ -1328,6 +1328,7 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `raw` | any | Sends literal `banner:` field, reads up to `read_bytes`. | — | — |
 | `auto` | any | Generic catch-all for unmodelled protocols: captures the client's opening message, guesses the protocol from leading bytes (`protocol_guess`: tls / ssh / http / socks / quic / text / binary), and flags `unknown-protocol`. Optional `banner:` is sent as a server-first nudge. | — | — |
 | `scripted` | any | Declarative fake protocol from the `scripted:` config block: optional on-connect greeting, then top-down `rules` matching each message (`prefix`/`contains`/`suffix`/`iprefix`/`icontains`/`regex`/`hex_prefix`/`any`) → `respond` (text or `respond_hex`), with per-rule `anomaly` + `close`. Stateful **stages** (`stage`/`set_stage`) model multi-step protocols; a `regex` rule with `capture: user`/`pass` harvests credentials. Captures the full transcript. Bounded rounds + 64 KB reply cap. | — | — |
+| `tls_intercept` | any | TLS-terminating MITM front. Terminates TLS with a believable self-signed cert (computing JA3/JA4 + JA3S like `https`), then routes the decrypted stream per the `tls_intercept:` block: **inner_handler** hands cleartext to any TCP handler (a TLS front for an emulated service), or **forward_to** proxies cleartext to a real backend (optionally re-encrypting with `forward_tls`) and captures the plaintext session (client→backend bytes, 64 KB cap). Forwarding is opt-in and **egress-scoped** — backend must be allowlisted or it fails closed. ATT&CK T1557 + T1040. | ✓ | ✓ |
 | `ssh` | 22 | Sends archetype/identity-shaped SSH-2.0 banner immediately followed by its own `SSH_MSG_KEXINIT` (algorithm set derived from the version banner — modern OpenSSH / legacy / Dropbear — so the **server HASSH** is realistic and version-consistent, recorded as `hassh_server`). Reads client ID (flags non-printable / non-SSH / overlong), computes the client HASSH from its KEXINIT, then drops the connection. | ✓ | ✓ |
 | `ssh_interactive` | 22 | Full `golang.org/x/crypto/ssh` server with persistent ed25519 host key under `<data_dir>/tls/ssh_host_ed25519_key`. Captures every password / pubkey attempt (SHA-256 fingerprint, key type, user, client version), accepts the 3rd credential and drops into `internal/shell.Run` on the session channel. Bounded: `SessionTimeout=5min`, `MaxAuthTries=6`. Also captures non-interactive `ssh host CMD` exec lines + scans them for anomalies. | ✓ | ✓ |
 | `http` | 80 | Routes on method+path. `GET /` serves the archetype's index HTML (Moxa / SCALANCE / S7 device pages or nginx 401). `GET /login` and 12 other login-shaped paths serve a form. `POST /login` parses `application/x-www-form-urlencoded` body (accepts 6 alias names each for user/pass) and captures credentials. Computes JA4H from request line + headers. Flags 8 suspicious-URI anomalies (Log4Shell JNDI, path traversal, WordPress / `.git` / `.env` / Tomcat manager probes). | ✓ | ✓ |
@@ -1684,6 +1685,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `canary:<id>` — file canary (fsnotify path or fanotify-detected read).
 - `canary:url:<id>` — URL canary path matched by an HTTP/HTTPS handler.
 - `canary:dns:<id>` — DNS canary name (or subdomain) queried.
+- `canary:token_used` — **critical**: a synthetic credential the sensor handed
+  out (a served honeytoken / cloud / vault secret) later appeared in a captured
+  authentication attempt — near-certain proof of compromise (token reuse). Meta
+  carries the original mint context (`minted_handler`, `minted_to_ip`,
+  `minted_at`) and the reuse key. Closes the honey-credential loop the way a
+  hosted Canarytoken does (T1078).
 - `dnscanary:query` — every DNS query received (baseline noise floor).
 - `sniffer:arp_scan` — ARP request flood from one MAC.
 - `sniffer:arp_reply_unsolicited` — ARP reply with no preceding request

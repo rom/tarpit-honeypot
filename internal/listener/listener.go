@@ -73,6 +73,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		VulnEmulation: vuln,
 		Script:        l.Script,
 		Scripted:      l.Scripted,
+		TLSIntercept:  l.TLSIntercept,
 		SessionRec:    args.SessionRec,
 	}
 	switch l.Proto {

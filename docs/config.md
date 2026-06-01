@@ -211,7 +211,7 @@ listeners:
 The authoritative list is `tarpit-honeypot list-handlers` (it is sourced from
 the same whitelist the validator enforces, so it never drifts).
 
-**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `smtps`, `imaps`, `pop3s`, `ldaps`, `mqtts`, `ftps`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`.
+**TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `smtps`, `imaps`, `pop3s`, `ldaps`, `mqtts`, `ftps`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`, `tls_intercept`.
 
 The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (636),
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
@@ -239,6 +239,30 @@ The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp
 **Dynamic (Lua):** `lua` — the listener's `script:` path drives the connection via a sandboxed Lua VM (pure-Go, no io/os, context deadline + read/write/sleep budgets). Scripts get `conn:read/readline/write`, `host:get/set` (per-source state), `rng:int/choice/hex` (deterministic per deployment+host), `personality()` (stable hostname/version/firmware), `sleep` (timers), and `log`/`flag`/`meta`. Used for deeper app emulation + dynamic banners. Example: [`configs/scripts/iot-login.lua`](../configs/scripts/iot-login.lua).
 
 **Declarative (scripted):** `scripted` — stand up a custom TCP service entirely in YAML under the listener's `scripted:` block: an optional on-connect `greeting`, then top-down `rules` matching each client message by `prefix` / `contains` / `suffix` / `iprefix` / `icontains` (case-insensitive) / `regex` (RE2) / `hex_prefix` / `any`, each writing a `respond` (or `respond_hex` for binary) with an optional per-rule `anomaly` flag and `close`. **Stateful, multi-step protocols**: a rule can require a `stage` and advance it with `set_stage` (e.g. an `auth` stage gating a `command` stage). **Credential capture**: a `regex` rule with `capture: user` / `capture: pass` records the first capture group into the attacker profile + default-credential matching. Bounded rounds + per-reply size cap; TCP-only (cannot be a spoofed-source amplifier); validated at config load.
+
+**TLS interception (`tls_intercept`):** terminate TLS with a believable
+self-signed cert (computing JA3/JA4 + JA3S over the handshake exactly like
+`https`), then route the *decrypted* stream one of two ways via the listener's
+`tls_intercept:` block:
+
+- **Decrypt → inner handler** (`inner_handler: <tcp-handler>`, default `raw`):
+  a TLS front for any emulated service — e.g. wrap the `redis` or `postgres`
+  handler in TLS on a non-standard port, or present `http` where the implicit
+  `https` handler doesn't fit. The inner handler sees cleartext and its result
+  (banner, captured creds, anomalies) is merged with the TLS fingerprints.
+- **Decrypt → forward** (`forward_to: host:port`, optional `forward_tls: true`
+  to re-encrypt to the backend): a true decrypt-and-forward MITM that proxies
+  the cleartext to a **real** backend and records the plaintext of the
+  attacker↔service session (client→backend bytes are captured, bounded to
+  64 KB, into the event payload/pcap). Forwarding is **opt-in and
+  egress-scoped**: the backend must be in the [egress allowlist](#egress--outbound-containment-do-no-harm) or
+  the sensor fails closed and reports a `forward_err` instead of dialing — the
+  sensor can never be turned into an open proxy. The `forward_to` destination
+  is auto-added to the allowlist at startup.
+
+ATT&CK: `T1557` (adversary-in-the-middle) + `T1040` (network sniffing).
+TCP-only; validated at config load (`forward_to` must be `host:port`;
+`inner_handler` must be a real TCP handler and not `tls_intercept` itself).
 
 **Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity); `https.vhosts` (SNI-based virtual hosting — each `server_name`, matched exactly or as a `*.domain` wildcard, presents its own cert with its own `cn`/`org`/`ou`/`key_type`, and the matched name is recorded in the `tls_vhost` event field). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 

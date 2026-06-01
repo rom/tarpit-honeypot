@@ -778,6 +778,40 @@ listeners:
           respond: "END\r\n"
       default: "ERROR\r\n"
 
+  # TLS-terminating MITM front (handler: tls_intercept). Terminates TLS with a
+  # believable self-signed cert (JA3/JA4 + JA3S computed like `https`), then
+  # routes the *decrypted* stream one of two ways:
+  #
+  # (A) inner_handler — a TLS front for an emulated service. Here we present
+  #     the redis handler over TLS on a non-standard port: the attacker speaks
+  #     RESP inside a TLS tunnel and we capture AUTH creds in cleartext.
+  - id: tcp-tls-front-redis
+    proto: tcp
+    bind: 0.0.0.0:20090
+    mode: banner
+    handler: tls_intercept
+    severity: medium
+    read_timeout: 30s
+    tls_intercept:
+      inner_handler: redis
+  #
+  # (B) forward_to — a true decrypt-and-forward MITM to a REAL backend. The
+  #     cleartext attacker<->service session is captured (client->backend bytes,
+  #     64 KB cap). DANGER/opt-in: the backend MUST be in the egress allowlist
+  #     or the sensor fails closed (forward_err) — it can never become an open
+  #     proxy. forward_tls re-encrypts to the backend (TLS-to-TLS). Uncomment
+  #     and point at a backend you operate; it is auto-allowlisted at startup.
+  # - id: tcp-tls-forward
+  #   proto: tcp
+  #   bind: 0.0.0.0:20091
+  #   mode: banner
+  #   handler: tls_intercept
+  #   severity: high
+  #   read_timeout: 30s
+  #   tls_intercept:
+  #     forward_to: 10.0.0.20:443
+  #     forward_tls: true
+
   # Dynamic Lua services (counters / timestamps / uptime / rotating banners).
   # See configs/scripts/*.lua. Each script drives the socket directly.
   - id: tcp-lua-redis
@@ -852,6 +886,17 @@ sniffer:
     stealth_ports: 3       # NULL/FIN/Xmas threshold (lower — always hostile)
     window: 30s
     detect_fragments: true # flag fragmented inbound probes (evasion)
+
+# External threat-intel feed ingestion. Each feed URL must be reachable under
+# the egress allowlist (it's auto-allowlisted when threat_feeds is enabled). A
+# matched source IP is tagged external_intel + threat_intel_hit, so the risk
+# scorer, tarpits, severity overrides, and the blocklist all act on it.
+threat_feeds:
+  enabled: false
+  poll: 1h
+  feeds:
+    - { label: firehol, url: "https://iplists.firehol.org/files/firehol_level1.netset", format: lines }
+    # - { label: abuseipdb, url: "https://api.abuseipdb.com/api/v2/blacklist", format: json_ips, header: "Key: ${ABUSEIPDB_KEY}" }
 
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }

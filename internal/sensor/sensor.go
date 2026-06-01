@@ -25,6 +25,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/enrich"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/feeds"
 	"github.com/rom/tarpit-honeypot/internal/fetcher"
 	"github.com/rom/tarpit-honeypot/internal/fleet"
 	"github.com/rom/tarpit-honeypot/internal/forward"
@@ -48,6 +49,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/tokentrack"
 	"github.com/rom/tarpit-honeypot/internal/trust"
 	"github.com/rom/tarpit-honeypot/internal/tunnet"
 	"github.com/rom/tarpit-honeypot/internal/version"
@@ -77,7 +79,8 @@ type Sensor struct {
 	devices     *devices.Registry
 	scanTrack   *scananalysis.Tracker
 	fuzzTrack   *fuzzdos.Tracker
-	sniffer     sniffer.Sniffer // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
+	sniffer     sniffer.Sniffer     // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
+	tokenTrack  *tokentrack.Tracker // honey-credential reuse detector (always on)
 	payloads    *payload.Store
 	urlFetcher  *fetcher.Fetcher // opt-in active fetch of harvested ingress URLs (nil = off)
 	sessionRec  *sessionrec.Store
@@ -90,6 +93,7 @@ type Sensor struct {
 	fleet       *fleet.Correlator // cross-sensor correlation (nil when disabled)
 	intelStore  *intel.Store      // downward fleet-intel served to children (nil when not serving)
 	intelPuller *intel.Puller     // downward fleet-intel pulled from a parent (nil when not subscribing)
+	feedsPuller *feeds.Puller     // external threat-intel feed ingestion (nil when disabled)
 	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 	iocEmit     map[string]bool   // indicator types whose first-sight emits an ioc:<type> event (nil = IOC off)
 
@@ -213,9 +217,22 @@ func New(cfg *config.Config) (*Sensor, error) {
 				egPol.Allow(d)
 			}
 		}
+		if cfg.ThreatFeeds.Enabled {
+			for _, f := range cfg.ThreatFeeds.Feeds {
+				if d := forwardDest(f.URL); d != "" {
+					egPol.Allow(d)
+				}
+			}
+		}
 		if cfg.MISP.Enabled {
 			if d := forwardDest(cfg.MISP.URL); d != "" {
 				egPol.Allow(d)
+			}
+		}
+		// tls_intercept decrypt-and-forward backends must be reachable.
+		for _, l := range cfg.Listeners {
+			if l.Handler == "tls_intercept" && l.TLSIntercept.ForwardTo != "" {
+				egPol.Allow(l.TLSIntercept.ForwardTo)
 			}
 		}
 		for _, d := range cfg.Sensor.Egress.Allow {
@@ -494,6 +511,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		fuzzTrack:     fuzzdos.NewTracker(60 * time.Second),
 		payloads:      payloadStore,
 		urlFetcher:    urlFetcher,
+		tokenTrack:    tokentrack.New(0),
 		sessionRec:    sessRec,
 		risk:          newRiskScorer(cfg.Risk),
 		blocker:       newBlocker(cfg.Risk.Block),
@@ -536,6 +554,22 @@ func New(cfg *config.Config) (*Sensor, error) {
 				}
 			})
 		slog.Info("fleet intel feed subscribed", "url", cfg.IntelFeed.URL)
+	}
+
+	// External threat-intel feed ingestion: pull operator-configured reputation
+	// feeds (through the egress allowlist) into the enricher's external overlay.
+	if cfg.ThreatFeeds.Enabled && len(cfg.ThreatFeeds.Feeds) > 0 {
+		fl := make([]feeds.Feed, 0, len(cfg.ThreatFeeds.Feeds))
+		for _, f := range cfg.ThreatFeeds.Feeds {
+			fl = append(fl, feeds.Feed{Label: f.Label, URL: f.URL, Format: f.Format, Header: f.Header})
+		}
+		s.feedsPuller = feeds.NewPuller(fl, cfg.ThreatFeeds.Poll,
+			egress.HTTPClient(15*time.Second), func(ips map[string]string) {
+				if en := s.curEnricher(); en != nil {
+					en.SetExternalIntel(ips)
+				}
+			})
+		slog.Info("external threat feeds enabled", "feeds", len(fl))
 	}
 
 	// MISP push: ship the fleet's observed IOCs to a MISP instance. The IOC
@@ -1040,6 +1074,70 @@ func (s *Sensor) fetchHarvestedURLs(urls []string) []payload.Artifact {
 		}
 	}
 	return out
+}
+
+// servedTokenKeys are event-meta keys whose value is a synthetic credential
+// the sensor HANDED OUT (so it should be remembered as a trackable token).
+var servedTokenKeys = []string{"honeytoken", "bearer_token", "vault_token"}
+
+// capturedCredKeys are event-meta keys whose value is a credential the attacker
+// SUPPLIED (so it should be checked against previously-served tokens).
+var capturedCredKeys = []string{
+	"auth_pass", "auth_password", "password", "pass_attempt",
+	"http_login_pass", "redis_auth", "bind_pw", "bearer_token", "vault_token",
+}
+
+// observeTokens closes the honey-credential loop. It records any synthetic
+// token the event served, and checks any credential the event captured against
+// previously-served tokens; a match means a fake secret we handed out is being
+// REUSED — strong proof of compromise — and yields a critical canary:token_used
+// event. Returns nil when nothing matched.
+func (s *Sensor) observeTokens(ev *event.Event) *event.Event {
+	if s.tokenTrack == nil || ev == nil || ev.Meta == nil || ev.RuleID == "canary:token_used" {
+		return nil
+	}
+	// Record served tokens for future reuse detection.
+	for _, k := range servedTokenKeys {
+		if v, ok := ev.Meta[k].(string); ok && v != "" {
+			s.tokenTrack.Record(v, ev.Handler, ev.RuleID, ev.Source.IP, ev.Time)
+		}
+	}
+	// Check captured credentials against the served-token registry.
+	for _, k := range capturedCredKeys {
+		v, ok := ev.Meta[k].(string)
+		if !ok || v == "" {
+			continue
+		}
+		m, hit := s.tokenTrack.Check(v)
+		if !hit {
+			continue
+		}
+		// Don't fire when the same connection both served and (echoed) the
+		// token in one event — only a *later, separate* use is interesting.
+		if m.SrcIP == ev.Source.IP && m.First.Equal(ev.Time) {
+			continue
+		}
+		return &event.Event{
+			ID:       event.NewID(),
+			Time:     ev.Time,
+			Sensor:   s.name,
+			RuleID:   "canary:token_used",
+			Severity: event.SeverityCritical,
+			Source:   ev.Source,
+			Dest:     ev.Dest,
+			Proto:    ev.Proto,
+			Handler:  ev.Handler,
+			Meta: map[string]any{
+				"trigger_event_id": ev.ID,
+				"reused_cred_key":  k,
+				"minted_handler":   m.Handler,
+				"minted_rule":      m.RuleID,
+				"minted_to_ip":     m.SrcIP,
+				"minted_at":        m.First.UTC().Format(time.RFC3339),
+			},
+		}
+	}
+	return nil
 }
 
 // shellCommandText returns the attacker's interactive-shell input from an
@@ -1721,6 +1819,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go func() { defer wg.Done(); s.intelPuller.Run(ctx) }()
 	}
 
+	// External threat-feed puller: refresh reputation feeds until shutdown.
+	if s.feedsPuller != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.feedsPuller.Run(ctx) }()
+	}
+
 	// MISP IOC pusher: ship fleet indicators until shutdown.
 	if s.mispPusher != nil {
 		wg.Add(1)
@@ -1789,6 +1893,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 				if mw := s.observePayload(ev, payloadBytes); mw != nil {
 					s.dispatch(rt, mw)
 					s.scoreRisk(rt, mw)
+				}
+				// Honey-credential loop: record served tokens and detect reuse
+				// of a previously-served synthetic secret (proof of compromise).
+				if tu := s.observeTokens(ev); tu != nil {
+					s.dispatch(rt, tu)
+					s.scoreRisk(rt, tu)
 				}
 				// Scan analysis: feed listener events into the
 				// per-source Tracker; emit scananalysis:profile when a

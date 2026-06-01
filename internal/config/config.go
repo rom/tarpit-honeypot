@@ -43,6 +43,10 @@ type Config struct {
 	// IntelFeed subscribes this node to a parent's downward fleet-intel feed.
 	// See internal/intel.
 	IntelFeed IntelFeed `yaml:"intel_feed"`
+	// ThreatFeeds ingests external reputation feeds (AbuseIPDB / GreyNoise /
+	// FireHOL / Spamhaus / plain IP lists) and tags matching sources
+	// external_intel + threat_intel_hit. See internal/feeds.
+	ThreatFeeds ThreatFeeds `yaml:"threat_feeds"`
 	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
 	MISP MISPConfig `yaml:"misp"`
 	// IOC turns the indicators every event carries (IPs, fingerprints, hashes,
@@ -232,6 +236,25 @@ type IntelFeed struct {
 	URL      string        `yaml:"url"`       // parent feed endpoint, e.g. https://agg/intel
 	TokenEnv string        `yaml:"token_env"` // bearer token read from this env var
 	Poll     time.Duration `yaml:"poll"`      // poll interval (default 60s)
+}
+
+// ThreatFeeds configures ingestion of external IP-reputation feeds. Each feed
+// URL must be in the egress allowlist (egress.allow), since the puller dials
+// through the egress-governed client. A matched source IP is tagged
+// external_intel + threat_intel_hit so the risk / tarpit / blocklist machinery
+// treats it as hostile.
+type ThreatFeeds struct {
+	Enabled bool          `yaml:"enabled"`
+	Poll    time.Duration `yaml:"poll"` // refresh interval (default 1h)
+	Feeds   []ThreatFeed  `yaml:"feeds"`
+}
+
+// ThreatFeed is one external reputation source.
+type ThreatFeed struct {
+	Label  string `yaml:"label"`  // tag applied to matching events
+	URL    string `yaml:"url"`    // feed endpoint (must be egress-allowlisted)
+	Format string `yaml:"format"` // "lines" (default) | "json_ips"
+	Header string `yaml:"header"` // optional auth header "Name: value" (e.g. an API key)
 }
 
 // IOCConfig controls the indicator-of-compromise store + ioc:<type> events.
@@ -819,6 +842,35 @@ type Listener struct {
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
 	SNMP   SNMPListener `yaml:"snmp"`
+	// TLSIntercept configures the tls_intercept handler (terminate TLS, then
+	// either hand the cleartext to an internal handler or forward it to a real
+	// backend, capturing both directions). See TLSIntercept.
+	TLSIntercept TLSIntercept `yaml:"tls_intercept"`
+}
+
+// TLSIntercept configures the tls_intercept handler. It terminates TLS with a
+// believable cert (computing JA3/JA4/JA3S over the handshake) and then routes
+// the decrypted stream one of two ways:
+//
+//   - InnerHandler set, ForwardTo empty: the cleartext is handed to an internal
+//     protocol handler (e.g. "http", "redis") — a TLS front for an emulated
+//     service, generalizing the implicit-TLS wrap to any port/handler.
+//   - ForwardTo set ("host:port"): true decrypt-and-forward MITM — the
+//     cleartext is proxied bidirectionally to a real backend (dialed through
+//     the egress allowlist) and BOTH directions are captured, so the operator
+//     records the plaintext of an attacker<->real-service session while the
+//     service stays fully believable. Opt-in and egress-scoped, since it makes
+//     the sensor proxy to a live host.
+type TLSIntercept struct {
+	// InnerHandler is the plaintext handler to run over the decrypted stream
+	// when not forwarding (default "raw").
+	InnerHandler string `yaml:"inner_handler"`
+	// ForwardTo, when set to "host:port", enables decrypt-and-forward to that
+	// real backend instead of an internal handler. Must be egress-allowlisted.
+	ForwardTo string `yaml:"forward_to"`
+	// ForwardTLS, when true, re-encrypts to the backend (TLS-to-TLS MITM);
+	// otherwise the backend leg is plaintext (TLS-to-plaintext).
+	ForwardTLS bool `yaml:"forward_tls"`
 }
 
 // SNMPListener configures the snmp UDP handler: which MIB subtrees the
