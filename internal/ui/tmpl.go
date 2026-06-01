@@ -561,8 +561,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .TopTech }}{{ template "bars" .TopTech }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>recent kill-chain progressions</h2>
-{{ if .Chains }}<table><tr><th>time</th><th>source</th><th>chain</th></tr>
-{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+{{ if .Chains }}<table><tr><th>time</th><th>source</th><th>playbook</th><th>chain</th></tr>
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
 {{ template "foot" . }}{{ end }}

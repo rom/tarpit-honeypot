@@ -41,9 +41,10 @@ type tacticRow struct {
 }
 
 type chainRow struct {
-	Time   time.Time
-	Source string
-	Chain  string
+	Time     time.Time
+	Source   string
+	Chain    string
+	Playbook string // named attack pattern (storyline meta.playbook), if recognized
 }
 
 // eventTag recomputes the ATT&CK Tag for a stored event exactly as the live
@@ -66,7 +67,8 @@ func buildAttackView(since time.Time, evs []*event.Event) attackView {
 		// their own), so capture them before the technique guard.
 		if ev.RuleID == "storyline:multi_stage" {
 			if chain, ok := ev.Meta["chain"].(string); ok && chain != "" {
-				v.Chains = append(v.Chains, chainRow{Time: ev.Time, Source: ev.Source.IP, Chain: chain})
+				pb, _ := ev.Meta["playbook"].(string)
+				v.Chains = append(v.Chains, chainRow{Time: ev.Time, Source: ev.Source.IP, Chain: chain, Playbook: pb})
 			}
 		}
 		tag := eventTag(ev)
