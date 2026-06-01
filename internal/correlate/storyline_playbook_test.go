@@ -135,3 +135,28 @@ func TestStorylineDataExfilPlaybook(t *testing.T) {
 		t.Errorf("exfiltration storyline should be critical; got %v", story.Severity)
 	}
 }
+
+// TestStorylineDNSTunnelingPlaybook: DNS tunneling anomalies across a chain
+// label it dns-tunneling.
+func TestStorylineDNSTunnelingPlaybook(t *testing.T) {
+	c, _ := New(config.Correlate{})
+	src := event.Endpoint{IP: "203.0.113.72"}
+	now := time.Now().UTC()
+	steps := []*event.Event{
+		{Source: src, Handler: "dns", RuleID: "listener:dns", Time: now,
+			MitreTactics: []string{"reconnaissance"}, MitreTechniques: []string{"T1595"}},
+		{Source: src, Handler: "dns", RuleID: "listener:dns", Time: now.Add(time.Second),
+			MitreTactics: []string{"command-and-control"}, MitreTechniques: []string{"T1071.004"},
+			Anomalies: []string{"dns-tunnel-suspected"}},
+		{Source: src, Handler: "dns", RuleID: "listener:dns", Time: now.Add(2 * time.Second),
+			MitreTactics: []string{"exfiltration"}, MitreTechniques: []string{"T1048"},
+			Anomalies: []string{"dns-dga-suspected"}},
+	}
+	var story *event.Event
+	for _, e := range steps {
+		story = lastStory(c.Observe(e))
+	}
+	if story == nil || story.Meta["playbook"] != "dns-tunneling" {
+		t.Fatalf("playbook = %v; want dns-tunneling", story)
+	}
+}
