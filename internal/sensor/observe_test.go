@@ -7,6 +7,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
+	"github.com/rom/tarpit-honeypot/internal/tokentrack"
 )
 
 func hasAnomaly(ev *event.Event, want string) bool {
@@ -113,5 +114,52 @@ func TestObserveScanIgnoresNonListener(t *testing.T) {
 	ev := &event.Event{RuleID: "device:new", Source: event.Endpoint{IP: "203.0.113.9"}}
 	if e := s.observeScan(ev, nil); e != nil {
 		t.Errorf("non-listener event should be ignored; got %v", e)
+	}
+}
+
+func TestObserveTokensDetectsReuse(t *testing.T) {
+	s := &Sensor{name: "t", tokenTrack: tokentrack.New(0)}
+	t0 := time.Now().UTC()
+
+	// 1) Serve a synthetic vault token to attacker A — recorded, no finding.
+	served := &event.Event{
+		Time: t0, RuleID: "listener:vault:request", Handler: "vault",
+		Source: event.Endpoint{IP: "203.0.113.10"},
+		Meta:   map[string]any{"vault_token": "Kp9mZq3vR7wLs1xN"},
+	}
+	if tu := s.observeTokens(served); tu != nil {
+		t.Fatalf("serving a token should not itself fire token_used: %+v", tu)
+	}
+
+	// 2) Later, attacker B authenticates somewhere using that exact token.
+	reused := &event.Event{
+		Time: t0.Add(time.Hour), RuleID: "listener:ssh:auth", Handler: "ssh",
+		Source: event.Endpoint{IP: "198.51.100.4"},
+		Meta:   map[string]any{"auth_password": "Kp9mZq3vR7wLs1xN"},
+	}
+	tu := s.observeTokens(reused)
+	if tu == nil {
+		t.Fatal("reuse of a served token should fire canary:token_used")
+	}
+	if tu.RuleID != "canary:token_used" || tu.Severity != event.SeverityCritical {
+		t.Errorf("wrong finding: rule=%s sev=%v", tu.RuleID, tu.Severity)
+	}
+	if tu.Meta["minted_handler"] != "vault" {
+		t.Errorf("mint context lost: %+v", tu.Meta)
+	}
+}
+
+func TestObserveTokensIgnoresSameConnectionEcho(t *testing.T) {
+	s := &Sensor{name: "t", tokenTrack: tokentrack.New(0)}
+	t0 := time.Now().UTC()
+	// An event that both serves and (in the same connection/time) echoes the
+	// token must not self-trigger.
+	ev := &event.Event{
+		Time: t0, RuleID: "listener:vault:request", Handler: "vault",
+		Source: event.Endpoint{IP: "203.0.113.10"},
+		Meta:   map[string]any{"vault_token": "Kp9mZq3vR7wLs1xN", "auth_password": "Kp9mZq3vR7wLs1xN"},
+	}
+	if tu := s.observeTokens(ev); tu != nil {
+		t.Errorf("same-connection echo should not fire token_used: %+v", tu)
 	}
 }

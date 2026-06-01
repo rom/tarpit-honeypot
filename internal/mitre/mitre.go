@@ -52,6 +52,11 @@ func Lookup(ruleID, handler string) Tag {
 		}
 		return Tag{Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}}
 	}
+	// A reused honey-credential is the attacker authenticating with a fake
+	// secret we handed out — Valid Accounts, near-certain compromise.
+	if ruleID == "canary:token_used" {
+		return Tag{Techniques: []string{"T1078"}, Tactics: []string{"defense-evasion", "credential-access"}}
+	}
 	// canary hits cover credential staging / persistence reconnaissance.
 	if strings.HasPrefix(ruleID, "canary:url:") {
 		return Tag{Techniques: []string{"T1083", "T1190"}, Tactics: []string{"discovery", "initial-access"}}

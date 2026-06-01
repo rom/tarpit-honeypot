@@ -1684,6 +1684,12 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `canary:<id>` — file canary (fsnotify path or fanotify-detected read).
 - `canary:url:<id>` — URL canary path matched by an HTTP/HTTPS handler.
 - `canary:dns:<id>` — DNS canary name (or subdomain) queried.
+- `canary:token_used` — **critical**: a synthetic credential the sensor handed
+  out (a served honeytoken / cloud / vault secret) later appeared in a captured
+  authentication attempt — near-certain proof of compromise (token reuse). Meta
+  carries the original mint context (`minted_handler`, `minted_to_ip`,
+  `minted_at`) and the reuse key. Closes the honey-credential loop the way a
+  hosted Canarytoken does (T1078).
 - `dnscanary:query` — every DNS query received (baseline noise floor).
 - `sniffer:arp_scan` — ARP request flood from one MAC.
 - `sniffer:arp_reply_unsolicited` — ARP reply with no preceding request
