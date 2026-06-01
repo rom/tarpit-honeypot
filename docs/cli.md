@@ -21,6 +21,7 @@ tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot list-fleet-rules [--json]
 tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
+tarpit-honeypot jarm           [--timeout D] [--sni NAME] <host:port>
 tarpit-honeypot init           [-o file]
 tarpit-honeypot completion     bash | zsh | fish
 tarpit-honeypot help           [subcommand | topic]
@@ -517,6 +518,35 @@ tarpit-honeypot identify --payload '${jndi:ldap://x/a}' --handler http
 | `--ja3 <s>` | — | JA3 TLS fingerprint (md5 hex). |
 | `--payload <s>` | — | Raw request bytes to scan for CVE exploit signatures. |
 | `--handler <h>` | `http` | Service context for `--payload` CVE matching. |
+
+---
+
+## `jarm`
+
+Actively probe a TLS server and print its **JARM** fingerprint. JARM opens
+several TLS connections with deliberately varied ClientHellos (version window,
+cipher ordering, ALPN) and fingerprints how the server negotiates each — a
+stable identifier for the server's TLS stack/config.
+
+```
+tarpit-honeypot jarm 127.0.0.1:8443
+# 27d40d40d29d40d1dc42d43d00041d...   (62-char fingerprint)
+
+tarpit-honeypot jarm --sni mail.corp.local 10.0.0.9:443
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--timeout` | `5s` | Per-probe dial + handshake timeout. |
+| `--sni` | "" | ServerName (SNI) to send; empty = none. |
+
+Point it at your own sensor's `https` listener to confirm its TLS posture
+matches the product it impersonates (and hasn't drifted after a cert/profile
+change). A probe the server refuses (e.g. it won't speak the offered version)
+contributes a "no-response" slot, exactly as in a real JARM scan. The
+fingerprint is self-consistent for drift detection; because `crypto/tls`
+doesn't expose ClientHello extension ordering / GREASE, it is not guaranteed
+byte-identical to the upstream FoxIO JARM corpus.
 
 ---
 

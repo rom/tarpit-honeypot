@@ -170,6 +170,13 @@ Run the offline fingerprint engine over a supplied User-Agent, path, SSH
 client id, JA3, or payload
 .RB ( --ua ", " --ssh ", " --ja3 ", " --payload ", " --handler ).
 .TP
+.B jarm \fIhost:port\fR
+Actively probe a TLS server and print its JARM fingerprint
+.RB ( --timeout ", " --sni ).
+Point it at the sensor's own
+.B https
+listener to confirm its TLS posture matches the impersonated product.
+.TP
 .B init
 Write a default config skeleton to stdout (or
 .BR -o ).

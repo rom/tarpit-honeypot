@@ -45,6 +45,7 @@ func Dispatch(args []string) error {
 		{"list-unavailable-capabilities", "print disabled / infeasible high-interaction features", cmdListUnavailableCapabilities},
 		{"export-iocs", "export fleet IOCs from the store (stix | csv | txt | json)", cmdExportIOCs},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
+		{"jarm", "actively probe a TLS server and print its JARM fingerprint", cmdJARM},
 		{"reset-db", "empty the local event store / device inventory / captures", cmdResetDB},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},
 		{"completion", "print shell-completion script (bash | zsh | fish)", cmdCompletion},
