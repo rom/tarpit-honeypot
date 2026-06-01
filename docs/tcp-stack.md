@@ -56,8 +56,14 @@ and p0f and to harvest a first request/response; deep multi-segment
 protocol interaction (full login flows, file transfers, interactive
 shells) still wants a real socket bound behind `ip addr add` / NAT.
 
-IPv6 reconnaissance stays in the `tunnet` L3 responder (ICMPv6 echo); the
-userspace stack is IPv4/TCP only.
+The userspace stack itself is IPv4/TCP only. IPv6 reconnaissance is handled
+directly by the `tunnet` L3 responder, which has SYN-layer parity with IPv4:
+it answers ICMPv6 echo, and an IPv6 TCP SYN to an open port of an IPv6 virtual
+host gets a SYN-ACK plus a `honeynet:tcp_connect` event (closed ports get a
+RST). So an IPv6 `nmap -sS`/`-sT` sees the same open/closed map and the scan is
+observed and correlatable. The stateful data phase (banners, request/response,
+the full flow state machine) remains IPv4-only by design — a second complete
+TCP/IP implementation is out of scope; this is detection + "looks open" parity.
 
 ---
 
@@ -361,7 +367,8 @@ GOOS=linux go build ./internal/tunnet/   # the I/O layer is Linux-only
 - In-order data only; no retransmission, congestion control, out-of-order
   reassembly, or PMTU discovery.
 - One request/response per flow (a service-version probe, not a session).
-- IPv4 only; IPv6 reconnaissance is ICMPv6 echo in `tunnet`.
+- IPv4 only for the stateful data phase; IPv6 reconnaissance (ICMPv6 echo +
+  SYN→SYN-ACK/RST with a `honeynet:tcp_connect` event) is handled in `tunnet`.
 - No TLS termination — `https` ports complete the TCP handshake and stay
   silent (still "open" to a port scan).
 - The four fingerprint profiles approximate real stacks; they are tuned to

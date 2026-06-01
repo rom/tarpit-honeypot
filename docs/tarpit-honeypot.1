@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-05-25" "tarpit-honeypot 2.1.0" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-06-01" "tarpit-honeypot 2.2.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -19,7 +19,9 @@ tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 is a single, statically linked, CGO-free Go binary that stands up
 plausible decoy services (SSH, HTTP/S, FTP, SMB, RDP, databases, a large
 set of ICS/OT protocols, printers/MFDs, remote-access and out-of-band
-management endpoints), records every interaction as a structured event,
+management endpoints, the cloud-native control plane \(em Kubernetes API,
+etcd, Vault, cloud instance metadata \(em and modern transports such as
+WebSocket and gRPC), records every interaction as a structured event,
 and forwards alerts to one or more outbound channels. It never exposes a
 real shell, filesystem, or exploitable code path: dangerous operations are
 recognized and logged, never performed.
@@ -111,7 +113,13 @@ Tail / query events from the local SQLite store or JSON logs
 .TP
 .B gen-token
 Print an unguessable canary token
-.RB ( --type " " dns | url | hex ).
+.RB ( --type " " dns | url | hex | ssrf ).
+The
+.B ssrf
+type emits a callback URL to plant in an SSRF parameter, webhook field, or
+XXE entity; point it at an
+.B ssrf_canary
+listener to record out-of-band fetches.
 .TP
 .B export-pcap
 Copy one event's per-connection pcap out of the captures directory.

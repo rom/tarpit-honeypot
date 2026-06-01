@@ -8,6 +8,112 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — cloud-native attack surface + protocol breadth (version 2.2.0)
+
+Version bumped to **2.2.0**. This release widens the honeypot toward the
+cloud-native / container attack surface, modern application transports, the
+full JA4+ TLS/TCP fingerprint suite, an out-of-band SSRF canary, deeper
+post-login TTP detection, and IPv6 reconnaissance parity.
+
+**Cloud-native + container handlers**
+- New `cloud_metadata` handler emulates the instance metadata service (IMDS)
+  for AWS, GCP and Azure from one listener (they share 169.254.169.254 with
+  different paths/headers). Serves synthetic instance identity and honeytoken
+  IAM / OAuth credentials and flags `cloud-credential-theft` on the IAM
+  `security-credentials`, GCP service-account `token`, and Azure `oauth2/token`
+  paths — the post-SSRF credential-theft TTP (T1552.005).
+- New `etcd` handler emulates the etcd KV store API (v2 `/v2/keys`, v3
+  `/v3/kv/range|put|deleterange`, `/version`, `/health`, `/metrics`, member
+  list) with believable Kubernetes cluster state including a base64
+  `/registry/secrets/...` key; flags `etcd-secret-read` / `etcd-range-read` /
+  `etcd-write` (T1552.007 / T1213 / T1565.001).
+- New `kubernetes_api` handler emulates kube-apiserver (6443/8080/10250):
+  answers `/version`, `/api`, `/apis`, `/healthz` discovery; captures the
+  `Authorization: Bearer` service-account token (`bearer_token`); flags
+  `k8s-secret-enum` / `k8s-pod-create` / `k8s-pod-exec`; 403s anonymous
+  protected requests as `system:anonymous`.
+- New `vault` handler emulates the HashiCorp Vault API (8200): answers
+  `/v1/sys/health` + `seal-status` like an unsealed Vault; captures
+  `X-Vault-Token` (`vault_token`); flags `vault-secret-read` /
+  `vault-mount-enum` / `vault-policy-access` / `vault-seal-control`; tokenless
+  secret reads get 403 (T1555 / T1528).
+
+**Modern application transports**
+- New `websocket` handler completes the RFC 6455 opening handshake (computing
+  `Sec-WebSocket-Accept`), then unmasks and captures client frames, flagging
+  `ws-credential-material` and `ws-command-payload` on hostile first messages;
+  non-upgrade probes get a `426`.
+- New `grpc` handler recognizes the HTTP/2 connection preface, replies with a
+  believable SETTINGS + ACK, reads the following frames and extracts the
+  `/package.Service/Method` path from HEADERS (no HPACK decode required),
+  flagging `grpc-reflection-probe`.
+
+**TLS/TCP fingerprint suite (JA4+)**
+- `fingerprint.JA4S` — server-side TLS fingerprint from the ServerHello
+  (modern JA3S successor), emitted alongside `ja3s` as `ja4s` by the https
+  handler.
+- `fingerprint.JA4T` — TCP-layer fingerprint (window, option-kind layout, MSS,
+  window-scale) computed from the client SYN in the userspace honeynet stack
+  and attached to `honeynet:tcp_connect` events as `ja4t`.
+- `fingerprint.JARM` — server fingerprint library primitive for confirming a
+  sensor's TLS posture matches the product it impersonates.
+
+**SNI virtual hosting**
+- `https.vhosts` lets one HTTPS listener front several personas. The TLS
+  `GetCertificate` callback matches the client SNI (exact or `*.domain`
+  wildcard) and presents that vhost's own deployment-derived certificate (own
+  CN / Org / key type), recording the matched name in the `tls_vhost` event
+  field.
+
+**SSRF out-of-band callback canary**
+- New `ssrf_canary` handler — the inverse of the URL/DNS canaries. Plant a
+  token URL (`gen-token --type=ssrf`) in an SSRF parameter, webhook field, or
+  XXE entity; when a coerced system fetches it the callback is recorded with
+  the token + `User-Agent` / `X-Forwarded-For` / `Via`. Flags `ssrf-callback`
+  always, and `ssrf-server-side-fetch` when the UA is an HTTP client library
+  rather than a browser. Returns a 1×1 GIF so the exploit chain proceeds.
+- `gen-token --type=ssrf` emits a ready-to-plant callback URL.
+
+**Tarpit strategies (9 new)**
+- The per-listener tarpit grew from 3 to 12 strategies: `jitter`, `backoff`,
+  `ssh_banner` (endlessh-style), `http_headers`, `http_chunked`, `echo`,
+  `babble`, plus the aggressive opt-in `zipbomb` (gzip decompression bomb) and
+  `zero_window` (LaBrea TCP receive-window clamp). Each has its own config
+  sub-struct, defaults, and validation; the two aggressive modes are clearly
+  documented as retaliatory and are never selected by default.
+
+**Post-login shell — 7 more ATT&CK-mapped TTPs**
+- The emulated shell's command classifier gains `shell-container-escape`
+  (T1611), `shell-cloud-cred-theft` (T1552.005), `shell-local-exploit` (T1068),
+  `shell-data-staged` (T1560.001), `shell-exfil-channel` (T1048),
+  `shell-decode-pipe-exec` (T1140), and `shell-destruction` (T1485/T1486).
+
+**Correlation rules**
+- New `correlate:cloud_cred_theft` (counts cloud credential-theft markers from
+  one source) and `correlate:ssrf_callback` (counts distinct SSRF tokens called
+  back by one source), both windowed, severity-configurable, and ATT&CK-tagged.
+
+**IPv6 honeynet parity**
+- The honeynet TUN responder now gives IPv6 TCP reconnaissance the same
+  SYN-layer visibility as IPv4: an IPv6 SYN to an open port of an IPv6 virtual
+  host is answered with a SYN-ACK and surfaced as a `honeynet:tcp_connect`
+  event (closed ports get a RST). The stateful data phase remains IPv4-only by
+  design. `tcpstack.Event` gained `SrcIP6`/`DstIP6`/`IsV6` so v6 addresses are
+  carried honestly.
+
+**Listeners / service bundles**
+- New `kubernetes` archeservice role (apiserver + kubelet + etcd client/peer).
+  The `containerhost` role's 6443/10250 ports now use the dedicated
+  `kubernetes_api` handler and it gains etcd on 2379; `secretstore` now uses the
+  dedicated `vault` handler. A new catalog-wide test expands and validates every
+  role against the handler whitelist.
+
+**MITRE / docs**
+- All new handlers, anomaly markers, and correlation rules are mapped in the
+  MITRE technique + tactic tables (new technique descriptions for T1555, T1528,
+  T1609, T1611, T1068, T1560.001). README, `docs/config.md`, and the handler
+  reference tables document every addition.
+
 ### Added — in-product documentation + new guides (version 2.1.0)
 - The web UI **docs** tab now renders the full documentation in-product: the
   Markdown guides are embedded in the binary (`docs` package), `/docs` lists a

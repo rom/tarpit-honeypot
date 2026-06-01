@@ -43,9 +43,27 @@ Operators commonly leave decoy URLs/DNS names lying around to catch lateral-move
 
 ./bin/tarpit-honeypot gen-token --type=url --bits=128
 # /__canary__/8ed2a49c8ef9639a1234567890abcdef
+
+./bin/tarpit-honeypot gen-token --type=ssrf --label=billing-api
+# a full http callback URL pointing at an ssrf_canary listener
 ```
 
 Paste the output into a `dns_canaries:` or `url_canaries:` entry in the config, drop a reference in fake docs / shell history / config files, and the sensor fires a critical event the moment any resolver or HTTP client touches it.
+
+The `ssrf_canary` handler (v2.2) is the inverse of the URL/DNS canaries: instead of waiting for something to resolve or open a name, you plant an `--type=ssrf` token URL into an SSRF-able parameter, a webhook field, or an XXE entity. When a coerced server-side fetcher pulls it, the callback is recorded (token + the fetching system's `User-Agent` / `X-Forwarded-For` / `Via`) and flagged `ssrf-callback` / `ssrf-server-side-fetch`. The handler returns a 1x1 GIF so the exploit chain keeps going and the attacker doesn't notice the bait.
+
+### Tarpitting a listener
+
+Set `tarpit.strategy:` on a listener to hold connections open instead of
+(or after) serving a banner. As of v2.2 there are **12** strategies (up
+from 3): `sticky`, `trickle`, `keepalive`, `jitter`, `backoff`,
+`ssh_banner` (endlessh-style slow SSH banner), `http_headers`,
+`http_chunked`, `echo`, and `babble`, plus two **aggressive, opt-in**
+ones — `zipbomb` (a gzip decompression bomb) and `zero_window` (a
+LaBrea-style TCP receive-window clamp). The two aggressive strategies are
+retaliatory: use them only against authorized targets, and never as a
+default. See [`config.md`](config.md#tarpit-strategies) for each
+strategy's knobs.
 
 ### Hot reload
 
@@ -160,7 +178,7 @@ Five optional Linux-only adapters make the honeynet more discoverable **without*
 
 - **`arp_responder`** (v1.2): the sensor opens an AF_PACKET socket and answers ARP requests for every virtual host IP. `arp-scan` sees the network as populated.
 - **`icmp_responder`** (v1.3): the sensor answers IPv4 ICMP echo (ping) for every virtual host IP via the same AF_PACKET path.
-- **`tun`** (v1.5+): the sensor opens a Linux TUN device; the operator routes the honeynet CIDR into it. The sensor answers ICMP/ICMPv6 echo and embeds a **userspace TCP stack** ([`tcp-stack.md`](tcp-stack.md)) that terminates TCP for the whole CIDR — no `ip addr add` per host. For each host's `services:` ports it completes a handshake with a **SYN-ACK shaped to the archetype's stack fingerprint** (TTL/window/MSS/window-scale/SACK/timestamps/option order — what `nmap -O` and p0f read) and answers a single request/response from the archetype banners; unbound ports RST. ICMP, RST and SYN-ACK all carry the per-host **TTL personality** (255 OT / 128 Windows / 64 Linux), so the OS fingerprint is consistent across open ports, closed ports and ping. Malformed / illegal / stealth-scan packets (NULL/FIN/Xmas, SYN-FIN, bad checksums, fragments, LAND) are captured as `honeynet:tcp_*` events.
+- **`tun`** (v1.5+): the sensor opens a Linux TUN device; the operator routes the honeynet CIDR into it. The sensor answers ICMP/ICMPv6 echo and embeds a **userspace TCP stack** ([`tcp-stack.md`](tcp-stack.md)) that terminates TCP for the whole CIDR — no `ip addr add` per host. For each host's `services:` ports it completes a handshake with a **SYN-ACK shaped to the archetype's stack fingerprint** (TTL/window/MSS/window-scale/SACK/timestamps/option order — what `nmap -O` and p0f read) and answers a single request/response from the archetype banners; unbound ports RST. ICMP, RST and SYN-ACK all carry the per-host **TTL personality** (255 OT / 128 Windows / 64 Linux), so the OS fingerprint is consistent across open ports, closed ports and ping. Malformed / illegal / stealth-scan packets (NULL/FIN/Xmas, SYN-FIN, bad checksums, fragments, LAND) are captured as `honeynet:tcp_*` events. As of v2.2 the responder also answers **IPv6** TCP SYNs (SYN-ACK + `honeynet:tcp_connect` event on open ports, RST on closed), so an IPv6 port scan gets the same visibility as IPv4; the stateful data phase (request/response) remains IPv4-only.
 - **`lldp_responder`** (v1.10): the sensor emits LLDP (and optionally CDP) frames so every honeynet host appears in `lldpctl` / Cisco `show cdp neighbors` output with archetype-shaped MAC + system description + family-tuned LLDP capabilities. Pairs naturally with the Moxa / SCALANCE / S7 archetypes for industrial deception.
 - **`profinet_responder`**: the sensor answers PROFINET-DCP Identify requests (L2, EtherType 0x8892) for industrial hosts, so a PROFINET scan (Siemens PRONETA / TIA Portal / nmap) enumerates the cell. Each request also raises `honeynet:profinet_dcp_identify` (ATT&CK T0846) — a strong ICS-recon signal.
 
@@ -407,6 +425,27 @@ foomatic-rip RCE chain; LPD flags control-file injection. The IPP reply
 takes its make/model from the bound archetype, so IPP, SNMP and the web UI
 agree.
 
+**Container / cloud (v2.2):** four handlers cover the container and cloud
+attack surface. `cloud_metadata` impersonates the AWS/GCP/Azure instance
+metadata service on `169.254.169.254`, serving synthetic honeytoken IAM /
+OAuth credentials and flagging `cloud-credential-theft` — bind it to the
+link-local address (or place it behind a fake SSRF-able app) so a coerced
+fetch lands on it. `etcd` answers the etcd KV-store API on `2379` (flags
+`etcd-secret-read` / `etcd-secret-write`); `kubernetes_api` impersonates
+kube-apiserver on `6443` / `8080` / `10250`, captures `Authorization: Bearer`
+service-account tokens, and flags `k8s-secret-enum` / `k8s-pod-create` /
+`k8s-pod-exec`; `vault` impersonates the HashiCorp Vault API on `8200`,
+captures the `X-Vault-Token`, and flags `vault-secret-read`. The new
+`kubernetes` archeservice role bundles apiserver + kubelet + etcd, and the
+`containerhost` and `secretstore` roles are upgraded to stand these handlers
+up (`tarpit-honeypot list-archeservices`).
+
+**Modern transports (v2.2):** `websocket` completes the RFC 6455 handshake
+and captures frames (flags `ws-credential-material` / `ws-command-payload`),
+and `grpc` recognises the HTTP/2 connection preface and extracts the gRPC
+method path (flags `grpc-reflection-probe`) — useful in front of a service
+mesh or API gateway persona.
+
 ## 10. Interactive engagement (post-login shell + web login capture)
 
 The v1.10 engagement layer keeps the attacker on the wire after the
@@ -473,6 +512,8 @@ for SIEM-side routing — each marker carries its own ATT&CK technique:
 | `shell-encoded-payload` | T1027 |
 | `shell-creds-file-access` | T1552.001 |
 
+v2.2 deepens the catalog with markers for container-escape, cloud-credential-theft, local-exploit attempts, data-staging, exfiltration-channel setup, decode-pipe-to-exec (`base64 -d | sh`-style) and destructive commands — each ATT&CK-mapped like the rest — so a shell that pivots from recon into container breakout or cloud-credential theft is flagged in `event.anomalies` as it happens.
+
 Bounded: `MaxCommands=32`, `MaxBytesPerCommand=8 KiB`, `IdleTimeout=60s`, `SessionTimeout=5min`.
 
 ### Web login capture (`handler: http` / `https`)
@@ -486,6 +527,28 @@ archetype's index page; GET on a login path (`/login`, `/admin`,
 `password`/`pass`/`passwd`/`pwd`/`p`), emits the
 `http-login-attempt` anomaly, and re-renders the form with an
 "auth failed" line.
+
+### SNI virtual hosting (`https.vhosts`)
+
+A single `https` listener can front several TLS personas via
+`https.vhosts:`. Each entry's `server_name` (matched exactly or as a
+`*.domain` wildcard) presents its own certificate with its own
+`cn` / `org` / `ou` / `key_type`, and the SNI name the client selected is
+recorded in the `tls_vhost` event field:
+
+```yaml
+listeners:
+  - id: web
+    proto: tcp
+    bind: 0.0.0.0:443
+    handler: https
+    https:
+      hosts: ["www.corp.local"]
+      vhosts:
+        - server_name: mail.corp.local
+          cn: mail.corp.local
+        - server_name: "*.apps.corp.local"
+```
 
 ## 11. ATT&CK tagging, storyline correlation, anomaly detection
 
@@ -506,6 +569,13 @@ window. The emitted event meta carries:
 
 So the SOC sees one timeline instead of dozens of independent
 listener hits.
+
+Two v2.2 correlators target the cloud/SSRF surface and are **opt-in**,
+windowed and severity-configurable like the others:
+`correlate:cloud_cred_theft` fires when one source trips several
+cloud-credential-theft markers, and `correlate:ssrf_callback` fires when
+one source causes distinct SSRF tokens to call back. Enable and tune them
+under `correlate.*` (see [`config.md`](config.md)).
 
 **Protocol-anomaly markers** (`event.anomalies`) flagged today:
 
@@ -535,6 +605,15 @@ The L3/L4 sniffer additionally flags scans (`sniffer:tcp_*_scan`,
 tunnelling (`sniffer:encapsulation` — GRE / 6in4 / 6to4 / ISATAP / DS-Lite /
 GRE-over-IPv6 / VXLAN / …, `sniffer:icmp_tunnel`), and spanning-tree abuse
 (`sniffer:stp_bpdu`) — over **both IPv4 and IPv6**.
+
+**Fingerprints (v2.2 additions).** Alongside the existing JA3 / JA4 /
+JA3S / JA4H / HASSH, the `https` handler now also emits **JA4S** (the
+server-side TLS fingerprint, carried as meta `ja4s`), and the honeynet
+stack emits **JA4T** (the client TCP fingerprint read from the SYN,
+carried as meta `ja4t` on `honeynet:tcp_connect` events) — so a scan is
+fingerprinted at the TCP layer even before any TLS. `fingerprint.JARM`
+is also available as a library primitive. These join the JA3/JA4/HASSH
+reputation surfaced on the `/fingerprints` UI tab.
 
 ## 12. Fleet & aggregation
 

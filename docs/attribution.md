@@ -54,6 +54,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:beacon` | T1071 | command-and-control |
 | `correlate:brute_force` | T1110 | credential-access |
 | `correlate:canary_trip` | T1083 | discovery |
+| `correlate:cloud_cred_theft` | T1552.005 | credential-access |
 | `correlate:credential_reuse` | T1110.004 | credential-access |
 | `correlate:cve_campaign` | T1190 | initial-access |
 | `correlate:data_access` | T1213 | collection |
@@ -85,6 +86,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `correlate:service_sweep` | T1046 | discovery |
 | `correlate:session_flood` | T1499 | impact |
 | `correlate:slow_scan` | T1046 | discovery |
+| `correlate:ssrf_callback` | T1190 | initial-access |
 | `correlate:threat_intel_burst` | T1595 | reconnaissance |
 | `correlate:toll_fraud` | T1657 | impact |
 | `correlate:tool_rotation` | T1595 | reconnaissance |
@@ -141,6 +143,13 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `dnp3` | T0814, T0888 | impact, discovery |
 | `dns` | T1046 | discovery |
 | `dockerapi` | T1190, T1610 | initial-access, execution |
+| `cloud_metadata` | T1552.005, T1078.004 | credential-access, defense-evasion |
+| `etcd` | T1190, T1552.007 | initial-access, credential-access |
+| `kubernetes_api` | T1190, T1552.007 | initial-access, credential-access |
+| `vault` | T1190, T1555 | initial-access, credential-access |
+| `websocket` | T1190, T1071.001 | initial-access, command-and-control |
+| `grpc` | T1190, T1071 | initial-access, command-and-control |
+| `ssrf_canary` | T1190, T1602 | initial-access, collection |
 | `echo` | T1046 | discovery |
 | `elasticsearch` | T1213, T1046 | collection, discovery |
 | `esxi` | T1190 | initial-access |
@@ -240,6 +249,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `c2-framework` | T1071.001, T1219 | command-and-control |
 | `cassandra-auth-attempt` | T1110.001 | credential-access |
 | `cassandra-probe` | T1046 | discovery |
+| `cloud-credential-theft` | T1552.005 | credential-access |
 | `coap-write-attempt` | T1565 | impact |
 | `dameware-probe` | T1219 | command-and-control |
 | `dcerpc-dcsync` | T1003.006 | credential-access |
@@ -263,6 +273,9 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `elasticsearch-write-attempt` | T1565.001 | impact |
 | `epmd-names` | T1018 | discovery |
 | `epmd-query` | T1046 | discovery |
+| `etcd-range-read` | T1213 | collection |
+| `etcd-secret-read` | T1552.007 | credential-access |
+| `etcd-write` | T1565.001 | impact |
 | `fins-program-download` | T0843 | impact |
 | `fins-run-mode-change` | T0858 | impact |
 | `fins-tcp-probe` | T0888 | discovery |
@@ -277,6 +290,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `git-request` | T1213 | collection |
 | `gopher-request` | T1595 | reconnaissance |
 | `gopher-ssrf` | T1190 | initial-access |
+| `grpc-reflection-probe` | T1046 | discovery |
 | `h323-probe` | T1595 | reconnaissance |
 | `h323-setup` | T1595 | reconnaissance |
 | `headless-browser` | T1595 | reconnaissance |
@@ -296,6 +310,10 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ip-fragmented` | T1046, T1595.001 | discovery, reconnaissance |
 | `jdwp-handshake-attempt` | T1190 | initial-access |
 | `jdwp-probe` | T1595 | reconnaissance |
+| `k8s-pod-create` | T1610 | execution |
+| `k8s-pod-exec` | T1609 | execution |
+| `k8s-secret-enum` | T1552.007 | credential-access |
+| `k8s-token-auth` | T1528 | credential-access |
 | `kafka-request` | T1046 | discovery |
 | `kerberos-rc4-requested` | T1558.003 | credential-access |
 | `kerberos-tgs-request` | T1558.003 | credential-access |
@@ -376,16 +394,23 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `secs-program-send` | T0843 | impact |
 | `secs-remote-command` | T0855 | impact |
 | `shell-ad-recon` | T1087.002 | discovery |
+| `shell-cloud-cred-theft` | T1552.005 | credential-access |
 | `shell-coin-miner` | T1496 | impact |
+| `shell-container-escape` | T1611 | privilege-escalation |
 | `shell-credential-dump` | T1003 | credential-access |
 | `shell-creds-file-access` | T1552.001 | credential-access |
+| `shell-data-staged` | T1560.001 | collection |
+| `shell-decode-pipe-exec` | T1140 | defense-evasion |
 | `shell-defender-tamper` | T1562.001 | defense-evasion |
 | `shell-defense-evade-history` | T1070.003 | defense-evasion |
 | `shell-defense-evade-logclean` | T1070.002 | defense-evasion |
+| `shell-destruction` | T1485, T1486 | impact |
 | `shell-disable-fw` | T1562.004 | defense-evasion |
 | `shell-download-tool` | T1105 | command-and-control |
 | `shell-encoded-payload` | T1027, T1140 | defense-evasion |
+| `shell-exfil-channel` | T1048 | exfiltration |
 | `shell-living-off-the-land` | T1218 | defense-evasion |
+| `shell-local-exploit` | T1068 | privilege-escalation |
 | `shell-network-recon` | T1016 | discovery |
 | `shell-passwd-read` | T1003.008 | credential-access |
 | `shell-passwd-write` | T1136.001 | persistence |
@@ -412,6 +437,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ssh-id-non-printable` | T1595 | reconnaissance |
 | `ssh-id-not-ssh` | T1595 | reconnaissance |
 | `ssh-id-overlong` | T1595 | reconnaissance |
+| `ssrf-callback` | T1190 | initial-access |
+| `ssrf-server-side-fetch` | T1190 | initial-access |
 | `stun-binding` | T1016 | discovery |
 | `tacacs-auth-start` | T1110.001 | credential-access |
 | `tacacs-probe` | T1595 | reconnaissance |
@@ -431,6 +458,11 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `tn3270-probe` | T1190 | initial-access |
 | `udp-amplifier-probe` | T1498.002 | impact |
 | `unknown-protocol` | T1046 | discovery |
+| `vault-mount-enum` | T1555 | credential-access |
+| `vault-policy-access` | T1555 | credential-access |
+| `vault-seal-control` | T1485 | impact |
+| `vault-secret-read` | T1555 | credential-access |
+| `vault-token-auth` | T1528 | credential-access |
 | `vmware-authd-login` | T1110.001 | credential-access |
 | `vulnerability-scanner` | T1595.002, T1190 | reconnaissance, initial-access |
 | `wdbrpc-connect` | T0866 | lateral-movement |
@@ -448,6 +480,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `webshell-access-attempt` | T1505.003 | persistence |
 | `webshell-command` | T1505.003, T1059 | persistence, execution |
 | `winrm-ntlm-auth` | T1110.001 | credential-access |
+| `ws-command-payload` | T1059 | execution |
+| `ws-credential-material` | T1552 | credential-access |
 | `x11-connection-attempt` | T1021 | lateral-movement |
 | `zookeeper-fourletter` | T1046 | discovery |
 
@@ -864,6 +898,9 @@ human-readable `Reason`.
 | **JA3** | client TLS ClientHello (version, ciphers, extensions, curves, formats) | `ja3` |
 | **JA4** | newer, sorted ClientHello fingerprint (cipher/extension counts + hashes) | `ja4` |
 | **JA3S** | the *server* side of the TLS handshake | `ja3s` |
+| **JA4S** | server-side TLS fingerprint from the ServerHello (the modern JA3S successor); emitted by the https handler alongside ja3s | `ja4s` |
+| **JA4T** | TCP-layer fingerprint (window size, TCP option-kind layout, MSS, window-scale) computed from the client SYN in the userspace honeynet stack; attached to `honeynet:tcp_connect` events | `ja4t` |
+| **JARM** | active-probe server fingerprint, available as the library primitive `fingerprint.JARM` for confirming a sensor's TLS posture matches the product it impersonates | — |
 | **HASSH** | SSH `KEXINIT` algorithm lists (client) and server (`hassh_server`) | `hassh`, `hassh_server` |
 | **JA4H** | HTTP request line + header order/values | `ja4h` |
 
@@ -885,7 +922,7 @@ ordering. SNI is captured separately (`meta.sni`).
 ### Fingerprint reputation + cross-sensor correlation (web UI)
 
 The web UI **fingerprints** tab pivots from a fingerprint value to its
-reputation: `/fingerprints` ranks every JA3 / JA4 / JA4H / JA3S / HASSH by
+reputation: `/fingerprints` ranks every JA3 / JA4 / JA4H / JA3S / JA4S / JA4T / HASSH by
 event volume (with distinct-IP and distinct-sensor counts + first/last
 seen), and `/fingerprints/<kind>/<value>` is a per-fingerprint dossier —
 first/last seen, distinct source IPs, and breakdowns over **sensors (fleet
@@ -946,7 +983,7 @@ underlying tool/stack the infeasible rows would, via JA3/JA4/JA4H/HASSH.
 | `meta.cwe` / `meta.cpe` / `meta.epss` | vulnerability cross-refs (on `cve:<id>` events) |
 | `meta.cvss` / `meta.cve_name` / `meta.description` | CVE detail |
 | `meta.tools` / `meta.automation` / `meta.automation_reason` | tool + automation verdict |
-| `meta.ja3` / `ja4` / `ja3s` / `hassh` / `hassh_server` / `ja4h` | fingerprints |
+| `meta.ja3` / `ja4` / `ja3s` / `ja4s` / `ja4t` / `hassh` / `hassh_server` / `ja4h` | fingerprints |
 | `meta.os_guess` | passive OS family from TTL |
 | `anomalies[]` | `tool:<n>`, `vulnerability-scanner`, `automation-client`, `cve:*`, protocol-misuse markers |
 

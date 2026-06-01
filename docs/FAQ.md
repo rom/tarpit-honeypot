@@ -130,6 +130,24 @@ sensors look different to scanners). Leave it blank and it's auto-generated and
 persisted to `<data_dir>/.deployment-id` on first run. Set it explicitly only to
 make two sensors present an *identical* fingerprint on purpose.
 
+**Can it emulate cloud / Kubernetes / container services?**
+Yes. Four handlers model that attack surface: `cloud_metadata` answers the
+AWS/GCP/Azure instance metadata service on `169.254.169.254`, serving *synthetic
+honeytoken* IAM/OAuth credentials and flagging the credential-theft call;
+`etcd` emulates the etcd KV store (`2379`); `kubernetes_api` poses as a
+kube-apiserver (`6443`/`8080`/`10250`) and captures the `Authorization: Bearer`
+service-account token; and `vault` emulates HashiCorp Vault (`8200`) and
+captures the `X-Vault-Token`. Each flags the credential-theft / takeover calls.
+There's a ready-made `kubernetes` archeservice role, and the `containerhost` /
+`secretstore` roles wire these handlers up.
+
+**Does it support WebSocket or gRPC?**
+Yes. The `websocket` handler completes the RFC 6455 handshake and captures
+(unmasks) client frames, flagging credential/command payloads. The `grpc`
+handler recognizes the HTTP/2 connection preface and extracts the gRPC
+`/package.Service/Method` path from the HEADERS frame (without a full HPACK
+decode), flagging reflection probes.
+
 ## Sensor placement & networking
 
 **Where should I put a sensor?**
@@ -179,13 +197,24 @@ identity (SSH banner, MySQL version, SMB challenge, MAC, …) is derived from
 **Does it support IPv6?**
 Yes. Listeners and honeynet hosts take IPv6 (`[::]:22`, `fd00::` host IPs), and
 the AF_PACKET sniffer detects scans, fragmentation, encapsulation, and ICMP
-tunnels over **both** IPv4 and IPv6.
+tunnels over **both** IPv4 and IPv6. The honeynet TUN responder now answers IPv6
+TCP SYNs too — an open port replies with a SYN-ACK and emits a
+`honeynet:tcp_connect` event — so IPv6 port scans are observed just like IPv4.
+The stateful data phase (the request/response exchange after the handshake)
+stays IPv4-only.
 
 **Can an attacker pivot between virtual hosts?**
 No — there's no real OS behind them. The TUN stack is deliberately a *decoy*:
 in-order data only, one request/response, no routing or forwarding. Deep
 multi-segment interaction (a full SSH session, large uploads) wants a real
 socket bound alongside the TUN (`ip addr add` / a real listener).
+
+**Can one HTTPS port serve different certs by hostname (SNI)?**
+Yes — set `https.vhosts:`. Each entry's `server_name` (an exact name or a
+`*.domain` leading-wildcard) presents its own certificate, with its own `cn` /
+`org` / `key_type` (blank fields derive a stable persona from the deployment
+seed). The name that matched the client's TLS SNI lands in the event's
+`tls_vhost` field.
 
 ## Deployment & safety
 
@@ -330,6 +359,16 @@ Set `tarpit.strategy:`:
 - `keepalive` — write a NUL byte every `tarpit.keepalive.interval` (e.g. 30s) —
   minimal-bandwidth persistent presence.
 
+That's the start of **12 strategies** in all. The rest: `jitter` (trickle on a
+randomized interval), `backoff` (an interval that grows over the engagement),
+`ssh_banner` (endlessh-style endless SSH preamble), `http_headers` (endless HTTP
+response headers, never the blank line), `http_chunked` (a chunked body that
+never ends), `echo` (slowly echo whatever the client sends), `babble` (endless
+plausible junk), and the two **aggressive, opt-in** ones: `zipbomb` (a gzip
+decompression bomb) and `zero_window` (a LaBrea-style TCP zero-window clamp).
+The aggressive pair are *retaliatory* and are **never** a default — choose them
+deliberately.
+
 **Can a tarpit still capture what the attacker sent?**
 Yes — set `tarpit.emulate: true` and the listener runs its real `handler:` first
 (genuine banner + captured request), *then* tarpits the same connection. Any
@@ -384,6 +423,16 @@ into egress-filtered networks.
 A canary is bait *you* place and watch. A **honeytoken** is a per-deployment-unique
 secret the fake web app *serves* (a DB password, an `AKIA…` AWS key) — register it
 in your SIEM and alert if it ever shows up in real auth logs.
+
+**How do I detect SSRF / XXE / webhook abuse?**
+Use the `ssrf_canary` handler with a token from `gen-token --type=ssrf`, which
+mints a callback URL. Plant it where a coerced system will fetch it — an SSRF
+parameter, a webhook field, an XXE entity. When something fetches it, the
+callback is recorded (the token plus the `User-Agent` / `X-Forwarded-For` / `Via`
+chain) and flagged `ssrf-callback`, and `ssrf-server-side-fetch` when the
+fetcher's UA is an HTTP client library rather than a browser. It's the *inverse*
+of the inbound URL/DNS canaries: those trip when an attacker reaches *in*, this
+trips when a coerced server reaches *out*.
 
 ## Enrichment
 
@@ -526,7 +575,11 @@ become `credential` IOCs.
 Client TLS (JA3/JA4) and SSH (HASSH) stack fingerprints, stable across GREASE
 shuffling. Pivot from a fingerprint to every source that used it, export them as
 IOCs, or feed them into the fleet intel — the same tuple your threat-intel feeds
-key on.
+key on. v2.2 adds two more: **JA4S** (the server-side TLS fingerprint, meta
+`ja4s`, computed by the https handler) and **JA4T** (a client TCP fingerprint
+read straight off the SYN — window size, options, MSS, window-scale — meta `ja4t`
+on `honeynet:tcp_connect` events), plus `fingerprint.JARM` as a library
+primitive.
 
 **Does it identify the scanning tool?**
 Yes — nmap / masscan / sqlmap / nikto / hydra / nuclei / metasploit / gobuster /
@@ -959,8 +1012,9 @@ is the symptom→fix table.
 - **IOC** — a typed, de-duplicated indicator of compromise
   (ip/asn/ja3/domain/cve/sha256/url/credential/mac) mined from events. See
   [`ioc.md`](ioc.md).
-- **JA3 / JA4 / JA4H / JA3S / HASSH** — TLS client/server and SSH client stack
-  fingerprints, stable across GREASE shuffling.
+- **JA3 / JA4 / JA4H / JA3S / JA4S / JA4T / HASSH** — TLS client/server, TCP-SYN
+  (`ja4t`), and SSH client stack fingerprints, stable across GREASE shuffling.
+  `fingerprint.JARM` is also available as a library primitive.
 - **net-class** — an enrichment tag classifying a source network (bogon, hosting, …).
 - **Risk score** — a decaying per-source threat score that emits
   `risk:elevated|high|critical` on a threshold crossing.

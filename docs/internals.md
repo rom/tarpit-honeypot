@@ -74,7 +74,7 @@ high-volume producers, so a flood can never wedge the reader).
 | **Listeners** | [`internal/listener`](../internal/listener) + [`/handler`](../internal/listener/handler) | a TCP/UDP connection to a bound port; the handler reads a bounded request, sends a believable reply, captures bytes | `listener:<id>` (+ handler anomalies, `cve:<id>`, `canary:url:*`) |
 | **Sniffer** | [`internal/sniffer`](../internal/sniffer) | AF_PACKET frames (Linux): ARP, L2 tunnelling/BPDU, and L3/L4 stealth scans that never reach a socket — over IPv4 **and** IPv6 | `sniffer:*` |
 | **Honeynet L2/L3** | [`internal/honeynet`](../internal/honeynet) | ARP / ICMP echo / LLDP-CDP / PROFINET-DCP for virtual host IPs | `honeynet:profinet_dcp_identify`, device-discovery feed |
-| **TUN userspace TCP** | [`internal/tunnet`](../internal/tunnet) + [`internal/tcpstack`](../internal/tcpstack) | raw IP packets off a TUN; completes fingerprint-shaped handshakes, answers one request/response, captures malformed packets ([`tcp-stack.md`](tcp-stack.md)) | `honeynet:tcp_connect` / `tcp_request` / `tcp_malformed` / `tcp_land` |
+| **TUN userspace TCP** | [`internal/tunnet`](../internal/tunnet) + [`internal/tcpstack`](../internal/tcpstack) | raw IP packets off a TUN (IPv4 + IPv6 SYN layer); completes fingerprint-shaped handshakes, answers one request/response, captures malformed packets, attaches the client TCP fingerprint (`ja4t`) ([`tcp-stack.md`](tcp-stack.md)) | `honeynet:tcp_connect` / `tcp_request` / `tcp_malformed` / `tcp_land` |
 | **Canaries** | [`internal/canary`](../internal/canary), [`internal/dnscanary`](../internal/dnscanary) | filesystem watches (fsnotify/fanotify), HTTP URL hits, DNS names | `canary:*`, `dnscanary:*` |
 | **Device discovery** | [`internal/devices`](../internal/devices) (fed from DHCP/broadcast handlers + the sniffer) | passive host observations | `device:new`, `device:changed` |
 | **Risk + lifecycle** | [`internal/sensor`](../internal/sensor) | the pipeline itself (scores) and process lifecycle/health | `risk:*`, `sensor:*` |
@@ -159,7 +159,8 @@ a narrow job:
   C2/impact (`beacon`, `session_flood`, `exfil`,
   `amplification_probe`, `destructive_action`), enrichment-/campaign-driven
   (`threat_intel_burst`, `geo_velocity`, `default_cred_sweep`, `cve_campaign`,
-  `honeytoken_spread`, `tool_rotation`), OT/ICS (`ics_control`, `ot_recon`,
+  `honeytoken_spread`, `tool_rotation`), cloud/SSRF (`cloud_cred_theft`,
+  `ssrf_callback`), OT/ICS (`ics_control`, `ot_recon`,
   `plc_program_download`, `ics_mode_change`, `ot_kill_chain`), remote-access /
   OOB (`remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`), VoIP /
   telephony (`toll_fraud`, `voip_enum`, `pbx_control`), and the
@@ -290,7 +291,7 @@ and the store runs WAL mode; bound it with `disk.retention_days` /
 | Ingress | `listener`, `listener/handler`, `sniffer`, `honeynet`, `tunnet`, `tcpstack`, `canary`, `dnscanary` |
 | Event model + bus | `event`, `sensor` |
 | Enrichment | `enrich` (+ `devices` OUI) |
-| Detection | `correlate`, `scananalysis`, `fuzzdos`, `payload`, `devices`, `cve`, `risk`, `mitre`, `toolfp`, `fingerprint` |
+| Detection | `correlate`, `scananalysis`, `fuzzdos`, `payload`, `devices`, `cve`, `risk`, `mitre`, `toolfp`, `fingerprint` (JA3/JA4 + JA3S/JA4S server TLS, JA4T client-TCP-from-SYN, JARM, JA4H, HASSH) |
 | Fleet / aggregation | `forward`, `ingest`, `fleet`, `intel`, `trust`, `ioc`, `misp` |
 | Identity / deception | `identity`, `archetype`, `archeservice`, `shell`, `luaengine`, `fakefiles`, `sessionrec` |
 | Output | `router`, `sink`, `store`, `format`, `ui` (incl. `/docs` Markdown renderer + embedded `docs` package) |
