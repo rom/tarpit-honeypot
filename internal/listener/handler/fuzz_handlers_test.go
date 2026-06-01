@@ -69,6 +69,10 @@ var fuzzTCPNames = []string{
 	"vmware_authd", "x11", "rlogin", "nx", "redfish",
 	"intel_amt", "ilo", "idrac", "esxi", "fortinet", "pulse",
 	"citrix_gateway", "horizon", "moxa_mgmt", "scripted",
+	// Cloud-native + modern-transport handlers added this cycle — their
+	// header/frame parsers run on attacker bytes, so keep them in the hot loop.
+	"cloud_metadata", "etcd", "vault", "kubernetes_api",
+	"websocket", "grpc", "ssrf_canary",
 }
 
 func fuzzDeps(dir string) Deps {
@@ -144,6 +148,9 @@ var fuzzUDPNames = []string{
 	"raw", "snmp", "ntp", "bacnet", "tftp", "ipmi", "syslog_udp", "radius",
 	"sip", "ssdp", "cldap", "llmnr", "nbns", "fins", "coap", "knx", "dhcp",
 	"dns", "echo", "discard", "daytime", "qotd", "chargen", "time",
+	// Encrypted-transport + flow-export handlers added this cycle — their
+	// packet parsers run on attacker bytes, so keep them in the hot loop.
+	"dtls", "quic", "netflow", "sflow",
 }
 
 func buildUDPHandlers(dir string) []UDPHandler {
