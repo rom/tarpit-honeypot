@@ -1079,6 +1079,45 @@ routes:
 
 ---
 
+## `risk.block:` — active inbound response (fail2ban-style, opt-in)
+
+The decaying per-source risk score (`risk:`) can drive an **active firewall
+backstop**: when a source crosses a configured level, the sensor adds it to an
+nftables drop set for a bounded TTL, then lets the kernel expire it. This is
+the honeypot analogue of fail2ban, but keyed on the sensor's own risk score
+rather than log regexes.
+
+```yaml
+risk:
+  enabled: true              # block is driven by the risk score, so this is required
+  critical: 150
+  block:
+    enabled: false           # OFF by default — blocking ends the engagement you set out to observe
+    level: critical          # minimum level that triggers a block: elevated | high | critical
+    ttl: 15m                 # nftables set-element timeout — every block self-expires
+    never_block: []          # extra IPs/CIDRs exempt (loopback + link-local are always exempt)
+    # table: tarpit_blocklist
+```
+
+Design choices that keep it safe:
+
+- **Opt-in.** A honeypot's value is *observation*; dropping a source ends the
+  engagement. You must explicitly enable it, and it requires `risk.enabled`.
+- **TTL-bounded.** Each block is an nftables set element with a native
+  `timeout`, so the kernel expires it without the sensor tracking state — a
+  crash or restart can never leave a host permanently firewalled.
+- **Allowlist-aware.** Loopback and link-local ranges are always exempt, plus
+  any `never_block` IPs/CIDRs — so a self-probe can't lock you out.
+- **Linux + `nft` + `CAP_NET_ADMIN` only.** Elsewhere it logs and no-ops (the
+  sensor still observes; it just can't enforce). The drop set lives in its own
+  table (`tarpit_blocklist`), separate from the egress firewall, installed at
+  startup before the seccomp sandbox blocks `exec`.
+
+Each block is logged (`blocklist: blocked source`) and accompanies the
+`risk:<level>` event that triggered it.
+
+---
+
 ## `severity_overrides:` — operator-pinned per-rule severity
 
 You sometimes know better than the built-in default whether an event matters

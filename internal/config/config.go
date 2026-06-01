@@ -314,6 +314,28 @@ type RiskScoring struct {
 	Elevated float64       `yaml:"elevated"`
 	High     float64       `yaml:"high"`
 	Critical float64       `yaml:"critical"`
+	// Block, when enabled, drops a source at the host firewall (nftables) once
+	// it crosses Block.level. Opt-in and TTL-bounded — see Blocklist. A
+	// honeypot's value is observation, so blocking ends the engagement; leave
+	// this off unless you specifically want active inbound mitigation.
+	Block Blocklist `yaml:"block"`
+}
+
+// Blocklist configures the optional active-response backstop: when a source's
+// risk score crosses `level`, the sensor adds it to an nftables drop set for
+// `ttl`, then lets the kernel expire it. Linux + nft + CAP_NET_ADMIN only.
+type Blocklist struct {
+	Enabled bool `yaml:"enabled"`
+	// Level is the minimum risk level that triggers a block:
+	// elevated | high | critical (default critical).
+	Level string `yaml:"level"`
+	// TTL is how long each block lasts before nftables expires it (default 15m).
+	TTL time.Duration `yaml:"ttl"`
+	// NeverBlock is a list of IPs / CIDRs exempt from blocking (in addition to
+	// the always-exempt loopback + link-local ranges).
+	NeverBlock []string `yaml:"never_block"`
+	// Table is the nft table name (default tarpit_blocklist).
+	Table string `yaml:"table"`
 }
 
 // Devices configures the learned-device inventory + "new device"
