@@ -926,52 +926,130 @@ func TacticRank(t string) int {
 // implements — alongside the detection/hardening measures a SOC would
 // pair with it.
 var d3fend = map[string][]string{
-	"T1595": {"D3-NTA", "D3-DNR"},          // active scanning
-	"T1046": {"D3-NTA", "D3-DNR"},          // network service discovery
-	"T1018": {"D3-DNR"},                    // remote system discovery
-	"T1083": {"D3-DF", "D3-DO"},            // file & directory discovery
-	"T1190": {"D3-NTA", "D3-ITF", "D3-DE"}, // exploit public-facing app
-	"T1210": {"D3-NTA", "D3-ITF", "D3-DE"}, // exploit remote services
-	"T1110": {"D3-MFA", "D3-DUC", "D3-DE"}, // brute force
-	"T1078": {"D3-MFA", "D3-DUC"},          // valid accounts
-	"T1021": {"D3-MFA", "D3-NTA"},          // remote services
-	"T1071": {"D3-NTA", "D3-DNSTA"},        // application-layer C2
-	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"}, // ingress tool transfer
-	"T1027": {"D3-DA", "D3-FH"},            // obfuscated files / information
-	"T1557": {"D3-NTA"},                    // adversary-in-the-middle
-	"T1558": {"D3-MFA", "D3-DUC"},          // steal/forge Kerberos tickets
-	"T1498": {"D3-ITF"},                    // network denial of service
-	"T1499": {"D3-ITF", "D3-NTA"},          // endpoint denial of service (LAND / sockstress / SACK-panic class)
-	"T1657": {"D3-NTA", "D3-ITF"},          // financial theft (VoIP toll fraud)
-	"T1135": {"D3-DNR", "D3-DO"},           // network share discovery
-	"T1087": {"D3-DUC"},                    // account discovery
-	"T1114": {"D3-NTA"},                    // email collection
-	"T1610": {"D3-NTA", "D3-ITF"},          // deploy container
-	"T0814": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: denial of service
-	"T0888": {"D3-NTA", "D3-DNR"},          // ICS: remote system info discovery
-	"T0846": {"D3-NTA", "D3-DNR"},          // ICS: remote system discovery (PROFINET-DCP)
-	"T0830": {"D3-NTA"},                    // ICS: adversary-in-the-middle
-	"T0836": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: modify parameter
-	"T0831": {"D3-NTA", "D3-DE"},           // ICS: manipulation of control
-	"T0843": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: program download
-	"T0858": {"D3-NTA", "D3-DE"},           // ICS: change operating mode
-	"T0855": {"D3-NTA", "D3-DE"},           // ICS: unauthorized command message
-	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"}, // ICS: exploitation of remote services
-	"T1059": {"D3-NTA", "D3-DA"},           // command & scripting interpreter
-	"T1056": {"D3-NTA"},                    // input capture (keylogging via X11)
-	"T1219": {"D3-NTA", "D3-OTF"},          // remote access software
-	"T1133": {"D3-MFA", "D3-NTA"},          // external remote services
-	"T1565": {"D3-NTA", "D3-DE"},           // data manipulation (SNMP SET write)
-	"T1590": {"D3-DNSTA", "D3-DNR"},        // gather victim network info (DNS AXFR)
-	"T1602": {"D3-NTA", "D3-DE"},           // data from configuration repository (TFTP)
-	"T1485": {"D3-NTA", "D3-DE"},           // data destruction (PJL FSINIT format)
-	"T1491": {"D3-NTA"},                    // defacement (printer panel message)
-	"T1098": {"D3-MFA", "D3-DUC"},          // account manipulation (printer password set)
-	"T1552": {"D3-DUC", "D3-NTA"},          // unsecured credentials (printer password read)
-	"T1005": {"D3-DO", "D3-NTA"},           // data from local system (PostScript file read)
-	"T1601": {"D3-NTA", "D3-DE"},           // modify system image (printer firmware upload)
-	"T1583": {"D3-NTA", "D3-DNR"},          // acquire infrastructure (botnet / ASN seen fleet-wide)
-	"T1090": {"D3-NTA", "D3-OTF"},          // proxy (SSRF / relay through the decoy; egress:denied)
+	"T1595": {"D3-NTA", "D3-DNR", "D3-CAA"},         // active scanning
+	"T1046": {"D3-NTA", "D3-DNR", "D3-CAA"},         // network service discovery
+	"T1018": {"D3-DNR"},                             // remote system discovery
+	"T1083": {"D3-DF", "D3-DO"},                     // file & directory discovery
+	"T1190": {"D3-NTA", "D3-ITF", "D3-DE"},          // exploit public-facing app
+	"T1210": {"D3-NTA", "D3-ITF", "D3-DE"},          // exploit remote services
+	"T1110": {"D3-MFA", "D3-DUC", "D3-DE", "D3-CH"}, // brute force
+	"T1078": {"D3-MFA", "D3-DUC", "D3-CH"},          // valid accounts
+	"T1021": {"D3-MFA", "D3-NTA", "D3-RTSD"},        // remote services
+	"T1071": {"D3-NTA", "D3-DNSTA"},                 // application-layer C2
+	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"},          // ingress tool transfer
+	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information
+	"T1557": {"D3-NTA"},                             // adversary-in-the-middle
+	"T1558": {"D3-MFA", "D3-DUC"},                   // steal/forge Kerberos tickets
+	"T1498": {"D3-ITF"},                             // network denial of service
+	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
+	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
+	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
+	"T1087": {"D3-DUC"},                             // account discovery
+	"T1114": {"D3-NTA"},                             // email collection
+	"T1610": {"D3-NTA", "D3-ITF"},                   // deploy container
+	"T0814": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: denial of service
+	"T0888": {"D3-NTA", "D3-DNR"},                   // ICS: remote system info discovery
+	"T0846": {"D3-NTA", "D3-DNR"},                   // ICS: remote system discovery (PROFINET-DCP)
+	"T0830": {"D3-NTA"},                             // ICS: adversary-in-the-middle
+	"T0836": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: modify parameter
+	"T0831": {"D3-NTA", "D3-DE"},                    // ICS: manipulation of control
+	"T0843": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: program download
+	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
+	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
+	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
+	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
+	"T1056": {"D3-NTA"},                             // input capture (keylogging via X11)
+	"T1219": {"D3-NTA", "D3-OTF", "D3-RTSD"},        // remote access software
+	"T1133": {"D3-MFA", "D3-NTA", "D3-RTSD"},        // external remote services
+	"T1565": {"D3-NTA", "D3-DE"},                    // data manipulation (SNMP SET write)
+	"T1590": {"D3-DNSTA", "D3-DNR"},                 // gather victim network info (DNS AXFR)
+	"T1602": {"D3-NTA", "D3-DE"},                    // data from configuration repository (TFTP)
+	"T1485": {"D3-NTA", "D3-DE"},                    // data destruction (PJL FSINIT format)
+	"T1491": {"D3-NTA"},                             // defacement (printer panel message)
+	"T1098": {"D3-MFA", "D3-DUC"},                   // account manipulation (printer password set)
+	"T1552": {"D3-DUC", "D3-NTA"},                   // unsecured credentials (printer password read)
+	"T1005": {"D3-DO", "D3-NTA"},                    // data from local system (PostScript file read)
+	"T1601": {"D3-NTA", "D3-DE"},                    // modify system image (printer firmware upload)
+	"T1583": {"D3-NTA", "D3-DNR"},                   // acquire infrastructure (botnet / ASN seen fleet-wide)
+	"T1090": {"D3-NTA", "D3-OTF"},                   // proxy (SSRF / relay through the decoy; egress:denied)
+
+	// --- credential-access / discovery / collection ---
+	"T1003": {"D3-CH", "D3-DUC", "D3-NTA"}, // OS credential dumping
+	"T1012": {"D3-PH", "D3-DO"},            // query registry
+	"T1016": {"D3-DNR", "D3-NTA"},          // system network configuration discovery
+	"T1036": {"D3-FA", "D3-DA"},            // masquerading
+	"T1040": {"D3-NTA", "D3-NI"},           // network sniffing
+	"T1048": {"D3-OTF", "D3-NTA"},          // exfiltration over alternative protocol
+	"T1020": {"D3-OTF", "D3-NTA"},          // automated exfiltration
+	"T1095": {"D3-NTA", "D3-OTF"},          // non-application-layer protocol (C2)
+	"T1136": {"D3-CH", "D3-DUC"},           // create account
+	"T1140": {"D3-FA", "D3-DA"},            // deobfuscate / decode files or information
+	"T1213": {"D3-DO", "D3-NTA"},           // data from information repositories
+	"T1482": {"D3-DNR", "D3-NTA"},          // domain trust discovery
+	"T1555": {"D3-CH", "D3-DUC", "D3-NTA"}, // credentials from password stores (Vault)
+	"T1528": {"D3-CH", "D3-DUC"},           // steal application access token (k8s / cloud)
+	"T1560": {"D3-FA", "D3-NTA"},           // archive collected data
+
+	// --- execution / persistence / privilege-escalation / evasion ---
+	"T1053": {"D3-PSA", "D3-PH"},           // scheduled task / job
+	"T1543": {"D3-PSA", "D3-PH"},           // create or modify system process
+	"T1547": {"D3-PH", "D3-PSA"},           // boot or logon autostart execution
+	"T1548": {"D3-PH", "D3-EAL"},           // abuse elevation control mechanism
+	"T1068": {"D3-PH", "D3-EAL", "D3-NTA"}, // exploitation for privilege escalation
+	"T1070": {"D3-PH", "D3-FA"},            // indicator removal
+	"T1218": {"D3-EAL", "D3-PSA"},          // system binary proxy execution
+	"T1562": {"D3-PH", "D3-NTA"},           // impair defenses
+	"T1505": {"D3-FA", "D3-NTA", "D3-EAL"}, // server software component (web shell)
+
+	// --- C2 / impact / supply-chain / containers ---
+	"T1568": {"D3-DNSTA", "D3-NTA"},       // dynamic resolution (DGA)
+	"T1572": {"D3-NTA", "D3-OTF"},         // protocol tunneling
+	"T1486": {"D3-NTA", "D3-DE", "D3-FA"}, // data encrypted for impact (ransomware)
+	"T1496": {"D3-NTA", "D3-OTF"},         // resource hijacking (cryptomining)
+	"T1195": {"D3-FH", "D3-FA"},           // supply-chain compromise
+	"T1609": {"D3-NTA", "D3-EAL"},         // container administration command
+	"T1611": {"D3-PH", "D3-NTA"},          // escape to host (container escape)
+}
+
+// d3fendNames maps each D3FEND countermeasure id used in the d3fend map to
+// its human-readable name, so the CLI / web UI can render "D3-MFA
+// (Multi-factor Authentication)" instead of a bare id. Every id referenced
+// by the d3fend map must have an entry (guarded by a test).
+var d3fendNames = map[string]string{
+	"D3-NTA":   "Network Traffic Analysis",
+	"D3-DNR":   "Decoy Network Resource",
+	"D3-DUC":   "Decoy User Credential",
+	"D3-DO":    "Decoy Object",
+	"D3-DE":    "Decoy Environment",
+	"D3-DF":    "Decoy File",
+	"D3-MFA":   "Multi-factor Authentication",
+	"D3-DNSTA": "DNS Traffic Analysis",
+	"D3-ITF":   "Inbound Traffic Filtering",
+	"D3-OTF":   "Outbound Traffic Filtering",
+	"D3-DA":    "Dynamic Analysis",
+	"D3-FH":    "File Hashing",
+	"D3-CH":    "Credential Hardening",
+	"D3-PH":    "Platform Hardening",
+	"D3-CAA":   "Connection Attempt Analysis",
+	"D3-RTSD":  "Remote Terminal Session Detection",
+	"D3-EAL":   "Executable Allowlisting",
+	"D3-FA":    "File Analysis",
+	"D3-NI":    "Network Isolation",
+	"D3-PSA":   "Process Spawn Analysis",
+}
+
+// DefenseName returns the human-readable name for a D3FEND countermeasure id
+// (e.g. "D3-MFA" -> "Multi-factor Authentication"), or "" if unknown.
+func DefenseName(id string) string { return d3fendNames[id] }
+
+// DefenseCatalog returns the D3FEND id->name catalog (a copy), for the CLI /
+// UI to render a legend of the countermeasures the sensor maps to.
+func DefenseCatalog() map[string]string {
+	out := make(map[string]string, len(d3fendNames))
+	for k, v := range d3fendNames {
+		out[k] = v
+	}
+	return out
 }
 
 // CoverageEntry is one static rule/handler/anomaly → ATT&CK mapping,

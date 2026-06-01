@@ -441,12 +441,14 @@ detection coverage or to build ATT&CK-navigator layers.
 tarpit-honeypot list-techniques
 tarpit-honeypot list-techniques --kind anomaly
 tarpit-honeypot list-techniques --json
+tarpit-honeypot list-techniques --defenses    # D3FEND id -> name legend
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--kind rule\|handler\|anomaly` | all | Limit to one mapping class. |
-| `--json` | off | Emit the coverage map as JSON. |
+| `--json` | off | Emit the coverage map (or, with `--defenses`, the D3FEND legend) as JSON. |
+| `--defenses` | off | Print the D3FEND countermeasure legend (id → name) and exit. |
 
 ---
 
