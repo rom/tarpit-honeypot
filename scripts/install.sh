@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+#
+# install.sh — install tarpit-honeypot as a hardened, sandboxed system service.
+#
+# It detects your Linux distribution and then:
+#   1. creates a dedicated unprivileged service account (honey:honeypot),
+#   2. builds (or uses prebuilt) binaries and installs them to /usr/local/bin
+#      owned by that account,
+#   3. grants the binary exactly the file capabilities it needs
+#      (CAP_NET_BIND_SERVICE + CAP_NET_RAW [+ CAP_NET_ADMIN with --tun]),
+#   4. lays out + permissions /etc, /var/lib, /var/log, and the enrichment/TLS
+#      directories,
+#   5. deploys the config with privilege-drop + seccomp + Landlock enabled and
+#      the UI pointed at Let's Encrypt TLS paths,
+#   6. installs the host LSM policy your distro enforces (SELinux on RHEL-family,
+#      AppArmor on Debian-family),
+#   7. installs a hardened systemd service (NoNewPrivileges, ProtectSystem=strict,
+#      PrivateTmp/Devices, a tight CapabilityBoundingSet, …) plus the enrichment
+#      refresh timer.
+#
+# Run as root on the sensor:
+#   sudo scripts/install.sh -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
+#
+# Options:
+#   -c, --config FILE   config to deploy (default: the CENTOS-SERVER example)
+#       --user NAME     service user  (default: honey)
+#       --group NAME    service group (default: honeypot)
+#       --prefix DIR    binary dir    (default: /usr/local/bin)
+#       --data DIR      data dir      (default: /var/lib/tarpit-honeypot)
+#       --tun           also grant CAP_NET_ADMIN (TUN adapter / nft egress backstop)
+#       --force-config  overwrite an existing /etc/tarpit-honeypot/config.yaml
+#       --no-build      use prebuilt ./bin/tarpit-honeypot instead of `go build`
+#       --no-selinux    skip the SELinux policy module (RHEL-family)
+#       --no-apparmor   skip the AppArmor profile (Debian-family)
+#       --no-deps       don't try to install missing OS packages
+#   -h, --help          this help
+#
+# Idempotent: safe to re-run to upgrade the binary / refresh the unit.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+SVC_USER="honey"
+SVC_GROUP="honeypot"
+PREFIX="/usr/local/bin"
+SHARE="/usr/local/share/tarpit-honeypot"
+DATA="/var/lib/tarpit-honeypot"
+LOGDIR="/var/log/tarpit-honeypot"
+ETC="/etc/tarpit-honeypot"
+CONFIG_SRC=""
+WITH_TUN=0
+FORCE_CONFIG=0
+DO_BUILD=1
+DO_SELINUX=1
+DO_APPARMOR=1
+DO_DEPS=1
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+DEFAULT_CONFIG="$REPO/configs/tarpit-honeypot.example-CENTOS-SERVER.yaml"
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-c | --config) CONFIG_SRC="$2"; shift 2 ;;
+	--user) SVC_USER="$2"; shift 2 ;;
+	--group) SVC_GROUP="$2"; shift 2 ;;
+	--prefix) PREFIX="$2"; shift 2 ;;
+	--data) DATA="$2"; shift 2 ;;
+	--tun) WITH_TUN=1; shift ;;
+	--force-config) FORCE_CONFIG=1; shift ;;
+	--no-build) DO_BUILD=0; shift ;;
+	--no-selinux) DO_SELINUX=0; shift ;;
+	--no-apparmor) DO_APPARMOR=0; shift ;;
+	--no-deps) DO_DEPS=0; shift ;;
+	-h | --help) sed -n '2,38p' "$0"; exit 0 ;;
+	*) echo "unknown option: $1" >&2; exit 2 ;;
+	esac
+done
+CONFIG_SRC="${CONFIG_SRC:-$DEFAULT_CONFIG}"
+
+info() { printf '\033[1;32m[*]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "must run as root (sudo $0)"
+[ -f "$CONFIG_SRC" ] || die "config not found: $CONFIG_SRC"
+
+# ---------------------------------------------------------------------------
+# 1. Detect the Linux distribution / family.
+# ---------------------------------------------------------------------------
+DISTRO_ID="unknown"; DISTRO_LIKE=""; FAMILY="unknown"; PKG=""; LSM="none"
+detect_distro() {
+	if [ -r /etc/os-release ]; then
+		# shellcheck disable=SC1091
+		. /etc/os-release
+		DISTRO_ID="${ID:-unknown}"
+		DISTRO_LIKE="${ID_LIKE:-}"
+	fi
+	case " $DISTRO_ID $DISTRO_LIKE " in
+	*" debian "* | *" ubuntu "*) FAMILY="debian" ;;
+	*" rhel "* | *" fedora "* | *" centos "*) FAMILY="rhel" ;;
+	*" suse "* | *" opensuse "*) FAMILY="suse" ;;
+	*" arch "*) FAMILY="arch" ;;
+	esac
+	# Direct IDs win over ID_LIKE.
+	case "$DISTRO_ID" in
+	debian | ubuntu | linuxmint | pop | raspbian) FAMILY="debian" ;;
+	rhel | centos | almalinux | rocky | fedora | ol | oracle | amzn) FAMILY="rhel" ;;
+	sles | opensuse* | suse) FAMILY="suse" ;;
+	arch | manjaro) FAMILY="arch" ;;
+	esac
+	case "$FAMILY" in
+	debian) PKG="apt-get"; LSM="apparmor" ;;
+	rhel)   PKG="$(command -v dnf >/dev/null 2>&1 && echo dnf || echo yum)"; LSM="selinux" ;;
+	suse)   PKG="zypper"; LSM="apparmor" ;;
+	arch)   PKG="pacman"; LSM="none" ;;
+	esac
+}
+detect_distro
+info "Distribution: ${DISTRO_ID} (family: ${FAMILY}, pkg: ${PKG:-none}, LSM: ${LSM})"
+[ "$FAMILY" = "unknown" ] && warn "unrecognized distro; continuing with best-effort defaults"
+
+# pkg_install <pkg...> — best-effort, never fatal.
+pkg_install() {
+	[ "$DO_DEPS" = 1 ] || { warn "skipping package install (--no-deps): $*"; return 0; }
+	[ -n "$PKG" ] || { warn "no known package manager; install manually: $*"; return 0; }
+	info "Installing packages: $*"
+	case "$PKG" in
+	apt-get) DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" >/dev/null 2>&1 || warn "apt-get failed for: $*" ;;
+	dnf | yum) "$PKG" install -y "$@" >/dev/null 2>&1 || warn "$PKG failed for: $*" ;;
+	zypper)  zypper --non-interactive install "$@" >/dev/null 2>&1 || warn "zypper failed for: $*" ;;
+	pacman)  pacman -S --noconfirm "$@" >/dev/null 2>&1 || warn "pacman failed for: $*" ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# 2. Ensure setcap is available (libcap).
+# ---------------------------------------------------------------------------
+if ! command -v setcap >/dev/null 2>&1; then
+	case "$FAMILY" in
+	debian) pkg_install libcap2-bin ;;
+	rhel)   pkg_install libcap ;;
+	suse)   pkg_install libcap-progs ;;
+	arch)   pkg_install libcap ;;
+	esac
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Service account: group + system user (no login, home = data dir).
+# ---------------------------------------------------------------------------
+if ! getent group "$SVC_GROUP" >/dev/null; then
+	info "Creating group: $SVC_GROUP"
+	groupadd --system "$SVC_GROUP"
+fi
+if ! getent passwd "$SVC_USER" >/dev/null; then
+	info "Creating system user: $SVC_USER"
+	useradd --system --gid "$SVC_GROUP" --home-dir "$DATA" --no-create-home \
+		--shell /usr/sbin/nologin "$SVC_USER" 2>/dev/null ||
+		useradd --system --gid "$SVC_GROUP" --home-dir "$DATA" --no-create-home \
+			--shell /sbin/nologin "$SVC_USER"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Build (or locate) and install the binary, owned by the service account.
+# ---------------------------------------------------------------------------
+BIN_SRC=""
+if [ "$DO_BUILD" = 1 ] && command -v go >/dev/null 2>&1; then
+	info "Building tarpit-honeypot (go build)…"
+	( cd "$REPO" && CGO_ENABLED=0 go build -trimpath -o "$REPO/bin/tarpit-honeypot" ./cmd/tarpit-honeypot )
+	BIN_SRC="$REPO/bin/tarpit-honeypot"
+elif [ -x "$REPO/bin/tarpit-honeypot" ]; then
+	BIN_SRC="$REPO/bin/tarpit-honeypot"
+else
+	die "no binary: install Go (to build) or provide a prebuilt ./bin/tarpit-honeypot (and pass --no-build)"
+fi
+
+install -d -o root -g "$SVC_GROUP" -m 0755 "$PREFIX"
+info "Installing $PREFIX/tarpit-honeypot (owner $SVC_USER:$SVC_GROUP, 0750)"
+install -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$BIN_SRC" "$PREFIX/tarpit-honeypot"
+BIN="$PREFIX/tarpit-honeypot"
+# Ship the harness too if it's around (optional).
+[ -x "$REPO/bin/tarpit-testharness" ] &&
+	install -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$REPO/bin/tarpit-testharness" "$PREFIX/tarpit-testharness" || true
+
+# ---------------------------------------------------------------------------
+# 5. File capabilities — the only privilege the dropped process keeps.
+# ---------------------------------------------------------------------------
+CAPS="cap_net_bind_service,cap_net_raw"
+[ "$WITH_TUN" = 1 ] && CAPS="$CAPS,cap_net_admin"
+if command -v setcap >/dev/null 2>&1; then
+	info "Granting file capabilities: ${CAPS}+ep"
+	setcap "${CAPS}+ep" "$BIN" || warn "setcap failed (filesystem may be nosuid/overlay); systemd AmbientCapabilities still covers it"
+	getcap "$BIN" || true
+else
+	warn "setcap not available; relying on systemd AmbientCapabilities only"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Directory layout + permissions.
+# ---------------------------------------------------------------------------
+info "Creating directories"
+install -d -o root        -g "$SVC_GROUP" -m 0750 "$ETC"
+install -d -o root        -g "$SVC_GROUP" -m 0750 "$ETC/enrichment" "$ETC/enrichment/geoip" "$ETC/enrichment/threat"
+install -d -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$ETC/tls"          # sensor-readable cert copies
+install -d -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$DATA" "$LOGDIR"
+install -d -o root        -g "$SVC_GROUP" -m 0755 "$SHARE" "$SHARE/scripts"
+
+# Ship the helper scripts where the systemd units expect them.
+for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh; do
+	[ -f "$REPO/scripts/$s" ] && install -o root -g "$SVC_GROUP" -m 0755 "$REPO/scripts/$s" "$SHARE/scripts/$s"
+done
+
+# ---------------------------------------------------------------------------
+# 7. Deploy the config; enable privilege-drop + sandbox + LE TLS paths.
+# ---------------------------------------------------------------------------
+CONFIG="$ETC/config.yaml"
+if [ -f "$CONFIG" ] && [ "$FORCE_CONFIG" != 1 ]; then
+	warn "keeping existing $CONFIG (use --force-config to overwrite)"
+else
+	info "Deploying config -> $CONFIG"
+	install -o root -g "$SVC_GROUP" -m 0640 "$CONFIG_SRC" "$CONFIG"
+fi
+
+# Ensure the privilege-drop + sandbox keys are present, and — once the Let's
+# Encrypt cert exists — point the UI at it. The validator stat()s the cert, so
+# we only wire TLS when the files are actually there (re-run install.sh after
+# letsencrypt-cert.sh, which also wires it). Idempotent; only touches our keys.
+patch_config() {
+	local f="$1"
+	if [ -f "$ETC/tls/cert.pem" ] && [ -f "$ETC/tls/key.pem" ]; then
+		info "Pointing UI TLS at $ETC/tls/{cert,key}.pem"
+		sed -i \
+			-e "s|^\([[:space:]]*\)# *tls_cert:.*|\1tls_cert: $ETC/tls/cert.pem|" \
+			-e "s|^\([[:space:]]*\)# *tls_key:.*|\1tls_key:  $ETC/tls/key.pem|" \
+			"$f" 2>/dev/null || true
+	else
+		warn "no TLS cert yet at $ETC/tls/ — run letsencrypt-cert.sh to get one (it wires the config)"
+	fi
+	grep -q "drop_user:" "$f" || warn "config has no sensor.drop_user — add 'drop_user: $SVC_USER' / 'drop_group: $SVC_GROUP'"
+	grep -q "seccomp:" "$f"  || warn "config has no sensor.sandbox.seccomp — add 'sandbox: { seccomp: true, landlock: true }'"
+}
+patch_config "$CONFIG"
+
+if "$BIN" validate-config -c "$CONFIG" >/dev/null 2>&1; then
+	info "Config validates"
+else
+	warn "config did not validate — run: $BIN validate-config -c $CONFIG"
+fi
+
+# ---------------------------------------------------------------------------
+# 8. Host LSM policy (SELinux on RHEL-family, AppArmor on Debian-family).
+# ---------------------------------------------------------------------------
+install_selinux() {
+	[ "$DO_SELINUX" = 1 ] || { info "SELinux module skipped (--no-selinux)"; return 0; }
+	command -v getenforce >/dev/null 2>&1 || { warn "SELinux tools absent; skipping module"; return 0; }
+	info "SELinux: $(getenforce)"
+	if [ -d "$REPO/packaging/selinux" ] && command -v make >/dev/null 2>&1; then
+		command -v checkmodule >/dev/null 2>&1 || pkg_install policycoreutils-devel selinux-policy-devel
+		if ( cd "$REPO/packaging/selinux" && make >/dev/null 2>&1 && make install >/dev/null 2>&1 ); then
+			info "SELinux policy module installed (tarpit_honeypot)"
+		else
+			warn "SELinux module build failed; install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux"
+		fi
+	fi
+	# Label the binary + data so the domain transition / file access apply.
+	if command -v semanage >/dev/null 2>&1; then
+		semanage fcontext -a -t bin_t "$BIN" 2>/dev/null || true
+	fi
+	command -v restorecon >/dev/null 2>&1 && restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+}
+install_apparmor() {
+	[ "$DO_APPARMOR" = 1 ] || { info "AppArmor profile skipped (--no-apparmor)"; return 0; }
+	command -v apparmor_parser >/dev/null 2>&1 || { warn "AppArmor absent; skipping profile"; return 0; }
+	local prof="$REPO/packaging/apparmor/usr.local.bin.tarpit-honeypot"
+	[ -f "$prof" ] || { warn "AppArmor profile not found in repo; skipping"; return 0; }
+	info "Installing AppArmor profile (complain mode — switch to enforce after observing)"
+	install -o root -g root -m 0644 "$prof" /etc/apparmor.d/usr.local.bin.tarpit-honeypot
+	apparmor_parser -r -W /etc/apparmor.d/usr.local.bin.tarpit-honeypot 2>/dev/null || warn "apparmor_parser failed"
+	command -v aa-complain >/dev/null 2>&1 && aa-complain "$BIN" 2>/dev/null || true
+	info "  enforce later with: aa-enforce $BIN"
+}
+case "$LSM" in
+selinux)  install_selinux ;;
+apparmor) install_apparmor ;;
+*)        warn "no host LSM detected; relying on seccomp + Landlock + systemd sandboxing" ;;
+esac
+
+# ---------------------------------------------------------------------------
+# 9. systemd: hardened service + enrichment/cert timers.
+# ---------------------------------------------------------------------------
+install_systemd() {
+	command -v systemctl >/dev/null 2>&1 || { warn "no systemd; start manually: $BIN run -c $CONFIG (as $SVC_USER)"; return 0; }
+	local amb="CAP_NET_BIND_SERVICE CAP_NET_RAW"
+	[ "$WITH_TUN" = 1 ] && amb="$amb CAP_NET_ADMIN"
+	info "Installing systemd unit -> /etc/systemd/system/tarpit-honeypot.service"
+	cat >/etc/systemd/system/tarpit-honeypot.service <<EOF
+[Unit]
+Description=tarpit-honeypot deception sensor
+Documentation=https://github.com/rom/tarpit-honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_GROUP
+ExecStart=$BIN run -c $CONFIG
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Capabilities the sensor keeps after privilege drop.
+AmbientCapabilities=$amb
+CapabilityBoundingSet=$amb
+NoNewPrivileges=true
+
+# Hardening (complements the in-process seccomp + Landlock).
+ProtectSystem=strict
+ReadWritePaths=$DATA $LOGDIR
+ReadOnlyPaths=$ETC
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET AF_NETLINK
+MemoryDenyWriteExecute=true
+LockPersonality=true
+SystemCallArchitectures=native
+# NB: no SystemCallFilter allowlist here — the sensor's in-process seccomp
+# DENYLIST (sensor.sandbox.seccomp) blocks the dangerous syscalls precisely,
+# without risk of an allowlist blocking the in-process Landlock syscalls.
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	# Maintenance timers (paths resolve against $SHARE/scripts).
+	for u in tarpit-enrichment.service tarpit-enrichment.timer tarpit-cert-renew.service tarpit-cert-renew.timer; do
+		[ -f "$REPO/packaging/systemd/$u" ] && install -o root -g root -m 0644 "$REPO/packaging/systemd/$u" "/etc/systemd/system/$u"
+	done
+	systemctl daemon-reload
+	systemctl enable tarpit-honeypot.service >/dev/null 2>&1 || true
+	systemctl enable --now tarpit-enrichment.timer >/dev/null 2>&1 || true
+	info "Enabled tarpit-honeypot.service + tarpit-enrichment.timer"
+}
+install_systemd
+
+# ---------------------------------------------------------------------------
+# Done.
+# ---------------------------------------------------------------------------
+cat <<EOF
+
+$(info "Install complete.")
+
+  binary   : $BIN  ($(getcap "$BIN" 2>/dev/null || echo 'no file caps'))
+  user     : $SVC_USER:$SVC_GROUP
+  config   : $CONFIG
+  data     : $DATA
+  scripts  : $SHARE/scripts
+
+Next steps:
+  1. Get a real TLS cert for the web UI (asks for domain + hostname):
+       sudo $SHARE/scripts/letsencrypt-cert.sh
+  2. Pull the enrichment data now (then the daily timer keeps it fresh):
+       sudo $SHARE/scripts/update-enrichment.sh
+  3. Start the sensor:
+       sudo systemctl start tarpit-honeypot
+       systemctl status tarpit-honeypot ; journalctl -u tarpit-honeypot -f
+
+Hardening in effect: privilege drop ($SVC_USER), file caps ${CAPS}, in-process
+seccomp + Landlock (config), host LSM ($LSM), and systemd confinement.
+EOF

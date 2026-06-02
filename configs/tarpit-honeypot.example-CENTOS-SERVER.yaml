@@ -7,18 +7,26 @@
 #   - FTP      (21)                    — file server, captures logins, serves bait files
 # It also answers ICMP echo (ping) so a recon scan sees the host as alive.
 #
-# Every emulation / decoy / vuln-recognition feature for those services is on:
-# vulnerable-banner emulation (so version scanners flag a juicy unpatched
-# target and the follow-up exploit is recognized), the deliberately-vulnerable
-# web app + planted URL canaries, payload capture, credential capture, and the
-# matching correlators. Nothing is ever actually exploitable.
+# This is the hardened reference deployment: every emulation / decoy / vuln-
+# recognition feature for those services is on, the FULL enrichment stack
+# (GeoIP/ASN, reverse DNS, Tor, threat-intel lists + live feeds, MAC-vendor,
+# network classification) is wired, and the process drops privileges and
+# self-confines (seccomp + Landlock). Nothing is ever actually exploitable.
 #
+# Set it up the easy way with the helper scripts (they create the honey user,
+# install the binary + capabilities + systemd unit, fetch the enrichment data,
+# and wire Let's Encrypt for the UI):
+#   sudo scripts/install.sh -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
+#   sudo scripts/letsencrypt-cert.sh         # real TLS cert for the web UI
+#   sudo scripts/update-enrichment.sh        # GeoIP / Tor / threat feeds (cron/timer)
+#
+# Or just validate + run it from the repo:
 #   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
 #   tarpit-honeypot run             -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml
 
 sensor:
   name: ""                 # blank = hostname
-  data_dir: ./var
+  data_dir: /var/lib/tarpit-honeypot   # production path; the dropped honey user owns it
   # One coherent OS identity across every banner-aware handler (Apache/vsftpd/
   # Postfix/BIND versions, TLS posture, SMTP greeting, ICMP TTL, …).
   archetype: centos-6
@@ -26,10 +34,72 @@ sensor:
   # the service is never actually exploitable, but the follow-up exploit
   # attempt (Shellshock, the CVE catalog, web-attack classes) is recognized.
   vuln_emulation: true
-  # Harvest dropped webshells / uploaded payloads / FTP uploads to
-  # <data_dir>/captures, classify them, and turn artifact hashes into IOCs.
+
+  # --- Privilege drop --------------------------------------------------------
+  # Bind privileged ports + open the ICMP/AF_PACKET sockets with the granted
+  # capabilities, then drop to this unprivileged user. The sensor refuses to
+  # keep running as uid 0. scripts/install.sh creates honey:honeypot.
+  drop_user: honey
+  drop_group: honeypot
+
+  # --- In-process sandbox (Linux) -------------------------------------------
+  # Applied once, after privileged setup + privilege drop. A one-way ratchet:
+  # seccomp denies shell-spawn / module-load / debug syscalls; Landlock makes
+  # the filesystem read-only except data_dir. No-ops on non-Linux / old kernels.
+  sandbox:
+    seccomp: true
+    landlock: true
+
+  # --- Full enrichment stack -------------------------------------------------
+  # All file-based databases live under /etc/tarpit-honeypot/enrichment and are
+  # populated + kept fresh by scripts/fetch-enrichment.sh + install-enrichment.sh
+  # (or the one-shot scripts/update-enrichment.sh on a cron / systemd timer).
+  geoip:
+    city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb   # GeoLite2-City / DB-IP lite
+    asn_db:  /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb    # GeoLite2-ASN  / DB-IP lite
+  rdns:
+    enabled: true          # synchronous reverse-DNS of source IPs (bounded + cached)
+    timeout: 2s
+    cache_size: 8192
+  tor:
+    enabled: true
+    exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt
+  net_class:
+    enabled: true          # database-free bogon / cloud-hosting classification
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv            # MAC-vendor (IEEE OUI)
+  threat_intel:
+    enabled: true          # static reputation lists (refreshed by the enrichment scripts)
+    lists:
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+      - { label: abuse-ch-feodo, file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
+      - { label: spamhaus-drop,  file: /etc/tarpit-honeypot/enrichment/threat/spamhaus-drop.txt }
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+
+  # Harvest dropped webshells / uploaded payloads / FTP uploads, classify them,
+  # and turn artifact hashes into IOCs.
   payloads:
     enabled: true
+
+# --- Live threat-intel feeds (dynamic puller) --------------------------------
+# Pulls reputation feeds over the network on a schedule and tags matching
+# sources external_intel + threat_intel_hit. Dialled through the egress
+# allowlist below (the feed hosts are auto-allowlisted). Complements the static
+# threat_intel lists above. Add AbuseIPDB / GreyNoise with an API key via the
+# per-feed `header:` if you have one.
+threat_feeds:
+  enabled: true
+  poll: 1h
+  feeds:
+    - { label: abuse-ch-feodo, url: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt", format: lines }
+
+# --- Outbound containment (do-no-harm) ---------------------------------------
+# The sensor only initiates outbound connections for its own telemetry + the
+# threat-feed pull; everything else is refused and reported (egress:denied).
+egress:
+  enabled: true
+  allow:
+    - feodotracker.abuse.ch:443        # the threat_feeds source above
+  # enforce: true   # additionally install the nftables backstop (needs nft + CAP_NET_ADMIN)
 
 # The web app + protocol emulations all run fully at low interaction.
 interaction:
@@ -38,6 +108,13 @@ interaction:
 ui:
   enabled: true
   bind: 127.0.0.1:8088
+  # Real TLS for the management UI. scripts/letsencrypt-cert.sh obtains a Let's
+  # Encrypt certificate and drops a sensor-readable copy here; scripts/install.sh
+  # uncomments these. To expose the UI off-loopback you must ALSO set a bind
+  # address and auth_token_env (the validator enforces this).
+  # tls_cert: /etc/tarpit-honeypot/tls/cert.pem
+  # tls_key:  /etc/tarpit-honeypot/tls/key.pem
+  # auth_token_env: TARPIT_UI_TOKEN
 
 listeners:
   # --- Web: the full fake-vulnerable app on HTTP + HTTPS ---
@@ -54,7 +131,7 @@ listeners:
     bind: 0.0.0.0:443
     mode: banner
     handler: https         # self-signs a cert shaped by the archetype's TLS posture
-    webapp: true
+    webapp: true           # (a real cert here would deanonymize the decoy — keep it self-signed)
     severity: high
     capture: true
 
@@ -83,8 +160,9 @@ url_canaries:
   - { id: env-file,  path: /.env,                   severity: critical }
 
 # Answer ICMP echo (ping) — and ARP — for the decoy host so recon sees it alive.
-# Linux + CAP_NET_RAW. Set `interface` to the NIC the traffic arrives on and the
-# host `ip` to this box's (or a routed decoy) address.
+# Linux + CAP_NET_RAW (granted by scripts/install.sh). Set `interface` to the
+# NIC the traffic arrives on and the host `ip` to this box's (or a routed
+# decoy) address.
 honeynets:
   - id: server
     cidr: 192.0.2.0/24
@@ -105,19 +183,22 @@ honeynets:
           - { port: 21,  handler: ftp_files }
 
 # Detection for exactly these services — brute force, scanning, the web-attack
-# classes, mail-relay probing, DNS tunnelling, default-credential sweeps, and
-# the multi-stage / scan-then-exploit progressions.
+# classes, mail-relay probing, DNS tunnelling, default-credential sweeps, the
+# threat-intel burst (needs the enrichment above), and the multi-stage /
+# scan-then-exploit progressions.
 correlate:
-  port_scan:        { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
-  brute_force:      { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  port_scan:          { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
   default_cred_sweep: { enabled: true, distinct_services: 3, window: 300s, severity: high }
-  path_enumeration: { enabled: true, distinct_paths: 40, window: 60s,  severity: high }
-  ua_rotation:      { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
-  exploit_chain:    { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
-  web_attack_probe: { enabled: true, distinct_classes: 3, window: 600s, severity: high }
-  recon_to_exploit: { enabled: true, window: 1800s, severity: high }
-  dns_tunnel:       { enabled: true, events: 5, window: 600s, severity: high }
-  spam_relay:       { enabled: true, events: 3, window: 600s, severity: medium }
+  path_enumeration:   { enabled: true, distinct_paths: 40, window: 60s,  severity: high }
+  ua_rotation:        { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  exploit_chain:      { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  web_attack_probe:   { enabled: true, distinct_classes: 3, window: 600s, severity: high }
+  recon_to_exploit:   { enabled: true, window: 1800s, severity: high }
+  dns_tunnel:         { enabled: true, events: 5, window: 600s, severity: high }
+  spam_relay:         { enabled: true, events: 3, window: 600s, severity: medium }
+  threat_intel_burst: { enabled: true, events: 3, window: 600s, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 3, window: 3600s, severity: high }
 
 channels:
   - { id: stdout, type: stdout, min_severity: low }

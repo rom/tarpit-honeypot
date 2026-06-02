@@ -1,0 +1,12 @@
+[Unit]
+Description=tarpit-honeypot TLS certificate renewal (Let's Encrypt)
+Documentation=https://github.com/rom/tarpit-honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# certbot renews if within the renewal window; the deploy hook installed by
+# scripts/letsencrypt-cert.sh copies the renewed cert to a sensor-readable
+# location and reloads the service.
+ExecStart=/usr/bin/certbot renew --quiet
