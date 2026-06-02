@@ -1818,14 +1818,18 @@ only — no inline scripts, no `eval`, no third-party origins. The JS is
 disabled. It adds a pausable, visibility-aware **live-refresh** bar (no-JS
 fallback: a `<meta http-equiv="refresh">` every `ui.refresh_seconds`,
 default 10s; set `0` to disable), client-side **table sorting/filtering**,
-and an interactive **correlation graph**.
+and an interactive **correlation graph**. The refresh is **state-preserving**:
+a chosen column sort, the live-pause toggle, and the timeline order all persist
+across the reload (per-page `localStorage`), so a periodic refresh never resets
+your view.
 
 Endpoints:
 
-- `/` — last-24h summary: a **traffic-counters strip** (events by transport
-  + L2 frame counts — received / ARP / IPv4 / IPv6 / TCP / UDP / ICMP — when
-  the AF_PACKET sniffer is running) over total + by severity + top rules +
-  top sources.
+- `/` — last-24h summary: a **traffic-counters strip** — colour-tinted by
+  category (transport: events / TCP / UDP / ICMP; severity: critical / high /
+  medium / low), plus the L2 frame counts (received / ARP / IPv4 / IPv6 / TCP /
+  UDP / ICMP) when the AF_PACKET sniffer is running — over total + by severity
+  + top rules + top sources.
 - `/events` — filterable table: `?source=`, `?rule=`, `?severity=high`,
   `?since=24h`, `?limit=N`. Click a column header (time / severity / rule
   / source / handler) to sort; click again to reverse (`?sort=&order=`).
@@ -1833,10 +1837,16 @@ Endpoints:
   meta table, plus download links for the connection **pcap**, the
   **session recording** (asciinema cast, when present), and an "all pcaps +
   sessions from this source IP" ZIP.
-- `/timeline` — **attack timeline**: per-source chronological event sequences
-  (top sources by volume), each showing the attacker's progression with
-  severity colouring + the ATT&CK tactics touched (distinct from the flat
-  `/events` table).
+- `/timeline` — **attack timeline**: per-source event sequences (top sources by
+  volume), **newest-first** with an *order* button to flip to oldest-first
+  (persisted), each showing the attacker's progression with severity colouring +
+  the ATT&CK tactics touched (distinct from the flat `/events` table).
+- `/captures` — **captures / loot**: one place to retrieve everything harvested
+  — captured **malware/payload artifacts** (`sensor.payloads`), captured
+  **credentials** (user:pass + source + service), per-connection **pcaps**, and
+  **session recordings**. Files download as attachments via `/loot/?kind=&name=`
+  (octet-stream + `nosniff`, basename-only + symlink-safe — a captured sample
+  never executes in the browser); a "download all" link streams a ZIP.
 - `/search` — **advanced search**: structured columns (source / rule /
   severity / handler / dest port / since / full-text) pushed to SQL, plus
   behavioral post-filters over captured meta (ATT&CK tactic, country, tool,

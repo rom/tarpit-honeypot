@@ -54,7 +54,11 @@
       btn.style.display = "none";
       return;
     }
-    var paused = false, remaining = secs;
+    // Remember the pause choice across reloads too (another "setting" the
+    // refresh must not silently reset).
+    var pauseKey = "thlive:paused";
+    var stored; try { stored = localStorage.getItem(pauseKey); } catch (e) { stored = null; }
+    var paused = stored === "1", remaining = secs;
     function render() {
       btn.textContent = paused ? "resume" : "pause";
       status.textContent = paused ? "❙❙ live paused" : ("● live · refresh " + remaining + "s");
@@ -62,6 +66,7 @@
     btn.addEventListener("click", function () {
       paused = !paused;
       if (!paused) remaining = secs;
+      try { localStorage.setItem(pauseKey, paused ? "1" : "0"); } catch (e) { /* ignore */ }
       render();
     });
     setInterval(function () {
@@ -73,28 +78,60 @@
   }
 
   // ---- sortable data tables ---------------------------------------------
+  // Sort choices PERSIST across the auto-refresh reload (and revisits): when a
+  // header is clicked we save {col,dir} in localStorage keyed by the page +
+  // table, and re-apply it on load. So a timer refresh never resets the
+  // operator's chosen column/order.
+  function tableKey(t, idx) {
+    if (t.id) return t.id;
+    // Derive a stable key from the header labels so it survives reloads.
+    var hs = [];
+    Array.prototype.forEach.call(t.querySelectorAll("tr:first-child th"), function (h) {
+      hs.push((h.textContent || "").trim().slice(0, 12));
+    });
+    return "t" + idx + ":" + hs.join("|");
+  }
+  function sortStoreKey(t, idx) { return "thsort:" + location.pathname + "#" + tableKey(t, idx); }
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+
+  function applySort(t, headerRow, ths, col, dir, persist) {
+    sortTable(t, headerRow, col, dir);
+    Array.prototype.forEach.call(ths, function (o) {
+      o.removeAttribute("data-arrow");
+      o.removeAttribute("data-dir");
+    });
+    if (ths[col]) {
+      ths[col].setAttribute("data-dir", dir === 1 ? "1" : "-1");
+      ths[col].setAttribute("data-arrow", dir === 1 ? "▲" : "▼");
+    }
+    if (persist) lsSet(sortStoreKey(t, t._sortIdx), col + "," + dir);
+  }
+
   function setupSort() {
     var tables = document.querySelectorAll("table");
-    Array.prototype.forEach.call(tables, function (t) {
+    Array.prototype.forEach.call(tables, function (t, tIdx) {
       if (t.classList.contains("chart")) return;          // CSS bar charts
       var headerRow = t.querySelector("tr");
       if (!headerRow) return;
       var ths = headerRow.querySelectorAll("th");
       if (!ths.length) return;
       if (headerRow.querySelector("th a")) return;        // server-sorted
+      t._sortIdx = tIdx;
       Array.prototype.forEach.call(ths, function (th, idx) {
         th.classList.add("sortable");
         th.addEventListener("click", function () {
           var dir = th.getAttribute("data-dir") === "1" ? -1 : 1;
-          sortTable(t, headerRow, idx, dir);
-          Array.prototype.forEach.call(ths, function (o) {
-            o.removeAttribute("data-arrow");
-            o.removeAttribute("data-dir");
-          });
-          th.setAttribute("data-dir", dir === 1 ? "1" : "-1");
-          th.setAttribute("data-arrow", dir === 1 ? "▲" : "▼");
+          applySort(t, headerRow, ths, idx, dir, true);
         });
       });
+      // Restore a previously chosen sort for this table.
+      var saved = lsGet(sortStoreKey(t, tIdx));
+      if (saved) {
+        var parts = saved.split(",");
+        var col = parseInt(parts[0], 10), dir = parseInt(parts[1], 10) === -1 ? -1 : 1;
+        if (col >= 0 && col < ths.length) applySort(t, headerRow, ths, col, dir, false);
+      }
     });
   }
   function sortTable(table, headerRow, col, dir) {
@@ -249,8 +286,37 @@
     });
   }
 
+  // ---- attack-timeline order toggle -------------------------------------
+  // The server renders each source's events newest-first; this button flips
+  // every timeline table to oldest-first (and back), and the choice persists
+  // across the auto-refresh reload.
+  function setupTimelineOrder() {
+    var btn = document.getElementById("tl-order");
+    if (!btn) return;
+    var key = "tltimeorder";
+    var desired = lsGet(key) === "old" ? "old" : "new"; // server order = "new"
+    function reverseTable(t) {
+      var rows = Array.prototype.slice.call(t.rows);
+      var parent = rows.length ? rows[0].parentNode : t;
+      for (var i = rows.length - 1; i >= 0; i--) parent.appendChild(rows[i]);
+    }
+    function apply() {
+      Array.prototype.forEach.call(document.querySelectorAll("table.tl-events"), function (t) {
+        var cur = t.getAttribute("data-order") || "new"; // as rendered
+        if (cur !== desired) { reverseTable(t); t.setAttribute("data-order", desired); }
+      });
+      btn.textContent = desired === "new" ? "order: newest first" : "order: oldest first";
+    }
+    btn.addEventListener("click", function () {
+      desired = desired === "new" ? "old" : "new";
+      lsSet(key, desired);
+      apply();
+    });
+    apply();
+  }
+
   ready(function () {
-    [setupRefresh, setupSort, setupFilter, setupGraphs, setupWidgets, setupHelp].forEach(function (fn) {
+    [setupRefresh, setupSort, setupFilter, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder].forEach(function (fn) {
       try { fn(); } catch (e) { /* never break the page */ }
     });
   });

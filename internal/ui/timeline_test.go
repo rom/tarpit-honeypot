@@ -29,9 +29,9 @@ func TestBuildTimelineView(t *testing.T) {
 	if top.Source != "1.1.1.1" || top.Count != 2 || top.MaxSev != "critical" {
 		t.Errorf("top source wrong: %+v", top)
 	}
-	// Events time-ordered within the source.
-	if !top.Events[0].Time.Before(top.Events[1].Time) {
-		t.Errorf("events not time-ordered: %+v", top.Events)
+	// Events are newest-first within the source (UI default; a button flips it).
+	if !top.Events[0].Time.After(top.Events[1].Time) {
+		t.Errorf("events not newest-first: %+v", top.Events)
 	}
 	// Tactics aggregated (ssh→credential-access, smb→lateral-movement).
 	joined := strings.Join(top.Tactics, ",")

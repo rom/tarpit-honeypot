@@ -132,9 +132,9 @@ func buildHealthView(m *Metrics, sum store.Summary) healthView {
 	if _, ok := frames["all"]; ok {
 		v.SnifferActive = true
 		v.Frames = []counter{
-			{"received", frames["all"]}, {"ARP", frames["arp"]}, {"IPv4", frames["ipv4"]},
-			{"IPv6", frames["ipv6"]}, {"TCP", frames["tcp"]}, {"UDP", frames["udp"]},
-			{"ICMP", frames["icmp"]}, {"other", frames["other"]},
+			{Label: "received", Value: frames["all"]}, {Label: "ARP", Value: frames["arp"]}, {Label: "IPv4", Value: frames["ipv4"]},
+			{Label: "IPv6", Value: frames["ipv6"]}, {Label: "TCP", Value: frames["tcp"]}, {Label: "UDP", Value: frames["udp"]},
+			{Label: "ICMP", Value: frames["icmp"]}, {Label: "other", Value: frames["other"]},
 		}
 	}
 	v.DBSize = humanBytes(v.DBBytes)

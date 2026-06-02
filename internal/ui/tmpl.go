@@ -406,6 +406,20 @@ html.js .nojs-note { display: none; }
 .counter { min-width: 6rem; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 6px; padding: .35rem .6rem; text-align: center; }
 .counter b { display: block; font-size: 1.43rem; line-height: 1.1; color: var(--counter-num); }
 .counter span { font-size: 0.786rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
+/* Category-tinted summary counters. color-mix tints the theme's surface with an
+   accent so the colors stay readable in every light/dark theme; browsers
+   without color-mix simply fall back to the default surface color above. */
+.counter.c-total { background: color-mix(in srgb, #1f6feb 16%, var(--bg-surface)); border-color: color-mix(in srgb, #1f6feb 45%, var(--border-medium)); }
+.counter.c-tcp   { background: color-mix(in srgb, #2e9e5b 16%, var(--bg-surface)); border-color: color-mix(in srgb, #2e9e5b 45%, var(--border-medium)); }
+.counter.c-udp   { background: color-mix(in srgb, #c08a1e 18%, var(--bg-surface)); border-color: color-mix(in srgb, #c08a1e 45%, var(--border-medium)); }
+.counter.c-icmp  { background: color-mix(in srgb, #7c4dff 16%, var(--bg-surface)); border-color: color-mix(in srgb, #7c4dff 45%, var(--border-medium)); }
+.counter.sev-bg-critical { background: color-mix(in srgb, var(--sev-critical) 24%, var(--bg-surface)); border-color: var(--sev-critical); }
+.counter.sev-bg-critical b { color: var(--sev-critical); }
+.counter.sev-bg-high { background: color-mix(in srgb, var(--sev-high) 20%, var(--bg-surface)); border-color: var(--sev-high); }
+.counter.sev-bg-medium { background: color-mix(in srgb, var(--sev-medium) 20%, var(--bg-surface)); border-color: var(--sev-medium); }
+.counter.sev-bg-low { background: color-mix(in srgb, var(--sev-low) 16%, var(--bg-surface)); border-color: color-mix(in srgb, var(--sev-low) 45%, var(--border-medium)); }
+.tl-order-btn { cursor: pointer; margin: 0 0 .6rem; padding: .25rem .7rem; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--bg-surface); color: var(--link); font-size: .82rem; }
+.tl-order-btn:hover { border-color: var(--link); }
 .counter-cat { align-self: center; width: 6.5rem; color: var(--text-muted); font-size: 0.857rem; }
 svg.graph { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; }
 svg.graph .edge { stroke: var(--chart-edge); stroke-width: 1; }
@@ -476,7 +490,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 {{ end }}
 
 {{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
@@ -504,9 +518,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>tarpit-honeypot — last 24 hours</h1>
 <p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
 
-<div class="counters">{{ range .Counters }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ if .HasFrames }}
-<div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 <h2>events per hour</h2>
@@ -580,12 +594,13 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "timeline" }}{{ template "head" . }}
 <h1>attack timeline — last 24 hours</h1>
-<p class="note">Per-source event sequences (top {{ len .Sources }} sources by volume), time-ordered, so you can read each attacker's progression. Severity colors the rule; chips are the ATT&amp;CK tactics touched.</p>
+<p class="note">Per-source event sequences (top {{ len .Sources }} sources by volume), <strong>newest event first</strong>, so you can read each attacker's progression. Severity colors the rule; chips are the ATT&amp;CK tactics touched.</p>
+<button id="tl-order" type="button" class="tl-order-btn">order: newest first</button>
 {{ if .Sources }}{{ range .Sources }}
 <div class="net">
   <h3><a href="/profiles/{{ .Source }}">{{ .Source }}</a> <span class="meta">{{ .Count }} events · {{ fmtTime .FirstSeen }} → {{ fmtTime .LastSeen }}</span></h3>
   <div class="meta">tactics: {{ if .Tactics }}{{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}{{ else }}—{{ end }}</div>
-  <table>
+  <table class="tl-events">
   {{ range .Events }}<tr>
     <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
     <td class="sev-{{ .Severity }}">{{ .RuleID }}</td>
@@ -595,6 +610,57 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   </table>
   {{ if gt .Truncated 0 }}<p class="note">… {{ .Truncated }} earlier event(s) not shown — <a href="/events?source={{ .Source }}">see all</a></p>{{ end }}
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "captures" }}{{ template "head" . }}
+<h1>captures &amp; loot</h1>
+<p class="note">Everything the sensor harvested from attackers — captured malware / payload artifacts, per-connection pcaps, recorded interactive-shell sessions, and captured credentials. Files download as attachments (octet-stream, never executed in the browser). Bulk: <a href="/download?what=all&amp;since=720h">all pcaps + sessions (ZIP)</a>.</p>
+{{ if not .Enabled }}<p class="note">No <code>data_dir</code> is wired into the UI, so on-disk captures aren't browsable here. Credentials below still come from the event store.</p>{{ end }}
+
+<h2>captured malware / payload artifacts <span class="meta">({{ len .Artifacts }})</span></h2>
+{{ if .Artifacts }}<table data-filter><tr><th>artifact (sha256.ext)</th><th>size</th><th>captured</th><th></th></tr>
+{{ range .Artifacts }}<tr>
+  <td><code>{{ .Name }}</code></td>
+  <td>{{ fmtBytes .Size }}</td>
+  <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td><a href="/loot/?kind=payload&amp;name={{ .Name }}">download</a></td>
+</tr>{{ end }}
+</table>
+<p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
+{{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
+
+<h2>captured credentials <span class="meta">({{ len .Creds }})</span></h2>
+{{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>username</th><th>password</th></tr>
+{{ range .Creds }}<tr>
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td>
+  <td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td>
+  <td>{{ .User }}</td>
+  <td><code>{{ .Pass }}</code></td>
+</tr>{{ end }}
+</table>{{ else }}<p class="note">none captured in the window</p>{{ end }}
+
+<h2>pcaps <span class="meta">({{ len .Pcaps }})</span></h2>
+{{ if .Pcaps }}<table data-filter><tr><th>file</th><th>size</th><th>captured</th><th></th></tr>
+{{ range .Pcaps }}<tr>
+  <td><code>{{ .Name }}</code></td>
+  <td>{{ fmtBytes .Size }}</td>
+  <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td><a href="/loot/?kind=pcap&amp;name={{ .Name }}">download</a></td>
+</tr>{{ end }}
+</table>{{ else }}<p class="note">none (set <code>capture: true</code> on a listener to record per-connection pcaps)</p>{{ end }}
+
+<h2>session recordings <span class="meta">({{ len .Sessions }})</span></h2>
+{{ if .Sessions }}<table data-filter><tr><th>file</th><th>size</th><th>recorded</th><th></th></tr>
+{{ range .Sessions }}<tr>
+  <td><code>{{ .Name }}</code></td>
+  <td>{{ fmtBytes .Size }}</td>
+  <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td><a href="/loot/?kind=session&amp;name={{ .Name }}">download</a></td>
+</tr>{{ end }}
+</table>
+<p class="note">asciicast (.cast) recordings of interactive shell sessions — replay with <code>asciinema play</code>.</p>
+{{ else }}<p class="note">none (the ssh_interactive / telnet shells record sessions when an attacker logs in)</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "correlation" }}{{ template "head" . }}
@@ -642,7 +708,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ define "threatmap" }}{{ template "head" . }}
 <h1>threat map — last 24 hours</h1>
 <p class="note">Live GeoIP attack map with country / ASN / network-class breakdowns and threat-intelligence counters. Auto-refreshes, so it doubles as a wall display. Geo, ASN and intel data require <code>sensor.geoip</code> + threat-intel feeds. JSON at <a href="/api/map">/api/map</a>.</p>
-<div class="counters">{{ range .Counters }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ if .HasMap }}<figure data-chart="sourcemap" data-chart-title="Attack source map (GeoIP)" data-chart-b64="{{ .MapB64 }}"><p class="note">enable JavaScript to render the map</p></figure>{{ else }}<p class="note">no geo-located events yet — set <code>sensor.geoip.city_db</code> (MaxMind GeoLite2-City) to plot attack origins.</p>{{ end }}
 <div class="cols2">
   <div><h3>top countries</h3>{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment</p>{{ end }}</div>
@@ -812,7 +878,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 </table>
 
 <h2>L2 capture (sniffer)</h2>
-{{ if .SnifferActive }}<div class="counters">{{ range .Frames }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+{{ if .SnifferActive }}<div class="counters">{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 <p class="note">Frames seen on the AF_PACKET capture sockets since start.</p>
 {{ else }}<p class="note">sniffer not running (disabled, no CAP_NET_RAW, or non-Linux) — no L2 frame counters.</p>{{ end }}
 

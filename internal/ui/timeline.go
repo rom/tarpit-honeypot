@@ -90,7 +90,8 @@ func buildTimelineView(since time.Time, evs []*event.Event) timelineView {
 
 	for _, ip := range order {
 		st := bySrc[ip]
-		sort.Slice(st.Events, func(i, j int) bool { return st.Events[i].Time.Before(st.Events[j].Time) })
+		// Newest first (the UI exposes a button to flip to oldest-first).
+		sort.Slice(st.Events, func(i, j int) bool { return st.Events[i].Time.After(st.Events[j].Time) })
 		st.Tactics = orderTactics(st.tacticSet)
 		st.Truncated = st.Count - len(st.Events)
 		v.Sources = append(v.Sources, *st)
