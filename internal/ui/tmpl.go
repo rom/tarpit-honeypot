@@ -319,6 +319,11 @@ td.sev-low { color: var(--sev-low); }
 td.sev-medium { color: var(--sev-medium); }
 td.sev-high { color: var(--sev-high); font-weight: 600; }
 td.sev-critical { color: var(--sev-critical); font-weight: 700; background: var(--sev-critical-bg); }
+/* rows-per-page control (added by app.js; classes only set with JS on) */
+.rowsctl { margin: .35rem 0; font-size: .82rem; color: var(--text-muted); }
+.rowsctl select { font: inherit; margin-left: .25rem; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); }
+.rowsctl-count { margin-left: .5rem; }
+.rpp-10 tbody tr:nth-child(n+12), .rpp-25 tbody tr:nth-child(n+27), .rpp-50 tbody tr:nth-child(n+52), .rpp-100 tbody tr:nth-child(n+102) { display: none; }
 form { display: inline-block; }
 input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); }
 .kv { background: var(--bg-surface); padding: .75rem; border: 1px solid var(--border); white-space: pre-wrap; word-break: break-all; color: var(--text); }
@@ -454,6 +459,8 @@ svg.tc text { font: 0.786rem ui-monospace, monospace; }
 .tc-snode { stroke: var(--chart-node-stroke); }
 .tc-tev { stroke: var(--chart-node-stroke); stroke-width: 1; }
 .tc-ocean { fill: var(--chart-ocean-fill); stroke: var(--chart-ocean-stroke); }
+.tc-land { fill: var(--chart-graticule); fill-opacity: 0.55; stroke: var(--chart-graticule-label); stroke-width: 0.6; stroke-opacity: 0.7; }
+.tc-mapimg { opacity: 0.9; }
 .tc-grat { stroke: var(--chart-graticule); stroke-width: 1; }
 .tc-grat-lbl { fill: var(--chart-graticule-label); font-size: 0.64rem; }
 .tc-src { stroke-width: 1; }

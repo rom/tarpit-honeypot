@@ -315,8 +315,63 @@
     apply();
   }
 
+  // ---- rows-per-page (client-side display cap) --------------------------
+  // Every data list gets a "Rows" <select> (10/25/50/100/All) capping how many
+  // rows show at once. Implemented as a CSS class on the table (.rpp-N hides
+  // rows past N via :nth-child), so it composes with client-side sort — which
+  // just reorders the same rows — and survives the auto-refresh reload via a
+  // per-page+table localStorage key. Progressive enhancement: JS off => the
+  // server-rendered full list shows.
+  var RPP_OPTS = [10, 25, 50, 100];
+  var RPP_DEFAULT = "25";
+  function setupRowsPerPage() {
+    Array.prototype.forEach.call(document.querySelectorAll("table"), function (t, idx) {
+      if (t.classList.contains("chart")) return;        // CSS bar charts
+      if (t.classList.contains("tl-events")) return;     // per-source timeline tables
+      var headerRow = t.querySelector("tr");
+      if (!headerRow || !headerRow.querySelector("th")) return;
+      var body = t.tBodies[0] || t;
+      var dataRows = body.rows.length - 1;               // minus the header row
+      if (dataRows <= RPP_OPTS[0] + 1) return;           // too small to paginate
+
+      var key = "throws:" + location.pathname + "#" + tableKey(t, idx);
+      var saved = lsGet(key);
+      var cur = (saved === "all" || RPP_OPTS.indexOf(parseInt(saved, 10)) >= 0) ? saved : RPP_DEFAULT;
+
+      var wrap = document.createElement("div");
+      wrap.className = "rowsctl";
+      var lab = document.createElement("label");
+      lab.textContent = "Rows ";
+      var sel = document.createElement("select");
+      RPP_OPTS.forEach(function (n) {
+        var o = document.createElement("option");
+        o.value = String(n); o.textContent = String(n);
+        sel.appendChild(o);
+      });
+      var oAll = document.createElement("option");
+      oAll.value = "all"; oAll.textContent = "All";
+      sel.appendChild(oAll);
+      sel.value = cur;
+      lab.appendChild(sel);
+      var count = document.createElement("span");
+      count.className = "rowsctl-count";
+      wrap.appendChild(lab);
+      wrap.appendChild(count);
+      t.parentNode.insertBefore(wrap, t);
+
+      function apply() {
+        RPP_OPTS.forEach(function (n) { t.classList.remove("rpp-" + n); });
+        if (sel.value !== "all") t.classList.add("rpp-" + sel.value);
+        var shown = sel.value === "all" ? dataRows : Math.min(dataRows, parseInt(sel.value, 10));
+        count.textContent = " showing " + shown + " of " + dataRows;
+      }
+      sel.addEventListener("change", function () { lsSet(key, sel.value); apply(); });
+      apply();
+    });
+  }
+
   ready(function () {
-    [setupRefresh, setupSort, setupFilter, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder].forEach(function (fn) {
+    [setupRefresh, setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder].forEach(function (fn) {
       try { fn(); } catch (e) { /* never break the page */ }
     });
   });

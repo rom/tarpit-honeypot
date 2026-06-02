@@ -145,7 +145,9 @@ window.TarpitCharts = (function () {
   // pie / donut: { slices:[{label,value,color?}], donut? }
   charts.pie = function (d) {
     var s = (d.slices || []).filter(function (x) { return num(x.value) > 0; });
-    var W = 420, H = 300, cx = 150, cy = 150, R = 120, r0 = d.donut ? 56 : 0;
+    // Wider viewBox + a legend moved left of the right edge so long labels
+    // (e.g. "critical (1234)") render fully instead of clipping at the border.
+    var W = 470, H = 300, cx = 150, cy = 150, R = 120, r0 = d.donut ? 56 : 0;
     var total = s.reduce(function (a, x) { return a + num(x.value); }, 0) || 1;
     var root = svgRoot(W, H, "tc-pie"), ang = -Math.PI / 2;
     s.forEach(function (x, i) {
@@ -156,7 +158,7 @@ window.TarpitCharts = (function () {
       title(p, x.label + ": " + fmt(x.value) + " (" + (frac * 100).toFixed(1) + "%)");
       root.appendChild(p); ang = a2;
     });
-    var lx = 300, ly = 40;
+    var lx = 286, ly = 40;
     s.forEach(function (x, i) {
       root.appendChild(el("rect", { x: lx, y: ly + i * 20 - 9, width: 11, height: 11, fill: color(i, x.color) }));
       root.appendChild(text(lx + 16, ly + i * 20, (x.label || "") + " (" + fmt(x.value) + ")", "tc-ax"));
@@ -376,15 +378,35 @@ window.TarpitCharts = (function () {
     return root;
   };
 
+  // WORLD is a coarse equirectangular set of continent/landmass outlines as
+  // [lon,lat] polygons. It gives the source map a recognizable geography with
+  // zero configuration; an operator-supplied ui.map_tiles_url raster replaces
+  // it when set. Low fidelity on purpose — it's a backdrop, not a survey.
+  var WORLD = [
+    [[-168,66],[-156,71],[-128,70],[-95,73],[-82,73],[-78,63],[-64,60],[-56,52],[-66,44],[-74,40],[-81,31],[-80,25],[-84,30],[-94,29],[-97,26],[-105,20],[-110,23],[-114,31],[-122,37],[-124,48],[-135,57],[-150,59]],
+    [[-45,60],[-25,70],[-20,76],[-30,83],[-50,82],[-55,76],[-50,68]],
+    [[-78,8],[-72,11],[-62,10],[-50,0],[-35,-5],[-39,-14],[-48,-25],[-58,-34],[-62,-41],[-69,-52],[-75,-50],[-73,-44],[-72,-33],[-70,-23],[-70,-18],[-76,-14],[-81,-6],[-80,2]],
+    [[-17,15],[-16,23],[-5,32],[10,37],[20,33],[25,32],[32,31],[37,16],[43,11],[51,12],[44,-2],[40,-16],[33,-26],[26,-34],[18,-35],[12,-17],[9,1],[-4,5],[-12,8]],
+    [[-9,38],[-9,43],[0,49],[8,54],[12,56],[20,55],[30,60],[26,66],[16,69],[28,71],[40,67],[55,68],[68,73],[78,73],[100,77],[140,73],[160,70],[178,65],[162,60],[150,59],[142,54],[135,44],[127,40],[122,31],[118,24],[110,21],[107,11],[100,5],[98,16],[92,22],[88,22],[80,9],[73,18],[68,24],[60,25],[50,28],[48,30],[36,36],[28,41],[35,36],[36,31],[31,31],[24,32],[20,33],[10,37],[0,38]],
+    [[113,-22],[114,-34],[123,-34],[131,-31],[138,-35],[147,-38],[153,-28],[146,-18],[142,-11],[136,-12],[130,-12],[123,-17]],
+    [[43,-12],[50,-15],[47,-25],[44,-22]],
+    [[130,31],[136,34],[141,40],[143,43],[140,38],[136,35],[132,33]],
+    [[167,-46],[171,-44],[174,-41],[176,-39],[171,-43]],
+    [[-6,50],[-3,53],[-5,58],[-8,57],[-10,52]]
+  ];
+
   // sourcemap (attack source map): { points:[{lat,lon,count,label?,sev?}] } on an equirectangular graticule.
   charts.sourcemap = function (d) {
     var pts = d.points || [], W = 720, H = 360, P = { l: 8, r: 8, t: 8, b: 8 };
     var iw = W - P.l - P.r, ih = H - P.t - P.b, root = svgRoot(W, H, "tc-map");
     root.appendChild(el("rect", { x: P.l, y: P.t, width: iw, height: ih, class: "tc-ocean" }));
+    function proj(lat, lon) { return { x: P.l + iw * (num(lon) + 180) / 360, y: P.t + ih * (90 - num(lat)) / 180 }; }
     // Optional equirectangular (plate-carrée) world-map backdrop. The operator
     // configures ui.map_tiles_url (a full-world image); the projection below
     // matches it exactly (lon -180..180 -> x, lat 90..-90 -> y). Self-hosted
     // under /static is recommended; an external URL is CSP-allowed server-side.
+    // With no raster configured we draw the built-in WORLD continent vector so
+    // the map reads as geography rather than a bare grid.
     var tilesMeta = document.querySelector('meta[name="tarpit-map-tiles"]');
     var tilesURL = tilesMeta && tilesMeta.getAttribute("content");
     if (tilesURL) {
@@ -392,11 +414,15 @@ window.TarpitCharts = (function () {
       img.setAttribute("href", tilesURL);
       img.setAttributeNS("http://www.w3.org/1999/xlink", "href", tilesURL); // older renderers
       root.appendChild(img);
+    } else {
+      WORLD.forEach(function (poly) {
+        var dd = poly.map(function (c, i) { var xy = proj(c[1], c[0]); return (i ? "L" : "M") + xy.x.toFixed(1) + " " + xy.y.toFixed(1); }).join(" ") + "Z";
+        root.appendChild(el("path", { d: dd, class: "tc-land" }));
+      });
     }
     for (var lon = -180; lon <= 180; lon += 30) { var x = P.l + iw * (lon + 180) / 360; root.appendChild(el("line", { x1: x, y1: P.t, x2: x, y2: P.t + ih, class: "tc-grat" })); }
     for (var lat = -90; lat <= 90; lat += 30) { var y = P.t + ih * (90 - lat) / 180; root.appendChild(el("line", { x1: P.l, y1: y, x2: P.l + iw, y2: y, class: "tc-grat" })); root.appendChild(text(P.l + 2, y - 2, lat + "°", "tc-grat-lbl")); }
     var max = maxOf(pts, function (p) { return num(p.count); }) || 1;
-    function proj(lat, lon) { return { x: P.l + iw * (num(lon) + 180) / 360, y: P.t + ih * (90 - num(lat)) / 180 }; }
     pts.forEach(function (p) {
       var xy = proj(p.lat, p.lon), r = 3 + 11 * Math.sqrt(num(p.count) / max);
       root.appendChild(title(el("circle", { cx: xy.x, cy: xy.y, r: r, class: "tc-src", fill: p.sev ? SEV[p.sev] : SEV.high, "fill-opacity": 0.55, stroke: SEV.critical }), (p.label ? p.label + " · " : "") + fmt(p.count)));
