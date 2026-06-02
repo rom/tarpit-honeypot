@@ -489,6 +489,7 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	aggs = s.visibleAggregates(aggs) // presentation hide list
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := profilesPage{Profiles: aggs, SinceStr: r.URL.Query().Get("since")}
 	if err := s.tmpl.ExecuteTemplate(w, "profiles", page); err != nil {
@@ -498,13 +499,13 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	ip := strings.TrimPrefix(r.URL.Path, "/profiles/")
-	if ip == "" {
+	if ip == "" || s.hides(ip) { // presentation hide list
 		http.NotFound(w, r)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{
+	evs, err := s.query(ctx, store.Filter{
 		SourceIP: ip,
 		Since:    time.Now().Add(-profileDetailWindow),
 		Limit:    profileDetailMax,
@@ -602,19 +603,20 @@ func (s *Server) handleAPIProfiles(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	aggs = s.visibleAggregates(aggs) // presentation hide list
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(aggs)
 }
 
 func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request) {
 	ip := strings.TrimPrefix(r.URL.Path, "/api/profiles/")
-	if ip == "" {
+	if ip == "" || s.hides(ip) { // presentation hide list
 		http.NotFound(w, r)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{
+	evs, err := s.query(ctx, store.Filter{
 		SourceIP: ip,
 		Since:    time.Now().Add(-profileDetailWindow),
 		Limit:    profileDetailMax,

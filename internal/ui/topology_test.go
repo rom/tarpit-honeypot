@@ -13,7 +13,7 @@ import (
 
 func uiTmpl(t *testing.T) *template.Template {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 })).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "")).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

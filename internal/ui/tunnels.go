@@ -127,7 +127,7 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-tunnelWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: tunnelScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: tunnelScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

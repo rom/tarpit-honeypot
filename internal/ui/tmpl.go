@@ -5,6 +5,7 @@ const tmpls = `
 <html lang="en"><head>
 <meta charset="utf-8">
 {{ if gt (refreshSeconds) 0 }}<meta http-equiv="refresh" content="{{ refreshSeconds }}">{{ end }}
+{{ if mapTiles }}<meta name="tarpit-map-tiles" content="{{ mapTiles }}">{{ end }}
 <title>tarpit-honeypot</title>
 <!-- Favicon: SVG for modern browsers, .ico (multi-size 16/32/48) fallback. -->
 <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
@@ -928,8 +929,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr>
     <td>{{ fmtTime .Time }}</td>
     <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
-    <td>{{ .RuleID }}</td>
-    <td>{{ .Source.IP }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
+    <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
+    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
     <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} <span class="proto proto-{{ .Proto }}" title="transport: {{ .Proto }}">{{ .Proto }}</span>{{ end }}</td>
     <td>{{ .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
@@ -945,7 +946,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
-  <tr><th>source</th><td>{{ .Source.IP }}:{{ .Source.Port }}</td></tr>
+  <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
   <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
   <tr><th>proto</th><td>{{ if .Proto }}<span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
@@ -1041,7 +1042,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a> {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
-{{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .Artifacts }}<h2>captured artifacts</h2><div>{{ range .Artifacts }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
 <p class="note">Malware / payload artifacts the sensor captured from this source (kind:sha256). Pull the bytes from the <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts ZIP</a>.</p>{{ end }}

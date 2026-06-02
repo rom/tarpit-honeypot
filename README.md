@@ -1823,6 +1823,15 @@ a chosen column sort, the live-pause toggle, and the timeline order all persist
 across the reload (per-page `localStorage`), so a periodic refresh never resets
 your view.
 
+Presentation niceties: source IPs / rule_ids / fingerprints / techniques are
+**clickable** throughout (pivot to the profile / filtered events / campaign);
+**CVE labels link** to NVD or CVE.org (`ui.cve_source`); the summary + map
+**counters are colour-tinted** by category; the GeoIP "attack source map" takes
+an optional equirectangular world-image backdrop (`ui.map_tiles_url`); and
+`ui.hidden_ips` is a **presentation-layer hide list** — listed source IPs/CIDRs
+are dropped from every view (and JSON endpoint) while staying in the store and
+all exports.
+
 Endpoints:
 
 - `/` — last-24h summary: a **traffic-counters strip** — colour-tinted by

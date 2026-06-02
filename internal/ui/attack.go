@@ -123,7 +123,7 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -219,7 +219,7 @@ func (s *Server) handleAttackTechnique(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -234,7 +234,7 @@ func (s *Server) handleAPIAttack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -254,7 +254,7 @@ func (s *Server) handleNavigator(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

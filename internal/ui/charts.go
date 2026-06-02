@@ -25,10 +25,11 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
 	hours, _ := s.store.EventsPerHour(ctx, since)
 	d := buildDashboard(sum, hours)
 	var evs []*event.Event
-	if e, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
+	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		evs = e
 		enrichDashboard(&d, evs)
 	}
