@@ -152,8 +152,16 @@ listeners:
   - { id: smtp,        proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high, capture: true }
   - { id: smtp-submit, proto: tcp, bind: 0.0.0.0:587, mode: banner, handler: smtp_recv, severity: high }
 
-  # --- DNS: resolver (answers A/AAAA/MX/TXT/…, runs tunnelling/exfil detection) ---
-  - { id: dns, proto: udp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high }
+  # --- POP3 / IMAP: mailbox retrieval (harvests login creds, captures the
+  # USER/PASS / AUTH exchange; nothing is ever delivered). pcap on both. ---
+  - { id: pop3, proto: tcp, bind: 0.0.0.0:110, mode: banner, handler: pop3, severity: high, capture: true }
+  - { id: imap, proto: tcp, bind: 0.0.0.0:143, mode: banner, handler: imap, severity: high, capture: true }
+
+  # --- DNS: resolver (answers A/AAAA/MX/TXT/…, runs tunnelling/exfil detection).
+  # Served on UDP (normal queries) AND TCP (truncation fallback, zone-transfer
+  # AXFR/IXFR probes, and DNS-over-TCP tunnelling). pcap capture on both. ---
+  - { id: dns-udp, proto: udp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high, capture: true }
+  - { id: dns-tcp, proto: tcp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high, capture: true }
 
   # --- FTP: file server (captures logins, accepts any creds, serves bait files) ---
   - id: ftp
@@ -192,6 +200,8 @@ honeynets:
           - { port: 80,  handler: http }
           - { port: 443, handler: https }
           - { port: 25,  handler: smtp_recv }
+          - { port: 110, handler: pop3 }
+          - { port: 143, handler: imap }
           - { port: 53,  handler: dns }
           - { port: 21,  handler: ftp_files }
 

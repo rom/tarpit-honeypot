@@ -154,6 +154,30 @@ DNS, and drop privileges — and nothing else. Adjust the binary path in
 `tarpit_honeypot.fc` if you install outside `/usr/local/bin`, then
 `restorecon`.
 
+**Verify the daemon is actually confined.** The domain transition only fires
+when the binary carries the `tarpit_honeypot_exec_t` label, so after install
+check:
+
+```
+ps -eZ | grep tarpit-honeypot      # want tarpit_honeypot_t, NOT unconfined_service_t
+ls -Z /usr/local/bin/tarpit-honeypot   # want ...:tarpit_honeypot_exec_t:s0
+```
+
+If `ps` shows `unconfined_service_t`, the binary is mislabeled — almost always
+because a stray local file-context entry (e.g. `semanage fcontext -a -t bin_t`)
+is overriding the module's `.fc` (a local entry outranks a module entry). Clear
+it and relabel:
+
+```
+sudo semanage fcontext -d /usr/local/bin/tarpit-honeypot   # drop any local override
+sudo restorecon -Fv /usr/local/bin/tarpit-honeypot
+sudo systemctl restart tarpit-honeypot
+```
+
+`scripts/install.sh` does this automatically and now verifies the resulting
+label, warning loudly if the daemon would run unconfined. (Earlier installs
+that left a `bin_t` override behind are fixed simply by re-running it.)
+
 ## systemd
 
 The shipped unit (`packaging/systemd/tarpit-honeypot.service`) adds

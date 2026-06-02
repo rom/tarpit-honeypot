@@ -310,10 +310,32 @@ install_selinux() {
 		fi
 	fi
 	# Label the binary + data so the domain transition / file access apply.
+	# The policy module's own .fc already maps $BIN to tarpit_honeypot_exec_t —
+	# do NOT add a local 'bin_t' fcontext for it. A local semanage entry outranks
+	# the module's .fc, so labeling the binary bin_t would suppress the
+	# init_t->tarpit_honeypot_t domain transition and leave the daemon running
+	# unconfined (unconfined_service_t). Drop any stale bin_t override a previous
+	# install may have left behind, then let restorecon apply the module label.
 	if command -v semanage >/dev/null 2>&1; then
-		semanage fcontext -a -t bin_t "$BIN" 2>/dev/null || true
+		semanage fcontext -d "$BIN" 2>/dev/null || true
 	fi
-	command -v restorecon >/dev/null 2>&1 && restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+	if command -v restorecon >/dev/null 2>&1; then
+		restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+	fi
+	# Verify the exec label actually took — a wrong/missing label is exactly what
+	# leaves the service unconfined, so surface it loudly instead of silently.
+	# stat -c '%C' prints just the context (e.g. system_u:object_r:<type>:s0).
+	if ctx="$(stat -c '%C' "$BIN" 2>/dev/null)"; then
+		case "$ctx" in
+			*:tarpit_honeypot_exec_t:*)
+				info "SELinux: $BIN labeled tarpit_honeypot_exec_t (domain transition will apply)" ;;
+			*)
+				warn "SELinux: $BIN is labeled '${ctx:-unknown}', not tarpit_honeypot_exec_t — the daemon will run UNCONFINED."
+				warn "  Fix: ensure the module installed (semodule -l | grep tarpit_honeypot), then:"
+				warn "       semanage fcontext -d '$BIN' 2>/dev/null; restorecon -Fv '$BIN'"
+				warn "  Re-check with: ps -eZ | grep tarpit-honeypot  (want tarpit_honeypot_t, not unconfined_service_t)" ;;
+		esac
+	fi
 }
 install_apparmor() {
 	[ "$DO_APPARMOR" = 1 ] || { info "AppArmor profile skipped (--no-apparmor)"; return 0; }
