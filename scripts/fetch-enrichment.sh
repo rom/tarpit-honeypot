@@ -5,28 +5,56 @@
 # into a local directory, so they can be transferred to an air-gapped or
 # restricted-egress sensor and loaded from disk.
 #
-# This is a STANDALONE operator tool: run it on an internet-connected machine
-# (not the sensor). It needs only bash + curl-or-wget (+ tar/gunzip for the
-# GeoIP archives). Then copy the output directory to the sensor and point the
-# config at the files (a ready-to-paste snippet is printed at the end).
+# It can run two ways:
+#   * AIR-GAPPED  — run on an internet-connected machine that is NOT the sensor,
+#                   then copy the printed bundle/archive to the sensor and run
+#                   install-enrichment.sh there.
+#   * SAME HOST   — run on a sensor that HAS internet access with `--install`,
+#                   and it fetches + installs + reloads in one step (no archive,
+#                   no transfer). This is the common single-box case; pair it
+#                   with scripts/update-enrichment.sh for a cron / systemd timer.
+# It needs only bash + curl-or-wget (+ tar/gunzip for the GeoIP archives).
 #
 # Usage:
-#   scripts/fetch-enrichment.sh [OUTPUT_DIR]
-#     OUTPUT_DIR  where to write the databases (default: ./enrichment-data)
+#   scripts/fetch-enrichment.sh [OPTIONS] [OUTPUT_DIR]
+#     OUTPUT_DIR        where to write the databases (default: ./enrichment-data)
+#   -i, --install       after fetching, install into THIS host's sensor config
+#                       (runs install-enrichment.sh; implies --no-archive)
+#   -c, --config PATH   sensor config for --install (default /etc/tarpit-honeypot/config.yaml)
+#       --reload-cmd C  reload command passed to --install (e.g. "systemctl reload tarpit-honeypot")
+#   -q, --quiet         terse output (cron/timer friendly)
+#   -h, --help          this help
 #
 # Environment:
 #   MAXMIND_LICENSE_KEY  if set, GeoLite2 City+ASN are fetched from MaxMind;
 #                        otherwise the no-key DB-IP "lite" .mmdb files are used
 #                        (same MaxMind-DB format, readable by the sensor).
 #   SKIP_GEOIP=1         skip the (large) GeoIP downloads
+#   NO_ARCHIVE=1         don't build the single-file .tar.gz (implied by --install)
 #   INSECURE=1           pass -k/--no-check-certificate (not recommended)
 #
-# Nothing here is sensor-specific; every file is a public feed. Re-run on a
-# schedule (cron) to keep the databases fresh, then re-sync to the sensor.
+# Nothing here is sensor-specific; every file is a public feed.
 
 set -euo pipefail
 
-OUT="${1:-./enrichment-data}"
+OUT=""
+INSTALL=0
+CONFIG="/etc/tarpit-honeypot/config.yaml"
+RELOAD_CMD=""
+QUIET=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-i | --install) INSTALL=1; export NO_ARCHIVE=1; shift ;;
+	-c | --config) CONFIG="$2"; shift 2 ;;
+	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
+	-q | --quiet) QUIET=1; shift ;;
+	-h | --help) sed -n '2,36p' "$0"; exit 0 ;;
+	-*) echo "unknown option: $1" >&2; exit 2 ;;
+	*) OUT="$1"; shift ;;
+	esac
+done
+OUT="${OUT:-./enrichment-data}"
+say() { [ "$QUIET" = 1 ] || echo "$@"; }
 THREAT_DIR="$OUT/threat"
 GEO_DIR="$OUT/geoip"
 MANIFEST="$OUT/MANIFEST.txt"
@@ -150,15 +178,15 @@ mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR"
 : >"$MANIFEST"
 echo "tarpit-honeypot enrichment fetch — $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$MANIFEST"
 
-echo "Fetching into $OUT"
+say "Fetching into $OUT"
 
-echo "[tor]"
+say "[tor]"
 fetch "tor-exit-nodes" "https://check.torproject.org/torbulkexitlist" "$OUT/tor-exits.txt" || true
 
-echo "[mac-oui]"
+say "[mac-oui]"
 fetch "ieee-oui" "https://standards-oui.ieee.org/oui/oui.csv" "$OUT/oui.csv" || true
 
-echo "[reputation]"
+say "[reputation]"
 fetch "blocklist-de"   "https://lists.blocklist.de/lists/all.txt"               "$THREAT_DIR/blocklist-de.txt"   || true
 fetch "abuse-ch-feodo" "https://feodotracker.abuse.ch/downloads/ipblocklist.txt" "$THREAT_DIR/abuse-ch-feodo.txt" || true
 fetch "spamhaus-drop"  "https://www.spamhaus.org/drop/drop.txt"                  "$THREAT_DIR/spamhaus-drop.txt"  || true
@@ -175,7 +203,7 @@ if [ "${SKIP_GEOIP:-}" != "1" ]; then
 		fetch_dbip asn  "$GEO_DIR/asn.mmdb"  || true
 	fi
 else
-	echo "[geoip] skipped (SKIP_GEOIP=1)"
+	say "[geoip] skipped (SKIP_GEOIP=1)"
 fi
 
 # ---- write a suggested config snippet into the bundle ----------------------
@@ -223,22 +251,42 @@ if [ "${NO_ARCHIVE:-}" != "1" ]; then
 fi
 
 # ---- summary ---------------------------------------------------------------
-echo
-echo "Done: $ok ok, $fail failed."
-echo "  bundle dir : $OUT"
-echo "  manifest   : $MANIFEST"
-echo "  checksums  : $OUT/SHA256SUMS"
-echo "  config     : $SNIPPET"
-[ -n "$ARCHIVE" ] && echo "  archive    : $ARCHIVE  (+ ${ARCHIVE}.sha256)"
-echo
-echo "Transfer to the sensor, then run the install/update step there:"
+say
+say "Done: $ok ok, $fail failed."
+say "  bundle dir : $OUT"
+say "  manifest   : $MANIFEST"
+say "  checksums  : $OUT/SHA256SUMS"
+say "  config     : $SNIPPET"
+[ -n "$ARCHIVE" ] && say "  archive    : $ARCHIVE  (+ ${ARCHIVE}.sha256)"
+
+# ---- same-host install (--install) -----------------------------------------
+# When this sensor has internet access, fetch + install in one step. Locates
+# install-enrichment.sh next to this script.
+if [ "$INSTALL" = 1 ]; then
+	HERE="$(cd "$(dirname "$0")" && pwd)"
+	INST="$HERE/install-enrichment.sh"
+	if [ ! -x "$INST" ]; then
+		echo "error: --install given but $INST not found/executable" >&2
+		exit 1
+	fi
+	say
+	say "Installing into this host's sensor (config: $CONFIG)…"
+	set -- "$OUT" -c "$CONFIG" --skip-verify
+	[ -n "$RELOAD_CMD" ] && set -- "$@" --reload-cmd "$RELOAD_CMD"
+	"$INST" "$@"
+	exit $?
+fi
+
+# ---- otherwise: print the air-gapped transfer + install guidance -----------
+say
+say "Transfer to the sensor, then run the install/update step there:"
 if [ -n "$ARCHIVE" ]; then
-	echo "  scp '$ARCHIVE'* sensor:/tmp/"
-	echo "  ssh sensor 'tar -xzf /tmp/$(basename "$ARCHIVE") -C /tmp"
-	echo "              sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
+	say "  scp '$ARCHIVE'* sensor:/tmp/"
+	say "  ssh sensor 'tar -xzf /tmp/$(basename "$ARCHIVE") -C /tmp"
+	say "              sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
 else
-	echo "  rsync -a '$OUT/' sensor:/tmp/$(basename "${OUT%/}")/"
-	echo "  ssh sensor 'sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
+	say "  rsync -a '$OUT/' sensor:/tmp/$(basename "${OUT%/}")/"
+	say "  ssh sensor 'sudo scripts/install-enrichment.sh /tmp/$(basename "${OUT%/}") -c /etc/tarpit-honeypot/config.yaml'"
 fi
 
 [ "$fail" -eq 0 ]

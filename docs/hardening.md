@@ -20,6 +20,15 @@ The in-process layers (seccomp + Landlock) and the host-LSM layers
 the data dir, talk to the network, never spawn a process — so use
 whichever your distro enforces, or both.
 
+**Turn-key:** `scripts/install.sh` applies all of this at once — it detects the
+distribution (Debian/Ubuntu/Alma/Rocky/Fedora/CentOS/RHEL/SUSE/Arch), creates an
+unprivileged `honey:honeypot` service account, installs the binary with the
+right file capabilities, deploys the config with privilege-drop + seccomp +
+Landlock, installs the matching host-LSM policy and a hardened systemd unit, and
+wires the enrichment + Let's Encrypt timers. See
+[`scripts/README.md`](../scripts/README.md). The sections below document each
+layer for manual / custom setups.
+
 ## Privilege drop
 
 Bind privileged ports + open AF_PACKET sockets with
