@@ -116,6 +116,10 @@ ui:
   # tls_key:  /etc/tarpit-honeypot/tls/key.pem
   # auth_token_env: TARPIT_UI_TOKEN
   cve_source: nvd          # CVE labels link to NVD (or set "cve.org")
+  # ATT&CK technique chips link out to attack.mitre.org (default on). The
+  # Enterprise/ICS matrix is encoded in the T1xxx/T0xxx id, so no extra path
+  # segment. Set false to keep them on the internal /attack/technique drill-down.
+  attack_links: true
   # A world-map backdrop for the GeoIP attack source map. Self-host an
   # equirectangular image under /static (no external requests):
   # map_tiles_url: /static/world-equirectangular.png

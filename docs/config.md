@@ -150,6 +150,7 @@ ui:
   cve_source: nvd       # where CVE labels link: "nvd" (default) | "cve.org"
   map_tiles_url: ""     # optional equirectangular world-map IMAGE for the attack source map
   hidden_ips: []        # presentation-only: source IPs/CIDRs to hide from every view
+  attack_links: true    # ATT&CK technique labels link out to attack.mitre.org (omit = on)
 ```
 
 - Bind to anything non-loopback **requires both** `tls_cert + tls_key` and `auth_token_env`. Validation rejects the config otherwise.
@@ -157,6 +158,7 @@ ui:
 - **`cve_source`** selects the external reference CVE labels link to: NVD (`https://nvd.nist.gov/vuln/detail/<id>`) or CVE.org (`https://www.cve.org/CVERecord?id=<id>`).
 - **`map_tiles_url`** sets a backdrop image for the GeoIP "attack source map" (charts + map views). It must be a single **equirectangular / plate-carrée world image** (the map's projection is lon −180…180 → x, lat 90…−90 → y). Prefer a self-hosted image under `/static` (no external requests from the operator's browser); a non-`/` URL automatically relaxes the UI `img-src` CSP to *just* that origin. Empty = the built-in graticule only.
 - **`hidden_ips`** is a presentation-layer display allowlist: the listed source IPs / CIDRs are hidden from **every** view and JSON endpoint (event lists, timeline, profiles, campaigns, map, top sources, IOCs). The events stay in the store and in every export / SIEM feed — they're just not shown. Use it to keep your own scanners / health-checkers out of the console; edit the list and reload (SIGHUP) to add/remove.
+- **`attack_links`** (default **on**; omit or set `true`) turns ATT&CK technique labels (the `T####` chips on the event detail, profile, campaign and heatmap views) into hyperlinks to the official technique page at `https://attack.mitre.org/techniques/<ID>/` (sub-techniques resolve to `…/<base>/<NNN>/`). The matrix — Enterprise (`T1xxx`) vs ICS (`T0xxx`) — is encoded in the technique ID itself, so there is no separate `/enterprise/` or `/ics/` path segment; the type is surfaced in each link's tooltip and on the drill-down page. Set `attack_links: false` to keep the labels pointing at the **internal** `/attack/technique` drill-down instead (the always-available "on attack.mitre.org" link on that page is unaffected).
 - **Auto-refresh:** the UI ships a small packaged JS layer (served same-origin under `script-src 'self'`) that provides a pausable live-refresh, client-side table sort/filter, and the correlation graph. It's progressive enhancement — with JavaScript disabled the views fall back to an HTML `<meta http-equiv="refresh">` every `refresh_seconds` (default **10s**; set `0` to disable).
 - `/metrics` requires the same auth as the rest of the UI (the `/healthz` endpoint is the only auth-bypass route).
 

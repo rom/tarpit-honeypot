@@ -18,6 +18,10 @@ type barRow struct {
 	Pct   int
 	Href  string
 	Class string
+	// External marks a bar whose Href points off-site (e.g. an ATT&CK
+	// technique linking to attack.mitre.org) so the template opens it in a new
+	// tab with a safe rel.
+	External bool
 }
 
 // counter is one labeled number in the summary's top counters strip.

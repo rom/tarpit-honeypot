@@ -123,6 +123,32 @@ func (s *Server) visibleAggregates(in []store.SourceAggregate) []store.SourceAgg
 	return out
 }
 
+// linkTechBars rewrites technique bar links to point at attack.mitre.org when
+// out-linking is enabled (the bar Label is the technique id). When disabled it
+// leaves the internal drill-down link untouched. Recursively handles the
+// per-tactic nested technique bars.
+func (s *Server) linkTechBars(bars []barRow) []barRow {
+	if !s.cfg.AttackLinksEnabled() {
+		return bars
+	}
+	for i := range bars {
+		if u := attackURL(bars[i].Label); u != "" {
+			bars[i].Href = u
+			bars[i].External = true
+		}
+	}
+	return bars
+}
+
+// linkAttackView applies linkTechBars across an attack view's heatmap + nested
+// tactic techniques.
+func (s *Server) linkAttackView(v *attackView) {
+	v.TopTech = s.linkTechBars(v.TopTech)
+	for i := range v.Tactics {
+		v.Tactics[i].Techniques = s.linkTechBars(v.Tactics[i].Techniques)
+	}
+}
+
 func (s *Server) visibleIOCs(in []store.IOCRow) []store.IOCRow {
 	if s.hidden == nil {
 		return in

@@ -185,7 +185,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			return nil, fmt.Errorf("ui: env %s is empty", cfg.AuthTokenEnv)
 		}
 	}
-	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL)).Parse(tmpls)
+	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL, s.cfg.AttackLinksEnabled())).Parse(tmpls)
 	if err != nil {
 		return nil, err
 	}
@@ -196,10 +196,22 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 // tmplFuncs is the single source of truth for the template function map, used by
 // New and by the package tests so they can never drift. refresh supplies the
 // auto-refresh interval.
-func tmplFuncs(refresh func() int, cveSource, mapTiles string) template.FuncMap {
+func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool) template.FuncMap {
 	return template.FuncMap{
 		"mapTiles": func() string { return mapTiles },
-		"fmtTime":  func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
+		// attackURL: the canonical MITRE page (always, e.g. for the drill-down's
+		// "on attack.mitre.org" link). attackLinkURL: the same, but "" when the
+		// operator disabled out-linking, so labels fall back to the internal
+		// drill-down. attackType: enterprise|ics, for the link tooltip.
+		"attackURL":  attackURL,
+		"attackType": attackType,
+		"attackLinkURL": func(id string) string {
+			if !attackLinks {
+				return ""
+			}
+			return attackURL(id)
+		},
+		"fmtTime": func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 		"join": func(s []int) string {
 			var p []string
 			for _, n := range s {
@@ -230,6 +242,36 @@ func externalOrigin(raw string) string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host
+}
+
+// attackURL returns the canonical attack.mitre.org page for an ATT&CK
+// technique id, or "" for a non-technique string. A sub-technique
+// (T1059.001) becomes .../T1059/001/. The matrix (enterprise vs ICS) is
+// encoded in the id itself (T1xxx = enterprise, T0xxx = ICS), so the single
+// /techniques/<id>/ path is correct for both.
+func attackURL(id string) string {
+	id = strings.TrimSpace(id)
+	if !validTechniqueID(id) {
+		return ""
+	}
+	base, sub := id, ""
+	if i := strings.IndexByte(id, '.'); i > 0 {
+		base, sub = id[:i], id[i+1:]
+	}
+	u := "https://attack.mitre.org/techniques/" + base + "/"
+	if sub != "" {
+		u += sub + "/"
+	}
+	return u
+}
+
+// attackType labels a technique id's matrix for the link tooltip: ICS
+// techniques are T0xxx, everything else (T1xxx) is enterprise.
+func attackType(id string) string {
+	if strings.HasPrefix(id, "T0") {
+		return "ics"
+	}
+	return "enterprise"
 }
 
 // cveURL returns the external reference URL for a CVE id, per the configured

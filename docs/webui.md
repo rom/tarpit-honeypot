@@ -36,6 +36,14 @@ and the timeline order all survive the reload (persisted per-page in
 - **CVE labels are hyperlinks** to the authoritative record. `ui.cve_source`
   selects the source: `nvd` (default, `nvd.nist.gov/vuln/detail/<id>`) or
   `cve.org` (`www.cve.org/CVERecord?id=<id>`).
+- **ATT&CK labels are hyperlinks** to attack.mitre.org. With `ui.attack_links`
+  on (default), every `T####` technique chip — on the event detail, profile,
+  campaign and ATT&CK heatmap — links to `attack.mitre.org/techniques/<ID>/`
+  (sub-techniques to `…/<base>/<NNN>/`). The matrix (Enterprise `T1xxx` vs ICS
+  `T0xxx`) lives in the ID, so there's no `/enterprise/` or `/ics/` path
+  segment; it's shown in the tooltip and on the drill-down. Set
+  `attack_links: false` to keep the chips on the internal `/attack/technique`
+  drill-down instead.
 - **Coloured counters.** The summary and map counter strips are tinted by
   category (transport + severity) so the shape of the day reads at a glance.
 - **GeoIP map backdrop.** Set `ui.map_tiles_url` to an equirectangular world

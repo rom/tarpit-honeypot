@@ -128,8 +128,10 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	v := buildAttackView(since, evs)
+	s.linkAttackView(&v) // out-link technique bars to attack.mitre.org if enabled
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "attack", buildAttackView(since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "attack", v); err != nil {
 		slog.Warn("ui: render attack", "err", err)
 	}
 }

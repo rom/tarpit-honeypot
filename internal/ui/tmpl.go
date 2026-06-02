@@ -498,7 +498,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "bars" }}<table class="chart">
 {{ range . }}<tr>
-  <td class="blabel">{{ if .Href }}<a href="{{ .Href }}">{{ .Label }}</a>{{ else }}{{ .Label }}{{ end }}</td>
+  <td class="blabel">{{ if .Href }}<a href="{{ .Href }}"{{ if .External }} target="_blank" rel="noreferrer noopener"{{ end }}>{{ .Label }}</a>{{ else }}{{ .Label }}{{ end }}</td>
   <td class="bcell"><span class="bar {{ .Class }}" style="width:{{ .Pct }}%">&nbsp;</span></td>
   <td class="bnum">{{ .Count }}</td>
 </tr>{{ end }}
@@ -584,7 +584,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "technique" }}{{ template "head" . }}
 <h1>ATT&amp;CK technique — {{ .ID }}</h1>
-<p><a href="https://attack.mitre.org/techniques/{{ .ID }}/" rel="noreferrer noopener">{{ .ID }} on attack.mitre.org</a> · <a href="/attack">&larr; all techniques</a></p>
+<p><a href="{{ attackURL .ID }}" target="_blank" rel="noreferrer noopener">{{ .ID }} on attack.mitre.org ({{ attackType .ID }})</a> · <a href="/attack">&larr; all techniques</a></p>
 {{ if .Description }}<div class="depl">{{ .Description }}</div>{{ else }}<p class="note">No local description for this technique.</p>{{ end }}
 <p>{{ .Events }} event(s) in the last 24h carried this technique{{ if .Tactics }} · tactic(s): {{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}{{ end }}.</p>
 <h2>sources that triggered it</h2>
@@ -953,7 +953,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 </table>
 
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
-  <tr><th>techniques</th><td>{{ range .MitreTechniques }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a> {{ end }}</td></tr>
+  <tr><th>techniques</th><td>{{ range .MitreTechniques }}{{ $u := attackLinkURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a>{{ end }} {{ end }}</td></tr>
   {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
   {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
@@ -1039,7 +1039,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<span class="tag">{{ . }}</span>{{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
 
-{{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank">{{ . }}</a> {{ end }}</div>{{ end }}
