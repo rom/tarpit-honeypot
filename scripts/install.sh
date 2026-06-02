@@ -7,7 +7,9 @@
 #   2. builds (or uses prebuilt) binaries and installs them to /usr/local/bin
 #      owned by that account,
 #   3. grants the binary exactly the file capabilities it needs
-#      (CAP_NET_BIND_SERVICE + CAP_NET_RAW [+ CAP_NET_ADMIN with --tun]),
+#      (CAP_NET_BIND_SERVICE + CAP_NET_RAW [+ CAP_NET_ADMIN with --tun]) and
+#      sets the setuid/setgid bits so manual launches also drop to honey:honeypot
+#      (guarded: refuses unless the binary is owned by that unprivileged account),
 #   4. lays out + permissions /etc, /var/lib, /var/log, and the enrichment/TLS
 #      directories,
 #   5. deploys the config with privilege-drop + seccomp + Landlock enabled and
@@ -193,6 +195,52 @@ if command -v setcap >/dev/null 2>&1; then
 else
 	warn "setcap not available; relying on systemd AmbientCapabilities only"
 fi
+
+# ---------------------------------------------------------------------------
+# 5b. Pin the runtime identity to the service account (setuid + setgid).
+#
+# The setuid/setgid bits make a *manual* launch (root, or any admin running the
+# binary by hand for a one-off subcommand) drop to honey:honeypot instead of
+# inheriting the launcher's identity. Under systemd this is a no-op — the unit's
+# NoNewPrivileges=yes tells the kernel to ignore the bits, and User=/Group=
+# already pin the identity — so this only closes the manual-launch hole.
+#
+# This is ONLY safe because a setuid bit runs the binary as its file *owner*: we
+# MUST confirm that owner is the unprivileged service account first. A setuid
+# bit on a root-owned file is a setuid-root binary (full privilege escalation),
+# so we refuse outright unless the on-disk owner/group are exactly the expected
+# unprivileged account.
+# ---------------------------------------------------------------------------
+SVC_UID="$(id -u "$SVC_USER" 2>/dev/null || echo -1)"
+# `|| SVC_GID=-1` catches a missing group without tripping set -e/pipefail.
+SVC_GID="$(getent group "$SVC_GROUP" 2>/dev/null | cut -d: -f3)" || SVC_GID="-1"
+: "${SVC_GID:=-1}"
+CUR_UID="$(stat -c '%u' "$BIN")"
+CUR_GID="$(stat -c '%g' "$BIN")"
+CUR_OWNER="$(stat -c '%U:%G' "$BIN")"
+
+# Never produce a setuid-root (or setuid-to-unknown) binary.
+if [ "$SVC_UID" = "0" ] || [ "$SVC_USER" = "root" ]; then
+	die "refusing setuid: service user is root — a setuid-root honeypot is a privilege-escalation hole"
+fi
+if [ "$SVC_UID" = "-1" ] || [ "$SVC_GID" = "-1" ]; then
+	die "refusing setuid: cannot resolve ${SVC_USER}:${SVC_GROUP} to a uid/gid"
+fi
+# The on-disk owner/group must be exactly the unprivileged service account.
+if [ "$CUR_UID" != "$SVC_UID" ] || [ "$CUR_GID" != "$SVC_GID" ]; then
+	die "refusing setuid/setgid: $BIN is owned by ${CUR_OWNER} (uid:gid ${CUR_UID}:${CUR_GID}), expected ${SVC_USER}:${SVC_GROUP} (${SVC_UID}:${SVC_GID})"
+fi
+
+info "Pinning runtime identity: chmod ug+s $BIN (manual launches drop to ${SVC_USER}:${SVC_GROUP})"
+chmod ug+s "$BIN"
+
+# Re-read the mode: on a nosuid mount the bits are accepted by chmod but ignored
+# at exec, so warn if they didn't stick to the symbolic mode.
+MODE_AFTER="$(stat -c '%A' "$BIN")"
+case "$MODE_AFTER" in
+	???s??s*) : ;;  # -rwsr-sr-x : both setuid (pos 4) and setgid (pos 7) present
+	*) warn "setuid/setgid not reflected in mode ($MODE_AFTER) — is $PREFIX a nosuid mount? systemd User=/Group= still applies" ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 6. Directory layout + permissions.
