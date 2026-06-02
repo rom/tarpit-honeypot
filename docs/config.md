@@ -234,6 +234,20 @@ answers an `SSLRequest` with a real handshake. Credentials continue to be
 captured over the encrypted channel. These are advertised only when TLS can
 actually be negotiated, keeping the advertisement honest.
 
+**Mail credential harvesting + vulnerability emulation (`pop3` / `imap`, and
+their `pop3s` / `imaps` / STARTTLS variants).** Both handlers walk the
+`USER`/`PASS`, `APOP`, `LOGIN` and SASL `AUTH(ENTICATE) PLAIN/LOGIN` flows,
+decode the base64 credential blobs, capture user+pass (also over TLS), and
+reject the login — nothing is ever delivered. With `vuln_emulation` on they
+advertise a known-vulnerable Dovecot version and emit `cve:<id>` events for the
+classic mail protocol-misimplementation probes, which are detected (never acted
+on): **STARTTLS/STLS plaintext command injection** (`starttls-command-injection`
+→ CVE-2011-1430), **POP3 `PASS` buffer overflow** (`pop3-pass-overflow` →
+CVE-2003-0264), and the **IMAP pre-auth literal/NUL out-of-bounds** probe
+(`imap-literal-nul` / `imap-literal-oversize` / `imap-login-overflow` →
+CVE-2019-11500). The implicit-TLS variants inherit all of this since they run
+the same handler after the handshake.
+
 The printer / multi-function-device handlers — `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515) — recognize PJL/PostScript/ZPL abuse, CUPS foomatic-rip RCE, and LPD injection; pair them with a printer archetype (`hp-printer`, `brother-printer`, `xerox-versalink`, …) so the IPP/SNMP/web identities agree. See [`archetypes.md`](archetypes.md).
 
 **UDP-only:** `raw`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `fins`, `coap`, `knx`, `dhcp`, `dtls`, `quic`, `netflow`, `sflow`, `auto`.
