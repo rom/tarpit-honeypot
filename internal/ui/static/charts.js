@@ -381,6 +381,18 @@ window.TarpitCharts = (function () {
     var pts = d.points || [], W = 720, H = 360, P = { l: 8, r: 8, t: 8, b: 8 };
     var iw = W - P.l - P.r, ih = H - P.t - P.b, root = svgRoot(W, H, "tc-map");
     root.appendChild(el("rect", { x: P.l, y: P.t, width: iw, height: ih, class: "tc-ocean" }));
+    // Optional equirectangular (plate-carrée) world-map backdrop. The operator
+    // configures ui.map_tiles_url (a full-world image); the projection below
+    // matches it exactly (lon -180..180 -> x, lat 90..-90 -> y). Self-hosted
+    // under /static is recommended; an external URL is CSP-allowed server-side.
+    var tilesMeta = document.querySelector('meta[name="tarpit-map-tiles"]');
+    var tilesURL = tilesMeta && tilesMeta.getAttribute("content");
+    if (tilesURL) {
+      var img = el("image", { x: P.l, y: P.t, width: iw, height: ih, preserveAspectRatio: "none", class: "tc-mapimg" });
+      img.setAttribute("href", tilesURL);
+      img.setAttributeNS("http://www.w3.org/1999/xlink", "href", tilesURL); // older renderers
+      root.appendChild(img);
+    }
     for (var lon = -180; lon <= 180; lon += 30) { var x = P.l + iw * (lon + 180) / 360; root.appendChild(el("line", { x1: x, y1: P.t, x2: x, y2: P.t + ih, class: "tc-grat" })); }
     for (var lat = -90; lat <= 90; lat += 30) { var y = P.t + ih * (90 - lat) / 180; root.appendChild(el("line", { x1: P.l, y1: y, x2: P.l + iw, y2: y, class: "tc-grat" })); root.appendChild(text(P.l + 2, y - 2, lat + "°", "tc-grat-lbl")); }
     var max = maxOf(pts, function (p) { return num(p.count); }) || 1;

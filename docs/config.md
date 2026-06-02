@@ -147,10 +147,16 @@ ui:
   tls_key:  ""
   auth_token_env: ""    # env var holding the bearer token
   refresh_seconds: 10   # live-view auto-refresh; 0 = off (omit = 10s default)
+  cve_source: nvd       # where CVE labels link: "nvd" (default) | "cve.org"
+  map_tiles_url: ""     # optional equirectangular world-map IMAGE for the attack source map
+  hidden_ips: []        # presentation-only: source IPs/CIDRs to hide from every view
 ```
 
 - Bind to anything non-loopback **requires both** `tls_cert + tls_key` and `auth_token_env`. Validation rejects the config otherwise.
 - The UI is strictly read-only — no write endpoints.
+- **`cve_source`** selects the external reference CVE labels link to: NVD (`https://nvd.nist.gov/vuln/detail/<id>`) or CVE.org (`https://www.cve.org/CVERecord?id=<id>`).
+- **`map_tiles_url`** sets a backdrop image for the GeoIP "attack source map" (charts + map views). It must be a single **equirectangular / plate-carrée world image** (the map's projection is lon −180…180 → x, lat 90…−90 → y). Prefer a self-hosted image under `/static` (no external requests from the operator's browser); a non-`/` URL automatically relaxes the UI `img-src` CSP to *just* that origin. Empty = the built-in graticule only.
+- **`hidden_ips`** is a presentation-layer display allowlist: the listed source IPs / CIDRs are hidden from **every** view and JSON endpoint (event lists, timeline, profiles, campaigns, map, top sources, IOCs). The events stay in the store and in every export / SIEM feed — they're just not shown. Use it to keep your own scanners / health-checkers out of the console; edit the list and reload (SIGHUP) to add/remove.
 - **Auto-refresh:** the UI ships a small packaged JS layer (served same-origin under `script-src 'self'`) that provides a pausable live-refresh, client-side table sort/filter, and the correlation graph. It's progressive enhancement — with JavaScript disabled the views fall back to an HTML `<meta http-equiv="refresh">` every `refresh_seconds` (default **10s**; set `0` to disable).
 - `/metrics` requires the same auth as the rest of the UI (the `/healthz` endpoint is the only auth-bypass route).
 

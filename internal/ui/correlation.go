@@ -244,7 +244,7 @@ func (s *Server) handleCorrelation(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-corrWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: corrScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: corrScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

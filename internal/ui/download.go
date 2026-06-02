@@ -131,7 +131,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	f.Limit = 2000 // bulk export cap
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, f)
+	evs, err := s.query(ctx, f)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

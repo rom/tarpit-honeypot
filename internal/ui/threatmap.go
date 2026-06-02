@@ -104,13 +104,13 @@ func buildThreatMapView(since time.Time, evs []*event.Event) threatMapView {
 	}
 
 	v.Counters = []counter{
-		{Label: "events", Value: len(evs)},
-		{Label: "geo-located", Value: v.GeoLocated},
-		{Label: "countries", Value: len(country)},
-		{Label: "ASNs", Value: len(asn)},
-		{Label: "threat-intel hits", Value: intelHits},
-		{Label: "known-bad sources", Value: distinctIntelIPs},
-		{Label: "tor exits", Value: torExits},
+		{Label: "events", Value: len(evs), Class: "c-total"},
+		{Label: "geo-located", Value: v.GeoLocated, Class: "c-icmp"},
+		{Label: "countries", Value: len(country), Class: "c-tcp"},
+		{Label: "ASNs", Value: len(asn), Class: "c-udp"},
+		{Label: "threat-intel hits", Value: intelHits, Class: "sev-bg-high"},
+		{Label: "known-bad sources", Value: distinctIntelIPs, Class: "sev-bg-critical"},
+		{Label: "tor exits", Value: torExits, Class: "sev-bg-medium"},
 	}
 	v.Countries = topBars(country, 20, "")
 	v.ASNs = topBars(asn, 20, "")
@@ -148,7 +148,7 @@ func (s *Server) handleThreatMap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-mapWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: mapScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: mapScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -163,7 +163,7 @@ func (s *Server) handleAPIThreatMap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-mapWindow)
-	evs, err := s.store.Query(ctx, store.Filter{Since: since, Limit: mapScanMax})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: mapScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

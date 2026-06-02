@@ -115,6 +115,15 @@ ui:
   # tls_cert: /etc/tarpit-honeypot/tls/cert.pem
   # tls_key:  /etc/tarpit-honeypot/tls/key.pem
   # auth_token_env: TARPIT_UI_TOKEN
+  cve_source: nvd          # CVE labels link to NVD (or set "cve.org")
+  # A world-map backdrop for the GeoIP attack source map. Self-host an
+  # equirectangular image under /static (no external requests):
+  # map_tiles_url: /static/world-equirectangular.png
+  # Presentation-only: hide your own scanners / monitoring from every view
+  # (the events stay in the store + exports). Reload (SIGHUP) after editing.
+  hidden_ips: []
+    # - 10.0.0.0/24        # internal monitoring subnet
+    # - 203.0.113.7        # your vuln scanner
 
 listeners:
   # --- Web: the full fake-vulnerable app on HTTP + HTTPS ---

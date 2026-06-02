@@ -164,7 +164,7 @@ func fleetSince(r *http.Request) time.Duration {
 func (s *Server) fleetEvents(r *http.Request) ([]*event.Event, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-fleetSince(r)), Limit: 2000})
+	evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-fleetSince(r)), Limit: 2000})
 	if err != nil {
 		return nil, err
 	}

@@ -67,7 +67,7 @@ func DiffConfigs(old, new *Config) Diff {
 				old.Sensor.DropUser, old.Sensor.DropGroup, new.Sensor.DropUser, new.Sensor.DropGroup),
 		})
 	}
-	if old.UI != new.UI {
+	if !reflect.DeepEqual(old.UI, new.UI) {
 		d.RestartNeeded = append(d.RestartNeeded, Change{
 			Section: "ui", Action: "modified",
 			Detail: "web UI settings changed",

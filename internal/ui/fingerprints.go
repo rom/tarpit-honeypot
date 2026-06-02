@@ -209,7 +209,7 @@ func (s *Server) handleFingerprint(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{
+	evs, err := s.query(ctx, store.Filter{
 		FPKind:  kind,
 		FPValue: value,
 		Since:   time.Now().Add(-fingerprintDetailWindow),
@@ -250,7 +250,7 @@ func (s *Server) handleAPIFingerprint(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{
+	evs, err := s.query(ctx, store.Filter{
 		FPKind:  kind,
 		FPValue: value,
 		Since:   time.Now().Add(-fingerprintDetailWindow),

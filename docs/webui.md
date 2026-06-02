@@ -26,6 +26,25 @@ refresh is **state-preserving**: a column sort you chose, the live-pause toggle,
 and the timeline order all survive the reload (persisted per-page in
 `localStorage`), so a periodic refresh never resets your view.
 
+## Presentation options
+
+- **Pervasive linking.** Source IPs everywhere (event lists, detail, timeline,
+  campaigns, map, IOCs) link to that actor's `/profiles/<ip>`; rule_ids link to
+  the filtered `/events?rule=`; fingerprints to `/fingerprints/<kind>/<value>`;
+  techniques to `/attack/technique`. Click any observable to pivot to the
+  attack / profile / campaign behind it.
+- **CVE labels are hyperlinks** to the authoritative record. `ui.cve_source`
+  selects the source: `nvd` (default, `nvd.nist.gov/vuln/detail/<id>`) or
+  `cve.org` (`www.cve.org/CVERecord?id=<id>`).
+- **Coloured counters.** The summary and map counter strips are tinted by
+  category (transport + severity) so the shape of the day reads at a glance.
+- **GeoIP map backdrop.** Set `ui.map_tiles_url` to an equirectangular world
+  image to draw a real map under the "attack source map" bubbles (charts + map
+  views); otherwise a graticule. Prefer a self-hosted `/static` image.
+- **Display hide list.** `ui.hidden_ips` (IPs / CIDRs) removes a source from
+  **every** view and JSON endpoint at the presentation layer — the events stay
+  in the store and in exports, they're just not shown. Edit + reload to change.
+
 ---
 
 ## Core views
@@ -84,10 +103,12 @@ a linkage graph ties campaigns ↔ fingerprints ↔ handlers. JSON at
 
 ### map (`/map`)
 A live **GeoIP attack map** plus geo/threat dashboards on one screen: an
-attack-source bubble map, top-country / top-ASN / network-class breakdowns,
-threat-intelligence counters (events from known-bad sources, Tor exits, feed
-matches), and a ticker of the most recent high-severity attacks with their
-origin. Geo, ASN and network-class data require `sensor.geoip` (MaxMind
+attack-source bubble map (over a configurable world-map backdrop —
+`ui.map_tiles_url`), colour-tinted **counters**, top-country / top-ASN /
+network-class breakdowns, threat-intelligence counters (events from known-bad
+sources, Tor exits, feed matches), and a ticker of the most recent
+high-severity attacks with their origin (each source links to its profile).
+Geo, ASN and network-class data require `sensor.geoip` (MaxMind
 GeoLite2-City/ASN); the intel counters light up when threat feeds / the Tor
 list are configured. Auto-refreshes, so it doubles as a wall display. JSON at
 `/api/map`.

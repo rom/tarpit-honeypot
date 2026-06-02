@@ -53,6 +53,7 @@ func (s *Server) handleIOCs(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	rows = s.visibleIOCs(rows) // presentation hide list
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "iocs", iocsPage{
 		Counts:     iocTypeBars(sum),
@@ -78,6 +79,7 @@ func (s *Server) handleAPIIOCs(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	rows = s.visibleIOCs(rows) // presentation hide list
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rows)
 }

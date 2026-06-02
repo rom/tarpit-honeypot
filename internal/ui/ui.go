@@ -72,7 +72,8 @@ type Server struct {
 	hostsSummary  HostsSummaryProvider
 	deviceActions DeviceActions
 	dataDir       string
-	configPaths   []string // config file path(s), for the /config "files in use" panel
+	configPaths   []string   // config file path(s), for the /config "files in use" panel
+	hidden        *ipMatcher // presentation-layer source-IP hide list (ui.hidden_ips)
 }
 
 // SetConfigPaths wires the config file path(s) so the /config page can list
@@ -177,14 +178,14 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if st == nil {
 		return nil, errors.New("ui: store is required")
 	}
-	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval()}
+	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(), hidden: newIPMatcher(cfg.HiddenIPs)}
 	if cfg.AuthTokenEnv != "" {
 		s.authToken = os.Getenv(cfg.AuthTokenEnv)
 		if s.authToken == "" {
 			return nil, fmt.Errorf("ui: env %s is empty", cfg.AuthTokenEnv)
 		}
 	}
-	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh })).Parse(tmpls)
+	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL)).Parse(tmpls)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +196,10 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 // tmplFuncs is the single source of truth for the template function map, used by
 // New and by the package tests so they can never drift. refresh supplies the
 // auto-refresh interval.
-func tmplFuncs(refresh func() int) template.FuncMap {
+func tmplFuncs(refresh func() int, cveSource, mapTiles string) template.FuncMap {
 	return template.FuncMap{
-		"fmtTime": func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
+		"mapTiles": func() string { return mapTiles },
+		"fmtTime":  func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 		"join": func(s []int) string {
 			var p []string
 			for _, n := range s {
@@ -211,7 +213,56 @@ func tmplFuncs(refresh func() int) template.FuncMap {
 		"svcName":        portsvc.Name,
 		"confLabel":      toolfp.ConfidenceLabel,
 		"techDesc":       mitre.Describe,
+		"cveURL":         func(id string) string { return cveURL(cveSource, id) },
 	}
+}
+
+// externalOrigin returns the "scheme://host" of an absolute http(s) URL, or ""
+// for an empty / relative (self-hosted, e.g. "/static/...") URL. Used to add a
+// configured map-tiles image host to the CSP img-src without widening it
+// otherwise.
+func externalOrigin(raw string) string {
+	if raw == "" || strings.HasPrefix(raw, "/") {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// cveURL returns the external reference URL for a CVE id, per the configured
+// source ("cve.org" or the default NVD). Returns "" for a non-CVE string so the
+// template can fall back to a plain label.
+func cveURL(source, id string) string {
+	id = strings.TrimSpace(id)
+	if !looksLikeCVE(id) {
+		return ""
+	}
+	if source == "cve.org" {
+		return "https://www.cve.org/CVERecord?id=" + id
+	}
+	return "https://nvd.nist.gov/vuln/detail/" + id
+}
+
+// looksLikeCVE guards the id before it becomes a link: CVE-YYYY-NNNN+.
+func looksLikeCVE(id string) bool {
+	if len(id) < 8 || len(id) > 24 || (id[:4] != "CVE-" && id[:4] != "cve-") {
+		return false
+	}
+	dashes := 0
+	for i := 4; i < len(id); i++ {
+		c := id[i]
+		if c == '-' {
+			dashes++
+			continue
+		}
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return dashes == 1
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
@@ -311,9 +362,17 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		// (script-src 'self', no inline/eval); fetch()/XHR is same-origin
 		// (connect-src 'self'); forms post same-origin. Inline styles stay
 		// for the server-rendered CSS bars.
+		// img-src stays 'self' + data: unless the operator configured an
+		// EXTERNAL map-tiles image, in which case that origin is added so the
+		// browser may load the backdrop (a self-hosted /static URL needs no
+		// change). Nothing else is ever relaxed.
+		imgSrc := "img-src 'self' data:"
+		if o := externalOrigin(s.cfg.MapTilesURL); o != "" {
+			imgSrc += " " + o
+		}
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'none'; script-src 'self'; connect-src 'self'; "+
-				"style-src 'unsafe-inline'; img-src 'self' data:; "+
+				"style-src 'unsafe-inline'; "+imgSrc+"; "+
 				"form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 		if r.URL.Path == "/healthz" {
@@ -372,6 +431,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
 	hours, err := s.store.EventsPerHour(ctx, since)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
@@ -407,7 +467,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
 	// from a bounded scan of the window.
-	if evs, qerr := s.store.Query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
+	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
 	}
 	// A compact visual overview (charts.js); the full gallery lives at /charts.
@@ -451,7 +511,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, f)
+	evs, err := s.query(ctx, f)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -549,7 +609,7 @@ func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-since), Limit: 1000})
+	evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-since), Limit: 1000})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -591,7 +651,7 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	ev, err := s.store.Get(ctx, id)
-	if err != nil {
+	if err != nil || s.hides(ev.Source.IP) { // presentation hide list
 		http.NotFound(w, r)
 		return
 	}
@@ -615,7 +675,7 @@ func (s *Server) handleAPIEvents(w http.ResponseWriter, r *http.Request) {
 	f := parseFilter(r)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.store.Query(ctx, f)
+	evs, err := s.query(ctx, f)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -870,7 +930,7 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	if len(nets) > 0 {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
-		if evs, err := s.store.Query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000}); err == nil {
+		if evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000}); err == nil {
 			page.Active = overlayActivity(nets, aggregateHostActivity(evs))
 		}
 	}

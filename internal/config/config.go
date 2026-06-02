@@ -569,6 +569,22 @@ type UI struct {
 	// 0 = disabled. So the console updates during a scan without a manual
 	// reload, while operators can still turn it off.
 	RefreshSeconds *int `yaml:"refresh_seconds"`
+	// CVESource selects where CVE labels in the UI link to: "nvd" (default,
+	// https://nvd.nist.gov/vuln/detail/<id>) or "cve.org"
+	// (https://www.cve.org/CVERecord?id=<id>).
+	CVESource string `yaml:"cve_source"`
+	// MapTilesURL is an optional equirectangular (plate-carrée) world-map
+	// IMAGE URL used as the backdrop of the GeoIP "attack source map" in the
+	// charts + map views. Empty = the built-in graticule only. Prefer a
+	// self-hosted image under /static (no external requests from the operator's
+	// browser); a non-self URL relaxes the UI img-src CSP to that origin.
+	MapTilesURL string `yaml:"map_tiles_url"`
+	// HiddenIPs are source IPs / CIDRs hidden from the web UI — a
+	// presentation-layer allowlist. The events stay in the store (and in
+	// every export / SIEM feed); they are simply not shown in any view. Use it
+	// to keep your own scanners / health-checkers out of the console. Edit the
+	// list in config and reload (SIGHUP) to add/remove.
+	HiddenIPs []string `yaml:"hidden_ips"`
 }
 
 // UIRefreshInterval returns the effective auto-refresh interval in seconds

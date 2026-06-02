@@ -125,7 +125,7 @@ func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	since := time.Now().Add(-capturesWindow)
 	var evs []*event.Event
-	if e, err := s.store.Query(ctx, store.Filter{Since: since, Limit: capturesScanMax}); err == nil {
+	if e, err := s.query(ctx, store.Filter{Since: since, Limit: capturesScanMax}); err == nil {
 		evs = e
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
