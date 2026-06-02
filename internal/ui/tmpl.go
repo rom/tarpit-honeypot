@@ -375,6 +375,9 @@ td.bnum { width: 10%; text-align: right; color: var(--text-muted); }
 .bar.sev-critical { background: var(--bar-critical); }
 .spark { display: flex; align-items: flex-end; gap: 1px; height: 80px; background: var(--bg-surface); border: 1px solid var(--border); padding: 4px; }
 .sparkbar { flex: 1 1 0; background: var(--bar-default); min-height: 1px; }
+/* x-axis hour ticks under the spark — same flex metrics so each label lines up under its bar */
+.spark-axis { display: flex; gap: 1px; padding: 2px 4px 0; }
+.spark-tick { flex: 1 1 0; text-align: center; font-size: 0.62rem; color: var(--text-faint); white-space: nowrap; overflow: visible; }
 #live-pill { display: inline-block; margin-left: .5rem; padding: 0 .5rem; border-radius: 10px; background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-fg); font-size: 0.857rem; font-weight: 600; }
 #live-pill button { font: inherit; cursor: pointer; border: 1px solid var(--success-border); background: var(--bg-surface); border-radius: 3px; padding: 0 .35rem; margin-left: .35rem; color: var(--success-fg); }
 th.sortable { cursor: pointer; }
@@ -410,6 +413,8 @@ html.js .nojs-note { display: none; }
 .coll-detail { color: var(--success-fg); font-weight: 400; font-size: 0.786rem; }
 .counters { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
 .counter { min-width: 6rem; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 6px; padding: .35rem .6rem; text-align: center; }
+a.counter { display: inline-block; color: inherit; text-decoration: none; cursor: pointer; }
+a.counter:hover { border-color: var(--link); filter: brightness(1.04); }
 .counter b { display: block; font-size: 1.43rem; line-height: 1.1; color: var(--counter-num); }
 .counter span { font-size: 0.786rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
 /* Category-tinted summary counters. color-mix tints the theme's surface with an
@@ -526,14 +531,15 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>tarpit-honeypot — last 24 hours</h1>
 <p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
 
-<div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters">{{ range .Counters }}{{ if .Href }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ else }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}{{ end }}</div>
 {{ if .HasFrames }}
 <div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 <h2>events per hour</h2>
-{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
-<p class="note">last 24h, one bar per hour</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Full }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
+<div class="spark-axis">{{ range .Trend }}<span class="spark-tick">{{ if .ShowTick }}{{ .Hour }}{{ end }}</span>{{ end }}</div>
+<p class="note">last 24h, one bar per hour (x-axis: hour of day, UTC)</p>{{ else }}<p class="note">no events yet</p>{{ end }}
 
 {{ if .Charts }}<h2>visual overview</h2>
 <div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
@@ -909,6 +915,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <form method="get" action="/events">
   source: <input type="text" name="source" value="{{ .Filter.SourceIP }}" size="15">
   rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="20">
+  proto: <input type="text" name="proto" value="{{ .Filter.Proto }}" placeholder="tcp" size="5">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
   limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="1000" size="5">

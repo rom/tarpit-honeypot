@@ -32,6 +32,19 @@ type counter struct {
 	// category (transport: c-total/c-tcp/c-udp/c-icmp; severity:
 	// sev-bg-critical/high/medium/low). Empty = the default surface color.
 	Class string
+	// Href, when set, makes the counter a link to the matching event listing
+	// (e.g. the UDP counter -> /events?proto=udp). Empty = not clickable.
+	Href string
+}
+
+// hourBar is one bar of the "events per hour" spark, carrying the data needed
+// to draw an aligned x-axis tick beneath it.
+type hourBar struct {
+	Pct      int    // bar height, % of the busiest hour
+	Count    int    // events in this hour
+	Full     string // tooltip label, e.g. "06-02 15h"
+	Hour     string // short axis label, e.g. "15"
+	ShowTick bool   // print the axis label under this bar (every 6h)
 }
 
 // dashboard is the summary page's chart model.
@@ -47,7 +60,7 @@ type dashboard struct {
 	Severity  []barRow
 	Rules     []barRow
 	Sources   []barRow
-	Trend     []barRow
+	Trend     []hourBar
 	// Enrichment charts (filled by enrichDashboard from a scan of recent
 	// events; the store's SQL summary only covers severity/rule/source).
 	Tactics   []barRow
@@ -95,7 +108,15 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 		}
 	}
 	for _, h := range hours {
-		d.Trend = append(d.Trend, barRow{Label: h.Hour.Format("01-02 15h"), Count: h.Count, Pct: pct(h.Count, maxH)})
+		// Tick on the clock boundaries (00/06/12/18) so the axis labels stay
+		// readable and line up under their bars.
+		d.Trend = append(d.Trend, hourBar{
+			Pct:      pct(h.Count, maxH),
+			Count:    h.Count,
+			Full:     h.Hour.Format("01-02 15h"),
+			Hour:     h.Hour.Format("15"),
+			ShowTick: h.Hour.Hour()%6 == 0,
+		})
 	}
 	return d
 }

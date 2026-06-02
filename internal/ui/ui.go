@@ -482,15 +482,17 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	d := buildDashboard(sum, hours)
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
+	// Counters link to the matching event listing so an operator can click a
+	// number (e.g. "12 UDP") straight to those events.
 	d.Counters = []counter{
-		{Label: "events", Value: sum.Total, Class: "c-total"},
-		{Label: "TCP", Value: sum.ByProto["tcp"], Class: "c-tcp"},
-		{Label: "UDP", Value: sum.ByProto["udp"], Class: "c-udp"},
-		{Label: "ICMP", Value: sum.ByProto["icmp"], Class: "c-icmp"},
-		{Label: "critical", Value: sum.BySeverity["critical"], Class: "sev-bg-critical"},
-		{Label: "high", Value: sum.BySeverity["high"], Class: "sev-bg-high"},
-		{Label: "medium", Value: sum.BySeverity["medium"], Class: "sev-bg-medium"},
-		{Label: "low", Value: sum.BySeverity["low"], Class: "sev-bg-low"},
+		{Label: "events", Value: sum.Total, Class: "c-total", Href: "/events"},
+		{Label: "TCP", Value: sum.ByProto["tcp"], Class: "c-tcp", Href: "/events?proto=tcp"},
+		{Label: "UDP", Value: sum.ByProto["udp"], Class: "c-udp", Href: "/events?proto=udp"},
+		{Label: "ICMP", Value: sum.ByProto["icmp"], Class: "c-icmp", Href: "/events?proto=icmp"},
+		{Label: "critical", Value: sum.BySeverity["critical"], Class: "sev-bg-critical", Href: "/events?severity=critical"},
+		{Label: "high", Value: sum.BySeverity["high"], Class: "sev-bg-high", Href: "/events?severity=high"},
+		{Label: "medium", Value: sum.BySeverity["medium"], Class: "sev-bg-medium", Href: "/events?severity=medium"},
+		{Label: "low", Value: sum.BySeverity["low"], Class: "sev-bg-low", Href: "/events?severity=low"},
 	}
 	if s.stats != nil {
 		fr := map[string]int{}
@@ -607,7 +609,7 @@ func sortEvents(evs []*event.Event, key, order string) {
 // columns: time, severity, source, rule, handler.
 func buildSortHeaders(path string, q url.Values, sortKey, order string) map[string]colHeader {
 	carry := url.Values{}
-	for _, k := range []string{"source", "rule", "since", "limit", "severity", "q"} {
+	for _, k := range []string{"source", "rule", "proto", "since", "limit", "severity", "q"} {
 		if v := q.Get(k); v != "" {
 			carry.Set(k, v)
 		}
@@ -1265,6 +1267,9 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("rule"); v != "" {
 		f.RuleID = v
+	}
+	if v := q.Get("proto"); v != "" {
+		f.Proto = v
 	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v
