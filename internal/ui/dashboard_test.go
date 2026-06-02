@@ -77,9 +77,9 @@ func TestDashboardTemplateRenders(t *testing.T) {
 func TestSummaryCountersRender(t *testing.T) {
 	tmpl := uiTmpl(t)
 	d := buildDashboard(store.Summary{Total: 5, ByProto: map[string]int{"tcp": 3, "udp": 2}}, nil)
-	d.Counters = []counter{{"events", 5}, {"TCP", 3}, {"UDP", 2}}
+	d.Counters = []counter{{Label: "events", Value: 5}, {Label: "TCP", Value: 3}, {Label: "UDP", Value: 2}}
 	d.HasFrames = true
-	d.Frames = []counter{{"received", 100}, {"ARP", 10}, {"TCP", 60}}
+	d.Frames = []counter{{Label: "received", Value: 100}, {Label: "ARP", Value: 10}, {Label: "TCP", Value: 60}}
 	var b strings.Builder
 	if err := tmpl.ExecuteTemplate(&b, "index", d); err != nil {
 		t.Fatal(err)

@@ -240,6 +240,19 @@ Learned-device inventory.
 Per-connection packet captures (when
 .B capture: true
 is set on a listener).
+.TP
+.I <data_dir>/payloads/<sha256>.<ext>
+Harvested malware / payload artifacts (when
+.B sensor.payloads
+is enabled).
+.TP
+.I <data_dir>/sessions/<name>.cast
+Recorded interactive-shell sessions (asciicast).
+.PP
+The captured malware, pcaps, session recordings, and credentials are all
+retrievable from the web UI's
+.B captures
+tab (served as download-only attachments).
 .SH EXAMPLES
 .PP
 Validate a config and start the sensor:

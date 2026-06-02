@@ -17,11 +17,14 @@ attribution, the fleet view, and the IOC view.
 ## The navigation
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
-map · fleet · iocs · tunnels · profiles · fingerprints · devices · topology ·
-charts · health · alerting · errors · config · docs`
+map · captures · fleet · iocs · tunnels · profiles · fingerprints · devices ·
+topology · charts · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
-console stays live during an attack without JavaScript.
+console stays live during an attack without JavaScript. With JavaScript on, the
+refresh is **state-preserving**: a column sort you chose, the live-pause toggle,
+and the timeline order all survive the reload (persisted per-page in
+`localStorage`), so a periodic refresh never resets your view.
 
 ---
 
@@ -29,7 +32,10 @@ console stays live during an attack without JavaScript.
 
 ### summary (`/`)
 A 24-hour rollup: counts by severity, rule, and transport; the top source IPs;
-and an at-a-glance counters strip. The starting point each shift.
+and an at-a-glance **counters strip**. The counters are colour-tinted by
+category — transport (events / TCP / UDP / ICMP) and severity (critical / high /
+medium / low) each get a distinct, theme-aware background so the shape of the
+day reads at a glance. The starting point each shift.
 
 ### events (`/events`)
 The filterable event log — by `source`, `rule`, `severity`, `since`, free-text
@@ -47,8 +53,10 @@ detail** page, which now shows:
 ATT&CK/D3FEND fields.
 
 ### search (`/search`) & timeline (`/timeline`)
-Full-text search across rule/banner/meta, and a chronological timeline of
-activity.
+Full-text search across rule/banner/meta, and a per-source **attack timeline**.
+Each source's events are shown **newest-first** by default; the *order:
+newest/oldest first* button flips every source's sequence (and the choice
+persists across refresh).
 
 ### att&ck (`/attack`)
 The live ATT&CK coverage built from the observed events — every technique seen,
@@ -83,6 +91,24 @@ origin. Geo, ASN and network-class data require `sensor.geoip` (MaxMind
 GeoLite2-City/ASN); the intel counters light up when threat feeds / the Tor
 list are configured. Auto-refreshes, so it doubles as a wall display. JSON at
 `/api/map`.
+
+### captures (`/captures`)
+The one-stop **loot** tab for retrieving everything harvested from attackers:
+
+- **captured malware / payload artifacts** (from `sensor.payloads`) — listed by
+  `sha256.ext` with size + capture time, each downloadable;
+- **captured credentials** — every `username:password` the handlers captured,
+  with the source IP, service, and time (from the event store);
+- **pcaps** — the per-connection packet captures (listeners with
+  `capture: true`);
+- **session recordings** — asciicast (`.cast`) replays of interactive
+  shell sessions.
+
+Files download as attachments (`application/octet-stream`, `nosniff`) via the
+`/loot/` route — never rendered inline, so a captured sample can't execute in
+the browser. The route is basename-only and symlink-safe. A "download all" link
+streams every pcap + session as a ZIP. **The artifacts are live malware — handle
+them only in an isolated environment.**
 
 ---
 

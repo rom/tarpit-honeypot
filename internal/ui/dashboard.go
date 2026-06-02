@@ -24,6 +24,10 @@ type barRow struct {
 type counter struct {
 	Label string
 	Value int
+	// Class is an optional CSS class that tints the counter's background by
+	// category (transport: c-total/c-tcp/c-udp/c-icmp; severity:
+	// sev-bg-critical/high/medium/low). Empty = the default surface color.
+	Class string
 }
 
 // dashboard is the summary page's chart model.

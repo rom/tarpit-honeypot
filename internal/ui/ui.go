@@ -206,6 +206,7 @@ func tmplFuncs(refresh func() int) template.FuncMap {
 			return strings.Join(p, ", ")
 		},
 		"hexdump":        hexDump,
+		"fmtBytes":       humanBytes,
 		"refreshSeconds": refresh,
 		"svcName":        portsvc.Name,
 		"confLabel":      toolfp.ConfidenceLabel,
@@ -225,6 +226,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/pcap/", s.handlePcap)
 	mux.HandleFunc("/session/", s.handleSession)
 	mux.HandleFunc("/download", s.handleDownload)
+	mux.HandleFunc("/captures", s.handleCaptures)
+	mux.HandleFunc("/loot/", s.handleLoot)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/attack", s.handleAttack)
 	mux.HandleFunc("/attack/technique", s.handleAttackTechnique)
@@ -378,12 +381,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
 	d.Counters = []counter{
-		{"events", sum.Total},
-		{"TCP", sum.ByProto["tcp"]},
-		{"UDP", sum.ByProto["udp"]},
-		{"ICMP", sum.ByProto["icmp"]},
-		{"high", sum.BySeverity["high"]},
-		{"critical", sum.BySeverity["critical"]},
+		{Label: "events", Value: sum.Total, Class: "c-total"},
+		{Label: "TCP", Value: sum.ByProto["tcp"], Class: "c-tcp"},
+		{Label: "UDP", Value: sum.ByProto["udp"], Class: "c-udp"},
+		{Label: "ICMP", Value: sum.ByProto["icmp"], Class: "c-icmp"},
+		{Label: "critical", Value: sum.BySeverity["critical"], Class: "sev-bg-critical"},
+		{Label: "high", Value: sum.BySeverity["high"], Class: "sev-bg-high"},
+		{Label: "medium", Value: sum.BySeverity["medium"], Class: "sev-bg-medium"},
+		{Label: "low", Value: sum.BySeverity["low"], Class: "sev-bg-low"},
 	}
 	if s.stats != nil {
 		fr := map[string]int{}
@@ -395,8 +400,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		if _, ok := fr["all"]; ok { // sniffer running
 			d.HasFrames = true
 			d.Frames = []counter{
-				{"received", fr["all"]}, {"ARP", fr["arp"]}, {"IPv4", fr["ipv4"]},
-				{"IPv6", fr["ipv6"]}, {"TCP", fr["tcp"]}, {"UDP", fr["udp"]}, {"ICMP", fr["icmp"]},
+				{Label: "received", Value: fr["all"]}, {Label: "ARP", Value: fr["arp"]}, {Label: "IPv4", Value: fr["ipv4"]},
+				{Label: "IPv6", Value: fr["ipv6"]}, {Label: "TCP", Value: fr["tcp"]}, {Label: "UDP", Value: fr["udp"]}, {Label: "ICMP", Value: fr["icmp"]},
 			}
 		}
 	}
