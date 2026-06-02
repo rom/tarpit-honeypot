@@ -120,10 +120,12 @@ rationale covering the current implementation.
   capture), `whois`, `ident`, `rsync` (counters, live timestamps, rotating
   versions, per-source state, engagement + capture).
 - **Full fake-vulnerable web application** (`webapp: true` on an
-  `http`/`https` listener): a believable multi-page PHP/MySQL-flavored app
-  (login, search, product, file download, JSON API, plus the juicy paths
-  scanners probe — `/.env`, `/.git/config`, `/config.php.bak`, `robots.txt`)
-  whose endpoints LOOK exploitable so an attacker engages and reveals TTPs.
+  `http`/`https` listener): a believable, **professionally styled** multi-page
+  PHP/MySQL-flavored corporate portal (self-contained inline CSS + an inline SVG
+  logo, a per-deployment accent colour, header/nav/footer chrome) — login,
+  search, product, file download, JSON API, plus the juicy paths scanners probe
+  (`/.env`, `/.git/config`, `/config.php.bak`, `robots.txt`) — whose endpoints
+  LOOK exploitable so an attacker engages and reveals TTPs.
   Detects — never executes — SQLi / XSS / LFI / RFI / SSRF / command
   injection / SSTI / Log4Shell / XXE / deserialization, flagging each as a
   `webapp:<class>` anomaly. Active deception: LFI toward `/etc/passwd` and
