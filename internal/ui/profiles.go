@@ -38,9 +38,15 @@ type countItem struct {
 }
 
 type credPair struct {
-	User string `json:"user"`
-	Pass string `json:"pass"`
-	// Service is where the credentials were captured (the handler/protocol,
+	// Kind classifies the captured secret: "password" (a user/pass login),
+	// "token", "api-key", "snmp-community", "cookie", "authorization",
+	// "kerberos-ticket" or "honeytoken". Empty renders as a plain login.
+	Kind string `json:"kind,omitempty"`
+	User string `json:"user,omitempty"`
+	// Pass holds the secret value: the password for a login, else the token /
+	// key / community / ticket material itself.
+	Pass string `json:"pass,omitempty"`
+	// Service is where the secret was captured (the handler/protocol,
 	// e.g. "ssh", "http", "ftp"), so the operator can see the attack surface.
 	Service string `json:"service,omitempty"`
 }
@@ -209,7 +215,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 			}
 		}
 		for _, c := range extractCreds(ev) {
-			key := c.User + "\x00" + c.Pass + "\x00" + c.Service
+			key := c.Kind + "\x00" + c.User + "\x00" + c.Pass + "\x00" + c.Service
 			if _, dup := credSeen[key]; !dup && len(p.Credentials) < 100 {
 				credSeen[key] = struct{}{}
 				p.Credentials = append(p.Credentials, c)
@@ -417,18 +423,54 @@ func extractCreds(ev *event.Event) []credPair {
 		}
 		return ""
 	}
-	user := get("user_attempt", "http_login_user", "auth_user", "user_line", "basic_user", "username", "user", "bind_dn")
-	pass := get("pass_attempt", "http_login_pass", "auth_pass", "pass_line", "basic_pass", "password", "pass", "bind_pw", "auth_password", "redis_auth")
-	if user == "" && pass == "" {
-		return nil
-	}
-	// Where the credentials came from: the handler/protocol, else the
-	// well-known service name for the destination port.
+	// Where the secret came from: the handler/protocol, else the well-known
+	// service name for the destination port.
 	svc := ev.Handler
 	if svc == "" && ev.Dest.Port > 0 {
 		svc = portsvc.Name(ev.Dest.Port)
 	}
-	return []credPair{{User: user, Pass: pass, Service: svc}}
+	var out []credPair
+
+	// 1) username / password login pairs.
+	user := get("user_attempt", "http_login_user", "auth_user", "user_line",
+		"basic_user", "form_user", "login_user", "client_user", "remote_user",
+		"server_user", "local_user", "ntlm_user", "sip_user", "ami_username",
+		"socks_userid", "username", "user", "bind_dn")
+	pass := get("pass_attempt", "http_login_pass", "auth_pass", "pass_line",
+		"basic_pass", "form_pass", "pjl_password", "ami_secret", "password",
+		"pass", "bind_pw", "auth_password", "redis_auth")
+	if user != "" || pass != "" {
+		out = append(out, credPair{Kind: "password", User: user, Pass: pass, Service: svc})
+	}
+
+	// 2) standalone secrets — tokens / keys / communities / cookies the
+	// attacker presented (each present meta key becomes its own row), so they
+	// show up in /captures and on the profile, not just buried in event meta.
+	for _, sk := range []struct{ key, kind string }{
+		{"bearer_token", "token"},
+		{"vault_token", "token"},
+		{"token_hex", "token"},
+		{"ssrf_token", "token"},
+		{"authorization", "authorization"},
+		{"kafka_api_key", "api-key"},
+		{"community", "snmp-community"},
+		{"cookie", "cookie"},
+		{"honeytoken", "honeytoken"},
+	} {
+		if v := get(sk.key); v != "" {
+			out = append(out, credPair{Kind: sk.kind, Pass: v, Service: svc})
+		}
+	}
+	// Kerberos pre-auth: the encrypted timestamp is an offline-crackable ticket,
+	// keyed to the principal it was minted for.
+	if t := get("preauth_enc_timestamp_hex"); t != "" {
+		s := svc
+		if s == "" {
+			s = "kerberos"
+		}
+		out = append(out, credPair{Kind: "kerberos-ticket", User: get("principal"), Pass: t, Service: s})
+	}
+	return out
 }
 
 func threatLevel(score int) string {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -29,8 +30,13 @@ const capturesMaxCreds = 300
 type lootFile struct {
 	Name  string    // basename (download key)
 	Size  int64     // bytes
-	MTime time.Time // last-modified
+	MTime time.Time // last-modified (≈ capture end time)
 	Kind  string    // pcap | session | payload
+	// SrcIP / DstPort are parsed from the pcap filename
+	// (<eventID>_<srcIP>_<dstPort>.pcap) so the captures page can show who the
+	// capture is of and which port they hit. Empty for the legacy <id>.pcap form.
+	SrcIP   string
+	DstPort string
 }
 
 type capturesView struct {
@@ -47,6 +53,7 @@ type credRow struct {
 	Time    time.Time
 	Source  string
 	Service string
+	Kind    string // password | token | api-key | snmp-community | cookie | kerberos-ticket | honeytoken
 	User    string
 	Pass    string
 }
@@ -56,6 +63,24 @@ var lootDir = map[string]string{
 	"pcap":    "captures",
 	"session": "sessions",
 	"payload": "payloads",
+}
+
+// parsePcapName extracts the source IP and destination port from a pcap
+// filename of the form "<eventID>_<srcIP>_<dstPort>.pcap" (the scheme written
+// by internal/capture). An IPv6 source has its ':' rendered as '-' in the
+// filename; we restore it here. Returns ("","") for the legacy "<eventID>.pcap"
+// form (no underscores) so old captures still list cleanly.
+func parsePcapName(name string) (srcIP, dstPort string) {
+	base := strings.TrimSuffix(name, ".pcap")
+	parts := strings.Split(base, "_")
+	if len(parts) != 3 {
+		return "", ""
+	}
+	srcIP, dstPort = parts[1], parts[2]
+	if strings.Count(srcIP, ".") != 3 { // not IPv4 -> it's a dash-encoded IPv6
+		srcIP = strings.ReplaceAll(srcIP, "-", ":")
+	}
+	return srcIP, dstPort
 }
 
 // listLoot lists the files under <dataDir>/<sub> as lootFiles, newest first,
@@ -78,7 +103,11 @@ func listLoot(dataDir, kind string, max int) []lootFile {
 		if err != nil {
 			continue
 		}
-		out = append(out, lootFile{Name: e.Name(), Size: fi.Size(), MTime: fi.ModTime(), Kind: kind})
+		lf := lootFile{Name: e.Name(), Size: fi.Size(), MTime: fi.ModTime(), Kind: kind}
+		if kind == "pcap" {
+			lf.SrcIP, lf.DstPort = parsePcapName(e.Name())
+		}
+		out = append(out, lf)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].MTime.After(out[j].MTime) })
 	if max > 0 && len(out) > max {
@@ -101,13 +130,13 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event) capt
 			if c.User == "" && c.Pass == "" {
 				continue
 			}
-			key := ev.Source.IP + "\x00" + c.User + "\x00" + c.Pass + "\x00" + c.Service
+			key := ev.Source.IP + "\x00" + c.Kind + "\x00" + c.User + "\x00" + c.Pass + "\x00" + c.Service
 			if _, dup := seen[key]; dup {
 				continue
 			}
 			seen[key] = struct{}{}
 			v.Creds = append(v.Creds, credRow{
-				Time: ev.Time, Source: ev.Source.IP, Service: c.Service, User: c.User, Pass: c.Pass,
+				Time: ev.Time, Source: ev.Source.IP, Service: c.Service, Kind: c.Kind, User: c.User, Pass: c.Pass,
 			})
 			if len(v.Creds) >= capturesMaxCreds {
 				break

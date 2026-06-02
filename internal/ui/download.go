@@ -38,6 +38,21 @@ func hexID(id string) bool {
 	return true
 }
 
+// findPcap locates a capture for an event id under dir, handling both the
+// current "<id>_<srcIP>_<dstPort>.pcap" scheme and the legacy "<id>.pcap".
+// id is hex-validated (no glob metacharacters), so the prefix glob is safe.
+// Returns "" if none.
+func findPcap(dir, id string) string {
+	if m, _ := filepath.Glob(filepath.Join(dir, id+"_*.pcap")); len(m) > 0 {
+		return m[0]
+	}
+	legacy := filepath.Join(dir, id+".pcap")
+	if fi, err := os.Stat(legacy); err == nil && !fi.IsDir() {
+		return legacy
+	}
+	return ""
+}
+
 // safeJoin joins dir + the basename of name and confirms the result stays
 // inside dir (defence in depth against traversal in cast filenames).
 func safeJoin(dir, name string) (string, bool) {
@@ -61,7 +76,11 @@ func (s *Server) handlePcap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad event id", http.StatusBadRequest)
 		return
 	}
-	p := filepath.Join(s.dataDir, "captures", id+".pcap")
+	p := findPcap(filepath.Join(s.dataDir, "captures"), id)
+	if p == "" {
+		http.NotFound(w, r)
+		return
+	}
 	f, err := openNoFollow(p)
 	if err != nil {
 		http.NotFound(w, r)
@@ -69,7 +88,7 @@ func (s *Server) handlePcap(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", "application/vnd.tcpdump.pcap")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", id+".pcap"))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(p)))
 	_, _ = io.Copy(w, f)
 }
 
@@ -152,9 +171,22 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	addedCasts := map[string]bool{}
 	n := 0
 	for _, ev := range evs {
-		if wantPcap && hexID(ev.ID) {
-			if added := copyInto(zw, filepath.Join(capDir, ev.ID+".pcap"), "pcaps/"+ev.ID+".pcap"); added {
-				n++
+		if wantPcap {
+			// Prefer the path the listener stamped on the event; fall back to a
+			// prefix lookup. Both schemes (<id>.pcap and <id>_<ip>_<port>.pcap).
+			pcapPath := ""
+			if cp, _ := ev.Meta["capture_path"].(string); cp != "" {
+				if pp, ok := safeJoin(capDir, filepath.Base(cp)); ok {
+					pcapPath = pp
+				}
+			}
+			if pcapPath == "" && hexID(ev.ID) {
+				pcapPath = findPcap(capDir, ev.ID)
+			}
+			if pcapPath != "" {
+				if added := copyInto(zw, pcapPath, "pcaps/"+filepath.Base(pcapPath)); added {
+					n++
+				}
 			}
 		}
 		if wantSession {

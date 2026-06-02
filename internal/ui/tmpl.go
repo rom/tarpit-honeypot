@@ -645,23 +645,28 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
 {{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
 
-<h2>captured credentials <span class="meta">({{ len .Creds }})</span></h2>
-{{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>username</th><th>password</th></tr>
+<h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }})</span></h2>
+{{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>type</th><th>username / principal</th><th>password / secret</th></tr>
 {{ range .Creds }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
   <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td>
   <td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td>
-  <td>{{ .User }}</td>
+  <td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td>
+  <td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td>
   <td><code>{{ .Pass }}</code></td>
 </tr>{{ end }}
-</table>{{ else }}<p class="note">none captured in the window</p>{{ end }}
+</table>
+<p class="note">Logins (user/pass) plus standalone secrets attackers presented — bearer / API / Vault tokens, SNMP communities, cookies, Kerberos pre-auth tickets — and the honeytokens we served. Full byte-level capture is in the per-event detail and the pcaps below.</p>
+{{ else }}<p class="note">none captured in the window</p>{{ end }}
 
 <h2>pcaps <span class="meta">({{ len .Pcaps }})</span></h2>
-{{ if .Pcaps }}<table data-filter><tr><th>file</th><th>size</th><th>captured</th><th></th></tr>
+{{ if .Pcaps }}<table data-filter><tr><th>captured (utc)</th><th>source IP</th><th>dst port</th><th>size</th><th>file</th><th></th></tr>
 {{ range .Pcaps }}<tr>
-  <td><code>{{ .Name }}</code></td>
-  <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td>{{ if .SrcIP }}<a href="/profiles/{{ .SrcIP }}">{{ .SrcIP }}</a>{{ else }}—{{ end }}</td>
+  <td>{{ if .DstPort }}{{ .DstPort }}{{ else }}—{{ end }}</td>
+  <td>{{ fmtBytes .Size }}</td>
+  <td><code>{{ .Name }}</code></td>
   <td><a href="/loot/?kind=pcap&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>{{ else }}<p class="note">none (set <code>capture: true</code> on a listener to record per-connection pcaps)</p>{{ end }}
@@ -1077,8 +1082,8 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
-{{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th><th>service</th></tr>
-{{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
+{{ if .Credentials }}<h2>credentials &amp; secrets captured</h2><table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
+{{ range .Credentials }}<tr><td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
 {{ if .Rules }}<h2>triggered rules</h2><table><tr><th><a href="{{ .RuleHeaders.Rule.Href }}">rule{{ .RuleHeaders.Rule.Arrow }}</a></th><th><a href="{{ .RuleHeaders.Count.Href }}">count{{ .RuleHeaders.Count.Arrow }}</a></th></tr>
