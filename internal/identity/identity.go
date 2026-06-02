@@ -14,10 +14,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	mathrand "math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -47,6 +50,11 @@ func Load(dataDir, override string) (*Identity, error) {
 		if s != "" {
 			return New(s), nil
 		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		// The file exists but we couldn't read it — don't silently regenerate
+		// (and then fail to overwrite it), which masks the real cause. Surface
+		// it with a fix, since this is the classic "owned by another user".
+		return nil, fmt.Errorf("identity: read %s: %w%s", path, err, idPathHint(dataDir, path))
 	}
 	// Generate a 128-bit random id, hex-encoded.
 	buf := make([]byte, 16)
@@ -55,12 +63,29 @@ func Load(dataDir, override string) (*Identity, error) {
 	}
 	id := hex.EncodeToString(buf)
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
-		return nil, fmt.Errorf("identity: mkdir: %w", err)
+		return nil, fmt.Errorf("identity: mkdir %s: %w", dataDir, err)
 	}
 	if err := os.WriteFile(path, []byte(id+"\n"), 0o640); err != nil {
-		return nil, fmt.Errorf("identity: write: %w", err)
+		return nil, fmt.Errorf("identity: write %s: %w%s", path, err, idPathHint(dataDir, path))
 	}
 	return New(id), nil
+}
+
+// idPathHint returns a parenthetical, actionable cause for a failure to read or
+// write the deployment-id, since "permission denied" with no path or reason is
+// useless when a hardened sensor won't start. The usual culprits: the data dir
+// or the file was created by another user (e.g. an earlier run as root, now
+// reopened as the dropped service account), or — on SELinux — the dir isn't
+// labeled for the confined domain.
+func idPathHint(dataDir, path string) string {
+	uid := strconv.Itoa(os.Getuid())
+	relabel := "; on SELinux also: restorecon -Rv " + dataDir
+	if _, err := os.Stat(path); err == nil {
+		return " (the file exists but isn't accessible to uid " + uid +
+			" — likely created by another user, e.g. an earlier run as root; fix: chown it to the service account, e.g. chown <user>:<group> " + path + relabel + ")"
+	}
+	return " (uid " + uid + " cannot write in " + dataDir +
+		" — check the data-dir ownership/permissions; fix: chown -R <user>:<group> " + dataDir + relabel + ")"
 }
 
 // New constructs an Identity from an existing seed string.

@@ -252,6 +252,12 @@ install -d -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$ETC/tls"          # sensor-r
 install -d -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$DATA" "$LOGDIR"
 install -d -o root        -g "$SVC_GROUP" -m 0755 "$SHARE" "$SHARE/scripts"
 
+# Repair ownership of any PRE-EXISTING contents (e.g. a .deployment-id, events.db
+# or pcaps left root-owned by an earlier run made as root). `install -d` only
+# sets the directory's own owner, not its contents, so without this the dropped
+# honey user hits "permission denied" opening files an earlier root run created.
+chown -R "$SVC_USER:$SVC_GROUP" "$DATA" "$LOGDIR" "$ETC/tls" 2>/dev/null || true
+
 # Ship the helper scripts where the systemd units expect them.
 for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh; do
 	[ -f "$REPO/scripts/$s" ] && install -o root -g "$SVC_GROUP" -m 0755 "$REPO/scripts/$s" "$SHARE/scripts/$s"
@@ -320,7 +326,11 @@ install_selinux() {
 		semanage fcontext -d "$BIN" 2>/dev/null || true
 	fi
 	if command -v restorecon >/dev/null 2>&1; then
-		restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+		# Recurse (-R) so pre-existing files inside the data/etc/log dirs get the
+		# tarpit_honeypot_*_t labels too — otherwise the now-confined domain is
+		# denied (EACCES "permission denied") writing e.g. .deployment-id.
+		restorecon -F "$BIN" 2>/dev/null || true
+		restorecon -RF "$DATA" "$ETC" "$LOGDIR" 2>/dev/null || true
 	fi
 	# Verify the exec label actually took — a wrong/missing label is exactly what
 	# leaves the service unconfined, so surface it loudly instead of silently.
