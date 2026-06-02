@@ -6,8 +6,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=tarpit
-Group=tarpit
+# Must match the service account scripts/install.sh creates (honey:honeypot)
+# and the owner of /var/lib/tarpit-honeypot, or the sensor can't write its
+# state (e.g. .deployment-id) and won't start.
+User=honey
+Group=honeypot
 ExecStart=/usr/local/bin/tarpit-honeypot run -c /etc/tarpit-honeypot/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
