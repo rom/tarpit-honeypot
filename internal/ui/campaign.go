@@ -435,8 +435,12 @@ func (s *Server) handleCampaign(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	cv := buildCampaignView(since, evs)
+	for i := range cv.Clusters { // out-link technique bars to attack.mitre.org if enabled
+		cv.Clusters[i].Techniques = s.linkTechBars(cv.Clusters[i].Techniques)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "campaign", buildCampaignView(since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "campaign", cv); err != nil {
 		slog.Warn("ui: render campaign", "err", err)
 	}
 }

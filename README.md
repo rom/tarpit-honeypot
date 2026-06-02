@@ -1825,7 +1825,10 @@ your view.
 
 Presentation niceties: source IPs / rule_ids / fingerprints / techniques are
 **clickable** throughout (pivot to the profile / filtered events / campaign);
-**CVE labels link** to NVD or CVE.org (`ui.cve_source`); the summary + map
+**CVE labels link** to NVD or CVE.org (`ui.cve_source`); **ATT&CK technique
+chips link** to attack.mitre.org (`ui.attack_links`, on by default — the
+Enterprise/ICS matrix is encoded in the `T1xxx`/`T0xxx` ID, so no extra path
+segment, and `false` keeps them on the internal drill-down); the summary + map
 **counters are colour-tinted** by category; the GeoIP "attack source map" takes
 an optional equirectangular world-image backdrop (`ui.map_tiles_url`); and
 `ui.hidden_ips` is a **presentation-layer hide list** — listed source IPs/CIDRs

@@ -573,6 +573,11 @@ type UI struct {
 	// https://nvd.nist.gov/vuln/detail/<id>) or "cve.org"
 	// (https://www.cve.org/CVERecord?id=<id>).
 	CVESource string `yaml:"cve_source"`
+	// AttackLinks controls whether ATT&CK technique labels link out to
+	// https://attack.mitre.org/techniques/<id>/ (the matrix — enterprise vs
+	// ICS — is encoded in the id: T1xxx = enterprise, T0xxx = ICS). nil/omitted
+	// = on; false = off (labels keep the internal drill-down link instead).
+	AttackLinks *bool `yaml:"attack_links"`
 	// MapTilesURL is an optional equirectangular (plate-carrée) world-map
 	// IMAGE URL used as the backdrop of the GeoIP "attack source map" in the
 	// charts + map views. Empty = the built-in graticule only. Prefer a
@@ -597,6 +602,12 @@ func (u UI) UIRefreshInterval() int {
 		return 0
 	}
 	return *u.RefreshSeconds
+}
+
+// AttackLinksEnabled reports whether ATT&CK technique labels should link out to
+// attack.mitre.org. Default (omitted) is on.
+func (u UI) AttackLinksEnabled() bool {
+	return u.AttackLinks == nil || *u.AttackLinks
 }
 
 type Sensor struct {

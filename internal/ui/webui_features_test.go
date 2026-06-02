@@ -98,3 +98,46 @@ func TestHiddenIPsFilteredFromViews(t *testing.T) {
 		t.Errorf("visible profile should 200, got %d", w.Code)
 	}
 }
+
+func TestAttackURL(t *testing.T) {
+	cases := map[string]string{
+		"T1190":     "https://attack.mitre.org/techniques/T1190/",
+		"T1059.001": "https://attack.mitre.org/techniques/T1059/001/",
+		"T0814":     "https://attack.mitre.org/techniques/T0814/",
+		"":          "",
+		"X1190":     "",
+		"T1190; rm": "",
+	}
+	for in, want := range cases {
+		if got := attackURL(in); got != want {
+			t.Errorf("attackURL(%q) = %q; want %q", in, got, want)
+		}
+	}
+	if attackType("T0814") != "ics" || attackType("T1190") != "enterprise" {
+		t.Errorf("attackType wrong")
+	}
+}
+
+func TestAttackLinkURLToggle(t *testing.T) {
+	on := true
+	off := false
+	linkFunc := func(linkPtr *bool) func(string) string {
+		funcs := tmplFuncs(func() int { return 0 }, "nvd", "", config.UI{AttackLinks: linkPtr}.AttackLinksEnabled())
+		return funcs["attackLinkURL"].(func(string) string)
+	}
+	// Enabled (default) -> external link; disabled -> "" so templates fall back
+	// to the internal drill-down.
+	if got := linkFunc(&on)("T1190"); got != "https://attack.mitre.org/techniques/T1190/" {
+		t.Errorf("enabled attackLinkURL = %q", got)
+	}
+	if got := linkFunc(nil)("T1190"); got == "" { // omitted = on
+		t.Error("omitted attack_links should default to enabled")
+	}
+	if got := linkFunc(&off)("T1190"); got != "" {
+		t.Errorf("disabled attackLinkURL = %q; want empty", got)
+	}
+	// attackURL (the always-on canonical builder) is unaffected by the toggle.
+	if attackURL("T1190") == "" {
+		t.Error("attackURL should always build the canonical URL")
+	}
+}
