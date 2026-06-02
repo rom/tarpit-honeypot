@@ -203,6 +203,12 @@ correlate:
 channels:
   - { id: stdout, type: stdout, min_severity: low }
   - { id: sqlite, type: sqlite, min_severity: low }
+  # Forward every event to the local system logger (rsyslog/journald). On a
+  # CentOS box these land in /var/log/messages and can be relayed onward to a
+  # SIEM by rsyslog. CEF is the de-facto security-event syslog format; switch
+  # `format` to leef / ocsf / json for other collectors, or set
+  # network: udp|tcp + address: HOST:514 to ship straight to a remote SIEM.
+  - { id: syslog, type: syslog, network: local, tag: tarpit-honeypot, format: cef, min_severity: low }
 
 routes:
-  - { match: {}, channels: [stdout, sqlite] }
+  - { match: {}, channels: [stdout, sqlite, syslog] }
