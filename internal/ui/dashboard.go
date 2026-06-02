@@ -15,7 +15,10 @@ import (
 type barRow struct {
 	Label string
 	Count int
-	Pct   int
+	Pct   int // bar width: % of the busiest row (visual scale)
+	// Share is the row's share of the total across the bar set (% of all
+	// events in this dimension), shown as a number next to the count.
+	Share int
 	Href  string
 	Class string
 	// External marks a bar whose Href points off-site (e.g. an ATT&CK
@@ -77,28 +80,30 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 	d := dashboard{Sum: sum}
 
 	sevOrder := []string{"low", "medium", "high", "critical"}
-	maxSev := 0
+	maxSev, sumSev := 0, 0
 	for _, k := range sevOrder {
+		sumSev += sum.BySeverity[k]
 		if sum.BySeverity[k] > maxSev {
 			maxSev = sum.BySeverity[k]
 		}
 	}
 	for _, k := range sevOrder {
 		if c := sum.BySeverity[k]; c > 0 {
-			d.Severity = append(d.Severity, barRow{Label: k, Count: c, Pct: pct(c, maxSev), Class: "sev-" + k, Href: "/events?severity=" + k})
+			d.Severity = append(d.Severity, barRow{Label: k, Count: c, Pct: pct(c, maxSev), Share: share(c, sumSev), Class: "sev-" + k, Href: "/events?severity=" + k})
 		}
 	}
 
 	d.Rules = topBars(sum.ByRule, 10, "/events?rule=")
 
-	maxSrc := 0
+	maxSrc, sumSrc := 0, 0
 	for _, s := range sum.TopSources {
+		sumSrc += s.Count
 		if s.Count > maxSrc {
 			maxSrc = s.Count
 		}
 	}
 	for _, s := range sum.TopSources {
-		d.Sources = append(d.Sources, barRow{Label: s.IP, Count: s.Count, Pct: pct(s.Count, maxSrc), Href: "/profiles/" + s.IP})
+		d.Sources = append(d.Sources, barRow{Label: s.IP, Count: s.Count, Pct: pct(s.Count, maxSrc), Share: share(s.Count, sumSrc), Href: "/profiles/" + s.IP})
 	}
 
 	maxH := 0
@@ -157,8 +162,10 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 		v int
 	}
 	items := make([]kv, 0, len(m))
+	total := 0
 	for k, v := range m {
 		items = append(items, kv{k, v})
+		total += v
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].v != items[j].v {
@@ -181,9 +188,18 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 		if hrefPrefix != "" {
 			href = hrefPrefix + it.k
 		}
-		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Href: href})
+		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Share: share(it.v, total), Href: href})
 	}
 	return out
+}
+
+// share is v as a rounded percentage of total (0..100), no visual floor — the
+// honest share-of-total shown next to a bar's count.
+func share(v, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return (v*100 + total/2) / total
 }
 
 // pct scales v to 0..100 against max, with a 2% floor so a non-zero bar is
