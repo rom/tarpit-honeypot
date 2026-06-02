@@ -164,3 +164,24 @@ func TestWebappXSSReflectionEscaped(t *testing.T) {
 		t.Errorf("expected HTML-escaped reflection in: %q", out)
 	}
 }
+
+// The restyled portal must carry the professional chrome (inline CSS + SVG
+// logo) while still capturing credentials and escaping reflected input.
+func TestWebappPortalChrome(t *testing.T) {
+	res := Result{Meta: map[string]any{}}
+	home := serveWebapp("GET / HTTP/1.1", nil, "nginx", nil, &res)
+	for _, want := range []string{"<style>", "nw-card", "nw-top", "<svg", "name=username"} {
+		if want == "name=username" {
+			continue // home has no form; checked on the login page below
+		}
+		if !strings.Contains(home, want) {
+			t.Errorf("home page missing chrome %q", want)
+		}
+	}
+	login := serveWebapp("GET /login.php HTTP/1.1", nil, "nginx", nil, &res)
+	for _, want := range []string{"<style>", "nw-login", "name=username", "type=password name=password", "<svg"} {
+		if !strings.Contains(login, want) {
+			t.Errorf("login page missing %q", want)
+		}
+	}
+}

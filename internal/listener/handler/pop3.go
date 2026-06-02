@@ -14,9 +14,14 @@ import (
 // with an APOP-capable timestamp banner, answers CAPA, walks the USER/PASS,
 // APOP and SASL AUTH (PLAIN/LOGIN) logins, captures the credentials, and
 // rejects the auth — mail-credential harvesting bait. Nothing is delivered.
-type pop3 struct{ tlsMgr *certManager }
+type pop3 struct {
+	tlsMgr *certManager
+	vuln   bool // sensor.vuln_emulation: advertise a known-vulnerable Dovecot
+}
 
-func newPOP3(deps Deps) *pop3 { return &pop3{tlsMgr: maybeCertMgr(deps)} }
+func newPOP3(deps Deps) *pop3 {
+	return &pop3{tlsMgr: maybeCertMgr(deps), vuln: deps.VulnEmulation}
+}
 
 func (p *pop3) Name() string { return "pop3" }
 
@@ -24,9 +29,13 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
 	// APOP-style banner: the <id@host> timestamp tells a scanner APOP is
-	// available (and is the challenge an APOP login would hash against).
+	// available (and is the challenge an APOP login would hash against). Under
+	// vuln emulation the implementation string names a known-vulnerable Dovecot.
 	_, _ = conn.Write([]byte("+OK POP3 server ready <1896.697170952@mail>\r\n"))
 	res.BannerSent = "+OK POP3 server ready"
+	if p.vuln {
+		markMailVuln(&res, "pop3")
+	}
 
 	br := bufio.NewReader(conn)
 	var user string
@@ -57,6 +66,9 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 			_, _ = conn.Write([]byte("+OK\r\n"))
 		case "PASS":
 			res.Meta["auth_pass"] = arg
+			// An overlong PASS is the classic POP3 credential buffer-overflow
+			// probe (SLMail CVE-2003-0264 and kin) rather than a real login.
+			detectCredOverflow(&res, "pop3", "pass", arg, "CVE-2003-0264")
 			if user != "" {
 				flagDefaultCred(&res, user, arg)
 			}
@@ -74,9 +86,18 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 			if p.tlsMgr != nil && !alreadyTLS(conn) {
 				capa += "STLS\r\n"
 			}
-			capa += "IMPLEMENTATION Dovecot\r\n.\r\n"
+			impl := "IMPLEMENTATION Dovecot"
+			if p.vuln {
+				impl = "IMPLEMENTATION Dovecot " + vulnDovecotVersion
+			}
+			capa += impl + "\r\n.\r\n"
 			_, _ = conn.Write([]byte(capa))
 		case "STLS":
+			// Detect the STLS plaintext command-injection probe first: anything
+			// the client pipelined after STLS (now buffered) is recorded as an
+			// attempt (CVE-2011-1430 class). On upgrade, startTLS + a fresh
+			// reader drop it unexecuted; if we can't upgrade we refuse below.
+			detectSTARTTLSInjection(br, &res, "CVE-2011-1430")
 			if p.tlsMgr == nil || alreadyTLS(conn) {
 				_, _ = conn.Write([]byte("-ERR TLS not available\r\n"))
 				continue
@@ -96,6 +117,7 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 		case "QUIT":
 			_, _ = conn.Write([]byte("+OK bye\r\n"))
 			res.Meta["commands"] = commands
+			cveScanMail(&res, "pop3")
 			return res, nil
 		case "STAT", "LIST", "UIDL", "RETR", "DELE", "TOP", "NOOP", "RSET":
 			_, _ = conn.Write([]byte("-ERR not authenticated\r\n"))
@@ -106,6 +128,7 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 	if len(commands) > 0 {
 		res.Meta["commands"] = commands
 	}
+	cveScanMail(&res, "pop3")
 	return res, nil
 }
 
@@ -135,6 +158,7 @@ func (p *pop3) handlePOP3Auth(arg string, br *bufio.Reader, conn net.Conn, res *
 			if len(segs) >= 3 {
 				res.Meta["auth_user"] = segs[1]
 				res.Meta["auth_pass"] = segs[2]
+				detectCredOverflow(res, "pop3", "pass", segs[2], "CVE-2003-0264")
 				flagDefaultCred(res, segs[1], segs[2])
 			}
 		}

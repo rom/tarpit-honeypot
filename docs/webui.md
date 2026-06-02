@@ -46,9 +46,20 @@ and the timeline order all survive the reload (persisted per-page in
   drill-down instead.
 - **Coloured counters.** The summary and map counter strips are tinted by
   category (transport + severity) so the shape of the day reads at a glance.
-- **GeoIP map backdrop.** Set `ui.map_tiles_url` to an equirectangular world
-  image to draw a real map under the "attack source map" bubbles (charts + map
-  views); otherwise a graticule. Prefer a self-hosted `/static` image.
+- **GeoIP attack-source map.** The "attack source map (GeoIP)" plots each
+  origin as a severity-coloured bubble over a **built-in world map** — coarse
+  continent outlines drawn client-side in the equirectangular projection, so a
+  recognizable geography shows with zero configuration (no longer just a bare
+  lat/lon grid). Set `ui.map_tiles_url` to an equirectangular world image to
+  replace the built-in vector with a real map raster (prefer a self-hosted
+  `/static` image). Bubbles need geo-located events — set `sensor.geoip.city_db`
+  (MaxMind GeoLite2-City) to populate coordinates.
+- **Rows per page.** With JavaScript on, every multi-row list (events,
+  profiles, fingerprints, captures, IOCs, recent attacks, …) gets a **Rows**
+  selector (10 / 25 / 50 / 100 / All, default 25) capping how many rows show at
+  once. It composes with the column sort and persists per-page in `localStorage`
+  across the auto-refresh. With JavaScript off, the full server-rendered list
+  shows.
 - **Display hide list.** `ui.hidden_ips` (IPs / CIDRs) removes a source from
   **every** view and JSON endpoint at the presentation layer — the events stay
   in the store and in exports, they're just not shown. Edit + reload to change.

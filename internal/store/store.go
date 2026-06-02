@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,12 +83,15 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("store: open: %w", err)
+		return nil, openError("open", path, err)
 	}
 	db.SetMaxOpenConns(4)
+	// sql.Open is lazy — this is the first statement that actually opens the
+	// file, so a CANTOPEN (error 14) surfaces here. openError names the path
+	// and probes for the usual cause.
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("store: schema: %w", err)
+		return nil, openError("schema", path, err)
 	}
 	if err := migrate(db); err != nil {
 		_ = db.Close()
@@ -101,6 +105,71 @@ func Open(dataDir string, capMB int) (*Store, error) {
 		_ = os.Chmod(p, 0o600)
 	}
 	return &Store{db: db, path: path, capMB: capMB}, nil
+}
+
+// openError wraps a database open/initialise failure with the file path and,
+// where it can tell, the most likely cause. modernc's SQLITE_CANTOPEN bubbles
+// up as a bare "unable to open database file (14)" — no filename, no reason —
+// which is useless when you're staring at a honeypot that won't start. We probe
+// the path ourselves: a missing or read-only parent directory, a path that is a
+// directory, or a DB file owned by another user (created by root, now reopened
+// as the service account) are the usual culprits.
+func openError(stage, path string, err error) error {
+	if hint := diagnosePath(path); hint != "" {
+		return fmt.Errorf("store: %s: %s: %w (%s)", stage, path, err, hint)
+	}
+	return fmt.Errorf("store: %s: %s: %w", stage, path, err)
+}
+
+// diagnosePath returns a human-readable likely cause for a failure to open the
+// SQLite file at path, or "" if nothing obvious stands out. It runs only on the
+// error path, so the probe writes (a temp file in the dir) are acceptable.
+func diagnosePath(path string) string {
+	uid := strconv.Itoa(os.Getuid())
+	dir := filepath.Dir(path)
+	switch fi, err := os.Stat(dir); {
+	case os.IsNotExist(err):
+		return "parent directory " + dir + " does not exist"
+	case err != nil:
+		return "cannot stat parent directory " + dir + ": " + err.Error()
+	case !fi.IsDir():
+		return dir + " is not a directory"
+	case !dirWritable(dir):
+		return "directory " + dir + " is not writable by uid " + uid +
+			" — SQLite needs to create the -wal/-shm sidecar files"
+	}
+	if fi, err := os.Stat(path); err == nil {
+		if fi.IsDir() {
+			return path + " is a directory, not a database file"
+		}
+		if !fileWritable(path) {
+			return "database file is not writable by uid " + uid +
+				" — was it created by another user (e.g. root)? chown it to the service account"
+		}
+	}
+	return ""
+}
+
+// dirWritable reports whether the current process can create a file in dir.
+func dirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".tarpit-probe-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
+}
+
+// fileWritable reports whether the current process can open path for writing.
+func fileWritable(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // migrate applies additive schema changes to a database created by an earlier

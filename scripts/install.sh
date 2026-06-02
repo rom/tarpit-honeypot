@@ -7,7 +7,9 @@
 #   2. builds (or uses prebuilt) binaries and installs them to /usr/local/bin
 #      owned by that account,
 #   3. grants the binary exactly the file capabilities it needs
-#      (CAP_NET_BIND_SERVICE + CAP_NET_RAW [+ CAP_NET_ADMIN with --tun]),
+#      (CAP_NET_BIND_SERVICE + CAP_NET_RAW [+ CAP_NET_ADMIN with --tun]) and
+#      sets the setuid/setgid bits so manual launches also drop to honey:honeypot
+#      (guarded: refuses unless the binary is owned by that unprivileged account),
 #   4. lays out + permissions /etc, /var/lib, /var/log, and the enrichment/TLS
 #      directories,
 #   5. deploys the config with privilege-drop + seccomp + Landlock enabled and
@@ -195,6 +197,52 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5b. Pin the runtime identity to the service account (setuid + setgid).
+#
+# The setuid/setgid bits make a *manual* launch (root, or any admin running the
+# binary by hand for a one-off subcommand) drop to honey:honeypot instead of
+# inheriting the launcher's identity. Under systemd this is a no-op — the unit's
+# NoNewPrivileges=yes tells the kernel to ignore the bits, and User=/Group=
+# already pin the identity — so this only closes the manual-launch hole.
+#
+# This is ONLY safe because a setuid bit runs the binary as its file *owner*: we
+# MUST confirm that owner is the unprivileged service account first. A setuid
+# bit on a root-owned file is a setuid-root binary (full privilege escalation),
+# so we refuse outright unless the on-disk owner/group are exactly the expected
+# unprivileged account.
+# ---------------------------------------------------------------------------
+SVC_UID="$(id -u "$SVC_USER" 2>/dev/null || echo -1)"
+# `|| SVC_GID=-1` catches a missing group without tripping set -e/pipefail.
+SVC_GID="$(getent group "$SVC_GROUP" 2>/dev/null | cut -d: -f3)" || SVC_GID="-1"
+: "${SVC_GID:=-1}"
+CUR_UID="$(stat -c '%u' "$BIN")"
+CUR_GID="$(stat -c '%g' "$BIN")"
+CUR_OWNER="$(stat -c '%U:%G' "$BIN")"
+
+# Never produce a setuid-root (or setuid-to-unknown) binary.
+if [ "$SVC_UID" = "0" ] || [ "$SVC_USER" = "root" ]; then
+	die "refusing setuid: service user is root — a setuid-root honeypot is a privilege-escalation hole"
+fi
+if [ "$SVC_UID" = "-1" ] || [ "$SVC_GID" = "-1" ]; then
+	die "refusing setuid: cannot resolve ${SVC_USER}:${SVC_GROUP} to a uid/gid"
+fi
+# The on-disk owner/group must be exactly the unprivileged service account.
+if [ "$CUR_UID" != "$SVC_UID" ] || [ "$CUR_GID" != "$SVC_GID" ]; then
+	die "refusing setuid/setgid: $BIN is owned by ${CUR_OWNER} (uid:gid ${CUR_UID}:${CUR_GID}), expected ${SVC_USER}:${SVC_GROUP} (${SVC_UID}:${SVC_GID})"
+fi
+
+info "Pinning runtime identity: chmod ug+s $BIN (manual launches drop to ${SVC_USER}:${SVC_GROUP})"
+chmod ug+s "$BIN"
+
+# Re-read the mode: on a nosuid mount the bits are accepted by chmod but ignored
+# at exec, so warn if they didn't stick to the symbolic mode.
+MODE_AFTER="$(stat -c '%A' "$BIN")"
+case "$MODE_AFTER" in
+	???s??s*) : ;;  # -rwsr-sr-x : both setuid (pos 4) and setgid (pos 7) present
+	*) warn "setuid/setgid not reflected in mode ($MODE_AFTER) — is $PREFIX a nosuid mount? systemd User=/Group= still applies" ;;
+esac
+
+# ---------------------------------------------------------------------------
 # 6. Directory layout + permissions.
 # ---------------------------------------------------------------------------
 info "Creating directories"
@@ -262,10 +310,32 @@ install_selinux() {
 		fi
 	fi
 	# Label the binary + data so the domain transition / file access apply.
+	# The policy module's own .fc already maps $BIN to tarpit_honeypot_exec_t —
+	# do NOT add a local 'bin_t' fcontext for it. A local semanage entry outranks
+	# the module's .fc, so labeling the binary bin_t would suppress the
+	# init_t->tarpit_honeypot_t domain transition and leave the daemon running
+	# unconfined (unconfined_service_t). Drop any stale bin_t override a previous
+	# install may have left behind, then let restorecon apply the module label.
 	if command -v semanage >/dev/null 2>&1; then
-		semanage fcontext -a -t bin_t "$BIN" 2>/dev/null || true
+		semanage fcontext -d "$BIN" 2>/dev/null || true
 	fi
-	command -v restorecon >/dev/null 2>&1 && restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+	if command -v restorecon >/dev/null 2>&1; then
+		restorecon -F "$BIN" "$DATA" "$ETC" 2>/dev/null || true
+	fi
+	# Verify the exec label actually took — a wrong/missing label is exactly what
+	# leaves the service unconfined, so surface it loudly instead of silently.
+	# stat -c '%C' prints just the context (e.g. system_u:object_r:<type>:s0).
+	if ctx="$(stat -c '%C' "$BIN" 2>/dev/null)"; then
+		case "$ctx" in
+			*:tarpit_honeypot_exec_t:*)
+				info "SELinux: $BIN labeled tarpit_honeypot_exec_t (domain transition will apply)" ;;
+			*)
+				warn "SELinux: $BIN is labeled '${ctx:-unknown}', not tarpit_honeypot_exec_t — the daemon will run UNCONFINED."
+				warn "  Fix: ensure the module installed (semodule -l | grep tarpit_honeypot), then:"
+				warn "       semanage fcontext -d '$BIN' 2>/dev/null; restorecon -Fv '$BIN'"
+				warn "  Re-check with: ps -eZ | grep tarpit-honeypot  (want tarpit_honeypot_t, not unconfined_service_t)" ;;
+		esac
+	fi
 }
 install_apparmor() {
 	[ "$DO_APPARMOR" = 1 ] || { info "AppArmor profile skipped (--no-apparmor)"; return 0; }

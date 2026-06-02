@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -395,3 +397,35 @@ func TestUpsertAndQueryIOC(t *testing.T) {
 		t.Errorf("summary sha256 = %d; want 1", sum["sha256"])
 	}
 }
+
+func TestDiagnosePath(t *testing.T) {
+	// Missing parent directory.
+	if got := diagnosePath(filepath.Join(t.TempDir(), "nope", "events.db")); got == "" ||
+		!contains(got, "does not exist") {
+		t.Errorf("missing parent: %q", got)
+	}
+	// A path whose parent is actually a file, not a directory.
+	dir := t.TempDir()
+	notdir := filepath.Join(dir, "afile")
+	if err := os.WriteFile(notdir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := diagnosePath(filepath.Join(notdir, "events.db")); got == "" ||
+		!contains(got, "not a directory") {
+		t.Errorf("parent-is-file: %q", got)
+	}
+	// The DB path itself is a directory.
+	asdir := filepath.Join(dir, "events.db")
+	if err := os.Mkdir(asdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if got := diagnosePath(asdir); got == "" || !contains(got, "is a directory") {
+		t.Errorf("db-is-dir: %q", got)
+	}
+	// A perfectly fine path yields no complaint.
+	if got := diagnosePath(filepath.Join(dir, "fresh.db")); got != "" {
+		t.Errorf("healthy path should diagnose clean, got %q", got)
+	}
+}
+
+func contains(s, sub string) bool { return strings.Contains(s, sub) }

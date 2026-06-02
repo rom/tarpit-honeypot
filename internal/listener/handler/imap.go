@@ -14,9 +14,14 @@ import (
 // the pre-auth recon commands (CAPABILITY / ID / NAMESPACE / LIST / STATUS),
 // captures LOGIN and SASL AUTHENTICATE credentials, and rejects the auth —
 // mail-credential harvesting bait. Nothing is stored or delivered.
-type imap struct{ tlsMgr *certManager }
+type imap struct {
+	tlsMgr *certManager
+	vuln   bool // sensor.vuln_emulation: advertise a known-vulnerable Dovecot
+}
 
-func newIMAP(deps Deps) *imap { return &imap{tlsMgr: maybeCertMgr(deps)} }
+func newIMAP(deps Deps) *imap {
+	return &imap{tlsMgr: maybeCertMgr(deps), vuln: deps.VulnEmulation}
+}
 
 func (m *imap) Name() string { return "imap" }
 
@@ -33,7 +38,14 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 	if m.tlsMgr != nil && !alreadyTLS(conn) {
 		caps += " STARTTLS"
 	}
-	_, _ = conn.Write([]byte("* OK [CAPABILITY " + caps + "] Dovecot ready.\r\n"))
+	// Under vuln emulation the greeting names a known-vulnerable Dovecot so a
+	// scanner fingerprints the box as exploitable (CVE-2019-11500 et al.).
+	greetVer := "Dovecot ready."
+	if m.vuln {
+		greetVer = "Dovecot (" + vulnDovecotVersion + ") ready."
+		markMailVuln(&res, "imap")
+	}
+	_, _ = conn.Write([]byte("* OK [CAPABILITY " + caps + "] " + greetVer + "\r\n"))
 	res.BannerSent = "* OK IMAP4rev1 ready"
 
 	br := bufio.NewReader(conn)
@@ -52,6 +64,9 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 		}
 		res.Payload = append(res.Payload, []byte(line+"\n")...)
 		commands = append(commands, line)
+		// A NUL byte or an absurd literal length pre-auth is the CVE-2019-11500
+		// out-of-bounds-write trigger shape (detected, never acted on).
+		detectIMAPLiteralOOB(line, &res)
 		// IMAP commands are "<tag> <COMMAND> <args>".
 		parts := strings.SplitN(line, " ", 3)
 		tag := parts[0]
@@ -71,6 +86,8 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 			if pass != "" {
 				res.Meta["auth_pass"] = pass
 			}
+			// An overlong LOGIN argument is a credential buffer-overflow probe.
+			detectCredOverflow(&res, "imap", "login", rest, "CVE-2019-11500")
 			if user != "" {
 				flagDefaultCred(&res, user, pass)
 			}
@@ -78,11 +95,20 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 		case "CAPABILITY":
 			_, _ = conn.Write([]byte("* CAPABILITY " + caps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
 		case "ID":
-			// Clients send their own ID; we answer with a Dovecot-shaped one.
-			_, _ = conn.Write([]byte("* ID (\"name\" \"Dovecot\")\r\n" + tag + " OK ID completed.\r\n"))
+			// Clients send their own ID; we answer with a Dovecot-shaped one
+			// (carrying the vulnerable version string under vuln emulation).
+			idResp := "* ID (\"name\" \"Dovecot\")\r\n"
+			if m.vuln {
+				idResp = "* ID (\"name\" \"Dovecot\" \"version\" \"" + vulnDovecotVersion + "\")\r\n"
+			}
+			_, _ = conn.Write([]byte(idResp + tag + " OK ID completed.\r\n"))
 		case "NAMESPACE":
 			_, _ = conn.Write([]byte("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n" + tag + " OK NAMESPACE completed.\r\n"))
 		case "STARTTLS":
+			// Record any plaintext pipelined after STARTTLS (now buffered) as a
+			// command-injection probe (CVE-2011-1430 class); on upgrade startTLS
+			// + a fresh reader drop it unrun, and if we can't upgrade we refuse.
+			detectSTARTTLSInjection(br, &res, "CVE-2011-1430")
 			if m.tlsMgr == nil || alreadyTLS(conn) {
 				// Can't (or needn't) negotiate: refuse honestly rather than
 				// answer OK and leave the client's ClientHello to be read as
@@ -116,6 +142,7 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 		case "LOGOUT":
 			_, _ = conn.Write([]byte("* BYE Logging out.\r\n" + tag + " OK LOGOUT completed.\r\n"))
 			res.Meta["commands"] = commands
+			cveScanMail(&res, "imap")
 			return res, nil
 		case "":
 			// blank command token — ignore
@@ -126,6 +153,7 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 	if len(commands) > 0 {
 		res.Meta["commands"] = commands
 	}
+	cveScanMail(&res, "imap")
 	return res, nil
 }
 
@@ -156,6 +184,7 @@ func (m *imap) handleIMAPAuth(rest string, br *bufio.Reader, conn net.Conn, tag 
 			if len(segs) >= 3 {
 				res.Meta["auth_user"] = segs[1]
 				res.Meta["auth_pass"] = segs[2]
+				detectCredOverflow(res, "imap", "pass", segs[2], "CVE-2019-11500")
 				flagDefaultCred(res, segs[1], segs[2])
 			}
 		}

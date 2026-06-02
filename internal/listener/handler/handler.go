@@ -266,6 +266,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return newPOP3(deps), nil
 	case "imap":
 		return newIMAP(deps), nil
+	case "dns":
+		// DNS over TCP (zone transfers, truncation fallback, tunneling). The
+		// UDP resolver lives in GetUDP; this is the stream-framed variant.
+		return newDNSTCP(deps), nil
 	case "mongodb":
 		return &mongodb{id: deps.Identity}, nil
 	case "elasticsearch":

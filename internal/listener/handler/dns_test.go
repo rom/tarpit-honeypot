@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -210,4 +211,84 @@ func TestDNSMalformedShort(t *testing.T) {
 	if len(pc.written) != 0 {
 		t.Errorf("malformed query must not be answered; got %d", len(pc.written))
 	}
+}
+
+// scriptConn is a net.Conn that replays a fixed read buffer (then EOF) and
+// captures everything written. Synchronous and single-goroutine — unlike
+// net.Pipe it never blocks, so a client-first request/response protocol like
+// DNS-over-TCP can be driven inline without deadlocking.
+type scriptConn struct {
+	rd *bytes.Reader
+	wr bytes.Buffer
+}
+
+func (c *scriptConn) Read(p []byte) (int, error)       { return c.rd.Read(p) }
+func (c *scriptConn) Write(p []byte) (int, error)      { return c.wr.Write(p) }
+func (c *scriptConn) Close() error                     { return nil }
+func (c *scriptConn) LocalAddr() net.Addr              { return fuzzAddr{} }
+func (c *scriptConn) RemoteAddr() net.Addr             { return fuzzAddr{} }
+func (c *scriptConn) SetDeadline(time.Time) error      { return nil }
+func (c *scriptConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *scriptConn) SetWriteDeadline(time.Time) error { return nil }
+
+// frameDNS prepends the 2-byte big-endian length prefix DNS-over-TCP uses.
+func frameDNS(msg []byte) []byte {
+	out := binary.BigEndian.AppendUint16(nil, uint16(len(msg)))
+	return append(out, msg...)
+}
+
+func TestDNSOverTCP(t *testing.T) {
+	// Two pipelined length-framed queries (A, then AXFR). The handler should
+	// answer both with length-framed responses, capture the first query's
+	// name, and flag the zone-transfer attempt.
+	var in bytes.Buffer
+	in.Write(frameDNS(buildDNSQuery("example.com", 1)))
+	in.Write(frameDNS(buildDNSQuery("corp.example.local", 252))) // AXFR
+	conn := &scriptConn{rd: bytes.NewReader(in.Bytes())}
+
+	res, err := (&dnsTCP{inner: &dnsHandler{}}).Handle(context.Background(), conn, config.Listener{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Meta["transport"] != "tcp" {
+		t.Errorf("transport meta = %v; want tcp", res.Meta["transport"])
+	}
+	if res.Meta["qname"] != "example.com" {
+		t.Errorf("qname = %v; want example.com (first query)", res.Meta["qname"])
+	}
+	if res.Meta["dns_queries"] != 2 {
+		t.Errorf("dns_queries = %v; want 2", res.Meta["dns_queries"])
+	}
+	if !hasAnomaly(res, "dns-zone-transfer") {
+		t.Errorf("AXFR over TCP should flag dns-zone-transfer; anomalies=%v", res.Meta["anomalies"])
+	}
+
+	// Decode the captured length-framed responses and check the first one.
+	out := res2frames(t, conn.wr.Bytes())
+	if len(out) != 2 {
+		t.Fatalf("expected 2 framed responses; got %d", len(out))
+	}
+	first := out[0]
+	if len(first) < 4 || first[2]&0x80 == 0 {
+		t.Error("QR bit not set on first TCP response")
+	}
+	if dnsAnswerCount(first) != 1 {
+		t.Errorf("first ANCOUNT = %d; want 1 (A record)", dnsAnswerCount(first))
+	}
+}
+
+// res2frames splits a stream of 2-byte-length-prefixed DNS messages.
+func res2frames(t *testing.T, b []byte) [][]byte {
+	t.Helper()
+	var frames [][]byte
+	for len(b) >= 2 {
+		n := int(binary.BigEndian.Uint16(b[:2]))
+		b = b[2:]
+		if len(b) < n {
+			t.Fatalf("truncated framed response: want %d, have %d", n, len(b))
+		}
+		frames = append(frames, b[:n])
+		b = b[n:]
+	}
+	return frames
 }

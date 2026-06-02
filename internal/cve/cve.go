@@ -1006,6 +1006,32 @@ var catalog = []Record{
 		Description: "Zimbra Collaboration: the postjournal service passes SMTP recipient data to a shell, allowing unauthenticated command execution via a crafted message — exploited in the wild.",
 	},
 
+	// --- POP3 / IMAP mail-retrieval (plaintext + implicit-TLS variants).
+	// These are flagged by the in-handler protocol-misimplementation detectors
+	// (STARTTLS plaintext injection, pre-auth credential/literal overflow), not
+	// by request signatures, so the records are advisory + enrichment for the
+	// cve:<id> events the detectors raise and for vuln-banner emulation.
+	{
+		ID: "CVE-2019-11500", Name: "Dovecot pre-auth OOB write", CVSS: 9.8, Service: "imap",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-787"},
+		CPE:         "cpe:2.3:a:dovecot:dovecot:*:*:*:*:*:*:*:*",
+		Description: "Dovecot before 2.3.7.2 / 2.2.36.4: a NUL byte inside an IMAP (or ManageSieve) literal is mishandled, writing out of bounds pre-authentication — remotely exploitable for crash or code execution.",
+	},
+	{
+		ID: "CVE-2011-1430", Name: "Dovecot STARTTLS command injection", CVSS: 6.8, Service: "imap",
+		Technique: "T1557", Tactic: "credential-access",
+		CWE:         []string{"CWE-74"},
+		CPE:         "cpe:2.3:a:dovecot:dovecot:*:*:*:*:*:*:*:*",
+		Description: "Dovecot before 2.0.13: plaintext commands pipelined after the STARTTLS/STLS command are retained across the TLS handshake and executed in the encrypted session — a man-in-the-middle command-injection / response-injection flaw affecting IMAP, POP3 and ManageSieve.",
+	},
+	{
+		ID: "CVE-2003-0264", Name: "SLMail POP3 PASS buffer overflow", CVSS: 7.5, Service: "pop3",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-120"},
+		Description: "Seattle Lab Mail (SLMail) 5.5 POP3 server: an overlong PASS argument overflows a fixed stack buffer, allowing remote code execution — the archetypal POP3 credential-field overflow probe.",
+	},
+
 	// --- third wave: cloud/AI-infra + CMS + 2025 web exploits ---
 	{
 		ID: "CVE-2024-8190", Name: "Ivanti CSA command injection", CVSS: 7.2, Service: "http",
@@ -1353,6 +1379,16 @@ func serviceMatches(recordService, handler string) bool {
 	// HTTP-layer CVEs apply over TLS too.
 	if recordService == "http" && handler == "https" {
 		return true
+	}
+	// Implicit-TLS mail variants run the same plaintext handler under TLS, so
+	// they inherit the plaintext service's CVEs.
+	switch handler {
+	case "imaps":
+		return recordService == "imap"
+	case "pop3s":
+		return recordService == "pop3"
+	case "smtps":
+		return recordService == "smtp_recv"
 	}
 	return false
 }

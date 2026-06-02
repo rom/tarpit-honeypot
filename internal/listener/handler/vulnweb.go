@@ -186,10 +186,11 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		// Unauthenticated admin → bounce to login (believable).
 		return webappResponse(server, 302, "Found", "text/html", "", []string{"Location: /login.php", cookie})
 	}
-	// Unknown path → a PHP-app-flavored 404.
-	return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8",
-		"<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL "+
-			htmlEscape(path)+" was not found on this server.</p></body></html>", nil)
+	// Unknown path → a PHP-app-flavored 404 in the portal chrome.
+	inner := "<div class=\"nw-card\"><h1>404 — Not Found</h1>" +
+		"<p>The requested URL " + htmlEscape(path) + " was not found on this server.</p>" +
+		"<p><a href=\"/\">&larr; Return home</a></p></div>"
+	return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8", webappShell(app, "404 Not Found", inner), nil)
 }
 
 // webappLogin captures credentials, flags default-cred + SQLi auth-bypass
@@ -217,18 +218,19 @@ func webappLogin(server string, body []byte, app, cookie string, res *Result) st
 // webappSearch reflects the query (HTML-escaped — never a real XSS sink)
 // and renders a fake results table.
 func webappSearch(server, qstr, app, cookie string) string {
-	esc := htmlEscape(qstr)
-	body := "<!DOCTYPE html><html><head><title>" + app + " — Search</title></head><body>" +
-		"<h2>Search results for: " + esc + "</h2>" +
-		"<form method=GET action=/search.php><input name=q value=\"" + esc + "\"><input type=submit value=Search></form>"
+	esc := htmlEscape(qstr) // reflected HTML-escaped — detects XSS without being a sink
+	inner := "<div class=\"nw-card\"><h2>Search</h2>" +
+		"<form class=\"nw-search\" method=GET action=/search.php><input name=q value=\"" + esc + "\" placeholder=\"Search documents…\"> " +
+		"<button class=\"nw-btn\" style=\"width:auto;margin-top:0\" type=submit>Search</button></form>"
 	if qstr == "" {
-		body += "<p>Enter a search term.</p>"
+		inner += "<p>Enter a search term.</p>"
 	} else {
-		body += "<ul><li>Q3 Financial Report (restricted)</li><li>Employee Handbook v4</li>" +
+		inner += "<h3>Results for: " + esc + "</h3>" +
+			"<ul class=\"nw-list\"><li>Q3 Financial Report (restricted)</li><li>Employee Handbook v4</li>" +
 			"<li>VPN Setup Guide</li></ul><p>3 results.</p>"
 	}
-	body += "</body></html>"
-	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", body, []string{cookie})
+	inner += "</div>"
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(app, app+" — Search", inner), []string{cookie})
 }
 
 // webappProduct treats id as a numeric DB lookup; a non-numeric / SQLi id
@@ -239,10 +241,10 @@ func webappProduct(server, id, app, cookie string, res *Result) string {
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappMySQLError(id), []string{cookie})
 	}
 	name := "Widget"
-	body := "<!DOCTYPE html><html><head><title>" + app + " — Product</title></head><body>" +
-		"<h2>" + htmlEscape(name) + " #" + htmlEscape(id) + "</h2>" +
-		"<p>Price: $19.99 — In stock.</p></body></html>"
-	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", body, []string{cookie})
+	inner := "<div class=\"nw-card\"><h2>" + htmlEscape(name) + " #" + htmlEscape(id) + "</h2>" +
+		"<p><strong>Price:</strong> $19.99 &mdash; In stock.</p>" +
+		"<p><a href=\"/search.php?q=\">&larr; Back to catalog</a></p></div>"
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(app, app+" — Product", inner), []string{cookie})
 }
 
 // webappFileResponse is the LFI/RFI surface. Path-traversal toward a
@@ -384,26 +386,94 @@ func webappPhpinfo(id *identity.Identity) string {
 		"</table></body></html>"
 }
 
+// webappAccent returns a stable corporate accent colour for the portal,
+// derived (FNV-1a) from its name so each deployment is internally consistent
+// while different sensors don't all render the same blue.
+func webappAccent(app string) string {
+	palette := []string{"#1f6feb", "#2563eb", "#0f766e", "#7c3aed", "#b91c1c", "#b45309", "#0e7490", "#15803d"}
+	var h uint32 = 2166136261
+	for i := 0; i < len(app); i++ {
+		h = (h ^ uint32(app[i])) * 16777619
+	}
+	return palette[int(h)%len(palette)]
+}
+
+// webappLogoSVG is a small inline-SVG wordmark: a rounded tile carrying the
+// portal's initial in its accent colour. Inline (no external asset) keeps the
+// deception self-contained — the sensor host serves no real logo file.
+func webappLogoSVG(app, accent string) string {
+	initial := "&bull;"
+	if app != "" {
+		initial = htmlEscape(strings.ToUpper(app[:1]))
+	}
+	return "<svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" role=\"img\" aria-label=\"logo\">" +
+		"<rect width=\"26\" height=\"26\" rx=\"6\" fill=\"#ffffff\"/>" +
+		"<text x=\"13\" y=\"18\" text-anchor=\"middle\" font-size=\"15\" font-weight=\"700\" font-family=\"sans-serif\" fill=\"" + accent + "\">" + initial + "</text></svg>"
+}
+
+// webappShell wraps page content in a professional, self-contained corporate
+// intranet chrome: inline CSS + an inline SVG logo, a coloured header bar with
+// nav, a content card, and a footer. No external assets (the sensor host is a
+// target). This is deception polish only — every attack-detection surface
+// (login field names, search/product params, escaped reflections, error pages)
+// keeps its exact names and behaviour.
+func webappShell(app, title, inner string) string {
+	accent := webappAccent(app)
+	style := "<style>" +
+		":root{--nw:" + accent + "}" +
+		"*{box-sizing:border-box}" +
+		"body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;background:#eef1f5;line-height:1.5}" +
+		"a{color:var(--nw);text-decoration:none}a:hover{text-decoration:underline}" +
+		".nw-top{background:var(--nw);color:#fff;display:flex;align-items:center;gap:.7rem;padding:.7rem 1.3rem;box-shadow:0 1px 4px rgba(0,0,0,.15)}" +
+		".nw-logo{display:flex;align-items:center;gap:.55rem;font-weight:600;font-size:1.15rem}" +
+		".nw-nav{margin-left:auto;display:flex;gap:1.2rem}.nw-nav a{color:#fff;opacity:.92;font-size:.92rem}.nw-nav a:hover{opacity:1}" +
+		".nw-main{max-width:880px;margin:1.8rem auto;padding:0 1.2rem}" +
+		".nw-card{background:#fff;border:1px solid #dde3ea;border-radius:8px;padding:1.5rem 1.8rem;box-shadow:0 1px 3px rgba(20,30,50,.06)}" +
+		"h1,h2,h3{color:#15212e;margin-top:0}" +
+		".nw-login{max-width:360px;margin:3rem auto}" +
+		".nw-login label{display:block;margin:.7rem 0 .2rem;font-size:.82rem;color:#52606d}" +
+		".nw-login input{width:100%;padding:.55rem .6rem;border:1px solid #cbd2d9;border-radius:5px;font-size:1rem}" +
+		".nw-btn{margin-top:1.1rem;width:100%;background:var(--nw);color:#fff;border:0;border-radius:5px;padding:.6rem;font-size:1rem;cursor:pointer}" +
+		".nw-btn:hover{filter:brightness(1.07)}" +
+		".nw-err{background:#fdecec;border:1px solid #f5b5b5;color:#9b1c1c;padding:.5rem .7rem;border-radius:5px;font-size:.9rem}" +
+		".nw-search input{padding:.5rem .6rem;border:1px solid #cbd2d9;border-radius:5px;min-width:16rem}" +
+		"ul.nw-list{list-style:none;padding:0;margin:.6rem 0 0}ul.nw-list li{padding:.6rem .2rem;border-bottom:1px solid #eceff3}ul.nw-list li:last-child{border-bottom:0}" +
+		".nw-foot{max-width:880px;margin:2rem auto;padding:1rem 1.2rem;color:#7b8794;font-size:.8rem;border-top:1px solid #dde3ea}" +
+		"</style>"
+	logo := "<span class=\"nw-logo\">" + webappLogoSVG(app, accent) + " " + htmlEscape(app) + "</span>"
+	nav := "<nav class=\"nw-nav\"><a href=\"/\">Home</a><a href=\"/search.php?q=\">Search</a><a href=\"/product.php?id=1\">Catalog</a><a href=\"/login.php\">Sign in</a></nav>"
+	return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">" +
+		"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+		"<title>" + htmlEscape(title) + "</title>" + style + "</head><body>" +
+		"<div class=\"nw-top\">" + logo + nav + "</div>" +
+		"<div class=\"nw-main\">" + inner + "</div>" +
+		"<div class=\"nw-foot\">&copy; " + htmlEscape(app) + " · Confidential — internal use only · Powered by IntranetCMS 4.2</div>" +
+		"</body></html>"
+}
+
 func webappHome(app string) string {
-	return "<!DOCTYPE html><html><head><title>" + app + "</title></head><body>" +
-		"<h1>" + app + "</h1><p>Welcome to the company intranet.</p><ul>" +
-		"<li><a href=\"/login.php\">Sign in</a></li>" +
-		"<li><a href=\"/search.php?q=\">Search</a></li>" +
-		"<li><a href=\"/product.php?id=1\">Catalog</a></li>" +
-		"<li><a href=\"/api/users\">Directory API</a></li></ul></body></html>"
+	inner := "<div class=\"nw-card\"><h1>Welcome to " + htmlEscape(app) + "</h1>" +
+		"<p>The company intranet — staff directory, document search, and the product catalog.</p>" +
+		"<ul class=\"nw-list\">" +
+		"<li><a href=\"/login.php\">Sign in to your account</a></li>" +
+		"<li><a href=\"/search.php?q=\">Search documents</a></li>" +
+		"<li><a href=\"/product.php?id=1\">Browse the catalog</a></li>" +
+		"<li><a href=\"/api/users\">Directory API</a></li>" +
+		"</ul></div>"
+	return webappShell(app, app, inner)
 }
 
 func webappLoginPage(app, errMsg string) string {
 	e := ""
 	if errMsg != "" {
-		e = "<p style=\"color:red\">" + htmlEscape(errMsg) + "</p>"
+		e = "<p class=\"nw-err\">" + htmlEscape(errMsg) + "</p>"
 	}
-	return "<!DOCTYPE html><html><head><title>" + app + " — Sign in</title></head><body>" +
-		"<h2>" + app + "</h2>" + e +
+	inner := "<div class=\"nw-card nw-login\"><h2>Sign in</h2>" + e +
 		"<form method=POST action=/login.php>" +
-		"<label>Username <input name=username></label><br>" +
-		"<label>Password <input type=password name=password></label><br>" +
-		"<input type=submit value=\"Sign in\"></form></body></html>"
+		"<label>Username</label><input name=username autocomplete=username>" +
+		"<label>Password</label><input type=password name=password autocomplete=current-password>" +
+		"<button class=\"nw-btn\" type=submit>Sign in</button></form></div>"
+	return webappShell(app, app+" — Sign in", inner)
 }
 
 // webappName / webappSessionID / webappVersion derive per-deployment values
