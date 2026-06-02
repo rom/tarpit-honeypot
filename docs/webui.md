@@ -36,14 +36,22 @@ and the timeline order all survive the reload (persisted per-page in
 - **CVE labels are hyperlinks** to the authoritative record. `ui.cve_source`
   selects the source: `nvd` (default, `nvd.nist.gov/vuln/detail/<id>`) or
   `cve.org` (`www.cve.org/CVERecord?id=<id>`).
-- **ATT&CK labels are hyperlinks** to attack.mitre.org. With `ui.attack_links`
-  on (default), every `T####` technique chip — on the event detail, profile,
-  campaign and ATT&CK heatmap — links to `attack.mitre.org/techniques/<ID>/`
-  (sub-techniques to `…/<base>/<NNN>/`). The matrix (Enterprise `T1xxx` vs ICS
-  `T0xxx`) lives in the ID, so there's no `/enterprise/` or `/ics/` path
-  segment; it's shown in the tooltip and on the drill-down. Set
-  `attack_links: false` to keep the chips on the internal `/attack/technique`
-  drill-down instead.
+- **ATT&CK labels are hyperlinks.** On the **event detail, profile and campaign**
+  views the `T####` chips link out to `attack.mitre.org/techniques/<ID>/` when
+  `ui.attack_links` is on (default; sub-techniques to `…/<base>/<NNN>/`, matrix
+  encoded in the `T1xxx`/`T0xxx` id). The **ATT&CK page itself** deliberately
+  keeps its technique labels pointing at the **in-honeypot drill-down**
+  (`/attack/technique?id=…` — the sources, rules and events behind that
+  technique), so an analyst stays in the captured data. `attack_links: false`
+  puts the off-page chips on the internal drill-down too.
+- **Clickable counters.** Each summary counter links to the matching event
+  listing: events → `/events`, the transport counters → `/events?proto=tcp|udp|icmp`,
+  the severity counters → `/events?severity=…`. Click "12 UDP" to land on those
+  12 UDP events.
+- **Events-per-hour axis.** The events-per-hour spark has hour ticks (00/06/12/18
+  UTC) aligned under their bars.
+- **Percentages.** Every bar chart (CSS bars + the charts.js horizontal-bar and
+  pie/donut) shows each row's share of the total alongside the count.
 - **Coloured counters.** The summary and map counter strips are tinted by
   category (transport + severity) so the shape of the day reads at a glance.
 - **GeoIP attack-source map.** The "attack source map (GeoIP)" plots each
@@ -137,10 +145,17 @@ The one-stop **loot** tab for retrieving everything harvested from attackers:
 
 - **captured malware / payload artifacts** (from `sensor.payloads`) — listed by
   `sha256.ext` with size + capture time, each downloadable;
-- **captured credentials** — every `username:password` the handlers captured,
-  with the source IP, service, and time (from the event store);
+- **captured credentials & secrets** — not just `username:password` logins but
+  standalone secrets the handlers harvested: bearer / API / Vault tokens, SNMP
+  community strings, cookies, Kerberos pre-auth tickets, and the honeytokens we
+  served — each with a **type** column, the source IP, service and time (from
+  the event store). They also appear on each attacker's profile, and the raw
+  bytes are always in the per-event detail;
 - **pcaps** — the per-connection packet captures (listeners with
-  `capture: true`);
+  `capture: true`). Each file is named
+  `<eventID>_<srcIP>_<dstPort>.pcap` (an IPv6 source has its `:` written as `-`),
+  and the table shows the **capture time, source IP and destination port** for
+  each, so you can tell what a capture is of without opening it;
 - **session recordings** — asciicast (`.cast`) replays of interactive
   shell sessions.
 

@@ -266,6 +266,11 @@ func credCharts(evs []*event.Event) (creds chartFig, account chartFig, ok bool) 
 	svcSet := map[string]int{}
 	for _, ev := range evs {
 		for _, c := range extractCreds(ev) {
+			// The credential heatmap is about user/pass logins; standalone
+			// secrets (tokens/tickets/communities) surface in /captures, not here.
+			if c.Kind != "" && c.Kind != "password" {
+				continue
+			}
 			if c.User == "" && c.Pass == "" {
 				continue
 			}

@@ -12,10 +12,34 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// pcapFileName builds the on-disk name "<eventID>_<srcIP>_<dstPort>.pcap" so an
+// operator can see who a capture is of and which port they hit straight from
+// the filename. The eventID stays the leading token (hex, no '_') so the
+// /pcap/<eventID> route can still locate the file by prefix; the source IP is
+// filesystem-sanitized — IPv4 keeps its dots, an IPv6 ':' becomes '-' (the UI
+// reverses it).
+func pcapFileName(eventID string, src, dst net.Addr) string {
+	sip, _ := splitAddr(src)
+	_, dport := splitAddr(dst)
+	return fmt.Sprintf("%s_%s_%d.pcap", eventID, sanitizeIPForFile(sip), dport)
+}
+
+func sanitizeIPForFile(ip net.IP) string {
+	s := ip.String()
+	if s == "" || s == "<nil>" {
+		return "0.0.0.0"
+	}
+	if ip.To4() == nil { // IPv6 ':' isn't a friendly filename char everywhere
+		s = strings.ReplaceAll(s, ":", "-")
+	}
+	return s
+}
 
 // Direction marks which side wrote the bytes.
 type Direction string
@@ -133,7 +157,7 @@ func (s *Session) End() (path string, truncated bool, err error) {
 	if len(s.records) == 0 {
 		return "", false, nil
 	}
-	path = filepath.Join(s.mgr.dir, s.eventID+".pcap")
+	path = filepath.Join(s.mgr.dir, pcapFileName(s.eventID, s.src, s.dst))
 	if err := writePcap(path, s); err != nil {
 		return "", s.truncated, err
 	}

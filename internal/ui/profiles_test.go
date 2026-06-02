@@ -172,7 +172,7 @@ func TestProfileTemplatesRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
-	if !strings.Contains(out, "attacker profile") || !strings.Contains(out, "sqlmap") || !strings.Contains(out, "credentials tried") {
+	if !strings.Contains(out, "attacker profile") || !strings.Contains(out, "sqlmap") || !strings.Contains(out, "secrets captured") {
 		t.Errorf("profile detail missing content: %q", out)
 	}
 	// The synthesized assessment + identification confidence are surfaced.

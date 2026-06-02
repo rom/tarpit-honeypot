@@ -15,7 +15,10 @@ import (
 type barRow struct {
 	Label string
 	Count int
-	Pct   int
+	Pct   int // bar width: % of the busiest row (visual scale)
+	// Share is the row's share of the total across the bar set (% of all
+	// events in this dimension), shown as a number next to the count.
+	Share int
 	Href  string
 	Class string
 	// External marks a bar whose Href points off-site (e.g. an ATT&CK
@@ -32,6 +35,19 @@ type counter struct {
 	// category (transport: c-total/c-tcp/c-udp/c-icmp; severity:
 	// sev-bg-critical/high/medium/low). Empty = the default surface color.
 	Class string
+	// Href, when set, makes the counter a link to the matching event listing
+	// (e.g. the UDP counter -> /events?proto=udp). Empty = not clickable.
+	Href string
+}
+
+// hourBar is one bar of the "events per hour" spark, carrying the data needed
+// to draw an aligned x-axis tick beneath it.
+type hourBar struct {
+	Pct      int    // bar height, % of the busiest hour
+	Count    int    // events in this hour
+	Full     string // tooltip label, e.g. "06-02 15h"
+	Hour     string // short axis label, e.g. "15"
+	ShowTick bool   // print the axis label under this bar (every 6h)
 }
 
 // dashboard is the summary page's chart model.
@@ -47,7 +63,7 @@ type dashboard struct {
 	Severity  []barRow
 	Rules     []barRow
 	Sources   []barRow
-	Trend     []barRow
+	Trend     []hourBar
 	// Enrichment charts (filled by enrichDashboard from a scan of recent
 	// events; the store's SQL summary only covers severity/rule/source).
 	Tactics   []barRow
@@ -64,28 +80,30 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 	d := dashboard{Sum: sum}
 
 	sevOrder := []string{"low", "medium", "high", "critical"}
-	maxSev := 0
+	maxSev, sumSev := 0, 0
 	for _, k := range sevOrder {
+		sumSev += sum.BySeverity[k]
 		if sum.BySeverity[k] > maxSev {
 			maxSev = sum.BySeverity[k]
 		}
 	}
 	for _, k := range sevOrder {
 		if c := sum.BySeverity[k]; c > 0 {
-			d.Severity = append(d.Severity, barRow{Label: k, Count: c, Pct: pct(c, maxSev), Class: "sev-" + k, Href: "/events?severity=" + k})
+			d.Severity = append(d.Severity, barRow{Label: k, Count: c, Pct: pct(c, maxSev), Share: share(c, sumSev), Class: "sev-" + k, Href: "/events?severity=" + k})
 		}
 	}
 
 	d.Rules = topBars(sum.ByRule, 10, "/events?rule=")
 
-	maxSrc := 0
+	maxSrc, sumSrc := 0, 0
 	for _, s := range sum.TopSources {
+		sumSrc += s.Count
 		if s.Count > maxSrc {
 			maxSrc = s.Count
 		}
 	}
 	for _, s := range sum.TopSources {
-		d.Sources = append(d.Sources, barRow{Label: s.IP, Count: s.Count, Pct: pct(s.Count, maxSrc), Href: "/profiles/" + s.IP})
+		d.Sources = append(d.Sources, barRow{Label: s.IP, Count: s.Count, Pct: pct(s.Count, maxSrc), Share: share(s.Count, sumSrc), Href: "/profiles/" + s.IP})
 	}
 
 	maxH := 0
@@ -95,7 +113,15 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 		}
 	}
 	for _, h := range hours {
-		d.Trend = append(d.Trend, barRow{Label: h.Hour.Format("01-02 15h"), Count: h.Count, Pct: pct(h.Count, maxH)})
+		// Tick on the clock boundaries (00/06/12/18) so the axis labels stay
+		// readable and line up under their bars.
+		d.Trend = append(d.Trend, hourBar{
+			Pct:      pct(h.Count, maxH),
+			Count:    h.Count,
+			Full:     h.Hour.Format("01-02 15h"),
+			Hour:     h.Hour.Format("15"),
+			ShowTick: h.Hour.Hour()%6 == 0,
+		})
 	}
 	return d
 }
@@ -136,8 +162,10 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 		v int
 	}
 	items := make([]kv, 0, len(m))
+	total := 0
 	for k, v := range m {
 		items = append(items, kv{k, v})
+		total += v
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].v != items[j].v {
@@ -160,9 +188,18 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 		if hrefPrefix != "" {
 			href = hrefPrefix + it.k
 		}
-		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Href: href})
+		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Share: share(it.v, total), Href: href})
 	}
 	return out
+}
+
+// share is v as a rounded percentage of total (0..100), no visual floor — the
+// honest share-of-total shown next to a bar's count.
+func share(v, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return (v*100 + total/2) / total
 }
 
 // pct scales v to 0..100 against max, with a 2% floor so a non-zero bar is

@@ -129,7 +129,11 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := buildAttackView(since, evs)
-	s.linkAttackView(&v) // out-link technique bars to attack.mitre.org if enabled
+	// The ATT&CK page keeps its technique labels pointing at the in-honeypot
+	// drill-down (/attack/technique?id=…) — which shows the sources, rules and
+	// events behind each technique — rather than out-linking to attack.mitre.org.
+	// (External MITRE links remain on the event-detail / profile chips, gated by
+	// ui.attack_links.)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "attack", v); err != nil {
 		slog.Warn("ui: render attack", "err", err)

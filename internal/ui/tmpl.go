@@ -366,15 +366,19 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .tag.bad { background: var(--tag-bad-bg); border-color: var(--tag-bad-border); }
 table.chart { width: 100%; background: transparent; }
 table.chart td { border: none; padding: .12rem .4rem; }
-td.blabel { width: 32%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-td.bcell { width: 58%; }
-td.bnum { width: 10%; text-align: right; color: var(--text-muted); }
+td.blabel { width: 30%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.bcell { width: 52%; }
+td.bnum { width: 9%; text-align: right; color: var(--text-muted); }
+td.bpct { width: 9%; text-align: right; color: var(--text-faint); font-size: 0.82rem; }
 .bar { display: inline-block; height: .8rem; background: var(--bar-default); border-radius: 2px; min-width: 2px; }
 .bar.sev-medium { background: var(--bar-medium); }
 .bar.sev-high { background: var(--bar-high); }
 .bar.sev-critical { background: var(--bar-critical); }
 .spark { display: flex; align-items: flex-end; gap: 1px; height: 80px; background: var(--bg-surface); border: 1px solid var(--border); padding: 4px; }
 .sparkbar { flex: 1 1 0; background: var(--bar-default); min-height: 1px; }
+/* x-axis hour ticks under the spark — same flex metrics so each label lines up under its bar */
+.spark-axis { display: flex; gap: 1px; padding: 2px 4px 0; }
+.spark-tick { flex: 1 1 0; text-align: center; font-size: 0.62rem; color: var(--text-faint); white-space: nowrap; overflow: visible; }
 #live-pill { display: inline-block; margin-left: .5rem; padding: 0 .5rem; border-radius: 10px; background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-fg); font-size: 0.857rem; font-weight: 600; }
 #live-pill button { font: inherit; cursor: pointer; border: 1px solid var(--success-border); background: var(--bg-surface); border-radius: 3px; padding: 0 .35rem; margin-left: .35rem; color: var(--success-fg); }
 th.sortable { cursor: pointer; }
@@ -410,6 +414,8 @@ html.js .nojs-note { display: none; }
 .coll-detail { color: var(--success-fg); font-weight: 400; font-size: 0.786rem; }
 .counters { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
 .counter { min-width: 6rem; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 6px; padding: .35rem .6rem; text-align: center; }
+a.counter { display: inline-block; color: inherit; text-decoration: none; cursor: pointer; }
+a.counter:hover { border-color: var(--link); filter: brightness(1.04); }
 .counter b { display: block; font-size: 1.43rem; line-height: 1.1; color: var(--counter-num); }
 .counter span { font-size: 0.786rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
 /* Category-tinted summary counters. color-mix tints the theme's surface with an
@@ -508,6 +514,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <td class="blabel">{{ if .Href }}<a href="{{ .Href }}"{{ if .External }} target="_blank" rel="noreferrer noopener"{{ end }}>{{ .Label }}</a>{{ else }}{{ .Label }}{{ end }}</td>
   <td class="bcell"><span class="bar {{ .Class }}" style="width:{{ .Pct }}%">&nbsp;</span></td>
   <td class="bnum">{{ .Count }}</td>
+  <td class="bpct">{{ .Share }}%</td>
 </tr>{{ end }}
 </table>{{ end }}
 
@@ -526,14 +533,15 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>tarpit-honeypot — last 24 hours</h1>
 <p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
 
-<div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters">{{ range .Counters }}{{ if .Href }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ else }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}{{ end }}</div>
 {{ if .HasFrames }}
 <div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 <h2>events per hour</h2>
-{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Label }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
-<p class="note">last 24h, one bar per hour</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Full }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
+<div class="spark-axis">{{ range .Trend }}<span class="spark-tick">{{ if .ShowTick }}{{ .Hour }}{{ end }}</span>{{ end }}</div>
+<p class="note">last 24h, one bar per hour (x-axis: hour of day, UTC)</p>{{ else }}<p class="note">no events yet</p>{{ end }}
 
 {{ if .Charts }}<h2>visual overview</h2>
 <div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
@@ -637,23 +645,28 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
 {{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
 
-<h2>captured credentials <span class="meta">({{ len .Creds }})</span></h2>
-{{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>username</th><th>password</th></tr>
+<h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }})</span></h2>
+{{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>type</th><th>username / principal</th><th>password / secret</th></tr>
 {{ range .Creds }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
   <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td>
   <td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td>
-  <td>{{ .User }}</td>
+  <td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td>
+  <td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td>
   <td><code>{{ .Pass }}</code></td>
 </tr>{{ end }}
-</table>{{ else }}<p class="note">none captured in the window</p>{{ end }}
+</table>
+<p class="note">Logins (user/pass) plus standalone secrets attackers presented — bearer / API / Vault tokens, SNMP communities, cookies, Kerberos pre-auth tickets — and the honeytokens we served. Full byte-level capture is in the per-event detail and the pcaps below.</p>
+{{ else }}<p class="note">none captured in the window</p>{{ end }}
 
 <h2>pcaps <span class="meta">({{ len .Pcaps }})</span></h2>
-{{ if .Pcaps }}<table data-filter><tr><th>file</th><th>size</th><th>captured</th><th></th></tr>
+{{ if .Pcaps }}<table data-filter><tr><th>captured (utc)</th><th>source IP</th><th>dst port</th><th>size</th><th>file</th><th></th></tr>
 {{ range .Pcaps }}<tr>
-  <td><code>{{ .Name }}</code></td>
-  <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td>{{ if .SrcIP }}<a href="/profiles/{{ .SrcIP }}">{{ .SrcIP }}</a>{{ else }}—{{ end }}</td>
+  <td>{{ if .DstPort }}{{ .DstPort }}{{ else }}—{{ end }}</td>
+  <td>{{ fmtBytes .Size }}</td>
+  <td><code>{{ .Name }}</code></td>
   <td><a href="/loot/?kind=pcap&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>{{ else }}<p class="note">none (set <code>capture: true</code> on a listener to record per-connection pcaps)</p>{{ end }}
@@ -909,6 +922,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <form method="get" action="/events">
   source: <input type="text" name="source" value="{{ .Filter.SourceIP }}" size="15">
   rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="20">
+  proto: <input type="text" name="proto" value="{{ .Filter.Proto }}" placeholder="tcp" size="5">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
   limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="1000" size="5">
@@ -1068,8 +1082,8 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
 
-{{ if .Credentials }}<h2>credentials tried</h2><table><tr><th>username</th><th>password</th><th>service</th></tr>
-{{ range .Credentials }}<tr><td>{{ .User }}</td><td>{{ .Pass }}</td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
+{{ if .Credentials }}<h2>credentials &amp; secrets captured</h2><table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
+{{ range .Credentials }}<tr><td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
 {{ if .Rules }}<h2>triggered rules</h2><table><tr><th><a href="{{ .RuleHeaders.Rule.Href }}">rule{{ .RuleHeaders.Rule.Arrow }}</a></th><th><a href="{{ .RuleHeaders.Count.Href }}">count{{ .RuleHeaders.Count.Arrow }}</a></th></tr>

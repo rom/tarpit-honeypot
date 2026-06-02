@@ -140,15 +140,6 @@ func (s *Server) linkTechBars(bars []barRow) []barRow {
 	return bars
 }
 
-// linkAttackView applies linkTechBars across an attack view's heatmap + nested
-// tactic techniques.
-func (s *Server) linkAttackView(v *attackView) {
-	v.TopTech = s.linkTechBars(v.TopTech)
-	for i := range v.Tactics {
-		v.Tactics[i].Techniques = s.linkTechBars(v.Tactics[i].Techniques)
-	}
-}
-
 func (s *Server) visibleIOCs(in []store.IOCRow) []store.IOCRow {
 	if s.hidden == nil {
 		return in

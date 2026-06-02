@@ -361,6 +361,8 @@ type Filter struct {
 	SourceIP    string
 	RuleID      string
 	MinSeverity event.Severity
+	// Proto restricts to a transport (tcp / udp / icmp / l2 / …); empty = any.
+	Proto string
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
@@ -396,6 +398,10 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.RuleID != "" {
 		q += " AND rule_id = ?"
 		args = append(args, f.RuleID)
+	}
+	if f.Proto != "" {
+		q += " AND proto = ?"
+		args = append(args, f.Proto)
 	}
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"
