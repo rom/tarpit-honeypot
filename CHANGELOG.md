@@ -8,6 +8,38 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — DNS decoys, SMTPS, +75 CVE / +25 Lua / +25 tools; /events log fix (version 2.9.0)
+
+- **DNS deception** (new `listener.dns_responder`): `version_bind` answers
+  CHAOS-class `version.bind` / `version.server` / `hostname.bind` queries with a
+  configurable (default old, exploitable-looking BIND) banner; `fake_zone`
+  answers an AXFR/IXFR zone transfer with a fabricated juicy zone (NS/MX + ~55
+  service hostnames + AD SRV + TXT "secrets" incl. operator `extra_txt`) instead
+  of refusing — a high-signal trap, TCP-only so never a UDP amplifier. Zone-
+  transfer attempts were already flagged (`dns-zone-transfer`).
+- **SMTPS 465** is documented + wired in the CENTOS example; the full decrypted
+  in-tunnel plaintext (commands + DATA/BDAT body) is captured for 25 / 587 / 465.
+- **+75 HTTP/HTTPS CVE emulations** (381 total): Mirai-class router/IoT CGI
+  endpoints (GPON, Huawei, Realtek, Netgear, D-Link, ZyXEL, TOTOLINK, Tenda,
+  …), Java/enterprise (Struts S2-048, Liferay, ColdFusion BlazeDS, Solr, Flink,
+  Airflow, Ivanti, SharePoint, Magento CosmicSting, …), CMS/plugins, webmail.
+- **+25 Lua personas** (180 scripts): ESXi, NSX, FortiManager, Check Point GAiA,
+  Sophos, Cisco ISE, Ruckus, WhatsUp Gold, GoAnywhere, CrushFTP, Serv-U, Horde,
+  SquirrelMail, Magento, Drupal, TYPO3, MediaWiki, Redmine, Centreon, Rundeck,
+  AWX, NetBox, phpIPAM, Dolibarr, cPanel.
+- **+25 attack-tool signatures**: sn1per, afrog, fscan, kscan, yakit, goby,
+  vscan, w13scan, xray, pocsuite, dismap, spiderfoot, gowitness, aquatone,
+  eyewitness, dirstalk, metabigor + the ProjectDiscovery suite (asnmap/cdncheck/
+  tlsx/uncover/notify/proxify/chaos-client/dnsgen).
+- **New docs**: `docs/lua.md` (the Lua persona guide) and `docs/attack-tools.md`
+  (the tools the sensor fingerprints); FAQ + attribution + config updated.
+
+### Fixed
+
+- The web UI no longer logs `WARN ui: request failed … context canceled` (or
+  writes a 500) when the auto-refreshing dashboard cancels an in-flight `/events`
+  request — that's normal client behaviour. Genuine timeouts still warn.
+
 ### Added — reputation badges + flags, in-tunnel SMTP capture, +20 UDP / +25 Lua / +75 CVE / +55 tools
 
 - **Reputation on every listed IP/domain**: a `sourceBadges` helper renders

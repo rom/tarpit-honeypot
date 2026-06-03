@@ -583,6 +583,15 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 // other internals) and returns a generic 500 to the client so nothing
 // sensitive leaks in the HTTP response body.
 func serverError(w http.ResponseWriter, where string, err error) {
+	// A client that navigates away / closes the tab (the auto-refreshing
+	// dashboard does this routinely) cancels the request context, surfacing as
+	// context.Canceled. That's normal client behaviour, not a server fault — so
+	// don't spam WARN, and don't bother writing a 500 to a connection that's
+	// already gone. A genuine timeout (DeadlineExceeded) still logs.
+	if errors.Is(err, context.Canceled) {
+		slog.Debug("ui: request cancelled by client", "path", where)
+		return
+	}
 	slog.Warn("ui: request failed", "path", where, "err", err)
 	http.Error(w, "internal server error", http.StatusInternalServerError)
 }

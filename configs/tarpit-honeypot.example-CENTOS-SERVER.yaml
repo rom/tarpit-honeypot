@@ -2,7 +2,7 @@
 #
 # A believable old CentOS box exposing only the classic edge services:
 #   - web      (HTTP 80 + HTTPS 443)   — full fake-vulnerable web app
-#   - SMTP     (25 + submission 587)   — mail server, captures creds + relay probes
+#   - SMTP     (25 + submission 587 + SMTPS 465) — mail server, captures creds + relay probes
 #   - DNS      (UDP 53)                — resolver, tunnelling/exfil detection
 #   - FTP      (21)                    — file server, captures logins, serves bait files
 # It also answers ICMP echo (ping) so a recon scan sees the host as alive.
@@ -154,6 +154,10 @@ listeners:
   # --- SMTP: mail server (captures MAIL FROM/RCPT, default creds, relay probes) ---
   - { id: smtp,        proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high, capture: true }
   - { id: smtp-submit, proto: tcp, bind: 0.0.0.0:587, mode: banner, handler: smtp_recv, severity: high }
+  # SMTPS — implicit-TLS submission. The handshake is terminated with the
+  # archetype's self-signed cert, then the cleartext SMTP inside the tunnel
+  # (commands + message body) is captured just like 25/587.
+  - { id: smtps,       proto: tcp, bind: 0.0.0.0:465, mode: banner, handler: smtps,     severity: high, capture: true }
 
   # --- POP3 / IMAP: mailbox retrieval (harvests login creds, captures the
   # USER/PASS / AUTH exchange; nothing is ever delivered). pcap on all four.
@@ -169,9 +173,29 @@ listeners:
 
   # --- DNS: resolver (answers A/AAAA/MX/TXT/…, runs tunnelling/exfil detection).
   # Served on UDP (normal queries) AND TCP (truncation fallback, zone-transfer
-  # AXFR/IXFR probes, and DNS-over-TCP tunnelling). pcap capture on both. ---
+  # AXFR/IXFR probes, and DNS-over-TCP tunnelling). pcap capture on both.
+  #
+  # dns_responder turns on two decoys:
+  #   version_bind — answer `version.bind CHAOS TXT` with an old, exploitable-
+  #                  looking BIND banner so a version scan records a juicy target.
+  #   fake_zone    — answer an AXFR/IXFR zone transfer (TCP) with a fabricated,
+  #                  juicy zone (NS/MX + dozens of service hostnames + TXT
+  #                  "secrets") instead of refusing — a high-signal trap. Add your
+  #                  own bait TXT records with extra_txt. ---
   - { id: dns-udp, proto: udp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high, capture: true }
-  - { id: dns-tcp, proto: tcp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high, capture: true }
+  - id: dns-tcp
+    proto: tcp
+    bind: 0.0.0.0:53
+    mode: banner
+    handler: dns
+    severity: high
+    capture: true
+    dns_responder:
+      version_bind: "9.8.1-P1"     # decoy an old, RCE-prone BIND
+      fake_zone: true              # serve a fabricated zone on AXFR/IXFR
+      zone_domain: corp.example
+      extra_txt:
+        - "internal-vault=https://vault.corp.example (legacy token in wiki)"
 
   # --- FTP: file server (captures logins, accepts any creds, serves bait files) ---
   - id: ftp
@@ -210,6 +234,7 @@ honeynets:
           - { port: 80,  handler: http }
           - { port: 443, handler: https }
           - { port: 25,  handler: smtp_recv }
+          - { port: 465, handler: smtps }
           - { port: 110, handler: pop3 }
           - { port: 143, handler: imap }
           - { port: 993, handler: imaps }

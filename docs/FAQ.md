@@ -874,8 +874,33 @@ tarpit-honeypot`.
 Two ways: `handler: scripted` defines a believable TCP service entirely in YAML
 (greeting + match/respond rules, stages, credential capture), and `handler: lua`
 drives a service from a sandboxed Lua script (per-session/per-source state,
-deterministic rng, timers). Shipped examples live in
-[`configs/scripts/`](../configs/scripts/).
+deterministic rng, timers). **180 Lua personas ship in the box** under
+[`configs/scripts/`](../configs/scripts/). See the full guide — API, limits,
+warnings, recipes — in [`docs/lua.md`](lua.md).
+
+**Is the Lua sandbox safe? Can a persona be exploited into running code on the
+sensor?**
+No. The VM opens only `base`/`string`/`table`/`math` — there is **no `io`, `os`,
+`debug`, `require`, `load`, or `print`** — so a script cannot touch the
+filesystem, spawn a process, open a socket, or load more code. Reads are capped
+at 64 KiB and writes at 256 KiB per connection (the write cap is an
+anti-amplification guarantee), sleeps at 30 s, and the listener timeout bounds
+the whole run. A persona *emulates* a vulnerable service; it never executes
+attacker input.
+
+**Which scanners / attack tools does the sensor recognize, and how?**
+It fingerprints the tool from the User-Agent, the request path, the SSH client
+banner, and JA3/JA4/HASSH — tagging the event `tool:<name>`, a confidence, and a
+category (`vuln-scanner` / `c2-framework` / `headless-browser`). 300+ signatures
+ship (nmap, sqlmap, Nuclei, sn1per, xray, Cobalt Strike, …) plus IP-level
+attribution of research scanners (Censys/Shodan/…). See
+[`docs/attack-tools.md`](attack-tools.md).
+
+**Can the DNS handler decoy a vulnerable server or trap a zone transfer?**
+Yes — `listener.dns_responder.version_bind` answers `version.bind` CHAOS queries
+with a configurable old/exploitable BIND banner, and `fake_zone: true` answers an
+AXFR/IXFR with a fabricated juicy zone (NS/MX + dozens of service hostnames + TXT
+"secrets") instead of refusing. Zone-transfer attempts are flagged regardless.
 
 **Can I run a fake-vulnerable web app to draw attackers in?**
 Set `webapp: true` on an `http`/`https` listener: a believable multi-page app
@@ -940,6 +965,12 @@ The sniffer and L2/L3 responders are Linux-only and need `CAP_NET_RAW`. Pair
 Breadth detection needs events from **several** `sensor_id`s converging via
 `ingest:` — one sensor's events all key to one id. Check `fleet.enabled` (auto-on
 with ingest) and your thresholds. See [`fleet.md` §9](fleet.md#9-troubleshooting).
+
+**I keep seeing `WARN ui: request failed … /events … context canceled` in the log.**
+Harmless, and fixed as of v2.9.0. The auto-refreshing dashboard cancels an
+in-flight `/events` request whenever it navigates/refreshes; that surfaces as
+`context canceled`. The UI now logs it at debug (not WARN) and skips the 500.
+A genuine query *timeout* (`context deadline exceeded`) still warns.
 
 **Where do I look first?**
 The web UI **errors** tab and the structured `slog` output (journal under
