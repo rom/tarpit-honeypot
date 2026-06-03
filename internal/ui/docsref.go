@@ -123,7 +123,7 @@ var handlerDescriptions = map[string]string{
 	"loxone":        "Loxone Miniserver (UDP 7700) — smart-building controller; flags building-control commands; capture-only.",
 	"amx_netlinx":   "AMX NetLinx control system (UDP 1319) — building AV / room automation enumeration; capture-only.",
 	"vantage":       "Vantage InFusion lighting/building controller (UDP 3001) — flags lighting actuation; capture-only.",
-	"modbus":    "Modbus/TCP PLC (function codes, unit ids).", "s7": "Siemens S7comm PLC.",
+	"modbus":        "Modbus/TCP PLC (function codes, unit ids).", "s7": "Siemens S7comm PLC.",
 	"iec104": "IEC 60870-5-104 SCADA.", "dnp3": "DNP3 SCADA outstation.",
 	"mqtt": "MQTT broker — captures CONNECT username/password.", "bacnet": "BACnet/IP building automation.",
 	"redis": "Redis server — captures AUTH.", "mysql": "MySQL server — handshake + captured auth.",
