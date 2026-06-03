@@ -55,6 +55,15 @@ listeners:
     mode: banner
     handler: http
     webapp: true       # turn the bare HTTP banner into the full fake app
+    # Brand the generic portal as your own (all fields optional; blanks fall
+    # back to a deployment-derived random name + accent). Rendered to attackers,
+    # so the colour is validated (#rgb / #rrggbb / a CSS colour name) and text
+    # is HTML-escaped.
+    webapp_brand:
+      name: "Globex Secure Portal"
+      tagline: "Authorized personnel only. All activity is monitored."
+      color: "#0b5fff"        # accent colour for the header / buttons / logo
+      logo: "GS"              # 1–4 char mark shown in the logo tile
     severity: high
     capture: true      # record request/response bytes to <data_dir>/captures
   - id: https

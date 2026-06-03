@@ -865,6 +865,10 @@ type Listener struct {
 	// "" / "generic" (PHP/MySQL intranet, default), "wordpress",
 	// "phpmyadmin", or "jenkins". Unknown values fall back to generic.
 	WebappVariant string `yaml:"webapp_variant"`
+	// WebappBrand brands the generic fake-web persona — a custom name, accent
+	// colour, logo mark and intro text — so an operator can dress the decoy as
+	// their own corporate portal instead of a randomly-chosen one.
+	WebappBrand WebappBrand `yaml:"webapp_brand"`
 
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
@@ -915,6 +919,17 @@ type SNMPListener struct {
 	// WalkTarpit, when > 0, delays each over-limit walk response by this long
 	// instead of dropping it.
 	WalkTarpit time.Duration `yaml:"walk_tarpit"`
+}
+
+// WebappBrand customises the generic fake-web persona. All fields are optional;
+// blank fields fall back to the deployment-derived defaults (random portal name
+// + name-derived accent). Rendered to attackers, so values are HTML-escaped and
+// the colour is validated as a safe CSS colour before use.
+type WebappBrand struct {
+	Name    string `yaml:"name"`    // portal name (header, titles, footer)
+	Tagline string `yaml:"tagline"` // intro/welcome text on the home page
+	Color   string `yaml:"color"`   // accent colour: #rgb / #rrggbb / a CSS color name
+	Logo    string `yaml:"logo"`    // short text mark (1–4 chars) shown in the logo tile
 }
 
 // HTTPS configures the self-signed TLS cert the https handler presents.

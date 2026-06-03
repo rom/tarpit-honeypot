@@ -9,9 +9,73 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 )
+
+// webBrand is the resolved branding for the generic fake-web persona: a name,
+// accent colour, short logo mark and intro text. Built by resolveBrand from the
+// operator's config.WebappBrand, falling back to deployment-derived defaults.
+type webBrand struct {
+	Name    string
+	Accent  string
+	Logo    string
+	Tagline string
+}
+
+// resolveBrand turns the operator's (optional) brand config into a webBrand,
+// filling blanks with the deployment-derived defaults so an un-branded webapp
+// looks exactly as before.
+func resolveBrand(b config.WebappBrand, id *identity.Identity) webBrand {
+	name := strings.TrimSpace(b.Name)
+	if name == "" {
+		name = webappName(id)
+	}
+	accent := safeCSSColor(b.Color)
+	if accent == "" {
+		accent = webappAccent(name)
+	}
+	logo := strings.TrimSpace(b.Logo)
+	if logo == "" && name != "" {
+		logo = strings.ToUpper(name[:1])
+	}
+	if len(logo) > 4 {
+		logo = logo[:4]
+	}
+	tag := strings.TrimSpace(b.Tagline)
+	if tag == "" {
+		tag = "The company intranet — staff directory, document search, and the product catalog."
+	}
+	return webBrand{Name: name, Accent: accent, Logo: logo, Tagline: tag}
+}
+
+// safeCSSColor returns c when it's a safe CSS colour (#rgb / #rrggbb, or a
+// letters-only colour name), else "" so the caller derives an accent. Guards
+// the operator-set colour against CSS/style injection when echoed to attackers.
+func safeCSSColor(c string) string {
+	c = strings.TrimSpace(c)
+	if c == "" {
+		return ""
+	}
+	if c[0] == '#' && (len(c) == 4 || len(c) == 7) {
+		for _, ch := range c[1:] {
+			if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+				return ""
+			}
+		}
+		return c
+	}
+	if len(c) <= 20 {
+		for _, ch := range c {
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+				return ""
+			}
+		}
+		return strings.ToLower(c)
+	}
+	return ""
+}
 
 // vulnweb implements a "full" fake-vulnerable web application, enabled per
 // listener with `webapp: true` on an http / https listener. It serves a
@@ -90,14 +154,14 @@ func classifyWebAttacks(low string) []string {
 // serveWebapp serves the generic (default) fake web application. Kept as a
 // thin wrapper so existing callers/tests stay unchanged.
 func serveWebapp(reqLine string, body []byte, server string, id *identity.Identity, res *Result) string {
-	return serveWebappVariant(reqLine, body, server, id, res, "")
+	return serveWebappVariant(reqLine, body, server, id, res, "", config.WebappBrand{})
 }
 
 // serveWebappVariant routes a request through the fake web app. variant
 // selects a decoy persona ("wordpress", "phpmyadmin", …); empty/"generic"
 // is the default PHP/MySQL intranet. Attack-class detection + login capture
 // are shared across every variant.
-func serveWebappVariant(reqLine string, body []byte, server string, id *identity.Identity, res *Result, variant string) string {
+func serveWebappVariant(reqLine string, body []byte, server string, id *identity.Identity, res *Result, variant string, brandCfg config.WebappBrand) string {
 	method := extractMethod(reqLine)
 	target := extractTarget(reqLine)
 	path := extractPath(reqLine)
@@ -117,7 +181,8 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		}
 	}
 
-	app := webappName(id)
+	brand := resolveBrand(brandCfg, id)
+	app := brand.Name
 	hc := webappHoneyCreds(id)
 	cookie := "Set-Cookie: PHPSESSID=" + webappSessionID(id) + "; path=/; HttpOnly"
 	q := parseQuery(rawQuery)
@@ -134,28 +199,28 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 	case path == "/" || path == "/index.php" && rawQuery == "":
 		// index.php with a ?page= is the LFI surface; bare index is the home.
 		if page := q.Get("page"); page != "" {
-			return webappFileResponse(server, page, app, cookie, res)
+			return webappFileResponse(server, page, brand, cookie, res)
 		}
-		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappHome(app), []string{cookie})
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappHome(brand), []string{cookie})
 
 	case isWebappLoginPath(path):
 		if method == "POST" {
-			return webappLogin(server, body, app, cookie, res)
+			return webappLogin(server, body, brand, cookie, res)
 		}
-		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappLoginPage(app, ""), []string{cookie})
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappLoginPage(brand, ""), []string{cookie})
 
 	case path == "/search" || path == "/search.php":
-		return webappSearch(server, q.Get("q"), app, cookie)
+		return webappSearch(server, q.Get("q"), brand, cookie)
 
 	case path == "/product.php" || path == "/product" || path == "/item.php":
-		return webappProduct(server, q.Get("id"), app, cookie, res)
+		return webappProduct(server, q.Get("id"), brand, cookie, res)
 
 	case path == "/download" || path == "/download.php" || path == "/view.php" || path == "/index.php":
 		f := q.Get("file")
 		if f == "" {
 			f = q.Get("page")
 		}
-		return webappFileResponse(server, f, app, cookie, res)
+		return webappFileResponse(server, f, brand, cookie, res)
 
 	case path == "/api/users" || path == "/api/user" || path == "/api/user.php":
 		return webappAPIUser(server, q.Get("id"))
@@ -190,13 +255,13 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 	inner := "<div class=\"nw-card\"><h1>404 — Not Found</h1>" +
 		"<p>The requested URL " + htmlEscape(path) + " was not found on this server.</p>" +
 		"<p><a href=\"/\">&larr; Return home</a></p></div>"
-	return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8", webappShell(app, "404 Not Found", inner), nil)
+	return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8", webappShell(brand, "404 Not Found", inner), nil)
 }
 
 // webappLogin captures credentials, flags default-cred + SQLi auth-bypass
 // attempts, and returns a believable failure (or a fake MySQL error when
 // the input is a SQLi probe — the "this field is injectable" deception).
-func webappLogin(server string, body []byte, app, cookie string, res *Result) string {
+func webappLogin(server string, body []byte, brand webBrand, cookie string, res *Result) string {
 	user, pass := parseLoginForm(body)
 	if user != "" || pass != "" {
 		res.Meta["http_login_user"] = safe.SanitizeForLog(user)
@@ -212,12 +277,12 @@ func webappLogin(server string, body []byte, app, cookie string, res *Result) st
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", errBody, []string{cookie})
 	}
 	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8",
-		webappLoginPage(app, "Invalid username or password."), []string{cookie})
+		webappLoginPage(brand, "Invalid username or password."), []string{cookie})
 }
 
 // webappSearch reflects the query (HTML-escaped — never a real XSS sink)
 // and renders a fake results table.
-func webappSearch(server, qstr, app, cookie string) string {
+func webappSearch(server, qstr string, brand webBrand, cookie string) string {
 	esc := htmlEscape(qstr) // reflected HTML-escaped — detects XSS without being a sink
 	inner := "<div class=\"nw-card\"><h2>Search</h2>" +
 		"<form class=\"nw-search\" method=GET action=/search.php><input name=q value=\"" + esc + "\" placeholder=\"Search documents…\"> " +
@@ -230,12 +295,12 @@ func webappSearch(server, qstr, app, cookie string) string {
 			"<li>VPN Setup Guide</li></ul><p>3 results.</p>"
 	}
 	inner += "</div>"
-	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(app, app+" — Search", inner), []string{cookie})
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(brand, brand.Name+" — Search", inner), []string{cookie})
 }
 
 // webappProduct treats id as a numeric DB lookup; a non-numeric / SQLi id
 // yields a fake MySQL error (injectable-parameter deception).
-func webappProduct(server, id, app, cookie string, res *Result) string {
+func webappProduct(server, id string, brand webBrand, cookie string, res *Result) string {
 	low := strings.ToLower(id)
 	if hits := classifyWebAttacks(low); slices.Contains(hits, "sqli") {
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappMySQLError(id), []string{cookie})
@@ -244,13 +309,13 @@ func webappProduct(server, id, app, cookie string, res *Result) string {
 	inner := "<div class=\"nw-card\"><h2>" + htmlEscape(name) + " #" + htmlEscape(id) + "</h2>" +
 		"<p><strong>Price:</strong> $19.99 &mdash; In stock.</p>" +
 		"<p><a href=\"/search.php?q=\">&larr; Back to catalog</a></p></div>"
-	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(app, app+" — Product", inner), []string{cookie})
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(brand, brand.Name+" — Product", inner), []string{cookie})
 }
 
 // webappFileResponse is the LFI/RFI surface. Path-traversal toward a
 // well-known file returns fake-but-believable contents (active deception);
 // everything else is a fake "file not found".
-func webappFileResponse(server, f, app, cookie string, res *Result) string {
+func webappFileResponse(server, f string, brand webBrand, cookie string, res *Result) string {
 	dec, _ := url.QueryUnescape(f)
 	low := strings.ToLower(dec)
 	switch {
@@ -262,7 +327,7 @@ func webappFileResponse(server, f, app, cookie string, res *Result) string {
 		return webappResponse(server, 200, "OK", "text/plain",
 			"; for 16-bit app support\n[fonts]\n[extensions]\n[mci extensions]\n[files]\n[Mail]\nMAPI=1\n", []string{cookie})
 	case f == "":
-		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappHome(app), []string{cookie})
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappHome(brand), []string{cookie})
 	}
 	return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8",
 		"<html><body><h1>Not Found</h1><p>include("+htmlEscape(f)+"): failed to open stream.</p></body></html>", []string{cookie})
@@ -401,15 +466,29 @@ func webappAccent(app string) string {
 // webappLogoSVG is a small inline-SVG wordmark: a rounded tile carrying the
 // portal's initial in its accent colour. Inline (no external asset) keeps the
 // deception self-contained — the sensor host serves no real logo file.
-func webappLogoSVG(app, accent string) string {
-	initial := "&bull;"
-	if app != "" {
-		initial = htmlEscape(strings.ToUpper(app[:1]))
+func webappLogoSVG(b webBrand) string {
+	mark := b.Logo
+	if mark == "" {
+		mark = "•"
+	}
+	// Shrink the glyph as the mark gets longer so 1–4 chars all fit the tile.
+	fs := 15
+	switch {
+	case len(mark) >= 4:
+		fs = 8
+	case len(mark) == 3:
+		fs = 10
+	case len(mark) == 2:
+		fs = 12
 	}
 	return "<svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" role=\"img\" aria-label=\"logo\">" +
 		"<rect width=\"26\" height=\"26\" rx=\"6\" fill=\"#ffffff\"/>" +
-		"<text x=\"13\" y=\"18\" text-anchor=\"middle\" font-size=\"15\" font-weight=\"700\" font-family=\"sans-serif\" fill=\"" + accent + "\">" + initial + "</text></svg>"
+		fmt.Sprintf("<text x=\"13\" y=\"18\" text-anchor=\"middle\" font-size=\"%d\" font-weight=\"700\" font-family=\"sans-serif\" fill=\"%s\">%s</text></svg>", fs, b.Accent, htmlEscape(mark))
 }
+
+// brandOf builds a default brand for a fixed persona name (e.g. the WordPress /
+// phpMyAdmin variants), so the persona path can reuse the branded helpers.
+func brandOf(name string) webBrand { return resolveBrand(config.WebappBrand{Name: name}, nil) }
 
 // webappShell wraps page content in a professional, self-contained corporate
 // intranet chrome: inline CSS + an inline SVG logo, a coloured header bar with
@@ -417,8 +496,8 @@ func webappLogoSVG(app, accent string) string {
 // target). This is deception polish only — every attack-detection surface
 // (login field names, search/product params, escaped reflections, error pages)
 // keeps its exact names and behaviour.
-func webappShell(app, title, inner string) string {
-	accent := webappAccent(app)
+func webappShell(b webBrand, title, inner string) string {
+	accent := b.Accent
 	style := "<style>" +
 		":root{--nw:" + accent + "}" +
 		"*{box-sizing:border-box}" +
@@ -440,40 +519,40 @@ func webappShell(app, title, inner string) string {
 		"ul.nw-list{list-style:none;padding:0;margin:.6rem 0 0}ul.nw-list li{padding:.6rem .2rem;border-bottom:1px solid #eceff3}ul.nw-list li:last-child{border-bottom:0}" +
 		".nw-foot{max-width:880px;margin:2rem auto;padding:1rem 1.2rem;color:#7b8794;font-size:.8rem;border-top:1px solid #dde3ea}" +
 		"</style>"
-	logo := "<span class=\"nw-logo\">" + webappLogoSVG(app, accent) + " " + htmlEscape(app) + "</span>"
+	logo := "<span class=\"nw-logo\">" + webappLogoSVG(b) + " " + htmlEscape(b.Name) + "</span>"
 	nav := "<nav class=\"nw-nav\"><a href=\"/\">Home</a><a href=\"/search.php?q=\">Search</a><a href=\"/product.php?id=1\">Catalog</a><a href=\"/login.php\">Sign in</a></nav>"
 	return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">" +
 		"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
 		"<title>" + htmlEscape(title) + "</title>" + style + "</head><body>" +
 		"<div class=\"nw-top\">" + logo + nav + "</div>" +
 		"<div class=\"nw-main\">" + inner + "</div>" +
-		"<div class=\"nw-foot\">&copy; " + htmlEscape(app) + " · Confidential — internal use only · Powered by IntranetCMS 4.2</div>" +
+		"<div class=\"nw-foot\">&copy; " + htmlEscape(b.Name) + " · Confidential — internal use only · Powered by IntranetCMS 4.2</div>" +
 		"</body></html>"
 }
 
-func webappHome(app string) string {
-	inner := "<div class=\"nw-card\"><h1>Welcome to " + htmlEscape(app) + "</h1>" +
-		"<p>The company intranet — staff directory, document search, and the product catalog.</p>" +
+func webappHome(b webBrand) string {
+	inner := "<div class=\"nw-card\"><h1>Welcome to " + htmlEscape(b.Name) + "</h1>" +
+		"<p>" + htmlEscape(b.Tagline) + "</p>" +
 		"<ul class=\"nw-list\">" +
 		"<li><a href=\"/login.php\">Sign in to your account</a></li>" +
 		"<li><a href=\"/search.php?q=\">Search documents</a></li>" +
 		"<li><a href=\"/product.php?id=1\">Browse the catalog</a></li>" +
 		"<li><a href=\"/api/users\">Directory API</a></li>" +
 		"</ul></div>"
-	return webappShell(app, app, inner)
+	return webappShell(b, b.Name, inner)
 }
 
-func webappLoginPage(app, errMsg string) string {
+func webappLoginPage(b webBrand, errMsg string) string {
 	e := ""
 	if errMsg != "" {
 		e = "<p class=\"nw-err\">" + htmlEscape(errMsg) + "</p>"
 	}
-	inner := "<div class=\"nw-card nw-login\"><h2>Sign in</h2>" + e +
+	inner := "<div class=\"nw-card nw-login\"><h2>Sign in to " + htmlEscape(b.Name) + "</h2>" + e +
 		"<form method=POST action=/login.php>" +
 		"<label>Username</label><input name=username autocomplete=username>" +
 		"<label>Password</label><input type=password name=password autocomplete=current-password>" +
 		"<button class=\"nw-btn\" type=submit>Sign in</button></form></div>"
-	return webappShell(app, app+" — Sign in", inner)
+	return webappShell(b, b.Name+" — Sign in", inner)
 }
 
 // webappName / webappSessionID / webappVersion derive per-deployment values
@@ -557,7 +636,7 @@ func serveWordPress(method, path, server string, body []byte, cookie string, res
 	case path == "/wp-login.php":
 		if method == "POST" {
 			res.Meta["webapp_variant"] = "wordpress"
-			return webappLogin(server, body, "WordPress", cookie, res), true
+			return webappLogin(server, body, brandOf("WordPress"), cookie, res), true
 		}
 		p := "<!DOCTYPE html><html><head><title>Log In ‹ My Blog — WordPress</title></head><body>" +
 			"<form name=loginform id=loginform action=/wp-login.php method=post>" +
@@ -589,7 +668,7 @@ func servePhpMyAdmin(method, path, server string, body []byte, cookie string, re
 		flagAnomaly(res, "uri-mgmt-endpoint-probe")
 		if method == "POST" {
 			res.Meta["webapp_variant"] = "phpmyadmin"
-			return webappLogin(server, body, "phpMyAdmin", cookie, res), true
+			return webappLogin(server, body, brandOf("phpMyAdmin"), cookie, res), true
 		}
 		p := "<!DOCTYPE html><html><head><title>phpMyAdmin</title></head><body>" +
 			"<h1>phpMyAdmin <span>5.2.1</span></h1>" +

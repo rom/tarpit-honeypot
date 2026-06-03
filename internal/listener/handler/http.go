@@ -277,7 +277,7 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		// Full fake-vulnerable web application mode: a self-contained
 		// multi-page app that detects (never executes) the web-attack
 		// families. Works over both http and https (https calls serveHTTP).
-		banner = serveWebappVariant(firstLine, body, server, id, &res, cfg.WebappVariant)
+		banner = serveWebappVariant(firstLine, body, server, id, &res, cfg.WebappVariant, cfg.WebappBrand)
 	}
 	if banner == "" {
 		method := extractMethod(firstLine)
