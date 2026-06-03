@@ -104,7 +104,11 @@ type Profile struct {
 	// TokenReuse is set when this source replayed a honeytoken/decoy
 	// credential the sensor had previously served — strong proof of
 	// compromise (a closed canary loop).
-	TokenReuse bool           `json:"token_reuse,omitempty"`
+	TokenReuse bool `json:"token_reuse,omitempty"`
+	// Reputation is the merged enrichment meta for this source (threat-intel /
+	// blacklist / Tor / known-scanner / external-intel labels) — sourceBadges
+	// renders it so the dossier and the profiles list carry the IP's reputation.
+	Reputation map[string]any `json:"reputation,omitempty"`
 	Recent     []*event.Event `json:"-"`
 }
 
@@ -131,6 +135,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	playbookSet := map[string]struct{}{}
 	var maxSev event.Severity
 
+	rep := map[string]any{}
 	for _, ev := range evs {
 		p.Count++
 		if p.FirstSeen.IsZero() || ev.Time.Before(p.FirstSeen) {
@@ -138,6 +143,16 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		if ev.Time.After(p.LastSeen) {
 			p.LastSeen = ev.Time
+		}
+		// Merge this source's reputation enrichment (first non-empty wins) so
+		// the profile carries the same badges as the events views.
+		for _, k := range []string{"threat_intel", "threat_intel_hit", "tor_exit",
+			"external_intel", "fleet_intel", "known_scanner", "net_class", "tools"} {
+			if _, ok := rep[k]; !ok {
+				if v, present := ev.Meta[k]; present {
+					rep[k] = v
+				}
+			}
 		}
 		p.BySeverity[ev.Severity.String()]++
 		if ev.Severity > maxSev {
@@ -253,6 +268,9 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		return p.Rules[i].Name < p.Rules[j].Name
 	})
+	if len(rep) > 0 {
+		p.Reputation = rep
+	}
 	p.synthesize()
 	return p
 }

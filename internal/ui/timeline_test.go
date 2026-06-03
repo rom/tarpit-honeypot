@@ -63,13 +63,13 @@ func TestEnrichDashboard(t *testing.T) {
 	}
 	has := func(rows []barRow, label string) bool {
 		for _, r := range rows {
-			if r.Label == label {
+			if r.Label == label || strings.HasSuffix(r.Label, " "+label) {
 				return true
 			}
 		}
 		return false
 	}
-	if !has(d.Countries, "RU") {
+	if !has(d.Countries, "RU") { // label is now "🇷🇺 RU" (flag-prefixed)
 		t.Errorf("country RU missing: %+v", d.Countries)
 	}
 	if !has(d.Tools, "hydra") {
