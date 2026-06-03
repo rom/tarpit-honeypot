@@ -390,6 +390,8 @@ input.tablefilter { margin: .3rem 0; padding: .15rem .35rem; font: inherit; widt
 html.js .nojs-note { display: none; }
 .canvas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
 .pcard { background: var(--bg-surface); border: 1px solid var(--border-medium); border-left: 4px solid var(--bar-default); border-radius: 4px; padding: .4rem .55rem; }
+a.pcard-link { text-decoration: none; color: inherit; display: block; }
+a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03); }
 .pcard.mode-tarpit { border-left-color: var(--pcard-mode-tarpit); }
 .pcard.mode-drop { border-left-color: var(--pcard-mode-drop); }
 .pcard.mode-banner { border-left-color: var(--pcard-mode-banner); }
@@ -1165,6 +1167,13 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
 
 {{ define "config" }}{{ template "head" . }}
 <h1>effective configuration</h1>
+
+<h2>this deployment</h2>
+<p class="depl">
+{{ .Deployment.Listeners }} listener(s) · {{ .Deployment.Networks }} honeynet network(s) · {{ .Deployment.Hosts }} virtual host(s)<br>
+device tracking: {{ if .Deployment.DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .Deployment.UIBind }}</code><br>
+uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <b>{{ .OldestEvent }}</b> ({{ .RetentionSpan }} ago){{ else }} · database empty{{ end }}
+</p>
 {{ if .Themes }}
 <h2>UI theme</h2>
 <p class="note">Pick a theme — applied via a per-browser cookie, persists across reloads. <code>default</code> clears the cookie.</p>
@@ -1185,15 +1194,16 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
 ({{ .TCPCount }} tcp / {{ .UDPCount }} udp) · {{ .ActiveCollector }} active collector(s).
 JSON at <a href="/api/config/canvas">/api/config/canvas</a>.</p>
 {{ if .Listeners }}
+<p class="note">Click a port card to see the source addresses that hit that port/service.</p>
 <div class="canvas-grid">
-  {{ range .Listeners }}
+  {{ range .Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}" title="events that hit port {{ .Port }}">{{ end }}
   <div class="pcard mode-{{ .Mode }}">
     <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span></div>
     <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
     <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>
     <div>{{ if .TLS }}<span class="ctag tls">tls</span>{{ end }}{{ if .Capture }}<span class="ctag cap">pcap</span>{{ end }}{{ if .Archetype }}<span class="ctag">{{ .Archetype }}</span>{{ end }}</div>
   </div>
-  {{ end }}
+  {{ if gt .Port 0 }}</a>{{ end }}{{ end }}
 </div>
 {{ else }}<p class="note">No listeners configured.</p>{{ end }}
 
@@ -1447,12 +1457,7 @@ protocol emulators, virtual hosts), wastes attacker time (tarpits), and turns
 every interaction into a structured, ATT&amp;CK-tagged event for your SIEM. It is
 built to be a <em>target</em> — the UI is read-only, binds loopback by default,
 and the sensor never becomes a reflection/amplification primitive.</p>
-
-<h2>this deployment</h2>
-<p class="depl">
-{{ .Listeners }} listener(s) · {{ .Networks }} honeynet network(s) · {{ .Hosts }} virtual host(s)<br>
-device tracking: {{ if .DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .UIBind }}</code>
-</p>
+<p class="note">Deployment summary (listeners / honeynets / uptime / database age) has moved to the <a href="/config">config</a> page.</p>
 
 <h2>full documentation</h2>
 <p>The complete guides, rendered in-product (the same Markdown shipped under
