@@ -8,6 +8,43 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — search overhaul, total credential capture, +25 UDP / +10 protocols / +10 Lua
+
+- **Search actually works now + many more filters.** The full-text box only
+  matched rule_id / banner / meta_json (and parsed severity case-sensitively),
+  so searching for an IP, handler, tactic, anomaly, or anything in the payload
+  returned nothing. Full-text now matches **every visible field plus the decoded
+  payload bytes** and flattened meta, the SQL store search also covers
+  src/dst IP, handler, proto, sensor and the ATT&CK columns, and severity is
+  case-insensitive. New search filters: dest IP, anomaly/technique tag, network
+  fingerprint (ja3/ja4/ja4h/hassh…), ASN, has-CVE and has-credential.
+- **Every captured credential is now stored + shown.** `extractCreds` was
+  matching ~40 hand-listed keys, leaving ~100 credential meta keys (protocol
+  hashes, LDAP binds, JWTs, session tokens, and every vendor `*_auth` blob from
+  the Lua personas) invisible on the captures page. It now combines curated
+  pairing, generic `<prefix>_user`/`_pass` pairing, and a classifier over the
+  meta keys (tokens, JWTs, hashes, tickets, communities, cookies, challenges,
+  API keys, session keys, `*_auth`) that decodes Basic/Bearer values — so new
+  handlers/scripts are surfaced automatically.
+- **+25 UDP handlers (92 UDP total)**, all reflection-safe (capture-only):
+  - *Infrastructure*: slp (CVE-2023-29552), xdmcp, db_lsp, kerberos_udp,
+    lantronix_disc, pcanywhere_stat, gamespy, db2_disc, bt_dht, rdp_udp.
+  - *IoT*: matter, wiz, yeelight, dahua_disc, hikvision_sadp (IP cameras).
+  - *IIoT*: powerlink, slmp (Mitsubishi), cip_io, ff_hse, ads_udp (Beckhoff).
+  - *OT/building*: pcom_udp (Unitronics — 2023 water-utility PLCs),
+    synchrophasor (IEEE C37.118 PMU), loxone, amx_netlinx, vantage.
+- **Deeper decoding for 10 more existing protocols**: coap (resource-discovery
+  amplification), knx (tunnelling bus write), fins (Omron write / mode change),
+  radius (EAP / access attempts), cldap (netlogon amplification + bind), isakmp
+  (Aggressive Mode PSK harvest), nbns (WPAD/ISATAP poisoning), profinet
+  (IODWrite / IODControl), stun (classic-STUN amplification), mssql_browser
+  (broadcast amplification + requested instance).
+- **+10 Lua personas (129 shipped scripts)**: paloalto-globalprotect
+  (CVE-2024-3400), f5-bigip (CVE-2020-5902 / CVE-2022-1388), cisco-iosxe
+  (CVE-2023-20198), apache-struts (CVE-2017-5638), spring-actuator (Spring4Shell),
+  php-cgi (CVE-2024-4577), qnap-qts (CVE-2022-27593), openfire (CVE-2023-32315),
+  telerik-ui (CVE-2019-18935), cisco-asa-webvpn (CVE-2020-3452).
+
 ### Added — protocol-coverage expansion: IoT/IIoT/OT UDP, full HTTP capture, clickable summary
 
 - **25 new UDP protocol handlers** (131 TCP + **67 UDP** total), all
