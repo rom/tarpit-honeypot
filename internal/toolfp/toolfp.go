@@ -82,6 +82,9 @@ var c2Frameworks = map[string]bool{
 	"cobaltstrike": true, "metasploit": true, "mythic": true, "empire": true,
 	"covenant": true, "sliver": true, "havoc": true, "bruteratel": true,
 	"core-impact": true, "antsword": true, "behinder": true, "godzilla": true,
+	"merlin": true, "villain": true, "pupy": true, "poshc2": true,
+	"nimplant": true, "silenttrinity": true, "koadic": true, "quasar": true,
+	"asyncrat": true, "njrat": true, "deimos": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -129,6 +132,10 @@ var vulnScanners = map[string]bool{
 	"joomscan": true, "droopescan": true, "cmsmap": true, "sqlmap": true,
 	"commix": true, "xsstrike": true, "dalfox": true, "jaeles": true,
 	"metasploit": true, "whatweb": true,
+	"nosqlmap": true, "tplmap": true, "ssrfmap": true, "cmseek": true,
+	"vulmap": true, "clusterd": true, "jok3r": true, "osmedeus": true,
+	"routersploit": true, "autosploit": true, "vulners": true, "garak": true,
+	"wafw00f": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -387,6 +394,78 @@ var uaSignatures = map[string]string{
 	"internetscan":   "internet-scanner",
 	"mauscan":        "mauscan",
 	"aazscan":        "aazscan",
+
+	// --- Batch: 50+ additional scanner / recon / brute-force / C2 / botnet
+	// fingerprints (User-Agent self-identification). ---
+	// Network / web / OSINT scanners + recon CLIs.
+	"wafw00f":      "wafw00f",
+	"unicornscan":  "unicornscan",
+	"assetfinder":  "assetfinder",
+	"massdns":      "massdns",
+	"puredns":      "puredns",
+	"shuffledns":   "shuffledns",
+	"dnsrecon":     "dnsrecon",
+	"fierce":       "fierce",
+	"sublist3r":    "sublist3r",
+	"theharvester": "theharvester",
+	"recon-ng":     "recon-ng",
+	"researchscan": "researchscan",
+	"gdnplus":      "gdnplus-scanner",
+	"hostedscan":   "hostedscan",
+	"vulners":      "vulners",
+	// Web / app vulnerability + exploit scanners.
+	"nosqlmap":     "nosqlmap",
+	"tplmap":       "tplmap",
+	"ssrfmap":      "ssrfmap",
+	"cmseek":       "cmseek",
+	"vulmap":       "vulmap",
+	"clusterd":     "clusterd",
+	"jok3r":        "jok3r",
+	"osmedeus":     "osmedeus",
+	"routersploit": "routersploit",
+	"autosploit":   "autosploit",
+	"searchsploit": "searchsploit",
+	"garak":        "garak", // LLM/AI vulnerability scanner
+	// Secret / repo scrapers.
+	"git-dumper": "git-dumper",
+	"gitdumper":  "git-dumper",
+	"trufflehog": "trufflehog",
+	"gitleaks":   "gitleaks",
+	// Credential brute-force / post-exploitation toolkits.
+	"netexec":      "netexec",
+	"crackmapexec": "crackmapexec",
+	// Tunneling / pivot / relay tools (a post-exploitation tell).
+	"chisel":    "chisel",
+	"ligolo":    "ligolo",
+	"gost/":     "gost",
+	"frpc":      "frp",
+	"rsockstun": "rsockstun",
+	// Phishing proxies / kits.
+	"gophish":   "gophish",
+	"evilginx":  "evilginx",
+	"muraena":   "muraena",
+	"modlishka": "modlishka",
+	// C2 frameworks + RATs.
+	"merlin":        "merlin",
+	"villain":       "villain",
+	"pupy":          "pupy",
+	"poshc2":        "poshc2",
+	"nimplant":      "nimplant",
+	"silenttrinity": "silenttrinity",
+	"koadic":        "koadic",
+	"quasar":        "quasar",
+	"asyncrat":      "asyncrat",
+	"njrat":         "njrat",
+	"deimos":        "deimos",
+	// Crypto-miners / IoT botnet loaders.
+	"xmrig":   "xmrig",
+	"kinsing": "kinsing",
+	"hajime":  "hajime",
+	"gafgyt":  "gafgyt",
+	"tsunami": "tsunami",
+	// Misc HTTP clients favoured by tooling.
+	"hyper/":            "hyper-rust",
+	"interactsh-client": "interactsh",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
