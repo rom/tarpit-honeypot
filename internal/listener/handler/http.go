@@ -67,6 +67,10 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	host := ""
 	userAgent := ""
 	var headerKeys []string
+	allHeaders := map[string]string{}
+	authHeader := ""
+	cookieHeader := ""
+	referer := ""
 	contentLen := 0
 	contentType := ""
 	malformedHeader := false
@@ -94,6 +98,14 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			continue
 		}
 		headerKeys = append(headerKeys, lower[:k])
+		// Capture every header (name -> value) for the detail page, bounded so
+		// a hostile client can't blow up memory with thousands of headers.
+		if len(allHeaders) < 64 {
+			name := strings.TrimSpace(lower[:k])
+			if _, dup := allHeaders[name]; !dup {
+				allHeaders[name] = safe.SanitizeForLog(clipStr(strings.TrimSpace(line[k+1:]), 1024))
+			}
+		}
 		// Control bytes embedded in a header line are a smuggling / evasion
 		// tell (the line was already split on CRLF, so any control byte here
 		// is illegitimate).
@@ -106,6 +118,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			host = strings.TrimSpace(line[5:])
 		case strings.HasPrefix(lower, "user-agent:"):
 			userAgent = strings.TrimSpace(line[11:])
+		case strings.HasPrefix(lower, "authorization:"):
+			authHeader = strings.TrimSpace(line[14:])
+		case strings.HasPrefix(lower, "cookie:"):
+			cookieHeader = strings.TrimSpace(line[7:])
+		case strings.HasPrefix(lower, "referer:"):
+			referer = strings.TrimSpace(line[8:])
 		case strings.HasPrefix(lower, "content-length:"):
 			n := 0
 			for _, c := range strings.TrimSpace(line[15:]) {
@@ -141,6 +159,44 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	res.Meta["host"] = host
 	if userAgent != "" {
 		res.Meta["user_agent"] = safe.SanitizeForLog(userAgent)
+	}
+
+	// Full request capture: method, the full URI + parsed query params, every
+	// request header, cookies, and any bearer/basic credential. The detail page
+	// renders these; cookies + tokens additionally surface on the captures page
+	// (extractCreds keys off "cookie" / "authorization" / "bearer_token").
+	if m := extractMethod(firstLine); m != "" {
+		res.Meta["http_method"] = m
+	}
+	if tgt := extractTarget(firstLine); tgt != "" {
+		res.Meta["http_uri"] = safe.SanitizeForLog(clipStr(tgt, 2048))
+		if qp := parseQueryParams(tgt); len(qp) > 0 {
+			res.Meta["http_query_params"] = qp
+		}
+	}
+	if len(allHeaders) > 0 {
+		res.Meta["http_headers"] = allHeaders
+	}
+	if cookieHeader != "" {
+		res.Meta["cookie"] = safe.SanitizeForLog(clipStr(cookieHeader, 2048))
+		if cm := parseCookies(cookieHeader); len(cm) > 0 {
+			res.Meta["http_cookies"] = cm
+		}
+	}
+	if authHeader != "" {
+		res.Meta["authorization"] = safe.SanitizeForLog(clipStr(authHeader, 1024))
+		if tok := bearerToken(authHeader); tok != "" {
+			res.Meta["bearer_token"] = safe.SanitizeForLog(clipStr(tok, 1024))
+		}
+	}
+	if referer != "" {
+		res.Meta["referer"] = safe.SanitizeForLog(clipStr(referer, 1024))
+	}
+	// JavaScript carried in the request (stored-XSS / SSTI / template-injection
+	// payloads) — capture the snippets and flag, never execute.
+	if js := extractJavaScript(string(res.Payload)); len(js) > 0 {
+		res.Meta["http_javascript"] = js
+		flagAnomaly(&res, "http-javascript-payload")
 	}
 
 	// Tool fingerprinting + human-vs-automation heuristic.
@@ -565,4 +621,116 @@ func extractMethod(reqLine string) string {
 		return reqLine[:i]
 	}
 	return ""
+}
+
+// clipStr bounds a captured string so a hostile client can't bloat an event.
+func clipStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
+}
+
+// parseQueryParams pulls the query string off a request target and returns its
+// decoded key->value(s) as sanitized strings, bounded so a huge query can't
+// blow up the event. Multi-valued keys are joined with ", ".
+func parseQueryParams(target string) map[string]string {
+	i := strings.IndexByte(target, '?')
+	if i < 0 || i == len(target)-1 {
+		return nil
+	}
+	vals, err := url.ParseQuery(target[i+1:])
+	if err != nil || len(vals) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(vals))
+	for k, vs := range vals {
+		if len(out) >= 64 {
+			break
+		}
+		out[safe.SanitizeForLog(clipStr(k, 256))] = safe.SanitizeForLog(clipStr(strings.Join(vs, ", "), 1024))
+	}
+	return out
+}
+
+// parseCookies splits a Cookie header into individual name->value pairs.
+func parseCookies(header string) map[string]string {
+	out := map[string]string{}
+	for _, part := range strings.Split(header, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name, val, _ := strings.Cut(part, "=")
+		name = strings.TrimSpace(name)
+		if name == "" || len(out) >= 64 {
+			continue
+		}
+		out[safe.SanitizeForLog(clipStr(name, 256))] = safe.SanitizeForLog(clipStr(strings.TrimSpace(val), 1024))
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// bearerToken returns the token from a "Bearer <token>" Authorization header
+// (the high-value credential to surface on the captures page); "" otherwise.
+func bearerToken(auth string) string {
+	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	return ""
+}
+
+// extractJavaScript returns up to a few <script>…</script> bodies and
+// javascript:/on*= handler snippets found in the request — stored-XSS / SSTI
+// payloads worth capturing verbatim. Detection only; nothing is ever executed.
+func extractJavaScript(payload string) []string {
+	low := strings.ToLower(payload)
+	if !strings.Contains(low, "<script") && !strings.Contains(low, "javascript:") && !strings.Contains(low, "onerror=") && !strings.Contains(low, "onload=") {
+		return nil
+	}
+	var out []string
+	// <script ...>BODY</script>
+	rest := payload
+	restLow := low
+	for len(out) < 5 {
+		open := strings.Index(restLow, "<script")
+		if open < 0 {
+			break
+		}
+		gt := strings.IndexByte(rest[open:], '>')
+		if gt < 0 {
+			break
+		}
+		bodyStart := open + gt + 1
+		end := strings.Index(restLow[bodyStart:], "</script")
+		var snippet string
+		if end < 0 {
+			snippet = rest[open:]
+		} else {
+			snippet = rest[open : bodyStart+end+len("</script>")]
+		}
+		out = append(out, safe.SanitizeForLog(clipStr(strings.TrimSpace(snippet), 2048)))
+		if end < 0 {
+			break
+		}
+		adv := bodyStart + end + len("</script")
+		if adv >= len(rest) {
+			break
+		}
+		rest = rest[adv:]
+		restLow = restLow[adv:]
+	}
+	// Inline handlers / javascript: URIs (only if no <script> blocks captured).
+	if len(out) == 0 {
+		for _, marker := range []string{"javascript:", "onerror=", "onload="} {
+			if idx := strings.Index(low, marker); idx >= 0 {
+				snippet := payload[idx:]
+				out = append(out, safe.SanitizeForLog(clipStr(strings.TrimSpace(snippet), 512)))
+			}
+		}
+	}
+	return out
 }

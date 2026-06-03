@@ -1024,11 +1024,23 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range . }}<tr><td><span class="tag bad">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ if index .Meta "http_method" }}<h2>HTTP request</h2><table>
+  <tr><th>method</th><td><code>{{ index .Meta "http_method" }}</code></td></tr>
+  {{ if index .Meta "http_uri" }}<tr><th>full URI</th><td><code>{{ index .Meta "http_uri" }}</code></td></tr>{{ end }}
+  {{ if index .Meta "host" }}<tr><th>host</th><td>{{ index .Meta "host" }}</td></tr>{{ end }}
+  {{ if index .Meta "user_agent" }}<tr><th>user-agent</th><td>{{ index .Meta "user_agent" }}</td></tr>{{ end }}
+  {{ if index .Meta "referer" }}<tr><th>referer</th><td>{{ index .Meta "referer" }}</td></tr>{{ end }}
+</table>
+{{ with strMap (index .Meta "http_query_params") }}{{ if . }}<h3>query parameters</h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td><code>{{ $v }}</code></td></tr>{{ end }}</table>{{ end }}{{ end }}
+{{ with strMap (index .Meta "http_headers") }}{{ if . }}<h3>request headers</h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}</table>{{ end }}{{ end }}
+{{ with strMap (index .Meta "http_cookies") }}{{ if . }}<h3>cookies <span class="tag bad">captured</span></h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td><code>{{ $v }}</code></td></tr>{{ end }}</table>{{ end }}{{ end }}
+{{ with index .Meta "http_javascript" }}<h3>captured JavaScript <span class="tag bad">not executed</span></h3>{{ range . }}<div class="kv">{{ . }}</div>{{ end }}{{ end }}
+{{ end }}
 {{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div></details>{{ end }}
-{{ if .Meta }}<h2>meta</h2><table>
-{{ range $k, $v := .Meta }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
+{{ $rest := metaScalar .Meta }}{{ if $rest }}<h2>meta</h2><table>
+{{ range $k, $v := $rest }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
 </table>{{ end }}
 {{ template "foot" . }}{{ end }}
 

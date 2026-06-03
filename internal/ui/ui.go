@@ -230,7 +230,55 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		"confLabel":      toolfp.ConfidenceLabel,
 		"techDesc":       mitre.Describe,
 		"cveURL":         func(id string) string { return cveURL(cveSource, id) },
+		// metaScalar returns the event meta minus the keys rendered in their own
+		// dedicated sections (the structured HTTP capture), so the generic meta
+		// table doesn't also dump them as ugly map[...] blobs.
+		"metaScalar": metaScalar,
+		// strMap coerces a meta value (a map after JSON round-trip is
+		// map[string]any) into an ordered-rangeable map[string]string for the
+		// detail-page sub-tables.
+		"strMap": strMap,
 	}
+}
+
+// httpDetailKeys are surfaced in the event detail page's dedicated "HTTP
+// request" section, so they're filtered out of the generic meta dump.
+var httpDetailKeys = map[string]bool{
+	"http_headers":      true,
+	"http_cookies":      true,
+	"http_query_params": true,
+	"http_javascript":   true,
+}
+
+func metaScalar(m map[string]any) map[string]any {
+	if len(m) == 0 {
+		return m
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if httpDetailKeys[k] {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func strMap(v any) map[string]string {
+	out := map[string]string{}
+	switch m := v.(type) {
+	case map[string]string:
+		return m
+	case map[string]any:
+		for k, val := range m {
+			if s, ok := val.(string); ok {
+				out[k] = s
+			} else {
+				out[k] = fmt.Sprintf("%v", val)
+			}
+		}
+	}
+	return out
 }
 
 // externalOrigin returns the "scheme://host" of an absolute http(s) URL, or ""
