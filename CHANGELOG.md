@@ -8,6 +8,58 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web-console overhaul + mail emulation + operability (version 2.8.0)
+
+Version bumped to **2.8.0**. A large pass focused on the operator console, mail
+credential/CVE emulation, captures, and live-deploy ergonomics.
+
+- **Mail (POP3 / IMAP, plaintext + implicit-TLS pop3s/imaps)**: credential
+  harvesting (USER/PASS, APOP, SASL PLAIN/LOGIN) over plaintext and TLS;
+  vulnerability + CVE emulation and protocol-misimplementation detection —
+  STARTTLS/STLS plaintext command injection (CVE-2011-1430), POP3 `PASS`
+  overflow (CVE-2003-0264), IMAP pre-auth literal/NUL out-of-bounds
+  (CVE-2019-11500). DNS now also serves over **TCP**.
+- **+5 CVEs** (181 total): ProxyNotShell SSRF (CVE-2022-41040), GitLab
+  account-takeover (CVE-2023-7028), ManageEngine SAML RCE (CVE-2022-47966),
+  Struts2 upload traversal (CVE-2023-50164), PAN-OS priv-esc (CVE-2024-9474).
+- **+3 Lua personas**: `squid` (open HTTP proxy abuse), `stomp`
+  (ActiveMQ/RabbitMQ creds), `tor-control` (Tor ControlPort password). New Go
+  **`svn`** (svnserve, 3690) protocol handler.
+- **Captures**: surface standalone secrets (bearer/Vault/SSRF tokens, SNMP
+  communities, Kerberos pre-auth tickets, cookies, honeytokens), not just
+  user/pass, in `/captures`, the profile, and the per-event detail. pcap files
+  are named `<eventID>_<srcIP>_<dstPort>.pcap` and the table shows time / source
+  IP / dst port.
+- **Web UI**: summary gets clickable transport/severity counters, an
+  events-per-hour x-axis, equal-sized "visual overview" charts with
+  percentages, a **24h/7d/14d/31d/3mo/6mo** range selector, clickable port cards
+  (→ `/events?port=`) and clickable trend bars (→ that window's events); the
+  **GeoIP map** has a built-in world vector and bubbles link to
+  `/events?country=`; the same range selector is on `/charts`; the ATT&CK page
+  links techniques to the in-honeypot drill-down; external links prompt before
+  leaving; the campaign kill-chain sankey no longer overlaps; click-to-zoom
+  scales the chart; **refresh is now flicker-free and skips when nothing
+  changed** (`/api/heartbeat`).
+- **Config / docs pages**: "this deployment" moved to `/config` with sensor
+  uptime + oldest-DB-entry; the infrastructure canvas is clickable; the docs
+  page gained build-generated reference catalogs (JA*/HASSH, handlers, ATT&CK
+  techniques, CVEs, CWEs, CPE/CVSS/EPSS).
+- **Fake web app** runs over real HTTPS (optional per-listener `https.cert_file`
+  / `key_file`) with professional styling, and is now **brandable**
+  (`listener.webapp_brand`: custom name / accent colour / logo mark / intro
+  text; colour validated against CSS injection).
+- **More coverage**: +8 CVEs (**189** total — Cleo unauth RCE, Ivanti EPM SQLi,
+  OFBiz/ColdFusion, Veeam, FortiSwitch, …); **+15 Lua personas** (108 total —
+  Webmin, Cacti, Proxmox, OpenWRT LuCI, Pi-hole, WebLogic, JBoss, Jira,
+  Confluence, SharePoint, Nextcloud, Hikvision, MikroTik, SonicWall, TeamCity,
+  plus the earlier squid/stomp/tor-control); **+3 protocol handlers** —
+  `svn` (svnserve, TCP 3690), `nbd` (Network Block Device, TCP 10809), and
+  `statsd` (UDP 8125, capture-only / reflection-safe).
+- **Hardening / fixes**: SELinux confinement fix (binary was mislabeled
+  `bin_t`), setuid/setgid identity pinning with an ownership guard, a
+  `.deployment-id` "permission denied" startup fix with actionable errors, and
+  more actionable store/DB-open errors.
+
 ### Added — detection-depth pass III: cloud/AI CVEs, Lua ATT&CK mapping, more correlators/scripts (version 2.7.0)
 
 Version bumped to **2.7.0**. A third pass, this time also lifting ATT&CK/D3FEND

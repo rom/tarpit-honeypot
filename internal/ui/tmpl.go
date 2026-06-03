@@ -375,7 +375,8 @@ td.bpct { width: 9%; text-align: right; color: var(--text-faint); font-size: 0.8
 .bar.sev-high { background: var(--bar-high); }
 .bar.sev-critical { background: var(--bar-critical); }
 .spark { display: flex; align-items: flex-end; gap: 1px; height: 80px; background: var(--bg-surface); border: 1px solid var(--border); padding: 4px; }
-.sparkbar { flex: 1 1 0; background: var(--bar-default); min-height: 1px; }
+.sparkbar { flex: 1 1 0; background: var(--bar-default); min-height: 1px; display: block; text-decoration: none; }
+a.sparkbar:hover { background: var(--link); }
 /* x-axis hour ticks under the spark — same flex metrics so each label lines up under its bar */
 .spark-axis { display: flex; gap: 1px; padding: 2px 4px 0; }
 .spark-tick { flex: 1 1 0; text-align: center; font-size: 0.62rem; color: var(--text-faint); white-space: nowrap; overflow: visible; }
@@ -480,6 +481,8 @@ svg.tc text { font: 0.786rem ui-monospace, monospace; }
 .tc-grat { stroke: var(--chart-graticule); stroke-width: 1; }
 .tc-grat-lbl { fill: var(--chart-graticule-label); font-size: 0.64rem; }
 .tc-src { stroke-width: 1; }
+a.tc-srclink { cursor: pointer; }
+a.tc-srclink:hover .tc-src { fill-opacity: 0.85; }
 .tc-legend { margin-top: .35rem; font-size: 0.786rem; color: var(--text-muted); }
 .tc-leg { margin-right: .8rem; white-space: nowrap; }
 .tc-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
@@ -489,7 +492,11 @@ svg.tc text { font: 0.786rem ui-monospace, monospace; }
 .tc-rts { color: var(--chart-replay-ts); margin-right: .6rem; }
 .tc-zoomable { cursor: zoom-in; }
 figure.tc-zoom { position: fixed; inset: 3vh 3vw; z-index: 1000; margin: 0; overflow: auto; cursor: zoom-out; box-shadow: 0 0 0 100vmax rgba(20,24,33,.5); }
-figure.tc-zoom svg.tc { max-height: 90vh; width: 100%; }
+figure.tc-zoom svg.tc { height: auto; max-height: 90vh; width: 100%; }
+/* Inside the equal-sized .uniform grid the svg has an explicit 240px height
+   that out-specifies the zoom rule above; this higher-specificity rule lets a
+   zoomed chart actually scale up to fill the overlay. */
+.charts-grid.uniform figure.tc-zoom svg.tc { height: 86vh; max-height: 86vh; width: 100%; }
 .widget-toggle { float: right; font: inherit; font-size: 0.786rem; cursor: pointer; border: 1px solid var(--widget-toggle-border); background: var(--widget-toggle-bg); border-radius: 3px; padding: 0 .4rem; color: var(--widget-toggle-fg); }
 figure.widget-hidden { padding-bottom: .35rem; }
 figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden .tc-replay, figure.widget-hidden table, figure.widget-hidden .note, figure.widget-hidden p { display: none; }
@@ -515,9 +522,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<main id="pgcontent">
 {{ end }}
 
-{{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
+{{ define "foot" }}</main>
+<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s (live, in place — no flash){{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
 
 {{ define "bars" }}<table class="chart">
 {{ range . }}<tr>
@@ -531,10 +540,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
 
 {{ define "charts" }}{{ template "head" . }}
-<h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics</h1>
+<h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
 {{ if .Empty }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}
 {{ range .Sections }}<h2>{{ .Heading }}</h2>
-<div class="charts-grid">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
 {{ end }}
 <p class="note">All charts are rendered client-side by the packaged charts.js (no external libraries) · derived from a scan of {{ .Scanned }} recent events. With JavaScript off, each figure shows a fallback note.</p>
 {{ template "foot" . }}{{ end }}
@@ -548,10 +558,23 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
+{{ if .Canvas.Listeners }}<h2>services <span class="meta">({{ .Canvas.ListenerCount }} listener{{ if ne .Canvas.ListenerCount 1 }}s{{ end }} · {{ .Canvas.TCPCount }} tcp / {{ .Canvas.UDPCount }} udp)</span></h2>
+<p class="note">Click a port to see the source addresses that hit that service.</p>
+<div class="canvas-grid">
+  {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}" title="events that hit port {{ .Port }}">{{ end }}
+  <div class="pcard mode-{{ .Mode }}">
+    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span></div>
+    <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
+    <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>
+    <div>{{ if .TLS }}<span class="ctag tls">tls</span>{{ end }}{{ if .Capture }}<span class="ctag cap">pcap</span>{{ end }}</div>
+  </div>
+  {{ if gt .Port 0 }}</a>{{ end }}{{ end }}
+</div>{{ end }}
+
 <h2>{{ .TrendTitle }}</h2>
-{{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Full }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
+{{ if .Trend }}<div class="spark">{{ range .Trend }}<a class="sparkbar" href="/events?from={{ .From }}&amp;to={{ .To }}" style="height:{{ .Pct }}%" title="{{ .Full }}: {{ .Count }} (click for events)">&nbsp;</a>{{ end }}</div>
 <div class="spark-axis">{{ range .Trend }}<span class="spark-tick">{{ if .ShowTick }}{{ .Hour }}{{ end }}</span>{{ end }}</div>
-<p class="note">{{ .RangeLabel }}, one bar per bucket (UTC)</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+<p class="note">{{ .RangeLabel }}, one bar per bucket (UTC) — click a bar for that window's events</p>{{ else }}<p class="note">no events yet</p>{{ end }}
 
 {{ if .Charts }}<h2>visual overview</h2>
 <div class="charts-grid uniform">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>

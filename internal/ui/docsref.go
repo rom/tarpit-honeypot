@@ -70,6 +70,9 @@ var handlerDescriptions = map[string]string{
 	"kerberos": "Kerberos KDC — AS-REQ pre-auth (crackable timestamp) + principals.",
 	"vault":    "HashiCorp Vault API — captures presented tokens.", "kubernetes_api": "Kubernetes API server — captures bearer tokens.",
 	"cloud_metadata": "Cloud instance-metadata service (169.254.169.254) — credential-theft bait.",
+	"svn":            "Subversion svnserve (3690) — greets, captures the client's protocol response + the repository URL it reaches for.",
+	"nbd":            "Network Block Device (10809) — newstyle handshake; captures the option + requested export name, flags export enumeration.",
+	"statsd":         "StatsD metrics intake (UDP 8125) — capture-only (never replies); records injected metrics.",
 	"raw":            "Raw capture — records bytes, guesses the protocol, flags unknown-protocol.",
 	"auto":           "Generic catch-all — captures the opening message and guesses the protocol.",
 }

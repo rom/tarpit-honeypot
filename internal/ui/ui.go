@@ -354,6 +354,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/fingerprints", s.handleAPIFingerprints)
 	mux.HandleFunc("/api/fingerprints/", s.handleAPIFingerprint)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
+	mux.HandleFunc("/api/heartbeat", s.handleAPIHeartbeat)
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/api/config/canvas", s.handleAPIConfigCanvas)
 	mux.HandleFunc("/api/attack", s.handleAPIAttack)
@@ -473,31 +474,47 @@ type sumWindow struct {
 	label  string
 }
 
-// summaryRange maps the ?range= selector to a window (default 24h).
+// summaryRange maps the ?range= selector to a window (default 24h). The bucket
+// width is chosen so the trend stays a readable ~24–90 bars across the range.
 func summaryRange(key string) sumWindow {
+	day := 24 * time.Hour
 	switch key {
 	case "7d":
-		return sumWindow{"7d", 7 * 24 * time.Hour, 6 * time.Hour, "last 7 days"}
+		return sumWindow{"7d", 7 * day, 6 * time.Hour, "last 7 days"}
 	case "14d":
-		return sumWindow{"14d", 14 * 24 * time.Hour, 12 * time.Hour, "last 14 days"}
+		return sumWindow{"14d", 14 * day, 12 * time.Hour, "last 14 days"}
 	case "31d":
-		return sumWindow{"31d", 31 * 24 * time.Hour, 24 * time.Hour, "last 31 days"}
+		return sumWindow{"31d", 31 * day, day, "last 31 days"}
+	case "3mo":
+		return sumWindow{"3mo", 90 * day, day, "last 3 months"}
+	case "6mo":
+		return sumWindow{"6mo", 180 * day, 7 * day, "last 6 months"}
 	default:
-		return sumWindow{"24h", 24 * time.Hour, time.Hour, "last 24 hours"}
+		return sumWindow{"24h", day, time.Hour, "last 24 hours"}
 	}
 }
 
-func summaryRangeLinks(active string) []rangeLink {
+// summaryRanges is the ordered set of selector keys (shared by summary + charts).
+var summaryRanges = []string{"24h", "7d", "14d", "31d", "3mo", "6mo"}
+
+// rangeLinksFor builds the selector chips for a base path ("/" or "/charts").
+func rangeLinksFor(base, active string) []rangeLink {
 	out := []rangeLink{}
-	for _, key := range []string{"24h", "7d", "14d", "31d"} {
-		href := "/"
+	for _, key := range summaryRanges {
+		href := base
 		if key != "24h" {
-			href = "/?range=" + key
+			sep := "?"
+			if strings.Contains(base, "?") {
+				sep = "&"
+			}
+			href = base + sep + "range=" + key
 		}
 		out = append(out, rangeLink{Label: key, Href: href, Active: key == active})
 	}
 	return out
 }
+
+func summaryRangeLinks(active string) []rangeLink { return rangeLinksFor("/", active) }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
@@ -522,6 +539,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	d := buildDashboard(sum, hours, win.bucket)
 	d.RangeLabel = win.label
 	d.RangeLinks = summaryRangeLinks(win.key)
+	d.Canvas = buildConfigCanvas(s.fullConfig) // port cards (clickable to /events?port=)
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
 	// Counters link to the matching event listing so an operator can click a
@@ -768,6 +786,26 @@ func (s *Server) handleAPIEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(evs)
+}
+
+// handleAPIHeartbeat returns a tiny freshness token (total event count + the
+// latest event time) so the JS layer can skip refreshing a page when nothing
+// has changed — the no-needless-refresh / no-flash path.
+func (s *Server) handleAPIHeartbeat(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	count, latest, err := s.store.Heartbeat(ctx)
+	if err != nil {
+		http.Error(w, "heartbeat error", http.StatusInternalServerError)
+		return
+	}
+	last := ""
+	if !latest.IsZero() {
+		last = latest.Format(time.RFC3339)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{"count": count, "last": last})
 }
 
 func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
@@ -1353,12 +1391,28 @@ func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
-	if v := q.Get("since"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			f.Since = time.Now().Add(-d)
+	// Absolute window (from a clicked trend bar): from/to as RFC3339. These
+	// take precedence over the relative `since` default.
+	abs := false
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.Since = t
+			abs = true
 		}
-	} else {
-		f.Since = time.Now().Add(-24 * time.Hour)
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.Until = t
+		}
+	}
+	if !abs {
+		if v := q.Get("since"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				f.Since = time.Now().Add(-d)
+			}
+		} else {
+			f.Since = time.Now().Add(-24 * time.Hour)
+		}
 	}
 	if v := q.Get("source"); v != "" {
 		f.SourceIP = v
@@ -1373,6 +1427,9 @@ func parseFilter(r *http.Request) store.Filter {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {
 			f.DstPort = n
 		}
+	}
+	if v := q.Get("country"); v != "" {
+		f.Country = v
 	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v

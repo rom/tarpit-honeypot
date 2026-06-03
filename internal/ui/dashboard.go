@@ -49,6 +49,8 @@ type hourBar struct {
 	Full     string // tooltip label, e.g. "06-02 15h"
 	Hour     string // short axis label, e.g. "15"
 	ShowTick bool   // print the axis label under this bar (every 6h)
+	From     string // bucket start (RFC3339) — links the bar to /events?from=&to=
+	To       string // bucket end (RFC3339)
 }
 
 // dashboard is the summary page's chart model.
@@ -75,10 +77,13 @@ type dashboard struct {
 	Scanned   int
 	// Charts are charts.js figures rendered alongside the CSS bars (JS on).
 	Charts []chartFig
-	// Time-range selector (24h / 7d / 14d / 31d) + the resulting labels.
+	// Time-range selector (24h / 7d / 14d / 31d / 3mo / 6mo) + the labels.
 	RangeLabel string      // page heading, e.g. "last 24 hours"
 	TrendTitle string      // e.g. "events per hour" / "events per day"
 	RangeLinks []rangeLink // the selector chips
+	// Canvas is the listener/port board (same cards as the config page), shown
+	// on the summary so an operator can click straight to a port's events.
+	Canvas configCanvas
 }
 
 // rangeLink is one chip of the summary's time-range selector.
@@ -144,6 +149,9 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket, bucket time.Dur
 			hb.Hour = h.Hour.Format("15")
 			hb.ShowTick = h.Hour.Hour()%6 == 0
 		}
+		// The bucket's [start,end) window, so a click drills to those events.
+		hb.From = h.Hour.UTC().Format(time.RFC3339)
+		hb.To = h.Hour.Add(bucket).UTC().Format(time.RFC3339)
 		d.Trend = append(d.Trend, hb)
 	}
 	return d
@@ -151,10 +159,13 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket, bucket time.Dur
 
 // trendTitle names the events-over-time histogram for the chosen bucket width.
 func trendTitle(bucket time.Duration) string {
+	day := 24 * time.Hour
 	switch {
 	case bucket <= 0 || bucket == time.Hour:
 		return "events per hour"
-	case bucket >= 24*time.Hour:
+	case bucket >= 7*day:
+		return "events per week"
+	case bucket >= day:
 		return "events per day"
 	default:
 		return "events per " + strings.TrimSuffix(bucket.String(), "0m0s")

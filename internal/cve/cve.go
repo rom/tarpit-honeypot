@@ -1105,6 +1105,95 @@ var catalog = []Record{
 		Technique: "T1557", Tactic: "credential-access",
 		Description: "RADIUS/UDP Access-Request integrity relies on MD5; a man-in-the-middle can forge a valid Access-Accept (Blast-RADIUS), bypassing authentication across the AAA fabric.",
 	},
+
+	// --- fourth wave (2.8): more enterprise-web exploits ---
+	{
+		ID: "CVE-2022-41040", Name: "Exchange ProxyNotShell SSRF", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/autodiscover/autodiscover.json?@", "autodiscover.json?@"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-918"},
+		Description: "Microsoft Exchange ProxyNotShell: an Autodiscover SSRF (chained with CVE-2022-41082) reaches the PowerShell backend for authenticated RCE — exploited in the wild.",
+	},
+	{
+		ID: "CVE-2023-7028", Name: "GitLab password-reset account takeover", CVSS: 10.0, Service: "http",
+		Signatures: []string{"user[email][]=", "/users/password", "user%5bemail%5d%5b%5d="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-640"},
+		Description: "GitLab CE/EE: a password-reset request accepting an array of e-mail addresses delivers the reset link to an attacker-controlled address, enabling account takeover (incl. admins).",
+	},
+	{
+		ID: "CVE-2022-47966", Name: "Zoho ManageEngine SAML RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"samlresponse=", "/samlresponse", "/samllogin"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Zoho ManageEngine (ADSelfService Plus and ~24 products): an outdated Apache xmlsec lets a crafted SAMLResponse trigger unauthenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2023-50164", Name: "Apache Struts2 file-upload path traversal", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "Apache Struts2 file-upload parameter manipulation lets an attacker traverse paths and upload a webshell to a web-reachable directory — unauthenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2024-9474", Name: "PAN-OS management privilege escalation", CVSS: 7.2, Service: "http",
+		Technique: "T1068", Tactic: "privilege-escalation",
+		CWE:         []string{"CWE-77"},
+		Description: "Palo Alto PAN-OS web management: an authenticated admin (or one obtained via the CVE-2024-0012 auth bypass) can run commands as root — chained for full appliance takeover in the wild.",
+	},
+
+	// --- fifth wave (2.8): more 2024 edge / enterprise-app exploits ---
+	{
+		ID: "CVE-2024-55956", Name: "Cleo Harmony/VLTrader unauth RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/synchronization", "autorun", "import autorun"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Cleo Harmony / VLTrader / LexiCom: an unauthenticated request to the Synchronization endpoint writes and auto-runs a file, giving remote code execution — mass-exploited by Cl0p in late 2024.",
+	},
+	{
+		ID: "CVE-2024-29824", Name: "Ivanti EPM SQL injection RCE", CVSS: 9.6, Service: "http",
+		Signatures: []string{"/wsstatusevents/eventhandler.asmx", "recordgoodapp"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-89"},
+		Description: "Ivanti Endpoint Manager: an unauthenticated SQL injection in the EventHandler SOAP endpoint reaches xp_cmdshell for remote code execution.",
+	},
+	{
+		ID: "CVE-2024-45195", Name: "Apache OFBiz auth bypass RCE", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/webtools/control/", "viewbizdetails", "forgotpassword/viewbizdetails"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-863"},
+		Description: "Apache OFBiz: a view-state/authorization confusion lets an unauthenticated attacker reach screen-rendering endpoints and chain to remote code execution.",
+	},
+	{
+		ID: "CVE-2024-20767", Name: "Adobe ColdFusion arbitrary file read", CVSS: 7.4, Service: "http",
+		Signatures: []string{"/cf_scripts/scripts/ajax/", "/cfide/adminapi/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-862"},
+		Description: "Adobe ColdFusion: improper access control on the admin CFIDE endpoints allows unauthenticated arbitrary file read (and write in some configs).",
+	},
+	{
+		ID: "CVE-2024-40711", Name: "Veeam Backup & Replication deserialization RCE", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Veeam Backup & Replication: unsafe deserialization in the backup service enables unauthenticated remote code execution — abused by ransomware affiliates for domain-wide impact.",
+	},
+	{
+		ID: "CVE-2024-29849", Name: "Veeam Enterprise Manager auth bypass", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-287"},
+		Description: "Veeam Backup Enterprise Manager: an unauthenticated attacker can log in as any user via a crafted VMware SSO token, fully bypassing authentication.",
+	},
+	{
+		ID: "CVE-2024-7593", Name: "Ivanti vTM auth bypass", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-287"},
+		Description: "Ivanti Virtual Traffic Manager: an incorrect authentication-algorithm implementation in the admin panel lets a remote attacker create an administrator account.",
+	},
+	{
+		ID: "CVE-2024-48887", Name: "FortiSwitch unverified admin password change", CVSS: 9.3, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-640"},
+		Description: "Fortinet FortiSwitch GUI: an unverified password-change endpoint lets a remote unauthenticated attacker set the administrator password and take over the switch.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

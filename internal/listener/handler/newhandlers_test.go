@@ -90,18 +90,18 @@ func TestNetbiosDatagram(t *testing.T) {
 func TestWebappVariants(t *testing.T) {
 	var res Result
 	res.Meta = map[string]any{}
-	wp := serveWebappVariant("GET /wp-login.php HTTP/1.1", nil, "nginx", nil, &res, "wordpress")
+	wp := serveWebappVariant("GET /wp-login.php HTTP/1.1", nil, "nginx", nil, &res, "wordpress", config.WebappBrand{})
 	if !strings.Contains(wp, "loginform") || !strings.Contains(wp, "WordPress") {
 		t.Errorf("wordpress variant didn't render wp-login: %q", wp)
 	}
 	res2 := Result{Meta: map[string]any{}}
-	pma := serveWebappVariant("GET /phpmyadmin/ HTTP/1.1", nil, "nginx", nil, &res2, "phpmyadmin")
+	pma := serveWebappVariant("GET /phpmyadmin/ HTTP/1.1", nil, "nginx", nil, &res2, "phpmyadmin", config.WebappBrand{})
 	if !strings.Contains(pma, "phpMyAdmin") {
 		t.Errorf("phpmyadmin variant didn't render: %q", pma)
 	}
 	// A shared path (.env) still works under a variant (falls through).
 	res3 := Result{Meta: map[string]any{}}
-	env := serveWebappVariant("GET /.env HTTP/1.1", nil, "nginx", nil, &res3, "wordpress")
+	env := serveWebappVariant("GET /.env HTTP/1.1", nil, "nginx", nil, &res3, "wordpress", config.WebappBrand{})
 	if !hasAnomaly(res3, "webapp:secret-file-probe") {
 		t.Errorf("shared .env route should still flag under a variant: %q", env)
 	}

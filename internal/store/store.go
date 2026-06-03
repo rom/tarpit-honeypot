@@ -365,6 +365,9 @@ type Filter struct {
 	Proto string
 	// DstPort restricts to a destination (listener) port; 0 = any.
 	DstPort int
+	// Country restricts to events whose GeoIP meta.geo_country matches (the
+	// "attacks from this place" pivot off the source map). Empty = any.
+	Country string
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
@@ -408,6 +411,12 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.DstPort > 0 {
 		q += " AND dst_port = ?"
 		args = append(args, f.DstPort)
+	}
+	if f.Country != "" {
+		// json_valid guard: empty meta stores meta_json = '' which would make
+		// json_extract raise "malformed JSON".
+		q += " AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '$.geo_country') END = ?"
+		args = append(args, f.Country)
 	}
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"
@@ -632,6 +641,20 @@ func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket tim
 		out = append(out, HourBucket{Hour: time.Unix(0, b*hourNS).UTC(), Count: counts[b]})
 	}
 	return out, nil
+}
+
+// Heartbeat returns a cheap freshness signal — the total event count and the
+// latest event's timestamp — so the UI can decide whether a page actually
+// needs re-rendering (skip the refresh when neither changed).
+func (s *Store) Heartbeat(ctx context.Context) (count int64, latest time.Time, err error) {
+	var ns sql.NullInt64
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(time) FROM events`).Scan(&count, &ns); err != nil {
+		return 0, time.Time{}, err
+	}
+	if ns.Valid {
+		latest = time.Unix(0, ns.Int64).UTC()
+	}
+	return count, latest, nil
 }
 
 // OldestEventTime returns the timestamp of the earliest event still in the

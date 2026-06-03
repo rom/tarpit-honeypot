@@ -42,7 +42,7 @@ var tcpHandlers = map[string]bool{
 	"cloud_metadata": true, "etcd": true,
 	"websocket": true, "grpc": true, "ssrf_canary": true,
 	"kubernetes_api": true, "vault": true,
-	"jdwp": true, "rmi": true, "git": true, "zookeeper": true, "kafka": true,
+	"jdwp": true, "rmi": true, "git": true, "svn": true, "nbd": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
 	"fins_tcp": true, "secs_gem": true, "pcom": true,
@@ -78,7 +78,8 @@ var udpHandlers = map[string]bool{
 	"mssql_browser": true, "profinet": true, "wdbrpc": true, "iax2": true,
 	"dtls": true, "quic": true,
 	"netflow": true, "sflow": true,
-	"auto": true,
+	"statsd": true,
+	"auto":   true,
 }
 
 // TCPHandlerNames returns the sorted set of handler names accepted on a
