@@ -166,6 +166,19 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 		}
 	}
 
+	// GetBulk with a large max-repetitions is the SNMP amplification primitive
+	// (one small request fans out into many varbinds). The walk rate-limiter
+	// below bounds what we actually emit; this flags the intent.
+	if pkt.PDUType == g.GetBulkRequest && pkt.MaxRepetitions >= 100 {
+		flagAnomaly(&res, "snmp-getbulk-amplification")
+		res.Meta["snmp_max_repetitions"] = pkt.MaxRepetitions
+	}
+	// Default community strings are the first credential a scanner tries —
+	// worth surfacing as a (weak) captured credential.
+	if c := pkt.Community; c == "public" || c == "private" || c == "PUBLIC" || c == "PRIVATE" {
+		res.Meta["snmp_default_community"] = true
+	}
+
 	// Only reply to Get / GetNext / GetBulk. Traps/responses (and the
 	// SetRequest above) we just log.
 	if pkt.PDUType != g.GetRequest && pkt.PDUType != g.GetNextRequest && pkt.PDUType != g.GetBulkRequest {

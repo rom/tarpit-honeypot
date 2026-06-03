@@ -72,6 +72,23 @@ func (i *ipmi) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 			// RMCP+ session header starts after the 4-byte RMCP header.
 			authType := payload[4]
 			res.Meta["auth_type"] = authType
+			if authType == 0x06 {
+				// IPMI 2.0 / RMCP+. payload type is the low 6 bits of byte 5.
+				flagAnomaly(&res, "ipmi-2.0-rmcp-plus")
+				ptype := payload[5] & 0x3f
+				res.Meta["rmcpplus_payload_type"] = ptype
+				if ptype == 0x10 { // Open Session Request
+					res.Meta["rmcpplus_msg"] = "open-session-request"
+					// "Cipher Zero": the request advertises authentication
+					// algorithm 0 (RAKP-none) — a complete auth bypass on many
+					// BMCs. The three algorithm payloads follow the 32-byte
+					// open-session-request header; the auth algorithm is the
+					// 2nd byte of the first (authentication) payload.
+					if len(payload) >= 34 && payload[33] == 0x00 {
+						flagAnomaly(&res, "ipmi-cipher-zero-auth-bypass")
+					}
+				}
+			}
 		}
 	}
 	return res, nil

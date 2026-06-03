@@ -63,6 +63,19 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 			flagAnomaly(&res, "tool:sipvicious")
 		}
 	}
+	// OPTIONS with no dialog is the classic PBX liveness / enumeration sweep.
+	if method == "OPTIONS" {
+		flagAnomaly(&res, "sip-options-scan")
+	}
+	// Capture the digest username from an Authorization header — the credential
+	// the brute-force loop replays after our 401 challenge (surfaced as a
+	// captured credential via extractCreds' sip_user key).
+	if auth := valueOr(res.Meta, "authorization", ""); auth != "" {
+		if u := sipAuthUser(auth); u != "" {
+			res.Meta["sip_user"] = u
+			flagAnomaly(&res, "sip-auth-attempt")
+		}
+	}
 
 	// Method-aware reply. SECURITY: every echoed value is attacker-controlled
 	// (SIP headers from the request). Without SanitizeHeader, CRLF in any of
@@ -108,6 +121,21 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 	res.BannerSent = "sip " + status
 	_ = cfg
 	return res, nil
+}
+
+// sipAuthUser extracts the username from a SIP Digest Authorization header
+// (username="alice"); "" if not present.
+func sipAuthUser(auth string) string {
+	i := strings.Index(strings.ToLower(auth), "username=")
+	if i < 0 {
+		return ""
+	}
+	v := strings.TrimSpace(auth[i+len("username="):])
+	v = strings.TrimPrefix(v, "\"")
+	if j := strings.IndexAny(v, "\","); j >= 0 {
+		v = v[:j]
+	}
+	return v
 }
 
 // sipNonce derives a stable-looking Digest nonce from the request's Call-ID

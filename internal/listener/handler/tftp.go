@@ -64,8 +64,18 @@ func (t *tftp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		}
 		if opcode == 2 {
 			flagAnomaly(&res, "tftp-write-attempt")
+			// A WRQ for a firmware/OS image is an attempt to flash tampered
+			// firmware onto network gear — the highest-impact TFTP abuse.
+			if tftpFirmwareName(filename) {
+				flagAnomaly(&res, "tftp-firmware-push")
+			}
 		} else if tftpConfigName(filename) {
 			flagAnomaly(&res, "tftp-config-read")
+		}
+		// Directory traversal / absolute / UNC paths in the filename are an
+		// arbitrary-file read-or-write attempt.
+		if strings.Contains(filename, "..") || strings.HasPrefix(filename, "/") || strings.Contains(filename, "\\") {
+			flagAnomaly(&res, "tftp-path-traversal")
 		}
 		sendTFTPError(pc, src, 2, "Access violation")
 		res.BannerSent = "tftp ERROR access_violation"
@@ -113,6 +123,18 @@ func tftpConfigName(name string) bool {
 		}
 	}
 	return false
+}
+
+// tftpFirmwareName reports whether the name looks like a firmware / OS image
+// (the payload of a tampered-firmware WRQ against network/IoT gear).
+func tftpFirmwareName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	for _, ext := range []string{".bin", ".img", ".rom", ".trx", ".chk", ".pkg", ".tar", ".ios", ".swi"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return strings.Contains(n, "firmware") || strings.Contains(n, "uimage")
 }
 
 func tftpOpName(c uint16) string {
