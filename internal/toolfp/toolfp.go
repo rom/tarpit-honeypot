@@ -88,6 +88,7 @@ var c2Frameworks = map[string]bool{
 	"dnscat2": true, "hoaxshell": true, "manjusaka": true,
 	"chashell": true, "godoh": true, "shad0w": true, "caldera": true,
 	"supershell": true, "phpsploit": true, "weevely": true,
+	"hardhatc2": true, "adaptixc2": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -154,6 +155,9 @@ var vulnScanners = map[string]bool{
 	"graphql-cop": true, "akto": true,
 	"wafninja": true, "sqlninja": true, "bbqsql": true, "jsql": true,
 	"snallygaster": true, "yawast": true,
+	"ghauri": true, "sstimap": true, "tinja": true, "xsser": true, "xspear": true,
+	"oralyzer": true, "openredirex": true, "crlfsuite": true, "wcvs": true,
+	"mongoaudit": true, "domdig": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -674,6 +678,67 @@ var uaSignatures = map[string]string{
 	// Cloud / IAM enumeration + post-exploitation.
 	"cloudfox":      "cloudfox",
 	"enumerate-iam": "enumerate-iam",
+
+	// --- Batch: 50 more web-exploit / API / AD / cloud / recon / C2
+	// fingerprints (User-Agent self-identification). ---
+	// Web injection / XSS / redirect / cache / NoSQL scanners.
+	"ghauri":      "ghauri",
+	"sstimap":     "sstimap",
+	"tinja":       "tinja",
+	"xsser":       "xsser",
+	"xspear":      "xspear",
+	"oralyzer":    "oralyzer",
+	"openredirex": "openredirex",
+	"crlfsuite":   "crlfsuite",
+	"wcvs":        "wcvs",
+	"mongoaudit":  "mongoaudit",
+	"domdig":      "domdig",
+	// JWT attack tooling.
+	"jwt_tool":    "jwt-tool",
+	"jwt-cracker": "jwt-cracker",
+	"jwt-hack":    "jwt-hack",
+	// AD / Windows enumeration + Kerberos abuse.
+	"ldapdomaindump":     "ldapdomaindump",
+	"pingcastle":         "pingcastle",
+	"adrecon":            "adrecon",
+	"bloodyad":           "bloodyad",
+	"pre2k":              "pre2k",
+	"targetedkerberoast": "targetedkerberoast",
+	"krbrelayx":          "krbrelayx",
+	"certsync":           "certsync",
+	"spraycharles":       "spraycharles",
+	"snmpwn":             "snmpwn",
+	// Cloud / bucket enumeration.
+	"cloudbrute":     "cloudbrute",
+	"gcpbucketbrute": "gcpbucketbrute",
+	"cloud_enum":     "cloud_enum",
+	"festin":         "festin",
+	"s3enum":         "s3enum",
+	"cf-hero":        "cf-hero",
+	// Subdomain takeover + DNS / asset recon.
+	"dnsreaper":         "dnsreaper",
+	"subzy":             "subzy",
+	"subjack":           "subjack",
+	"scilla":            "scilla",
+	"haktrails":         "haktrails",
+	"tldfinder":         "tldfinder",
+	"shosubgo":          "shosubgo",
+	"github-subdomains": "github-subdomains",
+	"alterx":            "alterx",
+	"gotator":           "gotator",
+	"ripgen":            "ripgen",
+	"bgpview":           "bgpview",
+	// Crawlers / endpoint + JS discovery.
+	"galer":     "galer",
+	"urldedupe": "urldedupe",
+	"dorkscout": "dorkscout",
+	// Port scanners.
+	"nimscan":      "nimscan",
+	"sandmap":      "sandmap",
+	"threader3000": "threader3000",
+	// C2 frameworks.
+	"hardhatc2": "hardhatc2",
+	"adaptixc2": "adaptixc2",
 
 	// --- Batch: 25 more web-injection / WAF / OSINT-engine / recon
 	// fingerprints (User-Agent self-identification). ---
