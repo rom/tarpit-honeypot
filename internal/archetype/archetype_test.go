@@ -225,6 +225,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		"AudioCodes Mediant gateway",
 		"Yealink IP phone",
 		"Poly/Polycom VVX phone",
+		// v2.8 OT additions:
+		"Emerson ROC800 RTU",
+		"Red Lion Graphite HMI (Crimson 3.0)",
 	}
 	got := Names()
 	if len(got) != len(want) {

@@ -306,6 +306,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &svn{}, nil
 	case "nbd":
 		return &nbd{}, nil
+	case "roc_plus":
+		return &rocPlus{}, nil
+	case "crimson":
+		return &crimson{}, nil
 	case "zookeeper":
 		return &zookeeper{}, nil
 	case "kafka":

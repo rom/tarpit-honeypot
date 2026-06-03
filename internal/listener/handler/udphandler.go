@@ -126,6 +126,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &dnsHandler{id: deps.Identity, topo: deps.HoneynetView}, nil
 	case "statsd":
 		return &statsd{}, nil
+	case "tristation":
+		return &tristation{lim: newUDPReflectLimiter()}, nil
 	case "dtls":
 		return &dtls{}, nil
 	case "quic":

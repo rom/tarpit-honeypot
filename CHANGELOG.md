@@ -55,10 +55,19 @@ credential/CVE emulation, captures, and live-deploy ergonomics.
   plus the earlier squid/stomp/tor-control); **+3 protocol handlers** —
   `svn` (svnserve, TCP 3690), `nbd` (Network Block Device, TCP 10809), and
   `statsd` (UDP 8125, capture-only / reflection-safe).
-- **Hardening / fixes**: SELinux confinement fix (binary was mislabeled
-  `bin_t`), setuid/setgid identity pinning with an ownership guard, a
-  `.deployment-id` "permission denied" startup fix with actionable errors, and
-  more actionable store/DB-open errors.
+- **More OT/ICS**: new protocol handlers `tristation` (Triconex TriStation/TSAA,
+  UDP 1502 — the TRITON/TRISIS safety-controller protocol), `roc_plus` (Emerson
+  ROC Plus, TCP 4000) and `crimson` (Red Lion Crimson, TCP 789); new OT
+  archetypes (Emerson ROC800 RTU, Red Lion Graphite HMI); and new archeservice
+  role bundles (`rockwellplc`, `emersonrtu`, `redlionhmi`) — and `safetyplc` now
+  uses the real `tristation` handler on 1502 instead of `raw`.
+- **Hardening / fixes**: SELinux confinement fixes — the binary was mislabeled
+  `bin_t`, and (this round) `NoNewPrivileges=yes` was silently blocking the
+  init_t→tarpit_honeypot_t domain transition, so the daemon ran unconfined;
+  fixed with `init_nnp_daemon_domain` in the policy + an explicit
+  `SELinuxContext=` on the unit. Plus setuid/setgid identity pinning with an
+  ownership guard, a `.deployment-id` "permission denied" startup fix with
+  actionable errors, and more actionable store/DB-open errors.
 
 ### Added — detection-depth pass III: cloud/AI CVEs, Lua ATT&CK mapping, more correlators/scripts (version 2.7.0)
 
