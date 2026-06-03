@@ -244,6 +244,11 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		"sourceBadges": sourceBadges,
 		// countryFlag maps a 2-letter ISO country code to its emoji flag (US → 🇺🇸).
 		"countryFlag": countryFlag,
+		// handlerLink / protoTag turn a handler name / transport label into a
+		// link to the matching events listing, so they're clickable pivots
+		// wherever they're rendered.
+		"handlerLink": handlerLink,
+		"protoTag":    protoTag,
 	}
 }
 
@@ -258,42 +263,74 @@ func countryFlag(code string) string {
 }
 
 // sourceBadges builds the reputation badge HTML for a source from its event
-// meta. Empty when the IP carries no flagged reputation.
+// meta. Empty when the IP carries no flagged reputation. Each badge is a link
+// to the matching event listing so an operator can pivot from a reputation tag
+// straight to the traffic behind it (scanner -> that tool's events; the others
+// -> the events page filtered by that reputation flag).
 func sourceBadges(meta map[string]any) template.HTML {
 	if len(meta) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	add := func(class, text, title string) {
-		b.WriteString(`<span class="tag ` + class + `" title="` + template.HTMLEscapeString(title) + `">` +
-			template.HTMLEscapeString(text) + `</span> `)
+	add := func(class, text, title, href string) {
+		t := template.HTMLEscapeString(title)
+		x := template.HTMLEscapeString(text)
+		if href != "" {
+			b.WriteString(`<a class="tag ` + class + `" href="` + href + `" title="` + t + `">` + x + `</a> `)
+		} else {
+			b.WriteString(`<span class="tag ` + class + `" title="` + t + `">` + x + `</span> `)
+		}
 	}
 	// Blacklist / threat-intel list hits (operator + external reputation feeds).
 	if labels := metaStrings(meta, "threat_intel"); len(labels) > 0 {
-		add("bad", "blacklist", "on reputation list(s): "+strings.Join(labels, ", "))
+		add("bad", "blacklist", "on reputation list(s): "+strings.Join(labels, ", "), "/events?flag=blacklist")
 	} else if hit, _ := meta["threat_intel_hit"].(bool); hit {
-		add("bad", "threat", "flagged by threat intelligence")
+		add("bad", "threat", "flagged by threat intelligence", "/events?flag=blacklist")
 	}
 	if ext, _ := meta["external_intel"].(string); ext != "" {
-		add("bad", "intel:"+ext, "external threat feed: "+ext)
+		add("bad", "intel:"+ext, "external threat feed: "+ext, "/events?flag=intel")
 	}
 	if fi := metaStrings(meta, "fleet_intel"); len(fi) > 0 {
-		add("bad", "fleet-intel", "fleet-derived indicator: "+strings.Join(fi, ", "))
+		add("bad", "fleet-intel", "fleet-derived indicator: "+strings.Join(fi, ", "), "/events?flag=fleet-intel")
 	}
 	if tor, _ := meta["tor_exit"].(bool); tor {
-		add("warn", "tor", "known Tor exit node")
+		add("warn", "tor", "known Tor exit node", "/events?flag=tor")
 	}
 	// Known scanner: IP-level attribution (enrichment) preferred, else a
 	// self-identified internet-scanner tool from the UA fingerprint.
 	if sc, _ := meta["known_scanner"].(string); sc != "" {
-		add("warn", "scanner:"+sc, "known network-scanning infrastructure ("+sc+")")
+		add("warn", "scanner:"+sc, "known network-scanning infrastructure ("+sc+")", "/events?tool="+url.QueryEscape(sc))
 	} else if sc := scannerTool(meta); sc != "" {
-		add("warn", "scanner:"+sc, "self-identified internet scanner")
+		add("warn", "scanner:"+sc, "self-identified internet scanner", "/events?tool="+url.QueryEscape(sc))
 	}
 	if nc, _ := meta["net_class"].(string); nc == "bogon" {
-		add("warn", "bogon", "spoofed / reserved (bogon) source address")
+		add("warn", "bogon", "spoofed / reserved (bogon) source address", "/events?flag=bogon")
 	}
 	return template.HTML(b.String())
+}
+
+// handlerLink renders a protocol-handler name as a link to the events list
+// filtered to that handler, so an operator can pivot from any handler mention
+// straight to its traffic. Empty/"-" names render as a plain dash.
+func handlerLink(name string) template.HTML {
+	n := strings.TrimSpace(name)
+	if n == "" || n == "-" {
+		return template.HTML("—")
+	}
+	esc := template.HTMLEscapeString(n)
+	return template.HTML(`<a href="/events?handler=` + url.QueryEscape(n) + `" title="show ` + esc + ` events">` + esc + `</a>`)
+}
+
+// protoTag renders a transport label (tcp/udp/icmp) as the styled badge, made
+// clickable: it pivots to the events list filtered to that transport.
+func protoTag(proto string) template.HTML {
+	p := strings.ToLower(strings.TrimSpace(proto))
+	if p == "" {
+		return ""
+	}
+	esc := template.HTMLEscapeString(p)
+	return template.HTML(`<a class="proto proto-` + esc + `" href="/events?proto=` + url.QueryEscape(p) +
+		`" title="transport: ` + esc + ` — show events">` + esc + `</a>`)
 }
 
 // knownScannerTools are internet-wide reconnaissance engines that self-identify
@@ -304,6 +341,38 @@ var knownScannerTools = map[string]bool{
 	"leakix": true, "expanse": true, "onyphe": true, "criminalip": true,
 	"netsystems-research": true, "projectdiscovery": true, "odin-scanner": true,
 	"zgrab": true, "zgrab2": true, "masscan": true, "zmap": true,
+}
+
+// eventHasFlag reports whether an event's source carries the reputation flag
+// behind a sourceBadges link — the mirror of the badge logic, so clicking a
+// badge lists exactly the events that would have shown it.
+func eventHasFlag(ev *event.Event, flag string) bool {
+	m := ev.Meta
+	switch flag {
+	case "blacklist":
+		if len(metaStrings(m, "threat_intel")) > 0 {
+			return true
+		}
+		hit, _ := m["threat_intel_hit"].(bool)
+		return hit
+	case "intel":
+		s, _ := m["external_intel"].(string)
+		return s != ""
+	case "fleet-intel":
+		return len(metaStrings(m, "fleet_intel")) > 0
+	case "tor":
+		t, _ := m["tor_exit"].(bool)
+		return t
+	case "bogon":
+		nc, _ := m["net_class"].(string)
+		return nc == "bogon"
+	case "scanner":
+		if s, _ := m["known_scanner"].(string); s != "" {
+			return true
+		}
+		return scannerTool(m) != ""
+	}
+	return false
 }
 
 func scannerTool(meta map[string]any) string {
@@ -753,9 +822,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// display limit first — otherwise the post-filter only sees the newest
 	// `Limit` rows and a genuine match further back wrongly looks empty. (ASN
 	// and country are real meta-column filters handled in the store.)
-	tool, tactic := q.Get("tool"), q.Get("tactic")
+	tool, tactic, flag := q.Get("tool"), q.Get("tactic"), q.Get("flag")
 	displayLimit := f.Limit
-	if tool != "" || tactic != "" {
+	if tool != "" || tactic != "" || flag != "" {
 		f.Limit = searchScanMax
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -766,6 +835,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	evs = filterByMeta(evs, tool, tactic, "")
+	if flag != "" {
+		kept := evs[:0]
+		for _, ev := range evs {
+			if eventHasFlag(ev, flag) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
 	if displayLimit > 0 && len(evs) > displayLimit {
 		evs = evs[:displayLimit]
 	}

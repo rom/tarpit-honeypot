@@ -47,7 +47,7 @@ non-browser; `low` = automation inferred from a weak heuristic with no tool name
 
 ## What it recognizes (by class)
 
-The catalog holds **470+ signatures**. The notable families:
+The catalog holds **510+ signatures**. The notable families:
 
 - **Internet-wide scan / OSINT engines** (often benign-but-noisy research):
   Censys, Shodan, BinaryEdge, Shadowserver, Rapid7/Project Sonar, Stretchoid,

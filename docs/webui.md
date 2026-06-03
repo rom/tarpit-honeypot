@@ -83,6 +83,19 @@ category — transport (events / TCP / UDP / ICMP) and severity (critical / high
 medium / low) each get a distinct, theme-aware background so the shape of the
 day reads at a glance. The starting point each shift.
 
+Two complementary top lists sit alongside *top rules*: **top attacks** ranks the
+most-seen ATT&CK techniques (the *how* — each links to the technique drill-down),
+and **top vulnerabilities** ranks the most-probed CVEs (the *what* — each links to
+a search for that CVE's events). They are kept separate on purpose: a single
+technique spans many CVEs and one CVE can be reached by several techniques, so a
+combined list would hide both axes.
+
+Throughout the console, **labels and handlers are clickable pivots**: a
+`scanner:censys` / `blacklist` / `tor` / `bogon` reputation badge links to the
+events behind it, a transport badge (`tcp`/`udp`/`icmp`) filters by transport,
+and any handler name (`http`, `dns`, `ftp_files`, …) links to that handler's
+events.
+
 ### events (`/events`)
 The filterable event log — by `source`, `rule`, `severity`, `since`, free-text
 `q`, and `--fleet`-style `fleet:*` filtering. Each row links to the **event
