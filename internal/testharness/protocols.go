@@ -322,6 +322,51 @@ var specs = map[string]protoSpec{
 		},
 		Misimpl: []misCase{{"http-to-ldap", []byte("GET / HTTP/1.0\r\n\r\n"), ""}},
 	},
+
+	// --- Newly-added UDP protocol handlers (capture-only: no reply expected, so
+	// EmulateOK accepts any/empty response; the value is the misimpl detection). ---
+	"modbus_udp": {
+		Probe:     []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x03, 0x00, 0x00, 0x00, 0x01}, // read holding regs
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"write-multiple-regs", []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x10, 0x00, 0x00}, "ics-modbus-write"},
+		},
+	},
+	"slmp": {
+		Probe:     []byte{0x54, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x04}, // device read
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"device-write", []byte{0x54, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x14}, "ics-plc-write"},
+		},
+	},
+	"dnp3_udp": {
+		Probe:     []byte{0x05, 0x64, 0x05, 0xc9, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00},
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"unconfirmed-control", []byte{0x05, 0x64, 0x14, 0xc3, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00}, "ics-dnp3-control"},
+		},
+	},
+	"enip_udp": {
+		Probe:     []byte{0x04, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // ListServices
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"list-identity", []byte{0x63, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "ics-device-enumeration"},
+		},
+	},
+	"mqtt_sn": {
+		Probe:     []byte{0x06, 0x04, 0x04, 0x01, 0x00, 0x1e}, // CONNECT
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"publish", []byte{0x07, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x41}, "iot-mqtt-sn-publish"},
+		},
+	},
+	"slp": {
+		Probe:     []byte{0x02, 0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // v2 SrvRqst
+		EmulateOK: func(r []byte) bool { return true },
+		Misimpl: []misCase{
+			{"srvrqst", []byte{0x02, 0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, "amplification-probe"},
+		},
+	},
 }
 
 // mqttConnectProbe builds a minimal MQTT 3.1.1 CONNECT packet (clean session,
