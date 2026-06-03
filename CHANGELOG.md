@@ -8,6 +8,49 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — search regex + time filters, clickable pivots, summary attacks/vulns; +155 tool sigs, +25 Cisco/ASA/Moxa CVEs; DB rotate/prune (version 2.9.0)
+
+- **Search overhaul** (`/search`): the **source IP / dest IP / rule / handler /
+  full-text** fields are now case-insensitive **regular expressions**, so a
+  partial value (`10.0.`) matches an incomplete IP and `^192\.168\.` anchors it;
+  alternation and any RE2 pattern work, and a malformed pattern is reported
+  inline instead of erroring. **Absolute time filtering** — `after` / `before` /
+  `on` (UTC date or date-time) alongside the relative `since`. The **full-text**
+  now walks nested meta recursively, so it matches the **request line**, **HTTP
+  header names + values**, and any similar capture in addition to the rule,
+  banner, and decoded payload.
+- **Clickable pivots across the console**: reputation badges (`scanner:<name>`,
+  `blacklist`, `tor`, `bogon`, `intel` / `fleet-intel`), transport labels
+  (`tcp` / `udp` / `icmp`) and handler names now link to the matching events
+  (`/events?tool=…`, `?flag=…`, `?proto=…`, `?handler=…`). A new `flag=` events
+  filter backs the reputation badges.
+- **Summary "top attacks" + "top vulnerabilities"**: two new ranked dashboard
+  lists — most-seen ATT&CK techniques (→ the technique drill-down) and
+  most-probed CVEs (→ a search for that CVE's events) — kept distinct because a
+  technique spans many CVEs and a CVE can be reached by several techniques.
+- **Static docs reader**: the in-product `/docs` pages no longer carry a
+  `<meta refresh>` (reading is never interrupted), and `lua` + `attack-tools`
+  now appear in the curated docs index.
+- **+155 attack-tool fingerprints** (530+ total): AD / Impacket post-exploitation
+  (secretsdump, wmiexec, BloodHound, Rubeus, Certipy, mitm6, …), Java-deser
+  (ysoserial, marshalsec), web / CMS / TLS / IKE exploit scanners (jexboss,
+  weblogicscan, lfimap, graphql-cop, sqlninja, jSQL, yawast, sslscan, …),
+  cloud / k8s recon (Pacu, ScoutSuite, Prowler, kube-hunter), pivot / tunnel
+  (Stowaway, reGeorg, pivotnacci), DNS/HTTP C2 + webshells (dnscat2, godoh,
+  CALDERA, Weevely, Manjusaka), OSINT / recon frameworks (autorecon, reconftw,
+  maigret, sherlock, ghunt), GraphQL tooling, MITM tooling (mitmproxy,
+  bettercap), and internet-search-engine clients (fofa, ZoomEye, Netlas).
+- **+25 Cisco / Cisco ASA / Moxa device CVEs** (406 total) with CWE/CPE/EPSS —
+  ASA WebVPN / ASDM / SNMP / SIP (EXTRABACON, the `+CSCOU+/+CSCOE+` traversals,
+  ArcaneDoor), IOS / IOS-XE / Small-Business-router / HyperFlex, and Moxa NPort /
+  OnCell / switch / MXview. The ASA WebVPN traversal and RV320 command injection
+  are payload-detectable; the rest are advisory (cataloged + ATT&CK-tagged).
+- **`rotate-db` + `prune-db` subcommands** for the event-store lifecycle:
+  `rotate-db` writes a gzip-compressed, consistent `VACUUM INTO` snapshot of
+  `events.db` to an archive and can `--reset --yes` to empty + VACUUM the live
+  store (log rotation); `prune-db` drops the oldest events by `--keep-days` /
+  `--keep-rows` / `--max-mb` and VACUUMs to reclaim disk (dry-run unless `--yes`).
+
 ### Added — DNS decoys, SMTPS, +75 CVE / +25 Lua / +25 tools; /events log fix (version 2.9.0)
 
 - **DNS deception** (new `listener.dns_responder`): `version_bind` answers
