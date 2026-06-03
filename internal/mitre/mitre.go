@@ -396,6 +396,59 @@ var anomalyTags = map[string]Tag{
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"modbus-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+
+	// --- New-protocol coverage: amplification, ICS/IIoT control, building
+	// automation, IoT actuation, and the discovery/credential markers the
+	// added UDP handlers + deepened protocols raise. ICS uses the ATT&CK for
+	// ICS (T0###) matrix; the rest use Enterprise techniques.
+	//
+	// UDP reflection/amplification probes (slp, memcached, natpmp, ubiquiti,
+	// steam, sentinel_hasp, enip ListIdentity, ssdp:all, dns ANY, classic STUN,
+	// mssql broadcast, coap discovery): Network DoS — Reflection Amplification.
+	"amplification-probe":        {Techniques: []string{"T1498.002", "T1046"}, Tactics: []string{"impact", "discovery"}},
+	"ssdp-all-amplification":     {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"dns-any-amplification":      {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"stun-classic-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"coap-resource-discovery":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Service / device discovery.
+	"service-enumeration":     {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"device-discovery-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"remote-desktop-probe":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"ics-device-enumeration":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"ics-field-device-probe":  {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"ics-data-bus-discovery":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"ics-process-data-access": {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	// ICS control / manipulation (impact).
+	"ics-modbus-write":                   {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	"ics-modbus-diagnostic":              {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"ics-plc-write":                      {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	"ics-plc-mode-change":                {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
+	"ics-plc-program-access":             {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"ics-dnp3-control":                   {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},
+	"ics-unitronics-plc":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-pmu-command":                    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-safety-controller-manipulation": {Techniques: []string{"T0831", "T0880"}, Tactics: []string{"impact"}},
+	"profinet-iod-write":                 {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
+	"profinet-iod-control":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"knx-bus-write":                      {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	// IoT actuation + building automation control.
+	"iot-actuation-attempt": {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"iot-mqtt-sn-publish":   {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	"ba-lighting-control":   {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"ba-projector-control":  {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"ba-building-control":   {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"ba-av-control-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Routing / name-service abuse.
+	"routing-recon":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"rip-route-injection":        {Techniques: []string{"T1557"}, Tactics: []string{"collection"}},
+	"nbns-name-poisoning-target": {Techniques: []string{"T1557.001"}, Tactics: []string{"credential-access", "collection"}},
+	"mdns-remote-access-recon":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Credential-bearing protocols.
+	"kerberos-pre-auth-probe": {Techniques: []string{"T1558.004"}, Tactics: []string{"credential-access"}},
+	"ike-aggressive-mode":     {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"radius-auth-attempt":     {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"radius-eap-auth":         {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
 	// SNMP SetRequest = write the device's running config (ACL / interface
 	// / config-copy-to-tftp). Manipulation on enterprise gear, modify-
 	// parameter on the ICS archetypes that also speak SNMP.
@@ -768,6 +821,16 @@ func AnomalyTag(a string) Tag {
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "ba-"):
+		// Building-automation markers without an explicit entry: at least a
+		// control-system probe of the BMS / AV / lighting surface.
+		return Tag{Techniques: []string{"T1046"}, Tactics: []string{"discovery"}}
+	case strings.HasPrefix(a, "iot-"):
+		// IoT smart-device markers: device enumeration / LAN-protocol probe.
+		return Tag{Techniques: []string{"T1046"}, Tactics: []string{"discovery"}}
+	case strings.Contains(a, "amplification"):
+		// Any reflection/amplification probe family: Network DoS.
+		return Tag{Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}}
 	case strings.HasPrefix(a, "webapp:"):
 		// Any web-attack-class marker without an explicit entry above is at
 		// least an exploit attempt against the public-facing app.
@@ -891,6 +954,8 @@ var techDescriptions = map[string]string{
 	"T0843": "Program Download (ICS) — downloading new logic/firmware to a controller.",
 	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
+	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
+	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
 
@@ -1018,6 +1083,8 @@ var d3fend = map[string][]string{
 	"T0843": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: program download
 	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
+	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
+	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
 	"T1056": {"D3-NTA"},                             // input capture (keylogging via X11)
