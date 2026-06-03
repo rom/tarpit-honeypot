@@ -831,6 +831,12 @@ func AnomalyTag(a string) Tag {
 	case strings.Contains(a, "amplification"):
 		// Any reflection/amplification probe family: Network DoS.
 		return Tag{Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}}
+	case strings.HasPrefix(a, "overlay-"), strings.Contains(a, "tunnel"):
+		// Overlay (VXLAN/Geneve) injection or tunnelling-protocol probe.
+		return Tag{Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}}
+	case strings.HasPrefix(a, "mobile-core-"), strings.HasPrefix(a, "network-infra"), strings.HasPrefix(a, "wccp"), strings.HasPrefix(a, "bfd"):
+		// Mobile-core (GTP) / routing / infrastructure protocol reconnaissance.
+		return Tag{Techniques: []string{"T1046"}, Tactics: []string{"discovery"}}
 	case strings.HasPrefix(a, "webapp:"):
 		// Any web-attack-class marker without an explicit entry above is at
 		// least an exploit attempt against the public-facing app.

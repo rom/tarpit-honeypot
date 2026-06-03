@@ -94,6 +94,10 @@ var udpHandlers = map[string]bool{
 	"matter": true, "wiz": true, "yeelight": true, "dahua_disc": true, "hikvision_sadp": true,
 	"powerlink": true, "slmp": true, "cip_io": true, "ff_hse": true, "ads_udp": true,
 	"pcom_udp": true, "synchrophasor": true, "loxone": true, "amx_netlinx": true, "vantage": true,
+	"gtp_c": true, "gtp_u": true, "vxlan": true, "geneve": true, "wccp": true,
+	"radius_acct": true, "dhcpv6": true, "ripng": true, "babel": true, "bfd": true,
+	"ldp": true, "teredo": true, "ike_natt": true, "mndp": true, "aruba_papi": true,
+	"artnet": true, "sacn": true, "collectd": true, "plex_gdm": true, "c1222": true,
 	"auto": true,
 }
 
