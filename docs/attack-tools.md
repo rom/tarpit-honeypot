@@ -47,7 +47,7 @@ non-browser; `low` = automation inferred from a weak heuristic with no tool name
 
 ## What it recognizes (by class)
 
-The catalog holds **300+ signatures**. The notable families:
+The catalog holds **470+ signatures**. The notable families:
 
 - **Internet-wide scan / OSINT engines** (often benign-but-noisy research):
   Censys, Shodan, BinaryEdge, Shadowserver, Rapid7/Project Sonar, Stretchoid,
@@ -70,12 +70,26 @@ The catalog holds **300+ signatures**. The notable families:
   Sublist3r, theHarvester, recon-ng, SpiderFoot, gowitness, aquatone,
   EyeWitness, metabigor, and the ProjectDiscovery suite (asnmap, cdncheck, tlsx,
   uncover, notify, proxify, chaos-client, dnsgen, interactsh).
-- **Secret / repo scrapers**: git-dumper, TruffleHog, gitleaks.
+- **Secret / repo scrapers**: git-dumper, TruffleHog, gitleaks, Nosey Parker,
+  GitDorker, DumpsterDiver.
 - **Brute-force / cred attack**: Hydra, Medusa, Patator, Ncrack, NetExec/
-  CrackMapExec.
-- **C2 / RAT / red-team**: see the category table above.
-- **Tunnels / pivots**: chisel, ligolo, gost, frp, rsockstun.
-- **Phishing kits / proxies**: GoPhish, Evilginx, Muraena, Modlishka.
+  CrackMapExec, crowbar, BruteX, changeme, kerbrute, onesixtyone, smtp-user-enum.
+- **AD / Windows post-exploitation**: the Impacket family (secretsdump, wmiexec,
+  smbexec, psexec.py, ntlmrelayx, GetNPUsers/GetUserSPNs, ticketer, mssqlclient),
+  BloodHound/SharpHound, Rubeus, Certipy, lsassy, nanodump, DonPAPI, Coercer,
+  PetitPotam, mitm6, Pcredz, enum4linux, smbmap, evil-winrm, windapsearch.
+- **Web / app exploit tooling**: JexBoss, WeblogicScan, struts-pwn/struts-scan,
+  tomcatWarDeployer, VBScan, Typo3Scan, magescan, aem-hacker, wprecon, fuxploider,
+  lfimap/fimap, GraphQLmap/graphw00f, log4j-scan, ysoserial, marshalsec, byp4xx/
+  dontgo403/nomore403, h2csmuggler/smuggler, Corsy, shortscan, DAVTest.
+- **TLS / SSL / IKE scanners**: testssl, sslyze, sslscan, cipherscan, a2sv,
+  ike-scan, tlsx.
+- **Cloud / Kubernetes recon**: Pacu, ScoutSuite, Prowler, S3Scanner, kube-hunter.
+- **C2 / RAT / red-team**: see the category table above (incl. dnscat2, godoh,
+  chashell, shad0w, CALDERA, Supershell, PhpSploit, Weevely, hoaxshell, Manjusaka).
+- **Tunnels / pivots**: chisel, ligolo, gost, frp, rsockstun, Stowaway,
+  neo-reGeorg/reGeorg, pivotnacci, revsocks.
+- **Phishing kits / proxies**: GoPhish, Evilginx, Muraena, Modlishka, zphisher.
 - **Crypto-miners / IoT botnet loaders**: XMRig, Kinsing, Hajime, Gafgyt,
   Tsunami.
 - **HTTP client libraries** (a tell when hitting a "browser-only" surface):
