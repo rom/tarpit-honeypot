@@ -19,21 +19,24 @@ import (
 func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
-	since := time.Now().Add(-24 * time.Hour)
+	win := summaryRange(r.URL.Query().Get("range"))
+	since := time.Now().Add(-win.dur)
 	sum, err := s.store.Summary(ctx, since)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
-	hours, _ := s.store.EventsPerHour(ctx, since)
-	d := buildDashboard(sum, hours, time.Hour)
+	hours, _ := s.store.EventsPerBucket(ctx, since, win.bucket)
+	d := buildDashboard(sum, hours, win.bucket)
 	var evs []*event.Event
 	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		evs = e
 		enrichDashboard(&d, evs)
 	}
 	page := buildAnalytics(d, hours, evs)
+	page.RangeLabel = win.label
+	page.RangeLinks = rangeLinksFor("/charts", win.key)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "charts", page); err != nil {
 		slog.Warn("ui: render charts", "err", err)
@@ -65,9 +68,11 @@ type chartSection struct {
 }
 
 type chartsPage struct {
-	Sections []chartSection
-	Scanned  int
-	Empty    bool
+	Sections   []chartSection
+	Scanned    int
+	Empty      bool
+	RangeLabel string
+	RangeLinks []rangeLink
 }
 
 // --- chart JSON shapes (match the schemas documented in charts.js) ---------
@@ -87,11 +92,12 @@ type chPoint struct {
 	Y float64 `json:"y"`
 }
 type chMapPt struct {
-	Lat   float64 `json:"lat"`
-	Lon   float64 `json:"lon"`
-	Count int     `json:"count"`
-	Label string  `json:"label,omitempty"`
-	Sev   string  `json:"sev,omitempty"`
+	Lat     float64 `json:"lat"`
+	Lon     float64 `json:"lon"`
+	Count   int     `json:"count"`
+	Label   string  `json:"label,omitempty"`
+	Sev     string  `json:"sev,omitempty"`
+	Country string  `json:"country,omitempty"` // links the bubble to /events?country=
 }
 type chNode struct {
 	ID    string `json:"id"`
@@ -221,6 +227,7 @@ func sourceMap(evs []*event.Event) (chartFig, bool) {
 		count    int
 		sev      string
 		label    string
+		country  string
 	}
 	m := map[string]*agg{}
 	for _, ev := range evs {
@@ -232,14 +239,15 @@ func sourceMap(evs []*event.Event) (chartFig, bool) {
 		key := fmt.Sprintf("%.0f,%.0f", lat, lon)
 		a := m[key]
 		if a == nil {
+			country, _ := ev.Meta["geo_country"].(string)
 			label, _ := ev.Meta["geo_city"].(string)
 			if label == "" {
-				label, _ = ev.Meta["geo_country"].(string)
+				label = country
 			}
 			if label == "" {
 				label = ev.Source.IP
 			}
-			a = &agg{lat: lat, lon: lon, label: label}
+			a = &agg{lat: lat, lon: lon, label: label, country: country}
 			m[key] = a
 		}
 		a.count++
@@ -252,7 +260,7 @@ func sourceMap(evs []*event.Event) (chartFig, bool) {
 	}
 	pts := make([]chMapPt, 0, len(m))
 	for _, a := range m {
-		pts = append(pts, chMapPt{Lat: a.lat, Lon: a.lon, Count: a.count, Label: a.label, Sev: a.sev})
+		pts = append(pts, chMapPt{Lat: a.lat, Lon: a.lon, Count: a.count, Label: a.label, Sev: a.sev, Country: a.country})
 	}
 	sort.Slice(pts, func(i, j int) bool { return pts[i].Count > pts[j].Count })
 	return chartFigure("sourcemap", "Attack source map (GeoIP)", map[string]any{"points": pts}), true

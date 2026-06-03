@@ -463,7 +463,18 @@ window.TarpitCharts = (function () {
     var max = maxOf(pts, function (p) { return num(p.count); }) || 1;
     pts.forEach(function (p) {
       var xy = proj(p.lat, p.lon), r = 3 + 11 * Math.sqrt(num(p.count) / max);
-      root.appendChild(title(el("circle", { cx: xy.x, cy: xy.y, r: r, class: "tc-src", fill: p.sev ? SEV[p.sev] : SEV.high, "fill-opacity": 0.55, stroke: SEV.critical }), (p.label ? p.label + " · " : "") + fmt(p.count)));
+      var circ = title(el("circle", { cx: xy.x, cy: xy.y, r: r, class: "tc-src", fill: p.sev ? SEV[p.sev] : SEV.high, "fill-opacity": 0.55, stroke: SEV.critical }), (p.label ? p.label + " · " : "") + fmt(p.count) + (p.country ? " — click for attacks from " + p.country : ""));
+      // Clicking a bubble drills to the events from that place (by country).
+      if (p.country) {
+        var a = el("a", { class: "tc-srclink" });
+        var href = "/events?country=" + encodeURIComponent(p.country);
+        a.setAttribute("href", href);
+        a.setAttributeNS("http://www.w3.org/1999/xlink", "href", href);
+        a.appendChild(circ);
+        root.appendChild(a);
+      } else {
+        root.appendChild(circ);
+      }
     });
     return root;
   };

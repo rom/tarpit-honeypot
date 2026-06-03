@@ -365,6 +365,9 @@ type Filter struct {
 	Proto string
 	// DstPort restricts to a destination (listener) port; 0 = any.
 	DstPort int
+	// Country restricts to events whose GeoIP meta.geo_country matches (the
+	// "attacks from this place" pivot off the source map). Empty = any.
+	Country string
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
@@ -408,6 +411,12 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.DstPort > 0 {
 		q += " AND dst_port = ?"
 		args = append(args, f.DstPort)
+	}
+	if f.Country != "" {
+		// json_valid guard: empty meta stores meta_json = '' which would make
+		// json_extract raise "malformed JSON".
+		q += " AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '$.geo_country') END = ?"
+		args = append(args, f.Country)
 	}
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"

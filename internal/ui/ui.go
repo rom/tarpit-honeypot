@@ -473,31 +473,47 @@ type sumWindow struct {
 	label  string
 }
 
-// summaryRange maps the ?range= selector to a window (default 24h).
+// summaryRange maps the ?range= selector to a window (default 24h). The bucket
+// width is chosen so the trend stays a readable ~24–90 bars across the range.
 func summaryRange(key string) sumWindow {
+	day := 24 * time.Hour
 	switch key {
 	case "7d":
-		return sumWindow{"7d", 7 * 24 * time.Hour, 6 * time.Hour, "last 7 days"}
+		return sumWindow{"7d", 7 * day, 6 * time.Hour, "last 7 days"}
 	case "14d":
-		return sumWindow{"14d", 14 * 24 * time.Hour, 12 * time.Hour, "last 14 days"}
+		return sumWindow{"14d", 14 * day, 12 * time.Hour, "last 14 days"}
 	case "31d":
-		return sumWindow{"31d", 31 * 24 * time.Hour, 24 * time.Hour, "last 31 days"}
+		return sumWindow{"31d", 31 * day, day, "last 31 days"}
+	case "3mo":
+		return sumWindow{"3mo", 90 * day, day, "last 3 months"}
+	case "6mo":
+		return sumWindow{"6mo", 180 * day, 7 * day, "last 6 months"}
 	default:
-		return sumWindow{"24h", 24 * time.Hour, time.Hour, "last 24 hours"}
+		return sumWindow{"24h", day, time.Hour, "last 24 hours"}
 	}
 }
 
-func summaryRangeLinks(active string) []rangeLink {
+// summaryRanges is the ordered set of selector keys (shared by summary + charts).
+var summaryRanges = []string{"24h", "7d", "14d", "31d", "3mo", "6mo"}
+
+// rangeLinksFor builds the selector chips for a base path ("/" or "/charts").
+func rangeLinksFor(base, active string) []rangeLink {
 	out := []rangeLink{}
-	for _, key := range []string{"24h", "7d", "14d", "31d"} {
-		href := "/"
+	for _, key := range summaryRanges {
+		href := base
 		if key != "24h" {
-			href = "/?range=" + key
+			sep := "?"
+			if strings.Contains(base, "?") {
+				sep = "&"
+			}
+			href = base + sep + "range=" + key
 		}
 		out = append(out, rangeLink{Label: key, Href: href, Active: key == active})
 	}
 	return out
 }
+
+func summaryRangeLinks(active string) []rangeLink { return rangeLinksFor("/", active) }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
@@ -522,6 +538,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	d := buildDashboard(sum, hours, win.bucket)
 	d.RangeLabel = win.label
 	d.RangeLinks = summaryRangeLinks(win.key)
+	d.Canvas = buildConfigCanvas(s.fullConfig) // port cards (clickable to /events?port=)
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
 	// Counters link to the matching event listing so an operator can click a
@@ -1353,12 +1370,28 @@ func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
-	if v := q.Get("since"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			f.Since = time.Now().Add(-d)
+	// Absolute window (from a clicked trend bar): from/to as RFC3339. These
+	// take precedence over the relative `since` default.
+	abs := false
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.Since = t
+			abs = true
 		}
-	} else {
-		f.Since = time.Now().Add(-24 * time.Hour)
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.Until = t
+		}
+	}
+	if !abs {
+		if v := q.Get("since"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				f.Since = time.Now().Add(-d)
+			}
+		} else {
+			f.Since = time.Now().Add(-24 * time.Hour)
+		}
 	}
 	if v := q.Get("source"); v != "" {
 		f.SourceIP = v
@@ -1373,6 +1406,9 @@ func parseFilter(r *http.Request) store.Filter {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {
 			f.DstPort = n
 		}
+	}
+	if v := q.Get("country"); v != "" {
+		f.Country = v
 	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v
