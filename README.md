@@ -617,14 +617,26 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 ## Status
 
-**v2.7 — active capture, TLS-MITM, campaign/threat-map UI, decoy generation, and a deep detection pass.**
-The v2.4–2.7 line widens the platform from a sensor into a deception suite and
-then deepens detection across every subsystem. Current totals: **126 TCP + 37
-UDP protocol handlers**, **171 CVE detections**, **90 dynamic Lua service
-scripts**, **164 OS/device archetypes**, **30 single-sensor + 27 cross-sensor
-(`fleet:*`) correlators**, **18 typed IOC kinds**, and full ATT&CK +
+**v2.8 — operator-console overhaul, mail (POP3/IMAP+TLS) credential & CVE emulation, richer captures, and live-deploy ergonomics.**
+The v2.4–2.8 line widens the platform from a sensor into a deception suite and
+then deepens detection and operability across every subsystem. Current totals:
+**127 TCP + 37 UDP protocol handlers**, **181 CVE detections**, **93 dynamic Lua
+service scripts**, **164 OS/device archetypes**, **30 single-sensor + 27
+cross-sensor (`fleet:*`) correlators**, **18 typed IOC kinds**, and full ATT&CK +
 **20 D3FEND** countermeasure mapping. Highlights; the
 [CHANGELOG](CHANGELOG.md) has the per-commit detail.
+
+- **v2.8 operator console.** Flicker-free, content-only live refresh that skips
+  when nothing changed (`/api/heartbeat`); a 24h/7d/14d/31d/3mo/6mo range
+  selector on the summary and charts; clickable transport/severity counters,
+  port cards (→ filtered events), trend bars (→ that window) and GeoIP-map
+  bubbles (→ `/events?country=`); a built-in world-map vector; per-event
+  credential/secret highlighting; build-generated docs reference catalogs
+  (JA*/handlers/ATT&CK/CVE/CWE); config page with uptime + database age.
+- **v2.8 mail + protocols.** POP3/IMAP (and implicit-TLS `pop3s`/`imaps`)
+  credential harvesting + vuln/CVE emulation (STARTTLS injection, PASS/literal
+  overflows); DNS over TCP; new `svn` handler and `squid`/`stomp`/`tor-control`
+  Lua personas; the fake web app can run over a real (CA) HTTPS cert.
 
 - **Active artifact capture + threat intel.** Opt-in pull of attacker-referenced
   droppers (`payloads.fetch_urls`, size-capped, egress-allowlisted, fail-closed),
