@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -195,11 +196,29 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 			handler[ev.Handler]++
 		}
 	}
-	d.Tactics = topBars(tac, 14, "")
-	d.Countries = topBars(country, 10, "")
+	// Every summary line item links to the filtered event list. Countries /
+	// handler / tool / tactic map directly to a query param; ASN is keyed on the
+	// numeric AS extracted from its display label ("AS13335 Cloudflare").
+	d.Tactics = topBars(tac, 14, "/events?tactic=")
+	d.Countries = topBars(country, 10, "/events?country=")
 	d.ASNs = topBars(asn, 10, "")
-	d.Tools = topBars(tool, 10, "")
-	d.Handlers = topBars(handler, 12, "")
+	for i := range d.ASNs {
+		if num := asnNumber(d.ASNs[i].Label); num != "" {
+			d.ASNs[i].Href = "/events?asn=" + num
+		}
+	}
+	d.Tools = topBars(tool, 10, "/events?tool=")
+	d.Handlers = topBars(handler, 12, "/events?handler=")
+}
+
+// asnNumber extracts the numeric AS from a label like "AS13335 Cloudflare".
+func asnNumber(label string) string {
+	s := strings.TrimPrefix(label, "AS")
+	n := 0
+	for n < len(s) && s[n] >= '0' && s[n] <= '9' {
+		n++
+	}
+	return s[:n]
 }
 
 func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
@@ -232,7 +251,7 @@ func topBars(m map[string]int, n int, hrefPrefix string) []barRow {
 	for _, it := range items {
 		href := ""
 		if hrefPrefix != "" {
-			href = hrefPrefix + it.k
+			href = hrefPrefix + url.QueryEscape(it.k)
 		}
 		out = append(out, barRow{Label: it.k, Count: it.v, Pct: pct(it.v, max), Share: share(it.v, total), Href: href})
 	}

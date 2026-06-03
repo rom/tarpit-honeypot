@@ -134,6 +134,60 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &bsap{lim: newUDPReflectLimiter()}, nil
 	case "lontalk":
 		return &lonTalk{}, nil
+	// General UDP infrastructure / networking (all capture-only).
+	case "wsdiscovery":
+		return &wsDiscovery{}, nil
+	case "memcached_udp":
+		return &memcachedUDP{}, nil
+	case "natpmp":
+		return &natPMP{}, nil
+	case "ubiquiti":
+		return &ubiquiti{}, nil
+	case "wireguard":
+		return &wireGuard{}, nil
+	case "openvpn_udp":
+		return &openvpnUDP{}, nil
+	case "l2tp":
+		return &l2tp{}, nil
+	case "rip":
+		return &rip{}, nil
+	case "steam":
+		return &steamA2S{}, nil
+	case "sentinel_hasp":
+		return &sentinelHASP{}, nil
+	// IoT (consumer / smart-home).
+	case "mqtt_sn":
+		return &mqttSN{}, nil
+	case "tplink_kasa":
+		return &tplinkKasa{}, nil
+	case "tuya":
+		return &tuya{}, nil
+	case "miio":
+		return &miio{}, nil
+	case "lwm2m":
+		return &lwm2m{}, nil
+	// IIoT (industrial IoT transports / discovery).
+	case "modbus_udp":
+		return &modbusUDP{}, nil
+	case "enip_udp":
+		return &enipUDP{}, nil
+	case "opcua_pubsub":
+		return &opcuaPubSub{}, nil
+	case "dds_rtps":
+		return &ddsRTPS{}, nil
+	case "hartip_udp":
+		return &hartIPUDP{}, nil
+	// OT / building automation.
+	case "crestron":
+		return &crestron{}, nil
+	case "pjlink":
+		return &pjlink{}, nil
+	case "cbus":
+		return &cbus{}, nil
+	case "dnp3_udp":
+		return &dnp3UDP{}, nil
+	case "saia_sbus":
+		return &saiaSBus{}, nil
 	case "dtls":
 		return &dtls{}, nil
 	case "quic":

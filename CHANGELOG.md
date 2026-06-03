@@ -8,6 +8,42 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — protocol-coverage expansion: IoT/IIoT/OT UDP, full HTTP capture, clickable summary
+
+- **25 new UDP protocol handlers** (131 TCP + **67 UDP** total), all
+  reflection-safe (capture-only; several decode known amplification vectors
+  without ever replying):
+  - *Infrastructure*: `wsdiscovery` (3702), `memcached_udp` (11211), `natpmp`
+    (5351), `ubiquiti` (10001), `wireguard` (51820), `openvpn_udp` (1194),
+    `l2tp` (1701), `rip` (520), `steam` A2S (27015), `sentinel_hasp` (1947).
+  - *IoT*: `mqtt_sn` (1884), `tplink_kasa` (9999 — decrypts the autokey-XOR
+    JSON), `tuya` (6667), `miio` (54321), `lwm2m` (5683/5684).
+  - *IIoT*: `modbus_udp` (502), `enip_udp` (44818 — CIP ListIdentity),
+    `opcua_pubsub` (4840 — UADP), `dds_rtps` (7400+ — ROS 2 / OMG DDS),
+    `hartip_udp` (5094).
+  - *OT / building automation*: `crestron` (41794), `pjlink` (4352), `cbus`
+    (20023 — Clipsal), `dnp3_udp` (20000), `saia_sbus` (5050).
+- **Deeper decoding for 10 existing protocols**: ntp (mode-6/7 request codes),
+  tftp (firmware-push + path traversal), ipmi (RMCP+ / Cipher-Zero auth bypass),
+  ssdp (ssdp:all amplification), snmp (GETBULK amplification + default
+  community), bacnet (DeviceCommunicationControl / ReinitializeDevice /
+  AtomicWriteFile), mdns (service-type recon), sip (digest-user capture +
+  OPTIONS sweeps), dns (ANY amplification), dhcp (DHCPINFORM / PXE boot).
+- **10 new Lua service personas** (**119** shipped scripts): tomcat-manager,
+  vcenter (CVE-2021-21972 / Log4Shell), fortios-vpn (CVE-2018-13379),
+  citrix-netscaler (CVE-2019-19781 / CVE-2023-3519), exchange-owa
+  (ProxyLogon/ProxyShell), coldfusion (CVE-2023-26360), activemq, ivanti-ics
+  (CVE-2024-21887), dlink-hnap, zyxel-firewall (CVE-2022-30525), solarwinds-orion.
+- **Full HTTP/HTTPS request capture**: the method, full URI + decoded query
+  parameters, every request header, parsed cookies, the Authorization header +
+  any bearer token, the Referer, and any JavaScript in the request (captured,
+  never executed). The event detail page gained a dedicated *HTTP request*
+  section; cookies + tokens surface on the captures page.
+- **Clickable summary**: every line item on the summary page — ATT&CK tactic,
+  handler, top source country, top source ASN, top tool/scanner — now links to
+  the filtered event list (`?tactic=` / `?handler=` / `?country=` / `?asn=` /
+  `?tool=`), so you can pivot from any aggregate to the attacks behind it.
+
 ### Added — web-console overhaul + mail emulation + operability (version 2.8.0)
 
 Version bumped to **2.8.0**. A large pass focused on the operator console, mail

@@ -34,6 +34,15 @@ func (m *mdns) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	if strings.HasPrefix(name, "_services._dns-sd._udp") || strings.Contains(name, "._dns-sd.") {
 		flagAnomaly(&res, "mdns-service-enumeration")
 	}
+	// Surface the specific service type the probe hunts for (e.g. _ssh._tcp,
+	// _smb._tcp, _ipp._tcp) — high-value-target recon over mDNS.
+	if svc := mdnsServiceType(name); svc != "" {
+		res.Meta["mdns_service"] = svc
+		switch svc {
+		case "_ssh._tcp", "_sftp-ssh._tcp", "_smb._tcp", "_rdp._tcp", "_vnc._tcp":
+			flagAnomaly(&res, "mdns-remote-access-recon")
+		}
+	}
 
 	ourIP := pc.LocalAddr().String()
 	if i := strings.LastIndex(ourIP, ":"); i >= 0 {
@@ -50,4 +59,17 @@ func (m *mdns) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	_ = cfg
 	return res, nil
+}
+
+// mdnsServiceType extracts the "_service._proto" label pair from a DNS-SD
+// query name (e.g. "_ssh._tcp.local" -> "_ssh._tcp"); "" if not a service name.
+func mdnsServiceType(name string) string {
+	i := strings.Index(name, "._tcp")
+	if i < 0 {
+		i = strings.Index(name, "._udp")
+	}
+	if i <= 0 || name[0] != '_' {
+		return ""
+	}
+	return name[:i+5]
 }

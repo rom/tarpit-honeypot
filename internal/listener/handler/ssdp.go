@@ -60,6 +60,11 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		res.Meta["incomplete_msearch"] = true
 		return res, nil
 	}
+	// ST: ssdp:all asks every device to enumerate every service — the highest
+	// amplification factor and the hallmark of an SSDP reflection probe.
+	if strings.EqualFold(st, "ssdp:all") {
+		flagAnomaly(&res, "ssdp-all-amplification")
+	}
 	location := "http://192.168.1.1:1900/rootDesc.xml"
 	usn := "uuid:tarpit-honeypot-1234::upnp:rootdevice"
 	server := "Linux/3.14 UPnP/1.0 TPLink-Router/2.0"

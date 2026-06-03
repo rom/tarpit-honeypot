@@ -81,7 +81,8 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 		invokeID := payload[apduStart+2]
 		csvc := payload[apduStart+3]
 		res.Meta["apdu_service"] = bacnetConfirmedName(csvc)
-		if csvc == 0x0F { // WriteProperty
+		switch csvc {
+		case 0x0F, 0x10: // WriteProperty / WritePropertyMultiple
 			flagAnomaly(&res, "bacnet-write-attempt")
 			ack := buildSimpleACK(invokeID, csvc)
 			if _, err := pc.WriteTo(ack, src); err != nil {
@@ -89,6 +90,12 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 			} else {
 				res.BannerSent = "bacnet SimpleACK (WriteProperty)"
 			}
+		case 0x11: // DeviceCommunicationControl — disable a device's comms (DoS)
+			flagAnomaly(&res, "bacnet-device-comm-control")
+		case 0x14: // ReinitializeDevice — warm/cold reboot
+			flagAnomaly(&res, "bacnet-reinitialize-device")
+		case 0x07: // AtomicWriteFile — overwrite a device file
+			flagAnomaly(&res, "bacnet-file-write-attempt")
 		}
 		_ = cfg
 		return res, nil

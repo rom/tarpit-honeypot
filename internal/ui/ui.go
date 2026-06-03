@@ -230,7 +230,55 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		"confLabel":      toolfp.ConfidenceLabel,
 		"techDesc":       mitre.Describe,
 		"cveURL":         func(id string) string { return cveURL(cveSource, id) },
+		// metaScalar returns the event meta minus the keys rendered in their own
+		// dedicated sections (the structured HTTP capture), so the generic meta
+		// table doesn't also dump them as ugly map[...] blobs.
+		"metaScalar": metaScalar,
+		// strMap coerces a meta value (a map after JSON round-trip is
+		// map[string]any) into an ordered-rangeable map[string]string for the
+		// detail-page sub-tables.
+		"strMap": strMap,
 	}
+}
+
+// httpDetailKeys are surfaced in the event detail page's dedicated "HTTP
+// request" section, so they're filtered out of the generic meta dump.
+var httpDetailKeys = map[string]bool{
+	"http_headers":      true,
+	"http_cookies":      true,
+	"http_query_params": true,
+	"http_javascript":   true,
+}
+
+func metaScalar(m map[string]any) map[string]any {
+	if len(m) == 0 {
+		return m
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if httpDetailKeys[k] {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func strMap(v any) map[string]string {
+	out := map[string]string{}
+	switch m := v.(type) {
+	case map[string]string:
+		return m
+	case map[string]any:
+		for k, val := range m {
+			if s, ok := val.(string); ok {
+				out[k] = s
+			} else {
+				out[k] = fmt.Sprintf("%v", val)
+			}
+		}
+	}
+	return out
 }
 
 // externalOrigin returns the "scheme://host" of an absolute http(s) URL, or ""
@@ -620,6 +668,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	// Post-query pivots for the summary aggregations that aren't simple columns:
+	// tool (a meta string array), ATT&CK tactic (computed per event), and ASN
+	// (parsed from the asn meta label). These let every summary line item link
+	// to "all events matching it".
+	evs = filterByMeta(evs, q.Get("tool"), q.Get("tactic"), q.Get("asn"))
 	sortEvents(evs, sortKey, order)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := eventsPage{
@@ -633,6 +686,34 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if err := s.tmpl.ExecuteTemplate(w, "events", page); err != nil {
 		slog.Warn("ui: render events", "err", err)
 	}
+}
+
+// filterByMeta narrows events by the post-query summary pivots that aren't
+// plain DB columns: tool (a meta "tools" string array), ATT&CK tactic
+// (computed per event), and ASN (the numeric meta "asn"). Each empty argument
+// is a no-op; tool/tactic match case-insensitively.
+func filterByMeta(evs []*event.Event, tool, tactic, asn string) []*event.Event {
+	if tool == "" && tactic == "" && asn == "" {
+		return evs
+	}
+	asnNum := 0
+	if asn != "" {
+		asnNum, _ = strconv.Atoi(strings.TrimPrefix(strings.ToUpper(asn), "AS"))
+	}
+	out := make([]*event.Event, 0, len(evs))
+	for _, ev := range evs {
+		if tool != "" && !containsFold(metaStrings(ev.Meta, "tools"), tool) {
+			continue
+		}
+		if tactic != "" && !containsFold(eventTag(ev).Tactics, tactic) {
+			continue
+		}
+		if asnNum > 0 && metaInt(ev.Meta, "asn") != asnNum {
+			continue
+		}
+		out = append(out, ev)
+	}
+	return out
 }
 
 // sortEvents orders events in place by the requested column (empty key
@@ -1422,6 +1503,9 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("proto"); v != "" {
 		f.Proto = v
+	}
+	if v := q.Get("handler"); v != "" {
+		f.Handler = v
 	}
 	if v := q.Get("port"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {

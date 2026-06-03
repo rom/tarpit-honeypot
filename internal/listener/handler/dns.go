@@ -588,6 +588,13 @@ func dnsQueryAnomalies(name string, qtype uint16, msgLen int) []string {
 	if qtype == 10 || qtype == 16 {
 		out = append(out, "dns-tunneling-qtype")
 	}
+	// ANY (255) is the DNS-amplification primitive — one tiny query asks for
+	// every record, and with a spoofable UDP source it reflects amplified at a
+	// third party. The DNS handler caps its own answer sizes, but the probe
+	// itself is high-signal recon.
+	if qtype == 255 {
+		out = append(out, "dns-any-amplification")
+	}
 	// AXFR (252) / IXFR (251): a zone-transfer request tries to dump the
 	// whole zone — classic recon against a misconfigured authoritative
 	// server (and a strong tell on a workstation/DC archetype). We never

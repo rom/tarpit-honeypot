@@ -147,6 +147,21 @@ func (d *dhcp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 		res.Meta["dhcp_fingerprint"] = strings.Join(parts, ",")
 	}
 
+	// Message-type-specific signal: DHCPINFORM (8) requests config without
+	// taking a lease — a network-recon pattern; DHCPDECLINE (4) in volume is a
+	// starvation/DoS tell.
+	switch msgType {
+	case 8:
+		flagAnomaly(&res, "dhcp-inform-probe")
+	case 4:
+		flagAnomaly(&res, "dhcp-decline")
+	}
+	// PXEClient vendor class = a network-boot client. Network boot is a
+	// firmware/OS-imaging path an attacker can abuse to inject a tampered image.
+	if strings.Contains(strings.ToLower(vendorClass), "pxeclient") {
+		flagAnomaly(&res, "dhcp-pxe-boot")
+	}
+
 	// Flag a device-discovery anomaly so the device observer + SIEM
 	// route can pick this up as a learned host signal.
 	flagAnomaly(&res, "dhcp-client-observed")

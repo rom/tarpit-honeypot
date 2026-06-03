@@ -47,10 +47,30 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 		// flag the recon so an analyst sees the amplification probe.
 		switch mode {
 		case 7:
-			// mode 7 with REQ_MON_GETLIST(_1) is the monlist amplifier.
+			// mode 7 (ntpdc private). Decode the implementation + request code:
+			// REQ_MON_GETLIST (42) / REQ_MON_GETLIST_1 (20) is the monlist
+			// amplifier; the others are reconnaissance.
 			flagAnomaly(&res, "ntp-monlist-amplification")
+			res.Meta["ntp_impl"] = payload[2]
+			rc := payload[3]
+			res.Meta["ntp_request_code"] = rc
+			switch rc {
+			case 20, 42:
+				res.Meta["ntp_request"] = "REQ_MON_GETLIST"
+			case 0:
+				res.Meta["ntp_request"] = "REQ_PEER_LIST"
+			case 16:
+				res.Meta["ntp_request"] = "REQ_GET_RESTRICT"
+			}
 		case 6:
+			// mode 6 (control). Decode the opcode; READVAR is the ntpq
+			// amplification/recon vector.
 			flagAnomaly(&res, "ntp-control-query")
+			op := payload[1] & 0x1f
+			res.Meta["ntp_control_opcode"] = op
+			if op == 2 {
+				res.Meta["ntp_control"] = "READVAR"
+			}
 		}
 		return res, nil
 	}
