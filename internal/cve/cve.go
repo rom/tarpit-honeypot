@@ -1140,6 +1140,60 @@ var catalog = []Record{
 		CWE:         []string{"CWE-77"},
 		Description: "Palo Alto PAN-OS web management: an authenticated admin (or one obtained via the CVE-2024-0012 auth bypass) can run commands as root — chained for full appliance takeover in the wild.",
 	},
+
+	// --- fifth wave (2.8): more 2024 edge / enterprise-app exploits ---
+	{
+		ID: "CVE-2024-55956", Name: "Cleo Harmony/VLTrader unauth RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/synchronization", "autorun", "import autorun"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Cleo Harmony / VLTrader / LexiCom: an unauthenticated request to the Synchronization endpoint writes and auto-runs a file, giving remote code execution — mass-exploited by Cl0p in late 2024.",
+	},
+	{
+		ID: "CVE-2024-29824", Name: "Ivanti EPM SQL injection RCE", CVSS: 9.6, Service: "http",
+		Signatures: []string{"/wsstatusevents/eventhandler.asmx", "recordgoodapp"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-89"},
+		Description: "Ivanti Endpoint Manager: an unauthenticated SQL injection in the EventHandler SOAP endpoint reaches xp_cmdshell for remote code execution.",
+	},
+	{
+		ID: "CVE-2024-45195", Name: "Apache OFBiz auth bypass RCE", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/webtools/control/", "viewbizdetails", "forgotpassword/viewbizdetails"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-863"},
+		Description: "Apache OFBiz: a view-state/authorization confusion lets an unauthenticated attacker reach screen-rendering endpoints and chain to remote code execution.",
+	},
+	{
+		ID: "CVE-2024-20767", Name: "Adobe ColdFusion arbitrary file read", CVSS: 7.4, Service: "http",
+		Signatures: []string{"/cf_scripts/scripts/ajax/", "/cfide/adminapi/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-862"},
+		Description: "Adobe ColdFusion: improper access control on the admin CFIDE endpoints allows unauthenticated arbitrary file read (and write in some configs).",
+	},
+	{
+		ID: "CVE-2024-40711", Name: "Veeam Backup & Replication deserialization RCE", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Veeam Backup & Replication: unsafe deserialization in the backup service enables unauthenticated remote code execution — abused by ransomware affiliates for domain-wide impact.",
+	},
+	{
+		ID: "CVE-2024-29849", Name: "Veeam Enterprise Manager auth bypass", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-287"},
+		Description: "Veeam Backup Enterprise Manager: an unauthenticated attacker can log in as any user via a crafted VMware SSO token, fully bypassing authentication.",
+	},
+	{
+		ID: "CVE-2024-7593", Name: "Ivanti vTM auth bypass", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-287"},
+		Description: "Ivanti Virtual Traffic Manager: an incorrect authentication-algorithm implementation in the admin panel lets a remote attacker create an administrator account.",
+	},
+	{
+		ID: "CVE-2024-48887", Name: "FortiSwitch unverified admin password change", CVSS: 9.3, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-640"},
+		Description: "Fortinet FortiSwitch GUI: an unverified password-change endpoint lets a remote unauthenticated attacker set the administrator password and take over the switch.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

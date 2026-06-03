@@ -45,7 +45,16 @@ credential/CVE emulation, captures, and live-deploy ergonomics.
   page gained build-generated reference catalogs (JA*/HASSH, handlers, ATT&CK
   techniques, CVEs, CWEs, CPE/CVSS/EPSS).
 - **Fake web app** runs over real HTTPS (optional per-listener `https.cert_file`
-  / `key_file`) with professional styling.
+  / `key_file`) with professional styling, and is now **brandable**
+  (`listener.webapp_brand`: custom name / accent colour / logo mark / intro
+  text; colour validated against CSS injection).
+- **More coverage**: +8 CVEs (**189** total — Cleo unauth RCE, Ivanti EPM SQLi,
+  OFBiz/ColdFusion, Veeam, FortiSwitch, …); **+15 Lua personas** (108 total —
+  Webmin, Cacti, Proxmox, OpenWRT LuCI, Pi-hole, WebLogic, JBoss, Jira,
+  Confluence, SharePoint, Nextcloud, Hikvision, MikroTik, SonicWall, TeamCity,
+  plus the earlier squid/stomp/tor-control); **+3 protocol handlers** —
+  `svn` (svnserve, TCP 3690), `nbd` (Network Block Device, TCP 10809), and
+  `statsd` (UDP 8125, capture-only / reflection-safe).
 - **Hardening / fixes**: SELinux confinement fix (binary was mislabeled
   `bin_t`), setuid/setgid identity pinning with an ownership guard, a
   `.deployment-id` "permission denied" startup fix with actionable errors, and
