@@ -106,11 +106,37 @@ func TestDocsTemplateRenders(t *testing.T) {
 	html := b.String()
 	for _, want := range []string{
 		"documentation", "scananalysis:profile", "Small services", "tarpit.emulate",
-		"7 listener(s)", "127.0.0.1:8080",
 		`href="/topology"`, `href="/docs"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("docs page missing %q", want)
+		}
+	}
+	if strings.Contains(html, "<h2>this deployment</h2>") {
+		t.Errorf("'this deployment' should have moved off the docs page")
+	}
+}
+
+func TestConfigDeploymentBlock(t *testing.T) {
+	var b strings.Builder
+	p := configPage{
+		Deployment:    deploymentInfo{Listeners: 7, Networks: 2, Hosts: 5, DevicesOn: true, UIBind: "127.0.0.1:8080"},
+		Uptime:        "2d 3h 12m",
+		OldestEvent:   "2026-05-01T00:00:00Z",
+		RetentionSpan: "29d 4h",
+		Canvas:        configCanvas{Listeners: []portCard{{Proto: "tcp", Port: 22, PortLabel: "22", Handler: "ssh", Mode: "banner", Service: "ssh"}}},
+	}
+	if err := uiTmpl(t).ExecuteTemplate(&b, "config", p); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{
+		"this deployment", "7 listener(s)", "127.0.0.1:8080",
+		"2d 3h 12m", "2026-05-01T00:00:00Z", "oldest event",
+		`href="/events?port=22"`, // clickable infrastructure canvas
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("config page missing %q", want)
 		}
 	}
 }

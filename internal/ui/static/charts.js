@@ -329,10 +329,19 @@ window.TarpitCharts = (function () {
   // sankey / flow: { nodes:[{id,label}], links:[{source,target,value}] }
   charts.sankey = function (d) {
     var nodes = d.nodes || [], links = d.links || [], W = 760, P = { t: 20, b: 20 };
-    // Assign layers by longest-path from sources.
     var idx = {}; nodes.forEach(function (nd, i) { idx[nd.id] = i; });
-    var layer = nodes.map(function () { return 0; }), changed = true, guard = 0;
-    while (changed && guard++ < 50) { changed = false; links.forEach(function (l) { if (idx[l.target] != null && idx[l.source] != null && layer[idx[l.target]] < layer[idx[l.source]] + 1) { layer[idx[l.target]] = layer[idx[l.source]] + 1; changed = true; } }); }
+    var layer;
+    // Prefer explicit per-node columns (node.layer) — the kill-chain journey
+    // pins these so a looping path can't collapse the layout. Otherwise infer
+    // columns by longest-path from sources (a DAG-ish flow).
+    if (nodes.length && nodes.every(function (n) { return typeof n.layer === "number"; })) {
+      var minLayer = Math.min.apply(null, nodes.map(function (n) { return n.layer; }));
+      layer = nodes.map(function (n) { return n.layer - minLayer; }); // dense, 0-based
+    } else {
+      layer = nodes.map(function () { return 0; });
+      var changed = true, guard = 0;
+      while (changed && guard++ < 50) { changed = false; links.forEach(function (l) { if (idx[l.target] != null && idx[l.source] != null && layer[idx[l.target]] < layer[idx[l.source]] + 1) { layer[idx[l.target]] = layer[idx[l.source]] + 1; changed = true; } }); }
+    }
     var maxL = Math.max.apply(null, layer.concat([0])), byL = {};
     nodes.forEach(function (nd, i) { (byL[layer[i]] = byL[layer[i]] || []).push(i); });
     var inSum = nodes.map(function () { return 0; }), outSum = nodes.map(function () { return 0; });

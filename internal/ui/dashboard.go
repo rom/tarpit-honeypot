@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -74,10 +75,21 @@ type dashboard struct {
 	Scanned   int
 	// Charts are charts.js figures rendered alongside the CSS bars (JS on).
 	Charts []chartFig
+	// Time-range selector (24h / 7d / 14d / 31d) + the resulting labels.
+	RangeLabel string      // page heading, e.g. "last 24 hours"
+	TrendTitle string      // e.g. "events per hour" / "events per day"
+	RangeLinks []rangeLink // the selector chips
 }
 
-func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
-	d := dashboard{Sum: sum}
+// rangeLink is one chip of the summary's time-range selector.
+type rangeLink struct {
+	Label  string
+	Href   string
+	Active bool
+}
+
+func buildDashboard(sum store.Summary, hours []store.HourBucket, bucket time.Duration) dashboard {
+	d := dashboard{Sum: sum, TrendTitle: trendTitle(bucket)}
 
 	sevOrder := []string{"low", "medium", "high", "critical"}
 	maxSev, sumSev := 0, 0
@@ -112,18 +124,41 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket) dashboard {
 			maxH = h.Count
 		}
 	}
-	for _, h := range hours {
-		// Tick on the clock boundaries (00/06/12/18) so the axis labels stay
-		// readable and line up under their bars.
-		d.Trend = append(d.Trend, hourBar{
-			Pct:      pct(h.Count, maxH),
-			Count:    h.Count,
-			Full:     h.Hour.Format("01-02 15h"),
-			Hour:     h.Hour.Format("15"),
-			ShowTick: h.Hour.Hour()%6 == 0,
-		})
+	daily := bucket >= 24*time.Hour
+	n := len(hours)
+	for i, h := range hours {
+		hb := hourBar{Pct: pct(h.Count, maxH), Count: h.Count}
+		if daily {
+			// Per-day buckets: date axis, tick a handful of evenly-spaced days.
+			hb.Full = h.Hour.Format("2006-01-02")
+			hb.Hour = h.Hour.Format("01-02")
+			step := (n + 5) / 6
+			if step < 1 {
+				step = 1
+			}
+			hb.ShowTick = i%step == 0
+		} else {
+			// Sub-day buckets: hour-of-day axis, tick on 6h clock boundaries so
+			// labels stay readable and line up under their bars.
+			hb.Full = h.Hour.Format("01-02 15h")
+			hb.Hour = h.Hour.Format("15")
+			hb.ShowTick = h.Hour.Hour()%6 == 0
+		}
+		d.Trend = append(d.Trend, hb)
 	}
 	return d
+}
+
+// trendTitle names the events-over-time histogram for the chosen bucket width.
+func trendTitle(bucket time.Duration) string {
+	switch {
+	case bucket <= 0 || bucket == time.Hour:
+		return "events per hour"
+	case bucket >= 24*time.Hour:
+		return "events per day"
+	default:
+		return "events per " + strings.TrimSuffix(bucket.String(), "0m0s")
+	}
 }
 
 // enrichDashboard adds the cross-cutting charts that need per-event meta

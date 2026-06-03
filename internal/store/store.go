@@ -363,6 +363,8 @@ type Filter struct {
 	MinSeverity event.Severity
 	// Proto restricts to a transport (tcp / udp / icmp / l2 / …); empty = any.
 	Proto string
+	// DstPort restricts to a destination (listener) port; 0 = any.
+	DstPort int
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
@@ -402,6 +404,10 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.Proto != "" {
 		q += " AND proto = ?"
 		args = append(args, f.Proto)
+	}
+	if f.DstPort > 0 {
+		q += " AND dst_port = ?"
+		args = append(args, f.DstPort)
 	}
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"
@@ -588,7 +594,17 @@ type HourBucket struct {
 // EventsPerHour returns hourly event counts from since to now, with empty
 // hours zero-filled, for the dashboard trend chart.
 func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]HourBucket, error) {
-	const hourNS = int64(3600) * 1_000_000_000
+	return s.EventsPerBucket(ctx, since, time.Hour)
+}
+
+// EventsPerBucket is EventsPerHour generalized to an arbitrary bucket width, so
+// the summary trend can show 24h (1h buckets) up to 31d (1d buckets) without a
+// thousand bars. Empty buckets are zero-filled; Hour holds each bucket's start.
+func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket time.Duration) ([]HourBucket, error) {
+	hourNS := int64(bucket / time.Nanosecond)
+	if hourNS <= 0 {
+		hourNS = int64(time.Hour)
+	}
 	startBucket := since.UTC().UnixNano() / hourNS
 	nowBucket := time.Now().UTC().UnixNano() / hourNS
 	counts := map[int64]int{}
@@ -616,6 +632,20 @@ func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]HourBucke
 		out = append(out, HourBucket{Hour: time.Unix(0, b*hourNS).UTC(), Count: counts[b]})
 	}
 	return out, nil
+}
+
+// OldestEventTime returns the timestamp of the earliest event still in the
+// database (zero time when empty) — the retention horizon shown on the config
+// page. Counts/Stats also expose totals; this is the "oldest entry" marker.
+func (s *Store) OldestEventTime(ctx context.Context) (time.Time, error) {
+	var ns sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MIN(time) FROM events`).Scan(&ns); err != nil {
+		return time.Time{}, err
+	}
+	if !ns.Valid || ns.Int64 == 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(0, ns.Int64).UTC(), nil
 }
 
 func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {

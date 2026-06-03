@@ -74,6 +74,7 @@ type Server struct {
 	dataDir       string
 	configPaths   []string   // config file path(s), for the /config "files in use" panel
 	hidden        *ipMatcher // presentation-layer source-IP hide list (ui.hidden_ips)
+	startTime     time.Time  // process start, for the config page uptime
 }
 
 // SetConfigPaths wires the config file path(s) so the /config page can list
@@ -178,7 +179,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 	if st == nil {
 		return nil, errors.New("ui: store is required")
 	}
-	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(), hidden: newIPMatcher(cfg.HiddenIPs)}
+	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(), hidden: newIPMatcher(cfg.HiddenIPs), startTime: time.Now()}
 	if cfg.AuthTokenEnv != "" {
 		s.authToken = os.Getenv(cfg.AuthTokenEnv)
 		if s.authToken == "" {
@@ -205,6 +206,9 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// drill-down. attackType: enterprise|ics, for the link tooltip.
 		"attackURL":  attackURL,
 		"attackType": attackType,
+		// creds extracts captured credentials/secrets from an event's meta so
+		// the event-detail (per-protocol) view can highlight them.
+		"creds": extractCreds,
 		"attackLinkURL": func(id string) string {
 			if !attackLinks {
 				return ""
@@ -460,6 +464,41 @@ func serverError(w http.ResponseWriter, where string, err error) {
 	http.Error(w, "internal server error", http.StatusInternalServerError)
 }
 
+// sumWindow is a summary-page time range: the lookback duration, the histogram
+// bucket width that keeps the trend readable, and display labels.
+type sumWindow struct {
+	key    string
+	dur    time.Duration
+	bucket time.Duration
+	label  string
+}
+
+// summaryRange maps the ?range= selector to a window (default 24h).
+func summaryRange(key string) sumWindow {
+	switch key {
+	case "7d":
+		return sumWindow{"7d", 7 * 24 * time.Hour, 6 * time.Hour, "last 7 days"}
+	case "14d":
+		return sumWindow{"14d", 14 * 24 * time.Hour, 12 * time.Hour, "last 14 days"}
+	case "31d":
+		return sumWindow{"31d", 31 * 24 * time.Hour, 24 * time.Hour, "last 31 days"}
+	default:
+		return sumWindow{"24h", 24 * time.Hour, time.Hour, "last 24 hours"}
+	}
+}
+
+func summaryRangeLinks(active string) []rangeLink {
+	out := []rangeLink{}
+	for _, key := range []string{"24h", "7d", "14d", "31d"} {
+		href := "/"
+		if key != "24h" {
+			href = "/?range=" + key
+		}
+		out = append(out, rangeLink{Label: key, Href: href, Active: key == active})
+	}
+	return out
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -467,19 +506,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	since := time.Now().Add(-24 * time.Hour)
+	win := summaryRange(r.URL.Query().Get("range"))
+	since := time.Now().Add(-win.dur)
 	sum, err := s.store.Summary(ctx, since)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
-	hours, err := s.store.EventsPerHour(ctx, since)
+	hours, err := s.store.EventsPerBucket(ctx, since, win.bucket)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
-	d := buildDashboard(sum, hours)
+	d := buildDashboard(sum, hours, win.bucket)
+	d.RangeLabel = win.label
+	d.RangeLinks = summaryRangeLinks(win.key)
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
 	// Counters link to the matching event listing so an operator can click a
@@ -765,11 +807,63 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Files:      s.configFileRows(),
 		Themes:     themePickerLinks(currentTheme(r), "/config"),
 		Sizes:      sizePickerLinks(currentSize(r), "/config"),
+		Deployment: s.deploymentInfo(),
+		Uptime:     fmtDuration(time.Since(s.startTime)),
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	if t, err := s.store.OldestEventTime(ctx); err == nil && !t.IsZero() {
+		page.OldestEvent = t.Format(time.RFC3339)
+		page.RetentionSpan = fmtDuration(time.Since(t))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
 		slog.Warn("ui: render config", "err", err)
 	}
+}
+
+// deploymentInfo is the at-a-glance "this deployment" summary (moved here from
+// the docs page): listener / honeynet / host counts + device tracking + bind.
+func (s *Server) deploymentInfo() deploymentInfo {
+	d := deploymentInfo{UIBind: s.cfg.Bind}
+	if s.fullConfig != nil {
+		d.Listeners = len(s.fullConfig.Listeners)
+		d.Networks = len(s.fullConfig.Honeynets)
+		d.DevicesOn = s.fullConfig.Devices.Enabled
+	}
+	if s.topo != nil {
+		d.Hosts = len(s.topo.HostsInNetwork(""))
+	}
+	return d
+}
+
+// fmtDuration renders a coarse, human "2d 3h 12m" style duration for the
+// uptime / retention-span displays.
+func fmtDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	day := d / (24 * time.Hour)
+	d -= day * 24 * time.Hour
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	switch {
+	case day > 0:
+		return fmt.Sprintf("%dd %dh %dm", day, h, m)
+	case h > 0:
+		return fmt.Sprintf("%dh %dm", h, m)
+	default:
+		return fmt.Sprintf("%dm", m)
+	}
+}
+
+type deploymentInfo struct {
+	Listeners int
+	Networks  int
+	Hosts     int
+	DevicesOn bool
+	UIBind    string
 }
 
 // handleAPIConfigCanvas returns the listener/collector board as JSON for
@@ -800,15 +894,19 @@ func (s *Server) configYAML() string {
 }
 
 type configPage struct {
-	YAML       string
-	YAMLHTML   template.HTML // YAML with case-insensitive matches wrapped in <mark>
-	Query      string        // the raw search query (echoed in the input)
-	MatchCount int           // number of substring matches across the whole YAML
-	LinesOnly  bool          // true when ?lines=only filters out non-matching lines
-	Canvas     configCanvas
-	Files      []fileRow
-	Themes     []themeLink
-	Sizes      []sizeLink
+	YAML          string
+	YAMLHTML      template.HTML // YAML with case-insensitive matches wrapped in <mark>
+	Query         string        // the raw search query (echoed in the input)
+	MatchCount    int           // number of substring matches across the whole YAML
+	LinesOnly     bool          // true when ?lines=only filters out non-matching lines
+	Canvas        configCanvas
+	Files         []fileRow
+	Themes        []themeLink
+	Sizes         []sizeLink
+	Deployment    deploymentInfo // "this deployment" block (moved from docs)
+	Uptime        string         // sensor running time, e.g. "2d 3h 12m"
+	OldestEvent   string         // RFC3339 timestamp of the earliest event in the DB
+	RetentionSpan string         // how far back that is, e.g. "29d 4h"
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,
@@ -1270,6 +1368,11 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("proto"); v != "" {
 		f.Proto = v
+	}
+	if v := q.Get("port"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {
+			f.DstPort = n
+		}
 	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v

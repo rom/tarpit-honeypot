@@ -27,7 +27,7 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
 	hours, _ := s.store.EventsPerHour(ctx, since)
-	d := buildDashboard(sum, hours)
+	d := buildDashboard(sum, hours, time.Hour)
 	var evs []*event.Event
 	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		evs = e

@@ -18,7 +18,7 @@ func TestBuildDashboard(t *testing.T) {
 		TopSources: []store.SourceCount{{IP: "1.2.3.4", Count: 8}, {IP: "5.6.7.8", Count: 2}},
 	}
 	hours := []store.HourBucket{{Hour: time.Now().Add(-time.Hour), Count: 4}, {Hour: time.Now(), Count: 6}}
-	d := buildDashboard(sum, hours)
+	d := buildDashboard(sum, hours, time.Hour)
 
 	if len(d.Severity) != 3 {
 		t.Errorf("severity bars = %d; want 3", len(d.Severity))
@@ -63,7 +63,9 @@ func TestDashboardTemplateRenders(t *testing.T) {
 	d := buildDashboard(store.Summary{
 		Total: 3, BySeverity: map[string]int{"high": 3}, ByRule: map[string]int{"webapp:sqli": 3},
 		TopSources: []store.SourceCount{{IP: "9.9.9.9", Count: 3}},
-	}, []store.HourBucket{{Hour: time.Now(), Count: 3}})
+	}, []store.HourBucket{{Hour: time.Now(), Count: 3}}, time.Hour)
+	d.RangeLabel = "last 24 hours"
+	d.RangeLinks = summaryRangeLinks("24h")
 	var b strings.Builder
 	if err := tmpl.ExecuteTemplate(&b, "index", d); err != nil {
 		t.Fatal(err)
@@ -76,7 +78,7 @@ func TestDashboardTemplateRenders(t *testing.T) {
 
 func TestSummaryCountersRender(t *testing.T) {
 	tmpl := uiTmpl(t)
-	d := buildDashboard(store.Summary{Total: 5, ByProto: map[string]int{"tcp": 3, "udp": 2}}, nil)
+	d := buildDashboard(store.Summary{Total: 5, ByProto: map[string]int{"tcp": 3, "udp": 2}}, nil, time.Hour)
 	d.Counters = []counter{{Label: "events", Value: 5}, {Label: "TCP", Value: 3}, {Label: "UDP", Value: 2}}
 	d.HasFrames = true
 	d.Frames = []counter{{Label: "received", Value: 100}, {Label: "ARP", Value: 10}, {Label: "TCP", Value: 60}}
