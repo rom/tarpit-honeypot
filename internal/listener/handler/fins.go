@@ -45,6 +45,16 @@ func (f *fins) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	res.Meta["dna"] = payload[3]
 	res.Meta["sna"] = payload[6]
 	res.Meta["sid"] = payload[9]
+	// Protocol-misuse flags: a memory/program write or a RUN/STOP mode change
+	// against the PLC is an actuation attempt (we still never apply it).
+	switch {
+	case mrc == 0x01 && src_ == 0x02: // MEMORY_AREA_WRITE
+		flagAnomaly(&res, "ics-plc-write")
+	case mrc == 0x03: // PROGRAM_AREA read/write
+		flagAnomaly(&res, "ics-plc-program-access")
+	case mrc == 0x04: // RUN (0x01) / STOP (0x02) — operating-mode change
+		flagAnomaly(&res, "ics-plc-mode-change")
+	}
 
 	// Build reply header: swap source/destination, set ICF response bit,
 	// echo MRC/SRC.

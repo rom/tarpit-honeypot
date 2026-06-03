@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -408,16 +409,24 @@ func metaInt(meta map[string]any, key string) int {
 	return 0
 }
 
-// extractCreds pulls a captured (user, pass) pair from an event's meta,
-// covering the field names the various auth handlers use.
+// extractCreds pulls every captured credential / secret out of an event's meta
+// so it lands on the /captures page and the attacker profile — not just the
+// handful of well-known login fields, but anything any handler or Lua persona
+// records: passwords, hashes, tickets, tokens, JWTs, community strings, session
+// keys, challenges, cookies, API keys, bind DNs, etc. It combines a curated
+// pairing pass (for nice user/pass rows) with a generalized classifier over the
+// meta key names, so new handlers/scripts are surfaced automatically as long as
+// they name the field sensibly (…_user / …_pass / …_token / …_auth / …_hash …).
 func extractCreds(ev *event.Event) []credPair {
 	meta := ev.Meta
 	if len(meta) == 0 {
 		return nil
 	}
+	seen := map[string]bool{} // meta keys already turned into a row
 	get := func(keys ...string) string {
 		for _, k := range keys {
 			if s, ok := meta[k].(string); ok && s != "" {
+				seen[k] = true
 				return s
 			}
 		}
@@ -431,11 +440,13 @@ func extractCreds(ev *event.Event) []credPair {
 	}
 	var out []credPair
 
-	// 1) username / password login pairs.
+	// 1) Curated username / password login pair (the common, non-suffix-shaped
+	// field names) — rendered as a single tidy row.
 	user := get("user_attempt", "http_login_user", "auth_user", "user_line",
 		"basic_user", "form_user", "login_user", "client_user", "remote_user",
 		"server_user", "local_user", "ntlm_user", "sip_user", "ami_username",
-		"socks_userid", "username", "user", "bind_dn")
+		"socks_userid", "username", "user", "user_name", "bind_dn", "vrfy_user",
+		"accepted_user", "principal")
 	pass := get("pass_attempt", "http_login_pass", "auth_pass", "pass_line",
 		"basic_pass", "form_pass", "pjl_password", "ami_secret", "password",
 		"pass", "bind_pw", "auth_password", "redis_auth")
@@ -443,26 +454,16 @@ func extractCreds(ev *event.Event) []credPair {
 		out = append(out, credPair{Kind: "password", User: user, Pass: pass, Service: svc})
 	}
 
-	// 2) standalone secrets — tokens / keys / communities / cookies the
-	// attacker presented (each present meta key becomes its own row), so they
-	// show up in /captures and on the profile, not just buried in event meta.
-	for _, sk := range []struct{ key, kind string }{
-		{"bearer_token", "token"},
-		{"vault_token", "token"},
-		{"token_hex", "token"},
-		{"ssrf_token", "token"},
-		{"authorization", "authorization"},
-		{"kafka_api_key", "api-key"},
-		{"community", "snmp-community"},
-		{"cookie", "cookie"},
-		{"honeytoken", "honeytoken"},
-	} {
-		if v := get(sk.key); v != "" {
-			out = append(out, credPair{Kind: sk.kind, Pass: v, Service: svc})
-		}
+	// 2) Generic prefix pairing: any "<p>_user(name)" + "<p>_pass(word)" the
+	// many Lua personas use (adminer_username/adminer_password,
+	// roundcube_user/roundcube_pass, irc_user/irc_pass, …).
+	for _, p := range credPrefixPairs(meta, seen) {
+		out = append(out, p)
+		out[len(out)-1].Service = svc
 	}
-	// Kerberos pre-auth: the encrypted timestamp is an offline-crackable ticket,
-	// keyed to the principal it was minted for.
+
+	// 3) Kerberos pre-auth: the encrypted timestamp is an offline-crackable
+	// ticket, keyed to the principal it was minted for.
 	if t := get("preauth_enc_timestamp_hex"); t != "" {
 		s := svc
 		if s == "" {
@@ -470,7 +471,153 @@ func extractCreds(ev *event.Event) []credPair {
 		}
 		out = append(out, credPair{Kind: "kerberos-ticket", User: get("principal"), Pass: t, Service: s})
 	}
+
+	// 4) Everything else: classify each remaining string-valued meta key by its
+	// name and emit it. This catches tokens, JWTs, hashes, challenges,
+	// communities, cookies, API keys, session keys, and every vendor "*_auth"
+	// blob — decoding Basic/Bearer Authorization values into user/pass/token.
+	for k, v := range meta {
+		if seen[k] {
+			continue
+		}
+		s, ok := v.(string)
+		if !ok || s == "" {
+			continue
+		}
+		kind, isCred := classifyCredKey(k)
+		if !isCred {
+			continue
+		}
+		seen[k] = true
+		if u, p, tok, decoded := decodeAuthValue(s); decoded {
+			switch {
+			case tok != "":
+				out = append(out, credPair{Kind: "token", Pass: tok, Service: svc})
+			default:
+				out = append(out, credPair{Kind: "password", User: u, Pass: p, Service: svc})
+			}
+			continue
+		}
+		out = append(out, credPair{Kind: kind, Pass: s, Service: svc})
+	}
 	return out
+}
+
+// credPrefixPairs finds "<prefix>_user(name)" + "<prefix>_pass(word)" key pairs
+// in meta and returns one password credPair per matched prefix, marking both
+// keys consumed in seen.
+func credPrefixPairs(meta map[string]any, seen map[string]bool) []credPair {
+	userSuf := []string{"_username", "_userid", "_user"}
+	passSuf := []string{"_password", "_passwd", "_pass", "_pwd"}
+	type up struct{ uKey, pKey, u, p string }
+	byPrefix := map[string]*up{}
+	str := func(k string) (string, bool) {
+		s, ok := meta[k].(string)
+		return s, ok && s != ""
+	}
+	for k := range meta {
+		if seen[k] {
+			continue
+		}
+		lk := strings.ToLower(k)
+		for _, suf := range userSuf {
+			if strings.HasSuffix(lk, suf) {
+				if s, ok := str(k); ok {
+					pfx := lk[:len(lk)-len(suf)]
+					if byPrefix[pfx] == nil {
+						byPrefix[pfx] = &up{}
+					}
+					byPrefix[pfx].uKey, byPrefix[pfx].u = k, s
+				}
+				break
+			}
+		}
+		for _, suf := range passSuf {
+			if strings.HasSuffix(lk, suf) {
+				if s, ok := str(k); ok {
+					pfx := lk[:len(lk)-len(suf)]
+					if byPrefix[pfx] == nil {
+						byPrefix[pfx] = &up{}
+					}
+					byPrefix[pfx].pKey, byPrefix[pfx].p = k, s
+				}
+				break
+			}
+		}
+	}
+	var out []credPair
+	for _, v := range byPrefix {
+		if v.u == "" && v.p == "" {
+			continue
+		}
+		// Only pair (and consume both) when both halves are present; a lone
+		// half is left for the generic classifier to emit as a single row.
+		if v.u != "" && v.p != "" {
+			seen[v.uKey] = true
+			seen[v.pKey] = true
+			out = append(out, credPair{Kind: "password", User: v.u, Pass: v.p})
+		}
+	}
+	return out
+}
+
+// classifyCredKey decides whether a meta key name denotes a credential/secret
+// and, if so, what kind. It is conservative: a small exclusion set prevents
+// obvious false positives (user_agent, auth_type, …).
+func classifyCredKey(key string) (kind string, isCred bool) {
+	k := strings.ToLower(key)
+	switch k {
+	case "user_agent", "auth_type", "auth_accepted", "auth_attempts", "auth_method",
+		"automation", "automation_reason", "ntlm_domain", "x11_auth_name":
+		return "", false
+	}
+	has := func(sub string) bool { return strings.Contains(k, sub) }
+	suf := func(s string) bool { return strings.HasSuffix(k, s) }
+	switch {
+	case has("jwt"):
+		return "jwt", true
+	case has("honeytoken"):
+		return "honeytoken", true
+	case has("community"):
+		return "snmp-community", true
+	case has("cookie"):
+		return "cookie", true
+	case has("ticket") || has("preauth"):
+		return "kerberos-ticket", true
+	case has("ntlm_response") || has("auth_response") || has("response_hex") ||
+		has("challenge_hex") || has("encrypted_hex") || suf("_hash") || has("_hash_"):
+		return "hash", true
+	case has("challenge") || suf("_nonce"):
+		return "challenge", true
+	case has("bearer") || suf("_token") || suf("_session") || has("session_key") || k == "token":
+		return "token", true
+	case has("api_key") || has("apikey") || suf("_secret") || has("session_key") ||
+		has("passphrase") || suf("_psk") || has("private_key"):
+		return "api-key", true
+	case suf("_auth") || k == "authorization" || k == "proxy_authorization" || suf("_pam"):
+		return "authorization", true
+	case suf("_password") || suf("_passwd") || suf("_pass") || suf("_pwd"):
+		return "password", true
+	case suf("_user") || suf("_username") || suf("_userid"):
+		return "username", true
+	}
+	return "", false
+}
+
+// decodeAuthValue decodes an HTTP Authorization-style value: "Basic <b64>" into
+// user/pass, "Bearer <tok>" into a token, or a bare base64 "user:pass" blob.
+// Returns decoded=false when the value isn't a recognizable auth blob.
+func decodeAuthValue(v string) (user, pass, token string, decoded bool) {
+	switch {
+	case len(v) > 6 && strings.EqualFold(v[:6], "basic "):
+		if raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v[6:])); err == nil {
+			u, p, _ := strings.Cut(string(raw), ":")
+			return u, p, "", true
+		}
+	case len(v) > 7 && strings.EqualFold(v[:7], "bearer "):
+		return "", "", strings.TrimSpace(v[7:]), true
+	}
+	return "", "", "", false
 }
 
 func threatLevel(score int) string {

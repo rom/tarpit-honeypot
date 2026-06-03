@@ -23,6 +23,15 @@ func TestNewUDPHandlersAreReflectionSafe(t *testing.T) {
 		"modbus_udp", "enip_udp", "opcua_pubsub", "dds_rtps", "hartip_udp",
 		// OT / building automation
 		"crestron", "pjlink", "cbus", "dnp3_udp", "saia_sbus",
+		// batch 2 — general infra
+		"slp", "xdmcp", "db_lsp", "kerberos_udp", "lantronix_disc",
+		"pcanywhere_stat", "gamespy", "db2_disc", "bt_dht", "rdp_udp",
+		// batch 2 — IoT
+		"matter", "wiz", "yeelight", "dahua_disc", "hikvision_sadp",
+		// batch 2 — IIoT
+		"powerlink", "slmp", "cip_io", "ff_hse", "ads_udp",
+		// batch 2 — OT / building automation
+		"pcom_udp", "synchrophasor", "loxone", "amx_netlinx", "vantage",
 	}
 	// A 64-byte buffer with a few recognizable bytes; enough to exercise the
 	// header decoders without tripping any reply path (there is none).
@@ -127,5 +136,39 @@ func TestDDSRTPSDecoded(t *testing.T) {
 	}
 	if res.Meta["rtps_version"] != "2.3" {
 		t.Errorf("rtps_version = %v", res.Meta["rtps_version"])
+	}
+}
+
+func TestSLMPWriteFlagged(t *testing.T) {
+	// SLMP 3E request (0x5400), command 0x1401 (Write) at offset 11 (LE).
+	pkt := []byte{0x54, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x14}
+	res, err := (&slmp{}).Handle(context.Background(), pkt, &net.UDPAddr{}, &fakePacketConn{}, smallSvcCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasAnomaly(res, "ics-plc-write") {
+		t.Errorf("slmp write flag missing: %v", res.Meta["anomalies"])
+	}
+}
+
+func TestKerberosUDPASReq(t *testing.T) {
+	pkt := append([]byte{0x6a}, []byte("EXAMPLE.COM")...)
+	res, err := (&kerberosUDP{}).Handle(context.Background(), pkt, &net.UDPAddr{}, &fakePacketConn{}, smallSvcCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Meta["krb_msg"] != "AS-REQ" || !hasAnomaly(res, "kerberos-pre-auth-probe") {
+		t.Errorf("kerberos AS-REQ: %v / %v", res.Meta["krb_msg"], res.Meta["anomalies"])
+	}
+}
+
+func TestWizActuationFlagged(t *testing.T) {
+	pkt := []byte(`{"method":"setPilot","params":{"state":true}}`)
+	res, err := (&wiz{}).Handle(context.Background(), pkt, &net.UDPAddr{}, &fakePacketConn{}, smallSvcCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Meta["wiz_method"] != "setPilot" || !hasAnomaly(res, "iot-actuation-attempt") {
+		t.Errorf("wiz: %v / %v", res.Meta["wiz_method"], res.Meta["anomalies"])
 	}
 }

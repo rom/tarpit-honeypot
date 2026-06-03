@@ -36,6 +36,11 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 	// 0x63 = SearchRequest [APPLICATION 3]
 	if op == 0x63 {
 		res.Meta["search_request_bytes"] = len(opBody)
+		// An anonymous CLDAP SearchRequest (the AD "netlogon" query) is the
+		// classic CLDAP reflection/amplification vector (small request → large
+		// rootDSE/netlogon reply) and high-signal DC reconnaissance.
+		flagAnomaly(&res, "cldap-netlogon-probe")
+		flagAnomaly(&res, "amplification-probe")
 		// Reply searchResDone (resultCode 0 = success)
 		reply := buildLDAPSearchResDone(mid)
 		if _, err := pc.WriteTo(reply, src); err != nil {
@@ -45,6 +50,7 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 	} else if op == 0x60 { // BindRequest — rare on CLDAP but log it
 		_, bindDN, simplePw, _ := parseBindRequest(opBody)
 		res.Meta["bind_dn"] = bindDN
+		flagAnomaly(&res, "ldap-bind-attempt")
 		if simplePw != "" {
 			res.Meta["bind_pw"] = simplePw
 		}

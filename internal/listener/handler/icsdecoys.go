@@ -200,6 +200,20 @@ func (h *profinet) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.P
 		res.Meta["dce_rpc_ptype"] = int(payload[1])
 		if payload[1] == 0x00 { // request PDU = a Connect / IODControl attempt
 			flagAnomaly(&res, "profinet-connect")
+			// The CL DCE-RPC v4 header carries the operation number (little-
+			// endian) at offset 28. PROFINET CM opnum 3 = IODWriteReq (write a
+			// device parameter / record) and 4 = IODControlReq (application
+			// ready / mode change) — both are device-manipulation attempts.
+			if len(payload) >= 30 {
+				opnum := binary.LittleEndian.Uint16(payload[28:30])
+				res.Meta["profinet_opnum"] = opnum
+				switch opnum {
+				case 3:
+					flagAnomaly(&res, "profinet-iod-write")
+				case 4:
+					flagAnomaly(&res, "profinet-iod-control")
+				}
+			}
 		}
 	}
 	return res, nil

@@ -86,7 +86,7 @@ func TestSearchViewRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := b.String()
-	for _, want := range []string{"advanced search", "ATT&amp;CK tactic", "behavioral post-filters"} {
+	for _, want := range []string{"advanced search", "ATT&amp;CK tactic", "full-text over the decoded payload", "has credential", "fingerprint"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("search form missing %q", want)
 		}

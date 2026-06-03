@@ -216,6 +216,12 @@ func (h *stun) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	res := Result{Meta: map[string]any{}, Payload: payload}
 	if len(payload) < 20 || binary.BigEndian.Uint32(payload[4:8]) != 0x2112A442 {
 		flagAnomaly(&res, "stun-malformed")
+		// Classic STUN (RFC 3489, no magic cookie) Binding Request is a
+		// reflection/amplification vector — larger reply, spoofable source. We
+		// never answer it; we flag it.
+		if len(payload) >= 2 && binary.BigEndian.Uint16(payload[0:2]) == 0x0001 {
+			flagAnomaly(&res, "stun-classic-amplification")
+		}
 		return res, nil
 	}
 	msgType := binary.BigEndian.Uint16(payload[0:2])

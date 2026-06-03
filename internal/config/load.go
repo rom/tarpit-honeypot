@@ -88,6 +88,12 @@ var udpHandlers = map[string]bool{
 	"dds_rtps": true, "hartip_udp": true,
 	"crestron": true, "pjlink": true, "cbus": true,
 	"dnp3_udp": true, "saia_sbus": true,
+	"slp": true, "xdmcp": true, "db_lsp": true, "kerberos_udp": true,
+	"lantronix_disc": true, "pcanywhere_stat": true, "gamespy": true,
+	"db2_disc": true, "bt_dht": true, "rdp_udp": true,
+	"matter": true, "wiz": true, "yeelight": true, "dahua_disc": true, "hikvision_sadp": true,
+	"powerlink": true, "slmp": true, "cip_io": true, "ff_hse": true, "ads_udp": true,
+	"pcom_udp": true, "synchrophasor": true, "loxone": true, "amx_netlinx": true, "vantage": true,
 	"auto": true,
 }
 

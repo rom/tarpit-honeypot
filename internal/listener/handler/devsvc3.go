@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // Round-three protocol decoys: the Android Debug Bridge (a botnet-scale IoT
@@ -219,6 +220,18 @@ func (h *mssqlBrowser) Handle(_ context.Context, payload []byte, src net.Addr, p
 	}
 	res.Meta["ssrp_request"] = int(payload[0])
 	flagAnomaly(&res, "mssql-browser-query")
+	// CLNT_BCAST_EX (0x02) is the broadcast enumeration the SQL Browser
+	// reflection/amplification abuse rides (small request → instance-list
+	// reply); a named-instance request (0x04) carries the instance the scanner
+	// is hunting for — capture it.
+	if payload[0] == 0x02 {
+		flagAnomaly(&res, "amplification-probe")
+	}
+	if payload[0] == 0x04 && len(payload) > 1 {
+		if inst := asciiRun(payload[1:]); len(inst) >= 1 {
+			res.Meta["mssql_requested_instance"] = safe.SanitizeForLog(clipStr(inst, 64))
+		}
+	}
 	switch payload[0] {
 	case 0x02, 0x03, 0x04: // CLNT_BCAST_EX / CLNT_UCAST_EX / CLNT_UCAST_INST
 		if !h.lim.allow() {

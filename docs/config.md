@@ -49,6 +49,7 @@ has its own reference further down.
 | `ingest` | map | accept events from child nodes (aggregator endpoint) |
 | `fleet` | map | cross-sensor correlation over the merged stream |
 | `intel_feed` | map | subscribe to a parent's downward fleet-intel feed |
+| `threat_feeds` | map | ingest external IP-reputation feeds (tag matching sources) |
 | `misp` | map | push the fleet's observed IOCs to a MISP instance |
 | `ioc` | map | indicator-of-compromise store + ioc:* events |
 | `severity_overrides` | list | re-map reported severity per `rule_id` |
@@ -129,9 +130,10 @@ freshness vary). Two-step workflow:
 `tarpit-honeypot list-paths` (and the web UI `/config` "files in use" panel)
 show exactly which config/enrichment/database files a sensor uses.
 | `vuln_emulation` | `true` makes banner-aware handlers advertise the archetype's deliberately-unpatched version + fake patch level (e.g. `debian 12` → Apache 2.4.49 / OpenSSH 7.2 / vsFTPd 2.3.4). Per-listener `vuln_emulation` overrides it. CVE exploit-attempt detection (`cve:<id>` events) runs regardless. The service never becomes actually exploitable. |
-| `payloads` | `{enabled, max_bytes, max_total_mb}` — harvest attacker-supplied malware / shellcode / droppers to `<data_dir>/payloads/`. Classified (ELF/PE/script/shellcode), base64 droppers decoded, ingress URLs extracted; emits `malware:capture`. Collection only — nothing is executed. |
-| `sandbox` | `{seccomp, landlock, read_paths, write_paths}` — Linux kernel self-confinement applied after privilege drop. `seccomp` denies shell-spawn / module-load / debug syscalls; `landlock` makes the FS read-only except `data_dir` (+ `write_paths`). Best-effort; no-op on non-Linux. See [`docs/hardening.md`](hardening.md). |
+| `payloads` | `{enabled, max_bytes, max_total_mb, fetch_urls, fetch_max_bytes}` — harvest attacker-supplied malware / shellcode / droppers to `<data_dir>/payloads/`. Classified (ELF/PE/script/shellcode), base64 droppers decoded, ingress URLs extracted; emits `malware:capture`. `fetch_urls: true` additionally **downloads** the second-stage payloads referenced in those ingress URLs (capped by `fetch_max_bytes`) — active collection through the egress allowlist; off by default. Nothing is ever executed. |
+| `sandbox` | `{seccomp, landlock, read_paths, write_paths}` — Linux kernel self-confinement applied after privilege drop. `seccomp` denies shell-spawn / module-load / debug syscalls; `landlock` makes the FS read-only except `data_dir` (+ any `write_paths`); `read_paths` narrows what is readable (default: everything). Best-effort; no-op on non-Linux. See [`docs/hardening.md`](hardening.md). |
 | `session_recording` | `{enabled, max_bytes, max_total_mb}` — record interactive `telnet` / `ssh_interactive` sessions as asciinema v2 casts under `<data_dir>/sessions/` (replayable, with timing). The cast filename is recorded in event meta (`session_cast`). |
+| `alerts` | `{first_seen, digest_interval, disk_warn_percent}` — operational alerting. `first_seen: true` emits a `first_seen` event the first time a source IP is observed; `digest_interval` (e.g. `1h`) emits a periodic activity-summary event; `disk_warn_percent` raises a `disk:warn` event when the data-dir filesystem passes that fill level. |
 
 Windowed correlator state (port-scan / brute-force / slow-scan / icmp-sweep) is persisted to `<data_dir>/correlate-state.json` (every 60s + on shutdown) and restored on startup, so long-window detection survives a restart.
 
@@ -231,6 +233,22 @@ cert is picked up without a restart). **Trade-off:** a real CA cert ties the
 honeypot to your true identity (CT logs, the issued domain) and drops the
 anti-fingerprint jitter — only use it on a surface you intend to publish under a
 real name.
+
+**Fake web app + branding.** Set `webapp: true` on an `http`/`https` listener to
+serve a self-contained multi-page fake web application that detects (never
+executes) the web-attack families. `webapp_variant:` picks the persona shell
+(e.g. a generic corporate portal); `webapp_brand:` customises it so it doesn't
+look like a stock honeypot:
+
+```yaml
+- { id: portal, proto: tcp, bind: 0.0.0.0:443, mode: banner, handler: https,
+    webapp: true, webapp_variant: corp,
+    webapp_brand: { name: "Acme Intranet", tagline: "Sign in to continue",
+                    color: "#0a7", logo: "AC" } }   # logo = 1–4 char text mark
+```
+
+`webapp_brand.color` accepts `#rgb` / `#rrggbb` / a CSS colour name and is
+validated against CSS injection; all four fields are optional.
 
 The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (636),
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
@@ -520,6 +538,28 @@ correlate:
 - **dns_enumeration**: one source querying N **distinct DNS names** within window → `correlate:dns_enumeration` (subdomain brute force / NXDOMAIN flood / DGA churn). Tagged `T1590.002` / `T1568.002`.
 - **beacon**: regularly-spaced call-home contact from one source → `correlate:beacon`. After `min_hits` samples it measures inter-arrival jitter (stddev/mean); a jitter `<= max_jitter_pct` over a mean interval `>= 1s` is the periodic pattern of C2 beaconing (sub-second bursts and irregular timing are excluded). Tagged `T1071`.
 
+**All available correlators.** Every key below is a sub-map that takes at least
+`enabled: true|false` plus a `window:` and a `severity:`, and a detector-specific
+threshold (a `distinct_*` / `attempts` / `*_sources` count — run with `enabled:
+true` and check the startup log, which prints each detector's effective
+thresholds). The six above are the documented examples; the full set the sensor
+ships is:
+
+| key | fires when one source… |
+|---|---|
+| `port_scan` / `slow_scan` | touches N distinct ports (fast / long-window) |
+| `host_sweep` / `service_sweep` / `icmp_sweep` | touches N distinct hosts / services / ICMP destinations |
+| `brute_force` / `password_spray` / `credential_reuse` / `default_cred_sweep` / `ssh_key_spray` | auth depth / breadth / reuse / default-cred / SSH-key spraying |
+| `path_enumeration` / `dns_enumeration` / `web_attack_probe` | dirbusts paths / enumerates DNS names / sprays web-attack classes |
+| `ua_rotation` / `fingerprint_reuse` / `fingerprint_rotation` / `tool_rotation` | rotates User-Agents / reuses or rotates JA3-JA4 fingerprints / swaps tools |
+| `beacon` / `dns_tunnel` / `exfil` / `ssrf_callback` / `threat_intel_burst` | beacons periodically / tunnels over DNS / exfils volume / SSRF call-back / hits known-bad infra |
+| `exploit_chain` / `cve_campaign` / `recon_to_exploit` / `webshell` / `container_takeover` | chains exploits / repeats a CVE / recon→exploit pivot / webshell activity / container escape |
+| `ics_control` / `ics_mode_change` / `plc_program_download` / `ot_recon` / `ot_kill_chain` | issues ICS control / PLC mode change / program download / OT recon / full OT kill-chain |
+| `lateral_movement` / `data_access` / `destructive_action` / `cloud_cred_theft` / `honeytoken_spread` | moves laterally / accesses bait data / destructive op / steals cloud creds / spreads a honeytoken |
+| `oob_mgmt_access` / `remote_tool_sweep` / `remote_exec_command` / `tls_mitm_capture` | hits OOB management / RMM tools / remote-exec / captured TLS-MITM creds |
+| `toll_fraud` / `voip_enum` / `pbx_control` / `spam_relay` | VoIP toll fraud / PBX enumeration / PBX control / open-relay spam |
+| `amplification_probe` / `session_flood` / `protocol_violation` / `canary_trip` / `malware_campaign` / `geo_velocity` | probes amplifiers / floods sessions / violates a protocol / trips a canary / repeats a malware sample / impossible geo-velocity |
+
 Beyond these, the sensor always emits a cross-protocol **`storyline:multi_stage`** event when one source touches 3+ distinct ATT&CK tactics inside 30 minutes (no config — it's driven by the `mitre_tactics` tags every event carries).
 
 ---
@@ -622,7 +662,7 @@ Events get `honeynet`, `honeynet_host`, `honeynet_hostname`, `honeynet_os` meta 
 ```yaml
 channels:
   - id: stdout
-    type: stdout                   # stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap
+    type: stdout                   # stdout | jsonlog | sqlite | webhook | smtp | syslog | twilio | sns | snmptrap | mqtt
     enabled: true                  # omit/true = on; false = defined but skipped
     format: json                   # json (default) | cef | leef | ocsf
     min_severity: low              # gate per-channel
@@ -639,6 +679,14 @@ Common fields (every channel type):
 | `format` | wire format: `json` / `cef` / `leef` / `ocsf` | json |
 | `min_severity` | drop events below this level for this channel | low |
 | `rate_limit_per_min` | cap outbound sends/min (0 = unlimited) | 0 |
+
+Secrets are read from the environment, never stored inline: `url_env` (webhook
+URL), `hmac_secret_env`, `username_env` / `password_env` (smtp),
+`account_sid_env` / `auth_token_env` (twilio), `access_key_env` /
+`secret_key_env` / `session_token_env` (sns), `community_env` (snmptrap),
+`password_env` (mqtt). For TLS-bearing outbound sinks (syslog over TLS, mqtt):
+`tls_insecure` (skip verification — lab only), `ca_cert_file` (PEM bundle to
+verify the broker), and `tls_server_name` (SNI / verify-name override).
 
 `enabled: false` keeps a channel **defined but off** — it is neither built
 nor type-validated at startup, so an outbound sink that needs external infra
@@ -683,6 +731,12 @@ Type-specific fields (all optional unless noted):
   # the config or printed by show-config.
   - { id: nms, type: snmptrap, host: nms.example.internal, port: 162,
       community_env: SNMP_TRAP_COMMUNITY, enterprise_oid: "1.3.6.1.4.1.65535" }
+
+  # MQTT — publish each event to a broker topic. Use password_env for the
+  # broker secret; tls_insecure / ca_cert_file / tls_server_name for TLS.
+  - { id: bus, type: mqtt, host: broker.internal, port: 8883, topic: tarpit/events,
+      qos: 1, retain: false, username_env: MQTT_USER, password_env: MQTT_PASS,
+      ca_cert_file: /etc/tarpit-honeypot/broker-ca.pem }
 ```
 
 ### Channel types
@@ -698,6 +752,7 @@ Type-specific fields (all optional unless noted):
 | `twilio` | outbound | `account_sid_env`, `auth_token_env`, `from`, `to` | json only | SMS paging |
 | `sns` | outbound | `topic_arn`, `access_key_env`, `secret_key_env` | json only | AWS SNS (hand-rolled Sigv4) |
 | `snmptrap` | outbound | `host`, `community_env`, `enterprise_oid` | json only | SNMPv2c trap to an NMS |
+| `mqtt` | outbound | `host`, `port`, `topic`, `qos`, `retain`, `*_env` creds, TLS fields | json / cef / leef / ocsf | publish events to an MQTT broker topic |
 
 > Secrets are read from environment variables (the `*_env` fields), never
 > stored inline, so `show-config` and the config file never leak them.
@@ -760,6 +815,7 @@ forward:
     max_batch: 500                      # flush after N events (default 500)
     max_age: 2s                         # ...or at least this often (default 2s)
     queue_size: 4096                    # in-memory buffer; full sheds load + counts
+    timeout: 10s                        # per-POST HTTP timeout to the parent (default 10s)
   - { id: global, url: https://hub.corp/ingest, min_severity: high }   # fan-out
   - id: hub                                # multi-level: ship a rollup, not raw events
     url: https://hub.corp/ingest
@@ -1016,6 +1072,33 @@ intel_feed:
 The feed URL is allowlisted automatically (like `forward.url`), so it works
 under `egress.enforce`. The puller fetches once immediately so a fresh node gets
 intel without waiting a full interval.
+
+## `threat_feeds:` — external IP-reputation feeds
+
+Subscribe to third-party IP-reputation feeds (AbuseIPDB / GreyNoise / FireHOL /
+Spamhaus / a corp blocklist). Each feed is polled, its IPs/CIDRs loaded, and a
+matching source IP is tagged with the feed's `label` on every event — feeding
+the same tarpit / severity / risk / `threat_intel_burst` machinery as the local
+`sensor.threat_intel` lists. Enrichment only — it never blocks.
+
+```yaml
+threat_feeds:
+  enabled: true
+  poll: 1h                              # refresh interval (default 1h)
+  feeds:
+    - label: firehol                    # tag applied to matching events
+      url: https://iplists.firehol.org/files/firehol_level1.netset
+      format: lines                     # "lines" (default, one IP/CIDR per line, # comments) | "json_ips"
+    - label: abuseipdb
+      url: https://api.abuseipdb.com/api/v2/blacklist?plaintext
+      format: lines
+      header: "Key: <api-key>"          # optional auth header, sent verbatim as "Name: value"
+```
+
+Each feed `url` must be reachable under `egress.enforce` — add it to
+`sensor.egress.allow` (feed URLs are **not** auto-allowlisted the way
+`forward.url` / `intel_feed.url` are). The `header` value is sent verbatim (no
+env-var expansion), so treat any config carrying an API key as a secret.
 
 ### IOC export — STIX 2.1 / TAXII 2.1 / MISP
 

@@ -84,6 +84,14 @@ func (k *knx) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 		// records a live device but we don't get tied up in a tunnel.
 		reply = k.buildConnectError()
 		banner = "knx CONNECT_RESPONSE err=0x24"
+	case 0x0420: // TUNNELLING_REQUEST — carries a cEMI frame
+		res.Meta["op"] = "TUNNELLING_REQUEST"
+		// A tunnelling request carrying an L_Data.req cEMI (message code
+		// 0x11) is the path used to drive the bus — GroupValueWrite toggles
+		// lights / actuators / HVAC. We never act; we flag the write.
+		if len(payload) >= 11 && payload[10] == 0x11 {
+			flagAnomaly(&res, "knx-bus-write")
+		}
 	default:
 		res.Meta["op"] = "other"
 	}
