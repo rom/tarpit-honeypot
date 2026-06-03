@@ -3,9 +3,11 @@ package ui
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,13 +16,27 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
-// Advanced search. Structured fields that map to store columns (source / rule /
-// severity / since) are pushed into the SQL query to bound the scan; everything
-// else — full-text, ATT&CK tactic, geo country, tool, fingerprint, ASN, dest
-// IP/port, anomaly tag, has-payload/session/cve/credential — is matched Go-side
-// over the captured event so the search covers the decoded payload and flattened
-// meta too, not just a few indexed columns. Natural-language search is
-// intentionally out of scope (it would require an LLM the sensor doesn't ship).
+// inputError marks an error caused by bad operator input (a malformed regex or
+// time) rather than a server fault, so handleSearch can show it in the form
+// instead of returning a 500.
+type inputError struct{ msg string }
+
+func (e inputError) Error() string { return e.msg }
+
+func isUserInputErr(err error) bool {
+	var ie inputError
+	return errors.As(err, &ie)
+}
+
+// Advanced search. The free-text-style fields (source / dest IP, rule, handler,
+// full-text) are treated as case-insensitive regular expressions matched
+// Go-side, so an operator can search a partial / incomplete value ("10.0.",
+// "^192\.168\.") or a real pattern. The structured constraints that map to a
+// store column (time window / severity) are pushed into the SQL query to bound
+// the scan; everything else — including the full-text over the decoded payload,
+// the request line, HTTP headers, and every flattened/nested meta field — is
+// matched over the captured event. Natural-language search is intentionally out
+// of scope (it would require an LLM the sensor doesn't ship).
 
 const searchResultCap = 500
 const searchScanMax = 20000
@@ -33,6 +49,9 @@ type searchQuery struct {
 	Handler     string
 	Port        string
 	Since       string
+	After       string // events at/after this time (RFC3339 / date / date-time)
+	Before      string // events at/before this time
+	On          string // events on this day (date) or minute (date-time)
 	Tactic      string
 	Country     string
 	Tool        string
@@ -56,6 +75,9 @@ type searchView struct {
 	Matched  int
 	Capped   bool
 	Results  []*event.Event
+	// Error is a user-facing message (e.g. a bad regex or time) shown above the
+	// form instead of a 500, so the operator can correct the input in place.
+	Error string
 }
 
 func parseSearchQuery(r *http.Request) searchQuery {
@@ -68,6 +90,9 @@ func parseSearchQuery(r *http.Request) searchQuery {
 		Handler:     g("handler"),
 		Port:        g("port"),
 		Since:       g("since"),
+		After:       g("after"),
+		Before:      g("before"),
+		On:          g("on"),
 		Tactic:      g("tactic"),
 		Country:     g("country"),
 		Tool:        g("tool"),
@@ -82,16 +107,112 @@ func parseSearchQuery(r *http.Request) searchQuery {
 	}
 }
 
-func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Event, bool, error) {
-	since := time.Now().Add(-24 * time.Hour)
+// compileSearch turns a user input field into a case-insensitive regexp, or nil
+// when the field is blank (no constraint). A plain string is itself a valid
+// (unanchored) pattern, so "10.0." matches an incomplete IP while "^10\.0\.0\.1$"
+// matches exactly.
+func compileSearch(pat string) (*regexp.Regexp, error) {
+	if pat == "" {
+		return nil, nil
+	}
+	return regexp.Compile("(?i)" + pat)
+}
+
+// searchTimeLayouts are accepted, most-specific first, for the after/before/on
+// fields. Bare values are interpreted as UTC (the UI renders event times in UTC).
+var searchTimeLayouts = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04",
+	"2006-01-02 15:04",
+	"2006-01-02 15",
+	"2006-01-02",
+}
+
+// parseSearchTime parses one of the accepted layouts. dateOnly is true when the
+// input carried no time-of-day (so callers can treat it as a whole day).
+func parseSearchTime(s string) (t time.Time, dateOnly, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false, false
+	}
+	for _, l := range searchTimeLayouts {
+		if tt, err := time.Parse(l, s); err == nil {
+			return tt.UTC(), l == "2006-01-02", true
+		}
+	}
+	return time.Time{}, false, false
+}
+
+// searchWindow resolves the [since, until) bounds from the duration `since` plus
+// the explicit after / before / on fields. Later fields win, and `on` pins both
+// ends. Returns an error on an unparseable time so the form can report it.
+func searchWindow(q searchQuery) (since, until time.Time, err error) {
+	since = time.Now().Add(-24 * time.Hour)
 	if q.Since != "" {
-		if d, err := time.ParseDuration(q.Since); err == nil && d > 0 {
+		if d, e := time.ParseDuration(q.Since); e == nil && d > 0 {
 			since = time.Now().Add(-d)
 		}
 	}
-	// Push only the cheap, indexed constraints to SQL; full-text is matched
-	// Go-side (below) so it also covers the decoded payload + flattened meta.
-	f := store.Filter{Since: since, SourceIP: q.SourceIP, RuleID: q.RuleID, Limit: searchScanMax}
+	if q.After != "" {
+		t, _, ok := parseSearchTime(q.After)
+		if !ok {
+			return since, until, inputError{fmt.Sprintf("invalid 'after' time %q (try 2006-01-02 or 2006-01-02T15:04)", q.After)}
+		}
+		since = t
+	}
+	if q.Before != "" {
+		t, _, ok := parseSearchTime(q.Before)
+		if !ok {
+			return since, until, inputError{fmt.Sprintf("invalid 'before' time %q", q.Before)}
+		}
+		until = t
+	}
+	if q.On != "" {
+		t, dateOnly, ok := parseSearchTime(q.On)
+		if !ok {
+			return since, until, inputError{fmt.Sprintf("invalid 'on' time %q", q.On)}
+		}
+		since = t
+		if dateOnly {
+			until = t.Add(24 * time.Hour) // the whole day
+		} else {
+			until = t.Add(time.Minute) // that minute
+		}
+	}
+	return since, until, nil
+}
+
+func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Event, bool, error) {
+	since, until, err := searchWindow(q)
+	if err != nil {
+		return nil, false, err
+	}
+	// The IP / rule / handler / full-text fields are regexes matched Go-side, so
+	// only the time window + severity are pushed to SQL (which bounds the scan).
+	srcRe, err := compileSearch(q.SourceIP)
+	if err != nil {
+		return nil, false, inputError{"source IP pattern — " + err.Error()}
+	}
+	dstRe, err := compileSearch(q.DestIP)
+	if err != nil {
+		return nil, false, inputError{"dest IP pattern — " + err.Error()}
+	}
+	ruleRe, err := compileSearch(q.RuleID)
+	if err != nil {
+		return nil, false, inputError{"rule pattern — " + err.Error()}
+	}
+	handlerRe, err := compileSearch(q.Handler)
+	if err != nil {
+		return nil, false, inputError{"handler pattern — " + err.Error()}
+	}
+	textRe, err := compileSearch(q.Text)
+	if err != nil {
+		return nil, false, inputError{"full-text pattern — " + err.Error()}
+	}
+
+	f := store.Filter{Since: since, Until: until, Limit: searchScanMax}
 	if q.Severity != "" {
 		if sv, err := event.ParseSeverity(strings.ToLower(q.Severity)); err == nil {
 			f.MinSeverity = sv
@@ -103,16 +224,21 @@ func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Ev
 	}
 	port, _ := strconv.Atoi(q.Port)
 	asn, _ := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(q.ASN), "AS"))
-	text := strings.ToLower(q.Text)
 	out := make([]*event.Event, 0, len(evs))
 	for _, ev := range evs {
-		if q.Handler != "" && !strings.EqualFold(ev.Handler, q.Handler) {
+		if handlerRe != nil && !handlerRe.MatchString(ev.Handler) {
 			continue
 		}
-		if q.DestIP != "" && !strings.Contains(strings.ToLower(ev.Dest.IP), strings.ToLower(q.DestIP)) {
+		if srcRe != nil && !srcRe.MatchString(ev.Source.IP) {
+			continue
+		}
+		if dstRe != nil && !dstRe.MatchString(ev.Dest.IP) {
 			continue
 		}
 		if port > 0 && ev.Dest.Port != port {
+			continue
+		}
+		if ruleRe != nil && !ruleRe.MatchString(ev.RuleID) {
 			continue
 		}
 		if q.Tactic != "" && !containsFold(eventTag(ev).Tactics, q.Tactic) {
@@ -150,7 +276,7 @@ func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Ev
 		if q.HasCred && len(extractCreds(ev)) == 0 {
 			continue
 		}
-		if text != "" && !matchesText(ev, text) {
+		if textRe != nil && !matchesText(ev, textRe) {
 			continue
 		}
 		out = append(out, ev)
@@ -163,27 +289,29 @@ func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Ev
 	return out, capped, nil
 }
 
-// matchesText reports whether the lowercased query appears anywhere an operator
-// can see: the identifiers, addresses, handler/proto, banner, every flattened
-// meta value, the anomaly + ATT&CK markers, and the DECODED payload bytes.
-func matchesText(ev *event.Event, low string) bool {
+// matchesText reports whether the regex matches anywhere an operator can see:
+// the identifiers, addresses, handler/proto, banner, the anomaly + ATT&CK
+// markers, every meta field — including the request line, HTTP headers, and any
+// other nested map/slice (keys and values, walked recursively) — and the
+// DECODED payload bytes.
+func matchesText(ev *event.Event, re *regexp.Regexp) bool {
 	for _, s := range []string{ev.RuleID, ev.BannerSent, ev.Handler, ev.Proto, ev.Sensor, ev.Source.IP, ev.Dest.IP} {
-		if strings.Contains(strings.ToLower(s), low) {
+		if re.MatchString(s) {
 			return true
 		}
 	}
 	for _, a := range ev.Anomalies {
-		if strings.Contains(strings.ToLower(a), low) {
+		if re.MatchString(a) {
 			return true
 		}
 	}
 	for _, t := range ev.MitreTechniques {
-		if strings.Contains(strings.ToLower(t), low) {
+		if re.MatchString(t) {
 			return true
 		}
 	}
-	for _, v := range ev.Meta {
-		if strings.Contains(strings.ToLower(fmt.Sprintf("%v", v)), low) {
+	for k, v := range ev.Meta {
+		if re.MatchString(k) || metaMatch(v, re) {
 			return true
 		}
 	}
@@ -191,12 +319,56 @@ func matchesText(ev *event.Event, low string) bool {
 	// search would never match the column directly).
 	if ev.PayloadBase64 != "" {
 		if raw, err := base64.StdEncoding.DecodeString(ev.PayloadBase64); err == nil {
-			if strings.Contains(strings.ToLower(string(raw)), low) {
+			if re.Match(raw) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// metaMatch recursively tests a meta value against the regex. Maps contribute
+// both their keys and values (so a search for an HTTP header NAME like
+// "x-forwarded-for" hits even though it's a key); slices and scalars are walked
+// through. This is what makes the full-text reach request_line, http_headers,
+// http_query_params, and any similarly-nested capture.
+func metaMatch(v any, re *regexp.Regexp) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case string:
+		return re.MatchString(t)
+	case map[string]any:
+		for k, vv := range t {
+			if re.MatchString(k) || metaMatch(vv, re) {
+				return true
+			}
+		}
+		return false
+	case map[string]string:
+		for k, vv := range t {
+			if re.MatchString(k) || re.MatchString(vv) {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for _, vv := range t {
+			if metaMatch(vv, re) {
+				return true
+			}
+		}
+		return false
+	case []string:
+		for _, vv := range t {
+			if re.MatchString(vv) {
+				return true
+			}
+		}
+		return false
+	default:
+		return re.MatchString(fmt.Sprintf("%v", t))
+	}
 }
 
 // matchesTag matches an anomaly marker or ATT&CK technique/tactic substring.
@@ -275,14 +447,20 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		results, capped, err := runSearch(ctx, s.store, q)
-		if err != nil {
+		switch {
+		case isUserInputErr(err):
+			// A bad regex / time is the operator's typo, not a server fault —
+			// re-render the form with the message so they can fix it in place.
+			view.Error = err.Error()
+		case err != nil:
 			serverError(w, r.URL.Path, err)
 			return
+		default:
+			view.Searched = true
+			view.Results = results
+			view.Matched = len(results)
+			view.Capped = capped
 		}
-		view.Searched = true
-		view.Results = results
-		view.Matched = len(results)
-		view.Capped = capped
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "search", view); err != nil {

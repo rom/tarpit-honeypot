@@ -336,6 +336,7 @@ form { display: inline-block; }
 input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); }
 .kv { background: var(--bg-surface); padding: .75rem; border: 1px solid var(--border); white-space: pre-wrap; word-break: break-all; color: var(--text); }
 .note { color: var(--text-muted); font-size: 0.857rem; margin-top: .5rem; }
+.err-banner { color: var(--sev-high); background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: 4px; padding: .4rem .6rem; font-size: 0.93rem; }
 .net { background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 4px; padding: .6rem .8rem; margin: .6rem 0; }
 .net h3 { margin: 0 0 .35rem; font-size: 1rem; }
 .net .meta { color: var(--text-muted); font-size: 0.857rem; margin-bottom: .4rem; }
@@ -899,22 +900,26 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 
 {{ define "search" }}{{ template "head" . }}
 <h1>advanced search</h1>
+{{ if .Error }}<p class="note err-banner">⚠ {{ .Error }}</p>{{ end }}
 <form method="get" action="/search">
   <table class="chart">
-  <tr><td>source IP</td><td><input type="text" name="source" value="{{ .Q.SourceIP }}" size="18"></td>
-      <td>dest IP</td><td><input type="text" name="dst" value="{{ .Q.DestIP }}" size="18"></td></tr>
-  <tr><td>rule</td><td><input type="text" name="rule" value="{{ .Q.RuleID }}" size="20"></td>
-      <td>handler</td><td><input type="text" name="handler" value="{{ .Q.Handler }}" size="14"></td></tr>
+  <tr><td>source IP</td><td><input type="text" name="source" value="{{ .Q.SourceIP }}" placeholder="regex: 10.0. / ^192\.168\." size="18"></td>
+      <td>dest IP</td><td><input type="text" name="dst" value="{{ .Q.DestIP }}" placeholder="regex" size="18"></td></tr>
+  <tr><td>rule</td><td><input type="text" name="rule" value="{{ .Q.RuleID }}" placeholder="regex: ssh|telnet" size="20"></td>
+      <td>handler</td><td><input type="text" name="handler" value="{{ .Q.Handler }}" placeholder="regex: ftp.*" size="14"></td></tr>
   <tr><td>severity ≥</td><td><input type="text" name="severity" value="{{ .Q.Severity }}" placeholder="low|medium|high|critical" size="12"></td>
       <td>dest port</td><td><input type="text" name="port" value="{{ .Q.Port }}" size="8"></td></tr>
-  <tr><td>since</td><td><input type="text" name="since" value="{{ .Q.Since }}" placeholder="24h" size="8"></td>
+  <tr><td>since (rel.)</td><td><input type="text" name="since" value="{{ .Q.Since }}" placeholder="24h / 7d" size="8"></td>
       <td>ATT&amp;CK tactic</td><td><input type="text" name="tactic" value="{{ .Q.Tactic }}" placeholder="credential-access" size="18"></td></tr>
-  <tr><td>anomaly / technique</td><td><input type="text" name="tag" value="{{ .Q.Tag }}" placeholder="snmp-set / T1110 …" size="18"></td>
+  <tr><td>after (UTC)</td><td><input type="text" name="after" value="{{ .Q.After }}" placeholder="2006-01-02 or …T15:04" size="20"></td>
+      <td>before (UTC)</td><td><input type="text" name="before" value="{{ .Q.Before }}" placeholder="2006-01-02T15:04" size="20"></td></tr>
+  <tr><td>on (UTC day)</td><td><input type="text" name="on" value="{{ .Q.On }}" placeholder="2006-01-02" size="20"></td>
       <td>country</td><td><input type="text" name="country" value="{{ .Q.Country }}" size="6"></td></tr>
-  <tr><td>ASN</td><td><input type="text" name="asn" value="{{ .Q.ASN }}" placeholder="AS13335" size="10"></td>
-      <td>fingerprint</td><td><input type="text" name="fp" value="{{ .Q.Fingerprint }}" placeholder="ja3 / ja4 / hassh" size="20"></td></tr>
+  <tr><td>anomaly / technique</td><td><input type="text" name="tag" value="{{ .Q.Tag }}" placeholder="snmp-set / T1110 …" size="18"></td>
+      <td>ASN</td><td><input type="text" name="asn" value="{{ .Q.ASN }}" placeholder="AS13335" size="10"></td></tr>
   <tr><td>tool</td><td><input type="text" name="tool" value="{{ .Q.Tool }}" placeholder="nmap / sqlmap / …" size="16"></td>
-      <td>full-text</td><td><input type="text" name="q" value="{{ .Q.Text }}" placeholder="searches all fields + payload" size="28"></td></tr>
+      <td>fingerprint</td><td><input type="text" name="fp" value="{{ .Q.Fingerprint }}" placeholder="ja3 / ja4 / hassh" size="20"></td></tr>
+  <tr><td>full-text (regex)</td><td colspan="3"><input type="text" name="q" value="{{ .Q.Text }}" placeholder="regex over rule, banner, request line, HTTP headers, all meta + decoded payload" size="60"></td></tr>
   <tr><td colspan="2"><label><input type="checkbox" name="has_payload" value="1" {{ if .Q.HasPayload }}checked{{ end }}> has payload</label>
       <label><input type="checkbox" name="has_session" value="1" {{ if .Q.HasSession }}checked{{ end }}> has session</label>
       <label><input type="checkbox" name="has_cve" value="1" {{ if .Q.HasCVE }}checked{{ end }}> has CVE</label>
@@ -922,7 +927,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
       <td colspan="2"><button type="submit">search</button> <a href="/search">reset</a></td></tr>
   </table>
 </form>
-<p class="note">Source / rule / severity / since bound the SQL scan; everything else — including <strong>full-text over the decoded payload</strong> and flattened meta — is matched over the captured event. {{ if .Searched }}<strong>{{ .Matched }}</strong> match(es){{ if .Capped }} (capped){{ end }}.{{ end }}</p>
+<p class="note">The IP / rule / handler / full-text fields are <strong>case-insensitive regular expressions</strong> (a partial value like <code>10.0.</code> works; anchor with <code>^…$</code> for exact). The time window comes from <em>since</em> (relative) or <em>after</em> / <em>before</em> / <em>on</em> (absolute, UTC). Full-text matches over the rule, banner, <strong>request line, HTTP headers</strong>, every nested meta field, and the <strong>decoded payload</strong>. {{ if .Searched }}<strong>{{ .Matched }}</strong> match(es){{ if .Capped }} (capped){{ end }}.{{ end }}</p>
 {{ if .Searched }}{{ if .Results }}<table>
 <tr><th>time</th><th>severity</th><th>source</th><th>rule</th><th>handler</th><th></th></tr>
 {{ range .Results }}<tr>

@@ -152,6 +152,8 @@ var vulnScanners = map[string]bool{
 	"gxss": true, "kxss": true, "ppfuzz": true, "ppmap": true, "gopherus": true,
 	"dirdar": true, "wpprobe": true, "joomlavs": true, "drupwn": true,
 	"graphql-cop": true, "akto": true,
+	"wafninja": true, "sqlninja": true, "bbqsql": true, "jsql": true,
+	"snallygaster": true, "yawast": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -672,6 +674,39 @@ var uaSignatures = map[string]string{
 	// Cloud / IAM enumeration + post-exploitation.
 	"cloudfox":      "cloudfox",
 	"enumerate-iam": "enumerate-iam",
+
+	// --- Batch: 25 more web-injection / WAF / OSINT-engine / recon
+	// fingerprints (User-Agent self-identification). ---
+	// SQL-injection + web-exploit + secret-file scanners.
+	"wafninja":     "wafninja",
+	"sqlninja":     "sqlninja",
+	"bbqsql":       "bbqsql",
+	"jsql":         "jsql",
+	"snallygaster": "snallygaster",
+	"yawast":       "yawast",
+	// WAF / origin / web recon.
+	"whatwaf":    "whatwaf",
+	"identywaf":  "identywaf",
+	"cloudflair": "cloudflair",
+	"vhostscan":  "vhostscan",
+	// Interception / MITM tooling.
+	"cadaver":   "cadaver",
+	"mitmproxy": "mitmproxy",
+	"bettercap": "bettercap",
+	// Internet-wide search-engine clients.
+	"fofa":     "fofa",
+	"zoomeye":  "zoomeye",
+	"netlas":   "netlas",
+	"fullhunt": "fullhunt",
+	// OSINT / recon frameworks + dorking + DNS enum.
+	"raccoon":    "raccoon",
+	"sn0int":     "sn0int",
+	"infoga":     "infoga",
+	"metagoofil": "metagoofil",
+	"pagodo":     "pagodo",
+	"sudomy":     "sudomy",
+	"dnsenum":    "dnsenum",
+	"wpforce":    "wpforce",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used

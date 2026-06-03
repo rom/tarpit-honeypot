@@ -622,11 +622,11 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **v2.8 — operator-console overhaul, mail (POP3/IMAP+TLS) credential & CVE emulation, richer captures, and live-deploy ergonomics.**
 The v2.4–2.8 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 112 UDP protocol handlers**, **381 CVE detections**, **180 dynamic Lua
-service scripts**, **166 OS/device archetypes**, **30 single-sensor + 27
-cross-sensor (`fleet:*`) correlators**, **18 typed IOC kinds**, and full ATT&CK +
-**20 D3FEND** countermeasure mapping. Highlights; the
-[CHANGELOG](CHANGELOG.md) has the per-commit detail.
+**131 TCP + 112 UDP protocol handlers**, **406 CVE detections**, **180 dynamic Lua
+service scripts**, **166 OS/device archetypes**, **530+ attack-tool/scanner
+fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
+**18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
+Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.
 
 - **v2.8 operator console.** Flicker-free, content-only live refresh that skips
   when nothing changed (`/api/heartbeat`); a 24h/7d/14d/31d/3mo/6mo range
@@ -1062,6 +1062,8 @@ tarpit-honeypot run            -c <config>
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot reset-db       -c <config>     # wipe the SQLite event index (keeps config)
+tarpit-honeypot rotate-db      -c <config> [--out file.gz] [--reset --yes]  # archive (gzip) events.db, optionally start fresh
+tarpit-honeypot prune-db       -c <config> (--keep-days N | --keep-rows N | --max-mb N) [--yes]  # drop oldest events to free space
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
@@ -1840,8 +1842,11 @@ across the reload (per-page `localStorage`), so a periodic refresh never resets
 your view.
 
 Presentation niceties: source IPs / rule_ids / fingerprints / techniques are
-**clickable** throughout (pivot to the profile / filtered events / campaign);
-**CVE labels link** to NVD or CVE.org (`ui.cve_source`); **ATT&CK technique
+**clickable** throughout (pivot to the profile / filtered events / campaign), as
+are **handler names**, **transport labels** (`tcp`/`udp`/`icmp`) and **reputation
+badges** (`scanner:<name>`, `blacklist`, `tor`, `bogon`, `intel`/`fleet-intel`),
+each linking to the matching events; **CVE labels link** to NVD or CVE.org
+(`ui.cve_source`); **ATT&CK technique
 chips link** to attack.mitre.org (`ui.attack_links`, on by default — the
 Enterprise/ICS matrix is encoded in the `T1xxx`/`T0xxx` ID, so no extra path
 segment, and `false` keeps them on the internal drill-down); the summary + map
@@ -1857,7 +1862,8 @@ Endpoints:
   category (transport: events / TCP / UDP / ICMP; severity: critical / high /
   medium / low), plus the L2 frame counts (received / ARP / IPv4 / IPv6 / TCP /
   UDP / ICMP) when the AF_PACKET sniffer is running — over total + by severity
-  + top rules + top sources.
+  + top rules + **top attacks** (most-seen ATT&CK techniques) + **top
+  vulnerabilities** (most-probed CVEs) + top sources.
 - `/events` — filterable table: `?source=`, `?rule=`, `?severity=high`,
   `?since=24h`, `?limit=N`. Click a column header (time / severity / rule
   / source / handler) to sort; click again to reverse (`?sort=&order=`).
@@ -1875,10 +1881,15 @@ Endpoints:
   **session recordings**. Files download as attachments via `/loot/?kind=&name=`
   (octet-stream + `nosniff`, basename-only + symlink-safe — a captured sample
   never executes in the browser); a "download all" link streams a ZIP.
-- `/search` — **advanced search**: structured columns (source / rule /
-  severity / handler / dest port / since / full-text) pushed to SQL, plus
-  behavioral post-filters over captured meta (ATT&CK tactic, country, tool,
-  has-payload, has-session). (NL search is intentionally out of scope.)
+- `/search` — **advanced search**: the source / dest IP, rule, handler and
+  full-text fields are **case-insensitive regular expressions** (a partial value
+  like `10.0.` matches an incomplete IP; `^192\.168\.` anchors it; a bad pattern
+  is reported inline). **Time filtering** is relative (`since`) or absolute
+  (`after` / `before` / `on`, UTC date or date-time). **Full-text** matches over
+  the rule, banner, **request line, HTTP headers** (names + values), every nested
+  meta field, and the **decoded payload**. Plus behavioral post-filters over
+  captured meta (ATT&CK tactic, country, tool, has-payload / session / CVE /
+  credential). (NL search is intentionally out of scope.)
 - `/correlation` — per-source **pivot chains**: IP → fingerprints →
   User-Agents → ASN/country → domains → tools → credentials → malware →
   sessions, rendered as linked chips plus an interactive SVG node-link
@@ -2040,17 +2051,21 @@ server. OpenSSH does this by default; some scanners don't.
 cryptographic fingerprints above, the HTTP/HTTPS **and SSH** handlers
 classify the *tool* behind a connection:
 
-- `meta.tools` (HTTP) — names matched from ~80 User-Agent + request-path
-  signatures across: port scanners (nmap, masscan, zmap, zgrab, l9explore);
+- `meta.tools` (HTTP) — names matched from **530+ User-Agent + request-path
+  signatures** across: port scanners (nmap, masscan, zmap, zgrab, l9explore);
   internet-wide recon engines (Shodan, Censys, BinaryEdge, LeakIX,
-  Onyphe, Shadowserver, Stretchoid, ProjectDiscovery, …); web vuln
-  scanners (sqlmap, nikto, nuclei, Acunetix, Nessus, OpenVAS, Qualys,
+  Onyphe, Shadowserver, Stretchoid, ProjectDiscovery, fofa, ZoomEye, Netlas, …);
+  web vuln scanners (sqlmap, nikto, nuclei, Acunetix, Nessus, OpenVAS, Qualys,
   Netsparker/Invicti, AppScan, Arachni, Wapiti, WhatWeb, OWASP ZAP,
-  Burp, wpscan/joomscan/droopescan, commix, XSStrike); content-discovery
-  fuzzers (gobuster, ffuf, dirsearch, feroxbuster, wfuzz, katana, httpx);
-  credential brute-forcers (hydra, medusa, ncrack, patator); exploitation
-  frameworks + webshell managers (Metasploit, Cobalt Strike, AntSword,
-  Behinder, Godzilla); and generic HTTP libraries (Go, python, java,
+  Burp, wpscan/joomscan/droopescan, commix, XSStrike, sqlninja, jSQL, yawast);
+  content-discovery fuzzers (gobuster, ffuf, dirsearch, feroxbuster, wfuzz,
+  katana, httpx); credential brute-forcers (hydra, medusa, ncrack, patator,
+  kerbrute); AD / post-exploitation (the Impacket family, BloodHound, Rubeus,
+  Certipy, mitm6, netexec); cloud / k8s recon (Pacu, ScoutSuite, Prowler,
+  kube-hunter); pivots / tunnels (chisel, ligolo, Stowaway, reGeorg);
+  exploitation frameworks + webshell managers (Metasploit, Cobalt Strike,
+  Sliver, Havoc, AntSword, Behinder, Godzilla, Weevely) and DNS/HTTP C2
+  (dnscat2, godoh, CALDERA); and generic HTTP libraries (Go, python, java,
   node, ruby, php, powershell, curl, wget). Path signatures also flag
   named-CVE probes (Log4Shell, PHPUnit CVE-2017-9841, FortiOS
   CVE-2018-13379, WebLogic CVE-2017-10271, Citrix/Pulse/Exchange/Confluence

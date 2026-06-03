@@ -48,6 +48,8 @@ func Dispatch(args []string) error {
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
 		{"jarm", "actively probe a TLS server and print its JARM fingerprint", cmdJARM},
 		{"reset-db", "empty the local event store / device inventory / captures", cmdResetDB},
+		{"rotate-db", "archive (gzip) the event database, optionally start fresh", cmdRotateDB},
+		{"prune-db", "delete the oldest events to free space (by age / rows / size)", cmdPruneDB},
 		{"generate-decoys", "scan your own network and emit a matching decoy config", cmdGenerateDecoys},
 		{"init", "write a default config skeleton (run > /etc/.../config.yaml)", cmdInit},
 		{"completion", "print shell-completion script (bash | zsh | fish)", cmdCompletion},
