@@ -430,12 +430,18 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		args = append(args, int(f.MinSeverity))
 	}
 	if f.Text != "" {
-		// Case-insensitive substring across rule_id / banner / meta JSON.
-		// LOWER() on both sides makes it explicit and independent of the
-		// SQLite case_sensitive_like pragma.
+		// Case-insensitive substring across every text-bearing column an
+		// operator can see: identifiers, addresses, handler/proto, the banner,
+		// the captured meta JSON, and the ATT&CK columns. LOWER() on both sides
+		// makes it explicit and independent of the SQLite case_sensitive_like
+		// pragma. (Payload bytes are base64 in the DB, so payload-content search
+		// is done Go-side by the search page over the decoded bytes.)
 		like := "%" + strings.ToLower(f.Text) + "%"
-		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(banner_sent) LIKE ? OR LOWER(meta_json) LIKE ?)"
-		args = append(args, like, like, like)
+		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(banner_sent) LIKE ? OR LOWER(meta_json) LIKE ?" +
+			" OR LOWER(src_ip) LIKE ? OR LOWER(dst_ip) LIKE ? OR LOWER(handler) LIKE ?" +
+			" OR LOWER(proto) LIKE ? OR LOWER(sensor) LIKE ? OR LOWER(anomalies) LIKE ?" +
+			" OR LOWER(mitre_techniques) LIKE ? OR LOWER(mitre_tactics) LIKE ?)"
+		args = append(args, like, like, like, like, like, like, like, like, like, like, like)
 	}
 	if f.FPValue != "" {
 		// The path is taken from the fixed allowlist map (never user input);

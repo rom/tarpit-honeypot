@@ -881,21 +881,27 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <form method="get" action="/search">
   <table class="chart">
   <tr><td>source IP</td><td><input type="text" name="source" value="{{ .Q.SourceIP }}" size="18"></td>
-      <td>rule</td><td><input type="text" name="rule" value="{{ .Q.RuleID }}" size="20"></td></tr>
-  <tr><td>severity ≥</td><td><input type="text" name="severity" value="{{ .Q.Severity }}" placeholder="low|medium|high|critical" size="12"></td>
+      <td>dest IP</td><td><input type="text" name="dst" value="{{ .Q.DestIP }}" size="18"></td></tr>
+  <tr><td>rule</td><td><input type="text" name="rule" value="{{ .Q.RuleID }}" size="20"></td>
       <td>handler</td><td><input type="text" name="handler" value="{{ .Q.Handler }}" size="14"></td></tr>
-  <tr><td>dest port</td><td><input type="text" name="port" value="{{ .Q.Port }}" size="8"></td>
-      <td>since</td><td><input type="text" name="since" value="{{ .Q.Since }}" placeholder="24h" size="8"></td></tr>
-  <tr><td>ATT&amp;CK tactic</td><td><input type="text" name="tactic" value="{{ .Q.Tactic }}" placeholder="credential-access" size="18"></td>
+  <tr><td>severity ≥</td><td><input type="text" name="severity" value="{{ .Q.Severity }}" placeholder="low|medium|high|critical" size="12"></td>
+      <td>dest port</td><td><input type="text" name="port" value="{{ .Q.Port }}" size="8"></td></tr>
+  <tr><td>since</td><td><input type="text" name="since" value="{{ .Q.Since }}" placeholder="24h" size="8"></td>
+      <td>ATT&amp;CK tactic</td><td><input type="text" name="tactic" value="{{ .Q.Tactic }}" placeholder="credential-access" size="18"></td></tr>
+  <tr><td>anomaly / technique</td><td><input type="text" name="tag" value="{{ .Q.Tag }}" placeholder="snmp-set / T1110 …" size="18"></td>
       <td>country</td><td><input type="text" name="country" value="{{ .Q.Country }}" size="6"></td></tr>
+  <tr><td>ASN</td><td><input type="text" name="asn" value="{{ .Q.ASN }}" placeholder="AS13335" size="10"></td>
+      <td>fingerprint</td><td><input type="text" name="fp" value="{{ .Q.Fingerprint }}" placeholder="ja3 / ja4 / hassh" size="20"></td></tr>
   <tr><td>tool</td><td><input type="text" name="tool" value="{{ .Q.Tool }}" placeholder="nmap / sqlmap / …" size="16"></td>
-      <td>full-text</td><td><input type="text" name="q" value="{{ .Q.Text }}" placeholder="rule / banner / captured meta" size="28"></td></tr>
+      <td>full-text</td><td><input type="text" name="q" value="{{ .Q.Text }}" placeholder="searches all fields + payload" size="28"></td></tr>
   <tr><td colspan="2"><label><input type="checkbox" name="has_payload" value="1" {{ if .Q.HasPayload }}checked{{ end }}> has payload</label>
-      <label><input type="checkbox" name="has_session" value="1" {{ if .Q.HasSession }}checked{{ end }}> has session</label></td>
+      <label><input type="checkbox" name="has_session" value="1" {{ if .Q.HasSession }}checked{{ end }}> has session</label>
+      <label><input type="checkbox" name="has_cve" value="1" {{ if .Q.HasCVE }}checked{{ end }}> has CVE</label>
+      <label><input type="checkbox" name="has_cred" value="1" {{ if .Q.HasCred }}checked{{ end }}> has credential</label></td>
       <td colspan="2"><button type="submit">search</button> <a href="/search">reset</a></td></tr>
   </table>
 </form>
-<p class="note">Structured columns use the SQL store; tactic / country / tool / payload / session are behavioral post-filters over the captured meta. {{ if .Searched }}<strong>{{ .Matched }}</strong> match(es){{ if .Capped }} (capped){{ end }}.{{ end }}</p>
+<p class="note">Source / rule / severity / since bound the SQL scan; everything else — including <strong>full-text over the decoded payload</strong> and flattened meta — is matched over the captured event. {{ if .Searched }}<strong>{{ .Matched }}</strong> match(es){{ if .Capped }} (capped){{ end }}.{{ end }}</p>
 {{ if .Searched }}{{ if .Results }}<table>
 <tr><th>time</th><th>severity</th><th>source</th><th>rule</th><th>handler</th><th></th></tr>
 {{ range .Results }}<tr>
