@@ -1226,6 +1226,307 @@ var catalog = []Record{
 		CWE:         []string{"CWE-400", "CWE-406"},
 		Description: "Service Location Protocol allows an unauthenticated attacker to register services and abuse the spoofable UDP responder for a >2200x reflective-amplification DoS.",
 	},
+
+	// ===================================================================
+	// Batch: 40 web/http/https/smtp/ftp exploit-attempt emulations. Each
+	// carries a high-signal request substring so the http / smtp_recv / ftp
+	// handlers flag a live cve:<id> attempt (http records also match https,
+	// the implicit-TLS mail variants inherit smtp_recv). Detection only.
+	// ===================================================================
+
+	// --- Application servers (Tomcat / WebLogic / JBoss / ActiveMQ) ---
+	{
+		ID: "CVE-2017-12617", Name: "Apache Tomcat JSP upload via PUT", CVSS: 8.1, Service: "http",
+		Signatures: []string{".jsp/", ".jsp::$data"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-434"},
+		Description: "Apache Tomcat with HTTP PUT enabled (readonly=false) lets an attacker upload a JSP via a trailing-slash/NTFS-ADS name bypass → RCE.",
+	},
+	{
+		ID: "CVE-2016-3088", Name: "Apache ActiveMQ Fileserver upload RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/fileserver/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22", "CWE-434"},
+		Description: "ActiveMQ Fileserver web app allows PUT/MOVE of a JSP webshell into an executable path → RCE.",
+	},
+	{
+		ID: "CVE-2010-0738", Name: "JBoss JMX console authentication bypass", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/jmx-console/htmladaptor"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-287"},
+		Description: "JBoss AS jmx-console only protected GET/POST, so a verb-tampering request reaches the JMX HtmlAdaptor and deploys a WAR → RCE.",
+	},
+	{
+		ID: "CVE-2017-9805", Name: "Apache Struts2 REST XStream deserialization", CVSS: 8.1, Service: "http",
+		Signatures: []string{"jdk.nashorn.internal.objects.nativestring"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Struts2 REST plugin deserializes attacker XML via XStream (S2-052) → RCE.",
+	},
+	{
+		ID: "CVE-2021-2109", Name: "Oracle WebLogic Server JNDI RCE", CVSS: 7.2, Service: "http",
+		Signatures: []string{"/console/consolejndi.portal"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "WebLogic admin console JNDI binding lets an authenticated attacker trigger a remote JNDI lookup → RCE.",
+	},
+	{
+		ID: "CVE-2020-9484", Name: "Apache Tomcat session persistence deserialization", CVSS: 7.0, Service: "http",
+		Signatures: []string{"jsessionid=../", "jsessionid=..%2f"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Tomcat with a FileStore PersistentManager deserializes a session file chosen via a path-traversal JSESSIONID → RCE.",
+	},
+	{
+		ID: "CVE-2010-1871", Name: "JBoss Seam framework EL injection RCE", CVSS: 7.5, Service: "http",
+		Signatures: []string{"actionoutcome="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "JBoss Seam evaluates the actionOutcome parameter as JBoss EL, allowing arbitrary method invocation → RCE.",
+	},
+
+	// --- Java web frameworks (Spring / Confluence / Druid / Jenkins) ---
+	{
+		ID: "CVE-2022-22963", Name: "Spring Cloud Function SpEL injection RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"spring.cloud.function.routing-expression"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Spring Cloud Function evaluates the spring.cloud.function.routing-expression header as SpEL → RCE.",
+	},
+	{
+		ID: "CVE-2018-1273", Name: "Spring Data Commons SpEL injection RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"t(java.lang.runtime).getruntime()"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Spring Data Commons binds request properties through SpEL, allowing a crafted property name to execute code.",
+	},
+	{
+		ID: "CVE-2019-3396", Name: "Atlassian Confluence Widget Connector SSTI", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/rest/tinymce/1/macro/preview"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-91"},
+		Description: "Confluence Widget Connector macro allows server-side template injection / path traversal via Velocity → file read + RCE.",
+	},
+	{
+		ID: "CVE-2021-25646", Name: "Apache Druid embedded JavaScript RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/druid/indexer/v1/sampler"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Apache Druid lets an authenticated user enable and submit JavaScript in a sampler/parser task → RCE.",
+	},
+	{
+		ID: "CVE-2018-1000861", Name: "Jenkins Stapler reflection RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/securityrealm/user/admin/descriptorbyname"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Jenkins Stapler web framework allows invoking arbitrary methods via crafted URLs, chained with Groovy sandbox bypass → RCE.",
+	},
+	{
+		ID: "CVE-2019-1003000", Name: "Jenkins Script Security sandbox bypass RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"checkscriptcompile"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Jenkins Script Security / Pipeline AST checks let a Groovy script escape the sandbox at compile time → RCE.",
+	},
+	{
+		ID: "CVE-2019-7609", Name: "Kibana Timelion prototype-pollution RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/api/timelion/run"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Kibana Timelion visualization allows a JavaScript prototype-pollution payload → arbitrary code execution on the host.",
+	},
+
+	// --- PHP CMS / web apps (Drupal / Joomla / vBulletin / WordPress-stack) ---
+	{
+		ID: "CVE-2014-3704", Name: "Drupalgeddon SQL injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"name[0;", "name[0%20;"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-89"},
+		Description: "Drupal 7 core database API array-key SQL injection in the login form → auth bypass / RCE.",
+	},
+	{
+		ID: "CVE-2018-7602", Name: "Drupalgeddon2 (variant) RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"#post_render"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Drupal core Form API renders attacker-controlled #post_render / #lazy_builder callbacks → RCE.",
+	},
+	{
+		ID: "CVE-2015-8562", Name: "Joomla! PHP object injection RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"jdatabasedrivermysqli"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "Joomla! deserializes a crafted User-Agent/X-Forwarded-For stored in the session → PHP object injection → RCE.",
+	},
+	{
+		ID: "CVE-2019-16759", Name: "vBulletin pre-auth widget RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"widgetconfig[code]"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "vBulletin evaluates the widgetConfig[code] parameter of the widget render endpoint as PHP → unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2023-23752", Name: "Joomla! unauthorized config disclosure", CVSS: 5.3, Service: "http",
+		Signatures: []string{"/api/index.php/v1/config/application?public=true"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-285"},
+		Description: "Joomla! Web Services API improper access control discloses configuration including database credentials.",
+	},
+	{
+		ID: "CVE-2022-42889", Name: "Apache Commons Text interpolation RCE (Text4Shell)", CVSS: 9.8, Service: "http",
+		Signatures: []string{"${script:javascript:", "${prefixloader", "${url:utf-8:"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Apache Commons Text StringSubstitutor default interpolators (script/url/dns) evaluate attacker input → RCE.",
+	},
+
+	// --- HTTP servers / appliances / IoT web ---
+	{
+		ID: "CVE-2017-7269", Name: "Microsoft IIS 6.0 WebDAV ScStoragePathFromUrl overflow", CVSS: 9.8, Service: "http",
+		Signatures: []string{"<locktoken:write1>"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-119"},
+		Description: "IIS 6.0 WebDAV buffer overflow via an overlong If header in PROPFIND → RCE.",
+	},
+	{
+		ID: "CVE-2015-1635", Name: "Microsoft HTTP.sys remote code execution (MS15-034)", CVSS: 10.0, Service: "http",
+		Signatures: []string{"bytes=0-18446744073709551615"},
+		Technique:  "T1499", Tactic: "impact",
+		CWE:         []string{"CWE-190"},
+		Description: "HTTP.sys integer overflow parsing a crafted Range header → BSOD / potential RCE.",
+	},
+	{
+		ID: "CVE-2020-0618", Name: "Microsoft SQL Server Reporting Services deserialization RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/reportserver/pages/reportviewer.aspx"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-502"},
+		Description: "SSRS ReportViewer deserializes an attacker-supplied ViewState/NavigationCorrector payload → RCE.",
+	},
+	{
+		ID: "CVE-2021-43798", Name: "Grafana plugin path traversal", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/public/plugins/alertlist/..", "/public/plugins/graph/.."},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "Grafana plugin asset endpoint allows path traversal to read arbitrary files (e.g. grafana.ini, /etc/passwd).",
+	},
+	{
+		ID: "CVE-2020-25078", Name: "D-Link IP camera admin credential disclosure", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/config/getuser?index="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-200"},
+		Description: "D-Link DCS cameras expose /config/getuser, disclosing the administrator username/password without authentication.",
+	},
+	{
+		ID: "CVE-2021-35394", Name: "Realtek Jungle SDK command injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/goform/formsyscmd", "formwsc", "formsyscmd"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "Realtek Jungle SDK web management (UDPServer/formSysCmd) command injection — a Mirai-class mass-exploited SOHO bug.",
+	},
+
+	// --- Management / monitoring / SSRF ---
+	{
+		ID: "CVE-2022-46169", Name: "Cacti unauthenticated command injection", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/remote_agent.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "Cacti remote_agent.php auth bypass + command injection via the poller hostname → unauthenticated RCE.",
+	},
+	{
+		ID: "CVE-2019-15107", Name: "Webmin password_change.cgi RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/password_change.cgi"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "Webmin password_change.cgi passes the old-password field to a shell → unauthenticated RCE (backdoored release).",
+	},
+	{
+		ID: "CVE-2023-38646", Name: "Metabase pre-auth H2 JDBC RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/api/setup/validate"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Metabase setup-token validation lets an unauthenticated attacker supply an H2 JDBC connection string with INIT SQL → RCE.",
+	},
+	{
+		ID: "CVE-2021-21975", Name: "VMware vRealize Operations SSRF", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/casa/nodes/thumbprints"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-918"},
+		Description: "vRealize Operations Manager API SSRF (casa/nodes/thumbprints) used to steal admin credentials.",
+	},
+	{
+		ID: "CVE-2019-11580", Name: "Atlassian Crowd pdkinstall plugin RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/admin/uploadplugin.action"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-434"},
+		Description: "Atlassian Crowd left the pdkinstall development plugin enabled, allowing upload of a malicious plugin → RCE.",
+	},
+	{
+		ID: "CVE-2018-19518", Name: "PHP imap_open mailbox argument-injection RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"-oproxycommand"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-88"},
+		Description: "PHP imap_open() passes the mailbox string to rsh/ssh; an -oProxyCommand argument injects a shell command (webmail RCE).",
+	},
+
+	// --- SMTP (smtp_recv; implicit-TLS smtps inherits) ---
+	{
+		ID: "CVE-2020-7247", Name: "OpenSMTPD MAIL FROM command injection RCE", CVSS: 9.8, Service: "smtp_recv",
+		Signatures: []string{"mail from:<;"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "OpenSMTPD smtp_mailaddr local-part validation flaw lets a shell command in MAIL FROM run as root.",
+	},
+	{
+		ID: "CVE-2019-10149", Name: "Exim deliver_message RCE (Return of the WIZard)", CVSS: 9.8, Service: "smtp_recv",
+		Signatures: []string{"${run{"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "Exim expands an ${run{...}} expression in a crafted RCPT TO local-part → command execution as root.",
+	},
+	{
+		ID: "CVE-2021-41277", Name: "Metabase GeoJSON local file inclusion / SSRF", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/api/geojson?url="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-918"},
+		Description: "Metabase custom GeoJSON map endpoint fetches an attacker-supplied URL/path, enabling local file read and SSRF.",
+	},
+
+	// --- FTP (ftp control channel) ---
+	{
+		ID: "CVE-2015-3306", Name: "ProFTPD mod_copy SITE CPFR/CPTO RCE", CVSS: 10.0, Service: "ftp",
+		Signatures: []string{"site cpfr"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "ProFTPD mod_copy lets an unauthenticated client copy files (SITE CPFR/CPTO), e.g. a webshell into the web root → RCE.",
+	},
+	{
+		ID: "CVE-2019-12815", Name: "ProFTPD mod_copy arbitrary file copy", CVSS: 9.8, Service: "ftp",
+		Signatures: []string{"site cpto"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "ProFTPD mod_copy permits arbitrary file copy without write permission via SITE CPTO → data disclosure / RCE.",
+	},
+	{
+		ID: "CVE-2011-2523", Name: "vsftpd 2.3.4 backdoor", CVSS: 9.8, Service: "ftp",
+		Signatures: []string{":)"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-78"},
+		Description: "Backdoored vsftpd 2.3.4: a username containing the ':)' smiley opens a root shell on TCP 6200.",
+	},
+	{
+		ID: "CVE-2000-0573", Name: "wu-ftpd SITE EXEC format-string RCE", CVSS: 10.0, Service: "ftp",
+		Signatures: []string{"site exec"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-134"},
+		Description: "wu-ftpd SITE EXEC passes user input as a format string → remote root code execution.",
+	},
+	{
+		ID: "CVE-2010-3867", Name: "ProFTPD mod_site_misc path traversal", CVSS: 7.5, Service: "ftp",
+		Signatures: []string{"site symlink", "site mkdir ../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "ProFTPD mod_site_misc SITE SYMLINK/MKDIR allow directory traversal to create/link files outside the FTP root.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

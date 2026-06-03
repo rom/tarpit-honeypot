@@ -35,10 +35,14 @@ func (s *smtpRecv) Name() string { return "smtp_recv" }
 //
 // Captured fields land in meta: helo, auth_mech, auth_user, auth_pass,
 // mail_from, rcpt_to, message_head.
-func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (res Result, _ error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	s.jit.Sleep(ctx)
-	res := Result{Meta: map[string]any{}}
+	res = Result{Meta: map[string]any{}}
+	// Run the CVE signature catalog over the captured SMTP transcript on every
+	// exit path (parity with imap/pop3) so a catalogued mail-server exploit
+	// attempt becomes a cve:<id> event.
+	defer func() { cveScanMail(&res, "smtp_recv") }()
 
 	host := "mail.example.com"
 	if s.arch != nil && s.arch.SMTPHost() != "" {
