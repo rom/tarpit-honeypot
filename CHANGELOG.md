@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — +40 web/http/smtp/ftp CVE emulations (231 total)
+
+- **40 new exploit-attempt CVE emulations** across web servers, app servers and
+  frameworks (http/https), mail (smtp) and FTP — each carries a high-signal
+  request signature so a live attempt becomes a `cve:<id>` event with its CWE +
+  ATT&CK technique. Highlights: Tomcat PUT-JSP / session-deser, WebLogic JNDI,
+  JBoss JMX/Seam, ActiveMQ Fileserver, Struts2 REST XStream, Spring Cloud
+  Function / Spring Data SpEL, Confluence Widget SSTI, Apache Druid, Jenkins
+  Stapler/Script-Security, Kibana Timelion, Drupalgeddon (SQLi + RCE), Joomla
+  object-injection + config-disclosure, vBulletin, Text4Shell, IIS WebDAV,
+  MS15-034 HTTP.sys, SSRS deser, Grafana traversal, D-Link/Realtek IoT,
+  Cacti/Webmin/Metabase/vRealize/Crowd/PHP-imap; OpenSMTPD + Exim RCE; ProFTPD
+  mod_copy / mod_site_misc, vsftpd 2.3.4 backdoor, wu-ftpd SITE EXEC.
+- **Wired CVE scanning into the smtp_recv and ftp handlers** (they didn't run
+  the catalog before) so mail/FTP exploit attempts are detected end-to-end, not
+  just on http. Added CWE-91 / CWE-134 names. Catalog: **231 CVEs**.
+
 ### Added — search overhaul, total credential capture, +25 UDP / +10 protocols / +10 Lua
 
 - **Search actually works now + many more filters.** The full-text box only

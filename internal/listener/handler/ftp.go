@@ -12,6 +12,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/fakefiles"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
@@ -35,9 +36,17 @@ var defaultFTPFeatures = []string{"EPRT", "EPSV", "MDTM", "PASV", "REST STREAM",
 // pre-login commands a scanner sends (FEAT / SYST / AUTH) realistically and
 // capture USER/PASS, replying 530. The FEAT reply is archetype-specific so
 // the daemon behind the port is fingerprintable, not just its 220 version.
-func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (res Result, _ error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	f.jit.Sleep(ctx)
+	// Run the CVE signature catalog over the captured control-channel transcript
+	// on every exit path so a catalogued FTP-server exploit attempt (e.g. a
+	// ProFTPD mod_copy SITE CPFR/CPTO, or a path-traversal) becomes a cve:<id>.
+	defer func() {
+		for _, rec := range cve.MatchPayload("ftp", string(res.Payload)) {
+			res.CVEHits = appendUnique(res.CVEHits, rec.ID)
+		}
+	}()
 	banner := cfg.Banner
 	if banner == "" {
 		switch {
@@ -49,7 +58,7 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 			banner = "220 (vsFTPd 3.0.3)\r\n"
 		}
 	}
-	res := Result{BannerSent: banner}
+	res = Result{BannerSent: banner}
 	if _, err := conn.Write([]byte(banner)); err != nil {
 		res.Meta = map[string]any{"write_err": err.Error()}
 		return res, nil
