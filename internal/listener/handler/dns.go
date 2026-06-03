@@ -51,7 +51,7 @@ func (d *dnsHandler) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 		flagAnomaly(&res, a)
 	}
 
-	reply := d.buildAnswer(payload, q)
+	reply := d.buildAnswer(payload, q, cfg)
 	if reply != nil {
 		if _, err := pc.WriteTo(reply, src); err != nil {
 			res.Meta["write_err"] = err.Error()
@@ -59,13 +59,13 @@ func (d *dnsHandler) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 			res.BannerSent = "dns answer (" + dnsTypeName(q.qtype) + ")"
 		}
 	}
-	_ = cfg
 	return res, nil
 }
 
 type dnsQuery struct {
-	name  string
-	qtype uint16
+	name   string
+	qtype  uint16
+	qclass uint16 // 1 = IN, 3 = CHAOS (version.bind), …
 	// rawNameEnd is the byte offset just past the question's QNAME+QTYPE+QCLASS.
 	questionEnd int
 }
@@ -105,18 +105,29 @@ func parseDNSQuery(msg []byte) (dnsQuery, bool) {
 		return dnsQuery{}, false
 	}
 	qtype := binary.BigEndian.Uint16(msg[pos : pos+2])
+	qclass := binary.BigEndian.Uint16(msg[pos+2 : pos+4])
 	pos += 4 // qtype + qclass
-	return dnsQuery{name: strings.ToLower(strings.Join(labels, ".")), qtype: qtype, questionEnd: pos}, true
+	return dnsQuery{name: strings.ToLower(strings.Join(labels, ".")), qtype: qtype, qclass: qclass, questionEnd: pos}, true
 }
 
 // buildAnswer constructs a DNS response, preferring topology-coherent
 // answers (real virtual host IPs, the domain's DC/NS/mail) and falling
 // back to deterministic fabricated records for names outside the
 // topology. Unsupported qtypes get NOERROR with zero answers.
-func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery) []byte {
+func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery, cfg config.Listener) []byte {
 	if q.questionEnd > len(query) || q.questionEnd < 12 {
 		return nil
 	}
+	// CHAOS-class (3) version.bind / hostname.bind / authors.bind queries: a
+	// decoy server happily reports a (deliberately old, exploitable-looking)
+	// version banner. This is the classic `dig @host version.bind chaos txt`.
+	if q.qclass == 3 && q.qtype == 16 {
+		if v := chaosValue(q.name, cfg.DNS.VersionBind, d); v != "" {
+			return dnsChaosTXT(query, q, v)
+		}
+	}
+	// AXFR/IXFR are streamed by the TCP handler when fake_zone is enabled; the
+	// UDP path never serves a zone (avoids a huge spoofable reply).
 	// Response header: copy ID, set QR=1, RA=1, RCODE=0. AA=1 when the
 	// answer comes from our own (authoritative) topology.
 	resp := make([]byte, q.questionEnd)
@@ -563,6 +574,10 @@ func dnsTypeName(t uint16) string {
 		return "LOC"
 	case 33:
 		return "SRV"
+	case 251:
+		return "IXFR"
+	case 252:
+		return "AXFR"
 	case 255:
 		return "ANY"
 	}
@@ -670,4 +685,146 @@ func dnsLabelLooksDGA(l string) bool {
 	vowelPoor := vowels*100 < len(l)*26
 	digitHeavy := digits*4 >= len(l) && digits*10 <= len(l)*7
 	return vowelPoor || maxRun >= 6 || digitHeavy
+}
+
+// --- version.bind / hostname.bind (CHAOS) + fake zone-transfer decoys --------
+
+// chaosValue returns the string answer for a CHAOS-class TXT query. configured
+// is the operator's version_bind override (used for version.bind/version.server);
+// empty falls back to a deliberately old, exploitable-looking BIND banner.
+func chaosValue(name, configured string, d *dnsHandler) string {
+	switch strings.ToLower(strings.TrimSuffix(name, ".")) {
+	case "version.bind", "version.server":
+		if configured != "" {
+			return configured
+		}
+		return "9.8.1-P1" // an old BIND with known RCEs — a juicy decoy
+	case "hostname.bind", "id.server":
+		if d != nil && d.id != nil {
+			return d.id.HostName()
+		}
+		return "ns1"
+	case "authors.bind":
+		return "decoy"
+	}
+	return ""
+}
+
+// dnsChaosTXT builds a single-answer response carrying a CHAOS-class TXT record
+// (class 3) with value — the reply to a version.bind probe.
+func dnsChaosTXT(query []byte, q dnsQuery, value string) []byte {
+	resp := make([]byte, q.questionEnd)
+	copy(resp, query[:q.questionEnd])
+	resp[2] = 0x85 // QR=1, AA=1, RD=1
+	resp[3] = 0x80 // RA=1, RCODE=0
+	binary.BigEndian.PutUint16(resp[4:6], 1)
+	binary.BigEndian.PutUint16(resp[6:8], 1) // ANCOUNT=1
+	binary.BigEndian.PutUint16(resp[8:10], 0)
+	binary.BigEndian.PutUint16(resp[10:12], 0)
+	rr := []byte{0xC0, 0x0C}                   // owner = pointer to question
+	rr = binary.BigEndian.AppendUint16(rr, 16) // TYPE TXT
+	rr = binary.BigEndian.AppendUint16(rr, 3)  // CLASS CHAOS
+	rr = binary.BigEndian.AppendUint32(rr, 0)  // TTL 0
+	rd := charString(value)
+	rr = binary.BigEndian.AppendUint16(rr, uint16(len(rd)))
+	rr = append(rr, rd...)
+	return append(resp, rr...)
+}
+
+// fullRR encodes a resource record with an explicit (uncompressed) owner name.
+func fullRR(name string, rrtype uint16, ttl uint32, rdata []byte) []byte {
+	out := encodeDNSName(name)
+	out = binary.BigEndian.AppendUint16(out, rrtype)
+	out = binary.BigEndian.AppendUint16(out, 1) // class IN
+	out = binary.BigEndian.AppendUint32(out, ttl)
+	out = binary.BigEndian.AppendUint16(out, uint16(len(rdata)))
+	return append(out, rdata...)
+}
+
+// fakeZoneServices are the believable service hostnames leaked in a fabricated
+// zone — exactly what an attacker who pulls AXFR hopes to find.
+var fakeZoneServices = []string{
+	"www", "mail", "mail2", "smtp", "imap", "pop", "autodiscover", "owa",
+	"webmail", "vpn", "remote", "citrix", "portal", "intranet", "extranet",
+	"jenkins", "gitlab", "git", "jira", "confluence", "vault", "ad", "dc",
+	"ldap", "kerberos", "db", "db1", "mysql", "mssql", "oracle", "mongo",
+	"redis", "backup", "nas", "ftp", "sftp", "rdp", "ssh", "jump", "bastion",
+	"grafana", "kibana", "prometheus", "api", "api-internal", "dev", "staging",
+	"test", "uat", "admin", "phpmyadmin", "router", "fw", "switch", "printer",
+}
+
+// buildFakeZone fabricates a full, juicy AXFR/IXFR response for the queried
+// apex: SOA, NS, MX, A, a wide set of service A records, SRV for AD, TXT
+// "secrets", and a closing SOA. Returned as the list of TCP messages to send
+// (one message here — all RRs fit comfortably).
+func (d *dnsHandler) buildFakeZone(query []byte, q dnsQuery, cfg config.Listener) [][]byte {
+	dom := strings.TrimSuffix(q.name, ".")
+	if cfg.DNS.ZoneDomain != "" {
+		dom = strings.TrimSuffix(cfg.DNS.ZoneDomain, ".")
+	}
+	if dom == "" {
+		dom = "corp.local"
+	}
+	resp := make([]byte, q.questionEnd)
+	copy(resp, query[:q.questionEnd])
+	resp[2] = 0x84                           // QR=1, AA=1
+	resp[3] = 0x80                           // RA=1
+	binary.BigEndian.PutUint16(resp[4:6], 1) // QDCOUNT
+
+	var body []byte
+	var n uint16
+	add := func(b []byte) { body = append(body, b...); n++ }
+
+	soa := d.soaData(dom)
+	add(fullRR(dom, 6, 3600, soa)) // opening SOA (AXFR convention)
+	add(fullRR(dom, 2, 3600, encodeDNSName("ns1."+dom)))
+	add(fullRR(dom, 2, 3600, encodeDNSName("ns2."+dom)))
+	add(fullRR(dom, 15, 3600, mxData(10, "mail."+dom)))
+	add(fullRR(dom, 15, 3600, mxData(20, "mail2."+dom)))
+	apex := d.fakeIPv4(dom)
+	add(fullRR(dom, 1, 3600, apex[:]))
+	// Service A records — the inventory an AXFR puller is hunting for.
+	for _, svc := range fakeZoneServices {
+		host := svc + "." + dom
+		ip := d.fakeIPv4(host)
+		add(fullRR(host, 1, 3600, ip[:]))
+	}
+	// AD service-discovery SRV records (point at the fake DC).
+	add(fullRR("_ldap._tcp."+dom, 33, 3600, srvData(0, 100, 389, "dc."+dom)))
+	add(fullRR("_kerberos._tcp."+dom, 33, 3600, srvData(0, 100, 88, "dc."+dom)))
+	add(fullRR("_kpasswd._udp."+dom, 33, 3600, srvData(0, 100, 464, "dc."+dom)))
+	// TXT "secrets" — SPF/DKIM/DMARC plus deliberately tempting fake material.
+	txts := []string{
+		"v=spf1 include:_spf." + dom + " ~all",
+		"v=DMARC1; p=none; rua=mailto:dmarc@" + dom,
+		"google-site-verification=" + d.fakeHex("gsv/"+dom, 32),
+		"internal-note: legacy admin creds in vault, see infra wiki",
+		"backup-key=" + d.fakeHex("bk/"+dom, 24),
+	}
+	txts = append(txts, cfg.DNS.ExtraTXT...)
+	for _, t := range txts {
+		add(fullRR(dom, 16, 3600, charString(t)))
+	}
+	add(fullRR(dom, 6, 3600, soa)) // closing SOA terminates the AXFR
+
+	binary.BigEndian.PutUint16(resp[6:8], n)
+	binary.BigEndian.PutUint16(resp[8:10], 0)
+	binary.BigEndian.PutUint16(resp[10:12], 0)
+	resp = append(resp, body...)
+	return [][]byte{resp}
+}
+
+// fakeHex returns a deterministic hex string for fabricated TXT material.
+func (d *dnsHandler) fakeHex(seed string, n int) string {
+	const hexd = "0123456789abcdef"
+	out := make([]byte, n)
+	var x uint32 = 0x9e3779b9
+	if d.id != nil {
+		x ^= d.id.Uint32("dns-fake/" + seed)
+	}
+	for i := range out {
+		x = x*1664525 + 1013904223
+		out[i] = hexd[x>>28&0x0f]
+	}
+	return string(out)
 }

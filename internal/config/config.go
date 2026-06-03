@@ -873,6 +873,9 @@ type Listener struct {
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
 	SNMP   SNMPListener `yaml:"snmp"`
+	// DNS configures the dns handler's decoy behaviour (version.bind banner +
+	// fake zone-transfer responses). See DNSResponder.
+	DNS DNSResponder `yaml:"dns_responder"`
 	// TLSIntercept configures the tls_intercept handler (terminate TLS, then
 	// either hand the cleartext to an internal handler or forward it to a real
 	// backend, capturing both directions). See TLSIntercept.
@@ -919,6 +922,28 @@ type SNMPListener struct {
 	// WalkTarpit, when > 0, delays each over-limit walk response by this long
 	// instead of dropping it.
 	WalkTarpit time.Duration `yaml:"walk_tarpit"`
+}
+
+// DNSResponder configures the dns handler's deception behaviour beyond the
+// topology-coherent default answers.
+type DNSResponder struct {
+	// VersionBind is the version string returned for a CHAOS-class TXT query for
+	// version.bind / version.server (and a hostname for hostname.bind). Set it
+	// to a deliberately old/vulnerable banner (e.g. "9.8.1-P1") to draw version-
+	// targeted exploitation. Empty = answer with a generic decoy version.
+	VersionBind string `yaml:"version_bind"`
+	// FakeZone, when true, answers an AXFR/IXFR zone-transfer request with a
+	// fabricated, juicy-looking zone (SOA + NS + MX + many service CNAME/A
+	// records + TXT "secrets") instead of refusing — a high-signal deception
+	// trap (a real server almost never allows AXFR to the world). TCP only, so
+	// it can never be a UDP amplifier.
+	FakeZone bool `yaml:"fake_zone"`
+	// ZoneDomain overrides the apex domain used in the fabricated zone (default:
+	// the queried name / the sensor identity's domain).
+	ZoneDomain string `yaml:"zone_domain"`
+	// ExtraTXT are additional attacker-baiting TXT records leaked in the fake
+	// zone (e.g. a fake API key, an "internal use only" note, SPF/DKIM).
+	ExtraTXT []string `yaml:"extra_txt"`
 }
 
 // WebappBrand customises the generic fake-web persona. All fields are optional;

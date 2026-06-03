@@ -77,7 +77,27 @@ func (d *dnsTCP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		for _, a := range dnsQueryAnomalies(q.name, q.qtype, len(msg)) {
 			flagAnomaly(&res, a)
 		}
-		reply := d.inner.buildAnswer(msg, q)
+		// Zone transfer (AXFR 252 / IXFR 251): when fake_zone is enabled, serve a
+		// fabricated juicy zone instead of refusing — a deception trap. (Over TCP
+		// only; never a UDP amplifier.)
+		if (q.qtype == 252 || q.qtype == 251) && cfg.DNS.FakeZone {
+			for _, m := range d.inner.buildFakeZone(msg, q, cfg) {
+				binary.BigEndian.PutUint16(lenBuf[:], uint16(len(m)))
+				if _, err := conn.Write(lenBuf[:]); err != nil {
+					res.Meta["write_err"] = err.Error()
+					break
+				}
+				if _, err := conn.Write(m); err != nil {
+					res.Meta["write_err"] = err.Error()
+					break
+				}
+			}
+			res.Meta["zone_transfer_served"] = true
+			flagAnomaly(&res, "dns-zone-transfer-served")
+			res.BannerSent = "dns AXFR (fake zone)"
+			continue
+		}
+		reply := d.inner.buildAnswer(msg, q, cfg)
 		if reply == nil {
 			continue
 		}
