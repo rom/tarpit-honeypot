@@ -12,6 +12,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 type smtpRecv struct {
@@ -126,13 +127,20 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 			head, ended := readDATAUntilDot(br, 4096)
 			res.Meta["message_head"] = head
+			// Capture the (possibly in-TLS-tunnel) message content into the
+			// payload too, so the full transferred plaintext — not just the
+			// command verbs — is recorded and searchable.
+			res.Payload = append(res.Payload, []byte("DATA\n"+head)...)
 			if ended {
 				fmt.Fprintf(conn, "250 OK: queued as 0xdeadbeef\r\n")
 			}
 		case "BDAT":
-			// CHUNKING (RFC 3030): "BDAT <size> [LAST]" — read and discard a
-			// bounded chunk, then accept it like a real MTA would.
-			readBDATChunk(arg, br)
+			// CHUNKING (RFC 3030): "BDAT <size> [LAST]" — read a bounded chunk,
+			// capture it, then accept it like a real MTA would.
+			if chunk := readBDATChunk(arg, br); chunk != "" {
+				res.Meta["bdat_chunk"] = safe.SanitizeForLog(chunk)
+				res.Payload = append(res.Payload, []byte(chunk)...)
+			}
 			fmt.Fprintf(conn, "250 OK\r\n")
 		case "HELP":
 			fmt.Fprintf(conn, "214 2.0.0 https://www.postfix.org/\r\n")
@@ -327,17 +335,18 @@ func (s *smtpRecv) handleAuth(arg string, br *bufio.Reader, conn net.Conn, meta 
 }
 
 // readBDATChunk consumes a CHUNKING BDAT chunk: the arg is "<size> [LAST]";
-// we read (and discard) up to a bounded number of the announced bytes so the
-// stream stays aligned, never buffering an unbounded chunk.
-func readBDATChunk(arg string, br *bufio.Reader) {
+// we read up to a bounded number of the announced bytes (capturing them so the
+// transferred message content is recorded) so the stream stays aligned, never
+// buffering an unbounded chunk.
+func readBDATChunk(arg string, br *bufio.Reader) string {
 	f := strings.Fields(arg)
 	if len(f) == 0 {
-		return
+		return ""
 	}
 	n := 0
 	for _, c := range f[0] {
 		if c < '0' || c > '9' {
-			return
+			return ""
 		}
 		n = n*10 + int(c-'0')
 		if n > 65536 {
@@ -345,11 +354,17 @@ func readBDATChunk(arg string, br *bufio.Reader) {
 			break
 		}
 	}
+	var b strings.Builder
 	for i := 0; i < n; i++ {
-		if _, err := br.ReadByte(); err != nil {
-			return
+		c, err := br.ReadByte()
+		if err != nil {
+			break
+		}
+		if b.Len() < 4096 {
+			b.WriteByte(c)
 		}
 	}
+	return b.String()
 }
 
 func readDATAUntilDot(br *bufio.Reader, cap int) (string, bool) {
