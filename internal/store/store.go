@@ -363,6 +363,9 @@ type Filter struct {
 	MinSeverity event.Severity
 	// Proto restricts to a transport (tcp / udp / icmp / l2 / …); empty = any.
 	Proto string
+	// Handler restricts to events produced by a given protocol handler (the
+	// "all attacks against this service" pivot off the summary). Empty = any.
+	Handler string
 	// DstPort restricts to a destination (listener) port; 0 = any.
 	DstPort int
 	// Country restricts to events whose GeoIP meta.geo_country matches (the
@@ -407,6 +410,10 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.Proto != "" {
 		q += " AND proto = ?"
 		args = append(args, f.Proto)
+	}
+	if f.Handler != "" {
+		q += " AND handler = ?"
+		args = append(args, f.Handler)
 	}
 	if f.DstPort > 0 {
 		q += " AND dst_port = ?"

@@ -668,6 +668,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	// Post-query pivots for the summary aggregations that aren't simple columns:
+	// tool (a meta string array), ATT&CK tactic (computed per event), and ASN
+	// (parsed from the asn meta label). These let every summary line item link
+	// to "all events matching it".
+	evs = filterByMeta(evs, q.Get("tool"), q.Get("tactic"), q.Get("asn"))
 	sortEvents(evs, sortKey, order)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := eventsPage{
@@ -681,6 +686,34 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if err := s.tmpl.ExecuteTemplate(w, "events", page); err != nil {
 		slog.Warn("ui: render events", "err", err)
 	}
+}
+
+// filterByMeta narrows events by the post-query summary pivots that aren't
+// plain DB columns: tool (a meta "tools" string array), ATT&CK tactic
+// (computed per event), and ASN (the numeric meta "asn"). Each empty argument
+// is a no-op; tool/tactic match case-insensitively.
+func filterByMeta(evs []*event.Event, tool, tactic, asn string) []*event.Event {
+	if tool == "" && tactic == "" && asn == "" {
+		return evs
+	}
+	asnNum := 0
+	if asn != "" {
+		asnNum, _ = strconv.Atoi(strings.TrimPrefix(strings.ToUpper(asn), "AS"))
+	}
+	out := make([]*event.Event, 0, len(evs))
+	for _, ev := range evs {
+		if tool != "" && !containsFold(metaStrings(ev.Meta, "tools"), tool) {
+			continue
+		}
+		if tactic != "" && !containsFold(eventTag(ev).Tactics, tactic) {
+			continue
+		}
+		if asnNum > 0 && metaInt(ev.Meta, "asn") != asnNum {
+			continue
+		}
+		out = append(out, ev)
+	}
+	return out
 }
 
 // sortEvents orders events in place by the requested column (empty key
@@ -1470,6 +1503,9 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("proto"); v != "" {
 		f.Proto = v
+	}
+	if v := q.Get("handler"); v != "" {
+		f.Handler = v
 	}
 	if v := q.Get("port"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {
