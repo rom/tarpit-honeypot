@@ -85,6 +85,7 @@ var c2Frameworks = map[string]bool{
 	"merlin": true, "villain": true, "pupy": true, "poshc2": true,
 	"nimplant": true, "silenttrinity": true, "koadic": true, "quasar": true,
 	"asyncrat": true, "njrat": true, "deimos": true,
+	"dnscat2": true, "hoaxshell": true, "manjusaka": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -138,7 +139,10 @@ var vulnScanners = map[string]bool{
 	"wafw00f": true,
 	"sn1per":  true, "afrog": true, "fscan": true, "kscan": true, "goby": true,
 	"vscan": true, "w13scan": true, "xray": true, "pocsuite": true, "dismap": true,
-	"yakit": true,
+	"yakit":      true,
+	"graphqlmap": true, "log4j-scanner": true, "struts-pwn": true, "fuxploider": true,
+	"shortscan": true, "davtest": true, "magescan": true, "aem-hacker": true,
+	"wprecon": true, "byp4xx": true, "h2csmuggler": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -497,6 +501,38 @@ var uaSignatures = map[string]string{
 	"chaos-client": "chaos-client",
 	"dnsgen":       "dnsgen",
 	"dismap":       "dismap",
+
+	// --- Batch: 25 more AD / post-exploitation / web-exploit / DNS-C2
+	// fingerprints (User-Agent self-identification). ---
+	// Active Directory / Windows post-exploitation toolkits.
+	"kerbrute":     "kerbrute",
+	"smbmap":       "smbmap",
+	"enum4linux":   "enum4linux",
+	"evil-winrm":   "evil-winrm",
+	"impacket":     "impacket",
+	"bloodhound":   "bloodhound",
+	"certipy":      "certipy",
+	"windapsearch": "windapsearch",
+	// Web / API / app exploit + vuln scanners.
+	"graphw00f":   "graphw00f",
+	"graphqlmap":  "graphqlmap",
+	"log4j-scan":  "log4j-scanner",
+	"struts-pwn":  "struts-pwn",
+	"fuxploider":  "fuxploider",
+	"shortscan":   "shortscan",
+	"davtest":     "davtest",
+	"magescan":    "magescan",
+	"aem-hacker":  "aem-hacker",
+	"wprecon":     "wprecon",
+	"byp4xx":      "byp4xx",
+	"h2csmuggler": "h2csmuggler",
+	// Crawlers / tech fingerprinters.
+	"crawlergo":  "crawlergo",
+	"webanalyze": "webanalyze",
+	// DNS / HTTP C2 + RATs.
+	"dnscat":    "dnscat2",
+	"hoaxshell": "hoaxshell",
+	"manjusaka": "manjusaka",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
