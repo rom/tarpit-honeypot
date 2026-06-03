@@ -221,6 +221,17 @@ the same whitelist the validator enforces, so it never drifts).
 
 **TCP-only:** `raw`, `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `smtps`, `imaps`, `pop3s`, `ldaps`, `mqtts`, `ftps`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip`, `dnp3`, `ge_srtp`, `codesys`, `atg`, `fox`, `hartip`, `pcworx`, `mms`, `ads`, `pjl`, `lpd`, `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `scripted`, `tls_intercept`.
 
+**Real (browser-trusted) HTTPS for the fake web app.** The `https` handler
+always performs a real TLS handshake; by default it presents an archetype-shaped
+self-signed cert. To serve the fake web app (`webapp: true`) over a
+browser-trusted connection, point the listener at a real cert + key:
+`https: { cert_file: /etc/tarpit-honeypot/tls/fullchain.pem, key_file: …/privkey.pem }`
+(both required together; the file's mtime is watched, so a renewed Let's Encrypt
+cert is picked up without a restart). **Trade-off:** a real CA cert ties the
+honeypot to your true identity (CT logs, the issued domain) and drops the
+anti-fingerprint jitter — only use it on a surface you intend to publish under a
+real name.
+
 The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (636),
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
 plaintext peers: the sensor performs the TLS handshake (presenting a self-signed

@@ -54,7 +54,16 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	withTimeout(conn, cfg.ReadTimeout)
 	h.jit.Sleep(ctx)
 	prof := h.profileFor(cfg)
-	cert, err := h.certFor(prof)
+	// A listener may pin a real operator cert (Let's Encrypt etc.) to serve the
+	// fake web app over browser-trusted HTTPS; otherwise use the archetype-
+	// shaped self-signed cert.
+	var cert *tls.Certificate
+	var err error
+	if cfg.HTTPS.CertFile != "" && cfg.HTTPS.KeyFile != "" {
+		cert, err = h.operatorCert(cfg.HTTPS.CertFile, cfg.HTTPS.KeyFile)
+	} else {
+		cert, err = h.certFor(prof)
+	}
 	if err != nil {
 		return Result{Meta: map[string]any{"cert_err": err.Error()}}, nil
 	}
@@ -341,6 +350,27 @@ func (h *https) certFor(prof certProfile) (*tls.Certificate, error) {
 	h.cache[key] = c
 	h.created[key] = time.Now()
 	return c, nil
+}
+
+// operatorCert loads (and caches) a real PEM cert+key the operator pinned on
+// the listener. The cache is keyed by the file paths and refreshed when the
+// cert file's mtime changes, so a renewed Let's Encrypt cert is served without
+// restarting the sensor.
+func (h *https) operatorCert(certFile, keyFile string) (*tls.Certificate, error) {
+	key := "file:" + certFile + "|" + keyFile
+	mt := fileModTime(certFile)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if c, ok := h.cache[key]; ok && !h.created[key].Before(mt) {
+		return c, nil
+	}
+	c, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("https: load cert %s: %w", certFile, err)
+	}
+	h.cache[key] = &c
+	h.created[key] = mt
+	return &c, nil
 }
 
 // expired reports whether a cert generated/loaded at created is older than

@@ -61,10 +61,20 @@ listeners:
     proto: tcp
     bind: 0.0.0.0:443
     mode: banner
-    handler: https     # self-signs a cert shaped by the archetype's TLS posture
+    handler: https     # real TLS handshake; self-signs a cert shaped by the archetype's TLS posture
     webapp: true
     severity: high
     capture: true
+    # To serve the fake web app over a BROWSER-TRUSTED HTTPS connection, point
+    # the listener at a real cert + key (e.g. a Let's Encrypt fullchain). The
+    # handshake is already real; this just swaps the self-signed cert for a
+    # trusted one, and a renewed cert is picked up automatically (mtime-watched).
+    # SECURITY TRADE-OFF: a real CA cert ties this honeypot to your true identity
+    # (CT logs, the issued domain) and drops the anti-fingerprint jitter — only
+    # do this on a deception surface you intend to publish under a real name.
+    # https:
+    #   cert_file: /etc/tarpit-honeypot/tls/fullchain.pem
+    #   key_file:  /etc/tarpit-honeypot/tls/privkey.pem
 
   # A real web box almost always has SSH — present it for a believable
   # surface (credential capture only; never accepts a login).

@@ -1036,6 +1036,9 @@ func (c *Config) Validate() error {
 		if l.Webapp && l.Handler != "http" && l.Handler != "https" {
 			return fmt.Errorf("listener %s: webapp requires handler http or https (got %q)", l.ID, l.Handler)
 		}
+		if (l.HTTPS.CertFile == "") != (l.HTTPS.KeyFile == "") {
+			return fmt.Errorf("listener %s: https.cert_file and https.key_file must be set together", l.ID)
+		}
 		if l.Mode == "tarpit" {
 			if l.Proto != "tcp" {
 				return fmt.Errorf("listener %s: tarpit is tcp-only", l.ID)

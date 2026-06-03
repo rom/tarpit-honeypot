@@ -944,6 +944,16 @@ type HTTPS struct {
 	// real reverse proxy / load balancer would. SNI with no match falls
 	// back to the default cert.
 	VHosts []TLSVHost `yaml:"vhosts"`
+	// CertFile / KeyFile point the listener at a real, operator-provided PEM
+	// cert + key (e.g. a Let's Encrypt fullchain), instead of the archetype-
+	// shaped self-signed cert. Use this to run the fake web app over a
+	// browser-trusted HTTPS connection. SECURITY TRADE-OFF: a real CA cert
+	// ties the honeypot to your true identity (CT logs, the issued domain) and
+	// removes the anti-fingerprint jitter — only use it on a deception surface
+	// you intend to publish under a real name. Both must be set; the file's
+	// mtime is watched so a renewed cert is picked up without a restart.
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // TLSVHost is one SNI-selected certificate persona for an https listener.
