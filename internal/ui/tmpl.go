@@ -369,7 +369,8 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .threat-elevated { color: var(--sev-medium); font-weight: 600; }
 .threat-high { color: var(--sev-high); font-weight: 600; }
 .threat-critical { color: var(--sev-critical); font-weight: 700; background: var(--sev-critical-bg); }
-.tag { display: inline-block; background: var(--tag-bg); border: 1px solid var(--tag-border); border-radius: 3px; padding: 0 .35rem; margin: .1rem .2rem .1rem 0; font-size: 0.857rem; color: var(--text); }
+.tag { display: inline-block; background: var(--tag-bg); border: 1px solid var(--tag-border); border-radius: 3px; padding: 0 .35rem; margin: .1rem .2rem .1rem 0; font-size: 0.857rem; color: var(--text); text-decoration: none; }
+a.tag:hover { border-color: var(--accent); }
 .tag.warn { background: var(--tag-warn-bg); border-color: var(--tag-warn-border); }
 .tag.bad { background: var(--tag-bad-bg); border-color: var(--tag-bad-border); }
 table.chart { width: 100%; background: transparent; }
@@ -408,7 +409,8 @@ a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03);
 .pcard-port { font-size: 1.15rem; font-weight: 700; color: var(--text); }
 .pcard-svc { font-weight: 600; color: var(--text-strong); margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcard-meta { color: var(--text-faint); font-size: 0.786rem; margin: .05rem 0 .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proto { font-size: 0.714rem; font-weight: 700; text-transform: uppercase; padding: 0 .3rem; border-radius: 3px; color: #fff; background: var(--proto-default); }
+.proto { font-size: 0.714rem; font-weight: 700; text-transform: uppercase; padding: 0 .3rem; border-radius: 3px; color: #fff; background: var(--proto-default); text-decoration: none; display: inline-block; }
+a.proto:hover { filter: brightness(1.1); }
 .proto-tcp { background: var(--proto-tcp); }
 .proto-udp { background: var(--proto-udp); }
 .proto-icmp { background: var(--proto-icmp); }
@@ -599,6 +601,12 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h2>top rules</h2>
 {{ if .Rules }}{{ template "bars" .Rules }}{{ else }}<p class="note">none</p>{{ end }}
 
+<h2>top attacks</h2>
+{{ if .Attacks }}{{ template "bars" .Attacks }}<p class="note">Most-seen ATT&amp;CK techniques (the <em>how</em>) — click through to the technique drill-down.</p>{{ else }}<p class="note">none</p>{{ end }}
+
+<h2>top vulnerabilities</h2>
+{{ if .CVEs }}{{ template "bars" .CVEs }}<p class="note">Most-probed CVEs (the <em>what</em>) — click a CVE to search its events; see all under <a href="/search?has_cve=1">CVE events</a>.</p>{{ else }}<p class="note">none detected</p>{{ end }}
+
 <h2>top sources</h2>
 {{ if .Sources }}{{ template "bars" .Sources }}{{ else }}<p class="note">none</p>{{ end }}
 <p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
@@ -666,7 +674,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   {{ range .Events }}<tr>
     <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
     <td class="sev-{{ .Severity }}">{{ .RuleID }}</td>
-    <td>{{ .Handler }}{{ if .Port }}:{{ .Port }}{{ end }}</td>
+    <td>{{ handlerLink .Handler }}{{ if .Port }}:{{ .Port }}{{ end }}</td>
     <td>{{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}</td>
   </tr>{{ end }}
   </table>
@@ -792,7 +800,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ countryFlag .Country }} {{ .Country }}</span>{{ else }}—{{ end }}</td>
   <td>{{ if .ASN }}{{ .ASN }}{{ else }}—{{ end }}</td>
   <td><span class="tag sev-{{ .Sev }}">{{ .Sev }}</span></td>
-  <td>{{ .Handler }}</td>
+  <td>{{ handlerLink .Handler }}</td>
   <td>{{ .RuleID }}</td>
 </tr>{{ end }}
 </table>{{ else }}<p class="note">no high-severity attacks in the window</p>{{ end }}
@@ -922,7 +930,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <td class="sev-{{ .Severity.String }}">{{ .Severity.String }}</td>
   <td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a></td>
   <td>{{ .RuleID }}</td>
-  <td>{{ .Handler }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ end }}</td>
+  <td>{{ handlerLink .Handler }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ end }}</td>
   <td><a href="/events/{{ .ID }}">details</a></td>
 </tr>{{ end }}
 </table>{{ else }}<p class="note">no matches</p>{{ end }}{{ end }}
@@ -1004,8 +1012,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
     <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
-    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} <span class="proto proto-{{ .Proto }}" title="transport: {{ .Proto }}">{{ .Proto }}</span>{{ end }}</td>
-    <td>{{ .Handler }}</td>
+    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
+    <td>{{ handlerLink .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
   </tr>
   {{ end }}
@@ -1021,8 +1029,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
   <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} {{ sourceBadges .Meta }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
   <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
-  <tr><th>proto</th><td>{{ if .Proto }}<span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>{{ else }}—{{ end }}</td></tr>
-  <tr><th>handler</th><td>{{ .Handler }}</td></tr>
+  <tr><th>proto</th><td>{{ if .Proto }}{{ protoTag .Proto }}{{ else }}—{{ end }}</td></tr>
+  <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
 </table>
 
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
@@ -1125,7 +1133,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 </table>
 <p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
 
-{{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<span class="tag">{{ . }}</span>{{ end }}</div>
+{{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
 
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
@@ -1166,7 +1174,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <td>{{ fmtTime .Time }}</td>
   <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
   <td>{{ .RuleID }}</td>
-  <td>{{ .Handler }}</td>
+  <td>{{ handlerLink .Handler }}</td>
   <td><a href="/events/{{ .ID }}">details</a></td>
 </tr>{{ end }}
 </table>
@@ -1610,7 +1618,7 @@ replies, NTP mode-7 silent, no unbounded DNS answers).</li>
 
 <details><summary><b>protocol handlers</b> — {{ len .Handlers }}</summary>
 <table data-filter><tr><th>handler</th><th>transport</th><th>description</th></tr>
-{{ range .Handlers }}<tr><td><code>{{ .Name }}</code></td><td>{{ .Transport }}</td><td>{{ .Desc }}</td></tr>{{ end }}
+{{ range .Handlers }}<tr><td><code><a href="/events?handler={{ .Name }}">{{ .Name }}</a></code></td><td>{{ .Transport }}</td><td>{{ .Desc }}</td></tr>{{ end }}
 </table></details>
 
 <details><summary><b>ATT&amp;CK techniques mapped</b> — {{ len .Techniques }}</summary>

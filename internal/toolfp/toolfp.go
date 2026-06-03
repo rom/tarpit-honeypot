@@ -149,6 +149,9 @@ var vulnScanners = map[string]bool{
 	"struts-scan": true, "tomcatwardeployer": true, "corsy": true, "smuggler": true,
 	"dontgo403": true, "nomore403": true, "lfimap": true, "fimap": true,
 	"sslscan": true, "cipherscan": true, "a2sv": true, "ike-scan": true,
+	"gxss": true, "kxss": true, "ppfuzz": true, "ppmap": true, "gopherus": true,
+	"dirdar": true, "wpprobe": true, "joomlavs": true, "drupwn": true,
+	"graphql-cop": true, "akto": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -630,6 +633,45 @@ var uaSignatures = map[string]string{
 	"supershell": "supershell",
 	"phpsploit":  "phpsploit",
 	"weevely":    "weevely",
+
+	// --- Batch: 30 more web-exploit / API / OSINT / recon-framework / cloud
+	// fingerprints (User-Agent self-identification). ---
+	// Web / API exploit + injection scanners.
+	"gxss":        "gxss",
+	"kxss":        "kxss",
+	"ppfuzz":      "ppfuzz",
+	"ppmap":       "ppmap",
+	"gopherus":    "gopherus",
+	"dirdar":      "dirdar",
+	"wpprobe":     "wpprobe",
+	"joomlavs":    "joomlavs",
+	"drupwn":      "drupwn",
+	"graphql-cop": "graphql-cop",
+	"akto":        "akto",
+	// JS / CSP / endpoint discovery.
+	"csprecon": "csprecon",
+	"mantra":   "mantra",
+	"jsluice":  "jsluice",
+	"uddup":    "uddup",
+	// All-in-one recon frameworks.
+	"autorecon": "autorecon",
+	"reconftw":  "reconftw",
+	"rengine":   "rengine",
+	"favfreak":  "favfreak",
+	// People / account / breach OSINT.
+	"h8mail":   "h8mail",
+	"holehe":   "holehe",
+	"maigret":  "maigret",
+	"sherlock": "sherlock",
+	"ghunt":    "ghunt",
+	"dnstwist": "dnstwist",
+	// GraphQL tooling.
+	"inql":         "inql",
+	"clairvoyance": "clairvoyance",
+	"crackql":      "crackql",
+	// Cloud / IAM enumeration + post-exploitation.
+	"cloudfox":      "cloudfox",
+	"enumerate-iam": "enumerate-iam",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used

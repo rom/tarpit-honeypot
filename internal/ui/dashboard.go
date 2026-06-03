@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -75,7 +76,14 @@ type dashboard struct {
 	ASNs      []barRow
 	Tools     []barRow
 	Handlers  []barRow
-	Scanned   int
+	// Attacks ranks the most-seen ATT&CK techniques (the behaviour — the
+	// "how"); CVEs ranks the most-probed vulnerabilities (the specific weakness
+	// — the "what"). They are deliberately two lists: a single technique spans
+	// many CVEs and one CVE can be reached by several techniques, so collapsing
+	// them would hide both axes.
+	Attacks []barRow
+	CVEs    []barRow
+	Scanned int
 	// Charts are charts.js figures rendered alongside the CSS bars (JS on).
 	Charts []chartFig
 	// Time-range selector (24h / 7d / 14d / 31d / 3mo / 6mo) + the labels.
@@ -213,9 +221,17 @@ func trendTitle(bucket time.Duration) string {
 func enrichDashboard(d *dashboard, evs []*event.Event) {
 	d.Scanned = len(evs)
 	tac, country, asn, tool, handler := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
+	tech, cve := map[string]int{}, map[string]int{}
 	for _, ev := range evs {
-		for _, t := range eventTag(ev).Tactics {
+		tag := eventTag(ev)
+		for _, t := range tag.Tactics {
 			tac[t]++
+		}
+		for _, t := range tag.Techniques {
+			tech[t]++
+		}
+		for _, c := range eventCVEs(ev) {
+			cve[c]++
 		}
 		if c, _ := ev.Meta["geo_country"].(string); c != "" {
 			country[c]++
@@ -250,6 +266,61 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	}
 	d.Tools = topBars(tool, 10, "/events?tool=")
 	d.Handlers = topBars(handler, 12, "/events?handler=")
+	// Top attacks: ATT&CK techniques, labelled with their human name and linking
+	// to the internal technique drill-down.
+	d.Attacks = topBars(tech, 12, "/attack/technique?id=")
+	for i := range d.Attacks {
+		if nm := techShortName(d.Attacks[i].Label); nm != "" {
+			d.Attacks[i].Label = d.Attacks[i].Label + " · " + nm
+		}
+	}
+	// Top vulnerabilities: CVE IDs, each linking to a full-text search for its
+	// events (covers the rule, anomaly markers, and emulated-vuln meta).
+	d.CVEs = topBars(cve, 12, "/search?q=")
+}
+
+// eventCVEs returns the CVE IDs an event recorded — from a "cve:"-prefixed
+// rule, "cve:" anomaly markers, or the emulated-vuln meta — normalized to
+// upper case and de-duplicated.
+func eventCVEs(ev *event.Event) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if i := strings.IndexByte(s, ':'); i >= 0 && strings.EqualFold(s[:i], "cve") {
+			s = s[i+1:]
+		}
+		up := strings.ToUpper(s)
+		if !strings.HasPrefix(up, "CVE-") || seen[up] {
+			return
+		}
+		seen[up] = true
+		out = append(out, up)
+	}
+	add(ev.RuleID)
+	for _, a := range ev.Anomalies {
+		add(a)
+	}
+	for _, a := range metaStrings(ev.Meta, "anomalies") {
+		add(a)
+	}
+	for _, c := range metaStrings(ev.Meta, "emulated_vuln_cves") {
+		add(c)
+	}
+	return out
+}
+
+// techShortName returns the human-readable name of an ATT&CK technique — the
+// text before the " — " in its description (e.g. "T1595" -> "Active Scanning").
+func techShortName(id string) string {
+	d := mitre.Describe(id)
+	if d == "" {
+		return ""
+	}
+	if i := strings.Index(d, " — "); i > 0 {
+		return strings.TrimSpace(d[:i])
+	}
+	return d
 }
 
 // asnNumber extracts the numeric AS from a label like "AS13335 Cloudflare".
