@@ -343,7 +343,8 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .host { border-left: 3px solid var(--host-border); padding: .15rem 0 .15rem .6rem; margin: .35rem 0; }
 .host .hostline { font-weight: 600; }
 .host .os { color: var(--text-faint); font-weight: 400; }
-.svc { display: inline-block; background: var(--svc-bg); border: 1px solid var(--svc-border); border-radius: 3px; padding: 0 .35rem; margin: .1rem .25rem .1rem 0; font-size: 0.857rem; color: var(--text); }
+.svc { display: inline-block; background: var(--svc-bg); border: 1px solid var(--svc-border); border-radius: 3px; padding: 0 .35rem; margin: .1rem .25rem .1rem 0; font-size: 0.857rem; color: var(--text); text-decoration: none; }
+a.svc:hover { border-color: var(--accent); }
 .docs h2 { border-bottom: 1px solid var(--border); padding-bottom: .2rem; }
 .docs code { background: var(--bg-code); padding: 0 .25rem; border-radius: 3px; color: var(--text); }
 .docs ul { margin: .3rem 0 .8rem 1.2rem; padding: 0; }
@@ -990,7 +991,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   proto: <input type="text" name="proto" value="{{ .Filter.Proto }}" placeholder="tcp" size="5">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
-  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="1000" size="5">
+  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="50000" size="6"> <a href="/events?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;proto={{ .Filter.Proto }}&amp;severity={{ .SeverityStr }}&amp;since={{ .SinceStr }}&amp;q={{ .QStr }}&amp;limit=all">all</a>
   <br>search: <input type="text" name="q" value="{{ .QStr }}" placeholder="full-text: rule / banner / captured meta" size="40">
   <button type="submit">filter</button>
   <a href="/events">reset</a>
@@ -1001,7 +1002,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=pcap">pcaps</a> ·
   <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=session">sessions</a>
 </p>
-<table>
+<table data-rows-server>
   <tr>
     <th><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
     <th data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
@@ -1017,7 +1018,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
     <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
-    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
+    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
     <td>{{ handlerLink .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
   </tr>
@@ -1033,7 +1034,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
   <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} {{ sourceBadges .Meta }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
-  <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
+  <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcLink .Dest.Port }}){{ end }}</td></tr>
   <tr><th>proto</th><td>{{ if .Proto }}{{ protoTag .Proto }}{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
 </table>
@@ -1041,7 +1042,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
   <tr><th>techniques</th><td>{{ range .MitreTechniques }}{{ $u := attackLinkURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a>{{ end }} {{ end }}</td></tr>
   {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
-  {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}{{ $u := defenseURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ defenseName . }} — MITRE D3FEND">{{ . }}</a>{{ else }}<span class="tag" title="{{ defenseName . }}">{{ . }}</span>{{ end }} {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
 <h2>downloads</h2>
@@ -1072,7 +1073,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div></details>{{ end }}
 {{ $rest := metaScalar .Meta }}{{ if $rest }}<h2>meta</h2><table>
-{{ range $k, $v := $rest }}<tr><th>{{ $k }}</th><td>{{ $v }}</td></tr>{{ end }}
+{{ range $k, $v := $rest }}<tr><th>{{ $k }}</th><td>{{ if eq $k "geo_country" }}{{ $v }} {{ countryFlag (printf "%v" $v) }}{{ else }}{{ $v }}{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 {{ template "foot" . }}{{ end }}
 
