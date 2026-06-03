@@ -643,6 +643,20 @@ func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket tim
 	return out, nil
 }
 
+// Heartbeat returns a cheap freshness signal — the total event count and the
+// latest event's timestamp — so the UI can decide whether a page actually
+// needs re-rendering (skip the refresh when neither changed).
+func (s *Store) Heartbeat(ctx context.Context) (count int64, latest time.Time, err error) {
+	var ns sql.NullInt64
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(time) FROM events`).Scan(&count, &ns); err != nil {
+		return 0, time.Time{}, err
+	}
+	if ns.Valid {
+		latest = time.Unix(0, ns.Int64).UTC()
+	}
+	return count, latest, nil
+}
+
 // OldestEventTime returns the timestamp of the earliest event still in the
 // database (zero time when empty) — the retention horizon shown on the config
 // page. Counts/Stats also expose totals; this is the "oldest entry" marker.

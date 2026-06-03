@@ -492,7 +492,11 @@ a.tc-srclink:hover .tc-src { fill-opacity: 0.85; }
 .tc-rts { color: var(--chart-replay-ts); margin-right: .6rem; }
 .tc-zoomable { cursor: zoom-in; }
 figure.tc-zoom { position: fixed; inset: 3vh 3vw; z-index: 1000; margin: 0; overflow: auto; cursor: zoom-out; box-shadow: 0 0 0 100vmax rgba(20,24,33,.5); }
-figure.tc-zoom svg.tc { max-height: 90vh; width: 100%; }
+figure.tc-zoom svg.tc { height: auto; max-height: 90vh; width: 100%; }
+/* Inside the equal-sized .uniform grid the svg has an explicit 240px height
+   that out-specifies the zoom rule above; this higher-specificity rule lets a
+   zoomed chart actually scale up to fill the overlay. */
+.charts-grid.uniform figure.tc-zoom svg.tc { height: 86vh; max-height: 86vh; width: 100%; }
 .widget-toggle { float: right; font: inherit; font-size: 0.786rem; cursor: pointer; border: 1px solid var(--widget-toggle-border); background: var(--widget-toggle-bg); border-radius: 3px; padding: 0 .4rem; color: var(--widget-toggle-fg); }
 figure.widget-hidden { padding-bottom: .35rem; }
 figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden .tc-replay, figure.widget-hidden table, figure.widget-hidden .note, figure.widget-hidden p { display: none; }
@@ -518,9 +522,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
 <nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<main id="pgcontent">
 {{ end }}
 
-{{ define "foot" }}<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s{{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
+{{ define "foot" }}</main>
+<p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s (live, in place — no flash){{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
 
 {{ define "bars" }}<table class="chart">
 {{ range . }}<tr>

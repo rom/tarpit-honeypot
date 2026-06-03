@@ -26,6 +26,39 @@
     else document.addEventListener("DOMContentLoaded", fn);
   }
 
+  // ---- smart, flicker-free refresh --------------------------------------
+  // Instead of window.location.reload() (which white-flashes and re-runs every
+  // asset), we (1) ask /api/heartbeat for a cheap freshness token and SKIP
+  // entirely when nothing changed, and (2) when it did change, fetch the page
+  // and swap only #pgcontent in place — no navigation, no flash, scroll kept —
+  // then re-run the content enhancers + re-render any new charts.
+  var lastToken = null;
+  function smartRefresh(done) {
+    fetch("/api/heartbeat", { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var token = j ? (j.count + ":" + (j.last || "")) : null;
+        if (token !== null && token === lastToken) { done(); return; } // unchanged → skip
+        return fetch(location.href, { headers: { "X-Requested-With": "fetch" } })
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            var doc = new DOMParser().parseFromString(html, "text/html");
+            var fresh = doc.getElementById("pgcontent");
+            var cur = document.getElementById("pgcontent");
+            if (fresh && cur) {
+              cur.innerHTML = fresh.innerHTML;
+              runContentEnhancers();
+              if (window.TarpitCharts && window.TarpitCharts.auto) {
+                try { window.TarpitCharts.auto(cur); } catch (e) { /* ignore */ }
+              }
+            }
+            if (token !== null) lastToken = token;
+            done();
+          });
+      })
+      .catch(function () { done(); }); // network hiccup: wait for the next tick
+  }
+
   // ---- live auto-refresh -------------------------------------------------
   // Inserts a visible, ticking "live" pill into the nav (unmistakable proof
   // the packaged JS is running) and takes over from the no-JS <meta refresh>
@@ -69,10 +102,14 @@
       try { localStorage.setItem(pauseKey, paused ? "1" : "0"); } catch (e) { /* ignore */ }
       render();
     });
+    var busy = false;
     setInterval(function () {
       if (paused || document.hidden) { render(); return; }
-      if (--remaining <= 0) { window.location.reload(); return; }
-      render();
+      if (busy) return;
+      if (--remaining > 0) { render(); return; }
+      busy = true;
+      status.textContent = "● live · updating…";
+      smartRefresh(function () { busy = false; remaining = secs; render(); });
     }, 1000);
     render();
   }
@@ -392,59 +429,55 @@
     }, true);
   }
 
-  ready(function () {
-    [setupRefresh, setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupExternalLinkGuard].forEach(function (fn) {
-      try { fn(); } catch (e) { /* never break the page */ }
-    });
-  });
-})();
-
-// Config-page YAML search — live (type-as-you-go) over the already-rendered
-// body. The no-JS path still works via the GET form: when this script runs
-// it captures the original YAML text and re-renders the box on every input
-// event, so the user sees matches highlighted without a full page reload.
-(function () {
-  var input = document.getElementById("config-q");
-  var box = document.querySelector(".config-yaml");
-  if (!input || !box) return;
-  var linesOnly = document.querySelector(".config-search-toggle input");
-
-  // Snapshot the YAML once as plain text so we can re-render cleanly after
-  // any prior filter pass (otherwise we'd inherit our own <mark> tags).
-  var raw = box.textContent;
-
-  function esc(s) {
-    return s.replace(/[&<>"']/g, function (c) {
-      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
-    });
-  }
-
-  function render() {
-    var q = input.value;
-    if (!q) { box.innerHTML = esc(raw); return; }
-    var needle = q.toLowerCase();
-    var only = !!(linesOnly && linesOnly.checked);
-    var out = [];
-    var lines = raw.split("\n");
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      var low = line.toLowerCase();
-      var pos = low.indexOf(needle);
-      if (pos < 0) { if (!only) out.push(esc(line)); continue; }
-      var cursor = 0, buf = "";
-      while (pos >= 0) {
-        buf += esc(line.slice(cursor, pos));
-        buf += "<mark>" + esc(line.slice(pos, pos + q.length)) + "</mark>";
-        cursor = pos + q.length;
-        if (cursor >= line.length) break;
-        pos = low.indexOf(needle, cursor);
-      }
-      if (cursor < line.length) buf += esc(line.slice(cursor));
-      out.push(buf);
+  // Config-page YAML live search — a named enhancer so it re-binds after an
+  // in-place refresh swap (its elements are replaced on each update).
+  function setupConfigSearch() {
+    var input = document.getElementById("config-q");
+    var box = document.querySelector(".config-yaml");
+    if (!input || !box) return;
+    var linesOnly = document.querySelector(".config-search-toggle input");
+    var raw = box.textContent; // snapshot plain text (no inherited <mark> tags)
+    function esc(s) {
+      return s.replace(/[&<>"']/g, function (c) {
+        return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+      });
     }
-    box.innerHTML = out.join("\n");
+    function render() {
+      var q = input.value;
+      if (!q) { box.innerHTML = esc(raw); return; }
+      var needle = q.toLowerCase(), only = !!(linesOnly && linesOnly.checked), out = [];
+      var lines = raw.split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i], low = line.toLowerCase(), pos = low.indexOf(needle);
+        if (pos < 0) { if (!only) out.push(esc(line)); continue; }
+        var cursor = 0, buf = "";
+        while (pos >= 0) {
+          buf += esc(line.slice(cursor, pos));
+          buf += "<mark>" + esc(line.slice(pos, pos + q.length)) + "</mark>";
+          cursor = pos + q.length;
+          if (cursor >= line.length) break;
+          pos = low.indexOf(needle, cursor);
+        }
+        if (cursor < line.length) buf += esc(line.slice(cursor));
+        out.push(buf);
+      }
+      box.innerHTML = out.join("\n");
+    }
+    input.addEventListener("input", render);
+    if (linesOnly) linesOnly.addEventListener("change", render);
   }
 
-  input.addEventListener("input", render);
-  if (linesOnly) linesOnly.addEventListener("change", render);
+  // Enhancers that inject controls into / operate on the page CONTENT. Re-run
+  // after each in-place refresh swap (the once-only ones — refresh + the
+  // document-level external-link guard — are not in this list).
+  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch];
+  function runContentEnhancers() {
+    contentEnhancers.forEach(function (fn) { try { fn(); } catch (e) { /* never break the page */ } });
+  }
+
+  ready(function () {
+    runContentEnhancers();
+    try { setupExternalLinkGuard(); } catch (e) { /* ignore */ }
+    try { setupRefresh(); } catch (e) { /* ignore */ }
+  });
 })();

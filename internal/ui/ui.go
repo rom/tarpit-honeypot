@@ -354,6 +354,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/fingerprints", s.handleAPIFingerprints)
 	mux.HandleFunc("/api/fingerprints/", s.handleAPIFingerprint)
 	mux.HandleFunc("/api/summary", s.handleAPISummary)
+	mux.HandleFunc("/api/heartbeat", s.handleAPIHeartbeat)
 	mux.HandleFunc("/api/config", s.handleAPIConfig)
 	mux.HandleFunc("/api/config/canvas", s.handleAPIConfigCanvas)
 	mux.HandleFunc("/api/attack", s.handleAPIAttack)
@@ -785,6 +786,26 @@ func (s *Server) handleAPIEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(evs)
+}
+
+// handleAPIHeartbeat returns a tiny freshness token (total event count + the
+// latest event time) so the JS layer can skip refreshing a page when nothing
+// has changed — the no-needless-refresh / no-flash path.
+func (s *Server) handleAPIHeartbeat(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	count, latest, err := s.store.Heartbeat(ctx)
+	if err != nil {
+		http.Error(w, "heartbeat error", http.StatusInternalServerError)
+		return
+	}
+	last := ""
+	if !latest.IsZero() {
+		last = latest.Format(time.RFC3339)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{"count": count, "last": last})
 }
 
 func (s *Server) handleAPISummary(w http.ResponseWriter, r *http.Request) {
