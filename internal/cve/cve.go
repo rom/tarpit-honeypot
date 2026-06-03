@@ -1194,6 +1194,38 @@ var catalog = []Record{
 		CWE:         []string{"CWE-640"},
 		Description: "Fortinet FortiSwitch GUI: an unverified password-change endpoint lets a remote unauthenticated attacker set the administrator password and take over the switch.",
 	},
+	// --- CVEs for the newly-added Lua appliance/framework personas. Detectable
+	// over plain http too (the http handler runs MatchPayload), so a probe lands
+	// a cve:<id> event with the CWE + ATT&CK technique even without the persona.
+	{
+		ID: "CVE-2023-26360", Name: "Adobe ColdFusion arbitrary read / deserialization", CVSS: 8.6, Service: "http",
+		Signatures: []string{"/cf_scripts/scripts/ajax/ckeditor/", "/cfide/administrator/", "_cfclient="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94", "CWE-284"},
+		Description: "Adobe ColdFusion improper access control allowing arbitrary file read and unsafe deserialization → RCE (exploited in the wild).",
+	},
+	{
+		ID: "CVE-2023-32315", Name: "Openfire admin console auth bypass", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/setup/setup-/", "%u002e%u002e", "/setup/setup-/../../"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22", "CWE-287"},
+		Description: "Ignite Realtime Openfire admin console path-traversal auth bypass reaching authenticated pages → plugin-upload RCE.",
+	},
+	{
+		ID: "CVE-2022-27593", Name: "QNAP Photo Station externally-controlled reference (DeadBolt)", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/photo/p/api/", "/photo/slideshow.php", "externalref="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-610"},
+		Description: "QNAP Photo Station externally-controlled reference let attackers plant files — the vector behind the DeadBolt ransomware campaign against QNAP NAS.",
+	},
+	{
+		// SLP amplification (UDP 427) — advisory/banner-emulation only (no string
+		// signature; the slp handler flags the SrvRqst amplification probe).
+		ID: "CVE-2023-29552", Name: "SLP reflection/amplification (SLPDoS)", CVSS: 8.6, Service: "slp",
+		Technique: "T1498.002", Tactic: "impact",
+		CWE:         []string{"CWE-400", "CWE-406"},
+		Description: "Service Location Protocol allows an unauthenticated attacker to register services and abuse the spoofable UDP responder for a >2200x reflective-amplification DoS.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

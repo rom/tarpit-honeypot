@@ -371,6 +371,9 @@ type Filter struct {
 	// Country restricts to events whose GeoIP meta.geo_country matches (the
 	// "attacks from this place" pivot off the source map). Empty = any.
 	Country string
+	// ASN restricts to events whose GeoIP meta.asn matches (the "attacks from
+	// this network" pivot off the summary). 0 = any.
+	ASN int
 	// Text is a free-text substring matched (case-insensitively) against
 	// the rule_id, banner_sent, and meta JSON — a full-text search over
 	// what the attacker sent / what we captured.
@@ -424,6 +427,11 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		// json_extract raise "malformed JSON".
 		q += " AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '$.geo_country') END = ?"
 		args = append(args, f.Country)
+	}
+	if f.ASN > 0 {
+		// asn is stored as a JSON number; CAST so the comparison is integer.
+		q += " AND CASE WHEN json_valid(meta_json) THEN CAST(json_extract(meta_json, '$.asn') AS INTEGER) END = ?"
+		args = append(args, f.ASN)
 	}
 	if f.MinSeverity > 0 {
 		q += " AND severity >= ?"

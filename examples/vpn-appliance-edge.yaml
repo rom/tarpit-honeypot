@@ -1,0 +1,70 @@
+# Edge security-appliance deception (VPN gateways + web frameworks).
+#
+# The internet-facing appliances that draw the most mass-exploitation traffic:
+# SSL-VPN portals (Fortinet, Palo Alto GlobalProtect, Citrix NetScaler, Ivanti
+# Connect Secure, Cisco ASA), load balancers (F5 BIG-IP), and the web frameworks
+# behind them (Apache Struts, Spring Boot, ColdFusion, PHP-CGI, Telerik). Each
+# is a Lua persona that serves a believable login/landing page and flags the
+# signature CVE probe (CVE-2024-3400, CVE-2019-19781, CVE-2022-1388,
+# CVE-2017-5638, Spring4Shell, CVE-2024-4577, …) while capturing every
+# credential the brute-force loops send.
+#
+#   tarpit-honeypot validate-config -c examples/vpn-appliance-edge.yaml
+sensor:
+  name: edge-appliance-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  vuln_emulation: true
+  payloads:
+    enabled: true
+    # fetch_urls: true   # download second-stage droppers referenced in captures (egress-gated)
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# Live IP-reputation feeds so an appliance probe from known-bad infra is tagged
+# on arrival. Each URL must be in sensor.egress.allow under egress.enforce.
+threat_feeds:
+  enabled: true
+  poll: 1h
+  feeds:
+    - { label: firehol-level1, url: https://iplists.firehol.org/files/firehol_level1.netset, format: lines }
+
+listeners:
+  # --- SSL-VPN / remote-access portals ---------------------------------------
+  - { id: fortios,    proto: tcp, bind: 0.0.0.0:10443, mode: banner, handler: lua, script: configs/scripts/fortios-vpn.lua,           severity: critical, capture: true }
+  - { id: globalpro,  proto: tcp, bind: 0.0.0.0:443,   mode: banner, handler: lua, script: configs/scripts/paloalto-globalprotect.lua, severity: critical, capture: true }
+  - { id: netscaler,  proto: tcp, bind: 0.0.0.0:8443,  mode: banner, handler: lua, script: configs/scripts/citrix-netscaler.lua,       severity: critical, capture: true }
+  - { id: ivanti,     proto: tcp, bind: 0.0.0.0:9443,  mode: banner, handler: lua, script: configs/scripts/ivanti-ics.lua,             severity: critical, capture: true }
+  - { id: asa,        proto: tcp, bind: 0.0.0.0:4443,  mode: banner, handler: lua, script: configs/scripts/cisco-asa-webvpn.lua,       severity: critical, capture: true }
+
+  # --- Load balancer ----------------------------------------------------------
+  - { id: bigip,      proto: tcp, bind: 0.0.0.0:8080,  mode: banner, handler: lua, script: configs/scripts/f5-bigip.lua, severity: high, capture: true }
+
+  # --- Web frameworks behind the edge ----------------------------------------
+  - { id: struts,     proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/apache-struts.lua,   severity: high, capture: true }
+  - { id: spring,     proto: tcp, bind: 0.0.0.0:8082, mode: banner, handler: lua, script: configs/scripts/spring-actuator.lua, severity: high, capture: true }
+  - { id: coldfusion, proto: tcp, bind: 0.0.0.0:8500, mode: banner, handler: lua, script: configs/scripts/coldfusion.lua,      severity: high, capture: true }
+  - { id: phpcgi,     proto: tcp, bind: 0.0.0.0:8083, mode: banner, handler: lua, script: configs/scripts/php-cgi.lua,         severity: high, capture: true }
+  - { id: telerik,    proto: tcp, bind: 0.0.0.0:8084, mode: banner, handler: lua, script: configs/scripts/telerik-ui.lua,      severity: high, capture: true }
+
+  # --- IKE/IPsec is the other half of a VPN concentrator ----------------------
+  - { id: ike, proto: udp, bind: 0.0.0.0:500, mode: banner, handler: isakmp, severity: high, capture: true }
+
+correlate:
+  cve_campaign:     { enabled: true, window: 30m, severity: critical }
+  recon_to_exploit: { enabled: true, window: 30m, severity: critical }
+  default_cred_sweep: { enabled: true, window: 10m, severity: high }
+  tool_rotation:    { enabled: true, window: 15m, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, enabled: true }
+  - { id: db,     type: sqlite, enabled: true }
+  # Ship to a broker for fleet aggregation (disabled until you provide a broker).
+  - { id: bus, type: mqtt, enabled: false, host: broker.internal, port: 8883,
+      topic: tarpit/edge, qos: 1, password_env: MQTT_PASS, ca_cert_file: /etc/tarpit-honeypot/broker-ca.pem }

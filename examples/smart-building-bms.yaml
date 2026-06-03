@@ -1,0 +1,64 @@
+# Smart building / BMS (building-management system) + IP-camera deception.
+#
+# Models the OT-adjacent surface of a commercial building: BACnet/KNX/LonWorks
+# field buses, AV / room-automation controllers (Crestron, AMX, PJLink, Clipsal
+# C-Bus, Vantage, Loxone), smart-home gear (Matter, WiZ, Yeelight) and the two
+# most-exploited IP-camera families (Dahua, Hikvision). Almost every responder
+# here is a capture-only UDP decoder — a probe to any of them is high-signal,
+# and none can be abused as a reflector. Pairs the building-automation
+# correlators (ics_control / ot_recon) with the device inventory.
+#
+#   tarpit-honeypot validate-config -c examples/smart-building-bms.yaml
+sensor:
+  name: bms-decoy
+  data_dir: /var/lib/tarpit-honeypot
+  interfaces: [eth0]
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  archetype: echelon-lonworks
+  vuln_emulation: true
+  payloads: { enabled: true }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+listeners:
+  # --- Building field buses ---------------------------------------------------
+  - { id: bacnet,  proto: udp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet,  severity: high, capture: true }
+  - { id: knx,     proto: udp, bind: 0.0.0.0:3671,  mode: banner, handler: knx,     severity: high, capture: true }
+  - { id: lontalk, proto: udp, bind: 0.0.0.0:1628,  mode: banner, handler: lontalk, severity: high, capture: true }
+  - { id: cbus,    proto: udp, bind: 0.0.0.0:20023, mode: banner, handler: cbus,    severity: high, capture: true }
+
+  # --- AV / room-automation controllers --------------------------------------
+  - { id: crestron, proto: udp, bind: 0.0.0.0:41794, mode: banner, handler: crestron,    severity: medium, capture: true }
+  - { id: amx,      proto: udp, bind: 0.0.0.0:1319,  mode: banner, handler: amx_netlinx, severity: medium, capture: true }
+  - { id: pjlink,   proto: udp, bind: 0.0.0.0:4352,  mode: banner, handler: pjlink,      severity: medium, capture: true }
+  - { id: vantage,  proto: udp, bind: 0.0.0.0:3001,  mode: banner, handler: vantage,     severity: medium, capture: true }
+  - { id: loxone,   proto: udp, bind: 0.0.0.0:7700,  mode: banner, handler: loxone,      severity: medium, capture: true }
+
+  # --- Smart-home devices -----------------------------------------------------
+  - { id: matter,   proto: udp, bind: 0.0.0.0:5540,  mode: banner, handler: matter,   severity: low, capture: true }
+  - { id: wiz,      proto: udp, bind: 0.0.0.0:38899, mode: banner, handler: wiz,      severity: low, capture: true }
+  - { id: yeelight, proto: udp, bind: 0.0.0.0:1982,  mode: banner, handler: yeelight, severity: low, capture: true }
+
+  # --- IP cameras (heavily exploited) -----------------------------------------
+  - { id: dahua,     proto: udp, bind: 0.0.0.0:37810, mode: banner, handler: dahua_disc,     severity: high, capture: true }
+  - { id: hikvision, proto: udp, bind: 0.0.0.0:37020, mode: banner, handler: hikvision_sadp, severity: high, capture: true }
+
+  # --- Operator-facing web panels (Lua personas) ------------------------------
+  - { id: niagara, proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: lua, script: configs/scripts/niagara-web.lua, severity: high, capture: true }
+  - { id: bms,     proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/bms-login.lua,   severity: high, capture: true }
+
+correlate:
+  ics_control: { enabled: true, window: 5m, severity: critical }
+  ot_recon:    { enabled: true, window: 10m, severity: high }
+  amplification_probe: { enabled: true, window: 1m, severity: medium }
+
+devices:
+  enabled: true
+
+channels:
+  - { id: stdout, type: stdout, enabled: true }
+  - { id: db,     type: sqlite, enabled: true }

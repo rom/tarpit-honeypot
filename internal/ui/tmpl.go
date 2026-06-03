@@ -561,7 +561,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Canvas.Listeners }}<h2>services <span class="meta">({{ .Canvas.ListenerCount }} listener{{ if ne .Canvas.ListenerCount 1 }}s{{ end }} · {{ .Canvas.TCPCount }} tcp / {{ .Canvas.UDPCount }} udp)</span></h2>
 <p class="note">Click a port to see the source addresses that hit that service.</p>
 <div class="canvas-grid">
-  {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}" title="events that hit port {{ .Port }}">{{ end }}
+  {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}{{ if $.RangeQuery }}&amp;range={{ $.RangeQuery }}{{ end }}" title="events that hit port {{ .Port }}">{{ end }}
   <div class="pcard mode-{{ .Mode }}">
     <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span></div>
     <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>

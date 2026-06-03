@@ -620,7 +620,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **v2.8 — operator-console overhaul, mail (POP3/IMAP+TLS) credential & CVE emulation, richer captures, and live-deploy ergonomics.**
 The v2.4–2.8 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 92 UDP protocol handlers**, **189 CVE detections**, **129 dynamic Lua
+**131 TCP + 92 UDP protocol handlers**, **191 CVE detections**, **129 dynamic Lua
 service scripts**, **166 OS/device archetypes**, **30 single-sensor + 27
 cross-sensor (`fleet:*`) correlators**, **18 typed IOC kinds**, and full ATT&CK +
 **20 D3FEND** countermeasure mapping. Highlights; the

@@ -85,6 +85,40 @@ type dashboard struct {
 	// Canvas is the listener/port board (same cards as the config page), shown
 	// on the summary so an operator can click straight to a port's events.
 	Canvas configCanvas
+	// RangeQuery is the active window key (e.g. "7d") appended to /events pivot
+	// links so the listing covers the same span; "" for the 24h default.
+	RangeQuery string
+}
+
+// scopeEventLinks appends the summary's active time window to every /events
+// pivot link (counters + bars), so clicking a country / ASN / tool / handler /
+// tactic / rule / severity / proto shows the SAME window the operator was
+// viewing. Without it, /events falls back to its 24h default and a pivot off a
+// 7d/31d summary looks empty. Links to other pages (/profiles, external) are
+// left untouched. A 24h window is a no-op (it already matches the default).
+func scopeEventLinks(d *dashboard, rangeKey string) {
+	d.RangeQuery = ""
+	if rangeKey == "" || rangeKey == "24h" {
+		return
+	}
+	d.RangeQuery = rangeKey
+	add := func(h string) string {
+		if !strings.HasPrefix(h, "/events") {
+			return h
+		}
+		if strings.Contains(h, "?") {
+			return h + "&range=" + rangeKey
+		}
+		return h + "?range=" + rangeKey
+	}
+	for i := range d.Counters {
+		d.Counters[i].Href = add(d.Counters[i].Href)
+	}
+	for _, rows := range [][]barRow{d.Severity, d.Rules, d.Tactics, d.Countries, d.ASNs, d.Tools, d.Handlers} {
+		for i := range rows {
+			rows[i].Href = add(rows[i].Href)
+		}
+	}
 }
 
 // rangeLink is one chip of the summary's time-range selector.
