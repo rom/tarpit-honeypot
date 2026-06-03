@@ -32,6 +32,10 @@ func TestNewUDPHandlersAreReflectionSafe(t *testing.T) {
 		"powerlink", "slmp", "cip_io", "ff_hse", "ads_udp",
 		// batch 2 — OT / building automation
 		"pcom_udp", "synchrophasor", "loxone", "amx_netlinx", "vantage",
+		// batch 3 — networking / mobile-core / overlay / metering / lighting
+		"gtp_c", "gtp_u", "vxlan", "geneve", "wccp", "radius_acct", "dhcpv6",
+		"ripng", "babel", "bfd", "ldp", "teredo", "ike_natt", "mndp", "aruba_papi",
+		"artnet", "sacn", "collectd", "plex_gdm", "c1222",
 	}
 	// A 64-byte buffer with a few recognizable bytes; enough to exercise the
 	// header decoders without tripping any reply path (there is none).
@@ -170,5 +174,29 @@ func TestWizActuationFlagged(t *testing.T) {
 	}
 	if res.Meta["wiz_method"] != "setPilot" || !hasAnomaly(res, "iot-actuation-attempt") {
 		t.Errorf("wiz: %v / %v", res.Meta["wiz_method"], res.Meta["anomalies"])
+	}
+}
+
+func TestArtnetLightingControl(t *testing.T) {
+	// "Art-Net\0" + opcode 0x5000 (ArtDmx, little-endian) = lighting actuation.
+	pkt := append([]byte("Art-Net\x00"), 0x00, 0x50)
+	pkt = append(pkt, make([]byte, 8)...)
+	res, err := (&artnet{}).Handle(context.Background(), pkt, &net.UDPAddr{}, &fakePacketConn{}, smallSvcCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasAnomaly(res, "ba-lighting-control") {
+		t.Errorf("artnet ArtDmx not flagged: %v", res.Meta["anomalies"])
+	}
+}
+
+func TestGTPUDecoded(t *testing.T) {
+	pkt := []byte{0x30, 0xff, 0x00, 0x10, 0xde, 0xad, 0xbe, 0xef}
+	res, err := (&gtpU{}).Handle(context.Background(), pkt, &net.UDPAddr{}, &fakePacketConn{}, smallSvcCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Meta["gtp_teid"] != uint32(0xdeadbeef) || !hasAnomaly(res, "mobile-core-gtp-u-probe") {
+		t.Errorf("gtp_u decode: %v / %v", res.Meta["gtp_teid"], res.Meta["anomalies"])
 	}
 }

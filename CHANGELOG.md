@@ -8,6 +8,33 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — reputation badges + flags, in-tunnel SMTP capture, +20 UDP / +25 Lua / +75 CVE / +55 tools
+
+- **Reputation on every listed IP/domain**: a `sourceBadges` helper renders
+  inline badges (blacklist / threat-intel / external + fleet intel / Tor /
+  known-scanner / bogon) on the events list, event detail and attacker profile.
+  New `enrich.KnownScanner` attributes an IP to a scanning operator (Censys /
+  Shodan / BinaryEdge / Shadowserver / Rapid7-Sonar / Stretchoid / Project
+  Magellan-360 / …) from its ASN-org + rDNS — IP-level, so a scan is flagged
+  even with no self-identifying User-Agent.
+- **Country flags**: a `countryFlag` helper shows the emoji flag beside every
+  2-letter country code (threat map, correlation graph, per-source ASN rows,
+  summary top-countries bars).
+- **465/TCP + in-tunnel SMTP capture**: 465 (smtps) was already supported via
+  implicit-TLS; the full decrypted plaintext inside the tunnel — commands **and**
+  the DATA/BDAT message body — is now captured into the payload for 25 / 587 / 465.
+- **+20 UDP handlers (112 total)**: gtp_c/gtp_u (mobile core), vxlan/geneve
+  (overlays), wccp, radius_acct, dhcpv6, ripng, babel, bfd, ldp, teredo,
+  ike_natt, mndp, aruba_papi, artnet + sacn (DMX/E1.31 lighting), collectd,
+  plex_gdm, c1222 (smart-meter/AMI). All capture-only.
+- **+25 Lua personas (155 total)**: WSO2, Apache OFBiz/NiFi/Druid/Ambari,
+  Argo CD, Kong, ownCloud, Seafile, Synology DSM, pfSense, OPNsense, UniFi,
+  Juniper J-Web, Nagios XI, LibreNMS, PRTG, Graylog, Bitbucket, Artifactory,
+  Nomad, OpenShift, MLflow, Ray (ShadowRay), Strapi, Joomla admin.
+- **+75 HTTP/HTTPS CVE emulations (306 total)** and **+55 attack-tool/scanner/
+  C2 fingerprints** (see toolfp). CVE scanning is now wired into the smtp_recv
+  and ftp handlers too, so mail/FTP exploit attempts are detected end-to-end.
+
 ### Added — +40 web/http/smtp/ftp CVE emulations (231 total)
 
 - **40 new exploit-attempt CVE emulations** across web servers, app servers and

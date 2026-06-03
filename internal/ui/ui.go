@@ -238,7 +238,81 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// map[string]any) into an ordered-rangeable map[string]string for the
 		// detail-page sub-tables.
 		"strMap": strMap,
+		// sourceBadges renders small reputation badges for an event/profile's
+		// source — blacklist / known-threat / Tor / known-scanner / intel — from
+		// the enrichment meta, so every listed IP carries its reputation inline.
+		"sourceBadges": sourceBadges,
+		// countryFlag maps a 2-letter ISO country code to its emoji flag (US → 🇺🇸).
+		"countryFlag": countryFlag,
 	}
+}
+
+// countryFlag returns the Unicode regional-indicator emoji flag for a 2-letter
+// ISO-3166 country code (e.g. "US" -> "🇺🇸"); "" for anything else.
+func countryFlag(code string) string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if len(code) != 2 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return ""
+	}
+	return string([]rune{0x1F1E6 + rune(code[0]-'A'), 0x1F1E6 + rune(code[1]-'A')})
+}
+
+// sourceBadges builds the reputation badge HTML for a source from its event
+// meta. Empty when the IP carries no flagged reputation.
+func sourceBadges(meta map[string]any) template.HTML {
+	if len(meta) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	add := func(class, text, title string) {
+		b.WriteString(`<span class="tag ` + class + `" title="` + template.HTMLEscapeString(title) + `">` +
+			template.HTMLEscapeString(text) + `</span> `)
+	}
+	// Blacklist / threat-intel list hits (operator + external reputation feeds).
+	if labels := metaStrings(meta, "threat_intel"); len(labels) > 0 {
+		add("bad", "blacklist", "on reputation list(s): "+strings.Join(labels, ", "))
+	} else if hit, _ := meta["threat_intel_hit"].(bool); hit {
+		add("bad", "threat", "flagged by threat intelligence")
+	}
+	if ext, _ := meta["external_intel"].(string); ext != "" {
+		add("bad", "intel:"+ext, "external threat feed: "+ext)
+	}
+	if fi := metaStrings(meta, "fleet_intel"); len(fi) > 0 {
+		add("bad", "fleet-intel", "fleet-derived indicator: "+strings.Join(fi, ", "))
+	}
+	if tor, _ := meta["tor_exit"].(bool); tor {
+		add("warn", "tor", "known Tor exit node")
+	}
+	// Known scanner: IP-level attribution (enrichment) preferred, else a
+	// self-identified internet-scanner tool from the UA fingerprint.
+	if sc, _ := meta["known_scanner"].(string); sc != "" {
+		add("warn", "scanner:"+sc, "known network-scanning infrastructure ("+sc+")")
+	} else if sc := scannerTool(meta); sc != "" {
+		add("warn", "scanner:"+sc, "self-identified internet scanner")
+	}
+	if nc, _ := meta["net_class"].(string); nc == "bogon" {
+		add("warn", "bogon", "spoofed / reserved (bogon) source address")
+	}
+	return template.HTML(b.String())
+}
+
+// knownScannerTools are internet-wide reconnaissance engines that self-identify
+// in the UA; when one appears in an event's tools, the source is a scanner.
+var knownScannerTools = map[string]bool{
+	"censys": true, "censys-inspect": true, "shodan": true, "binaryedge": true,
+	"shadowserver": true, "stretchoid": true, "internet-measurement": true,
+	"leakix": true, "expanse": true, "onyphe": true, "criminalip": true,
+	"netsystems-research": true, "projectdiscovery": true, "odin-scanner": true,
+	"zgrab": true, "zgrab2": true, "masscan": true, "zmap": true,
+}
+
+func scannerTool(meta map[string]any) string {
+	for _, t := range metaStrings(meta, "tools") {
+		if knownScannerTools[strings.ToLower(t)] {
+			return t
+		}
+	}
+	return ""
 }
 
 // httpDetailKeys are surfaced in the event detail page's dedicated "HTTP

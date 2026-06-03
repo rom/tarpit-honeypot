@@ -727,7 +727,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <table>
     {{ if .FPs }}<tr><th>fingerprints</th><td>{{ range .FPs }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
     {{ if .UAs }}<tr><th>user-agents</th><td>{{ range .UAs }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
-    {{ if .ASN }}<tr><th>asn</th><td>{{ .ASN }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
+    {{ if .ASN }}<tr><th>asn</th><td>{{ .ASN }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ countryFlag . }} {{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
     {{ if .Domains }}<tr><th>domains</th><td>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
     {{ if .Tools }}<tr><th>tools</th><td>{{ range .Tools }}<span class="tag warn">{{ . }}</span> {{ end }}</td></tr>{{ end }}
     {{ if .Creds }}<tr><th>credentials</th><td>{{ range .Creds }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
@@ -750,7 +750,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
     <tr><th>sources</th><td>{{ range .Sources }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a> {{ end }}</td></tr>
     {{ if .Links }}<tr><th>{{ if .Multi }}shared fingerprints{{ else }}fingerprints{{ end }}</th><td>{{ range .Links }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
     {{ if .Tactics }}<tr><th>journey</th><td>{{ range $i, $t := .Tactics }}{{ if $i }} <span class="meta">→</span> {{ end }}<span class="tag">{{ $t }}</span>{{ end }}</td></tr>{{ end }}
-    {{ if .ASNs }}<tr><th>asn</th><td>{{ range .ASNs }}<span class="tag">{{ . }}</span> {{ end }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
+    {{ if .ASNs }}<tr><th>asn</th><td>{{ range .ASNs }}<span class="tag">{{ . }}</span> {{ end }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ countryFlag . }} {{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
   </table>
   <div class="cols2">
     {{ if .Handlers }}<div><h4>handlers</h4>{{ template "bars" .Handlers }}</div>{{ end }}
@@ -776,7 +776,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range .Recent }}<tr class="sev-{{ .Sev }}">
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
   <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ if .Intel }} <span class="tag bad">intel</span>{{ end }}</td>
-  <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ .Country }}</span>{{ else }}—{{ end }}</td>
+  <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ countryFlag .Country }} {{ .Country }}</span>{{ else }}—{{ end }}</td>
   <td>{{ if .ASN }}{{ .ASN }}{{ else }}—{{ end }}</td>
   <td><span class="tag sev-{{ .Sev }}">{{ .Sev }}</span></td>
   <td>{{ .Handler }}</td>
@@ -990,7 +990,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td>{{ fmtTime .Time }}</td>
     <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
-    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
+    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
     <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} <span class="svc">{{ svcName .Dest.Port }}</span>{{ end }}{{ end }}{{ if .Proto }} <span class="proto proto-{{ .Proto }}" title="transport: {{ .Proto }}">{{ .Proto }}</span>{{ end }}</td>
     <td>{{ .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
@@ -1006,7 +1006,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
-  <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
+  <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} {{ sourceBadges .Meta }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
   <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcName .Dest.Port }}){{ end }}</td></tr>
   <tr><th>proto</th><td>{{ if .Proto }}<span class="proto proto-{{ .Proto }}">{{ .Proto }}</span>{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ .Handler }}</td></tr>
@@ -1082,7 +1082,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ template "foot" . }}{{ end }}
 
 {{ define "profile" }}{{ template "head" . }}
-<h1>attacker profile — {{ .IP }}</h1>
+<h1>attacker profile — {{ .IP }} {{ sourceBadges .Reputation }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}

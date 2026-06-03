@@ -242,6 +242,47 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &amxNetlinx{}, nil
 	case "vantage":
 		return &vantage{}, nil
+	// Networking / mobile-core / overlay / metering / lighting (capture-only).
+	case "gtp_c":
+		return &gtpC{}, nil
+	case "gtp_u":
+		return &gtpU{}, nil
+	case "vxlan":
+		return &vxlan{}, nil
+	case "geneve":
+		return &geneve{}, nil
+	case "wccp":
+		return &wccp{}, nil
+	case "radius_acct":
+		return &radiusAcct{}, nil
+	case "dhcpv6":
+		return &dhcpv6{}, nil
+	case "ripng":
+		return &ripng{}, nil
+	case "babel":
+		return &babel{}, nil
+	case "bfd":
+		return &bfd{}, nil
+	case "ldp":
+		return &ldp{}, nil
+	case "teredo":
+		return &teredo{}, nil
+	case "ike_natt":
+		return &ikeNATT{}, nil
+	case "mndp":
+		return &mndp{}, nil
+	case "aruba_papi":
+		return &arubaPAPI{}, nil
+	case "artnet":
+		return &artnet{}, nil
+	case "sacn":
+		return &sacn{}, nil
+	case "collectd":
+		return &collectd{}, nil
+	case "plex_gdm":
+		return &plexGDM{}, nil
+	case "c1222":
+		return &c1222{}, nil
 	case "dtls":
 		return &dtls{}, nil
 	case "quic":

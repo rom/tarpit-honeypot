@@ -300,6 +300,13 @@ func (e *Enricher) Decorate(ev *event.Event) {
 			ev.Meta["rdns"] = name
 		}
 	}
+	// Known network-scanner infrastructure (Censys / Shodan / BinaryEdge /
+	// Shadowserver / Rapid7 / etc.) identified at the IP level from the ASN
+	// organization or reverse-DNS — so a scan is attributed even when the probe
+	// carries no self-identifying User-Agent.
+	if sc := KnownScanner(metaString(ev.Meta, "asn_org"), metaString(ev.Meta, "rdns")); sc != "" {
+		ev.Meta["known_scanner"] = sc
+	}
 	if len(e.threat) > 0 {
 		var hits []string
 		for i := range e.threat {
