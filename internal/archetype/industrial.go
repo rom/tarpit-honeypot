@@ -752,4 +752,42 @@ var industrialArchetypes = map[string]*Profile{
 		},
 		quirks: []string{"hmi", "redlion", "crimson"},
 	},
+	"bristol-controlwave": {
+		Name: "bristol-controlwave", DisplayName: "Emerson Bristol ControlWave RTU", Family: "bristol",
+		macOUI:          [3]byte{0x00, 0x80, 0xF4}, // Emerson/Bristol
+		httpServer:      "ControlWave",
+		httpTitle:       "Bristol ControlWave",
+		httpBodyHTML:    `<html><head><title>ControlWave</title></head><body><h2>Emerson Bristol ControlWave Micro</h2><p>Hybrid RTU / flow computer</p></body></html>`,
+		icmpTTL:         64,
+		snmpSysDescr:    "Emerson Bristol ControlWave Micro Process Automation Controller",
+		snmpSysObjectID: ".1.3.6.1.4.1.16517.2",
+		snmpSysName:     "ControlWave",
+		snmpSysLocation: "Pipeline metering skid",
+		snmpIfTable:     mockSwitchInterfaces(1, "eth"),
+		defaultServices: []DefaultService{
+			{Port: 1234, Handler: "bsap", Note: "BSAP-IP"},
+			{Port: 502, Handler: "modbus", Note: "Modbus/TCP"},
+			{Port: 80, Handler: "http"}, {Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"rtu", "bristol", "emerson", "oilgas"},
+	},
+	"echelon-lonworks": {
+		Name: "echelon-lonworks", DisplayName: "Echelon LonWorks i.LON Gateway", Family: "echelon",
+		macOUI:          [3]byte{0x00, 0xD0, 0x71}, // Echelon Corp
+		httpServer:      "i.LON",
+		httpTitle:       "Echelon i.LON",
+		httpBodyHTML:    `<html><head><title>i.LON</title></head><body><h2>Echelon i.LON SmartServer</h2><p>LonWorks / IP-852 router</p></body></html>`,
+		icmpTTL:         64,
+		snmpSysDescr:    "Echelon i.LON SmartServer LonWorks-to-IP gateway",
+		snmpSysObjectID: ".1.3.6.1.4.1.1855.1",
+		snmpSysName:     "iLON",
+		snmpSysLocation: "Building automation closet",
+		snmpIfTable:     mockSwitchInterfaces(2, "eth"),
+		defaultServices: []DefaultService{
+			{Port: 1628, Handler: "lontalk", Note: "LonWorks/IP CEA-852"},
+			{Port: 80, Handler: "http"}, {Port: 443, Handler: "https"},
+			{Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"gateway", "echelon", "lonworks", "building"},
+	},
 }

@@ -79,6 +79,7 @@ var udpHandlers = map[string]bool{
 	"dtls": true, "quic": true,
 	"netflow": true, "sflow": true,
 	"statsd": true, "tristation": true,
+	"ge_egd": true, "bsap": true, "lontalk": true,
 	"auto": true,
 }
 

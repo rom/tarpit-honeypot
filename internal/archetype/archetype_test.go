@@ -228,6 +228,8 @@ func TestAllShipArchetypes(t *testing.T) {
 		// v2.8 OT additions:
 		"Emerson ROC800 RTU",
 		"Red Lion Graphite HMI (Crimson 3.0)",
+		"Emerson Bristol ControlWave RTU",
+		"Echelon LonWorks i.LON Gateway",
 	}
 	got := Names()
 	if len(got) != len(want) {

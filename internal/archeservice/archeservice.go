@@ -361,6 +361,24 @@ var roles = map[string][]Service{
 		{80, "tcp", "http", "HMI web"},
 		{443, "tcp", "https", "HMI web (TLS)"},
 	},
+	"bristolrtu": {
+		{1234, "udp", "bsap", "Bristol/Emerson BSAP-IP"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "RTU web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"gecontroller": {
+		{18246, "udp", "ge_egd", "GE Ethernet Global Data"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "PLC web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"lonworksgateway": {
+		{1628, "udp", "lontalk", "LonWorks/IP CEA-852"},
+		{80, "tcp", "http", "Gateway web"},
+		{443, "tcp", "https", "Gateway web (TLS)"},
+		{161, "udp", "snmp", "SNMP"},
+	},
 	"substation": {
 		{102, "tcp", "mms", "IEC 61850 MMS"},
 		{20000, "tcp", "dnp3", "DNP3"},
