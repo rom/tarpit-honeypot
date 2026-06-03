@@ -1545,6 +1545,36 @@ auth token. The only optional write action is device delete/whitelist, gated beh
 replies, NTP mode-7 silent, no unbounded DNS answers).</li>
 </ul>
 </div>
+
+<h2>reference catalogs</h2>
+<p class="note">Generated from the running build, so they always match what this sensor implements. Click to expand.</p>
+
+<details><summary><b>network fingerprints (JA* / HASSH)</b> — {{ len .JA }}</summary>
+<table><tr><th>fingerprint</th><th>what it captures</th></tr>
+{{ range .JA }}<tr><td><code>{{ .Name }}</code></td><td>{{ .Desc }}</td></tr>{{ end }}
+</table></details>
+
+<details><summary><b>protocol handlers</b> — {{ len .Handlers }}</summary>
+<table data-filter><tr><th>handler</th><th>transport</th><th>description</th></tr>
+{{ range .Handlers }}<tr><td><code>{{ .Name }}</code></td><td>{{ .Transport }}</td><td>{{ .Desc }}</td></tr>{{ end }}
+</table></details>
+
+<details><summary><b>ATT&amp;CK techniques mapped</b> — {{ len .Techniques }}</summary>
+<table data-filter><tr><th>technique</th><th>description</th></tr>
+{{ range .Techniques }}<tr><td><a class="tag" href="/attack/technique?id={{ .ID }}">{{ .ID }}</a></td><td>{{ .Desc }}</td></tr>{{ end }}
+</table></details>
+
+<details><summary><b>CVEs detected / emulated</b> — {{ len .CVEs }}</summary>
+<p class="note">Columns: CVSS (base severity 0–10), EPSS (exploit-prediction probability 0–1), CWE (weakness class), CPE (affected product). These are the CPE / CVSS / EPSS cross-references carried on every <code>cve:&lt;id&gt;</code> event.</p>
+<table data-filter><tr><th>CVE</th><th>name</th><th>service</th><th>CVSS</th><th>EPSS</th><th>CWE</th><th>CPE</th><th>description</th></tr>
+{{ range .CVEs }}<tr><td><code>{{ .ID }}</code></td><td>{{ .Name }}</td><td>{{ .Service }}</td><td>{{ printf "%.1f" .CVSS }}</td><td>{{ if gt .EPSS 0.0 }}{{ printf "%.2f" .EPSS }}{{ else }}—{{ end }}</td><td>{{ range .CWE }}<span class="tag">{{ . }}</span> {{ end }}</td><td>{{ if .CPE }}<code>{{ .CPE }}</code>{{ else }}—{{ end }}</td><td>{{ .Desc }}</td></tr>{{ end }}
+</table></details>
+
+<details><summary><b>CWEs (weakness classes) detected</b> — {{ len .CWEs }}</summary>
+<table><tr><th>CWE</th><th>weakness class</th><th>CVEs</th></tr>
+{{ range .CWEs }}<tr><td><code>{{ .ID }}</code></td><td>{{ .Name }}</td><td>{{ .Count }}</td></tr>{{ end }}
+</table></details>
+
 {{ template "foot" . }}{{ end }}
 
 {{ define "doc" }}{{ template "head" . }}

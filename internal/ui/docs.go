@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tdocs "github.com/rom/tarpit-honeypot/docs"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 )
 
 // ---- docs tab ----
@@ -51,6 +52,13 @@ type docsPage struct {
 	DevicesOn bool
 	UIBind    string
 	Docs      []docLink
+	// Generated reference catalogs (from the live handler / CVE / ATT&CK data,
+	// so the docs can't drift from what the sensor implements).
+	JA         []jaDoc
+	Handlers   []handlerDoc
+	Techniques []techDoc
+	CVEs       []cveDoc
+	CWEs       []cve.CWEEntry
 }
 
 // docPage carries one rendered Markdown document.
@@ -60,7 +68,15 @@ type docPage struct {
 }
 
 func (s *Server) handleDocs(w http.ResponseWriter, _ *http.Request) {
-	p := docsPage{UIBind: s.cfg.Bind, Docs: docLibrary()}
+	p := docsPage{
+		UIBind:     s.cfg.Bind,
+		Docs:       docLibrary(),
+		JA:         jaCatalog(),
+		Handlers:   handlerDocs(),
+		Techniques: techniqueDocs(),
+		CVEs:       cveDocs(),
+		CWEs:       cve.CWEs(),
+	}
 	if s.fullConfig != nil {
 		p.Listeners = len(s.fullConfig.Listeners)
 		p.Networks = len(s.fullConfig.Honeynets)
