@@ -1399,6 +1399,41 @@ SetRequest is always captured + flagged (`snmp-set-attempt`) and never applied; 
 
 ---
 
+## `listener.dns_responder:` — version.bind banner + fake zone-transfer trap
+
+The `dns` handler answers topology-coherent records by default. `dns_responder`
+adds two opt-in deceptions (set it on the TCP `dns` listener — AXFR is TCP):
+
+```yaml
+- id: dns-tcp
+  proto: tcp
+  bind: 0.0.0.0:53
+  handler: dns
+  dns_responder:
+    version_bind: "9.8.1-P1"        # CHAOS version.bind banner (decoy old BIND)
+    fake_zone: true                 # answer AXFR/IXFR with a fabricated zone
+    zone_domain: corp.example       # apex for the fake zone (default: queried name)
+    extra_txt:                      # extra bait TXT records leaked in the zone
+      - "internal-vault=https://vault.corp.example (legacy token in wiki)"
+```
+
+- **`version_bind`** — the string returned for a CHAOS-class `version.bind` /
+  `version.server` TXT query (the classic `dig @host version.bind chaos txt`),
+  and a hostname for `hostname.bind` / `id.server`. Set a deliberately
+  old/vulnerable banner to draw version-targeted exploitation. Empty = a generic
+  decoy version is still returned.
+- **`fake_zone`** — when `true`, an AXFR/IXFR zone-transfer request is answered
+  with a fabricated, juicy zone (SOA + NS + MX + ~55 service hostnames —
+  vpn/owa/jenkins/gitlab/vault/dc/db/backup/… — AD `_ldap`/`_kerberos` SRV
+  records, and TXT "secrets") instead of being refused. A real server almost
+  never allows AXFR to the world, so a successful transfer here is a high-signal
+  trap. **TCP-only**, so it can never be a UDP amplifier. The attempt is also
+  flagged `dns-zone-transfer` / `dns-zone-transfer-served`.
+- **`zone_domain`** / **`extra_txt`** — override the zone apex and add your own
+  attacker-baiting TXT records (a fake API key, an "internal use only" note).
+
+---
+
 ## `interaction:` — interaction depth + experimental-feature guardrails
 
 The docs note that some signals are infeasible in a low-interaction emulator. The `interaction:` block makes that a **hard guardrail** rather than an assumption: experimental / high-interaction capture knobs only unlock in `medium_experimental` mode, and setting one in `low` mode is a config **error** (not a silent downgrade).

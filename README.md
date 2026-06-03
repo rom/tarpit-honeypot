@@ -608,6 +608,8 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/threat-intel-exports.md`](docs/threat-intel-exports.md) — every export path: STIX 2.1 / TAXII 2.1 / MISP, the downward feed, and the CEF/LEEF/OCSF SIEM sinks, with field mappings and auth.
 - [`docs/archetypes.md`](docs/archetypes.md) — the full archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
+- [`docs/lua.md`](docs/lua.md) — writing Lua service personas (API, sandbox limits, recipes, the 180 shipped personas).
+- [`docs/attack-tools.md`](docs/attack-tools.md) — the scanners / attack tools the sensor fingerprints and how.
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/FAQ.md`](docs/FAQ.md) — common questions grouped by topic (general, deployment & safety, detection, fleet, IOCs, performance, operations).

@@ -542,7 +542,7 @@ Filtering). The `list-techniques` D3FEND column shows the mapping per rule.
 
 ## 3. CVE / CWE / CPE / EPSS
 
-Package `internal/cve` is a curated, in-source catalog (**123 records**) with
+Package `internal/cve` is a curated, in-source catalog (**381 records**) with
 two jobs: drive vulnerable-banner / fake-patch-level emulation
 (`ForService`) and recognize a live exploit attempt's signature
 (`MatchPayload`). The sensor is never actually exploitable — it advertises
@@ -774,17 +774,23 @@ spoofs its User-Agent is still caught by behaviour (4b/4d).
 Cheap, already-captured signals (no extra round-trips) classify the tool:
 
 - **User-Agent / request-path signatures** (HTTP) and **SSH client-id
-  signatures** map to a tool name; **JA3** hashes map to a TLS stack.
+  signatures** map to a tool name; **JA3** hashes map to a TLS stack. 300+
+  signatures ship. A reader-friendly catalog is in [`attack-tools.md`](attack-tools.md).
 - Categories covered: **recon engines** (nmap NSE, masscan, zgrab, zmap,
-  shodan, censys, binaryedge, leakix, shadowserver, …), **web
-  vulnerability scanners**, **content-discovery / fuzzers** (gobuster,
-  feroxbuster, ffuf, dirsearch, wfuzz, katana, …), and **credential
-  brute-forcers** (hydra, medusa, ncrack, patator, …).
+  shodan, censys, binaryedge, leakix, shadowserver, the ProjectDiscovery
+  suite — httpx/katana/naabu/asnmap/uncover/…), **web vulnerability scanners**,
+  **content-discovery / fuzzers** (gobuster, feroxbuster, ffuf, dirsearch,
+  wfuzz, dirstalk, …), **credential brute-forcers** (hydra, medusa, ncrack,
+  patator, netexec/crackmapexec), **tunnels** (chisel, ligolo, gost, frp),
+  **phishing kits** (gophish, evilginx) and **miners / botnet loaders**
+  (xmrig, kinsing, gafgyt, tsunami).
 - **Vulnerability scanners specifically** are classed by `IsVulnScanner`
-  (≈31 products): Nessus / Tenable, OpenVAS / Greenbone / GVM, Qualys,
+  (40+ products): Nessus / Tenable, OpenVAS / Greenbone / GVM, Qualys,
   Nexpose / InsightVM / Rapid7, Acunetix, Netsparker / Invicti, AppScan,
   Nikto, Nuclei, Arachni, w3af, skipfish, Wapiti, OWASP ZAP, Burp, Vega,
-  WPScan, sqlmap, commix, XSStrike, dalfox, jaeles, Metasploit, whatweb, …
+  WPScan, sqlmap, commix, XSStrike, dalfox, jaeles, Metasploit, whatweb,
+  sn1per, afrog, xray, goby, fscan, kscan, w13scan, pocsuite, dismap, vulmap,
+  osmedeus, routersploit, garak (AI/LLM), wafw00f, …
 - **C2 / red-team frameworks** (`IsC2`): Cobalt Strike, Mythic, Empire,
   Covenant, Sliver, Havoc, Brute Ratel, Core Impact, plus webshell managers
   (AntSword, Behinder, Godzilla) → `c2-framework` anomaly (T1071.001 / T1219).
