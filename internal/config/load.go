@@ -80,6 +80,14 @@ var udpHandlers = map[string]bool{
 	"netflow": true, "sflow": true,
 	"statsd": true, "tristation": true,
 	"ge_egd": true, "bsap": true, "lontalk": true,
+	"wsdiscovery": true, "memcached_udp": true, "natpmp": true,
+	"ubiquiti": true, "wireguard": true, "openvpn_udp": true,
+	"l2tp": true, "rip": true, "steam": true, "sentinel_hasp": true,
+	"mqtt_sn": true, "tplink_kasa": true, "tuya": true, "miio": true, "lwm2m": true,
+	"modbus_udp": true, "enip_udp": true, "opcua_pubsub": true,
+	"dds_rtps": true, "hartip_udp": true,
+	"crestron": true, "pjlink": true, "cbus": true,
+	"dnp3_udp": true, "saia_sbus": true,
 	"auto": true,
 }
 
