@@ -112,10 +112,22 @@ detail** page, which now shows:
 ATT&CK/D3FEND fields.
 
 ### search (`/search`) & timeline (`/timeline`)
-Full-text search across rule/banner/meta, and a per-source **attack timeline**.
-Each source's events are shown **newest-first** by default; the *order:
-newest/oldest first* button flips every source's sequence (and the choice
-persists across refresh).
+Advanced event search, and a per-source **attack timeline**. On the search page:
+
+- The **source IP / dest IP / rule / handler / full-text** fields are
+  case-insensitive **regular expressions**, so a partial value like `10.0.`
+  matches an incomplete IP and `^192\.168\.` anchors it; alternation
+  (`ssh|telnet`) and any RE2 pattern work. A bad pattern is reported inline.
+- **Full-text** (`q`) matches over the rule, banner, the **request line**,
+  **HTTP headers** (names *and* values), every nested meta field, and the
+  **decoded payload** bytes — not just a handful of columns.
+- The time window is either relative (**since**, e.g. `24h` / `7d`) or absolute:
+  **after** / **before** a UTC timestamp, or **on** a specific UTC day/minute
+  (`2006-01-02` or `2006-01-02T15:04`). Combine `after` + `before` for a range.
+
+The **timeline** shows each source's events **newest-first** by default; the
+*order: newest/oldest first* button flips every source's sequence (and the
+choice persists across refresh).
 
 ### att&ck (`/attack`)
 The live ATT&CK coverage built from the observed events — every technique seen,

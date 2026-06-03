@@ -419,6 +419,69 @@ EXAMPLES
     tarpit-honeypot reset-db --data-dir /var/lib/... --all --yes
 `,
 
+	"rotate-db": `rotate-db — archive (gzip) the event database, optionally start fresh
+
+SYNOPSIS
+    tarpit-honeypot rotate-db [-c <config> | --data-dir <dir>] [--out <file.gz>]
+                              [--reset --yes]
+
+DESCRIPTION
+    Writes a consistent, compacted, gzip-compressed copy of the sqlite event
+    store (events.db) to an archive — a "VACUUM INTO" snapshot, so it is safe
+    even while the sensor is writing (no need to copy the -wal/-shm sidecars).
+    Use it to keep old logs off-box on a schedule.
+
+    With --reset --yes it then empties the live event table and VACUUMs, so the
+    sensor continues with a fresh, small database (classic log rotation). The
+    archive is always kept. Stop the sensor before using --reset.
+
+FLAGS
+    --out F        archive path (default: <data_dir>/events-<UTC ts>.db.gz)
+    --reset        after archiving, empty the live event store and VACUUM
+    --yes / -y     required with --reset to actually empty the store
+    --data-dir D   operate on D directly (skip loading the config)
+
+EXAMPLES
+    tarpit-honeypot rotate-db -c cfg.yaml
+    tarpit-honeypot rotate-db -c cfg.yaml --out /backups/events-$(date +%F).db.gz
+    tarpit-honeypot rotate-db -c cfg.yaml --reset --yes   # archive then start fresh
+`,
+
+	"prune-db": `prune-db — delete the oldest events to free space
+
+SYNOPSIS
+    tarpit-honeypot prune-db [-c <config> | --data-dir <dir>]
+                             (--keep-days N | --keep-rows N | --max-mb N)
+                             [--vacuum] [--yes]
+
+DESCRIPTION
+    Drops the oldest events from the sqlite store to reclaim disk, choosing the
+    rows to delete one of three ways (mutually exclusive). DRY-RUNS unless --yes
+    is given, reporting how many rows would go. By default it VACUUMs afterwards
+    so the freed pages return to the filesystem. Stop the sensor first (VACUUM
+    needs exclusive access).
+
+    For continuous, automatic retention prefer the config
+    sensor.disk.retention_days / sensor.disk.sqlite_mb knobs; prune-db is the
+    manual, one-shot reclaim.
+
+MODES (choose one)
+    --keep-days N  delete events older than N days
+    --keep-rows N  keep only the newest N events, delete the rest
+    --max-mb N     delete oldest events (in batches) until the DB is under N MB
+
+FLAGS
+    --vacuum       VACUUM after deleting (default true)
+    --yes / -y     actually delete (without this it is a dry-run)
+    --data-dir D   operate on D directly (skip loading the config)
+
+EXAMPLES
+    tarpit-honeypot prune-db -c cfg.yaml --keep-days 30          # dry-run
+    tarpit-honeypot prune-db -c cfg.yaml --keep-days 30 --yes
+    tarpit-honeypot prune-db -c cfg.yaml --keep-rows 1000000 --yes
+    tarpit-honeypot prune-db -c cfg.yaml --max-mb 200 --yes
+`,
+
 	"init": `init — write a default config skeleton
 
 SYNOPSIS

@@ -501,6 +501,61 @@ field mappings.
 
 ---
 
+## `rotate-db`
+
+Write a compressed, point-in-time copy of the event database to an archive, then
+optionally start fresh — classic log rotation for the `events.db` store. The
+snapshot is a `VACUUM INTO` copy (consistent and compacted even while the sensor
+is writing, no need to copy the `-wal`/`-shm` sidecars) which is then
+gzip-compressed. With `--reset --yes` it empties the live event table and
+`VACUUM`s, so the sensor continues with a small, fresh database; the archive is
+always kept. Stop the sensor before `--reset`.
+
+```
+tarpit-honeypot rotate-db -c cfg.yaml                                   # archive only
+tarpit-honeypot rotate-db -c cfg.yaml --out /backups/events-2026-06.db.gz
+tarpit-honeypot rotate-db -c cfg.yaml --reset --yes                     # archive, then start fresh
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
+| `--data-dir <dir>` | — | Operate on this directory directly (skips loading the config). |
+| `--out <file.gz>` | `<data_dir>/events-<UTC ts>.db.gz` | Archive destination. Refuses to overwrite. |
+| `--reset` | off | After archiving, empty the live event store and `VACUUM`. |
+| `--yes` / `-y` | off | Required with `--reset` to actually empty the store (otherwise a dry-run). |
+
+---
+
+## `prune-db`
+
+Delete the oldest events from `events.db` to reclaim disk, choosing the rows to
+drop by age, by count, or until the file is under a size budget (the three modes
+are mutually exclusive). It **dry-runs unless `--yes`**, reporting how many rows
+would go, and `VACUUM`s afterwards so freed pages return to the filesystem. Stop
+the sensor first (`VACUUM` needs exclusive access). For continuous, automatic
+retention prefer the config `sensor.disk.retention_days` / `sensor.disk.sqlite_mb`
+knobs; `prune-db` is the manual, one-shot reclaim.
+
+```
+tarpit-honeypot prune-db -c cfg.yaml --keep-days 30            # dry-run
+tarpit-honeypot prune-db -c cfg.yaml --keep-days 30 --yes
+tarpit-honeypot prune-db -c cfg.yaml --keep-rows 1000000 --yes
+tarpit-honeypot prune-db -c cfg.yaml --max-mb 200 --yes
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
+| `--data-dir <dir>` | — | Operate on this directory directly (skips loading the config). |
+| `--keep-days <N>` | — | Delete events older than N days. |
+| `--keep-rows <N>` | — | Keep only the newest N events, delete the rest. |
+| `--max-mb <N>` | — | Delete oldest events (in batches) until the DB is under N MB. |
+| `--vacuum` | on | `VACUUM` after deleting to return freed space to disk. |
+| `--yes` / `-y` | off | Actually delete (without this it is a dry-run). |
+
+---
+
 ## `identify`
 
 Run the sensor's offline fingerprint engine over signals you supply and
