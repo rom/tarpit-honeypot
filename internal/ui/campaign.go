@@ -337,6 +337,11 @@ func buildJourneySankey(by map[string]*srcAgg, order []string) string {
 	type snode struct {
 		ID    string `json:"id"`
 		Label string `json:"label"`
+		// Layer pins the node to its kill-chain stage column. Without it the
+		// renderer infers columns from link direction, which collapses into an
+		// unreadable overlap once an attacker's path loops back (recon→exec→
+		// recon), so we assign the canonical order here.
+		Layer int `json:"layer"`
 	}
 	type slink struct {
 		Source string `json:"source"`
@@ -344,9 +349,10 @@ func buildJourneySankey(by map[string]*srcAgg, order []string) string {
 		Value  int    `json:"value"`
 	}
 	var nodes []snode
-	// Emit nodes in kill-chain order so the sankey reads left→right.
-	for _, t := range orderTactics(nodeSet) {
-		nodes = append(nodes, snode{ID: t, Label: t})
+	// Emit nodes in kill-chain order so the sankey reads left→right, one column
+	// per stage, with the column index pinned in Layer.
+	for i, t := range orderTactics(nodeSet) {
+		nodes = append(nodes, snode{ID: t, Label: t, Layer: i})
 	}
 	var links []slink
 	for k, n := range trans {

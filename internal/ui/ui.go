@@ -205,6 +205,9 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// drill-down. attackType: enterprise|ics, for the link tooltip.
 		"attackURL":  attackURL,
 		"attackType": attackType,
+		// creds extracts captured credentials/secrets from an event's meta so
+		// the event-detail (per-protocol) view can highlight them.
+		"creds": extractCreds,
 		"attackLinkURL": func(id string) string {
 			if !attackLinks {
 				return ""
@@ -460,6 +463,41 @@ func serverError(w http.ResponseWriter, where string, err error) {
 	http.Error(w, "internal server error", http.StatusInternalServerError)
 }
 
+// sumWindow is a summary-page time range: the lookback duration, the histogram
+// bucket width that keeps the trend readable, and display labels.
+type sumWindow struct {
+	key    string
+	dur    time.Duration
+	bucket time.Duration
+	label  string
+}
+
+// summaryRange maps the ?range= selector to a window (default 24h).
+func summaryRange(key string) sumWindow {
+	switch key {
+	case "7d":
+		return sumWindow{"7d", 7 * 24 * time.Hour, 6 * time.Hour, "last 7 days"}
+	case "14d":
+		return sumWindow{"14d", 14 * 24 * time.Hour, 12 * time.Hour, "last 14 days"}
+	case "31d":
+		return sumWindow{"31d", 31 * 24 * time.Hour, 24 * time.Hour, "last 31 days"}
+	default:
+		return sumWindow{"24h", 24 * time.Hour, time.Hour, "last 24 hours"}
+	}
+}
+
+func summaryRangeLinks(active string) []rangeLink {
+	out := []rangeLink{}
+	for _, key := range []string{"24h", "7d", "14d", "31d"} {
+		href := "/"
+		if key != "24h" {
+			href = "/?range=" + key
+		}
+		out = append(out, rangeLink{Label: key, Href: href, Active: key == active})
+	}
+	return out
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -467,19 +505,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	since := time.Now().Add(-24 * time.Hour)
+	win := summaryRange(r.URL.Query().Get("range"))
+	since := time.Now().Add(-win.dur)
 	sum, err := s.store.Summary(ctx, since)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
-	hours, err := s.store.EventsPerHour(ctx, since)
+	hours, err := s.store.EventsPerBucket(ctx, since, win.bucket)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
-	d := buildDashboard(sum, hours)
+	d := buildDashboard(sum, hours, win.bucket)
+	d.RangeLabel = win.label
+	d.RangeLinks = summaryRangeLinks(win.key)
 	// Top counters strip: event volume by transport + severity (from the
 	// store), plus the sniffer's raw L2 frame counters when it's running.
 	// Counters link to the matching event listing so an operator can click a

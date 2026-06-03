@@ -370,8 +370,30 @@
     });
   }
 
+  // ---- external-link guard ----------------------------------------------
+  // Any click on a link that leaves this sensor (a different host, http/https)
+  // pops a confirm() naming the destination, so an operator never silently
+  // hands a request off to attack.mitre.org / nvd / cve.org / a map-tiles host.
+  // Capture phase + CSP-safe (addEventListener, no inline handler).
+  function setupExternalLinkGuard() {
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.getAttribute("href");
+      if (!href || href.charAt(0) === "#") return;
+      var u;
+      try { u = new URL(href, location.href); } catch (_) { return; }
+      if (u.protocol !== "http:" && u.protocol !== "https:") return;
+      if (u.host === location.host) return; // internal — let it through
+      if (!window.confirm("You are about to LEAVE this sensor and open an external site:\n\n" + u.href + "\n\nContinue?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+  }
+
   ready(function () {
-    [setupRefresh, setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder].forEach(function (fn) {
+    [setupRefresh, setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupExternalLinkGuard].forEach(function (fn) {
       try { fn(); } catch (e) { /* never break the page */ }
     });
   });

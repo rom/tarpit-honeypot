@@ -439,6 +439,14 @@ svg.graph .node { fill: var(--chart-node-default); }
 svg.graph .nlabel { font: 0.786rem ui-monospace, monospace; fill: var(--text-strong); }
 figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
+/* uniform: every summary "visual overview" figure renders in an equal-sized box
+   (the SVG scales to fit via its preserveAspectRatio) so the grid is tidy. */
+.charts-grid.uniform figure { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .55rem; margin: 0; }
+.charts-grid.uniform svg.tc { height: 240px; width: 100%; }
+/* summary time-range selector chips (24h / 7d / 14d / 31d) */
+.rangesel { white-space: nowrap; }
+.rsel { display: inline-block; padding: .05rem .45rem; margin-left: .25rem; border: 1px solid var(--border-medium); border-radius: 4px; font-size: .82rem; text-decoration: none; color: var(--link); }
+.rsel.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .6rem 1.2rem; align-items: start; }
 .cols2 h4 { margin: .2rem 0 .3rem; font-size: .9rem; color: var(--heading-h2); }
 figcaption.tc-cap, .tc-cap { font-weight: 600; color: var(--heading-h2); margin-bottom: .3rem; font-size: .95rem; }
@@ -530,21 +538,21 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ template "foot" . }}{{ end }}
 
 {{ define "index" }}{{ template "head" . }}
-<h1>tarpit-honeypot — last 24 hours</h1>
-<p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }}</p>
+<h1>tarpit-honeypot — {{ .RangeLabel }}</h1>
+<p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }} · range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
 
 <div class="counters">{{ range .Counters }}{{ if .Href }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ else }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}{{ end }}</div>
 {{ if .HasFrames }}
 <div class="counters"><span class="counter-cat">L2 frames (sniffer)</span>{{ range .Frames }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
-<h2>events per hour</h2>
+<h2>{{ .TrendTitle }}</h2>
 {{ if .Trend }}<div class="spark">{{ range .Trend }}<span class="sparkbar" style="height:{{ .Pct }}%" title="{{ .Full }}: {{ .Count }}">&nbsp;</span>{{ end }}</div>
 <div class="spark-axis">{{ range .Trend }}<span class="spark-tick">{{ if .ShowTick }}{{ .Hour }}{{ end }}</span>{{ end }}</div>
-<p class="note">last 24h, one bar per hour (x-axis: hour of day, UTC)</p>{{ else }}<p class="note">no events yet</p>{{ end }}
+<p class="note">{{ .RangeLabel }}, one bar per bucket (UTC)</p>{{ else }}<p class="note">no events yet</p>{{ end }}
 
 {{ if .Charts }}<h2>visual overview</h2>
-<div class="charts-grid">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
+<div class="charts-grid uniform">{{ range .Charts }}{{ template "chartfig" . }}{{ end }}</div>
 <p class="note">Full interactive analytics — bar / pie / heatmap / source map / credential / timeline — at <a href="/charts">charts</a>.</p>{{ end }}
 
 <h2>by severity</h2>
@@ -987,6 +995,10 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 </ul>
 
 {{ if .BannerSent }}<h2>banner sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
+{{ with creds . }}<h2>captured credentials &amp; secrets</h2>
+<table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
+{{ range . }}<tr><td><span class="tag bad">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
+</table>{{ end }}
 {{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div></details>{{ end }}

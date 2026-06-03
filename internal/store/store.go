@@ -588,7 +588,17 @@ type HourBucket struct {
 // EventsPerHour returns hourly event counts from since to now, with empty
 // hours zero-filled, for the dashboard trend chart.
 func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]HourBucket, error) {
-	const hourNS = int64(3600) * 1_000_000_000
+	return s.EventsPerBucket(ctx, since, time.Hour)
+}
+
+// EventsPerBucket is EventsPerHour generalized to an arbitrary bucket width, so
+// the summary trend can show 24h (1h buckets) up to 31d (1d buckets) without a
+// thousand bars. Empty buckets are zero-filled; Hour holds each bucket's start.
+func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket time.Duration) ([]HourBucket, error) {
+	hourNS := int64(bucket / time.Nanosecond)
+	if hourNS <= 0 {
+		hourNS = int64(time.Hour)
+	}
 	startBucket := since.UTC().UnixNano() / hourNS
 	nowBucket := time.Now().UTC().UnixNano() / hourNS
 	counts := map[int64]int{}
