@@ -55,10 +55,31 @@ credential/CVE emulation, captures, and live-deploy ergonomics.
   plus the earlier squid/stomp/tor-control); **+3 protocol handlers** —
   `svn` (svnserve, TCP 3690), `nbd` (Network Block Device, TCP 10809), and
   `statsd` (UDP 8125, capture-only / reflection-safe).
-- **Hardening / fixes**: SELinux confinement fix (binary was mislabeled
-  `bin_t`), setuid/setgid identity pinning with an ownership guard, a
-  `.deployment-id` "permission denied" startup fix with actionable errors, and
-  more actionable store/DB-open errors.
+- **More OT/ICS**: new protocol handlers `tristation` (Triconex TriStation/TSAA,
+  UDP 1502 — the TRITON/TRISIS safety-controller protocol), `roc_plus` (Emerson
+  ROC Plus, TCP 4000), `crimson` (Red Lion Crimson, TCP 789), `ge_egd` (GE
+  Ethernet Global Data, UDP 18246 — capture-only), `bsap` (Bristol/Emerson
+  BSAP-IP, UDP 1234 — bounded/rate-limited ack) and `lontalk` (Echelon
+  LonWorks-IP CEA-852, UDP 1628 — capture-only); new OT archetypes (Emerson
+  ROC800 RTU, Red Lion Graphite HMI, Emerson Bristol ControlWave RTU, Echelon
+  LonWorks i.LON Gateway); and new archeservice role bundles (`rockwellplc`,
+  `emersonrtu`, `redlionhmi`, `bristolrtu`, `gecontroller`, `lonworksgateway`) —
+  and `safetyplc` now uses the real `tristation` handler on 1502 instead of
+  `raw`. Every new UDP handler is reflection-safe (capture-only or a reply
+  bounded ≤ the request and globally rate-limited).
+- **Hardening / fixes**: SELinux confinement fixes — the binary was mislabeled
+  `bin_t`, and `NoNewPrivileges=yes` was silently blocking the
+  init_t→tarpit_honeypot_t domain transition, so the daemon ran unconfined;
+  fixed with `init_nnp_daemon_domain` in the policy + an explicit
+  `SELinuxContext=` on the unit. The policy now m4-`ifdef`-guards that
+  interface so it still builds on older selinux-policy, `install.sh`
+  auto-drops `NoNewPrivileges` from the generated unit when the interface is
+  absent (so the transition still fires), and a new read-only
+  `scripts/selinux-verify.sh` walks the whole chain — enforcing mode → module
+  loaded → binary label → the *running* process domain → recent AVC denials —
+  and prints the exact fix for the first failure. Plus setuid/setgid identity
+  pinning with an ownership guard, a `.deployment-id` "permission denied"
+  startup fix with actionable errors, and more actionable store/DB-open errors.
 
 ### Added — detection-depth pass III: cloud/AI CVEs, Lua ATT&CK mapping, more correlators/scripts (version 2.7.0)
 

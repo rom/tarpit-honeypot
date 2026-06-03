@@ -10,6 +10,7 @@ All are plain `bash` (no extra deps beyond the tools they install).
 | `fetch-enrichment.sh` | anywhere with internet | Downloads the enrichment databases (GeoIP/ASN, Tor exits, reputation lists, IEEE OUI). Air-gapped: writes a transferable bundle. Same-host: `--install` fetches **and** installs in one step. |
 | `install-enrichment.sh` | sensor | Installs a fetched bundle into the live config's paths (read from `list-paths`) and reloads. |
 | `update-enrichment.sh` | sensor (root) | One-shot **fetch+install+reload** wrapper for cron / systemd timers (locked, logged). |
+| `selinux-verify.sh` | sensor (root) | **Read-only** SELinux containment check: walks enforcing mode → policy module loaded → binary label → the *running* process domain → recent AVC denials, and prints the exact fix for the first thing that's wrong. Exit 0 = the daemon is confined in `tarpit_honeypot_t`. |
 
 ## Quick start (single hardened box)
 

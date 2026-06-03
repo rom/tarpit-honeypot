@@ -341,7 +341,43 @@ var roles = map[string][]Service{
 	"safetyplc": {
 		{502, "tcp", "modbus", "Modbus/TCP"},
 		{80, "tcp", "http", "SIS web"},
-		{1502, "udp", "raw", "Triconex TSAA"},
+		{1502, "udp", "tristation", "Triconex TriStation/TSAA"},
+	},
+	"rockwellplc": {
+		{44818, "tcp", "ethernetip", "EtherNet/IP (CIP)"},
+		{2222, "tcp", "ethernetip", "EtherNet/IP I/O"},
+		{80, "tcp", "http", "PLC web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"emersonrtu": {
+		{4000, "tcp", "roc_plus", "Emerson ROC Plus"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "RTU web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"redlionhmi": {
+		{789, "tcp", "crimson", "Red Lion Crimson"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "HMI web"},
+		{443, "tcp", "https", "HMI web (TLS)"},
+	},
+	"bristolrtu": {
+		{1234, "udp", "bsap", "Bristol/Emerson BSAP-IP"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "RTU web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"gecontroller": {
+		{18246, "udp", "ge_egd", "GE Ethernet Global Data"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "PLC web"},
+		{161, "udp", "snmp", "SNMP"},
+	},
+	"lonworksgateway": {
+		{1628, "udp", "lontalk", "LonWorks/IP CEA-852"},
+		{80, "tcp", "http", "Gateway web"},
+		{443, "tcp", "https", "Gateway web (TLS)"},
+		{161, "udp", "snmp", "SNMP"},
 	},
 	"substation": {
 		{102, "tcp", "mms", "IEC 61850 MMS"},
