@@ -21,6 +21,13 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
 NoNewPrivileges=true
 
+# Pin the SELinux domain explicitly. NoNewPrivileges=yes blocks the automatic
+# init_t->tarpit_honeypot_t transition, so without this (or the policy's
+# init_nnp_daemon_domain grant) the daemon runs unconfined. The leading '-'
+# makes it non-fatal when SELinux is disabled or the policy module isn't
+# installed, so the service still starts there.
+SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
+
 # Hardening.
 ProtectSystem=strict
 ReadWritePaths=/var/lib/tarpit-honeypot /var/log/tarpit-honeypot

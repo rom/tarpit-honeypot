@@ -393,6 +393,12 @@ AmbientCapabilities=$amb
 CapabilityBoundingSet=$amb
 NoNewPrivileges=true
 
+# Pin the SELinux domain. NoNewPrivileges=yes blocks the automatic
+# init_t->tarpit_honeypot_t transition, so without this (+ the policy's
+# init_nnp_daemon_domain grant) the daemon would run unconfined. The leading
+# '-' makes it non-fatal when SELinux is off or the module isn't installed.
+SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
+
 # Hardening (complements the in-process seccomp + Landlock).
 ProtectSystem=strict
 ReadWritePaths=$DATA $LOGDIR

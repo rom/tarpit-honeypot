@@ -178,6 +178,19 @@ sudo systemctl restart tarpit-honeypot
 label, warning loudly if the daemon would run unconfined. (Earlier installs
 that left a `bin_t` override behind are fixed simply by re-running it.)
 
+**`NoNewPrivileges=yes` vs the domain transition (the other reason it stays
+`unconfined_service_t`).** Even with the binary correctly labeled, the kernel
+refuses the automatic `init_t → tarpit_honeypot_t` transition under
+`no_new_privs` unless the policy grants the `process2:nnp_transition`
+permission. The policy now calls `init_nnp_daemon_domain(...)` for exactly this,
+and the systemd unit also pins the domain explicitly with
+`SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0` (the `-` makes it
+non-fatal when SELinux is off / the module isn't loaded). If you're on an older
+selinux-policy without `init_nnp_daemon_domain`, the `make` will fail to build —
+either upgrade selinux-policy-devel, or drop `NoNewPrivileges` from the unit.
+After `systemctl daemon-reload && systemctl restart tarpit-honeypot`, confirm
+with `ps -eZ | grep tarpit-honeypot` → it should read `tarpit_honeypot_t`.
+
 ## systemd
 
 The shipped unit (`packaging/systemd/tarpit-honeypot.service`) adds
