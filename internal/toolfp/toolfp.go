@@ -85,6 +85,9 @@ var c2Frameworks = map[string]bool{
 	"merlin": true, "villain": true, "pupy": true, "poshc2": true,
 	"nimplant": true, "silenttrinity": true, "koadic": true, "quasar": true,
 	"asyncrat": true, "njrat": true, "deimos": true,
+	"dnscat2": true, "hoaxshell": true, "manjusaka": true,
+	"chashell": true, "godoh": true, "shad0w": true, "caldera": true,
+	"supershell": true, "phpsploit": true, "weevely": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -138,7 +141,14 @@ var vulnScanners = map[string]bool{
 	"wafw00f": true,
 	"sn1per":  true, "afrog": true, "fscan": true, "kscan": true, "goby": true,
 	"vscan": true, "w13scan": true, "xray": true, "pocsuite": true, "dismap": true,
-	"yakit": true,
+	"yakit":      true,
+	"graphqlmap": true, "log4j-scanner": true, "struts-pwn": true, "fuxploider": true,
+	"shortscan": true, "davtest": true, "magescan": true, "aem-hacker": true,
+	"wprecon": true, "byp4xx": true, "h2csmuggler": true,
+	"jexboss": true, "weblogicscan": true, "vbscan": true, "typo3scan": true,
+	"struts-scan": true, "tomcatwardeployer": true, "corsy": true, "smuggler": true,
+	"dontgo403": true, "nomore403": true, "lfimap": true, "fimap": true,
+	"sslscan": true, "cipherscan": true, "a2sv": true, "ike-scan": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -497,6 +507,129 @@ var uaSignatures = map[string]string{
 	"chaos-client": "chaos-client",
 	"dnsgen":       "dnsgen",
 	"dismap":       "dismap",
+
+	// --- Batch: 25 more AD / post-exploitation / web-exploit / DNS-C2
+	// fingerprints (User-Agent self-identification). ---
+	// Active Directory / Windows post-exploitation toolkits.
+	"kerbrute":     "kerbrute",
+	"smbmap":       "smbmap",
+	"enum4linux":   "enum4linux",
+	"evil-winrm":   "evil-winrm",
+	"impacket":     "impacket",
+	"bloodhound":   "bloodhound",
+	"certipy":      "certipy",
+	"windapsearch": "windapsearch",
+	// Web / API / app exploit + vuln scanners.
+	"graphw00f":   "graphw00f",
+	"graphqlmap":  "graphqlmap",
+	"log4j-scan":  "log4j-scanner",
+	"struts-pwn":  "struts-pwn",
+	"fuxploider":  "fuxploider",
+	"shortscan":   "shortscan",
+	"davtest":     "davtest",
+	"magescan":    "magescan",
+	"aem-hacker":  "aem-hacker",
+	"wprecon":     "wprecon",
+	"byp4xx":      "byp4xx",
+	"h2csmuggler": "h2csmuggler",
+	// Crawlers / tech fingerprinters.
+	"crawlergo":  "crawlergo",
+	"webanalyze": "webanalyze",
+	// DNS / HTTP C2 + RATs.
+	"dnscat":    "dnscat2",
+	"hoaxshell": "hoaxshell",
+	"manjusaka": "manjusaka",
+
+	// --- Batch: 75 more offensive-tooling fingerprints (User-Agent
+	// self-identification), spanning AD/post-exploitation, web-/product-
+	// exploit scanners, recon/subdomain/JS discovery, secret scrapers,
+	// cloud/k8s auditors, pivot/tunnel relays, DNS/HTTP C2 + webshells. ---
+	// Active Directory / Windows post-exploitation (Impacket family + tooling).
+	"mitm6":       "mitm6",
+	"pcredz":      "pcredz",
+	"lsassy":      "lsassy",
+	"nanodump":    "nanodump",
+	"donpapi":     "donpapi",
+	"coercer":     "coercer",
+	"petitpotam":  "petitpotam",
+	"secretsdump": "secretsdump",
+	"getnpusers":  "getnpusers",
+	"getuserspns": "getuserspns",
+	"psexec.py":   "psexec",
+	"wmiexec":     "wmiexec",
+	"smbexec":     "smbexec",
+	"mssqlclient": "mssqlclient",
+	"ticketer":    "ticketer",
+	"ntlmrelayx":  "ntlmrelayx",
+	"rubeus":      "rubeus",
+	"sharphound":  "sharphound",
+	// Java / deserialization exploitation.
+	"ysoserial":  "ysoserial",
+	"marshalsec": "marshalsec",
+	// Web / product / CMS exploit + vuln scanners.
+	"jexboss":           "jexboss",
+	"weblogicscan":      "weblogicscan",
+	"vbscan":            "vbscan",
+	"typo3scan":         "typo3scan",
+	"struts-scan":       "struts-scan",
+	"tomcatwardeployer": "tomcatwardeployer",
+	"corsy":             "corsy",
+	"smuggler":          "smuggler",
+	"dontgo403":         "dontgo403",
+	"nomore403":         "nomore403",
+	"lfimap":            "lfimap",
+	"fimap":             "fimap",
+	// TLS / SSL / IKE configuration scanners.
+	"sslscan":    "sslscan",
+	"cipherscan": "cipherscan",
+	"a2sv":       "a2sv",
+	"ike-scan":   "ike-scan",
+	// Subdomain / DNS / asset recon.
+	"gauplus":      "gauplus",
+	"waymore":      "waymore",
+	"urlfinder":    "urlfinder",
+	"findomain":    "findomain",
+	"knockpy":      "knockpy",
+	"zdns":         "zdns",
+	"dnsvalidator": "dnsvalidator",
+	"photon":       "photon",
+	// JavaScript / endpoint / secret-in-source discovery.
+	"linkfinder":   "linkfinder",
+	"secretfinder": "secretfinder",
+	"getjs":        "getjs",
+	"xnlinkfinder": "xnlinkfinder",
+	"crawley":      "crawley",
+	// Secret / repository scrapers.
+	"noseyparker":   "noseyparker",
+	"gitdorker":     "gitdorker",
+	"dumpsterdiver": "dumpsterdiver",
+	// Cloud / Kubernetes recon + auditing.
+	"pacu":        "pacu",
+	"scoutsuite":  "scoutsuite",
+	"prowler":     "prowler",
+	"s3scanner":   "s3scanner",
+	"kube-hunter": "kube-hunter",
+	// Pivot / tunnel / relay (a post-exploitation tell).
+	"stowaway":    "stowaway",
+	"neo-regeorg": "neo-regeorg",
+	"regeorg":     "regeorg",
+	"pivotnacci":  "pivotnacci",
+	"revsocks":    "revsocks",
+	// Credential brute-force + phishing kits.
+	"crowbar":        "crowbar",
+	"brutex":         "brutex",
+	"changeme":       "changeme",
+	"zphisher":       "zphisher",
+	"onesixtyone":    "onesixtyone",
+	"smtp-user-enum": "smtp-user-enum",
+	// DNS / HTTP C2 + webshell managers.
+	"chashell":   "chashell",
+	"godoh":      "godoh",
+	"shad0w":     "shad0w",
+	"caldera":    "caldera",
+	"supershell": "supershell",
+	"phpsploit":  "phpsploit",
+	"weevely":    "weevely",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used

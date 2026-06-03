@@ -1,10 +1,18 @@
 package ui
 
 const tmpls = `
-{{ define "head" }}<!doctype html>
+{{ define "headtop" }}<!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8">
-{{ if gt (refreshSeconds) 0 }}<meta http-equiv="refresh" content="{{ refreshSeconds }}">{{ end }}
+<meta charset="utf-8">{{ end }}
+
+{{ define "head" }}{{ template "headtop" . }}
+{{ if gt (refreshSeconds) 0 }}<meta http-equiv="refresh" content="{{ refreshSeconds }}">{{ end }}{{ template "headbody" . }}{{ end }}
+
+{{/* headstatic is head without the <meta refresh>: used by pages that should
+     not live-update (the docs reader), so reading is never interrupted. */}}
+{{ define "headstatic" }}{{ template "headtop" . }}{{ template "headbody" . }}{{ end }}
+
+{{ define "headbody" }}
 {{ if mapTiles }}<meta name="tarpit-map-tiles" content="{{ mapTiles }}">{{ end }}
 <title>tarpit-honeypot</title>
 <!-- Favicon: SVG for modern browsers, .ico (multi-size 16/32/48) fallback. -->
@@ -527,6 +535,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "foot" }}</main>
 <p class="note">read-only view · {{ if gt (refreshSeconds) 0 }}auto-refreshes every {{ refreshSeconds }}s (live, in place — no flash){{ else }}refresh for latest{{ end }} · <span class="nojs-note">JavaScript off — using &lt;meta refresh&gt; fallback; enable JS for the live pill, sortable tables &amp; graphs</span></p></body></html>{{ end }}
+
+{{/* footstatic pairs with headstatic: no auto-refresh language, since the docs
+     reader is deliberately static. */}}
+{{ define "footstatic" }}</main>
+<p class="note">read-only view · documentation (static — does not auto-refresh)</p></body></html>{{ end }}
 
 {{ define "bars" }}<table class="chart">
 {{ range . }}<tr>
@@ -1490,7 +1503,7 @@ from attacker-interaction events. JSON for all events at <a href="/api/events">/
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
-{{ define "docs" }}{{ template "head" . }}
+{{ define "docs" }}{{ template "headstatic" . }}
 <div class="docs">
 <h1>tarpit-honeypot — documentation</h1>
 <p>A deception + detection sensor: it presents believable services (banners,
@@ -1616,12 +1629,12 @@ replies, NTP mode-7 silent, no unbounded DNS answers).</li>
 {{ range .CWEs }}<tr><td><code>{{ .ID }}</code></td><td>{{ .Name }}</td><td>{{ .Count }}</td></tr>{{ end }}
 </table></details>
 
-{{ template "foot" . }}{{ end }}
+{{ template "footstatic" . }}{{ end }}
 
-{{ define "doc" }}{{ template "head" . }}
+{{ define "doc" }}{{ template "headstatic" . }}
 <div class="docs mddoc">
 <p class="docnav"><a href="/docs">&larr; documentation index</a></p>
 {{ .Body }}
 </div>
-{{ template "foot" . }}{{ end }}
+{{ template "footstatic" . }}{{ end }}
 `
