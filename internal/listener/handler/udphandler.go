@@ -188,6 +188,60 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &dnp3UDP{}, nil
 	case "saia_sbus":
 		return &saiaSBus{}, nil
+	// General UDP infrastructure (batch 2, capture-only).
+	case "slp":
+		return &slp{}, nil
+	case "xdmcp":
+		return &xdmcp{}, nil
+	case "db_lsp":
+		return &dbLSP{}, nil
+	case "kerberos_udp":
+		return &kerberosUDP{}, nil
+	case "lantronix_disc":
+		return &lantronixDisc{}, nil
+	case "pcanywhere_stat":
+		return &pcAnywhereStat{}, nil
+	case "gamespy":
+		return &gamespy{}, nil
+	case "db2_disc":
+		return &db2Disc{}, nil
+	case "bt_dht":
+		return &btDHT{}, nil
+	case "rdp_udp":
+		return &rdpUDP{}, nil
+	// IoT batch 2 (smart-home + IP cameras).
+	case "matter":
+		return &matter{}, nil
+	case "wiz":
+		return &wiz{}, nil
+	case "yeelight":
+		return &yeelight{}, nil
+	case "dahua_disc":
+		return &dahuaDisc{}, nil
+	case "hikvision_sadp":
+		return &hikvisionSADP{}, nil
+	// IIoT batch 2.
+	case "powerlink":
+		return &powerlink{}, nil
+	case "slmp":
+		return &slmp{}, nil
+	case "cip_io":
+		return &cipIO{}, nil
+	case "ff_hse":
+		return &ffHSE{}, nil
+	case "ads_udp":
+		return &adsUDP{}, nil
+	// OT / building automation batch 2.
+	case "pcom_udp":
+		return &pcomUDP{}, nil
+	case "synchrophasor":
+		return &synchrophasor{}, nil
+	case "loxone":
+		return &loxone{}, nil
+	case "amx_netlinx":
+		return &amxNetlinx{}, nil
+	case "vantage":
+		return &vantage{}, nil
 	case "dtls":
 		return &dtls{}, nil
 	case "quic":
