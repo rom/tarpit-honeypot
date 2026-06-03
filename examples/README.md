@@ -22,6 +22,8 @@ it, how to combine them), see [`EXAMPLES.md`](EXAMPLES.md).
 | [`data-platform.yaml`](data-platform.yaml) | Big-data/secrets/logging: Cassandra/Kafka/ZooKeeper/NATS/NFS roles + Vault/etcd/Kibana/Solr/MinIO/RabbitMQ Lua decoys. |
 | [`app-platform.yaml`](app-platform.yaml) | App/build/container tier: tomcatserver (AJP13) + erlangcluster (epmd) + k8s/registry/objectstore roles + Jenkins/GitLab/SonarQube/Keycloak/Traefik Lua decoys. |
 | [`mobile-iot-fleet.yaml`](mobile-iot-fleet.yaml) | Android/IoT fleet: exposed ADB (5555) + androidadb role + Raspberry Pi/OpenWrt/Huawei honeynet. |
+| [`smart-building-bms.yaml`](smart-building-bms.yaml) | Smart-building BMS: BACnet/KNX/LonWorks/C-Bus field buses + Crestron/AMX/PJLink/Vantage/Loxone AV controllers + Matter/WiZ/Yeelight + Dahua/Hikvision camera discovery (capture-only UDP). |
+| [`vpn-appliance-edge.yaml`](vpn-appliance-edge.yaml) | Internet-facing appliances: Fortinet/GlobalProtect/NetScaler/Ivanti/Cisco-ASA SSL-VPN + F5 BIG-IP + Struts/Spring/ColdFusion/PHP-CGI/Telerik web frameworks (signature-CVE Lua personas + threat feeds). |
 | [`cloud-virtualization.yaml`](cloud-virtualization.yaml) | Virtualization mgmt plane: ESXi/Proxmox/TrueNAS + macOS + Juniper/PAN/F5/SonicWall appliances. |
 | [`legacy-unix.yaml`](legacy-unix.yaml) | Solaris / AIX / Gentoo big-iron + NFS/portmapper honeynet (TTL 255). |
 | [`telecom-edge.yaml`](telecom-edge.yaml) | ISP/carrier edge: Arista/VyOS/OpenWrt gear + VPN-gateway/RADIUS/NTP roles. |

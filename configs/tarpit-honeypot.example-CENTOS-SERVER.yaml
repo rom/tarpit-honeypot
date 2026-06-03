@@ -76,9 +76,12 @@ sensor:
       - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
 
   # Harvest dropped webshells / uploaded payloads / FTP uploads, classify them,
-  # and turn artifact hashes into IOCs.
+  # and turn artifact hashes into IOCs. Captured web logins/cookies/tokens and
+  # mail AUTH credentials also land on the /captures page automatically.
   payloads:
     enabled: true
+    # fetch_urls: true        # also DOWNLOAD second-stage payloads from the
+    # fetch_max_bytes: 5242880  # ingress URLs found in captures (active; egress-gated)
 
 # --- Live threat-intel feeds (dynamic puller) --------------------------------
 # Pulls reputation feeds over the network on a schedule and tags matching
