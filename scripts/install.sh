@@ -44,6 +44,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SVC_USER="honey"
 SVC_GROUP="honeypot"
+# NoNewPrivileges in the generated unit. Flipped to "no" by install_selinux when
+# the policy lacks init_nnp_daemon_domain, since NoNewPrivileges would otherwise
+# block the SELinux domain transition and leave the daemon unconfined.
+SVC_NNP="true"
 PREFIX="/usr/local/bin"
 SHARE="/usr/local/share/tarpit-honeypot"
 DATA="/var/lib/tarpit-honeypot"
@@ -259,7 +263,7 @@ install -d -o root        -g "$SVC_GROUP" -m 0755 "$SHARE" "$SHARE/scripts"
 chown -R "$SVC_USER:$SVC_GROUP" "$DATA" "$LOGDIR" "$ETC/tls" 2>/dev/null || true
 
 # Ship the helper scripts where the systemd units expect them.
-for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh; do
+for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh selinux-verify.sh; do
 	[ -f "$REPO/scripts/$s" ] && install -o root -g "$SVC_GROUP" -m 0755 "$REPO/scripts/$s" "$SHARE/scripts/$s"
 done
 
@@ -314,6 +318,15 @@ install_selinux() {
 		else
 			warn "SELinux module build failed; install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux"
 		fi
+	fi
+	# NoNewPrivileges=yes BLOCKS the SELinux domain transition unless the policy
+	# grants process2:nnp_transition (the init_nnp_daemon_domain interface). If
+	# this selinux-policy predates that interface, keeping NoNewPrivileges would
+	# leave the daemon unconfined — so disable it in the unit (SELinux confinement
+	# is the stronger control for an internet-facing honeypot).
+	if ! grep -rqs 'init_nnp_daemon_domain' /usr/share/selinux/devel/include/ 2>/dev/null; then
+		warn "selinux-policy lacks init_nnp_daemon_domain — setting NoNewPrivileges=no in the unit so the SELinux domain transition applies."
+		SVC_NNP="no"
 	fi
 	# Label the binary + data so the domain transition / file access apply.
 	# The policy module's own .fc already maps $BIN to tarpit_honeypot_exec_t —
@@ -391,7 +404,7 @@ RestartSec=5s
 # Capabilities the sensor keeps after privilege drop.
 AmbientCapabilities=$amb
 CapabilityBoundingSet=$amb
-NoNewPrivileges=true
+NoNewPrivileges=$SVC_NNP
 
 # Pin the SELinux domain. NoNewPrivileges=yes blocks the automatic
 # init_t->tarpit_honeypot_t transition, so without this (+ the policy's
@@ -459,6 +472,8 @@ Next steps:
   3. Start the sensor:
        sudo systemctl start tarpit-honeypot
        systemctl status tarpit-honeypot ; journalctl -u tarpit-honeypot -f
+  4. Confirm SELinux confinement (diagnoses + fixes "running uncontained"):
+       sudo $SHARE/scripts/selinux-verify.sh
 
 Hardening in effect: privilege drop ($SVC_USER), file caps ${CAPS}, in-process
 seccomp + Landlock (config), host LSM ($LSM), and systemd confinement.

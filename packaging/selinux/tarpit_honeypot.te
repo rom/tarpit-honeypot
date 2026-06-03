@@ -36,9 +36,15 @@ init_daemon_domain(tarpit_honeypot_t, tarpit_honeypot_exec_t)
 # unless the policy explicitly grants the nnp_transition permission — otherwise
 # the daemon silently keeps running unconfined (unconfined_service_t). This
 # interface grants it, so the transition fires even with NoNewPrivileges set.
-# (Available on modern RHEL/CentOS selinux-policy; if your policy predates it,
-# drop NoNewPrivileges or set SELinuxContext= in the unit instead.)
+#
+# Guarded with m4 ifdef so the module still BUILDS on older selinux-policy that
+# lacks the interface (on those releases the kernel's NNP-transition restriction
+# also predates it, so the standard transition works — but to be safe,
+# scripts/install.sh drops NoNewPrivileges from the unit when this interface is
+# absent). Run scripts/selinux-verify.sh after starting to confirm containment.
+ifdef(`init_nnp_daemon_domain', `
 init_nnp_daemon_domain(tarpit_honeypot_t, tarpit_honeypot_exec_t)
+')
 
 # Durable state: SQLite DB/WAL, rotated JSONL, pcaps, payloads, TLS certs.
 type tarpit_honeypot_var_lib_t;

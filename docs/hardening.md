@@ -191,6 +191,18 @@ either upgrade selinux-policy-devel, or drop `NoNewPrivileges` from the unit.
 After `systemctl daemon-reload && systemctl restart tarpit-honeypot`, confirm
 with `ps -eZ | grep tarpit-honeypot` → it should read `tarpit_honeypot_t`.
 
+The policy now wraps the `init_nnp_daemon_domain` call in an m4 `ifdef`, so the
+module still **builds** on older selinux-policy that lacks the interface — and
+`scripts/install.sh` detects that case and writes the unit with
+`NoNewPrivileges=no` (warning you), since on those releases keeping it on would
+block the transition and leave the daemon unconfined (SELinux confinement is the
+stronger control for an internet-facing honeypot, so we prefer it).
+
+**Just run the checker.** `sudo scripts/selinux-verify.sh` walks the whole chain
+— enforcing mode → module loaded → binary label → the *running* process domain →
+recent AVC denials — and prints the exact fix for the first thing that's wrong.
+It's read-only and is installed to `/usr/local/share/tarpit-honeypot/scripts/`.
+
 ## systemd
 
 The shipped unit (`packaging/systemd/tarpit-honeypot.service`) adds
