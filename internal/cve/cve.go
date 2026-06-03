@@ -1105,6 +1105,41 @@ var catalog = []Record{
 		Technique: "T1557", Tactic: "credential-access",
 		Description: "RADIUS/UDP Access-Request integrity relies on MD5; a man-in-the-middle can forge a valid Access-Accept (Blast-RADIUS), bypassing authentication across the AAA fabric.",
 	},
+
+	// --- fourth wave (2.8): more enterprise-web exploits ---
+	{
+		ID: "CVE-2022-41040", Name: "Exchange ProxyNotShell SSRF", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/autodiscover/autodiscover.json?@", "autodiscover.json?@"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-918"},
+		Description: "Microsoft Exchange ProxyNotShell: an Autodiscover SSRF (chained with CVE-2022-41082) reaches the PowerShell backend for authenticated RCE — exploited in the wild.",
+	},
+	{
+		ID: "CVE-2023-7028", Name: "GitLab password-reset account takeover", CVSS: 10.0, Service: "http",
+		Signatures: []string{"user[email][]=", "/users/password", "user%5bemail%5d%5b%5d="},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-640"},
+		Description: "GitLab CE/EE: a password-reset request accepting an array of e-mail addresses delivers the reset link to an attacker-controlled address, enabling account takeover (incl. admins).",
+	},
+	{
+		ID: "CVE-2022-47966", Name: "Zoho ManageEngine SAML RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"samlresponse=", "/samlresponse", "/samllogin"},
+		Technique:  "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-94"},
+		Description: "Zoho ManageEngine (ADSelfService Plus and ~24 products): an outdated Apache xmlsec lets a crafted SAMLResponse trigger unauthenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2023-50164", Name: "Apache Struts2 file-upload path traversal", CVSS: 9.8, Service: "http",
+		Technique: "T1190", Tactic: "initial-access",
+		CWE:         []string{"CWE-22"},
+		Description: "Apache Struts2 file-upload parameter manipulation lets an attacker traverse paths and upload a webshell to a web-reachable directory — unauthenticated remote code execution.",
+	},
+	{
+		ID: "CVE-2024-9474", Name: "PAN-OS management privilege escalation", CVSS: 7.2, Service: "http",
+		Technique: "T1068", Tactic: "privilege-escalation",
+		CWE:         []string{"CWE-77"},
+		Description: "Palo Alto PAN-OS web management: an authenticated admin (or one obtained via the CVE-2024-0012 auth bypass) can run commands as root — chained for full appliance takeover in the wild.",
+	},
 }
 
 // init normalizes every catalog signature to lowercase once, so

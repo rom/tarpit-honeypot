@@ -302,6 +302,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &rmiRegistry{}, nil
 	case "git":
 		return &gitDaemon{}, nil
+	case "svn":
+		return &svn{}, nil
 	case "zookeeper":
 		return &zookeeper{}, nil
 	case "kafka":
