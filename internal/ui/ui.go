@@ -622,6 +622,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
 	}
+	// Carry the active window into every /events pivot link so the listing
+	// covers the same span the summary aggregated over (otherwise /events
+	// defaults to 24h and a pivot off a longer window looks empty).
+	scopeEventLinks(&d, win.key)
 	// A compact visual overview (charts.js); the full gallery lives at /charts.
 	if len(d.Severity) > 0 {
 		d.Charts = append(d.Charts, chartFigure("pie", "Severity", barsToPie(d.Severity, true)))
@@ -661,6 +665,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if order != "asc" {
 		order = "desc"
 	}
+	// tool (a meta string array) and ATT&CK tactic (computed per event) aren't
+	// SQL columns, so they're post-filtered below. Widen the SQL scan past the
+	// display limit first — otherwise the post-filter only sees the newest
+	// `Limit` rows and a genuine match further back wrongly looks empty. (ASN
+	// and country are real meta-column filters handled in the store.)
+	tool, tactic := q.Get("tool"), q.Get("tactic")
+	displayLimit := f.Limit
+	if tool != "" || tactic != "" {
+		f.Limit = searchScanMax
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	evs, err := s.query(ctx, f)
@@ -668,11 +682,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r.URL.Path, err)
 		return
 	}
-	// Post-query pivots for the summary aggregations that aren't simple columns:
-	// tool (a meta string array), ATT&CK tactic (computed per event), and ASN
-	// (parsed from the asn meta label). These let every summary line item link
-	// to "all events matching it".
-	evs = filterByMeta(evs, q.Get("tool"), q.Get("tactic"), q.Get("asn"))
+	evs = filterByMeta(evs, tool, tactic, "")
+	if displayLimit > 0 && len(evs) > displayLimit {
+		evs = evs[:displayLimit]
+	}
 	sortEvents(evs, sortKey, order)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := eventsPage{
@@ -1487,11 +1500,16 @@ func parseFilter(r *http.Request) store.Filter {
 		}
 	}
 	if !abs {
-		if v := q.Get("since"); v != "" {
-			if d, err := time.ParseDuration(v); err == nil {
+		switch {
+		case q.Get("since") != "":
+			if d, err := time.ParseDuration(q.Get("since")); err == nil {
 				f.Since = time.Now().Add(-d)
 			}
-		} else {
+		case q.Get("range") != "":
+			// A pivot from the summary carries its selected window so the
+			// listing covers the same span the operator was looking at.
+			f.Since = time.Now().Add(-summaryRange(q.Get("range")).dur)
+		default:
 			f.Since = time.Now().Add(-24 * time.Hour)
 		}
 	}
@@ -1514,6 +1532,11 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("country"); v != "" {
 		f.Country = v
+	}
+	if v := q.Get("asn"); v != "" {
+		if n, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(v), "AS")); err == nil && n > 0 {
+			f.ASN = n
+		}
 	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v
