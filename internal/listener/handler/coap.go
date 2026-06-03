@@ -129,6 +129,12 @@ func (c *coap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	if len(uriPath) > 0 {
 		res.Meta["uri_path"] = string(uriPath)
+		// /.well-known/core enumerates every resource — the CoAP discovery
+		// amplification primitive (small GET → large link-format reply).
+		if string(uriPath) == ".well-known/core" {
+			flagAnomaly(&res, "coap-resource-discovery")
+			flagAnomaly(&res, "amplification-probe")
+		}
 	}
 
 	// Method-aware reply (code: 0x01 GET, 0x02 POST, 0x03 PUT, 0x04 DELETE).

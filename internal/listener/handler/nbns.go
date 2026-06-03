@@ -33,6 +33,11 @@ func (n *nbns) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	res.Meta["encoded_name"] = name
 	res.Meta["netbios_name"] = decoded
 	res.Meta["qtype"] = qtype
+	// A query for WPAD / ISATAP is the hallmark of a name-poisoning / MITM
+	// setup (looking for the web-proxy auto-config or IPv6 transition host).
+	if u := strings.ToUpper(strings.TrimSpace(decoded)); strings.HasPrefix(u, "WPAD") || strings.HasPrefix(u, "ISATAP") {
+		flagAnomaly(&res, "nbns-name-poisoning-target")
+	}
 
 	// Construct a positive name-query response pointing at our local IP.
 	// NBNS (NetBIOS-over-TCP/IP) is IPv4-only by specification — the NB record

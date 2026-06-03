@@ -59,14 +59,20 @@ func (r *radius) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 		switch t {
 		case 1:
 			res.Meta["user_name"] = string(v)
+			flagAnomaly(&res, "radius-auth-attempt")
 		case 2:
 			res.Meta["user_password_encrypted_hex"] = byteToHex(v)
 		case 4:
 			if len(v) == 4 {
 				res.Meta["nas_ip"] = net.IP(v).String()
 			}
+		case 31:
+			res.Meta["calling_station_id"] = string(v)
 		case 32:
 			res.Meta["nas_identifier"] = string(v)
+		case 79: // EAP-Message — 802.1X / EAP authentication
+			res.Meta["eap_message"] = true
+			flagAnomaly(&res, "radius-eap-auth")
 		}
 		p += l
 	}

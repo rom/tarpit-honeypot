@@ -27,7 +27,14 @@ func (isakmp) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.Packet
 	res.Meta["ike_version"] = isakmpVersion(payload[17])
 	res.Meta["ike_exchange"] = isakmpExchange(payload[18])
 	res.Meta["ike_length"] = int(binary.BigEndian.Uint32(payload[24:28]))
+	res.Meta["ike_initiator_cookie"] = byteToHex(payload[0:8])
 	flagAnomaly(&res, "ike-probe")
+	// IKEv1 Aggressive Mode (exchange type 4) puts the PSK hash on the wire to
+	// anyone who asks — an offline-crackable secret and a known harvesting
+	// target (ike-scan -A). Flag it specifically.
+	if payload[17]>>4 == 1 && payload[18] == 4 {
+		flagAnomaly(&res, "ike-aggressive-mode")
+	}
 	return res, nil
 }
 
