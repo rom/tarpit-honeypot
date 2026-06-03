@@ -136,6 +136,9 @@ var vulnScanners = map[string]bool{
 	"vulmap": true, "clusterd": true, "jok3r": true, "osmedeus": true,
 	"routersploit": true, "autosploit": true, "vulners": true, "garak": true,
 	"wafw00f": true,
+	"sn1per":  true, "afrog": true, "fscan": true, "kscan": true, "goby": true,
+	"vscan": true, "w13scan": true, "xray": true, "pocsuite": true, "dismap": true,
+	"yakit": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -466,6 +469,34 @@ var uaSignatures = map[string]string{
 	// Misc HTTP clients favoured by tooling.
 	"hyper/":            "hyper-rust",
 	"interactsh-client": "interactsh",
+
+	// --- Batch: 25 more recon / OSINT / vuln-scan / ProjectDiscovery / Chinese-
+	// offensive-toolkit fingerprints. ---
+	"sn1per":       "sn1per",
+	"afrog":        "afrog",
+	"fscan":        "fscan",
+	"kscan":        "kscan",
+	"yakit":        "yakit",
+	"goby":         "goby",
+	"vscan":        "vscan",
+	"w13scan":      "w13scan",
+	"xray":         "xray",
+	"pocsuite":     "pocsuite",
+	"spiderfoot":   "spiderfoot",
+	"gowitness":    "gowitness",
+	"aquatone":     "aquatone",
+	"eyewitness":   "eyewitness",
+	"dirstalk":     "dirstalk",
+	"metabigor":    "metabigor",
+	"asnmap":       "asnmap",
+	"cdncheck":     "cdncheck",
+	"tlsx":         "tlsx",
+	"uncover":      "uncover",
+	"notify":       "projectdiscovery",
+	"proxify":      "proxify",
+	"chaos-client": "chaos-client",
+	"dnsgen":       "dnsgen",
+	"dismap":       "dismap",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
