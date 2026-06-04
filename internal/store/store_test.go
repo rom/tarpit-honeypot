@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,58 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
+
+// Regression for "unable to open database file (14)" on the per-source profile
+// page: the profile query filters by src_ip then ORDER BY time, which spilled
+// to an on-disk temp file SQLite could not open under a locked-down runtime.
+// temp_store=MEMORY plus the composite (src_ip, time) index remove the temp
+// file entirely.
+func TestTempStoreMemoryAndProfileQuery(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	var ts int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA temp_store").Scan(&ts); err != nil {
+		t.Fatal(err)
+	}
+	if ts != 2 { // 2 == MEMORY
+		t.Errorf("PRAGMA temp_store = %d, want 2 (MEMORY)", ts)
+	}
+
+	var idx string
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT name FROM sqlite_master WHERE type='index' AND name='idx_events_src_ip_time'").Scan(&idx); err != nil {
+		t.Fatalf("composite (src_ip, time) index missing: %v", err)
+	}
+
+	base := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		e := mkEvent(fmt.Sprintf("a%d", i), "203.0.113.7", "listener:ssh", event.SeverityHigh, base.Add(time.Duration(i)*time.Minute))
+		if err := s.Insert(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Insert(ctx, mkEvent("z", "198.51.100.9", "listener:http", event.SeverityLow, base)); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.Query(ctx, Filter{SourceIP: "203.0.113.7", Since: base.Add(-time.Hour), Limit: 100})
+	if err != nil {
+		t.Fatalf("profile-style query failed: %v", err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("got %d rows for the source, want 5", len(rows))
+	}
+	for i := 1; i < len(rows); i++ {
+		if rows[i-1].Time.Before(rows[i].Time) {
+			t.Errorf("rows not newest-first at %d: %v then %v", i, rows[i-1].Time, rows[i].Time)
+		}
+	}
+}
 
 func TestAnomaliesRoundTrip(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)

@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Profile page "internal error" / `unable to open database file (14)`.** The
+  per-source profile query (`WHERE src_ip = ? AND time >= ? ORDER BY time DESC`)
+  filtered on one index and sorted on another, so SQLite materialised the sort
+  in an on-disk temp file; under a locked-down runtime (systemd
+  `PrivateTmp`/`ProtectSystem`, or a non-writable/missing `TMPDIR`) that open
+  failed with `SQLITE_CANTOPEN(14)`. The store now opens with
+  `temp_store=MEMORY` (transient sort/GROUP-BY B-trees stay in RAM, fixing this
+  class of error for every query) and adds a composite `(src_ip, time DESC)`
+  index so the profile query is index-ordered with no sort at all. The index is
+  created automatically on the next start for existing databases.
+
 ### Added
 
 - **+100 IoT / IIoT / OT / building-automation YARA rules** (`artifactscan` pack

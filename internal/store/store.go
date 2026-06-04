@@ -115,6 +115,10 @@ CREATE TABLE IF NOT EXISTS banners (
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
+-- Composite index for the per-source profile query (WHERE src_ip = ? AND time
+-- >= ? ORDER BY time DESC): lets SQLite both filter and order from one index,
+-- avoiding a transient sort entirely.
+CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
 CREATE TABLE IF NOT EXISTS iocs (
@@ -142,7 +146,14 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	}
 	path := filepath.Join(dataDir, "events.db")
 	// _journal_mode=WAL gives us concurrent reads while the sink is writing.
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+	// temp_store=MEMORY keeps SQLite's transient sort/GROUP-BY/materialisation
+	// B-trees in RAM instead of a temp file: queries that sort by a different
+	// column than they filter on (e.g. the per-source profile page, which
+	// filters by src_ip then ORDER BY time) otherwise spill to an on-disk temp
+	// file, and a locked-down runtime (systemd PrivateTmp/ProtectSystem, a
+	// non-writable or missing TMPDIR) makes that open fail with CANTOPEN(14) —
+	// surfacing as "unable to open database file (14)" on those pages only.
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=temp_store(MEMORY)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, openError("open", path, err)
