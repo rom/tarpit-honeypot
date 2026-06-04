@@ -1477,7 +1477,8 @@ func deviceAttrsFromEvent(ev *event.Event) map[string]string {
 	add("helo", "smtp_helo") // SMTP HELO/EHLO name the client announced
 	add("vendor_class", "dhcp_vendor")
 	add("os", "os")
-	add("os_guess", "os_guess") // passive TTL fingerprint from the sniffer
+	add("os_guess", "os_guess")             // passive TTL fingerprint from the sniffer
+	add("os_fingerprint", "os_fingerprint") // refined p0f SYN fingerprint
 	add("realm", "domain")
 	if b, ok := ev.Meta["automation"].(bool); ok && b {
 		attrs["automation"] = "true"

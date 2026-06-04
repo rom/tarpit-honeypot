@@ -112,6 +112,9 @@ type ipv4Info struct {
 	proto      byte
 	ttl        byte
 	fragmented bool
+	df         bool   // don't-fragment bit (for the p0f signature)
+	ipID       uint16 // IP identification (for the id+ quirk)
+	optLen     int    // IP options length = ihl-20 (usually 0)
 	payload    []byte // L4 bytes (TCP/UDP/ICMP header onward)
 }
 
@@ -136,6 +139,9 @@ func parseIPv4(frame []byte) (ipv4Info, bool) {
 	}
 	flagsFrag := binary.BigEndian.Uint16(ip[6:8])
 	info.fragmented = flagsFrag&0x2000 != 0 || flagsFrag&0x1fff != 0
+	info.df = flagsFrag&0x4000 != 0
+	info.ipID = binary.BigEndian.Uint16(ip[4:6])
+	info.optLen = ihl - 20
 	info.ttl = ip[8]
 	info.proto = ip[9]
 	info.srcIP = net.IP(ip[12:16]).String()

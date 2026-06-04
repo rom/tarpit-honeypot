@@ -308,6 +308,8 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		firstStr(&p.Origin.NetClass, ev, "net_class")
 		firstStr(&p.Origin.CloudProvider, ev, "cloud_provider")
 		firstStr(&p.Origin.MACVendor, ev, "mac_vendor")
+		// Prefer the precise p0f fingerprint over the coarse TTL bucket.
+		firstStr(&p.Origin.OSGuess, ev, "os_fingerprint")
 		firstStr(&p.Origin.OSGuess, ev, "os_guess")
 		firstStr(&p.Origin.KnownScanner, ev, "known_scanner")
 		firstStr(&p.Origin.ASNOrg, ev, "asn_org")

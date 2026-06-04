@@ -522,6 +522,10 @@ type Sniffer struct {
 	TCPScan   TCPScanCfg `yaml:"tcp_scan"`
 	GOOSE     GOOSECfg   `yaml:"goose"`
 	Severity  string     `yaml:"severity"`
+	// P0fDB is an optional path to a p0f.fp signature database. Its
+	// `[tcp:*]` signatures are loaded in addition to the built-in curated set
+	// to refine the passive OS fingerprint (os_fingerprint) of TCP-SYN sources.
+	P0fDB string `yaml:"p0f_db"`
 }
 
 // GOOSECfg controls passive IEC 61850 GOOSE detection. GOOSE is L2
