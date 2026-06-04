@@ -10,6 +10,25 @@ documented in `docs/`).
 
 ### Added
 
+- **+100 more built-in YARA rules** (`artifactscan` pack now ~169 rules). New
+  coverage: ransomware families (LockBit, Conti, REvil, BlackCat, Hive, Ryuk,
+  WannaCry, Phobos, Dharma, STOP/Djvu, Maze, Cl0p, Black Basta, Akira, Royal),
+  RATs/backdoors (Gh0st, PlugX, Orcus, NetWire, Adwind, BitRAT, XWorm, Pupy,
+  AveMaria, Houdini, Crimson, ZeroAccess, …), stealers/loaders (Vidar, Raccoon,
+  Azorult, Xloader, Rhadamanthys, Lumma, StealC, Amadey, SmokeLoader, GuLoader,
+  BazarLoader, IcedID, Qakbot, Dridex, Ramnit), document/script droppers (VBA
+  auto-exec, VBS/HTA/JScript, Office DDE, RTF Equation Editor, XLL), more
+  webshells (Godzilla, AspxSpy, Caidao, reGeorg, Tunna, p0wny, …), offensive/
+  recon/cracking tooling (Responder, Impacket, CrackMapExec, Nmap, masscan,
+  sqlmap, Hydra, hashcat, John, Gobuster, ffuf, PowerCat, socat, plink, AdFind,
+  Seatbelt), persistence/defense-evasion patterns (schtasks, Run-key, WMI
+  subscription, Startup folder, Defender/firewall disable, event-log clear,
+  shadow-copy delete, ETW patch, timestomp), exploit-traffic patterns (SQLi,
+  XSS, path traversal, PHP LFI wrappers, command injection, cloud-metadata SSRF,
+  XXE, SSTI, Java deserialization), and more miners/Linux malware (CoinHive,
+  Kinsing). Each rule carries an appropriate severity (trait/recon rules tagged
+  down to high/medium; named-threat families stay critical).
+
 - **Detection-content expansion: +50 YARA rules, +30 CVEs, +30 CWEs, +30 service
   emulators.** The built-in `artifactscan` pack gains 50 rules covering RATs
   (njRAT, AsyncRAT, Quasar, Remcos, NanoCore, DarkComet), stealers (RedLine,

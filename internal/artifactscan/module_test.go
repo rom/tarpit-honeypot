@@ -210,6 +210,46 @@ func TestExpandedBuiltinRules(t *testing.T) {
 	}
 }
 
+func TestExpandedBuiltinRulesV2(t *testing.T) {
+	e := NewEngine()
+	cases := []struct{ rule, data string }{
+		{"RANSOM_LockBit", "drop note Restore-My-Files.txt and rename to .lockbit"},
+		{"RANSOM_WannaCry", "@WanaDecryptor@.exe started, WANACRY! header"},
+		{"RANSOM_Akira", "see akira_readme.txt for recovery"},
+		{"MAL_Gh0stRAT", "magic Gh0stRAT controller"},
+		{"MAL_Qakbot", "loader stage: Qakbot config block"},
+		{"MAL_Vidar", "Vidar build sends screenshot.jpg and passwords.txt"},
+		{"MAL_HTA_Dropper", `<hta:application/> var w=new ActiveXObject('WScript.Shell');`},
+		{"WEBSHELL_reGeorg", "Georg says, 'All seems fine'"},
+		{"TOOL_Impacket", "running impacket secretsdump.py"},
+		{"TOOL_SQLMap", "scanned with sqlmap/1.7 (http://sqlmap.org)"},
+		{"PERSIST_Schtasks", "schtasks /create /sc onlogon /tn x /ru system"},
+		{"EVASION_Shadow_Copy_Delete", "cmd /c vssadmin delete shadows /all /quiet"},
+		{"EXPLOIT_SSRF_Cloud_Metadata", "GET http://169.254.169.254/latest/meta-data/iam"},
+		{"EXPLOIT_XXE", `<!ENTITY xxe SYSTEM "file:///etc/passwd">`},
+		{"LINUX_Kinsing", "downloads kdevtmpfsi and kinsing"},
+	}
+	for _, c := range cases {
+		if !hasMatch(e.Scan([]byte(c.data)), c.rule) {
+			t.Errorf("%s should match %q; got %v", c.rule, c.data, matchNames(e.Scan([]byte(c.data))))
+		}
+	}
+	sev := map[string]string{}
+	for _, r := range e.rules {
+		sev[r.Name] = MatchSeverity(Match{Meta: r.Meta})
+	}
+	for name, want := range map[string]string{
+		"RANSOM_LockBit":     "critical", // family rules default critical
+		"TOOL_Nmap":          "medium",   // recon tool tagged down
+		"EXPLOIT_XSS_Script": "medium",
+		"PERSIST_Schtasks":   "high",
+	} {
+		if sev[name] != want {
+			t.Errorf("%s severity = %q, want %q", name, sev[name], want)
+		}
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).

@@ -816,6 +816,1185 @@ rule PE_Service_Persistence : persistence {
         pe.imports("advapi32.dll", "CreateServiceA") and
         pe.imports("advapi32.dll", "StartServiceA")
 }
+
+// ---------------------------------------------------------------------------
+// Ransomware families (ransom-note / extension / marker strings).
+// ---------------------------------------------------------------------------
+rule RANSOM_LockBit : ransomware {
+    meta:
+        description = "LockBit ransomware"
+    strings:
+        $a = "Restore-My-Files.txt"
+        $b = ".lockbit"
+        $c = "lockbitsupp"
+        $d = "LockBit_"
+    condition:
+        1 of them
+}
+
+rule RANSOM_Conti : ransomware {
+    meta:
+        description = "Conti ransomware"
+    strings:
+        $a = "CONTI_README.txt"
+        $b = "CONTI_LOG.txt"
+        $c = "conti_recovery"
+    condition:
+        1 of them
+}
+
+rule RANSOM_REvil : ransomware {
+    meta:
+        description = "REvil / Sodinokibi ransomware"
+    strings:
+        $a = "Sodinokibi"
+        $b = "sodinokibi"
+        $c = "-HOW-TO-DECRYPT.txt"
+    condition:
+        1 of them
+}
+
+rule RANSOM_BlackCat : ransomware {
+    meta:
+        description = "BlackCat / ALPHV ransomware"
+    strings:
+        $a = "RECOVER-"
+        $b = "ALPHV"
+        $c = "alphv"
+        $d = "bsStatusUpdate"
+    condition:
+        1 of ($b, $c) or ($a and $d)
+}
+
+rule RANSOM_Hive : ransomware {
+    meta:
+        description = "Hive ransomware"
+    strings:
+        $a = "HOW_TO_DECRYPT.txt"
+        $b = "hive ransomware"
+        $c = ".hive"
+    condition:
+        1 of them
+}
+
+rule RANSOM_Ryuk : ransomware {
+    meta:
+        description = "Ryuk ransomware"
+    strings:
+        $a = "RyukReadMe"
+        $b = "UNIQUE_ID_DO_NOT_REMOVE"
+        $c = "No system is safe"
+    condition:
+        1 of them
+}
+
+rule RANSOM_WannaCry : ransomware {
+    meta:
+        description = "WannaCry ransomware"
+    strings:
+        $a = "WANACRY!"
+        $b = "@WanaDecryptor@"
+        $c = "tasksche.exe"
+        $d = "mssecsvc.exe"
+    condition:
+        1 of ($a, $b) or ($c and $d)
+}
+
+rule RANSOM_Phobos : ransomware {
+    meta:
+        description = "Phobos ransomware"
+    strings:
+        $a = "info.hta"
+        $b = ".phobos"
+        $c = "Phobos"
+        $d = "encrypted by Phobos"
+    condition:
+        1 of ($b, $d) or ($a and $c)
+}
+
+rule RANSOM_Dharma : ransomware {
+    meta:
+        description = "Dharma / CrySiS ransomware"
+    strings:
+        $a = ".dharma"
+        $b = ".crysis"
+        $c = "FILES ENCRYPTED.txt"
+    condition:
+        1 of them
+}
+
+rule RANSOM_STOP_Djvu : ransomware {
+    meta:
+        description = "STOP/Djvu ransomware"
+    strings:
+        $a = "_readme.txt"
+        $b = "djvu"
+        $c = "personal ID"
+        $d = "support@freshmail.top"
+    condition:
+        1 of ($b, $d) or ($a and $c)
+}
+
+rule RANSOM_Maze : ransomware {
+    meta:
+        description = "Maze ransomware"
+    strings:
+        $a = "DECRYPT-FILES.txt"
+        $b = "Maze Ransomware"
+        $c = "mazedecrypt"
+    condition:
+        1 of them
+}
+
+rule RANSOM_Clop : ransomware {
+    meta:
+        description = "Cl0p ransomware"
+    strings:
+        $a = "ClopReadMe.txt"
+        $b = "Cl0p^_-"
+        $c = ".clop"
+    condition:
+        1 of them
+}
+
+rule RANSOM_BlackBasta : ransomware {
+    meta:
+        description = "Black Basta ransomware"
+    strings:
+        $a = "readme.txt"
+        $b = ".basta"
+        $c = "aaaaaaaa.basta"
+        $d = "Your data are stolen and encrypted"
+    condition:
+        1 of ($b, $c) or ($a and $d)
+}
+
+rule RANSOM_Akira : ransomware {
+    meta:
+        description = "Akira ransomware"
+    strings:
+        $a = "akira_readme.txt"
+        $b = ".akira"
+        $c = "akira-tools"
+    condition:
+        1 of them
+}
+
+rule RANSOM_Royal : ransomware {
+    meta:
+        description = "Royal ransomware"
+    strings:
+        $a = "README.TXT"
+        $b = ".royal"
+        $c = "Royal ransomware"
+        $d = "royal_w"
+    condition:
+        1 of ($b, $c, $d)
+}
+
+// ---------------------------------------------------------------------------
+// Remote-access trojans / backdoors.
+// ---------------------------------------------------------------------------
+rule MAL_Gh0stRAT : rat {
+    meta:
+        description = "Gh0st RAT"
+    strings:
+        $a = { 47 68 30 73 74 }
+        $b = "Gh0st RAT"
+        $c = "Gh0stRAT"
+    condition:
+        $b or $c or ($a and $b)
+}
+
+rule MAL_PlugX : rat {
+    meta:
+        description = "PlugX RAT"
+    strings:
+        $a = "X-PLUG"
+        $b = "PLUGX_"
+        $c = "Th2.dll"
+    condition:
+        1 of them
+}
+
+rule MAL_OrcusRAT : rat {
+    meta:
+        description = "Orcus RAT"
+    strings:
+        $a = "Orcus.exe"
+        $b = "OrcusRAT"
+        $c = "Orcus.Commands"
+    condition:
+        1 of them
+}
+
+rule MAL_NetWire : rat {
+    meta:
+        description = "NetWire RAT"
+    strings:
+        $a = "NetWire"
+        $b = "HostId-%Rand%"
+        $c = "[Scroll Lock]"
+    condition:
+        1 of ($b, $c) or $a
+}
+
+rule MAL_Adwind : rat {
+    meta:
+        description = "Adwind / jRAT cross-platform Java RAT"
+    strings:
+        $a = "Adwind"
+        $b = "JSocket"
+        $c = "operational/Operational.class"
+    condition:
+        1 of them
+}
+
+rule MAL_BitRAT : rat {
+    meta:
+        description = "BitRAT"
+    strings:
+        $a = "BitRAT"
+        $b = "bitrat"
+    condition:
+        1 of them
+}
+
+rule MAL_XWorm : rat {
+    meta:
+        description = "XWorm RAT"
+    strings:
+        $a = "XWorm"
+        $b = "Xwormmm"
+        $c = "XLogger"
+    condition:
+        1 of ($a, $b)
+}
+
+rule MAL_VenomRAT : rat {
+    meta:
+        description = "VenomRAT"
+    strings:
+        $a = "VenomRAT"
+        $b = "Venom RAT"
+    condition:
+        1 of them
+}
+
+rule MAL_Pupy : rat {
+    meta:
+        description = "Pupy cross-platform RAT"
+    strings:
+        $a = "PupyConfig"
+        $b = "pupy"
+        $c = "reflective_inject_dll"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MAL_AveMaria : rat {
+    meta:
+        description = "AveMaria / Warzone RAT"
+    strings:
+        $a = "Ave_Maria"
+        $b = "WarzoneRAT"
+        $c = "warzone160"
+    condition:
+        1 of them
+}
+
+rule MAL_Houdini : rat {
+    meta:
+        description = "Houdini / H-Worm VBS RAT"
+    strings:
+        $a = "Houdini"
+        $b = "is-ready"
+        $c = "houdini"
+    condition:
+        ($a or $c) and $b
+}
+
+rule MAL_CrimsonRAT : rat {
+    meta:
+        description = "CrimsonRAT (Transparent Tribe)"
+    strings:
+        $a = "CrimsonRAT"
+        $b = "Crimson.exe"
+    condition:
+        1 of them
+}
+
+rule MAL_Sakula : rat {
+    meta:
+        description = "Sakula RAT"
+    strings:
+        $a = "Sakula"
+        $b = "MicroPlayerUpdate.exe"
+    condition:
+        1 of them
+}
+
+rule MAL_PoisonIvy : rat {
+    meta:
+        description = "Poison Ivy RAT"
+    strings:
+        $a = "Poison Ivy"
+        $b = "poisonivy"
+        $c = "PI3.4"
+    condition:
+        1 of them
+}
+
+rule MAL_ZeroAccess : rat {
+    meta:
+        description = "ZeroAccess / Sirefef rootkit-bot"
+    strings:
+        $a = "ZeroAccess"
+        $b = "!!!ACCESS!!!"
+        $c = "max++"
+    condition:
+        1 of them
+}
+
+// ---------------------------------------------------------------------------
+// Stealers / loaders.
+// ---------------------------------------------------------------------------
+rule MAL_Vidar : stealer {
+    meta:
+        description = "Vidar information stealer"
+    strings:
+        $a = "Vidar"
+        $b = "screenshot.jpg"
+        $c = "passwords.txt"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule MAL_Raccoon : stealer {
+    meta:
+        description = "Raccoon stealer"
+    strings:
+        $a = "raccoon"
+        $b = "/gate/log"
+        $c = "record_log"
+    condition:
+        ($a and (1 of ($b, $c))) or $b
+}
+
+rule MAL_Azorult : stealer {
+    meta:
+        description = "Azorult stealer"
+    strings:
+        $a = "Azorult"
+        $b = "azorult"
+    condition:
+        1 of them
+}
+
+rule MAL_Xloader : stealer {
+    meta:
+        description = "Xloader / FormBook stealer"
+    strings:
+        $a = "Xloader"
+        $b = "xloader"
+        $c = "formbook"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MAL_Rhadamanthys : stealer {
+    meta:
+        description = "Rhadamanthys stealer"
+    strings:
+        $a = "Rhadamanthys"
+        $b = "rhadamanthys"
+    condition:
+        1 of them
+}
+
+rule MAL_Lumma : stealer {
+    meta:
+        description = "Lumma (LummaC2) stealer"
+    strings:
+        $a = "LummaC2"
+        $b = "lumma"
+        $c = "HWID:"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MAL_StealC : stealer {
+    meta:
+        description = "StealC stealer"
+    strings:
+        $a = "StealC"
+        $b = "stealc"
+        $c = "browser_extensions"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MAL_Amadey : stealer {
+    meta:
+        description = "Amadey bot / loader"
+    strings:
+        $a = "Amadey"
+        $b = "amadey"
+        $c = "&av="
+    condition:
+        $a or ($b and $c)
+}
+
+rule MAL_SmokeLoader : loader {
+    meta:
+        description = "SmokeLoader"
+    strings:
+        $a = "SmokeLoader"
+        $b = "smokeloader"
+    condition:
+        1 of them
+}
+
+rule MAL_GuLoader : loader {
+    meta:
+        description = "GuLoader / CloudEyE"
+    strings:
+        $a = "GuLoader"
+        $b = "guloader"
+    condition:
+        1 of them
+}
+
+rule MAL_BazarLoader : loader {
+    meta:
+        description = "BazarLoader / BazarBackdoor"
+    strings:
+        $a = "BazarLoader"
+        $b = "BazarBackdoor"
+        $c = "bazarloader"
+    condition:
+        1 of them
+}
+
+rule MAL_IcedID : loader {
+    meta:
+        description = "IcedID / BokBot banking loader"
+    strings:
+        $a = "IcedID"
+        $b = "BokBot"
+    condition:
+        1 of them
+}
+
+rule MAL_Qakbot : banker {
+    meta:
+        description = "Qakbot / QBot"
+    strings:
+        $a = "Qakbot"
+        $b = "QakBot"
+        $c = "qbot"
+    condition:
+        1 of them
+}
+
+rule MAL_Dridex : banker {
+    meta:
+        description = "Dridex banking trojan"
+    strings:
+        $a = "Dridex"
+        $b = "dridex"
+    condition:
+        1 of them
+}
+
+rule MAL_Ramnit : banker {
+    meta:
+        description = "Ramnit banking worm"
+    strings:
+        $a = "Ramnit"
+        $b = "RMNetwork"
+        $c = "ramnit"
+    condition:
+        1 of them
+}
+
+// ---------------------------------------------------------------------------
+// Document / script droppers.
+// ---------------------------------------------------------------------------
+rule MAL_VBA_AutoExec : dropper {
+    meta:
+        description = "Office VBA auto-exec macro spawning a shell"
+        severity = "high"
+    strings:
+        $a = "Document_Open"
+        $b = "Auto_Open"
+        $c = "AutoExec"
+        $d = "CreateObject"
+        $e = "WScript.Shell"
+    condition:
+        (1 of ($a, $b, $c)) and (1 of ($d, $e))
+}
+
+rule MAL_VBS_Dropper : dropper {
+    meta:
+        description = "VBScript download-and-run dropper"
+        severity = "high"
+    strings:
+        $a = "WScript.Shell"
+        $b = "MSXML2.XMLHTTP"
+        $c = "ADODB.Stream"
+        $d = ".Run"
+    condition:
+        $a and (1 of ($b, $c)) and $d
+}
+
+rule MAL_HTA_Dropper : dropper {
+    meta:
+        description = "HTA application dropper"
+        severity = "high"
+    strings:
+        $a = "<hta:application"
+        $b = "ActiveXObject"
+        $c = "WScript.Shell"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule MAL_JS_Dropper : dropper {
+    meta:
+        description = "JScript ActiveX dropper"
+        severity = "high"
+    strings:
+        $a = "new ActiveXObject"
+        $b = "WScript.Shell"
+        $c = "WScript.Network"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule MAL_Office_DDE : dropper {
+    meta:
+        description = "Office DDE auto-execution"
+        severity = "high"
+    strings:
+        $a = "DDEAUTO"
+        $b = "DDE c:"
+        $c = "cmd.exe"
+        $d = "powershell"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $d))
+}
+
+rule DOC_RTF_EquationEditor : exploit {
+    meta:
+        description = "RTF Equation Editor exploit object (CVE-2017-11882 class)"
+        severity = "high"
+    strings:
+        $a = "objupdate"
+        $b = "Equation.3"
+        $c = "objdata"
+        $d = "OLE10nATIVE"
+    condition:
+        $b or ($a and $c) or ($c and $d)
+}
+
+rule DOC_XLL_AddIn : dropper {
+    meta:
+        description = "Malicious Excel XLL add-in (xlAutoOpen export)"
+        severity = "high"
+    strings:
+        $a = "xlAutoOpen"
+    condition:
+        $a
+}
+
+// ---------------------------------------------------------------------------
+// Additional webshells.
+// ---------------------------------------------------------------------------
+rule WEBSHELL_Godzilla : webshell {
+    meta:
+        description = "Godzilla encrypted webshell"
+    strings:
+        $a = "Godzilla" nocase
+        $b = "3c6e0b8a9c15224a"
+        $c = "payloadName"
+    condition:
+        $a or $b or ($c and $a)
+}
+
+rule WEBSHELL_AspxSpy : webshell {
+    meta:
+        description = "AspxSpy ASP.NET webshell"
+    strings:
+        $a = "AspxSpy"
+        $b = "ASPXSpy"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_Caidao : webshell {
+    meta:
+        description = "Chinese Caidao / Chopper webshell client artifacts"
+    strings:
+        $a = "caidao"
+        $b = "Chopper"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_reGeorg : webshell {
+    meta:
+        description = "reGeorg SOCKS tunneling webshell"
+    strings:
+        $a = "Georg says"
+        $b = "reGeorg"
+        $c = "tunnel.nosocket"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_Tunna : webshell {
+    meta:
+        description = "Tunna HTTP tunneling webshell"
+    strings:
+        $a = "Tunna"
+        $b = "buffersize"
+        $c = "conn.php"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule WEBSHELL_p0wny : webshell {
+    meta:
+        description = "p0wny-shell PHP webshell"
+    strings:
+        $a = "p0wny"
+        $b = "@shell:"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_PHPFileManager : webshell {
+    meta:
+        description = "PHP file-manager webshell"
+    strings:
+        $a = "PHP File Manager"
+        $b = "FilesMan"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_Obfuscated_Eval : webshell {
+    meta:
+        description = "obfuscated PHP eval(decompress(base64)) webshell"
+        severity = "high"
+    strings:
+        $a = "eval(gzinflate(base64_decode("
+        $b = "eval(gzuncompress(base64_decode("
+        $c = "eval(str_rot13(base64_decode("
+        $d = "eval(base64_decode("
+    condition:
+        1 of them
+}
+
+// ---------------------------------------------------------------------------
+// Offensive / recon / cracking tools.
+// ---------------------------------------------------------------------------
+rule TOOL_Responder : credaccess {
+    meta:
+        description = "Responder LLMNR/NBT-NS poisoner"
+        severity = "high"
+    strings:
+        $a = "Responder"
+        $b = "Poisoners"
+        $c = "Analyzer"
+    condition:
+        2 of them
+}
+
+rule TOOL_Impacket : lateral {
+    meta:
+        description = "Impacket toolkit (secretsdump/wmiexec/smbexec)"
+        severity = "high"
+    strings:
+        $a = "impacket"
+        $b = "secretsdump"
+        $c = "wmiexec"
+        $d = "smbexec"
+    condition:
+        1 of them
+}
+
+rule TOOL_CrackMapExec : lateral {
+    meta:
+        description = "CrackMapExec / NetExec"
+        severity = "high"
+    strings:
+        $a = "crackmapexec"
+        $b = "NetExec"
+        $c = "cme_"
+    condition:
+        1 of them
+}
+
+rule TOOL_Nmap : recon {
+    meta:
+        description = "Nmap port scanner output/binary"
+        severity = "medium"
+    strings:
+        $a = "Nmap scan report"
+        $b = "Insecure.Com LLC"
+        $c = "nmap -p"
+    condition:
+        1 of them
+}
+
+rule TOOL_Masscan : recon {
+    meta:
+        description = "Masscan port scanner"
+        severity = "medium"
+    strings:
+        $a = "Masscan/1."
+        $b = "masscan -p"
+        $c = "robmurdoch"
+    condition:
+        1 of ($a, $b)
+}
+
+rule TOOL_SQLMap : offensive {
+    meta:
+        description = "sqlmap SQL injection tool"
+        severity = "high"
+    strings:
+        $a = "(http://sqlmap.org)"
+        $b = "sqlmap/1."
+        $c = "sqlmap identified"
+    condition:
+        1 of them
+}
+
+rule TOOL_Hydra : offensive {
+    meta:
+        description = "THC-Hydra brute-force tool"
+        severity = "high"
+    strings:
+        $a = "THC-Hydra"
+        $b = "Hydra (http"
+        $c = "hydra -l"
+    condition:
+        1 of them
+}
+
+rule TOOL_Hashcat : cracking {
+    meta:
+        description = "hashcat password cracker"
+        severity = "medium"
+    strings:
+        $a = "hashcat"
+        $b = "oclHashcat"
+    condition:
+        1 of them
+}
+
+rule TOOL_JohnTheRipper : cracking {
+    meta:
+        description = "John the Ripper password cracker"
+        severity = "medium"
+    strings:
+        $a = "John the Ripper"
+        $b = "john --format"
+        $c = "Loaded %d password hash"
+    condition:
+        1 of them
+}
+
+rule TOOL_Gobuster : recon {
+    meta:
+        description = "Gobuster directory/DNS brute-forcer"
+        severity = "high"
+    strings:
+        $a = "OJ/gobuster"
+        $b = "gobuster dir"
+    condition:
+        1 of them
+}
+
+rule TOOL_Ffuf : recon {
+    meta:
+        description = "ffuf web fuzzer"
+        severity = "medium"
+    strings:
+        $a = "Fuzz Faster U Fool"
+        $b = "ffuf/"
+    condition:
+        1 of them
+}
+
+rule TOOL_PowerCat : offensive {
+    meta:
+        description = "PowerCat netcat-style PowerShell tool"
+        severity = "high"
+    strings:
+        $a = "powercat"
+        $b = "Invoke-PowerShellTcpOneLine"
+    condition:
+        1 of them
+}
+
+rule TOOL_Socat_Relay : tunnel {
+    meta:
+        description = "socat exec relay (reverse-shell pattern)"
+        severity = "high"
+    strings:
+        $a = "socat"
+        $b = "EXEC:'/bin/sh'"
+        $c = "EXEC:'bash"
+        $d = "exec:'/bin/bash'"
+    condition:
+        $a and (1 of ($b, $c, $d))
+}
+
+rule TOOL_Plink_Tunnel : tunnel {
+    meta:
+        description = "PuTTY plink port-forward tunnel"
+        severity = "high"
+    strings:
+        $a = "plink.exe"
+        $b = " -R "
+        $c = " -L "
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule TOOL_AdFind : recon {
+    meta:
+        description = "AdFind AD enumeration tool"
+        severity = "high"
+    strings:
+        $a = "AdFind.exe"
+        $b = "-gcb -sc trustdmp"
+        $c = "adfind"
+    condition:
+        1 of ($a, $b)
+}
+
+rule TOOL_Seatbelt : recon {
+    meta:
+        description = "Seatbelt host-survey tool"
+        severity = "high"
+    strings:
+        $a = "Seatbelt"
+        $b = "Seatbelt.exe"
+    condition:
+        1 of them
+}
+
+// ---------------------------------------------------------------------------
+// Persistence / defense-evasion command patterns.
+// ---------------------------------------------------------------------------
+rule PERSIST_Schtasks : persistence {
+    meta:
+        description = "scheduled-task persistence"
+        severity = "high"
+    strings:
+        $a = "schtasks /create"
+        $b = "schtasks.exe /create"
+        $c = "/sc onlogon"
+        $d = "/ru system"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $d))
+}
+
+rule PERSIST_Reg_Run_Key : persistence {
+    meta:
+        description = "registry Run-key persistence"
+        severity = "high"
+    strings:
+        $a = "reg add"
+        $b = "CurrentVersion\\Run"
+        $c = "CurrentVersion\\RunOnce"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule PERSIST_WMI_Subscription : persistence {
+    meta:
+        description = "WMI event-subscription persistence"
+        severity = "high"
+    strings:
+        $a = "__EventFilter"
+        $b = "CommandLineEventConsumer"
+        $c = "ActiveScriptEventConsumer"
+    condition:
+        1 of ($b, $c)
+}
+
+rule PERSIST_Startup_Folder : persistence {
+    meta:
+        description = "Startup-folder persistence"
+        severity = "high"
+    strings:
+        $a = "\\Start Menu\\Programs\\Startup"
+    condition:
+        $a
+}
+
+rule PERSIST_Systemd_Service : persistence {
+    meta:
+        description = "Linux systemd service unit dropped for persistence"
+        severity = "medium"
+    strings:
+        $a = "ExecStart="
+        $b = "WantedBy=multi-user.target"
+        $c = "[Service]"
+    condition:
+        all of them
+}
+
+rule EVASION_Disable_Defender : evasion {
+    meta:
+        description = "disables Microsoft Defender"
+        severity = "high"
+    strings:
+        $a = "Set-MpPreference"
+        $b = "DisableRealtimeMonitoring"
+        $c = "Add-MpPreference -ExclusionPath"
+        $d = "MpCmdRun.exe -RemoveDefinitions"
+    condition:
+        ($a and (1 of ($b, $c))) or $d
+}
+
+rule EVASION_Disable_Firewall : evasion {
+    meta:
+        description = "disables host firewall"
+        severity = "high"
+    strings:
+        $a = "netsh advfirewall set allprofiles state off"
+        $b = "netsh firewall set opmode disable"
+        $c = "Set-NetFirewallProfile -Enabled False"
+    condition:
+        1 of them
+}
+
+rule EVASION_Clear_EventLog : evasion {
+    meta:
+        description = "clears Windows event logs"
+        severity = "high"
+    strings:
+        $a = "wevtutil cl "
+        $b = "wevtutil clear-log"
+        $c = "Clear-EventLog"
+    condition:
+        1 of them
+}
+
+rule EVASION_BCDEdit_Recovery : evasion {
+    meta:
+        description = "disables Windows recovery (ransomware pre-step)"
+        severity = "high"
+    strings:
+        $a = "bcdedit"
+        $b = "recoveryenabled no"
+        $c = "bootstatuspolicy ignoreallfailures"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule EVASION_Shadow_Copy_Delete : evasion {
+    meta:
+        description = "deletes volume shadow copies / backups (ransomware pre-step)"
+        severity = "high"
+    strings:
+        $a = "vssadmin delete shadows"
+        $b = "vssadmin.exe delete shadows"
+        $c = "shadowcopy delete"
+        $d = "wbadmin delete catalog"
+    condition:
+        1 of them
+}
+
+rule EVASION_ETW_Patch : evasion {
+    meta:
+        description = "ETW tampering (EtwEventWrite patch)"
+        severity = "high"
+    strings:
+        $a = "EtwEventWrite"
+        $b = "EtwpEventWriteFull"
+        $c = "ntdll.dll"
+    condition:
+        ($a and $c) or $b
+}
+
+rule EVASION_Timestomp : evasion {
+    meta:
+        description = "timestomping / file timestamp manipulation"
+        severity = "medium"
+    strings:
+        $a = "timestomp"
+        $b = "SetFileTime"
+        $c = "-c -m -a -e"
+    condition:
+        1 of ($a, $c)
+}
+
+// ---------------------------------------------------------------------------
+// Exploit / recon payload patterns (fire on captured script/text artifacts).
+// ---------------------------------------------------------------------------
+rule EXPLOIT_SQLi_Union : exploit {
+    meta:
+        description = "UNION-based SQL injection"
+        severity = "high"
+    strings:
+        $a = "union select" nocase
+        $b = "union all select" nocase
+        $c = "information_schema" nocase
+    condition:
+        (1 of ($a, $b)) and $c
+}
+
+rule EXPLOIT_SQLi_TimeBased : exploit {
+    meta:
+        description = "time-based blind SQL injection"
+        severity = "high"
+    strings:
+        $a = "waitfor delay" nocase
+        $b = "pg_sleep(" nocase
+        $c = "benchmark(" nocase
+        $d = "sleep(__time" nocase
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_XSS_Script : exploit {
+    meta:
+        description = "reflected/stored XSS payload"
+        severity = "medium"
+    strings:
+        $a = "<script>alert(" nocase
+        $b = "onerror=alert(" nocase
+        $c = "<img src=x onerror=" nocase
+        $d = "<svg onload=" nocase
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Path_Traversal : exploit {
+    meta:
+        description = "directory traversal to sensitive files"
+        severity = "high"
+    strings:
+        $a = "../../../../etc/passwd"
+        $b = "..%2f..%2f..%2f"
+        $c = "..%5c..%5c..%5c"
+        $d = "....//....//"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_LFI_PHP_Wrapper : exploit {
+    meta:
+        description = "PHP wrapper local file inclusion / RCE"
+        severity = "high"
+    strings:
+        $a = "php://filter/convert.base64-encode"
+        $b = "php://input"
+        $c = "data://text/plain;base64"
+        $d = "expect://"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Command_Injection : exploit {
+    meta:
+        description = "OS command injection markers"
+        severity = "high"
+    strings:
+        $a = "$(id)"
+        $b = ";cat /etc/passwd"
+        $c = "|| whoami"
+        $d = "; ping -c "
+    condition:
+        1 of ($a, $b) or 2 of them
+}
+
+rule EXPLOIT_SSRF_Cloud_Metadata : exploit {
+    meta:
+        description = "SSRF to cloud instance-metadata endpoints"
+        severity = "high"
+    strings:
+        $a = "169.254.169.254"
+        $b = "metadata.google.internal"
+        $c = "/computeMetadata/v1/"
+        $d = "/latest/meta-data/"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_XXE : exploit {
+    meta:
+        description = "XML external entity injection"
+        severity = "high"
+    strings:
+        $a = "<!ENTITY" nocase
+        $b = "SYSTEM \"file:" nocase
+        $c = "SYSTEM \"http" nocase
+        $d = "SYSTEM \"php://" nocase
+    condition:
+        $a and (1 of ($b, $c, $d))
+}
+
+rule EXPLOIT_SSTI : exploit {
+    meta:
+        description = "server-side template injection probe"
+        severity = "medium"
+    strings:
+        $a = "${7*7}"
+        $b = "{{7*7}}"
+        $c = "<%= 7*7 %>"
+        $d = "#{7*7}"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Java_Deserialization : exploit {
+    meta:
+        description = "Java deserialization gadget payload"
+        severity = "high"
+    strings:
+        $a = "rO0AB"
+        $b = "aced0005"
+        $c = "ysoserial"
+        $d = "CommonsCollections"
+    condition:
+        1 of them
+}
+
+// ---------------------------------------------------------------------------
+// Miners / Linux malware (tail).
+// ---------------------------------------------------------------------------
+rule MINER_CoinHive_JS : coinminer {
+    meta:
+        description = "in-browser CoinHive/cryptonight miner"
+        severity = "medium"
+    strings:
+        $a = "coinhive" nocase
+        $b = "CoinHive.Anonymous"
+        $c = "coin-hive.com"
+        $d = "cryptonight.wasm"
+    condition:
+        1 of them
+}
+
+rule LINUX_Kinsing : coinminer {
+    meta:
+        description = "Kinsing Linux crypto-mining malware"
+    strings:
+        $a = "kinsing"
+        $b = "kdevtmpfsi"
+        $c = "/etc/kinsing"
+    condition:
+        1 of them
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source
