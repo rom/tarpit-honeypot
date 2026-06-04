@@ -17,10 +17,11 @@ import (
 )
 
 type ssh struct {
-	id   *identity.Identity
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
-	vuln bool
+	id     *identity.Identity
+	jit    *jitter.Jitterer
+	arch   *archetype.Profile
+	vuln   bool
+	kexExt bool // capture beyond KEXINIT/HASSH (interaction.ssh_kex_depth: extended_experimental)
 }
 
 func (s *ssh) Name() string { return "ssh" }
@@ -111,7 +112,21 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	// Try to read one binary-packet (the client's SSH_MSG_KEXINIT) for the
 	// client HASSH fingerprint, then drop the connection (we never carry
 	// the key exchange through).
-	if hashRaw, hashSum, ok := readHASSH(br); ok {
+	//
+	// In extended mode (interaction.ssh_kex_depth: extended_experimental) we
+	// read the full KEXINIT packet, compute HASSH from it, capture the full
+	// algorithm breakdown + negotiated KEX, and read the client's first
+	// key-exchange message (the ephemeral public value). Otherwise we take
+	// the cheap HASSH-only path.
+	if s.kexExt {
+		if payload, ok := readSSHPacket(br); ok {
+			if raw, sum := fingerprint.HASSH(payload); raw != "" {
+				res.Meta["hassh"] = sum
+				res.Meta["hassh_algorithms"] = raw
+			}
+			captureExtendedKex(br, payload, sshAlgosForBanner(banner).kex, &res)
+		}
+	} else if hashRaw, hashSum, ok := readHASSH(br); ok {
 		res.Meta["hassh"] = hashSum
 		res.Meta["hassh_algorithms"] = hashRaw
 	}

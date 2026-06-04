@@ -1588,6 +1588,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
 		VulnEmulation:    cfg.Sensor.VulnEmulation,
 		SessionRec:       s.sessionRec,
+		SSHKexExtended:   cfg.Interaction.SSHKexDepth == config.SSHKexExtendedExp,
 	})
 	if err != nil {
 		cancel()

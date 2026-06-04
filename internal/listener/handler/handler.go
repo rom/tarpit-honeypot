@@ -64,6 +64,12 @@ type Deps struct {
 	// SessionRec records interactive shell sessions (telnet /
 	// ssh_interactive) as asciinema casts. nil = recording disabled.
 	SessionRec *sessionrec.Store
+	// SSHKexExtended unlocks best-effort capture beyond the client KEXINIT
+	// (HASSH): the negotiated KEX, the full algorithm breakdown including
+	// the server-host-key list, and the client's first KEX message (the
+	// ephemeral public value from KEXDH/ECDH_INIT, or a GEX group request).
+	// Gated behind interaction.ssh_kex_depth: extended_experimental.
+	SSHKexExtended bool
 }
 
 // HoneynetSnapshot is a flat read-only view of every honeynet host. The
@@ -154,7 +160,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		}
 		return &luaH{eng: eng, jit: deps.Jitter}, nil
 	case "ssh":
-		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
+		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation, kexExt: deps.SSHKexExtended}, nil
 	case "ssh_interactive":
 		return &sshInteractive{
 			id:   deps.Identity,

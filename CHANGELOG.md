@@ -10,6 +10,23 @@ documented in `docs/`).
 
 ### Added
 
+- **Extended SSH key-exchange capture** (`interaction.ssh_kex_depth:
+  extended_experimental`, requires `interaction.mode: medium_experimental`).
+  Beyond the client KEXINIT/HASSH, the `ssh` handler now parses the full
+  client KEXINIT (all ten algorithm name-lists + the `first_kex_packet_follows`
+  guess flag), computes the **negotiated KEX** against the server's advertised
+  set, and reads the client's **first key-exchange message** — the ephemeral
+  public value from `SSH_MSG_KEXDH_INIT` / `SSH_MSG_KEX_ECDH_INIT` (recorded as
+  a length + SHA-256), or the requested group bounds from
+  `SSH_MSG_KEX_DH_GEX_REQUEST`. Weak/legacy primitives (group1-sha1, CBC,
+  arcfour, DES, hmac-md5) raise `ssh-kex-weak-primitive`. New event meta:
+  `ssh_kex_client`, `ssh_kex_hostkeys`, `ssh_kex_ciphers_c2s/s2c`,
+  `ssh_kex_macs_c2s/s2c`, `ssh_kex_compression_c2s`, `ssh_kex_negotiated`,
+  `ssh_kex_first_follows`, `ssh_kex_msg`, `ssh_kex_client_pubkey_sha256`,
+  `ssh_kex_client_pubkey_bytes`, `ssh_kex_gex_min/n/max`. Capture-only — no
+  shared secret is computed and the exchange is never carried through, so the
+  sensor stays a low-interaction emulator. `list-unavailable-capabilities`
+  now reports `ssh-kex-extended` as a real experimental capability.
 - **DNS detection depth (UDP + TCP): +30 detections** for DNS
   vulnerabilities / leakage / recon / poisoning / DoS — header/opcode/section
   abuse (`dns-response-as-query`, `dns-inverse-query`, `dns-notify-opcode`,

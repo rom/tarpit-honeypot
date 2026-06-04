@@ -138,13 +138,13 @@ func (in Interaction) UnavailableCapabilities() []Capability {
 	// Extended SSH KEX capture.
 	if in.SSHKexDepth == SSHKexExtendedExp {
 		caps = append(caps, Capability{"ssh-kex-extended", CapExperimental,
-			"extended_experimental: best-effort; only the client KEXINIT (HASSH) is fully modelled"})
+			"extended_experimental: captures the full client KEXINIT algorithm breakdown, the negotiated KEX, and the client's first key-exchange message (ephemeral public value from KEXDH/ECDH_INIT, or the GEX group request). Capture-only — no shared secret is computed."})
 	} else if in.Mode != InteractionMediumExp {
 		caps = append(caps, Capability{"ssh-kex-extended", CapLocked,
 			"locked in low mode; only the client KEXINIT (HASSH) is captured. Needs medium_experimental + ssh_kex_depth: extended_experimental"})
 	} else {
 		caps = append(caps, Capability{"ssh-kex-extended", CapDisabled,
-			"set interaction.ssh_kex_depth: extended_experimental to enable best-effort deeper KEX capture"})
+			"set interaction.ssh_kex_depth: extended_experimental to capture the full KEXINIT breakdown + the client's first key-exchange message"})
 	}
 
 	// Browser traps — never available.
