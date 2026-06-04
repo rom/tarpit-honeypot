@@ -3,7 +3,7 @@
 `tarpit-honeypot` ships a `lua` protocol handler that lets you define a fake
 service — a "persona" — as a small [Lua](https://www.lua.org/) script instead of
 Go code. A persona reads what an attacker sends, records the interesting parts,
-flags the attack, and writes back a believable response. **180 personas ship in
+flags the attack, and writes back a believable response. **200 personas ship in
 the box** (under [`configs/scripts/`](../configs/scripts/)); you can add your own
 without recompiling.
 
@@ -177,7 +177,7 @@ end
 
 ## The personas that ship
 
-180 personas ship under [`configs/scripts/`](../configs/scripts/) — run
+200 personas ship under [`configs/scripts/`](../configs/scripts/) — run
 `ls configs/scripts/` for the full list. They span:
 
 - **Web apps / CMS**: phpMyAdmin, Adminer, WordPress, Drupal, Joomla, TYPO3,
