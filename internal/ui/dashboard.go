@@ -251,11 +251,11 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	// numeric AS extracted from its display label ("AS13335 Cloudflare").
 	d.Tactics = topBars(tac, 14, "/events?tactic=")
 	d.Countries = topBars(country, 10, "/events?country=")
-	// Prefix each country bar's label with its flag emoji (the href keeps the
-	// raw 2-letter code, which topBars already built).
+	// Append each country bar's flag emoji after its 2-letter code (the href
+	// keeps the raw code, which topBars already built).
 	for i := range d.Countries {
 		if f := countryFlag(d.Countries[i].Label); f != "" {
-			d.Countries[i].Label = f + " " + d.Countries[i].Label
+			d.Countries[i].Label = d.Countries[i].Label + " " + f
 		}
 	}
 	d.ASNs = topBars(asn, 10, "")

@@ -20,9 +20,10 @@ import (
 )
 
 type ftp struct {
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
-	id   *identity.Identity
+	jit    *jitter.Jitterer
+	arch   *archetype.Profile
+	id     *identity.Identity
+	tlsMgr *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
 }
 
 func (f *ftp) Name() string { return "ftp" }
@@ -78,6 +79,15 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (r
 	var commands []string
 	res.Meta = map[string]any{}
 	sess := &ftpSession{conn: conn, res: &res, files: fakefiles.Default(f.id), cwd: "/", clientIP: clientIP}
+	if f.tlsMgr != nil {
+		sess.wrapData = func(c net.Conn) net.Conn {
+			nc, err := startTLS(ctx, c, f.tlsMgr, cfg.ID, tlsHosts(cfg), f.arch)
+			if err != nil {
+				return nil
+			}
+			return nc
+		}
+	}
 	defer sess.closeData()
 loop:
 	for i := 0; i < 40; i++ {
@@ -109,13 +119,60 @@ loop:
 				_, _ = conn.Write([]byte("230 Login successful.\r\n"))
 			}
 		case "FEAT":
-			_, _ = conn.Write([]byte(buildFTPFeat(feat)))
+			// Advertise explicit-FTPS support (AUTH TLS/SSL + PBSZ + PROT) only
+			// while still plaintext and able to negotiate, so a client knows it
+			// can secure the session.
+			fl := feat
+			if f.tlsMgr != nil && !alreadyTLS(conn) {
+				fl = append([]string{"AUTH TLS", "AUTH SSL", "PBSZ", "PROT"}, feat...)
+			}
+			_, _ = conn.Write([]byte(buildFTPFeat(fl)))
 		case "SYST":
 			_, _ = conn.Write([]byte("215 UNIX Type: L8\r\n"))
 		case "AUTH":
-			// We don't negotiate TLS; a real plaintext-only server
-			// rejects AUTH TLS/SSL with 530 or 502.
-			_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
+			// Explicit FTPS: AUTH TLS / AUTH SSL upgrades the control channel to
+			// TLS (RFC 4217), then the conversation — including USER/PASS — is
+			// captured over the encrypted channel.
+			mech := strings.ToUpper(strings.TrimSpace(arg))
+			switch {
+			case f.tlsMgr == nil || alreadyTLS(conn):
+				// Plaintext-only (or already secured): refuse like a server with
+				// no TLS configured.
+				_, _ = conn.Write([]byte("502 Command not implemented.\r\n"))
+			case mech == "TLS" || mech == "SSL" || mech == "TLS-C" || mech == "SSL-C" || mech == "TLS-P":
+				// Anything pipelined after AUTH (before the handshake) is a
+				// plaintext command-injection probe — record, then drop on upgrade.
+				detectSTARTTLSInjection(br, &res, "CVE-2011-1430")
+				_, _ = conn.Write([]byte("234 AUTH " + mech + " successful. Initializing secure connection.\r\n"))
+				nc, err := startTLS(ctx, conn, f.tlsMgr, cfg.ID, tlsHosts(cfg), f.arch)
+				if err != nil {
+					res.Meta["tls_err"] = err.Error()
+					break loop
+				}
+				conn = nc
+				sess.conn = nc
+				br = bufio.NewReader(conn)
+				withTimeout(conn, cfg.ReadTimeout)
+				res.Meta["tls"] = true
+				res.Meta["ftps"] = true
+				res.Meta["ftps_auth"] = mech
+			default:
+				_, _ = conn.Write([]byte("504 Unknown security mechanism.\r\n"))
+			}
+		case "PBSZ":
+			// Protection buffer size — always 0 for TLS (stream mode).
+			_, _ = conn.Write([]byte("200 PBSZ=0\r\n"))
+		case "PROT":
+			switch strings.ToUpper(strings.TrimSpace(arg)) {
+			case "P":
+				sess.protP = true
+				_, _ = conn.Write([]byte("200 PROT now Private.\r\n"))
+			case "C", "":
+				sess.protP = false
+				_, _ = conn.Write([]byte("200 PROT now Clear.\r\n"))
+			default:
+				_, _ = conn.Write([]byte("504 PROT level not supported.\r\n"))
+			}
 		case "QUIT":
 			_, _ = conn.Write([]byte("221 Goodbye.\r\n"))
 			break loop
@@ -148,6 +205,11 @@ type ftpSession struct {
 	cwd      string
 	clientIP string
 	dataLn   net.Listener // open PASV/EPSV listener awaiting the data connection
+	// FTPS data-channel protection: when the client negotiated AUTH TLS and then
+	// PROT P, the data connection is TLS too. wrapData performs the server-side
+	// handshake on an accepted data conn; protP gates whether to apply it.
+	protP    bool
+	wrapData func(net.Conn) net.Conn
 }
 
 func (s *ftpSession) reply(line string) { _, _ = s.conn.Write([]byte(line + "\r\n")) }
@@ -268,10 +330,15 @@ func (s *ftpSession) openPasv(extended bool) {
 	s.reply("227 Entering Passive Mode (" + hostPort + ").")
 }
 
-// data accepts (and consumes) the single pending PASV data connection.
+// data accepts (and consumes) the single pending PASV data connection. Under
+// FTPS PROT P it completes the data-channel TLS handshake so LIST/RETR still
+// work for a secure client.
 func (s *ftpSession) data() net.Conn {
 	dc := ftpAcceptData(s.dataLn)
 	s.dataLn = nil // PASV listener is single-use
+	if dc != nil && s.protP && s.wrapData != nil {
+		dc = s.wrapData(dc)
+	}
 	return dc
 }
 

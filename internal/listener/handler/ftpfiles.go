@@ -38,6 +38,7 @@ type ftpFiles struct {
 	id          *identity.Identity
 	arch        *archetype.Profile
 	acceptCreds string
+	tlsMgr      *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
 }
 
 func (f *ftpFiles) Name() string { return "ftp_files" }
@@ -71,12 +72,28 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		retrieved  []string
 		listenAddr string
 		dataLn     net.Listener
+		protP      bool // FTPS PROT P: the data channel is TLS too
 	)
 	defer func() {
 		if dataLn != nil {
 			_ = dataLn.Close()
 		}
 	}()
+	// dataWrap secures an accepted PASV data connection when FTPS PROT P is in
+	// effect; a no-op otherwise. Returns nil on a failed handshake.
+	dataWrap := func(c net.Conn) net.Conn { return c }
+	if f.tlsMgr != nil {
+		dataWrap = func(c net.Conn) net.Conn {
+			if !protP {
+				return c
+			}
+			nc, err := startTLS(ctx, c, f.tlsMgr, cfg.ID, tlsHosts(cfg), f.arch)
+			if err != nil {
+				return nil
+			}
+			return nc
+		}
+	}
 
 	// FTP sessions are short; cap the command count so a stuck client
 	// can't hold the worker forever (timeouts also bound this).
@@ -115,7 +132,51 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		case "SYST":
 			_, _ = conn.Write([]byte("215 UNIX Type: L8\r\n"))
 		case "FEAT":
-			_, _ = conn.Write([]byte("211-Features:\r\n PASV\r\n SIZE\r\n UTF8\r\n211 End\r\n"))
+			feat := "211-Features:\r\n PASV\r\n SIZE\r\n UTF8\r\n"
+			if f.tlsMgr != nil && !alreadyTLS(conn) {
+				feat += " AUTH TLS\r\n AUTH SSL\r\n PBSZ\r\n PROT\r\n"
+			}
+			feat += "211 End\r\n"
+			_, _ = conn.Write([]byte(feat))
+		case "AUTH":
+			// Explicit FTPS (RFC 4217): AUTH TLS / AUTH SSL upgrades the control
+			// channel; USER/PASS + the browse/download session are then captured
+			// over the encrypted channel.
+			mech := strings.ToUpper(strings.TrimSpace(arg))
+			switch {
+			case f.tlsMgr == nil || alreadyTLS(conn):
+				_, _ = conn.Write([]byte("502 Command not implemented.\r\n"))
+			case mech == "TLS" || mech == "SSL" || mech == "TLS-C" || mech == "SSL-C" || mech == "TLS-P":
+				detectSTARTTLSInjection(br, &res, "CVE-2011-1430")
+				_, _ = conn.Write([]byte("234 AUTH " + mech + " successful. Initializing secure connection.\r\n"))
+				nc, err := startTLS(ctx, conn, f.tlsMgr, cfg.ID, tlsHosts(cfg), f.arch)
+				if err != nil {
+					res.Meta["tls_err"] = err.Error()
+					i = maxCommands // end the session
+					break
+				}
+				conn = nc
+				br = bufio.NewReader(conn)
+				withTimeout(conn, cfg.ReadTimeout)
+				res.Meta["tls"] = true
+				res.Meta["ftps"] = true
+				res.Meta["ftps_auth"] = mech
+			default:
+				_, _ = conn.Write([]byte("504 Unknown security mechanism.\r\n"))
+			}
+		case "PBSZ":
+			_, _ = conn.Write([]byte("200 PBSZ=0\r\n"))
+		case "PROT":
+			switch strings.ToUpper(strings.TrimSpace(arg)) {
+			case "P":
+				protP = true
+				_, _ = conn.Write([]byte("200 PROT now Private.\r\n"))
+			case "C", "":
+				protP = false
+				_, _ = conn.Write([]byte("200 PROT now Clear.\r\n"))
+			default:
+				_, _ = conn.Write([]byte("504 PROT level not supported.\r\n"))
+			}
 		case "PWD", "XPWD":
 			_, _ = conn.Write([]byte("257 \"" + cwd + "\" is the current directory\r\n"))
 		case "TYPE":
@@ -155,7 +216,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 				_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
 				break
 			}
-			f.serveList(conn, dataLn, files, cwd, cmd == "NLST")
+			f.serveList(conn, dataLn, dataWrap, files, cwd, cmd == "NLST")
 			dataLn = nil // PASV listener is single-use
 		case "SIZE":
 			if file, ok := files.Lookup(cwd, arg); ok {
@@ -178,7 +239,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			if file.Bait {
 				flagAnomaly(&res, "honeyfile-download")
 			}
-			f.serveRetr(conn, dataLn, file)
+			f.serveRetr(conn, dataLn, dataWrap, file)
 			dataLn = nil
 		case "QUIT":
 			_, _ = conn.Write([]byte("221 Goodbye.\r\n"))
@@ -204,9 +265,12 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 	return res, nil
 }
 
-func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, files *fakefiles.Set, dir string, nameOnly bool) {
+func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, wrap func(net.Conn) net.Conn, files *fakefiles.Set, dir string, nameOnly bool) {
 	_, _ = conn.Write([]byte("150 Here comes the directory listing.\r\n"))
 	dc := ftpAcceptData(ln)
+	if dc != nil {
+		dc = wrap(dc) // TLS-wrap under FTPS PROT P
+	}
 	if dc == nil {
 		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 		return
@@ -227,9 +291,12 @@ func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, files *fakefiles.Se
 	_, _ = conn.Write([]byte("226 Directory send OK.\r\n"))
 }
 
-func (f *ftpFiles) serveRetr(conn net.Conn, ln net.Listener, file fakefiles.File) {
+func (f *ftpFiles) serveRetr(conn net.Conn, ln net.Listener, wrap func(net.Conn) net.Conn, file fakefiles.File) {
 	_, _ = conn.Write([]byte("150 Opening BINARY mode data connection for " + file.Name + ".\r\n"))
 	dc := ftpAcceptData(ln)
+	if dc != nil {
+		dc = wrap(dc) // TLS-wrap under FTPS PROT P
+	}
 	if dc == nil {
 		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 		return

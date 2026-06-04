@@ -379,8 +379,8 @@ table.chart { width: 100%; background: transparent; }
 table.chart td { border: none; padding: .12rem .4rem; }
 td.blabel { width: 30%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 td.bcell { width: 52%; }
-td.bnum { width: 9%; text-align: right; color: var(--text-muted); }
-td.bpct { width: 9%; text-align: right; color: var(--text-faint); font-size: 0.82rem; }
+td.bnum { width: 16%; text-align: right; color: var(--text-muted); white-space: nowrap; }
+.bpct { color: var(--text-faint); font-size: 0.82rem; }
 .bar { display: inline-block; height: .8rem; background: var(--bar-default); border-radius: 2px; min-width: 2px; }
 .bar.sev-medium { background: var(--bar-medium); }
 .bar.sev-high { background: var(--bar-high); }
@@ -549,8 +549,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range . }}<tr>
   <td class="blabel">{{ if .Href }}<a href="{{ .Href }}"{{ if .External }} target="_blank" rel="noreferrer noopener"{{ end }}>{{ .Label }}</a>{{ else }}{{ .Label }}{{ end }}</td>
   <td class="bcell"><span class="bar {{ .Class }}" style="width:{{ .Pct }}%">&nbsp;</span></td>
-  <td class="bnum">{{ .Count }}</td>
-  <td class="bpct">{{ .Share }}%</td>
+  <td class="bnum">{{ .Count }} <span class="bpct">({{ .Share }}%)</span></td>
 </tr>{{ end }}
 </table>{{ end }}
 

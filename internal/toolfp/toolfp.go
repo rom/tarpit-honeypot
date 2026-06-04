@@ -89,6 +89,7 @@ var c2Frameworks = map[string]bool{
 	"chashell": true, "godoh": true, "shad0w": true, "caldera": true,
 	"supershell": true, "phpsploit": true, "weevely": true,
 	"hardhatc2": true, "adaptixc2": true,
+	"slackor": true, "toxssin": true, "trevorc2": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -158,6 +159,8 @@ var vulnScanners = map[string]bool{
 	"ghauri": true, "sstimap": true, "tinja": true, "xsser": true, "xspear": true,
 	"oralyzer": true, "openredirex": true, "crlfsuite": true, "wcvs": true,
 	"mongoaudit": true, "domdig": true,
+	"dotdotpwn": true, "panoptic": true, "xxeinjector": true, "blisqy": true,
+	"kadimus": true, "liffy": true, "retirejs": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -739,6 +742,68 @@ var uaSignatures = map[string]string{
 	// C2 frameworks.
 	"hardhatc2": "hardhatc2",
 	"adaptixc2": "adaptixc2",
+
+	// --- Batch: 50 more web-exploit / AD / cloud / OSINT / C2 fingerprints
+	// (User-Agent self-identification). ---
+	// Web injection / LFI / XXE / SQLi scanners.
+	"dotdotpwn":   "dotdotpwn",
+	"panoptic":    "panoptic",
+	"xxeinjector": "xxeinjector",
+	"blisqy":      "blisqy",
+	"kadimus":     "kadimus",
+	"liffy":       "liffy",
+	"retirejs":    "retirejs",
+	// Web proxies / tech fingerprint / panel + content discovery.
+	"caido":      "caido",
+	"wappalyzer": "wappalyzer",
+	"cangibrina": "cangibrina",
+	"breacher":   "breacher",
+	"rustbuster": "rustbuster",
+	"filebuster": "filebuster",
+	// .NET / secret cracking + exploitation.
+	"viewgen":     "viewgen",
+	"badsecrets":  "badsecrets",
+	"blacklist3r": "blacklist3r",
+	// Kubernetes / container escape + recon.
+	"kubeletctl":   "kubeletctl",
+	"peirates":     "peirates",
+	"kdigger":      "kdigger",
+	"amicontained": "amicontained",
+	"deepce":       "deepce",
+	// Cloud (AWS / Azure / M365) audit + attack.
+	"cloudsplaining": "cloudsplaining",
+	"pmapper":        "pmapper",
+	"stormspotter":   "stormspotter",
+	"azurehound":     "azurehound",
+	"roadrecon":      "roadrecon",
+	"o365spray":      "o365spray",
+	"teamfiltration": "teamfiltration",
+	"trevorspray":    "trevorspray",
+	// AD / LDAP / SMB enumeration + coercion.
+	"rusthound":  "rusthound",
+	"soaphound":  "soaphound",
+	"ldeep":      "ldeep",
+	"manspider":  "manspider",
+	"smbeagle":   "smbeagle",
+	"snaffler":   "snaffler",
+	"dfscoerce":  "dfscoerce",
+	"pywhisker":  "pywhisker",
+	"masky":      "masky",
+	"adidnsdump": "adidnsdump",
+	"ldapnomnom": "ldapnomnom",
+	// OSINT / username / phone recon.
+	"reconspider": "reconspider",
+	"finalrecon":  "finalrecon",
+	"blackbird":   "blackbird",
+	"nexfil":      "nexfil",
+	"toutatis":    "toutatis",
+	"phoneinfoga": "phoneinfoga",
+	// Phishing.
+	"evilgophish": "evilgophish",
+	// C2 frameworks + RATs.
+	"slackor":  "slackor",
+	"toxssin":  "toxssin",
+	"trevorc2": "trevorc2",
 
 	// --- Batch: 25 more web-injection / WAF / OSINT-engine / recon
 	// fingerprints (User-Agent self-identification). ---

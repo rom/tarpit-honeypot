@@ -179,9 +179,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "telnet":
 		return &telnet{jit: deps.Jitter, arch: deps.Archetype, rec: deps.SessionRec}, nil
 	case "ftp":
-		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity}, nil
+		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, tlsMgr: maybeCertMgr(deps)}, nil
 	case "ftp_files":
-		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds}, nil
+		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds, tlsMgr: maybeCertMgr(deps)}, nil
 	case "modbus":
 		return &modbus{}, nil
 	case "s7":
