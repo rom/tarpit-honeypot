@@ -10,6 +10,21 @@ documented in `docs/`).
 
 ### Added
 
+- **Detection-content expansion: +50 YARA rules, +30 CVEs, +30 CWEs, +30 service
+  emulators.** The built-in `artifactscan` pack gains 50 rules covering RATs
+  (njRAT, AsyncRAT, Quasar, Remcos, NanoCore, DarkComet), stealers (RedLine,
+  AgentTesla, Lokibot), C2/offensive tooling (Sliver, Havoc, Brute Ratel,
+  Covenant, Empire, Mimikatz, Rubeus, SharpHound, PsExec, Chisel/ngrok/frp
+  tunnels), webshells (China Chopper, WSO, b374k, Behinder, AntSword, Weevely),
+  packers (VMProtect/Themida/ASPack), LOLBIN/PowerShell abuse, coin miners,
+  Linux malware (XorDDoS, Diamorphine), and `pe`-module behavioral rules
+  (keylogger hooks, service persistence) — each tagged with an appropriate
+  severity. The CVE catalog gains 30 web/appliance exploit signatures (Spring
+  Cloud Gateway/Config, Lucee, Apache OFBiz, Jira SSRF/SSTI/file-read,
+  ManageEngine, Solr, Citrix, GitLab ExifTool, PHP-CGI, SnakeYAML, …) with
+  CWE/CPE/EPSS cross-references, the CWE dictionary grows by 30 weakness classes,
+  and 30 new Lua service emulators ship under `configs/scripts/` (Gophish, EMQX,
+  Wazuh, MISP, TheHive, Nessus, GLPI, Jellyfin, Home Assistant, TrueNAS, …).
 - **YARA module support + bigger built-in rule pack** — the CGO-free rule
   engine (`internal/artifactscan`) now evaluates a practical slice of the YARA
   module surface: `filesize`, the integer readers `uint8/16/32(be)` and
