@@ -27,6 +27,7 @@ var globalValueFlags = map[string]bool{
 func Dispatch(args []string) error {
 	cmds := []command{
 		{"run", "start the sensor (listeners + sinks)", cmdRun},
+		{"collector", "run as a fleet collector (ingest + correlate, no honeypot listeners)", cmdCollector},
 		{"validate-config", "parse and validate a config file (with optional --diff)", cmdValidate},
 		{"show-config", "print the effective post-defaults config as YAML", cmdShowConfig},
 		{"test-alert", "emit a synthetic event through configured channels", cmdTestAlert},

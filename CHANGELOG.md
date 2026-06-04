@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Turnkey fleet collector mode** — new `tarpit-honeypot collector`
+  subcommand runs the node as a pure aggregator: it force-enables the
+  authenticated ingest endpoint (defaulting bind `:8443` and token env
+  `TARPIT_INGEST_TOKEN` when unset), force-enables the cross-sensor fleet
+  correlator, serves the downward intel feed + STIX/TAXII export, and **binds
+  no honeypot listeners** (a collector impersonates nothing — `--keep-listeners`
+  runs a combined sensor+collector instead). It reuses the exact `run` engine
+  (storage, web UI, channels, sandbox, privilege drop) via a shared
+  `runWithConfig`, differing only in the aggregator-shaped config. `--bind`
+  overrides the ingest address; `--dry-run` validates without binding. Point
+  child sensors' `forward.url` at the collector's ingest bind.
 - **Static analysis + YARA-style scanning of captured artifacts**
   (`internal/artifactscan`, enabled with `sensor.payloads.analyze: true`).
   A new **CGO-free** engine (no libyara) runs on every harvested
