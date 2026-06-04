@@ -10,6 +10,53 @@ documented in `docs/`).
 
 ### Added
 
+- **DNS detection depth (UDP + TCP): +30 detections** for DNS
+  vulnerabilities / leakage / recon / poisoning / DoS — header/opcode/section
+  abuse (`dns-response-as-query`, `dns-inverse-query`, `dns-notify-opcode`,
+  `dns-dynamic-update`, `dns-multi-question`, `dns-prestuffed-answers`,
+  `dns-additional-stuffing`, `dns-nonstandard-class`), recon/leakage
+  (`dns-chaos-class`, `dns-dnssec-recon`, `dns-nsec-walk`, `dns-svcb-probe`,
+  `dns-caa-probe`, `dns-mail-policy-probe`, `dns-srv-ad-discovery`,
+  `dns-ptr-reverse-sweep`, `dns-internal-tld-leak`), MITM bait
+  (`dns-wpad-probe`, `dns-isatap-probe`), OOB/rebind callbacks
+  (`dns-oob-interaction`, `dns-rebind-lookup`), tunnelling
+  (`dns-cname-tunnel`, `dns-null-record`, `dns-long-encoded-label`,
+  `dns-many-labels`) and DoS/amplification (`dns-random-subdomain`,
+  `dns-repeated-label`, `dns-edns-large-udpsize`, `dns-edns-version-nonzero`,
+  `dns-dnssec-amplification`), all ATT&CK/D3FEND-mapped.
+- **DNS tool fingerprinting**: `IdentifyDNS` recognizes 20 DNS recon/tunnel/
+  OOB-interaction tools & services from the QNAME (BIND version probes,
+  interactsh/Burp Collaborator/dnslog/ceye OAST callbacks, nip.io/sslip.io
+  DNS-rebinding, dnscat2/dns2tcp/tcp-over-dns tunnels) — wired into both DNS
+  handlers.
+- **SSH: +30 CVE detections** (498 catalogued total) — CVE-2008-0166 Debian
+  weak keys, the OpenSSH roaming pair (CVE-2016-0777/0778), user-enumeration,
+  scp client flaws, ssh-agent PKCS#11 RCEs (incl. CVE-2023-38408), libssh auth
+  bypass (CVE-2018-10933), ProxyCommand injection, the 2025 pre-auth DoS, and
+  classic pre-auth RCEs.
+- **CVE-2016-0777 detection**: a vulnerable OpenSSH client (roaming default-on,
+  5.4–7.1) is flagged from its banner in both SSH handlers
+  (`ssh-roaming-vulnerable-client`); the interactive handler additionally offers
+  the `roaming@openssh.com` trap and records the client's reaction. Full
+  private-key extraction needs the roaming resume protocol (not expressible
+  through crypto/ssh) — the sensor captures the vuln signal + offered client
+  public keys instead.
+- **SSH brute-force tools in "top tools"**: the credential-capturing interactive
+  SSH handler now runs the client-banner tool fingerprint (was HTTP + banner-grab
+  SSH only), so hydra/medusa/ncrack/patator-class testers reach the chart.
+- **+110 attack-tool fingerprints** (900+ total): **+50 HTTP** (credential
+  brute-force / stuffing / password-spray — OpenBullet, SilverBullet, SentryMBA,
+  legba, CredMaster, Spray365, MSOLSpray, …; banking-trojan loaders — Emotet,
+  TrickBot, Qakbot, IcedID, …; web/API vuln scanners; recon), **+40 SSH** client/
+  stack banners (libraries, enterprise/MFT SSH, PAM/zero-trust bastions, network-
+  device stacks, brute/recon tools), **+20 DNS** QNAME signatures.
+- **`export-creds`**: `--sort time|source|user|secret|service|kind` and
+  `--reverse` to sort the extracted credentials from the command line (`--dedup`
+  already removes duplicates).
+- **Captures page**: summary counters by **type** and by **service** at the top
+  of the credentials section, and clickable type/service labels — click to
+  filter the table in place (`/captures?kind=…` / `?service=…`).
+
 - **+100 attack-tool fingerprints** (780+ total): C2/RAT/loader families
   (Nighthawk, Nuages, Remcos, DCRat, VenomRAT, XWorm, NetWire, NanoCore, Orcus,
   AgentTesla, FormBook, SmokeLoader, …), web/CMS/API/mobile vuln scanners

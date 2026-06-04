@@ -127,9 +127,20 @@ or a credential-stuffing watchlist:
 
 `--format` is `json` (default), `xml`, `yaml`, `csv`, or `txt`; `--kind` takes
 a comma-separated filter (e.g. `password,token,snmp-community`, empty = all
-kinds); `--dedup` (on by default) collapses identical kind/user/secret/service
-rows. The web **captures** page shows the same data live and no longer caps the
-credential table at 300 rows — it lists every unique credential in the window.
+kinds). To **sort and de-duplicate** the extracted credentials from the command
+line: `--dedup` (on by default) removes identical kind/user/secret/service rows,
+and `--sort time|source|user|secret|service|kind` (default `time`, newest-first;
+add `--reverse` to flip) orders them — e.g. a clean password wordlist of what
+attackers actually try:
+
+```bash
+./bin/tarpit-honeypot export-creds -c cfg.yaml --kind password --sort secret --format txt
+```
+
+The web **captures** page shows the same data live (no row cap), with summary
+counters by **type** and by **service** at the top of the credentials section;
+click a counter — or a type/service label in any row — to filter the table in
+place (`/captures?kind=…` / `?service=…`), and **clear filter** to reset.
 
 ### Inspecting the built-in catalogs (offline)
 
@@ -626,8 +637,33 @@ docker container create — a platform takeover).
   the vulnerable-web emulation): `webapp:ssti`, `webapp:xxe`,
   `webapp:rfi_ssrf`, `webapp:deserialize`, `webapp:nosqli`,
   `webapp:graphql-introspection`, `webapp:jwt-none`
-- DNS: `dns-tunnel-suspected`, `dns-qname-overlong`, `dns-dga-suspected`,
-  `dns-over-https`, `dns-over-tls`, `dnscrypt-probe`, `mdns-service-enumeration`
+- DNS (UDP **and** TCP): `dns-qname-overlong`, `dns-label-overlong`,
+  `dns-high-entropy-label`, `dns-tunneling-qtype`, `dns-any-amplification`,
+  `dns-zone-transfer`, `dnscrypt-probe`, `dns-dga-suspected`,
+  `dns-oversize-query`; **+30 detections** covering header/opcode/section abuse
+  (`dns-response-as-query`, `dns-inverse-query`, `dns-notify-opcode`,
+  `dns-dynamic-update`, `dns-multi-question`, `dns-prestuffed-answers`,
+  `dns-additional-stuffing`, `dns-nonstandard-class`), recon/leakage
+  (`dns-chaos-class`, `dns-dnssec-recon`, `dns-nsec-walk`, `dns-svcb-probe`,
+  `dns-caa-probe`, `dns-mail-policy-probe`, `dns-srv-ad-discovery`,
+  `dns-ptr-reverse-sweep`, `dns-internal-tld-leak`), MITM bait
+  (`dns-wpad-probe`, `dns-isatap-probe`), callbacks (`dns-oob-interaction`,
+  `dns-rebind-lookup`), tunnelling (`dns-cname-tunnel`, `dns-null-record`,
+  `dns-long-encoded-label`, `dns-many-labels`) and DoS/amplification
+  (`dns-random-subdomain`, `dns-repeated-label`, `dns-edns-large-udpsize`,
+  `dns-edns-version-nonzero`, `dns-dnssec-amplification`). DNS recon/tunnel/OOB
+  tools are fingerprinted from the QNAME (`tool:fpdns`, `tool:interactsh`,
+  `tool:dnscat2`, …).
+- SSH: `ssh-id-non-printable`, `ssh-id-overlong`, `ssh-id-not-ssh`; client tool
+  fingerprint (`tool:libssh` → hydra/medusa, `tool:paramiko`, …) on both the
+  banner-grab and the credential-capturing interactive handler. **CVE-2016-0777
+  / CVE-2016-0778**: a vulnerable OpenSSH client (roaming default-on, 5.4–7.1)
+  is flagged (`ssh-roaming-vulnerable-client`, `cve:CVE-2016-0777`); the
+  interactive handler also offers the `roaming@openssh.com` trap
+  (`ssh-roaming-offered`). Full private-key extraction needs the roaming
+  *resume* protocol (not expressible through Go's crypto/ssh), so the sensor
+  captures the vuln signal + every offered client **public** key rather than the
+  private key.
 - Active Directory / Kerberos: `kerberos-tgs-request`,
   `kerberos-rc4-requested`, `ldap-spn-enumeration`,
   `ldap-asrep-roast-recon`, `ldap-enumeration`
