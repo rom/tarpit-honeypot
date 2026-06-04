@@ -283,23 +283,37 @@ fetch_abuse_csv() {
 	ok=$((ok + 1)); return 0
 }
 
-# fetch_ja4db <dest_dir> — download the FoxIO JA4DB and emit normalized
-# "fingerprint,application" files per kind (needs jq for the JSON).
+# fetch_ja4db — download FoxIO's JA4+ mapping CSV from GitHub and emit
+# normalized "fingerprint,label" files per kind. The CSV columns are:
+#   Application,Library,Device,OS,ja4,ja4s,ja4h,ja4x,ja4t,ja4tscan,Notes
+# We emit the ja4 (col 5) and ja4h (col 7) maps the enricher consumes, labeling
+# each with the first non-empty of Application/Library/Device. Plain CSV — no
+# jq needed — and served from GitHub raw (more reachable than ja4db.com).
 fetch_ja4db() {
-	local url="https://ja4db.com/api/download/" tmp="$FP_DIR/ja4db.json.$$"
+	local url="https://raw.githubusercontent.com/FoxIO-LLC/ja4/main/ja4plus-mapping.csv"
+	local tmp="$FP_DIR/ja4db.csv.$$"
 	printf '  %-22s ' "foxio-ja4db"
-	if ! command -v jq >/dev/null 2>&1; then echo "skipped (needs jq)"; return 0; fi
 	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
 		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
 	fi
-	local kind field
-	for kind in ja4 ja4h ja4s; do
-		field="${kind}_fingerprint"
-		jq -r ".[] | select(.${field} != null and .${field} != \"\") | \"\(.${field}),\(.application // .library // .device // \"unknown\")\"" \
-			"$tmp" 2>/dev/null | sort -u >"$FP_DIR/$kind.txt" || true
+	# Emit the ja4 (col 5) and ja4h (col 7) maps the enricher consumes; label
+	# each with the first non-empty of Application/Library/Device.
+	for spec in "5 ja4" "7 ja4h"; do
+		set -- $spec
+		awk -F, -v col="$1" '
+			NR == 1 { next }                        # header
+			{ gsub(/\r/, ""); fp = $col; if (fp == "") next;
+			  lab = $1; if (lab == "") lab = $2; if (lab == "") lab = $3;
+			  if (lab == "") lab = "unknown";
+			  print fp "," lab }
+		' "$tmp" | sort -u >"$FP_DIR/$2.txt" || true
 	done
 	rm -f "$tmp"
-	local n; n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
+	local n
+	n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
+	if [ "${n:-0}" -eq 0 ]; then
+		echo "FAILED (no fingerprints parsed)"; fail=$((fail + 1)); return 1
+	fi
 	echo "ok (${n} ja4)"
 	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  foxio-ja4db  $url  ${n} ja4  $FP_DIR" >>"$MANIFEST"
 	ok=$((ok + 1)); return 0
@@ -344,7 +358,7 @@ cat "$MAL_DIR/threatfox.txt" "$MAL_DIR/malwarebazaar.txt" 2>/dev/null | sort -u 
 # URLhaus malicious URLs (reference / future host matching).
 fetch "urlhaus-urls" "https://urlhaus.abuse.ch/downloads/text_recent/" "$MAL_DIR/urlhaus-urls.txt" || true
 
-say "[fingerprints]  (JA4DB — client/tool attribution)"
+say "[fingerprints]  (FoxIO JA4+ mapping — client/tool attribution)"
 fetch_ja4db || true
 
 say "[p0f]  (passive OS fingerprint signatures)"
