@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/artifactscan"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
@@ -80,6 +81,40 @@ func TestObservePayloadPersistsToDisk(t *testing.T) {
 	descs, _ := ev.Meta["payload_artifacts"].([]string)
 	if len(descs) == 0 || !strings.Contains(descs[0], " -> "+filepath.Base(files[0])) {
 		t.Errorf("payload_artifacts descriptor missing on-disk filename: %v", descs)
+	}
+}
+
+// Per-rule severity tiering: a captured script that trips only a trait rule
+// tagged severity=medium stays at the High baseline, while one that trips a
+// critical (default) rule is elevated to Critical.
+func TestObservePayloadSeverityTiering(t *testing.T) {
+	dir := t.TempDir()
+	store, err := payload.NewStore(filepath.Join(dir, "payloads"), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sensor{name: "t", payloads: store, artScanner: artifactscan.NewEngine()}
+
+	// Sandbox_Evasion is tagged severity=medium → does not force Critical.
+	med := []byte("#!/usr/bin/perl\n# detect IsDebuggerPresent and vmware guest\n")
+	ev := &event.Event{ID: "e1", RuleID: "listener:ftp", Handler: "ftp", Proto: "tcp", Source: event.Endpoint{IP: "1.2.3.4"}}
+	mw := s.observePayload(ev, med)
+	if mw == nil {
+		t.Fatal("expected a malware:capture for the evasion script")
+	}
+	if mw.Severity != event.SeverityHigh {
+		t.Errorf("medium-tagged trait match severity = %v; want high baseline", mw.Severity)
+	}
+
+	// XMRig_Miner is critical (default) → elevates to Critical.
+	crit := []byte("#!/usr/bin/perl\n# launches xmrig randomx miner\n")
+	ev2 := &event.Event{ID: "e2", RuleID: "listener:ftp", Handler: "ftp", Proto: "tcp", Source: event.Endpoint{IP: "1.2.3.4"}}
+	mw2 := s.observePayload(ev2, crit)
+	if mw2 == nil {
+		t.Fatal("expected a malware:capture for the miner script")
+	}
+	if mw2.Severity != event.SeverityCritical {
+		t.Errorf("critical-default match severity = %v; want critical", mw2.Severity)
 	}
 }
 

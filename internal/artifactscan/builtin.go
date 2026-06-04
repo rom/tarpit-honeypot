@@ -10,6 +10,7 @@ const builtinRuleSource = `
 rule PE_Packed_UPX : packer {
     meta:
         description = "UPX-packed PE/ELF"
+        severity = "medium"
     strings:
         $upx0 = "UPX0"
         $upx1 = "UPX1"
@@ -97,6 +98,7 @@ rule Linux_Reverse_Shell : c2 {
 rule Credential_Theft : credaccess {
     meta:
         description = "credential / keystore access strings"
+        severity = "high"
     strings:
         $a = "/etc/shadow"
         $b = "SAM\\Domains\\Account" nocase
@@ -110,6 +112,7 @@ rule Credential_Theft : credaccess {
 rule XOR_Decoder_Stub : obfuscation {
     meta:
         description = "x86 XOR-decoder + GetPC stub"
+        severity = "high"
     strings:
         $getpc = { E8 00 00 00 00 }
         $xor = { 31 C0 }
@@ -215,6 +218,7 @@ rule Linux_Cron_Persistence : persistence {
 rule Sandbox_Evasion : evasion {
     meta:
         description = "VM / sandbox / debugger evasion strings"
+        severity = "medium"
     strings:
         $a = "IsDebuggerPresent"
         $b = "CheckRemoteDebuggerPresent"
@@ -239,6 +243,7 @@ rule PE_Process_Injection_APIs : injection {
 rule PE_Dynamic_API_Resolution : loader {
     meta:
         description = "PE that resolves APIs at runtime and flips memory to RWX (loader/packer trait)"
+        severity = "high"
     condition:
         pe.imports("kernel32.dll", "LoadLibraryA") and
         pe.imports("kernel32.dll", "GetProcAddress") and

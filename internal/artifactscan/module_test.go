@@ -119,6 +119,59 @@ func TestNewBuiltinStringRules(t *testing.T) {
 	}
 }
 
+func TestMatchSeverity(t *testing.T) {
+	cases := []struct {
+		meta map[string]string
+		want string
+	}{
+		{nil, "critical"},                 // default
+		{map[string]string{}, "critical"}, // no severity meta
+		{map[string]string{"severity": "medium"}, "medium"},
+		{map[string]string{"severity": "INFO"}, "low"}, // synonym + case-fold
+		{map[string]string{"severity": "crit"}, "critical"},
+		{map[string]string{"severity": "bogus"}, "critical"}, // unknown -> default
+		{map[string]string{"score": "80"}, "critical"},
+		{map[string]string{"score": "60"}, "high"},
+		{map[string]string{"score": "30"}, "medium"},
+		{map[string]string{"score": "5"}, "low"},
+		{map[string]string{"threat_score": "55"}, "high"},
+	}
+	for _, c := range cases {
+		if got := MatchSeverity(Match{Meta: c.meta}); got != c.want {
+			t.Errorf("MatchSeverity(%v) = %q, want %q", c.meta, got, c.want)
+		}
+	}
+}
+
+func TestBuiltinRuleSeverities(t *testing.T) {
+	// The tagged trait/heuristic built-ins report their lowered severity; the
+	// named-threat rules keep the critical default.
+	want := map[string]string{
+		"PE_Packed_UPX":             "medium",
+		"Sandbox_Evasion":           "medium",
+		"Credential_Theft":          "high",
+		"XOR_Decoder_Stub":          "high",
+		"PE_Dynamic_API_Resolution": "high",
+		"XMRig_Miner":               "critical",
+		"CobaltStrike_Beacon":       "critical",
+		"Shell_Dropper":             "critical",
+	}
+	byName := map[string]Rule{}
+	for _, r := range NewEngine().rules {
+		byName[r.Name] = r
+	}
+	for name, sev := range want {
+		r, ok := byName[name]
+		if !ok {
+			t.Errorf("built-in rule %q not found", name)
+			continue
+		}
+		if got := MatchSeverity(Match{Meta: r.Meta}); got != sev {
+			t.Errorf("rule %s severity = %q, want %q", name, got, sev)
+		}
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).

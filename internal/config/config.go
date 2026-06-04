@@ -767,7 +767,10 @@ type Payloads struct {
 	// boolean conditions; arithmetic/comparison operators; filesize, the
 	// uintN/intN(offset) readers, and the pe / elf / math / hash modules).
 	// Loaded in addition to the built-in rule set when Analyze is on. Rules
-	// using unsupported constructs are skipped, not fatal.
+	// using unsupported constructs are skipped, not fatal. A rule's severity
+	// (rule meta `severity = "low|medium|high|critical"`, or a numeric
+	// `score`) sets how far a match escalates the malware:capture event;
+	// rules that declare neither default to critical.
 	YaraRules string `yaml:"yara_rules"`
 	// MalwareHashes is an optional path to a known-malware SHA-256 set
 	// (abuse.ch MalwareBazaar / ThreatFox export, normalized to

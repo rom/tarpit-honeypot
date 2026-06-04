@@ -23,6 +23,15 @@ documented in `docs/`).
   Meterpreter, XMRig, JSP/ASP.NET webshell, Mirai/Gafgyt, cron-persistence,
   sandbox-evasion, and PE process-injection / dynamic-API-resolution rules. The
   `analyze` CLI now prints each matched rule's description.
+- **Per-rule YARA severity tiering** — a captured artifact's `malware:capture`
+  severity is now driven by the matched rule's declared severity (rule meta
+  `severity = "low|medium|high|critical"`, or a numeric `score`) instead of
+  every YARA hit forcing Critical. Rules that declare neither still default to
+  critical (unchanged for the high-confidence built-ins), while generic
+  trait/heuristic rules tag down — the built-in packer / sandbox-evasion rules
+  are now `medium` and the credential-theft / XOR-stub / dynamic-API-resolution
+  loader rules `high`, so they sit at the High baseline rather than over-firing
+  Critical. A known-malware hash match remains Critical regardless.
 
 - **Native ATT&CK matrix** on the `/attack` page — a tactic column per observed
   tactic (kill-chain order), each a stack of technique cells shaded by event

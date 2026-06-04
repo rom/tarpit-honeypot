@@ -23,8 +23,62 @@ package artifactscan
 import (
 	"bytes"
 	"regexp"
+	"strconv"
 	"strings"
 )
+
+// MatchSeverity returns the canonical severity a match should carry, read from
+// the rule's meta: `severity = "low|medium|high|critical"` (with the usual
+// synonyms), or a numeric `score` / `threat_score` mapped THOR/Loki-style
+// (>=75 critical, >=50 high, >=25 medium, else low). Rules that declare neither
+// default to "critical" — preserving the engine's historical behavior where any
+// hit is a confirmed, high-confidence detection. Authors tag generic
+// trait/heuristic rules down (severity = "medium", say) so a match doesn't
+// force a captured artifact to Critical.
+func MatchSeverity(m Match) string {
+	if m.Meta != nil {
+		if s := normalizeSeverity(m.Meta["severity"]); s != "" {
+			return s
+		}
+		for _, k := range []string{"score", "threat_score"} {
+			if s := scoreToSeverity(m.Meta[k]); s != "" {
+				return s
+			}
+		}
+	}
+	return "critical"
+}
+
+func normalizeSeverity(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "low", "info", "informational":
+		return "low"
+	case "medium", "med", "moderate":
+		return "medium"
+	case "high":
+		return "high"
+	case "critical", "crit", "severe":
+		return "critical"
+	}
+	return ""
+}
+
+func scoreToSeverity(s string) string {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return ""
+	}
+	switch {
+	case n >= 75:
+		return "critical"
+	case n >= 50:
+		return "high"
+	case n >= 25:
+		return "medium"
+	default:
+		return "low"
+	}
+}
 
 // Rule is one compiled detection rule: a set of named string atoms plus a
 // boolean condition over which of them matched.
