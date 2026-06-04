@@ -480,15 +480,73 @@ window.TarpitCharts = (function () {
   };
 
   // sessionreplay: { frames:[{t,text,dir?}] } — captured command/IO sequence as a terminal transcript.
+  // sessionreplay: a timed terminal player for an asciinema-style cast.
+  // frames = [{t: seconds, dir: "in"|"out", text}]. Renders the "out" stream
+  // into a terminal (ANSI stripped, \r/\b/\t/\n handled), with play / pause /
+  // seek / speed. A faithful-enough replay of the recorded shell session.
   charts.sessionreplay = function (d) {
-    var frames = d.frames || [], wrap = document.createElement("div"); wrap.className = "tc-replay";
-    var t0 = frames.length ? num(frames[0].t) : 0;
-    frames.forEach(function (f) {
-      var line = document.createElement("div"); line.className = "tc-rline dir-" + (f.dir || "in");
-      var ts = document.createElement("span"); ts.className = "tc-rts"; ts.textContent = "+" + ((num(f.t) - t0) / 1000).toFixed(1) + "s";
-      var sp = document.createElement("span"); sp.className = "tc-rtext"; sp.textContent = (f.dir === "out" ? "" : "$ ") + (f.text || "");
-      line.appendChild(ts); line.appendChild(sp); wrap.appendChild(line);
+    var frames = (d.frames || []).slice().sort(function (a, b) { return num(a.t) - num(b.t); });
+    var dur = frames.length ? num(frames[frames.length - 1].t) : 0;
+    var wrap = document.createElement("div"); wrap.className = "tc-replay";
+
+    function mk(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+    var ctrl = mk("div", "tc-rctrl");
+    var playBtn = mk("button", "tc-rbtn", "▶"); playBtn.type = "button";
+    var seek = mk("input", "tc-rseek"); seek.type = "range"; seek.min = 0; seek.max = 1000; seek.value = 0;
+    var timeLbl = mk("span", "tc-rtime", "");
+    var speed = mk("select", "tc-rspeed");
+    [["1×", 1], ["2×", 2], ["4×", 4], ["8×", 8], ["0.5×", 0.5]].forEach(function (o) {
+      var op = mk("option", null, o[0]); op.value = o[1]; speed.appendChild(op);
     });
+    ctrl.appendChild(playBtn); ctrl.appendChild(seek); ctrl.appendChild(timeLbl); ctrl.appendChild(speed);
+    ctrl.addEventListener("click", function (e) { e.stopPropagation(); }); // don't toggle chart zoom
+    var term = mk("pre", "tc-term");
+    wrap.appendChild(ctrl); wrap.appendChild(term);
+
+    function stripAnsi(s) {
+      return s
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")  // OSC
+        .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")          // CSI
+        .replace(/\x1b[@-Z\\-_]/g, "")                      // other ESC
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");      // controls (keep \t\n\r)
+    }
+    function render(T) {
+      var lines = [""], row = 0, col = 0;
+      for (var i = 0; i < frames.length; i++) {
+        var f = frames[i]; if (num(f.t) > T) break; if (f.dir !== "out") continue;
+        var s = stripAnsi(String(f.text || ""));
+        for (var j = 0; j < s.length; j++) {
+          var c = s[j];
+          if (c === "\n") { row++; if (lines[row] == null) lines[row] = ""; col = 0; }
+          else if (c === "\r") { col = 0; }
+          else if (c === "\t") { col += 4 - (col % 4); }
+          else { var ln = lines[row] || ""; while (ln.length < col) ln += " "; lines[row] = ln.substring(0, col) + c + ln.substring(col + 1); col++; }
+        }
+      }
+      if (lines.length > 600) lines = lines.slice(lines.length - 600); // cap rendered scrollback
+      term.textContent = lines.join("\n");
+      term.scrollTop = term.scrollHeight;
+    }
+
+    var T = 0, playing = false, last = 0, raf = 0;
+    function setT(t) {
+      T = Math.max(0, Math.min(dur, t));
+      seek.value = dur ? Math.round(T / dur * 1000) : 0;
+      timeLbl.textContent = "+" + T.toFixed(1) + "s / " + dur.toFixed(1) + "s";
+      render(T);
+    }
+    function pause() { playing = false; playBtn.textContent = "▶"; if (raf) cancelAnimationFrame(raf); }
+    function tick(ts) {
+      if (!playing) return;
+      if (!last) last = ts;
+      T += (ts - last) / 1000 * (+speed.value || 1); last = ts;
+      if (T >= dur) { setT(dur); pause(); return; }
+      setT(T); raf = requestAnimationFrame(tick);
+    }
+    function play() { if (playing) return; if (T >= dur) setT(0); playing = true; playBtn.textContent = "⏸"; last = 0; raf = requestAnimationFrame(tick); }
+    playBtn.addEventListener("click", function () { playing ? pause() : play(); });
+    seek.addEventListener("input", function () { pause(); setT(dur * seek.value / 1000); });
+    setT(0);
     return wrap;
   };
 

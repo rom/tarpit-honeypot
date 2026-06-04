@@ -10,6 +10,23 @@ documented in `docs/`).
 
 ### Added
 
+- **Native ATT&CK matrix** on the `/attack` page — a tactic column per observed
+  tactic (kill-chain order), each a stack of technique cells shaded by event
+  volume and linking to the per-technique drill-down. Server-rendered from the
+  existing ATT&CK aggregation.
+- **Activity punchcard** on the `/attack` page — a 7×24 UTC weekday × hour-of-day
+  heatmap (14-day window) of event volume, revealing the operators' working
+  hours and timezone.
+- **In-browser session replay** — `/replay?name=<cast>` / `?event=<id>` plays
+  back recorded interactive SSH/Telnet shells: the asciinema v2 cast is parsed
+  server-side and rendered in a terminal with play / pause / seek / speed (ANSI
+  stripped, `\r`/`\b`/`\t`/`\n` handled). Linked from the captures session list
+  and event detail. Replaces the static replay list with a real timed player.
+- **Enrichment installer auto-mapping** — `install-enrichment.sh` now places the
+  new datasets (cloud-provider ranges, fingerprint DBs, malware-hash set, p0f.fp)
+  automatically; `list-paths` enumerates them so the air-gapped install flow
+  maps each bundle file to its configured destination.
+
 - **Enriched attacker profile page** — the `/profiles/<ip>` dossier now surfaces
   data already attached to events but previously hidden: an **origin &
   infrastructure** card (reverse DNS, geo, ASN/org, net-class, cloud provider,

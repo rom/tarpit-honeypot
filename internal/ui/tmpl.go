@@ -475,6 +475,15 @@ figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface
 .attcell.m-l3 { background: color-mix(in srgb, var(--link) 50%, var(--bg-surface)); }
 .attcell.m-l4 { background: color-mix(in srgb, var(--link) 70%, var(--bg-surface)); color: #fff; }
 .attcell.m-l4 .attn { color: rgba(255,255,255,.8); }
+/* session-replay terminal player */
+.tc-replay { display: flex; flex-direction: column; gap: .4rem; }
+.tc-rctrl { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.tc-rbtn { cursor: pointer; min-width: 2.2rem; padding: .2rem .5rem; border: 1px solid var(--border-medium); border-radius: 5px; background: var(--bg-surface); color: var(--link); font-size: .95rem; }
+.tc-rbtn:hover { border-color: var(--link); }
+.tc-rseek { flex: 1 1 12rem; min-width: 8rem; }
+.tc-rtime { font-size: .8rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tc-rspeed { font-size: .8rem; }
+.tc-term { background: #0c0c0c; color: #d6d6d6; border: 1px solid var(--border-medium); border-radius: 4px; padding: .6rem .7rem; margin: 0; max-height: 28rem; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono, ui-monospace, monospace); font-size: .82rem; line-height: 1.3; }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
 /* uniform: every summary "visual overview" figure renders in an equal-sized box
    (the SVG scales to fit via its preserveAspectRatio) so the grid is tidy. */
@@ -520,10 +529,6 @@ a.tc-srclink:hover .tc-src { fill-opacity: 0.85; }
 .tc-legend { margin-top: .35rem; font-size: 0.786rem; color: var(--text-muted); }
 .tc-leg { margin-right: .8rem; white-space: nowrap; }
 .tc-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
-.tc-replay { background: var(--chart-replay-bg); color: var(--chart-replay-text); font: 0.857rem ui-monospace, monospace; border-radius: 4px; padding: .5rem .6rem; max-height: 340px; overflow: auto; }
-.tc-rline { white-space: pre-wrap; word-break: break-all; padding: .05rem 0; }
-.tc-rline.dir-out { color: var(--chart-replay-stale); }
-.tc-rts { color: var(--chart-replay-ts); margin-right: .6rem; }
 .tc-zoomable { cursor: zoom-in; }
 figure.tc-zoom { position: fixed; inset: 3vh 3vw; z-index: 1000; margin: 0; overflow: auto; cursor: zoom-out; box-shadow: 0 0 0 100vmax rgba(20,24,33,.5); }
 figure.tc-zoom svg.tc { height: auto; max-height: 90vh; width: 100%; }
@@ -576,6 +581,18 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 </table>{{ end }}
 
 {{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
+
+{{ define "replay" }}{{ template "head" . }}
+<h1>session replay{{ if .Name }} — <code>{{ .Name }}</code>{{ end }}</h1>
+{{ if .Err }}<p class="note">{{ .Err }}</p>
+<p class="note"><a href="/captures">← back to captures</a></p>
+{{ else }}
+<p class="note">{{ .Width }}×{{ .Height }} terminal · {{ printf "%.1f" .Duration }}s ·
+  <a href="/loot/?kind=session&amp;name={{ .Name }}">download .cast</a>{{ if .EventID }} · <a href="/events/{{ .EventID }}">event</a>{{ end }}</p>
+<p class="note">Plays back the recorded interactive shell — every command the attacker typed and what the sensor showed them. Use the controls to play / pause / seek / change speed.</p>
+{{ template "chartfig" .Frames }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
 
 {{ define "charts" }}{{ template "head" . }}
 <h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics — {{ .RangeLabel }}</h1>
@@ -770,7 +787,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <td><code>{{ .Name }}</code></td>
   <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
-  <td><a href="/loot/?kind=session&amp;name={{ .Name }}">download</a></td>
+  <td><a href="/replay?name={{ .Name }}">▶ replay</a> · <a href="/loot/?kind=session&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>
 <p class="note">asciicast (.cast) recordings of interactive shell sessions — replay with <code>asciinema play</code>.</p>
@@ -1085,7 +1102,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <h2>downloads</h2>
 <ul>
   <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
-  {{ if index .Meta "session_cast" }}<li><a href="/session/{{ .ID }}">session recording</a> (asciinema cast)</li>{{ end }}
+  {{ if index .Meta "session_cast" }}<li><a href="/replay?event={{ .ID }}">▶ replay session</a> · <a href="/session/{{ .ID }}">download cast</a></li>{{ end }}
   {{ if .Source.IP }}<li><a href="/download?source={{ .Source.IP }}&amp;since=720h">all pcaps + sessions from {{ .Source.IP }}</a> (ZIP, last 30d)</li>{{ end }}
 </ul>
 
