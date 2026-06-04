@@ -630,7 +630,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 The v2.4–2.8 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
 **131 TCP + 112 UDP protocol handlers**, **467 CVE detections**, **180 dynamic Lua
-service scripts**, **166 OS/device archetypes**, **580+ attack-tool/scanner
+service scripts**, **166 OS/device archetypes**, **630+ attack-tool/scanner
 fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
 **18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
 Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.
