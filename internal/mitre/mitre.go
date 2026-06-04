@@ -654,12 +654,16 @@ var anomalyTags = map[string]Tag{
 	"sitemap-honeypot-access": {Techniques: []string{"T1595.003"}, Tactics: []string{"reconnaissance"}},
 	// Bare service probes + malformed / non-conforming protocol input — the
 	// shape of an automated scanner banner-grabbing a port.
-	"oracle-tns-probe":                {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"nx-probe":                        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"openvpn-probe":                   {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-non-printable":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-not-ssh":                  {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-overlong":                 {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"oracle-tns-probe":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"nx-probe":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"openvpn-probe":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-not-ssh":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-overlong":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// CVE-2016-0777/0778: a vulnerable OpenSSH client's roaming feature lets a
+	// malicious server steal the client's private key (the honeypot sets the trap).
+	"ssh-roaming-vulnerable-client":   {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
+	"ssh-roaming-offered":             {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
 	"http-method-unknown":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"http-request-line-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"telnet-credential-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
