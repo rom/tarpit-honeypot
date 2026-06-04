@@ -32,6 +32,9 @@
 #   MAXMIND_LICENSE_KEY  if set, GeoLite2 City+ASN are fetched from MaxMind;
 #                        otherwise the no-key DB-IP "lite" .mmdb files are used
 #                        (same MaxMind-DB format, readable by the sensor).
+#   ABUSE_CH_AUTH_KEY    optional abuse.ch Auth-Key; sent as the Auth-Key header
+#                        for the ThreatFox / MalwareBazaar exports (some now
+#                        require it). Get one free at https://auth.abuse.ch/.
 #   SKIP_GEOIP=1         skip the (large) GeoIP downloads
 #   NO_ARCHIVE=1         don't build the single-file .tar.gz (implied by --install)
 #   INSECURE=1           pass -k/--no-check-certificate (not recommended)
@@ -61,6 +64,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 OUT="${OUT:-./enrichment-data}"
+ABUSE_KEY="${ABUSE_CH_AUTH_KEY:-}" # optional abuse.ch Auth-Key for ThreatFox/MalwareBazaar
 say() { [ "$QUIET" = 1 ] || echo "$@"; }
 THREAT_DIR="$OUT/threat"
 GEO_DIR="$OUT/geoip"
@@ -70,10 +74,25 @@ MAL_DIR="$OUT/malware"
 MANIFEST="$OUT/MANIFEST.txt"
 
 # ---- tiny portable downloader (curl or wget) -------------------------------
+# _dl <dest> <url> [extra_header] — a 3rd arg sends one request header (e.g.
+# "Auth-Key: ..."). A browser-ish User-Agent avoids UA-based blocking (ja4db).
+DL_UA="Mozilla/5.0 (X11; Linux x86_64) tarpit-honeypot-enrichment"
 if command -v curl >/dev/null 2>&1; then
-	_dl() { curl -fsSL ${INSECURE:+-k} --retry 3 --connect-timeout 20 -o "$1" "$2"; }
+	_dl() {
+		if [ -n "${3:-}" ]; then
+			curl -fsSL -A "$DL_UA" ${INSECURE:+-k} --retry 3 --connect-timeout 20 -H "$3" -o "$1" "$2"
+		else
+			curl -fsSL -A "$DL_UA" ${INSECURE:+-k} --retry 3 --connect-timeout 20 -o "$1" "$2"
+		fi
+	}
 elif command -v wget >/dev/null 2>&1; then
-	_dl() { wget -q ${INSECURE:+--no-check-certificate} -O "$1" "$2"; }
+	_dl() {
+		if [ -n "${3:-}" ]; then
+			wget -q -U "$DL_UA" ${INSECURE:+--no-check-certificate} --header="$3" -O "$1" "$2"
+		else
+			wget -q -U "$DL_UA" ${INSECURE:+--no-check-certificate} -O "$1" "$2"
+		fi
+	}
 else
 	echo "error: need curl or wget on PATH" >&2
 	exit 1
@@ -213,24 +232,46 @@ fetch_cloud() {
 	ok=$((ok + 1)); return 0
 }
 
-# fetch_abuse_csv <label> <url> <hash_col> <family_col> <dest> — download an
-# abuse.ch CSV (ThreatFox / MalwareBazaar) and emit "sha256,family" lines.
-# Columns are 1-based over the '","'-separated, quote-wrapped fields.
+# fetch_abuse_csv <label> <url> <dest> — download an abuse.ch CSV (ThreatFox /
+# MalwareBazaar) and emit "sha256[,family]" lines. Extraction is separator-
+# agnostic (the CSVs vary between ',' and ', '): grep the sha256 hashes, and
+# pair each with a malware family on the same line when one is present (the
+# abuse.ch "platform.name" convention, e.g. win.agent_tesla). An optional
+# ABUSE_CH_AUTH_KEY env var is sent as the Auth-Key header (some exports now
+# require it).
 fetch_abuse_csv() {
-	local label="$1" url="$2" hc="$3" fc="$4" dest="$5"
+	local label="$1" url="$2" dest="$3"
 	local tmp="$dest.tmp.$$" sz
 	printf '  %-22s ' "$label"
-	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
+	if ! _dl "$tmp" "$url" "${ABUSE_KEY:+Auth-Key: $ABUSE_KEY}" 2>/dev/null || [ ! -s "$tmp" ]; then
 		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
 	fi
-	awk -v hc="$hc" -v fc="$fc" '
-		/^#/ || /^"first_seen/ { next }
-		{ gsub(/^"/,""); gsub(/"$/,""); n=split($0, a, /","/);
-		  if (n>=hc) { h=a[hc]; f=(n>=fc?a[fc]:"");
-		    if (length(h)==64) { print tolower(h) (f!=""?","f:"") } } }
+	# Per line: extract the sha256 + a same-line family token (best effort).
+	awk '
+		/^#/ { next }
+		{
+			line = $0; h = ""
+			if (match(line, /[a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]/)) {
+				h = tolower(substr(line, RSTART, 64))
+				fam = ""
+				if (match(line, /(win|elf|osx|apk|js|vbs|ps1|jar|doc|xls|py|sh|other)\.[a-z0-9_.]+/)) fam = substr(line, RSTART, RLENGTH)
+				print h (fam != "" ? "," fam : "")
+			}
+		}
 	' "$tmp" | sort -u >"$tmp.x" 2>/dev/null || true
+	# Fallback: bare sha256 via grep if awk found nothing.
+	if [ ! -s "$tmp.x" ]; then
+		grep -oiE '[a-f0-9]{64}' "$tmp" 2>/dev/null | tr 'A-F' 'a-f' | sort -u >"$tmp.x" || true
+	fi
 	mv "$tmp.x" "$tmp"
-	if [ ! -s "$tmp" ]; then echo "FAILED (no hashes)"; rm -f "$tmp"; fail=$((fail + 1)); return 1; fi
+	if [ ! -s "$tmp" ]; then
+		if [ -z "${ABUSE_KEY:-}" ]; then
+			echo "FAILED (no hashes — abuse.ch may require ABUSE_CH_AUTH_KEY)"
+		else
+			echo "FAILED (no hashes)"
+		fi
+		rm -f "$tmp"; fail=$((fail + 1)); return 1
+	fi
 	mv "$tmp" "$dest"
 	sz=$(wc -l <"$dest" | tr -d ' ')
 	echo "ok (${sz} hashes)"
@@ -292,10 +333,8 @@ for p in aws gcp; do
 done
 
 say "[malware-hashes]  (abuse.ch — recent feeds; family attribution)"
-# ThreatFox recent CSV: fields ...,ioc_value(3),ioc_type(4),...,fk_malware(6)
-fetch_abuse_csv "threatfox" "https://threatfox.abuse.ch/export/csv/recent/" 3 6 "$MAL_DIR/threatfox.txt" || true
-# MalwareBazaar recent CSV: sha256_hash(2) ... signature(9)
-fetch_abuse_csv "malwarebazaar" "https://bazaar.abuse.ch/export/csv/recent/" 2 9 "$MAL_DIR/malwarebazaar.txt" || true
+fetch_abuse_csv "threatfox"     "https://threatfox.abuse.ch/export/csv/recent/" "$MAL_DIR/threatfox.txt"     || true
+fetch_abuse_csv "malwarebazaar" "https://bazaar.abuse.ch/export/csv/recent/"    "$MAL_DIR/malwarebazaar.txt" || true
 # Combine into one known-malware hash set.
 cat "$MAL_DIR/threatfox.txt" "$MAL_DIR/malwarebazaar.txt" 2>/dev/null | sort -u >"$MAL_DIR/known-hashes.txt" || true
 # URLhaus malicious URLs (reference / future host matching).
