@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **QUIC 1-RTT packet-protection layer** (`internal/listener/handler/quic_1rtt.go`)
+  — a verified, self-contained building block toward live HTTP/3 request
+  capture: RFC 9001 §5.1 key derivation (`quic key`/`iv`/`hp` for AES-128/256-GCM)
+  and short-header (1-RTT) header-protection removal + AEAD decrypt/encrypt
+  (§5.3–5.4) with packet-number decoding (RFC 9000 A.3). The key schedule is
+  tested against the **RFC 9001 Appendix A.1 vector** and the protection logic
+  via encrypt/decrypt round-trips. It is **not wired into a live flow**:
+  decrypting 1-RTT needs a completed QUIC handshake, which needs a new
+  connection-oriented QUIC listener (the UDP framework dispatches single
+  datagrams with no per-connection state) plus QPACK — documented as the known
+  ceiling in `docs/design.md` §15.
 - **HTTP/2 (h2c) capture with real HPACK + multiplexed-stream reconstruction**
   — the `http` handler now detects the HTTP/2 cleartext (prior-knowledge)
   preface and switches to a real HTTP/2 path: it answers SETTINGS, decodes
