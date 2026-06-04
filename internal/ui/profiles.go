@@ -78,12 +78,16 @@ type Profile struct {
 	Handlers     []string          `json:"handlers_targeted,omitempty"`
 	Ports        []int             `json:"ports_targeted,omitempty"`
 	Fingerprints map[string]string `json:"fingerprints,omitempty"`
-	Anomalies    []string          `json:"anomalies,omitempty"`
-	Mitre        []string          `json:"mitre_techniques,omitempty"`
-	Tactics      []string          `json:"mitre_tactics,omitempty"`
-	CVEs         []string          `json:"cves,omitempty"`
-	Credentials  []credPair        `json:"credentials,omitempty"`
-	Sensors      []string          `json:"sensors,omitempty"`
+	// FingerprintClients maps a fingerprint kind to the client / tool the
+	// fingerprint DB attributes it to (e.g. ja4 -> "Chrome", ja3 -> "Cobalt
+	// Strike"), when an offline fingerprint database is loaded.
+	FingerprintClients map[string]string `json:"fingerprint_clients,omitempty"`
+	Anomalies          []string          `json:"anomalies,omitempty"`
+	Mitre              []string          `json:"mitre_techniques,omitempty"`
+	Tactics            []string          `json:"mitre_tactics,omitempty"`
+	CVEs               []string          `json:"cves,omitempty"`
+	Credentials        []credPair        `json:"credentials,omitempty"`
+	Sensors            []string          `json:"sensors,omitempty"`
 	// Domains are DNS names and TLS SNIs this source asked for; URLs are
 	// C2/dropper URLs harvested from its payloads; Artifacts are captured
 	// malware-artifact descriptors (kind:sha256). These surface the forensic
@@ -257,6 +261,15 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 			if v, ok := ev.Meta[fp].(string); ok && v != "" {
 				if _, exists := p.Fingerprints[fp]; !exists {
 					p.Fingerprints[fp] = v
+				}
+			}
+			// Client/tool attribution from the offline fingerprint DB.
+			if c, ok := ev.Meta[fp+"_client"].(string); ok && c != "" {
+				if p.FingerprintClients == nil {
+					p.FingerprintClients = map[string]string{}
+				}
+				if _, exists := p.FingerprintClients[fp]; !exists {
+					p.FingerprintClients[fp] = c
 				}
 			}
 		}

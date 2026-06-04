@@ -1396,16 +1396,30 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 // by New and ReloadEnrichment so a SIGHUP re-reads the same set of files.
 func enrichConfigFor(cfg *config.Config) enrich.Config {
 	return enrich.Config{
-		CityDB:      cfg.Sensor.GeoIP.CityDB,
-		ASNDB:       cfg.Sensor.GeoIP.ASNDB,
-		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
-		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
-		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
-		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
-		TorExitFile: torExitFile(cfg.Sensor.Tor),
-		NetClass:    cfg.Sensor.NetClass.Enabled,
-		CloudRanges: cloudRangesFromConfig(cfg.Sensor.CloudRanges),
+		CityDB:             cfg.Sensor.GeoIP.CityDB,
+		ASNDB:              cfg.Sensor.GeoIP.ASNDB,
+		RDNSEnabled:        cfg.Sensor.RDNS.Enabled,
+		RDNSTimeout:        cfg.Sensor.RDNS.Timeout,
+		RDNSCache:          cfg.Sensor.RDNS.CacheSize,
+		ThreatLists:        threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile:        torExitFile(cfg.Sensor.Tor),
+		NetClass:           cfg.Sensor.NetClass.Enabled,
+		CloudRanges:        cloudRangesFromConfig(cfg.Sensor.CloudRanges),
+		FingerprintSources: fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
 	}
+}
+
+// fingerprintSourcesFromConfig maps the config fingerprint-DB sources to the
+// enrich package's input. Returns nil when disabled.
+func fingerprintSourcesFromConfig(fp config.FingerprintDB) []enrich.FingerprintSource {
+	if !fp.Enabled || len(fp.Sources) == 0 {
+		return nil
+	}
+	out := make([]enrich.FingerprintSource, 0, len(fp.Sources))
+	for _, s := range fp.Sources {
+		out = append(out, enrich.FingerprintSource{Kind: s.Kind, File: s.File})
+	}
+	return out
 }
 
 // cloudRangesFromConfig maps the config cloud-range lists to the enrich

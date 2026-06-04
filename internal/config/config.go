@@ -643,6 +643,8 @@ type Sensor struct {
 	NetClass    NetClass    `yaml:"net_class"`
 	// CloudRanges tags sources inside published cloud-provider IP ranges.
 	CloudRanges CloudRanges `yaml:"cloud_ranges"`
+	// FingerprintDB maps JA3/JA4/HASSH fingerprints to client/tool names.
+	FingerprintDB FingerprintDB `yaml:"fingerprint_db"`
 	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
 	// or a simple "prefix,vendor" CSV — used to map observed MAC addresses
 	// to vendors. Unset = a small built-in table. Fetch the full DB with
@@ -826,6 +828,22 @@ type CloudRanges struct {
 type CloudRangeEntry struct {
 	Provider string `yaml:"provider"`
 	File     string `yaml:"file"`
+}
+
+// FingerprintDB maps network fingerprints (JA3 / JA4 / JA4H / HASSH) to the
+// client / tool / malware behind them, using offline corpora (FoxIO JA4DB, the
+// community JA3 corpus, HASSH lists). A recognized fingerprint tags the event
+// <kind>_client. fetch-enrichment.sh converts the upstream JA4DB JSON / JA3 CSV
+// to the expected "fingerprint,label" form.
+type FingerprintDB struct {
+	Enabled bool                  `yaml:"enabled"`
+	Sources []FingerprintDBSource `yaml:"sources"`
+}
+
+// FingerprintDBSource is one labeled fingerprint file for a given kind.
+type FingerprintDBSource struct {
+	Kind string `yaml:"kind"` // ja3 | ja4 | ja4h | ja3s | hassh | hassh_server
+	File string `yaml:"file"`
 }
 
 // Jitter randomizes the latency of handler replies. min=max=0 disables.

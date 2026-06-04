@@ -1156,7 +1156,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .Fingerprints }}<h2>fingerprints</h2><table>
-{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a></td></tr>{{ end }}
+{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a>{{ with index $.FingerprintClients $k }} <span class="tag" title="offline fingerprint-DB attribution">{{ . }}</span>{{ end }}</td></tr>{{ end }}
 </table>
 <p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
 

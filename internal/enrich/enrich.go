@@ -49,6 +49,10 @@ type Config struct {
 	// range gets an authoritative cloud_provider tag (AWS / GCP / Azure /
 	// DigitalOcean / …) — far more precise than the asn_org keyword heuristic.
 	CloudRanges []CloudRangeList
+	// FingerprintSources are fingerprint→client/tool databases (JA4DB / JA3 /
+	// HASSH corpora), one per kind. A recognized fingerprint tags the event
+	// <kind>_client with the named application / library / malware.
+	FingerprintSources []FingerprintSource
 }
 
 // ThreatList is one labeled IP/CIDR reputation list.
@@ -69,6 +73,7 @@ type Enricher struct {
 	rdns     *rdnsCache
 	threat   []threatSet
 	cloud    []threatSet // cloud-provider ranges (label = provider name)
+	fpdb     fpDB        // fingerprint -> client/tool attribution
 	torExit  map[string]struct{}
 	netClass bool
 
@@ -193,6 +198,16 @@ func New(cfg Config) (*Enricher, error) {
 		} else {
 			e.torExit = ips
 			slog.Info("enrich: tor exit list loaded", "path", cfg.TorExitFile, "entries", n)
+		}
+	}
+	if len(cfg.FingerprintSources) > 0 {
+		db, n, errs := loadFingerprintDB(cfg.FingerprintSources)
+		for _, err := range errs {
+			slog.Warn("enrich: fingerprint db source unavailable; skipping", "err", err)
+		}
+		if n > 0 {
+			e.fpdb = db
+			slog.Info("enrich: fingerprint db loaded", "entries", n, "kinds", len(db))
 		}
 	}
 	e.netClass = cfg.NetClass
@@ -361,6 +376,7 @@ func (e *Enricher) Decorate(ev *event.Event) {
 			ev.Meta["net_class"] = cls
 		}
 	}
+	e.decorateFingerprints(ev)
 	e.decorateFleetIntel(ev)
 	e.decorateExternalIntel(ev)
 }
