@@ -1995,6 +1995,1175 @@ rule LINUX_Kinsing : coinminer {
     condition:
         1 of them
 }
+
+// ===========================================================================
+// APT / nation-state implants.
+// ===========================================================================
+rule APT_Sunburst : apt {
+    meta:
+        description = "SUNBURST / Solorigate (SolarWinds supply-chain backdoor)"
+    strings:
+        $a = "OrionImprovementBusinessLayer"
+        $b = "SolarWinds.Orion.Core.BusinessLayer"
+        $c = "avsvmcloud.com"
+    condition:
+        1 of them
+}
+
+rule APT_Stuxnet : apt {
+    meta:
+        description = "Stuxnet ICS sabotage worm"
+    strings:
+        $a = "s7otbxdx.dll"
+        $b = "Stuxnet"
+        $c = "~WTR4132.tmp"
+    condition:
+        1 of them
+}
+
+rule APT_Flame : apt {
+    meta:
+        description = "Flame / Skywiper espionage platform"
+    strings:
+        $a = "mssecmgr.ocx"
+        $b = "Skywiper"
+        $c = "advnetcfg.ocx"
+    condition:
+        1 of them
+}
+
+rule APT_Winnti : apt {
+    meta:
+        description = "Winnti / APT41 implant"
+    strings:
+        $a = "Winnti"
+        $b = "skipper"
+        $c = "winnti"
+    condition:
+        $a or $c or ($b and $a)
+}
+
+rule APT_ShadowPad : apt {
+    meta:
+        description = "ShadowPad modular backdoor"
+    strings:
+        $a = "ShadowPad"
+        $b = "shadowpad"
+    condition:
+        1 of them
+}
+
+rule APT_Derusbi : apt {
+    meta:
+        description = "Derusbi backdoor"
+    strings:
+        $a = "Derusbi"
+        $b = "derusbi"
+        $c = "PCC_IDENT_STRING"
+    condition:
+        1 of them
+}
+
+rule APT_XAgent : apt {
+    meta:
+        description = "Sofacy/APT28 X-Agent implant"
+    strings:
+        $a = "XAgentOSX"
+        $b = "X-Agent"
+        $c = "Sofacy"
+    condition:
+        1 of them
+}
+
+rule APT_Zebrocy : apt {
+    meta:
+        description = "Zebrocy (Sednit) downloader"
+    strings:
+        $a = "Zebrocy"
+        $b = "zebrocy"
+    condition:
+        1 of them
+}
+
+rule APT_Lazarus_Bankshot : apt {
+    meta:
+        description = "Lazarus Bankshot implant"
+    strings:
+        $a = "Bankshot"
+        $b = "bankshot"
+        $c = "Lazarus"
+    condition:
+        1 of ($a, $b) or ($c and $a)
+}
+
+rule APT_Kimsuky_BabyShark : apt {
+    meta:
+        description = "Kimsuky BabyShark malware"
+    strings:
+        $a = "BabyShark"
+        $b = "babyshark"
+        $c = "Kimsuky"
+    condition:
+        1 of them
+}
+
+rule APT_Carbanak : apt {
+    meta:
+        description = "Carbanak / Anunak financial APT backdoor"
+    strings:
+        $a = "Carbanak"
+        $b = "Anunak"
+        $c = "carbanak"
+    condition:
+        1 of them
+}
+
+rule APT_Equation : apt {
+    meta:
+        description = "Equation Group toolset"
+    strings:
+        $a = "DoubleFantasy"
+        $b = "EquationDrug"
+        $c = "GrayFish"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// Linux / Unix malware & rootkits.
+// ===========================================================================
+rule LINUX_Mirai_Satori : botnet {
+    meta:
+        description = "Mirai variant (Satori/Okiru/Masuta)"
+    strings:
+        $a = "satori"
+        $b = "okiru"
+        $c = "masuta"
+    condition:
+        1 of them
+}
+
+rule LINUX_Mozi : botnet {
+    meta:
+        description = "Mozi P2P IoT botnet"
+    strings:
+        $a = "Mozi.m"
+        $b = "Mozi.a"
+        $c = "/Mozi"
+    condition:
+        1 of them
+}
+
+rule LINUX_Tsunami_Kaiten : botnet {
+    meta:
+        description = "Tsunami / Kaiten IRC DDoS bot"
+    strings:
+        $a = "TSUNAMI"
+        $b = "Kaiten"
+        $c = "GETSPOOFS"
+    condition:
+        1 of them
+}
+
+rule LINUX_Bashlite_Gafgyt : botnet {
+    meta:
+        description = "Bashlite / Gafgyt / Lizkebab IoT bot"
+    strings:
+        $a = "gafgyt"
+        $b = "bashlite"
+        $c = "lizkebab"
+    condition:
+        1 of them
+}
+
+rule LINUX_BPFDoor : backdoor {
+    meta:
+        description = "BPFDoor passive Linux backdoor"
+    strings:
+        $a = "bpfdoor"
+        $b = "/dev/shm/kdmtmpflush"
+        $c = "justtryit"
+    condition:
+        1 of them
+}
+
+rule LINUX_Symbiote : rootkit {
+    meta:
+        description = "Symbiote shared-object Linux malware"
+    strings:
+        $a = "certbotx64"
+        $b = "certbotx86"
+        $c = "symbiote"
+    condition:
+        1 of them
+}
+
+rule LINUX_RotaJakiro : backdoor {
+    meta:
+        description = "RotaJakiro Linux backdoor"
+    strings:
+        $a = "rotajakiro"
+        $b = "RotaJakiro"
+    condition:
+        1 of them
+}
+
+rule LINUX_Reptile_Rootkit : rootkit {
+    meta:
+        description = "Reptile LKM rootkit"
+    strings:
+        $a = "reptile_module"
+        $b = "reptile_shell"
+        $c = "/reptile/"
+    condition:
+        1 of them
+}
+
+rule LINUX_Drovorub : rootkit {
+    meta:
+        description = "Drovorub Linux rootkit (APT28)"
+    strings:
+        $a = "Drovorub"
+        $b = "drovorub"
+    condition:
+        1 of them
+}
+
+rule LINUX_Sysrv_Botnet : coinminer {
+    meta:
+        description = "Sysrv-hello cryptomining botnet"
+    strings:
+        $a = "sysrvhello"
+        $b = "sysrv-hello"
+    condition:
+        1 of them
+}
+
+rule LINUX_Outlaw_Shellbot : botnet {
+    meta:
+        description = "Outlaw / Shellbot Perl IRC bot"
+    strings:
+        $a = "Outlaw"
+        $b = "shellbot"
+        $c = "b0t v"
+    condition:
+        1 of them
+}
+
+rule LINUX_Perl_IRC_Bot : botnet {
+    meta:
+        description = "Perl IRC flood/backdoor bot"
+    strings:
+        $a = "Net::IRC"
+        $b = "PRIVMSG"
+        $c = "use IO::Socket"
+    condition:
+        $b and (1 of ($a, $c))
+}
+
+rule LINUX_LdPreload_Hider : rootkit {
+    meta:
+        description = "userland LD_PRELOAD process/file hider"
+        severity = "high"
+    strings:
+        $a = "/etc/ld.so.preload"
+        $b = "libprocesshider"
+        $c = "readdir"
+    condition:
+        $b or ($a and $c)
+}
+
+rule LINUX_Coinminer_Generic : coinminer {
+    meta:
+        description = "generic Linux CPU miner binary"
+        severity = "medium"
+    strings:
+        $a = "cpuminer"
+        $b = "minerd"
+        $c = "xmr-stak"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// macOS malware.
+// ===========================================================================
+rule MACOS_Shlayer : trojan {
+    meta:
+        description = "OSX Shlayer adware/dropper"
+    strings:
+        $a = "Shlayer"
+        $b = "ZShlayer"
+        $c = "VSearch"
+    condition:
+        1 of them
+}
+
+rule MACOS_XCSSET : trojan {
+    meta:
+        description = "XCSSET macOS malware"
+    strings:
+        $a = "XCSSET"
+        $b = "xcassets/agent"
+    condition:
+        1 of them
+}
+
+rule MACOS_KeRanger : ransomware {
+    meta:
+        description = "KeRanger macOS ransomware"
+    strings:
+        $a = "KeRanger"
+        $b = "kernel_time"
+        $c = "README_FOR_DECRYPT.txt"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MACOS_Atomic_Stealer : stealer {
+    meta:
+        description = "Atomic macOS Stealer (AMOS)"
+    strings:
+        $a = "Atomic macOS Stealer"
+        $b = "AMOS stealer"
+        $c = "atomic_stealer"
+    condition:
+        1 of them
+}
+
+rule MACOS_Bundlore : trojan {
+    meta:
+        description = "Bundlore macOS adware loader"
+    strings:
+        $a = "Bundlore"
+        $b = "mughthesec"
+    condition:
+        1 of them
+}
+
+rule MACOS_CoinTicker : trojan {
+    meta:
+        description = "CoinTicker macOS backdoor"
+    strings:
+        $a = "CoinTicker"
+        $b = "cointicker"
+    condition:
+        1 of them
+}
+
+rule MACOS_Macma : trojan {
+    meta:
+        description = "Macma / CDDS macOS implant"
+    strings:
+        $a = "Macma"
+        $b = "CDDS"
+        $c = "kAgent"
+    condition:
+        $a or ($b and $c)
+}
+
+rule MACOS_SilverSparrow : trojan {
+    meta:
+        description = "Silver Sparrow macOS malware"
+    strings:
+        $a = "com.apple.insu"
+        $b = "silver sparrow"
+        $c = "verx_updater"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// Android malware (APK artifacts).
+// ===========================================================================
+rule ANDROID_Cerberus : android {
+    meta:
+        description = "Cerberus Android banking trojan"
+    strings:
+        $a = "com.cerberus"
+        $b = "Cerberus banker"
+        $c = "cerberus_panel"
+    condition:
+        1 of them
+}
+
+rule ANDROID_Anubis : android {
+    meta:
+        description = "Anubis Android banking trojan"
+    strings:
+        $a = "anubisdropper"
+        $b = "com.anubis"
+        $c = "Anubis banker"
+    condition:
+        1 of them
+}
+
+rule ANDROID_Joker : android {
+    meta:
+        description = "Joker Android fleeceware/spyware"
+    strings:
+        $a = "com.joker"
+        $b = "Joker malware"
+    condition:
+        1 of them
+}
+
+rule ANDROID_FluBot : android {
+    meta:
+        description = "FluBot / Cabassous Android malware"
+    strings:
+        $a = "cabassous"
+        $b = "flubot"
+    condition:
+        1 of them
+}
+
+rule ANDROID_SpyNote : android {
+    meta:
+        description = "SpyNote Android RAT"
+    strings:
+        $a = "SpyNote"
+        $b = "com.spynote"
+    condition:
+        1 of them
+}
+
+rule ANDROID_GodFather : android {
+    meta:
+        description = "GodFather Android banking trojan"
+    strings:
+        $a = "com.godfather"
+        $b = "godfather_inject"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// Phishing kits / exfiltration channels.
+// ===========================================================================
+rule PHISH_16Shop : phishing {
+    meta:
+        description = "16Shop phishing kit"
+        severity = "high"
+    strings:
+        $a = "16Shop"
+        $b = "16shop"
+    condition:
+        1 of them
+}
+
+rule PHISH_Evilginx : phishing {
+    meta:
+        description = "Evilginx2 reverse-proxy phishing framework"
+        severity = "high"
+    strings:
+        $a = "evilginx"
+        $b = "lures edit"
+        $c = "phishlet"
+    condition:
+        $a or ($b and $c)
+}
+
+rule PHISH_Modlishka : phishing {
+    meta:
+        description = "Modlishka reverse-proxy phishing tool"
+        severity = "high"
+    strings:
+        $a = "modlishka"
+        $b = "Modlishka"
+    condition:
+        1 of them
+}
+
+rule PHISH_Office365_Kit : phishing {
+    meta:
+        description = "Office365 credential-phishing kit"
+        severity = "medium"
+    strings:
+        $a = "antibot"
+        $b = "validate.php"
+        $c = "Sign in to your account"
+        $d = "office365"
+    condition:
+        2 of them
+}
+
+rule EXFIL_Telegram_Bot : exfil {
+    meta:
+        description = "Telegram Bot API exfiltration channel"
+        severity = "high"
+    strings:
+        $a = "api.telegram.org/bot"
+        $b = "/sendMessage"
+        $c = "chat_id="
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule EXFIL_Discord_Webhook : exfil {
+    meta:
+        description = "Discord webhook exfiltration channel"
+        severity = "high"
+    strings:
+        $a = "discord.com/api/webhooks/"
+        $b = "discordapp.com/api/webhooks/"
+        $c = "ptb.discord.com/api/webhooks/"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// LOLBins / suspicious shell & script patterns.
+// ===========================================================================
+rule SCRIPT_Curl_Pipe_Shell : dropper {
+    meta:
+        description = "curl piped directly into a shell"
+        severity = "high"
+    strings:
+        $a = "curl "
+        $b = "| bash"
+        $c = "|bash"
+        $d = "| sh"
+        $e = "|sh"
+    condition:
+        $a and (1 of ($b, $c, $d, $e))
+}
+
+rule SCRIPT_Wget_Pipe_Shell : dropper {
+    meta:
+        description = "wget piped directly into a shell"
+        severity = "high"
+    strings:
+        $a = "wget "
+        $b = "| bash"
+        $c = "|bash"
+        $d = "| sh"
+        $e = "|sh"
+    condition:
+        $a and (1 of ($b, $c, $d, $e))
+}
+
+rule SCRIPT_Base64_Pipe_Shell : dropper {
+    meta:
+        description = "base64-decoded payload piped to a shell"
+        severity = "high"
+    strings:
+        $a = "base64 -d"
+        $b = "base64 --decode"
+        $c = "| bash"
+        $d = "|bash"
+        $e = "| sh"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $d, $e))
+}
+
+rule SCRIPT_Bash_DevTcp_Shell : c2 {
+    meta:
+        description = "bash /dev/tcp reverse shell"
+        severity = "high"
+    strings:
+        $a = "bash -i >& /dev/tcp/"
+        $b = "sh -i >& /dev/tcp/"
+        $c = "0<&196;exec 196<>/dev/tcp/"
+    condition:
+        1 of them
+}
+
+rule SCRIPT_Python_ReverseShell : c2 {
+    meta:
+        description = "Python reverse shell"
+        severity = "high"
+    strings:
+        $a = "import socket"
+        $b = "subprocess.call"
+        $c = "pty.spawn"
+        $d = "os.dup2"
+    condition:
+        $a and (1 of ($b, $c, $d))
+}
+
+rule SCRIPT_Perl_ReverseShell : c2 {
+    meta:
+        description = "Perl reverse shell"
+        severity = "high"
+    strings:
+        $a = "use Socket"
+        $b = "exec(\"/bin/sh"
+        $c = "connect(S,sockaddr_in"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule SCRIPT_PHP_ReverseShell : c2 {
+    meta:
+        description = "PHP reverse shell"
+        severity = "high"
+    strings:
+        $a = "fsockopen("
+        $b = "/bin/sh -i"
+        $c = "proc_open("
+    condition:
+        (1 of ($a, $c)) and $b
+}
+
+rule SCRIPT_Ruby_ReverseShell : c2 {
+    meta:
+        description = "Ruby reverse shell"
+        severity = "medium"
+    strings:
+        $a = "TCPSocket.open"
+        $b = "/bin/sh"
+        $c = "exec sprintf"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule SCRIPT_Rundll32_Script : execution {
+    meta:
+        description = "rundll32 script (JS/VBS) execution"
+        severity = "high"
+    strings:
+        $a = "rundll32"
+        $b = "javascript:"
+        $c = "vbscript:"
+        $d = "mshtml,RunHTMLApplication"
+    condition:
+        $a and (1 of ($b, $c, $d))
+}
+
+rule SCRIPT_Wmic_XSL : execution {
+    meta:
+        description = "wmic XSL script execution"
+        severity = "high"
+    strings:
+        $a = "wmic"
+        $b = "/format:"
+        $c = ".xsl"
+    condition:
+        $a and $b and $c
+}
+
+rule SCRIPT_Cmstp_Bypass : evasion {
+    meta:
+        description = "cmstp UAC/AppLocker bypass"
+        severity = "high"
+    strings:
+        $a = "cmstp"
+        $b = "/s /ns"
+    condition:
+        $a and $b
+}
+
+rule SCRIPT_Msbuild_Inline : execution {
+    meta:
+        description = "MSBuild inline-task code execution"
+        severity = "medium"
+    strings:
+        $a = "MSBuild"
+        $b = "CodeTaskFactory"
+        $c = "Microsoft.Build.Framework"
+    condition:
+        2 of them
+}
+
+rule SCRIPT_InstallUtil_Bypass : evasion {
+    meta:
+        description = "InstallUtil application-whitelisting bypass"
+        severity = "medium"
+    strings:
+        $a = "installutil"
+        $b = "/logfile="
+        $c = "/U"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule SCRIPT_Pastebin_Download : dropper {
+    meta:
+        description = "fetch payload from a paste/raw host"
+        severity = "medium"
+    strings:
+        $a = "pastebin.com/raw/"
+        $b = "raw.githubusercontent.com"
+        $c = "Invoke-WebRequest"
+        $d = "DownloadString"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $d))
+}
+
+// ===========================================================================
+// Additional exploit / injection payloads.
+// ===========================================================================
+rule EXPLOIT_Shellshock : exploit {
+    meta:
+        description = "Shellshock bash function-definition injection"
+        severity = "high"
+    strings:
+        $a = "() { :;};"
+        $b = "() {:;};"
+        $c = "() { :; };"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Spring4Shell : exploit {
+    meta:
+        description = "Spring4Shell class.module.classLoader binding"
+        severity = "high"
+    strings:
+        $a = "class.module.classLoader"
+        $b = "class.module.classloader"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Log4Shell_JNDI : exploit {
+    meta:
+        description = "Log4Shell JNDI lookup payload"
+        severity = "high"
+    strings:
+        $a = "${jndi:ldap"
+        $b = "${jndi:rmi"
+        $c = "${jndi:dns"
+        $d = "${lower:jndi"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_Struts_OGNL : exploit {
+    meta:
+        description = "Apache Struts OGNL injection"
+        severity = "high"
+    strings:
+        $a = "ognl.OgnlContext"
+        $b = "%{(#_='multipart/form-data')"
+        $c = "#context['com.opensymphony"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_JNDI_Reference : exploit {
+    meta:
+        description = "JNDI/LDAP deserialization reference factory"
+        severity = "medium"
+    strings:
+        $a = "javaSerializedData"
+        $b = "javaClassName"
+        $c = "objectClass"
+        $d = "javaFactory"
+    condition:
+        2 of them
+}
+
+rule EXPLOIT_NoSQL_Injection : exploit {
+    meta:
+        description = "NoSQL (Mongo) operator injection"
+        severity = "medium"
+    strings:
+        $a = "[$ne]"
+        $b = "[$gt]"
+        $c = "$where:"
+        $d = "[$regex]"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_CRLF_Injection : exploit {
+    meta:
+        description = "CRLF HTTP response splitting"
+        severity = "medium"
+    strings:
+        $a = "%0d%0aset-cookie"
+        $b = "%0aset-cookie"
+        $c = "%0d%0alocation:"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_SSRF_Gopher_Dict : exploit {
+    meta:
+        description = "SSRF via gopher/dict scheme"
+        severity = "high"
+    strings:
+        $a = "gopher://"
+        $b = "dict://"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_PHP_Dynamic_Eval : exploit {
+    meta:
+        description = "PHP dynamic code-eval primitives"
+        severity = "high"
+    strings:
+        $a = "create_function("
+        $b = "call_user_func("
+        $c = "assert($_"
+        $d = "preg_replace"
+    condition:
+        $c or ($a and $d) or ($b and $d)
+}
+
+rule EXPLOIT_Tomcat_Ghostcat : exploit {
+    meta:
+        description = "Tomcat AJP Ghostcat (CVE-2020-1938 class)"
+        severity = "medium"
+    strings:
+        $a = "javax.servlet.include.servlet_path"
+        $b = "javax.servlet.include.path_info"
+    condition:
+        1 of them
+}
+
+rule EXPLOIT_GraphQL_Introspection : recon {
+    meta:
+        description = "GraphQL introspection enumeration"
+        severity = "medium"
+    strings:
+        $a = "IntrospectionQuery"
+        $b = "__schema"
+        $c = "__typename"
+    condition:
+        2 of them
+}
+
+rule EXPLOIT_Heap_Spray_JS : exploit {
+    meta:
+        description = "browser heap-spray shellcode pattern"
+        severity = "high"
+    strings:
+        $a = "%u9090%u9090"
+        $b = "\\u9090\\u9090"
+        $c = "unescape("
+        $d = "0c0c0c0c"
+    condition:
+        1 of ($a, $b) or ($c and $d)
+}
+
+// ===========================================================================
+// Packers / protectors / obfuscators.
+// ===========================================================================
+rule PACKER_Enigma : packer {
+    meta:
+        description = "Enigma Protector"
+        severity = "medium"
+    strings:
+        $a = ".enigma1"
+        $b = ".enigma2"
+        $c = "Enigma protector"
+    condition:
+        1 of them
+}
+
+rule PACKER_PECompact : packer {
+    meta:
+        description = "PECompact"
+        severity = "medium"
+    strings:
+        $a = ".pec1"
+        $b = "PECompact2"
+        $c = "PEC2"
+    condition:
+        1 of them
+}
+
+rule PACKER_Petite : packer {
+    meta:
+        description = "Petite packer"
+        severity = "medium"
+    strings:
+        $a = ".petite"
+    condition:
+        $a
+}
+
+rule PACKER_MEW : packer {
+    meta:
+        description = "MEW packer"
+        severity = "medium"
+    strings:
+        $a = ".MEW"
+        $b = "MEW Packer"
+    condition:
+        1 of them
+}
+
+rule PACKER_FSG : packer {
+    meta:
+        description = "FSG packer"
+        severity = "medium"
+    strings:
+        $a = "FSG!"
+    condition:
+        $a
+}
+
+rule PACKER_NSPack : packer {
+    meta:
+        description = "NsPack"
+        severity = "medium"
+    strings:
+        $a = ".nsp0"
+        $b = ".nsp1"
+        $c = "NSPack"
+    condition:
+        1 of them
+}
+
+rule PACKER_MoleBox : packer {
+    meta:
+        description = "MoleBox packer"
+        severity = "medium"
+    strings:
+        $a = "MoleBox"
+    condition:
+        $a
+}
+
+rule PACKER_Obsidium : packer {
+    meta:
+        description = "Obsidium protector"
+        severity = "medium"
+    strings:
+        $a = ".obsidium"
+        $b = "Obsidium"
+    condition:
+        1 of them
+}
+
+rule PACKER_NetReactor : packer {
+    meta:
+        description = ".NET Reactor protector"
+        severity = "medium"
+    strings:
+        $a = ".NET Reactor"
+        $b = "NetReactor"
+    condition:
+        1 of them
+}
+
+rule PACKER_ConfuserEx : packer {
+    meta:
+        description = "ConfuserEx .NET obfuscator"
+        severity = "medium"
+    strings:
+        $a = "ConfuserEx"
+        $b = "ConfusedByAttribute"
+    condition:
+        1 of them
+}
+
+rule PACKER_SmartAssembly : packer {
+    meta:
+        description = "SmartAssembly .NET obfuscator"
+        severity = "medium"
+    strings:
+        $a = "SmartAssembly"
+        $b = "PoweredByAttribute"
+    condition:
+        1 of them
+}
+
+rule PACKER_PyArmor : packer {
+    meta:
+        description = "PyArmor Python obfuscator"
+        severity = "medium"
+    strings:
+        $a = "pyarmor"
+        $b = "__pyarmor__"
+        $c = "pytransform"
+    condition:
+        1 of them
+}
+
+// ===========================================================================
+// Behavioral traits (strings + pe-module).
+// ===========================================================================
+rule TRAIT_Process_Hollowing : injection {
+    meta:
+        description = "process hollowing / RunPE API set"
+        severity = "high"
+    strings:
+        $a = "NtUnmapViewOfSection"
+        $b = "ZwUnmapViewOfSection"
+        $c = "SetThreadContext"
+        $d = "WriteProcessMemory"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $d))
+}
+
+rule TRAIT_UAC_Bypass : privesc {
+    meta:
+        description = "known UAC-bypass binaries / hijacks"
+        severity = "high"
+    strings:
+        $a = "fodhelper.exe"
+        $b = "eventvwr.exe"
+        $c = "sdclt.exe"
+        $d = "ms-settings\\shell\\open\\command"
+    condition:
+        1 of them
+}
+
+rule TRAIT_LSASS_Dump : credaccess {
+    meta:
+        description = "LSASS memory dumping"
+        severity = "high"
+    strings:
+        $a = "MiniDumpWriteDump"
+        $b = "comsvcs.dll, MiniDump"
+        $c = "lsass.dmp"
+        $d = "lsass.exe"
+    condition:
+        $a or $b or $c or ($a and $d)
+}
+
+rule TRAIT_AMSI_Memory_Patch : evasion {
+    meta:
+        description = "in-memory AMSI bypass (AmsiScanBuffer patch)"
+        severity = "high"
+    strings:
+        $a = "AmsiScanBuffer"
+        $b = "amsi.dll"
+        $c = "VirtualProtect"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule TRAIT_AntiVM_Strings : evasion {
+    meta:
+        description = "hypervisor CPUID/brand anti-VM strings"
+        severity = "medium"
+    strings:
+        $a = "VMwareVMware"
+        $b = "KVMKVMKVM"
+        $c = "Microsoft Hv"
+        $d = "VBoxVBoxVBox"
+    condition:
+        2 of them
+}
+
+rule TRAIT_Token_Impersonation : privesc {
+    meta:
+        description = "access-token theft / impersonation"
+        severity = "medium"
+    strings:
+        $a = "SeDebugPrivilege"
+        $b = "ImpersonateLoggedOnUser"
+        $c = "DuplicateTokenEx"
+    condition:
+        2 of them
+}
+
+rule TRAIT_Raw_Keylogger : spyware {
+    meta:
+        description = "raw-input keylogger API set"
+        severity = "high"
+    strings:
+        $a = "GetRawInputData"
+        $b = "RegisterRawInputDevices"
+    condition:
+        $a and $b
+}
+
+rule PE_QueueUserAPC_Injection : injection {
+    meta:
+        description = "PE using QueueUserAPC remote-injection import set"
+        severity = "high"
+    condition:
+        pe.imports("kernel32.dll", "OpenProcess") and
+        pe.imports("kernel32.dll", "VirtualAllocEx") and
+        pe.imports("kernel32.dll", "QueueUserAPC")
+}
+
+rule PE_Crypto_Ransom_APIs : ransomware {
+    meta:
+        description = "PE importing the CryptoAPI set used for file encryption"
+        severity = "high"
+    condition:
+        pe.imports("advapi32.dll", "CryptAcquireContextA") and
+        pe.imports("advapi32.dll", "CryptEncrypt") and
+        pe.imports("advapi32.dll", "CryptGenKey")
+}
+
+rule PE_Anti_Debug_APIs : evasion {
+    meta:
+        description = "PE importing multiple anti-debug checks"
+        severity = "medium"
+    condition:
+        pe.imports("kernel32.dll", "IsDebuggerPresent") and
+        pe.imports("kernel32.dll", "CheckRemoteDebuggerPresent")
+}
+
+// ===========================================================================
+// Banking trojans / clippers.
+// ===========================================================================
+rule MAL_Clipper : stealer {
+    meta:
+        description = "clipboard cryptocurrency-address hijacker"
+        severity = "high"
+    strings:
+        $a = "SetClipboardData"
+        $b = "GetClipboardData"
+        $c = "bc1q"
+        $d = "0x"
+        $e = "wallet"
+    condition:
+        (1 of ($a, $b)) and (1 of ($c, $e))
+}
+
+rule MAL_Ursnif : banker {
+    meta:
+        description = "Ursnif / Gozi-ISFB banking trojan"
+    strings:
+        $a = "Ursnif"
+        $b = "ursnif"
+        $c = "gozi_isfb"
+    condition:
+        1 of them
+}
+
+rule MAL_Zeus_Zbot : banker {
+    meta:
+        description = "Zeus / Zbot banking trojan"
+    strings:
+        $a = "ZeusVM"
+        $b = "Zeus Trojan"
+        $c = "zbot"
+    condition:
+        1 of them
+}
+
+rule MAL_SpyEye : banker {
+    meta:
+        description = "SpyEye banking trojan"
+    strings:
+        $a = "SpyEye"
+        $b = "spyeye"
+    condition:
+        1 of them
+}
+
+rule MAL_Citadel : banker {
+    meta:
+        description = "Citadel banking trojan"
+    strings:
+        $a = "Citadel builder"
+        $b = "citadel_"
+        $c = "Citadel Trojan"
+    condition:
+        1 of them
+}
+
+rule MAL_Tinba : banker {
+    meta:
+        description = "Tinba (Tiny Banker) trojan"
+    strings:
+        $a = "Tinba"
+        $b = "tinybanker"
+    condition:
+        1 of them
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source

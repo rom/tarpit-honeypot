@@ -10,6 +10,28 @@ documented in `docs/`).
 
 ### Added
 
+- **+100 more built-in YARA rules** (`artifactscan` pack now ~269 rules). Adds
+  nation-state/APT implants (SUNBURST, Stuxnet, Flame, Winnti, ShadowPad,
+  X-Agent, Zebrocy, Lazarus Bankshot, Kimsuky BabyShark, Carbanak, Equation),
+  more Linux/Unix malware & rootkits (Mirai-Satori, Mozi, Tsunami/Kaiten,
+  Bashlite/Gafgyt, BPFDoor, Symbiote, RotaJakiro, Reptile, Drovorub, Sysrv,
+  Outlaw, LD_PRELOAD hiders), macOS malware (Shlayer, XCSSET, KeRanger, AMOS,
+  Bundlore, CoinTicker, Macma, Silver Sparrow), Android families (Cerberus,
+  Anubis, Joker, FluBot, SpyNote, GodFather), phishing kits & exfil channels
+  (16Shop, Evilginx, Modlishka, Office365 kits, Telegram-bot / Discord-webhook
+  exfil), LOLBin & reverse-shell script patterns (curl|bash, /dev/tcp,
+  Python/Perl/PHP/Ruby shells, rundll32/wmic-XSL/cmstp/MSBuild/InstallUtil),
+  more exploit-traffic (Shellshock, Spring4Shell, Log4Shell, Struts OGNL, JNDI,
+  NoSQLi, CRLF, gopher/dict SSRF, PHP dynamic-eval, Ghostcat, GraphQL
+  introspection, JS heap-spray), packers/protectors (Enigma, PECompact, Petite,
+  MEW, FSG, NsPack, MoleBox, Obsidium, .NET Reactor, ConfuserEx, SmartAssembly,
+  PyArmor), behavioral traits & pe-module rules (process hollowing, UAC bypass,
+  LSASS dump, AMSI patch, anti-VM, token impersonation, raw keylogger,
+  QueueUserAPC injection, CryptoAPI ransom set, anti-debug imports), and banking
+  trojans / clippers (Ursnif, Zeus/Zbot, SpyEye, Citadel, Tinba, crypto
+  clipper). Severities follow the existing tiering (families critical;
+  recon/heuristic/packer rules tagged down).
+
 - **+100 more built-in YARA rules** (`artifactscan` pack now ~169 rules). New
   coverage: ransomware families (LockBit, Conti, REvil, BlackCat, Hive, Ryuk,
   WannaCry, Phobos, Dharma, STOP/Djvu, Maze, Cl0p, Black Basta, Akira, Royal),
