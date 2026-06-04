@@ -3164,6 +3164,1184 @@ rule MAL_Tinba : banker {
     condition:
         1 of them
 }
+
+// ###########################################################################
+// IoT / IIoT / OT / building-automation focused rules.
+// ###########################################################################
+
+// --- IoT botnet families (MIPS/ARM ELF droppers) ---------------------------
+rule IOT_Hajime : botnet {
+    meta:
+        description = "Hajime IoT worm"
+    strings:
+        $a = "hajime"
+        $b = "Hajime"
+        $c = "atk.conf"
+    condition:
+        1 of them
+}
+
+rule IOT_HideNSeek : botnet {
+    meta:
+        description = "Hide and Seek (HNS) IoT botnet"
+    strings:
+        $a = "hidenseek"
+        $b = "Hide N Seek"
+        $c = "hns_bot"
+    condition:
+        1 of them
+}
+
+rule IOT_DarkNexus : botnet {
+    meta:
+        description = "dark_nexus IoT botnet"
+    strings:
+        $a = "dark_nexus"
+        $b = "darknexus"
+    condition:
+        1 of them
+}
+
+rule IOT_Torii : botnet {
+    meta:
+        description = "Torii IoT botnet"
+    strings:
+        $a = "torii_bot"
+        $b = "/.tmp/Torii"
+        $c = "Torii botnet"
+    condition:
+        1 of them
+}
+
+rule IOT_Persirai : botnet {
+    meta:
+        description = "Persirai IP-camera botnet"
+    strings:
+        $a = "persirai"
+        $b = "Persirai"
+    condition:
+        1 of them
+}
+
+rule IOT_Reaper_IoTroop : botnet {
+    meta:
+        description = "Reaper / IoTroop botnet"
+    strings:
+        $a = "IoTroop"
+        $b = "IoTReaper"
+        $c = "reaper_bot"
+    condition:
+        1 of them
+}
+
+rule IOT_BrickerBot : botnet {
+    meta:
+        description = "BrickerBot permanent-DoS malware"
+    strings:
+        $a = "BrickerBot"
+        $b = "brickerbot"
+    condition:
+        1 of them
+}
+
+rule IOT_VPNFilter : botnet {
+    meta:
+        description = "VPNFilter router malware"
+    strings:
+        $a = "vpnfilter"
+        $b = "VPNFilter"
+        $c = "/var/run/vpnfilterw"
+        $d = "ndbr"
+    condition:
+        1 of ($a, $b, $c)
+}
+
+rule IOT_CyclopsBlink : botnet {
+    meta:
+        description = "Cyclops Blink router botnet (Sandworm)"
+    strings:
+        $a = "Cyclops Blink"
+        $b = "cyclopsblink"
+    condition:
+        1 of them
+}
+
+rule IOT_QSnatch : backdoor {
+    meta:
+        description = "QSnatch QNAP NAS malware"
+    strings:
+        $a = "QSnatch"
+        $b = "qsnatch"
+        $c = "/share/MD0_DATA/Qsync"
+    condition:
+        1 of ($a, $b)
+}
+
+rule IOT_Moobot : botnet {
+    meta:
+        description = "Moobot (Mirai-based) botnet"
+    strings:
+        $a = "Moobot"
+        $b = "moobot"
+        $c = "w5q6he3dbrsgmclkiu4t"
+    condition:
+        1 of them
+}
+
+rule IOT_Enemybot : botnet {
+    meta:
+        description = "EnemyBot IoT botnet (Keksec)"
+    strings:
+        $a = "EnemyBot"
+        $b = "enemybot"
+        $c = "ENEMScanner"
+    condition:
+        1 of them
+}
+
+rule IOT_Zerobot : botnet {
+    meta:
+        description = "Zerobot Go-based IoT botnet"
+    strings:
+        $a = "zerobot"
+        $b = "Zerobot"
+        $c = "selfRepo/zero"
+    condition:
+        1 of them
+}
+
+rule IOT_RapperBot : botnet {
+    meta:
+        description = "RapperBot SSH brute-force IoT botnet"
+    strings:
+        $a = "RapperBot"
+        $b = "rapperbot"
+    condition:
+        1 of them
+}
+
+rule IOT_Mukashi : botnet {
+    meta:
+        description = "Mukashi Mirai variant (Zyxel NAS)"
+    strings:
+        $a = "Mukashi"
+        $b = "mukashi"
+    condition:
+        1 of them
+}
+
+rule IOT_Echobot : botnet {
+    meta:
+        description = "Echobot Mirai variant"
+    strings:
+        $a = "Echobot"
+        $b = "echobot"
+    condition:
+        1 of them
+}
+
+rule IOT_Fbot : botnet {
+    meta:
+        description = "Fbot Satori-derived botnet"
+    strings:
+        $a = "Fbot"
+        $b = "fbot_"
+        $c = "musl-Fbot"
+    condition:
+        1 of ($b, $c) or $a
+}
+
+rule IOT_Matryosh : botnet {
+    meta:
+        description = "Matryosh Android-ADB botnet"
+    strings:
+        $a = "Matryosh"
+        $b = "matryosh"
+    condition:
+        1 of them
+}
+
+rule IOT_Condi : botnet {
+    meta:
+        description = "Condi Mirai-based botnet"
+    strings:
+        $a = "condi_botnet"
+        $b = "Condi by"
+        $c = "CondiNetwork"
+    condition:
+        1 of them
+}
+
+rule IOT_Kaiji : botnet {
+    meta:
+        description = "Kaiji Go-based Linux/IoT DDoS bot"
+    strings:
+        $a = "kaiji"
+        $b = "Kaiji"
+        $c = "demo.bot"
+    condition:
+        1 of ($a, $b)
+}
+
+rule IOT_BotenaGo : botnet {
+    meta:
+        description = "BotenaGo multi-exploit IoT botnet"
+    strings:
+        $a = "BotenaGo"
+        $b = "botenago"
+    condition:
+        1 of them
+}
+
+rule IOT_Chalubo : botnet {
+    meta:
+        description = "Chalubo (ChaCha) Linux DDoS bot"
+    strings:
+        $a = "Chalubo"
+        $b = "chalubo"
+    condition:
+        1 of them
+}
+
+rule IOT_Katana : botnet {
+    meta:
+        description = "Katana (Mirai-based) botnet"
+    strings:
+        $a = "katana_bot"
+        $b = "Katana botnet"
+        $c = "KATANA_"
+    condition:
+        1 of them
+}
+
+rule IOT_Pinkbot : botnet {
+    meta:
+        description = "Pink (Pinkbot) IoT botnet"
+    strings:
+        $a = "pink_bot"
+        $b = "Pinkbot"
+    condition:
+        1 of them
+}
+
+// --- IoT loader / dropper / device-exploit patterns ------------------------
+rule IOT_MultiArch_Loader : dropper {
+    meta:
+        description = "multi-architecture IoT download-and-run loader"
+        severity = "high"
+    strings:
+        $w = "wget http"
+        $t = "tftp -g"
+        $c = "chmod 777"
+        $b = "busybox"
+        $arch = "mips mpsl arm"
+    condition:
+        (1 of ($w, $t)) and $c and ($b or $arch)
+}
+
+rule IOT_Busybox_Wget_Chmod : dropper {
+    meta:
+        description = "busybox wget/tftp + chmod IoT dropper"
+        severity = "high"
+    strings:
+        $a = "/bin/busybox wget"
+        $b = "/bin/busybox tftp"
+        $c = "chmod 777"
+    condition:
+        (1 of ($a, $b)) and $c
+}
+
+rule IOT_TFTP_Dropper : dropper {
+    meta:
+        description = "TFTP-based IoT payload retrieval"
+        severity = "high"
+    strings:
+        $a = "tftp -g -r"
+        $b = "tftp -r "
+        $c = "tftp -g "
+        $d = "chmod +x"
+    condition:
+        (1 of ($a, $b, $c)) and $d
+}
+
+rule IOT_HNAP_CmdInjection : exploit {
+    meta:
+        description = "D-Link HNAP command injection"
+        severity = "high"
+    strings:
+        $a = "HNAP1"
+        $b = "GetDeviceSettings"
+        $c = "SOAPAction"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule IOT_UPnP_SOAP_Inject : exploit {
+    meta:
+        description = "UPnP SOAP AddPortMapping abuse"
+        severity = "medium"
+    strings:
+        $a = "AddPortMapping"
+        $b = "NewInternalClient"
+        $c = "urn:schemas-upnp-org"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule IOT_TR064_Exploit : exploit {
+    meta:
+        description = "TR-064 CPE WAN management exploit"
+        severity = "high"
+    strings:
+        $a = "X_AVM-DE_"
+        $b = "urn:dslforum-org"
+        $c = "NewNTPServer1"
+    condition:
+        $b and (1 of ($a, $c))
+}
+
+rule IOT_Realtek_SDK_Inject : exploit {
+    meta:
+        description = "Realtek SDK formSysCmd command injection"
+        severity = "high"
+    strings:
+        $a = "formSysCmd"
+        $b = "sysCmd="
+    condition:
+        1 of them
+}
+
+rule IOT_GoAhead_Cam_Exploit : exploit {
+    meta:
+        description = "GoAhead IP-camera credential/exploit access"
+        severity = "high"
+    strings:
+        $a = "system.ini?loginuse"
+        $b = "loginpas"
+        $c = "/system.ini%3F"
+    condition:
+        $a or ($b and $c)
+}
+
+rule IOT_Netgear_DGN_Exploit : exploit {
+    meta:
+        description = "Netgear DGN setup.cgi command injection"
+        severity = "high"
+    strings:
+        $a = "setup.cgi?next_file=netgear.cfg"
+        $b = "todo=syscmd"
+    condition:
+        $a or $b
+}
+
+rule IOT_DLink_HNAP_RCE : exploit {
+    meta:
+        description = "D-Link /HNAP1/ remote code execution"
+        severity = "high"
+    strings:
+        $a = "/HNAP1/"
+        $b = "RunTime"
+        $c = "GetDeviceSettings"
+    condition:
+        $a and (1 of ($b, $c))
+}
+
+rule IOT_Jaws_Webserver : exploit {
+    meta:
+        description = "JAWS DVR webserver shell command"
+        severity = "high"
+    strings:
+        $a = "/shell?"
+        $b = "JAWS/1.0"
+    condition:
+        $b and $a
+}
+
+rule IOT_Default_Cred_List : recon {
+    meta:
+        description = "Mirai-style default-credential table"
+        severity = "high"
+    strings:
+        $a = "root xc3511"
+        $b = "root vizxv"
+        $c = "root 7ujMko0"
+        $d = "admin admin1234"
+        $e = "root klv123"
+    condition:
+        2 of them
+}
+
+// --- OT / ICS protocols & tooling ------------------------------------------
+rule OT_Modbus : icsproto {
+    meta:
+        description = "Modbus protocol library / client usage"
+        severity = "medium"
+    strings:
+        $a = "pymodbus"
+        $b = "libmodbus"
+        $c = "modbus-cli"
+        $d = "modbus_tk"
+        $e = "ModbusTCP"
+    condition:
+        1 of them
+}
+
+rule OT_S7comm_Siemens : icsproto {
+    meta:
+        description = "Siemens S7comm protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "libnodave"
+        $b = "Snap7"
+        $c = "s7comm"
+        $d = "python-snap7"
+    condition:
+        1 of them
+}
+
+rule OT_DNP3 : icsproto {
+    meta:
+        description = "DNP3 protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "opendnp3"
+        $b = "pydnp3"
+        $c = "dnp3_master"
+    condition:
+        1 of them
+}
+
+rule OT_EtherNetIP_CIP : icsproto {
+    meta:
+        description = "EtherNet/IP CIP protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "cpppo"
+        $b = "pycomm3"
+        $c = "EtherNet/IP"
+        $d = "enip_cip"
+    condition:
+        1 of them
+}
+
+rule OT_BACnet : bas {
+    meta:
+        description = "BACnet building-automation protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "bacpypes"
+        $b = "bacnet-stack"
+        $c = "BACnet/IP"
+        $d = "WhoIsRequest"
+    condition:
+        1 of them
+}
+
+rule OT_Profinet : icsproto {
+    meta:
+        description = "PROFINET protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "pn_dcp"
+        $b = "p-net"
+        $c = "profinet_io"
+        $d = "PNIO"
+    condition:
+        1 of them
+}
+
+rule OT_IEC61850_MMS : icsproto {
+    meta:
+        description = "IEC 61850 MMS/GOOSE tooling"
+        severity = "medium"
+    strings:
+        $a = "libiec61850"
+        $b = "IEC61850"
+        $c = "MmsValue"
+        $d = "GoCBRef"
+    condition:
+        1 of them
+}
+
+rule OT_IEC104 : icsproto {
+    meta:
+        description = "IEC 60870-5-104 protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "lib60870"
+        $b = "iec104"
+        $c = "IEC 60870-5-104"
+    condition:
+        1 of them
+}
+
+rule OT_OPCUA : icsproto {
+    meta:
+        description = "OPC UA protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "open62541"
+        $b = "UA_Client"
+        $c = "opcua"
+        $d = "OPC UA"
+    condition:
+        1 of them
+}
+
+rule OT_OPC_DA : icsproto {
+    meta:
+        description = "OPC DA (classic) protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "OPCEnum"
+        $b = "opcda"
+        $c = "IOPCServer"
+    condition:
+        1 of them
+}
+
+rule OT_Niagara_Fox : bas {
+    meta:
+        description = "Tridium Niagara Fox protocol"
+        severity = "medium"
+    strings:
+        $a = "fox a 1"
+        $b = "Tridium"
+        $c = "niagara"
+        $d = "baja"
+    condition:
+        1 of ($a, $b) or ($c and $d)
+}
+
+rule OT_CODESYS : icsproto {
+    meta:
+        description = "CODESYS PLC runtime/tooling"
+        severity = "high"
+    strings:
+        $a = "CODESYS"
+        $b = "codesys"
+        $c = "3S-Smart"
+        $d = "CmpApp"
+    condition:
+        1 of them
+}
+
+rule OT_Omron_FINS : icsproto {
+    meta:
+        description = "Omron FINS protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "FINS/TCP"
+        $b = "finsudp"
+        $c = "OMRON FINS"
+    condition:
+        1 of them
+}
+
+rule OT_Melsoft_Mitsubishi : icsproto {
+    meta:
+        description = "Mitsubishi MELSOFT/MELSEC SLMP tooling"
+        severity = "medium"
+    strings:
+        $a = "MELSOFT"
+        $b = "MELSEC"
+        $c = "SLMP"
+    condition:
+        1 of them
+}
+
+rule OT_GE_SRTP : icsproto {
+    meta:
+        description = "GE SRTP protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "GE-SRTP"
+        $b = "ge_srtp"
+    condition:
+        1 of them
+}
+
+rule OT_HART_IP : icsproto {
+    meta:
+        description = "HART-IP protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "HART-IP"
+        $b = "hart_ip"
+        $c = "WirelessHART"
+    condition:
+        1 of them
+}
+
+rule OT_KNX : bas {
+    meta:
+        description = "KNX/EIB building-automation protocol tooling"
+        severity = "medium"
+    strings:
+        $a = "KNXnet/IP"
+        $b = "knxnet"
+        $c = "EIBnet"
+        $d = "eibd"
+    condition:
+        1 of them
+}
+
+rule OT_LonWorks : bas {
+    meta:
+        description = "LonWorks/LonTalk building-automation tooling"
+        severity = "medium"
+    strings:
+        $a = "LonWorks"
+        $b = "LonTalk"
+        $c = "Echelon"
+    condition:
+        1 of them
+}
+
+rule OT_MBus : icsproto {
+    meta:
+        description = "Meter-Bus (M-Bus) tooling"
+        severity = "medium"
+    strings:
+        $a = "libmbus"
+        $b = "Meter-Bus"
+        $c = "M-Bus master"
+    condition:
+        1 of them
+}
+
+rule OT_PLCScan_Tool : recon {
+    meta:
+        description = "plcscan ICS reconnaissance tool"
+        severity = "high"
+    strings:
+        $a = "plcscan"
+        $b = "PLCScan"
+    condition:
+        1 of them
+}
+
+rule OT_S7Scan_Tool : recon {
+    meta:
+        description = "s7scan Siemens PLC scanner"
+        severity = "high"
+    strings:
+        $a = "s7scan"
+        $b = "s7-brute"
+    condition:
+        1 of them
+}
+
+rule OT_Modbus_Attack_Tool : offensive {
+    meta:
+        description = "Modbus offensive tooling (smod / MBTuninja)"
+        severity = "high"
+    strings:
+        $a = "smod modbus"
+        $b = "MBTuninja"
+        $c = "modbus-cli --wr"
+    condition:
+        1 of them
+}
+
+// --- OT / ICS malware families ---------------------------------------------
+rule OT_Industroyer : icsmalware {
+    meta:
+        description = "Industroyer / CrashOverride grid malware"
+    strings:
+        $a = "Industroyer"
+        $b = "CrashOverride"
+        $c = "haslo.dat"
+    condition:
+        1 of them
+}
+
+rule OT_Industroyer2 : icsmalware {
+    meta:
+        description = "Industroyer2 IEC-104 grid malware"
+    strings:
+        $a = "Industroyer2"
+        $b = "industroyer2"
+        $c = "PServiceControl.exe"
+    condition:
+        1 of them
+}
+
+rule OT_Triton_Trisis : icsmalware {
+    meta:
+        description = "TRITON / TRISIS / HatMan safety-system malware"
+    strings:
+        $a = "TRISIS"
+        $b = "HatMan"
+        $c = "trilog.exe"
+        $d = "imain.bin"
+        $e = "script_test.py"
+    condition:
+        1 of ($a, $b, $c, $d)
+}
+
+rule OT_Havex : icsmalware {
+    meta:
+        description = "Havex / Dragonfly OPC-scanning RAT"
+    strings:
+        $a = "havex"
+        $b = "fertger"
+        $c = "Karagany"
+        $d = "sysmain.dll"
+    condition:
+        1 of ($a, $b, $c)
+}
+
+rule OT_BlackEnergy : icsmalware {
+    meta:
+        description = "BlackEnergy grid-attack malware"
+    strings:
+        $a = "BlackEnergy"
+        $b = "blackenergy"
+        $c = "dstr.dll"
+        $d = "KillDisk"
+    condition:
+        1 of them
+}
+
+rule OT_EKANS_Snake : ransomware {
+    meta:
+        description = "EKANS / Snake OT-aware ransomware"
+    strings:
+        $a = "EKANS"
+        $b = "snakekill"
+        $c = "Snake ransomware"
+    condition:
+        1 of them
+}
+
+rule OT_PIPEDREAM : icsmalware {
+    meta:
+        description = "PIPEDREAM / INCONTROLLER ICS attack framework"
+    strings:
+        $a = "PIPEDREAM"
+        $b = "INCONTROLLER"
+        $c = "TAGRUN"
+        $d = "OPENF1G"
+    condition:
+        1 of them
+}
+
+rule OT_IRONGATE : icsmalware {
+    meta:
+        description = "IRONGATE ICS PoC malware"
+    strings:
+        $a = "IRONGATE"
+        $b = "irongate"
+    condition:
+        1 of them
+}
+
+rule OT_Fuxnet : icsmalware {
+    meta:
+        description = "Fuxnet ICS/sensor-gateway malware"
+    strings:
+        $a = "Fuxnet"
+        $b = "fuxnet"
+    condition:
+        1 of them
+}
+
+rule OT_CosmicEnergy : icsmalware {
+    meta:
+        description = "CosmicEnergy IEC-104 grid malware"
+    strings:
+        $a = "CosmicEnergy"
+        $b = "cosmicenergy"
+        $c = "Lightwork"
+        $d = "PieHop"
+    condition:
+        1 of them
+}
+
+rule OT_FrostyGoop : icsmalware {
+    meta:
+        description = "FrostyGoop / BUSTLEBERM Modbus malware"
+    strings:
+        $a = "FrostyGoop"
+        $b = "BUSTLEBERM"
+        $c = "frostygoop"
+    condition:
+        1 of them
+}
+
+rule OT_Conficker : worm {
+    meta:
+        description = "Conficker / Downadup worm (common on OT networks)"
+    strings:
+        $a = "Conficker"
+        $b = "conficker"
+        $c = "downadup"
+    condition:
+        1 of them
+}
+
+// --- Building automation / smart-building product references ---------------
+rule BAS_Tridium_Niagara : bas {
+    meta:
+        description = "Tridium Niagara building-automation framework"
+        severity = "medium"
+    strings:
+        $a = "Niagara Framework"
+        $b = "Tridium"
+        $c = "station.fox"
+        $d = "niagara_home"
+    condition:
+        1 of them
+}
+
+rule BAS_JohnsonControls_Metasys : bas {
+    meta:
+        description = "Johnson Controls Metasys BAS"
+        severity = "medium"
+    strings:
+        $a = "Metasys"
+        $b = "Johnson Controls"
+    condition:
+        1 of them
+}
+
+rule BAS_Siemens_Desigo : bas {
+    meta:
+        description = "Siemens Desigo building-control system"
+        severity = "medium"
+    strings:
+        $a = "Desigo"
+        $b = "Siemens Desigo"
+        $c = "PXC Modular"
+    condition:
+        1 of them
+}
+
+rule BAS_Honeywell_EBI : bas {
+    meta:
+        description = "Honeywell EBI / WEBs building system"
+        severity = "medium"
+    strings:
+        $a = "Honeywell EBI"
+        $b = "WEBs-AX"
+        $c = "WEBStation-AX"
+    condition:
+        1 of them
+}
+
+rule BAS_Schneider_EcoStruxure : bas {
+    meta:
+        description = "Schneider EcoStruxure / StruxureWare BAS"
+        severity = "medium"
+    strings:
+        $a = "EcoStruxure"
+        $b = "StruxureWare"
+        $c = "Andover Continuum"
+        $d = "TAC Vista"
+    condition:
+        1 of them
+}
+
+rule BAS_AutomatedLogic_WebCTRL : bas {
+    meta:
+        description = "Automated Logic WebCTRL BAS"
+        severity = "medium"
+    strings:
+        $a = "WebCTRL"
+        $b = "Automated Logic"
+    condition:
+        1 of them
+}
+
+rule BAS_Delta_Controls : bas {
+    meta:
+        description = "Delta Controls ORCAview / enteliWEB BAS"
+        severity = "medium"
+    strings:
+        $a = "Delta Controls"
+        $b = "ORCAview"
+        $c = "enteliWEB"
+    condition:
+        1 of them
+}
+
+rule BAS_Distech_ECNet : bas {
+    meta:
+        description = "Distech Controls EC-Net / ECLYPSE BAS"
+        severity = "medium"
+    strings:
+        $a = "Distech Controls"
+        $b = "EC-Net"
+        $c = "ECLYPSE"
+    condition:
+        1 of them
+}
+
+rule BAS_Reliable_Controls : bas {
+    meta:
+        description = "Reliable Controls RC-WebView BAS"
+        severity = "medium"
+    strings:
+        $a = "Reliable Controls"
+        $b = "RC-WebView"
+        $c = "MACH-ProWeb"
+    condition:
+        1 of them
+}
+
+rule BAS_KNX_ETS : bas {
+    meta:
+        description = "KNX ETS project artifacts"
+        severity = "medium"
+    strings:
+        $a = "knxproj"
+        $b = "ETS5"
+        $c = "ETS6"
+    condition:
+        1 of them
+}
+
+rule BAS_Crestron_Control : bas {
+    meta:
+        description = "Crestron control-system tooling"
+        severity = "medium"
+    strings:
+        $a = "Crestron Toolbox"
+        $b = "SIMPL Windows"
+        $c = "Crestron Fusion"
+    condition:
+        1 of them
+}
+
+rule BAS_AMX_NetLinx : bas {
+    meta:
+        description = "AMX NetLinx control system"
+        severity = "medium"
+    strings:
+        $a = "AMX NetLinx"
+        $b = "NetLinx Studio"
+        $c = "Duet module"
+    condition:
+        1 of them
+}
+
+rule BAS_Lutron : bas {
+    meta:
+        description = "Lutron lighting/control system"
+        severity = "medium"
+    strings:
+        $a = "Lutron HomeWorks"
+        $b = "Lutron Caseta"
+        $c = "QuantumLogic"
+    condition:
+        1 of them
+}
+
+rule BAS_DALI_Lighting : bas {
+    meta:
+        description = "DALI lighting-control bus tooling"
+        severity = "medium"
+    strings:
+        $a = "DALI gateway"
+        $b = "DALI-2"
+        $c = "DALI bus"
+    condition:
+        1 of them
+}
+
+// --- Smart-home / consumer IoT & firmware ----------------------------------
+rule IOT_MQTT_Abuse : iot {
+    meta:
+        description = "MQTT broker abuse / enumeration"
+        severity = "medium"
+    strings:
+        $a = "mosquitto_pub"
+        $b = "$SYS/broker"
+        $c = "paho.mqtt"
+    condition:
+        1 of them
+}
+
+rule IOT_CoAP_Probe : iot {
+    meta:
+        description = "CoAP endpoint probing"
+        severity = "medium"
+    strings:
+        $a = "coap://"
+        $b = "coap-client"
+        $c = ".well-known/core"
+    condition:
+        1 of ($a, $b) or ($a and $c)
+}
+
+rule IOT_Zigbee_Attack : iot {
+    meta:
+        description = "Zigbee attack tooling (KillerBee)"
+        severity = "high"
+    strings:
+        $a = "KillerBee"
+        $b = "zbstumbler"
+        $c = "zbreplay"
+    condition:
+        1 of them
+}
+
+rule IOT_ZWave_Attack : iot {
+    meta:
+        description = "Z-Wave attack tooling"
+        severity = "medium"
+    strings:
+        $a = "EZ-Wave"
+        $b = "Z-Wave sniffer"
+        $c = "zwave_attack"
+    condition:
+        1 of them
+}
+
+rule IOT_BLE_Attack : iot {
+    meta:
+        description = "Bluetooth Low Energy attack tooling"
+        severity = "medium"
+    strings:
+        $a = "btlejack"
+        $b = "gatttool"
+        $c = "hcitool lescan"
+    condition:
+        1 of them
+}
+
+rule IOT_RTSP_Cam_Bruteforce : offensive {
+    meta:
+        description = "RTSP camera brute-force tooling"
+        severity = "high"
+    strings:
+        $a = "Cameradar"
+        $b = "rtsp_brute"
+        $c = "cameradar"
+    condition:
+        1 of them
+}
+
+rule IOT_ONVIF_Probe : iot {
+    meta:
+        description = "ONVIF camera enumeration"
+        severity = "medium"
+    strings:
+        $a = "GetDeviceInformation"
+        $b = "ver10/device/wsdl"
+        $c = "onvif"
+    condition:
+        $b or ($c and $a)
+}
+
+rule IOT_UART_JTAG_Debug : iot {
+    meta:
+        description = "hardware UART/JTAG debugging artifacts"
+        severity = "medium"
+    strings:
+        $a = "openocd"
+        $b = "jtag newtap"
+        $c = "urjtag"
+    condition:
+        1 of them
+}
+
+rule IOT_Firmware_Squashfs : firmware {
+    meta:
+        description = "SquashFS firmware filesystem image"
+        severity = "medium"
+    strings:
+        $a = "sqsh"
+        $b = "hsqs"
+        $c = "squashfs"
+    condition:
+        1 of them
+}
+
+rule IOT_Firmware_UBoot : firmware {
+    meta:
+        description = "U-Boot bootloader firmware artifacts"
+        severity = "medium"
+    strings:
+        $a = "U-Boot 20"
+        $b = "bootargs="
+        $c = "Uncompressing Linux"
+    condition:
+        1 of them
+}
+
+rule IOT_Binwalk_Analysis : recon {
+    meta:
+        description = "binwalk firmware analysis artifacts"
+        severity = "medium"
+    strings:
+        $a = "binwalk"
+        $b = "DECIMAL       HEXADECIMAL"
+    condition:
+        1 of them
+}
+
+rule IOT_GPON_Exploit : exploit {
+    meta:
+        description = "GPON home-router exploit (CVE-2018-10561 class)"
+        severity = "high"
+    strings:
+        $a = "GponForm"
+        $b = "/diag_Form"
+        $c = "XWebPageName=diag"
+    condition:
+        1 of them
+}
+
+rule IOT_Dahua_Exploit : exploit {
+    meta:
+        description = "Dahua DVR/camera credential exploit"
+        severity = "high"
+    strings:
+        $a = "/current_config/passwd"
+        $b = "RPC2_Login"
+    condition:
+        1 of them
+}
+
+rule IOT_Hikvision_Exploit : exploit {
+    meta:
+        description = "Hikvision camera auth-bypass exploit"
+        severity = "high"
+    strings:
+        $a = "/system/deviceInfo?auth="
+        $b = "/onvif-http/snapshot?auth="
+    condition:
+        1 of them
+}
+
+rule IOT_Webcam_Backdoor : backdoor {
+    meta:
+        description = "IP-camera web backdoor endpoints"
+        severity = "medium"
+    strings:
+        $a = "/cgi-bin/supervisor/"
+        $b = "CloudSetup.htm"
+        $c = "wireless_mft"
+    condition:
+        1 of them
+}
+
+rule IIOT_SCADA_HMI_Products : scada {
+    meta:
+        description = "SCADA/HMI product references (FactoryTalk/WinCC/Ignition/...)"
+        severity = "medium"
+    strings:
+        $a = "FactoryTalk"
+        $b = "Wonderware"
+        $c = "WinCC"
+        $d = "iFIX"
+        $e = "Ignition Gateway"
+        $f = "Vijeo Citect"
+    condition:
+        1 of them
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source

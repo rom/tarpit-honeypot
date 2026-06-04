@@ -10,6 +10,27 @@ documented in `docs/`).
 
 ### Added
 
+- **+100 IoT / IIoT / OT / building-automation YARA rules** (`artifactscan` pack
+  now ~369 rules). New domain coverage: IoT botnet families (Hajime, Hide-N-Seek,
+  dark_nexus, Torii, Persirai, Reaper, BrickerBot, VPNFilter, Cyclops Blink,
+  QSnatch, Moobot, EnemyBot, Zerobot, RapperBot, Mukashi, Echobot, Fbot,
+  Matryosh, Condi, Kaiji, BotenaGo, Chalubo, Katana, Pink); multi-arch IoT
+  loader/dropper and device-exploit patterns (busybox/tftp loaders, HNAP, UPnP
+  SOAP, TR-064, Realtek SDK, GoAhead/JAWS cameras, Netgear/D-Link, GPON, Dahua,
+  Hikvision, Mirai default-credential tables); OT/ICS protocol & tooling
+  fingerprints (Modbus, S7comm, DNP3, EtherNet/IP, BACnet, PROFINET, IEC-61850
+  MMS, IEC-104, OPC UA/DA, Niagara Fox, CODESYS, Omron FINS, Mitsubishi MELSOFT,
+  GE-SRTP, HART-IP, KNX, LonWorks, M-Bus, plcscan/s7scan/smod); OT/ICS malware
+  (Industroyer/CrashOverride, Industroyer2, TRITON/TRISIS, Havex, BlackEnergy,
+  EKANS, PIPEDREAM/INCONTROLLER, IRONGATE, Fuxnet, CosmicEnergy, FrostyGoop,
+  Conficker); building-automation product references (Tridium Niagara, JCI
+  Metasys, Siemens Desigo, Honeywell EBI, Schneider EcoStruxure, Automated Logic
+  WebCTRL, Delta Controls, Distech, Reliable Controls, KNX/ETS, Crestron, AMX,
+  Lutron, DALI); and smart-home/firmware artifacts (MQTT/CoAP, Zigbee/Z-Wave/BLE
+  tooling, RTSP/ONVIF cameras, UART/JTAG, SquashFS/U-Boot/binwalk, SCADA/HMI
+  products). Severities follow the existing tiering (malware/botnet families
+  critical; protocol/product references and recon tagged medium/high).
+
 - **+100 more built-in YARA rules** (`artifactscan` pack now ~269 rules). Adds
   nation-state/APT implants (SUNBURST, Stuxnet, Flame, Winnti, ShadowPad,
   X-Agent, Zebrocy, Lazarus Bankshot, Kimsuky BabyShark, Carbanak, Equation),
