@@ -47,7 +47,7 @@ non-browser; `low` = automation inferred from a weak heuristic with no tool name
 
 ## What it recognizes (by class)
 
-The catalog holds **680+ signatures**. The notable families:
+The catalog holds **900+ signatures**. The notable families:
 
 - **Internet-wide scan / OSINT engines** (often benign-but-noisy research):
   Censys, Shodan, BinaryEdge, Shadowserver, Rapid7/Project Sonar, Stretchoid,
@@ -77,16 +77,41 @@ The catalog holds **680+ signatures**. The notable families:
 - **AD / Windows post-exploitation**: the Impacket family (secretsdump, wmiexec,
   smbexec, psexec.py, ntlmrelayx, GetNPUsers/GetUserSPNs, ticketer, mssqlclient),
   BloodHound/SharpHound, Rubeus, Certipy, lsassy, nanodump, DonPAPI, Coercer,
-  PetitPotam, mitm6, Pcredz, enum4linux, smbmap, evil-winrm, windapsearch.
+  PetitPotam, mitm6, Pcredz, enum4linux, smbmap, evil-winrm, windapsearch,
+  atexec/dcomexec/rpcdump/samrdump/lookupsid, PowerView/PowerMad, BOFHound,
+  ADCSPwn, PKINITtools, gMSADumper, SharpGPOAbuse, the Potato family
+  (Juicy/Sweet/God/Rogue Potato, PrintSpoofer), SharpDPAPI, SharpSCCM/
+  SCCMHunter, Group3r, dploot, hekatomb, SCShell, PowerHuntShares, ldapper.
 - **Web / app exploit tooling**: JexBoss, WeblogicScan, struts-pwn/struts-scan,
   tomcatWarDeployer, VBScan, Typo3Scan, magescan, aem-hacker, wprecon, fuxploider,
   lfimap/fimap, GraphQLmap/graphw00f, log4j-scan, ysoserial, marshalsec, byp4xx/
   dontgo403/nomore403, h2csmuggler/smuggler, Corsy, shortscan, DAVTest.
 - **TLS / SSL / IKE scanners**: testssl, sslyze, sslscan, cipherscan, a2sv,
   ike-scan, tlsx.
-- **Cloud / Kubernetes recon**: Pacu, ScoutSuite, Prowler, S3Scanner, kube-hunter.
-- **C2 / RAT / red-team**: see the category table above (incl. dnscat2, godoh,
-  chashell, shad0w, CALDERA, Supershell, PhpSploit, Weevely, hoaxshell, Manjusaka).
+- **Cloud / Kubernetes / IaC recon + audit**: Pacu, ScoutSuite, Prowler,
+  S3Scanner, kube-hunter, kube-bench, kubeaudit, Checkov, tfsec, KICS, Trivy,
+  Grype, BOtB, CloudQuery, awspx, Cartography.
+- **Web / CMS / API / mobile vuln scanners** (more): moodlescan, CMSScan,
+  scant3r, 403fuzzer, headerpwn, smugglefuzz, param-miner, spring4shell-scan,
+  fastjson-scan, shiro-scan, WPIntel/WPSeku/wpgarlic, APKLeaks, MobSF, jwtcat,
+  ratproxy, golismero, wascan, Striker, yuki-chan, spaghetti, Taipan, plecost,
+  Nettacker, BlackWidow, V3n0M, ssrfire.
+- **OSINT / recon / breach** (more): nrich, mailcat, gitfive, zehef, ignorant,
+  waybackpy, linkedin2username, CrossLinked, emailfinder, mosint, spoofcheck,
+  dnsdumpster, SubDomainizer, subdominator, egress-assess.
+- **Credential brute-force / stuffing / password-spray**: Hydra, Medusa,
+  Patator, Ncrack, NetExec/CrackMapExec, BruteX, crowbar, changeme, kerbrute,
+  OpenBullet, SilverBullet, BlackBullet, SentryMBA, SNIPR, Cr3dOv3r, legba,
+  cerbrutus, CredMaster, Spray365, MSOLSpray, go365, omnispray, SmartBrute,
+  Ruler, MailSniper, FireProx. *(Over SSH these ride libssh/paramiko and are
+  identified from the client banner — the interactive SSH handler now tags
+  them too, so they appear in "top tools".)*
+- **C2 / RAT / red-team / loaders**: see the category table above (incl. dnscat2,
+  godoh, chashell, shad0w, CALDERA, Supershell, PhpSploit, Weevely, hoaxshell,
+  Manjusaka, Nighthawk, Nuages, and commodity RAT/loader/banking-trojan families
+  — Remcos, DCRat, VenomRAT, XWorm, LimeRAT, RevengeRAT, Warzone, NetWire,
+  NanoCore, Orcus, DarkComet, SpyNote, AgentTesla, FormBook, SmokeLoader, Emotet,
+  TrickBot, Qakbot, IcedID, Bumblebee, DarkGate, Pikabot, Latrodectus).
 - **Tunnels / pivots**: chisel, ligolo, gost, frp, rsockstun, Stowaway,
   neo-reGeorg/reGeorg, pivotnacci, revsocks.
 - **Phishing kits / proxies**: GoPhish, Evilginx, Muraena, Modlishka, zphisher.
@@ -95,14 +120,31 @@ The catalog holds **680+ signatures**. The notable families:
 - **HTTP client libraries** (a tell when hitting a "browser-only" surface):
   python-requests/httpx/aiohttp, Go net/http, OkHttp, axios, node-fetch,
   Guzzle, libcurl, WinHTTP, reqwest/hyper (Rust), Scrapy, HTTrack, httpie, …
-- **SSH clients** (from the SSH-2.0 banner): libssh2, libssh, paramiko, Go,
-  PuTTY, JSch, Russh, zgrab, and scanners that reuse them.
+- **SSH clients / stacks** (from the SSH-2.0 banner): libssh2, libssh, paramiko,
+  Go, PuTTY, JSch, Russh, zgrab, AsyncSSH, Ruby Net::SSH (Metasploit), SSHJ,
+  Ganymed, dropbear, TinySSH, wolfSSH, Apache MINA SSHD, FlowSsh, cryptlib,
+  Granados, TeraTerm/TTSSH, node ssh2, J2SSH, Chilkat, Tectia, F-Secure,
+  PKIX-SSH, HPN-SSH, RedSSH; enterprise/MFT SSH (CrushFTP, GoAnywhere,
+  GlobalSCAPE, CompleteFTP, TitanFTP, Serv-U, WingFTP, FileZilla, Bitvise,
+  Termius, RoyalTS, Devolutions, MobaXterm); PAM/zero-trust bastions (Teleport,
+  Warpgate, sshpiper, WALLIX, CyberArk, ScaleFT, smallstep, Boundary);
+  network-device stacks (MikroTik ROSSSH, Cisco, Comware, Huawei, NetScreen);
+  SSH-specific offensive tools (sshamble, ssh-mitm, Ncrack, sshprank, ssh-snake,
+  crassh, ssh-auditor) + clients abused in intrusions (Xshell — ShadowPad).
+- **DNS recon / tunnel / OOB-interaction** (fingerprinted from the QNAME by the
+  DNS handlers): BIND server-info probes (version.bind / hostname.bind /
+  id.server / authors.bind → fpdns / dns-recon-probe), out-of-band-interaction
+  callback services that SSRF/RCE/log4shell exploits beacon to (Burp
+  Collaborator, interactsh OAST, dnslog.cn, ceye.io, Canarytokens), public
+  DNS-rebinding services (nip.io / sslip.io / xip.io / 1u.ms), and DNS-tunnel /
+  C2 tools (dnscat2, dns2tcp, tcp-over-dns).
 
 ## Extending it
 
 - HTTP UA / path signatures live in `uaSignatures` / `pathSignatures`
   (`internal/toolfp/toolfp.go`); SSH-banner signatures in `sshClientSignatures`;
-  JA3 hashes in `ja3Signatures` (operators add their own corpus).
+  DNS QNAME signatures in `dnsToolSignatures` (`IdentifyDNS`, called by the DNS
+  handlers); JA3 hashes in `ja3Signatures` (operators add their own corpus).
 - A new scanner that's also a *vulnerability* scanner should be added to the
   `vulnScanners` set so it gets the `vulnerability-scanner` category; a C2/RAT to
   `c2Frameworks`.

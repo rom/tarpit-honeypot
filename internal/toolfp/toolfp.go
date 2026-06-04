@@ -91,6 +91,15 @@ var c2Frameworks = map[string]bool{
 	"hardhatc2": true, "adaptixc2": true,
 	"slackor": true, "toxssin": true, "trevorc2": true,
 	"geacon": true, "crossc2": true, "redwarden": true, "starkiller": true, "nimbo-c2": true,
+	// Batch 10: more red-team C2 + commodity RAT/loader families.
+	"nighthawk": true, "nuages": true, "remcos": true, "dcrat": true,
+	"venomrat": true, "xworm": true, "limerat": true, "revengerat": true,
+	"warzonerat": true, "netwire": true, "nanocore": true, "orcus": true,
+	"darkcomet": true, "spynote": true, "agenttesla": true, "formbook": true,
+	"smokeloader": true,
+	// Batch 11: banking-trojan / loader / RAT families seen staging over HTTP.
+	"emotet": true, "trickbot": true, "qakbot": true, "icedid": true,
+	"bumblebee": true, "darkgate": true, "pikabot": true, "latrodectus": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -163,6 +172,19 @@ var vulnScanners = map[string]bool{
 	"dotdotpwn": true, "panoptic": true, "xxeinjector": true, "blisqy": true,
 	"kadimus": true, "liffy": true, "retirejs": true,
 	"vuls": true, "rapidscan": true, "sitadel": true, "scanqli": true, "dirhunt": true,
+	// Batch 10: more web/CMS/API/mobile vulnerability + injection scanners.
+	"moodlescan": true, "cmsscan": true, "scant3r": true, "403fuzzer": true,
+	"headerpwn": true, "smugglefuzz": true, "param-miner": true,
+	"spring4shell-scan": true, "fastjson-scan": true, "shiro-scan": true,
+	"wpintel": true, "apkleaks": true, "mobsf": true, "jwtcat": true,
+	"ratproxy": true, "golismero": true, "wascan": true, "striker": true,
+	"yuki-chan": true, "spaghetti": true, "taipan": true, "wpseku": true,
+	"plecost": true, "nettacker": true, "blackwidow": true, "v3n0m": true,
+	"wpgarlic": true, "ssrfire": true,
+	// Batch 11: more web / API / injection vulnerability scanners.
+	"scan4all": true, "dirmap": true, "uniscan": true, "webpwn3r": true,
+	"vulscan": true, "jwtxploiter": true, "graphql-path-enum": true,
+	"batchql": true, "dsss": true, "sqliv": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -901,6 +923,175 @@ var uaSignatures = map[string]string{
 	"sudomy":     "sudomy",
 	"dnsenum":    "dnsenum",
 	"wpforce":    "wpforce",
+
+	// --- Batch: 100 more offensive-tooling fingerprints (User-Agent
+	// self-identification), spanning C2/RAT/loaders, web-/CMS-/API-/mobile-
+	// vuln scanners, AD/Windows post-exploitation, cloud/k8s/IaC auditors,
+	// and OSINT/recon. ---
+	// C2 / RAT / loader families (-> "c2").
+	"nighthawk":   "nighthawk",
+	"nuages":      "nuages",
+	"remcos":      "remcos",
+	"dcrat":       "dcrat",
+	"venomrat":    "venomrat",
+	"xworm":       "xworm",
+	"limerat":     "limerat",
+	"revengerat":  "revengerat",
+	"warzone":     "warzonerat",
+	"netwire":     "netwire",
+	"nanocore":    "nanocore",
+	"orcus":       "orcus",
+	"darkcomet":   "darkcomet",
+	"spynote":     "spynote",
+	"agenttesla":  "agenttesla",
+	"formbook":    "formbook",
+	"smokeloader": "smokeloader",
+	"msfvenom":    "metasploit",
+	// Web / CMS / API / mobile vulnerability + injection scanners (-> "vuln-scanner").
+	"moodlescan":    "moodlescan",
+	"cmsscan":       "cmsscan",
+	"scant3r":       "scant3r",
+	"403fuzzer":     "403fuzzer",
+	"headerpwn":     "headerpwn",
+	"smugglefuzz":   "smugglefuzz",
+	"paramminer":    "param-miner",
+	"spring4shell":  "spring4shell-scan",
+	"fastjson-scan": "fastjson-scan",
+	"shiroscan":     "shiro-scan",
+	"wpintel":       "wpintel",
+	"apkleaks":      "apkleaks",
+	"mobsf":         "mobsf",
+	"jwtcat":        "jwtcat",
+	"ratproxy":      "ratproxy",
+	"golismero":     "golismero",
+	"wascan":        "wascan",
+	"striker":       "striker",
+	"yukichan":      "yuki-chan",
+	"spaghetti":     "spaghetti",
+	"taipan":        "taipan",
+	"wpseku":        "wpseku",
+	"plecost":       "plecost",
+	"nettacker":     "nettacker",
+	"blackwidow":    "blackwidow",
+	"v3n0m":         "v3n0m",
+	"wpgarlic":      "wpgarlic",
+	"ssrfire":       "ssrfire",
+	// Active Directory / Windows post-exploitation (-> "tool").
+	"bofhound":        "bofhound",
+	"adcspwn":         "adcspwn",
+	"pkinittools":     "pkinittools",
+	"gmsadumper":      "gmsadumper",
+	"powerview":       "powerview",
+	"powermad":        "powermad",
+	"sharpgpoabuse":   "sharpgpoabuse",
+	"sweetpotato":     "sweetpotato",
+	"godpotato":       "godpotato",
+	"juicypotato":     "juicypotato",
+	"printspoofer":    "printspoofer",
+	"roguepotato":     "roguepotato",
+	"sharpdpapi":      "sharpdpapi",
+	"sharpsccm":       "sharpsccm",
+	"sccmhunter":      "sccmhunter",
+	"group3r":         "group3r",
+	"dploot":          "dploot",
+	"hekatomb":        "hekatomb",
+	"scshell":         "scshell",
+	"atexec":          "atexec",
+	"dcomexec":        "dcomexec",
+	"rpcdump":         "rpcdump",
+	"samrdump":        "samrdump",
+	"lookupsid":       "lookupsid",
+	"powerhuntshares": "powerhuntshares",
+	"orpheus":         "orpheus",
+	"krbjack":         "krbjack",
+	"ldapper":         "ldapper",
+	// Cloud / Kubernetes / IaC audit + attack (-> "tool").
+	"checkov":     "checkov",
+	"tfsec":       "tfsec",
+	"kics":        "kics",
+	"trivy":       "trivy",
+	"grype":       "grype",
+	"kube-bench":  "kube-bench",
+	"kubeaudit":   "kubeaudit",
+	"botb":        "botb",
+	"cloudquery":  "cloudquery",
+	"awspx":       "awspx",
+	"cartography": "cartography",
+	// OSINT / recon / breach + exfil tooling (-> "tool").
+	"nrich":             "nrich",
+	"mailcat":           "mailcat",
+	"gitfive":           "gitfive",
+	"zehef":             "zehef",
+	"ignorant":          "ignorant",
+	"waybackpy":         "waybackpy",
+	"linkedin2username": "linkedin2username",
+	"crosslinked":       "crosslinked",
+	"emailfinder":       "emailfinder",
+	"mosint":            "mosint",
+	"spoofcheck":        "spoofcheck",
+	"dnsdumpster":       "dnsdumpster",
+	"subdomainizer":     "subdomainizer",
+	"subdominator":      "subdominator",
+	"egress-assess":     "egress-assess",
+
+	// --- Batch: 50 more offensive-tooling fingerprints (User-Agent
+	// self-identification), heavy on credential brute-force / stuffing /
+	// password-spray tools (so the "top tools" view surfaces them), plus
+	// banking-trojan/loader staging, web/API vuln scanners, and recon. ---
+	// Banking-trojan / loader / RAT families (-> "c2").
+	"emotet":      "emotet",
+	"trickbot":    "trickbot",
+	"qakbot":      "qakbot",
+	"icedid":      "icedid",
+	"bumblebee":   "bumblebee",
+	"darkgate":    "darkgate",
+	"pikabot":     "pikabot",
+	"latrodectus": "latrodectus",
+	// Credential brute-force / stuffing / password-spray (-> "tool").
+	"openbullet":   "openbullet",
+	"sentrymba":    "sentry-mba",
+	"snipr":        "snipr",
+	"silverbullet": "silverbullet",
+	"blackbullet":  "blackbullet",
+	"cr3dov3r":     "cr3dov3r",
+	"credmaster":   "credmaster",
+	"spray365":     "spray365",
+	"msolspray":    "msolspray",
+	"go365":        "go365",
+	"ruler":        "ruler",
+	"mailsniper":   "mailsniper",
+	"fireprox":     "fireprox",
+	"omnispray":    "omnispray",
+	"smartbrute":   "smartbrute",
+	"legba":        "legba",
+	"cerbrutus":    "cerbrutus",
+	// Web / API / injection vulnerability scanners (-> "vuln-scanner").
+	"scan4all":          "scan4all",
+	"dirmap":            "dirmap",
+	"uniscan":           "uniscan",
+	"webpwn3r":          "webpwn3r",
+	"vulscan":           "vulscan",
+	"jwtxploiter":       "jwtxploiter",
+	"graphql-path-enum": "graphql-path-enum",
+	"batchql":           "batchql",
+	"dsss":              "dsss",
+	"sqliv":             "sqliv",
+	// Recon / endpoint-discovery / secret-scraper tooling (-> "tool").
+	"jsfinder":     "jsfinder",
+	"spyhunt":      "spyhunt",
+	"reconcobra":   "reconcobra",
+	"sitedorks":    "sitedorks",
+	"tugarecon":    "tugarecon",
+	"shhgit":       "shhgit",
+	"gitrob":       "gitrob",
+	"heritrix":     "heritrix",
+	"nutch":        "nutch",
+	"webcopilot":   "webcopilot",
+	"urlhunter":    "urlhunter",
+	"porch-pirate": "porch-pirate",
+	"swaggerhole":  "swaggerhole",
+	"apkhunt":      "apkhunt",
+	"githound":     "githound",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
@@ -1126,6 +1317,78 @@ var sshClientSignatures = []sshSig{
 	{"erlang", "erlang-ssh"},
 	{"maverick", "maverick-ssh"},
 	{"sshlib", "sshlib"},
+	// Batch: 20 more SSH stacks/libraries that attack tooling rides on, plus
+	// SSH-specific offensive tools, identified from the cleartext SSH-2.0
+	// client banner. Embedded/IoT + scripting SSH stacks (dropbear powers many
+	// IoT botnet implants; AsyncSSH/Net::SSH/SSHJ are the engines under Python/
+	// Ruby/Java attack frameworks incl. Metasploit's ssh_login), purpose-built
+	// SSH attack tools (sshamble, ssh-mitm), and clients abused in intrusions
+	// (Xshell — backdoored in the ShadowPad supply-chain compromise).
+	{"dropbear", "dropbear"},
+	{"tinyssh", "tinyssh"},
+	{"wolfssh", "wolfssh"},
+	{"asyncssh", "asyncssh"},
+	{"net::ssh", "ruby-net-ssh"},
+	{"sshj", "sshj"},
+	{"ganymed", "ganymed-ssh2"},
+	{"granados", "granados"},
+	{"flowssh", "flowssh"},
+	{"cryptlib", "cryptlib"},
+	{"ttssh", "teraterm"},
+	{"ssh2js", "node-ssh2"},
+	{"sshamble", "sshamble"},
+	{"ssh-mitm", "ssh-mitm"},
+	{"sshd-core", "apache-mina-sshd"},
+	{"weonlydo", "weonlydo-ssh"},
+	{"syncplify", "syncplify-ssh"},
+	{"smartftp", "smartftp-ssh"},
+	{"xshell", "xshell"},
+	{"securecrt", "securecrt"},
+	// Batch: 40 more SSH client/stack banners — SSH libraries across languages,
+	// enterprise/MFT SSH servers & clients, PAM/zero-trust bastions (whose
+	// proxy presents its own client banner to the backend), network-device SSH
+	// stacks, and SSH-specific brute/recon attack tools. Substring-matched on
+	// the cleartext SSH-2.0 identification string.
+	{"j2ssh", "j2ssh"},
+	{"chilkat", "chilkat-ssh"},
+	{"ipworks", "ipworks-ssh"},
+	{"tectia", "tectia-ssh"},
+	{"f-secure", "f-secure-ssh"},
+	{"pkix", "pkix-ssh"},
+	{"-hpn", "hpn-ssh"},
+	{"redssh", "redssh"},
+	{"sharpssh", "sharpssh"},
+	{"crushftp", "crushftp"},
+	{"goanywhere", "goanywhere-ssh"},
+	{"globalscape", "globalscape-ssh"},
+	{"completeftp", "completeftp"},
+	{"titanftp", "titanftp"},
+	{"serv-u", "serv-u"},
+	{"wingftp", "wingftp"},
+	{"filezilla", "filezilla-ssh"},
+	{"termius", "termius"},
+	{"royalts", "royalts"},
+	{"devolutions", "devolutions"},
+	{"bitvise", "bitvise"},
+	{"mobaxterm", "mobaxterm"},
+	{"teleport", "teleport-ssh"},
+	{"warpgate", "warpgate"},
+	{"sshpiper", "sshpiper"},
+	{"wallix", "wallix"},
+	{"cyberark", "cyberark-ssh"},
+	{"scaleft", "scaleft"},
+	{"smallstep", "smallstep-ssh"},
+	{"boundary", "boundary-ssh"},
+	{"rosssh", "mikrotik-ssh"},
+	{"cisco-", "cisco-ssh"},
+	{"comware", "comware-ssh"},
+	{"huawei", "huawei-ssh"},
+	{"netscreen", "netscreen-ssh"},
+	{"ncrack", "ncrack"},
+	{"sshprank", "sshprank"},
+	{"ssh-snake", "ssh-snake"},
+	{"crassh", "crassh"},
+	{"ssh-auditor", "ssh-auditor"},
 	{"go", "go-ssh"}, // matched specially: exactly SSH-2.0-Go
 }
 
@@ -1155,6 +1418,58 @@ func IdentifySSH(clientID string) []string {
 			if strings.Contains(id, s.needle) {
 				tools = appendUnique(tools, s.tool)
 			}
+		}
+	}
+	return tools
+}
+
+type dnsToolSig struct{ needle, tool string }
+
+// dnsToolSignatures fingerprints the tool / out-of-band-interaction service /
+// tunnel behind a DNS query from the QNAME alone: BIND server-info recon
+// probes (version.bind & friends), OOB-interaction callback domains that
+// SSRF/RCE/log4shell exploits beacon to (Burp Collaborator, interactsh OAST,
+// dnslog.cn, ceye.io, Canarytokens), public DNS-rebinding services, and
+// DNS-tunnel/C2 tool markers. The QNAME is attacker-controlled, so this is a
+// medium-confidence signal — the name reveals intent, not a crypto match.
+var dnsToolSignatures = []dnsToolSig{
+	// BIND / server-info recon (CHAOS-class lookups).
+	{"version.bind", "fpdns"},
+	{"version.server", "fpdns"},
+	{"hostname.bind", "dns-recon-probe"},
+	{"id.server", "dns-recon-probe"},
+	{"authors.bind", "dns-recon-probe"},
+	// Out-of-band interaction / SSRF-RCE callback services.
+	{"burpcollaborator", "burp-collaborator"},
+	{"oast.fun", "interactsh"},
+	{"oast.site", "interactsh"},
+	{"oast.online", "interactsh"},
+	{"interact.sh", "interactsh"},
+	{"dnslog.cn", "dnslog"},
+	{"ceye.io", "ceye"},
+	{"canarytokens.com", "canarytoken"},
+	// Public DNS-rebinding services.
+	{"nip.io", "dns-rebind-service"},
+	{"sslip.io", "dns-rebind-service"},
+	{"xip.io", "dns-rebind-service"},
+	{"1u.ms", "dns-rebind-service"},
+	// DNS tunneling / C2 tools.
+	{"dnscat", "dnscat2"},
+	{"dns2tcp", "dns2tcp"},
+	{"tcpoverdns", "tcp-over-dns"},
+}
+
+// IdentifyDNS maps a DNS QNAME to known DNS recon / tunnel / OOB-interaction
+// tools and services. Returns the matched tool names (empty when none).
+func IdentifyDNS(qname string) []string {
+	name := strings.ToLower(strings.TrimSpace(qname))
+	if name == "" {
+		return nil
+	}
+	var tools []string
+	for _, s := range dnsToolSignatures {
+		if strings.Contains(name, s.needle) {
+			tools = appendUnique(tools, s.tool)
 		}
 	}
 	return tools

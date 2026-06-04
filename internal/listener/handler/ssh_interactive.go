@@ -25,6 +25,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 	"github.com/rom/tarpit-honeypot/internal/shell"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // sshInteractive is the post-login engagement variant of the SSH
@@ -151,6 +152,21 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 	if acceptedUser != "" {
 		res.Meta["accepted_user"] = safe.SanitizeForLog(acceptedUser)
 	}
+	// Identify the tool/library from the client banner — the banner-grab "ssh"
+	// handler does this, but this is the variant that actually captures
+	// credentials, so without it brute-force credential testers (hydra/medusa/
+	// ncrack/patator on libssh/paramiko, …) never reach the "top tools" view.
+	if clientID != "" {
+		if tools := toolfp.IdentifySSH(clientID); len(tools) > 0 {
+			res.Meta["tools"] = tools
+			for _, t := range tools {
+				flagAnomaly(&res, "tool:"+t)
+			}
+			res.Meta["tool_confidence"] = toolfp.ConfHigh
+			res.Meta["tool_confidence_label"] = toolfp.ConfidenceLabel(toolfp.ConfHigh)
+		}
+		flagSSHRoaming(&res, clientID)
+	}
 	authMu.Unlock()
 	if err != nil {
 		// Failed handshake / auth — capture is already in meta.
@@ -180,7 +196,40 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 		_ = ch.Close()
 		break
 	}
+	// CVE-2016-0777: after the engagement, set the roaming trap for a
+	// vulnerable client (best-effort, bounded). See offerSSHRoaming.
+	offerSSHRoaming(srvConn, clientID, &res)
 	return res, nil
+}
+
+// offerSSHRoaming sends the OpenSSH "roaming@openssh.com" global request to a
+// vulnerable client and records whether it was accepted. A vulnerable client
+// (OpenSSH 5.4–7.1) enables roaming on receipt — the server-side precondition
+// for the CVE-2016-0777 memory/key disclosure. It runs after the session is
+// over (so it never delays the interactive engagement) and is bounded by a
+// short timeout so a silent client can't pin the worker. The actual private
+// key arrives only via the roaming *resume* exchange, which crypto/ssh does
+// not implement; this records the trap + the client's reaction.
+func offerSSHRoaming(conn *xssh.ServerConn, clientID string, res *Result) {
+	if conn == nil {
+		return
+	}
+	if _, vuln := openSSHRoamingVulnerable(clientID); !vuln {
+		return
+	}
+	done := make(chan bool, 1)
+	safego.Run("ssh_interactive.roaming_offer", func() {
+		ok, _, err := conn.SendRequest("roaming@openssh.com", true, nil)
+		done <- err == nil && ok
+	})
+	accepted := false
+	select {
+	case accepted = <-done:
+	case <-time.After(3 * time.Second):
+	}
+	res.Meta["ssh_roaming_offered"] = true
+	res.Meta["ssh_roaming_client_accepted"] = accepted
+	flagAnomaly(res, "ssh-roaming-offered")
 }
 
 // runSession handles one xssh.Channel: walks the session-channel

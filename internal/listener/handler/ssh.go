@@ -101,6 +101,9 @@ func (s *ssh) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 			res.Meta["tool_confidence"] = toolfp.ConfHigh
 			res.Meta["tool_confidence_label"] = toolfp.ConfidenceLabel(toolfp.ConfHigh)
 		}
+		// CVE-2016-0777/0778: a vulnerable OpenSSH client (roaming default-on)
+		// connecting to us is the precondition for the roaming key-leak.
+		flagSSHRoaming(&res, line)
 	} else if err != nil {
 		res.Meta["read_err"] = err.Error()
 	}

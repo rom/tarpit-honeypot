@@ -475,6 +475,45 @@ var anomalyTags = map[string]Tag{
 	"dnscrypt-probe": {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
 	// Algorithmically-generated C2 rendezvous domain.
 	"dns-dga-suspected": {Techniques: []string{"T1568.002"}, Tactics: []string{"command-and-control"}},
+	// --- DNS vulnerability / leakage / recon / poisoning / DoS detections ---
+	// Header / opcode / section-count abuse: reflected responses + carried
+	// answer/authority/additional RRs are cache-poisoning shapes; IQUERY /
+	// NOTIFY / UPDATE are unexpected opcodes against a recursive resolver.
+	"dns-response-as-query":   {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	"dns-prestuffed-answers":  {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	"dns-additional-stuffing": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	"dns-inverse-query":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-notify-opcode":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-dynamic-update":      {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"dns-multi-question":      {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-nonstandard-class":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// Server-identity / DNSSEC / service-binding recon + internal-name leakage.
+	"dns-chaos-class":       {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-dnssec-recon":      {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-nsec-walk":         {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-svcb-probe":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-caa-probe":         {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-mail-policy-probe": {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-srv-ad-discovery":  {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"dns-ptr-reverse-sweep": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-internal-tld-leak": {Techniques: []string{"T1590.002"}, Tactics: []string{"reconnaissance"}},
+	// Name-resolution MITM bait.
+	"dns-wpad-probe":   {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	"dns-isatap-probe": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access", "collection"}},
+	// Out-of-band interaction / DNS rebinding.
+	"dns-oob-interaction": {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"dns-rebind-lookup":   {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	// Tunnelling / exfil structure.
+	"dns-cname-tunnel":       {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dns-null-record":        {Techniques: []string{"T1572", "T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dns-long-encoded-label": {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"dns-many-labels":        {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	// DoS (water-torture / parser stress) + amplification setup.
+	"dns-random-subdomain":     {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"dns-repeated-label":       {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"dns-edns-large-udpsize":   {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"dns-edns-version-nonzero": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dns-dnssec-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	// DNS-SD service enumeration over mDNS = local network-service discovery.
 	"mdns-service-enumeration": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	// Behavioral HTTP anomalies: malformed/smuggled headers and a spoofed
@@ -615,12 +654,16 @@ var anomalyTags = map[string]Tag{
 	"sitemap-honeypot-access": {Techniques: []string{"T1595.003"}, Tactics: []string{"reconnaissance"}},
 	// Bare service probes + malformed / non-conforming protocol input — the
 	// shape of an automated scanner banner-grabbing a port.
-	"oracle-tns-probe":                {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"nx-probe":                        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"openvpn-probe":                   {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-non-printable":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-not-ssh":                  {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ssh-id-overlong":                 {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"oracle-tns-probe":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"nx-probe":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"openvpn-probe":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-not-ssh":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"ssh-id-overlong":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	// CVE-2016-0777/0778: a vulnerable OpenSSH client's roaming feature lets a
+	// malicious server steal the client's private key (the honeypot sets the trap).
+	"ssh-roaming-vulnerable-client":   {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
+	"ssh-roaming-offered":             {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
 	"http-method-unknown":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"http-request-line-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"telnet-credential-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},

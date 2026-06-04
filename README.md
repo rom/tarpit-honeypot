@@ -629,12 +629,32 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **v2.10 — credential export, unbounded captures, and three new DoS/overflow detections (CLDAP, SIPROTEC EN100, vsftpd glob).**
 The v2.4–2.10 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 113 UDP protocol handlers**, **468 CVE detections**, **200 dynamic Lua
-service scripts**, **166 OS/device archetypes**, **680+ attack-tool/scanner
+**131 TCP + 113 UDP protocol handlers**, **498 CVE detections**, **200 dynamic Lua
+service scripts**, **166 OS/device archetypes**, **900+ attack-tool/scanner
 fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
 **18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
 Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.
 
+- **DNS detection depth + tool fingerprinting.** 30 new DNS
+  vulnerability/leakage/recon/poisoning/DoS detections over both UDP and TCP
+  (header/opcode/section abuse, DNSSEC/CAA/SVCB recon, AD-SRV + reverse-PTR
+  discovery, internal-namespace leakage, WPAD/ISATAP MITM bait, OOB-interaction
+  & DNS-rebinding callbacks, CNAME/NULL/long-/many-label tunnelling,
+  water-torture + EDNS amplification), plus DNS QNAME tool fingerprinting
+  (BIND recon probes, interactsh/Burp/dnslog OAST callbacks, tunnel/C2 tools).
+- **SSH attack surface.** +30 SSH/libssh/SSH-1 CVE records (Debian weak keys,
+  the OpenSSH roaming pair, user-enum, scp client flaws, ssh-agent PKCS#11 RCEs,
+  libssh auth bypass, ProxyCommand injection, 2025 DoS, …); **CVE-2016-0777**
+  roaming key-leak detection (flags a vulnerable OpenSSH client, sets the
+  roaming trap in the interactive handler) — and the interactive handler now
+  fingerprints the client so SSH brute-force testers reach the "top tools" view.
+- **+110 attack-tool fingerprints** (900+ total): +50 HTTP (credential
+  brute-force / stuffing / password-spray, banking-trojan loaders, web/API vuln
+  scanners, recon), +40 SSH client/stack banners, +20 DNS QNAME signatures.
+- **Captures page** gains summary counters (by type and by service) and
+  clickable type/service labels that filter the credential table in place.
+- **`export-creds`** gains `--sort` / `--reverse` (and keeps `--dedup`) so the
+  extracted credentials can be sorted and deduplicated from the command line.
 - **v2.10 credential export + captures.** New `export-creds` subcommand dumps
   every captured credential (login pairs, SSH `auth_attempts` incl. public keys,
   tokens, API keys, SNMP communities, cookies, Kerberos tickets, honeytokens)

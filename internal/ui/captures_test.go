@@ -28,7 +28,7 @@ func TestBuildCapturesView(t *testing.T) {
 		{Time: now, Source: event.Endpoint{IP: "1.2.3.4"}, Handler: "ssh",
 			Meta: map[string]any{"username": "root", "password": "toor"}},
 	}
-	v := buildCapturesView(dir, now.Add(-time.Hour), evs)
+	v := buildCapturesView(dir, now.Add(-time.Hour), evs, "", "")
 	if !v.Enabled {
 		t.Fatal("expected Enabled with a data dir")
 	}
