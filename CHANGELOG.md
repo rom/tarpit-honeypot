@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **SMB2 + NTLMSSP NetNTLMv2 capture** — the `smb` handler no longer rejects
+  SMB2; it now negotiates SMB 2.0.2 for real and drives the **NTLMSSP
+  SESSION_SETUP** exchange to completion (NEGOTIATE response with a SPNEGO blob
+  offering NTLM → NTLMSSP CHALLENGE with a fresh server challenge + AV_PAIR
+  target info → AUTHENTICATE), capturing the client's **NetNTLMv2** as the
+  offline-crackable hashcat-mode-5600 string (`ntlmv2_hash`,
+  `user::domain:challenge:ntproofstr:blob`) plus `ntlm_user` / `ntlm_domain` /
+  `ntlm_workstation`, and flagging `smb-ntlmv2-capture`. The logon always fails
+  — capture only, never grants access. This is how modern clients and
+  credential-capture tooling (impacket, CrackMapExec, coerced Windows auth)
+  authenticate. `smb-ntlmv2-capture` is removed from
+  `list-unavailable-capabilities`.
 - **QUIC / HTTP-3 ClientHello deep parsing** — the `quic` handler already
   decrypts the Initial flight; it now parses the recovered TLS ClientHello for
   the request-shaping fields: the **SNI** host (`quic_sni`), the **ALPN** list

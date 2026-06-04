@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -75,13 +76,14 @@ func TestSMB1NegotiateRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSMB2GetsRejection(t *testing.T) {
+// TestSMB2Negotiates verifies the handler now negotiates SMB2 for real (to
+// reach the NTLMSSP authentication exchange) rather than rejecting it.
+func TestSMB2Negotiates(t *testing.T) {
 	client, server := pipePair(t)
 	cfg := config.Listener{Handler: "smb", ReadBytes: 4096, ReadTimeout: time.Second}
 
 	// SMB2 Negotiate frame: NBSS + "\xFESMB" magic.
 	body := []byte{0xFE, 'S', 'M', 'B', 0x40, 0x00, 0x00, 0x00}
-	// Pad out to typical SMB2 NEGOTIATE size (just need length >= 32 for our parser).
 	for len(body) < 64 {
 		body = append(body, 0)
 	}
@@ -104,10 +106,22 @@ func TestSMB2GetsRejection(t *testing.T) {
 	if _, err := io.ReadFull(client, respBody); err != nil {
 		t.Fatal(err)
 	}
-	// Status field should be STATUS_NOT_SUPPORTED (0xC0000002 little-endian
-	// at offset 5..9). The rejection builder writes 00 00 C0 02.
-	if respBody[8] != 0xC0 {
-		t.Errorf("status high byte = %x; want 0xC0 (STATUS_NOT_SUPPORTED)", respBody[8])
+	// A real SMB2 NEGOTIATE response: SMB2 magic, command 0, status SUCCESS,
+	// dialect 0x0202, and a SPNEGO security blob offering NTLMSSP.
+	if string(respBody[0:4]) != "\xfeSMB" {
+		t.Fatalf("not an SMB2 response: %x", respBody[0:4])
+	}
+	if binary.LittleEndian.Uint32(respBody[8:12]) != 0 {
+		t.Errorf("status = %x; want SUCCESS", respBody[8:12])
+	}
+	if binary.LittleEndian.Uint16(respBody[12:14]) != 0x0000 {
+		t.Errorf("command = %x; want NEGOTIATE", respBody[12:14])
+	}
+	if dr := binary.LittleEndian.Uint16(respBody[68:70]); dr != 0x0202 {
+		t.Errorf("dialect = %x; want 0x0202", dr)
+	}
+	if !bytes.Contains(respBody, oidNTLMSSP) {
+		t.Error("negotiate response does not offer NTLMSSP via SPNEGO")
 	}
 	client.Close()
 	<-done

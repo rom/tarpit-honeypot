@@ -160,8 +160,6 @@ func (in Interaction) UnavailableCapabilities() []Capability {
 			"the sensor terminates TLS; it never MITMs a real upstream, so passthrough decryption is out of scope"},
 		Capability{"real-shell-execution", CapUnavailable,
 			"shells are emulated; typed commands are captured + TTP-scanned, never executed"},
-		Capability{"smb-ntlmv2-capture", CapUnavailable,
-			"SMB is negotiate-level; full SESSION_SETUP / NTLMv2 challenge-response capture is not implemented"},
 		Capability{"steganographic-transport-detection", CapUnavailable,
 			"covert data hidden inside otherwise-valid traffic cannot be detected in general"},
 	)

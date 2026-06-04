@@ -33,15 +33,15 @@ func (s *smb) Name() string { return "smb" }
 //	  byte_count(2) = total payload bytes
 //	  dialects = repeated: 0x02 + null-terminated dialect string
 //
-// We capture the offered dialects + signing flag and reply selecting the
-// "NT LM 0.12" dialect with extended security disabled, a fixed 8-byte
-// challenge, and a "WORKGROUP" name — enough for Shodan-class fingerprints
-// and SMB scanners to mark us as an SMBv1 server. We deliberately stop
-// at Negotiate; Session Setup needs real NTLMSSP which is huge.
+// For SMB1 we capture the offered dialects + signing flag and reply selecting
+// the "NT LM 0.12" dialect with extended security disabled, a fixed 8-byte
+// challenge, and a "WORKGROUP" name — enough for Shodan-class fingerprints and
+// SMB scanners to mark us as an SMBv1 server. The SMB1 path stops at Negotiate.
 //
-// SMB2 is detected (magic "\xFESMB" right after the NBSS header) and we
-// respond with SMB_COM_NEGOTIATE indicating no dialects are supported
-// (dialect_index=0xFFFF), which makes most SMB2 clients close cleanly.
+// SMB2 (magic "\xFESMB") is negotiated for real and driven through the NTLMSSP
+// SESSION_SETUP exchange to capture the client's NetNTLMv2 (see smb_ntlm.go) —
+// this is how modern clients and credential-capture tooling authenticate. We
+// always fail the logon; nothing is ever granted access.
 func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
@@ -82,11 +82,12 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	// Distinguish SMB1 ("\xFFSMB") from SMB2 ("\xFESMB").
 	magic := body[0:4]
 	if magic[0] == 0xFE && string(magic[1:4]) == "SMB" {
-		// SMB2 Negotiate. Reply with a polite "no dialects supported".
-		out := smb1NegotiateRejection(body)
-		_, _ = conn.Write(out)
-		res.BannerSent = "smb2 negotiate rejection (no common dialect)"
+		// SMB2 Negotiate. Drive the SMB2 + NTLMSSP SESSION_SETUP handshake to
+		// capture the attacker's NetNTLMv2 (we always fail the logon — capture
+		// only, never grant access). See smb_ntlm.go.
 		res.Meta = map[string]any{"variant": "SMB2"}
+		res.BannerSent = "smb2 negotiate response (ntlmssp)"
+		handleSMB2(conn, body, cfg.ReadTimeout, s.id, &res)
 		return res, nil
 	}
 	if magic[0] != 0xFF || string(magic[1:4]) != "SMB" {
@@ -215,26 +216,6 @@ func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identit
 	frame := append(smb1Header, payload...)
 	nbss := []byte{0x00, 0, 0, 0}
 	binary.BigEndian.PutUint32(nbss, uint32(len(frame))) // top byte stays zero
-	return append(nbss, frame...)
-}
-
-// smb1NegotiateRejection is sent in response to SMB2 negotiate requests.
-// Mirrors the SMB1 negotiate response shape but with DialectIndex 0xFFFF
-// (no protocols accepted), which makes the client close the connection.
-func smb1NegotiateRejection(req []byte) []byte {
-	_ = req
-	// status = STATUS_NOT_IMPLEMENTED = 0xC0000002, little-endian.
-	hdr := []byte{0xFF, 'S', 'M', 'B', 0x72,
-		0x02, 0x00, 0x00, 0xC0,
-		0x88,
-		0x03, 0xC0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	}
-	body := []byte{0x01, 0xFF, 0xFF, 0x00, 0x00}
-	frame := append(hdr, body...)
-	nbss := []byte{0x00, 0, 0, 0}
-	binary.BigEndian.PutUint32(nbss, uint32(len(frame)))
 	return append(nbss, frame...)
 }
 
