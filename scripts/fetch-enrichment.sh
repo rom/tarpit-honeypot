@@ -38,6 +38,10 @@
 #
 # Nothing here is sensor-specific; every file is a public feed.
 
+# This is a bash script (uses `local`, etc.). If invoked via `sh script.sh`,
+# re-exec under bash so it behaves identically regardless of how it's launched.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+
 set -euo pipefail
 
 OUT=""
@@ -184,7 +188,8 @@ fetch_maxmind() {
 # range file and extract CIDRs (one per line) into $CLOUD_DIR/<provider>.txt.
 # json_field is the JSON key holding a prefix ("" for a plain-text list).
 fetch_cloud() {
-	local prov="$1" url="$2" field="${3:-}" dest="$CLOUD_DIR/$prov.txt"
+	local prov="$1" url="$2" field="${3:-}"
+	local dest="$CLOUD_DIR/$prov.txt"
 	local tmp="$dest.tmp.$$" sz
 	printf '  %-22s ' "$prov"
 	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
