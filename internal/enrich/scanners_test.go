@@ -14,6 +14,15 @@ func TestKnownScanner(t *testing.T) {
 		{"", "scan.internet-measurement.com", "internet-measurement"},
 		{"BinaryEdge Ltd", "", "binaryedge"},
 		{"Beijing Qihu Technology (360)", "", "magellan-360"},
+		// Second-batch operators.
+		{"", "scanner.projectdiscovery.io", "projectdiscovery"},
+		{"GreyNoise Intelligence", "", "greynoise"},
+		{"", "node.fofa.info", "fofa-knownsec"},
+		{"", "crawler.zoomeye.org", "zoomeye"},
+		{"", "probe.netlas.io", "netlas"},
+		{"FullHunt", "", "fullhunt"},
+		{"Qualys Inc", "", "qualys"},
+		{"", "scan.ipinfo.io", "ipinfo"},
 		// A normal residential/cloud source is not a scanner.
 		{"Comcast Cable Communications", "c-73-12-0-1.hsd1.ca.comcast.net", ""},
 		{"", "", ""},

@@ -59,6 +59,35 @@ var scannerOperators = []scannerOperator{
 	{"ipip", []string{"ipip.net"}},
 	{"bufferover", []string{"bufferover"}},
 	{"arbor-atlas", []string{"arbor", "netscout"}},
+	// --- second batch: attack-surface-mgmt, recon search engines, scanners ---
+	{"projectdiscovery", []string{"projectdiscovery", "chaos.projectdiscovery", "interactsh"}},
+	{"greynoise", []string{"greynoise"}},
+	{"fofa-knownsec", []string{"fofa", "knownsec", "baimaohui"}}, // FOFA / 知道创宇
+	{"zoomeye", []string{"zoomeye"}},                             // Knownsec ZoomEye
+	{"hunter-qianxin", []string{"hunter.how", "qianxin"}},        // QiAnXin Hunter
+	{"netlas", []string{"netlas"}},                               // netlas.io
+	{"odin", []string{"odin.io"}},                                // odin.io
+	{"fullhunt", []string{"fullhunt"}},                           // fullhunt.io
+	{"spur", []string{"spur.us"}},                                // spur.us
+	{"ipinfo", []string{"ipinfo.io"}},                            // ipinfo.io probes
+	{"riskiq", []string{"riskiq", "passivetotal"}},               // Microsoft RiskIQ
+	{"securityscorecard", []string{"securityscorecard"}},
+	{"tenable", []string{"tenable", "nessus cloud"}},
+	{"qualys", []string{"qualys"}},
+	{"detectify", []string{"detectify"}},
+	{"intruder", []string{"intruder.io"}},
+	{"appcheck", []string{"appcheck-ng"}},
+	{"cyble", []string{"cyble"}},
+	{"intelx", []string{"intelx.io", "intelligence x"}},
+	{"greenbone", []string{"greenbone"}},                               // OpenVAS cloud
+	{"sicherheitstacho", []string{"sicherheitstacho", "telekom-cert"}}, // Deutsche Telekom
+	{"ernw", []string{"ernw"}},
+	{"kudelski", []string{"kudelski"}},
+	{"internet-census", []string{"internetcensus", "internet census"}},
+	{"dataprovider", []string{"dataprovider.com"}},
+	{"mj12bot", []string{"mj12bot", "majestic12"}}, // Majestic crawler
+	{"ahrefs", []string{"ahrefs"}},
+	{"semrush", []string{"semrush"}},
 }
 
 // metaString returns a string meta value, or "" if absent / wrong type.
