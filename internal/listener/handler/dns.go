@@ -50,6 +50,10 @@ func (d *dnsHandler) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 	for _, a := range dnsQueryAnomalies(q.name, q.qtype, len(payload)) {
 		flagAnomaly(&res, a)
 	}
+	// DNS-specific vulnerability / leakage / recon / poisoning / DoS detection
+	// + DNS recon/tunnel/OOB-interaction tool fingerprinting (UDP + TCP share
+	// this).
+	dnsApplyDetections(&res, payload, q)
 
 	reply := d.buildAnswer(payload, q, cfg)
 	if reply != nil {

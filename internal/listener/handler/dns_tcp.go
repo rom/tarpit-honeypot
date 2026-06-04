@@ -77,6 +77,7 @@ func (d *dnsTCP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		for _, a := range dnsQueryAnomalies(q.name, q.qtype, len(msg)) {
 			flagAnomaly(&res, a)
 		}
+		dnsApplyDetections(&res, msg, q)
 		// Zone transfer (AXFR 252 / IXFR 251): when fake_zone is enabled, serve a
 		// fabricated juicy zone instead of refusing — a deception trap. (Over TCP
 		// only; never a UDP amplifier.)

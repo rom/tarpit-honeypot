@@ -97,6 +97,9 @@ var c2Frameworks = map[string]bool{
 	"warzonerat": true, "netwire": true, "nanocore": true, "orcus": true,
 	"darkcomet": true, "spynote": true, "agenttesla": true, "formbook": true,
 	"smokeloader": true,
+	// Batch 11: banking-trojan / loader / RAT families seen staging over HTTP.
+	"emotet": true, "trickbot": true, "qakbot": true, "icedid": true,
+	"bumblebee": true, "darkgate": true, "pikabot": true, "latrodectus": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -178,6 +181,10 @@ var vulnScanners = map[string]bool{
 	"yuki-chan": true, "spaghetti": true, "taipan": true, "wpseku": true,
 	"plecost": true, "nettacker": true, "blackwidow": true, "v3n0m": true,
 	"wpgarlic": true, "ssrfire": true,
+	// Batch 11: more web / API / injection vulnerability scanners.
+	"scan4all": true, "dirmap": true, "uniscan": true, "webpwn3r": true,
+	"vulscan": true, "jwtxploiter": true, "graphql-path-enum": true,
+	"batchql": true, "dsss": true, "sqliv": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -1026,6 +1033,65 @@ var uaSignatures = map[string]string{
 	"subdomainizer":     "subdomainizer",
 	"subdominator":      "subdominator",
 	"egress-assess":     "egress-assess",
+
+	// --- Batch: 50 more offensive-tooling fingerprints (User-Agent
+	// self-identification), heavy on credential brute-force / stuffing /
+	// password-spray tools (so the "top tools" view surfaces them), plus
+	// banking-trojan/loader staging, web/API vuln scanners, and recon. ---
+	// Banking-trojan / loader / RAT families (-> "c2").
+	"emotet":      "emotet",
+	"trickbot":    "trickbot",
+	"qakbot":      "qakbot",
+	"icedid":      "icedid",
+	"bumblebee":   "bumblebee",
+	"darkgate":    "darkgate",
+	"pikabot":     "pikabot",
+	"latrodectus": "latrodectus",
+	// Credential brute-force / stuffing / password-spray (-> "tool").
+	"openbullet":   "openbullet",
+	"sentrymba":    "sentry-mba",
+	"snipr":        "snipr",
+	"silverbullet": "silverbullet",
+	"blackbullet":  "blackbullet",
+	"cr3dov3r":     "cr3dov3r",
+	"credmaster":   "credmaster",
+	"spray365":     "spray365",
+	"msolspray":    "msolspray",
+	"go365":        "go365",
+	"ruler":        "ruler",
+	"mailsniper":   "mailsniper",
+	"fireprox":     "fireprox",
+	"omnispray":    "omnispray",
+	"smartbrute":   "smartbrute",
+	"legba":        "legba",
+	"cerbrutus":    "cerbrutus",
+	// Web / API / injection vulnerability scanners (-> "vuln-scanner").
+	"scan4all":          "scan4all",
+	"dirmap":            "dirmap",
+	"uniscan":           "uniscan",
+	"webpwn3r":          "webpwn3r",
+	"vulscan":           "vulscan",
+	"jwtxploiter":       "jwtxploiter",
+	"graphql-path-enum": "graphql-path-enum",
+	"batchql":           "batchql",
+	"dsss":              "dsss",
+	"sqliv":             "sqliv",
+	// Recon / endpoint-discovery / secret-scraper tooling (-> "tool").
+	"jsfinder":     "jsfinder",
+	"spyhunt":      "spyhunt",
+	"reconcobra":   "reconcobra",
+	"sitedorks":    "sitedorks",
+	"tugarecon":    "tugarecon",
+	"shhgit":       "shhgit",
+	"gitrob":       "gitrob",
+	"heritrix":     "heritrix",
+	"nutch":        "nutch",
+	"webcopilot":   "webcopilot",
+	"urlhunter":    "urlhunter",
+	"porch-pirate": "porch-pirate",
+	"swaggerhole":  "swaggerhole",
+	"apkhunt":      "apkhunt",
+	"githound":     "githound",
 }
 
 // pathSignatures maps a request-path substring to a tool/probe — used
@@ -1278,6 +1344,51 @@ var sshClientSignatures = []sshSig{
 	{"smartftp", "smartftp-ssh"},
 	{"xshell", "xshell"},
 	{"securecrt", "securecrt"},
+	// Batch: 40 more SSH client/stack banners — SSH libraries across languages,
+	// enterprise/MFT SSH servers & clients, PAM/zero-trust bastions (whose
+	// proxy presents its own client banner to the backend), network-device SSH
+	// stacks, and SSH-specific brute/recon attack tools. Substring-matched on
+	// the cleartext SSH-2.0 identification string.
+	{"j2ssh", "j2ssh"},
+	{"chilkat", "chilkat-ssh"},
+	{"ipworks", "ipworks-ssh"},
+	{"tectia", "tectia-ssh"},
+	{"f-secure", "f-secure-ssh"},
+	{"pkix", "pkix-ssh"},
+	{"-hpn", "hpn-ssh"},
+	{"redssh", "redssh"},
+	{"sharpssh", "sharpssh"},
+	{"crushftp", "crushftp"},
+	{"goanywhere", "goanywhere-ssh"},
+	{"globalscape", "globalscape-ssh"},
+	{"completeftp", "completeftp"},
+	{"titanftp", "titanftp"},
+	{"serv-u", "serv-u"},
+	{"wingftp", "wingftp"},
+	{"filezilla", "filezilla-ssh"},
+	{"termius", "termius"},
+	{"royalts", "royalts"},
+	{"devolutions", "devolutions"},
+	{"bitvise", "bitvise"},
+	{"mobaxterm", "mobaxterm"},
+	{"teleport", "teleport-ssh"},
+	{"warpgate", "warpgate"},
+	{"sshpiper", "sshpiper"},
+	{"wallix", "wallix"},
+	{"cyberark", "cyberark-ssh"},
+	{"scaleft", "scaleft"},
+	{"smallstep", "smallstep-ssh"},
+	{"boundary", "boundary-ssh"},
+	{"rosssh", "mikrotik-ssh"},
+	{"cisco-", "cisco-ssh"},
+	{"comware", "comware-ssh"},
+	{"huawei", "huawei-ssh"},
+	{"netscreen", "netscreen-ssh"},
+	{"ncrack", "ncrack"},
+	{"sshprank", "sshprank"},
+	{"ssh-snake", "ssh-snake"},
+	{"crassh", "crassh"},
+	{"ssh-auditor", "ssh-auditor"},
 	{"go", "go-ssh"}, // matched specially: exactly SSH-2.0-Go
 }
 
@@ -1307,6 +1418,58 @@ func IdentifySSH(clientID string) []string {
 			if strings.Contains(id, s.needle) {
 				tools = appendUnique(tools, s.tool)
 			}
+		}
+	}
+	return tools
+}
+
+type dnsToolSig struct{ needle, tool string }
+
+// dnsToolSignatures fingerprints the tool / out-of-band-interaction service /
+// tunnel behind a DNS query from the QNAME alone: BIND server-info recon
+// probes (version.bind & friends), OOB-interaction callback domains that
+// SSRF/RCE/log4shell exploits beacon to (Burp Collaborator, interactsh OAST,
+// dnslog.cn, ceye.io, Canarytokens), public DNS-rebinding services, and
+// DNS-tunnel/C2 tool markers. The QNAME is attacker-controlled, so this is a
+// medium-confidence signal — the name reveals intent, not a crypto match.
+var dnsToolSignatures = []dnsToolSig{
+	// BIND / server-info recon (CHAOS-class lookups).
+	{"version.bind", "fpdns"},
+	{"version.server", "fpdns"},
+	{"hostname.bind", "dns-recon-probe"},
+	{"id.server", "dns-recon-probe"},
+	{"authors.bind", "dns-recon-probe"},
+	// Out-of-band interaction / SSRF-RCE callback services.
+	{"burpcollaborator", "burp-collaborator"},
+	{"oast.fun", "interactsh"},
+	{"oast.site", "interactsh"},
+	{"oast.online", "interactsh"},
+	{"interact.sh", "interactsh"},
+	{"dnslog.cn", "dnslog"},
+	{"ceye.io", "ceye"},
+	{"canarytokens.com", "canarytoken"},
+	// Public DNS-rebinding services.
+	{"nip.io", "dns-rebind-service"},
+	{"sslip.io", "dns-rebind-service"},
+	{"xip.io", "dns-rebind-service"},
+	{"1u.ms", "dns-rebind-service"},
+	// DNS tunneling / C2 tools.
+	{"dnscat", "dnscat2"},
+	{"dns2tcp", "dns2tcp"},
+	{"tcpoverdns", "tcp-over-dns"},
+}
+
+// IdentifyDNS maps a DNS QNAME to known DNS recon / tunnel / OOB-interaction
+// tools and services. Returns the matched tool names (empty when none).
+func IdentifyDNS(qname string) []string {
+	name := strings.ToLower(strings.TrimSpace(qname))
+	if name == "" {
+		return nil
+	}
+	var tools []string
+	for _, s := range dnsToolSignatures {
+		if strings.Contains(name, s.needle) {
+			tools = appendUnique(tools, s.tool)
 		}
 	}
 	return tools
