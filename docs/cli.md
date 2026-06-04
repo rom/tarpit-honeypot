@@ -501,6 +501,31 @@ field mappings.
 
 ---
 
+## `export-creds`
+
+Export the credentials the sensor captured — the same set the web UI's
+**captures** page shows (login user/password pairs, SSH `auth_attempts`
+including public keys, tokens, API keys, SNMP communities, cookies, Kerberos
+pre-auth tickets, honeytokens) — reconstructed from the event store.
+
+```
+tarpit-honeypot export-creds -c cfg.yaml                                # all, JSON
+tarpit-honeypot export-creds -c cfg.yaml --kind password --format csv
+tarpit-honeypot export-creds -c cfg.yaml --kind token,api-key --format yaml
+tarpit-honeypot export-creds -c cfg.yaml --since 24h --format txt
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
+| `--data-dir <dir>` | — | Operate on this directory directly (skips loading the config). |
+| `--since <dur>` | `720h` (30d) | Only events newer than this. |
+| `--kind <k1,k2>` | — (all) | Comma-separated credential kinds to include (e.g. `password`, `token`, `ssh-pubkey`, `api-key`, `snmp-community`, `kerberos-ticket`, `honeytoken`). |
+| `--format <fmt>` | `json` | `json` \| `xml` \| `yaml` \| `csv` \| `txt`. |
+| `--dedup` | on | Collapse identical kind/user/secret/service rows. |
+
+---
+
 ## `rotate-db`
 
 Write a compressed, point-in-time copy of the event database to an archive, then

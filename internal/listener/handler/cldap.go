@@ -41,6 +41,17 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 		// rootDSE/netlogon reply) and high-signal DC reconnaissance.
 		flagAnomaly(&res, "cldap-netlogon-probe")
 		flagAnomaly(&res, "amplification-probe")
+		// CVE-2026-41089: a crafted CLDAP Netlogon request with an oversized
+		// (130+ char) username overflows a 528-byte stack buffer in LSASS
+		// (NetpLogonPutUnicodeString byte/WCHAR size confusion) → DC DoS / RCE.
+		// The PoC fills the field with a long run of 'A's; flag any abnormally
+		// long single-byte run in the datagram (legit CLDAP pings are tiny).
+		if run := longestByteRun(payload); run >= 130 {
+			flagAnomaly(&res, "cldap-netlogon-overflow")
+			res.Meta["cldap_overflow_run"] = run
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-41089")
+			flagAnomaly(&res, "cve:CVE-2026-41089")
+		}
 		// Reply searchResDone (resultCode 0 = success)
 		reply := buildLDAPSearchResDone(mid)
 		if _, err := pc.WriteTo(reply, src); err != nil {

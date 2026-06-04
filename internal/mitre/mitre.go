@@ -394,6 +394,10 @@ var anomalyTags = map[string]Tag{
 	"c2-framework": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
 	// Cobalt Strike default checksum8 beacon-staging URI.
 	"cobaltstrike-stager": {Techniques: []string{"T1105", "T1071.001"}, Tactics: []string{"command-and-control"}},
+	// Siemens SIPROTEC EN100 DoS packet (CVE-2015-5374) + CLDAP Netlogon
+	// buffer-overflow (CVE-2026-41089) — both crash the target service.
+	"siprotec-en100-dos":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"cldap-netlogon-overflow": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	// A headless-browser automation driver (Selenium / Puppeteer / headless
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},

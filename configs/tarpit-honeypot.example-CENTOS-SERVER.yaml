@@ -248,6 +248,18 @@ url_canaries:
   - { id: wp-config, path: /wp-config.php.bak,      severity: critical }
   - { id: env-file,  path: /.env,                   severity: critical }
 
+# Risk scoring: every event adds severity/category-weighted points to its
+# source; the decaying score crosses thresholds to emit risk:elevated /
+# risk:high / risk:critical, and the top scorers surface in the web UI. (Active
+# blocking stays OFF — a honeypot's value is observation; flip risk.block.enabled
+# on only if you want the nftables drop backstop.)
+risk:
+  enabled: true
+  half_life: 1h        # an idle source's score halves over this period
+  elevated: 30
+  high: 75
+  critical: 150
+
 # Answer ICMP echo (ping) — and ARP — for the decoy host so recon sees it alive.
 # Linux + CAP_NET_RAW (granted by scripts/install.sh). Set `interface` to the
 # NIC the traffic arrives on and the host `ip` to this box's (or a routed

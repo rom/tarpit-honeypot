@@ -79,7 +79,7 @@ var udpHandlers = map[string]bool{
 	"dtls": true, "quic": true,
 	"netflow": true, "sflow": true,
 	"statsd": true, "tristation": true,
-	"ge_egd": true, "bsap": true, "lontalk": true,
+	"ge_egd": true, "bsap": true, "lontalk": true, "siprotec_en100": true,
 	"wsdiscovery": true, "memcached_udp": true, "natpmp": true,
 	"ubiquiti": true, "wireguard": true, "openvpn_udp": true,
 	"l2tp": true, "rip": true, "steam": true, "sentinel_hasp": true,

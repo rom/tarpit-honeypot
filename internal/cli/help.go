@@ -419,6 +419,33 @@ EXAMPLES
     tarpit-honeypot reset-db --data-dir /var/lib/... --all --yes
 `,
 
+	"export-creds": `export-creds — export captured credentials from the event store
+
+SYNOPSIS
+    tarpit-honeypot export-creds [-c <config> | --data-dir <dir>]
+                                 [--since <dur>] [--kind k1,k2] [--format F]
+
+DESCRIPTION
+    Reconstructs every credential the sensor captured — login user/password
+    pairs, SSH auth attempts (password + public-key), tokens, API keys, SNMP
+    communities, cookies, Kerberos pre-auth tickets, honeytokens — using the
+    same extraction the web UI's captures page uses, then prints them.
+
+FLAGS
+    --since <dur>   only events newer than this (default 720h = 30d)
+    --kind k1,k2    comma-separated kinds to include (e.g. password,token,
+                    ssh-pubkey,api-key,snmp-community,kerberos-ticket); empty=all
+    --format F      json (default) | xml | yaml | csv | txt
+    --dedup         collapse identical kind/user/secret/service rows (default on)
+    --data-dir D    operate on D directly (skip loading the config)
+
+EXAMPLES
+    tarpit-honeypot export-creds -c cfg.yaml                       # all, JSON
+    tarpit-honeypot export-creds -c cfg.yaml --kind password --format csv
+    tarpit-honeypot export-creds -c cfg.yaml --kind token,api-key --format yaml
+    tarpit-honeypot export-creds -c cfg.yaml --since 24h --format txt
+`,
+
 	"rotate-db": `rotate-db — archive (gzip) the event database, optionally start fresh
 
 SYNOPSIS
