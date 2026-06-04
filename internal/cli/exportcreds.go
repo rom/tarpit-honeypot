@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"encoding/xml"
 	"flag"
 	"fmt"
@@ -33,6 +35,7 @@ func cmdExportCreds(args []string) error {
 	dedup := fs.Bool("dedup", true, "remove duplicates: collapse identical kind/user/secret/service rows")
 	sortBy := fs.String("sort", "time", "sort by: time | source | user | secret | service | kind")
 	reverse := fs.Bool("reverse", false, "reverse the sort order")
+	exclude := fs.String("exclude", "", "comma-separated columns to omit from the output: timestamp, type, ip, service")
 	if err := parseOrUsage(fs, args); err != nil {
 		if err == errHelp {
 			return nil
@@ -43,6 +46,10 @@ func cmdExportCreds(args []string) error {
 	case "json", "xml", "yaml", "csv", "txt":
 	default:
 		return fmt.Errorf("--format must be json, xml, yaml, csv, or txt (got %q)", *format)
+	}
+	excluded, err := parseExclude(*exclude)
+	if err != nil {
+		return err
 	}
 	switch *sortBy {
 	case "time", "source", "user", "secret", "service", "kind":
@@ -102,7 +109,159 @@ func cmdExportCreds(args []string) error {
 	}
 	sortCreds(creds, *sortBy, *reverse)
 
-	return writeCreds(*format, creds)
+	if len(excluded) == 0 {
+		return writeCreds(*format, creds) // default: unchanged behavior
+	}
+	return writeCredsCols(*format, creds, includedCols(excluded))
+}
+
+// credColumns is the canonical ordered output column set. user + secret are the
+// credential itself and are never excludable; the rest can be omitted.
+var credColumns = []string{"time", "source", "kind", "user", "secret", "service"}
+
+// excludeAliases maps the operator-facing --exclude names to canonical columns.
+var excludeAliases = map[string]string{
+	"timestamp": "time", "time": "time", "date": "time",
+	"type": "kind", "kind": "kind",
+	"ip": "source", "ips": "source", "ip-address": "source", "ipaddress": "source", "source": "source",
+	"service": "service", "svc": "service",
+}
+
+// parseExclude turns the --exclude list into the set of canonical columns to
+// omit. user / secret cannot be excluded (they are the captured credential).
+func parseExclude(s string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, e := range strings.Split(s, ",") {
+		e = strings.TrimSpace(strings.ToLower(e))
+		if e == "" {
+			continue
+		}
+		col, ok := excludeAliases[e]
+		if !ok {
+			return nil, fmt.Errorf("--exclude: unknown field %q (allowed: timestamp, type, ip, service)", e)
+		}
+		out[col] = true
+	}
+	return out, nil
+}
+
+// includedCols returns credColumns minus the excluded set, preserving order.
+func includedCols(excluded map[string]bool) []string {
+	cols := make([]string, 0, len(credColumns))
+	for _, c := range credColumns {
+		if !excluded[c] {
+			cols = append(cols, c)
+		}
+	}
+	return cols
+}
+
+// credValue returns the string value of a credential column.
+func credValue(c ui.Cred, col string) string {
+	switch col {
+	case "time":
+		return c.Time
+	case "source":
+		return c.Source
+	case "kind":
+		return c.Kind
+	case "user":
+		return c.User
+	case "secret":
+		return c.Secret
+	case "service":
+		return c.Service
+	}
+	return ""
+}
+
+// writeCredsCols emits the credentials projected onto cols (the column subset
+// left after --exclude), honoring the requested format.
+func writeCredsCols(format string, creds []ui.Cred, cols []string) error {
+	switch format {
+	case "csv":
+		w := csv.NewWriter(os.Stdout)
+		_ = w.Write(cols)
+		for _, c := range creds {
+			row := make([]string, len(cols))
+			for i, col := range cols {
+				row[i] = credValue(c, col)
+			}
+			_ = w.Write(row)
+		}
+		w.Flush()
+		return w.Error()
+	case "txt":
+		for _, c := range creds {
+			parts := make([]string, len(cols))
+			for i, col := range cols {
+				if v := credValue(c, col); v != "" {
+					parts[i] = v
+				} else {
+					parts[i] = "-"
+				}
+			}
+			fmt.Println(strings.Join(parts, "\t"))
+		}
+		return nil
+	case "json":
+		var b bytes.Buffer
+		b.WriteByte('[')
+		for i, c := range creds {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString("\n  {")
+			for j, col := range cols {
+				if j > 0 {
+					b.WriteString(", ")
+				}
+				kb, _ := json.Marshal(col)
+				vb, _ := json.Marshal(credValue(c, col))
+				b.Write(kb)
+				b.WriteString(": ")
+				b.Write(vb)
+			}
+			b.WriteByte('}')
+		}
+		if len(creds) > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString("]\n")
+		_, err := os.Stdout.Write(b.Bytes())
+		return err
+	case "yaml":
+		rows := make([]map[string]string, 0, len(creds))
+		for _, c := range creds {
+			m := make(map[string]string, len(cols))
+			for _, col := range cols {
+				m[col] = credValue(c, col)
+			}
+			rows = append(rows, m)
+		}
+		b, err := yaml.Marshal(rows)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(b)
+		return err
+	case "xml":
+		var b bytes.Buffer
+		b.WriteString(xml.Header[:len(xml.Header)-1] + "\n<credentials>\n")
+		for _, c := range creds {
+			b.WriteString("  <credential>\n")
+			for _, col := range cols {
+				var esc bytes.Buffer
+				_ = xml.EscapeText(&esc, []byte(credValue(c, col)))
+				b.WriteString("    <" + col + ">" + esc.String() + "</" + col + ">\n")
+			}
+			b.WriteString("  </credential>\n")
+		}
+		b.WriteString("</credentials>\n")
+		_, err := os.Stdout.Write(b.Bytes())
+		return err
+	}
+	return fmt.Errorf("unknown format %q", format)
 }
 
 // sortCreds orders the credential rows by the chosen field. "time" is newest-

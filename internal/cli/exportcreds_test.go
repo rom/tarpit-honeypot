@@ -113,3 +113,60 @@ func TestSortCreds(t *testing.T) {
 		t.Errorf("reverse user sort wrong: %v", []string{c[0].User, c[1].User, c[2].User})
 	}
 }
+
+func TestParseExclude(t *testing.T) {
+	ex, err := parseExclude("timestamp, type ,ip,service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, col := range []string{"time", "kind", "source", "service"} {
+		if !ex[col] {
+			t.Errorf("expected %q excluded; got %v", col, ex)
+		}
+	}
+	if cols := includedCols(ex); strings.Join(cols, ",") != "user,secret" {
+		t.Errorf("includedCols = %v; want [user secret]", cols)
+	}
+	if _, err := parseExclude("nope"); err == nil {
+		t.Error("unknown exclude field should error")
+	}
+}
+
+func TestExportCredsExclude(t *testing.T) {
+	dir := t.TempDir()
+	seedCredStore(t, dir)
+
+	// CSV excluding timestamp + ip: header has no time/source, and the IPs are
+	// gone from the body; user/secret remain.
+	out := mustExport(t, "--data-dir", dir, "--format", "csv", "--exclude", "timestamp,ip")
+	header := strings.SplitN(out, "\n", 2)[0]
+	if strings.Contains(header, "time") || strings.Contains(header, "source") {
+		t.Errorf("csv header should omit time/source: %q", header)
+	}
+	if !strings.Contains(header, "kind") || !strings.Contains(header, "user") || !strings.Contains(header, "secret") {
+		t.Errorf("csv header missing kept columns: %q", header)
+	}
+	for _, ip := range []string{"1.2.3.4", "5.6.7.8", "9.9.9.9"} {
+		if strings.Contains(out, ip) {
+			t.Errorf("excluded IP %q leaked into output: %q", ip, out)
+		}
+	}
+	if !strings.Contains(out, "admin") || !strings.Contains(out, "hunter2") {
+		t.Errorf("credential values dropped: %q", out)
+	}
+
+	// JSON excluding type (kind): no "kind" key, secrets still present.
+	out = mustExport(t, "--data-dir", dir, "--format", "json", "--exclude", "type")
+	if strings.Contains(out, `"kind"`) {
+		t.Errorf("json should omit the kind field: %q", out)
+	}
+	if !strings.Contains(out, "toor") {
+		t.Errorf("json dropped secrets: %q", out)
+	}
+
+	// txt excluding service.
+	out = mustExport(t, "--data-dir", dir, "--format", "txt", "--exclude", "service")
+	if !strings.Contains(out, "admin") {
+		t.Errorf("txt dropped data: %q", out)
+	}
+}
