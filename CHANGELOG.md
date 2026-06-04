@@ -10,6 +10,20 @@ documented in `docs/`).
 
 ### Added
 
+- **HTTP/2 (h2c) capture with real HPACK + multiplexed-stream reconstruction**
+  — the `http` handler now detects the HTTP/2 cleartext (prior-knowledge)
+  preface and switches to a real HTTP/2 path: it answers SETTINGS, decodes
+  **HPACK** against a connection-scoped dynamic table (via
+  `golang.org/x/net/http2/hpack`), and reassembles each stream's HEADERS +
+  CONTINUATION + DATA frames into a full request — capturing the real
+  `:method` / `:path` / `:authority` / headers across **multiplexed streams**
+  (`http2_requests`), not just a scanned literal. The first request is promoted
+  to the usual flat meta (`request_line` / `http_method` / `http_uri` / `host`)
+  and drives tool fingerprinting. Detects HTTP/2-specific abuse:
+  **Rapid Reset** (`http2-rapid-reset`, CVE-2023-44487) and **CONTINUATION
+  flood** (`http2-continuation-flood`, CVE-2024-27316). Strips HEADERS
+  padding/priority, answers PING/SETTINGS, replies a minimal 200 per stream,
+  then GOAWAY. Capture only.
 - **SMB2 + NTLMSSP NetNTLMv2 capture** — the `smb` handler no longer rejects
   SMB2; it now negotiates SMB 2.0.2 for real and drives the **NTLMSSP
   SESSION_SETUP** exchange to completion (NEGOTIATE response with a SPNEGO blob
