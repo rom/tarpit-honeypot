@@ -100,6 +100,7 @@ loop:
 		if loggedIn && cmd != "" {
 			commands = append(commands, strings.TrimSpace(line))
 		}
+		flagFTPGlobDoS(&res, cmd, arg)
 		switch cmd {
 		case "USER":
 			user = arg

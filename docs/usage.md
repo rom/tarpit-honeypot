@@ -106,6 +106,31 @@ When a TCP listener has `capture: true`, every accepted connection is written as
 wireshark /tmp/ssh.pcap
 ```
 
+### Exporting captured credentials
+
+Every login pair, token, API key, SNMP community, cookie, Kerberos ticket,
+SSH `auth_attempts` entry (passwords **and** public keys) and tripped
+honeytoken the sensor harvests can be dumped with `export-creds` — for feeding
+a password-reuse audit, a wordlist of what attackers actually try against you,
+or a credential-stuffing watchlist:
+
+```bash
+# Everything captured in the last 30 days (default), as JSON
+./bin/tarpit-honeypot export-creds -c cfg.yaml > creds.json
+
+# Just SSH public keys and passwords, last 7 days, as CSV
+./bin/tarpit-honeypot export-creds -c cfg.yaml --kind ssh-pubkey,password --since 168h --format csv
+
+# Read straight from a data dir (no config needed)
+./bin/tarpit-honeypot export-creds --data-dir /var/lib/tarpit-honeypot --format txt
+```
+
+`--format` is `json` (default), `xml`, `yaml`, `csv`, or `txt`; `--kind` takes
+a comma-separated filter (e.g. `password,token,snmp-community`, empty = all
+kinds); `--dedup` (on by default) collapses identical kind/user/secret/service
+rows. The web **captures** page shows the same data live and no longer caps the
+credential table at 300 rows — it lists every unique credential in the window.
+
 ### Inspecting the built-in catalogs (offline)
 
 These read-only subcommands dump the in-source catalogs (no config or
@@ -610,7 +635,18 @@ docker container create — a platform takeover).
   `dcerpc-srvsvc-enum`, `dcerpc-svcctl-access`, `dcerpc-winreg-access`,
   `dcerpc-dcsync`, `dcerpc-netlogon-access`
 - FTP (post-auth): `ftp-upload-attempt`, `ftp-download-attempt`,
-  `ftp-site-command`, `ftp-bounce-scan`, `ftp-delete-attempt`, `ftp-listing`
+  `ftp-site-command`, `ftp-bounce-scan`, `ftp-delete-attempt`, `ftp-listing`;
+  `ftp-glob-dos` (the vsftpd 2.3.2 recursive-glob CPU-exhaustion DoS,
+  Metasploit `dos/ftp/vsftpd_232` — an over-long, glob-metacharacter-stuffed
+  path argument)
+- Mail STARTTLS: `pop3-starttls` / `imap-starttls` / `smtp-starttls` (the
+  channel upgrade; `starttls_rejected` meta when no cert is configured), plus
+  `cve:CVE-2011-1430` on a STARTTLS command-injection attempt
+- DoS / overflow (capture-only, never replied to so the sensor can't amplify):
+  `cldap-netlogon-overflow` (`cve:CVE-2026-41089`, a CLDAP/UDP-389 Netlogon
+  request with a 130+ byte username — the LSASS stack-overflow shape) and the
+  Siemens SIPROTEC 4 / EN100 UDP/50000 `siprotec_en100` handler recognizing
+  the CVE-2015-5374 DoS datagram
 - Data stores: `memcached-stats-probe`, `memcached-write-attempt`,
   `memcached-flush`; `unknown-protocol` (the `auto` catch-all)
 - All shell-* markers listed in §10
