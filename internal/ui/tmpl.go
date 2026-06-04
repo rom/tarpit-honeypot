@@ -1137,6 +1137,17 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts (ZIP)</a> ·
   <a href="/api/profiles/{{ .IP }}">JSON</a></p>
 
+{{ if not .Origin.Empty }}<h2>origin &amp; infrastructure</h2>
+<table>
+  {{ if .Origin.RDNS }}<tr><th>reverse DNS</th><td><code>{{ .Origin.RDNS }}</code></td></tr>{{ end }}
+  {{ if or .Origin.City .Origin.CountryName .Origin.Country }}<tr><th>location</th><td>{{ if .Origin.City }}{{ .Origin.City }}, {{ end }}{{ if .Origin.CountryName }}{{ .Origin.CountryName }}{{ else }}{{ .Origin.Country }}{{ end }} {{ if .Origin.Country }}{{ countryFlag .Origin.Country }} <a class="tag" href="/events?source={{ .IP }}&amp;country={{ .Origin.Country }}">{{ .Origin.Country }}</a>{{ end }}</td></tr>{{ end }}
+  {{ if .Origin.ASN }}<tr><th>ASN</th><td><a class="tag" href="/events?source={{ .IP }}&amp;asn={{ .Origin.ASN }}">AS{{ .Origin.ASN }}</a> {{ .Origin.ASNOrg }}</td></tr>{{ end }}
+  {{ if or .Origin.NetClass .Origin.CloudProvider }}<tr><th>network</th><td>{{ if .Origin.CloudProvider }}<span class="tag warn">cloud: {{ .Origin.CloudProvider }}</span> {{ end }}{{ if .Origin.NetClass }}<span class="tag">{{ .Origin.NetClass }}</span>{{ end }}</td></tr>{{ end }}
+  {{ if .Origin.KnownScanner }}<tr><th>known scanner</th><td><span class="tag">{{ .Origin.KnownScanner }}</span> <span class="note">internet-wide scanning operator — likely background noise</span></td></tr>{{ end }}
+  {{ if .Origin.OSGuess }}<tr><th>OS guess</th><td><span class="tag">{{ .Origin.OSGuess }}</span> <span class="note">passive TTL/stack fingerprint</span></td></tr>{{ end }}
+  {{ if .Origin.MACVendor }}<tr><th>MAC vendor</th><td>{{ .Origin.MACVendor }}</td></tr>{{ end }}
+</table>{{ end }}
+
 <h2>events by severity</h2>
 <table><tr><th>severity</th><th>count</th></tr>
 {{ range $k, $v := .BySeverity }}<tr><td class="sev-{{ $k }}">{{ $k }}</td><td>{{ $v }}</td></tr>{{ end }}
@@ -1148,6 +1159,19 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a></td></tr>{{ end }}
 </table>
 <p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
+
+{{ if not .Proto.Empty }}<h2>protocol intelligence</h2>
+<table>
+  {{ if .Proto.TLSVersions }}<tr><th>TLS versions</th><td>{{ range .Proto.TLSVersions }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.SSHKex }}<tr><th>SSH KEX</th><td><span class="tag">{{ .Proto.SSHKex }}</span> {{ if .Proto.SSHKexWeak }}<span class="tag bad">weak primitive offered</span>{{ end }}</td></tr>{{ end }}
+  {{ if or .Proto.HTTP2 .Proto.HTTP3 }}<tr><th>HTTP</th><td>{{ if .Proto.HTTP2 }}<span class="tag">HTTP/2 (h2c)</span> {{ end }}{{ if .Proto.HTTP3 }}<span class="tag">HTTP/3 (QUIC)</span>{{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICSNI }}<tr><th>QUIC SNI</th><td>{{ range .Proto.QUICSNI }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICALPN }}<tr><th>QUIC ALPN</th><td>{{ range .Proto.QUICALPN }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>
+<p class="note">Negotiated transport-stack details captured from this source (beyond the raw fingerprints above).</p>{{ end }}
+
+{{ if .OPCItems }}<h2>OPC-DA / ICS items probed</h2><div>{{ range .OPCItems }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
+<p class="note">OPC-DA item IDs / group names this source reached for over DCOM — the ICS tags an attacker tried to read or write.</p>{{ end }}
 
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}

@@ -51,6 +51,63 @@ func TestBuildProfileForensicObservables(t *testing.T) {
 	}
 }
 
+// TestBuildProfileOriginAndProtoIntel verifies the dossier surfaces the
+// enrichment (geo/asn/rdns/net-class/cloud/os-guess/scanner) and protocol-stack
+// intelligence (TLS versions, negotiated SSH KEX, HTTP/2-3, QUIC) that the
+// sensor already attaches to events but previously only lived in per-event meta.
+func TestBuildProfileOriginAndProtoIntel(t *testing.T) {
+	now := time.Now()
+	evs := []*event.Event{
+		{
+			ID: "1", Time: now, RuleID: "listener:https", Severity: event.SeverityMedium,
+			Handler: "https", Source: event.Endpoint{IP: "203.0.113.9"}, Dest: event.Endpoint{Port: 443},
+			Meta: map[string]any{
+				"geo_country": "DE", "geo_country_name": "Germany", "geo_city": "Frankfurt",
+				"geo_lat": 50.11, "geo_lon": 8.68,
+				"asn": float64(14061), "asn_org": "DigitalOcean LLC", // float64: store JSON round-trip
+				"rdns": "scanner.example.net", "net_class": "hosting",
+				"cloud_provider": "DigitalOcean", "os_guess": "Linux 5.x",
+				"known_scanner": "Censys", "mac_vendor": "Dell Inc.",
+				"tls_version": "TLS 1.3", "ssh_kex_negotiated": "curve25519-sha256",
+			},
+		},
+		{
+			ID: "2", Time: now.Add(time.Minute), RuleID: "listener:quic", Severity: event.SeverityLow,
+			Handler: "quic", Source: event.Endpoint{IP: "203.0.113.9"},
+			Meta: map[string]any{
+				"http3": true, "quic_sni": "edge.target.example",
+				"quic_alpn": []any{"h3"}, "opc_strings": []any{"PLC1.Boiler.Pressure"},
+			},
+		},
+	}
+	p := buildProfile("203.0.113.9", evs)
+
+	if p.Origin.Country != "DE" || p.Origin.City != "Frankfurt" {
+		t.Errorf("geo not captured: %+v", p.Origin)
+	}
+	if p.Origin.ASN != 14061 || p.Origin.ASNOrg != "DigitalOcean LLC" {
+		t.Errorf("asn not captured: %+v", p.Origin)
+	}
+	if p.Origin.RDNS != "scanner.example.net" || p.Origin.NetClass != "hosting" {
+		t.Errorf("rdns/net_class not captured: %+v", p.Origin)
+	}
+	if p.Origin.CloudProvider != "DigitalOcean" || p.Origin.KnownScanner != "Censys" || p.Origin.OSGuess != "Linux 5.x" {
+		t.Errorf("cloud/scanner/os not captured: %+v", p.Origin)
+	}
+	if !hasStr(p.Proto.TLSVersions, "TLS 1.3") || p.Proto.SSHKex != "curve25519-sha256" {
+		t.Errorf("proto intel not captured: %+v", p.Proto)
+	}
+	if !p.Proto.HTTP3 || !hasStr(p.Proto.QUICSNI, "edge.target.example") || !hasStr(p.Proto.QUICALPN, "h3") {
+		t.Errorf("quic/http3 not captured: %+v", p.Proto)
+	}
+	if !hasStr(p.OPCItems, "PLC1.Boiler.Pressure") {
+		t.Errorf("opc items not captured: %v", p.OPCItems)
+	}
+	if p.Origin.Empty() || p.Proto.Empty() {
+		t.Error("Empty() should be false when fields are populated")
+	}
+}
+
 // TestBuildProfileNewSignals checks the SSH keys, SMTP senders, and
 // web-attack-class surfacing added in the second depth pass.
 func TestBuildProfileNewSignals(t *testing.T) {
