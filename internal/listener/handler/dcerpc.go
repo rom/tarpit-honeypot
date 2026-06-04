@@ -63,12 +63,14 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		"call_id": callID,
 	}
 
+	var boundUUID string
 	if ptype == 0x0B && len(body) >= 8 {
 		// Skip past max_xmit/max_recv/assoc_group/n_context_elem/reserved/reserved2 = 12 bytes
 		// into the context list. Layout from offset 8: ctx_id(2) n_xfer(1) reserved(1) abstract_uuid(16) abstract_ver(4)
 		ctxStart := 8 // body offsets after hdr
 		if len(body) >= ctxStart+24 {
 			u := uuidString(body[ctxStart+4 : ctxStart+20])
+			boundUUID = u
 			res.Meta["bind_abstract_uuid"] = u
 			if name := dcerpcInterfaceName(u); name != "" {
 				res.Meta["dcerpc_interface"] = name
@@ -117,6 +119,14 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = "dcerpc bind_ack"
+
+	// OPC-DA call layer: once an OPC interface is bound, service the
+	// subsequent Request PDUs — decode the item IDs / group names the
+	// attacker reaches for and marshal believable NDR responses
+	// (OPCSERVERSTATUS, AddGroup, …). Capture-only; see dcerpc_opc.go.
+	if isOPCInterface(boundUUID) {
+		handleDCERPCRequests(conn, boundUUID, cfg.ReadTimeout, &res)
+	}
 	// The endpoint mapper advertises the interfaces registered on this
 	// host. Always surface the well-known set — including OPCEnum, the
 	// OPC-DA (classic, DCOM) discovery interface — so a scanner walking
@@ -152,6 +162,7 @@ var dcerpcInterfaces = map[string]string{
 	"39c13a4d-011e-11d0-9675-0020afd8adb3": "IOPCServer",
 	"39c13a4f-011e-11d0-9675-0020afd8adb3": "IOPCBrowse",
 	"39c13a50-011e-11d0-9675-0020afd8adb3": "IOPCItemMgt",
+	"39c13a52-011e-11d0-9675-0020afd8adb3": "IOPCSyncIO",
 	// DCOM core (activation / object resolution).
 	"e1af8308-5d1f-11c9-91a4-08002b14a0fa": "epmapper",
 	"99fcfec4-5260-101b-bbcb-00aa0021347a": "IOXIDResolver",
@@ -200,6 +211,7 @@ var opcInterfaces = map[string]bool{
 	"39c13a4d-011e-11d0-9675-0020afd8adb3": true, // IOPCServer
 	"39c13a4f-011e-11d0-9675-0020afd8adb3": true, // IOPCBrowse
 	"39c13a50-011e-11d0-9675-0020afd8adb3": true, // IOPCItemMgt
+	"39c13a52-011e-11d0-9675-0020afd8adb3": true, // IOPCSyncIO
 }
 
 // opcServerProgIDs are believable OPC-DA server ProgIDs an OPCEnum

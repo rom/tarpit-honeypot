@@ -442,9 +442,20 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   retransmission, congestion control, or out-of-order reassembly. Deep
   multi-segment protocol interaction still wants a real socket. See
   [`tcp-stack.md`](tcp-stack.md).
-- **OPC-DA (classic, DCOM/MSRPC) — full call marshaling.** The `dcerpc`
-  handler now recognizes the OPC-DA interface family (OPCEnum / IOPCServer*)
-  on bind, flags `ics-opc-da-probe`, and advertises OPCEnum + OPC-DA server
-  ProgIDs via the endpoint mapper. The full DCOM IOPCServer / IOPCItemMgt
-  call sequence (reading actual tag values) is still out of scope.
+- **OPC-DA (classic, DCOM/MSRPC) — call marshaling.** The `dcerpc`
+  handler recognizes the OPC-DA interface family (OPCEnum / IOPCServer* /
+  IOPCItemMgt / IOPCSyncIO) on bind, flags `ics-opc-da-probe`, and advertises
+  OPCEnum + OPC-DA server ProgIDs via the endpoint mapper. It now also
+  **services the post-bind call sequence**: it parses Request PDUs, decodes the
+  NDR-marshaled arguments (the OPC item IDs / group names an attacker reaches
+  for — captured as `opc_strings`, flagged `ics-opc-da-item-access`), and
+  marshals believable NDR responses (a full running `OPCSERVERSTATUS` for
+  `GetStatus`, server-group handles for `AddGroup`, `S_OK` stubs for
+  `AddItems`/`Read`, faults for unknown opnums). What remains out of scope is
+  **full DCOM activation** — IOXIDResolver / ISystemActivator OXID resolution
+  that hands back a real interface pointer — so a client that insists on
+  activating before calling won't reach the interface; scanners/tools that
+  bind the interface directly do, and every call is captured. Reading
+  *physically meaningful* live tag values (vs. structurally-valid
+  placeholders) is still out of scope.
 - **Decoy-scan attribution.** See "Open risks".

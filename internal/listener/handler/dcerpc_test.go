@@ -55,6 +55,9 @@ func runDCERPC(t *testing.T, pdu []byte) Result {
 		t.Fatalf("write pdu: %v", err)
 	}
 	_, _ = cli.Read(make([]byte, 512)) // drain bind_ack so Handle returns
+	// Closing unblocks the post-bind OPC request loop (no-op for interfaces
+	// that don't enter it) so Handle returns promptly.
+	_ = cli.Close()
 	select {
 	case r := <-resCh:
 		return r

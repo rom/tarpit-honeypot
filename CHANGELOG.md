@@ -10,6 +10,19 @@ documented in `docs/`).
 
 ### Added
 
+- **OPC-DA (DCOM/MSRPC) call marshaling** — the `dcerpc` handler now services
+  the OPC-DA call sequence past the bind, not just the bind itself. A new
+  little-endian **NDR codec** (alignment, uint16/32/64, conformant+varying
+  UTF-16 strings, unique pointers) parses post-bind Request PDUs, decodes the
+  NDR-marshaled arguments (the **OPC item IDs / group names** an attacker reads
+  or writes — captured in `opc_strings`, flagged `ics-opc-da-item-access`),
+  and marshals believable NDR responses: a full running `OPCSERVERSTATUS` for
+  `IOPCServer::GetStatus`, a server-group handle for `AddGroup`, `S_OK` stubs
+  for `AddItems`/`Read`, and DCE/RPC faults for unknown opnums. Each call is
+  recorded in `dcerpc_calls` and flagged `ics-opc-da-call`. Added the
+  `IOPCSyncIO` interface to the recognized set. Full DCOM activation
+  (IOXIDResolver/ISystemActivator OXID resolution) remains out of scope — see
+  `docs/design.md` §15.
 - **Turnkey fleet collector mode** — new `tarpit-honeypot collector`
   subcommand runs the node as a pure aggregator: it force-enables the
   authenticated ingest endpoint (defaulting bind `:8443` and token env
