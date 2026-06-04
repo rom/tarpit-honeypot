@@ -18,7 +18,6 @@ import (
 // encrypted-DNS, DGA, sniffer encapsulation (GRE/6in4/…), ICMP tunnels, QUIC,
 // and unknown-protocol probes — aggregated by type / source / recency.
 
-const tunnelWindow = 24 * time.Hour
 const tunnelScanMax = 20000
 
 // tunnelKinds maps an anomaly marker (or auto protocol_guess) to a friendly
@@ -35,10 +34,13 @@ var tunnelKinds = map[string]string{
 }
 
 type tunnelsView struct {
-	Since   time.Time
-	Types   []barRow
-	Sources []tunnelSource
-	Recent  []tunnelHit
+	Since      time.Time
+	RangeKey   string
+	RangeLabel string
+	RangeLinks []rangeLink
+	Types      []barRow
+	Sources    []tunnelSource
+	Recent     []tunnelHit
 }
 
 type tunnelSource struct {
@@ -126,14 +128,17 @@ func buildTunnelsView(since time.Time, evs []*event.Event) tunnelsView {
 func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	since := time.Now().Add(-tunnelWindow)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/tunnels")
+	since := time.Now().Add(-dur)
 	evs, err := s.query(ctx, store.Filter{Since: since, Limit: tunnelScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	view := buildTunnelsView(since, evs)
+	view.RangeKey, view.RangeLabel, view.RangeLinks = rkey, rlabel, rlinks
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "tunnels", buildTunnelsView(since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "tunnels", view); err != nil {
 		slog.Warn("ui: render tunnels", "err", err)
 	}
 }

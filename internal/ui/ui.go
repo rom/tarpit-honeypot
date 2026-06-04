@@ -314,6 +314,14 @@ func sourceBadges(meta map[string]any) template.HTML {
 	} else if sc := scannerTool(meta); sc != "" {
 		add("warn", "scanner:"+sc, "self-identified internet scanner", "/events?scanner="+url.QueryEscape(sc))
 	}
+	// Infrastructure origin: an authoritative cloud-provider range (most
+	// specific) else the datacenter/hosting net-class — strong "rented infra,
+	// not residential" triage signal.
+	if cp, _ := meta["cloud_provider"].(string); cp != "" {
+		add("warn", "cloud:"+cp, "cloud provider IP range ("+cp+")", "/events?cloud="+url.QueryEscape(cp))
+	} else if nc, _ := meta["net_class"].(string); nc == "hosting" {
+		add("warn", "hosting", "datacenter / hosting network (not residential)", "/events?flag=hosting")
+	}
 	if nc, _ := meta["net_class"].(string); nc == "bogon" {
 		add("warn", "bogon", "spoofed / reserved (bogon) source address", "/events?flag=bogon")
 	}
@@ -402,6 +410,15 @@ func eventHasFlag(ev *event.Event, flag string) bool {
 	case "bogon":
 		nc, _ := m["net_class"].(string)
 		return nc == "bogon"
+	case "cloud":
+		s, _ := m["cloud_provider"].(string)
+		return s != ""
+	case "hosting":
+		if s, _ := m["cloud_provider"].(string); s != "" {
+			return true
+		}
+		nc, _ := m["net_class"].(string)
+		return nc == "hosting"
 	case "scanner":
 		if s, _ := m["known_scanner"].(string); s != "" {
 			return true
@@ -769,6 +786,24 @@ func rangeLinksFor(base, active string) []rangeLink {
 
 func summaryRangeLinks(active string) []rangeLink { return rangeLinksFor("/", active) }
 
+// pageRange parses the ?range= selector for a per-page time-range switcher,
+// returning the window duration, the normalized active key (unknown -> 24h),
+// the human label, and the selector chips. Other query params on the request
+// (e.g. a /iocs ?type= filter) are preserved on the chips so switching the
+// range keeps the active filter. Shared by the tunnels / correlation / attack /
+// iocs / fleet / map pages.
+func pageRange(r *http.Request, path string) (dur time.Duration, key, label string, links []rangeLink) {
+	win := summaryRange(r.URL.Query().Get("range"))
+	q := r.URL.Query()
+	q.Del("range") // the chips set this themselves
+	q.Del("since") // legacy duration param — superseded by range
+	base := path
+	if enc := q.Encode(); enc != "" {
+		base = path + "?" + enc
+	}
+	return win.dur, win.key, win.label, rangeLinksFor(base, win.key)
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -876,8 +911,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// `Limit` rows and a genuine match further back wrongly looks empty. (ASN
 	// and country are real meta-column filters handled in the store.)
 	tool, tactic, flag, scanner := q.Get("tool"), q.Get("tactic"), q.Get("flag"), q.Get("scanner")
+	cloud := q.Get("cloud")
 	displayLimit := f.Limit
-	if tool != "" || tactic != "" || flag != "" || scanner != "" {
+	if tool != "" || tactic != "" || flag != "" || scanner != "" || cloud != "" {
 		f.Limit = searchScanMax
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -904,6 +940,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		kept := evs[:0]
 		for _, ev := range evs {
 			if eventHasScanner(ev, scanner) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if cloud != "" {
+		// Per-provider cloud-range filter (the cloud:<provider> badge links here).
+		kept := evs[:0]
+		for _, ev := range evs {
+			if cp, _ := ev.Meta["cloud_provider"].(string); strings.EqualFold(cp, cloud) {
 				kept = append(kept, ev)
 			}
 		}

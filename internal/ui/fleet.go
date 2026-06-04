@@ -25,19 +25,21 @@ type fleetFinding struct {
 }
 
 type fleetPage struct {
-	Counts   []barRow // per-detector breakdown (bars; each links to filtered events)
-	Timeline []barRow // findings-over-time (bucketed bars)
-	Findings []fleetFinding
-	Total    int
-	SinceStr string
+	Counts     []barRow // per-detector breakdown (bars; each links to filtered events)
+	Timeline   []barRow // findings-over-time (bucketed bars)
+	Findings   []fleetFinding
+	Total      int
+	RangeKey   string
+	RangeLabel string
+	RangeLinks []rangeLink
 }
 
 // handleFleet renders the cross-sensor (fleet:*) findings panel: a per-detector
 // breakdown bar chart (each bar links to the filtered event log), a
 // findings-over-time chart, and the recent findings with a compact summary.
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
-	since := fleetSince(r)
-	evs, err := s.fleetEvents(r)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/fleet")
+	evs, err := s.fleetEvents(r, dur)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -55,9 +57,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "fleet", fleetPage{
 		Counts:   detectorBars(counts),
-		Timeline: fleetTimeline(findings, since, time.Now().UTC()),
+		Timeline: fleetTimeline(findings, dur, time.Now().UTC()),
 		Findings: findings, Total: len(findings),
-		SinceStr: r.URL.Query().Get("since"),
+		RangeKey: rkey, RangeLabel: rlabel, RangeLinks: rlinks,
 	}); err != nil {
 		slog.Warn("ui: render fleet", "err", err)
 	}
@@ -140,7 +142,7 @@ func fleetTimeline(findings []fleetFinding, since time.Duration, now time.Time) 
 
 // handleAPIFleet returns the window's fleet:* events as JSON.
 func (s *Server) handleAPIFleet(w http.ResponseWriter, r *http.Request) {
-	evs, err := s.fleetEvents(r)
+	evs, err := s.fleetEvents(r, fleetSince(r))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -161,10 +163,10 @@ func fleetSince(r *http.Request) time.Duration {
 }
 
 // fleetEvents queries the window and keeps only fleet:* findings (newest first).
-func (s *Server) fleetEvents(r *http.Request) ([]*event.Event, error) {
+func (s *Server) fleetEvents(r *http.Request, dur time.Duration) ([]*event.Event, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-fleetSince(r)), Limit: 2000})
+	evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-dur), Limit: 2000})
 	if err != nil {
 		return nil, err
 	}

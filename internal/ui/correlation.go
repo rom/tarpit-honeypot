@@ -20,15 +20,17 @@ import (
 // relevant view) and as a base64-embedded node-link graph that the packaged
 // app.js draws as interactive SVG ("IP→JA4→UA→Payload→Domain→ASN").
 
-const corrWindow = 24 * time.Hour
 const corrScanMax = 20000
 const corrMaxSources = 30
 const corrMaxPerList = 12
 
 type correlationView struct {
-	Since   time.Time
-	Total   int
-	Sources []corrSource
+	Since      time.Time
+	RangeKey   string
+	RangeLabel string
+	RangeLinks []rangeLink
+	Total      int
+	Sources    []corrSource
 	// GraphB64 is a base64-encoded JSON {nodes,edges} the client renders as an
 	// interactive SVG node-link graph (app.js). Base64 keeps it free of
 	// HTML-special characters so it embeds cleanly in a data attribute.
@@ -243,14 +245,17 @@ func addCapped(list *[]string, seen map[string]bool, v string, max int) {
 func (s *Server) handleCorrelation(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	since := time.Now().Add(-corrWindow)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/correlation")
+	since := time.Now().Add(-dur)
 	evs, err := s.query(ctx, store.Filter{Since: since, Limit: corrScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	view := buildCorrelationView(since, evs)
+	view.RangeKey, view.RangeLabel, view.RangeLinks = rkey, rlabel, rlinks
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "correlation", buildCorrelationView(since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "correlation", view); err != nil {
 		slog.Warn("ui: render correlation", "err", err)
 	}
 }

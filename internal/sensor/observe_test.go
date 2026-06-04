@@ -2,10 +2,14 @@ package sensor
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/payload"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
 	"github.com/rom/tarpit-honeypot/internal/tokentrack"
 )
@@ -37,6 +41,45 @@ func TestObservePayloadELFCritical(t *testing.T) {
 	}
 	if ev.Meta["payload_artifacts"] == nil {
 		t.Error("payload_artifacts meta missing")
+	}
+}
+
+// End-to-end: with a real payload.Store wired in, a captured executable is
+// actually written to <data_dir>/payloads/<sha256>.elf, the on-disk filename is
+// recorded in the source event's payload_artifacts descriptor, and the file is
+// what the captures page lists. This exercises the full collection path the
+// observe_payload-nil tests above deliberately skip.
+func TestObservePayloadPersistsToDisk(t *testing.T) {
+	dir := t.TempDir()
+	store, err := payload.NewStore(filepath.Join(dir, "payloads"), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sensor{name: "t", payloads: store}
+
+	elf := append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, bytes.Repeat([]byte{0x42}, 128)...)
+	ev := &event.Event{ID: "e1", RuleID: "listener:http", Handler: "http", Proto: "tcp", Source: event.Endpoint{IP: "1.2.3.4"}}
+	mw := s.observePayload(ev, elf)
+	if mw == nil || mw.RuleID != "malware:capture" {
+		t.Fatalf("expected malware:capture; got %v", mw)
+	}
+
+	// A <sha256>.elf file landed on disk under the payloads directory.
+	files, err := filepath.Glob(filepath.Join(dir, "payloads", "*.elf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected exactly one persisted .elf artifact, got %v", files)
+	}
+	if got, _ := os.ReadFile(files[0]); !bytes.Equal(got, elf) {
+		t.Errorf("persisted bytes differ from captured payload (len %d vs %d)", len(got), len(elf))
+	}
+
+	// The source event's descriptor names the on-disk file ("<kind>:<sha> -> <name>").
+	descs, _ := ev.Meta["payload_artifacts"].([]string)
+	if len(descs) == 0 || !strings.Contains(descs[0], " -> "+filepath.Base(files[0])) {
+		t.Errorf("payload_artifacts descriptor missing on-disk filename: %v", descs)
 	}
 }
 
