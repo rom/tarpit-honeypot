@@ -1759,8 +1759,12 @@ var catalog = []Record{
 	{ID: "CVE-2025-4427", Name: "Ivanti EPMM authentication bypass", CVSS: 5.3, Service: "http", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-288"}, CPE: "cpe:2.3:a:ivanti:endpoint_manager_mobile:*:*:*:*:*:*:*:*", EPSS: 0.85, Description: "Ivanti EPMM (Core) authentication bypass on an API route, chained with CVE-2025-4428 EL-injection for unauthenticated RCE."},
 
 	// --- 2026 CVEs ---
-	// NOTE: these are FORWARD-LOOKING placeholders generated from recurring
-	// vendor vulnerability classes; they are advisory-only (no payload
+	// CVE-2026-41089 is a real, detected entry (the CLDAP handler flags it from
+	// the oversized-username buffer-overflow shape); the rest below are
+	// forward-looking placeholders.
+	{ID: "CVE-2026-41089", Name: "Windows DC CLDAP Netlogon buffer overflow", CVSS: 7.5, Service: "cldap", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-121"}, CPE: "cpe:2.3:o:microsoft:windows_server:*:*:*:*:*:*:*:*", EPSS: 0.20, Description: "Windows Server Domain Controller LSASS stack overflow via a crafted CLDAP Netlogon request with a 130+ char username (NetpLogonPutUnicodeString byte/WCHAR confusion) → DC DoS (LSASS crash/reboot), potential RCE. One UDP/389 packet."},
+	// NOTE: the entries below are FORWARD-LOOKING placeholders generated from
+	// recurring vendor vulnerability classes; they are advisory-only (no payload
 	// signatures, so they never tag live traffic) and the exact CVE IDs are
 	// UNVERIFIED. Replace/confirm against NVD before relying on them.
 	{ID: "CVE-2026-0101", Name: "Ivanti Connect Secure heap overflow RCE", CVSS: 9.0, Service: "http", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, CPE: "cpe:2.3:a:ivanti:connect_secure:*:*:*:*:*:*:*:*", EPSS: 0.10, Description: "(Forward-looking placeholder) Ivanti Connect Secure heap overflow in the VPN web service → unauthenticated RCE."},

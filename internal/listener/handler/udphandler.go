@@ -130,6 +130,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &tristation{lim: newUDPReflectLimiter()}, nil
 	case "ge_egd":
 		return &geEGD{}, nil
+	case "siprotec_en100":
+		return &siprotecEN100{}, nil
 	case "bsap":
 		return &bsap{lim: newUDPReflectLimiter()}, nil
 	case "lontalk":

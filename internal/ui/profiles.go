@@ -454,6 +454,41 @@ func metaMapList(meta map[string]any, key string) []map[string]any {
 	return nil
 }
 
+// Cred is a captured credential surfaced for export (the export-creds CLI). It
+// wraps the internal credPair with the originating source + time.
+type Cred struct {
+	Kind    string `json:"kind" yaml:"kind" xml:"kind"`
+	User    string `json:"user,omitempty" yaml:"user,omitempty" xml:"user,omitempty"`
+	Secret  string `json:"secret,omitempty" yaml:"secret,omitempty" xml:"secret,omitempty"`
+	Service string `json:"service,omitempty" yaml:"service,omitempty" xml:"service,omitempty"`
+	Source  string `json:"source,omitempty" yaml:"source,omitempty" xml:"source,omitempty"`
+	Time    string `json:"time,omitempty" yaml:"time,omitempty" xml:"time,omitempty"`
+}
+
+// ExtractCreds returns the credentials captured in an event (the exported view
+// of extractCreds), stamped with the event's source IP + UTC time.
+func ExtractCreds(ev *event.Event) []Cred {
+	if ev == nil {
+		return nil
+	}
+	pairs := extractCreds(ev)
+	if len(pairs) == 0 {
+		return nil
+	}
+	out := make([]Cred, 0, len(pairs))
+	for _, c := range pairs {
+		out = append(out, Cred{
+			Kind:    c.Kind,
+			User:    c.User,
+			Secret:  c.Pass,
+			Service: c.Service,
+			Source:  ev.Source.IP,
+			Time:    ev.Time.UTC().Format(time.RFC3339),
+		})
+	}
+	return out
+}
+
 func extractCreds(ev *event.Event) []credPair {
 	meta := ev.Meta
 	if len(meta) == 0 {

@@ -1086,6 +1086,7 @@ tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot list-fleet-rules [--json]                  # cross-sensor fleet:* detector catalog
 tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
+tarpit-honeypot export-creds   -c <config> [--since 720h] [--kind password,token,…] [--format json|xml|yaml|csv|txt]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot init           [-o <config>]
 tarpit-honeypot completion     bash|zsh|fish
