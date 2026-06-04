@@ -269,6 +269,32 @@ func TestEngineLoadDir(t *testing.T) {
 	}
 }
 
+func TestKnownMalwareHashLookup(t *testing.T) {
+	data := []byte("malicious payload bytes here")
+	rep := Analyze(data) // compute the real sha256 first
+	dir := t.TempDir()
+	// ThreatFox-style "sha256,family" plus a bare hash and a comment.
+	body := "# abuse.ch export\n" + rep.SHA256 + ",AgentTesla,exe\n" +
+		"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+	if err := os.WriteFile(filepath.Join(dir, "hashes.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine()
+	n, err := e.LoadHashes(filepath.Join(dir, "hashes.txt"))
+	if err != nil || n != 2 {
+		t.Fatalf("LoadHashes n=%d err=%v", n, err)
+	}
+	got := AnalyzeWith(data, e)
+	if !got.KnownMalware || got.Family != "AgentTesla" {
+		t.Errorf("known-malware lookup failed: known=%v family=%q", got.KnownMalware, got.Family)
+	}
+	// A different artifact is not flagged.
+	clean := AnalyzeWith([]byte("totally benign content"), e)
+	if clean.KnownMalware {
+		t.Error("benign artifact wrongly flagged as known malware")
+	}
+}
+
 // --- helpers ---
 
 func hasMatch(ms []Match, name string) bool {

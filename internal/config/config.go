@@ -768,6 +768,12 @@ type Payloads struct {
 	// rule set when Analyze is on. Rules using unsupported constructs are
 	// skipped, not fatal.
 	YaraRules string `yaml:"yara_rules"`
+	// MalwareHashes is an optional path to a known-malware SHA-256 set
+	// (abuse.ch MalwareBazaar / ThreatFox export, normalized to
+	// "sha256[,family]" per line). A captured artifact whose hash matches is
+	// flagged known_malware (+ family) — instant attribution. Used when
+	// Analyze is on. fetch-enrichment.sh can download + normalize the feed.
+	MalwareHashes string `yaml:"malware_hashes"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using

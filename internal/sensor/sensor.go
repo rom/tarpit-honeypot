@@ -502,6 +502,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 			} else {
 				slog.Info("artifact static analysis enabled", "yara_rules", artScanner.RuleCount())
 			}
+			if hf := cfg.Sensor.Payloads.MalwareHashes; hf != "" {
+				if n, err := artScanner.LoadHashes(hf); err != nil {
+					slog.Warn("malware hash set unavailable; known-malware tagging off", "path", hf, "err", err)
+				} else {
+					slog.Info("known-malware hash set loaded", "path", hf, "hashes", n)
+				}
+			}
 		}
 		// Opt-in active fetch of harvested ingress URLs, dialing through the
 		// egress allowlist so it can't be an SSRF/exfil vector.
@@ -1104,11 +1111,16 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 			if rep.Packed {
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-packed")
 			}
-			// A YARA hit on a non-executable (script/archive) artifact is
-			// worth elevating to Critical — it's a positive content match,
-			// not just a magic byte.
-			if len(rep.YaraMatches) > 0 {
+			// A YARA hit, or a known-malware hash match, is a positive content
+			// identification — elevate to Critical (not just a magic byte).
+			if len(rep.YaraMatches) > 0 || rep.KnownMalware {
 				worst = event.SeverityCritical
+			}
+			if rep.KnownMalware {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-known-hash")
+				if rep.Family != "" {
+					ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-family:"+rep.Family)
+				}
 			}
 		}
 	}
@@ -1166,6 +1178,12 @@ func artifactReportMeta(rep artifactscan.Report) map[string]any {
 	}
 	if len(rep.Imports) > 0 {
 		m["imports"] = rep.Imports
+	}
+	if rep.KnownMalware {
+		m["known_malware"] = true
+		if rep.Family != "" {
+			m["malware_family"] = rep.Family
+		}
 	}
 	if len(rep.Suspicious) > 0 {
 		m["suspicious"] = rep.Suspicious
