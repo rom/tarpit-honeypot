@@ -338,6 +338,16 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if banner == "" {
 		method := extractMethod(firstLine)
 		path := extractPath(firstLine)
+		// Web-deception trio: robots.txt / security.txt / sitemap.xml, plus
+		// detection of probes against the bait Disallow / sitemap paths. A
+		// sitemap page may be delivered slowly (tarpit) by serveWebDeception
+		// itself, in which case it returns the sentinel and we skip our write.
+		if wd := serveWebDeception(conn, cfg.WebDeception, method, path, server, &res); wd != "" {
+			if wd == sentinelHandled {
+				return res, nil
+			}
+			banner = wd
+		}
 		// Fake web shell: detect c99/r57/wso/China-Chopper-style paths and
 		// command parameters. Always capture + flag; serve a working-looking
 		// shell (canned output, never executed) only when vuln emulation is

@@ -249,6 +249,17 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// wherever they're rendered.
 		"handlerLink": handlerLink,
 		"protoTag":    protoTag,
+		// svcLink turns a well-known service name (pop3 / http / …) into a link
+		// to that port's events. defenseName/defenseURL link a D3FEND id to its
+		// MITRE page (gated by ui.attack_links, like the ATT&CK technique links).
+		"svcLink":     svcLink,
+		"defenseName": mitre.DefenseName,
+		"defenseURL": func(id string) string {
+			if !attackLinks {
+				return ""
+			}
+			return defenseURL(id)
+		},
 	}
 }
 
@@ -331,6 +342,31 @@ func protoTag(proto string) template.HTML {
 	esc := template.HTMLEscapeString(p)
 	return template.HTML(`<a class="proto proto-` + esc + `" href="/events?proto=` + url.QueryEscape(p) +
 		`" title="transport: ` + esc + ` — show events">` + esc + `</a>`)
+}
+
+// svcLink renders the well-known service name for a port (pop3 / http /
+// smtp-submission / …) as a link to the events list filtered to that port.
+// Empty when the port has no registered name.
+func svcLink(port int) template.HTML {
+	name := portsvc.Name(port)
+	if name == "" {
+		return ""
+	}
+	p := strconv.Itoa(port)
+	return template.HTML(`<a class="svc" href="/events?port=` + p +
+		`" title="filter events on port ` + p + `">` + template.HTMLEscapeString(name) + `</a>`)
+}
+
+// defenseURL builds the MITRE D3FEND page URL for a countermeasure id (e.g.
+// "D3-MFA" -> the Multi-factor Authentication technique). D3FEND addresses
+// techniques by their CamelCase label IRI (`d3f:<NameWithoutSpaces>`), so we map
+// the id through its human name. Empty for an unknown id.
+func defenseURL(id string) string {
+	name := mitre.DefenseName(id)
+	if name == "" {
+		return ""
+	}
+	return "https://d3fend.mitre.org/technique/d3f:" + strings.ReplaceAll(name, " ", "") + "/"
 }
 
 // knownScannerTools are internet-wide reconnaissance engines that self-identify
@@ -1643,6 +1679,11 @@ func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(s.alertingView())
 }
 
+// maxEventsLimit is the safety cap on how many rows the /events listing will
+// return, including when the operator asks for "all". High enough that "All"
+// means "everything in practice" without letting a single request scan unbounded.
+const maxEventsLimit = 50000
+
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
@@ -1708,7 +1749,15 @@ func parseFilter(r *http.Request) store.Filter {
 		}
 	}
 	if v := q.Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1000 {
+		// "all" / "0" lifts the cap to the safety maximum; otherwise a positive
+		// number bounded by that maximum. (The client "Rows" control drives this
+		// param for server-backed tables, so "All" really fetches everything.)
+		if v == "all" || v == "0" {
+			f.Limit = maxEventsLimit
+		} else if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > maxEventsLimit {
+				n = maxEventsLimit
+			}
 			f.Limit = n
 		}
 	}

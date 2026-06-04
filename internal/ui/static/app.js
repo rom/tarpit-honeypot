@@ -371,9 +371,20 @@
       var dataRows = body.rows.length - 1;               // minus the header row
       if (dataRows <= RPP_OPTS[0] + 1) return;           // too small to paginate
 
+      // A "server-backed" table (the /events + /search listings) is capped by
+      // the server's ?limit=, so its Rows control must RE-QUERY the server —
+      // a pure CSS cap can never reveal rows the server didn't send. Other
+      // tables stay a client-side display cap.
+      var serverBacked = t.hasAttribute("data-rows-server");
+
       var key = "throws:" + location.pathname + "#" + tableKey(t, idx);
       var saved = lsGet(key);
       var cur = (saved === "all" || RPP_OPTS.indexOf(parseInt(saved, 10)) >= 0) ? saved : RPP_DEFAULT;
+      if (serverBacked) {
+        // Reflect the live server limit, not a stored display pref.
+        var lp = new URLSearchParams(location.search).get("limit");
+        cur = (lp === "all" || lp === "0") ? "all" : (lp || String(dataRows));
+      }
 
       var wrap = document.createElement("div");
       wrap.className = "rowsctl";
@@ -388,6 +399,13 @@
       var oAll = document.createElement("option");
       oAll.value = "all"; oAll.textContent = "All";
       sel.appendChild(oAll);
+      // If the active server limit isn't one of the presets, surface it so the
+      // dropdown shows the truth ("showing 320 of 320").
+      if (serverBacked && cur !== "all" && RPP_OPTS.indexOf(parseInt(cur, 10)) < 0) {
+        var oCur = document.createElement("option");
+        oCur.value = cur; oCur.textContent = cur;
+        sel.appendChild(oCur);
+      }
       sel.value = cur;
       lab.appendChild(sel);
       var count = document.createElement("span");
@@ -395,6 +413,16 @@
       wrap.appendChild(lab);
       wrap.appendChild(count);
       t.parentNode.insertBefore(wrap, t);
+
+      if (serverBacked) {
+        count.textContent = " showing " + dataRows;
+        sel.addEventListener("change", function () {
+          var u = new URL(location.href);
+          u.searchParams.set("limit", sel.value); // "all" or a number
+          location.assign(u.toString());
+        });
+        return;
+      }
 
       function apply() {
         RPP_OPTS.forEach(function (n) { t.classList.remove("rpp-" + n); });

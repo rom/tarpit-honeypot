@@ -873,6 +873,11 @@ type Listener struct {
 	HTTPS  HTTPS        `yaml:"https"`
 	Tarpit Tarpit       `yaml:"tarpit"`
 	SNMP   SNMPListener `yaml:"snmp"`
+	// WebDeception configures the robots.txt / security.txt / sitemap.xml decoy
+	// trio on http/https listeners (honeypot disallow entries, honeytoken
+	// security contacts, and a slow tarpit-delivered fake sitemap). See
+	// WebDeception.
+	WebDeception WebDeception `yaml:"web_deception"`
 	// DNS configures the dns handler's decoy behaviour (version.bind banner +
 	// fake zone-transfer responses). See DNSResponder.
 	DNS DNSResponder `yaml:"dns_responder"`
@@ -880,6 +885,135 @@ type Listener struct {
 	// either hand the cleartext to an internal handler or forward it to a real
 	// backend, capturing both directions). See TLSIntercept.
 	TLSIntercept TLSIntercept `yaml:"tls_intercept"`
+}
+
+// WebDeception configures the robots.txt / security.txt / sitemap.xml decoy
+// trio served by the http / https handler. Every field has a built-in default,
+// so leaving the block empty (with Enabled unset → on) still presents a
+// believable, trap-laden surface.
+type WebDeception struct {
+	// Enabled gates the whole feature. nil (unset) defaults to ON for http /
+	// https listeners; set it to false to turn the decoy files off.
+	Enabled *bool `yaml:"enabled"`
+	// RobotsDisallow are the paths advertised as `Disallow:` in robots.txt —
+	// tempting directories/files a recon tool will then probe. Requesting any
+	// of them raises the `robots-honeypot-access` anomaly. Empty → a built-in
+	// juicy set (/admin, /backup, /.git, /wp-admin, …).
+	RobotsDisallow []string `yaml:"robots_disallow"`
+	// SecurityContacts are the addresses listed in /.well-known/security.txt.
+	// Their local-parts (and the full addresses) become honeytoken account
+	// names: an auth attempt with one — over web, ftp, imap, pop3 or smtp —
+	// raises `honeytoken:account-login`. Empty → a built-in set
+	// (security@, soc@, abuse@, …).
+	SecurityContacts []string `yaml:"security_contacts"`
+	// SecurityPolicyURL / SecurityExpires populate the matching security.txt
+	// fields; both have defaults.
+	SecurityPolicyURL string `yaml:"security_policy_url"`
+	SecurityExpires   string `yaml:"security_expires"`
+	// SitemapPages are the fake URLs listed in /sitemap.xml. Empty → a built-in
+	// set of tempting pages. Requesting one is served slowly (see SitemapTarpit)
+	// and raises `sitemap-honeypot-access`.
+	SitemapPages []string `yaml:"sitemap_pages"`
+	// SitemapTarpit serves the sitemap-listed pages as a slow byte-trickle to
+	// waste a crawler's time. nil → ON.
+	SitemapTarpit *bool `yaml:"sitemap_tarpit"`
+	// SitemapByteIntervalMS is the per-chunk delay (ms) for the slow sitemap
+	// pages. 0 → a built-in default (250ms). Capped so a page can't hang a
+	// worker indefinitely.
+	SitemapByteIntervalMS int `yaml:"sitemap_byte_interval_ms"`
+}
+
+// Built-in defaults for the web-deception decoy files.
+var (
+	defaultRobotsDisallow = []string{
+		"/admin/", "/administrator/", "/wp-admin/", "/phpmyadmin/", "/manager/",
+		"/backup/", "/backups/", "/.git/", "/.svn/", "/.env", "/.aws/",
+		"/config/", "/conf/", "/private/", "/internal/", "/api/internal/",
+		"/db/", "/database/", "/sql/", "/old/", "/test/", "/tmp/", "/logs/",
+		"/.ssh/", "/secrets/", "/vault/", "/cgi-bin/",
+	}
+	defaultSecurityContacts = []string{
+		"security@example.com", "soc@example.com", "abuse@example.com",
+		"secops@example.com", "ciso@example.com",
+	}
+	defaultSitemapPages = []string{
+		"/about", "/contact", "/products", "/services", "/careers",
+		"/login", "/portal", "/dashboard", "/account", "/profile", "/settings",
+		"/admin", "/admin/login", "/intranet", "/hr", "/finance",
+		"/docs/employee-handbook.pdf", "/docs/vpn-setup-guide.pdf",
+		"/reports/q4-financials.pdf", "/reports/2025-budget.xlsx",
+		"/hr/payroll.xlsx", "/it/passwords.xlsx", "/backup/db-dump.sql",
+		"/api/v1/users", "/api/v1/orders", "/api/v2/customers",
+		"/old-site/", "/blog", "/news", "/support", "/downloads",
+		"/partners", "/investors", "/legal/privacy", "/legal/terms",
+	}
+)
+
+// On reports whether the web-deception trio is active (default: yes).
+func (w WebDeception) On() bool { return w.Enabled == nil || *w.Enabled }
+
+// Disallow returns the effective robots.txt Disallow paths.
+func (w WebDeception) Disallow() []string {
+	if len(w.RobotsDisallow) > 0 {
+		return w.RobotsDisallow
+	}
+	return defaultRobotsDisallow
+}
+
+// Contacts returns the effective security.txt contact addresses.
+func (w WebDeception) Contacts() []string {
+	if len(w.SecurityContacts) > 0 {
+		return w.SecurityContacts
+	}
+	return defaultSecurityContacts
+}
+
+// Pages returns the effective sitemap.xml fake page paths.
+func (w WebDeception) Pages() []string {
+	if len(w.SitemapPages) > 0 {
+		return w.SitemapPages
+	}
+	return defaultSitemapPages
+}
+
+// TarpitOn reports whether sitemap-listed pages are served slowly (default: yes).
+func (w WebDeception) TarpitOn() bool { return w.SitemapTarpit == nil || *w.SitemapTarpit }
+
+// ByteInterval is the per-chunk delay for the slow sitemap pages (default 250ms,
+// capped at 2s so a single page can't hang a worker indefinitely).
+func (w WebDeception) ByteInterval() time.Duration {
+	ms := w.SitemapByteIntervalMS
+	if ms <= 0 {
+		ms = 250
+	}
+	if ms > 2000 {
+		ms = 2000
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// HoneytokenAccounts returns the lower-cased set of honeytoken usernames derived
+// from the security.txt contacts: each address contributes its full form and its
+// local-part, so an auth attempt with either is recognized across protocols.
+func (w WebDeception) HoneytokenAccounts() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	for _, c := range w.Contacts() {
+		c = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(c)), "mailto:")
+		add(c)
+		if at := strings.IndexByte(c, '@'); at > 0 {
+			add(c[:at]) // local-part
+		}
+	}
+	return out
 }
 
 // TLSIntercept configures the tls_intercept handler. It terminates TLS with a

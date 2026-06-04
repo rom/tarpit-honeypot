@@ -176,6 +176,20 @@ listeners:
     severity: medium
     read_bytes: 4096
     read_timeout: 5s
+    # Web-deception decoy files (on by default; every field has a built-in
+    # default, so an empty block already presents a trap-laden surface).
+    web_deception:
+      enabled: true
+      # Bait paths advertised as Disallow in robots.txt; probing one raises
+      # robots-honeypot-access.
+      robots_disallow: ["/admin/", "/backup/", "/.git/", "/.env", "/wp-admin/"]
+      # security.txt contacts — their local-parts (security, soc, …) become
+      # honeytoken login names flagged across web/ftp/imap/pop3/smtp.
+      security_contacts: ["security@honeypot.local", "soc@honeypot.local"]
+      # Fake pages listed in sitemap.xml; each is served slowly (tarpit).
+      sitemap_pages: ["/portal", "/hr/payroll.xlsx", "/backup/db-dump.sql", "/api/v1/users"]
+      sitemap_tarpit: true
+      sitemap_byte_interval_ms: 250
 
   - id: https-bait
     proto: tcp

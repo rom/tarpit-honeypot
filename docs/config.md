@@ -250,6 +250,35 @@ look like a stock honeypot:
 `webapp_brand.color` accepts `#rgb` / `#rrggbb` / a CSS colour name and is
 validated against CSS injection; all four fields are optional.
 
+**Web deception (`web_deception:`).** On `http`/`https` listeners the handler
+serves a decoy `robots.txt`, `/.well-known/security.txt` (RFC 9116) and
+`sitemap.xml` trio. It is **on by default** and every field is defaulted, so an
+empty block already presents a trap-laden surface.
+
+```yaml
+- { id: web, proto: tcp, bind: 0.0.0.0:80, mode: banner, handler: http,
+    web_deception: {
+      enabled: true,
+      robots_disallow: ["/admin/", "/backup/", "/.git/", "/.env"],
+      security_contacts: ["security@corp.example", "soc@corp.example"],
+      sitemap_pages: ["/portal", "/hr/payroll.xlsx", "/backup/db-dump.sql"],
+      sitemap_tarpit: true, sitemap_byte_interval_ms: 250 } }
+```
+
+- `robots_disallow` — tempting paths advertised as `Disallow:`. Probing any of
+  them raises **`robots-honeypot-access`** (and returns 403).
+- `security_contacts` — addresses published in `security.txt`. Their local-parts
+  *and* full addresses become **honeytoken account names**: a login attempt with
+  one — over web, ftp, imap, pop3 **or** smtp — raises
+  **`honeytoken:account-login`** (cross-protocol; the accounts are only ever
+  advertised on the web surface, so their reuse means the attacker scraped
+  `security.txt`). `security_policy_url` / `security_expires` fill the other
+  fields (defaulted).
+- `sitemap_pages` — fake URLs listed in `sitemap.xml`. Requesting one raises
+  **`sitemap-honeypot-access`** and the page is delivered **slowly** when
+  `sitemap_tarpit: true` (a bounded per-chunk byte trickle, `sitemap_byte_interval_ms`,
+  default 250 ms, capped at 2 s) to waste a crawler's time.
+
 The `…s` handlers — `smtps` (465), `imaps` (993), `pop3s` (995), `ldaps` (636),
 `mqtts` (8883), `ftps` (990) — are the **implicit-TLS** variants of their
 plaintext peers: the sensor performs the TLS handshake (presenting a self-signed
