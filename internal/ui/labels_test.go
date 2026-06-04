@@ -39,7 +39,7 @@ func TestSourceBadgesAreLinks(t *testing.T) {
 	for _, want := range []string{
 		`href="/events?flag=blacklist"`, ">blacklist<",
 		`href="/events?flag=tor"`, ">tor<",
-		`href="/events?tool=censys"`, "scanner:censys",
+		`href="/events?scanner=censys"`, "scanner:censys",
 		`href="/events?flag=bogon"`, ">bogon<",
 	} {
 		if !strings.Contains(html, want) {
@@ -48,6 +48,24 @@ func TestSourceBadgesAreLinks(t *testing.T) {
 	}
 	if sourceBadges(nil) != "" {
 		t.Error("empty meta should yield no badges")
+	}
+}
+
+// The scanner badge links to /events?scanner=<name>, which must match BOTH an
+// IP-level attribution (meta.known_scanner) and a self-identified UA tool
+// (meta.tools) — the old tool= link missed known_scanner-only IPs (the
+// stretchoid/onyphe empty-page bug).
+func TestEventHasScanner(t *testing.T) {
+	ipLevel := &event.Event{Meta: map[string]any{"known_scanner": "stretchoid"}}
+	if !eventHasScanner(ipLevel, "stretchoid") || !eventHasScanner(ipLevel, "Stretchoid") {
+		t.Error("known_scanner attribution should match scanner filter")
+	}
+	uaLevel := &event.Event{Meta: map[string]any{"tools": []string{"onyphe"}}}
+	if !eventHasScanner(uaLevel, "onyphe") {
+		t.Error("UA tool attribution should match scanner filter")
+	}
+	if eventHasScanner(&event.Event{Meta: map[string]any{}}, "stretchoid") {
+		t.Error("unrelated event must not match")
 	}
 }
 

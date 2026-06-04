@@ -310,9 +310,9 @@ func sourceBadges(meta map[string]any) template.HTML {
 	// Known scanner: IP-level attribution (enrichment) preferred, else a
 	// self-identified internet-scanner tool from the UA fingerprint.
 	if sc, _ := meta["known_scanner"].(string); sc != "" {
-		add("warn", "scanner:"+sc, "known network-scanning infrastructure ("+sc+")", "/events?tool="+url.QueryEscape(sc))
+		add("warn", "scanner:"+sc, "known network-scanning infrastructure ("+sc+")", "/events?scanner="+url.QueryEscape(sc))
 	} else if sc := scannerTool(meta); sc != "" {
-		add("warn", "scanner:"+sc, "self-identified internet scanner", "/events?tool="+url.QueryEscape(sc))
+		add("warn", "scanner:"+sc, "self-identified internet scanner", "/events?scanner="+url.QueryEscape(sc))
 	}
 	if nc, _ := meta["net_class"].(string); nc == "bogon" {
 		add("warn", "bogon", "spoofed / reserved (bogon) source address", "/events?flag=bogon")
@@ -407,6 +407,22 @@ func eventHasFlag(ev *event.Event, flag string) bool {
 			return true
 		}
 		return scannerTool(m) != ""
+	}
+	return false
+}
+
+// eventHasScanner reports whether an event is attributed to the named scanner —
+// either by IP-level enrichment (meta.known_scanner) or by a self-identifying UA
+// tool (meta.tools). The scanner reputation badge links here so it works for
+// both attribution paths (the tool= filter alone missed known_scanner-only IPs).
+func eventHasScanner(ev *event.Event, name string) bool {
+	if sc, _ := ev.Meta["known_scanner"].(string); strings.EqualFold(sc, name) {
+		return true
+	}
+	for _, t := range metaStrings(ev.Meta, "tools") {
+		if strings.EqualFold(t, name) {
+			return true
+		}
 	}
 	return false
 }
@@ -858,9 +874,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// display limit first — otherwise the post-filter only sees the newest
 	// `Limit` rows and a genuine match further back wrongly looks empty. (ASN
 	// and country are real meta-column filters handled in the store.)
-	tool, tactic, flag := q.Get("tool"), q.Get("tactic"), q.Get("flag")
+	tool, tactic, flag, scanner := q.Get("tool"), q.Get("tactic"), q.Get("flag"), q.Get("scanner")
 	displayLimit := f.Limit
-	if tool != "" || tactic != "" || flag != "" {
+	if tool != "" || tactic != "" || flag != "" || scanner != "" {
 		f.Limit = searchScanMax
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -875,6 +891,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		kept := evs[:0]
 		for _, ev := range evs {
 			if eventHasFlag(ev, flag) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if scanner != "" {
+		// A scanner can be attributed either at the IP level (meta.known_scanner,
+		// from ASN/rDNS) or by a self-identifying UA tool (meta.tools); the
+		// scanner badge links here, so match BOTH.
+		kept := evs[:0]
+		for _, ev := range evs {
+			if eventHasScanner(ev, scanner) {
 				kept = append(kept, ev)
 			}
 		}
