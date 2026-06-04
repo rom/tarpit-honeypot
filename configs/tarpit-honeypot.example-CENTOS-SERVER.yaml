@@ -295,6 +295,11 @@ correlate:
   spam_relay:         { enabled: true, events: 3, window: 600s, severity: medium }
   threat_intel_burst: { enabled: true, events: 3, window: 600s, severity: high }
   geo_velocity:       { enabled: true, distinct_countries: 3, window: 3600s, severity: high }
+  # C2 beaconing: regularly-spaced call-home from one source. Catches both
+  # fixed-interval and sleep-with-jitter beacons (Cobalt Strike / Sliver). The
+  # Cobalt Strike default checksum8 staging URI is detected automatically on the
+  # http/https listeners (anomaly cobaltstrike-stager, tool=cobaltstrike).
+  beacon:             { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 3600s, severity: high }
 
 channels:
   - { id: stdout, type: stdout, min_severity: low }

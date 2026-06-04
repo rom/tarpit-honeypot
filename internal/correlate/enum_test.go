@@ -99,6 +99,30 @@ func TestBeaconFiresOnRegularInterval(t *testing.T) {
 	}
 }
 
+// A sleep-with-jitter beacon (Cobalt Strike / Sliver) has per-interval jitter
+// that exceeds MaxJitterPct yet still clusters in a tight band — the jittered
+// detection path must catch it.
+func TestBeaconFiresOnJitteredInterval(t *testing.T) {
+	cor, _ := New(config.Correlate{
+		Beacon: config.CorrBeacon{Enabled: true, MinHits: 6, MaxJitterPct: 20, Window: time.Hour, Severity: "high"},
+	})
+	base := time.Now().UTC()
+	// ~60s sleep with heavy jitter: intervals 40..80s (stddev jitter >20%, but
+	// max/min band ratio = 2.0 <= 3.0). 8 contacts (the jittered path needs >=8).
+	offsets := []int{0, 40, 120, 165, 240, 290, 360, 402}
+	var all []*event.Event
+	for _, off := range offsets {
+		all = append(all, cor.Observe(mkEvent("9.9.9.9", 443, base.Add(time.Duration(off)*time.Second)))...)
+	}
+	agg := aggregate(all, "correlate:beacon")
+	if agg == nil {
+		t.Fatalf("jittered beacon did not fire: %v", all)
+	}
+	if agg.Meta["jittered"] != true {
+		t.Errorf("expected jittered=true, got %v", agg.Meta["jittered"])
+	}
+}
+
 func TestBeaconIgnoresIrregularAndBursts(t *testing.T) {
 	cor, _ := New(config.Correlate{
 		Beacon: config.CorrBeacon{Enabled: true, MinHits: 5, MaxJitterPct: 15, Window: time.Hour, Severity: "high"},

@@ -8,13 +8,16 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -26,6 +29,55 @@ type Store struct {
 	db    *sql.DB
 	path  string
 	capMB int
+
+	// bannerCache memoizes banner sha256 -> banners.id so a repeated static
+	// banner (the overwhelmingly common case) is interned without a DB hit.
+	bannerMu    sync.Mutex
+	bannerCache map[string]int64
+}
+
+// rowQueryer is satisfied by both *sql.DB and *sql.Tx, so banner interning can
+// run on the batch transaction (a separate write would deadlock on SQLite's
+// single-writer lock) or standalone for single inserts.
+type rowQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// bannerSelect resolves an event's banner in a query: the inline banner_sent for
+// legacy rows, else the interned text referenced by banner_id for new rows.
+const bannerSelect = `CASE WHEN banner_sent != '' THEN banner_sent ` +
+	`ELSE COALESCE((SELECT text FROM banners WHERE banners.id = events.banner_id), '') END`
+
+// internBanner returns the banners.id for text (inserting it once), or 0 for an
+// empty banner. The in-memory cache makes repeated banners free.
+func (s *Store) internBanner(ctx context.Context, q rowQueryer, text string) (int64, error) {
+	if text == "" {
+		return 0, nil
+	}
+	sum := sha256.Sum256([]byte(text))
+	h := hex.EncodeToString(sum[:])
+	s.bannerMu.Lock()
+	if id, ok := s.bannerCache[h]; ok {
+		s.bannerMu.Unlock()
+		return id, nil
+	}
+	s.bannerMu.Unlock()
+	var id int64
+	err := q.QueryRowContext(ctx, `INSERT INTO banners (hash, text) VALUES (?, ?)
+ON CONFLICT(hash) DO UPDATE SET hash = hash
+RETURNING id`, h, text).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("store: intern banner: %w", err)
+	}
+	s.bannerMu.Lock()
+	if s.bannerCache == nil {
+		s.bannerCache = map[string]int64{}
+	}
+	if len(s.bannerCache) < 8192 { // bound the cache; static banners are few
+		s.bannerCache[h] = id
+	}
+	s.bannerMu.Unlock()
+	return id, nil
 }
 
 const schema = `
@@ -49,7 +101,17 @@ CREATE TABLE IF NOT EXISTS events (
   anomalies TEXT,
   mitre_techniques TEXT,
   mitre_tactics TEXT,
-  mitre_defenses TEXT
+  mitre_defenses TEXT,
+  banner_id INTEGER
+);
+-- Interned banner strings: the same static service banner is sent on every
+-- connection, so instead of storing a full copy per event we store it once here
+-- and reference it by id (events.banner_id). Legacy rows keep their inline
+-- banner_sent; new rows leave banner_sent empty and point at a banners row.
+CREATE TABLE IF NOT EXISTS banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hash TEXT UNIQUE NOT NULL,
+  text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
@@ -204,6 +266,18 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	// Banner interning: a banner_id reference on events plus the banners table
+	// (created here too, for DBs that predate it).
+	if err := addColumn(db, "events", "banner_id", "INTEGER"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hash TEXT UNIQUE NOT NULL,
+  text TEXT NOT NULL
+)`); err != nil {
+		return fmt.Errorf("store: create banners: %w", err)
+	}
 	return nil
 }
 
@@ -259,17 +333,20 @@ const insertSQL = `
 INSERT OR REPLACE INTO events
 (id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
  proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies,
- mitre_techniques, mitre_tactics, mitre_defenses)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ mitre_techniques, mitre_tactics, mitre_defenses, banner_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-// eventCols flattens an event into the insertSQL bind parameters.
-func eventCols(ev *event.Event) []any {
+// eventCols flattens an event into the insertSQL bind parameters. bannerID is
+// the interned banners.id (0 when none); the inline banner_sent column is left
+// empty for new rows so the banner is stored only once in the banners table.
+func eventCols(ev *event.Event, bannerID int64) []any {
 	return []any{
 		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
-		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
+		ev.Proto, ev.Handler, "", ev.PayloadBase64, ev.PayloadLen,
 		jsonOrEmpty(ev.Meta), jsonOrEmpty(ev.Anomalies),
 		jsonOrEmpty(ev.MitreTechniques), jsonOrEmpty(ev.MitreTactics), jsonOrEmpty(ev.MitreDefenses),
+		bannerID,
 	}
 }
 
@@ -295,7 +372,11 @@ func jsonOrEmpty(v any) string {
 }
 
 func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
-	if _, err := s.db.ExecContext(ctx, insertSQL, eventCols(ev)...); err != nil {
+	bid, err := s.internBanner(ctx, s.db, ev.BannerSent)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, insertSQL, eventCols(ev, bid)...); err != nil {
 		return fmt.Errorf("store insert: %w", err)
 	}
 	s.maybePrune(ctx)
@@ -320,7 +401,15 @@ func (s *Store) InsertBatch(ctx context.Context, evs []*event.Event) error {
 		return fmt.Errorf("store batch: prepare: %w", err)
 	}
 	for _, ev := range evs {
-		if _, err := stmt.ExecContext(ctx, eventCols(ev)...); err != nil {
+		// Intern on the same tx — a separate write connection would deadlock on
+		// SQLite's single-writer lock while this tx is open.
+		bid, err := s.internBanner(ctx, tx, ev.BannerSent)
+		if err != nil {
+			_ = stmt.Close()
+			_ = tx.Rollback()
+			return err
+		}
+		if _, err := stmt.ExecContext(ctx, eventCols(ev, bid)...); err != nil {
 			_ = stmt.Close()
 			_ = tx.Rollback()
 			return fmt.Errorf("store batch: exec: %w", err)
@@ -389,7 +478,7 @@ type Filter struct {
 
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	q := `SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
-                dst_ip, dst_port, proto, handler, banner_sent,
+                dst_ip, dst_port, proto, handler, ` + bannerSelect + ` AS banner_sent,
                 payload_b64, payload_len, meta_json, anomalies,
                 mitre_techniques, mitre_tactics, mitre_defenses
           FROM events WHERE 1=1`
@@ -445,7 +534,7 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		// pragma. (Payload bytes are base64 in the DB, so payload-content search
 		// is done Go-side by the search page over the decoded bytes.)
 		like := "%" + strings.ToLower(f.Text) + "%"
-		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(banner_sent) LIKE ? OR LOWER(meta_json) LIKE ?" +
+		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(" + bannerSelect + ") LIKE ? OR LOWER(meta_json) LIKE ?" +
 			" OR LOWER(src_ip) LIKE ? OR LOWER(dst_ip) LIKE ? OR LOWER(handler) LIKE ?" +
 			" OR LOWER(proto) LIKE ? OR LOWER(sensor) LIKE ? OR LOWER(anomalies) LIKE ?" +
 			" OR LOWER(mitre_techniques) LIKE ? OR LOWER(mitre_tactics) LIKE ?)"
@@ -492,7 +581,7 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 func (s *Store) Get(ctx context.Context, id string) (*event.Event, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
-       dst_ip, dst_port, proto, handler, banner_sent,
+       dst_ip, dst_port, proto, handler, `+bannerSelect+` AS banner_sent,
        payload_b64, payload_len, meta_json, anomalies,
        mitre_techniques, mitre_tactics, mitre_defenses
 FROM events WHERE id = ?`, id)

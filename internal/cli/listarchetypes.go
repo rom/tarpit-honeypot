@@ -65,6 +65,7 @@ func printArchetypeDetail(p *archetype.Profile) {
 		}
 	}
 	line("family", p.Family)
+	line("cpe", p.CPE())
 	line("ssh", p.SSHBanner())
 	line("http server", p.HTTPServer())
 	line("http title", p.HTTPTitle())

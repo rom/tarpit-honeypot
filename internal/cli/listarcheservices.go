@@ -41,6 +41,7 @@ func cmdListArcheservices(args []string) error {
 
 func printArcheservice(name string, svcs []archeservice.Service) {
 	fmt.Printf("%s\n", name)
+	fmt.Printf("  %-4s %s\n", "cpe:", archeservice.CPE(name))
 	for _, s := range svcs {
 		note := ""
 		if s.Note != "" {

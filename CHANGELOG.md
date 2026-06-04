@@ -8,6 +8,34 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — SSH/SFTP/SCP, Cobalt Strike detection, banner interning, CPEs, +20 Lua, +50 sigs (version 2.9.0)
+
+- **SSH credentials on the captures page**: extractCreds now walks the SSH
+  `auth_attempts` list, so SSH passwords + pubkey attempts show alongside every
+  other captured credential (not just in the raw event meta).
+- **Cobalt Strike detection**: the default checksum8 beacon-staging URI is
+  recognized (tool=cobaltstrike, category=c2, anomaly `cobaltstrike-stager`),
+  plus geacon / crossc2 / redwarden / starkiller / nimbo-c2 fingerprints.
+- **More behavioral beaconing**: the beacon correlator now also catches
+  sleep-with-jitter beacons (Cobalt Strike / Sliver) — tight-band intervals over
+  ≥8 contacts even when the stddev jitter exceeds `max_jitter_pct`. Enabled in
+  the CENTOS example.
+- **+50 attack-tool fingerprints** (680+ total): C2 / AD / cloud / OSINT / recon
+  / DoS, incl. the Cobalt Strike beacons above.
+- **+20 Lua personas** (200 total): Mattermost, Rocket.Chat, Zeppelin, salt-api,
+  DolphinScheduler, APISIX, Moodle, Odoo, Ghost, code-server, Uptime Kuma,
+  Netdata, mongo-express, Teleport, Vaultwarden, ISPConfig, Plesk, Omada,
+  Redash, Hasura.
+- **CPE 2.3 identifiers** on every archetype (`Profile.CPE()`, explicit override
+  or derived from family + name) and service role (`archeservice.CPE()`);
+  surfaced in list-archetypes / list-archeservices.
+- **Storage: banner interning** — repeated static banners are stored once in a
+  `banners` table and referenced by `banner_id` instead of a full copy per event
+  (backward-compatible read path).
+- **install.sh**: relocates a host sshd off tcp/22 to 10022 (SELinux + firewall +
+  socket-activation aware) so the SSH decoy can own 22, with loud operator
+  notice + client-side reconnect instructions.
+
 ### Added — explicit FTPS, +50 tool sigs (630+), events-page fixes (version 2.9.0)
 
 - **Explicit FTPS** (RFC 4217) in the `ftp` emulator: it previously refused

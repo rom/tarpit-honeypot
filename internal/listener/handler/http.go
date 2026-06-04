@@ -223,6 +223,12 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	case "headless":
 		flagAnomaly(&res, "headless-browser")
 	}
+	// Cobalt Strike default checksum8 staging URI — record the beacon stager
+	// architecture (high-signal, malleable-profile-independent).
+	if arch, ok := toolfp.CobaltStrikeStager(extractPath(firstLine)); ok {
+		flagAnomaly(&res, "cobaltstrike-stager")
+		res.Meta["cobaltstrike_stager_arch"] = arch
+	}
 	res.Meta["automation"] = verdict.Automation
 	res.Meta["automation_reason"] = verdict.Reason
 	if verdict.Automation {

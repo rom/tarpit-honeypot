@@ -435,6 +435,25 @@ func metaInt(meta map[string]any, key string) int {
 // pairing pass (for nice user/pass rows) with a generalized classifier over the
 // meta key names, so new handlers/scripts are surfaced automatically as long as
 // they name the field sensibly (…_user / …_pass / …_token / …_auth / …_hash …).
+// metaMapList returns a meta value that is a list of maps, normalizing the two
+// shapes it can take: a fresh in-memory []map[string]any, or — after a JSON
+// round-trip through the store — a []any of map[string]any.
+func metaMapList(meta map[string]any, key string) []map[string]any {
+	switch v := meta[key].(type) {
+	case []map[string]any:
+		return v
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, e := range v {
+			if m, ok := e.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 func extractCreds(ev *event.Event) []credPair {
 	meta := ev.Meta
 	if len(meta) == 0 {
@@ -470,6 +489,27 @@ func extractCreds(ev *event.Event) []credPair {
 		"pass", "bind_pw", "auth_password", "redis_auth")
 	if user != "" || pass != "" {
 		out = append(out, credPair{Kind: "password", User: user, Pass: pass, Service: svc})
+	}
+
+	// 1b) SSH (and other multi-attempt protocols) record each try in an
+	// "auth_attempts" list of maps (method / user / password or key fp) rather
+	// than flat string keys — surface every attempt as its own credential row so
+	// they show on the captures page, not just buried in the event meta.
+	for _, a := range metaMapList(meta, "auth_attempts") {
+		seen["auth_attempts"] = true
+		u, _ := a["user"].(string)
+		if m, _ := a["method"].(string); m == "publickey" {
+			kt, _ := a["key_type"].(string)
+			fp, _ := a["key_fp_sha256"].(string)
+			if u != "" || fp != "" {
+				out = append(out, credPair{Kind: "ssh-pubkey", User: u, Pass: strings.TrimSpace(kt + " " + fp), Service: svc})
+			}
+			continue
+		}
+		p, _ := a["password"].(string)
+		if u != "" || p != "" {
+			out = append(out, credPair{Kind: "password", User: u, Pass: p, Service: svc})
+		}
 	}
 
 	// 2) Generic prefix pairing: any "<p>_user(name)" + "<p>_pass(word)" the

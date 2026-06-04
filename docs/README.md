@@ -17,8 +17,8 @@ This directory has these reference documents:
 | [`threat-intel-exports.md`](threat-intel-exports.md) | Every way intel leaves the box: STIX 2.1 / TAXII 2.1 / MISP, the downward fleet-intel feed, and the CEF/LEEF/OCSF SIEM event sinks, with field mappings and the auth model. |
 | [`archetypes.md`](archetypes.md) | The full catalog of all 99 OS/device archetypes: each one's services/protocols, identity (banners, SNMP OID), and the CVEs it emulates. How vulnerability emulation works. |
 | [`attribution.md`](attribution.md) | In depth: the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings stamped on every event, plus the scanner-detection layers and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA4S/JA4T/JA3S/HASSH/JA4H). |
-| [`lua.md`](lua.md) | Writing Lua service personas: what Lua is, the persona API, the sandbox limits + warnings, recipes, and the 180 personas that ship. |
-| [`attack-tools.md`](attack-tools.md) | The scanners / attack tools the sensor fingerprints (630+ signatures) — how identification works, the categories, and what's recognized. |
+| [`lua.md`](lua.md) | Writing Lua service personas: what Lua is, the persona API, the sandbox limits + warnings, recipes, and the 200 personas that ship. |
+| [`attack-tools.md`](attack-tools.md) | The scanners / attack tools the sensor fingerprints (680+ signatures) — how identification works, the categories, and what's recognized. |
 | [`hardening.md`](hardening.md) | The layered self-confinement model — privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd. |
 | [`INTEGRATIONS.md`](INTEGRATIONS.md) | When wiring the sensor into SIEMs, IoT pipelines, pagers, K8s, launchd, ATT&CK pivots. Channel-by-channel cookbook + protocol handler catalog. |
 | [`testharness.md`](testharness.md) | The `tarpit-testharness` QA/reliability harness that exercises the sensor — network (managed/external) or in-process module backends; unit/fuzz/emulate/misimpl/scan/fingerprint categories; selection, retries+restart, rounds/time bounds, reports, and the results database. |

@@ -874,7 +874,7 @@ tarpit-honeypot`.
 Two ways: `handler: scripted` defines a believable TCP service entirely in YAML
 (greeting + match/respond rules, stages, credential capture), and `handler: lua`
 drives a service from a sandboxed Lua script (per-session/per-source state,
-deterministic rng, timers). **180 Lua personas ship in the box** under
+deterministic rng, timers). **200 Lua personas ship in the box** under
 [`configs/scripts/`](../configs/scripts/). See the full guide — API, limits,
 warnings, recipes — in [`docs/lua.md`](lua.md).
 
