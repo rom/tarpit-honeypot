@@ -1107,16 +1107,21 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 			reports = append(reports, artifactReportMeta(rep))
 			for _, m := range rep.YaraMatches {
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "yara:"+m.Rule)
+				// Per-rule severity (rule meta: severity = "..."; default
+				// critical) escalates worst. Generic trait/heuristic rules
+				// tagged down to high/medium therefore stay at the High
+				// baseline instead of forcing every match to Critical.
+				if sev, err := event.ParseSeverity(artifactscan.MatchSeverity(m)); err == nil && sev > worst {
+					worst = sev
+				}
 			}
 			if rep.Packed {
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-packed")
 			}
-			// A YARA hit, or a known-malware hash match, is a positive content
-			// identification — elevate to Critical (not just a magic byte).
-			if len(rep.YaraMatches) > 0 || rep.KnownMalware {
-				worst = event.SeverityCritical
-			}
+			// A known-malware hash match is a positive content identification —
+			// always Critical, regardless of any rule's declared severity.
 			if rep.KnownMalware {
+				worst = event.SeverityCritical
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-known-hash")
 				if rep.Family != "" {
 					ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-family:"+rep.Family)

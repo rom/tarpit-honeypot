@@ -763,10 +763,14 @@ type Payloads struct {
 	// Default off.
 	Analyze bool `yaml:"analyze"`
 	// YaraRules is an optional path to a .yar rule file or a directory of
-	// them (a practical YARA subset: text/hex/regex strings and
-	// any/all/N-of/boolean conditions). Loaded in addition to the built-in
-	// rule set when Analyze is on. Rules using unsupported constructs are
-	// skipped, not fatal.
+	// them (a practical YARA subset: text/hex/regex strings; any/all/N-of and
+	// boolean conditions; arithmetic/comparison operators; filesize, the
+	// uintN/intN(offset) readers, and the pe / elf / math / hash modules).
+	// Loaded in addition to the built-in rule set when Analyze is on. Rules
+	// using unsupported constructs are skipped, not fatal. A rule's severity
+	// (rule meta `severity = "low|medium|high|critical"`, or a numeric
+	// `score`) sets how far a match escalates the malware:capture event;
+	// rules that declare neither default to critical.
 	YaraRules string `yaml:"yara_rules"`
 	// MalwareHashes is an optional path to a known-malware SHA-256 set
 	// (abuse.ch MalwareBazaar / ThreatFox export, normalized to

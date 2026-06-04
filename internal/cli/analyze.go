@@ -120,7 +120,10 @@ func printReport(path string, r artifactscan.Report) {
 			if len(m.Tags) > 0 {
 				tags = " [" + joinUpTo(m.Tags, 8) + "]"
 			}
-			fmt.Printf("  - %s%s\n", m.Rule, tags)
+			fmt.Printf("  - %s%s  (severity: %s)\n", m.Rule, tags, artifactscan.MatchSeverity(m))
+			if d := m.Meta["description"]; d != "" {
+				fmt.Printf("      %s\n", d)
+			}
 		}
 	} else {
 		fmt.Println("yara matches: none")

@@ -8,7 +8,120 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Profile page "internal error" / `unable to open database file (14)`.** The
+  per-source profile query (`WHERE src_ip = ? AND time >= ? ORDER BY time DESC`)
+  filtered on one index and sorted on another, so SQLite materialised the sort
+  in an on-disk temp file; under a locked-down runtime (systemd
+  `PrivateTmp`/`ProtectSystem`, or a non-writable/missing `TMPDIR`) that open
+  failed with `SQLITE_CANTOPEN(14)`. The store now opens with
+  `temp_store=MEMORY` (transient sort/GROUP-BY B-trees stay in RAM, fixing this
+  class of error for every query) and adds a composite `(src_ip, time DESC)`
+  index so the profile query is index-ordered with no sort at all. The index is
+  created automatically on the next start for existing databases.
+
 ### Added
+
+- **+100 IoT / IIoT / OT / building-automation YARA rules** (`artifactscan` pack
+  now ~369 rules). New domain coverage: IoT botnet families (Hajime, Hide-N-Seek,
+  dark_nexus, Torii, Persirai, Reaper, BrickerBot, VPNFilter, Cyclops Blink,
+  QSnatch, Moobot, EnemyBot, Zerobot, RapperBot, Mukashi, Echobot, Fbot,
+  Matryosh, Condi, Kaiji, BotenaGo, Chalubo, Katana, Pink); multi-arch IoT
+  loader/dropper and device-exploit patterns (busybox/tftp loaders, HNAP, UPnP
+  SOAP, TR-064, Realtek SDK, GoAhead/JAWS cameras, Netgear/D-Link, GPON, Dahua,
+  Hikvision, Mirai default-credential tables); OT/ICS protocol & tooling
+  fingerprints (Modbus, S7comm, DNP3, EtherNet/IP, BACnet, PROFINET, IEC-61850
+  MMS, IEC-104, OPC UA/DA, Niagara Fox, CODESYS, Omron FINS, Mitsubishi MELSOFT,
+  GE-SRTP, HART-IP, KNX, LonWorks, M-Bus, plcscan/s7scan/smod); OT/ICS malware
+  (Industroyer/CrashOverride, Industroyer2, TRITON/TRISIS, Havex, BlackEnergy,
+  EKANS, PIPEDREAM/INCONTROLLER, IRONGATE, Fuxnet, CosmicEnergy, FrostyGoop,
+  Conficker); building-automation product references (Tridium Niagara, JCI
+  Metasys, Siemens Desigo, Honeywell EBI, Schneider EcoStruxure, Automated Logic
+  WebCTRL, Delta Controls, Distech, Reliable Controls, KNX/ETS, Crestron, AMX,
+  Lutron, DALI); and smart-home/firmware artifacts (MQTT/CoAP, Zigbee/Z-Wave/BLE
+  tooling, RTSP/ONVIF cameras, UART/JTAG, SquashFS/U-Boot/binwalk, SCADA/HMI
+  products). Severities follow the existing tiering (malware/botnet families
+  critical; protocol/product references and recon tagged medium/high).
+
+- **+100 more built-in YARA rules** (`artifactscan` pack now ~269 rules). Adds
+  nation-state/APT implants (SUNBURST, Stuxnet, Flame, Winnti, ShadowPad,
+  X-Agent, Zebrocy, Lazarus Bankshot, Kimsuky BabyShark, Carbanak, Equation),
+  more Linux/Unix malware & rootkits (Mirai-Satori, Mozi, Tsunami/Kaiten,
+  Bashlite/Gafgyt, BPFDoor, Symbiote, RotaJakiro, Reptile, Drovorub, Sysrv,
+  Outlaw, LD_PRELOAD hiders), macOS malware (Shlayer, XCSSET, KeRanger, AMOS,
+  Bundlore, CoinTicker, Macma, Silver Sparrow), Android families (Cerberus,
+  Anubis, Joker, FluBot, SpyNote, GodFather), phishing kits & exfil channels
+  (16Shop, Evilginx, Modlishka, Office365 kits, Telegram-bot / Discord-webhook
+  exfil), LOLBin & reverse-shell script patterns (curl|bash, /dev/tcp,
+  Python/Perl/PHP/Ruby shells, rundll32/wmic-XSL/cmstp/MSBuild/InstallUtil),
+  more exploit-traffic (Shellshock, Spring4Shell, Log4Shell, Struts OGNL, JNDI,
+  NoSQLi, CRLF, gopher/dict SSRF, PHP dynamic-eval, Ghostcat, GraphQL
+  introspection, JS heap-spray), packers/protectors (Enigma, PECompact, Petite,
+  MEW, FSG, NsPack, MoleBox, Obsidium, .NET Reactor, ConfuserEx, SmartAssembly,
+  PyArmor), behavioral traits & pe-module rules (process hollowing, UAC bypass,
+  LSASS dump, AMSI patch, anti-VM, token impersonation, raw keylogger,
+  QueueUserAPC injection, CryptoAPI ransom set, anti-debug imports), and banking
+  trojans / clippers (Ursnif, Zeus/Zbot, SpyEye, Citadel, Tinba, crypto
+  clipper). Severities follow the existing tiering (families critical;
+  recon/heuristic/packer rules tagged down).
+
+- **+100 more built-in YARA rules** (`artifactscan` pack now ~169 rules). New
+  coverage: ransomware families (LockBit, Conti, REvil, BlackCat, Hive, Ryuk,
+  WannaCry, Phobos, Dharma, STOP/Djvu, Maze, Cl0p, Black Basta, Akira, Royal),
+  RATs/backdoors (Gh0st, PlugX, Orcus, NetWire, Adwind, BitRAT, XWorm, Pupy,
+  AveMaria, Houdini, Crimson, ZeroAccess, …), stealers/loaders (Vidar, Raccoon,
+  Azorult, Xloader, Rhadamanthys, Lumma, StealC, Amadey, SmokeLoader, GuLoader,
+  BazarLoader, IcedID, Qakbot, Dridex, Ramnit), document/script droppers (VBA
+  auto-exec, VBS/HTA/JScript, Office DDE, RTF Equation Editor, XLL), more
+  webshells (Godzilla, AspxSpy, Caidao, reGeorg, Tunna, p0wny, …), offensive/
+  recon/cracking tooling (Responder, Impacket, CrackMapExec, Nmap, masscan,
+  sqlmap, Hydra, hashcat, John, Gobuster, ffuf, PowerCat, socat, plink, AdFind,
+  Seatbelt), persistence/defense-evasion patterns (schtasks, Run-key, WMI
+  subscription, Startup folder, Defender/firewall disable, event-log clear,
+  shadow-copy delete, ETW patch, timestomp), exploit-traffic patterns (SQLi,
+  XSS, path traversal, PHP LFI wrappers, command injection, cloud-metadata SSRF,
+  XXE, SSTI, Java deserialization), and more miners/Linux malware (CoinHive,
+  Kinsing). Each rule carries an appropriate severity (trait/recon rules tagged
+  down to high/medium; named-threat families stay critical).
+
+- **Detection-content expansion: +50 YARA rules, +30 CVEs, +30 CWEs, +30 service
+  emulators.** The built-in `artifactscan` pack gains 50 rules covering RATs
+  (njRAT, AsyncRAT, Quasar, Remcos, NanoCore, DarkComet), stealers (RedLine,
+  AgentTesla, Lokibot), C2/offensive tooling (Sliver, Havoc, Brute Ratel,
+  Covenant, Empire, Mimikatz, Rubeus, SharpHound, PsExec, Chisel/ngrok/frp
+  tunnels), webshells (China Chopper, WSO, b374k, Behinder, AntSword, Weevely),
+  packers (VMProtect/Themida/ASPack), LOLBIN/PowerShell abuse, coin miners,
+  Linux malware (XorDDoS, Diamorphine), and `pe`-module behavioral rules
+  (keylogger hooks, service persistence) — each tagged with an appropriate
+  severity. The CVE catalog gains 30 web/appliance exploit signatures (Spring
+  Cloud Gateway/Config, Lucee, Apache OFBiz, Jira SSRF/SSTI/file-read,
+  ManageEngine, Solr, Citrix, GitLab ExifTool, PHP-CGI, SnakeYAML, …) with
+  CWE/CPE/EPSS cross-references, the CWE dictionary grows by 30 weakness classes,
+  and 30 new Lua service emulators ship under `configs/scripts/` (Gophish, EMQX,
+  Wazuh, MISP, TheHive, Nessus, GLPI, Jellyfin, Home Assistant, TrueNAS, …).
+- **YARA module support + bigger built-in rule pack** — the CGO-free rule
+  engine (`internal/artifactscan`) now evaluates a practical slice of the YARA
+  module surface: `filesize`, the integer readers `uint8/16/32(be)` and
+  `int8/16/32`, arithmetic/comparison/bitwise operators, and the `pe`, `elf`,
+  `math`, and `hash` modules (`pe.imports`, `pe.entry_point`, `pe.is_dll`,
+  `pe.number_of_sections`, `elf.type`, `elf.number_of_sections`, `math.entropy`,
+  `math.in_range`, `hash.md5/sha1/sha256`). Module facts are sourced from the
+  std-lib `debug/pe` · `debug/elf` parsers and computed once per artifact. This
+  unlocks the large fraction of community `.yar` rules that were previously
+  skipped as "unsupported construct". The built-in pack gains Cobalt Strike,
+  Meterpreter, XMRig, JSP/ASP.NET webshell, Mirai/Gafgyt, cron-persistence,
+  sandbox-evasion, and PE process-injection / dynamic-API-resolution rules. The
+  `analyze` CLI now prints each matched rule's description.
+- **Per-rule YARA severity tiering** — a captured artifact's `malware:capture`
+  severity is now driven by the matched rule's declared severity (rule meta
+  `severity = "low|medium|high|critical"`, or a numeric `score`) instead of
+  every YARA hit forcing Critical. Rules that declare neither still default to
+  critical (unchanged for the high-confidence built-ins), while generic
+  trait/heuristic rules tag down — the built-in packer / sandbox-evasion rules
+  are now `medium` and the credential-theft / XOR-stub / dynamic-API-resolution
+  loader rules `high`, so they sit at the High baseline rather than over-firing
+  Critical. A known-malware hash match remains Critical regardless.
 
 - **Native ATT&CK matrix** on the `/attack` page — a tactic column per observed
   tactic (kill-chain order), each a stack of technique cells shaded by event
