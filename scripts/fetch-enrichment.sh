@@ -24,6 +24,8 @@
 #   -i, --install       after fetching, install into THIS host's sensor config
 #                       (runs install-enrichment.sh; implies --no-archive)
 #   -c, --config PATH   sensor config for --install (default /etc/tarpit-honeypot/config.yaml)
+#       --bin PATH      tarpit-honeypot binary for --install (auto-detected:
+#                       PATH, ../bin, /usr/local/bin, /usr/bin)
 #       --reload-cmd C  reload command passed to --install (e.g. "systemctl reload tarpit-honeypot")
 #   -q, --quiet         terse output (cron/timer friendly)
 #   -h, --help          this help
@@ -35,6 +37,9 @@
 #   ABUSE_CH_AUTH_KEY    optional abuse.ch Auth-Key; sent as the Auth-Key header
 #                        for the ThreatFox / MalwareBazaar exports (some now
 #                        require it). Get one free at https://auth.abuse.ch/.
+#   JA4DB_URL            override the JA4+ fingerprint DB source (default: the
+#                        FoxIO ja4plus-mapping.csv on GitHub). CSV or JSON
+#                        (ja4db.com export) is auto-detected; JSON needs jq.
 #   SKIP_GEOIP=1         skip the (large) GeoIP downloads
 #   NO_ARCHIVE=1         don't build the single-file .tar.gz (implied by --install)
 #   INSECURE=1           pass -k/--no-check-certificate (not recommended)
@@ -51,14 +56,16 @@ OUT=""
 INSTALL=0
 CONFIG="/etc/tarpit-honeypot/config.yaml"
 RELOAD_CMD=""
+BIN=""
 QUIET=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-i | --install) INSTALL=1; export NO_ARCHIVE=1; shift ;;
 	-c | --config) CONFIG="$2"; shift 2 ;;
+	--bin) BIN="$2"; shift 2 ;;
 	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
 	-q | --quiet) QUIET=1; shift ;;
-	-h | --help) sed -n '2,36p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,40p' "$0"; exit 0 ;;
 	-*) echo "unknown option: $1" >&2; exit 2 ;;
 	*) OUT="$1"; shift ;;
 	esac
@@ -279,23 +286,56 @@ fetch_abuse_csv() {
 	ok=$((ok + 1)); return 0
 }
 
-# fetch_ja4db <dest_dir> — download the FoxIO JA4DB and emit normalized
-# "fingerprint,application" files per kind (needs jq for the JSON).
+# fetch_ja4db — download a FoxIO JA4+ database and emit normalized
+# "fingerprint,label" files per kind (ja4 + ja4h, which the enricher consumes).
+#
+# Source is $JA4DB_URL (default: FoxIO's ja4plus-mapping.csv on GitHub — plain
+# CSV, no jq, reachable). Override it to point at a larger DB, e.g. the full
+# ja4db.com JSON export. The format is auto-detected: a payload starting with
+# '{' or '[' is parsed as JA4DB JSON (needs jq); otherwise as the FoxIO CSV
+#   Application,Library,Device,OS,ja4,ja4s,ja4h,ja4x,ja4t,ja4tscan,Notes
+# labeling each fingerprint with the first non-empty Application/Library/Device.
 fetch_ja4db() {
-	local url="https://ja4db.com/api/download/" tmp="$FP_DIR/ja4db.json.$$"
+	local url="${JA4DB_URL:-https://raw.githubusercontent.com/FoxIO-LLC/ja4/main/ja4plus-mapping.csv}"
+	local tmp="$FP_DIR/ja4db.$$"
 	printf '  %-22s ' "foxio-ja4db"
-	if ! command -v jq >/dev/null 2>&1; then echo "skipped (needs jq)"; return 0; fi
 	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
 		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
 	fi
-	local kind field
-	for kind in ja4 ja4h ja4s; do
-		field="${kind}_fingerprint"
-		jq -r ".[] | select(.${field} != null and .${field} != \"\") | \"\(.${field}),\(.application // .library // .device // \"unknown\")\"" \
-			"$tmp" 2>/dev/null | sort -u >"$FP_DIR/$kind.txt" || true
-	done
+	# Sniff format from the first non-blank byte.
+	local first
+	first=$(tr -d ' \t\r\n' <"$tmp" | head -c1)
+	if [ "$first" = "{" ] || [ "$first" = "[" ]; then
+		# JA4DB JSON export (needs jq): {ja4_fingerprint, ja4h_fingerprint,
+		# application/library/device, ...}.
+		if ! command -v jq >/dev/null 2>&1; then
+			echo "FAILED (JSON source needs jq)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+		fi
+		local field
+		for spec in "ja4_fingerprint ja4" "ja4h_fingerprint ja4h"; do
+			set -- $spec
+			jq -r ".[]? | select(.$1 != null and .$1 != \"\") | \"\(.$1),\(.application // .library // .device // \"unknown\")\"" \
+				"$tmp" 2>/dev/null | sort -u >"$FP_DIR/$2.txt" || true
+		done
+	else
+		# FoxIO mapping CSV: ja4 = col 5, ja4h = col 7.
+		for spec in "5 ja4" "7 ja4h"; do
+			set -- $spec
+			awk -F, -v col="$1" '
+				NR == 1 { next }                        # header
+				{ gsub(/\r/, ""); fp = $col; if (fp == "") next;
+				  lab = $1; if (lab == "") lab = $2; if (lab == "") lab = $3;
+				  if (lab == "") lab = "unknown";
+				  print fp "," lab }
+			' "$tmp" | sort -u >"$FP_DIR/$2.txt" || true
+		done
+	fi
 	rm -f "$tmp"
-	local n; n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
+	local n
+	n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
+	if [ "${n:-0}" -eq 0 ]; then
+		echo "FAILED (no fingerprints parsed)"; fail=$((fail + 1)); return 1
+	fi
 	echo "ok (${n} ja4)"
 	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  foxio-ja4db  $url  ${n} ja4  $FP_DIR" >>"$MANIFEST"
 	ok=$((ok + 1)); return 0
@@ -340,7 +380,7 @@ cat "$MAL_DIR/threatfox.txt" "$MAL_DIR/malwarebazaar.txt" 2>/dev/null | sort -u 
 # URLhaus malicious URLs (reference / future host matching).
 fetch "urlhaus-urls" "https://urlhaus.abuse.ch/downloads/text_recent/" "$MAL_DIR/urlhaus-urls.txt" || true
 
-say "[fingerprints]  (JA4DB — client/tool attribution)"
+say "[fingerprints]  (FoxIO JA4+ mapping — client/tool attribution)"
 fetch_ja4db || true
 
 say "[p0f]  (passive OS fingerprint signatures)"
@@ -449,9 +489,28 @@ if [ "$INSTALL" = 1 ]; then
 		echo "error: --install given but $INST not found/executable" >&2
 		exit 1
 	fi
+	# Resolve the sensor binary for the install step (list-paths). sudo resets
+	# PATH and a source checkout puts the binary in ../bin, so look there too;
+	# forward it to the installer via --bin. --bin on our own CLI wins.
+	if [ -z "$BIN" ]; then
+		if command -v tarpit-honeypot >/dev/null 2>&1; then
+			BIN="tarpit-honeypot"
+		else
+			for cand in \
+				"$HERE/../bin/tarpit-honeypot" \
+				"$HERE/../tarpit-honeypot" \
+				"$HERE/tarpit-honeypot" \
+				"./bin/tarpit-honeypot" \
+				"/usr/local/bin/tarpit-honeypot" \
+				"/usr/bin/tarpit-honeypot"; do
+				if [ -x "$cand" ]; then BIN="$cand"; break; fi
+			done
+		fi
+	fi
 	say
 	say "Installing into this host's sensor (config: $CONFIG)…"
 	set -- "$OUT" -c "$CONFIG" --skip-verify
+	[ -n "$BIN" ] && set -- "$@" --bin "$BIN"
 	[ -n "$RELOAD_CMD" ] && set -- "$@" --reload-cmd "$RELOAD_CMD"
 	"$INST" "$@"
 	exit $?

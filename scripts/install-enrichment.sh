@@ -28,6 +28,10 @@
 #
 # Exit status is non-zero if verification fails or nothing could be installed.
 
+# This is a bash script. If invoked via `sh script.sh`, re-exec under bash so
+# it behaves identically (POSIX sh lacks `set -o pipefail`, etc.).
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+
 set -euo pipefail
 
 BUNDLE=""
@@ -68,11 +72,29 @@ trap '[ -n "$CLEANUP" ] && rm -rf "$CLEANUP"' EXIT
 
 [ -d "$BUNDLE" ] || { echo "error: bundle dir not found: $BUNDLE" >&2; exit 2; }
 
-# Resolve the binary (for list-paths).
+# Resolve the binary (for list-paths). Search PATH, then the repo layout
+# relative to this script (scripts/ -> ../bin), the CWD, and common install
+# locations — so it works from a source checkout and under sudo (which resets
+# PATH). Override with --bin.
 if [ -z "$BIN" ]; then
-	if command -v tarpit-honeypot >/dev/null 2>&1; then BIN="tarpit-honeypot"
-	elif [ -x "./bin/tarpit-honeypot" ]; then BIN="./bin/tarpit-honeypot"
-	else echo "error: tarpit-honeypot binary not found (use --bin)" >&2; exit 2; fi
+	HERE="$(cd "$(dirname "$0")" && pwd)"
+	if command -v tarpit-honeypot >/dev/null 2>&1; then
+		BIN="tarpit-honeypot"
+	else
+		for cand in \
+			"$HERE/../bin/tarpit-honeypot" \
+			"$HERE/../tarpit-honeypot" \
+			"$HERE/tarpit-honeypot" \
+			"./bin/tarpit-honeypot" \
+			"/usr/local/bin/tarpit-honeypot" \
+			"/usr/bin/tarpit-honeypot"; do
+			if [ -x "$cand" ]; then BIN="$cand"; break; fi
+		done
+	fi
+	if [ -z "$BIN" ]; then
+		echo "error: tarpit-honeypot binary not found (searched PATH, ../bin, /usr/local/bin, /usr/bin; use --bin PATH)" >&2
+		exit 2
+	fi
 fi
 
 # 1. Verify checksums.
