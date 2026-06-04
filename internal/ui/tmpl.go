@@ -700,19 +700,22 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
 {{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
 
-<h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }})</span></h2>
+<h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }}{{ if or .FilterKind .FilterService }} of {{ .TotalCreds }}{{ end }})</span></h2>
+{{ if .KindCounts }}<div class="counters">{{ range .KindCounts }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ end }}</div>{{ end }}
+{{ if .ServiceCounts }}<div class="counters"><span class="counter-cat">by service</span>{{ range .ServiceCounts }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ end }}</div>{{ end }}
+{{ if or .FilterKind .FilterService }}<p class="note">filtered{{ if .FilterKind }} · type <span class="tag">{{ .FilterKind }}</span>{{ end }}{{ if .FilterService }} · service <span class="tag">{{ .FilterService }}</span>{{ end }} — <a href="/captures">clear filter</a></p>{{ end }}
 {{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>type</th><th>username / principal</th><th>password / secret</th></tr>
 {{ range .Creds }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
   <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td>
-  <td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td>
-  <td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td>
+  <td>{{ if .Service }}<a class="tag" href="/captures?service={{ .Service }}">{{ .Service }}</a>{{ else }}—{{ end }}</td>
+  <td><a class="tag" href="/captures?kind={{ .KindLabel }}">{{ .KindLabel }}</a></td>
   <td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td>
   <td><code>{{ .Pass }}</code></td>
 </tr>{{ end }}
 </table>
-<p class="note">Logins (user/pass) plus standalone secrets attackers presented — bearer / API / Vault tokens, SNMP communities, cookies, Kerberos pre-auth tickets — and the honeytokens we served. Full byte-level capture is in the per-event detail and the pcaps below.</p>
-{{ else }}<p class="note">none captured in the window</p>{{ end }}
+<p class="note">Click a type or service counter (or a label in a row) to filter. Logins (user/pass) plus standalone secrets attackers presented — bearer / API / Vault tokens, SNMP communities, cookies, Kerberos pre-auth tickets — and the honeytokens we served. Full byte-level capture is in the per-event detail and the pcaps below.</p>
+{{ else }}<p class="note">none captured{{ if or .FilterKind .FilterService }} for this filter — <a href="/captures">clear filter</a>{{ else }} in the window{{ end }}</p>{{ end }}
 
 <h2>pcaps <span class="meta">({{ len .Pcaps }})</span></h2>
 {{ if .Pcaps }}<table data-filter><tr><th>captured (utc)</th><th>source IP</th><th>dst port</th><th>size</th><th>file</th><th></th></tr>

@@ -8,6 +8,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/ui"
 )
 
 // mustExport runs export-creds with the given args and returns stdout, failing
@@ -84,5 +85,31 @@ func TestExportCredsFormatsAndFilter(t *testing.T) {
 	// Bad format is rejected.
 	if err := cmdExportCreds([]string{"--data-dir", dir, "--format", "bogus"}); err == nil {
 		t.Error("bad --format should error")
+	}
+}
+
+func TestSortCreds(t *testing.T) {
+	mk := func(src, user, kind string, sec int) ui.Cred {
+		return ui.Cred{Source: src, User: user, Kind: kind, Time: time.Unix(int64(sec), 0).UTC().Format(time.RFC3339)}
+	}
+	base := []ui.Cred{mk("9.9.9.9", "bob", "token", 100), mk("1.1.1.1", "alice", "password", 300), mk("5.5.5.5", "carol", "cookie", 200)}
+
+	// time: newest first.
+	c := append([]ui.Cred(nil), base...)
+	sortCreds(c, "time", false)
+	if c[0].User != "alice" || c[2].User != "bob" {
+		t.Errorf("time sort wrong: %v", []string{c[0].User, c[1].User, c[2].User})
+	}
+	// source: ascending.
+	c = append([]ui.Cred(nil), base...)
+	sortCreds(c, "source", false)
+	if c[0].Source != "1.1.1.1" || c[2].Source != "9.9.9.9" {
+		t.Errorf("source sort wrong: %v", []string{c[0].Source, c[1].Source, c[2].Source})
+	}
+	// user reversed: descending.
+	c = append([]ui.Cred(nil), base...)
+	sortCreds(c, "user", true)
+	if c[0].User != "carol" || c[2].User != "alice" {
+		t.Errorf("reverse user sort wrong: %v", []string{c[0].User, c[1].User, c[2].User})
 	}
 }

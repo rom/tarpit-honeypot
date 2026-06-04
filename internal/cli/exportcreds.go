@@ -30,7 +30,9 @@ func cmdExportCreds(args []string) error {
 	since := fs.Duration("since", 30*24*time.Hour, "export credentials from events newer than this")
 	format := fs.String("format", "json", "output format: json | xml | yaml | csv | txt")
 	kind := fs.String("kind", "", "comma-separated credential kinds to include (e.g. password,token,ssh-pubkey); empty = all")
-	dedup := fs.Bool("dedup", true, "collapse identical kind/user/secret/service rows")
+	dedup := fs.Bool("dedup", true, "remove duplicates: collapse identical kind/user/secret/service rows")
+	sortBy := fs.String("sort", "time", "sort by: time | source | user | secret | service | kind")
+	reverse := fs.Bool("reverse", false, "reverse the sort order")
 	if err := parseOrUsage(fs, args); err != nil {
 		if err == errHelp {
 			return nil
@@ -41,6 +43,11 @@ func cmdExportCreds(args []string) error {
 	case "json", "xml", "yaml", "csv", "txt":
 	default:
 		return fmt.Errorf("--format must be json, xml, yaml, csv, or txt (got %q)", *format)
+	}
+	switch *sortBy {
+	case "time", "source", "user", "secret", "service", "kind":
+	default:
+		return fmt.Errorf("--sort must be time, source, user, secret, service, or kind (got %q)", *sortBy)
 	}
 	// Optional kind filter.
 	var want map[string]bool
@@ -93,9 +100,45 @@ func cmdExportCreds(args []string) error {
 			creds = append(creds, c)
 		}
 	}
-	sort.SliceStable(creds, func(i, j int) bool { return creds[i].Time > creds[j].Time })
+	sortCreds(creds, *sortBy, *reverse)
 
 	return writeCreds(*format, creds)
+}
+
+// sortCreds orders the credential rows by the chosen field. "time" is newest-
+// first (the default that operators expect); the text fields sort
+// ascending/case-insensitively. --reverse flips whichever order was chosen.
+func sortCreds(creds []ui.Cred, by string, reverse bool) {
+	key := func(c ui.Cred) string {
+		switch by {
+		case "source":
+			return c.Source
+		case "user":
+			return strings.ToLower(c.User)
+		case "secret":
+			return strings.ToLower(c.Secret)
+		case "service":
+			return c.Service
+		case "kind":
+			return c.Kind
+		default:
+			return ""
+		}
+	}
+	sort.SliceStable(creds, func(i, j int) bool {
+		less := false
+		if by == "time" {
+			less = creds[i].Time > creds[j].Time // newest first
+		} else if ki, kj := key(creds[i]), key(creds[j]); ki != kj {
+			less = ki < kj
+		} else {
+			less = creds[i].Time > creds[j].Time // stable tiebreak: newest first
+		}
+		if reverse {
+			return !less
+		}
+		return less
+	})
 }
 
 func writeCreds(format string, creds []ui.Cred) error {

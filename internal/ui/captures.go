@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,15 +47,23 @@ type capturesView struct {
 	Creds     []credRow
 	Since     time.Time
 	Scanned   int
+	// Credential-capture summary counters (clickable filters), computed over
+	// the whole window regardless of the active filter.
+	KindCounts    []counter
+	ServiceCounts []counter
+	TotalCreds    int    // total deduped creds before the active filter
+	FilterKind    string // active ?kind= filter ("" = none)
+	FilterService string // active ?service= filter ("" = none)
 }
 
 type credRow struct {
-	Time    time.Time
-	Source  string
-	Service string
-	Kind    string // password | token | api-key | snmp-community | cookie | kerberos-ticket | honeytoken
-	User    string
-	Pass    string
+	Time      time.Time
+	Source    string
+	Service   string
+	Kind      string // password | token | api-key | snmp-community | cookie | kerberos-ticket | honeytoken
+	KindLabel string // Kind, defaulting to "password" when empty (display + filter key)
+	User      string
+	Pass      string
 }
 
 // lootDir maps the UI "kind" to its subdirectory under data_dir.
@@ -115,15 +124,20 @@ func listLoot(dataDir, kind string, max int) []lootFile {
 	return out
 }
 
-func buildCapturesView(dataDir string, since time.Time, evs []*event.Event) capturesView {
-	v := capturesView{Enabled: dataDir != "", Since: since, Scanned: len(evs)}
+func buildCapturesView(dataDir string, since time.Time, evs []*event.Event, filterKind, filterService string) capturesView {
+	v := capturesView{Enabled: dataDir != "", Since: since, Scanned: len(evs), FilterKind: filterKind, FilterService: filterService}
 	if dataDir != "" {
 		v.Pcaps = listLoot(dataDir, "pcap", 500)
 		v.Sessions = listLoot(dataDir, "session", 500)
 		v.Artifacts = listLoot(dataDir, "payload", 500)
 	}
-	// Captured credentials from the event store (newest first, deduped).
+	// Captured credentials from the event store (newest first, deduped). Counts
+	// per type/service are tallied over the whole deduped set so the counters
+	// stay stable while you click through filters.
 	seen := map[string]struct{}{}
+	kindCounts := map[string]int{}
+	serviceCounts := map[string]int{}
+	var all []credRow
 	for _, ev := range evs {
 		for _, c := range extractCreds(ev) {
 			if c.User == "" && c.Pass == "" {
@@ -134,12 +148,66 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event) capt
 				continue
 			}
 			seen[key] = struct{}{}
-			v.Creds = append(v.Creds, credRow{
-				Time: ev.Time, Source: ev.Source.IP, Service: c.Service, Kind: c.Kind, User: c.User, Pass: c.Pass,
+			kindLabel := c.Kind
+			if kindLabel == "" {
+				kindLabel = "password"
+			}
+			kindCounts[kindLabel]++
+			if c.Service != "" {
+				serviceCounts[c.Service]++
+			}
+			all = append(all, credRow{
+				Time: ev.Time, Source: ev.Source.IP, Service: c.Service,
+				Kind: c.Kind, KindLabel: kindLabel, User: c.User, Pass: c.Pass,
 			})
 		}
 	}
+	v.TotalCreds = len(all)
+	v.KindCounts = capturesCounters(kindCounts, "kind", filterKind)
+	v.ServiceCounts = capturesCounters(serviceCounts, "service", filterService)
+	// Apply the active type/service filter to the displayed rows.
+	for _, row := range all {
+		if filterKind != "" && row.KindLabel != filterKind {
+			continue
+		}
+		if filterService != "" && row.Service != filterService {
+			continue
+		}
+		v.Creds = append(v.Creds, row)
+	}
 	return v
+}
+
+// capturesCounters turns a label→count map into clickable counter chips for the
+// captures page, sorted by count (then label). param is the query key the chip
+// links to ("kind"/"service"); active highlights the currently-selected chip.
+func capturesCounters(m map[string]int, param, active string) []counter {
+	type kv struct {
+		k string
+		v int
+	}
+	items := make([]kv, 0, len(m))
+	for k, n := range m {
+		items = append(items, kv{k, n})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].v != items[j].v {
+			return items[i].v > items[j].v
+		}
+		return items[i].k < items[j].k
+	})
+	out := make([]counter, 0, len(items))
+	for _, it := range items {
+		cl := ""
+		if it.k == active {
+			cl = "c-total" // tint the active filter
+		}
+		out = append(out, counter{
+			Label: it.k, Value: it.v, Class: cl,
+			Href: "/captures?" + param + "=" + url.QueryEscape(it.k),
+		})
+	}
+	return out
 }
 
 func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +218,10 @@ func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
 	if e, err := s.query(ctx, store.Filter{Since: since, Limit: capturesScanMax}); err == nil {
 		evs = e
 	}
+	kind := r.URL.Query().Get("kind")
+	service := r.URL.Query().Get("service")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "captures", buildCapturesView(s.dataDir, since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "captures", buildCapturesView(s.dataDir, since, evs, kind, service)); err != nil {
 		slog.Warn("ui: render captures", "err", err)
 	}
 }
