@@ -343,6 +343,9 @@ fetch "urlhaus-urls" "https://urlhaus.abuse.ch/downloads/text_recent/" "$MAL_DIR
 say "[fingerprints]  (JA4DB — client/tool attribution)"
 fetch_ja4db || true
 
+say "[p0f]  (passive OS fingerprint signatures)"
+fetch "p0f.fp" "https://raw.githubusercontent.com/p0f/p0f/master/p0f.fp" "$OUT/p0f.fp" || true
+
 if [ "${SKIP_GEOIP:-}" != "1" ]; then
 	echo "[geoip]"
 	if [ -n "${MAXMIND_LICENSE_KEY:-}" ]; then
@@ -394,15 +397,18 @@ sensor:
     sources:
       - { kind: ja4,  file: /etc/tarpit-honeypot/enrichment/fingerprints/ja4.txt }
       - { kind: ja4h, file: /etc/tarpit-honeypot/enrichment/fingerprints/ja4h.txt }
-  # Passive OS fingerprinting: drop a full p0f.fp here for broader coverage.
-  sniffer:
-    p0f_db: /etc/tarpit-honeypot/enrichment/p0f.fp
   # Static analysis of captured artifacts + known-malware hash attribution.
   payloads:
     enabled: true
     analyze: true
     yara_rules:    /etc/tarpit-honeypot/enrichment/yara          # drop .yar packs here
     malware_hashes: /etc/tarpit-honeypot/enrichment/malware/known-hashes.txt
+
+# Passive OS fingerprinting refinement. NOTE: `sniffer` is a TOP-LEVEL key
+# (not under `sensor`). Requires the AF_PACKET sniffer (Linux + CAP_NET_RAW).
+sniffer:
+  enabled: true
+  p0f_db: /etc/tarpit-honeypot/enrichment/p0f.fp
 YAML
 
 # ---- checksums + single-file archive for easy transfer ---------------------
