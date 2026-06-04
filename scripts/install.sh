@@ -35,6 +35,9 @@
 #       --no-selinux    skip the SELinux policy module (RHEL-family)
 #       --no-apparmor   skip the AppArmor profile (Debian-family)
 #       --no-deps       don't try to install missing OS packages
+#       --no-relocate-sshd     don't move a host sshd off tcp/22 (default: relocate
+#                              the real sshd to tcp/10022 when the decoy wants 22)
+#       --ssh-relocate-port N  port to move the host sshd to (default: 10022)
 #   -h, --help          this help
 #
 # Idempotent: safe to re-run to upgrade the binary / refresh the unit.
@@ -60,6 +63,8 @@ DO_BUILD=1
 DO_SELINUX=1
 DO_APPARMOR=1
 DO_DEPS=1
+RELOCATE_SSHD=1
+SSH_RELO_PORT=10022
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEFAULT_CONFIG="$REPO/configs/tarpit-honeypot.example-CENTOS-SERVER.yaml"
@@ -77,7 +82,9 @@ while [ $# -gt 0 ]; do
 	--no-selinux) DO_SELINUX=0; shift ;;
 	--no-apparmor) DO_APPARMOR=0; shift ;;
 	--no-deps) DO_DEPS=0; shift ;;
-	-h | --help) sed -n '2,38p' "$0"; exit 0 ;;
+	--no-relocate-sshd) RELOCATE_SSHD=0; shift ;;
+	--ssh-relocate-port) SSH_RELO_PORT="$2"; shift 2 ;;
+	-h | --help) sed -n '2,41p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
 done
@@ -378,6 +385,114 @@ apparmor) install_apparmor ;;
 esac
 
 # ---------------------------------------------------------------------------
+# 8.5 Relocate the host's real sshd off tcp/22 so the SSH decoy can own it.
+# Only acts when the deployed config binds tcp/22 AND a system sshd is there.
+# The admin's CURRENT session survives; new real-SSH connections move to 10022.
+# ---------------------------------------------------------------------------
+relocate_sshd() {
+	[ "$RELOCATE_SSHD" = 1 ] || { info "SSH relocation skipped (--no-relocate-sshd)"; return 0; }
+	# Does the honeypot config actually want tcp/22?
+	if ! grep -qE 'bind:[^#]*:22([^0-9]|$)' "$CONFIG_SRC" && ! grep -qE 'port:[[:space:]]*22([^0-9]|$)' "$CONFIG_SRC"; then
+		info "Config does not bind tcp/22 — leaving the host sshd in place."
+		return 0
+	fi
+	# Is something already listening on tcp/22 (the host sshd, not us)?
+	local on22=0
+	if command -v ss >/dev/null 2>&1; then
+		ss -H -ltn 2>/dev/null | awk '{print $4}' | grep -qE '[:.]22$' && on22=1
+	elif command -v netstat >/dev/null 2>&1; then
+		netstat -ltn 2>/dev/null | awk '{print $4}' | grep -qE '[:.]22$' && on22=1
+	fi
+	if [ "$on22" = 0 ]; then
+		info "Nothing on tcp/22 — the SSH decoy can bind it directly."
+		return 0
+	fi
+
+	warn "================== SSH RELOCATION =================="
+	warn "A system SSH daemon is on tcp/22, which the honeypot decoy needs."
+	warn "Moving the real sshd to tcp/${SSH_RELO_PORT} so the decoy can own tcp/22."
+	warn "(Re-run with --no-relocate-sshd to skip this.)"
+
+	# 1. Tell sshd to listen on the new port. Prefer a drop-in; otherwise edit
+	#    sshd_config, commenting any literal 'Port 22'.
+	if [ -d /etc/ssh/sshd_config.d ] && grep -qsE '^[Ii]nclude[[:space:]]+/etc/ssh/sshd_config.d/' /etc/ssh/sshd_config; then
+		printf '# Set by the tarpit-honeypot installer: the decoy owns tcp/22.\nPort %s\n' "$SSH_RELO_PORT" \
+			> /etc/ssh/sshd_config.d/00-tarpit-relocate.conf
+		info "Wrote /etc/ssh/sshd_config.d/00-tarpit-relocate.conf (Port ${SSH_RELO_PORT})"
+	else
+		sed -i 's/^[[:space:]]*Port[[:space:]]\{1,\}22[[:space:]]*$/# &  (moved by tarpit-honeypot)/' /etc/ssh/sshd_config 2>/dev/null || true
+		printf '\n# Set by the tarpit-honeypot installer: the decoy owns tcp/22.\nPort %s\n' "$SSH_RELO_PORT" \
+			>> /etc/ssh/sshd_config
+		info "Set Port ${SSH_RELO_PORT} in /etc/ssh/sshd_config"
+	fi
+
+	# 2. SELinux: label the new port so sshd is allowed to bind it.
+	if command -v semanage >/dev/null 2>&1; then
+		if semanage port -a -t ssh_port_t -p tcp "$SSH_RELO_PORT" 2>/dev/null ||
+			semanage port -m -t ssh_port_t -p tcp "$SSH_RELO_PORT" 2>/dev/null; then
+			info "SELinux: tcp/${SSH_RELO_PORT} labeled ssh_port_t"
+		else
+			warn "SELinux: could not label tcp/${SSH_RELO_PORT}; run: semanage port -a -t ssh_port_t -p tcp ${SSH_RELO_PORT}"
+		fi
+	fi
+
+	# 3. Firewall: open the new SSH port (best-effort).
+	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+		firewall-cmd --permanent --add-port="${SSH_RELO_PORT}/tcp" >/dev/null 2>&1 || true
+		firewall-cmd --reload >/dev/null 2>&1 || true
+		info "firewalld: opened ${SSH_RELO_PORT}/tcp"
+	elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi active; then
+		ufw allow "${SSH_RELO_PORT}/tcp" >/dev/null 2>&1 || true
+		info "ufw: allowed ${SSH_RELO_PORT}/tcp"
+	fi
+
+	# 4. Validate the config before touching the running daemon.
+	if command -v sshd >/dev/null 2>&1 && ! sshd -t 2>/dev/null; then
+		warn "sshd -t reported a config error — NOT restarting sshd. Fix /etc/ssh and"
+		warn "restart it yourself; until then the decoy must not bind tcp/22."
+		return 0
+	fi
+
+	# 5. Apply. Handle socket-activated SSH (newer Ubuntu) where the listen port
+	#    lives in ssh.socket, not sshd_config.
+	if command -v systemctl >/dev/null 2>&1; then
+		if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+			mkdir -p /etc/systemd/system/ssh.socket.d
+			printf '[Socket]\nListenStream=\nListenStream=%s\n' "$SSH_RELO_PORT" \
+				> /etc/systemd/system/ssh.socket.d/00-tarpit-relocate.conf
+			systemctl daemon-reload
+			systemctl restart ssh.socket 2>/dev/null || warn "could not restart ssh.socket"
+			info "ssh.socket now listens on tcp/${SSH_RELO_PORT}"
+		fi
+		local unit=""
+		for u in sshd ssh; do
+			systemctl list-unit-files 2>/dev/null | grep -q "^${u}\.service" && { unit="$u"; break; }
+		done
+		if [ -n "$unit" ]; then
+			systemctl restart "${unit}" 2>/dev/null || warn "could not restart ${unit}; restart it manually"
+			info "Restarted ${unit}; real SSH is now on tcp/${SSH_RELO_PORT}"
+		else
+			warn "No ssh systemd unit found; restart sshd manually for Port ${SSH_RELO_PORT} to take effect."
+		fi
+	else
+		warn "No systemd; restart sshd manually so Port ${SSH_RELO_PORT} takes effect."
+	fi
+
+	warn "---------------------------------------------------"
+	warn "ACTION REQUIRED — reconnect to THIS host's real SSH on the new port:"
+	warn "    ssh -p ${SSH_RELO_PORT} <user>@<this-host>"
+	warn "  Make it permanent in your ~/.ssh/config on the CLIENT:"
+	warn "      Host <this-host-or-alias>"
+	warn "          HostName <this-host>"
+	warn "          Port ${SSH_RELO_PORT}"
+	warn "  Then: ssh <this-host-or-alias>   (no -p needed)"
+	warn "  scp/sftp likewise: scp -P ${SSH_RELO_PORT} file <user>@<host>:  /  sftp -P ${SSH_RELO_PORT} <user>@<host>"
+	warn "  Your CURRENT session stays up; new tcp/22 connections now hit the DECOY."
+	warn "==================================================="
+}
+relocate_sshd
+
+# ---------------------------------------------------------------------------
 # 9. systemd: hardened service + enrichment/cert timers.
 # ---------------------------------------------------------------------------
 install_systemd() {
@@ -477,4 +592,7 @@ Next steps:
 
 Hardening in effect: privilege drop ($SVC_USER), file caps ${CAPS}, in-process
 seccomp + Landlock (config), host LSM ($LSM), and systemd confinement.
+
+If this installer relocated your real sshd, reconnect on the new port:
+       ssh -p ${SSH_RELO_PORT} <user>@<this-host>     (the decoy now owns tcp/22)
 EOF
