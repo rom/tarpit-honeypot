@@ -445,6 +445,14 @@ a.counter:hover { border-color: var(--link); filter: brightness(1.04); }
 .counter.sev-bg-high { background: color-mix(in srgb, var(--sev-high) 20%, var(--bg-surface)); border-color: var(--sev-high); }
 .counter.sev-bg-medium { background: color-mix(in srgb, var(--sev-medium) 20%, var(--bg-surface)); border-color: var(--sev-medium); }
 .counter.sev-bg-low { background: color-mix(in srgb, var(--sev-low) 16%, var(--bg-surface)); border-color: color-mix(in srgb, var(--sev-low) 45%, var(--border-medium)); }
+/* captures & loot summary rows: credential-type chips vs by-service chips get
+   distinct tints (teal vs violet) so the two rows read as separate groupings;
+   .active outlines the currently-selected filter chip within its row. */
+.counter.c-kind    { background: color-mix(in srgb, #1aa9a0 16%, var(--bg-surface)); border-color: color-mix(in srgb, #1aa9a0 45%, var(--border-medium)); }
+.counter.c-kind b    { color: color-mix(in srgb, #1aa9a0 70%, var(--counter-num)); }
+.counter.c-service { background: color-mix(in srgb, #b65fd1 16%, var(--bg-surface)); border-color: color-mix(in srgb, #b65fd1 45%, var(--border-medium)); }
+.counter.c-service b { color: color-mix(in srgb, #b65fd1 70%, var(--counter-num)); }
+.counter.active    { outline: 2px solid var(--link); outline-offset: 1px; filter: brightness(1.06); }
 .tl-order-btn { cursor: pointer; margin: 0 0 .6rem; padding: .25rem .7rem; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--bg-surface); color: var(--link); font-size: .82rem; }
 .tl-order-btn:hover { border-color: var(--link); }
 .counter-cat { align-self: center; width: 6.5rem; color: var(--text-muted); font-size: 0.857rem; }

@@ -59,6 +59,25 @@ func (q *quicH) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.Pack
 		res.Meta["ja4"] = ja4
 	}
 	flagAnomaly(&res, "quic-initial")
+
+	// Deep-parse the decrypted ClientHello for the request-shaping fields:
+	// the SNI host, the ALPN list (which reveals HTTP/3), and the QUIC
+	// transport parameters. The actual 1-RTT HTTP/3 request stays encrypted
+	// without a completed handshake (out of scope — see quic_clienthello.go).
+	hi := parseQUICClientHello(ch)
+	if hi.SNI != "" {
+		res.Meta["quic_sni"] = hi.SNI
+	}
+	if len(hi.ALPN) > 0 {
+		res.Meta["quic_alpn"] = hi.ALPN
+	}
+	if len(hi.TransportParam) > 0 {
+		res.Meta["quic_transport_params"] = hi.TransportParam
+	}
+	if hi.HTTP3 {
+		res.Meta["http3"] = true
+		flagAnomaly(&res, "quic-http3")
+	}
 	return res, nil
 }
 

@@ -746,6 +746,20 @@ type Payloads struct {
 	FetchURLs bool `yaml:"fetch_urls"`
 	// FetchMaxBytes caps a single actively-fetched download (default 16 MiB).
 	FetchMaxBytes int `yaml:"fetch_max_bytes"`
+	// Analyze runs CGO-free static analysis on each captured artifact:
+	// format / section / import parsing (ELF / PE / Mach-O / archives),
+	// Shannon-entropy + packer heuristics, ASCII/UTF-16 string and IOC
+	// extraction, and YARA-style rule matching (built-in rules plus any
+	// loaded from YaraRules). The compact report is attached to the event
+	// and the malware:capture event. Detection only — nothing is executed.
+	// Default off.
+	Analyze bool `yaml:"analyze"`
+	// YaraRules is an optional path to a .yar rule file or a directory of
+	// them (a practical YARA subset: text/hex/regex strings and
+	// any/all/N-of/boolean conditions). Loaded in addition to the built-in
+	// rule set when Analyze is on. Rules using unsupported constructs are
+	// skipped, not fatal.
+	YaraRules string `yaml:"yara_rules"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using

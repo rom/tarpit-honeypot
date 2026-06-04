@@ -53,12 +53,21 @@ func cmdRun(args []string) error {
 	}
 	f.applyIfaceOverride(cfg)
 
+	return runWithConfig(cfg, f, *dryRun)
+}
+
+// runWithConfig builds the sensor from an already-loaded config and runs it:
+// privileged setup (egress firewall / blocklist), privilege drop + sandbox,
+// the sensor goroutine, the optional web UI, the optional aggregator ingest
+// endpoint, and SIGHUP config reload. Shared by `run` and `collector` so the
+// two modes differ only in how the config is shaped before this point.
+func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 	s, err := sensor.New(cfg)
 	if err != nil {
 		return err
 	}
 
-	if *dryRun {
+	if dryRun {
 		slog.Info("dry-run OK: config valid, sensor constructed, listeners not bound",
 			"listeners", len(cfg.Listeners),
 			"channels", len(cfg.Channels),

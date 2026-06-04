@@ -27,6 +27,7 @@ var globalValueFlags = map[string]bool{
 func Dispatch(args []string) error {
 	cmds := []command{
 		{"run", "start the sensor (listeners + sinks)", cmdRun},
+		{"collector", "run as a fleet collector (ingest + correlate, no honeypot listeners)", cmdCollector},
 		{"validate-config", "parse and validate a config file (with optional --diff)", cmdValidate},
 		{"show-config", "print the effective post-defaults config as YAML", cmdShowConfig},
 		{"test-alert", "emit a synthetic event through configured channels", cmdTestAlert},
@@ -47,6 +48,7 @@ func Dispatch(args []string) error {
 		{"export-iocs", "export fleet IOCs from the store (stix | csv | txt | json)", cmdExportIOCs},
 		{"export-creds", "export captured credentials (--kind filter; json|xml|yaml|csv|txt)", cmdExportCreds},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
+		{"analyze", "static-analyze a captured artifact offline (format / entropy / IOCs / YARA)", cmdAnalyze},
 		{"jarm", "actively probe a TLS server and print its JARM fingerprint", cmdJARM},
 		{"reset-db", "empty the local event store / device inventory / captures", cmdResetDB},
 		{"rotate-db", "archive (gzip) the event database, optionally start fresh", cmdRotateDB},

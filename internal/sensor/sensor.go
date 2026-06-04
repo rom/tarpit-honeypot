@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
+	"github.com/rom/tarpit-honeypot/internal/artifactscan"
 	"github.com/rom/tarpit-honeypot/internal/blocklist"
 	"github.com/rom/tarpit-honeypot/internal/canary"
 	"github.com/rom/tarpit-honeypot/internal/capture"
@@ -83,7 +84,8 @@ type Sensor struct {
 	sniffer     sniffer.Sniffer     // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	tokenTrack  *tokentrack.Tracker // honey-credential reuse detector (always on)
 	payloads    *payload.Store
-	urlFetcher  *fetcher.Fetcher // opt-in active fetch of harvested ingress URLs (nil = off)
+	artScanner  *artifactscan.Engine // CGO-free static analysis + YARA-style rules (nil = off)
+	urlFetcher  *fetcher.Fetcher     // opt-in active fetch of harvested ingress URLs (nil = off)
 	sessionRec  *sessionrec.Store
 	risk        *risk.Scorer
 	blocker     *blocklist.Blocker // active-response nftables backstop (nil/disabled = no-op)
@@ -479,6 +481,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 
 	var payloadStore *payload.Store
 	var urlFetcher *fetcher.Fetcher
+	var artScanner *artifactscan.Engine
 	if cfg.Sensor.Payloads.Enabled {
 		ps, err := payload.NewStore(filepath.Join(cfg.Sensor.DataDir, "payloads"),
 			cfg.Sensor.Payloads.MaxBytes, cfg.Sensor.Payloads.MaxTotalMB)
@@ -486,6 +489,19 @@ func New(cfg *config.Config) (*Sensor, error) {
 			slog.Warn("payload harvesting disabled: cannot create store", "err", err)
 		} else {
 			payloadStore = ps
+		}
+		// Static analysis + YARA-style rules over each captured artifact.
+		if cfg.Sensor.Payloads.Analyze {
+			artScanner = artifactscan.NewEngine()
+			if dir := cfg.Sensor.Payloads.YaraRules; dir != "" {
+				added, errs := artScanner.LoadDir(dir)
+				for _, e := range errs {
+					slog.Warn("yara rule load", "err", e)
+				}
+				slog.Info("artifact static analysis enabled", "yara_rules", artScanner.RuleCount(), "loaded_from_dir", added)
+			} else {
+				slog.Info("artifact static analysis enabled", "yara_rules", artScanner.RuleCount())
+			}
 		}
 		// Opt-in active fetch of harvested ingress URLs, dialing through the
 		// egress allowlist so it can't be an SSRF/exfil vector.
@@ -514,6 +530,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		scanTrack:     scananalysis.NewTracker(5 * time.Minute),
 		fuzzTrack:     fuzzdos.NewTracker(60 * time.Second),
 		payloads:      payloadStore,
+		artScanner:    artScanner,
 		urlFetcher:    urlFetcher,
 		tokenTrack:    tokentrack.New(0),
 		sessionRec:    sessRec,
@@ -1059,6 +1076,7 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 
 	// Persist artifacts + build a compact descriptor list for the meta.
 	var descs []string
+	var reports []map[string]any
 	worst := event.SeverityHigh
 	for i := range f.Artifacts {
 		a := f.Artifacts[i]
@@ -1076,6 +1094,23 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 		case payload.KindELF, payload.KindPE, payload.KindMachO:
 			worst = event.SeverityCritical
 		}
+		// Static analysis + YARA-style rule matching on the captured bytes.
+		if s.artScanner != nil && len(a.Bytes) > 0 {
+			rep := artifactscan.AnalyzeWith(a.Bytes, s.artScanner)
+			reports = append(reports, artifactReportMeta(rep))
+			for _, m := range rep.YaraMatches {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "yara:"+m.Rule)
+			}
+			if rep.Packed {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-packed")
+			}
+			// A YARA hit on a non-executable (script/archive) artifact is
+			// worth elevating to Critical — it's a positive content match,
+			// not just a magic byte.
+			if len(rep.YaraMatches) > 0 {
+				worst = event.SeverityCritical
+			}
+		}
 	}
 	if len(descs) == 0 {
 		// URLs / markers only — enrich the event but don't emit a
@@ -1083,7 +1118,18 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 		return nil
 	}
 	ev.Meta["payload_artifacts"] = descs
+	if len(reports) > 0 {
+		ev.Meta["payload_analysis"] = reports
+	}
 
+	mcMeta := map[string]any{
+		"trigger_event_id": ev.ID,
+		"artifacts":        descs,
+		"markers":          f.Markers,
+	}
+	if len(reports) > 0 {
+		mcMeta["analysis"] = reports
+	}
 	return &event.Event{
 		ID:       event.NewID(),
 		Time:     ev.Time,
@@ -1094,12 +1140,47 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 		Dest:     ev.Dest,
 		Proto:    ev.Proto,
 		Handler:  ev.Handler,
-		Meta: map[string]any{
-			"trigger_event_id": ev.ID,
-			"artifacts":        descs,
-			"markers":          f.Markers,
-		},
+		Meta:     mcMeta,
 	}
+}
+
+// artifactReportMeta flattens a static-analysis report into a compact,
+// event-safe meta map (omitting the raw string dump to keep events small —
+// the full report is available offline via `tarpit-honeypot analyze`).
+func artifactReportMeta(rep artifactscan.Report) map[string]any {
+	m := map[string]any{
+		"sha256":  rep.SHA256,
+		"format":  rep.Format,
+		"detail":  rep.FormatDetail,
+		"size":    rep.Size,
+		"entropy": rep.Entropy,
+	}
+	if rep.Arch != "" {
+		m["arch"] = rep.Arch
+	}
+	if rep.Packed {
+		m["packed"] = true
+		if rep.Packer != "" {
+			m["packer"] = rep.Packer
+		}
+	}
+	if len(rep.Imports) > 0 {
+		m["imports"] = rep.Imports
+	}
+	if len(rep.Suspicious) > 0 {
+		m["suspicious"] = rep.Suspicious
+	}
+	if !rep.IOCs.Empty() {
+		m["iocs"] = rep.IOCs
+	}
+	if len(rep.YaraMatches) > 0 {
+		names := make([]string, 0, len(rep.YaraMatches))
+		for _, mm := range rep.YaraMatches {
+			names = append(names, mm.Rule)
+		}
+		m["yara"] = names
+	}
+	return m
 }
 
 // fetchHarvestedURLs actively downloads up to a few harvested ingress URLs
@@ -1588,6 +1669,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		HoneynetSnapshot: honeynetSnapshot(s.honeynet),
 		VulnEmulation:    cfg.Sensor.VulnEmulation,
 		SessionRec:       s.sessionRec,
+		SSHKexExtended:   cfg.Interaction.SSHKexDepth == config.SSHKexExtendedExp,
 	})
 	if err != nil {
 		cancel()

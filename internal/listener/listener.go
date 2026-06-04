@@ -42,6 +42,10 @@ type BuildArgs struct {
 	VulnEmulation bool
 	// SessionRec records interactive shell sessions (nil = disabled).
 	SessionRec *sessionrec.Store
+	// SSHKexExtended unlocks best-effort SSH key-exchange capture beyond
+	// the client KEXINIT/HASSH (interaction.ssh_kex_depth:
+	// extended_experimental).
+	SSHKexExtended bool
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -62,19 +66,20 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		vuln = *l.VulnEmulation
 	}
 	deps := handler.Deps{
-		Identity:      args.Identity,
-		Jitter:        args.Jitter,
-		DataDir:       args.DataDir,
-		URLCanaries:   args.URLCanaries,
-		TLSRotate:     args.TLSRotate,
-		Archetype:     arch,
-		AcceptCreds:   l.AcceptCreds,
-		HoneynetView:  args.HoneynetSnapshot,
-		VulnEmulation: vuln,
-		Script:        l.Script,
-		Scripted:      l.Scripted,
-		TLSIntercept:  l.TLSIntercept,
-		SessionRec:    args.SessionRec,
+		Identity:       args.Identity,
+		Jitter:         args.Jitter,
+		DataDir:        args.DataDir,
+		URLCanaries:    args.URLCanaries,
+		TLSRotate:      args.TLSRotate,
+		Archetype:      arch,
+		AcceptCreds:    l.AcceptCreds,
+		HoneynetView:   args.HoneynetSnapshot,
+		VulnEmulation:  vuln,
+		Script:         l.Script,
+		Scripted:       l.Scripted,
+		TLSIntercept:   l.TLSIntercept,
+		SessionRec:     args.SessionRec,
+		SSHKexExtended: args.SSHKexExtended,
 	}
 	switch l.Proto {
 	case "tcp":

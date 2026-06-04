@@ -74,8 +74,10 @@ func TestUnavailableCapabilities(t *testing.T) {
 	if statusOf(lc, "browser-traps") != CapUnavailable {
 		t.Error("browser-traps should be unavailable")
 	}
-	if statusOf(lc, "smb-ntlmv2-capture") != CapUnavailable {
-		t.Error("smb-ntlmv2-capture should be unavailable")
+	// smb-ntlmv2-capture is now implemented (SMB2 + NTLMSSP), so it is no
+	// longer listed as an unavailable capability.
+	if statusOf(lc, "smb-ntlmv2-capture") != "" {
+		t.Error("smb-ntlmv2-capture should no longer be in the unavailable matrix")
 	}
 
 	med := Interaction{Mode: InteractionMediumExp, SSHKexDepth: SSHKexExtendedExp}

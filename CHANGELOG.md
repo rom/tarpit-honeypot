@@ -10,6 +10,113 @@ documented in `docs/`).
 
 ### Added
 
+- **QUIC 1-RTT packet-protection layer** (`internal/listener/handler/quic_1rtt.go`)
+  — a verified, self-contained building block toward live HTTP/3 request
+  capture: RFC 9001 §5.1 key derivation (`quic key`/`iv`/`hp` for AES-128/256-GCM)
+  and short-header (1-RTT) header-protection removal + AEAD decrypt/encrypt
+  (§5.3–5.4) with packet-number decoding (RFC 9000 A.3). The key schedule is
+  tested against the **RFC 9001 Appendix A.1 vector** and the protection logic
+  via encrypt/decrypt round-trips. It is **not wired into a live flow**:
+  decrypting 1-RTT needs a completed QUIC handshake, which needs a new
+  connection-oriented QUIC listener (the UDP framework dispatches single
+  datagrams with no per-connection state) plus QPACK — documented as the known
+  ceiling in `docs/design.md` §15.
+- **HTTP/2 (h2c) capture with real HPACK + multiplexed-stream reconstruction**
+  — the `http` handler now detects the HTTP/2 cleartext (prior-knowledge)
+  preface and switches to a real HTTP/2 path: it answers SETTINGS, decodes
+  **HPACK** against a connection-scoped dynamic table (via
+  `golang.org/x/net/http2/hpack`), and reassembles each stream's HEADERS +
+  CONTINUATION + DATA frames into a full request — capturing the real
+  `:method` / `:path` / `:authority` / headers across **multiplexed streams**
+  (`http2_requests`), not just a scanned literal. The first request is promoted
+  to the usual flat meta (`request_line` / `http_method` / `http_uri` / `host`)
+  and drives tool fingerprinting. Detects HTTP/2-specific abuse:
+  **Rapid Reset** (`http2-rapid-reset`, CVE-2023-44487) and **CONTINUATION
+  flood** (`http2-continuation-flood`, CVE-2024-27316). Strips HEADERS
+  padding/priority, answers PING/SETTINGS, replies a minimal 200 per stream,
+  then GOAWAY. Capture only.
+- **SMB2 + NTLMSSP NetNTLMv2 capture** — the `smb` handler no longer rejects
+  SMB2; it now negotiates SMB 2.0.2 for real and drives the **NTLMSSP
+  SESSION_SETUP** exchange to completion (NEGOTIATE response with a SPNEGO blob
+  offering NTLM → NTLMSSP CHALLENGE with a fresh server challenge + AV_PAIR
+  target info → AUTHENTICATE), capturing the client's **NetNTLMv2** as the
+  offline-crackable hashcat-mode-5600 string (`ntlmv2_hash`,
+  `user::domain:challenge:ntproofstr:blob`) plus `ntlm_user` / `ntlm_domain` /
+  `ntlm_workstation`, and flagging `smb-ntlmv2-capture`. The logon always fails
+  — capture only, never grants access. This is how modern clients and
+  credential-capture tooling (impacket, CrackMapExec, coerced Windows auth)
+  authenticate. `smb-ntlmv2-capture` is removed from
+  `list-unavailable-capabilities`.
+- **QUIC / HTTP-3 ClientHello deep parsing** — the `quic` handler already
+  decrypts the Initial flight; it now parses the recovered TLS ClientHello for
+  the request-shaping fields: the **SNI** host (`quic_sni`), the **ALPN** list
+  (`quic_alpn`) with **HTTP/3 detection** (`h3` / `h3-NN` → `http3: true` +
+  `quic-http3` anomaly), and the advertised **QUIC transport-parameter IDs**
+  (`quic_transport_params`). `list-unavailable-capabilities` now reports
+  `http3-quic-request-capture` as experimental rather than unavailable. The
+  1-RTT HTTP/3 request body (the `:method`/`:path`) stays encrypted — capturing
+  it requires completing a full QUIC+TLS 1.3 server handshake, which remains
+  out of scope (decoy-only stack); the handler still never replies.
+- **OPC-DA (DCOM/MSRPC) call marshaling** — the `dcerpc` handler now services
+  the OPC-DA call sequence past the bind, not just the bind itself. A new
+  little-endian **NDR codec** (alignment, uint16/32/64, conformant+varying
+  UTF-16 strings, unique pointers) parses post-bind Request PDUs, decodes the
+  NDR-marshaled arguments (the **OPC item IDs / group names** an attacker reads
+  or writes — captured in `opc_strings`, flagged `ics-opc-da-item-access`),
+  and marshals believable NDR responses: a full running `OPCSERVERSTATUS` for
+  `IOPCServer::GetStatus`, a server-group handle for `AddGroup`, `S_OK` stubs
+  for `AddItems`/`Read`, and DCE/RPC faults for unknown opnums. Each call is
+  recorded in `dcerpc_calls` and flagged `ics-opc-da-call`. Added the
+  `IOPCSyncIO` interface to the recognized set. Full DCOM activation
+  (IOXIDResolver/ISystemActivator OXID resolution) remains out of scope — see
+  `docs/design.md` §15.
+- **Turnkey fleet collector mode** — new `tarpit-honeypot collector`
+  subcommand runs the node as a pure aggregator: it force-enables the
+  authenticated ingest endpoint (defaulting bind `:8443` and token env
+  `TARPIT_INGEST_TOKEN` when unset), force-enables the cross-sensor fleet
+  correlator, serves the downward intel feed + STIX/TAXII export, and **binds
+  no honeypot listeners** (a collector impersonates nothing — `--keep-listeners`
+  runs a combined sensor+collector instead). It reuses the exact `run` engine
+  (storage, web UI, channels, sandbox, privilege drop) via a shared
+  `runWithConfig`, differing only in the aggregator-shaped config. `--bind`
+  overrides the ingest address; `--dry-run` validates without binding. Point
+  child sensors' `forward.url` at the collector's ingest bind.
+- **Static analysis + YARA-style scanning of captured artifacts**
+  (`internal/artifactscan`, enabled with `sensor.payloads.analyze: true`).
+  A new **CGO-free** engine (no libyara) runs on every harvested
+  malware/payload artifact: executable **format / section / import parsing**
+  via the Go standard library (`debug/elf`, `debug/pe`, `debug/macho`,
+  `archive/zip`), **Shannon-entropy + packer heuristics** (UPX + high-entropy
+  section/whole-file), **ASCII/UTF-16 string + IOC extraction** (URLs, IPv4,
+  domains, emails, .onion, bitcoin), **suspicious-trait** flags from imports
+  (VirtualAlloc / CreateRemoteThread / ptrace / …) and strings, and a
+  **YARA-subset rule engine** with text / hex-wildcard / regex strings and
+  `any`/`all`/`N of` + boolean conditions. Ships a built-in rule set
+  (packers, droppers, encoded PowerShell, PHP webshells, ransomware notes,
+  reverse shells, credential theft, XOR-decoder stubs) and loads operator
+  `.yar` files from `sensor.payloads.yara_rules` (a file or directory; rules
+  using unsupported constructs are skipped, not fatal). Findings are attached
+  to the event (`payload_analysis`) and the `malware:capture` event, raise
+  `yara:<rule>` / `payload-packed` anomalies, and elevate severity on a
+  content match. New `tarpit-honeypot analyze [--rules PATH] [--json] <file>`
+  subcommand runs the same engine offline on a sample.
+- **Extended SSH key-exchange capture** (`interaction.ssh_kex_depth:
+  extended_experimental`, requires `interaction.mode: medium_experimental`).
+  Beyond the client KEXINIT/HASSH, the `ssh` handler now parses the full
+  client KEXINIT (all ten algorithm name-lists + the `first_kex_packet_follows`
+  guess flag), computes the **negotiated KEX** against the server's advertised
+  set, and reads the client's **first key-exchange message** — the ephemeral
+  public value from `SSH_MSG_KEXDH_INIT` / `SSH_MSG_KEX_ECDH_INIT` (recorded as
+  a length + SHA-256), or the requested group bounds from
+  `SSH_MSG_KEX_DH_GEX_REQUEST`. Weak/legacy primitives (group1-sha1, CBC,
+  arcfour, DES, hmac-md5) raise `ssh-kex-weak-primitive`. New event meta:
+  `ssh_kex_client`, `ssh_kex_hostkeys`, `ssh_kex_ciphers_c2s/s2c`,
+  `ssh_kex_macs_c2s/s2c`, `ssh_kex_compression_c2s`, `ssh_kex_negotiated`,
+  `ssh_kex_first_follows`, `ssh_kex_msg`, `ssh_kex_client_pubkey_sha256`,
+  `ssh_kex_client_pubkey_bytes`, `ssh_kex_gex_min/n/max`. Capture-only — no
+  shared secret is computed and the exchange is never carried through, so the
+  sensor stays a low-interaction emulator. `list-unavailable-capabilities`
+  now reports `ssh-kex-extended` as a real experimental capability.
 - **DNS detection depth (UDP + TCP): +30 detections** for DNS
   vulnerabilities / leakage / recon / poisoning / DoS — header/opcode/section
   abuse (`dns-response-as-query`, `dns-inverse-query`, `dns-notify-opcode`,

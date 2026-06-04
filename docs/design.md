@@ -442,9 +442,33 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   retransmission, congestion control, or out-of-order reassembly. Deep
   multi-segment protocol interaction still wants a real socket. See
   [`tcp-stack.md`](tcp-stack.md).
-- **OPC-DA (classic, DCOM/MSRPC) — full call marshaling.** The `dcerpc`
-  handler now recognizes the OPC-DA interface family (OPCEnum / IOPCServer*)
-  on bind, flags `ics-opc-da-probe`, and advertises OPCEnum + OPC-DA server
-  ProgIDs via the endpoint mapper. The full DCOM IOPCServer / IOPCItemMgt
-  call sequence (reading actual tag values) is still out of scope.
+- **OPC-DA (classic, DCOM/MSRPC) — call marshaling.** The `dcerpc`
+  handler recognizes the OPC-DA interface family (OPCEnum / IOPCServer* /
+  IOPCItemMgt / IOPCSyncIO) on bind, flags `ics-opc-da-probe`, and advertises
+  OPCEnum + OPC-DA server ProgIDs via the endpoint mapper. It now also
+  **services the post-bind call sequence**: it parses Request PDUs, decodes the
+  NDR-marshaled arguments (the OPC item IDs / group names an attacker reaches
+  for — captured as `opc_strings`, flagged `ics-opc-da-item-access`), and
+  marshals believable NDR responses (a full running `OPCSERVERSTATUS` for
+  `GetStatus`, server-group handles for `AddGroup`, `S_OK` stubs for
+  `AddItems`/`Read`, faults for unknown opnums). What remains out of scope is
+  **full DCOM activation** — IOXIDResolver / ISystemActivator OXID resolution
+  that hands back a real interface pointer — so a client that insists on
+  activating before calling won't reach the interface; scanners/tools that
+  bind the interface directly do, and every call is captured. Reading
+  *physically meaningful* live tag values (vs. structurally-valid
+  placeholders) is still out of scope.
+- **HTTP/3 1-RTT request capture (live).** The `quic` handler decrypts the
+  QUIC **Initial** flight (RFC 9001 public keys) and parses the ClientHello
+  (SNI / ALPN → HTTP/3 detection / transport parameters / JA3/JA4). Capturing
+  the actual HTTP/3 request — the `:method`/`:path`, sent as **1-RTT**
+  application data — needs the TLS 1.3 handshake completed so the application
+  traffic secret is known, which needs a full QUIC handshake across several
+  datagrams. The current UDP listener hands each handler a single datagram with
+  no per-connection state, so a live handshake requires a **new connection-
+  oriented QUIC listener** that owns its socket (plus QPACK for HTTP/3 header
+  decode). The RFC-9001 1-RTT **packet-protection layer** (key derivation +
+  short-header header-protection removal + AEAD, verified against the RFC's
+  published vector) is implemented in `internal/listener/handler/quic_1rtt.go`
+  as a tested foundation for that listener, but is not wired into a live flow.
 - **Decoy-scan attribution.** See "Open risks".

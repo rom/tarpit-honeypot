@@ -49,6 +49,14 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if cap <= 0 {
 		cap = 4096
 	}
+	// HTTP/2 cleartext with prior knowledge: the connection opens with the h2c
+	// preface. Branch to the HTTP/2 capture path (real HPACK + multiplexed-
+	// stream reconstruction) instead of the line-based HTTP/1.x parser.
+	if pre, _ := br.Peek(len(http2Preface)); bytes.Equal(pre, http2Preface) {
+		_, _ = br.Discard(len(http2Preface))
+		captureHTTP2(conn, br, cfg, &res)
+		return res, nil
+	}
 	var buf bytes.Buffer
 	for buf.Len() < cap {
 		b, err := br.ReadByte()
