@@ -10,6 +10,25 @@ documented in `docs/`).
 
 ### Added
 
+- **Static analysis + YARA-style scanning of captured artifacts**
+  (`internal/artifactscan`, enabled with `sensor.payloads.analyze: true`).
+  A new **CGO-free** engine (no libyara) runs on every harvested
+  malware/payload artifact: executable **format / section / import parsing**
+  via the Go standard library (`debug/elf`, `debug/pe`, `debug/macho`,
+  `archive/zip`), **Shannon-entropy + packer heuristics** (UPX + high-entropy
+  section/whole-file), **ASCII/UTF-16 string + IOC extraction** (URLs, IPv4,
+  domains, emails, .onion, bitcoin), **suspicious-trait** flags from imports
+  (VirtualAlloc / CreateRemoteThread / ptrace / …) and strings, and a
+  **YARA-subset rule engine** with text / hex-wildcard / regex strings and
+  `any`/`all`/`N of` + boolean conditions. Ships a built-in rule set
+  (packers, droppers, encoded PowerShell, PHP webshells, ransomware notes,
+  reverse shells, credential theft, XOR-decoder stubs) and loads operator
+  `.yar` files from `sensor.payloads.yara_rules` (a file or directory; rules
+  using unsupported constructs are skipped, not fatal). Findings are attached
+  to the event (`payload_analysis`) and the `malware:capture` event, raise
+  `yara:<rule>` / `payload-packed` anomalies, and elevate severity on a
+  content match. New `tarpit-honeypot analyze [--rules PATH] [--json] <file>`
+  subcommand runs the same engine offline on a sample.
 - **Extended SSH key-exchange capture** (`interaction.ssh_kex_depth:
   extended_experimental`, requires `interaction.mode: medium_experimental`).
   Beyond the client KEXINIT/HASSH, the `ssh` handler now parses the full
