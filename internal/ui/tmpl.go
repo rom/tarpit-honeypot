@@ -582,6 +582,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
 
+{{/* rangesel renders a time-range selector chip row from a []rangeLink. */}}
+{{ define "rangesel" }}<p>range: <span class="rangesel">{{ range . }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>{{ end }}
+
 {{ define "replay" }}{{ template "head" . }}
 <h1>session replay{{ if .Name }} — <code>{{ .Name }}</code>{{ end }}</h1>
 {{ if .Err }}<p class="note">{{ .Err }}</p>
@@ -669,7 +672,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ template "foot" . }}{{ end }}
 
 {{ define "attack" }}{{ template "head" . }}
-<h1>ATT&amp;CK mapping — last 24 hours</h1>
+<h1>ATT&amp;CK mapping — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p>{{ .Events }} attributed events · {{ .DistinctTID }} distinct techniques across {{ len .Tactics }} tactics.</p>
 <p class="note">Recomputed live from each event's rule + handler + anomaly markers (the same mapping the router stamps); see <a href="/docs">docs</a> for the catalog.</p>
 
@@ -795,7 +799,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ template "foot" . }}{{ end }}
 
 {{ define "correlation" }}{{ template "head" . }}
-<h1>correlation — last 24 hours</h1>
+<h1>correlation — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p class="note">Per-source pivot chains: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view.</p>
 {{ if .GraphB64 }}<div id="corrgraph" data-graph-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the interactive pivot graph</p></div>{{ end }}
 {{ if .Sources }}{{ range .Sources }}
@@ -939,7 +944,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ template "foot" . }}{{ end }}
 
 {{ define "tunnels" }}{{ template "head" . }}
-<h1>tunnels &amp; covert transport — last 24 hours</h1>
+<h1>tunnels &amp; covert transport — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p class="note">Detections of tunnelling / covert channels the sensor observes. <strong>These are detections, not established tunnels</strong> — the honeypot terminates connections, it doesn't carry SSH/SOCKS/k8s/service-mesh pivots. See <a href="/docs">docs</a> and <code>list-unavailable-capabilities</code> for what is and isn't captured.</p>
 <h2>by type</h2>
 {{ if .Types }}{{ template "bars" .Types }}{{ else }}<p class="note">no tunnel / covert-transport detections in the window</p>{{ end }}

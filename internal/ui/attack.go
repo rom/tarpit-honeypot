@@ -20,12 +20,14 @@ import (
 // The result is a tactic timeline (kill-chain-ordered) + a technique heatmap
 // + the recent multi-stage storyline chains.
 
-const attackWindow = 24 * time.Hour
-const attackScanMax = 20000                 // events scanned per render
-const punchcardWindow = 14 * 24 * time.Hour // activity-punchcard lookback
+const attackWindow = 24 * time.Hour // default window for the technique drilldown
+const attackScanMax = 20000         // events scanned per render
 
 type attackView struct {
 	Since       time.Time
+	RangeKey    string
+	RangeLabel  string
+	RangeLinks  []rangeLink
 	Events      int         // events that carried at least one technique
 	Tactics     []tacticRow // kill-chain order, with their techniques nested
 	TopTech     []barRow    // top techniques overall (the heatmap rows)
@@ -226,20 +228,17 @@ func itoa2(h int) string {
 func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	since := time.Now().Add(-attackWindow)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/attack")
+	since := time.Now().Add(-dur)
 	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
 	v := buildAttackView(since, evs)
-	// The activity punchcard is most meaningful over a longer window than the
-	// 24h technique view, so it gets its own query (timestamps only).
-	if pevs, perr := s.query(ctx, store.Filter{Since: time.Now().Add(-punchcardWindow), Limit: attackScanMax}); perr == nil {
-		v.Punchcard = buildPunchcard(pevs)
-	} else {
-		v.Punchcard = buildPunchcard(evs)
-	}
+	v.RangeKey, v.RangeLabel, v.RangeLinks = rkey, rlabel, rlinks
+	// Punchcard over the same selected window (pick 7d+ for a meaningful grid).
+	v.Punchcard = buildPunchcard(evs)
 	// The ATT&CK page keeps its technique labels pointing at the in-honeypot
 	// drill-down (/attack/technique?id=…) — which shows the sources, rules and
 	// events behind each technique — rather than out-linking to attack.mitre.org.
