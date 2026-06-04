@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -8,6 +10,36 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
+
+func TestEventsCloudFilter(t *testing.T) {
+	s := fleetTestServer(t) // store + templates
+	ctx := context.Background()
+	ins := func(id, ip, cloud string) {
+		ev := &event.Event{ID: id, Time: time.Now().UTC(), RuleID: "listener:http",
+			Severity: event.SeverityLow, Source: event.Endpoint{IP: ip}, Meta: map[string]any{}}
+		if cloud != "" {
+			ev.Meta["cloud_provider"] = cloud
+		}
+		if err := s.store.Insert(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ins("a", "203.0.113.1", "aws")
+	ins("b", "198.51.100.2", "") // residential, no cloud tag
+
+	w := httptest.NewRecorder()
+	s.handleEvents(w, httptest.NewRequest(http.MethodGet, "/events?cloud=aws", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "203.0.113.1") {
+		t.Error("aws-tagged event missing under ?cloud=aws")
+	}
+	if strings.Contains(body, "198.51.100.2") {
+		t.Error("non-cloud event leaked into ?cloud=aws")
+	}
+}
 
 func TestEventHasFlagCloudHosting(t *testing.T) {
 	cloud := &event.Event{Meta: map[string]any{"cloud_provider": "aws"}}
@@ -59,6 +91,16 @@ func TestPageRange(t *testing.T) {
 	if key != "24h" {
 		t.Errorf("unknown range should fall back to 24h, got %q", key)
 	}
+	// Other filters are preserved on the chips (e.g. the /iocs ?type= filter).
+	_, _, _, links = pageRange(httptest.NewRequest("GET", "/iocs?type=ja4&range=7d", nil), "/iocs")
+	for _, l := range links {
+		if l.Label == "31d" && !strings.Contains(l.Href, "type=ja4") {
+			t.Errorf("31d chip dropped the type filter: %q", l.Href)
+		}
+		if l.Label == "24h" && l.Href != "/iocs?type=ja4" {
+			t.Errorf("24h chip should be the bare filtered path, got %q", l.Href)
+		}
+	}
 }
 
 func TestCountryFlag(t *testing.T) {
@@ -90,9 +132,10 @@ func TestSourceBadges(t *testing.T) {
 	if h := string(sourceBadges(map[string]any{"tools": []any{"shodan"}})); !strings.Contains(h, "scanner:shodan") {
 		t.Errorf("scanner-tool badge missing: %q", h)
 	}
-	// Cloud-provider CIDR tagging surfaces a per-provider badge.
-	if h := string(sourceBadges(map[string]any{"cloud_provider": "aws"})); !strings.Contains(h, "cloud:aws") {
-		t.Errorf("cloud_provider badge missing: %q", h)
+	// Cloud-provider CIDR tagging surfaces a per-provider badge linking to the
+	// per-provider events filter.
+	if h := string(sourceBadges(map[string]any{"cloud_provider": "aws"})); !strings.Contains(h, "cloud:aws") || !strings.Contains(h, `href="/events?cloud=aws"`) {
+		t.Errorf("cloud_provider badge/href missing: %q", h)
 	}
 	// net_class hosting badge when there's no more-specific cloud provider.
 	if h := string(sourceBadges(map[string]any{"net_class": "hosting"})); !strings.Contains(h, "hosting") {

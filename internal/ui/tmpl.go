@@ -842,7 +842,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ template "foot" . }}{{ end }}
 
 {{ define "threatmap" }}{{ template "head" . }}
-<h1>threat map — last 24 hours</h1>
+<h1>threat map — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p class="note">Live GeoIP attack map with country / ASN / network-class breakdowns and threat-intelligence counters. Auto-refreshes, so it doubles as a wall display. Geo, ASN and intel data require <code>sensor.geoip</code> + threat-intel feeds. JSON at <a href="/api/map">/api/map</a>.</p>
 <div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
 {{ if .HasMap }}<figure data-chart="sourcemap" data-chart-title="Attack source map (GeoIP)" data-chart-b64="{{ .MapB64 }}"><p class="note">enable JavaScript to render the map</p></figure>{{ else }}<p class="note">no geo-located events yet — set <code>sensor.geoip.city_db</code> (MaxMind GeoLite2-City) to plot attack origins.</p>{{ end }}
@@ -868,17 +869,13 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ template "foot" . }}{{ end }}
 
 {{ define "fleet" }}{{ template "head" . }}
-<h1>fleet correlation</h1>
+<h1>fleet correlation — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p class="note">Cross-sensor findings — patterns no single honeypot can see: one
 source / ASN / fingerprint / payload / credential / CVE / tool / port / technique
 hitting many sensors, shared C2, novel infrastructure, persistent networks, and
 more. Runs on an aggregator with <code>ingest:</code> enabled. JSON at
 <a href="/api/fleet">/api/fleet</a>.</p>
-<form method="get" action="/fleet">
-  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
-  <button type="submit">filter</button>
-  <a href="/fleet">reset</a>
-</form>
 {{ if not .Findings }}
 <p class="note">No fleet correlations in the window. (Cross-sensor detection needs
 an aggregator receiving events from several sensors via <code>ingest:</code>.)</p>
@@ -905,7 +902,8 @@ an aggregator receiving events from several sensors via <code>ingest:</code>.)</
 {{ template "foot" . }}{{ end }}
 
 {{ define "iocs" }}{{ template "head" . }}
-<h1>indicators of compromise</h1>
+<h1>indicators of compromise — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
 <p class="note">De-duplicated indicators distilled from every event: source IPs,
 TLS/SSH fingerprints, ASNs, DNS names, CVE ids, captured-payload SHA-256s,
 harvested C2 URLs, credentials, MACs. First sightings of the high-value types are
@@ -914,7 +912,6 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <form method="get" action="/iocs">
   type: <input type="text" name="type" value="{{ .TypeFilter }}" placeholder="sha256" size="10">
   contains: <input type="text" name="q" placeholder="value substring" size="16">
-  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="168h" size="6">
   <button type="submit">filter</button>
   <a href="/iocs">reset</a>
 </form>

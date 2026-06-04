@@ -32,17 +32,20 @@ type iocsPage struct {
 	Total      int
 	TypeFilter string
 	SinceStr   string
+	RangeKey   string
+	RangeLabel string
+	RangeLinks []rangeLink
 }
 
 // handleIOCs renders the indicator-of-compromise panel: a per-type breakdown
 // and the de-duplicated indicators (value, count, first/last seen, severity),
 // each linking to the events that exhibited it.
 func (s *Server) handleIOCs(w http.ResponseWriter, r *http.Request) {
-	since := iocSince(r)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/iocs")
 	typ := r.URL.Query().Get("type")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	cutoff := time.Now().Add(-since)
+	cutoff := time.Now().Add(-dur)
 	sum, err := s.store.IOCSummary(ctx, cutoff)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
@@ -60,7 +63,9 @@ func (s *Server) handleIOCs(w http.ResponseWriter, r *http.Request) {
 		IOCs:       iocDisplays(rows),
 		Total:      len(rows),
 		TypeFilter: typ,
-		SinceStr:   r.URL.Query().Get("since"),
+		RangeKey:   rkey,
+		RangeLabel: rlabel,
+		RangeLinks: rlinks,
 	}); err != nil {
 		slog.Warn("ui: render iocs", "err", err)
 	}

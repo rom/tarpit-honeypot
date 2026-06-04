@@ -23,6 +23,9 @@ const mapScanMax = 20000
 
 type threatMapView struct {
 	Since        time.Time
+	RangeKey     string
+	RangeLabel   string
+	RangeLinks   []rangeLink
 	Total        int
 	GeoLocated   int // events with usable lat/lon
 	HasMap       bool
@@ -147,14 +150,17 @@ func buildThreatMapView(since time.Time, evs []*event.Event) threatMapView {
 func (s *Server) handleThreatMap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	since := time.Now().Add(-mapWindow)
+	dur, rkey, rlabel, rlinks := pageRange(r, "/map")
+	since := time.Now().Add(-dur)
 	evs, err := s.query(ctx, store.Filter{Since: since, Limit: mapScanMax})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	v := buildThreatMapView(since, evs)
+	v.RangeKey, v.RangeLabel, v.RangeLinks = rkey, rlabel, rlinks
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "threatmap", buildThreatMapView(since, evs)); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "threatmap", v); err != nil {
 		slog.Warn("ui: render threatmap", "err", err)
 	}
 }
