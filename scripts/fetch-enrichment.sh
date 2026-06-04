@@ -24,6 +24,8 @@
 #   -i, --install       after fetching, install into THIS host's sensor config
 #                       (runs install-enrichment.sh; implies --no-archive)
 #   -c, --config PATH   sensor config for --install (default /etc/tarpit-honeypot/config.yaml)
+#       --bin PATH      tarpit-honeypot binary for --install (auto-detected:
+#                       PATH, ../bin, /usr/local/bin, /usr/bin)
 #       --reload-cmd C  reload command passed to --install (e.g. "systemctl reload tarpit-honeypot")
 #   -q, --quiet         terse output (cron/timer friendly)
 #   -h, --help          this help
@@ -51,14 +53,16 @@ OUT=""
 INSTALL=0
 CONFIG="/etc/tarpit-honeypot/config.yaml"
 RELOAD_CMD=""
+BIN=""
 QUIET=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-i | --install) INSTALL=1; export NO_ARCHIVE=1; shift ;;
 	-c | --config) CONFIG="$2"; shift 2 ;;
+	--bin) BIN="$2"; shift 2 ;;
 	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
 	-q | --quiet) QUIET=1; shift ;;
-	-h | --help) sed -n '2,36p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,40p' "$0"; exit 0 ;;
 	-*) echo "unknown option: $1" >&2; exit 2 ;;
 	*) OUT="$1"; shift ;;
 	esac
@@ -449,9 +453,28 @@ if [ "$INSTALL" = 1 ]; then
 		echo "error: --install given but $INST not found/executable" >&2
 		exit 1
 	fi
+	# Resolve the sensor binary for the install step (list-paths). sudo resets
+	# PATH and a source checkout puts the binary in ../bin, so look there too;
+	# forward it to the installer via --bin. --bin on our own CLI wins.
+	if [ -z "$BIN" ]; then
+		if command -v tarpit-honeypot >/dev/null 2>&1; then
+			BIN="tarpit-honeypot"
+		else
+			for cand in \
+				"$HERE/../bin/tarpit-honeypot" \
+				"$HERE/../tarpit-honeypot" \
+				"$HERE/tarpit-honeypot" \
+				"./bin/tarpit-honeypot" \
+				"/usr/local/bin/tarpit-honeypot" \
+				"/usr/bin/tarpit-honeypot"; do
+				if [ -x "$cand" ]; then BIN="$cand"; break; fi
+			done
+		fi
+	fi
 	say
 	say "Installing into this host's sensor (config: $CONFIG)…"
 	set -- "$OUT" -c "$CONFIG" --skip-verify
+	[ -n "$BIN" ] && set -- "$@" --bin "$BIN"
 	[ -n "$RELOAD_CMD" ] && set -- "$@" --reload-cmd "$RELOAD_CMD"
 	"$INST" "$@"
 	exit $?
