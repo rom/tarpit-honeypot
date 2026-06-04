@@ -4,7 +4,7 @@
 #   - web      (HTTP 80 + HTTPS 443)   — full fake-vulnerable web app
 #   - SMTP     (25 + submission 587 + SMTPS 465) — mail server, captures creds + relay probes
 #   - DNS      (UDP 53)                — resolver, tunnelling/exfil detection
-#   - FTP      (21)                    — file server, captures logins, serves bait files
+#   - FTP      (21 + explicit FTPS AUTH TLS, + implicit FTPS 990) — file server, captures logins, serves bait files
 # It also answers ICMP echo (ping) so a recon scan sees the host as alive.
 #
 # This is the hardened reference deployment: every emulation / decoy / vuln-
@@ -198,12 +198,26 @@ listeners:
         - "internal-vault=https://vault.corp.example (legacy token in wiki)"
 
   # --- FTP: file server (captures logins, accepts any creds, serves bait files) ---
+  # Explicit FTPS works on port 21: FEAT advertises AUTH TLS / AUTH SSL + PBSZ /
+  # PROT, an `AUTH TLS` upgrades the control channel (and, under PROT P, the data
+  # channel) to the archetype's self-signed cert, and creds + the browse/download
+  # session are captured over the encrypted channel.
   - id: ftp
     proto: tcp
     bind: 0.0.0.0:21
     mode: banner
     handler: ftp_files
     accept_creds: any      # let the "login" succeed so we see what they do next
+    severity: high
+    capture: true
+  # FTPS — implicit-TLS FTP (port 990). The control channel is wrapped in the
+  # archetype's self-signed cert from the first byte; everything inside the
+  # tunnel (USER/PASS, LIST/RETR of bait files) is captured just like port 21.
+  - id: ftps
+    proto: tcp
+    bind: 0.0.0.0:990
+    mode: banner
+    handler: ftps
     severity: high
     capture: true
 
@@ -241,6 +255,7 @@ honeynets:
           - { port: 995, handler: pop3s }
           - { port: 53,  handler: dns }
           - { port: 21,  handler: ftp_files }
+          - { port: 990, handler: ftps }
 
 # Detection for exactly these services — brute force, scanning, the web-attack
 # classes, mail-relay probing, DNS tunnelling, default-credential sweeps, the

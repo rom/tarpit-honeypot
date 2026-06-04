@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,72 @@ func TestFTPNoTLSRefusesAuth(t *testing.T) {
 	go func() { _, _ = io.Copy(io.Discard, br) }() // drain the 221 so Handle returns
 	_, _ = client.Write([]byte("QUIT\r\n"))
 	<-resC
+}
+
+// The ftp_files (file-server) handler also does explicit FTPS: AUTH TLS upgrades
+// the control channel and a PROT P LIST is served over a TLS data channel.
+func TestFTPFilesExplicitFTPS(t *testing.T) {
+	h := &ftpFiles{id: nil, arch: &archetype.Profile{}, acceptCreds: "any", tlsMgr: maybeCertMgr(Deps{DataDir: t.TempDir()})}
+	if h.tlsMgr == nil {
+		t.Fatal("cert manager not built")
+	}
+	client, server := pipePair(t)
+	cfg := config.Listener{ID: "ftpfiles-1", ReadTimeout: 5 * time.Second}
+	resC := make(chan Result, 1)
+	go func() { r, _ := h.Handle(context.Background(), server, cfg); resC <- r }()
+
+	br := bufio.NewReader(client)
+	mustLine(t, br, "220")
+	_, _ = client.Write([]byte("FEAT\r\n"))
+	feat := readUntilFTP(t, br, "211 ")
+	if !strings.Contains(feat, "AUTH TLS") || !strings.Contains(feat, "PROT") {
+		t.Fatalf("ftp_files FEAT did not advertise FTPS:\n%s", feat)
+	}
+
+	_, _ = client.Write([]byte("AUTH TLS\r\n"))
+	mustLine(t, br, "234")
+	tc := tls.Client(client, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
+	if err := tc.Handshake(); err != nil {
+		t.Fatalf("control TLS handshake: %v", err)
+	}
+	tbr := bufio.NewReader(tc)
+
+	// Login + PBSZ/PROT over TLS, then a PROT P passive LIST.
+	_, _ = tc.Write([]byte("USER anonymous\r\nPASS x@x\r\nPBSZ 0\r\nPROT P\r\n"))
+	mustLine(t, tbr, "331")
+	mustLine(t, tbr, "230") // login ok over TLS
+	mustLine(t, tbr, "200") // PBSZ
+	mustLine(t, tbr, "200") // PROT P
+
+	_, _ = tc.Write([]byte("PASV\r\n"))
+	pasv := mustLine(t, tbr, "227")
+	dataAddr := parsePASV(t, pasv)
+	_, _ = tc.Write([]byte("LIST\r\n"))
+	mustLine(t, tbr, "150")
+	// The data connection must complete a TLS handshake (PROT P).
+	dconn, err := net.Dial("tcp", dataAddr)
+	if err != nil {
+		t.Fatalf("dial data: %v", err)
+	}
+	dtls := tls.Client(dconn, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
+	if err := dtls.Handshake(); err != nil {
+		t.Fatalf("data TLS handshake (PROT P): %v", err)
+	}
+	listing, _ := io.ReadAll(dtls)
+	if len(listing) == 0 {
+		t.Error("empty TLS-protected LIST")
+	}
+	mustLine(t, tbr, "226")
+	go func() { _, _ = io.Copy(io.Discard, tbr) }()
+	_, _ = tc.Write([]byte("QUIT\r\n"))
+
+	r := <-resC
+	if r.Meta["tls"] != true || r.Meta["ftps"] != true {
+		t.Errorf("ftp_files FTPS upgrade not recorded: %v", r.Meta)
+	}
+	if r.Meta["user"] != "anonymous" {
+		t.Errorf("user not captured over TLS: %v", r.Meta["user"])
+	}
 }
 
 func toStr(v any) string { s, _ := v.(string); return s }
