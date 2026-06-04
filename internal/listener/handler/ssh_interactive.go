@@ -188,6 +188,13 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 // the duplex stream to shell.Run for the command-level engagement.
 func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <-chan *xssh.Request, res *Result, peer string) {
 	gotShell := make(chan struct{}, 1)
+	done := make(chan struct{}, 1) // exec / sftp / scp handled — session is over
+	finish := func() {
+		select {
+		case done <- struct{}{}:
+		default:
+		}
+	}
 	// Same panic-isolation rationale as the global-requests path:
 	// session-channel requests (pty-req / env / exec / subsystem)
 	// carry attacker-supplied payloads we don't fully validate.
@@ -207,27 +214,45 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 				default:
 				}
 			case "exec":
-				// Non-interactive `ssh host CMD` — capture the
-				// command line and respond with our shell's
-				// canned response, then close.
-				if len(req.Payload) >= 4 {
-					cmdLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
-					if cmdLen > 0 && cmdLen <= len(req.Payload)-4 {
-						cmd := string(req.Payload[4 : 4+cmdLen])
-						res.Meta["exec_command"] = safe.SanitizeForLog(cmd)
-						// scan anomalies on the exec line.
-						for _, a := range shell.ScanAnomalies(cmd) {
-							flagAnomaly(res, a)
-						}
-					}
+				// Non-interactive `ssh host CMD` — capture the command line.
+				// scp invokes the server side this way (`scp -t`/`scp -f`); we
+				// emulate the start of the transfer to fingerprint the attempt.
+				cmd := sshReqString(req.Payload)
+				res.Meta["exec_command"] = safe.SanitizeForLog(cmd)
+				for _, a := range shell.ScanAnomalies(cmd) {
+					flagAnomaly(res, a)
 				}
 				if req.WantReply {
 					_ = req.Reply(true, nil)
 				}
-				_, _ = ch.Write([]byte("Permission denied\r\n"))
+				if isSCPCommand(cmd) {
+					serveSCPBeginning(ch, res, cmd)
+				} else {
+					_, _ = ch.Write([]byte("Permission denied\r\n"))
+				}
 				_, _ = ch.SendRequest("exit-status", false, []byte{0, 0, 0, 1})
+				finish()
 				return
-			case "env", "window-change", "subsystem":
+			case "subsystem":
+				// The sftp subsystem: emulate the SFTP start (INIT->VERSION,
+				// then record + deny) so the client reveals which paths it
+				// probes; other subsystems are refused.
+				name := sshReqString(req.Payload)
+				if name == "sftp" {
+					if req.WantReply {
+						_ = req.Reply(true, nil)
+					}
+					serveSFTPBeginning(ch, res)
+					_, _ = ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+				} else {
+					res.Meta["ssh_subsystem"] = safe.SanitizeForLog(name)
+					if req.WantReply {
+						_ = req.Reply(false, nil)
+					}
+				}
+				finish()
+				return
+			case "env", "window-change":
 				if req.WantReply {
 					_ = req.Reply(true, nil)
 				}
@@ -237,11 +262,15 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 				}
 			}
 		}
+		finish()
 	})
 
-	// Wait for the "shell" request before driving the shell loop.
+	// Wait for the "shell" request before driving the shell loop; a terminal
+	// exec / sftp / scp request ends the session via done instead.
 	select {
 	case <-gotShell:
+	case <-done:
+		return
 	case <-time.After(10 * time.Second):
 		return
 	case <-ctx.Done():
