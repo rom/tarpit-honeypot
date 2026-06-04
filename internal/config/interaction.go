@@ -154,8 +154,8 @@ func (in Interaction) UnavailableCapabilities() []Capability {
 	// Permanently-infeasible / not-implemented signals the docs warn about,
 	// surfaced so they're explicit rather than assumed.
 	caps = append(caps,
-		Capability{"http3-quic-request-capture", CapUnavailable,
-			"QUIC is fingerprinted (long-header) but never decrypted/parsed — no request capture"},
+		Capability{"http3-quic-request-capture", CapExperimental,
+			"the QUIC Initial is decrypted (RFC 9001 public keys) and the ClientHello parsed for SNI / ALPN (HTTP/3 detection) / transport parameters + JA3/JA4. The 1-RTT HTTP/3 request body stays encrypted: capturing it needs a completed QUIC+TLS 1.3 server handshake, which is out of scope (decoy-only stack)"},
 		Capability{"tls-passthrough-decryption", CapUnavailable,
 			"the sensor terminates TLS; it never MITMs a real upstream, so passthrough decryption is out of scope"},
 		Capability{"real-shell-execution", CapUnavailable,

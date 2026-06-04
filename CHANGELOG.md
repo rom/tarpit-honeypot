@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **QUIC / HTTP-3 ClientHello deep parsing** — the `quic` handler already
+  decrypts the Initial flight; it now parses the recovered TLS ClientHello for
+  the request-shaping fields: the **SNI** host (`quic_sni`), the **ALPN** list
+  (`quic_alpn`) with **HTTP/3 detection** (`h3` / `h3-NN` → `http3: true` +
+  `quic-http3` anomaly), and the advertised **QUIC transport-parameter IDs**
+  (`quic_transport_params`). `list-unavailable-capabilities` now reports
+  `http3-quic-request-capture` as experimental rather than unavailable. The
+  1-RTT HTTP/3 request body (the `:method`/`:path`) stays encrypted — capturing
+  it requires completing a full QUIC+TLS 1.3 server handshake, which remains
+  out of scope (decoy-only stack); the handler still never replies.
 - **OPC-DA (DCOM/MSRPC) call marshaling** — the `dcerpc` handler now services
   the OPC-DA call sequence past the bind, not just the bind itself. A new
   little-endian **NDR codec** (alignment, uint16/32/64, conformant+varying
