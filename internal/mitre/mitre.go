@@ -591,6 +591,13 @@ var anomalyTags = map[string]Tag{
 	// already credential-access.
 	"http-login-attempt":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 	"mssql-login-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// Honeytoken account (security.txt contact) reused as a login name — the
+	// attacker scraped our published security contacts and sprayed them.
+	"honeytoken:account-login": {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
+	// Probing the bait paths advertised in robots.txt / sitemap.xml — content
+	// discovery against deliberately-tempting hidden directories/files.
+	"robots-honeypot-access":  {Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}},
+	"sitemap-honeypot-access": {Techniques: []string{"T1595.003"}, Tactics: []string{"reconnaissance"}},
 	// Bare service probes + malformed / non-conforming protocol input — the
 	// shape of an automated scanner banner-grabbing a port.
 	"oracle-tns-probe":                {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},

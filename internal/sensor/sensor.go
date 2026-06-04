@@ -43,6 +43,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/retention"
 	"github.com/rom/tarpit-honeypot/internal/risk"
 	"github.com/rom/tarpit-honeypot/internal/router"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
@@ -96,6 +97,9 @@ type Sensor struct {
 	feedsPuller *feeds.Puller     // external threat-intel feed ingestion (nil when disabled)
 	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 	iocEmit     map[string]bool   // indicator types whose first-sight emits an ioc:<type> event (nil = IOC off)
+
+	honeytokenOnce  sync.Once       // builds honeytokenAccts on first use
+	honeytokenAccts map[string]bool // honeytoken login names from web security.txt contacts
 
 	ingestSeen    *ttlSet       // dedup for events admitted via IngestBatch (aggregator)
 	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
@@ -961,6 +965,56 @@ func containsStr(xs []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// honeytokenUserKeys are the meta keys the protocol handlers use to record an
+// attempted username, across web / ftp / imap / pop3 / smtp / telnet / ldap.
+var honeytokenUserKeys = []string{
+	"auth_user", "http_login_user", "user_attempt", "user", "username",
+	"user_name", "user_line", "bind_dn", "vrfy_user", "socks_userid",
+}
+
+// honeytokenAccounts builds (once) the set of honeytoken login names from the
+// security.txt contacts advertised by the http/https listeners, including both
+// each full address and its local-part.
+func (s *Sensor) honeytokenAccounts() map[string]bool {
+	s.honeytokenOnce.Do(func() {
+		set := map[string]bool{}
+		if s.cfg != nil {
+			for _, l := range s.cfg.Listeners {
+				if (l.Handler != "http" && l.Handler != "https") || !l.WebDeception.On() {
+					continue
+				}
+				for _, a := range l.WebDeception.HoneytokenAccounts() {
+					set[a] = true
+				}
+			}
+		}
+		s.honeytokenAccts = set
+	})
+	return s.honeytokenAccts
+}
+
+// observeHoneytokenAccount flags, in place, any login attempt whose username is
+// one of the honeytoken accounts seeded from the web security.txt contacts. The
+// accounts are only ever advertised on the web surface, so a login with one —
+// over any protocol — is a strong signal the attacker scraped security.txt.
+func (s *Sensor) observeHoneytokenAccount(ev *event.Event) {
+	accts := s.honeytokenAccounts()
+	if len(accts) == 0 || ev == nil || len(ev.Meta) == 0 {
+		return
+	}
+	for _, k := range honeytokenUserKeys {
+		v, _ := ev.Meta[k].(string)
+		if v == "" {
+			continue
+		}
+		if accts[strings.ToLower(strings.TrimSpace(v))] {
+			ev.Anomalies = appendUniqueStr(ev.Anomalies, "honeytoken:account-login")
+			ev.Meta["honeytoken_account"] = safe.SanitizeForLog(v)
+			return
+		}
+	}
 }
 
 // observePayload harvests malware / shellcode / ingress URLs from an
@@ -1894,6 +1948,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 					s.dispatch(rt, mw)
 					s.scoreRisk(rt, mw)
 				}
+				// Honeytoken accounts: flag, in place, a login attempt that
+				// uses one of the security.txt contact names (cross-protocol:
+				// web / ftp / imap / pop3 / smtp), so scraping security.txt and
+				// spraying its addresses is caught.
+				s.observeHoneytokenAccount(ev)
 				// Honey-credential loop: record served tokens and detect reuse
 				// of a previously-served synthetic secret (proof of compromise).
 				if tu := s.observeTokens(ev); tu != nil {
