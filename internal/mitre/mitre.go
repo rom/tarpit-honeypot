@@ -392,6 +392,8 @@ var anomalyTags = map[string]Tag{
 	// A recognized C2 / red-team framework beacon (Cobalt Strike, Mythic,
 	// Empire, Covenant, Sliver, Metasploit, …) — application-layer C2.
 	"c2-framework": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
+	// Cobalt Strike default checksum8 beacon-staging URI.
+	"cobaltstrike-stager": {Techniques: []string{"T1105", "T1071.001"}, Tactics: []string{"command-and-control"}},
 	// A headless-browser automation driver (Selenium / Puppeteer / headless
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},

@@ -696,9 +696,25 @@ func (c *Correlator) checkBeacon(ev *event.Event, now time.Time) *event.Event {
 		return nil
 	}
 	mean, jitterPct, ok := intervalRegularity(st.times)
-	// Ignore bursts (sub-second mean) — a beacon is a periodic call-home,
-	// not a flood; those are caught by the scan / enumeration detectors.
-	if !ok || mean < time.Second || jitterPct > cfg.MaxJitterPct {
+	if !ok || mean < time.Second {
+		// Ignore bursts (sub-second mean) — a beacon is a periodic call-home,
+		// not a flood; those are caught by the scan / enumeration detectors.
+		return nil
+	}
+	// Two flavors of periodicity:
+	//   strict   — low stddev/mean jitter (a fixed-interval beacon).
+	//   jittered — the intervals are noisy enough to pass the strict test but
+	//              still cluster in a tight band (max/min <= beaconBandRatio).
+	//              This catches C2 sleep-with-jitter (Cobalt Strike / Sliver,
+	//              where ~37% jitter pushes stddev past MaxJitterPct). Needs more
+	//              samples to keep the looser test from firing on coincidence.
+	jittered := false
+	switch {
+	case jitterPct <= cfg.MaxJitterPct:
+		// strict beacon
+	case len(st.times) >= maxInt(cfg.MinHits, 8) && intervalBandRatio(st.times) <= beaconBandRatio:
+		jittered = true
+	default:
 		return nil
 	}
 	if !c.shouldEmit("beacon|"+ev.Source.IP, cfg.Window) {
@@ -717,10 +733,50 @@ func (c *Correlator) checkBeacon(ev *event.Event, now time.Time) *event.Event {
 		Meta: map[string]any{
 			"interval_s": int(mean.Seconds()),
 			"jitter_pct": jitterPct,
+			"jittered":   jittered,
 			"samples":    len(st.times),
 			"window_s":   int(cfg.Window.Seconds()),
 		},
 	}
+}
+
+// beaconBandRatio bounds the jittered-beacon test: the largest inter-arrival
+// interval may be at most this multiple of the smallest. A sleep S with jitter J
+// gives intervals in [S(1-J), S(1+J)]; ratio 3.0 covers up to ~50% jitter while
+// staying well below the spread of organic traffic.
+const beaconBandRatio = 3.0
+
+// intervalBandRatio returns max/min of the inter-arrival intervals (a tight band
+// => regular contact even when the per-interval jitter is high). Returns a large
+// value when it can't be measured, so callers treat it as "not banded".
+func intervalBandRatio(times []time.Time) float64 {
+	if len(times) < 3 {
+		return 1e9
+	}
+	min, max := 1e18, 0.0
+	for i := 1; i < len(times); i++ {
+		iv := times[i].Sub(times[i-1]).Seconds()
+		if iv <= 0 {
+			return 1e9 // out-of-order / duplicate timestamp
+		}
+		if iv < min {
+			min = iv
+		}
+		if iv > max {
+			max = iv
+		}
+	}
+	if min <= 0 {
+		return 1e9
+	}
+	return max / min
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // intervalRegularity returns the mean inter-arrival interval and the jitter

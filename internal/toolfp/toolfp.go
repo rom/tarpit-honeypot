@@ -90,6 +90,7 @@ var c2Frameworks = map[string]bool{
 	"supershell": true, "phpsploit": true, "weevely": true,
 	"hardhatc2": true, "adaptixc2": true,
 	"slackor": true, "toxssin": true, "trevorc2": true,
+	"geacon": true, "crossc2": true, "redwarden": true, "starkiller": true, "nimbo-c2": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -161,6 +162,7 @@ var vulnScanners = map[string]bool{
 	"mongoaudit": true, "domdig": true,
 	"dotdotpwn": true, "panoptic": true, "xxeinjector": true, "blisqy": true,
 	"kadimus": true, "liffy": true, "retirejs": true,
+	"vuls": true, "rapidscan": true, "sitadel": true, "scanqli": true, "dirhunt": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -805,6 +807,68 @@ var uaSignatures = map[string]string{
 	"toxssin":  "toxssin",
 	"trevorc2": "trevorc2",
 
+	// --- Batch: 50 more C2 / AD / cloud / OSINT / recon / DoS fingerprints
+	// (User-Agent self-identification), incl. Cobalt Strike cross-platform
+	// beacons + tooling. ---
+	// Cobalt Strike beacons / proxies + other C2.
+	"geacon":     "geacon",
+	"crossc2":    "crossc2",
+	"redwarden":  "redwarden",
+	"starkiller": "starkiller",
+	"nimbo-c2":   "nimbo-c2",
+	// Vulnerability / web scanners.
+	"vuls":      "vuls",
+	"rapidscan": "rapidscan",
+	"sitadel":   "sitadel",
+	"scanqli":   "scanqli",
+	"dirhunt":   "dirhunt",
+	// AD / Windows post-exploitation + enumeration.
+	"seatbelt":   "seatbelt",
+	"sharpup":    "sharpup",
+	"powerup":    "powerup",
+	"certify":    "certify",
+	"sharpview":  "sharpview",
+	"adexplorer": "adexplorer",
+	"godap":      "godap",
+	// Cloud / CI/CD / GitHub-Actions attack + audit.
+	"gato":        "gato",
+	"purplepanda": "purplepanda",
+	"kubescape":   "kubescape",
+	"legitify":    "legitify",
+	"poutine":     "poutine",
+	"octoscan":    "octoscan",
+	// OSINT.
+	"osintgram":   "osintgram",
+	"twint":       "twint",
+	"instaloader": "instaloader",
+	"socialscan":  "socialscan",
+	// Recon / scanners / exploit search + screenshotters.
+	"sifter":    "sifter",
+	"pnscan":    "pnscan",
+	"vajra":     "vajra",
+	"getsploit": "getsploit",
+	"fuzzuli":   "fuzzuli",
+	"scrying":   "scrying",
+	"witnessme": "witnessme",
+	// Wordlist / credential generators.
+	"cupp":             "cupp",
+	"psudohash":        "psudohash",
+	"username-anarchy": "username-anarchy",
+	// DoS / flood / stress tools.
+	"t50":          "t50",
+	"hyenae":       "hyenae",
+	"mhddos":       "mhddos",
+	"bonesi":       "bonesi",
+	"slowloris":    "slowloris",
+	"slowhttptest": "slowhttptest",
+	"goldeneye":    "goldeneye",
+	"hulk":         "hulk",
+	"torshammer":   "torshammer",
+	"xerxes":       "xerxes",
+	"pyloris":      "pyloris",
+	"davoset":      "davoset",
+	"saphyra":      "saphyra",
+
 	// --- Batch: 25 more web-injection / WAF / OSINT-engine / recon
 	// fingerprints (User-Agent self-identification). ---
 	// SQL-injection + web-exploit + secret-file scanners.
@@ -922,6 +986,39 @@ var browserUASubstrings = []string{
 }
 
 // IdentifyHTTP returns the tool/automation verdict for an HTTP request.
+// CobaltStrikeStager reports whether path matches Cobalt Strike's default
+// checksum8 staging URI: a single 4-character [A-Za-z0-9] segment whose bytes
+// sum (mod 256) to 92 (x86 stager) or 93 (x64 stager). This is the classic,
+// malleable-profile-independent tell of a default CS team server staging a
+// beacon. Returns the stager architecture ("x86"/"x64") and whether it matched.
+// The checksum is byte-sensitive, so pass the original-case path.
+func CobaltStrikeStager(path string) (arch string, ok bool) {
+	p := strings.TrimPrefix(path, "/")
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i] // allow a query/fragment, but a trailing path segment must not
+	}
+	if len(p) != 4 {
+		return "", false
+	}
+	sum := 0
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			sum += int(c)
+		default:
+			return "", false
+		}
+	}
+	switch sum % 256 {
+	case 92:
+		return "x86", true
+	case 93:
+		return "x64", true
+	}
+	return "", false
+}
+
 func IdentifyHTTP(s HTTPSignals) Verdict {
 	v := Verdict{}
 	ua := strings.ToLower(s.UserAgent)
@@ -938,6 +1035,13 @@ func IdentifyHTTP(s HTTPSignals) Verdict {
 		if strings.Contains(path, needle) {
 			v.Tools = appendUnique(v.Tools, tool)
 		}
+	}
+	// Cobalt Strike default checksum8 staging URI — a profile-independent,
+	// high-signal tell that a default CS team server is staging a beacon.
+	// Computed over the ORIGINAL-case path (the checksum is byte-sensitive).
+	if _, ok := CobaltStrikeStager(s.Path); ok {
+		v.Tools = appendUnique(v.Tools, "cobaltstrike")
+		uaMatched = true // treat as a strong (high-confidence) identification
 	}
 	for _, tool := range v.Tools {
 		if IsVulnScanner(tool) {
