@@ -37,6 +37,9 @@
 #   ABUSE_CH_AUTH_KEY    optional abuse.ch Auth-Key; sent as the Auth-Key header
 #                        for the ThreatFox / MalwareBazaar exports (some now
 #                        require it). Get one free at https://auth.abuse.ch/.
+#   JA4DB_URL            override the JA4+ fingerprint DB source (default: the
+#                        FoxIO ja4plus-mapping.csv on GitHub). CSV or JSON
+#                        (ja4db.com export) is auto-detected; JSON needs jq.
 #   SKIP_GEOIP=1         skip the (large) GeoIP downloads
 #   NO_ARCHIVE=1         don't build the single-file .tar.gz (implied by --install)
 #   INSECURE=1           pass -k/--no-check-certificate (not recommended)
@@ -283,31 +286,50 @@ fetch_abuse_csv() {
 	ok=$((ok + 1)); return 0
 }
 
-# fetch_ja4db — download FoxIO's JA4+ mapping CSV from GitHub and emit
-# normalized "fingerprint,label" files per kind. The CSV columns are:
+# fetch_ja4db — download a FoxIO JA4+ database and emit normalized
+# "fingerprint,label" files per kind (ja4 + ja4h, which the enricher consumes).
+#
+# Source is $JA4DB_URL (default: FoxIO's ja4plus-mapping.csv on GitHub — plain
+# CSV, no jq, reachable). Override it to point at a larger DB, e.g. the full
+# ja4db.com JSON export. The format is auto-detected: a payload starting with
+# '{' or '[' is parsed as JA4DB JSON (needs jq); otherwise as the FoxIO CSV
 #   Application,Library,Device,OS,ja4,ja4s,ja4h,ja4x,ja4t,ja4tscan,Notes
-# We emit the ja4 (col 5) and ja4h (col 7) maps the enricher consumes, labeling
-# each with the first non-empty of Application/Library/Device. Plain CSV — no
-# jq needed — and served from GitHub raw (more reachable than ja4db.com).
+# labeling each fingerprint with the first non-empty Application/Library/Device.
 fetch_ja4db() {
-	local url="https://raw.githubusercontent.com/FoxIO-LLC/ja4/main/ja4plus-mapping.csv"
-	local tmp="$FP_DIR/ja4db.csv.$$"
+	local url="${JA4DB_URL:-https://raw.githubusercontent.com/FoxIO-LLC/ja4/main/ja4plus-mapping.csv}"
+	local tmp="$FP_DIR/ja4db.$$"
 	printf '  %-22s ' "foxio-ja4db"
 	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
 		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
 	fi
-	# Emit the ja4 (col 5) and ja4h (col 7) maps the enricher consumes; label
-	# each with the first non-empty of Application/Library/Device.
-	for spec in "5 ja4" "7 ja4h"; do
-		set -- $spec
-		awk -F, -v col="$1" '
-			NR == 1 { next }                        # header
-			{ gsub(/\r/, ""); fp = $col; if (fp == "") next;
-			  lab = $1; if (lab == "") lab = $2; if (lab == "") lab = $3;
-			  if (lab == "") lab = "unknown";
-			  print fp "," lab }
-		' "$tmp" | sort -u >"$FP_DIR/$2.txt" || true
-	done
+	# Sniff format from the first non-blank byte.
+	local first
+	first=$(tr -d ' \t\r\n' <"$tmp" | head -c1)
+	if [ "$first" = "{" ] || [ "$first" = "[" ]; then
+		# JA4DB JSON export (needs jq): {ja4_fingerprint, ja4h_fingerprint,
+		# application/library/device, ...}.
+		if ! command -v jq >/dev/null 2>&1; then
+			echo "FAILED (JSON source needs jq)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+		fi
+		local field
+		for spec in "ja4_fingerprint ja4" "ja4h_fingerprint ja4h"; do
+			set -- $spec
+			jq -r ".[]? | select(.$1 != null and .$1 != \"\") | \"\(.$1),\(.application // .library // .device // \"unknown\")\"" \
+				"$tmp" 2>/dev/null | sort -u >"$FP_DIR/$2.txt" || true
+		done
+	else
+		# FoxIO mapping CSV: ja4 = col 5, ja4h = col 7.
+		for spec in "5 ja4" "7 ja4h"; do
+			set -- $spec
+			awk -F, -v col="$1" '
+				NR == 1 { next }                        # header
+				{ gsub(/\r/, ""); fp = $col; if (fp == "") next;
+				  lab = $1; if (lab == "") lab = $2; if (lab == "") lab = $3;
+				  if (lab == "") lab = "unknown";
+				  print fp "," lab }
+			' "$tmp" | sort -u >"$FP_DIR/$2.txt" || true
+		done
+	fi
 	rm -f "$tmp"
 	local n
 	n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
