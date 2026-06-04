@@ -98,7 +98,9 @@ func (p *pop3) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 			// attempt (CVE-2011-1430 class). On upgrade, startTLS + a fresh
 			// reader drop it unexecuted; if we can't upgrade we refuse below.
 			detectSTARTTLSInjection(br, &res, "CVE-2011-1430")
+			flagAnomaly(&res, "pop3-starttls")
 			if p.tlsMgr == nil || alreadyTLS(conn) {
+				res.Meta["starttls_rejected"] = true
 				_, _ = conn.Write([]byte("-ERR TLS not available\r\n"))
 				continue
 			}

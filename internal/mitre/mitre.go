@@ -398,6 +398,8 @@ var anomalyTags = map[string]Tag{
 	// buffer-overflow (CVE-2026-41089) — both crash the target service.
 	"siprotec-en100-dos":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	"cldap-netlogon-overflow": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// vsftpd 2.3.2 recursive-glob CPU-exhaustion DoS.
+	"ftp-glob-dos": {Techniques: []string{"T1499.004"}, Tactics: []string{"impact"}},
 	// A headless-browser automation driver (Selenium / Puppeteer / headless
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},

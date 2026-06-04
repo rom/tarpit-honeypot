@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **131 TCP + 112 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **131 TCP + 113 UDP protocol handlers** (plus L2 GOOSE detection and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `melsec`, `xmpp`, `amqp`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -583,7 +583,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (131 TCP + 112 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (131 TCP + 113 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -626,15 +626,27 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 ## Status
 
-**v2.8 — operator-console overhaul, mail (POP3/IMAP+TLS) credential & CVE emulation, richer captures, and live-deploy ergonomics.**
-The v2.4–2.8 line widens the platform from a sensor into a deception suite and
+**v2.10 — credential export, unbounded captures, and three new DoS/overflow detections (CLDAP, SIPROTEC EN100, vsftpd glob).**
+The v2.4–2.10 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 112 UDP protocol handlers**, **467 CVE detections**, **200 dynamic Lua
+**131 TCP + 113 UDP protocol handlers**, **468 CVE detections**, **200 dynamic Lua
 service scripts**, **166 OS/device archetypes**, **680+ attack-tool/scanner
 fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
 **18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
 Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.
 
+- **v2.10 credential export + captures.** New `export-creds` subcommand dumps
+  every captured credential (login pairs, SSH `auth_attempts` incl. public keys,
+  tokens, API keys, SNMP communities, cookies, Kerberos tickets, honeytokens)
+  with a `--kind` filter and `--format json|xml|yaml|csv|txt`; the captures page
+  no longer caps the credential table at 300 rows (shows every unique credential
+  in the scan window).
+- **v2.10 new detections.** CVE-2026-41089 (CLDAP/UDP-389 Netlogon LSASS
+  stack-overflow shape, `cldap-netlogon-overflow`); a capture-only Siemens
+  SIPROTEC 4 / EN100 UDP/50000 handler for the CVE-2015-5374 DoS datagram (never
+  replies — no amplification); and the vsftpd 2.3.2 recursive-glob DoS
+  (Metasploit `dos/ftp/vsftpd_232`) flagged as `ftp-glob-dos` on the
+  `ftp`/`ftp_files` handlers. POP3 `STLS` is now flagged (`pop3-starttls`).
 - **v2.8 operator console.** Flicker-free, content-only live refresh that skips
   when nothing changed (`/api/heartbeat`); a 24h/7d/14d/31d/3mo/6mo range
   selector on the summary and charts; clickable transport/severity counters,

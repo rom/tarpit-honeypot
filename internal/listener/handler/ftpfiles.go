@@ -109,6 +109,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		}
 		commands = append(commands, safe.SanitizeForLog(line))
 		cmd, arg := splitFTPCommand(line)
+		flagFTPGlobDoS(&res, cmd, arg)
 
 		switch cmd {
 		case "USER":

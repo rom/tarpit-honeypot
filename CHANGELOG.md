@@ -8,7 +8,34 @@ documented in `docs/`).
 
 ## [Unreleased]
 
-### Added — SSH/SFTP/SCP, Cobalt Strike detection, banner interning, CPEs, +20 Lua, +50 sigs (version 2.9.0)
+## [2.10.0] — 2026-06-04
+
+### Added — risk in CENTOS, CVE-2026-41089 + SIPROTEC EN100 + vsftpd-glob DoS, export-creds
+
+- **Version bumped to 2.10.0**, releasing the accumulated work below.
+- **`export-creds` subcommand**: export captured credentials (login user/pass
+  pairs, SSH `auth_attempts` incl. public keys, tokens, API keys, SNMP
+  communities, cookies, Kerberos tickets, honeytokens) with a `--kind` filter
+  and `--format json | xml | yaml | csv | txt`.
+- **Captures page**: removed the 300-row cap on displayed credentials — it now
+  shows every unique credential in the scan window.
+- **CVE-2026-41089**: the CLDAP (UDP/389) handler flags a Netlogon request with
+  an oversized (130+ byte) username — the LSASS stack-overflow shape
+  (NetpLogonPutUnicodeString byte/WCHAR confusion) — as `cve:CVE-2026-41089` /
+  `cldap-netlogon-overflow`.
+- **Siemens SIPROTEC 4 / SIPROTEC Compact EN100**: new capture-only UDP/50000
+  handler (`siprotec_en100`) recognizing the CVE-2015-5374 DoS datagram
+  (`11 49 … 28 9E`); never replies (no amplification).
+- **vsftpd 2.3.2 recursive-glob DoS** (Metasploit `dos/ftp/vsftpd_232`): the
+  `ftp` / `ftp_files` handlers flag an over-long, glob-metacharacter-stuffed
+  command argument as `ftp-glob-dos`.
+- **POP3 STLS** is now flagged (`pop3-starttls`, with a `starttls_rejected` meta
+  when no cert is configured); it already upgraded the channel when a cert is
+  available.
+- **Risk scoring enabled** in the CENTOS example config (decaying per-source
+  threat score → `risk:elevated/high/critical`; active blocking left off).
+
+### Added — SSH/SFTP/SCP, Cobalt Strike detection, banner interning, CPEs, +20 Lua, +50 sigs
 
 - **SSH credentials on the captures page**: extractCreds now walks the SSH
   `auth_attempts` list, so SSH passwords + pubkey attempts show alongside every

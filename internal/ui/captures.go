@@ -25,7 +25,6 @@ import (
 
 const capturesWindow = 30 * 24 * time.Hour
 const capturesScanMax = 20000
-const capturesMaxCreds = 300
 
 type lootFile struct {
 	Name  string    // basename (download key)
@@ -138,12 +137,6 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event) capt
 			v.Creds = append(v.Creds, credRow{
 				Time: ev.Time, Source: ev.Source.IP, Service: c.Service, Kind: c.Kind, User: c.User, Pass: c.Pass,
 			})
-			if len(v.Creds) >= capturesMaxCreds {
-				break
-			}
-		}
-		if len(v.Creds) >= capturesMaxCreds {
-			break
 		}
 	}
 	return v
