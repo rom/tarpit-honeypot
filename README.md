@@ -94,6 +94,13 @@ rationale covering the current implementation.
   `sensor.vuln_emulation` (per-listener overridable) a banner-aware
   handler advertises the archetype's deliberately-unpatched version +
   **fake patch level** so a version scanner records an exploitable box.
+- **Web deception files** (`listener.web_deception`, http/https, on by default):
+  a decoy `robots.txt` (bait `Disallow` paths → `robots-honeypot-access`),
+  `/.well-known/security.txt` (RFC 9116, honeytoken contacts), and a `sitemap.xml`
+  of fake pages served **slowly** (per-page tarpit) → `sitemap-honeypot-access`.
+  The security.txt contact names become **cross-protocol honeytoken accounts** —
+  a login with one over web / ftp / imap / pop3 / smtp raises
+  `honeytoken:account-login`.
 - **Command emulation per device family**: believable POSIX shells, plus
   **PowerShell** (incl. Active Directory cmdlets), **Windows cmd.exe**,
   **Cisco IOS** (enable + show version/run/vlan/cdp), the **Moxa** and
@@ -622,8 +629,8 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **v2.8 — operator-console overhaul, mail (POP3/IMAP+TLS) credential & CVE emulation, richer captures, and live-deploy ergonomics.**
 The v2.4–2.8 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 112 UDP protocol handlers**, **406 CVE detections**, **180 dynamic Lua
-service scripts**, **166 OS/device archetypes**, **530+ attack-tool/scanner
+**131 TCP + 112 UDP protocol handlers**, **467 CVE detections**, **180 dynamic Lua
+service scripts**, **166 OS/device archetypes**, **580+ attack-tool/scanner
 fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
 **18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
 Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.

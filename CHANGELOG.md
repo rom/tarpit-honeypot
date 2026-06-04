@@ -8,6 +8,40 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — web-deception trio, events-page fixes, +50 tool sigs, +61 CVEs (2025/2026) (version 2.9.0)
+
+- **Web deception** (`listener.web_deception`, on by default) on http/https: a
+  decoy `robots.txt` (bait `Disallow` paths → `robots-honeypot-access`),
+  `/.well-known/security.txt` (RFC 9116 honeytoken contacts), and `sitemap.xml`
+  of many fake pages served **slowly** (a bounded per-page byte-trickle tarpit)
+  → `sitemap-honeypot-access`. The security.txt contact names (local-part + full
+  address) become **cross-protocol honeytoken accounts**: a login with one over
+  web / ftp / imap / pop3 / smtp raises `honeytoken:account-login` (T1078).
+- **Events page fixes / polish**: fixed the "Rows: All still shows only 100"
+  bug (the Rows control now re-queries the server via `?limit=`, lifting the cap
+  to 50000); well-known service names (pop3 / http / smtp-submission) link to
+  that port's events; D3FEND ids link to their MITRE D3FEND page; the
+  `geo_country` field renders with its flag. (Source reputation badges were
+  already shown.)
+- **+50 attack-tool fingerprints** (580+ total): web injection/XSS/redirect/cache
+  scanners, JWT tooling, AD/Kerberos (ldapdomaindump, pingcastle, bloodyad,
+  targetedkerberoast, …), cloud/bucket enum, subdomain-takeover + DNS recon, and
+  C2 (HardHatC2, AdaptixC2).
+- **+31 real 2025 CVEs** (Cisco ISE/IOS-XE, PAN-OS, FortiVoice/FortiWeb, Citrix
+  NetScaler incl. CitrixBleed 2, SAP NetWeaver, CrushFTP/Wing FTP, SharePoint
+  ToolShell, Langflow, Commvault, Roundcube, Wazuh, Ivanti EPMM, SonicWall, …),
+  several payload-detectable. **+30 CVE-2026 forward-looking placeholders** —
+  advisory-only (no signatures, so they never tag live traffic); the exact IDs
+  are unverified and should be confirmed against NVD.
+
+### Verified
+
+- **The SNMP MIB is fully walkable**: the handler implements GetNext
+  (lexicographic successor) and GetBulk over an OID-sorted MIB built from the
+  archetype + topology, Null-terminating at end-of-MIB so `snmpwalk` /
+  `snmpbulkwalk` traverse it completely (v3 excluded by design), with a
+  per-source walk rate-limit / tarpit.
+
 ### Added — search regex + time filters, clickable pivots, summary attacks/vulns; +155 tool sigs, +25 Cisco/ASA/Moxa CVEs; DB rotate/prune (version 2.9.0)
 
 - **Search overhaul** (`/search`): the **source IP / dest IP / rule / handler /
