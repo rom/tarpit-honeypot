@@ -10,6 +10,53 @@ documented in `docs/`).
 
 ### Added
 
+- **Native ATT&CK matrix** on the `/attack` page — a tactic column per observed
+  tactic (kill-chain order), each a stack of technique cells shaded by event
+  volume and linking to the per-technique drill-down. Server-rendered from the
+  existing ATT&CK aggregation.
+- **Activity punchcard** on the `/attack` page — a 7×24 UTC weekday × hour-of-day
+  heatmap (14-day window) of event volume, revealing the operators' working
+  hours and timezone.
+- **In-browser session replay** — `/replay?name=<cast>` / `?event=<id>` plays
+  back recorded interactive SSH/Telnet shells: the asciinema v2 cast is parsed
+  server-side and rendered in a terminal with play / pause / seek / speed (ANSI
+  stripped, `\r`/`\b`/`\t`/`\n` handled). Linked from the captures session list
+  and event detail. Replaces the static replay list with a real timed player.
+- **Enrichment installer auto-mapping** — `install-enrichment.sh` now places the
+  new datasets (cloud-provider ranges, fingerprint DBs, malware-hash set, p0f.fp)
+  automatically; `list-paths` enumerates them so the air-gapped install flow
+  maps each bundle file to its configured destination.
+
+- **Enriched attacker profile page** — the `/profiles/<ip>` dossier now surfaces
+  data already attached to events but previously hidden: an **origin &
+  infrastructure** card (reverse DNS, geo, ASN/org, net-class, cloud provider,
+  known scanner, passive OS fingerprint, MAC vendor) and a **protocol
+  intelligence** section (TLS versions, negotiated SSH KEX + weak-primitive
+  flag, HTTP/2-3, QUIC SNI/ALPN), plus OPC-DA/ICS items probed and per-
+  fingerprint client/tool attribution.
+- **Cloud-provider CIDR tagging** (`sensor.cloud_ranges`) — sources inside a
+  provider's published IP ranges (AWS/GCP/Azure/Cloudflare/DigitalOcean) get an
+  authoritative `cloud_provider` tag, more precise than the asn_org heuristic.
+- **Passive OS fingerprinting** (`internal/p0f`) — builds a p0f-v3 signature
+  from a TCP SYN and matches it against a DB (embedded curated set + optional
+  `sensor.sniffer.p0f_db` p0f.fp) to stamp `os_fingerprint` / `p0f_signature`,
+  refining the coarse TTL `os_guess`.
+- **Known-scanner attribution: +28 operators** — ProjectDiscovery, GreyNoise,
+  FOFA/Knownsec, ZoomEye, QiAnXin Hunter, Netlas, FullHunt, Spur, IPinfo,
+  RiskIQ, Tenable, Qualys, Detectify, Cyble, IntelX, Greenbone, Deutsche
+  Telekom, Ahrefs, SEMrush, and more.
+- **Known-malware hash attribution** (`sensor.payloads.malware_hashes`) — the
+  `artifactscan` engine matches a captured artifact's SHA-256 against an
+  abuse.ch (ThreatFox/MalwareBazaar) hash set, flagging `known_malware` +
+  `malware_family` and elevating to Critical. New `analyze --hashes` flag.
+- **Fingerprint → client/tool DB** (`sensor.fingerprint_db`) — JA3/JA4/JA4H/
+  HASSH corpora (FoxIO JA4DB, community JA3) map a fingerprint to the client /
+  library / malware behind it (`<kind>_client` on events, shown on the profile).
+- **`fetch-enrichment.sh` extended** — now also downloads cloud-provider IP
+  ranges, abuse.ch ThreatFox/MalwareBazaar hashes (normalized to
+  `sha256[,family]`) + URLhaus, and the FoxIO JA4DB (→ per-kind
+  `fingerprint,label` files), and the suggested config wires them all.
+
 - **QUIC 1-RTT packet-protection layer** (`internal/listener/handler/quic_1rtt.go`)
   — a verified, self-contained building block toward live HTTP/3 request
   capture: RFC 9001 §5.1 key derivation (`quic key`/`iv`/`hp` for AES-128/256-GCM)

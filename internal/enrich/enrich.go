@@ -44,6 +44,15 @@ type Config struct {
 	// NetClass enables the built-in network classification (bogon /
 	// cloud-hosting) that needs no external database.
 	NetClass bool
+	// CloudRanges are operator-supplied cloud-provider IP/CIDR lists (one
+	// CIDR per line), each tagged with the provider name. A source inside a
+	// range gets an authoritative cloud_provider tag (AWS / GCP / Azure /
+	// DigitalOcean / …) — far more precise than the asn_org keyword heuristic.
+	CloudRanges []CloudRangeList
+	// FingerprintSources are fingerprint→client/tool databases (JA4DB / JA3 /
+	// HASSH corpora), one per kind. A recognized fingerprint tags the event
+	// <kind>_client with the named application / library / malware.
+	FingerprintSources []FingerprintSource
 }
 
 // ThreatList is one labeled IP/CIDR reputation list.
@@ -52,11 +61,19 @@ type ThreatList struct {
 	File  string
 }
 
+// CloudRangeList is one cloud provider's published IP-range file.
+type CloudRangeList struct {
+	Provider string
+	File     string
+}
+
 type Enricher struct {
 	cityDB   *maxminddb.Reader
 	asnDB    *maxminddb.Reader
 	rdns     *rdnsCache
 	threat   []threatSet
+	cloud    []threatSet // cloud-provider ranges (label = provider name)
+	fpdb     fpDB        // fingerprint -> client/tool attribution
 	torExit  map[string]struct{}
 	netClass bool
 
@@ -163,12 +180,34 @@ func New(cfg Config) (*Enricher, error) {
 		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: cidrs})
 		slog.Info("enrich: threat list loaded", "label", label, "path", tl.File, "entries", n)
 	}
+	for _, cr := range cfg.CloudRanges {
+		if cr.File == "" || cr.Provider == "" {
+			continue
+		}
+		ips, cidrs, n, err := loadIPList(cr.File)
+		if err != nil {
+			slog.Warn("enrich: cloud range list unavailable; skipping", "provider", cr.Provider, "path", cr.File, "err", err)
+			continue
+		}
+		e.cloud = append(e.cloud, threatSet{label: cr.Provider, ips: ips, cidrs: cidrs})
+		slog.Info("enrich: cloud range list loaded", "provider", cr.Provider, "path", cr.File, "entries", n)
+	}
 	if cfg.TorExitFile != "" {
 		if ips, _, n, err := loadIPList(cfg.TorExitFile); err != nil {
 			slog.Warn("enrich: tor exit list unavailable; tor tagging off", "path", cfg.TorExitFile, "err", err)
 		} else {
 			e.torExit = ips
 			slog.Info("enrich: tor exit list loaded", "path", cfg.TorExitFile, "entries", n)
+		}
+	}
+	if len(cfg.FingerprintSources) > 0 {
+		db, n, errs := loadFingerprintDB(cfg.FingerprintSources)
+		for _, err := range errs {
+			slog.Warn("enrich: fingerprint db source unavailable; skipping", "err", err)
+		}
+		if n > 0 {
+			e.fpdb = db
+			slog.Info("enrich: fingerprint db loaded", "entries", n, "kinds", len(db))
 		}
 	}
 	e.netClass = cfg.NetClass
@@ -324,11 +363,20 @@ func (e *Enricher) Decorate(ev *event.Event) {
 			ev.Meta["tor_exit"] = true
 		}
 	}
+	// Authoritative cloud-provider tag from published IP ranges (first match
+	// wins). More precise than the asn_org keyword heuristic below.
+	for i := range e.cloud {
+		if e.cloud[i].match(addr) {
+			ev.Meta["cloud_provider"] = e.cloud[i].label
+			break
+		}
+	}
 	if e.netClass {
 		if cls := classifyNet(addr, ev.Meta["asn_org"]); cls != "" {
 			ev.Meta["net_class"] = cls
 		}
 	}
+	e.decorateFingerprints(ev)
 	e.decorateFleetIntel(ev)
 	e.decorateExternalIntel(ev)
 }

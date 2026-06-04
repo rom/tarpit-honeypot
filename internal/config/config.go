@@ -522,6 +522,10 @@ type Sniffer struct {
 	TCPScan   TCPScanCfg `yaml:"tcp_scan"`
 	GOOSE     GOOSECfg   `yaml:"goose"`
 	Severity  string     `yaml:"severity"`
+	// P0fDB is an optional path to a p0f.fp signature database. Its
+	// `[tcp:*]` signatures are loaded in addition to the built-in curated set
+	// to refine the passive OS fingerprint (os_fingerprint) of TCP-SYN sources.
+	P0fDB string `yaml:"p0f_db"`
 }
 
 // GOOSECfg controls passive IEC 61850 GOOSE detection. GOOSE is L2
@@ -637,6 +641,10 @@ type Sensor struct {
 	ThreatIntel ThreatIntel `yaml:"threat_intel"`
 	Tor         TorIntel    `yaml:"tor"`
 	NetClass    NetClass    `yaml:"net_class"`
+	// CloudRanges tags sources inside published cloud-provider IP ranges.
+	CloudRanges CloudRanges `yaml:"cloud_ranges"`
+	// FingerprintDB maps JA3/JA4/HASSH fingerprints to client/tool names.
+	FingerprintDB FingerprintDB `yaml:"fingerprint_db"`
 	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
 	// or a simple "prefix,vendor" CSV — used to map observed MAC addresses
 	// to vendors. Unset = a small built-in table. Fetch the full DB with
@@ -760,6 +768,12 @@ type Payloads struct {
 	// rule set when Analyze is on. Rules using unsupported constructs are
 	// skipped, not fatal.
 	YaraRules string `yaml:"yara_rules"`
+	// MalwareHashes is an optional path to a known-malware SHA-256 set
+	// (abuse.ch MalwareBazaar / ThreatFox export, normalized to
+	// "sha256[,family]" per line). A captured artifact whose hash matches is
+	// flagged known_malware (+ family) — instant attribution. Used when
+	// Analyze is on. fetch-enrichment.sh can download + normalize the feed.
+	MalwareHashes string `yaml:"malware_hashes"`
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using
@@ -805,6 +819,37 @@ type TorIntel struct {
 // when the (GeoIP-ASN-derived) AS-org looks like datacenter/cloud infra.
 type NetClass struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+// CloudRanges tags source IPs that fall inside a cloud provider's published
+// IP ranges (cloud_provider=<provider> on the event) — authoritative, unlike
+// the asn_org keyword heuristic. Each list is one CIDR per line; the
+// fetch-enrichment.sh helper converts the providers' native JSON to this form.
+type CloudRanges struct {
+	Enabled bool              `yaml:"enabled"`
+	Lists   []CloudRangeEntry `yaml:"lists"`
+}
+
+// CloudRangeEntry is one provider's CIDR file.
+type CloudRangeEntry struct {
+	Provider string `yaml:"provider"`
+	File     string `yaml:"file"`
+}
+
+// FingerprintDB maps network fingerprints (JA3 / JA4 / JA4H / HASSH) to the
+// client / tool / malware behind them, using offline corpora (FoxIO JA4DB, the
+// community JA3 corpus, HASSH lists). A recognized fingerprint tags the event
+// <kind>_client. fetch-enrichment.sh converts the upstream JA4DB JSON / JA3 CSV
+// to the expected "fingerprint,label" form.
+type FingerprintDB struct {
+	Enabled bool                  `yaml:"enabled"`
+	Sources []FingerprintDBSource `yaml:"sources"`
+}
+
+// FingerprintDBSource is one labeled fingerprint file for a given kind.
+type FingerprintDBSource struct {
+	Kind string `yaml:"kind"` // ja3 | ja4 | ja4h | ja3s | hassh | hassh_server
+	File string `yaml:"file"`
 }
 
 // Jitter randomizes the latency of handler replies. min=max=0 disables.

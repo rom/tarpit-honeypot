@@ -41,6 +41,11 @@ type Report struct {
 	IOCs         IOCs      `json:"iocs,omitempty"`
 	Suspicious   []string  `json:"suspicious,omitempty"` // human-readable trait findings
 	YaraMatches  []Match   `json:"yara_matches,omitempty"`
+	// KnownMalware is set when the artifact's SHA-256 matches a loaded
+	// known-malware hash set (abuse.ch MalwareBazaar / ThreatFox); Family is
+	// the attributed malware family when the set carried one.
+	KnownMalware bool   `json:"known_malware,omitempty"`
+	Family       string `json:"family,omitempty"`
 }
 
 // Section is one parsed section/segment with its entropy.
@@ -91,6 +96,10 @@ func AnalyzeWith(data []byte, eng *Engine) Report {
 
 	if eng != nil {
 		r.YaraMatches = eng.Scan(data)
+		if fam, known := eng.lookupHash(r.SHA256); known {
+			r.KnownMalware = true
+			r.Family = fam
+		}
 	}
 	return r
 }

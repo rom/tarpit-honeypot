@@ -461,6 +461,29 @@ svg.graph .edge { stroke: var(--chart-edge); stroke-width: 1; }
 svg.graph .node { fill: var(--chart-node-default); }
 svg.graph .nlabel { font: 0.786rem ui-monospace, monospace; fill: var(--text-strong); }
 figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
+/* native ATT&CK matrix: a flex row of tactic columns, each a stack of
+   technique cells shaded (m-l0..m-l4) by observed event volume. */
+.attmatrix { display: flex; gap: .35rem; overflow-x: auto; padding-bottom: .4rem; align-items: flex-start; }
+.attcol { flex: 0 0 9.5rem; min-width: 9.5rem; }
+.atthead { font-size: .76rem; font-weight: 700; color: var(--text-muted); padding: .25rem .3rem; border-bottom: 1px solid var(--border-medium); margin-bottom: .25rem; min-height: 2.4em; }
+.attcell { display: flex; justify-content: space-between; gap: .3rem; font-size: .76rem; padding: .2rem .35rem; margin-bottom: .2rem; border-radius: 3px; text-decoration: none; color: inherit; border: 1px solid var(--border); }
+.attcell:hover { border-color: var(--link); }
+.attcell .attn { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.attcell.m-l0 { background: color-mix(in srgb, var(--link) 6%, var(--bg-surface)); }
+.attcell.m-l1 { background: color-mix(in srgb, var(--link) 18%, var(--bg-surface)); }
+.attcell.m-l2 { background: color-mix(in srgb, var(--link) 32%, var(--bg-surface)); }
+.attcell.m-l3 { background: color-mix(in srgb, var(--link) 50%, var(--bg-surface)); }
+.attcell.m-l4 { background: color-mix(in srgb, var(--link) 70%, var(--bg-surface)); color: #fff; }
+.attcell.m-l4 .attn { color: rgba(255,255,255,.8); }
+/* session-replay terminal player */
+.tc-replay { display: flex; flex-direction: column; gap: .4rem; }
+.tc-rctrl { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.tc-rbtn { cursor: pointer; min-width: 2.2rem; padding: .2rem .5rem; border: 1px solid var(--border-medium); border-radius: 5px; background: var(--bg-surface); color: var(--link); font-size: .95rem; }
+.tc-rbtn:hover { border-color: var(--link); }
+.tc-rseek { flex: 1 1 12rem; min-width: 8rem; }
+.tc-rtime { font-size: .8rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tc-rspeed { font-size: .8rem; }
+.tc-term { background: #0c0c0c; color: #d6d6d6; border: 1px solid var(--border-medium); border-radius: 4px; padding: .6rem .7rem; margin: 0; max-height: 28rem; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono, ui-monospace, monospace); font-size: .82rem; line-height: 1.3; }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
 /* uniform: every summary "visual overview" figure renders in an equal-sized box
    (the SVG scales to fit via its preserveAspectRatio) so the grid is tidy. */
@@ -506,10 +529,6 @@ a.tc-srclink:hover .tc-src { fill-opacity: 0.85; }
 .tc-legend { margin-top: .35rem; font-size: 0.786rem; color: var(--text-muted); }
 .tc-leg { margin-right: .8rem; white-space: nowrap; }
 .tc-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
-.tc-replay { background: var(--chart-replay-bg); color: var(--chart-replay-text); font: 0.857rem ui-monospace, monospace; border-radius: 4px; padding: .5rem .6rem; max-height: 340px; overflow: auto; }
-.tc-rline { white-space: pre-wrap; word-break: break-all; padding: .05rem 0; }
-.tc-rline.dir-out { color: var(--chart-replay-stale); }
-.tc-rts { color: var(--chart-replay-ts); margin-right: .6rem; }
 .tc-zoomable { cursor: zoom-in; }
 figure.tc-zoom { position: fixed; inset: 3vh 3vw; z-index: 1000; margin: 0; overflow: auto; cursor: zoom-out; box-shadow: 0 0 0 100vmax rgba(20,24,33,.5); }
 figure.tc-zoom svg.tc { height: auto; max-height: 90vh; width: 100%; }
@@ -562,6 +581,18 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 </table>{{ end }}
 
 {{ define "chartfig" }}<figure data-chart="{{ .Type }}"{{ if .Title }} data-chart-title="{{ .Title }}"{{ end }} data-chart-b64="{{ .B64 }}"><p class="note">enable JavaScript to render this chart</p></figure>{{ end }}
+
+{{ define "replay" }}{{ template "head" . }}
+<h1>session replay{{ if .Name }} — <code>{{ .Name }}</code>{{ end }}</h1>
+{{ if .Err }}<p class="note">{{ .Err }}</p>
+<p class="note"><a href="/captures">← back to captures</a></p>
+{{ else }}
+<p class="note">{{ .Width }}×{{ .Height }} terminal · {{ printf "%.1f" .Duration }}s ·
+  <a href="/loot/?kind=session&amp;name={{ .Name }}">download .cast</a>{{ if .EventID }} · <a href="/events/{{ .EventID }}">event</a>{{ end }}</p>
+<p class="note">Plays back the recorded interactive shell — every command the attacker typed and what the sensor showed them. Use the controls to play / pause / seek / change speed.</p>
+{{ template "chartfig" .Frames }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
 
 {{ define "charts" }}{{ template "head" . }}
 <h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics — {{ .RangeLabel }}</h1>
@@ -641,6 +672,19 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>ATT&amp;CK mapping — last 24 hours</h1>
 <p>{{ .Events }} attributed events · {{ .DistinctTID }} distinct techniques across {{ len .Tactics }} tactics.</p>
 <p class="note">Recomputed live from each event's rule + handler + anomaly markers (the same mapping the router stamps); see <a href="/docs">docs</a> for the catalog.</p>
+
+{{ if .Matrix }}<h2>ATT&amp;CK matrix (observed)</h2>
+<p class="note">Tactics across the kill chain (columns); the techniques seen under each, shaded by event volume. Click a cell to drill into who triggered it. Download a <a href="/attack/navigator">Navigator layer</a> for the full grid.</p>
+<div class="attmatrix">
+{{ range .Matrix }}<div class="attcol">
+  <div class="atthead" title="{{ .Count }} events">{{ .Rank }}. {{ .Tactic }}</div>
+  {{ range .Cells }}<a class="attcell m-l{{ .Level }}" href="/attack/technique?id={{ .ID }}" title="{{ techDesc .ID }} · {{ .Count }} events">{{ .ID }} <span class="attn">{{ .Count }}</span></a>{{ end }}
+</div>{{ end }}
+</div>{{ end }}
+
+{{ if .Punchcard.B64 }}<h2>activity punchcard</h2>
+<p class="note">When this honeypot is hit — UTC weekday × hour-of-day event volume. Concentrated bands reveal the operators' working hours and timezone.</p>
+{{ template "chartfig" .Punchcard }}{{ end }}
 
 <h2>tactic timeline (kill-chain order)</h2>
 {{ if .Tactics }}{{ range .Tactics }}
@@ -743,7 +787,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <td><code>{{ .Name }}</code></td>
   <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
-  <td><a href="/loot/?kind=session&amp;name={{ .Name }}">download</a></td>
+  <td><a href="/replay?name={{ .Name }}">▶ replay</a> · <a href="/loot/?kind=session&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>
 <p class="note">asciicast (.cast) recordings of interactive shell sessions — replay with <code>asciinema play</code>.</p>
@@ -1058,7 +1102,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <h2>downloads</h2>
 <ul>
   <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
-  {{ if index .Meta "session_cast" }}<li><a href="/session/{{ .ID }}">session recording</a> (asciinema cast)</li>{{ end }}
+  {{ if index .Meta "session_cast" }}<li><a href="/replay?event={{ .ID }}">▶ replay session</a> · <a href="/session/{{ .ID }}">download cast</a></li>{{ end }}
   {{ if .Source.IP }}<li><a href="/download?source={{ .Source.IP }}&amp;since=720h">all pcaps + sessions from {{ .Source.IP }}</a> (ZIP, last 30d)</li>{{ end }}
 </ul>
 
@@ -1137,6 +1181,17 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts (ZIP)</a> ·
   <a href="/api/profiles/{{ .IP }}">JSON</a></p>
 
+{{ if not .Origin.Empty }}<h2>origin &amp; infrastructure</h2>
+<table>
+  {{ if .Origin.RDNS }}<tr><th>reverse DNS</th><td><code>{{ .Origin.RDNS }}</code></td></tr>{{ end }}
+  {{ if or .Origin.City .Origin.CountryName .Origin.Country }}<tr><th>location</th><td>{{ if .Origin.City }}{{ .Origin.City }}, {{ end }}{{ if .Origin.CountryName }}{{ .Origin.CountryName }}{{ else }}{{ .Origin.Country }}{{ end }} {{ if .Origin.Country }}{{ countryFlag .Origin.Country }} <a class="tag" href="/events?source={{ .IP }}&amp;country={{ .Origin.Country }}">{{ .Origin.Country }}</a>{{ end }}</td></tr>{{ end }}
+  {{ if .Origin.ASN }}<tr><th>ASN</th><td><a class="tag" href="/events?source={{ .IP }}&amp;asn={{ .Origin.ASN }}">AS{{ .Origin.ASN }}</a> {{ .Origin.ASNOrg }}</td></tr>{{ end }}
+  {{ if or .Origin.NetClass .Origin.CloudProvider }}<tr><th>network</th><td>{{ if .Origin.CloudProvider }}<span class="tag warn">cloud: {{ .Origin.CloudProvider }}</span> {{ end }}{{ if .Origin.NetClass }}<span class="tag">{{ .Origin.NetClass }}</span>{{ end }}</td></tr>{{ end }}
+  {{ if .Origin.KnownScanner }}<tr><th>known scanner</th><td><span class="tag">{{ .Origin.KnownScanner }}</span> <span class="note">internet-wide scanning operator — likely background noise</span></td></tr>{{ end }}
+  {{ if .Origin.OSGuess }}<tr><th>OS guess</th><td><span class="tag">{{ .Origin.OSGuess }}</span> <span class="note">passive TTL/stack fingerprint</span></td></tr>{{ end }}
+  {{ if .Origin.MACVendor }}<tr><th>MAC vendor</th><td>{{ .Origin.MACVendor }}</td></tr>{{ end }}
+</table>{{ end }}
+
 <h2>events by severity</h2>
 <table><tr><th>severity</th><th>count</th></tr>
 {{ range $k, $v := .BySeverity }}<tr><td class="sev-{{ $k }}">{{ $k }}</td><td>{{ $v }}</td></tr>{{ end }}
@@ -1145,9 +1200,22 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
 
 {{ if .Fingerprints }}<h2>fingerprints</h2><table>
-{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a></td></tr>{{ end }}
+{{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a>{{ with index $.FingerprintClients $k }} <span class="tag" title="offline fingerprint-DB attribution">{{ . }}</span>{{ end }}</td></tr>{{ end }}
 </table>
 <p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
+
+{{ if not .Proto.Empty }}<h2>protocol intelligence</h2>
+<table>
+  {{ if .Proto.TLSVersions }}<tr><th>TLS versions</th><td>{{ range .Proto.TLSVersions }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.SSHKex }}<tr><th>SSH KEX</th><td><span class="tag">{{ .Proto.SSHKex }}</span> {{ if .Proto.SSHKexWeak }}<span class="tag bad">weak primitive offered</span>{{ end }}</td></tr>{{ end }}
+  {{ if or .Proto.HTTP2 .Proto.HTTP3 }}<tr><th>HTTP</th><td>{{ if .Proto.HTTP2 }}<span class="tag">HTTP/2 (h2c)</span> {{ end }}{{ if .Proto.HTTP3 }}<span class="tag">HTTP/3 (QUIC)</span>{{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICSNI }}<tr><th>QUIC SNI</th><td>{{ range .Proto.QUICSNI }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICALPN }}<tr><th>QUIC ALPN</th><td>{{ range .Proto.QUICALPN }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>
+<p class="note">Negotiated transport-stack details captured from this source (beyond the raw fingerprints above).</p>{{ end }}
+
+{{ if .OPCItems }}<h2>OPC-DA / ICS items probed</h2><div>{{ range .OPCItems }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
+<p class="note">OPC-DA item IDs / group names this source reached for over DCOM — the ICS tags an attacker tried to read or write.</p>{{ end }}
 
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}

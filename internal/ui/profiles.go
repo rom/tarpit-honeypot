@@ -78,12 +78,16 @@ type Profile struct {
 	Handlers     []string          `json:"handlers_targeted,omitempty"`
 	Ports        []int             `json:"ports_targeted,omitempty"`
 	Fingerprints map[string]string `json:"fingerprints,omitempty"`
-	Anomalies    []string          `json:"anomalies,omitempty"`
-	Mitre        []string          `json:"mitre_techniques,omitempty"`
-	Tactics      []string          `json:"mitre_tactics,omitempty"`
-	CVEs         []string          `json:"cves,omitempty"`
-	Credentials  []credPair        `json:"credentials,omitempty"`
-	Sensors      []string          `json:"sensors,omitempty"`
+	// FingerprintClients maps a fingerprint kind to the client / tool the
+	// fingerprint DB attributes it to (e.g. ja4 -> "Chrome", ja3 -> "Cobalt
+	// Strike"), when an offline fingerprint database is loaded.
+	FingerprintClients map[string]string `json:"fingerprint_clients,omitempty"`
+	Anomalies          []string          `json:"anomalies,omitempty"`
+	Mitre              []string          `json:"mitre_techniques,omitempty"`
+	Tactics            []string          `json:"mitre_tactics,omitempty"`
+	CVEs               []string          `json:"cves,omitempty"`
+	Credentials        []credPair        `json:"credentials,omitempty"`
+	Sensors            []string          `json:"sensors,omitempty"`
 	// Domains are DNS names and TLS SNIs this source asked for; URLs are
 	// C2/dropper URLs harvested from its payloads; Artifacts are captured
 	// malware-artifact descriptors (kind:sha256). These surface the forensic
@@ -109,7 +113,58 @@ type Profile struct {
 	// blacklist / Tor / known-scanner / external-intel labels) — sourceBadges
 	// renders it so the dossier and the profiles list carry the IP's reputation.
 	Reputation map[string]any `json:"reputation,omitempty"`
-	Recent     []*event.Event `json:"-"`
+	// Origin / infrastructure enrichment (first non-empty across the actor's
+	// events). These are already attached to events by internal/enrich but were
+	// not surfaced on the dossier.
+	Origin OriginInfo `json:"origin,omitempty"`
+	// Proto is the protocol-stack intelligence observed from this actor (TLS
+	// versions, negotiated SSH KEX, HTTP/2, QUIC/HTTP-3) — captured by the
+	// handlers but not previously shown on the profile.
+	Proto ProtoIntel `json:"proto_intel,omitempty"`
+	// OPCItems are the OPC-DA / ICS item IDs / group names this source reached
+	// for (from the dcerpc OPC-DA call layer).
+	OPCItems []string       `json:"opc_items,omitempty"`
+	Recent   []*event.Event `json:"-"`
+}
+
+// OriginInfo is the per-actor infrastructure/geo enrichment.
+type OriginInfo struct {
+	Country       string  `json:"country,omitempty"`
+	CountryName   string  `json:"country_name,omitempty"`
+	City          string  `json:"city,omitempty"`
+	Lat           float64 `json:"lat,omitempty"`
+	Lon           float64 `json:"lon,omitempty"`
+	ASN           int     `json:"asn,omitempty"`
+	ASNOrg        string  `json:"asn_org,omitempty"`
+	RDNS          string  `json:"rdns,omitempty"`
+	NetClass      string  `json:"net_class,omitempty"`
+	CloudProvider string  `json:"cloud_provider,omitempty"`
+	MACVendor     string  `json:"mac_vendor,omitempty"`
+	OSGuess       string  `json:"os_guess,omitempty"`
+	KnownScanner  string  `json:"known_scanner,omitempty"`
+}
+
+// Empty reports whether no origin enrichment was captured.
+func (o OriginInfo) Empty() bool {
+	return o.Country == "" && o.ASN == 0 && o.RDNS == "" && o.NetClass == "" &&
+		o.CloudProvider == "" && o.MACVendor == "" && o.OSGuess == "" && o.KnownScanner == ""
+}
+
+// ProtoIntel is the per-actor protocol-stack intelligence.
+type ProtoIntel struct {
+	TLSVersions []string `json:"tls_versions,omitempty"`
+	SSHKex      string   `json:"ssh_kex,omitempty"` // negotiated KEX
+	SSHKexWeak  bool     `json:"ssh_kex_weak,omitempty"`
+	HTTP2       bool     `json:"http2,omitempty"`
+	HTTP3       bool     `json:"http3,omitempty"`
+	QUICSNI     []string `json:"quic_sni,omitempty"`
+	QUICALPN    []string `json:"quic_alpn,omitempty"`
+}
+
+// Empty reports whether no protocol intelligence was captured.
+func (p ProtoIntel) Empty() bool {
+	return len(p.TLSVersions) == 0 && p.SSHKex == "" && !p.HTTP2 && !p.HTTP3 &&
+		len(p.QUICSNI) == 0 && len(p.QUICALPN) == 0
 }
 
 // buildProfile aggregates one source's events (expected newest-first) into a
@@ -136,6 +191,18 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	var maxSev event.Severity
 
 	rep := map[string]any{}
+	tlsSet := map[string]struct{}{}
+	quicSNISet := map[string]struct{}{}
+	quicALPNSet := map[string]struct{}{}
+	opcSet := map[string]struct{}{}
+	// firstStr records the first non-empty string value for an origin field.
+	firstStr := func(dst *string, ev *event.Event, key string) {
+		if *dst == "" {
+			if v, _ := ev.Meta[key].(string); v != "" {
+				*dst = v
+			}
+		}
+	}
 	for _, ev := range evs {
 		p.Count++
 		if p.FirstSeen.IsZero() || ev.Time.Before(p.FirstSeen) {
@@ -196,6 +263,15 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 					p.Fingerprints[fp] = v
 				}
 			}
+			// Client/tool attribution from the offline fingerprint DB.
+			if c, ok := ev.Meta[fp+"_client"].(string); ok && c != "" {
+				if p.FingerprintClients == nil {
+					p.FingerprintClients = map[string]string{}
+				}
+				if _, exists := p.FingerprintClients[fp]; !exists {
+					p.FingerprintClients[fp] = c
+				}
+			}
 		}
 		// Forensic observables that used to live only in per-event meta.
 		for _, k := range []string{"qname", "sni"} {
@@ -237,6 +313,54 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 				p.Credentials = append(p.Credentials, c)
 			}
 		}
+		// Origin / infrastructure enrichment (already attached by internal/enrich).
+		firstStr(&p.Origin.Country, ev, "geo_country")
+		firstStr(&p.Origin.CountryName, ev, "geo_country_name")
+		firstStr(&p.Origin.City, ev, "geo_city")
+		firstStr(&p.Origin.RDNS, ev, "rdns")
+		firstStr(&p.Origin.NetClass, ev, "net_class")
+		firstStr(&p.Origin.CloudProvider, ev, "cloud_provider")
+		firstStr(&p.Origin.MACVendor, ev, "mac_vendor")
+		// Prefer the precise p0f fingerprint over the coarse TTL bucket.
+		firstStr(&p.Origin.OSGuess, ev, "os_fingerprint")
+		firstStr(&p.Origin.OSGuess, ev, "os_guess")
+		firstStr(&p.Origin.KnownScanner, ev, "known_scanner")
+		firstStr(&p.Origin.ASNOrg, ev, "asn_org")
+		if p.Origin.ASN == 0 {
+			p.Origin.ASN = metaInt(ev.Meta, "asn")
+		}
+		if p.Origin.Lat == 0 {
+			if f, ok := metaFloat(ev.Meta, "geo_lat"); ok {
+				p.Origin.Lat = f
+			}
+		}
+		if p.Origin.Lon == 0 {
+			if f, ok := metaFloat(ev.Meta, "geo_lon"); ok {
+				p.Origin.Lon = f
+			}
+		}
+		// Protocol-stack intelligence.
+		if v, _ := ev.Meta["tls_version"].(string); v != "" {
+			tlsSet[v] = struct{}{}
+		}
+		if p.Proto.SSHKex == "" {
+			firstStr(&p.Proto.SSHKex, ev, "ssh_kex_negotiated")
+		}
+		if b, _ := ev.Meta["http2"].(bool); b {
+			p.Proto.HTTP2 = true
+		}
+		if b, _ := ev.Meta["http3"].(bool); b {
+			p.Proto.HTTP3 = true
+		}
+		for _, s := range metaStrings(ev.Meta, "quic_sni") { // handles string + []string
+			quicSNISet[s] = struct{}{}
+		}
+		for _, a := range metaStrings(ev.Meta, "quic_alpn") {
+			quicALPNSet[a] = struct{}{}
+		}
+		for _, s := range metaStrings(ev.Meta, "opc_strings") {
+			opcSet[s] = struct{}{}
+		}
 		if len(p.Recent) < 50 {
 			p.Recent = append(p.Recent, ev)
 		}
@@ -270,6 +394,13 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	})
 	if len(rep) > 0 {
 		p.Reputation = rep
+	}
+	p.Proto.TLSVersions = sortedSet(tlsSet)
+	p.Proto.QUICSNI = sortedSet(quicSNISet)
+	p.Proto.QUICALPN = sortedSet(quicALPNSet)
+	p.OPCItems = sortedSet(opcSet)
+	if _, weak := anomSet["ssh-kex-weak-primitive"]; weak {
+		p.Proto.SSHKexWeak = true
 	}
 	p.synthesize()
 	return p

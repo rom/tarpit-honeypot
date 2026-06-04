@@ -7,6 +7,29 @@ import (
 	"time"
 )
 
+// TestParseIPv4FingerprintFields checks the DF / IP-ID / options-length fields
+// added for passive p0f fingerprinting are extracted correctly.
+func TestParseIPv4FingerprintFields(t *testing.T) {
+	frame := make([]byte, 14+20+1)
+	binary.BigEndian.PutUint16(frame[12:14], 0x0800) // EtherType IPv4
+	ip := frame[14:]
+	ip[0] = 0x45                                // version 4, IHL 5 (20 bytes)
+	binary.BigEndian.PutUint16(ip[4:6], 0xabcd) // IP ID
+	binary.BigEndian.PutUint16(ip[6:8], 0x4000) // flags = DF
+	ip[8] = 64                                  // TTL
+	ip[9] = 6                                   // proto TCP
+	info, ok := parseIPv4(frame)
+	if !ok {
+		t.Fatal("parseIPv4 failed")
+	}
+	if !info.df || info.ipID != 0xabcd || info.optLen != 0 {
+		t.Errorf("fields wrong: df=%v ipID=%#x optLen=%d", info.df, info.ipID, info.optLen)
+	}
+	if info.fragmented {
+		t.Error("DF-only datagram wrongly flagged fragmented")
+	}
+}
+
 func TestClassifyTCP(t *testing.T) {
 	cases := []struct {
 		flags byte

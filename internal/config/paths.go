@@ -57,6 +57,20 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 			add("enrichment", "threat_intel:"+l.Label, l.File, false)
 		}
 	}
+	if c.Sensor.CloudRanges.Enabled {
+		for _, l := range c.Sensor.CloudRanges.Lists {
+			add("enrichment", "cloud_ranges:"+l.Provider, l.File, false)
+		}
+	}
+	if c.Sensor.FingerprintDB.Enabled {
+		for _, s := range c.Sensor.FingerprintDB.Sources {
+			add("enrichment", "fingerprint_db:"+s.Kind, s.File, false)
+		}
+	}
+	if c.Sensor.Payloads.Analyze {
+		add("enrichment", "payloads.malware_hashes", c.Sensor.Payloads.MalwareHashes, false)
+	}
+	add("enrichment", "sniffer.p0f_db", c.Sniffer.P0fDB, false)
 
 	// Databases (read-only inputs + the local event store).
 	add("database", "geoip.city_db", c.Sensor.GeoIP.CityDB, false)

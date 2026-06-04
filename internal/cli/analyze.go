@@ -20,6 +20,7 @@ import (
 func cmdAnalyze(args []string) error {
 	fs := flag.NewFlagSet("analyze", flag.ContinueOnError)
 	rules := fs.String("rules", "", "path to a .yar file or directory of YARA-subset rules (in addition to built-ins)")
+	hashes := fs.String("hashes", "", "path to a known-malware SHA-256 set (abuse.ch MalwareBazaar/ThreatFox, 'sha256[,family]' per line)")
 	asJSON := fs.Bool("json", false, "emit the full report as JSON")
 	maxBytes := fs.Int("max-bytes", 32<<20, "read at most this many bytes from the file")
 	if err := fs.Parse(args); err != nil {
@@ -45,6 +46,14 @@ func cmdAnalyze(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "loaded %d rule(s) from %s (engine total %d)\n", added, *rules, eng.RuleCount())
 	}
+	if *hashes != "" {
+		n, err := eng.LoadHashes(*hashes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hash set load: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "loaded %d known-malware hash(es) from %s\n", n, *hashes)
+		}
+	}
 	rep := artifactscan.AnalyzeWith(data, eng)
 
 	if *asJSON {
@@ -63,6 +72,13 @@ func printReport(path string, r artifactscan.Report) {
 	fmt.Printf("format:   %s — %s\n", r.Format, r.FormatDetail)
 	if r.Arch != "" {
 		fmt.Printf("arch:     %s\n", r.Arch)
+	}
+	if r.KnownMalware {
+		if r.Family != "" {
+			fmt.Printf("KNOWN MALWARE: yes (family: %s)\n", r.Family)
+		} else {
+			fmt.Println("KNOWN MALWARE: yes")
+		}
 	}
 	fmt.Printf("entropy:  %.2f bits/byte", r.Entropy)
 	if r.Packed {

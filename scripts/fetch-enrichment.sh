@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
 # fetch-enrichment.sh — download the enrichment databases tarpit-honeypot can
-# consume (Tor exit list, IP-reputation feeds, GeoIP/ASN, IEEE MAC-vendor OUI)
-# into a local directory, so they can be transferred to an air-gapped or
-# restricted-egress sensor and loaded from disk.
+# consume into a local directory, so they can be transferred to an air-gapped
+# or restricted-egress sensor and loaded from disk:
+#   * Tor exit list, IP-reputation feeds, GeoIP/ASN, IEEE MAC-vendor OUI
+#   * cloud-provider IP ranges (AWS / GCP / Cloudflare / DigitalOcean)
+#   * abuse.ch malware hashes (ThreatFox + MalwareBazaar, with family) + URLhaus
+#   * FoxIO JA4DB (fingerprint -> client/tool attribution; needs jq)
 #
 # It can run two ways:
 #   * AIR-GAPPED  — run on an internet-connected machine that is NOT the sensor,
@@ -57,6 +60,9 @@ OUT="${OUT:-./enrichment-data}"
 say() { [ "$QUIET" = 1 ] || echo "$@"; }
 THREAT_DIR="$OUT/threat"
 GEO_DIR="$OUT/geoip"
+CLOUD_DIR="$OUT/cloud"
+FP_DIR="$OUT/fingerprints"
+MAL_DIR="$OUT/malware"
 MANIFEST="$OUT/MANIFEST.txt"
 
 # ---- tiny portable downloader (curl or wget) -------------------------------
@@ -174,7 +180,82 @@ fetch_maxmind() {
 	return 0
 }
 
-mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR"
+# fetch_cloud <provider> <url> <json_field> — download a cloud provider's
+# range file and extract CIDRs (one per line) into $CLOUD_DIR/<provider>.txt.
+# json_field is the JSON key holding a prefix ("" for a plain-text list).
+fetch_cloud() {
+	local prov="$1" url="$2" field="${3:-}" dest="$CLOUD_DIR/$prov.txt"
+	local tmp="$dest.tmp.$$" sz
+	printf '  %-22s ' "$prov"
+	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
+		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+	fi
+	if [ -n "$field" ]; then
+		# Extract "field": "<cidr>" values (IPv4 + IPv6), no jq needed.
+		grep -oE "\"$field\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" "$tmp" \
+			| grep -oE '[0-9a-fA-F:.]+/[0-9]+' >"$tmp.x" 2>/dev/null || true
+		mv "$tmp.x" "$tmp"
+	else
+		# Plain-text list: keep CIDR-looking lines only.
+		grep -oE '^[0-9a-fA-F:.]+/[0-9]+' "$tmp" >"$tmp.x" 2>/dev/null || true
+		mv "$tmp.x" "$tmp"
+	fi
+	if [ ! -s "$tmp" ]; then echo "FAILED (no cidrs)"; rm -f "$tmp"; fail=$((fail + 1)); return 1; fi
+	mv "$tmp" "$dest"
+	sz=$(wc -l <"$dest" | tr -d ' ')
+	echo "ok (${sz} prefixes)"
+	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  cloud-$prov  $url  ${sz} prefixes  $dest" >>"$MANIFEST"
+	ok=$((ok + 1)); return 0
+}
+
+# fetch_abuse_csv <label> <url> <hash_col> <family_col> <dest> — download an
+# abuse.ch CSV (ThreatFox / MalwareBazaar) and emit "sha256,family" lines.
+# Columns are 1-based over the '","'-separated, quote-wrapped fields.
+fetch_abuse_csv() {
+	local label="$1" url="$2" hc="$3" fc="$4" dest="$5"
+	local tmp="$dest.tmp.$$" sz
+	printf '  %-22s ' "$label"
+	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
+		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+	fi
+	awk -v hc="$hc" -v fc="$fc" '
+		/^#/ || /^"first_seen/ { next }
+		{ gsub(/^"/,""); gsub(/"$/,""); n=split($0, a, /","/);
+		  if (n>=hc) { h=a[hc]; f=(n>=fc?a[fc]:"");
+		    if (length(h)==64) { print tolower(h) (f!=""?","f:"") } } }
+	' "$tmp" | sort -u >"$tmp.x" 2>/dev/null || true
+	mv "$tmp.x" "$tmp"
+	if [ ! -s "$tmp" ]; then echo "FAILED (no hashes)"; rm -f "$tmp"; fail=$((fail + 1)); return 1; fi
+	mv "$tmp" "$dest"
+	sz=$(wc -l <"$dest" | tr -d ' ')
+	echo "ok (${sz} hashes)"
+	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  $label  $url  ${sz} hashes  $dest" >>"$MANIFEST"
+	ok=$((ok + 1)); return 0
+}
+
+# fetch_ja4db <dest_dir> — download the FoxIO JA4DB and emit normalized
+# "fingerprint,application" files per kind (needs jq for the JSON).
+fetch_ja4db() {
+	local url="https://ja4db.com/api/download/" tmp="$FP_DIR/ja4db.json.$$"
+	printf '  %-22s ' "foxio-ja4db"
+	if ! command -v jq >/dev/null 2>&1; then echo "skipped (needs jq)"; return 0; fi
+	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
+		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+	fi
+	local kind field
+	for kind in ja4 ja4h ja4s; do
+		field="${kind}_fingerprint"
+		jq -r ".[] | select(.${field} != null and .${field} != \"\") | \"\(.${field}),\(.application // .library // .device // \"unknown\")\"" \
+			"$tmp" 2>/dev/null | sort -u >"$FP_DIR/$kind.txt" || true
+	done
+	rm -f "$tmp"
+	local n; n=$(wc -l <"$FP_DIR/ja4.txt" 2>/dev/null | tr -d ' ' || echo 0)
+	echo "ok (${n} ja4)"
+	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  foxio-ja4db  $url  ${n} ja4  $FP_DIR" >>"$MANIFEST"
+	ok=$((ok + 1)); return 0
+}
+
+mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR" "$CLOUD_DIR" "$FP_DIR" "$MAL_DIR"
 : >"$MANIFEST"
 echo "tarpit-honeypot enrichment fetch — $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$MANIFEST"
 
@@ -191,6 +272,32 @@ fetch "blocklist-de"   "https://lists.blocklist.de/lists/all.txt"               
 fetch "abuse-ch-feodo" "https://feodotracker.abuse.ch/downloads/ipblocklist.txt" "$THREAT_DIR/abuse-ch-feodo.txt" || true
 fetch "spamhaus-drop"  "https://www.spamhaus.org/drop/drop.txt"                  "$THREAT_DIR/spamhaus-drop.txt"  || true
 fetch "firehol-level1" "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset" "$THREAT_DIR/firehol-level1.txt" || true
+
+say "[cloud-ranges]"
+fetch_cloud "aws"        "https://ip-ranges.amazonaws.com/ip-ranges.json"   "ip_prefix"   || true
+fetch_cloud "aws-v6"     "https://ip-ranges.amazonaws.com/ip-ranges.json"   "ipv6_prefix" || true
+fetch_cloud "gcp"        "https://www.gstatic.com/ipranges/cloud.json"      "ipv4Prefix"  || true
+fetch_cloud "gcp-v6"     "https://www.gstatic.com/ipranges/cloud.json"      "ipv6Prefix"  || true
+fetch_cloud "cloudflare" "https://www.cloudflare.com/ips-v4"                ""            || true
+fetch_cloud "digitalocean" "https://www.digitalocean.com/geo/google.csv"   ""            || true
+# Merge the AWS/GCP IPv4+IPv6 halves into one file per provider.
+for p in aws gcp; do
+	[ -f "$CLOUD_DIR/$p.txt" ] && [ -f "$CLOUD_DIR/$p-v6.txt" ] && \
+		cat "$CLOUD_DIR/$p-v6.txt" >>"$CLOUD_DIR/$p.txt" && rm -f "$CLOUD_DIR/$p-v6.txt"
+done
+
+say "[malware-hashes]  (abuse.ch — recent feeds; family attribution)"
+# ThreatFox recent CSV: fields ...,ioc_value(3),ioc_type(4),...,fk_malware(6)
+fetch_abuse_csv "threatfox" "https://threatfox.abuse.ch/export/csv/recent/" 3 6 "$MAL_DIR/threatfox.txt" || true
+# MalwareBazaar recent CSV: sha256_hash(2) ... signature(9)
+fetch_abuse_csv "malwarebazaar" "https://bazaar.abuse.ch/export/csv/recent/" 2 9 "$MAL_DIR/malwarebazaar.txt" || true
+# Combine into one known-malware hash set.
+cat "$MAL_DIR/threatfox.txt" "$MAL_DIR/malwarebazaar.txt" 2>/dev/null | sort -u >"$MAL_DIR/known-hashes.txt" || true
+# URLhaus malicious URLs (reference / future host matching).
+fetch "urlhaus-urls" "https://urlhaus.abuse.ch/downloads/text_recent/" "$MAL_DIR/urlhaus-urls.txt" || true
+
+say "[fingerprints]  (JA4DB — client/tool attribution)"
+fetch_ja4db || true
 
 if [ "${SKIP_GEOIP:-}" != "1" ]; then
 	echo "[geoip]"
@@ -229,6 +336,29 @@ sensor:
       - { label: abuse-ch-feodo, file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
       - { label: spamhaus-drop,  file: /etc/tarpit-honeypot/enrichment/threat/spamhaus-drop.txt }
       - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  # Authoritative cloud-provider tagging (cloud_provider on events).
+  cloud_ranges:
+    enabled: true
+    lists:
+      - { provider: aws,          file: /etc/tarpit-honeypot/enrichment/cloud/aws.txt }
+      - { provider: gcp,          file: /etc/tarpit-honeypot/enrichment/cloud/gcp.txt }
+      - { provider: cloudflare,   file: /etc/tarpit-honeypot/enrichment/cloud/cloudflare.txt }
+      - { provider: digitalocean, file: /etc/tarpit-honeypot/enrichment/cloud/digitalocean.txt }
+  # JA3/JA4/HASSH -> client/tool attribution (<kind>_client on events).
+  fingerprint_db:
+    enabled: true
+    sources:
+      - { kind: ja4,  file: /etc/tarpit-honeypot/enrichment/fingerprints/ja4.txt }
+      - { kind: ja4h, file: /etc/tarpit-honeypot/enrichment/fingerprints/ja4h.txt }
+  # Passive OS fingerprinting: drop a full p0f.fp here for broader coverage.
+  sniffer:
+    p0f_db: /etc/tarpit-honeypot/enrichment/p0f.fp
+  # Static analysis of captured artifacts + known-malware hash attribution.
+  payloads:
+    enabled: true
+    analyze: true
+    yara_rules:    /etc/tarpit-honeypot/enrichment/yara          # drop .yar packs here
+    malware_hashes: /etc/tarpit-honeypot/enrichment/malware/known-hashes.txt
 YAML
 
 # ---- checksums + single-file archive for easy transfer ---------------------

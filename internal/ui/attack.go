@@ -21,7 +21,8 @@ import (
 // + the recent multi-stage storyline chains.
 
 const attackWindow = 24 * time.Hour
-const attackScanMax = 20000 // events scanned per render
+const attackScanMax = 20000                 // events scanned per render
+const punchcardWindow = 14 * 24 * time.Hour // activity-punchcard lookback
 
 type attackView struct {
 	Since       time.Time
@@ -30,6 +31,23 @@ type attackView struct {
 	TopTech     []barRow    // top techniques overall (the heatmap rows)
 	Chains      []chainRow  // recent storyline:multi_stage progressions
 	DistinctTID int         // distinct techniques seen
+	Matrix      []matrixCol // native ATT&CK matrix (tactic columns × technique cells)
+	Punchcard   chartFig    // activity heatmap (day-of-week × hour-of-day)
+}
+
+// matrixCol is one tactic column of the native ATT&CK matrix.
+type matrixCol struct {
+	Tactic string
+	Count  int
+	Rank   int
+	Cells  []matrixCell
+}
+
+// matrixCell is one technique within a tactic column, shaded by observed volume.
+type matrixCell struct {
+	ID    string
+	Count int
+	Level int // 0-4 shading bucket (CSS class m-lN)
 }
 
 type tacticRow struct {
@@ -111,12 +129,98 @@ func buildAttackView(since time.Time, evs []*event.Event) attackView {
 		v.Tactics = append(v.Tactics, row)
 	}
 
+	// Native ATT&CK matrix: a column per observed tactic (kill-chain order),
+	// each holding its techniques shaded by observed volume relative to the
+	// busiest technique anywhere in the window.
+	maxTech := 0
+	for _, c := range techCount {
+		if c > maxTech {
+			maxTech = c
+		}
+	}
+	for rank, tac := range mitre.Tactics() {
+		tt := tacTech[tac]
+		if len(tt) == 0 {
+			continue
+		}
+		col := matrixCol{Tactic: tac, Count: tacCount[tac], Rank: rank + 1}
+		type kv struct {
+			id string
+			n  int
+		}
+		items := make([]kv, 0, len(tt))
+		for id, n := range tt {
+			items = append(items, kv{id, n})
+		}
+		sort.Slice(items, func(i, j int) bool {
+			if items[i].n != items[j].n {
+				return items[i].n > items[j].n
+			}
+			return items[i].id < items[j].id
+		})
+		for _, it := range items {
+			col.Cells = append(col.Cells, matrixCell{ID: it.id, Count: it.n, Level: shadeLevel(it.n, maxTech)})
+		}
+		v.Matrix = append(v.Matrix, col)
+	}
+
 	// Most recent storyline chains first, capped.
 	sort.Slice(v.Chains, func(i, j int) bool { return v.Chains[i].Time.After(v.Chains[j].Time) })
 	if len(v.Chains) > 20 {
 		v.Chains = v.Chains[:20]
 	}
 	return v
+}
+
+// shadeLevel buckets a count into a 0-4 intensity band for matrix cell shading.
+func shadeLevel(n, max int) int {
+	if max <= 0 || n <= 0 {
+		return 0
+	}
+	l := (n*5 - 1) / max // 1..5 -> map to 0..4
+	if l > 4 {
+		l = 4
+	}
+	return l
+}
+
+// punchDays labels the rows of the activity punchcard (UTC weekdays).
+var punchDays = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+
+// buildPunchcard tallies events into a 7×24 day-of-week × hour-of-day grid and
+// returns a heatmap figure ("when do they attack" — reveals working hours and
+// timezone of the operators).
+func buildPunchcard(evs []*event.Event) chartFig {
+	cells := make([][]int, 7)
+	for i := range cells {
+		cells[i] = make([]int, 24)
+	}
+	max := 0
+	for _, ev := range evs {
+		t := ev.Time.UTC()
+		// Go: Sunday=0..Saturday=6; remap to Monday-first rows.
+		row := (int(t.Weekday()) + 6) % 7
+		col := t.Hour()
+		cells[row][col]++
+		if cells[row][col] > max {
+			max = cells[row][col]
+		}
+	}
+	hours := make([]string, 24)
+	for h := 0; h < 24; h++ {
+		hours[h] = itoa2(h)
+	}
+	return chartFigure("heatmap", "Activity punchcard (UTC weekday × hour)", map[string]any{
+		"rows": punchDays, "cols": hours, "cells": cells, "max": max, "unit": "events",
+	})
+}
+
+// itoa2 formats 0-23 as a 2-char hour label.
+func itoa2(h int) string {
+	if h < 10 {
+		return "0" + string(rune('0'+h))
+	}
+	return string(rune('0'+h/10)) + string(rune('0'+h%10))
 }
 
 func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +233,13 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := buildAttackView(since, evs)
+	// The activity punchcard is most meaningful over a longer window than the
+	// 24h technique view, so it gets its own query (timestamps only).
+	if pevs, perr := s.query(ctx, store.Filter{Since: time.Now().Add(-punchcardWindow), Limit: attackScanMax}); perr == nil {
+		v.Punchcard = buildPunchcard(pevs)
+	} else {
+		v.Punchcard = buildPunchcard(evs)
+	}
 	// The ATT&CK page keeps its technique labels pointing at the in-honeypot
 	// drill-down (/attack/technique?id=…) — which shows the sources, rules and
 	// events behind each technique — rather than out-linking to attack.mitre.org.

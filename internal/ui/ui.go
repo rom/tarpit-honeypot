@@ -568,6 +568,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/captures", s.handleCaptures)
 	mux.HandleFunc("/loot/", s.handleLoot)
+	mux.HandleFunc("/replay", s.handleReplay)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/attack", s.handleAttack)
 	mux.HandleFunc("/attack/technique", s.handleAttackTechnique)

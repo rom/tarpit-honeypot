@@ -18,6 +18,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/p0f"
 )
 
 type linuxSniffer struct {
@@ -32,6 +33,8 @@ type linuxSniffer struct {
 	frag  *rateLimiter // nil unless TCPScan enabled
 	encap *rateLimiter // nil unless TCPScan enabled (encapsulation + STP dedup)
 	goose *rateLimiter // nil unless GOOSE enabled
+
+	p0fDB *p0f.DB // passive OS fingerprint DB (embedded curated set + optional p0f.fp)
 
 	// L2 frame counters (atomic; surfaced via Stats).
 	cFrames, cARP, cIPv4, cIPv6, cTCP, cUDP, cICMP, cOther atomic.Uint64
@@ -102,6 +105,14 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 		sensorName: sensorName,
 		sev:        sev,
 		state:      map[string]*scanState{},
+		p0fDB:      p0f.New(),
+	}
+	if cfg.P0fDB != "" {
+		if n, err := s.p0fDB.LoadFile(cfg.P0fDB); err != nil {
+			slog.Warn("sniffer: p0f db unavailable; using built-in signatures only", "path", cfg.P0fDB, "err", err)
+		} else {
+			slog.Info("sniffer: p0f signatures loaded", "path", cfg.P0fDB, "added", n, "total", s.p0fDB.Count())
+		}
 	}
 	if cfg.TCPScan.Enabled {
 		s.tcp = newScanTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts, cfg.TCPScan.StealthPorts)
@@ -581,6 +592,7 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 		ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
 		ev.Meta["tcp_flags"] = fmtTCPFlags(flags)
 		addTTLGuess(ev, info.ttl)
+		s.addOSFingerprint(ev, info, flags)
 		send(ctx, bus, ev)
 	case 17: // UDP — nmap -sU sprays datagrams across many ports
 		port, ok := parseUDP(info.payload)
@@ -622,6 +634,24 @@ func addTTLGuess(ev *event.Event, ttl byte) {
 	if guess, hops := osGuessFromTTL(ttl); guess != "" {
 		ev.Meta["os_guess"] = guess
 		ev.Meta["ttl_hops"] = hops
+	}
+}
+
+// addOSFingerprint builds a p0f-v3-style signature from a pure TCP SYN and, on
+// a database match, stamps the refined OS fingerprint (os_fingerprint) — a far
+// more specific label than the TTL bucket in os_guess. Only fires for a clean
+// SYN (no ACK), which is where the SYN-only option layout is meaningful.
+func (s *linuxSniffer) addOSFingerprint(ev *event.Event, info ipv4Info, flags byte) {
+	if s.p0fDB == nil || flags&flagSYN == 0 || flags&flagACK != 0 {
+		return
+	}
+	sig, ok := p0f.FromSYN(4, info.ttl, info.df, info.ipID, info.optLen, info.payload, 0)
+	if !ok {
+		return
+	}
+	ev.Meta["p0f_signature"] = sig.String()
+	if label := s.p0fDB.Match(sig); label != "" {
+		ev.Meta["os_fingerprint"] = label
 	}
 }
 

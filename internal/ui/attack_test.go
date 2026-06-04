@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +109,21 @@ func TestBuildAttackView(t *testing.T) {
 	if len(v.Chains) != 1 || !strings.Contains(v.Chains[0].Chain, "lateral-movement") {
 		t.Errorf("storyline chain not captured: %+v", v.Chains)
 	}
+	// Native ATT&CK matrix: at least one tactic column with technique cells.
+	if len(v.Matrix) == 0 {
+		t.Fatalf("ATT&CK matrix empty: %+v", v.Matrix)
+	}
+	var matrixHasCell bool
+	for _, col := range v.Matrix {
+		for _, c := range col.Cells {
+			if c.ID != "" && c.Count > 0 && c.Level >= 0 && c.Level <= 4 {
+				matrixHasCell = true
+			}
+		}
+	}
+	if !matrixHasCell {
+		t.Errorf("matrix has no valid technique cells: %+v", v.Matrix)
+	}
 
 	// Template renders.
 	var b strings.Builder
@@ -118,6 +135,38 @@ func TestBuildAttackView(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Errorf("attack page missing %q", want)
 		}
+	}
+}
+
+func TestBuildPunchcard(t *testing.T) {
+	// Two events on the same weekday/hour, one on another hour.
+	base := time.Date(2026, 1, 5, 14, 0, 0, 0, time.UTC) // Monday 14:00 UTC
+	evs := []*event.Event{
+		{Time: base}, {Time: base.Add(20 * time.Minute)}, {Time: base.Add(3 * time.Hour)},
+	}
+	fig := buildPunchcard(evs)
+	if fig.Type != "heatmap" || fig.B64 == "" {
+		t.Fatalf("punchcard figure malformed: %+v", fig)
+	}
+	raw, err := base64.StdEncoding.DecodeString(fig.B64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data struct {
+		Rows  []string `json:"rows"`
+		Cols  []string `json:"cols"`
+		Cells [][]int  `json:"cells"`
+		Max   int      `json:"max"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Rows) != 7 || len(data.Cols) != 24 || len(data.Cells) != 7 {
+		t.Fatalf("grid shape wrong: %d rows, %d cols, %d cell-rows", len(data.Rows), len(data.Cols), len(data.Cells))
+	}
+	// Monday (row 0) hour 14 should have 2 events; max should be 2.
+	if data.Cells[0][14] != 2 || data.Max != 2 {
+		t.Errorf("Mon 14:00 = %d (max %d), want 2/2", data.Cells[0][14], data.Max)
 	}
 }
 

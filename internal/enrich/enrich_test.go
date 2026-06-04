@@ -54,6 +54,65 @@ func TestThreatIntelTagging(t *testing.T) {
 	}
 }
 
+func TestCloudProviderTagging(t *testing.T) {
+	aws := writeList(t, "aws.txt", "# AWS ranges\n52.94.0.0/16\n3.5.140.0/22\n")
+	gcp := writeList(t, "gcp.txt", "34.64.0.0/10\n")
+	e, err := New(Config{CloudRanges: []CloudRangeList{
+		{Provider: "aws", File: aws},
+		{Provider: "gcp", File: gcp},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := evt("52.94.1.2")
+	e.Decorate(ev)
+	if ev.Meta["cloud_provider"] != "aws" {
+		t.Errorf("cloud_provider = %v; want aws", ev.Meta["cloud_provider"])
+	}
+	ev = evt("34.64.5.6")
+	e.Decorate(ev)
+	if ev.Meta["cloud_provider"] != "gcp" {
+		t.Errorf("cloud_provider = %v; want gcp", ev.Meta["cloud_provider"])
+	}
+	// A non-cloud IP gets no tag.
+	ev = evt("198.51.100.4")
+	e.Decorate(ev)
+	if _, ok := ev.Meta["cloud_provider"]; ok {
+		t.Errorf("non-cloud IP wrongly tagged: %v", ev.Meta["cloud_provider"])
+	}
+}
+
+func TestFingerprintClientTagging(t *testing.T) {
+	ja4 := writeList(t, "ja4.txt", "# JA4DB\nt13d1516h2_8daaf6152771_b186095e22b6,Chrome\nq13d0312h3_55b375c5d22e_06cda9e17597,Firefox\n")
+	ja3 := writeList(t, "ja3.txt", "a0e9f5d64349fb13191bc781f81f42e1\tCobalt Strike\n")
+	e, err := New(Config{FingerprintSources: []FingerprintSource{
+		{Kind: "ja4", File: ja4},
+		{Kind: "ja3", File: ja3},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := evt("198.51.100.7")
+	ev.Meta = map[string]any{
+		"ja4": "t13d1516h2_8daaf6152771_b186095e22b6",
+		"ja3": "a0e9f5d64349fb13191bc781f81f42e1",
+	}
+	e.Decorate(ev)
+	if ev.Meta["ja4_client"] != "Chrome" {
+		t.Errorf("ja4_client = %v, want Chrome", ev.Meta["ja4_client"])
+	}
+	if ev.Meta["ja3_client"] != "Cobalt Strike" {
+		t.Errorf("ja3_client = %v, want Cobalt Strike", ev.Meta["ja3_client"])
+	}
+	// An unknown fingerprint gets no client tag.
+	ev2 := evt("198.51.100.8")
+	ev2.Meta = map[string]any{"ja4": "unknown_fp_value"}
+	e.Decorate(ev2)
+	if _, ok := ev2.Meta["ja4_client"]; ok {
+		t.Errorf("unknown fingerprint wrongly attributed: %v", ev2.Meta["ja4_client"])
+	}
+}
+
 func TestTorExitTagging(t *testing.T) {
 	list := writeList(t, "tor.txt", "185.220.101.1\n198.96.155.3\n")
 	e, err := New(Config{TorExitFile: list})

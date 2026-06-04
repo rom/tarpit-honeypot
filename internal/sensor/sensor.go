@@ -502,6 +502,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 			} else {
 				slog.Info("artifact static analysis enabled", "yara_rules", artScanner.RuleCount())
 			}
+			if hf := cfg.Sensor.Payloads.MalwareHashes; hf != "" {
+				if n, err := artScanner.LoadHashes(hf); err != nil {
+					slog.Warn("malware hash set unavailable; known-malware tagging off", "path", hf, "err", err)
+				} else {
+					slog.Info("known-malware hash set loaded", "path", hf, "hashes", n)
+				}
+			}
 		}
 		// Opt-in active fetch of harvested ingress URLs, dialing through the
 		// egress allowlist so it can't be an SSRF/exfil vector.
@@ -1104,11 +1111,16 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 			if rep.Packed {
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-packed")
 			}
-			// A YARA hit on a non-executable (script/archive) artifact is
-			// worth elevating to Critical — it's a positive content match,
-			// not just a magic byte.
-			if len(rep.YaraMatches) > 0 {
+			// A YARA hit, or a known-malware hash match, is a positive content
+			// identification — elevate to Critical (not just a magic byte).
+			if len(rep.YaraMatches) > 0 || rep.KnownMalware {
 				worst = event.SeverityCritical
+			}
+			if rep.KnownMalware {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-known-hash")
+				if rep.Family != "" {
+					ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-family:"+rep.Family)
+				}
 			}
 		}
 	}
@@ -1166,6 +1178,12 @@ func artifactReportMeta(rep artifactscan.Report) map[string]any {
 	}
 	if len(rep.Imports) > 0 {
 		m["imports"] = rep.Imports
+	}
+	if rep.KnownMalware {
+		m["known_malware"] = true
+		if rep.Family != "" {
+			m["malware_family"] = rep.Family
+		}
 	}
 	if len(rep.Suspicious) > 0 {
 		m["suspicious"] = rep.Suspicious
@@ -1396,15 +1414,43 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 // by New and ReloadEnrichment so a SIGHUP re-reads the same set of files.
 func enrichConfigFor(cfg *config.Config) enrich.Config {
 	return enrich.Config{
-		CityDB:      cfg.Sensor.GeoIP.CityDB,
-		ASNDB:       cfg.Sensor.GeoIP.ASNDB,
-		RDNSEnabled: cfg.Sensor.RDNS.Enabled,
-		RDNSTimeout: cfg.Sensor.RDNS.Timeout,
-		RDNSCache:   cfg.Sensor.RDNS.CacheSize,
-		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
-		TorExitFile: torExitFile(cfg.Sensor.Tor),
-		NetClass:    cfg.Sensor.NetClass.Enabled,
+		CityDB:             cfg.Sensor.GeoIP.CityDB,
+		ASNDB:              cfg.Sensor.GeoIP.ASNDB,
+		RDNSEnabled:        cfg.Sensor.RDNS.Enabled,
+		RDNSTimeout:        cfg.Sensor.RDNS.Timeout,
+		RDNSCache:          cfg.Sensor.RDNS.CacheSize,
+		ThreatLists:        threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile:        torExitFile(cfg.Sensor.Tor),
+		NetClass:           cfg.Sensor.NetClass.Enabled,
+		CloudRanges:        cloudRangesFromConfig(cfg.Sensor.CloudRanges),
+		FingerprintSources: fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
 	}
+}
+
+// fingerprintSourcesFromConfig maps the config fingerprint-DB sources to the
+// enrich package's input. Returns nil when disabled.
+func fingerprintSourcesFromConfig(fp config.FingerprintDB) []enrich.FingerprintSource {
+	if !fp.Enabled || len(fp.Sources) == 0 {
+		return nil
+	}
+	out := make([]enrich.FingerprintSource, 0, len(fp.Sources))
+	for _, s := range fp.Sources {
+		out = append(out, enrich.FingerprintSource{Kind: s.Kind, File: s.File})
+	}
+	return out
+}
+
+// cloudRangesFromConfig maps the config cloud-range lists to the enrich
+// package's input. Returns nil when disabled.
+func cloudRangesFromConfig(cr config.CloudRanges) []enrich.CloudRangeList {
+	if !cr.Enabled || len(cr.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.CloudRangeList, 0, len(cr.Lists))
+	for _, l := range cr.Lists {
+		out = append(out, enrich.CloudRangeList{Provider: l.Provider, File: l.File})
+	}
+	return out
 }
 
 // threatListsFromConfig maps the config threat-intel lists to the enrich
@@ -1463,7 +1509,8 @@ func deviceAttrsFromEvent(ev *event.Event) map[string]string {
 	add("helo", "smtp_helo") // SMTP HELO/EHLO name the client announced
 	add("vendor_class", "dhcp_vendor")
 	add("os", "os")
-	add("os_guess", "os_guess") // passive TTL fingerprint from the sniffer
+	add("os_guess", "os_guess")             // passive TTL fingerprint from the sniffer
+	add("os_fingerprint", "os_fingerprint") // refined p0f SYN fingerprint
 	add("realm", "domain")
 	if b, ok := ev.Meta["automation"].(bool); ok && b {
 		attrs["automation"] = "true"
