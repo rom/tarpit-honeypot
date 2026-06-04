@@ -8,6 +8,24 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added — explicit FTPS, +50 tool sigs (630+), events-page fixes (version 2.9.0)
+
+- **Explicit FTPS** (RFC 4217) in the `ftp` emulator: it previously refused
+  `AUTH TLS`/`AUTH SSL` with 530; it now advertises AUTH TLS/SSL + PBSZ + PROT in
+  FEAT, replies 234 and upgrades the control channel to TLS (and the PROT P data
+  channel), capturing USER/PASS + commands over the encrypted session. Plaintext
+  pipelined before the handshake is flagged as a STARTTLS-style injection probe.
+  Falls back to a 502 refusal when no cert manager (data_dir) is configured.
+- **+50 attack-tool fingerprints** (630+ total): web injection/LFI/XXE/SQLi
+  scanners, .NET secret cracking, k8s/container escape, cloud (AWS/Azure/M365)
+  audit+attack, AD/LDAP/SMB + coercion, OSINT/username/phone recon, phishing,
+  and C2 (slackor, toxssin, trevorc2).
+- **Events-page fixes**: the `scanner:<name>` reputation badge linked to an
+  empty page (known_scanner is IP-level, not in meta.tools) — added a
+  `/events?scanner=` filter matching both attribution paths. Top source
+  countries now show the code first then the flag; the top-graph rows put the
+  percentage in brackets next to the count (no more big gap).
+
 ### Added — web-deception trio, events-page fixes, +50 tool sigs, +61 CVEs (2025/2026) (version 2.9.0)
 
 - **Web deception** (`listener.web_deception`, on by default) on http/https: a
