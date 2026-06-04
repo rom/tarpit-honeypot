@@ -180,6 +180,10 @@ type Profile struct {
 	patchLevel  string
 	cveVulns    []string
 	vulnBanners map[string]string // "ssh"|"http"|"smtp"|"mysql"|"ftp" -> vulnerable banner
+
+	// cpe is an optional explicit CPE 2.3 identifier override. When empty, CPE()
+	// derives one from Family + Name (see deriveCPE).
+	cpe string
 }
 
 // TLSPosture describes the TLS version + cipher posture an archetype
@@ -470,6 +474,19 @@ func (p *Profile) VulnCVEs() []string {
 		return nil
 	}
 	return p.cveVulns
+}
+
+// CPE returns the archetype's CPE 2.3 platform identifier — the explicit
+// override when set, otherwise one derived from Family + Name. Always a
+// well-formed cpe:2.3 string (never empty for a named archetype).
+func (p *Profile) CPE() string {
+	if p == nil {
+		return ""
+	}
+	if p.cpe != "" {
+		return p.cpe
+	}
+	return deriveCPE(p)
 }
 
 // VulnBanner returns the archetype's deliberately-vulnerable banner for
