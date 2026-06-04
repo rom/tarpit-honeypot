@@ -22,7 +22,9 @@
 #   --skip-verify   don't verify SHA256SUMS
 #
 # Bundle file names are the canonical ones fetch-enrichment.sh writes:
-#   oui.csv, tor-exits.txt, geoip/city.mmdb, geoip/asn.mmdb, threat/<label>.txt
+#   oui.csv, tor-exits.txt, geoip/city.mmdb, geoip/asn.mmdb, threat/<label>.txt,
+#   cloud/<provider>.txt, fingerprints/<kind>.txt, malware/known-hashes.txt,
+#   p0f.fp
 #
 # Exit status is non-zero if verification fails or nothing could be installed.
 
@@ -103,6 +105,10 @@ bundle_src() { # key -> canonical bundle path (empty if not an enrichment input)
 	geoip.city_db) echo "$BUNDLE/geoip/city.mmdb" ;;
 	geoip.asn_db) echo "$BUNDLE/geoip/asn.mmdb" ;;
 	threat_intel:*) echo "$BUNDLE/threat/${1#threat_intel:}.txt" ;;
+	cloud_ranges:*) echo "$BUNDLE/cloud/${1#cloud_ranges:}.txt" ;;
+	fingerprint_db:*) echo "$BUNDLE/fingerprints/${1#fingerprint_db:}.txt" ;;
+	payloads.malware_hashes) echo "$BUNDLE/malware/known-hashes.txt" ;;
+	sniffer.p0f_db) echo "$BUNDLE/p0f.fp" ;;
 	*) echo "" ;;
 	esac
 }
