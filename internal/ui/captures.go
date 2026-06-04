@@ -196,11 +196,18 @@ func capturesCounters(m map[string]int, param, active string) []counter {
 		}
 		return items[i].k < items[j].k
 	})
+	// Color-code each row by what it groups: the credential-type row and the
+	// by-service row get distinct tints so the two are tellable apart at a
+	// glance. The currently-selected chip in either row gets an "active" outline.
+	base := "c-kind"
+	if param == "service" {
+		base = "c-service"
+	}
 	out := make([]counter, 0, len(items))
 	for _, it := range items {
-		cl := ""
+		cl := base
 		if it.k == active {
-			cl = "c-total" // tint the active filter
+			cl += " active" // outline the selected filter within its row
 		}
 		out = append(out, counter{
 			Label: it.k, Value: it.v, Class: cl,
