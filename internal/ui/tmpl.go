@@ -461,6 +461,20 @@ svg.graph .edge { stroke: var(--chart-edge); stroke-width: 1; }
 svg.graph .node { fill: var(--chart-node-default); }
 svg.graph .nlabel { font: 0.786rem ui-monospace, monospace; fill: var(--text-strong); }
 figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: .5rem .6rem; overflow-x: auto; }
+/* native ATT&CK matrix: a flex row of tactic columns, each a stack of
+   technique cells shaded (m-l0..m-l4) by observed event volume. */
+.attmatrix { display: flex; gap: .35rem; overflow-x: auto; padding-bottom: .4rem; align-items: flex-start; }
+.attcol { flex: 0 0 9.5rem; min-width: 9.5rem; }
+.atthead { font-size: .76rem; font-weight: 700; color: var(--text-muted); padding: .25rem .3rem; border-bottom: 1px solid var(--border-medium); margin-bottom: .25rem; min-height: 2.4em; }
+.attcell { display: flex; justify-content: space-between; gap: .3rem; font-size: .76rem; padding: .2rem .35rem; margin-bottom: .2rem; border-radius: 3px; text-decoration: none; color: inherit; border: 1px solid var(--border); }
+.attcell:hover { border-color: var(--link); }
+.attcell .attn { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.attcell.m-l0 { background: color-mix(in srgb, var(--link) 6%, var(--bg-surface)); }
+.attcell.m-l1 { background: color-mix(in srgb, var(--link) 18%, var(--bg-surface)); }
+.attcell.m-l2 { background: color-mix(in srgb, var(--link) 32%, var(--bg-surface)); }
+.attcell.m-l3 { background: color-mix(in srgb, var(--link) 50%, var(--bg-surface)); }
+.attcell.m-l4 { background: color-mix(in srgb, var(--link) 70%, var(--bg-surface)); color: #fff; }
+.attcell.m-l4 .attn { color: rgba(255,255,255,.8); }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: .8rem; align-items: start; }
 /* uniform: every summary "visual overview" figure renders in an equal-sized box
    (the SVG scales to fit via its preserveAspectRatio) so the grid is tidy. */
@@ -641,6 +655,19 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>ATT&amp;CK mapping — last 24 hours</h1>
 <p>{{ .Events }} attributed events · {{ .DistinctTID }} distinct techniques across {{ len .Tactics }} tactics.</p>
 <p class="note">Recomputed live from each event's rule + handler + anomaly markers (the same mapping the router stamps); see <a href="/docs">docs</a> for the catalog.</p>
+
+{{ if .Matrix }}<h2>ATT&amp;CK matrix (observed)</h2>
+<p class="note">Tactics across the kill chain (columns); the techniques seen under each, shaded by event volume. Click a cell to drill into who triggered it. Download a <a href="/attack/navigator">Navigator layer</a> for the full grid.</p>
+<div class="attmatrix">
+{{ range .Matrix }}<div class="attcol">
+  <div class="atthead" title="{{ .Count }} events">{{ .Rank }}. {{ .Tactic }}</div>
+  {{ range .Cells }}<a class="attcell m-l{{ .Level }}" href="/attack/technique?id={{ .ID }}" title="{{ techDesc .ID }} · {{ .Count }} events">{{ .ID }} <span class="attn">{{ .Count }}</span></a>{{ end }}
+</div>{{ end }}
+</div>{{ end }}
+
+{{ if .Punchcard.B64 }}<h2>activity punchcard</h2>
+<p class="note">When this honeypot is hit — UTC weekday × hour-of-day event volume. Concentrated bands reveal the operators' working hours and timezone.</p>
+{{ template "chartfig" .Punchcard }}{{ end }}
 
 <h2>tactic timeline (kill-chain order)</h2>
 {{ if .Tactics }}{{ range .Tactics }}
