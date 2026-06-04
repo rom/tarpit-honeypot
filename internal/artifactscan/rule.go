@@ -5,10 +5,19 @@
 // ASCII/UTF-16 string and IOC extraction, and a YARA-style rule engine
 // (built-in rules plus a practical subset loaded from .yar files).
 //
+// The condition language supports string atoms ($id, hex, regex with
+// nocase/wide/ascii/fullword), boolean logic, N/any/all-of sets, and a
+// practical slice of the YARA module surface backed by the same std-lib
+// parsers used above: filesize, the integer readers uintN/intN(offset),
+// arithmetic + comparison operators, and the pe / elf / math / hash modules
+// (pe.imports, pe.entry_point, pe.is_dll, elf.type, math.entropy, hash.sha256,
+// …). See condition.go for the accepted grammar and module.go for the modules.
+//
 // It is detection + classification only: nothing is ever executed. The
 // engine is pure Go so it stays inside the project's no-CGO constraint
 // (unlike libyara bindings), at the cost of supporting only the common
-// YARA rule shape — see yarparse.go for the accepted subset.
+// YARA rule shape — rules using unsupported constructs are skipped, not
+// fatal, so a real-world .yar collection still loads whatever is expressible.
 package artifactscan
 
 import (
@@ -69,14 +78,33 @@ func (r *Rule) matchStrings(data, lower []byte) map[string]bool {
 	return hit
 }
 
+// evalCtx carries everything a condition expression needs while evaluating one
+// rule against one artifact: the raw + lowercased bytes, the set of matched
+// string ids, the rule (for `N of them` set resolution), and the lazily-parsed
+// module facts (shared across rules via Engine.Scan).
+type evalCtx struct {
+	data  []byte
+	lower []byte
+	hit   map[string]bool
+	rule  *Rule
+	mod   *moduleData
+}
+
 // eval runs the rule against data and returns a Match if the condition holds.
+// It builds a fresh module context; Engine.Scan uses evalWith to share one
+// module parse across all rules.
 func (r *Rule) eval(data, lower []byte) (Match, bool) {
-	hit := r.matchStrings(data, lower)
-	if !r.Condition.eval(hit, r) {
+	return r.evalWith(&evalCtx{data: data, lower: lower, mod: newModuleData(data)})
+}
+
+func (r *Rule) evalWith(ctx *evalCtx) (Match, bool) {
+	ctx.rule = r
+	ctx.hit = r.matchStrings(ctx.data, ctx.lower)
+	if !r.Condition.eval(ctx).truthy() {
 		return Match{}, false
 	}
-	ids := make([]string, 0, len(hit))
-	for id := range hit {
+	ids := make([]string, 0, len(ctx.hit))
+	for id := range ctx.hit {
 		ids = append(ids, id)
 	}
 	return Match{Rule: r.Name, Tags: r.Tags, Meta: r.Meta, Strings: ids}, true
@@ -181,35 +209,37 @@ func hexSearch(data []byte, pat []hexByte) bool {
 
 // --- condition AST ---------------------------------------------------------
 
-// condExpr is a boolean expression node evaluated against the set of matched
-// string ids.
+// condExpr is one node of a compiled condition. It evaluates to a typed value
+// against an evalCtx; the rule fires when its top-level node is truthy. Boolean
+// nodes return bool values; module / arithmetic nodes (module.go) return
+// int/float/string/undefined.
 type condExpr interface {
-	eval(hit map[string]bool, r *Rule) bool
+	eval(ctx *evalCtx) value
 }
 
 type condBool struct{ v bool }
 
-func (c condBool) eval(map[string]bool, *Rule) bool { return c.v }
+func (c condBool) eval(*evalCtx) value { return boolVal(c.v) }
 
 // condID is true when a specific $id matched.
 type condID struct{ id string }
 
-func (c condID) eval(hit map[string]bool, _ *Rule) bool { return hit[c.id] }
+func (c condID) eval(ctx *evalCtx) value { return boolVal(ctx.hit[c.id]) }
 
 type condNot struct{ x condExpr }
 
-func (c condNot) eval(hit map[string]bool, r *Rule) bool { return !c.x.eval(hit, r) }
+func (c condNot) eval(ctx *evalCtx) value { return boolVal(!c.x.eval(ctx).truthy()) }
 
 type condAnd struct{ a, b condExpr }
 
-func (c condAnd) eval(hit map[string]bool, r *Rule) bool {
-	return c.a.eval(hit, r) && c.b.eval(hit, r)
+func (c condAnd) eval(ctx *evalCtx) value {
+	return boolVal(c.a.eval(ctx).truthy() && c.b.eval(ctx).truthy())
 }
 
 type condOr struct{ a, b condExpr }
 
-func (c condOr) eval(hit map[string]bool, r *Rule) bool {
-	return c.a.eval(hit, r) || c.b.eval(hit, r)
+func (c condOr) eval(ctx *evalCtx) value {
+	return boolVal(c.a.eval(ctx).truthy() || c.b.eval(ctx).truthy())
 }
 
 // condOf is `N of (set)` / `any of (set)` / `all of (set)`. n<0 means "all",
@@ -219,21 +249,21 @@ type condOf struct {
 	set []string // resolved at eval against the rule's string ids
 }
 
-func (c condOf) eval(hit map[string]bool, r *Rule) bool {
-	ids := resolveSet(c.set, r)
+func (c condOf) eval(ctx *evalCtx) value {
+	ids := resolveSet(c.set, ctx.rule)
 	matched := 0
 	for _, id := range ids {
-		if hit[id] {
+		if ctx.hit[id] {
 			matched++
 		}
 	}
 	switch {
 	case c.n < 0: // all
-		return matched == len(ids) && len(ids) > 0
+		return boolVal(matched == len(ids) && len(ids) > 0)
 	case c.n == 0: // any (>=1)
-		return matched >= 1
+		return boolVal(matched >= 1)
 	default:
-		return matched >= c.n
+		return boolVal(matched >= c.n)
 	}
 }
 

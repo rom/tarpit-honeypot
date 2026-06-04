@@ -10,6 +10,20 @@ documented in `docs/`).
 
 ### Added
 
+- **YARA module support + bigger built-in rule pack** — the CGO-free rule
+  engine (`internal/artifactscan`) now evaluates a practical slice of the YARA
+  module surface: `filesize`, the integer readers `uint8/16/32(be)` and
+  `int8/16/32`, arithmetic/comparison/bitwise operators, and the `pe`, `elf`,
+  `math`, and `hash` modules (`pe.imports`, `pe.entry_point`, `pe.is_dll`,
+  `pe.number_of_sections`, `elf.type`, `elf.number_of_sections`, `math.entropy`,
+  `math.in_range`, `hash.md5/sha1/sha256`). Module facts are sourced from the
+  std-lib `debug/pe` · `debug/elf` parsers and computed once per artifact. This
+  unlocks the large fraction of community `.yar` rules that were previously
+  skipped as "unsupported construct". The built-in pack gains Cobalt Strike,
+  Meterpreter, XMRig, JSP/ASP.NET webshell, Mirai/Gafgyt, cron-persistence,
+  sandbox-evasion, and PE process-injection / dynamic-API-resolution rules. The
+  `analyze` CLI now prints each matched rule's description.
+
 - **Native ATT&CK matrix** on the `/attack` page — a tactic column per observed
   tactic (kill-chain order), each a stack of technique cells shaded by event
   volume and linking to the per-technique drill-down. Server-rendered from the

@@ -137,9 +137,11 @@ func (e *Engine) Scan(data []byte) []Match {
 		return nil
 	}
 	lower := bytes.ToLower(data)
+	mod := newModuleData(data) // parse PE/ELF once, shared across all rules
 	var out []Match
 	for i := range e.rules {
-		if m, ok := e.rules[i].eval(data, lower); ok {
+		ctx := &evalCtx{data: data, lower: lower, mod: mod}
+		if m, ok := e.rules[i].evalWith(ctx); ok {
 			out = append(out, m)
 		}
 	}

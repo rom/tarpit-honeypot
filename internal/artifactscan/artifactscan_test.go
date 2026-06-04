@@ -178,9 +178,13 @@ func TestParseCustomRuleAndMatch(t *testing.T) {
 }
 
 func TestUnsupportedRuleSkipped(t *testing.T) {
+	// #a (string-count) and `$a at 0` (offset) are still outside the subset, so
+	// the rule is skipped; the well-formed neighbour still compiles.
 	src := `rule Unsupported {
+		strings:
+			$a = "x"
 		condition:
-			filesize > 1000 and uint16(0) == 0x5a4d
+			#a > 3 and $a at 0
 	}
 	rule Good {
 		strings:

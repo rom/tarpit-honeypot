@@ -117,6 +117,133 @@ rule XOR_Decoder_Stub : obfuscation {
     condition:
         $getpc and $xor and $loop
 }
+
+rule CobaltStrike_Beacon : c2 {
+    meta:
+        description = "Cobalt Strike Beacon loader/config markers"
+    strings:
+        $rl = "ReflectiveLoader"
+        $b1 = "beacon.dll" nocase
+        $b2 = "beacon.x64.dll" nocase
+        $b3 = "%s as %s\\%s: %d"
+        $b4 = "Could not connect to pipe"
+        $b5 = "%%IMPORT%%"
+    condition:
+        $rl and 1 of ($b1, $b2, $b3, $b4, $b5)
+}
+
+rule Meterpreter_Payload : c2 {
+    meta:
+        description = "Metasploit Meterpreter stdapi / core channel markers"
+    strings:
+        $a = "metsrv"
+        $b = "stdapi_"
+        $c = "core_channel_open"
+        $d = "PACKET_TYPE_"
+        $e = "ReflectiveLoader"
+    condition:
+        2 of them
+}
+
+rule XMRig_Miner : coinminer {
+    meta:
+        description = "XMRig / cryptonight / randomx coin miner"
+    strings:
+        $x = "xmrig" nocase
+        $s1 = "stratum+tcp://" nocase
+        $s2 = "stratum+ssl://" nocase
+        $d = "--donate-level" nocase
+        $c = "cryptonight" nocase
+        $r = "randomx" nocase
+    condition:
+        $x or ((1 of ($s1, $s2)) and (1 of ($d, $c, $r)))
+}
+
+rule JSP_Webshell : webshell {
+    meta:
+        description = "JSP webshell command execution"
+    strings:
+        $exec = "Runtime.getRuntime().exec"
+        $proc = "ProcessBuilder"
+        $param = "getParameter"
+    condition:
+        ($exec or $proc) and $param
+}
+
+rule ASPX_Webshell : webshell {
+    meta:
+        description = "ASP.NET webshell command execution"
+    strings:
+        $proc = "System.Diagnostics.Process"
+        $start = "ProcessStartInfo"
+        $req1 = "Request.Item"
+        $req2 = "Request.Form"
+        $req3 = "Request.QueryString"
+        $cmd = "cmd.exe" nocase
+    condition:
+        (1 of ($proc, $start)) and (1 of ($req1, $req2, $req3, $cmd))
+}
+
+rule IoT_Botnet_Commands : botnet {
+    meta:
+        description = "Mirai / Gafgyt IoT botnet flood-command strings"
+    strings:
+        $a = "TSource Engine Query"
+        $b = "GETLOCALIP"
+        $c = "HTTPFLOOD"
+        $d = "UDPFLOOD"
+        $e = "/dev/watchdog"
+        $f = "/bin/busybox"
+    condition:
+        2 of them
+}
+
+rule Linux_Cron_Persistence : persistence {
+    meta:
+        description = "cron/reboot persistence paired with remote fetch or reverse shell"
+    strings:
+        $cron = "@reboot"
+        $crontab = "crontab -"
+        $cronetc = "/etc/cron"
+        $wget = "wget " nocase
+        $curl = "curl " nocase
+        $rev = "/dev/tcp/"
+    condition:
+        (1 of ($cron, $crontab, $cronetc)) and (1 of ($wget, $curl, $rev))
+}
+
+rule Sandbox_Evasion : evasion {
+    meta:
+        description = "VM / sandbox / debugger evasion strings"
+    strings:
+        $a = "IsDebuggerPresent"
+        $b = "CheckRemoteDebuggerPresent"
+        $c = "VirtualBox" nocase
+        $d = "vmware" nocase
+        $e = "SbieDll.dll" nocase
+        $f = "wine_get_unix_file_name"
+        $g = "vboxservice" nocase
+    condition:
+        2 of them
+}
+
+rule PE_Process_Injection_APIs : injection {
+    meta:
+        description = "classic CreateRemoteThread process-injection import triad"
+    condition:
+        pe.imports("kernel32.dll", "VirtualAllocEx") and
+        pe.imports("kernel32.dll", "WriteProcessMemory") and
+        pe.imports("kernel32.dll", "CreateRemoteThread")
+}
+
+rule PE_Dynamic_API_Resolution : loader {
+    meta:
+        description = "PE that resolves APIs at runtime and flips memory to RWX (loader/packer trait)"
+    condition:
+        pe.imports("kernel32.dll", "LoadLibraryA") and
+        pe.imports("kernel32.dll", "GetProcAddress") and
+        pe.imports("kernel32.dll", "VirtualProtect")
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source
