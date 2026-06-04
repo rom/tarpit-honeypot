@@ -1404,7 +1404,21 @@ func enrichConfigFor(cfg *config.Config) enrich.Config {
 		ThreatLists: threatListsFromConfig(cfg.Sensor.ThreatIntel),
 		TorExitFile: torExitFile(cfg.Sensor.Tor),
 		NetClass:    cfg.Sensor.NetClass.Enabled,
+		CloudRanges: cloudRangesFromConfig(cfg.Sensor.CloudRanges),
 	}
+}
+
+// cloudRangesFromConfig maps the config cloud-range lists to the enrich
+// package's input. Returns nil when disabled.
+func cloudRangesFromConfig(cr config.CloudRanges) []enrich.CloudRangeList {
+	if !cr.Enabled || len(cr.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.CloudRangeList, 0, len(cr.Lists))
+	for _, l := range cr.Lists {
+		out = append(out, enrich.CloudRangeList{Provider: l.Provider, File: l.File})
+	}
+	return out
 }
 
 // threatListsFromConfig maps the config threat-intel lists to the enrich

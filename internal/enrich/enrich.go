@@ -44,6 +44,11 @@ type Config struct {
 	// NetClass enables the built-in network classification (bogon /
 	// cloud-hosting) that needs no external database.
 	NetClass bool
+	// CloudRanges are operator-supplied cloud-provider IP/CIDR lists (one
+	// CIDR per line), each tagged with the provider name. A source inside a
+	// range gets an authoritative cloud_provider tag (AWS / GCP / Azure /
+	// DigitalOcean / …) — far more precise than the asn_org keyword heuristic.
+	CloudRanges []CloudRangeList
 }
 
 // ThreatList is one labeled IP/CIDR reputation list.
@@ -52,11 +57,18 @@ type ThreatList struct {
 	File  string
 }
 
+// CloudRangeList is one cloud provider's published IP-range file.
+type CloudRangeList struct {
+	Provider string
+	File     string
+}
+
 type Enricher struct {
 	cityDB   *maxminddb.Reader
 	asnDB    *maxminddb.Reader
 	rdns     *rdnsCache
 	threat   []threatSet
+	cloud    []threatSet // cloud-provider ranges (label = provider name)
 	torExit  map[string]struct{}
 	netClass bool
 
@@ -162,6 +174,18 @@ func New(cfg Config) (*Enricher, error) {
 		}
 		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: cidrs})
 		slog.Info("enrich: threat list loaded", "label", label, "path", tl.File, "entries", n)
+	}
+	for _, cr := range cfg.CloudRanges {
+		if cr.File == "" || cr.Provider == "" {
+			continue
+		}
+		ips, cidrs, n, err := loadIPList(cr.File)
+		if err != nil {
+			slog.Warn("enrich: cloud range list unavailable; skipping", "provider", cr.Provider, "path", cr.File, "err", err)
+			continue
+		}
+		e.cloud = append(e.cloud, threatSet{label: cr.Provider, ips: ips, cidrs: cidrs})
+		slog.Info("enrich: cloud range list loaded", "provider", cr.Provider, "path", cr.File, "entries", n)
 	}
 	if cfg.TorExitFile != "" {
 		if ips, _, n, err := loadIPList(cfg.TorExitFile); err != nil {
@@ -322,6 +346,14 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	if e.torExit != nil {
 		if _, ok := e.torExit[addr.String()]; ok {
 			ev.Meta["tor_exit"] = true
+		}
+	}
+	// Authoritative cloud-provider tag from published IP ranges (first match
+	// wins). More precise than the asn_org keyword heuristic below.
+	for i := range e.cloud {
+		if e.cloud[i].match(addr) {
+			ev.Meta["cloud_provider"] = e.cloud[i].label
+			break
 		}
 	}
 	if e.netClass {

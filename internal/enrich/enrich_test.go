@@ -54,6 +54,34 @@ func TestThreatIntelTagging(t *testing.T) {
 	}
 }
 
+func TestCloudProviderTagging(t *testing.T) {
+	aws := writeList(t, "aws.txt", "# AWS ranges\n52.94.0.0/16\n3.5.140.0/22\n")
+	gcp := writeList(t, "gcp.txt", "34.64.0.0/10\n")
+	e, err := New(Config{CloudRanges: []CloudRangeList{
+		{Provider: "aws", File: aws},
+		{Provider: "gcp", File: gcp},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := evt("52.94.1.2")
+	e.Decorate(ev)
+	if ev.Meta["cloud_provider"] != "aws" {
+		t.Errorf("cloud_provider = %v; want aws", ev.Meta["cloud_provider"])
+	}
+	ev = evt("34.64.5.6")
+	e.Decorate(ev)
+	if ev.Meta["cloud_provider"] != "gcp" {
+		t.Errorf("cloud_provider = %v; want gcp", ev.Meta["cloud_provider"])
+	}
+	// A non-cloud IP gets no tag.
+	ev = evt("198.51.100.4")
+	e.Decorate(ev)
+	if _, ok := ev.Meta["cloud_provider"]; ok {
+		t.Errorf("non-cloud IP wrongly tagged: %v", ev.Meta["cloud_provider"])
+	}
+}
+
 func TestTorExitTagging(t *testing.T) {
 	list := writeList(t, "tor.txt", "185.220.101.1\n198.96.155.3\n")
 	e, err := New(Config{TorExitFile: list})
