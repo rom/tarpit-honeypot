@@ -47,7 +47,7 @@ non-browser; `low` = automation inferred from a weak heuristic with no tool name
 
 ## What it recognizes (by class)
 
-The catalog holds **680+ signatures**. The notable families:
+The catalog holds **780+ signatures**. The notable families:
 
 - **Internet-wide scan / OSINT engines** (often benign-but-noisy research):
   Censys, Shodan, BinaryEdge, Shadowserver, Rapid7/Project Sonar, Stretchoid,
@@ -77,16 +77,33 @@ The catalog holds **680+ signatures**. The notable families:
 - **AD / Windows post-exploitation**: the Impacket family (secretsdump, wmiexec,
   smbexec, psexec.py, ntlmrelayx, GetNPUsers/GetUserSPNs, ticketer, mssqlclient),
   BloodHound/SharpHound, Rubeus, Certipy, lsassy, nanodump, DonPAPI, Coercer,
-  PetitPotam, mitm6, Pcredz, enum4linux, smbmap, evil-winrm, windapsearch.
+  PetitPotam, mitm6, Pcredz, enum4linux, smbmap, evil-winrm, windapsearch,
+  atexec/dcomexec/rpcdump/samrdump/lookupsid, PowerView/PowerMad, BOFHound,
+  ADCSPwn, PKINITtools, gMSADumper, SharpGPOAbuse, the Potato family
+  (Juicy/Sweet/God/Rogue Potato, PrintSpoofer), SharpDPAPI, SharpSCCM/
+  SCCMHunter, Group3r, dploot, hekatomb, SCShell, PowerHuntShares, ldapper.
 - **Web / app exploit tooling**: JexBoss, WeblogicScan, struts-pwn/struts-scan,
   tomcatWarDeployer, VBScan, Typo3Scan, magescan, aem-hacker, wprecon, fuxploider,
   lfimap/fimap, GraphQLmap/graphw00f, log4j-scan, ysoserial, marshalsec, byp4xx/
   dontgo403/nomore403, h2csmuggler/smuggler, Corsy, shortscan, DAVTest.
 - **TLS / SSL / IKE scanners**: testssl, sslyze, sslscan, cipherscan, a2sv,
   ike-scan, tlsx.
-- **Cloud / Kubernetes recon**: Pacu, ScoutSuite, Prowler, S3Scanner, kube-hunter.
+- **Cloud / Kubernetes / IaC recon + audit**: Pacu, ScoutSuite, Prowler,
+  S3Scanner, kube-hunter, kube-bench, kubeaudit, Checkov, tfsec, KICS, Trivy,
+  Grype, BOtB, CloudQuery, awspx, Cartography.
+- **Web / CMS / API / mobile vuln scanners** (more): moodlescan, CMSScan,
+  scant3r, 403fuzzer, headerpwn, smugglefuzz, param-miner, spring4shell-scan,
+  fastjson-scan, shiro-scan, WPIntel/WPSeku/wpgarlic, APKLeaks, MobSF, jwtcat,
+  ratproxy, golismero, wascan, Striker, yuki-chan, spaghetti, Taipan, plecost,
+  Nettacker, BlackWidow, V3n0M, ssrfire.
+- **OSINT / recon / breach** (more): nrich, mailcat, gitfive, zehef, ignorant,
+  waybackpy, linkedin2username, CrossLinked, emailfinder, mosint, spoofcheck,
+  dnsdumpster, SubDomainizer, subdominator, egress-assess.
 - **C2 / RAT / red-team**: see the category table above (incl. dnscat2, godoh,
-  chashell, shad0w, CALDERA, Supershell, PhpSploit, Weevely, hoaxshell, Manjusaka).
+  chashell, shad0w, CALDERA, Supershell, PhpSploit, Weevely, hoaxshell, Manjusaka,
+  Nighthawk, Nuages, and commodity RAT/loader families — Remcos, DCRat, VenomRAT,
+  XWorm, LimeRAT, RevengeRAT, Warzone, NetWire, NanoCore, Orcus, DarkComet,
+  SpyNote, AgentTesla, FormBook, SmokeLoader).
 - **Tunnels / pivots**: chisel, ligolo, gost, frp, rsockstun, Stowaway,
   neo-reGeorg/reGeorg, pivotnacci, revsocks.
 - **Phishing kits / proxies**: GoPhish, Evilginx, Muraena, Modlishka, zphisher.
@@ -95,8 +112,11 @@ The catalog holds **680+ signatures**. The notable families:
 - **HTTP client libraries** (a tell when hitting a "browser-only" surface):
   python-requests/httpx/aiohttp, Go net/http, OkHttp, axios, node-fetch,
   Guzzle, libcurl, WinHTTP, reqwest/hyper (Rust), Scrapy, HTTrack, httpie, …
-- **SSH clients** (from the SSH-2.0 banner): libssh2, libssh, paramiko, Go,
-  PuTTY, JSch, Russh, zgrab, and scanners that reuse them.
+- **SSH clients / stacks** (from the SSH-2.0 banner): libssh2, libssh, paramiko,
+  Go, PuTTY, JSch, Russh, zgrab, AsyncSSH, Ruby Net::SSH (Metasploit), SSHJ,
+  Ganymed, dropbear, TinySSH, wolfSSH, Apache MINA SSHD, FlowSsh, cryptlib,
+  Granados, TeraTerm/TTSSH, node ssh2, and SSH-specific offensive tools
+  (sshamble, ssh-mitm) + clients abused in intrusions (Xshell — ShadowPad).
 
 ## Extending it
 

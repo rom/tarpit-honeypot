@@ -8,6 +8,24 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **+100 attack-tool fingerprints** (780+ total): C2/RAT/loader families
+  (Nighthawk, Nuages, Remcos, DCRat, VenomRAT, XWorm, NetWire, NanoCore, Orcus,
+  AgentTesla, FormBook, SmokeLoader, …), web/CMS/API/mobile vuln scanners
+  (moodlescan, scant3r, 403fuzzer, headerpwn, smugglefuzz, param-miner,
+  spring4shell-scan, shiro-scan, APKLeaks, MobSF, …), AD/Windows
+  post-exploitation (atexec/dcomexec/rpcdump/samrdump, PowerView, BOFHound,
+  ADCSPwn, the Potato family, SharpSCCM/SCCMHunter, …), cloud/k8s/IaC auditors
+  (Checkov, tfsec, KICS, Trivy, Grype, kube-bench, …), and OSINT/recon (nrich,
+  mosint, CrossLinked, SubDomainizer, …).
+- **+20 SSH attack-tool/stack fingerprints** (from the SSH-2.0 client banner):
+  the engines under Python/Ruby/Java offensive frameworks (AsyncSSH,
+  Ruby Net::SSH used by Metasploit's ssh_login, SSHJ, Ganymed), embedded/IoT
+  stacks (dropbear, TinySSH, wolfSSH, Apache MINA SSHD, cryptlib), SSH-specific
+  offensive tools (sshamble, ssh-mitm), and clients abused in intrusions
+  (Xshell — ShadowPad supply-chain compromise).
+
 ## [2.10.0] — 2026-06-04
 
 ### Added — risk in CENTOS, CVE-2026-41089 + SIPROTEC EN100 + vsftpd-glob DoS, export-creds
