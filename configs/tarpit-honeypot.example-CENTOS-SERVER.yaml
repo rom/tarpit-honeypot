@@ -1,6 +1,7 @@
 # tarpit-honeypot — small "legacy CentOS all-in-one server" decoy.
 #
 # A believable old CentOS box exposing only the classic edge services:
+#   - SSH      (22, + SFTP / SCP over it) — captures creds + client fingerprint, shell TTPs
 #   - web      (HTTP 80 + HTTPS 443)   — full fake-vulnerable web app
 #   - SMTP     (25 + submission 587 + SMTPS 465) — mail server, captures creds + relay probes
 #   - DNS      (UDP 53)                — resolver, tunnelling/exfil detection
@@ -133,6 +134,25 @@ ui:
     # - 203.0.113.7        # your vuln scanner
 
 listeners:
+  # --- SSH: medium-interaction OpenSSH. A persistent ed25519 host key is
+  # generated under <data_dir>/tls and reused, so the host fingerprint is
+  # stable. Every password / public-key attempt is captured (user, password or
+  # key type+SHA256, client version); the 3rd credential is accepted to drop the
+  # attacker into a believable shell (internal/shell) for TTP capture.
+  #
+  # SFTP and SCP run over this same SSH service: an `sftp` subsystem request is
+  # answered with the SFTP VERSION handshake and then records which paths the
+  # client probes; `scp -t`/`scp -f` exec invocations capture the filename/size
+  # (and a bounded chunk of an upload's content) before denying. Credentials are
+  # already harvested at the SSH auth layer regardless. ---
+  - id: ssh
+    proto: tcp
+    bind: 0.0.0.0:22
+    mode: banner
+    handler: ssh_interactive
+    severity: high
+    capture: true
+
   # --- Web: the full fake-vulnerable app on HTTP + HTTPS ---
   - id: http
     proto: tcp
@@ -246,6 +266,7 @@ honeynets:
         archetype: centos-6
         services:
           - { port: 80,  handler: http }
+          - { port: 22,  handler: ssh_interactive }
           - { port: 443, handler: https }
           - { port: 25,  handler: smtp_recv }
           - { port: 465, handler: smtps }

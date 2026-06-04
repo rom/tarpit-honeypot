@@ -591,6 +591,13 @@ var anomalyTags = map[string]Tag{
 	// already credential-access.
 	"http-login-attempt":  {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
 	"mssql-login-attempt": {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	// SFTP / SCP over SSH: browsing the filesystem is discovery; an scp/sftp
+	// upload is ingress tool transfer; a download is exfil.
+	"sftp-session":         {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"scp-transfer":         {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"scp-upload":           {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"scp-upload-attempt":   {Techniques: []string{"T1105"}, Tactics: []string{"command-and-control"}},
+	"scp-download-attempt": {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
 	// Honeytoken account (security.txt contact) reused as a login name — the
 	// attacker scraped our published security contacts and sprayed them.
 	"honeytoken:account-login": {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
