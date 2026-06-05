@@ -560,7 +560,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/credentials">credentials</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -604,7 +604,37 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range .Sections }}<h2>{{ .Heading }}</h2>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
 {{ end }}
+{{ if .CoverageGap }}<h2>Coverage gap — probed but unhandled ports</h2>
+<p class="note">Destination ports attackers reached for that <strong>no configured listener answers</strong> — candidate decoys to add. Click a port to see its events.</p>
+<table><tr><th>port</th><th>service</th><th>events</th><th>distinct sources</th></tr>
+{{ range .CoverageGap }}<tr><td><a href="/events?port={{ .Port }}">{{ .Port }}</a></td><td>{{ .Label }}</td><td>{{ .Count }}</td><td>{{ .Sources }}</td></tr>{{ end }}
+</table>{{ end }}
 <p class="note">All charts are rendered client-side by the packaged charts.js (no external libraries) · derived from a scan of {{ .Scanned }} recent events. With JavaScript off, each figure shows a fallback note.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "credentials" }}{{ template "head" . }}
+<h1 data-help="Every captured login attempt aggregated: who is tried, with what passwords, how those passwords are shaped, the spray-vs-brute pattern per source, and which secrets recur across sources (shared wordlists / one actor rotating IPs).">credential analytics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No credential attempts captured yet — they appear as attackers try logins against the credential-capturing handlers (ssh / ftp / http / smtp / …). The raw list is on <a href="/captures">captures</a>.</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/captures"><b>{{ .Total }}</b><span>attempts</span></a>
+  <span class="counter c-tcp"><b>{{ .Users }}</b><span>distinct users</span></span>
+  <span class="counter c-udp"><b>{{ .Passwords }}</b><span>distinct passwords</span></span>
+  <span class="counter c-icmp"><b>{{ .Sources }}</b><span>sources</span></span>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ if .Spray }}<h2>Spray vs brute-force (per source)</h2>
+<p class="note">Many users × one password = spray; many passwords × one user = brute; both = stuffing. Click a source for its profile.</p>
+<table><tr><th>source</th><th>distinct users</th><th>distinct passwords</th><th>attempts</th><th>verdict</th></tr>
+{{ range .Spray }}<tr><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}</td><td>{{ .Users }}</td><td>{{ .Passwords }}</td><td>{{ .Attempts }}</td><td><span class="tag">{{ .Verdict }}</span></td></tr>{{ end }}
+</table>{{ end }}
+{{ if .Reuse }}<h2>Credential reuse</h2>
+<p class="note">Passwords tried from multiple distinct sources / services — shared wordlists or a single actor rotating IPs. Click to search the password.</p>
+<table><tr><th>password</th><th>distinct sources</th><th>services</th><th>attempts</th></tr>
+{{ range .Reuse }}<tr><td><a href="/search?q={{ .Secret }}"><code>{{ .Secret }}</code></a></td><td>{{ .Sources }}</td><td>{{ .Services }}</td><td>{{ .Count }}</td></tr>{{ end }}
+</table>{{ end }}
+<p class="note">Derived from a scan of {{ .Scanned }} recent events. Full credential dump via the <code>export-creds</code> CLI; the raw per-attempt list is on <a href="/captures">captures</a>.</p>
+{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "index" }}{{ template "head" . }}
@@ -703,7 +733,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 <h2>recent kill-chain progressions</h2>
 {{ if .Chains }}<table><tr><th>time</th><th>source</th><th>playbook</th><th>chain</th></tr>
-{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
 {{ template "foot" . }}{{ end }}
@@ -725,7 +755,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <button id="tl-order" type="button" class="tl-order-btn">order: newest first</button>
 {{ if .Sources }}{{ range .Sources }}
 <div class="net">
-  <h3><a href="/profiles/{{ .Source }}">{{ .Source }}</a> <span class="meta">{{ .Count }} events · {{ fmtTime .FirstSeen }} → {{ fmtTime .LastSeen }}</span></h3>
+  <h3><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }} <span class="meta">{{ .Count }} events · {{ fmtTime .FirstSeen }} → {{ fmtTime .LastSeen }}</span></h3>
   <div class="meta">tactics: {{ if .Tactics }}{{ range .Tactics }}<span class="tag">{{ . }}</span>{{ end }}{{ else }}—{{ end }}</div>
   <table class="tl-events">
   {{ range .Events }}<tr>
@@ -763,7 +793,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Creds }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>service</th><th>type</th><th>username / principal</th><th>password / secret</th></tr>
 {{ range .Creds }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
-  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td>
+  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}</td>
   <td>{{ if .Service }}<a class="tag" href="/captures?service={{ .Service }}">{{ .Service }}</a>{{ else }}—{{ end }}</td>
   <td><a class="tag" href="/captures?kind={{ .KindLabel }}">{{ .KindLabel }}</a></td>
   <td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td>
@@ -777,7 +807,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Pcaps }}<table data-filter><tr><th>captured (utc)</th><th>source IP</th><th>dst port</th><th>size</th><th>file</th><th></th></tr>
 {{ range .Pcaps }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
-  <td>{{ if .SrcIP }}<a href="/profiles/{{ .SrcIP }}">{{ .SrcIP }}</a>{{ else }}—{{ end }}</td>
+  <td>{{ if .SrcIP }}<a href="/profiles/{{ .SrcIP }}">{{ .SrcIP }}</a>{{ ipv6Tag .SrcIP }}{{ else }}—{{ end }}</td>
   <td>{{ if .DstPort }}{{ .DstPort }}{{ else }}—{{ end }}</td>
   <td>{{ fmtBytes .Size }}</td>
   <td><code>{{ .Name }}</code></td>
@@ -805,7 +835,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .GraphB64 }}<div id="corrgraph" data-graph-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the interactive pivot graph</p></div>{{ end }}
 {{ if .Sources }}{{ range .Sources }}
 <div class="net">
-  <h3 class="sev-{{ .MaxSev }}"><a href="/profiles/{{ .IP }}">{{ .IP }}</a> <span class="meta">{{ .Count }} events</span></h3>
+  <h3 class="sev-{{ .MaxSev }}"><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }} <span class="meta">{{ .Count }} events</span></h3>
   <table>
     {{ if .FPs }}<tr><th>fingerprints</th><td>{{ range .FPs }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
     {{ if .UAs }}<tr><th>user-agents</th><td>{{ range .UAs }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
@@ -829,7 +859,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <div class="net">
   <h3 class="sev-{{ .MaxSev }}">{{ if .Multi }}<span class="tag bad">campaign</span> {{ end }}{{ .ID }} <span class="meta">{{ len .Sources }} source{{ if gt (len .Sources) 1 }}s{{ end }} · {{ .Events }} events · {{ fmtTime .First }} → {{ fmtTime .Last }}{{ if .Creds }} · {{ .Creds }} cred attempts{{ end }}</span></h3>
   <table>
-    <tr><th>sources</th><td>{{ range .Sources }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a> {{ end }}</td></tr>
+    <tr><th>sources</th><td>{{ range .Sources }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a>{{ ipv6Tag . }} {{ end }}</td></tr>
     {{ if .Links }}<tr><th>{{ if .Multi }}shared fingerprints{{ else }}fingerprints{{ end }}</th><td>{{ range .Links }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
     {{ if .Tactics }}<tr><th>journey</th><td>{{ range $i, $t := .Tactics }}{{ if $i }} <span class="meta">→</span> {{ end }}<span class="tag">{{ $t }}</span>{{ end }}</td></tr>{{ end }}
     {{ if .ASNs }}<tr><th>asn</th><td>{{ range .ASNs }}<span class="tag">{{ . }}</span> {{ end }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ countryFlag . }} {{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
@@ -858,7 +888,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <tr><th>time (utc)</th><th>source</th><th>origin</th><th>asn</th><th>sev</th><th>handler</th><th>rule</th></tr>
 {{ range .Recent }}<tr class="sev-{{ .Sev }}">
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
-  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ if .Intel }} <span class="tag bad">intel</span>{{ end }}</td>
+  <td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ if .Intel }} <span class="tag bad">intel</span>{{ end }}</td>
   <td>{{ if .City }}{{ .City }}, {{ end }}{{ if .Country }}<span class="tag">{{ countryFlag .Country }} {{ .Country }}</span>{{ else }}—{{ end }}</td>
   <td>{{ if .ASN }}{{ .ASN }}{{ else }}—{{ end }}</td>
   <td><span class="tag sev-{{ .Sev }}">{{ .Sev }}</span></td>
@@ -948,11 +978,11 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ if .Types }}{{ template "bars" .Types }}{{ else }}<p class="note">no tunnel / covert-transport detections in the window</p>{{ end }}
 {{ if .Sources }}<h2>by source</h2>
 <table><tr><th>source</th><th>detections</th><th>kinds</th></tr>
-{{ range .Sources }}{{ $ip := .IP }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td><td>{{ range .Kinds }}<a class="tag warn" href="{{ tunnelKindURL . $ip }}" title="this source's events for this covert-transport kind">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+{{ range .Sources }}{{ $ip := .IP }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td><td>{{ .Count }}</td><td>{{ range .Kinds }}<a class="tag warn" href="{{ tunnelKindURL . $ip }}" title="this source's events for this covert-transport kind">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 <h2>recent</h2>
 {{ if .Recent }}<table><tr><th>time</th><th>source</th><th>kind</th><th>detail</th></tr>
-{{ range .Recent }}<tr><td style="white-space:nowrap">{{ fmtTime .Time }}</td><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td><td><a class="tag warn" href="{{ tunnelKindURL .Kind .Source }}" title="this source's events for this covert-transport kind">{{ .Kind }}</a></td><td>{{ .Detail }}</td></tr>{{ end }}
+{{ range .Recent }}<tr><td style="white-space:nowrap">{{ fmtTime .Time }}</td><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}</td><td><a class="tag warn" href="{{ tunnelKindURL .Kind .Source }}" title="this source's events for this covert-transport kind">{{ .Kind }}</a></td><td>{{ .Detail }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">none</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -991,7 +1021,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ range .Results }}<tr>
   <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
   <td class="sev-{{ .Severity.String }}">{{ .Severity.String }}</td>
-  <td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a></td>
+  <td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}</td>
   <td>{{ .RuleID }}</td>
   <td>{{ handlerLink .Handler }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ end }}</td>
   <td><a href="/events/{{ .ID }}">details</a></td>
@@ -1074,7 +1104,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td>{{ fmtTime .Time }}</td>
     <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
-    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
+    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
     <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
     <td>{{ handlerLink .Handler }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
@@ -1090,7 +1120,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
   <tr><th>rule_id</th><td>{{ .RuleID }}</td></tr>
   <tr><th>severity</th><td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr">⌾ local override</span> — default was <b>{{ index .Meta "default_severity" }}</b>, pinned by <code>severity_overrides</code> rule <code>{{ index .Meta "severity_override_rule" }}</code>{{ end }}</td></tr>
-  <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>:{{ .Source.Port }} {{ sourceBadges .Meta }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
+  <tr><th>source</th><td><a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}:{{ .Source.Port }} {{ sourceBadges .Meta }} · <a href="/events?source={{ .Source.IP }}">events</a> · <a href="/timeline">timeline</a></td></tr>
   <tr><th>dest</th><td>{{ .Dest.IP }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} ({{ svcLink .Dest.Port }}){{ end }}</td></tr>
   <tr><th>proto</th><td>{{ if .Proto }}{{ protoTag .Proto }}{{ else }}—{{ end }}</td></tr>
   <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
@@ -1152,7 +1182,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <tr><th>source ip</th><th>threat</th><th>max severity</th><th>events</th><th>distinct rules</th><th>first seen</th><th>last seen</th></tr>
   {{ range .Profiles }}
   <tr>
-    <td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td>
+    <td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td>
     <td>{{ .Weight }}</td>
     <td class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</td>
     <td>{{ .Count }}</td>
@@ -1166,7 +1196,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ template "foot" . }}{{ end }}
 
 {{ define "profile" }}{{ template "head" . }}
-<h1>attacker profile — {{ .IP }} {{ sourceBadges .Reputation }}</h1>
+<h1>attacker profile — {{ .IP }}{{ ipv6Tag .IP }} {{ sourceBadges .Reputation }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
@@ -1452,7 +1482,7 @@ attack activity (last 24h) overlaid per host. JSON at <a href="/api/topology">/a
   </div>
   {{ range .Hosts }}
   <div class="host">
-    <div class="hostline">{{ .IP }}{{ if .Hostname }} · {{ .Hostname }}{{ end }}
+    <div class="hostline">{{ .IP }}{{ ipv6Tag .IP }}{{ if .Hostname }} · {{ .Hostname }}{{ end }}
       {{ if .OS }}<span class="os">({{ .OS }})</span>{{ end }}
       {{ if .MAC }}<span class="os">{{ .MAC }}</span>{{ end }}
       {{ if .Events }}<span class="tag bad sev-{{ .MaxSev }}">{{ .Events }} events · {{ .Attackers }} attacker(s) · {{ .MaxSev }}</span>{{ else }}<span class="tag">quiet</span>{{ end }}
@@ -1482,7 +1512,7 @@ broadcast/multicast discovery, and connection source IPs.</p>{{ end }}
 <div class="depl"><b>&#9888; IP/MAC conflicts</b> — one address claimed by multiple MACs (possible ARP spoof / impersonation):
 <table>
   <tr><th>ip</th><th>macs</th></tr>
-  {{ range .Conflicts }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ range .MACs }}<span class="tag">{{ . }}</span>{{ end }}</td></tr>{{ end }}
+  {{ range .Conflicts }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td><td>{{ range .MACs }}<span class="tag">{{ . }}</span>{{ end }}</td></tr>{{ end }}
 </table>
 </div>
 {{ end }}
@@ -1509,7 +1539,7 @@ JSON at <a href="/api/devices">/api/devices</a>.</p>
   <tr><th>ip</th><th>mac</th><th>hostname</th><th>vendor</th><th>source</th><th>status</th><th>services</th><th>ports</th><th>attrs</th><th>last seen</th><th>count</th>{{ if .ActionsEnabled }}<th>actions</th>{{ end }}</tr>
   {{ range .Hosts }}
   <tr>
-    <td>{{ if .IP }}<a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ end }}</td>
+    <td>{{ if .IP }}<a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}{{ end }}</td>
     <td>{{ .MAC }}</td>
     <td>{{ .Hostname }}</td>
     <td>{{ .Vendor }}</td>

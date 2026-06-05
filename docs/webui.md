@@ -17,8 +17,8 @@ attribution, the fleet view, and the IOC view.
 ## The navigation
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
-map · captures · fleet · iocs · tunnels · profiles · fingerprints · devices ·
-topology · charts · health · alerting · errors · config · docs`
+map · captures · credentials · fleet · iocs · tunnels · profiles · fingerprints ·
+devices · topology · charts · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
 console stays live during an attack without JavaScript. With JavaScript on, the
@@ -269,7 +269,27 @@ The virtual networks / hosts / services this sensor presents.
 
 ### charts (`/charts`)
 Client-side analytics figures (the one place that uses the packaged charts.js;
-with JS off each figure shows a fallback note).
+with JS off each figure shows a fallback note). Beyond the headline
+severity/handler/source breakdowns it includes: a **destination-port × hour-of-day
+heatmap** and **dest-port leaderboard** (what's being scanned and when); **CVE
+analytics** — exploit-attempt leaderboard, disclosure-year (n-day age) histogram,
+**EPSS-weighted exposure** ranking (attempts × EPSS, the relative-priority list),
+and the **CWE** weakness classes targeted; **per-entity trend sparklines** (one
+line per top ASN / country over time, to spot who's ramping up); a
+**force-directed actor-clustering graph** (each top source links to its shared
+ASN / TLS-SSH fingerprint hub, so one actor rotating IPs forms a visible
+cluster); and a **coverage-gap report** — destination ports that were probed but
+that no configured listener answers, ranked by hits, doubling as a "which decoy
+to add next" recommendation.
+
+### credentials (`/credentials`)
+Credential analytics over every captured login attempt: **top usernames /
+passwords** tried, **password-length** and **composition** (digits-only /
+lowercase / has-symbol / mixed-case+digits …) distributions, the per-account
+heatmap, a per-source **spray-vs-brute classification** (password spray / brute
+force / credential stuffing / repeated / probe, derived from the user×password
+fan-out), and a **credential-reuse** table surfacing secrets seen from two or
+more distinct sources — shared wordlists, or a single actor rotating IPs.
 
 ### health (`/health`)
 Sensor health: uptime, disk usage vs caps, listener/collector status, queue

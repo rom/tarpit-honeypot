@@ -234,6 +234,9 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// the rule isn't a CVE-exploit-attempt rule — so a recent-events row for a
 		// CVE rule can also link out to the CVE reference.
 		"cveOf": cveOf,
+		// ipv6Tag renders a small "IPv6" badge after an address when it is
+		// actually an IPv6 address (so listings distinguish the family at a glance).
+		"ipv6Tag": ipv6Tag,
 		// tunnelKindURL links a friendly tunnel-kind label (optionally scoped to
 		// one source) to the events that produced that covert-transport detection.
 		"tunnelKindURL": tunnelKindURL,
@@ -548,6 +551,17 @@ func attackType(id string) string {
 // cveURL returns the external reference URL for a CVE id, per the configured
 // source ("cve.org" or the default NVD). Returns "" for a non-CVE string so the
 // template can fall back to a plain label.
+// ipv6Tag returns a small "IPv6" badge when ip is a real IPv6 address (not an
+// IPv4 or IPv4-mapped address), else "". Used next to source addresses in
+// listings so the address family is obvious.
+func ipv6Tag(ip string) template.HTML {
+	p := net.ParseIP(strings.TrimSpace(ip))
+	if p != nil && p.To4() == nil && p.To16() != nil {
+		return template.HTML(` <span class="tag" title="IPv6 address">IPv6</span>`)
+	}
+	return ""
+}
+
 // cveOf extracts the CVE id from a CVE-exploit-attempt rule_id
 // ("cve:CVE-2021-44228" -> "CVE-2021-44228"), or "" when the rule is not a CVE
 // rule. Used to add a CVE-reference link beside such rules in the profile.
@@ -602,6 +616,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/session/", s.handleSession)
 	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/captures", s.handleCaptures)
+	mux.HandleFunc("/credentials", s.handleCredentials)
 	mux.HandleFunc("/loot/", s.handleLoot)
 	mux.HandleFunc("/replay", s.handleReplay)
 	mux.HandleFunc("/config", s.handleConfig)

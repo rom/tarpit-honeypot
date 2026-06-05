@@ -22,7 +22,7 @@ func TestStaticChartsJSServed(t *testing.T) {
 	body := w.Body.String()
 	// Every documented chart type must be present in the library.
 	for _, typ := range []string{"bar", "hbar", "pie", "histogram", "scatter",
-		"line", "area", "heatmap", "topology", "network", "sankey", "timeline",
+		"line", "area", "heatmap", "topology", "network", "force", "sankey", "timeline",
 		"sourcemap", "sessionreplay", "creds"} {
 		if !strings.Contains(body, "charts."+typ+" =") {
 			t.Errorf("charts.js missing renderer for %q", typ)

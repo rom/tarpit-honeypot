@@ -289,7 +289,13 @@ server-rendered (strict CSP, no external JS), and auto-refreshes. Key endpoints:
 - `/profiles`, `/fingerprints` — attacker dossiers and JA3/JA4/HASSH reputation
 - `/devices?q=<substr>&status=seen|allow` — learned hosts, filterable
 - `/topology` — the virtual networks / hosts / services the sensor presents
-- `/charts`, `/health` — analytics figures and sensor health
+- `/charts`, `/health` — analytics figures (incl. dest-port × hour heatmap,
+  dest-port leaderboard, CVE age + EPSS-weighted exposure + CWE, per-ASN/country
+  trend sparklines, force-directed actor clustering, and a coverage-gap report)
+  and sensor health
+- `/credentials` — credential analytics: top users/passwords, length +
+  composition distributions, per-source spray-vs-brute classification, and a
+  credential-reuse table
 - `/alerting` — how events are forwarded (channels / routes / allowlist)
 - `/errors?since=168h` — operational / health events (listener or
   canary-watcher stopped, listener start error, accept-cap overflow)

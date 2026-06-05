@@ -326,6 +326,57 @@ window.TarpitCharts = (function () {
     return root;
   };
 
+  // force: force-directed node-link clustering. Same data as `network`
+  // ({ nodes:[{id,label,group?,kind?}], edges:[{from,to}] }) but laid out by a
+  // small Fruchterman-Reingold simulation so nodes sharing edges (e.g. source
+  // IPs under one ASN / fingerprint) pull into visible clusters. Pure vanilla
+  // JS, no libraries; O(n^2) repulsion is fine for the bounded node count.
+  charts.force = function (d) {
+    var nodes = (d.nodes || []).slice(), edges = d.edges || [], W = 720, H = 560;
+    var idx = {};
+    nodes.forEach(function (nd, i) {
+      idx[nd.id] = i;
+      nd.x = W / 2 + (Math.random() - 0.5) * W * 0.6;
+      nd.y = H / 2 + (Math.random() - 0.5) * H * 0.6;
+    });
+    var links = edges.map(function (e) { return { s: idx[e.from], t: idx[e.to] }; })
+      .filter(function (l) { return l.s != null && l.t != null; });
+    var n = nodes.length || 1, k = Math.sqrt((W * H) / n) * 0.8, iters = 300;
+    for (var step = 0; step < iters; step++) {
+      var temp = 14 * (1 - step / iters) + 0.5;
+      for (var i = 0; i < n; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
+      for (i = 0; i < n; i++) {
+        for (var j = i + 1; j < n; j++) {
+          var a = nodes[i], b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          var rep = (k * k) / dist, rx = dx / dist * rep, ry = dy / dist * rep;
+          a.fx += rx; a.fy += ry; b.fx -= rx; b.fy -= ry;
+        }
+      }
+      links.forEach(function (l) {
+        var a = nodes[l.s], b = nodes[l.t], dx = a.x - b.x, dy = a.y - b.y, dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        var att = (dist * dist) / k, fx = dx / dist * att, fy = dy / dist * att;
+        a.fx -= fx; a.fy -= fy; b.fx += fx; b.fy += fy;
+      });
+      nodes.forEach(function (a) {
+        a.fx += (W / 2 - a.x) * 0.02; a.fy += (H / 2 - a.y) * 0.02; // gentle gravity
+        var disp = Math.sqrt(a.fx * a.fx + a.fy * a.fy) || 0.01;
+        a.x += a.fx / disp * Math.min(disp, temp);
+        a.y += a.fy / disp * Math.min(disp, temp);
+        a.x = Math.max(18, Math.min(W - 18, a.x));
+        a.y = Math.max(18, Math.min(H - 18, a.y));
+      });
+    }
+    var root = svgRoot(W, H, "tc-force"), groups = [];
+    nodes.forEach(function (nd) { if (nd.group != null && groups.indexOf(nd.group) < 0) groups.push(nd.group); });
+    links.forEach(function (l) { var a = nodes[l.s], b = nodes[l.t]; root.appendChild(el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: "tc-edge" })); });
+    nodes.forEach(function (nd) {
+      var hubN = nd.kind && nd.kind !== "source", r = hubN ? 9 : 5;
+      root.appendChild(title(el("circle", { cx: nd.x, cy: nd.y, r: r, class: "tc-node", fill: color(groups.indexOf(nd.group) < 0 ? 0 : groups.indexOf(nd.group)) }), (nd.label || nd.id) + (nd.kind ? " [" + nd.kind + "]" : "")));
+      if (hubN) root.appendChild(text(nd.x, nd.y - r - 3, nd.label || nd.id, "tc-nlabel", { "text-anchor": "middle" }));
+    });
+    return root;
+  };
+
   // sankey / flow: { nodes:[{id,label}], links:[{source,target,value}] }
   charts.sankey = function (d) {
     var nodes = d.nodes || [], links = d.links || [], W = 760, P = { t: 20, b: 20 };
