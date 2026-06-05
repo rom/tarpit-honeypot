@@ -35,6 +35,10 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 		enrichDashboard(&d, evs)
 	}
 	page := buildAnalytics(d, hours, evs)
+	if fig, rows, ok := coverageGap(s.fullConfig, evs); ok {
+		page.Sections = append(page.Sections, chartSection{Heading: "Coverage gap", Figs: []chartFig{fig}})
+		page.CoverageGap = rows
+	}
 	page.RangeLabel = win.label
 	page.RangeLinks = rangeLinksFor("/charts", win.key)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -68,11 +72,12 @@ type chartSection struct {
 }
 
 type chartsPage struct {
-	Sections   []chartSection
-	Scanned    int
-	Empty      bool
-	RangeLabel string
-	RangeLinks []rangeLink
+	Sections    []chartSection
+	CoverageGap []covRow
+	Scanned     int
+	Empty       bool
+	RangeLabel  string
+	RangeLinks  []rangeLink
 }
 
 // --- chart JSON shapes (match the schemas documented in charts.js) ---------
@@ -405,6 +410,40 @@ func buildAnalytics(d dashboard, hours []store.HourBucket, evs []*event.Event) c
 	}
 	if len(cred.Figs) > 0 {
 		p.Sections = append(p.Sections, cred)
+	}
+
+	// Ports & exposure.
+	ports := chartSection{Heading: "Ports & exposure"}
+	if fig, ok := portHourHeatmap(evs); ok {
+		ports.Figs = append(ports.Figs, fig)
+	}
+	if fig, ok := destPortLeaderboard(evs); ok {
+		ports.Figs = append(ports.Figs, fig)
+	}
+	if len(ports.Figs) > 0 {
+		p.Sections = append(p.Sections, ports)
+	}
+
+	// Vulnerabilities (CVE / CWE).
+	if figs := cveAnalytics(evs); len(figs) > 0 {
+		p.Sections = append(p.Sections, chartSection{Heading: "Vulnerabilities (CVE / CWE)", Figs: figs})
+	}
+
+	// Trends — per-entity (ASN / country) volume over time.
+	trends := chartSection{Heading: "Trends (per-entity)"}
+	if fig, ok := entitySparklines("Top ASNs over time", evs, func(ev *event.Event) string { return asnLabel(ev.Meta) }, 6, time.Hour); ok {
+		trends.Figs = append(trends.Figs, fig)
+	}
+	if fig, ok := entitySparklines("Top source countries over time", evs, func(ev *event.Event) string { c, _ := ev.Meta["geo_country"].(string); return c }, 6, time.Hour); ok {
+		trends.Figs = append(trends.Figs, fig)
+	}
+	if len(trends.Figs) > 0 {
+		p.Sections = append(p.Sections, trends)
+	}
+
+	// Actor clustering (force-directed).
+	if fig, ok := actorGraph(evs); ok {
+		p.Sections = append(p.Sections, chartSection{Heading: "Actor clustering", Figs: []chartFig{fig}})
 	}
 
 	p.Empty = len(p.Sections) == 0

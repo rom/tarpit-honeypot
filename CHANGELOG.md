@@ -64,6 +64,30 @@ documented in `docs/`).
   `DecodeFull` over a 1 MiB-capped block could itself blow up. New catalog
   records (CWE-400/409/770, T1499/impact) and `CWE-409` (data amplification)
   added.
+- **Credential analytics page (`/credentials`).** A dedicated view over every
+  captured login attempt: top usernames / passwords tried, password-length and
+  composition (digits-only / lowercase / has-symbol / mixed) distributions, the
+  per-account heatmap, a per-source **spray-vs-brute** classification (password
+  spray / brute force / credential stuffing / repeated / probe, from the
+  user×password fan-out), and a **credential-reuse** table surfacing secrets
+  seen from two or more distinct sources (shared wordlists, or one actor
+  rotating IPs). Linked from the top nav.
+- **New chart-page analytics.** The `/charts` page gains: a **destination-port ×
+  hour-of-day heatmap** and a **dest-port leaderboard**; **CVE analytics** —
+  exploit-attempt leaderboard, disclosure-year (n-day age) histogram,
+  **EPSS-weighted exposure** ranking (attempts × EPSS), and the **CWE** weakness
+  classes targeted; **per-entity trend sparklines** (one line per top ASN /
+  country over time); a **force-directed actor-clustering graph** (sources link
+  to their shared ASN / TLS-SSH-fingerprint hubs, so one actor rotating IPs forms
+  a visible cluster — backed by a new Fruchterman-Reingold `force` renderer in
+  `charts.js`); and a **coverage-gap report** (destination ports that were probed
+  but that no configured listener answers — a ranked "what should we emulate
+  next" list).
+- **IPv6 address badge.** Listings and detail views now tag genuinely-IPv6
+  source/host addresses with a small `IPv6` chip (profiles list + header,
+  events, captures, threat map, storyline, tunnels, devices, credential spray
+  table, ARP-conflict and pcap tables). IPv4 and IPv4-mapped addresses are not
+  badged.
 
 ### Changed
 
