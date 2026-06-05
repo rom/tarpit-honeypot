@@ -447,6 +447,9 @@ type TUNCfg struct {
 type ICMPResponderCfg struct {
 	Enabled   bool   `yaml:"enabled"`
 	Interface string `yaml:"interface"`
+	// Severity for the captured-echo events the responder emits (ping /
+	// ping6 / timestamp / address-mask probes). Default "low".
+	Severity string `yaml:"severity"`
 }
 
 // ARPResponderCfg makes the artificial network discoverable on the L2
@@ -467,6 +470,7 @@ type ARPResponderCfg struct {
 
 type HoneynetHost struct {
 	IP        string            `yaml:"ip"`
+	IPv6      string            `yaml:"ipv6"`
 	Hostname  string            `yaml:"hostname"`
 	OS        string            `yaml:"os"`
 	Archetype string            `yaml:"archetype"`

@@ -2242,10 +2242,35 @@ func (s *Sensor) Run(ctx context.Context) error {
 		if hn.ICMP.Enabled {
 			ifaceName := s.effIface(hn.ICMP.Interface)
 			netID := hn.ID
+			icmpSev := event.SeverityLow
+			if sv, err := event.ParseSeverity(hn.ICMP.Severity); err == nil {
+				icmpSev = sv
+			}
+			onICMP := func(srcIP, dstIP string, meta map[string]any) {
+				if meta == nil {
+					meta = map[string]any{}
+				}
+				meta["honeynet"] = netID
+				ev := &event.Event{
+					ID:       event.NewID(),
+					Time:     timeNow(),
+					Sensor:   s.name,
+					RuleID:   "honeynet:icmp_echo",
+					Severity: icmpSev,
+					Source:   event.Endpoint{IP: srcIP},
+					Dest:     event.Endpoint{IP: dstIP},
+					Proto:    "icmp",
+					Meta:     meta,
+				}
+				select {
+				case s.bus <- ev:
+				default: // non-blocking: a ping flood must not block the responder
+				}
+			}
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := s.honeynet.StartICMPResponder(ctx, ifaceName); err != nil {
+				if err := s.honeynet.StartICMPResponder(ctx, ifaceName, onICMP); err != nil {
 					slog.Warn("honeynet icmp responder disabled", "honeynet", netID, "err", err)
 				}
 				<-ctx.Done()

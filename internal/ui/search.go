@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -58,6 +59,7 @@ type searchQuery struct {
 	Tag         string // anomaly / ATT&CK technique substring
 	Fingerprint string // ja3 / ja4 / ja4h / ja3s / hassh value
 	ASN         string
+	Family      string // address family of the source IP: "ipv6" / "ipv4"
 	Text        string
 	HasPayload  bool
 	HasSession  bool
@@ -99,6 +101,7 @@ func parseSearchQuery(r *http.Request) searchQuery {
 		Tag:         g("tag"),
 		Fingerprint: g("fp"),
 		ASN:         g("asn"),
+		Family:      g("family"),
 		Text:        g("q"),
 		HasPayload:  g("has_payload") == "1",
 		HasSession:  g("has_session") == "1",
@@ -262,6 +265,9 @@ func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Ev
 		if q.Fingerprint != "" && !matchesFingerprint(ev, q.Fingerprint) {
 			continue
 		}
+		if q.Family != "" && !matchesFamily(ev.Source.IP, q.Family) {
+			continue
+		}
 		if q.HasPayload && ev.PayloadLen == 0 && len(metaStrings(ev.Meta, "payload_artifacts")) == 0 {
 			continue
 		}
@@ -390,6 +396,20 @@ func matchesTag(ev *event.Event, tag string) bool {
 		}
 	}
 	return containsSubstrFold(eventTag(ev).Tactics, tag)
+}
+
+// matchesFamily filters by the source IP's address family. "ipv6"/"v6"/"6"
+// keep only IPv6 sources; "ipv4"/"v4"/"4" keep only IPv4. Anything else is a
+// no-op (matches everything).
+func matchesFamily(ip, fam string) bool {
+	switch strings.ToLower(fam) {
+	case "ipv6", "v6", "6":
+		return isIPv6(ip)
+	case "ipv4", "v4", "4":
+		p := net.ParseIP(strings.TrimSpace(ip))
+		return p != nil && p.To4() != nil
+	}
+	return true
 }
 
 // matchesFingerprint matches any of the network fingerprints in the event meta.

@@ -1205,6 +1205,19 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("honeynet %s: ip %s appears more than once across all honeynets", hn.ID, host.IP)
 			}
 			allHostIPs[host.IP] = true
+			if host.IPv6 != "" {
+				addr, err := netip.ParseAddr(host.IPv6)
+				if err != nil {
+					return fmt.Errorf("honeynet %s host %s: ipv6 %q: %w", hn.ID, host.IP, host.IPv6, err)
+				}
+				if !addr.Is6() || addr.Is4In6() {
+					return fmt.Errorf("honeynet %s host %s: ipv6 %q is not an IPv6 address", hn.ID, host.IP, host.IPv6)
+				}
+				if allHostIPs[host.IPv6] {
+					return fmt.Errorf("honeynet %s: ip %s appears more than once across all honeynets", hn.ID, host.IPv6)
+				}
+				allHostIPs[host.IPv6] = true
+			}
 			if host.Hostname != "" {
 				if hostName[host.Hostname] {
 					return fmt.Errorf("honeynet %s: hostname %q duplicated", hn.ID, host.Hostname)

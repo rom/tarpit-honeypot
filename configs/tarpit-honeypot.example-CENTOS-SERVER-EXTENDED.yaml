@@ -1,0 +1,339 @@
+# tarpit-honeypot — "extended legacy CentOS all-in-one server" decoy.
+#
+# A superset of tarpit-honeypot.example-CENTOS-SERVER.yaml: the same hardened
+# CentOS box, but presenting a much wider service surface so it looks like a
+# sprawling do-everything server (the kind that attracts broad scans). On top of
+# the classic edge services (SSH, web, mail, DNS, FTP) it now also exposes:
+#   - Telnet    (23)                  — legacy remote shell, captures creds + cmds
+#   - SNMP v2c  (UDP 161)             — agent; captures community strings
+#   - SMB/CIFS  (445)                 — Samba; SMB negotiate + NTLM capture
+#   - MSSQL     (1433 + UDP 1434)     — SQL Server (Linux); login + browser probe
+#   - MySQL/MariaDB (3306)            — DB login handshake + creds
+#   - PostgreSQL (5432)               — DB startup/auth capture
+#   - Redis     (6379)                — RESP; AUTH + dangerous-command capture
+#   - MongoDB   (27017)               — wire-protocol handshake + auth capture
+#   - RDP       (3389 TCP + UDP)      — xrdp; NLA/cookie username capture
+#   - IMAPS/POP3S (993/995)           — implicit-TLS mailbox retrieval
+# The web app (HTTP 80 / HTTPS 443) additionally serves API-recon decoys at
+# /api, /swagger, /openapi.json and /graphql (believable OpenAPI + GraphiQL).
+#
+# It answers ICMP echo (ping) AND ICMPv6 echo (ping6) for the virtual host — and
+# captures every echo / timestamp / address-mask probe as an event — so recon
+# scans see the host as alive over both v4 and v6. Every emulation / decoy /
+# vuln-recognition feature is on, the FULL enrichment stack is wired, and the
+# process drops privileges and self-confines (seccomp + Landlock). Nothing is
+# ever actually exploitable.
+#
+# Set it up the easy way with the helper scripts (they create the honey user,
+# install the binary + capabilities + systemd unit, fetch the enrichment data,
+# and wire Let's Encrypt for the UI):
+#   sudo scripts/install.sh -c configs/tarpit-honeypot.example-CENTOS-SERVER-EXTENDED.yaml
+#   sudo scripts/letsencrypt-cert.sh         # real TLS cert for the web UI
+#   sudo scripts/update-enrichment.sh        # GeoIP / Tor / threat feeds (cron/timer)
+#
+# Or just validate + run it from the repo:
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-CENTOS-SERVER-EXTENDED.yaml
+#   tarpit-honeypot run             -c configs/tarpit-honeypot.example-CENTOS-SERVER-EXTENDED.yaml
+
+sensor:
+  name: ""                 # blank = hostname
+  data_dir: /var/lib/tarpit-honeypot   # production path; the dropped honey user owns it
+  # One coherent OS identity across every banner-aware handler (Apache/vsftpd/
+  # Postfix/BIND versions, TLS posture, SMTP greeting, ICMP TTL, …).
+  archetype: centos-6
+  # Advertise an unpatched build so a version scanner records a juicy target;
+  # the service is never actually exploitable, but the follow-up exploit
+  # attempt (Shellshock, the CVE catalog, web-attack classes) is recognized.
+  vuln_emulation: true
+
+  # --- Privilege drop --------------------------------------------------------
+  # Bind privileged ports + open the ICMP/AF_PACKET sockets with the granted
+  # capabilities, then drop to this unprivileged user. The sensor refuses to
+  # keep running as uid 0. scripts/install.sh creates honey:honeypot.
+  drop_user: honey
+  drop_group: honeypot
+
+  # --- In-process sandbox (Linux) -------------------------------------------
+  # Applied once, after privileged setup + privilege drop. A one-way ratchet:
+  # seccomp denies shell-spawn / module-load / debug syscalls; Landlock makes
+  # the filesystem read-only except data_dir. No-ops on non-Linux / old kernels.
+  sandbox:
+    seccomp: true
+    landlock: true
+
+  # --- Full enrichment stack -------------------------------------------------
+  # All file-based databases live under /etc/tarpit-honeypot/enrichment and are
+  # populated + kept fresh by scripts/fetch-enrichment.sh + install-enrichment.sh
+  # (or the one-shot scripts/update-enrichment.sh on a cron / systemd timer).
+  geoip:
+    city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb   # GeoLite2-City / DB-IP lite
+    asn_db:  /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb    # GeoLite2-ASN  / DB-IP lite
+  rdns:
+    enabled: true          # synchronous reverse-DNS of source IPs (bounded + cached)
+    timeout: 2s
+    cache_size: 8192
+  tor:
+    enabled: true
+    exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt
+  net_class:
+    enabled: true          # database-free bogon / cloud-hosting classification
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv            # MAC-vendor (IEEE OUI)
+  threat_intel:
+    enabled: true          # static reputation lists (refreshed by the enrichment scripts)
+    lists:
+      - { label: blocklist-de,   file: /etc/tarpit-honeypot/enrichment/threat/blocklist-de.txt }
+      - { label: abuse-ch-feodo, file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
+      - { label: spamhaus-drop,  file: /etc/tarpit-honeypot/enrichment/threat/spamhaus-drop.txt }
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+
+  # Harvest dropped webshells / uploaded payloads / FTP uploads, classify them,
+  # and turn artifact hashes into IOCs. Captured web logins/cookies/tokens and
+  # mail AUTH credentials also land on the /captures page automatically.
+  payloads:
+    enabled: true
+    # fetch_urls: true        # also DOWNLOAD second-stage payloads from the
+    # fetch_max_bytes: 5242880  # ingress URLs found in captures (active; egress-gated)
+
+# --- Live threat-intel feeds (dynamic puller) --------------------------------
+# Pulls reputation feeds over the network on a schedule and tags matching
+# sources external_intel + threat_intel_hit. Dialled through the egress
+# allowlist below (the feed hosts are auto-allowlisted). Complements the static
+# threat_intel lists above. Add AbuseIPDB / GreyNoise with an API key via the
+# per-feed `header:` if you have one.
+threat_feeds:
+  enabled: true
+  poll: 1h
+  feeds:
+    - { label: abuse-ch-feodo, url: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt", format: lines }
+
+# --- Outbound containment (do-no-harm) ---------------------------------------
+# The sensor only initiates outbound connections for its own telemetry + the
+# threat-feed pull; everything else is refused and reported (egress:denied).
+egress:
+  enabled: true
+  allow:
+    - feodotracker.abuse.ch:443        # the threat_feeds source above
+  # enforce: true   # additionally install the nftables backstop (needs nft + CAP_NET_ADMIN)
+
+# The web app + protocol emulations all run fully at low interaction.
+interaction:
+  mode: low
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+  # Real TLS for the management UI. scripts/letsencrypt-cert.sh obtains a Let's
+  # Encrypt certificate and drops a sensor-readable copy here; scripts/install.sh
+  # uncomments these. To expose the UI off-loopback you must ALSO set a bind
+  # address and auth_token_env (the validator enforces this).
+  # tls_cert: /etc/tarpit-honeypot/tls/cert.pem
+  # tls_key:  /etc/tarpit-honeypot/tls/key.pem
+  # auth_token_env: TARPIT_UI_TOKEN
+  cve_source: nvd          # CVE labels link to NVD (or set "cve.org")
+  attack_links: true
+  # map_tiles_url: /static/world-equirectangular.png
+  hidden_ips: []
+    # - 10.0.0.0/24        # internal monitoring subnet
+    # - 203.0.113.7        # your vuln scanner
+
+listeners:
+  # Binds use the IPv6 wildcard "[::]" (quoted — a bare [::] would be read as a
+  # YAML flow sequence). On a dual-stack host this serves BOTH IPv6 and IPv4 on
+  # the same socket (Linux maps IPv4 clients in via ::ffff:0.0.0.0), so every
+  # decoy below is reachable over v6 and v4 without doubling the listener list.
+  # Use "0.0.0.0:<port>" instead to restrict a listener to IPv4 only.
+
+  # --- SSH: medium-interaction OpenSSH (+ SFTP/SCP over the same service). The
+  # 3rd credential is accepted to drop the attacker into a believable shell for
+  # TTP capture; every password / key attempt + client version is captured. ---
+  - id: ssh
+    proto: tcp
+    bind: "[::]:22"
+    mode: banner
+    handler: ssh_interactive
+    severity: high
+    capture: true
+
+  # --- Telnet: legacy remote shell. Captures the login (user/pass) and the
+  # commands typed at the fake prompt; advertises a believable busybox/CentOS
+  # telnetd, the classic IoT/again-legacy brute-force target. ---
+  - { id: telnet, proto: tcp, bind: "[::]:23", mode: banner, handler: telnet, severity: high, capture: true }
+
+  # --- Web: the full fake-vulnerable app on HTTP + HTTPS. With webapp: true the
+  # bare banner becomes a deceptive PHP/MySQL intranet whose juicy paths LOOK
+  # exploitable. It also serves the API-recon decoys: /api (REST discovery root),
+  # /openapi.json + /swagger (OpenAPI 3 spec + Swagger UI), and /graphql +
+  # /graphiql (GraphQL endpoint; introspection returns a believable schema and
+  # is flagged webapp:graphql-introspection). ---
+  - id: http
+    proto: tcp
+    bind: "[::]:80"
+    mode: banner
+    handler: http
+    webapp: true
+    severity: high
+    capture: true
+  - id: https
+    proto: tcp
+    bind: "[::]:443"
+    mode: banner
+    handler: https         # self-signs a cert shaped by the archetype's TLS posture
+    webapp: true
+    severity: high
+    capture: true
+
+  # --- SMTP: mail server (captures MAIL FROM/RCPT, default creds, relay probes) ---
+  - { id: smtp,        proto: tcp, bind: "[::]:25",  mode: banner, handler: smtp_recv, severity: high, capture: true }
+  - { id: smtp-submit, proto: tcp, bind: "[::]:587", mode: banner, handler: smtp_recv, severity: high }
+  - { id: smtps,       proto: tcp, bind: "[::]:465", mode: banner, handler: smtps,     severity: high, capture: true }
+
+  # --- POP3 / IMAP: mailbox retrieval (harvests login creds). The plain 110/143
+  # ports offer STARTTLS/STLS upgrade; 993/995 are implicit-TLS. ---
+  - { id: pop3,  proto: tcp, bind: "[::]:110", mode: banner, handler: pop3,  severity: high, capture: true }
+  - { id: imap,  proto: tcp, bind: "[::]:143", mode: banner, handler: imap,  severity: high, capture: true }
+  - { id: pop3s, proto: tcp, bind: "[::]:995", mode: banner, handler: pop3s, severity: high, capture: true }
+  - { id: imaps, proto: tcp, bind: "[::]:993", mode: banner, handler: imaps, severity: high, capture: true }
+
+  # --- DNS: resolver on UDP + TCP, with the version.bind + fake-zone decoys. ---
+  - { id: dns-udp, proto: udp, bind: "[::]:53", mode: banner, handler: dns, severity: high, capture: true }
+  - id: dns-tcp
+    proto: tcp
+    bind: "[::]:53"
+    mode: banner
+    handler: dns
+    severity: high
+    capture: true
+    dns_responder:
+      version_bind: "9.8.1-P1"     # decoy an old, RCE-prone BIND
+      fake_zone: true              # serve a fabricated zone on AXFR/IXFR
+      zone_domain: corp.example
+      extra_txt:
+        - "internal-vault=https://vault.corp.example (legacy token in wiki)"
+
+  # --- FTP: file server (captures logins, accepts any creds, serves bait files).
+  # Explicit FTPS works on 21 (AUTH TLS); 990 is implicit FTPS. ---
+  - id: ftp
+    proto: tcp
+    bind: "[::]:21"
+    mode: banner
+    handler: ftp_files
+    accept_creds: any
+    severity: high
+    capture: true
+  - id: ftps
+    proto: tcp
+    bind: "[::]:990"
+    mode: banner
+    handler: ftps
+    severity: high
+    capture: true
+
+  # --- SNMP: v1/v2c agent (UDP 161). Captures the community string — the first
+  # credential a scanner sprays — and flags the default 'public' / 'private'.
+  # Answers Get/GetNext/GetBulk from a believable MIB; never writable. ---
+  - { id: snmp, proto: udp, bind: "[::]:161", mode: banner, handler: snmp, severity: high, capture: true }
+
+  # --- SMB/CIFS: Samba file sharing (445). SMB1/2/3 negotiate + session setup,
+  # NTLMSSP challenge/response capture, and EternalBlue-class probe recognition. ---
+  - { id: smb, proto: tcp, bind: "[::]:445", mode: banner, handler: smb, severity: high, capture: true }
+
+  # --- Databases: each captures the login handshake + credentials and
+  # advertises a known, version-scannable server. Nothing is ever queryable. ---
+  - { id: mysql,         proto: tcp, bind: "[::]:3306",  mode: banner, handler: mysql,         severity: high,   capture: true }
+  - { id: postgres,      proto: tcp, bind: "[::]:5432",  mode: banner, handler: postgres,      severity: high,   capture: true }
+  - { id: mssql,         proto: tcp, bind: "[::]:1433",  mode: banner, handler: mssql,         severity: high,   capture: true }
+  - { id: mssql-browser, proto: udp, bind: "[::]:1434",  mode: banner, handler: mssql_browser, severity: medium }
+  - { id: redis,         proto: tcp, bind: "[::]:6379",  mode: banner, handler: redis,         severity: high,   capture: true }
+  - { id: mongodb,       proto: tcp, bind: "[::]:27017", mode: banner, handler: mongodb,       severity: high,   capture: true }
+
+  # --- RDP: Remote Desktop (xrdp) on 3389 TCP + UDP. Captures the
+  # X.224/CredSSP-NLA negotiation + the mstshash cookie (pre-auth username) and
+  # recognizes BlueKeep-class probes. ---
+  - { id: rdp,     proto: tcp, bind: "[::]:3389", mode: banner, handler: rdp,     severity: high,   capture: true }
+  - { id: rdp-udp, proto: udp, bind: "[::]:3389", mode: banner, handler: rdp_udp, severity: medium }
+
+# Planted "secret" URLs no legitimate visitor could know — a request for any of
+# these is, by itself, a near-certain compromise signal (critical).
+url_canaries:
+  - { id: db-backup,  path: /backup/db-prod.sql.gz, severity: critical }
+  - { id: wp-config,  path: /wp-config.php.bak,      severity: critical }
+  - { id: env-file,   path: /.env,                   severity: critical }
+  - { id: api-token,  path: /api/internal/token,     severity: critical }
+
+# Risk scoring: every event adds severity/category-weighted points to its
+# source; the decaying score crosses thresholds to emit risk:elevated /
+# risk:high / risk:critical, and the top scorers surface in the web UI.
+risk:
+  enabled: true
+  half_life: 1h        # an idle source's score halves over this period
+  elevated: 30
+  high: 75
+  critical: 150
+
+# Answer ICMP echo (ping) AND ICMPv6 echo (ping6) — and ARP / Neighbor Discovery
+# — for the decoy host so recon sees it alive over both v4 and v6, and CAPTURE
+# every echo / timestamp / address-mask probe as a (severity: low) icmp event.
+# Linux + CAP_NET_RAW (granted by scripts/install.sh). Set `interface` to the
+# NIC the traffic arrives on, the host `ip`/`ipv6` to this box's (or a routed
+# decoy) addresses.
+honeynets:
+  - id: server
+    cidr: 192.0.2.0/24
+    gateway: 192.0.2.1
+    domain: corp.example.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0, severity: low }
+    hosts:
+      - ip: 192.0.2.10
+        ipv6: "2001:db8::10"      # documentation prefix — set your routed v6 decoy
+        hostname: srv
+        os: linux
+        archetype: centos-6
+        services:
+          - { port: 22,    handler: ssh_interactive }
+          - { port: 23,    handler: telnet }
+          - { port: 80,    handler: http }
+          - { port: 443,   handler: https }
+          - { port: 25,    handler: smtp_recv }
+          - { port: 465,   handler: smtps }
+          - { port: 110,   handler: pop3 }
+          - { port: 143,   handler: imap }
+          - { port: 993,   handler: imaps }
+          - { port: 995,   handler: pop3s }
+          - { port: 53,    handler: dns }
+          - { port: 21,    handler: ftp_files }
+          - { port: 990,   handler: ftps }
+          - { port: 161,   handler: snmp }
+          - { port: 445,   handler: smb }
+          - { port: 1433,  handler: mssql }
+          - { port: 3306,  handler: mysql }
+          - { port: 5432,  handler: postgres }
+          - { port: 6379,  handler: redis }
+          - { port: 3389,  handler: rdp }
+          - { port: 27017, handler: mongodb }
+
+# Detection for these services — brute force, scanning, the web-attack classes,
+# mail-relay probing, DNS tunnelling, default-credential sweeps, the threat-intel
+# burst (needs the enrichment above), and the multi-stage progressions.
+correlate:
+  port_scan:          { enabled: true, distinct_ports: 5,  window: 30s,  severity: high }
+  brute_force:        { enabled: true, attempts: 10, window: 60s, per_port: true, severity: high }
+  default_cred_sweep: { enabled: true, distinct_services: 3, window: 300s, severity: high }
+  path_enumeration:   { enabled: true, distinct_paths: 40, window: 60s,  severity: high }
+  ua_rotation:        { enabled: true, distinct_agents: 4, window: 300s, severity: medium }
+  exploit_chain:      { enabled: true, distinct_cves: 2,   window: 600s, severity: critical }
+  web_attack_probe:   { enabled: true, distinct_classes: 3, window: 600s, severity: high }
+  recon_to_exploit:   { enabled: true, window: 1800s, severity: high }
+  dns_tunnel:         { enabled: true, events: 5, window: 600s, severity: high }
+  spam_relay:         { enabled: true, events: 3, window: 600s, severity: medium }
+  threat_intel_burst: { enabled: true, events: 3, window: 600s, severity: high }
+  geo_velocity:       { enabled: true, distinct_countries: 3, window: 3600s, severity: high }
+  beacon:             { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 3600s, severity: high }
+
+channels:
+  - { id: stdout, type: stdout, min_severity: low }
+  - { id: sqlite, type: sqlite, min_severity: low }
+  - { id: syslog, type: syslog, network: local, tag: tarpit-honeypot, format: cef, min_severity: low }
+
+routes:
+  - { match: {}, channels: [stdout, sqlite, syslog] }

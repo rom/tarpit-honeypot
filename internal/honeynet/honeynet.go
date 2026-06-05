@@ -28,7 +28,8 @@ import (
 // banner / serial / version string.
 type Topology struct {
 	nets        []Network
-	hostByIP    map[string]*Host // any host IP -> Host
+	hostByIP    map[string]*Host // any host IPv4 -> Host
+	hostByIP6   map[string]*Host // any host IPv6 (normalized) -> Host
 	serviceByEP map[endpoint]*boundService
 }
 
@@ -45,6 +46,7 @@ type Network struct {
 type Host struct {
 	NetID     string
 	IP        string
+	IPv6      string // optional v6 address; "" when the host is v4-only
 	Hostname  string
 	OS        string             // free-form ("linux", "windows", "cisco-ios", ...)
 	Archetype *archetype.Profile // nil = inherit from sensor default
@@ -95,6 +97,7 @@ type endpoint struct {
 func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, dataDir string, urlCanaries []config.URLCanary, tlsRotate int, sensorArch *archetype.Profile) (*Topology, error) {
 	t := &Topology{
 		hostByIP:    map[string]*Host{},
+		hostByIP6:   map[string]*Host{},
 		serviceByEP: map[endpoint]*boundService{},
 	}
 	for _, ncfg := range cfg {
@@ -127,9 +130,18 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 			if hostArch.HasMACOUI() {
 				mac = hostID.MACWithOUI(hostArch.MACOUI())
 			}
+			ipv6 := ""
+			if hcfg.IPv6 != "" {
+				a, err := netip.ParseAddr(hcfg.IPv6)
+				if err != nil {
+					return nil, fmt.Errorf("honeynet %s: host %s: bad ipv6 %q: %w", ncfg.ID, hcfg.Hostname, hcfg.IPv6, err)
+				}
+				ipv6 = a.String() // normalized
+			}
 			h := &Host{
 				NetID:     ncfg.ID,
 				IP:        hcfg.IP,
+				IPv6:      ipv6,
 				Hostname:  hcfg.Hostname,
 				OS:        hcfg.OS,
 				Archetype: hostArch,
@@ -147,9 +159,18 @@ func Build(cfg []config.Honeynet, id *identity.Identity, jit *jitter.Jitterer, d
 					return nil, fmt.Errorf("honeynet %s host %s port %d: %w", ncfg.ID, hcfg.IP, sc.Port, err)
 				}
 				t.serviceByEP[endpoint{ip: hcfg.IP, port: sc.Port}] = bound
+				// The same virtual host answers its services on its v6 address
+				// too (reachable once the ICMPv6 responder answers Neighbor
+				// Discovery for it).
+				if ipv6 != "" {
+					t.serviceByEP[endpoint{ip: ipv6, port: sc.Port}] = bound
+				}
 			}
 			n.Hosts = append(n.Hosts, h)
 			t.hostByIP[hcfg.IP] = h
+			if ipv6 != "" {
+				t.hostByIP6[ipv6] = h
+			}
 		}
 		t.nets = append(t.nets, n)
 	}
@@ -337,9 +358,18 @@ func (t *Topology) SnapshotForHandlers() []HostInfo {
 	return out
 }
 
-// StartICMPResponder launches an L3 ICMP echo responder for the named
-// interface. Virtual hosts respond to ping with a proper echo reply
-// sourced from their IP + MAC. Linux-only.
-func (t *Topology) StartICMPResponder(ctx context.Context, iface string) error {
-	return startICMPResponder(ctx, iface, t)
+// ICMPObserver is invoked for each captured ICMP / ICMPv6 echo (and the v4
+// timestamp / address-mask OS-fingerprint probes) addressed to a virtual
+// host, so the sensor can emit a captured-traffic event. meta carries
+// icmp_type / family / hostname; srcIP is the requester, dstIP the virtual
+// host that was probed. nil disables capture (reply-only).
+type ICMPObserver func(srcIP, dstIP string, meta map[string]any)
+
+// StartICMPResponder launches an L3 ICMP / ICMPv6 echo responder for the
+// named interface. Virtual hosts respond to ping (and ping6, when the host
+// has an ipv6 address — including the Neighbor Discovery that makes the v6
+// address reachable) with a proper echo reply sourced from their IP + MAC,
+// and each probe is reported through onICMP. Linux-only.
+func (t *Topology) StartICMPResponder(ctx context.Context, iface string, onICMP ICMPObserver) error {
+	return startICMPResponder(ctx, iface, t, onICMP)
 }

@@ -1007,6 +1007,11 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
       <td>ASN</td><td><input type="text" name="asn" value="{{ .Q.ASN }}" placeholder="AS13335" size="10"></td></tr>
   <tr><td>tool</td><td><input type="text" name="tool" value="{{ .Q.Tool }}" placeholder="nmap / sqlmap / …" size="16"></td>
       <td>fingerprint</td><td><input type="text" name="fp" value="{{ .Q.Fingerprint }}" placeholder="ja3 / ja4 / hassh" size="20"></td></tr>
+  <tr><td>source family</td><td colspan="3"><select name="family">
+      <option value="" {{ if eq .Q.Family "" }}selected{{ end }}>any</option>
+      <option value="ipv4" {{ if eq .Q.Family "ipv4" }}selected{{ end }}>IPv4 only</option>
+      <option value="ipv6" {{ if eq .Q.Family "ipv6" }}selected{{ end }}>IPv6 only</option>
+    </select></td></tr>
   <tr><td>full-text (regex)</td><td colspan="3"><input type="text" name="q" value="{{ .Q.Text }}" placeholder="regex over rule, banner, request line, HTTP headers, all meta + decoded payload" size="60"></td></tr>
   <tr><td colspan="2"><label><input type="checkbox" name="has_payload" value="1" {{ if .Q.HasPayload }}checked{{ end }}> has payload</label>
       <label><input type="checkbox" name="has_session" value="1" {{ if .Q.HasSession }}checked{{ end }}> has session</label>
@@ -1267,6 +1272,8 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events mentioning this domain/SNI">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events for this web-attack class">{{ . }}</a> {{ end }}</div>{{ end }}
+
+{{ if .ProbedFiles }}<h2>sensitive files probed</h2><div>{{ range .ProbedFiles }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events that tried to read this file"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
 
 {{ if .SSHKeys }}<h2>SSH keys offered</h2><div>{{ range .SSHKeys }}<span class="tag">{{ . }}</span> {{ end }}</div>
 <p class="note">Public-key fingerprints this source presented — an SSH key reused across hosts is a strong attribution pivot.</p>{{ end }}

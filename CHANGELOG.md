@@ -10,6 +10,35 @@ documented in `docs/`).
 
 ### Added
 
+- **`example-CENTOS-SERVER-EXTENDED` config.** A superset of the CentOS
+  all-in-one decoy with a much wider service surface — adds **Telnet (23)**,
+  **SNMP v2c (UDP 161)**, **SMB/CIFS (445)**, **MSSQL (1433 + UDP 1434 browser)**,
+  **MySQL/MariaDB (3306)**, **PostgreSQL (5432)**, **Redis (6379)**, **MongoDB
+  (27017)**, **RDP (3389 TCP+UDP)**, and **IMAPS/POP3S (993/995)**, all backed by
+  the existing protocol emulators. Its virtual host carries an `ipv6:` address
+  and answers + captures **ping and ping6**.
+- **ICMP / ICMPv6 echo capture, and a full IPv6 responder.** The honeynet ICMP
+  responder now emits a captured-traffic event (`honeynet:icmp_echo`, proto
+  `icmp`) for every echo / timestamp / address-mask probe (previously it only
+  replied and debug-logged), and gained a complete **ICMPv6** path: virtual
+  hosts with an `ipv6:` address answer **ping6** (echo) and the **Neighbor
+  Discovery** (solicitation → advertisement) that makes the v6 address reachable.
+  New `honeynet.hosts[].ipv6` and `icmp_responder.severity` config fields.
+- **Web API-recon decoys.** The fake web app now serves believable **`/api`**
+  (REST discovery root), **`/openapi.json` + `/swagger`** (OpenAPI 3 spec +
+  Swagger UI), and **`/graphql` + `/graphiql`** (GraphQL endpoint; an
+  introspection POST returns a fake schema and is flagged). Each probe is flagged
+  (`webapp:api-probe` / `webapp:api-spec-probe` / `webapp:graphql-introspection`).
+- **Secret-file probes now name the file.** A `webapp:secret-file-probe` / LFI
+  attempt records the specific path it tried to read (`meta.probed_file` — `/.env`,
+  `/config.php.bak`, `/.git/config`, or an LFI traversal target), and the
+  attacker profile gains a **"sensitive files probed"** section listing them — so
+  the anomaly reveals *which* files were targeted, not just that a probe happened.
+- **Clickable IPv6 badges + a source address-family search filter.** The `IPv6`
+  chip next to v6 addresses is now a link to the search filtered to all
+  IPv6-source events, backed by a new `family=ipv4|ipv6` search filter (also a
+  dropdown on the search form).
+
 - **Network-traffic charts on `/charts`.** A new **Network traffic** section
   plots four time series over the selected range: **incoming** and **outgoing**
   throughput (auto-scaled network bit-rate, **kb/s ↔ Mb/s**) and **incoming** and

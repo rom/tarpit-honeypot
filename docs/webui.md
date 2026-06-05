@@ -124,6 +124,9 @@ Advanced event search, and a per-source **attack timeline**. On the search page:
 - The time window is either relative (**since**, e.g. `24h` / `7d`) or absolute:
   **after** / **before** a UTC timestamp, or **on** a specific UTC day/minute
   (`2006-01-02` or `2006-01-02T15:04`). Combine `after` + `before` for a range.
+- **Source family** (`family=ipv4|ipv6`) restricts results to IPv4- or
+  IPv6-source events — this is where the clickable **IPv6** badge that sits next
+  to v6 addresses across the UI links to.
 
 The **timeline** shows each source's events **newest-first** by default; the
 *order: newest/oldest first* button flips every source's sequence (and the
@@ -243,7 +246,9 @@ Per-source-IP **attacker dossiers** compiled over time: a synthesized assessment
 services. Also surfaces the forensic observables that used to live only in
 per-event meta: **captured malware artifacts** (kind:sha256), **harvested
 C2/dropper URLs**, the **domains/SNIs** the source requested, the **web-attack
-classes** it threw at the app, the **SSH public keys** it offered, the **SMTP
+classes** it threw at the app, the **sensitive files probed** (the specific
+`/.env` / config-backup / `.git/config` / LFI targets each secret-file-probe
+tried to read), the **SSH public keys** it offered, the **SMTP
 senders** it used, and a **confirmed-compromise banner** when the source
 replayed a planted honeytoken (`canary:token_used`). The assessment escalates
 accordingly — *honeytoken reuse*, *malware delivery / staging*, and *web
