@@ -172,7 +172,10 @@ ui:
 listeners:
   - id: ssh-bait
     proto: tcp                          # tcp | udp
-    bind: 0.0.0.0:22                    # supports IPv6 brackets: [::]:22 / [::1]:22
+    bind: 0.0.0.0:22                    # IPv4 wildcard. Use "[::]:22" (quoted) for
+                                        # dual-stack v6+v4 on one socket; [::1]:22 / a
+                                        # specific [2001:db8::1]:22 also work. The
+                                        # example-CENTOS-SERVER.yaml uses [::] binds.
     mode: banner                        # drop | banner | tarpit
     handler: ssh                        # see "Handlers" table below
     severity: high                      # low | medium | high | critical

@@ -134,6 +134,12 @@ ui:
     # - 203.0.113.7        # your vuln scanner
 
 listeners:
+  # Binds use the IPv6 wildcard "[::]" (quoted — a bare [::] would be read as a
+  # YAML flow sequence). On a dual-stack host this serves BOTH IPv6 and IPv4 on
+  # the same socket (Linux maps IPv4 clients in via ::ffff:0.0.0.0), so the
+  # decoy is reachable over v6 and v4 without doubling the listener list. Use
+  # "0.0.0.0:<port>" instead to restrict a listener to IPv4 only.
+  #
   # --- SSH: medium-interaction OpenSSH. A persistent ed25519 host key is
   # generated under <data_dir>/tls and reused, so the host fingerprint is
   # stable. Every password / public-key attempt is captured (user, password or
@@ -147,7 +153,7 @@ listeners:
   # already harvested at the SSH auth layer regardless. ---
   - id: ssh
     proto: tcp
-    bind: 0.0.0.0:22
+    bind: "[::]:22"
     mode: banner
     handler: ssh_interactive
     severity: high
@@ -156,7 +162,7 @@ listeners:
   # --- Web: the full fake-vulnerable app on HTTP + HTTPS ---
   - id: http
     proto: tcp
-    bind: 0.0.0.0:80
+    bind: "[::]:80"
     mode: banner
     handler: http
     webapp: true           # bare banner -> full deceptive web app + vuln endpoints
@@ -164,7 +170,7 @@ listeners:
     capture: true          # record request/response bytes to <data_dir>/captures
   - id: https
     proto: tcp
-    bind: 0.0.0.0:443
+    bind: "[::]:443"
     mode: banner
     handler: https         # self-signs a cert shaped by the archetype's TLS posture
     webapp: true           # (a real cert here would deanonymize the decoy — keep it self-signed)
@@ -172,12 +178,12 @@ listeners:
     capture: true
 
   # --- SMTP: mail server (captures MAIL FROM/RCPT, default creds, relay probes) ---
-  - { id: smtp,        proto: tcp, bind: 0.0.0.0:25,  mode: banner, handler: smtp_recv, severity: high, capture: true }
-  - { id: smtp-submit, proto: tcp, bind: 0.0.0.0:587, mode: banner, handler: smtp_recv, severity: high }
+  - { id: smtp,        proto: tcp, bind: "[::]:25",  mode: banner, handler: smtp_recv, severity: high, capture: true }
+  - { id: smtp-submit, proto: tcp, bind: "[::]:587", mode: banner, handler: smtp_recv, severity: high }
   # SMTPS — implicit-TLS submission. The handshake is terminated with the
   # archetype's self-signed cert, then the cleartext SMTP inside the tunnel
   # (commands + message body) is captured just like 25/587.
-  - { id: smtps,       proto: tcp, bind: 0.0.0.0:465, mode: banner, handler: smtps,     severity: high, capture: true }
+  - { id: smtps,       proto: tcp, bind: "[::]:465", mode: banner, handler: smtps,     severity: high, capture: true }
 
   # --- POP3 / IMAP: mailbox retrieval (harvests login creds, captures the
   # USER/PASS / AUTH exchange; nothing is ever delivered). pcap on all four.
@@ -186,10 +192,10 @@ listeners:
   # injection (CVE-2011-1430), POP3 PASS overflow (CVE-2003-0264), and the
   # IMAP pre-auth literal/NUL out-of-bounds probe (CVE-2019-11500). The plain
   # 110/143 ports also offer STARTTLS/STLS upgrade; 993/995 are implicit-TLS. ---
-  - { id: pop3,  proto: tcp, bind: 0.0.0.0:110, mode: banner, handler: pop3,  severity: high, capture: true }
-  - { id: imap,  proto: tcp, bind: 0.0.0.0:143, mode: banner, handler: imap,  severity: high, capture: true }
-  - { id: pop3s, proto: tcp, bind: 0.0.0.0:995, mode: banner, handler: pop3s, severity: high, capture: true }
-  - { id: imaps, proto: tcp, bind: 0.0.0.0:993, mode: banner, handler: imaps, severity: high, capture: true }
+  - { id: pop3,  proto: tcp, bind: "[::]:110", mode: banner, handler: pop3,  severity: high, capture: true }
+  - { id: imap,  proto: tcp, bind: "[::]:143", mode: banner, handler: imap,  severity: high, capture: true }
+  - { id: pop3s, proto: tcp, bind: "[::]:995", mode: banner, handler: pop3s, severity: high, capture: true }
+  - { id: imaps, proto: tcp, bind: "[::]:993", mode: banner, handler: imaps, severity: high, capture: true }
 
   # --- DNS: resolver (answers A/AAAA/MX/TXT/…, runs tunnelling/exfil detection).
   # Served on UDP (normal queries) AND TCP (truncation fallback, zone-transfer
@@ -202,10 +208,10 @@ listeners:
   #                  juicy zone (NS/MX + dozens of service hostnames + TXT
   #                  "secrets") instead of refusing — a high-signal trap. Add your
   #                  own bait TXT records with extra_txt. ---
-  - { id: dns-udp, proto: udp, bind: 0.0.0.0:53, mode: banner, handler: dns, severity: high, capture: true }
+  - { id: dns-udp, proto: udp, bind: "[::]:53", mode: banner, handler: dns, severity: high, capture: true }
   - id: dns-tcp
     proto: tcp
-    bind: 0.0.0.0:53
+    bind: "[::]:53"
     mode: banner
     handler: dns
     severity: high
@@ -224,7 +230,7 @@ listeners:
   # session are captured over the encrypted channel.
   - id: ftp
     proto: tcp
-    bind: 0.0.0.0:21
+    bind: "[::]:21"
     mode: banner
     handler: ftp_files
     accept_creds: any      # let the "login" succeed so we see what they do next
@@ -235,7 +241,7 @@ listeners:
   # tunnel (USER/PASS, LIST/RETR of bait files) is captured just like port 21.
   - id: ftps
     proto: tcp
-    bind: 0.0.0.0:990
+    bind: "[::]:990"
     mode: banner
     handler: ftps
     severity: high

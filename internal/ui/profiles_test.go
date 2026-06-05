@@ -137,6 +137,41 @@ func TestProfilesHandlersEndToEnd(t *testing.T) {
 	}
 }
 
+// In the attacker profile the recent-events rule column and the anomalies are
+// rendered as links; a "cve:CVE-..." rule also gets a CVE-reference link.
+func TestProfileClickableLabels(t *testing.T) {
+	st, err := store.Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_ = st.Insert(ctx, &event.Event{
+		ID: "c1", Time: time.Now().UTC(), Sensor: "s", RuleID: "cve:CVE-2017-9841", Severity: event.SeverityCritical,
+		Source: event.Endpoint{IP: "9.9.9.9"}, Handler: "http", Dest: event.Endpoint{Port: 80},
+		Anomalies: []string{"webapp-secret-file-probe"},
+	})
+	srv, err := New(config.UI{Enabled: true, Bind: "127.0.0.1:0"}, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	srv.handleProfile(w, httptest.NewRequest("GET", "/profiles/9.9.9.9", nil))
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if !strings.Contains(body, `href="/events?source=9.9.9.9&amp;rule=cve%3aCVE-2017-9841"`) {
+		t.Errorf("recent-events rule not linked: %q", body)
+	}
+	if !strings.Contains(body, "nvd.nist.gov/vuln/detail/CVE-2017-9841") {
+		t.Errorf("CVE rule missing CVE-reference link: %q", body)
+	}
+	if !strings.Contains(body, `href="/search?source=9.9.9.9&amp;tag=webapp-secret-file-probe"`) {
+		t.Errorf("anomaly not linked: %q", body)
+	}
+}
+
 func TestThreatLevel(t *testing.T) {
 	cases := map[int]string{0: "low", 5: "low", 15: "elevated", 60: "high", 200: "critical", 999: "critical"}
 	for score, want := range cases {

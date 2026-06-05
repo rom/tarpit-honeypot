@@ -1243,7 +1243,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Emails }}<h2>SMTP senders</h2><div>{{ range .Emails }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
 
-{{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<a class="tag warn" href="/search?source={{ $.IP }}&amp;tag={{ . }}" title="find this source's events carrying this anomaly">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .Credentials }}<h2>credentials &amp; secrets captured</h2><table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range .Credentials }}<tr><td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
@@ -1260,7 +1260,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ range .Recent }}<tr>
   <td>{{ fmtTime .Time }}</td>
   <td class="sev-{{ .Severity }}">{{ .Severity }}</td>
-  <td>{{ .RuleID }}</td>
+  <td><a href="/events?source={{ $.IP }}&amp;rule={{ .RuleID }}" title="this source's events for this rule">{{ .RuleID }}</a>{{ with cveOf .RuleID }} <a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank" title="CVE reference">{{ . }}</a>{{ end }}</td>
   <td>{{ handlerLink .Handler }}</td>
   <td><a href="/events/{{ .ID }}">details</a></td>
 </tr>{{ end }}
