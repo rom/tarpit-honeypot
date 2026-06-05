@@ -62,6 +62,22 @@ func TestBuildThreatMapView(t *testing.T) {
 			t.Errorf("threat map page missing %q", want)
 		}
 	}
+
+	// The events / countries / ASNs counters are clickable.
+	href := map[string]string{"events": "/events", "countries": "#map-countries", "ASNs": "#map-asns"}
+	for _, c := range v.Counters {
+		if want, ok := href[c.Label]; ok && c.Href != want {
+			t.Errorf("counter %q Href = %q, want %q", c.Label, c.Href, want)
+		}
+	}
+	for _, want := range []string{
+		`href="/events"`, `href="#map-countries"`, `href="#map-asns"`,
+		`id="map-countries"`, `id="map-asns"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("threat map missing clickable counter markup %q", want)
+		}
+	}
 }
 
 func TestThreatMapNoGeo(t *testing.T) {

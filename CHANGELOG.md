@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **More clickable UI labels.** On the **threat map** page the *events* /
+  *countries* / *ASNs* counter boxes are now links (events → the event log;
+  countries / ASNs → their on-page breakdown). In an attacker profile the
+  *tools / scanners* and *ATT&CK tactics* labels link to that source's filtered
+  events (`/events?source=…&tool=…` / `…&tactic=…`).
+
 ## [2.11.0] — 2026-06-05
 
 ### Fixed

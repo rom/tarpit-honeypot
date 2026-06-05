@@ -845,11 +845,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <h1>threat map — {{ .RangeLabel }}</h1>
 {{ template "rangesel" .RangeLinks }}
 <p class="note">Live GeoIP attack map with country / ASN / network-class breakdowns and threat-intelligence counters. Auto-refreshes, so it doubles as a wall display. Geo, ASN and intel data require <code>sensor.geoip</code> + threat-intel feeds. JSON at <a href="/api/map">/api/map</a>.</p>
-<div class="counters">{{ range .Counters }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}</div>
+<div class="counters">{{ range .Counters }}{{ if .Href }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ else }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}{{ end }}</div>
 {{ if .HasMap }}<figure data-chart="sourcemap" data-chart-title="Attack source map (GeoIP)" data-chart-b64="{{ .MapB64 }}"><p class="note">enable JavaScript to render the map</p></figure>{{ else }}<p class="note">no geo-located events yet — set <code>sensor.geoip.city_db</code> (MaxMind GeoLite2-City) to plot attack origins.</p>{{ end }}
 <div class="cols2">
-  <div><h3>top countries</h3>{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment</p>{{ end }}</div>
-  <div><h3>top ASNs</h3>{{ if .ASNs }}{{ template "bars" .ASNs }}{{ else }}<p class="note">no ASN enrichment</p>{{ end }}</div>
+  <div id="map-countries"><h3>top countries</h3>{{ if .Countries }}{{ template "bars" .Countries }}{{ else }}<p class="note">no geo enrichment</p>{{ end }}</div>
+  <div id="map-asns"><h3>top ASNs</h3>{{ if .ASNs }}{{ template "bars" .ASNs }}{{ else }}<p class="note">no ASN enrichment</p>{{ end }}</div>
   <div><h3>network class</h3>{{ if .NetClasses }}{{ template "bars" .NetClasses }}{{ else }}<p class="note">none classified</p>{{ end }}</div>
   <div><h3>threat-intel sources</h3>{{ if .IntelSources }}{{ template "bars" .IntelSources }}{{ else }}<p class="note">no intel matches (set threat feeds / Tor list)</p>{{ end }}</div>
 </div>
@@ -1200,7 +1200,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ range $k, $v := .BySeverity }}<tr><td class="sev-{{ $k }}">{{ $k }}</td><td>{{ $v }}</td></tr>{{ end }}
 </table>
 
-{{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<span class="tag bad">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;tool={{ . }}" title="this source's events attributed to this tool">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .Fingerprints }}<h2>fingerprints</h2><table>
 {{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a>{{ with index $.FingerprintClients $k }} <span class="tag" title="offline fingerprint-DB attribution">{{ . }}</span>{{ end }}</td></tr>{{ end }}
@@ -1224,7 +1224,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
 
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
-{{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<span class="tag warn">{{ . }}</span>{{ end }}</div>{{ end }}
+{{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;tactic={{ . }}" title="this source's events in this ATT&amp;CK tactic">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank">{{ . }}</a> {{ end }}</div>{{ end }}
 

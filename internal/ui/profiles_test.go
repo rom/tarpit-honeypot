@@ -149,7 +149,9 @@ func TestProfileClickableLabels(t *testing.T) {
 	_ = st.Insert(ctx, &event.Event{
 		ID: "c1", Time: time.Now().UTC(), Sensor: "s", RuleID: "cve:CVE-2017-9841", Severity: event.SeverityCritical,
 		Source: event.Endpoint{IP: "9.9.9.9"}, Handler: "http", Dest: event.Endpoint{Port: 80},
-		Anomalies: []string{"webapp-secret-file-probe"},
+		Anomalies:    []string{"webapp-secret-file-probe"},
+		MitreTactics: []string{"initial-access"},
+		Meta:         map[string]any{"tools": []any{"sqlmap"}},
 	})
 	srv, err := New(config.UI{Enabled: true, Bind: "127.0.0.1:0"}, st)
 	if err != nil {
@@ -169,6 +171,13 @@ func TestProfileClickableLabels(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/search?source=9.9.9.9&amp;tag=webapp-secret-file-probe"`) {
 		t.Errorf("anomaly not linked: %q", body)
+	}
+	// tools / scanners and ATT&CK tactics are links too.
+	if !strings.Contains(body, `href="/events?source=9.9.9.9&amp;tool=sqlmap"`) {
+		t.Errorf("tool not linked: %q", body)
+	}
+	if !strings.Contains(body, `href="/events?source=9.9.9.9&amp;tactic=initial-access"`) {
+		t.Errorf("tactic not linked: %q", body)
 	}
 }
 
