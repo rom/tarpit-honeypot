@@ -87,7 +87,7 @@ func handleSMB2(conn net.Conn, firstMsg []byte, readTimeout time.Duration, id *i
 				return
 			}
 		case 3: // AUTHENTICATE -> capture and fail
-			captureNetNTLMv2(ntlm, serverChallenge, res)
+			captureNetNTLMv2("smb", ntlm, serverChallenge, res)
 			resp := smb2SessionSetupResponse(msgID, sessionID, ntStatusLogonFailure, nil)
 			_, _ = conn.Write(buildNBSS(resp))
 			return
@@ -272,8 +272,9 @@ func ntlmField(msg []byte, off int) (int, int, bool) {
 
 // captureNetNTLMv2 parses an NTLMSSP AUTHENTICATE (type 3) message and writes
 // the captured NetNTLMv2 credential (user, domain, workstation, and the
-// hashcat-format hash) into res.Meta.
-func captureNetNTLMv2(msg, serverChallenge []byte, res *Result) {
+// hashcat-format hash) into res.Meta. source names the protocol the capture
+// came over (e.g. "smb", "rdp") and prefixes the emitted anomaly marker.
+func captureNetNTLMv2(source string, msg, serverChallenge []byte, res *Result) {
 	if len(msg) < 64 {
 		return
 	}
@@ -301,7 +302,7 @@ func captureNetNTLMv2(msg, serverChallenge []byte, res *Result) {
 		res.Meta["ntlm_workstation"] = workstation
 	}
 	res.Meta["auth_type"] = "ntlmv2"
-	flagAnomaly(res, "smb-ntlmv2-capture")
+	flagAnomaly(res, source+"-ntlmv2-capture")
 
 	// NetNTLMv2 needs the NtChallengeResponse (>= 16 bytes: NTProofStr + blob)
 	// and the 8-byte server challenge we issued.

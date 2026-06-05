@@ -70,7 +70,7 @@ func TestCaptureNetNTLMv2(t *testing.T) {
 	ntResp := append(append([]byte{}, ntProof...), blob...)
 
 	res := Result{Meta: map[string]any{}}
-	captureNetNTLMv2(buildType3("CORP", "alice", "WS01", ntResp), serverChallenge, &res)
+	captureNetNTLMv2("smb", buildType3("CORP", "alice", "WS01", ntResp), serverChallenge, &res)
 
 	if res.Meta["ntlm_user"] != "alice" || res.Meta["ntlm_domain"] != "CORP" {
 		t.Fatalf("user/domain = %v / %v", res.Meta["ntlm_user"], res.Meta["ntlm_domain"])
