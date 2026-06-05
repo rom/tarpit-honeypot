@@ -149,9 +149,13 @@ func TestProfileClickableLabels(t *testing.T) {
 	_ = st.Insert(ctx, &event.Event{
 		ID: "c1", Time: time.Now().UTC(), Sensor: "s", RuleID: "cve:CVE-2017-9841", Severity: event.SeverityCritical,
 		Source: event.Endpoint{IP: "9.9.9.9"}, Handler: "http", Dest: event.Endpoint{Port: 80},
-		Anomalies:    []string{"webapp-secret-file-probe"},
+		Anomalies:    []string{"webapp-secret-file-probe", "webapp:sqli"},
 		MitreTactics: []string{"initial-access"},
-		Meta:         map[string]any{"tools": []any{"sqlmap"}},
+		Meta: map[string]any{
+			"tools": []any{"sqlmap"}, "cloud_provider": "aws", "net_class": "hosting",
+			"tls_version": "TLS 1.3", "sni": "evil.example",
+			"harvested_urls": []any{"http://evil.example/x.sh"},
+		},
 	})
 	srv, err := New(config.UI{Enabled: true, Bind: "127.0.0.1:0"}, st)
 	if err != nil {
@@ -178,6 +182,19 @@ func TestProfileClickableLabels(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/events?source=9.9.9.9&amp;tactic=initial-access"`) {
 		t.Errorf("tactic not linked: %q", body)
+	}
+	// origin/infrastructure "network", protocol intelligence, domains/SNIs,
+	// harvested URLs and web-attack classes are clickable too.
+	for _, want := range []string{
+		`href="/events?cloud=aws"`,                          // network: cloud provider
+		`href="/events?source=9.9.9.9&amp;q=hosting"`,       // network: net_class
+		`href="/events?source=9.9.9.9&amp;q=evil.example"`,  // domains / SNIs
+		`href="/events?source=9.9.9.9&amp;q=webapp%3asqli"`, // web-attack class
+		`>http://evil.example/x.sh</a>`,                     // harvested URL is a link
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("profile missing clickable label %q\nbody: %q", want, body)
+		}
 	}
 }
 

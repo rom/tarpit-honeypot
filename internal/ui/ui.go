@@ -234,6 +234,9 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		// the rule isn't a CVE-exploit-attempt rule — so a recent-events row for a
 		// CVE rule can also link out to the CVE reference.
 		"cveOf": cveOf,
+		// tunnelKindURL links a friendly tunnel-kind label (optionally scoped to
+		// one source) to the events that produced that covert-transport detection.
+		"tunnelKindURL": tunnelKindURL,
 		// metaScalar returns the event meta minus the keys rendered in their own
 		// dedicated sections (the structured HTTP capture), so the generic meta
 		// table doesn't also dump them as ugly map[...] blobs.

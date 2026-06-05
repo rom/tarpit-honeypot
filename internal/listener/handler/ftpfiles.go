@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/fakefiles"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/safe"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // ftpFiles is a medium-interaction FTP server that allows anonymous
@@ -66,10 +67,12 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 
 	var (
 		user       string
+		pass       string
 		authed     bool
 		cwd        = "/"
 		commands   []string
 		retrieved  []string
+		upload     []byte // last uploaded file, surfaced as res.Payload for YARA/classify/persist
 		listenAddr string
 		dataLn     net.Listener
 		protP      bool // FTPS PROT P: the data channel is TLS too
@@ -116,6 +119,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			user = arg
 			_, _ = conn.Write([]byte("331 Please specify the password.\r\n"))
 		case "PASS":
+			pass = arg
 			res.Meta["user"] = safe.SanitizeForLog(user)
 			res.Meta["pass"] = safe.SanitizeForLog(arg)
 			if c, ok := creds.Match(user, arg); ok {
@@ -133,12 +137,13 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		case "SYST":
 			_, _ = conn.Write([]byte("215 UNIX Type: L8\r\n"))
 		case "FEAT":
-			feat := "211-Features:\r\n PASV\r\n SIZE\r\n UTF8\r\n"
+			// Advertise the full vsftpd FEAT set (+ explicit-FTPS while plaintext)
+			// so the daemon is fingerprintable, not just its 220 banner.
+			fl := defaultFTPFeatures
 			if f.tlsMgr != nil && !alreadyTLS(conn) {
-				feat += " AUTH TLS\r\n AUTH SSL\r\n PBSZ\r\n PROT\r\n"
+				fl = append([]string{"AUTH TLS", "AUTH SSL", "PBSZ", "PROT"}, fl...)
 			}
-			feat += "211 End\r\n"
-			_, _ = conn.Write([]byte(feat))
+			_, _ = conn.Write([]byte(buildFTPFeat(fl)))
 		case "AUTH":
 			// Explicit FTPS (RFC 4217): AUTH TLS / AUTH SSL upgrades the control
 			// channel; USER/PASS + the browse/download session are then captured
@@ -242,6 +247,33 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			}
 			f.serveRetr(conn, dataLn, dataWrap, file)
 			dataLn = nil
+		case "STOR", "STOU", "APPE":
+			// Anonymous/authed upload: capture the dropped file so it can be
+			// checksummed + classified + YARA-scanned (malware / webshell drop).
+			if !authed {
+				_, _ = conn.Write([]byte("530 Please login with USER and PASS.\r\n"))
+				break
+			}
+			flagAnomaly(&res, "ftp-upload-attempt")
+			buf := f.recvUpload(conn, dataLn, dataWrap)
+			dataLn = nil
+			full := joinPath(cwd, arg)
+			res.Meta["ftp_upload_name"] = safe.SanitizeForLog(full)
+			res.Meta["ftp_upload_size"] = len(buf)
+			if len(buf) > 0 {
+				prev := buf
+				if len(prev) > 512 {
+					prev = prev[:512]
+				}
+				res.Meta["ftp_upload_preview"] = safe.SanitizeForLog(string(prev))
+				ftpAnalyzeUpload(&res, full, buf)
+				upload = buf
+			}
+		case "MKD", "XMKD":
+			_, _ = conn.Write([]byte("257 \"" + joinPath(cwd, arg) + "\" created.\r\n"))
+		case "DELE", "RMD", "XRMD":
+			flagAnomaly(&res, "ftp-delete-attempt")
+			_, _ = conn.Write([]byte("550 Permission denied.\r\n"))
 		case "QUIT":
 			_, _ = conn.Write([]byte("221 Goodbye.\r\n"))
 			i = maxCommands // break the loop
@@ -262,8 +294,38 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		res.Meta["retrieved"] = retrieved
 	}
 	res.Meta["authed"] = authed
+	// Scanner / client fingerprint from the anonymous credential presented.
+	if tools := toolfp.IdentifyFTP(user, pass); len(tools) > 0 {
+		res.Meta["tools"] = tools
+		flagAnomaly(&res, "tool:"+tools[0])
+	}
+	// Surface an uploaded file as the payload so the sensor classifies + YARA-
+	// scans + persists it; otherwise keep the command transcript as the payload.
+	if len(upload) > 0 {
+		res.Payload = upload
+	} else if len(commands) > 0 {
+		res.Payload = []byte(strings.Join(commands, "\n"))
+	}
 	_ = listenAddr
 	return res, nil
+}
+
+// recvUpload accepts the pending PASV data connection and drains a bounded copy
+// of an uploaded file (TLS-wrapped under FTPS PROT P).
+func (f *ftpFiles) recvUpload(conn net.Conn, ln net.Listener, wrap func(net.Conn) net.Conn) []byte {
+	_, _ = conn.Write([]byte("150 Ok to send data.\r\n"))
+	dc := ftpAcceptData(ln)
+	if dc != nil {
+		dc = wrap(dc)
+	}
+	if dc == nil {
+		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
+		return nil
+	}
+	buf := readUploadBytes(dc, 64<<10)
+	_ = dc.Close()
+	_, _ = conn.Write([]byte("226 Transfer complete.\r\n"))
+	return buf
 }
 
 func (f *ftpFiles) serveList(conn net.Conn, ln net.Listener, wrap func(net.Conn) net.Conn, files *fakefiles.Set, dir string, nameOnly bool) {

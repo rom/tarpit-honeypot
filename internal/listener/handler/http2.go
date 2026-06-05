@@ -46,6 +46,15 @@ const (
 	h2RapidResetN    = 20 // RST_STREAM count -> CVE-2023-44487
 	h2ContFloodN     = 40 // CONTINUATION count -> CVE-2024-27316
 	h2MaxHeaderBlock = 1 << 20
+	// Frame / HPACK resource-exhaustion thresholds. Each maps to a known
+	// HTTP/2 DoS CVE; see the detection block in captureHTTP2.
+	h2ContUnboundedBytes = 1 << 14 // 16 KiB header block via CONTINUATION  -> CVE-2016-8740
+	h2BombFields         = 1000    // decoded header fields from one block   -> CVE-2026-49975 (nginx max_headers default)
+	h2HpackBombBytes     = 1 << 20 // 1 MiB decoded from a small block        -> CVE-2016-6581
+	h2HpackBombRatio     = 64      // decoded:wire amplification ratio        -> CVE-2016-6581
+	h2MemExhaustBytes    = 1 << 22 // 4 MiB decoded across the connection     -> CVE-2025-53020
+	h2StarveStreams      = 32      // half-open request streams (worker hold) -> CVE-2016-1546
+	h2MaxHPACKString     = 1 << 16 // per-header-string decode cap (anti self-DoS)
 )
 
 // h2Stream accumulates one HTTP/2 stream's reconstructed request.
@@ -57,6 +66,11 @@ type h2Stream struct {
 	endStream   bool
 	reset       bool
 	recorded    bool
+	// Frame-DoS accounting.
+	wireBytes    int // compressed header-block bytes received (HEADERS + CONTINUATION)
+	contBytes    int // of which received via CONTINUATION frames
+	decodedBytes int // sum(len(name)+len(value)+32) over decoded fields (RFC 7541 §4.1)
+	fieldCount   int // number of decoded header fields
 }
 
 // captureHTTP2 drives the HTTP/2 connection after the preface has been
@@ -78,9 +92,11 @@ func captureHTTP2(conn net.Conn, br *bufio.Reader, cfg config.Listener, res *Res
 		h2Frame(h2FrameSettings, h2FlagAck, 0, nil)...))
 
 	dec := hpack.NewDecoder(4096, nil)
+	dec.SetMaxStringLength(h2MaxHPACKString) // bound a single header string so the honeypot can't be bombed while decoding
 	streams := map[uint32]*h2Stream{}
 	var requests []map[string]any
 	rstCount, contCount, dataFrames := 0, 0, 0
+	zeroWindow := false // client advertised SETTINGS_INITIAL_WINDOW_SIZE=0 (Slowloris hold)
 
 	total := 0
 	for frames := 0; frames < h2MaxFrames && total < capN; frames++ {
@@ -107,6 +123,7 @@ func captureHTTP2(conn net.Conn, br *bufio.Reader, cfg config.Listener, res *Res
 		case h2FrameContinuation:
 			contCount++
 			if st := streams[sid]; st != nil && !st.endHeaders {
+				st.contBytes += len(payload)
 				st.appendBlock(payload)
 				if flags&h2FlagEndHeaders != 0 {
 					st.decode(dec)
@@ -125,7 +142,16 @@ func captureHTTP2(conn net.Conn, br *bufio.Reader, cfg config.Listener, res *Res
 				st.reset = true
 			}
 		case h2FrameSettings:
-			if flags&h2FlagAck == 0 { // a settings (not ACK) — ack it
+			if flags&h2FlagAck == 0 { // a settings (not ACK) — inspect + ack it
+				for i := 0; i+6 <= len(payload); i += 6 {
+					// SETTINGS_INITIAL_WINDOW_SIZE (0x4) == 0 starves flow control:
+					// the client never lets data flow, so the connection (and its
+					// pinned memory) stays open indefinitely — the hold half of the
+					// HTTP/2 Bomb.
+					if binary.BigEndian.Uint16(payload[i:]) == 0x4 && binary.BigEndian.Uint32(payload[i+2:]) == 0 {
+						zeroWindow = true
+					}
+				}
 				_, _ = conn.Write(h2Frame(h2FrameSettings, h2FlagAck, 0, nil))
 			}
 		case h2FramePing:
@@ -168,11 +194,76 @@ func captureHTTP2(conn net.Conn, br *bufio.Reader, cfg config.Listener, res *Res
 		flagAnomaly(res, "http2-continuation-flood") // CVE-2024-27316
 	}
 
+	// HPACK / frame resource-exhaustion analysis over the reconstructed streams.
+	// A full "HTTP/2 Bomb" composes several of these (HPACK bomb + header-count
+	// amplification + a zero-window hold), so more than one CVE can fire.
+	var maxCont, maxFields, totalDecoded, hold int
+	var byteBomb *h2Stream
+	for _, st := range streams {
+		if st.contBytes > maxCont {
+			maxCont = st.contBytes
+		}
+		if st.fieldCount > maxFields {
+			maxFields = st.fieldCount
+		}
+		totalDecoded += st.decodedBytes
+		if st.endHeaders && !st.endStream && !st.reset {
+			hold++ // a request whose stream never completes — pins a worker / buffer
+		}
+		if st.decodedBytes >= h2HpackBombBytes && st.wireBytes > 0 &&
+			st.decodedBytes/st.wireBytes >= h2HpackBombRatio {
+			byteBomb = st
+		}
+	}
+	// CVE-2016-8740 — unbounded header block accumulated across CONTINUATION frames.
+	if maxCont >= h2ContUnboundedBytes {
+		res.Meta["http2_continuation_bytes"] = maxCont
+		h2FlagCVE(res, "http2-continuation-unbounded", "CVE-2016-8740")
+	}
+	// CVE-2016-6581 — HPACK bomb: a small header block decoding to a huge byte size.
+	if byteBomb != nil {
+		res.Meta["http2_hpack_decoded_bytes"] = byteBomb.decodedBytes
+		res.Meta["http2_hpack_wire_bytes"] = byteBomb.wireBytes
+		h2FlagCVE(res, "http2-hpack-bomb", "CVE-2016-6581")
+	}
+	// CVE-2026-49975 — HTTP/2 Bomb: thousands of near-empty headers (the count the
+	// nginx fix caps at 1000), optionally with a zero-window Slowloris hold.
+	if maxFields >= h2BombFields {
+		res.Meta["http2_max_header_fields"] = maxFields
+		if zeroWindow {
+			res.Meta["http2_zero_window"] = true
+		}
+		h2FlagCVE(res, "http2-bomb", "CVE-2026-49975")
+	}
+	// CVE-2025-53020 — Apache mod_http2 unbounded memory from HTTP/2 header amplification.
+	if totalDecoded >= h2MemExhaustBytes {
+		res.Meta["http2_decoded_total"] = totalDecoded
+		h2FlagCVE(res, "http2-memory-exhaustion", "CVE-2025-53020")
+	}
+	// CVE-2016-1546 — worker-thread starvation: many half-open request streams.
+	if hold >= h2StarveStreams {
+		res.Meta["http2_incomplete_streams"] = hold
+		h2FlagCVE(res, "http2-worker-starvation", "CVE-2016-1546")
+	}
+	if zeroWindow {
+		flagAnomaly(res, "http2-zero-window-hold")
+	}
+
 	_, _ = conn.Write(h2Frame(h2FrameGoaway, 0, 0, []byte{0, 0, 0, 0, 0, 0, 0, 0}))
 	res.BannerSent = "http2 (h2c) capture"
 }
 
+// h2FlagCVE records a frame-DoS detection both as a descriptive anomaly and as
+// a recognized CVE, so it surfaces as a cve:<id> event and in the source's CVE
+// list (with the catalog record for name/CVSS/CWE/EPSS).
+func h2FlagCVE(res *Result, anomaly, cve string) {
+	flagAnomaly(res, anomaly)
+	res.CVEHits = appendUnique(res.CVEHits, cve)
+	flagAnomaly(res, "cve:"+cve)
+}
+
 func (st *h2Stream) appendBlock(b []byte) {
+	st.wireBytes += len(b) // count the attempted bytes so a bomb is still measured past the cap
 	if len(st.headerBlock)+len(b) > h2MaxHeaderBlock {
 		return
 	}
@@ -180,16 +271,27 @@ func (st *h2Stream) appendBlock(b []byte) {
 }
 
 // decode HPACK-decodes the accumulated header block against the connection's
-// dynamic table (shared across streams, per RFC 7541).
+// dynamic table (shared across streams, per RFC 7541). It decodes via the
+// streaming emit callback rather than DecodeFull so a decompression bomb (a
+// tiny block referencing a large/oft-repeated dynamic-table entry) is COUNTED
+// (fieldCount / decodedBytes) without materialising the whole expanded list —
+// only the first keepFields are retained for request reconstruction, bounding
+// the honeypot's own memory.
 func (st *h2Stream) decode(dec *hpack.Decoder) {
 	st.endHeaders = true
 	if len(st.headerBlock) == 0 {
 		return
 	}
-	fields, err := dec.DecodeFull(st.headerBlock)
-	if err == nil {
-		st.fields = fields
-	}
+	const keepFields = 256
+	dec.SetEmitFunc(func(f hpack.HeaderField) {
+		st.fieldCount++
+		st.decodedBytes += len(f.Name) + len(f.Value) + 32
+		if len(st.fields) < keepFields {
+			st.fields = append(st.fields, f)
+		}
+	})
+	_, _ = dec.Write(st.headerBlock)
+	dec.SetEmitFunc(func(hpack.HeaderField) {}) // detach this stream's closure
 	st.headerBlock = nil
 }
 

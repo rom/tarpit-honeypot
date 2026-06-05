@@ -48,6 +48,14 @@ positive identification enriches the triggering event and emits a
 `malware:capture` event; the artifact bytes are persisted to
 `<data_dir>/payloads/<sha256>.<ext>` and listed on the **captures** page.
 
+**Uploads are scanned too.** A file pushed to the FTP handlers (STOR/STOU/APPE,
+including anonymous uploads) is captured, MD5/SHA1/SHA256-checksummed into the
+event, flagged by type and drop context (e.g. `ftp-elf-upload`,
+`ftp-keymaterial-upload`, `ftp-anon-writable-drop` for /pub /incoming /upload),
+and surfaced as the connection payload so it runs through this same classifier +
+rule engine. Archives are inspected for embedded executables
+(`payload-archive-exe`) even when the member is renamed (magic-byte check).
+
 CVE *exploit-attempt* detection over request payloads is a **separate** layer
 (`internal/cve`, the `cve:<id>` events) — YARA here is about the bytes attackers
 leave behind, not the request that delivered them.

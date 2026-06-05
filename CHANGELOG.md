@@ -8,13 +8,65 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **FTP upload capture → checksums + classification + YARA.** Both FTP handlers
+  now treat a STOR/STOU/APPE as a malware/webshell drop: the uploaded file is
+  read (bounded), **MD5/SHA1/SHA256** checksummed into the event meta, flagged by
+  type and drop-context (`ftp-elf-upload` / `ftp-pe-upload` / `ftp-macho-upload`
+  / `ftp-archive-upload` / `ftp-script-upload`, `ftp-executable-upload`,
+  `ftp-keymaterial-upload`, `ftp-script-dropper-upload`, `ftp-webshell-upload`,
+  and `ftp-anon-writable-drop` for /pub /incoming /upload /tmp …), and **surfaced
+  as the connection payload** so the sensor's payload pipeline runs full
+  file-type classification + the built-in YARA engine + persistence over the
+  captured file. The `ftp_files` handler also now **accepts anonymous uploads**
+  (was download-only) and advertises the full vsftpd FEAT set.
+- **FTP scanner/client fingerprinting** (`toolfp.IdentifyFTP`) — identifies the
+  client/scanner from the anonymous credential it presents (nmap `IEUser@`,
+  Firefox/Chrome/wget/lftp/ncftp default passwords; self-identifying zgrab /
+  masscan / nuclei / hydra / medusa / ncrack / censys / shodan). Wired into both
+  FTP handlers (`tools` meta + `tool:<name>` anomaly).
+- **More YARA classification rules / file-type coverage:** a `Private_Key_Material`
+  rule (PEM / OpenSSH / PuTTY private keys + authorized public keys), a classic
+  `WEBSHELL_ASP_Classic` rule, and **archive-contains-executable** detection in
+  the static analyzer (a zip/jar/apk member that is a PE/ELF/Mach-O by magic *or*
+  by dangerous extension → `payload-archive-exe` anomaly + report trait). ELF/PE
+  uploads, shell-dropper scripts, packed/UPX binaries, Mirai/Gafgyt, XMRig and
+  reverse-shell one-liners are already covered by the existing built-in pack and
+  now fire on FTP uploads too via the payload pipeline.
+- **HTTP/2 frame-DoS detection** in the h2c handler (`internal/listener/handler/http2.go`),
+  each surfaced as a `cve:<id>` event + descriptive anomaly:
+  - **CVE-2026-49975 "HTTP/2 Bomb"** (`http2-bomb`) — thousands of near-empty
+    HPACK headers (header-field-count amplification; the count nginx's fix caps
+    at 1000), plus the zero-window Slowloris hold (`http2-zero-window-hold`,
+    detected from `SETTINGS_INITIAL_WINDOW_SIZE=0`).
+  - **CVE-2016-6581 HPACK Bomb** (`http2-hpack-bomb`) — a tiny header block that
+    decodes to a huge byte size (decoded:wire amplification ≥ 64×, ≥ 1 MiB).
+  - **CVE-2016-8740** (`http2-continuation-unbounded`) — an unbounded header
+    block accumulated across CONTINUATION frames (≥ 16 KiB on one stream).
+  - **CVE-2016-1546** (`http2-worker-starvation`) — many half-open request
+    streams (≥ 32) holding worker threads/buffers.
+  - **CVE-2025-53020** (`http2-memory-exhaustion`) — aggregate HPACK-decoded
+    memory across the connection exceeding 4 MiB (Apache mod_http2 family).
+
+  The HPACK decode was also hardened: it now streams via a bounded emit callback
+  (retaining only the first 256 fields, capping single strings) so the honeypot
+  *measures* a decompression bomb without being bombed by it — the previous
+  `DecodeFull` over a 1 MiB-capped block could itself blow up. New catalog
+  records (CWE-400/409/770, T1499/impact) and `CWE-409` (data amplification)
+  added.
+
 ### Changed
 
 - **More clickable UI labels.** On the **threat map** page the *events* /
   *countries* / *ASNs* counter boxes are now links (events → the event log;
   countries / ASNs → their on-page breakdown). In an attacker profile the
-  *tools / scanners* and *ATT&CK tactics* labels link to that source's filtered
-  events (`/events?source=…&tool=…` / `…&tactic=…`).
+  *tools / scanners*, *ATT&CK tactics*, *web-attack classes*, *domains / SNIs
+  requested*, *harvested URLs*, *protocol intelligence* (TLS versions / SSH KEX /
+  QUIC SNI+ALPN), and the *origin & infrastructure* **network** row (cloud
+  provider + net-class) link to that source's filtered events. On the **tunnels
+  & covert transport** page the *kind* labels (by-type bars + the by-source and
+  recent chips) link to the events that produced each detection.
 
 ## [2.11.0] — 2026-06-05
 
