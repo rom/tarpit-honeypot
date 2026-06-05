@@ -129,6 +129,7 @@ var cweNames = map[string]string{
 	"CWE-367": "Time-of-check Time-of-use (TOCTOU) Race Condition",
 	"CWE-369": "Divide By Zero",
 	"CWE-401": "Missing Release of Memory after Effective Lifetime",
+	"CWE-409": "Improper Handling of Highly Compressed Data (Data Amplification)",
 	"CWE-444": "Inconsistent Interpretation of HTTP Requests (Request Smuggling)",
 	"CWE-451": "User Interface Misrepresentation of Critical Information (Clickjacking)",
 	"CWE-489": "Active Debug Code",

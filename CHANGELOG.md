@@ -8,6 +8,30 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP/2 frame-DoS detection** in the h2c handler (`internal/listener/handler/http2.go`),
+  each surfaced as a `cve:<id>` event + descriptive anomaly:
+  - **CVE-2026-49975 "HTTP/2 Bomb"** (`http2-bomb`) — thousands of near-empty
+    HPACK headers (header-field-count amplification; the count nginx's fix caps
+    at 1000), plus the zero-window Slowloris hold (`http2-zero-window-hold`,
+    detected from `SETTINGS_INITIAL_WINDOW_SIZE=0`).
+  - **CVE-2016-6581 HPACK Bomb** (`http2-hpack-bomb`) — a tiny header block that
+    decodes to a huge byte size (decoded:wire amplification ≥ 64×, ≥ 1 MiB).
+  - **CVE-2016-8740** (`http2-continuation-unbounded`) — an unbounded header
+    block accumulated across CONTINUATION frames (≥ 16 KiB on one stream).
+  - **CVE-2016-1546** (`http2-worker-starvation`) — many half-open request
+    streams (≥ 32) holding worker threads/buffers.
+  - **CVE-2025-53020** (`http2-memory-exhaustion`) — aggregate HPACK-decoded
+    memory across the connection exceeding 4 MiB (Apache mod_http2 family).
+
+  The HPACK decode was also hardened: it now streams via a bounded emit callback
+  (retaining only the first 256 fields, capping single strings) so the honeypot
+  *measures* a decompression bomb without being bombed by it — the previous
+  `DecodeFull` over a 1 MiB-capped block could itself blow up. New catalog
+  records (CWE-400/409/770, T1499/impact) and `CWE-409` (data amplification)
+  added.
+
 ### Changed
 
 - **More clickable UI labels.** On the **threat map** page the *events* /

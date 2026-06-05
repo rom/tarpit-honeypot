@@ -1255,6 +1255,33 @@ var catalog = []Record{
 		Technique: "T1499", Tactic: "impact",
 		Description: "HTTP/2 Rapid Reset: an attacker opens and immediately RST_STREAM-cancels a flood of streams, exhausting server resources — the record-setting 2023 DDoS technique.",
 	},
+	// HTTP/2 frame / HPACK resource-exhaustion family (detected by the h2c handler
+	// from frame shape, not a request-payload signature).
+	{
+		ID: "CVE-2016-6581", Name: "HTTP/2 HPACK Bomb", CVSS: 7.5, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "HPACK header-compression bomb: a tiny HEADERS block that references a large dynamic-table entry many times decompresses to gigabytes, exhausting server memory (Benfield, 2016).",
+	},
+	{
+		ID: "CVE-2016-8740", Name: "Apache mod_http2 CONTINUATION memory exhaustion", CVSS: 7.5, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Apache httpd mod_http2 did not bound the HTTP/2 header block accumulated across CONTINUATION frames, so an unbounded run of CONTINUATION frames exhausts server memory.",
+	},
+	{
+		ID: "CVE-2016-1546", Name: "Apache mod_http2 worker-thread starvation", CVSS: 5.9, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Apache httpd mod_http2 lets a single HTTP/2 connection hold many half-open request streams, starving the worker-thread pool and denying service to other clients.",
+	},
+	{
+		ID: "CVE-2025-53020", Name: "Apache mod_http2 memory exhaustion (HTTP/2 bomb)", CVSS: 7.5, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "Apache httpd mod_http2 unbounded memory growth from HTTP/2 header amplification / late-processed streams (the HPACK-bomb family, ~4000x amplification); fixed in 2.4.64.",
+	},
+	{
+		ID: "CVE-2026-49975", Name: "HTTP/2 Bomb DoS", CVSS: 7.5, Service: "http",
+		Technique: "T1499", Tactic: "impact",
+		Description: "HTTP/2 Bomb: thousands of near-empty HPACK headers (per-entry bookkeeping amplification, the decoded-size limit never fires) combined with a zero-window Slowloris hold pin server memory to exhaustion across nginx/Apache/IIS/Envoy/Pingora (Codex/Calif, 2026).",
+	},
 	{
 		ID: "CVE-2024-3596", Name: "Blast-RADIUS MD5 forgery (MITM)", CVSS: 9.0, Service: "radius",
 		Technique: "T1557", Tactic: "credential-access",
@@ -2204,6 +2231,11 @@ var cveExtra = map[string]struct {
 	"CVE-2024-10924": {[]string{"CWE-288"}, "cpe:2.3:a:really-simple-plugins:really_simple_security:*", 0.90},
 	"CVE-2025-24472": {[]string{"CWE-288"}, "cpe:2.3:o:fortinet:fortios:*", 0.90},
 	"CVE-2023-44487": {[]string{"CWE-400"}, "cpe:2.3:a:ietf:http:2.0", 0.80},
+	"CVE-2016-6581":  {[]string{"CWE-400", "CWE-409"}, "cpe:2.3:a:ietf:http:2.0", 0.30},
+	"CVE-2016-8740":  {[]string{"CWE-400", "CWE-770"}, "cpe:2.3:a:apache:http_server:*", 0.40},
+	"CVE-2016-1546":  {[]string{"CWE-400"}, "cpe:2.3:a:apache:http_server:*", 0.20},
+	"CVE-2025-53020": {[]string{"CWE-400", "CWE-770"}, "cpe:2.3:a:apache:http_server:*", 0.40},
+	"CVE-2026-49975": {[]string{"CWE-400", "CWE-409", "CWE-770"}, "cpe:2.3:a:ietf:http:2.0", 0.50},
 	"CVE-2024-3596":  {[]string{"CWE-924", "CWE-328"}, "cpe:2.3:a:ietf:radius:*", 0.30},
 }
 

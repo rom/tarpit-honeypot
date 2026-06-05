@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,5 +154,90 @@ func TestHTTP2StripsPaddingAndPriority(t *testing.T) {
 	reqs, _ := res.Meta["http2_requests"].([]map[string]any)
 	if len(reqs) != 1 || reqs[0]["path"] != "/padded" {
 		t.Fatalf("padded/priority HEADERS not parsed: %v", reqs)
+	}
+}
+
+// h2RepeatPairs returns n copies of the same header pair (HPACK indexes the
+// repeats to ~1 byte each — the basis of the amplification bombs below).
+func h2RepeatPairs(n int, name, val string) [][2]string {
+	out := make([][2]string, n)
+	for i := range out {
+		out[i] = [2]string{name, val}
+	}
+	return out
+}
+
+func h2HasCVE(res Result, id string) bool {
+	for _, c := range res.CVEHits {
+		if c == id {
+			return true
+		}
+	}
+	return false
+}
+
+// CVE-2026-49975 — HTTP/2 Bomb: thousands of near-empty headers (+ zero-window hold).
+func TestHTTP2BombFieldCount(t *testing.T) {
+	zeroWin := h2Frame(h2FrameSettings, 0, 0, []byte{0, 4, 0, 0, 0, 0}) // INITIAL_WINDOW_SIZE=0
+	hdrs := h2EncodeHeaders(h2RepeatPairs(1500, "x", "y")...)
+	frames := append(zeroWin, h2Frame(h2FrameHeaders, h2FlagEndHeaders|h2FlagEndStream, 1, hdrs)...)
+	res := runHTTP2(t, frames)
+	if !hasAnom(res, "http2-bomb") || !h2HasCVE(res, "CVE-2026-49975") {
+		t.Errorf("HTTP/2 bomb not detected: fields=%v cves=%v", res.Meta["http2_max_header_fields"], res.CVEHits)
+	}
+	if !hasAnom(res, "http2-zero-window-hold") || res.Meta["http2_zero_window"] != true {
+		t.Errorf("zero-window hold not flagged: %v", res.Meta)
+	}
+}
+
+// CVE-2016-6581 — HPACK bomb: a tiny block decoding to a huge byte size.
+func TestHTTP2HpackBomb(t *testing.T) {
+	big := strings.Repeat("A", 3000)
+	hdrs := h2EncodeHeaders(h2RepeatPairs(400, "x-big", big)...)
+	frames := append(h2Frame(h2FrameSettings, 0, 0, nil),
+		h2Frame(h2FrameHeaders, h2FlagEndHeaders|h2FlagEndStream, 1, hdrs)...)
+	res := runHTTP2(t, frames)
+	if !hasAnom(res, "http2-hpack-bomb") || !h2HasCVE(res, "CVE-2016-6581") {
+		t.Errorf("HPACK bomb not detected: decoded=%v wire=%v cves=%v",
+			res.Meta["http2_hpack_decoded_bytes"], res.Meta["http2_hpack_wire_bytes"], res.CVEHits)
+	}
+}
+
+// CVE-2025-53020 — aggregate decoded memory exhaustion (full bomb).
+func TestHTTP2MemoryExhaustion(t *testing.T) {
+	big := strings.Repeat("A", 3000)
+	hdrs := h2EncodeHeaders(h2RepeatPairs(1600, "x-big", big)...) // ~4.8 MiB decoded
+	frames := append(h2Frame(h2FrameSettings, 0, 0, nil),
+		h2Frame(h2FrameHeaders, h2FlagEndHeaders|h2FlagEndStream, 1, hdrs)...)
+	res := runHTTP2(t, frames)
+	if !hasAnom(res, "http2-memory-exhaustion") || !h2HasCVE(res, "CVE-2025-53020") {
+		t.Errorf("memory exhaustion not detected: total=%v cves=%v", res.Meta["http2_decoded_total"], res.CVEHits)
+	}
+}
+
+// CVE-2016-8740 — unbounded header block accumulated across CONTINUATION frames.
+func TestHTTP2ContinuationUnbounded(t *testing.T) {
+	// 48 KiB value (HPACK-Huffman shrinks repeated 'a' to ~30 KiB on the wire —
+	// still well over the 16 KiB CONTINUATION-bytes threshold).
+	full := h2EncodeHeaders([2]string{":method", "GET"}, [2]string{":path", "/x"},
+		[2]string{"x-pad", strings.Repeat("a", 48000)})
+	h := h2Frame(h2FrameHeaders, h2FlagEndStream, 1, full[:256])       // no END_HEADERS
+	c := h2Frame(h2FrameContinuation, h2FlagEndHeaders, 1, full[256:]) // END_HEADERS, bulk of the block
+	res := runHTTP2(t, append(append(h2Frame(h2FrameSettings, 0, 0, nil), h...), c...))
+	if !hasAnom(res, "http2-continuation-unbounded") || !h2HasCVE(res, "CVE-2016-8740") {
+		t.Errorf("unbounded CONTINUATION not detected: contBytes=%v cves=%v", res.Meta["http2_continuation_bytes"], res.CVEHits)
+	}
+}
+
+// CVE-2016-1546 — worker-thread starvation: many half-open request streams.
+func TestHTTP2WorkerStarvation(t *testing.T) {
+	frames := h2Frame(h2FrameSettings, 0, 0, nil)
+	for i := uint32(0); i < 40; i++ {
+		frames = append(frames, h2Frame(h2FrameHeaders, h2FlagEndHeaders, 1+i*2, // END_HEADERS only: no END_STREAM, no RST
+			h2EncodeHeaders([2]string{":method", "POST"}, [2]string{":path", "/upload"}))...)
+	}
+	res := runHTTP2(t, frames)
+	if !hasAnom(res, "http2-worker-starvation") || !h2HasCVE(res, "CVE-2016-1546") {
+		t.Errorf("worker starvation not detected: hold=%v cves=%v", res.Meta["http2_incomplete_streams"], res.CVEHits)
 	}
 }
