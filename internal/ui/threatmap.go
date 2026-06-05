@@ -107,10 +107,10 @@ func buildThreatMapView(since time.Time, evs []*event.Event) threatMapView {
 	}
 
 	v.Counters = []counter{
-		{Label: "events", Value: len(evs), Class: "c-total"},
+		{Label: "events", Value: len(evs), Class: "c-total", Href: "/events"},
 		{Label: "geo-located", Value: v.GeoLocated, Class: "c-icmp"},
-		{Label: "countries", Value: len(country), Class: "c-tcp"},
-		{Label: "ASNs", Value: len(asn), Class: "c-udp"},
+		{Label: "countries", Value: len(country), Class: "c-tcp", Href: "#map-countries"},
+		{Label: "ASNs", Value: len(asn), Class: "c-udp", Href: "#map-asns"},
 		{Label: "threat-intel hits", Value: intelHits, Class: "sev-bg-high"},
 		{Label: "known-bad sources", Value: distinctIntelIPs, Class: "sev-bg-critical"},
 		{Label: "tor exits", Value: torExits, Class: "sev-bg-medium"},
