@@ -163,6 +163,11 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 	}
 
 	eventID := event.NewID()
+	// Count every connection's bytes + read/write operations (per direction)
+	// for the traffic-rate charts. Applied to all modes/connections, before the
+	// optional pcap wrapper, so it tallies the full uncapped volume.
+	counter := newCountConn(conn)
+	conn = counter
 	var sess *capture.Session
 	if t.captureMgr != nil && t.cfg.Mode != "drop" {
 		// drop mode never reads/writes, so capturing it produces empty pcaps
@@ -199,6 +204,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 				}
 			}
 		}
+		counter.stamp(ev)
 		send(ctx, bus, ev)
 	}
 
@@ -351,8 +357,8 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		send(ctx, bus, startEv)
 		// runTarpit closes the connection and releases the state slot.
 		// We bypass finish() because the tarpit_end event is emitted from
-		// runTarpit itself; the capture write happens there.
-		t.runTarpitWithCapture(ctx, conn, bus, start, src, dst, sess)
+		// runTarpit itself; the capture write + byte/packet stamp happen there.
+		t.runTarpitWithCapture(ctx, conn, bus, start, src, dst, sess, counter)
 	}
 }
 

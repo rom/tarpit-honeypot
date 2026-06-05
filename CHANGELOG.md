@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Network-traffic charts on `/charts`.** A new **Network traffic** section
+  plots four time series over the selected range: **incoming** and **outgoing**
+  throughput (auto-scaled network bit-rate, **kb/s ↔ Mb/s**) and **incoming** and
+  **outgoing** packet rate (**packets/s**). These are driven by new per-connection
+  counters every listener now stamps onto each event — `bytes_in` / `bytes_out`
+  (full, uncapped volume, via a lock-free counting wrapper applied to every
+  accepted TCP connection independent of pcap capture) and `pkts_in` / `pkts_out`
+  (application-layer read/write segments, a close proxy for on-wire packets since
+  the sensor captures from inside the app goroutine, not a raw socket). UDP is
+  counted per datagram. Rates are each bucket's summed volume ÷ the bucket width;
+  idle buckets read zero.
 - **Configurable upload retention + captures for every upload path.** A new
   `sensor.payloads.max_upload_kb` (default 1 MiB; CLI
   `--set sensor.payloads.max_upload_kb=<KiB>`) caps how much of an uploaded file

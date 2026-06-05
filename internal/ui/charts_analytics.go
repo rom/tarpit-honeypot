@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
+	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // Additional analytics for the /charts page: port×hour heatmap, destination-port
@@ -279,6 +281,98 @@ func actorGraph(evs []*event.Event) (chartFig, bool) {
 	}
 	return chartFigure("force", "Actor clustering (sources ↔ shared ASN / fingerprint)",
 		map[string]any{"nodes": nodes, "edges": edges}), true
+}
+
+// trafficCharts renders incoming/outgoing throughput (network bit-rate) and
+// packet-rate over time from the per-connection counters the listeners stamp
+// onto every event (bytes_in/out, pkts_in/out). Each event's totals are summed
+// into its time bucket and divided by the bucket width to give the average rate
+// for that bucket; idle buckets read zero. Throughput auto-scales between kb/s
+// and Mb/s (network bits-per-second) from the series peak so both directions
+// share a comparable axis.
+//
+// "Packets" are application-layer read/write segments — the sensor captures
+// from inside the app goroutine, not a raw socket (no CAP_NET_RAW) — so this is
+// a close proxy for, not an exact count of, on-wire packets. For UDP each
+// datagram is one packet in (and the response, if any, one packet out).
+func trafficCharts(evs []*event.Event, hours []store.HourBucket) []chartFig {
+	if len(hours) == 0 || len(evs) == 0 {
+		return nil
+	}
+	bucketDur := time.Hour
+	if len(hours) >= 2 {
+		if d := hours[1].Hour.Sub(hours[0].Hour); d > 0 {
+			bucketDur = d
+		}
+	}
+	durMs := bucketDur.Milliseconds()
+	secs := bucketDur.Seconds()
+	if durMs <= 0 || secs <= 0 {
+		return nil
+	}
+	n := len(hours)
+	base := hours[0].Hour.UnixMilli()
+	bytesIn := make([]float64, n)
+	bytesOut := make([]float64, n)
+	pktsIn := make([]float64, n)
+	pktsOut := make([]float64, n)
+	xs := make([]float64, n)
+	for i, h := range hours {
+		xs[i] = float64(h.Hour.UnixMilli())
+	}
+	var seen bool
+	for _, ev := range evs {
+		idx := int((ev.Time.UnixMilli() - base) / durMs)
+		if idx < 0 || idx >= n {
+			continue
+		}
+		bi, _ := metaFloat(ev.Meta, "bytes_in")
+		bo, _ := metaFloat(ev.Meta, "bytes_out")
+		pi, _ := metaFloat(ev.Meta, "pkts_in")
+		po, _ := metaFloat(ev.Meta, "pkts_out")
+		if bi == 0 && bo == 0 && pi == 0 && po == 0 {
+			continue
+		}
+		seen = true
+		bytesIn[idx] += bi
+		bytesOut[idx] += bo
+		pktsIn[idx] += pi
+		pktsOut[idx] += po
+	}
+	if !seen {
+		return nil
+	}
+
+	// Throughput unit: pick kb/s vs Mb/s from the larger of the two peak
+	// byte-rates (converted to bits) so the in/out charts stay comparable.
+	peak := 0.0
+	for i := 0; i < n; i++ {
+		peak = math.Max(peak, math.Max(bytesIn[i], bytesOut[i]))
+	}
+	peakBits := (peak / secs) * 8
+	unit, div := "kb/s", 125.0 // bytes/s -> kilobits/s: *8/1000 == /125
+	if peakBits >= 1e6 {
+		unit, div = "Mb/s", 125000.0 // bytes/s -> megabits/s: *8/1e6 == /125000
+	}
+
+	const inColor, outColor = "#4a6fa5", "#d59a3a"
+	rateLine := func(title, color string, sums []float64, perSecDiv float64) chartFig {
+		pts := make([]chPoint, n)
+		for i := 0; i < n; i++ {
+			v := (sums[i] / secs) / perSecDiv
+			pts[i] = chPoint{X: xs[i], Y: math.Round(v*1000) / 1000}
+		}
+		return chartFigure("line", title, map[string]any{
+			"series": []map[string]any{{"name": title, "points": pts, "color": color}},
+			"xType":  "time",
+		})
+	}
+	return []chartFig{
+		rateLine("Incoming network traffic ("+unit+")", inColor, bytesIn, div),
+		rateLine("Outgoing network traffic ("+unit+")", outColor, bytesOut, div),
+		rateLine("Incoming network traffic (packets/s)", inColor, pktsIn, 1),
+		rateLine("Outgoing network traffic (packets/s)", outColor, pktsOut, 1),
+	}
 }
 
 // covRow is one row of the coverage-gap report.

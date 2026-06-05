@@ -134,6 +134,18 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			ev.PayloadLen = n
 			ev.PayloadBase64 = base64.StdEncoding.EncodeToString(payload)
 		}
+		// Traffic accounting (one datagram in, an optional response datagram
+		// out). UDP is connectionless, so we count per packet here rather than
+		// via a conn wrapper; the response size is the banner the handler sent.
+		if ev.Meta == nil {
+			ev.Meta = map[string]any{}
+		}
+		ev.Meta["bytes_in"] = int64(n)
+		ev.Meta["pkts_in"] = int64(1)
+		if out := len(res.BannerSent); out > 0 {
+			ev.Meta["bytes_out"] = int64(out)
+			ev.Meta["pkts_out"] = int64(1)
+		}
 		select {
 		case bus <- ev:
 		case <-ctx.Done():
