@@ -21,10 +21,11 @@ import (
 )
 
 type ftp struct {
-	jit    *jitter.Jitterer
-	arch   *archetype.Profile
-	id     *identity.Identity
-	tlsMgr *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
+	jit       *jitter.Jitterer
+	arch      *archetype.Profile
+	id        *identity.Identity
+	tlsMgr    *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
+	maxUpload int          // per-upload capture cap in bytes (0 = default)
 }
 
 func (f *ftp) Name() string { return "ftp" }
@@ -81,7 +82,11 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (r
 	clientIP := hostFromAddr(conn.RemoteAddr())
 	var commands []string
 	res.Meta = map[string]any{}
-	sess := &ftpSession{conn: conn, res: &res, files: fakefiles.Default(f.id), cwd: "/", clientIP: clientIP}
+	maxUp := f.maxUpload
+	if maxUp <= 0 {
+		maxUp = 1 << 20
+	}
+	sess := &ftpSession{conn: conn, res: &res, files: fakefiles.Default(f.id), cwd: "/", clientIP: clientIP, maxUpload: maxUp}
 	if f.tlsMgr != nil {
 		sess.wrapData = func(c net.Conn) net.Conn {
 			nc, err := startTLS(ctx, c, f.tlsMgr, cfg.ID, tlsHosts(cfg), f.arch)
@@ -226,9 +231,10 @@ type ftpSession struct {
 	// FTPS data-channel protection: when the client negotiated AUTH TLS and then
 	// PROT P, the data connection is TLS too. wrapData performs the server-side
 	// handshake on an accepted data conn; protP gates whether to apply it.
-	protP    bool
-	wrapData func(net.Conn) net.Conn
-	upload   []byte // last uploaded file (STOR/STOU/APPE), surfaced as res.Payload
+	protP     bool
+	wrapData  func(net.Conn) net.Conn
+	upload    []byte // last uploaded file (STOR/STOU/APPE), surfaced as res.Payload
+	maxUpload int    // per-upload capture cap in bytes
 }
 
 func (s *ftpSession) reply(line string) { _, _ = s.conn.Write([]byte(line + "\r\n")) }
@@ -428,7 +434,7 @@ func (s *ftpSession) recvStor(name string) {
 		s.reply("425 Can't open data connection.")
 		return
 	}
-	buf := readUploadBytes(dc, 64<<10)
+	buf := readUploadBytes(dc, s.maxUpload)
 	_ = dc.Close()
 	full := joinPath(s.cwd, name)
 	s.res.Meta["ftp_upload_name"] = safe.SanitizeForLog(full)

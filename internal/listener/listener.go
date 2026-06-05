@@ -46,6 +46,9 @@ type BuildArgs struct {
 	// the client KEXINIT/HASSH (interaction.ssh_kex_depth:
 	// extended_experimental).
 	SSHKexExtended bool
+	// MaxUploadBytes caps how much of an uploaded file handlers capture for
+	// retention + classification (sensor.payloads.max_upload_kb).
+	MaxUploadBytes int
 }
 
 func Build(l config.Listener, args BuildArgs) (Listener, error) {
@@ -80,6 +83,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		TLSIntercept:   l.TLSIntercept,
 		SessionRec:     args.SessionRec,
 		SSHKexExtended: args.SSHKexExtended,
+		MaxUploadBytes: args.MaxUploadBytes,
 	}
 	switch l.Proto {
 	case "tcp":

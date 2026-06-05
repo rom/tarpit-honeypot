@@ -29,11 +29,14 @@ import (
 // response timing noise, dataDir for cert / state persistence, and the
 // URL canary list for HTTP/HTTPS matching.
 type Deps struct {
-	Identity    *identity.Identity
-	Jitter      *jitter.Jitterer
-	DataDir     string
-	URLCanaries []config.URLCanary
-	TLSRotate   int // days; 0 = never rotate
+	Identity *identity.Identity
+	Jitter   *jitter.Jitterer
+	DataDir  string
+	// MaxUploadBytes caps how much of an uploaded file (FTP STOR / web upload)
+	// a handler captures for retention + classification (0 = handler default).
+	MaxUploadBytes int
+	URLCanaries    []config.URLCanary
+	TLSRotate      int // days; 0 = never rotate
 	// Archetype, if set, pins SSH / HTTP / FTP / Telnet / SMTP /
 	// MySQL banners to values consistent with a stock install of a
 	// specific OS. nil = fall back to the identity-based variant
@@ -185,9 +188,9 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "telnet":
 		return &telnet{jit: deps.Jitter, arch: deps.Archetype, rec: deps.SessionRec}, nil
 	case "ftp":
-		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, tlsMgr: maybeCertMgr(deps)}, nil
+		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, tlsMgr: maybeCertMgr(deps), maxUpload: deps.MaxUploadBytes}, nil
 	case "ftp_files":
-		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds, tlsMgr: maybeCertMgr(deps)}, nil
+		return &ftpFiles{id: deps.Identity, arch: deps.Archetype, acceptCreds: deps.AcceptCreds, tlsMgr: maybeCertMgr(deps), maxUpload: deps.MaxUploadBytes}, nil
 	case "modbus":
 		return &modbus{}, nil
 	case "s7":
