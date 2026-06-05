@@ -342,6 +342,11 @@ func buildAnalytics(d dashboard, hours []store.HourBucket, evs []*event.Event) c
 		p.Sections = append(p.Sections, overview)
 	}
 
+	// Network traffic — incoming/outgoing throughput + packet rate over time.
+	if figs := trafficCharts(evs, hours); len(figs) > 0 {
+		p.Sections = append(p.Sections, chartSection{Heading: "Network traffic", Figs: figs})
+	}
+
 	// ATT&CK & threats.
 	threat := chartSection{Heading: "ATT&CK & threats"}
 	if len(d.Tactics) > 0 {
@@ -552,6 +557,8 @@ func metaFloat(m map[string]any, key string) (float64, bool) {
 		f, err := v.Float64()
 		return f, err == nil
 	case int:
+		return float64(v), true
+	case int64:
 		return float64(v), true
 	}
 	return 0, false

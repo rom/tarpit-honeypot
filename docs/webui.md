@@ -270,7 +270,14 @@ The virtual networks / hosts / services this sensor presents.
 ### charts (`/charts`)
 Client-side analytics figures (the one place that uses the packaged charts.js;
 with JS off each figure shows a fallback note). Beyond the headline
-severity/handler/source breakdowns it includes: a **destination-port × hour-of-day
+severity/handler/source breakdowns it includes a **Network traffic** section —
+**incoming** and **outgoing throughput** (auto-scaled network bit-rate, kb/s ↔
+Mb/s) and **incoming** and **outgoing packet rate** (packets/s) over time, from
+the per-connection byte/packet counters every listener stamps onto each event
+(each bucket's summed volume ÷ the bucket width; "packets" are application-layer
+read/write segments, a close proxy for on-wire packets since the sensor captures
+from inside the app goroutine, not a raw socket). It also includes: a
+**destination-port × hour-of-day
 heatmap** and **dest-port leaderboard** (what's being scanned and when); **CVE
 analytics** — exploit-attempt leaderboard, disclosure-year (n-day age) histogram,
 **EPSS-weighted exposure** ranking (attempts × EPSS, the relative-priority list),
