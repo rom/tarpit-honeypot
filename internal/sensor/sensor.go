@@ -1729,6 +1729,7 @@ func (s *Sensor) startListener(l config.Listener) error {
 		VulnEmulation:    cfg.Sensor.VulnEmulation,
 		SessionRec:       s.sessionRec,
 		SSHKexExtended:   cfg.Interaction.SSHKexDepth == config.SSHKexExtendedExp,
+		MaxUploadBytes:   cfg.Sensor.Payloads.UploadCapBytes(),
 	})
 	if err != nil {
 		cancel()

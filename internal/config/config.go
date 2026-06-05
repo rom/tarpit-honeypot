@@ -741,6 +741,12 @@ type Payloads struct {
 	Enabled bool `yaml:"enabled"`
 	// MaxBytes caps a single harvested artifact (default 1 MiB).
 	MaxBytes int `yaml:"max_bytes"`
+	// MaxUploadKB caps how much of an uploaded file (FTP STOR/STOU/APPE, a web
+	// upload, …) is captured off the wire for full-sample retention +
+	// classification. 0 = the 1 MiB default; raise it for larger samples. The
+	// persisted copy is additionally bounded by MaxBytes. Overridable on the CLI
+	// with `run --max-upload-kb`.
+	MaxUploadKB int `yaml:"max_upload_kb"`
 	// MaxTotalMB caps the payloads directory with oldest-first rotation
 	// (default 256 MB).
 	MaxTotalMB int `yaml:"max_total_mb"`
@@ -778,6 +784,15 @@ type Payloads struct {
 	// flagged known_malware (+ family) — instant attribution. Used when
 	// Analyze is on. fetch-enrichment.sh can download + normalize the feed.
 	MalwareHashes string `yaml:"malware_hashes"`
+}
+
+// UploadCapBytes returns the effective per-upload capture cap in bytes
+// (MaxUploadKB, or 1 MiB when unset).
+func (p Payloads) UploadCapBytes() int {
+	if p.MaxUploadKB > 0 {
+		return p.MaxUploadKB << 10
+	}
+	return 1 << 20
 }
 
 // GeoIP turns on country/city/ASN enrichment of source IPs using

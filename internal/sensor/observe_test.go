@@ -45,6 +45,33 @@ func TestObservePayloadELFCritical(t *testing.T) {
 	}
 }
 
+// A web-style upload (a binary wrapped in a multipart/form-data body, so its
+// magic is not at offset 0) is still extracted and persisted to the payloads
+// directory — i.e. it shows up on the captures page like an FTP upload.
+func TestObservePayloadPersistsEmbeddedUpload(t *testing.T) {
+	dir := t.TempDir()
+	store, err := payload.NewStore(filepath.Join(dir, "payloads"), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Sensor{name: "t", payloads: store}
+	elf := append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, bytes.Repeat([]byte{0x42}, 96)...)
+	body := []byte("POST /upload HTTP/1.1\r\nContent-Type: multipart/form-data; boundary=b\r\n\r\n" +
+		"--b\r\nContent-Disposition: form-data; name=\"f\"; filename=\"x\"\r\n\r\n")
+	body = append(append(body, elf...), []byte("\r\n--b--\r\n")...)
+	ev := &event.Event{ID: "w1", RuleID: "listener:http", Handler: "http", Proto: "tcp", Source: event.Endpoint{IP: "1.2.3.4"}}
+	if mw := s.observePayload(ev, body); mw == nil {
+		t.Fatal("expected a malware:capture for the embedded upload")
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "payloads", "*.elf"))
+	if len(files) != 1 {
+		t.Fatalf("embedded upload not persisted to payloads dir: %v", files)
+	}
+	if !hasAnomaly(ev, "payload-embedded") {
+		t.Errorf("payload-embedded anomaly missing: %v", ev.Anomalies)
+	}
+}
+
 // End-to-end: with a real payload.Store wired in, a captured executable is
 // actually written to <data_dir>/payloads/<sha256>.elf, the on-disk filename is
 // recorded in the source event's payload_artifacts descriptor, and the file is

@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Added
 
+- **Configurable upload retention + captures for every upload path.** A new
+  `sensor.payloads.max_upload_kb` (default 1 MiB; CLI
+  `--set sensor.payloads.max_upload_kb=<KiB>`) caps how much of an uploaded file
+  is captured, so operators can keep full samples. Files obtained **any** way —
+  FTP uploads, web/multipart uploads, a raw request body after the HTTP headers,
+  or a binary embedded mid-stream / base64-encoded in a URL or header — are now
+  extracted (`payload-embedded`), checksummed, classified + YARA-scanned, and
+  persisted to `<data_dir>/payloads/`, so they all appear on the **captures**
+  page (previously only files whose magic sat at offset 0 were harvested).
 - **FTP upload capture → checksums + classification + YARA.** Both FTP handlers
   now treat a STOR/STOU/APPE as a malware/webshell drop: the uploaded file is
   read (bounded), **MD5/SHA1/SHA256** checksummed into the event meta, flagged by

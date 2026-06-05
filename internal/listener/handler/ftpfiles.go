@@ -40,6 +40,7 @@ type ftpFiles struct {
 	arch        *archetype.Profile
 	acceptCreds string
 	tlsMgr      *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
+	maxUpload   int          // per-upload capture cap in bytes (0 = default)
 }
 
 func (f *ftpFiles) Name() string { return "ftp_files" }
@@ -322,7 +323,11 @@ func (f *ftpFiles) recvUpload(conn net.Conn, ln net.Listener, wrap func(net.Conn
 		_, _ = conn.Write([]byte("425 Can't open data connection.\r\n"))
 		return nil
 	}
-	buf := readUploadBytes(dc, 64<<10)
+	cap := f.maxUpload
+	if cap <= 0 {
+		cap = 1 << 20
+	}
+	buf := readUploadBytes(dc, cap)
 	_ = dc.Close()
 	_, _ = conn.Write([]byte("226 Transfer complete.\r\n"))
 	return buf

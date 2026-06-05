@@ -11,6 +11,7 @@
 package payload
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -64,6 +65,22 @@ func Scan(data []byte, keepBytes bool) Finding {
 		return f
 	}
 	classifyInto(&f, data, false, keepBytes)
+
+	// Embedded files: an uploaded sample is usually wrapped — a multipart
+	// form-data body, an HTTP/PUT request with leading headers, a file encoded
+	// elsewhere in the stream — so the magic isn't at offset 0. When the
+	// whole-buffer classify found nothing, scan for an executable/archive magic
+	// anywhere and harvest from there, so web / multipart / raw uploads are
+	// captured (and end up on the captures page) just like an FTP STOR.
+	if len(f.Artifacts) == 0 {
+		if off := firstEmbeddedMagic(data); off > 0 {
+			before := len(f.Artifacts)
+			classifyInto(&f, data[off:], false, keepBytes)
+			if len(f.Artifacts) > before {
+				f.Markers = appendUnique(f.Markers, "payload-embedded")
+			}
+		}
+	}
 
 	// Harvest ingress URLs from the textual view.
 	text := string(data)
@@ -159,6 +176,34 @@ func classify(b []byte) (kind, detail string) {
 		return KindShellcode, "x86 shellcode heuristic"
 	}
 	return "", ""
+}
+
+// firstEmbeddedMagic returns the earliest offset > 0 of a recognized
+// executable/archive magic (ELF, PE, zip/jar, Mach-O), or -1 if none. Used to
+// extract a file wrapped inside another stream (multipart upload, request body
+// after headers, …). Only binary magics are scanned — a bare "#!" anywhere is
+// too common in text to treat as an embedded script.
+func firstEmbeddedMagic(b []byte) int {
+	best := -1
+	consider := func(i int) {
+		if i > 0 && (best < 0 || i < best) {
+			best = i
+		}
+	}
+	consider(bytes.Index(b, []byte("\x7fELF")))
+	consider(bytes.Index(b, []byte("PK\x03\x04")))
+	// PE: an MZ that actually has a PE\0\0 header after it (a stray "MZ" in text
+	// is not an executable).
+	if i := bytes.Index(b, []byte("MZ")); i > 0 && containsBytes(b[i:], []byte("PE\x00\x00")) {
+		consider(i)
+	}
+	for _, m := range [][]byte{
+		{0xCF, 0xFA, 0xED, 0xFE}, {0xCE, 0xFA, 0xED, 0xFE},
+		{0xFE, 0xED, 0xFA, 0xCF}, {0xFE, 0xED, 0xFA, 0xCE},
+	} {
+		consider(bytes.Index(b, m))
+	}
+	return best
 }
 
 func isMachO(b []byte) bool {

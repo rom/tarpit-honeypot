@@ -112,3 +112,41 @@ func hasMarker(list []string, want string) bool {
 	}
 	return false
 }
+
+// A file wrapped in another stream (e.g. a multipart/form-data web upload, or a
+// raw PUT body after the HTTP headers) is extracted from its embedded magic so
+// it is captured + classified like an FTP STOR.
+func TestScanEmbeddedUpload(t *testing.T) {
+	elf := append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, bytes.Repeat([]byte{0x42}, 96)...)
+	multipart := []byte("------WebKitFormBoundary\r\n" +
+		"Content-Disposition: form-data; name=\"file\"; filename=\"x\"\r\n" +
+		"Content-Type: application/octet-stream\r\n\r\n")
+	body := append(append([]byte{}, multipart...), elf...)
+	body = append(body, []byte("\r\n------WebKitFormBoundary--\r\n")...)
+
+	f := Scan(body, true)
+	if len(f.Artifacts) == 0 {
+		t.Fatalf("embedded ELF upload not extracted: markers=%v", f.Markers)
+	}
+	var gotELF bool
+	for _, a := range f.Artifacts {
+		if a.Kind == KindELF && len(a.Bytes) > 0 {
+			gotELF = true
+		}
+	}
+	if !gotELF {
+		t.Errorf("no ELF artifact among %+v", f.Artifacts)
+	}
+	if !hasMarker(f.Markers, "payload-embedded") {
+		t.Errorf("payload-embedded marker missing: %v", f.Markers)
+	}
+}
+
+// A stray "MZ" / shebang in plain text must NOT be treated as an embedded file.
+func TestScanEmbeddedNoFalsePositive(t *testing.T) {
+	text := []byte("the file MZ-tool ran #!/usr/bin/env and printed PKZIP is not here")
+	f := Scan(text, true)
+	if len(f.Artifacts) != 0 {
+		t.Errorf("benign text produced artifacts: %+v", f.Artifacts)
+	}
+}

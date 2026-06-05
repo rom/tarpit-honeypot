@@ -53,8 +53,17 @@ including anonymous uploads) is captured, MD5/SHA1/SHA256-checksummed into the
 event, flagged by type and drop context (e.g. `ftp-elf-upload`,
 `ftp-keymaterial-upload`, `ftp-anon-writable-drop` for /pub /incoming /upload),
 and surfaced as the connection payload so it runs through this same classifier +
-rule engine. Archives are inspected for embedded executables
-(`payload-archive-exe`) even when the member is renamed (magic-byte check).
+rule engine. `sensor.payloads.max_upload_kb` controls how much of an uploaded
+file is retained (default 1 MiB; `--set sensor.payloads.max_upload_kb=<KiB>` on
+the CLI) for full-sample capture.
+
+Files obtained any other way are captured the same way: a file **embedded inside
+another stream** — a multipart/form-data web upload, a raw PUT body after the
+HTTP headers, or a base64 blob in a URL/header — is extracted from its magic
+bytes wherever it sits (`payload-embedded`), so it also lands in
+`<data_dir>/payloads/` and on the **captures** page. Archives are inspected for
+embedded executables (`payload-archive-exe`) even when the member is renamed
+(magic-byte check).
 
 CVE *exploit-attempt* detection over request payloads is a **separate** layer
 (`internal/cve`, the `cve:<id>` events) — YARA here is about the bytes attackers
