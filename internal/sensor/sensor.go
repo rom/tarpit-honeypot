@@ -1118,6 +1118,13 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 			if rep.Packed {
 				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-packed")
 			}
+			if rep.ArchiveExecutable {
+				// Malware-in-a-zip: an archive carrying an executable member.
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-archive-exe")
+				if worst < event.SeverityHigh {
+					worst = event.SeverityHigh
+				}
+			}
 			// A known-malware hash match is a positive content identification —
 			// always Critical, regardless of any rule's declared severity.
 			if rep.KnownMalware {

@@ -1475,6 +1475,45 @@ func IdentifyDNS(qname string) []string {
 	return tools
 }
 
+// IdentifyFTP fingerprints an FTP client / scanner from the credentials it
+// presents. FTP carries no User-Agent, but anonymous logins leak the client:
+// browsers, CLI clients and scanners each send a recognizable default password
+// (and brute/recon tools self-identify in the username). Returns the matched
+// tool name(s), or nil.
+func IdentifyFTP(user, pass string) []string {
+	u := strings.ToLower(strings.TrimSpace(user))
+	p := strings.ToLower(strings.TrimSpace(pass))
+	var tools []string
+	add := func(t string) { tools = appendUnique(tools, t) }
+	switch {
+	case strings.Contains(p, "ieuser@"):
+		add("nmap") // nmap ftp-anon / ftp-brute default anon password
+	case p == "mozilla@example.com" || strings.Contains(p, "mozilla@"):
+		add("firefox")
+	case strings.Contains(p, "chrome@"):
+		add("chrome")
+	case strings.HasPrefix(p, "-wget@") || strings.Contains(p, "wget@"):
+		add("wget")
+	case strings.Contains(p, "ncftp@"):
+		add("ncftp")
+	case strings.Contains(p, "lftp@") || strings.Contains(u, "lftp"):
+		add("lftp")
+	case strings.Contains(p, "@example.com") && p != "anonymous@example.com":
+		add("curl") // curl/libcurl default anon password is "ftp@example.com"-style
+	}
+	// Self-identifying recon / brute tools in either field.
+	for _, s := range []struct{ needle, tool string }{
+		{"zgrab", "zgrab"}, {"masscan", "masscan"}, {"nuclei", "nuclei"},
+		{"hydra", "hydra"}, {"medusa", "medusa"}, {"patator", "patator"},
+		{"ncrack", "ncrack"}, {"censys", "censys"}, {"shodan", "shodan"},
+	} {
+		if strings.Contains(u, s.needle) || strings.Contains(p, s.needle) {
+			add(s.tool)
+		}
+	}
+	return tools
+}
+
 func contains(list []string, item string) bool {
 	for _, e := range list {
 		if e == item {

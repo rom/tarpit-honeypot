@@ -10,6 +10,30 @@ documented in `docs/`).
 
 ### Added
 
+- **FTP upload capture → checksums + classification + YARA.** Both FTP handlers
+  now treat a STOR/STOU/APPE as a malware/webshell drop: the uploaded file is
+  read (bounded), **MD5/SHA1/SHA256** checksummed into the event meta, flagged by
+  type and drop-context (`ftp-elf-upload` / `ftp-pe-upload` / `ftp-macho-upload`
+  / `ftp-archive-upload` / `ftp-script-upload`, `ftp-executable-upload`,
+  `ftp-keymaterial-upload`, `ftp-script-dropper-upload`, `ftp-webshell-upload`,
+  and `ftp-anon-writable-drop` for /pub /incoming /upload /tmp …), and **surfaced
+  as the connection payload** so the sensor's payload pipeline runs full
+  file-type classification + the built-in YARA engine + persistence over the
+  captured file. The `ftp_files` handler also now **accepts anonymous uploads**
+  (was download-only) and advertises the full vsftpd FEAT set.
+- **FTP scanner/client fingerprinting** (`toolfp.IdentifyFTP`) — identifies the
+  client/scanner from the anonymous credential it presents (nmap `IEUser@`,
+  Firefox/Chrome/wget/lftp/ncftp default passwords; self-identifying zgrab /
+  masscan / nuclei / hydra / medusa / ncrack / censys / shodan). Wired into both
+  FTP handlers (`tools` meta + `tool:<name>` anomaly).
+- **More YARA classification rules / file-type coverage:** a `Private_Key_Material`
+  rule (PEM / OpenSSH / PuTTY private keys + authorized public keys), a classic
+  `WEBSHELL_ASP_Classic` rule, and **archive-contains-executable** detection in
+  the static analyzer (a zip/jar/apk member that is a PE/ELF/Mach-O by magic *or*
+  by dangerous extension → `payload-archive-exe` anomaly + report trait). ELF/PE
+  uploads, shell-dropper scripts, packed/UPX binaries, Mirai/Gafgyt, XMRig and
+  reverse-shell one-liners are already covered by the existing built-in pack and
+  now fire on FTP uploads too via the payload pipeline.
 - **HTTP/2 frame-DoS detection** in the h2c handler (`internal/listener/handler/http2.go`),
   each surfaced as a `cve:<id>` event + descriptive anomaly:
   - **CVE-2026-49975 "HTTP/2 Bomb"** (`http2-bomb`) — thousands of near-empty

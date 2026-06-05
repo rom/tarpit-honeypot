@@ -9,6 +9,7 @@ import (
 	"debug/pe"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -46,6 +47,10 @@ type Report struct {
 	// the attributed malware family when the set carried one.
 	KnownMalware bool   `json:"known_malware,omitempty"`
 	Family       string `json:"family,omitempty"`
+	// ArchiveExecutable is set when the artifact is an archive (zip/jar/apk)
+	// that contains an executable member — a classic malware-in-a-zip drop.
+	ArchiveExecutable     bool   `json:"archive_executable,omitempty"`
+	ArchiveExecutableName string `json:"archive_executable_name,omitempty"`
 }
 
 // Section is one parsed section/segment with its entropy.
@@ -86,6 +91,9 @@ func AnalyzeWith(data []byte, eng *Engine) Report {
 	r.Strings = extractStrings(data, minStringLen, maxStrings)
 	r.IOCs = extractIOCs(r.Strings, maxIOCsPerKind)
 	r.Suspicious = suspiciousTraits(r)
+	if r.ArchiveExecutable {
+		r.Suspicious = append(r.Suspicious, "archive contains executable: "+r.ArchiveExecutableName)
+	}
 
 	// Whole-file packer heuristic (executables only — archives and media are
 	// legitimately high-entropy).
@@ -248,6 +256,10 @@ func analyzeZip(data []byte, r *Report) {
 		case f.Name == "classes.dex":
 			hasDex = true
 		}
+		if !r.ArchiveExecutable && zipEntryExecutable(f) {
+			r.ArchiveExecutable = true
+			r.ArchiveExecutableName = f.Name
+		}
 	}
 	r.Imports = names // archive entry names
 	switch {
@@ -258,6 +270,36 @@ func analyzeZip(data []byte, r *Report) {
 	case hasManifest:
 		r.FormatDetail = "ZIP archive (signed/manifest)"
 	}
+}
+
+// zipEntryExecutable reports whether an archive member is an executable — by a
+// dangerous extension or by its real magic bytes (so a renamed .jpg that is
+// actually a PE/ELF is still caught). Only the first 4 bytes are read, so a zip
+// bomb can't blow up the check.
+func zipEntryExecutable(f *zip.File) bool {
+	n := strings.ToLower(f.Name)
+	for _, ext := range []string{".exe", ".dll", ".scr", ".com", ".elf", ".so", ".sys", ".cpl", ".ocx"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	rc, err := f.Open()
+	if err != nil {
+		return false
+	}
+	defer rc.Close()
+	var magic [4]byte
+	got, _ := io.ReadFull(rc, magic[:])
+	b := magic[:got]
+	switch {
+	case len(b) >= 2 && b[0] == 'M' && b[1] == 'Z':
+		return true
+	case len(b) >= 4 && b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F':
+		return true
+	case len(b) >= 4 && isMachOMagic(b):
+		return true
+	}
+	return false
 }
 
 // sectionData reads up to sectionSampleKB from a section reader.

@@ -5483,6 +5483,34 @@ rule IIOT_MQTT_SparkplugB : protocol {
     condition:
         1 of them
 }
+
+rule Private_Key_Material : credaccess {
+    meta:
+        description = "private-key / SSH key material (PEM, OpenSSH, PuTTY, authorized public keys)"
+        severity = "high"
+    strings:
+        $pem  = "PRIVATE KEY-----"
+        $ossh = "BEGIN OPENSSH PRIVATE KEY"
+        $putty = "PuTTY-User-Key-File"
+        $rsa  = "ssh-rsa AAAA"
+        $ed   = "ssh-ed25519 AAAA"
+    condition:
+        1 of them
+}
+
+rule WEBSHELL_ASP_Classic : webshell {
+    meta:
+        description = "classic ASP (VBScript/JScript) command-exec webshell"
+    strings:
+        $a = "<%eval request(" nocase
+        $b = "<%execute request(" nocase
+        $c = "<%execute(request(" nocase
+        $d = "wscript.shell" nocase
+        $e = "server.createobject" nocase
+        $f = "cmd.exe /c" nocase
+    condition:
+        (1 of ($a, $b, $c)) or ($d and ($e or $f))
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source

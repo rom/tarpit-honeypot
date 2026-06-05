@@ -17,6 +17,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 type ftp struct {
@@ -40,11 +41,14 @@ var defaultFTPFeatures = []string{"EPRT", "EPSV", "MDTM", "PASV", "REST STREAM",
 func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (res Result, _ error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	f.jit.Sleep(ctx)
+	var transcript []byte
 	// Run the CVE signature catalog over the captured control-channel transcript
 	// on every exit path so a catalogued FTP-server exploit attempt (e.g. a
 	// ProFTPD mod_copy SITE CPFR/CPTO, or a path-traversal) becomes a cve:<id>.
+	// The transcript is matched explicitly (res.Payload may carry an uploaded
+	// file instead, so the sensor can YARA-scan / hash / persist it).
 	defer func() {
-		for _, rec := range cve.MatchPayload("ftp", string(res.Payload)) {
+		for _, rec := range cve.MatchPayload("ftp", string(transcript)) {
 			res.CVEHits = appendUnique(res.CVEHits, rec.ID)
 		}
 	}()
@@ -75,7 +79,6 @@ func (f *ftp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (r
 	passAttempts := 0
 	loggedIn := false
 	clientIP := hostFromAddr(conn.RemoteAddr())
-	var transcript []byte
 	var commands []string
 	res.Meta = map[string]any{}
 	sess := &ftpSession{conn: conn, res: &res, files: fakefiles.Default(f.id), cwd: "/", clientIP: clientIP}
@@ -191,7 +194,21 @@ loop:
 	if len(commands) > 0 {
 		res.Meta["ftp_commands"] = commands
 	}
-	res.Payload = transcript
+	// Scanner / client fingerprint from the anonymous credential it presented.
+	if tools := toolfp.IdentifyFTP(user, pass); len(tools) > 0 {
+		res.Meta["tools"] = tools
+		flagAnomaly(&res, "tool:"+tools[0])
+	}
+	// Surface an uploaded file as the connection payload so the sensor's payload
+	// pipeline runs full file-type classification + the YARA engine + persistence
+	// over it; keep the control transcript in meta. No upload -> the transcript
+	// is the payload (and the CVE catalog above already matched it).
+	if len(sess.upload) > 0 {
+		res.Meta["ftp_transcript"] = safe.SanitizeForLog(string(transcript))
+		res.Payload = sess.upload
+	} else {
+		res.Payload = transcript
+	}
 	return res, nil
 }
 
@@ -211,6 +228,7 @@ type ftpSession struct {
 	// handshake on an accepted data conn; protP gates whether to apply it.
 	protP    bool
 	wrapData func(net.Conn) net.Conn
+	upload   []byte // last uploaded file (STOR/STOU/APPE), surfaced as res.Payload
 }
 
 func (s *ftpSession) reply(line string) { _, _ = s.conn.Write([]byte(line + "\r\n")) }
@@ -410,21 +428,10 @@ func (s *ftpSession) recvStor(name string) {
 		s.reply("425 Can't open data connection.")
 		return
 	}
-	const cap = 64 << 10
-	_ = dc.SetReadDeadline(time.Now().Add(10 * time.Second))
-	buf := make([]byte, 0, 4096)
-	tmp := make([]byte, 4096)
-	for len(buf) < cap {
-		n, err := dc.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-		}
-		if err != nil {
-			break
-		}
-	}
+	buf := readUploadBytes(dc, 64<<10)
 	_ = dc.Close()
-	s.res.Meta["ftp_upload_name"] = safe.SanitizeForLog(joinPath(s.cwd, name))
+	full := joinPath(s.cwd, name)
+	s.res.Meta["ftp_upload_name"] = safe.SanitizeForLog(full)
 	s.res.Meta["ftp_upload_size"] = len(buf)
 	if len(buf) > 0 {
 		prev := buf
@@ -432,6 +439,10 @@ func (s *ftpSession) recvStor(name string) {
 			prev = prev[:512]
 		}
 		s.res.Meta["ftp_upload_preview"] = safe.SanitizeForLog(string(prev))
+		// Checksums + file-type / threat / drop-context flags; the bytes are
+		// surfaced as res.Payload (see Handle) for full classification + YARA.
+		ftpAnalyzeUpload(s.res, full, buf)
+		s.upload = buf
 	}
 	s.reply("226 Transfer complete.")
 }
