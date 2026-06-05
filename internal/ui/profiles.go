@@ -101,6 +101,10 @@ type Profile struct {
 	SSHKeys       []string `json:"ssh_keys,omitempty"`
 	Emails        []string `json:"emails,omitempty"`
 	AttackClasses []string `json:"attack_classes,omitempty"`
+	// ProbedFiles are the specific sensitive files this source tried to read
+	// (/.env, config backups, .git/config, LFI traversal targets) — surfaced so
+	// the secret-file-probe anomaly names the actual files, not just its count.
+	ProbedFiles []string `json:"probed_files,omitempty"`
 	// Playbooks are the named attack patterns the storyline correlator
 	// recognized for this source (e.g. ransomware-style-destruction,
 	// dns-tunneling, cloud-credential-takeover).
@@ -187,6 +191,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	sshKeySet := map[string]struct{}{}
 	emailSet := map[string]struct{}{}
 	attackClassSet := map[string]struct{}{}
+	probedFileSet := map[string]struct{}{}
 	playbookSet := map[string]struct{}{}
 	var maxSev event.Severity
 
@@ -298,6 +303,12 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 				attackClassSet[a] = struct{}{}
 			}
 		}
+		// The specific sensitive file each secret-file-probe / LFI attempt tried
+		// to read (recorded by the web decoy) — reveals WHICH files, not just
+		// that a probe happened.
+		if pf, _ := ev.Meta["probed_file"].(string); pf != "" {
+			probedFileSet[pf] = struct{}{}
+		}
 		if ev.RuleID == "canary:token_used" {
 			p.TokenReuse = true
 		}
@@ -381,6 +392,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	p.SSHKeys = sortedSet(sshKeySet)
 	p.Emails = sortedSet(emailSet)
 	p.AttackClasses = sortedSet(attackClassSet)
+	p.ProbedFiles = sortedSet(probedFileSet)
 	p.Playbooks = sortedSet(playbookSet)
 	p.Ports = sortedInts(portSet)
 	for r, c := range ruleCount {

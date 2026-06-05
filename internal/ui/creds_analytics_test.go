@@ -27,9 +27,14 @@ func TestIPv6Tag(t *testing.T) {
 		{"::ffff:1.2.3.4", false}, // IPv4-mapped — To4() != nil, so IPv4
 	}
 	for _, c := range cases {
-		got := strings.Contains(string(ipv6Tag(c.in)), "IPv6")
+		out := string(ipv6Tag(c.in))
+		got := strings.Contains(out, "IPv6")
 		if got != c.want {
 			t.Errorf("ipv6Tag(%q) badged=%v want %v", c.in, got, c.want)
+		}
+		// When badged, the chip must be a clickable link to the IPv6 search.
+		if c.want && !strings.Contains(out, `href="/search?family=ipv6"`) {
+			t.Errorf("ipv6Tag(%q) not clickable: %q", c.in, out)
 		}
 	}
 }

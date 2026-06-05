@@ -225,22 +225,51 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 	case path == "/api/users" || path == "/api/user" || path == "/api/user.php":
 		return webappAPIUser(server, q.Get("id"))
 
+	case path == "/api" || path == "/api/" || path == "/api/v1" || path == "/api/v1/" || path == "/api/v2" || path == "/api/v2/":
+		// REST API discovery root — a scanner hitting this is mapping the API.
+		flagAnomaly(res, "webapp:api-probe")
+		return webappAPIIndex(server, brand)
+
+	case path == "/openapi.json" || path == "/openapi.yaml" || path == "/swagger.json" ||
+		path == "/v3/api-docs" || path == "/v2/api-docs" || path == "/api-docs" || path == "/api/swagger.json":
+		// Machine-readable API contract — high-signal recon (it enumerates
+		// every endpoint, parameter, and auth scheme for the attacker).
+		flagAnomaly(res, "webapp:api-spec-probe")
+		return webappOpenAPISpec(server, brand)
+
+	case path == "/swagger" || path == "/swagger/" || path == "/swagger-ui" || path == "/swagger-ui/" ||
+		path == "/swagger-ui.html" || path == "/swagger/index.html" || path == "/api/docs" || path == "/docs/api":
+		flagAnomaly(res, "webapp:api-spec-probe")
+		return webappSwaggerUI(server, brand)
+
+	case path == "/graphql" || path == "/graphql/" || path == "/api/graphql" || path == "/v1/graphql" || path == "/query":
+		// GraphQL endpoint: POST runs the (introspection) query; GET serves the
+		// GraphiQL playground. Introspection bodies are flagged upstream by
+		// classifyWebAttacks (webapp:graphql-introspection).
+		if method == "POST" {
+			return webappGraphQL(server, body, res)
+		}
+		return webappGraphiQL(server, brand)
+
+	case path == "/graphiql" || path == "/graphiql/":
+		return webappGraphiQL(server, brand)
+
 	case path == "/robots.txt":
-		body := "User-agent: *\nDisallow: /admin/\nDisallow: /backup/\nDisallow: /config.php.bak\nDisallow: /.env\nDisallow: /api/\n"
+		body := "User-agent: *\nDisallow: /admin/\nDisallow: /backup/\nDisallow: /config.php.bak\nDisallow: /.env\nDisallow: /api/\nDisallow: /swagger/\nDisallow: /graphql\n"
 		return webappResponse(server, 200, "OK", "text/plain", body, nil)
 
 	case path == "/.env" || path == "/.env.bak":
-		flagAnomaly(res, "webapp:secret-file-probe")
+		recordProbedFile(res, path)
 		res.Meta["honeytoken"] = hc.dbPass
 		return webappResponse(server, 200, "OK", "text/plain", webappFakeEnv(app, hc), nil)
 
 	case path == "/.git/config":
-		flagAnomaly(res, "webapp:secret-file-probe")
+		recordProbedFile(res, path)
 		body := "[core]\n\trepositoryformatversion = 0\n\tbare = false\n[remote \"origin\"]\n\turl = https://git.internal/" + app + ".git\n"
 		return webappResponse(server, 200, "OK", "text/plain", body, nil)
 
 	case path == "/config.php.bak" || path == "/config.php~" || path == "/backup.zip":
-		flagAnomaly(res, "webapp:secret-file-probe")
+		recordProbedFile(res, path)
 		res.Meta["honeytoken"] = hc.dbPass
 		return webappResponse(server, 200, "OK", "text/plain", webappFakeConfig(app, hc), nil)
 
@@ -321,9 +350,11 @@ func webappFileResponse(server, f string, brand webBrand, cookie string, res *Re
 	switch {
 	case strings.Contains(low, "passwd"):
 		flagAnomaly(res, "webapp:lfi")
+		recordProbedFile(res, dec)
 		return webappResponse(server, 200, "OK", "text/plain", webappFakePasswd(), []string{cookie})
 	case strings.Contains(low, "win.ini"):
 		flagAnomaly(res, "webapp:lfi")
+		recordProbedFile(res, dec)
 		return webappResponse(server, 200, "OK", "text/plain",
 			"; for 16-bit app support\n[fonts]\n[extensions]\n[mci extensions]\n[files]\n[Mail]\nMAPI=1\n", []string{cookie})
 	case f == "":
@@ -341,6 +372,99 @@ func webappAPIUser(server, id string) string {
 	body := `{"id":"` + jsonEscape(id) + `","username":"jdoe","email":"jdoe@corp.internal","role":"user","active":true}`
 	return webappResponse(server, 200, "OK", "application/json", body, nil)
 }
+
+// recordProbedFile stamps the specific sensitive file a request tried to read
+// (an /.env, config backup, .git/config, or an LFI traversal target) onto the
+// event meta so the operator can see WHICH files were targeted — the secret-
+// file-probe / LFI anomalies on their own only say "a secret file was probed".
+// The probed_file values are aggregated per source on the attacker profile.
+func recordProbedFile(res *Result, name string) {
+	flagAnomaly(res, "webapp:secret-file-probe")
+	if name == "" {
+		return
+	}
+	res.Meta["probed_file"] = safe.SanitizeForLog(clipStr(name, 256))
+}
+
+// webappAPIIndex is a believable REST API discovery root: a JSON document
+// listing the (fake) endpoints, which is exactly what an API scanner expects
+// to find at /api.
+func webappAPIIndex(server string, b webBrand) string {
+	body := `{"name":"` + jsonEscape(b.Name) + ` API","version":"v1","status":"ok",` +
+		`"documentation":"/swagger","openapi":"/openapi.json","graphql":"/graphql",` +
+		`"endpoints":["/api/users","/api/login","/api/orders","/api/admin","/api/health"]}`
+	return webappResponse(server, 200, "OK", "application/json", body, nil)
+}
+
+// webappOpenAPISpec returns a minimal-but-believable OpenAPI 3.0 contract that
+// enumerates a handful of endpoints + a bearer-auth scheme. A scanner pulling
+// this is fingerprinting the API attack surface.
+func webappOpenAPISpec(server string, b webBrand) string {
+	name := jsonEscape(b.Name)
+	body := `{"openapi":"3.0.1",` +
+		`"info":{"title":"` + name + ` Internal API","version":"1.4.2","description":"` + name + ` service API (internal use only)"},` +
+		`"servers":[{"url":"/api/v1"}],` +
+		`"components":{"securitySchemes":{"bearerAuth":{"type":"http","scheme":"bearer","bearerFormat":"JWT"}}},` +
+		`"security":[{"bearerAuth":[]}],` +
+		`"paths":{` +
+		`"/login":{"post":{"summary":"Authenticate and obtain a JWT","tags":["auth"]}},` +
+		`"/users":{"get":{"summary":"List users","tags":["users"]}},` +
+		`"/users/{id}":{"get":{"summary":"Get a user by id","tags":["users"]}},` +
+		`"/orders":{"get":{"summary":"List orders","tags":["orders"]}},` +
+		`"/admin/config":{"get":{"summary":"Read service configuration","tags":["admin"]}}` +
+		`}}`
+	return webappResponse(server, 200, "OK", "application/json", body, nil)
+}
+
+// webappSwaggerUI returns a Swagger-UI HTML page (the familiar interactive API
+// browser) that loads the decoy /openapi.json spec.
+func webappSwaggerUI(server string, b webBrand) string {
+	html := "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">" +
+		"<title>" + htmlEscape(b.Name) + " API — Swagger UI</title>" +
+		"<link rel=\"stylesheet\" href=\"https://unpkg.com/swagger-ui-dist/swagger-ui.css\"></head>" +
+		"<body><div id=\"swagger-ui\"></div>" +
+		"<script src=\"https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js\"></script>" +
+		"<script>window.onload=function(){window.ui=SwaggerUIBundle({url:'/openapi.json',dom_id:'#swagger-ui'});};</script>" +
+		"</body></html>"
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", html, nil)
+}
+
+// webappGraphiQL returns the GraphiQL in-browser IDE shell pointed at /graphql.
+func webappGraphiQL(server string, b webBrand) string {
+	html := "<!DOCTYPE html><html><head><title>" + htmlEscape(b.Name) + " — GraphiQL</title>" +
+		"<link rel=\"stylesheet\" href=\"https://unpkg.com/graphiql/graphiql.min.css\"></head>" +
+		"<body style=\"margin:0\"><div id=\"graphiql\" style=\"height:100vh\">Loading GraphiQL…</div>" +
+		"<script src=\"https://unpkg.com/graphiql/graphiql.min.js\"></script>" +
+		"<script>GraphiQL.createFetcher&&GraphiQL.createFetcher({url:'/graphql'});</script>" +
+		"</body></html>"
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", html, nil)
+}
+
+// webappGraphQL answers a POST to the GraphQL endpoint. An introspection query
+// gets a believable (fake) schema so the scanner records a juicy, enumerable
+// API; any other query gets a generic validation error. Never executes
+// anything. Introspection is flagged upstream by classifyWebAttacks.
+func webappGraphQL(server string, body []byte, res *Result) string {
+	low := strings.ToLower(string(body))
+	if strings.Contains(low, "__schema") || strings.Contains(low, "introspectionquery") {
+		flagAnomaly(res, "webapp:graphql-introspection")
+		schema := `{"data":{"__schema":{"queryType":{"name":"Query"},"mutationType":{"name":"Mutation"},` +
+			`"types":[` +
+			`{"kind":"OBJECT","name":"Query","fields":[` +
+			`{"name":"me","type":{"name":"User"}},{"name":"users","type":{"name":"User"}},{"name":"orders","type":{"name":"Order"}}]},` +
+			`{"kind":"OBJECT","name":"User","fields":[{"name":"id","type":{"name":"ID"}},{"name":"email","type":{"name":"String"}},{"name":"role","type":{"name":"String"}}]},` +
+			`{"kind":"OBJECT","name":"Mutation","fields":[{"name":"login","type":{"name":"AuthPayload"}}]}]}}}`
+		return webappResponse(server, 200, "OK", "application/json", schema, nil)
+	}
+	if len(bytesTrimSpace(body)) == 0 {
+		return webappResponse(server, 400, "Bad Request", "application/json",
+			`{"errors":[{"message":"Must provide query string."}]}`, nil)
+	}
+	return webappResponse(server, 200, "OK", "application/json",
+		`{"errors":[{"message":"Cannot query field on type \"Query\"."}]}`, nil)
+}
+
+func bytesTrimSpace(b []byte) []byte { return []byte(strings.TrimSpace(string(b))) }
 
 func isWebappLoginPath(p string) bool {
 	switch p {

@@ -555,11 +555,18 @@ func attackType(id string) string {
 // IPv4 or IPv4-mapped address), else "". Used next to source addresses in
 // listings so the address family is obvious.
 func ipv6Tag(ip string) template.HTML {
-	p := net.ParseIP(strings.TrimSpace(ip))
-	if p != nil && p.To4() == nil && p.To16() != nil {
-		return template.HTML(` <span class="tag" title="IPv6 address">IPv6</span>`)
+	if isIPv6(ip) {
+		// Clickable: pivots to the search filtered to every IPv6-source event,
+		// so "this one is v6" leads to "show me all the v6 attackers".
+		return template.HTML(` <a class="tag" href="/search?family=ipv6" title="show all IPv6-source events">IPv6</a>`)
 	}
 	return ""
+}
+
+// isIPv6 reports whether s is a genuine IPv6 literal (not IPv4 / IPv4-mapped).
+func isIPv6(s string) bool {
+	p := net.ParseIP(strings.TrimSpace(s))
+	return p != nil && p.To4() == nil && p.To16() != nil
 }
 
 // cveOf extracts the CVE id from a CVE-exploit-attempt rule_id
