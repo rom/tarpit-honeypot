@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-06-05
+
 ### Fixed
 
 - **Profile page "internal error" / `unable to open database file (14)`.** The
@@ -22,6 +24,45 @@ documented in `docs/`).
   created automatically on the next start for existing databases.
 
 ### Added
+
+- **+100 more IoT / IIoT / OT / building-automation YARA rules** (`artifactscan`
+  pack now **469 rules**). A second domain-focused set: more IoT botnet/malware
+  families (AESDDoS/Dofloo, Ddostf, BillGates, LuaBot, Remaiten, Wifatch,
+  BCMUPnP_Hunter, Mirai Owari/Sora/Wicked, FreakOut, …) and router/camera
+  exploit-CGI patterns (Linksys JNAP, MikroTik Winbox, ASUS infosvr, Huawei HG,
+  ZTE, Foscam/Axis/Vivotek/GeoVision/Sony cameras, Tenda/TOTOLINK/DrayTek/Netgear
+  SOAP); more OT/ICS protocol & tooling fingerprints (PCWorx, Crimson v3,
+  ProConOS, EtherCAT, POWERLINK, SERCOS, Emerson ROC, ICCP/TASE.2, DLMS/COSEM,
+  ANSI C12, TwinCAT ADS, WAGO, PLCnext, B&R, Kepware/Matrikon OPC, ICSSploit,
+  Nmap ICS NSE, Redpoint, GRASSMARLIN, plcinject, Snap7); more ICS malware
+  (GreyEnergy, Exaramel, KillDisk, AcidRain/AcidPour, LookBack, LockerGoga,
+  Cring, MegaCortex); more building-automation product references (Siemens
+  APOGEE, Carrier i-Vu, Trane Tracer, Trend IQ, Sauter, Iconics, ABB Cylon,
+  Priva, LOYTEC, WattStopper, Philips Hue, Calimero, Niagara N4, Schneider
+  SmartX); and adjacent domains — smart meter (DLMS/ANSI C12, Termineter),
+  automotive (CAN-utils, UDS/CaringCaribou, J1939), medical (DICOM, HL7, FHIR),
+  maritime (NMEA/AIS), rail (RaSTA/Genisys), and discovery (SSDP, WS-Discovery,
+  mDNS, LoRaWAN, MQTT Sparkplug B).
+- **+30 CWE weakness-class names** (128 total) — memory-safety, crypto,
+  certificate, auth, concurrency and logging classes common in IoT/embedded/OT
+  firmware (out-of-bounds read, hard-coded password, weak/missing encryption,
+  TOCTOU, request smuggling, insufficient session expiration, …).
+- **YARA engine documentation** — new [`docs/yara.md`](docs/yara.md) (also under
+  the in-product **docs** tab): when rules run, the built-in pack, per-rule
+  severity, the supported rule subset + module surface, loading your own `.yar`
+  rules, known-malware hash sets, and the `analyze` CLI. The FAQ gains a
+  top-of-page index and an *Artifact analysis (YARA)* + *IPv6* section.
+
+### Changed
+
+- **Attacker-profile labels are clickable.** In `/profiles/<ip>` the
+  recent-events rule column (e.g. `webapp:secret-file-probe`, `cve:CVE-…`) links
+  to that source's filtered events, CVE rules also link to the CVE reference, and
+  anomaly tags link to the source-scoped search.
+- **CentOS example serves IPv6.** `configs/tarpit-honeypot.example-CENTOS-SERVER.yaml`
+  binds the IPv6 wildcard `"[::]:<port>"`, so on a dual-stack host every service
+  is reachable over both IPv6 and IPv4 on one socket (was IPv4-only `0.0.0.0`).
+- **Version → 2.11.0.**
 
 - **+100 IoT / IIoT / OT / building-automation YARA rules** (`artifactscan` pack
   now ~369 rules). New domain coverage: IoT botnet families (Hajime, Hide-N-Seek,

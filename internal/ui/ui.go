@@ -230,6 +230,10 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool)
 		"confLabel":      toolfp.ConfidenceLabel,
 		"techDesc":       mitre.Describe,
 		"cveURL":         func(id string) string { return cveURL(cveSource, id) },
+		// cveOf pulls the CVE id out of a "cve:CVE-YYYY-NNNN" rule_id, or "" when
+		// the rule isn't a CVE-exploit-attempt rule — so a recent-events row for a
+		// CVE rule can also link out to the CVE reference.
+		"cveOf": cveOf,
 		// metaScalar returns the event meta minus the keys rendered in their own
 		// dedicated sections (the structured HTTP capture), so the generic meta
 		// table doesn't also dump them as ugly map[...] blobs.
@@ -541,6 +545,17 @@ func attackType(id string) string {
 // cveURL returns the external reference URL for a CVE id, per the configured
 // source ("cve.org" or the default NVD). Returns "" for a non-CVE string so the
 // template can fall back to a plain label.
+// cveOf extracts the CVE id from a CVE-exploit-attempt rule_id
+// ("cve:CVE-2021-44228" -> "CVE-2021-44228"), or "" when the rule is not a CVE
+// rule. Used to add a CVE-reference link beside such rules in the profile.
+func cveOf(ruleID string) string {
+	id := strings.TrimPrefix(strings.TrimSpace(ruleID), "cve:")
+	if id == ruleID || !looksLikeCVE(id) {
+		return ""
+	}
+	return id
+}
+
 func cveURL(source, id string) string {
 	id = strings.TrimSpace(id)
 	if !looksLikeCVE(id) {

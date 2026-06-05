@@ -36,6 +36,7 @@ var docCatalog = []docLink{
 	{"archetypes", "OS / device archetypes", "The host personalities the sensor can present."},
 	{"attribution", "ATT&CK / D3FEND / CVE", "How interactions map to ATT&CK, D3FEND, and the CVE/CWE/CPE/EPSS catalog."},
 	{"attack-tools", "Attack-tool fingerprinting", "The scanners and attack tools the sensor recognizes: how identification works, the categories, and what's covered."},
+	{"yara", "YARA artifact rules", "The CGO-free YARA engine: the built-in rule pack, the supported subset + modules, per-rule severity, and loading your own rules."},
 	{"lua", "Lua service personas", "Writing Lua personas: the persona API, the sandbox limits, recipes, and the personas that ship."},
 	{"tcp-stack", "TCP stack", "The userspace TCP/IP stack behind the honeynet responders."},
 	{"design", "Design", "Design goals and the rationale behind the sensor."},

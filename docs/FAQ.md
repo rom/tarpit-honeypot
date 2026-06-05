@@ -10,6 +10,34 @@ Common questions about tarpit-honeypot, grouped by topic. See also
 > Every guide here is also rendered **in-product** under the web UI's **docs**
 > tab (`/docs/<name>`), so you can read all of this from the console.
 
+## Contents
+
+- [General](#general)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Sensor placement & networking](#sensor-placement-networking)
+- [Honeynets & virtual hosts](#honeynets-virtual-hosts)
+- [Deployment & safety](#deployment-safety)
+- [Detection & events](#detection-events)
+- [Tarpits](#tarpits)
+- [Canary tokens](#canary-tokens)
+- [Enrichment](#enrichment)
+- [ICS / OT](#ics-ot)
+- [Attacker intelligence](#attacker-intelligence)
+- [Web UI & API](#web-ui-api)
+- [Fleet & aggregation](#fleet-aggregation)
+- [IOCs & threat intel](#iocs-threat-intel)
+- [SIEM & integrations](#siem-integrations)
+- [Alerting & logging](#alerting-logging)
+- [Captures & forensics](#captures-forensics)
+- [Artifact analysis (YARA)](#artifact-analysis-yara)
+- [Performance & scale](#performance-scale)
+- [Operations](#operations)
+- [Customizing & extending](#customizing-extending)
+- [Legal & ethical](#legal-ethical)
+- [Troubleshooting](#troubleshooting)
+- [Glossary](#glossary)
+
 ## General
 
 **What is it?**
@@ -178,6 +206,20 @@ with `egress.enforce` adding an OS-level backstop. A blocked dial is logged as
 Yes — give each its own `sensor.data_dir` and non-overlapping binds (listeners +
 UI). They're independent processes; aggregate them with a fleet `ingest:` node if
 you want one view.
+
+**Does it support IPv6?**
+Yes, with full parity — source IP, capture, correlation, enrichment, risk,
+blocklist, canaries, and SIEM/STIX output are all address-family-agnostic, so an
+IPv6 attacker gets the same detection and ATT&CK mapping as IPv4. Bind a listener
+on the IPv6 wildcard to serve **both** families on one socket: `bind: "[::]:22"`
+(quote it — a bare `[::]` is read as a YAML flow sequence; on a dual-stack Linux
+host IPv4 clients are mapped in via `::ffff:0.0.0.0`). Use `0.0.0.0:<port>` for
+IPv4-only, or `[2001:db8::1]:<port>` for a specific address. The
+`example-CENTOS-SERVER.yaml` config ships with dual-stack `[::]` binds. A few
+protocols are IPv4-only *by specification* (NetBIOS, KNXnet/IP HPAI, PROFINET-DCP,
+the SNMP ARP table, FTP `PASV`→`EPSV`) and the honeynet ARP responder is IPv4 by
+nature (IPv6 host discovery uses ICMPv6). See [`config.md`](config.md) for the
+per-protocol detail.
 
 ## Honeynets & virtual hosts
 
@@ -794,6 +836,44 @@ artifact.
 The event-detail page offers a ZIP of everything from that source IP (the
 per-connection pcaps, session casts, and payloads); for scripting, combine
 `/api/events` with `export-pcap`.
+
+## Artifact analysis (YARA)
+
+**Does it run YARA on what attackers drop?**
+Yes. With `sensor.payloads.analyze: true` a built-in **CGO-free, pure-Go
+YARA-style engine** (`internal/artifactscan`) statically analyses every captured
+artifact (uploaded webshells, dropped malware, shellcode, archives) — format /
+entropy / imports / strings / IOCs plus a large built-in rule pack — and emits a
+`malware:capture` event with the matched rule(s). Detection only: nothing is
+executed. Full details in [`yara.md`](yara.md).
+
+**What does the built-in pack cover?**
+Hundreds of rules: commodity malware (RATs, stealers, loaders, ransomware),
+offensive tooling / C2 (Cobalt Strike, Sliver, Mimikatz, Impacket, …),
+webshells, packers, APT implants, and a deep **IoT / IIoT / OT / building
+automation** focus — IoT botnet families and router/camera exploit patterns,
+OT/ICS protocol & tooling fingerprints (Modbus, S7, BACnet, DNP3, OPC, CODESYS,
+…), ICS malware (Industroyer, TRITON, PIPEDREAM, FrostyGoop, …), and BAS product
+references (Niagara, Metasys, Desigo, EcoStruxure, KNX, …).
+
+**Can I add my own rules?**
+Point `sensor.payloads.yara_rules` at a `.yar` file or a directory of them; they
+load alongside the built-ins (a `.yar` using an unsupported construct is skipped,
+not fatal). The supported subset covers text/hex/regex strings, boolean /
+N-of conditions, comparison & arithmetic operators, and the `pe` / `elf` /
+`math` / `hash` / `filesize` / `uintN` modules. See [`yara.md`](yara.md).
+
+**Why isn't every YARA match "critical"?**
+A rule's severity (meta `severity = "low|medium|high|critical"`, or a numeric
+`score`) controls how far a match escalates the capture; rules that declare
+neither default to critical. The built-ins tag trait/recon/packer rules down to
+high/medium so they don't page like a confirmed-malware hit. A known-malware
+hash match (`payloads.malware_hashes`) and a magic-confirmed executable are
+always critical.
+
+**Can I triage a sample by hand?**
+`tarpit-honeypot analyze <file>` runs the exact engine offline (add `--rules` /
+`--hashes`, or `--json` for the full report).
 
 ## Performance & scale
 

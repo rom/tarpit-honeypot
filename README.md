@@ -615,8 +615,9 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/threat-intel-exports.md`](docs/threat-intel-exports.md) — every export path: STIX 2.1 / TAXII 2.1 / MISP, the downward feed, and the CEF/LEEF/OCSF SIEM sinks, with field mappings and auth.
 - [`docs/archetypes.md`](docs/archetypes.md) — the full archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
-- [`docs/lua.md`](docs/lua.md) — writing Lua service personas (API, sandbox limits, recipes, the 180 shipped personas).
+- [`docs/lua.md`](docs/lua.md) — writing Lua service personas (API, sandbox limits, recipes, the 230 shipped personas).
 - [`docs/attack-tools.md`](docs/attack-tools.md) — the scanners / attack tools the sensor fingerprints and how.
+- [`docs/yara.md`](docs/yara.md) — the CGO-free YARA engine that classifies captured artifacts: the built-in rule pack (incl. deep IoT/IIoT/OT/building-automation coverage), the supported subset + modules, per-rule severity, loading your own `.yar` rules, and the `analyze` CLI.
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).
 - [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) — channel-by-channel cookbook for SIEMs, IoT, pagers, K8s.
 - [`docs/FAQ.md`](docs/FAQ.md) — common questions grouped by topic (general, deployment & safety, detection, fleet, IOCs, performance, operations).
@@ -626,14 +627,38 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 ## Status
 
-**v2.10 — credential export, unbounded captures, and three new DoS/overflow detections (CLDAP, SIPROTEC EN100, vsftpd glob).**
-The v2.4–2.10 line widens the platform from a sensor into a deception suite and
+**v2.11 — a 469-rule built-in YARA engine for captured artifacts (deep IoT/IIoT/OT/building-automation coverage), +30 CVEs / +60 CWEs, clickable profile labels, and dual-stack IPv6 example.**
+The v2.4–2.11 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**131 TCP + 113 UDP protocol handlers**, **498 CVE detections**, **200 dynamic Lua
-service scripts**, **166 OS/device archetypes**, **900+ attack-tool/scanner
-fingerprints**, **30 single-sensor + 27 cross-sensor (`fleet:*`) correlators**,
-**18 typed IOC kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
+**131 TCP + 113 UDP protocol handlers**, **528 CVE detections**, **469 built-in
+YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **166
+OS/device archetypes**, **900+ attack-tool/scanner fingerprints**, **30
+single-sensor + 27 cross-sensor (`fleet:*`) correlators**, **18 typed IOC
+kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
 Highlights; the [CHANGELOG](CHANGELOG.md) has the per-commit detail.
+
+- **v2.11 built-in YARA engine.** A CGO-free, pure-Go YARA-style engine
+  (`internal/artifactscan`) classifies every captured artifact (dropped malware,
+  webshells, shellcode, archives) with a **469-rule** built-in pack — commodity
+  malware, C2/offensive tooling, webshells, APT implants, packers, behavioural
+  `pe`-module rules, and a deep **IoT / IIoT / OT / building-automation** focus
+  (botnet families, router/camera exploit patterns, ICS protocol & tooling
+  fingerprints, ICS malware, BAS product references). Per-rule severity, a
+  practical module surface (`pe`/`elf`/`math`/`hash`/`filesize`/`uintN`),
+  drop-in `.yar` loading, known-malware hash sets, and the offline `analyze`
+  CLI. See [`docs/yara.md`](docs/yara.md).
+- **v2.11 catalog growth.** +30 web/appliance CVE exploit signatures (528
+  total), +60 CWE weakness-class names (128 total), and +30 Lua service
+  emulators (230 total).
+- **v2.11 attacker-profile UX.** Rule labels (`webapp:secret-file-probe`),
+  per-event CVE rules, and anomaly tags in the attacker profile are now
+  clickable — drilling into the source's filtered events / search (CVE rows also
+  link to the CVE reference).
+- **v2.11 dual-stack example + profile fix.** The CentOS example config binds
+  the IPv6 wildcard `[::]` (serves both v6 and v4 on one socket); the per-source
+  profile page no longer fails with `unable to open database file (14)` under a
+  locked-down runtime (the SQLite store now keeps sorts in memory + adds a
+  composite `(src_ip, time)` index).
 
 - **DNS detection depth + tool fingerprinting.** 30 new DNS
   vulnerability/leakage/recon/poisoning/DoS detections over both UDP and TCP

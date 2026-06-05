@@ -340,6 +340,47 @@ func TestIoTOTBuiltinRules(t *testing.T) {
 	}
 }
 
+func TestIoTOTBuiltinRulesV2(t *testing.T) {
+	e := NewEngine()
+	cases := []struct{ rule, data string }{
+		{"IOT_AESDDoS", "AESDDoS aes.ddos bot v1"},
+		{"IOT_Mirai_Owari", "Owari mirai variant loader"},
+		{"IOT_MikroTik_Winbox", "exploit RouterOS via /nova/bin/user"},
+		{"IOT_Netgear_SOAP", "POST /soap/server_sa/ SOAPAction: urn:NETGEAR"},
+		{"OT_PCWorx", "talk PCWorx to the Phoenix Contact ILC"},
+		{"OT_DLMS_COSEM", "DLMS COSEM smart meter read"},
+		{"OT_Nmap_ICS_Scripts", "nmap --script s7-info,modbus-discover target"},
+		{"OT_GreyEnergy", "GreyEnergy dropper stage 2"},
+		{"OT_LockerGoga", "LockerGoga encrypted the SCADA workstation"},
+		{"BAS_Siemens_APOGEE", "APOGEE Insight workstation"},
+		{"BAS_Niagara_N4", "Niagara 4 station running"},
+		{"AUTO_CANbus_Tools", "candump can0 | cansend can0 123#dead"},
+		{"MED_DICOM", "magic DICM at offset 128, application/dicom"},
+		{"MED_HL7", "MSH|^~\\&|SENDER|..."},
+		{"IIOT_MQTT_SparkplugB", "topic spBv1.0/group/NBIRTH/edge"},
+	}
+	for _, c := range cases {
+		if !hasMatch(e.Scan([]byte(c.data)), c.rule) {
+			t.Errorf("%s should match %q; got %v", c.rule, c.data, matchNames(e.Scan([]byte(c.data))))
+		}
+	}
+	sev := map[string]string{}
+	for _, r := range e.rules {
+		sev[r.Name] = MatchSeverity(Match{Meta: r.Meta})
+	}
+	for name, want := range map[string]string{
+		"OT_GreyEnergy":       "critical", // ICS malware
+		"IOT_AESDDoS":         "critical", // botnet family
+		"OT_PCWorx":           "medium",   // protocol reference
+		"BAS_Siemens_APOGEE":  "medium",
+		"OT_Nmap_ICS_Scripts": "high", // recon
+	} {
+		if sev[name] != want {
+			t.Errorf("%s severity = %q, want %q", name, sev[name], want)
+		}
+	}
+}
+
 func TestBuiltinModuleInjectionRule(t *testing.T) {
 	// The injection triad is a PE-only rule: it must not fire on a non-PE that
 	// merely mentions the API names as text (the module reads real imports).
