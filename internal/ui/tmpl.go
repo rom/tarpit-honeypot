@@ -948,11 +948,11 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ if .Types }}{{ template "bars" .Types }}{{ else }}<p class="note">no tunnel / covert-transport detections in the window</p>{{ end }}
 {{ if .Sources }}<h2>by source</h2>
 <table><tr><th>source</th><th>detections</th><th>kinds</th></tr>
-{{ range .Sources }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td><td>{{ range .Kinds }}<span class="tag warn">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+{{ range .Sources }}{{ $ip := .IP }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ .Count }}</td><td>{{ range .Kinds }}<a class="tag warn" href="{{ tunnelKindURL . $ip }}" title="this source's events for this covert-transport kind">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 <h2>recent</h2>
 {{ if .Recent }}<table><tr><th>time</th><th>source</th><th>kind</th><th>detail</th></tr>
-{{ range .Recent }}<tr><td style="white-space:nowrap">{{ fmtTime .Time }}</td><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td><td><span class="tag warn">{{ .Kind }}</span></td><td>{{ .Detail }}</td></tr>{{ end }}
+{{ range .Recent }}<tr><td style="white-space:nowrap">{{ fmtTime .Time }}</td><td><a href="/profiles/{{ .Source }}">{{ .Source }}</a></td><td><a class="tag warn" href="{{ tunnelKindURL .Kind .Source }}" title="this source's events for this covert-transport kind">{{ .Kind }}</a></td><td>{{ .Detail }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">none</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -1189,7 +1189,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   {{ if .Origin.RDNS }}<tr><th>reverse DNS</th><td><code>{{ .Origin.RDNS }}</code></td></tr>{{ end }}
   {{ if or .Origin.City .Origin.CountryName .Origin.Country }}<tr><th>location</th><td>{{ if .Origin.City }}{{ .Origin.City }}, {{ end }}{{ if .Origin.CountryName }}{{ .Origin.CountryName }}{{ else }}{{ .Origin.Country }}{{ end }} {{ if .Origin.Country }}{{ countryFlag .Origin.Country }} <a class="tag" href="/events?source={{ .IP }}&amp;country={{ .Origin.Country }}">{{ .Origin.Country }}</a>{{ end }}</td></tr>{{ end }}
   {{ if .Origin.ASN }}<tr><th>ASN</th><td><a class="tag" href="/events?source={{ .IP }}&amp;asn={{ .Origin.ASN }}">AS{{ .Origin.ASN }}</a> {{ .Origin.ASNOrg }}</td></tr>{{ end }}
-  {{ if or .Origin.NetClass .Origin.CloudProvider }}<tr><th>network</th><td>{{ if .Origin.CloudProvider }}<span class="tag warn">cloud: {{ .Origin.CloudProvider }}</span> {{ end }}{{ if .Origin.NetClass }}<span class="tag">{{ .Origin.NetClass }}</span>{{ end }}</td></tr>{{ end }}
+  {{ if or .Origin.NetClass .Origin.CloudProvider }}<tr><th>network</th><td>{{ if .Origin.CloudProvider }}<a class="tag warn" href="/events?cloud={{ .Origin.CloudProvider }}" title="all events from this cloud provider">cloud: {{ .Origin.CloudProvider }}</a> {{ end }}{{ if .Origin.NetClass }}<a class="tag" href="/events?source={{ .IP }}&amp;q={{ .Origin.NetClass }}" title="this source's events with this network class">{{ .Origin.NetClass }}</a>{{ end }}</td></tr>{{ end }}
   {{ if .Origin.KnownScanner }}<tr><th>known scanner</th><td><span class="tag">{{ .Origin.KnownScanner }}</span> <span class="note">internet-wide scanning operator — likely background noise</span></td></tr>{{ end }}
   {{ if .Origin.OSGuess }}<tr><th>OS guess</th><td><span class="tag">{{ .Origin.OSGuess }}</span> <span class="note">passive TTL/stack fingerprint</span></td></tr>{{ end }}
   {{ if .Origin.MACVendor }}<tr><th>MAC vendor</th><td>{{ .Origin.MACVendor }}</td></tr>{{ end }}
@@ -1209,11 +1209,11 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if not .Proto.Empty }}<h2>protocol intelligence</h2>
 <table>
-  {{ if .Proto.TLSVersions }}<tr><th>TLS versions</th><td>{{ range .Proto.TLSVersions }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
-  {{ if .Proto.SSHKex }}<tr><th>SSH KEX</th><td><span class="tag">{{ .Proto.SSHKex }}</span> {{ if .Proto.SSHKexWeak }}<span class="tag bad">weak primitive offered</span>{{ end }}</td></tr>{{ end }}
+  {{ if .Proto.TLSVersions }}<tr><th>TLS versions</th><td>{{ range .Proto.TLSVersions }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.SSHKex }}<tr><th>SSH KEX</th><td><a class="tag" href="/events?source={{ $.IP }}&amp;q={{ .Proto.SSHKex }}">{{ .Proto.SSHKex }}</a> {{ if .Proto.SSHKexWeak }}<span class="tag bad">weak primitive offered</span>{{ end }}</td></tr>{{ end }}
   {{ if or .Proto.HTTP2 .Proto.HTTP3 }}<tr><th>HTTP</th><td>{{ if .Proto.HTTP2 }}<span class="tag">HTTP/2 (h2c)</span> {{ end }}{{ if .Proto.HTTP3 }}<span class="tag">HTTP/3 (QUIC)</span>{{ end }}</td></tr>{{ end }}
-  {{ if .Proto.QUICSNI }}<tr><th>QUIC SNI</th><td>{{ range .Proto.QUICSNI }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
-  {{ if .Proto.QUICALPN }}<tr><th>QUIC ALPN</th><td>{{ range .Proto.QUICALPN }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICSNI }}<tr><th>QUIC SNI</th><td>{{ range .Proto.QUICSNI }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events mentioning this SNI">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+  {{ if .Proto.QUICALPN }}<tr><th>QUIC ALPN</th><td>{{ range .Proto.QUICALPN }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>
 <p class="note">Negotiated transport-stack details captured from this source (beyond the raw fingerprints above).</p>{{ end }}
 
@@ -1231,12 +1231,12 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Artifacts }}<h2>captured artifacts</h2><div>{{ range .Artifacts }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
 <p class="note">Malware / payload artifacts the sensor captured from this source (kind:sha256). Pull the bytes from the <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts ZIP</a>.</p>{{ end }}
 
-{{ if .URLs }}<h2>harvested URLs</h2><div>{{ range .URLs }}<span class="tag warn">{{ . }}</span> {{ end }}</div>
+{{ if .URLs }}<h2>harvested URLs</h2><div>{{ range .URLs }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events that harvested this URL">{{ . }}</a> {{ end }}</div>
 <p class="note">C2 / dropper URLs harvested from this source's payloads (candidate next-hop infrastructure).</p>{{ end }}
 
-{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
+{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events mentioning this domain/SNI">{{ . }}</a> {{ end }}</div>{{ end }}
 
-{{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<span class="tag bad">{{ . }}</span> {{ end }}</div>{{ end }}
+{{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events for this web-attack class">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .SSHKeys }}<h2>SSH keys offered</h2><div>{{ range .SSHKeys }}<span class="tag">{{ . }}</span> {{ end }}</div>
 <p class="note">Public-key fingerprints this source presented — an SSH key reused across hosts is a strong attribution pivot.</p>{{ end }}

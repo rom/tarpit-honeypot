@@ -13,8 +13,12 @@ documented in `docs/`).
 - **More clickable UI labels.** On the **threat map** page the *events* /
   *countries* / *ASNs* counter boxes are now links (events → the event log;
   countries / ASNs → their on-page breakdown). In an attacker profile the
-  *tools / scanners* and *ATT&CK tactics* labels link to that source's filtered
-  events (`/events?source=…&tool=…` / `…&tactic=…`).
+  *tools / scanners*, *ATT&CK tactics*, *web-attack classes*, *domains / SNIs
+  requested*, *harvested URLs*, *protocol intelligence* (TLS versions / SSH KEX /
+  QUIC SNI+ALPN), and the *origin & infrastructure* **network** row (cloud
+  provider + net-class) link to that source's filtered events. On the **tunnels
+  & covert transport** page the *kind* labels (by-type bars + the by-source and
+  recent chips) link to the events that produced each detection.
 
 ## [2.11.0] — 2026-06-05
 

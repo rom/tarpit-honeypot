@@ -4,12 +4,44 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
+
+// tunnelKindToken maps a friendly tunnel kind to a substring that is guaranteed
+// to appear in the underlying events' anomalies / rule_id / meta_json, so a
+// kind label can link to the events that produced it (the events page `?q=` is
+// a literal, case-insensitive LIKE over exactly those columns).
+var tunnelKindToken = map[string]string{
+	"dns-tunnel":               "dns-tunnel",
+	"dga-domain":               "dga",
+	"encrypted-dns (doh)":      "dns-over-https",
+	"encrypted-dns (dot)":      "dns-over-tls",
+	"encrypted-dns (dnscrypt)": "dnscrypt",
+	"icmp-tunnel":              "icmp_tunnel",
+	"unknown-protocol":         "unknown-protocol",
+	"encapsulation":            "encapsulation",
+	"quic":                     "quic",
+}
+
+// tunnelKindURL builds the events link for a tunnel-kind label, optionally
+// scoped to one source. Unmapped kinds fall back to the kind text itself.
+func tunnelKindURL(kind, source string) string {
+	tok := tunnelKindToken[kind]
+	if tok == "" {
+		tok = kind
+	}
+	v := url.Values{}
+	if source != "" {
+		v.Set("source", source)
+	}
+	v.Set("q", tok)
+	return "/events?" + v.Encode()
+}
 
 // Tunnels & covert-transport view. This is an HONEST view: the honeypot
 // terminates connections, it does not carry real SSH/SOCKS/k8s/service-mesh
@@ -101,6 +133,9 @@ func buildTunnelsView(since time.Time, evs []*event.Event) tunnelsView {
 	}
 
 	v.Types = topBars(typeCount, 20, "")
+	for i := range v.Types { // make the per-kind bars link to their events
+		v.Types[i].Href = tunnelKindURL(v.Types[i].Label, "")
+	}
 	for ip, kinds := range srcKinds {
 		ks := make([]string, 0, len(kinds))
 		for k := range kinds {
