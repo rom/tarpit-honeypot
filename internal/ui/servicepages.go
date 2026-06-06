@@ -1,0 +1,613 @@
+package ui
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/cve"
+	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/store"
+)
+
+// Per-protocol analytics pages (DNS / web / databases). Each page only exists
+// when the running config has a relevant listener (hasServicePage), aggregates
+// the events whose handler belongs to that category, and surfaces the queries /
+// URLs / commands, the top entities, and the attacks/misuses/CVE-CWE triggered.
+
+// Handler-name -> category. Events are tagged with the handler that produced
+// them, so this is how a page knows which events are "its".
+var (
+	dnsHandlers = map[string]bool{"dns": true}
+	webHandlers = map[string]bool{"http": true, "https": true, "http2": true}
+	dbHandlers  = map[string]bool{
+		"mysql": true, "postgres": true, "mssql": true, "mongodb": true,
+		"redis": true, "elasticsearch": true, "oracle_tns": true,
+		"cassandra": true, "etcd": true, "memcached": true, "memcached_udp": true,
+	}
+)
+
+func serviceCategory(handler string) string {
+	switch {
+	case dnsHandlers[handler]:
+		return "dns"
+	case webHandlers[handler]:
+		return "web"
+	case dbHandlers[handler]:
+		return "database"
+	}
+	return ""
+}
+
+// hasServicePage reports whether the running config exposes a listener (or
+// honeynet host service) in the named category, so the nav link + page show
+// only when relevant.
+func (s *Server) hasServicePage(kind string) bool {
+	if s == nil || s.fullConfig == nil {
+		return false
+	}
+	for _, l := range s.fullConfig.Listeners {
+		if serviceCategory(l.Handler) == kind {
+			return true
+		}
+	}
+	for _, hn := range s.fullConfig.Honeynets {
+		for _, h := range hn.Hosts {
+			for _, sv := range h.Services {
+				if serviceCategory(sv.Handler) == kind {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// filterByCategory returns the events whose handler belongs to kind.
+func filterByCategory(evs []*event.Event, kind string) []*event.Event {
+	out := make([]*event.Event, 0, len(evs))
+	for _, ev := range evs {
+		if serviceCategory(ev.Handler) == kind {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
+// --- shared row/table types -------------------------------------------------
+
+// countRow is a labeled count with an optional drill-down link.
+type countRow struct {
+	Label string
+	Count int
+	Href  string
+}
+
+// attackRow is one entry of the "attacks / misuses / vulnerabilities triggered"
+// table: an anomaly marker or a CVE (with its CWE weakness class).
+type attackRow struct {
+	Name    string
+	Count   int
+	CVE     string // CVE id, when this row is a CVE
+	CWE     string // first CWE id of that CVE
+	CWEName string
+	Desc    string // CVE name / human note
+}
+
+// metaStr reads a string meta value ("" when absent/other type).
+func metaStr(ev *event.Event, key string) string {
+	s, _ := ev.Meta[key].(string)
+	return s
+}
+
+// perHourChart buckets events by hour into a time-series line.
+func perHourChart(title string, evs []*event.Event, color string) (chartFig, bool) {
+	if len(evs) == 0 {
+		return chartFig{}, false
+	}
+	buckets := map[int64]int{}
+	for _, ev := range evs {
+		buckets[ev.Time.Truncate(time.Hour).UnixMilli()]++
+	}
+	keys := sortedInt64Keys(buckets)
+	pts := make([]chPoint, 0, len(keys))
+	for _, k := range keys {
+		pts = append(pts, chPoint{X: float64(k), Y: float64(buckets[k])})
+	}
+	return chartFigure("line", title, map[string]any{
+		"series": []map[string]any{{"name": "events", "points": pts, "color": color}},
+		"xType":  "time",
+	}), true
+}
+
+// topAttackers ranks the busiest source IPs (top 10), as both a chart series
+// and a table.
+func topAttackers(evs []*event.Event) (map[string]int, []countRow) {
+	c := map[string]int{}
+	for _, ev := range evs {
+		if ev.Source.IP != "" {
+			c[ev.Source.IP]++
+		}
+	}
+	keys := topKeys(c, 10)
+	rows := make([]countRow, 0, len(keys))
+	for _, k := range keys {
+		rows = append(rows, countRow{Label: k, Count: c[k], Href: "/profiles/" + k})
+	}
+	return c, rows
+}
+
+// attackTable aggregates the attacks/misuses/manipulations/vulnerabilities the
+// events triggered: each distinct anomaly marker (counted once per event) plus
+// each CVE (with its CWE weakness class), sorted by frequency.
+func attackTable(evs []*event.Event) []attackRow {
+	anom := map[string]int{}
+	cveCount := map[string]int{}
+	for _, ev := range evs {
+		seen := map[string]bool{}
+		mark := func(a string) {
+			a = strings.TrimSpace(a)
+			if a == "" || seen[a] {
+				return
+			}
+			seen[a] = true
+			if strings.HasPrefix(strings.ToLower(a), "cve:") {
+				return // CVEs are counted via eventCVEs below
+			}
+			anom[a]++
+		}
+		for _, a := range ev.Anomalies {
+			mark(a)
+		}
+		for _, a := range metaStrings(ev.Meta, "anomalies") {
+			mark(a)
+		}
+		cseen := map[string]bool{}
+		for _, c := range eventCVEs(ev) {
+			if !cseen[c] {
+				cseen[c] = true
+				cveCount[c]++
+			}
+		}
+	}
+	var out []attackRow
+	for m, n := range anom {
+		out = append(out, attackRow{Name: m, Count: n})
+	}
+	for id, n := range cveCount {
+		row := attackRow{Name: id, Count: n, CVE: id}
+		if rec, ok := cve.Lookup(id); ok {
+			row.Desc = rec.Name
+			if len(rec.CWE) > 0 {
+				row.CWE = rec.CWE[0]
+				row.CWEName = cve.CWEName(rec.CWE[0])
+			}
+		}
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// registrableDomain reduces a query name to its last two labels (a cheap
+// eTLD+1 approximation, good enough for grouping honeypot DNS traffic).
+func registrableDomain(qname string) string {
+	q := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(qname), "."))
+	if q == "" {
+		return ""
+	}
+	parts := strings.Split(q, ".")
+	if len(parts) <= 2 {
+		return q
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// httpStatus extracts the "code reason" from an HTTP response banner's status
+// line ("HTTP/1.1 404 Not Found" -> "404 Not Found"); "" when not an HTTP reply.
+func httpStatus(banner string) string {
+	line := banner
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "HTTP/") {
+		return ""
+	}
+	f := strings.SplitN(line, " ", 2)
+	if len(f) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(f[1])
+}
+
+// rangeQuery / shared scaffolding ------------------------------------------
+
+// servicePageEvents runs the standard windowed query + category filter shared
+// by all three pages.
+func (s *Server) servicePageEvents(r *http.Request, kind string) ([]*event.Event, sumWindow, error) {
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	win := summaryRange(r.URL.Query().Get("range"))
+	since := time.Now().Add(-win.dur)
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000})
+	if err != nil {
+		return nil, win, err
+	}
+	return filterByCategory(evs, kind), win, nil
+}
+
+// ============================ DNS page =====================================
+
+type dnsView struct {
+	RangeLabel string
+	RangeLinks []rangeLink
+	Total      int
+	Sources    int
+	Domains    int
+	Figs       []chartFig
+	Attacks    []attackRow
+	Queries    []dnsQueryRow
+	Empty      bool
+}
+
+type dnsQueryRow struct {
+	Time   string
+	Source string
+	Name   string
+	Type   string
+	Reply  string
+	Anoms  []string
+}
+
+func (s *Server) handleDNS(w http.ResponseWriter, r *http.Request) {
+	if !s.hasServicePage("dns") {
+		http.NotFound(w, r)
+		return
+	}
+	evs, win, err := s.servicePageEvents(r, "dns")
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	v := buildDNS(evs)
+	v.RangeLabel = win.label
+	v.RangeLinks = rangeLinksFor("/dns", win.key)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "dns", v); err != nil {
+		slog.Warn("ui: render dns", "err", err)
+	}
+}
+
+func buildDNS(evs []*event.Event) dnsView {
+	v := dnsView{}
+	if len(evs) == 0 {
+		v.Empty = true
+		return v
+	}
+	qtype := map[string]int{}
+	qname := map[string]int{}
+	domain := map[string]int{}
+	reply := map[string]int{}
+	srcSet := map[string]bool{}
+	for _, ev := range evs {
+		v.Total++
+		if ev.Source.IP != "" {
+			srcSet[ev.Source.IP] = true
+		}
+		if t := metaStr(ev, "qtype_name"); t != "" {
+			qtype[t]++
+		}
+		if q := metaStr(ev, "qname"); q != "" {
+			qname[q]++
+			if d := registrableDomain(q); d != "" {
+				domain[d]++
+			}
+		}
+		if ev.BannerSent != "" {
+			reply[ev.BannerSent]++
+		}
+	}
+	v.Sources, v.Domains = len(srcSet), len(domain)
+
+	if fig, ok := perHourChart("DNS queries per hour", evs, "#4a6fa5"); ok {
+		v.Figs = append(v.Figs, fig)
+	}
+	if len(qtype) > 0 {
+		v.Figs = append(v.Figs, chartFigure("bar", "DNS query types / commands", map[string]any{"series": topBarsFromMap(qtype, 20)}))
+	}
+	if len(qname) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top queries (qname)", map[string]any{"series": topBarsFromMap(qname, 20)}))
+	}
+	if len(domain) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top domains", map[string]any{"series": topBarsFromMap(domain, 20)}))
+	}
+	if len(reply) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies", map[string]any{"series": topBarsFromMap(reply, 20)}))
+	}
+	v.Attacks = attackTable(evs)
+
+	// Query log (most recent first), bounded.
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Queries) >= 200 {
+			break
+		}
+		q := metaStr(ev, "qname")
+		if q == "" {
+			continue
+		}
+		v.Queries = append(v.Queries, dnsQueryRow{
+			Time:   ev.Time.UTC().Format(time.RFC3339),
+			Source: ev.Source.IP,
+			Name:   q,
+			Type:   metaStr(ev, "qtype_name"),
+			Reply:  ev.BannerSent,
+			Anoms:  append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
+	return v
+}
+
+// ============================ Web page =====================================
+
+type webView struct {
+	RangeLabel string
+	RangeLinks []rangeLink
+	Total      int
+	Sources    int
+	URLs       int
+	Figs       []chartFig
+	Attackers  []countRow
+	Attacks    []attackRow
+	URLList    []string
+	Files      []string
+	Empty      bool
+}
+
+func (s *Server) handleWeb(w http.ResponseWriter, r *http.Request) {
+	if !s.hasServicePage("web") {
+		http.NotFound(w, r)
+		return
+	}
+	evs, win, err := s.servicePageEvents(r, "web")
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	v := buildWeb(evs)
+	v.RangeLabel = win.label
+	v.RangeLinks = rangeLinksFor("/web", win.key)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "web", v); err != nil {
+		slog.Warn("ui: render web", "err", err)
+	}
+}
+
+func buildWeb(evs []*event.Event) webView {
+	v := webView{}
+	if len(evs) == 0 {
+		v.Empty = true
+		return v
+	}
+	uri := map[string]int{}
+	header := map[string]int{}
+	reply := map[string]int{}
+	attacks := map[string]int{}
+	srcSet := map[string]bool{}
+	urlSet := map[string]bool{}
+	fileSet := map[string]bool{}
+	for _, ev := range evs {
+		v.Total++
+		if ev.Source.IP != "" {
+			srcSet[ev.Source.IP] = true
+		}
+		if u := metaStr(ev, "http_uri"); u != "" {
+			uri[u]++
+			urlSet[u] = true
+			if f := uriFile(u); f != "" {
+				fileSet[f] = true
+			}
+		}
+		if pf := metaStr(ev, "probed_file"); pf != "" {
+			fileSet[pf] = true
+		}
+		if hm, ok := ev.Meta["http_headers"].(map[string]any); ok {
+			for k := range hm {
+				header[k]++
+			}
+		}
+		if hm, ok := ev.Meta["http_headers"].(map[string]string); ok {
+			for k := range hm {
+				header[k]++
+			}
+		}
+		if st := httpStatus(ev.BannerSent); st != "" {
+			reply[st]++
+		}
+		for _, a := range metaStrings(ev.Meta, "webapp_attacks") {
+			attacks["webapp:"+a]++
+		}
+	}
+	v.Sources, v.URLs = len(srcSet), len(urlSet)
+
+	if fig, ok := perHourChart("Web requests per hour", evs, "#4a6fa5"); ok {
+		v.Figs = append(v.Figs, fig)
+	}
+	if len(uri) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top URLs", map[string]any{"series": topBarsFromMap(uri, 20)}))
+	}
+	if len(header) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top HTTP headers", map[string]any{"series": topBarsFromMap(header, 20)}))
+	}
+	if len(reply) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies (HTTP status)", map[string]any{"series": topBarsFromMap(reply, 20)}))
+	}
+	if len(attacks) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attacks", map[string]any{"series": topBarsFromMap(attacks, 10)}))
+	}
+	atkByIP, atkRows := topAttackers(evs)
+	_ = atkByIP
+	v.Attackers = atkRows
+	if len(atkRows) > 0 {
+		bars := make([]chBar, 0, len(atkRows))
+		for _, rr := range atkRows {
+			bars = append(bars, chBar{Label: rr.Label, Value: rr.Count})
+		}
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
+	}
+	v.Attacks = attackTable(evs)
+	v.URLList = sortedSetKeys(urlSet, 500)
+	v.Files = sortedSetKeys(fileSet, 300)
+	return v
+}
+
+// uriFile returns the trailing path segment of a request URI when it looks like
+// a file (has a dot in the last segment), else "".
+func uriFile(uri string) string {
+	p := uri
+	if i := strings.IndexByte(p, '?'); i >= 0 {
+		p = p[:i]
+	}
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" || !strings.Contains(p, ".") {
+		return ""
+	}
+	return p
+}
+
+// ============================ Databases page ===============================
+
+type dbView struct {
+	RangeLabel string
+	RangeLinks []rangeLink
+	Total      int
+	Sources    int
+	Figs       []chartFig
+	Attackers  []countRow
+	Attacks    []attackRow
+	Empty      bool
+}
+
+func (s *Server) handleDatabases(w http.ResponseWriter, r *http.Request) {
+	if !s.hasServicePage("database") {
+		http.NotFound(w, r)
+		return
+	}
+	evs, win, err := s.servicePageEvents(r, "database")
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	v := buildDatabases(evs)
+	v.RangeLabel = win.label
+	v.RangeLinks = rangeLinksFor("/databases", win.key)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "databases", v); err != nil {
+		slog.Warn("ui: render databases", "err", err)
+	}
+}
+
+func buildDatabases(evs []*event.Event) dbView {
+	v := dbView{}
+	if len(evs) == 0 {
+		v.Empty = true
+		return v
+	}
+	query := map[string]int{}
+	database := map[string]int{}
+	reply := map[string]int{}
+	engine := map[string]int{}
+	srcSet := map[string]bool{}
+	for _, ev := range evs {
+		v.Total++
+		if ev.Source.IP != "" {
+			srcSet[ev.Source.IP] = true
+		}
+		if ev.Handler != "" {
+			engine[ev.Handler]++
+		}
+		// "Query / command" varies by engine — collect whichever the handler set.
+		for _, c := range metaStrings(ev.Meta, "commands") { // redis
+			query[c]++
+		}
+		for _, k := range []string{"mongo_command", "tns_command", "http_path", "http_method"} {
+			if cmd := metaStr(ev, k); cmd != "" {
+				query[cmd]++
+			}
+		}
+		// Database name requested.
+		if d := metaStr(ev, "database"); d != "" {
+			database[d]++
+		}
+		if sp, ok := ev.Meta["startup_params"].(map[string]any); ok { // postgres
+			if d, _ := sp["database"].(string); d != "" {
+				database[d]++
+			}
+		}
+		if sp, ok := ev.Meta["startup_params"].(map[string]string); ok {
+			if d := sp["database"]; d != "" {
+				database[d]++
+			}
+		}
+		if svc := metaStr(ev, "service_name"); svc != "" { // oracle
+			database[svc]++
+		}
+		if ev.BannerSent != "" {
+			reply[ev.BannerSent]++
+		}
+	}
+	v.Sources = len(srcSet)
+
+	if fig, ok := perHourChart("Database events per hour", evs, "#4a6fa5"); ok {
+		v.Figs = append(v.Figs, fig)
+	}
+	if len(engine) > 0 {
+		v.Figs = append(v.Figs, chartFigure("pie", "By database engine", map[string]any{"slices": slicesFromMap(engine), "donut": true}))
+	}
+	if len(query) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top queries / commands", map[string]any{"series": topBarsFromMap(query, 20)}))
+	}
+	if len(database) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top databases", map[string]any{"series": topBarsFromMap(database, 20)}))
+	}
+	if len(reply) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies", map[string]any{"series": topBarsFromMap(reply, 20)}))
+	}
+	atkByIP, atkRows := topAttackers(evs)
+	_ = atkByIP
+	v.Attackers = atkRows
+	if len(atkRows) > 0 {
+		bars := make([]chBar, 0, len(atkRows))
+		for _, rr := range atkRows {
+			bars = append(bars, chBar{Label: rr.Label, Value: rr.Count})
+		}
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
+	}
+	v.Attacks = attackTable(evs)
+	return v
+}
+
+// sortedSetKeys returns the set's keys sorted, capped at n.
+func sortedSetKeys(set map[string]bool, n int) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}

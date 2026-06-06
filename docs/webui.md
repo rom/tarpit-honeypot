@@ -17,7 +17,7 @@ attribution, the fleet view, and the IOC view.
 ## The navigation
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
-map · captures · credentials · fleet · iocs · tunnels · profiles · fingerprints ·
+map · captures · credentials · dns · web · databases · fleet · iocs · tunnels · profiles · fingerprints ·
 devices · topology · charts · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
@@ -301,7 +301,28 @@ lowercase / has-symbol / mixed-case+digits …) distributions, the per-account
 heatmap, a per-source **spray-vs-brute classification** (password spray / brute
 force / credential stuffing / repeated / probe, derived from the user×password
 fan-out), and a **credential-reuse** table surfacing secrets seen from two or
-more distinct sources — shared wordlists, or a single actor rotating IPs.
+more distinct sources — shared wordlists, or a single actor rotating IPs. A
+**credential-captures-by-service** pie + bar compares how many captured logins
+came from each service (ssh / ftp / telnet / …).
+
+### dns (`/dns`), web (`/web`), databases (`/databases`)
+Per-protocol analytics that appear in the nav **only when the running config has
+a relevant listener** (a `dns` handler; an `http`/`https` handler; a
+mysql/postgres/mssql/mongodb/redis/… handler):
+
+- **dns** — DNS queries per hour, query types / commands, top queries (qname) and
+  top registrable domains, top replies, and a bounded **query log**; plus the
+  **attacks / misuses / manipulations / vulnerabilities** table (tunnelling,
+  amplification, zone transfer, DGA, NOTIFY/UPDATE opcodes …) with each CVE's CWE.
+- **web** — requests per hour, **top URLs**, **top HTTP headers**, **top replies**
+  (HTTP status), **top-10 attacks** and **top-10 attackers**, every **unique URL**
+  and **unique file accessed**, and the web-attack-class / CVE / CWE table.
+- **databases** — events per hour, the engine split, **top queries / commands**,
+  **top databases**, **top replies** (version banners), **top-10 attacks** and
+  **attackers**, and the injection / abuse / CVE / CWE table.
+
+The summary's service board additionally **tints each service card** (with its
+event count) when that service saw any access or attempt in the window.
 
 ### health (`/health`)
 Sensor health: uptime, disk usage vs caps, listener/collector status, queue

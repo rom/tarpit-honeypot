@@ -295,8 +295,11 @@ server-rendered (strict CSP, no external JS), and auto-refreshes. Key endpoints:
   exposure + CWE, per-ASN/country trend sparklines, force-directed actor
   clustering, and a coverage-gap report) and sensor health
 - `/credentials` — credential analytics: top users/passwords, length +
-  composition distributions, per-source spray-vs-brute classification, and a
-  credential-reuse table
+  composition distributions, per-source spray-vs-brute classification, a
+  credential-reuse table, and a captures-by-service comparison
+- `/dns`, `/web`, `/databases` — per-protocol analytics (queries / URLs /
+  commands, top entities, attacks + CVE/CWE triggered); each only present when a
+  relevant listener (dns / http(s) / a database handler) is configured
 - `/alerting` — how events are forwarded (channels / routes / allowlist)
 - `/errors?since=168h` — operational / health events (listener or
   canary-watcher stopped, listener start error, accept-cap overflow)
