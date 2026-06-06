@@ -511,12 +511,20 @@ type Filter struct {
 	FPValue string
 	Limit   int
 	Offset  int
+	// NoPayload skips the captured payload + banner columns (the per-row banner
+	// subquery and the base64 payload blob). Aggregation scans that only need
+	// the metadata columns (the dashboard enrichment) set this to read far less.
+	NoPayload bool
 }
 
 func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
+	bannerCol, payloadCol := bannerSelect+" AS banner_sent", "payload_b64"
+	if f.NoPayload {
+		bannerCol, payloadCol = "'' AS banner_sent", "'' AS payload_b64"
+	}
 	q := `SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
-                dst_ip, dst_port, proto, handler, ` + bannerSelect + ` AS banner_sent,
-                payload_b64, payload_len, meta_json, anomalies,
+                dst_ip, dst_port, proto, handler, ` + bannerCol + `,
+                ` + payloadCol + `, payload_len, meta_json, anomalies,
                 mitre_techniques, mitre_tactics, mitre_defenses
           FROM events WHERE 1=1`
 	var args []any

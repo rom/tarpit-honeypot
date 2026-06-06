@@ -714,6 +714,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 
 {{ define "index" }}{{ template "head" . }}
 <h1>tarpit-honeypot — {{ .RangeLabel }}</h1>
+{{ if .Notice }}<p class="note">⏳ {{ .Notice }}</p>{{ end }}
 <p>{{ .Sum.Total }} events since {{ fmtTime .Sum.Since }} · range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
 
 <div class="counters">{{ range .Counters }}{{ if .Href }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ else }}<span class="counter {{ .Class }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></span>{{ end }}{{ end }}</div>

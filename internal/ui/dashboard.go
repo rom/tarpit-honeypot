@@ -96,6 +96,9 @@ type dashboard struct {
 	// RangeQuery is the active window key (e.g. "7d") appended to /events pivot
 	// links so the listing covers the same span; "" for the 24h default.
 	RangeQuery string
+	// Notice, when set, is a transient banner shown above the dashboard — e.g.
+	// "summary still building over a large dataset" on a cold/degraded load.
+	Notice string
 }
 
 // scopeEventLinks appends the summary's active time window to every /events

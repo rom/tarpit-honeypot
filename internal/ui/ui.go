@@ -904,16 +904,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	win := summaryRange(r.URL.Query().Get("range"))
 	// The dashboard aggregates the whole event window (a multi-pass summary
-	// plus a bounded full-row enrichment scan). At hundreds of thousands of
-	// events — and under the write contention of a live pentest — doing that
-	// synchronously inside the request blows the deadline. Serve a cached build
-	// instead (stale-while-revalidate), so the page latency is independent of
-	// event count and write load.
-	d, err := s.cachedIndexDashboard(win)
-	if err != nil {
-		serverError(w, r.URL.Path, err)
-		return
-	}
+	// plus a bounded enrichment scan). At hundreds of thousands of events — and
+	// under the write contention of a live pentest — doing that synchronously
+	// inside the request blows the deadline. Serve a cached build instead
+	// (stale-while-revalidate, cold loads degraded to a quick/minimal view), so
+	// the page always renders and its latency is independent of event count and
+	// write load. cachedIndexDashboard never errors — it can only degrade.
+	d := s.cachedIndexDashboard(win)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "index", d); err != nil {
 		slog.Warn("ui: render index", "err", err)
@@ -930,26 +927,50 @@ const dashTTL = 20 * time.Second
 // immediately while a background refresh runs; a missing one is computed now
 // (with a generous internal budget, not the caller's request deadline) so the
 // first load can't 500.
-func (s *Server) cachedIndexDashboard(win sumWindow) (dashboard, error) {
+func (s *Server) cachedIndexDashboard(win sumWindow) dashboard {
 	s.dashMu.Lock()
 	ent, ok := s.dashCache[win.key]
 	s.dashMu.Unlock()
 	if ok && time.Since(ent.at) < dashTTL {
-		return ent.d, nil
+		return ent.d
 	}
 	if ok {
 		s.refreshIndexDashboardAsync(win)
-		return ent.d, nil // serve stale while it refreshes
+		return ent.d // serve stale while it refreshes
 	}
-	return s.refreshIndexDashboard(win)
+	// Cold: never block the request on a full-window aggregation. Kick the full
+	// build in the background and serve a "quick" view now — just the indexed
+	// summary, no full-row enrichment scan — under a short budget. If even that
+	// can't complete (DB locked under heavy write load), serve a minimal shell.
+	// Either way the page renders; it can never 500.
+	s.refreshIndexDashboardAsync(win)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	d, err := s.buildIndexDashboard(ctx, win, false)
+	if err != nil {
+		return s.minimalDashboard(win)
+	}
+	d.Notice = "Summary is still building over a large dataset — enrichment charts will appear on the next refresh."
+	return d
 }
 
-// refreshIndexDashboard rebuilds + caches the dashboard for a window under an
-// internal timeout decoupled from any request deadline.
+// minimalDashboard is the always-renderable shell (range selector + the static
+// port board, no DB) used when even the quick summary can't complete in time.
+func (s *Server) minimalDashboard(win sumWindow) dashboard {
+	return dashboard{
+		RangeLabel: win.label,
+		RangeLinks: summaryRangeLinks(win.key),
+		Canvas:     buildConfigCanvas(s.fullConfig),
+		Notice:     "The dataset is large and the summary is still building — reload in a few seconds.",
+	}
+}
+
+// refreshIndexDashboard rebuilds + caches the full dashboard for a window under
+// an internal timeout decoupled from any request deadline.
 func (s *Server) refreshIndexDashboard(win sumWindow) (dashboard, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	d, err := s.buildIndexDashboard(ctx, win)
+	d, err := s.buildIndexDashboard(ctx, win, true)
 	if err != nil {
 		return d, err
 	}
@@ -987,9 +1008,11 @@ func (s *Server) refreshIndexDashboardAsync(win sumWindow) {
 	}()
 }
 
-// buildIndexDashboard performs the actual (expensive) dashboard aggregation for
-// a window. Callers run it off the request path via the cache above.
-func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow) (dashboard, error) {
+// buildIndexDashboard performs the dashboard aggregation for a window. With
+// enrich=false it does only the indexed summary + counters (fast, for the cold
+// quick-view); with enrich=true it also runs the bounded per-event
+// metadata scan that fills the tactics/geo/ASN/tool/handler charts.
+func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich bool) (dashboard, error) {
 	since := time.Now().Add(-win.dur)
 	sum, err := s.store.Summary(ctx, since)
 	if err != nil {
@@ -1034,14 +1057,18 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow) (dashbo
 		}
 	}
 	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
-	// from a bounded scan of the window.
+	// from a bounded scan of the window. Skipped for the cold quick-view; the
+	// scan reads metadata only (NoPayload) so it doesn't drag the big payload
+	// blobs + per-row banner subquery through for 20k rows.
 	var attackSvc []chSlice
-	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
-		enrichDashboard(&d, evs)
-		if s.cfg.ServiceActivityEnabled() {
-			markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
+	if enrich {
+		if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
+			enrichDashboard(&d, evs)
+			if s.cfg.ServiceActivityEnabled() {
+				markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
+			}
+			attackSvc = attacksByService(evs)
 		}
-		attackSvc = attacksByService(evs)
 	}
 	// Carry the active window into every /events pivot link so the listing
 	// covers the same span the summary aggregated over (otherwise /events
@@ -1657,7 +1684,7 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	if len(nets) > 0 {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
-		if evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000}); err == nil {
+		if evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000, NoPayload: true}); err == nil {
 			page.Active = overlayActivity(nets, aggregateHostActivity(evs))
 		}
 	}

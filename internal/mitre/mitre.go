@@ -448,6 +448,10 @@ var anomalyTags = map[string]Tag{
 	"service-enumeration":     {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"device-discovery-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"remote-desktop-probe":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"vnc-auth-attempt":        {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"vnc-none-auth-probe":     {Techniques: []string{"T1021.005", "T1595"}, Tactics: []string{"lateral-movement", "reconnaissance"}},
+	"vnc-session":             {Techniques: []string{"T1021.005"}, Tactics: []string{"lateral-movement"}},
+	"vnc-clipboard-capture":   {Techniques: []string{"T1115"}, Tactics: []string{"collection"}},
 	"ics-device-enumeration":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"ics-field-device-probe":  {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"ics-data-bus-discovery":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
@@ -466,6 +470,14 @@ var anomalyTags = map[string]Tag{
 	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},
 	"ics-unitronics-plc":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-pmu-command":                    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-actuator-command":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-iccp-association":               {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"ics-iccp-bilateral-table":           {Techniques: []string{"T0888", "T0846"}, Tactics: []string{"discovery"}},
+	"ics-iccp-transfer-set":              {Techniques: []string{"T0855", "T0856"}, Tactics: []string{"impact"}},
+	"ics-iccp-control":                   {Techniques: []string{"T0855", "T0831"}, Tactics: []string{"impact"}},
+	"ics-comms-reconfigure":              {Techniques: []string{"T0855", "T0856"}, Tactics: []string{"impact"}},
+	"ics-key-install":                    {Techniques: []string{"T0859"}, Tactics: []string{"lateral-movement"}},
+	"ics-secure-channel-setup":           {Techniques: []string{"T0830"}, Tactics: []string{"collection"}},
 	"ics-safety-controller-manipulation": {Techniques: []string{"T0831", "T0880"}, Tactics: []string{"impact"}},
 	"profinet-iod-write":                 {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
 	"profinet-iod-control":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
@@ -1121,6 +1133,7 @@ var techDescriptions = map[string]string{
 	"T0856": "Spoof Reporting Message (ICS) — forging device/process reporting messages (e.g. GOOSE) to mislead subscribers.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
+	"T0859": "Valid Accounts (ICS) — using or installing credentials/keys to gain control-system access (e.g. pairing a rogue secure-channel key).",
 }
 
 // Describe returns a one-line plain-English description of an ATT&CK
@@ -1231,6 +1244,7 @@ var d3fend = map[string][]string{
 	"T1110": {"D3-MFA", "D3-DUC", "D3-DE", "D3-CH"}, // brute force
 	"T1078": {"D3-MFA", "D3-DUC", "D3-CH"},          // valid accounts
 	"T1021": {"D3-MFA", "D3-NTA", "D3-RTSD"},        // remote services
+	"T1115": {"D3-NTA", "D3-DE"},                    // clipboard data
 	"T1071": {"D3-NTA", "D3-DNSTA"},                 // application-layer C2
 	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"},          // ingress tool transfer
 	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information
@@ -1257,6 +1271,7 @@ var d3fend = map[string][]string{
 	"T0856": {"D3-NTA", "D3-DE"},                    // ICS: spoof reporting message (GOOSE)
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
+	"T0859": {"D3-MFA", "D3-NTA", "D3-DE"},          // ICS: valid accounts / key install
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
 	"T1056": {"D3-NTA"},                             // input capture (keylogging via X11)
 	"T1219": {"D3-NTA", "D3-OTF", "D3-RTSD"},        // remote access software

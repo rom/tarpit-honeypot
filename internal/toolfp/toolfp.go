@@ -100,6 +100,9 @@ var c2Frameworks = map[string]bool{
 	// Batch 11: banking-trojan / loader / RAT families seen staging over HTTP.
 	"emotet": true, "trickbot": true, "qakbot": true, "icedid": true,
 	"bumblebee": true, "darkgate": true, "pikabot": true, "latrodectus": true,
+	// ICS/OT exploitation frameworks — the Metasploit-class toolkits that
+	// carry weaponized PLC modules (stop/start CPU, logic download).
+	"isf": true,
 }
 
 // headlessBrowsers are automation drivers masquerading as browsers.
@@ -185,6 +188,10 @@ var vulnScanners = map[string]bool{
 	"scan4all": true, "dirmap": true, "uniscan": true, "webpwn3r": true,
 	"vulscan": true, "jwtxploiter": true, "graphql-path-enum": true,
 	"batchql": true, "dsss": true, "sqliv": true,
+	// OT/ICS asset-discovery + vulnerability platforms and ICS recon scripts.
+	"claroty": true, "nozomi": true, "tenable-ot": true, "forescout": true,
+	"dragos": true, "otorio": true, "scadafence": true,
+	"smod": true, "plcscan": true, "s7scan": true, "modscan": true,
 }
 
 // IsVulnScanner reports whether an identified tool name is a vulnerability
@@ -218,6 +225,35 @@ var uaSignatures = map[string]string{
 	"projectdiscovery":         "projectdiscovery",
 	"odin":                     "odin-scanner",
 	"censys.io":                "censys",
+
+	// Internet-wide research crawlers that self-identify by study URL.
+	// Rapid7's Project Sonar (the engine behind opendata.rapid7.com and the
+	// Recog/AttackerKB datasets) tags its HTTP study with a research URL; the
+	// Driftnet and Quadmetrics / Stanford Censys-style studies do likewise.
+	"projectsonar":          "rapid7-sonar",
+	"project sonar":         "rapid7-sonar",
+	"opendata.rapid7.com":   "rapid7-sonar",
+	"research scan":         "rapid7-sonar",
+	"scan.shadowserver.org": "shadowserver",
+	"academic research":     "research-crawler",
+
+	// OT / ICS asset-discovery + monitoring platforms. These are usually
+	// passive, but their ACTIVE-query / device-enrichment modules and their
+	// management/update HTTP clients reach out with product-tagged UAs. A
+	// honeypot only ever sees the active side; passive sniffers are invisible
+	// at the connection layer (documented in docs/ot.md).
+	"claroty":       "claroty",
+	"ctd":           "claroty", // Claroty Continuous Threat Detection
+	"nozomi":        "nozomi",
+	"guardian":      "nozomi", // Nozomi Networks Guardian
+	"tenable.ot":    "tenable-ot",
+	"tenable.ad":    "tenable",
+	"indegy":        "tenable-ot", // Indegy = the OT engine inside Tenable.ot
+	"forescout":     "forescout",
+	"silentdefense": "forescout", // SilentDefense = Forescout's OT sensor
+	"dragos":        "dragos",
+	"otorio":        "otorio",
+	"scadafence":    "scadafence",
 
 	// Web vulnerability scanners.
 	"sqlmap":           "sqlmap",
@@ -286,6 +322,19 @@ var uaSignatures = map[string]string{
 	"antsword":          "antsword",
 	"behinder":          "behinder",
 	"godzilla":          "godzilla",
+
+	// Industrial / ICS exploitation frameworks. ISF (the Industrial
+	// Security Exploitation Framework, dark-lbp's Metasploit-style ICS
+	// toolkit), Metasploit's own scada/ics auxiliary set, and the
+	// s7scan / plcscan recon scripts. They rarely set a UA over the ICS
+	// protocols themselves (those are caught in scananalysis), but their
+	// HTTP-fronted modules and updaters can carry these tokens.
+	"isf-framework":      "isf",
+	"industrial exploit": "isf",
+	"smod":               "smod", // Modbus pentest framework
+	"plcscan":            "plcscan",
+	"s7scan":             "s7scan",
+	"modscan":            "modscan",
 
 	// Headless-browser / automation drivers (recon, scraping, exploit
 	// delivery) — never a real interactive user. (naabu/rustscan are

@@ -140,9 +140,28 @@ func ClassifyPayload(payload []byte, handlerName string) PayloadVerdict {
 		v.VulnScan = true
 	}
 
+	// ICS / OT recon probes. The OT discovery tools (nmap's ICS NSE
+	// scripts, Metasploit's scada modules, plcscan/s7scan, the ISF
+	// framework) reach an ICS listener over the *binary* protocol, not
+	// HTTP — so they never carry a User-Agent. We recognize them by the
+	// documented probe bytes they send instead.
+	if nse, tool, ver := classifyICSProbe(payload, handlerName); nse != "" {
+		if v.NSEScript == "" {
+			v.NSEScript = nse
+		}
+		if v.Tool == "" {
+			v.Tool = tool
+		}
+		if ver {
+			v.VersionProbe = true
+		}
+	}
+
 	// Self-identifying scanner / exploitation tools. Most reveal
 	// themselves in a User-Agent or a wholly distinctive request shape.
-	v.Tool = fingerprintTool(low)
+	if v.Tool == "" {
+		v.Tool = fingerprintTool(low)
+	}
 	if v.Tool != "" {
 		// A recognized vuln scanner / fuzzer is a bug-hunt, not a banner
 		// grab. masscan/zgrab are mass *version* sweeps; the rest hunt.
@@ -188,6 +207,124 @@ func fingerprintTool(low string) string {
 		}
 	}
 	return ""
+}
+
+// classifyICSProbe recognizes the OT/ICS reconnaissance probes that asset
+// scanners and exploitation frameworks send over a *binary* control-system
+// protocol (so they never carry an HTTP User-Agent). It returns the NSE/
+// recon-script name, a best-effort tool attribution (only when the probe
+// shape is genuinely distinctive — otherwise ""), and whether it counts as
+// a version/identity probe.
+//
+// These signatures are the documented, on-the-wire bytes of the public
+// tools — nmap's *-info / *-discover NSE scripts, Metasploit's scada/ics
+// auxiliary modules, and the s7scan / plcscan / ISF toolkits. Where several
+// tools share an identical probe (e.g. every Modbus scanner sends the same
+// Read-Device-Identification PDU) we name the script but leave the tool
+// unattributed rather than guess a vendor.
+func classifyICSProbe(payload []byte, handler string) (nse, tool string, version bool) {
+	switch handler {
+	case "modbus", "modbus_security":
+		return classifyModbusProbe(payload)
+	case "s7", "s7comm_plus":
+		return classifyS7Probe(payload)
+	case "bacnet":
+		// BACnet ReadProperty for the Device object — nmap bacnet-info /
+		// BACnet asset scanners. APDU confirmed-request (0x00) + ReadProperty
+		// service (0x0c).
+		if len(payload) >= 8 && payload[0] == 0x81 && bacnetAPDUService(payload) == 0x0c {
+			return "bacnet-info", "", true
+		}
+	case "dnp3":
+		// DNP3 link header 0x05 0x64 with a Read (function 0x01) request —
+		// dnp3-info / DNP3 outstation enumeration.
+		if len(payload) >= 4 && payload[0] == 0x05 && payload[1] == 0x64 {
+			return "dnp3-enumerate", "", true
+		}
+	case "ethernetip":
+		// ENIP ListIdentity (0x0063) — enip-info / EtherNet/IP discovery.
+		if len(payload) >= 2 && payload[0] == 0x63 && payload[1] == 0x00 {
+			return "enip-info", "", true
+		}
+	case "pcworx":
+		// Phoenix Contact PCWorx identify request — nmap pcworx-info.
+		if len(payload) >= 4 {
+			return "pcworx-info", "", true
+		}
+	case "fox":
+		// Niagara Fox opens with the ASCII "fox a 1 ..." hello — nmap
+		// fox-info / Tridium asset discovery.
+		if strings.HasPrefix(string(payload), "fox a ") {
+			return "fox-info", "", true
+		}
+	}
+	return "", "", false
+}
+
+// classifyModbusProbe inspects a Modbus/TCP ADU for the function codes the
+// recon tools use to enumerate a device. A valid ADU carries the MBAP
+// header (txn[2] proto[2]=0 len[2] unit[1]) followed by the function code.
+func classifyModbusProbe(p []byte) (nse, tool string, version bool) {
+	if len(p) < 8 || p[2] != 0x00 || p[3] != 0x00 {
+		return "", "", false
+	}
+	fn := p[7]
+	switch fn {
+	case 0x2b:
+		// Encapsulated Interface Transport. Sub-function 0x0e =
+		// Read Device Identification (vendor/product/version strings) —
+		// the canonical Modbus asset-discovery probe shared by nmap
+		// modbus-discover, plcscan, and every OT asset scanner.
+		if len(p) >= 9 && p[8] == 0x0e {
+			return "modbus-device-id", "", true
+		}
+	case 0x11:
+		// Report Server ID — nmap modbus-discover's other identity probe.
+		return "modbus-discover", "", true
+	case 0x07:
+		// Read Exception Status — Metasploit's modbus_detect liveness probe.
+		return "modbus-detect", "metasploit", true
+	case 0x08:
+		// Diagnostics — sub-function probing / loopback used by smod and
+		// Metasploit modbusdetect.
+		return "modbus-diagnostics", "", true
+	}
+	return "", "", false
+}
+
+// classifyS7Probe recognizes the S7comm / COTP probe an S7 scanner sends:
+// a TPKT (0x03 0x00) framing a COTP Connection-Request (PDU type 0xE0).
+// nmap s7-info, plcscan, s7scan, and Metasploit's s7 modules all open this
+// way before reading the SZL module/component identification.
+func classifyS7Probe(p []byte) (nse, tool string, version bool) {
+	if len(p) < 6 || p[0] != 0x03 || p[1] != 0x00 {
+		return "", "", false
+	}
+	// COTP header starts at byte 4 (after the 4-byte TPKT header):
+	// byte 4 = COTP length, byte 5 = PDU type. Connection-Request = 0xE0.
+	if len(p) >= 6 && p[5] == 0xe0 {
+		return "s7-info", "", true
+	}
+	return "", "", false
+}
+
+// bacnetAPDUService extracts the BACnet APDU service choice from a BVLC/NPDU
+// framed packet, or 0xff if it can't be located. BVLC header is 4 bytes;
+// the NPDU + APDU follow. We look for the confirmed-request PDU type (0x00)
+// and return the service choice byte.
+func bacnetAPDUService(p []byte) byte {
+	// Minimal walk: BVLC(4) + NPDU version(1) + control(1); if no dest/src
+	// routing, the APDU starts at offset 6. APDU[0] PDU-type/flags, then
+	// invoke-id + (for confirmed) max-segs/resp + service-choice.
+	if len(p) < 10 {
+		return 0xff
+	}
+	apdu := p[6:]
+	if len(apdu) < 4 || apdu[0]&0xf0 != 0x00 {
+		return 0xff
+	}
+	// confirmed-request: [pdu-type/flags][max-segs/max-resp][invoke-id][service]
+	return apdu[3]
 }
 
 // ---- stateful per-source tracking ----
