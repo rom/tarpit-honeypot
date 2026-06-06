@@ -681,6 +681,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/search", s.handleSearch)
 	mux.HandleFunc("/health", s.handleHealth)
 	s.pageRoute(mux, "/charts", "charts", s.handleCharts)
+	s.pageRoute(mux, "/stats", "statistics", s.handleStats)
 	s.pageRoute(mux, "/topology", "topology", s.handleTopology)
 	s.pageRoute(mux, "/hosts", "devices", s.handleHosts)
 	s.pageRoute(mux, "/devices", "devices", s.handleHosts)

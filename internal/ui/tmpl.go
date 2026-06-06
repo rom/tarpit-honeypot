@@ -565,7 +565,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -615,6 +615,19 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range .CoverageGap }}<tr><td><a href="/events?port={{ .Port }}">{{ .Port }}</a></td><td>{{ .Label }}</td><td>{{ .Count }}</td><td>{{ .Sources }}</td></tr>{{ end }}
 </table>{{ end }}
 <p class="note">All charts are rendered client-side by the packaged charts.js (no external libraries) · derived from a scan of {{ .Scanned }} recent events. With JavaScript off, each figure shows a fallback note.</p>
+{{ template "foot" . }}{{ end }}
+
+{{ define "stats" }}{{ template "head" . }}
+<h1 data-help="A numeric, at-a-glance statistics summary scoped to the selected window — headline volume + the top-N tables across every dimension (severity, protocol, service, geography, ATT&amp;CK, CVE, tools, sources). The visual companion is /charts.">statistics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Notice }}<p class="note">{{ .Notice }}</p>{{ end }}
+<div class="counters">
+{{ range .Headline }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span>{{ if .Sub }}<span class="meta">{{ .Sub }}</span>{{ end }}</span>{{ end }}
+</div>
+<div class="cols2">
+{{ range .Blocks }}<div><h4>{{ .Title }}</h4>{{ if .Rows }}{{ template "bars" .Rows }}{{ else }}<p class="note">none</p>{{ end }}</div>{{ end }}
+</div>
+<p class="note">Headline event/severity/protocol counts are authoritative (from the store); the distinct-count and geo/ASN/ATT&amp;CK/CVE/tool breakdowns are derived from a scan of recent events in the window. Visual charts on <a href="/charts">charts</a>; raw events on <a href="/events">events</a>.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "credentials" }}{{ template "head" . }}

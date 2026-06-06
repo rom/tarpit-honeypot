@@ -621,7 +621,7 @@ var TogglablePages = map[string]bool{
 	"captures": true, "credentials": true, "dns": true, "web": true,
 	"databases": true, "fleet": true, "iocs": true, "tunnels": true,
 	"fingerprints": true, "devices": true, "topology": true, "charts": true,
-	"alerting": true, "errors": true, "docs": true,
+	"statistics": true, "alerting": true, "errors": true, "docs": true,
 }
 
 // PageEnabled reports whether a nav page should be shown / reachable. Core
