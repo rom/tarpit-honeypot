@@ -104,6 +104,10 @@ Handlers are classed by fidelity:
 | `codesys` | 1217 | CODESYS V3 (WAGO/Beckhoff/Schneider/ABB) | Deep | Component/service classification (CmpUserMgr login, CmpFileTransfer, CmpApp download/online-change, start/stop, CmpDevice) + CVE-2022-31806/31802 |
 | `hartip` | 5094 | HART-IP (field-instrument gateway) | Fingerprint | 8-byte header → response (session-initiate / token-passing) |
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC PLC) | Deep | Identification + session classification (run-state / program / write / read / login) + CVE-2016-8367 |
+| `proconos` | 20547 | ProConOS / eCLR soft-PLC runtime (PCWorx/MULTIPROG) | Deep | Opcode classification: START/STOP mode-change, unauthenticated logic DOWNLOAD (ICS-ALERT-13-016 class) |
+| `c37118` | 4712 | IEEE C37.118.2 synchrophasor (PMU/PDC) | Deep | Frame parse (DATA/HEADER/CFG/COMMAND), COMMAND classification (turn-on/off transmission, send-CFG-2/HEADER), believable CFG-2 reply |
+| `focas` | 8193 | FANUC FOCAS (CNC / machine tool) | Fingerprint | Request capture → `FANUC Series 30i` sysinfo reply |
+| `osdp` | — | SIA OSDP / IEC 60839-11-5 (access control) over IP | Deep | Command classification (osdp_OUT door-strike, osdp_COMSET channel hijack, osdp_KEYSET/CHLNG secure-channel), osdp_ACK/PDID reply |
 | `atg` | 10001 | Veeder-Root TLS-350 tank gauge | Fingerprint | `^A I20100/I20200/I20300` → per-deployment tank report |
 | `fox` | 1911 | Niagara / Tridium Fox (BAS) | Fingerprint | per-deployment "fox hello" (station/host/versions) |
 
@@ -283,7 +287,10 @@ D3FEND countermeasures are derived from each technique (see
 | `ics-plc-mode-change`, `fins-run-mode-change`, `pcom-mode-change` | T0858 |
 | `ics-device-restart`, `bacnet-reinitialize-device` | T0816 |
 | `ics-modbus-diagnostic`, `bacnet-device-comm-control` | T0814 |
-| `ics-dnp3-control`, `ics-iec104-command`, `secs-remote-command`, `profinet-iod-control` | T0855 |
+| `ics-dnp3-control`, `ics-iec104-command`, `secs-remote-command`, `profinet-iod-control`, `ics-pmu-command`, `ics-actuator-command` | T0855 |
+| `ics-comms-reconfigure` (osdp_COMSET) | T0855 + T0856 |
+| `ics-key-install` (osdp_KEYSET) | T0859 |
+| `ics-secure-channel-setup` (osdp_CHLNG/SCRYPT) | T0830 |
 | `ics-plc-program-access`, `fins-program-download`, `secs-program-send`, `pcom-program-download` | T0843 |
 | `ics-safety-controller-manipulation` | T0831 + T0880 |
 | `wdbrpc-connect` | T0866 |
@@ -419,7 +426,7 @@ Be clear-eyed about what these decoys are and are not:
   confirmations) will eventually see responses that don't fully cohere. The
   decoys are tuned to satisfy scanners (nmap NSE, PLCScan, Shodan-class probes)
   and the opening moves of an attacker, not a full HMI/engineering tool.
-- **Fingerprint-grade handlers** (`ge_srtp`, `hartip`, `crimson`, `fox`, `atg`, `tristation`, `bsap`,
+- **Fingerprint-grade handlers** (`ge_srtp`, `hartip`, `crimson`, `fox`, `atg`, `focas`, `tristation`, `bsap`,
   `ge_egd`, `lontalk`) capture + flag the probe and return a believable
   identity, but do **not** decode per-command control vs recon.
 - **No cryptographic sessions.** OPC-UA stops after capturing the
@@ -453,3 +460,34 @@ Be clear-eyed about what these decoys are and are not:
 
 For the authoritative, always-current view of what a build implements, use
 `tarpit-honeypot list-handlers` and the in-product **docs** tab (`/docs/ot`).
+
+---
+
+## 9. OT scanner & tool fingerprinting
+
+The sensor attributes the *tool* behind a probe, not just the protocol. Two
+layers cover the OT discovery / exploitation ecosystem:
+
+- **HTTP/User-Agent layer** (`internal/toolfp`): the OT asset-discovery and
+  monitoring platforms reach out over HTTP for enrichment, updates, and active
+  queries with product-tagged User-Agents — **Claroty** (CTD/xDome),
+  **Nozomi** Guardian, **Tenable.ot** (Indegy), **Forescout** SilentDefense,
+  **Dragos**, **Otorio**, **ScadaFence** — and the internet-wide research
+  crawlers (**Rapid7 Project Sonar**, Censys, Shodan, Shadowserver). The
+  ICS exploitation toolkits (**ISF**, `smod`, `plcscan`, `s7scan`, `modscan`)
+  are classified too. The OT discovery platforms register as vuln-scanners;
+  ISF as an exploitation framework.
+- **Binary-probe layer** (`internal/scananalysis`): the recon tools that drive
+  a *control protocol* never carry a User-Agent, so they are fingerprinted by
+  the documented bytes they send — nmap's ICS NSE scripts
+  (`modbus-discover` Read-Device-ID / Report-Server-ID, `s7-info` COTP CR,
+  `enip-info` ListIdentity, `bacnet-info`, `dnp3`, `pcworx-info`, `fox-info`),
+  Metasploit's scada modules (e.g. Read-Exception-Status liveness), and the
+  plcscan/s7scan family. These surface in the `scananalysis:profile` event's
+  `nse_scripts` / `tool` fields. Attribution stays conservative: a probe shape
+  shared by many tools names the *script* but not a vendor.
+
+> **Passive monitors are invisible at the connection layer.** A purely passive
+> OT sensor (the default mode for Claroty/Nozomi/Dragos) never initiates a
+> connection, so a connection-level honeypot only ever sees these products when
+> their *active-query* features or management/update clients reach out.

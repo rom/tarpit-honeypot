@@ -203,6 +203,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &dnp3{}, nil
 	case "ge_srtp":
 		return &geSRTP{}, nil
+	case "c37118":
+		return &c37118{}, nil
+	case "osdp":
+		return &osdp{}, nil
+	case "focas":
+		return &focas{}, nil
+	case "proconos":
+		return &proconos{}, nil
 	case "codesys":
 		return &codesys{}, nil
 	case "rsync":
