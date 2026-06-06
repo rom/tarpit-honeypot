@@ -230,6 +230,15 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Red Lion Graphite HMI (Crimson 3.0)",
 		"Emerson Bristol ControlWave RTU",
 		"Echelon LonWorks i.LON Gateway",
+		// v2.13 ICS/OT + networking additions:
+		"Schneider Modicon M340 (BMX P34)",
+		"Allen-Bradley ControlLogix 1756-L73",
+		"GE PACSystems RX3i (IC695)",
+		"WAGO PFC200 (750-8212)",
+		"Juniper SRX340 (Junos)",
+		"Arista 7050SX (EOS)",
+		"Palo Alto PA-220 (PAN-OS)",
+		"Aruba 2930F (ArubaOS-Switch)",
 	}
 	got := Names()
 	if len(got) != len(want) {

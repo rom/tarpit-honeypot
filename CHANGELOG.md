@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **8 more OS/device archetypes (ICS/OT + networking)** — Schneider Modicon
+  M340, Allen-Bradley ControlLogix 1756-L73, GE PACSystems RX3i, WAGO PFC200
+  (CODESYS Linux PLC); and Juniper SRX340 (Junos), Arista 7050SX (EOS), Palo
+  Alto PA-220 (PAN-OS), Aruba 2930F (ArubaOS-Switch). Each ships the device
+  fingerprint surface (MAC OUI, SNMP sysDescr/sysObjectID, CPE, default
+  services) so a scan keys on the right vendor/product. The existing Beckhoff
+  CX9020 archetype now also advertises the TwinCAT AMS/UDP discovery port.
 - **More PHP vulnerability emulation in the fake web app.** The vulnerable-webapp
   decoy now emulates the major PHP-specific attack surfaces: **PHP stream
   wrappers** in LFI — `php://filter` source disclosure (returns believable
