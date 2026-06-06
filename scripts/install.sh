@@ -65,6 +65,8 @@ DO_APPARMOR=1
 DO_DEPS=1
 RELOCATE_SSHD=1
 SSH_RELO_PORT=10022
+TLS_DOMAIN="${TLS_DOMAIN:-}"
+TLS_ORG="${TLS_ORG:-}"
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEFAULT_CONFIG="$REPO/configs/tarpit-honeypot.example-CENTOS-SERVER.yaml"
@@ -84,6 +86,8 @@ while [ $# -gt 0 ]; do
 	--no-deps) DO_DEPS=0; shift ;;
 	--no-relocate-sshd) RELOCATE_SSHD=0; shift ;;
 	--ssh-relocate-port) SSH_RELO_PORT="$2"; shift 2 ;;
+	--tls-domain) TLS_DOMAIN="$2"; shift 2 ;;
+	--tls-org) TLS_ORG="$2"; shift 2 ;;
 	-h | --help) sed -n '2,41p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
@@ -289,8 +293,44 @@ fi
 # Encrypt cert exists — point the UI at it. The validator stat()s the cert, so
 # we only wire TLS when the files are actually there (re-run install.sh after
 # letsencrypt-cert.sh, which also wires it). Idempotent; only touches our keys.
+# prompt_tls_identity asks the admin for the certificate domain + organization
+# that every TLS-bearing decoy service will present (instead of the default
+# "localhost"). Honors --tls-domain/--tls-org and the TLS_DOMAIN/TLS_ORG env;
+# falls back to an interactive prompt (and the box's FQDN as the default).
+prompt_tls_identity() {
+	if [ -z "$TLS_DOMAIN" ]; then
+		local fqdn; fqdn="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+		if [ -t 0 ]; then
+			printf 'TLS certificate domain/name for decoy services [%s]: ' "$fqdn"
+			read -r TLS_DOMAIN || true
+		fi
+		TLS_DOMAIN="${TLS_DOMAIN:-$fqdn}"
+	fi
+	if [ -z "$TLS_ORG" ] && [ -t 0 ]; then
+		printf 'TLS certificate organization (optional, blank to vary per service): '
+		read -r TLS_ORG || true
+	fi
+	info "TLS cert identity: domain=$TLS_DOMAIN org=${TLS_ORG:-<per-service>}"
+}
+
+# set_sensor_key inserts or replaces a key under the top-level "sensor:" block.
+set_sensor_key() {
+	local f="$1" key="$2" val="$3"
+	[ -n "$val" ] || return 0
+	if grep -qE "^[[:space:]]+$key:" "$f"; then
+		sed -i -E "s|^([[:space:]]+)$key:.*|\1$key: \"$val\"|" "$f"
+	else
+		# insert right after the "sensor:" line (2-space indent to match the block)
+		sed -i "/^sensor:/a\\  $key: \"$val\"" "$f"
+	fi
+}
+
 patch_config() {
 	local f="$1"
+	# Pin the deployment-wide TLS cert identity so all decoy TLS services share
+	# one consistent certificate (not the per-service "localhost" default).
+	set_sensor_key "$f" "tls_domain" "$TLS_DOMAIN"
+	set_sensor_key "$f" "tls_org" "$TLS_ORG"
 	if [ -f "$ETC/tls/cert.pem" ] && [ -f "$ETC/tls/key.pem" ]; then
 		info "Pointing UI TLS at $ETC/tls/{cert,key}.pem"
 		sed -i \
@@ -303,6 +343,7 @@ patch_config() {
 	grep -q "drop_user:" "$f" || warn "config has no sensor.drop_user — add 'drop_user: $SVC_USER' / 'drop_group: $SVC_GROUP'"
 	grep -q "seccomp:" "$f"  || warn "config has no sensor.sandbox.seccomp — add 'sandbox: { seccomp: true, landlock: true }'"
 }
+prompt_tls_identity
 patch_config "$CONFIG"
 
 if "$BIN" validate-config -c "$CONFIG" >/dev/null 2>&1; then

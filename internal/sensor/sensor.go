@@ -176,6 +176,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 		jit = jitter.New(0, 0)
 	}
 
+	// Install the deployment-wide TLS certificate identity (CN/SAN domain +
+	// organization) so every TLS decoy presents one consistent cert instead of
+	// the per-service "localhost" default. Set once, before any listener starts.
+	handler.SetTLSDefaults(cfg.Sensor.TLSDomain, cfg.Sensor.TLSOrg)
+
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).
 	arch := archetype.Lookup(cfg.Sensor.Archetype)
