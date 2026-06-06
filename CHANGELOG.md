@@ -10,6 +10,27 @@ documented in `docs/`).
 
 ### Added
 
+- **Deep ICS protocol implementations.** Five fingerprint-grade handlers now
+  decode their session/service layer and classify recon vs control:
+  - **CODESYS V3** (1217) — classifies the targeted component/service from the
+    in-clear tokens (CmpUserMgr login, CmpFileTransfer / CmpApp download &
+    online-change, start/stop/reset, CmpDevice info, CmpTraceMgr) and attributes
+    the CODESYS no-default-auth (**CVE-2022-31806**) + gateway auth-bypass
+    (**CVE-2022-31802**). Embedded across WAGO/Beckhoff/Schneider/ABB/Festo.
+  - **S7comm-Plus** (102) — parses the S7-1200/1500 PDU: version→firmware family,
+    opcode, and function (Explore, Get/SetMultiVariables, CreateObject/Invoke) →
+    explore/read/write/program-access markers.
+  - **KNXnet/IP** (3671) — parses the cEMI/APCI layer of TUNNELLING_REQUEST +
+    ROUTING_INDICATION: GroupValue read/write (bus drive), A_Memory_Write,
+    A_Restart, individual-address/property/key programming, with the KNX
+    individual+group addresses; flags CONNECT and DEVICE_CONFIGURATION.
+  - **Phoenix Contact PCWorx** (1962) — richer ILC identification + a bounded
+    session classifying run-state / program-transfer / variable write-read /
+    login, attributing the ILC unauthenticated-access **CVE-2016-8367**.
+  - **VxWorks WDB target agent** (UDP 17185) — parses the ONC-RPC/WDB header
+    (WDBPROG 0x55555555), classifies memory access / context-create+function-call
+    (RCE) / connect, attributes the exposed-WDB-agent backdoor (**CVE-2010-2965**)
+    and detects oversized **URGENT/11** IPnet requests (**CVE-2019-12256/-12255**).
 - **Deeper Modbus + Modbus/TCP Security.** Both the plaintext (502) and TLS
   (802) Modbus handlers now share a much deeper analysis layer:
   - **More function codes** — Read Exception Status (0x07), Get Comm Event

@@ -266,18 +266,71 @@ type wdbrpc struct{ lim *udpReflectLimiter }
 
 func (h *wdbrpc) Name() string { return "wdbrpc" }
 
+// WDBPROG is the ONC-RPC program number of the VxWorks WDB agent (WDBPROG).
+const wdbProg = 0x55555555
+
 func (h *wdbrpc) Handle(_ context.Context, payload []byte, src net.Addr, pc net.PacketConn, _ config.Listener) (Result, error) {
 	res := Result{Meta: map[string]any{}, Payload: payload}
 	flagAnomaly(&res, "wdbrpc-probe")
-	if len(payload) >= 4 {
-		flagAnomaly(&res, "wdbrpc-connect")
-		if h.lim.allow() {
-			// A small, bounded WDB-style reply (echoes the leading xid, marks an
-			// accepted reply) so the agent looks live without amplifying.
-			resp := []byte{payload[0], payload[1], payload[2], payload[3], 0x00, 0x00, 0x00, 0x00}
-			_, _ = pc.WriteTo(resp, src)
-			res.BannerSent = "wdb reply"
+	if len(payload) < 4 {
+		return res, nil
+	}
+	flagAnomaly(&res, "wdbrpc-connect")
+	// The WDB agent being reachable at all is the exposure URGENT/11 warned of.
+	res.CVEHits = appendUnique(res.CVEHits, "CVE-2010-2965")
+	flagAnomaly(&res, "cve:CVE-2010-2965")
+	setIfEmpty(res.Meta, "intent", "VxWorks WDB agent access — RTOS debug interface (memory r/w + RCE)")
+
+	// WDBRPC rides ONC-RPC: xid(4), msg_type(4)=0 call, rpcvers(4)=2, prog(4)=
+	// 0x55555555 (WDBPROG), vers(4), proc(4). Parse it when present.
+	wdbConfirmed := false
+	if len(payload) >= 24 && binary.BigEndian.Uint32(payload[4:8]) == 0 {
+		if binary.BigEndian.Uint32(payload[12:16]) == wdbProg {
+			wdbConfirmed = true
+			res.Meta["wdb_program"] = "WDBPROG"
+			proc := binary.BigEndian.Uint32(payload[20:24])
+			res.Meta["wdb_proc"] = proc
+			h.classifyWDBProc(proc, &res)
 		}
 	}
+	// URGENT/11 heuristic: an oversized / malformed WDB datagram (the IPnet
+	// stack-overflow payloads are large) against the agent.
+	if len(payload) > 1400 {
+		flagAnomaly(&res, "wdbrpc-urgent11")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2019-12256")
+		flagAnomaly(&res, "cve:CVE-2019-12256")
+		res.Meta["intent"] = "VxWorks WDB oversized request — possible URGENT/11 IPnet overflow"
+	}
+
+	if h.lim.allow() {
+		// A small, bounded WDB-style reply (echoes the leading xid, marks an
+		// accepted reply) so the agent looks live without amplifying.
+		resp := []byte{payload[0], payload[1], payload[2], payload[3], 0x00, 0x00, 0x00, 0x00}
+		_, _ = pc.WriteTo(resp, src)
+		res.BannerSent = "wdb reply"
+	}
+	_ = wdbConfirmed
 	return res, nil
+}
+
+// classifyWDBProc classifies a WDB procedure: memory read (info disclosure),
+// memory write / context-create / function-call (the RCE primitives), and
+// run-control. Proc numbers vary across WDB versions, so we group by the
+// documented WDB request families and also key on size.
+func (h *wdbrpc) classifyWDBProc(proc uint32, res *Result) {
+	switch {
+	case proc == 1 || proc == 2: // CONNECT / DISCONNECT / TARGET_PING
+		res.Meta["wdb_op"] = "connect/ping"
+	case proc >= 0x40 && proc <= 0x4F: // memory access family
+		// Reads disclose firmware/keys; writes are the RCE primitive.
+		flagAnomaly(res, "wdbrpc-mem-access")
+		res.Meta["wdb_op"] = "memory-access"
+		res.Meta["intent"] = "VxWorks WDB memory read/write — RTOS memory access (firmware/RCE)"
+	case proc >= 0x60 && proc <= 0x7F: // context / function-call family = RCE
+		flagAnomaly(res, "wdbrpc-rce")
+		res.Meta["wdb_op"] = "context/func-call"
+		res.Meta["intent"] = "VxWorks WDB context-create / function-call — remote code execution on the RTOS"
+	default:
+		res.Meta["wdb_op"] = "wdb-proc"
+	}
 }

@@ -909,6 +909,22 @@ var catalog = []Record{
 		Description: "Phoenix Contact ILC 1xx controllers (PCWorx) expose read/write of PLC variables without authentication.",
 	},
 	{
+		// Advisory-only (the wdbrpc handler attributes these on WDB access).
+		ID: "CVE-2010-2965", Name: "VxWorks WDB debug agent exposed", CVSS: 10.0, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks WDB target/debug agent left enabled — unauthenticated memory read/write and code execution on the RTOS.",
+	},
+	{
+		ID: "CVE-2019-12256", Name: "URGENT/11 IPv4-options overflow", CVSS: 9.8, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks IPnet stack overflow parsing IPv4 options (URGENT/11) — remote code execution.",
+	},
+	{
+		ID: "CVE-2019-12255", Name: "URGENT/11 TCP urgent-pointer", CVSS: 9.8, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks IPnet TCP urgent-pointer out-of-bounds (URGENT/11) — memory corruption / RCE.",
+	},
+	{
 		ID: "CVE-2020-16209", Name: "FieldComm HART-IP hipserver overflow", CVSS: 9.8, Service: "hartip",
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Stack buffer overflow in the FieldComm Group HART-IP reference server (hipserver) allows unauthenticated RCE / DoS.",
@@ -2231,6 +2247,9 @@ var cveExtra = map[string]struct {
 	"CVE-2013-2783":  {[]string{"CWE-835", "CWE-20"}, "cpe:2.3:a:trianglemicroworks:scada_data_gateway:*", 0.04},
 	"CVE-2017-16744": {[]string{"CWE-22"}, "cpe:2.3:a:tridium:niagara:*", 0.05},
 	"CVE-2016-8367":  {[]string{"CWE-306"}, "cpe:2.3:o:phoenixcontact:ilc_151_eth_firmware:*", 0.05},
+	"CVE-2010-2965":  {[]string{"CWE-489", "CWE-306"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
+	"CVE-2019-12256": {[]string{"CWE-787"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
+	"CVE-2019-12255": {[]string{"CWE-787"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
 	"CVE-2020-16209": {[]string{"CWE-787", "CWE-120"}, "cpe:2.3:a:fieldcommgroup:hipserver:*", 0.08},
 	"CVE-2025-58428": {[]string{"CWE-78"}, "cpe:2.3:o:veeder-root:tls4b_firmware:*", 0.05},
 	"CVE-2018-8867":  {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe330_firmware:*", 0.03},

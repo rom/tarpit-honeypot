@@ -87,7 +87,7 @@ Handlers are classed by fidelity:
 | `modbus` | 502 | Modbus/TCP (MBAP) | Deep | Read coils/registers, write coils/registers, FC 0x08 diagnostics, Report Server ID, FC 0x2B/MEI Read-Device-ID (→ Schneider Modicon M340) |
 | `modbus_security` / `modbuss` | 802 | Modbus/TCP Security (TLS + client-cert role) | Deep | TLS termination (JA3/JA4/JA3S), client-cert subject + Modbus role (OID 1.3.6.1.4.1.50316.802.1) capture, then the full `modbus` command set over the encrypted channel |
 | `s7` | 102 | Siemens S7comm (TPKT/COTP) | Deep | COTP CR→CC, Setup Communication, SZL read (S7-300 identity), Read/Write Var, PLC control/STOP, block up/download |
-| `s7comm_plus` | 102 | Siemens S7-1200/1500 | Fingerprint | COTP CR→CC, classifies first PDU (`0x72` plus vs `0x32` classic) |
+| `s7comm_plus` | 102 | Siemens S7-1200/1500 | Deep | COTP CR→CC, parses the S7comm-Plus PDU: version→firmware family, opcode, function (Explore / Get-SetMultiVariables / CreateObject / Invoke) |
 | `iec104` | 2404 | IEC 60870-5-104 | Deep | STARTDT/STOPDT/TESTFR, I/S/U-frame parsing, General/Counter Interrogation, single/double commands, set-point commands, reset-process |
 | `dnp3` | 20000 | DNP3 / IEEE 1815 | Deep | Data-link LINK_STATUS/ACK + application layer (READ, WRITE, SELECT/OPERATE/DIRECT_OPERATE, COLD/WARM_RESTART, STOP_APPL, enable/disable unsolicited) |
 | `ethernetip` | 44818 | EtherNet/IP + CIP (Rockwell) | Deep | RegisterSession, ListIdentity (1756-L73 ControlLogix), SendRRData/SendUnitData CIP (Get/Set/Read_Tag/Write_Tag/Reset/Start/Stop/Forward_Open) |
@@ -101,9 +101,9 @@ Handlers are classed by fidelity:
 | `secs_gem` | 5000 | SEMI HSMS / SECS-GEM | Deep | Select/Linktest, S7F3 process-program send, S2F41 host command |
 | `crimson` | 789 | Red Lion Crimson (HMI) | Fingerprint | Framed request → "G3" identity |
 | `ge_srtp` | 18245 | GE/Emerson PACSystems / Series 90 | Fingerprint | 56-byte request → success response |
-| `codesys` | 1217 | CODESYS V3 (WAGO/Beckhoff/Schneider/ABB) | Fingerprint | Channel-open ack |
+| `codesys` | 1217 | CODESYS V3 (WAGO/Beckhoff/Schneider/ABB) | Deep | Component/service classification (CmpUserMgr login, CmpFileTransfer, CmpApp download/online-change, start/stop, CmpDevice) + CVE-2022-31806/31802 |
 | `hartip` | 5094 | HART-IP (field-instrument gateway) | Fingerprint | 8-byte header → response (session-initiate / token-passing) |
-| `pcworx` | 1962 | Phoenix Contact PCWorx (ILC PLC) | Fingerprint | Identification frame (`ILC 330 ETH` + firmware) |
+| `pcworx` | 1962 | Phoenix Contact PCWorx (ILC PLC) | Deep | Identification + session classification (run-state / program / write / read / login) + CVE-2016-8367 |
 | `atg` | 10001 | Veeder-Root TLS-350 tank gauge | Fingerprint | `^A I20100/I20200/I20300` → per-deployment tank report |
 | `fox` | 1911 | Niagara / Tridium Fox (BAS) | Fingerprint | per-deployment "fox hello" (station/host/versions) |
 
@@ -122,7 +122,7 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `bsap` | 1234 | Bristol/Emerson BSAP-IP RTU | Fingerprint | bounded ack | addressing/node decode |
 | `ge_egd` | 18246 | GE Ethernet Global Data | Fingerprint | **capture-only** | PDU type + producer id |
 | `lontalk` | 1628 | Echelon LonTalk / LonWorks-IP (CEA-852) | Fingerprint | **capture-only** | data-packet header |
-| `wdbrpc` | 17185 | VxWorks WDB target agent (URGENT/11) | Fingerprint | bounded ack | probe + connect |
+| `wdbrpc` | 17185 | VxWorks WDB target agent (URGENT/11) | Deep | bounded ack | WDBPROG parse: memory-access / context-call (RCE) / connect + CVE-2010-2965; oversized → URGENT/11 (CVE-2019-12256) |
 | `ads_discovery` | 48899 | Beckhoff TwinCAT AMS/UDP discovery + route | Deep | bounded ack | Identify/Discovery (`ics-ads-discovery`), AddRoute (`ics-ads-route-add`, captures route/host/user) |
 
 ### L2 (sniffer / responder)
@@ -419,9 +419,8 @@ Be clear-eyed about what these decoys are and are not:
   confirmations) will eventually see responses that don't fully cohere. The
   decoys are tuned to satisfy scanners (nmap NSE, PLCScan, Shodan-class probes)
   and the opening moves of an attacker, not a full HMI/engineering tool.
-- **Fingerprint-grade handlers** (`s7comm_plus`, `ge_srtp`, `codesys`, `hartip`,
-  `pcworx`, `crimson`, `fox`, `atg`, `knx`, `tristation`, `bsap`, `ge_egd`,
-  `lontalk`, `wdbrpc`) capture + flag the probe and return a believable
+- **Fingerprint-grade handlers** (`ge_srtp`, `hartip`, `crimson`, `fox`, `atg`, `tristation`, `bsap`,
+  `ge_egd`, `lontalk`) capture + flag the probe and return a believable
   identity, but do **not** decode per-command control vs recon.
 - **No cryptographic sessions.** OPC-UA stops after capturing the
   OpenSecureChannel SecurityPolicyUri — it does not run the OPN/CreateSession

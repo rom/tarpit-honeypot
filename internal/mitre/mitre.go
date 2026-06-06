@@ -873,6 +873,9 @@ var anomalyTags = map[string]Tag{
 	"profinet-connect":       {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-probe":           {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-connect":         {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-mem-access":      {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-rce":             {Techniques: []string{"T0866", "T0843"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-urgent11":        {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	// Round-five remote-access / OOB-management decoys (remoteoob.go).
 	"rexec-attempt":    {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"rexec-command":    {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
