@@ -10,6 +10,19 @@ documented in `docs/`).
 
 ### Added
 
+- **15 more PHP vulnerability emulations** in the fake web app: phpMyAdmin LFI
+  (**CVE-2018-12613**) + setup RCE (**CVE-2009-1151**), Drupalgeddon2
+  (**CVE-2018-7600**), Laravel Ignition RCE (**CVE-2021-3129**), ThinkPHP 5.x
+  RCE (**CVE-2018-20062**), PHP-FPM status leak, Composer manifest leak,
+  exposed `php-cgi`, Adminer, WordPress REST/`?author=` **user enumeration** +
+  `xmlrpc.php` `system.multicall` brute / pingback SSRF, webshell-filename
+  probes, PHP **superglobal pollution**, **type-juggling / magic-hash** auth
+  bypass, **RFI** (`allow_url_include`), and **code-eval** sinks
+  (`preg_replace /e`, `assert`, `create_function`). New `webapp:*` markers
+  (mapped via the `webapp:`→T1190 fallback) + 4 new catalog CVEs
+  (CVE-2018-12613, CVE-2009-1151, CVE-2018-20062, CVE-2019-11043) with
+  CWE/CVSS/CPE/EPSS.
+
 - **8 more OS/device archetypes (ICS/OT + networking)** — Schneider Modicon
   M340, Allen-Bradley ControlLogix 1756-L73, GE PACSystems RX3i, WAGO PFC200
   (CODESYS Linux PLC); and Juniper SRX340 (Junos), Arista 7050SX (EOS), Palo

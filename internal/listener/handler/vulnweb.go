@@ -152,6 +152,111 @@ func phpCGIArgInjection(rawQuery string) bool {
 	return false
 }
 
+// phpParamAttacks detects parameter-level PHP attack classes in the query
+// string / body: PHP superglobal pollution, type-juggling magic-hash auth
+// bypass, remote file inclusion, code-eval (preg_replace /e, assert), and the
+// ThinkPHP request-routing RCE.
+func phpParamAttacks(rawQuery, body string) []string {
+	low := strings.ToLower(rawQuery + "\n" + body)
+	var out []string
+	add := func(m string) { out = appendUnique(out, m) }
+	// Superglobal / variable pollution.
+	for _, s := range []string{"globals[", "_session[", "_request[", "_get[", "_post[", "_server[", "_cookie["} {
+		if strings.Contains(low, s) {
+			add("webapp:php-superglobal-pollution")
+			break
+		}
+	}
+	// Type juggling: magic-hash (0e + all digits) or array injection on a
+	// password/token parameter (turns a strcmp/== check into true).
+	if magicHashParam(rawQuery) || strings.Contains(low, "password[]=") || strings.Contains(low, "pwd[]=") ||
+		strings.Contains(low, "hash[]=") || strings.Contains(low, "token[]=") {
+		add("webapp:php-type-juggling")
+	}
+	// Remote file inclusion (allow_url_include) — a parameter set to an http(s)/
+	// ftp URL, especially one fetching a .php/.txt payload.
+	for _, s := range []string{"=http://", "=https://", "=ftp://", "=\\\\"} {
+		if strings.Contains(low, s) && (strings.Contains(low, ".php") || strings.Contains(low, ".txt") || strings.Contains(low, "shell")) {
+			add("webapp:php-rfi")
+			break
+		}
+	}
+	// Code-eval sinks.
+	if strings.Contains(low, "preg_replace") && strings.Contains(low, "/e") ||
+		strings.Contains(low, "assert(") || strings.Contains(low, "create_function") ||
+		strings.Contains(low, "call_user_func") {
+		add("webapp:php-code-eval")
+	}
+	// ThinkPHP 5.x routing RCE.
+	if strings.Contains(low, "invokefunction") && strings.Contains(low, "call_user_func_array") ||
+		strings.Contains(low, "\\think\\app") || strings.Contains(low, "s=/index/think") {
+		add("webapp:thinkphp-rce")
+	}
+	return out
+}
+
+// magicHashParam reports whether any query-parameter value is a PHP "magic
+// hash" (0e followed by only digits — compares == 0 under loose typing).
+func magicHashParam(rawQuery string) bool {
+	for _, pair := range strings.Split(rawQuery, "&") {
+		v := pair
+		if i := strings.IndexByte(pair, '='); i >= 0 {
+			v = pair[i+1:]
+		}
+		if len(v) >= 3 && (v[0] == '0') && (v[1] == 'e' || v[1] == 'E') {
+			allDigits := true
+			for _, c := range v[2:] {
+				if c < '0' || c > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isWebshellName reports whether a path is a well-known webshell filename an
+// attacker probes for to find a pre-existing shell.
+func isWebshellName(path string) bool {
+	base := path
+	if i := strings.LastIndexByte(base, '/'); i >= 0 {
+		base = base[i+1:]
+	}
+	switch strings.ToLower(base) {
+	case "shell.php", "c99.php", "r57.php", "wso.php", "alfa.php", "b374k.php",
+		"cmd.php", "up.php", "upload.php", "0.php", "1.php", "x.php", "sh.php",
+		"backdoor.php", "webshell.php", "mini.php", "404.php", "indoxploit.php":
+		return true
+	}
+	return false
+}
+
+// webappPhpMyAdmin emulates the phpMyAdmin surface: the login page, the setup
+// script (CVE-2009-1151 RCE), and the target-parameter LFI (CVE-2018-12613).
+func webappPhpMyAdmin(server, path, rawQuery string, brand webBrand, hc honeyCreds, res *Result) string {
+	flagAnomaly(res, "webapp:phpmyadmin-probe")
+	low := strings.ToLower(path + "?" + rawQuery)
+	switch {
+	case strings.Contains(low, "setup/index.php") || strings.Contains(low, "scripts/setup.php"):
+		flagAnomaly(res, "webapp:phpmyadmin-setup-rce")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2009-1151")
+		flagAnomaly(res, "cve:CVE-2009-1151")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8",
+			"<html><head><title>phpMyAdmin setup</title></head><body><h1>phpMyAdmin 3.1.0 setup</h1></body></html>", nil)
+	case strings.Contains(low, "target=") && (strings.Contains(low, "%253f") || strings.Contains(low, "../")):
+		flagAnomaly(res, "webapp:phpmyadmin-lfi")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-12613")
+		flagAnomaly(res, "cve:CVE-2018-12613")
+		return webappResponse(server, 200, "OK", "text/plain", webappFakePasswd(), nil)
+	}
+	return webappResponse(server, 200, "OK", "text/html; charset=UTF-8",
+		"<html><head><title>phpMyAdmin</title></head><body><h1>Welcome to phpMyAdmin 4.9.7</h1><form action=\"index.php\" method=\"post\"><input name=\"pma_username\"><input type=\"password\" name=\"pma_password\"></form></body></html>", nil)
+}
+
 // phpEvalEcho mimics a host vulnerable to the PHPUnit eval-stdin RCE: it echoes
 // the most common reconnaissance payloads' expected output without running
 // anything, so the attacker's tool believes the RCE worked.
@@ -231,6 +336,17 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		} else {
 			res.CVEHits = appendUnique(res.CVEHits, "CVE-2012-1823")
 			flagAnomaly(res, "cve:CVE-2012-1823")
+		}
+	}
+
+	// Parameter-level PHP attack classes (superglobal pollution, type-juggling
+	// magic hash, remote file inclusion, code-eval, ThinkPHP routing RCE).
+	for _, m := range phpParamAttacks(rawQuery, string(body)) {
+		flagAnomaly(res, m)
+		switch m {
+		case "webapp:thinkphp-rce":
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-20062")
+			flagAnomaly(res, "cve:CVE-2018-20062")
 		}
 	}
 
@@ -425,6 +541,79 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		recordProbedFile(res, path)
 		src := "<?php\n// " + htmlEscape(strings.TrimPrefix(path, "/")) + "\n$config = array(\n  'db_user' => 'app_rw',\n  'db_pass' => '" + shortToken(hc.secretKey) + "',\n  'app_key' => '" + hc.appKey + "',\n);\n?>\n"
 		return webappResponse(server, 200, "OK", "text/plain", src, nil)
+
+	case strings.Contains(path, "phpmyadmin") || strings.Contains(path, "/pma") || path == "/mysql" || path == "/dbadmin":
+		return webappPhpMyAdmin(server, path, rawQuery, brand, hc, res)
+
+	case path == "/adminer.php" || strings.HasPrefix(path, "/adminer") || path == "/adminer/":
+		// Adminer single-file DB tool — exposed instances are an SSRF / DB-creds
+		// theft surface. Return its login so a scanner records a live Adminer.
+		flagAnomaly(res, "webapp:adminer-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8",
+			"<html><head><title>Login - Adminer 4.8.1</title></head><body><h1>Adminer 4.8.1</h1><form><table><tr><td>Server<td><input name=\"auth[server]\" value=\"localhost\"></table></form></body></html>", nil)
+
+	case strings.HasPrefix(path, "/_ignition/"):
+		// Laravel Ignition (CVE-2021-3129): execute-solution → file-write RCE.
+		flagAnomaly(res, "webapp:laravel-ignition-rce")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2021-3129")
+		flagAnomaly(res, "cve:CVE-2021-3129")
+		return webappResponse(server, 200, "OK", "application/json", `{"file":"/var/www/html/storage/logs/laravel.log","line":1}`, nil)
+
+	case strings.HasPrefix(path, "/CHANGELOG.txt") || path == "/user/register" || strings.Contains(rawQuery, "q=user/password"):
+		// Drupalgeddon2 (CVE-2018-7600): form-API render-array RCE.
+		if method == "POST" || strings.Contains(rawQuery, "element_parents") || strings.Contains(string(body), "#post_render") {
+			flagAnomaly(res, "webapp:drupal-rce")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-7600")
+			flagAnomaly(res, "cve:CVE-2018-7600")
+		}
+		return webappResponse(server, 200, "OK", "text/plain", "Drupal 7.58, 2018-XX-XX\n", nil)
+
+	case path == "/status" || path == "/php-fpm-status" || path == "/fpm-status" || path == "/php_status":
+		// PHP-FPM status page leak (process list, scripts, request URIs).
+		flagAnomaly(res, "webapp:phpfpm-status")
+		return webappResponse(server, 200, "OK", "text/plain",
+			"pool:                 www\nprocess manager:      dynamic\nidle processes:       3\nactive processes:     1\ntotal processes:      4\n", nil)
+
+	case path == "/composer.json" || path == "/composer.lock" || path == "/vendor/composer/installed.json":
+		// Composer manifest leak — enumerates the app's PHP dependencies (and
+		// their exact versions) for targeted CVE selection.
+		flagAnomaly(res, "webapp:composer-manifest-leak")
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "application/json",
+			`{"name":"`+strings.ToLower(brand.Name)+`/app","require":{"php":"^7.4","laravel/framework":"8.40.0","phpunit/phpunit":"5.6.2","guzzlehttp/guzzle":"6.5.5"}}`, nil)
+
+	case strings.HasPrefix(path, "/cgi-bin/php") || path == "/cgi-bin/php-cgi" || path == "/cgi-bin/php5" || path == "/cgi-bin/php7":
+		// Exposed php-cgi binary — the CVE-2012-1823 / CVE-2024-4577 surface.
+		flagAnomaly(res, "webapp:php-cgi-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappPhpinfo(id), nil)
+
+	case isWebshellName(path):
+		// A request for a known webshell filename — the attacker is checking
+		// whether a shell they (or someone) dropped is already present.
+		flagAnomaly(res, "webapp:webshell-probe")
+		recordProbedFile(res, path)
+		return webappResponse(server, 404, "Not Found", "text/html; charset=UTF-8",
+			webappShell(brand, "404 Not Found", "<div class=\"nw-card\"><h1>404</h1></div>"), nil)
+
+	case path == "/wp-json/wp/v2/users" || path == "/wp-json/wp/v2/users/" || rawQuery == "author=1" ||
+		strings.Contains(rawQuery, "rest_route=/wp/v2/users"):
+		// WordPress username enumeration (REST API / ?author= oracle).
+		flagAnomaly(res, "webapp:wordpress-user-enum")
+		flagAnomaly(res, "http-account-enumeration")
+		return webappResponse(server, 200, "OK", "application/json",
+			`[{"id":1,"name":"admin","slug":"admin"},{"id":2,"name":"editor","slug":"editor"}]`, nil)
+
+	case path == "/xmlrpc.php":
+		// WordPress XML-RPC: system.multicall credential brute / pingback SSRF.
+		flagAnomaly(res, "webapp:wordpress-xmlrpc")
+		if strings.Contains(string(body), "system.multicall") {
+			flagAnomaly(res, "webapp:wordpress-xmlrpc-brute")
+		}
+		if strings.Contains(string(body), "pingback.ping") {
+			flagAnomaly(res, "webapp:wordpress-pingback-ssrf")
+		}
+		return webappResponse(server, 200, "OK", "text/xml",
+			"<?xml version=\"1.0\"?><methodResponse><params><param><value><string>XML-RPC server accepts POST requests only.</string></value></param></params></methodResponse>", nil)
 
 	case strings.HasPrefix(path, "/admin"):
 		// Unauthenticated admin → bounce to login (believable).

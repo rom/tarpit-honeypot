@@ -123,6 +123,30 @@ var catalog = []Record{
 		Description: "Drupal form-API render-array RCE.",
 	},
 	{
+		ID: "CVE-2018-12613", Name: "phpMyAdmin LFI", CVSS: 8.8, Service: "http",
+		Signatures: []string{"target=db_sql.php%253f", "?target=sql.php%3f", "db_datadict.php%253f"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "phpMyAdmin 4.8.x local file inclusion via the target parameter.",
+	},
+	{
+		ID: "CVE-2009-1151", Name: "phpMyAdmin setup RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/scripts/setup.php", "/setup/index.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "phpMyAdmin setup-script PHP code injection via crafted POST.",
+	},
+	{
+		ID: "CVE-2018-20062", Name: "ThinkPHP RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"invokefunction&function=call_user_func_array", "\\think\\app/invokefunction", "s=/index/\\think"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "ThinkPHP 5.x request-routing remote code execution.",
+	},
+	{
+		ID: "CVE-2019-11043", Name: "PHP-FPM RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/php-fpm%0a", "index.php%0a", "PHP_VALUE%0a"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "PHP-FPM + nginx underflow remote code execution (env_path_info).",
+	},
+	{
 		ID: "CVE-2017-0144", Name: "EternalBlue", CVSS: 8.1, Service: "smb",
 		// The "\PIPE\" tree-connect path appears as ASCII in the SMB1
 		// request the EternalBlue toolchain sends; matched by the smb
@@ -2093,6 +2117,10 @@ var cveExtra = map[string]struct {
 	"CVE-2002-0640":  {[]string{"CWE-787"}, "cpe:2.3:a:openbsd:openssh:*", 0.50},
 	"CVE-2008-1657":  {[]string{"CWE-269"}, "cpe:2.3:a:openbsd:openssh:*", 0.10},
 	"CVE-2018-7600":  {[]string{"CWE-20", "CWE-94"}, "cpe:2.3:a:drupal:drupal:*", 0.97},
+	"CVE-2018-12613": {[]string{"CWE-22", "CWE-98"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.97},
+	"CVE-2009-1151":  {[]string{"CWE-94"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.90},
+	"CVE-2018-20062": {[]string{"CWE-94"}, "cpe:2.3:a:thinkphp:thinkphp:*", 0.97},
+	"CVE-2019-11043": {[]string{"CWE-787"}, "cpe:2.3:a:php:fpm:*", 0.96},
 	"CVE-2019-0708":  {[]string{"CWE-416"}, "cpe:2.3:o:microsoft:windows:*", 0.95},
 	"CVE-2019-11510": {[]string{"CWE-22"}, "cpe:2.3:a:pulsesecure:pulse_connect_secure:*", 0.97},
 	"CVE-2019-18935": {[]string{"CWE-502"}, "cpe:2.3:a:telerik:ui_for_asp.net_ajax:*", 0.95},
