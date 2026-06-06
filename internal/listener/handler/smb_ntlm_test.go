@@ -66,11 +66,19 @@ func buildType3(domain, user, workstation string, ntResp []byte) []byte {
 func TestCaptureNetNTLMv2(t *testing.T) {
 	serverChallenge := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0x11, 0x22, 0x33, 0x44}
 	ntProof := bytes.Repeat([]byte{0x5a}, 16)
-	blob := []byte{0x01, 0x01, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef}
+	// A realistic NTLMv2 "temp" blob (RespType/HiRespType=1, reserved, timestamp,
+	// client challenge, target-info) — always > 8 bytes, so the NT response is
+	// > 24 and unambiguously v2.
+	blob := []byte{
+		0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+		0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11,
+		0x00, 0x00, 0x00, 0x00,
+	}
 	ntResp := append(append([]byte{}, ntProof...), blob...)
 
 	res := Result{Meta: map[string]any{}}
-	captureNetNTLMv2("smb", buildType3("CORP", "alice", "WS01", ntResp), serverChallenge, &res)
+	captureNetNTLM("smb", buildType3("CORP", "alice", "WS01", ntResp), serverChallenge, &res)
 
 	if res.Meta["ntlm_user"] != "alice" || res.Meta["ntlm_domain"] != "CORP" {
 		t.Fatalf("user/domain = %v / %v", res.Meta["ntlm_user"], res.Meta["ntlm_domain"])
@@ -175,8 +183,9 @@ func TestSMBNTLMv2EndToEnd(t *testing.T) {
 	}
 	serverChallenge := ntlm2[24:32]
 
-	// 3) SESSION_SETUP with NTLMSSP AUTHENTICATE (type 3).
-	ntResp := append(bytes.Repeat([]byte{0x5a}, 16), []byte{0xde, 0xad}...)
+	// 3) SESSION_SETUP with NTLMSSP AUTHENTICATE (type 3). A realistic v2 NT
+	// response is NTProofStr(16) + temp blob (> 8 bytes), so > 24 total.
+	ntResp := append(bytes.Repeat([]byte{0x5a}, 16), bytes.Repeat([]byte{0xde}, 28)...)
 	type3 := buildType3("CORP", "bob", "WS9", ntResp)
 	if _, err := cli.Write(smb2ClientMsg(0x0001, 2, sessionSetupReqBody(type3))); err != nil {
 		t.Fatalf("write type3: %v", err)

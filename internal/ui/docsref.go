@@ -150,7 +150,7 @@ var handlerDescriptions = map[string]string{
 	"redis": "Redis server — captures AUTH.", "mysql": "MySQL server — handshake + captured auth.",
 	"postgres": "PostgreSQL server (incl. SSLRequest upgrade).", "mssql": "Microsoft SQL Server (TDS).",
 	"mongodb": "MongoDB wire protocol.", "elasticsearch": "Elasticsearch HTTP API.",
-	"rdp": "RDP — X.224/TLS negotiation, mstshash username + JA3/JA3S, CredSSP/NLA NetNTLMv2 capture, BlueKeep probe.", "smb": "SMB/CIFS — dialect negotiation, ZeroLogon/Eternal* signatures.",
+	"rdp": "RDP — X.224/TLS negotiation, mstshash username + JA3/JA3S, CredSSP/NLA NetNTLMv1+v2 capture, BlueKeep probe.", "smb": "SMB/CIFS — SMB2 NTLMSSP NetNTLMv1+v2 capture, ZeroLogon/Eternal* signatures.",
 	"vnc": "VNC (RFB) — auth challenge + captured response.", "ldap": "LDAP — bind DN/credentials.",
 	"kerberos": "Kerberos KDC — AS-REQ pre-auth (crackable timestamp) + principals.",
 	"vault":    "HashiCorp Vault API — captures presented tokens.", "kubernetes_api": "Kubernetes API server — captures bearer tokens.",

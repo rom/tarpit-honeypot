@@ -215,7 +215,7 @@ By family, with the most common port. All are configurable to any port via `bind
 | `smb` | 445 | SMB1 negotiate + SMB2 STATUS_NOT_IMPLEMENTED reject |
 | `vnc` | 5900 | RFB 3.8 + DES auth challenge |
 | `smtp_recv` | 25 | ESMTP receive with AUTH PLAIN/LOGIN capture |
-| `rdp` | 3389 | X.224 CR/CC + TLS, CredSSP/NLA NetNTLMv2 capture |
+| `rdp` | 3389 | X.224 CR/CC + TLS, CredSSP/NLA NetNTLMv1+v2 capture |
 | `winrm` | 5985 | HTTP 401 Negotiate+Basic |
 | `dcerpc` | 135 | bind/bind_ack with abstract UUID parse |
 | `ldap` | 389 | BindRequest with simple-auth + SASL capture |

@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **NetNTLMv1 capture (SMB + RDP).** The NTLMSSP AUTHENTICATE parser now
+  distinguishes the two NetNTLM dialects by the NT-response length and emits the
+  correct hashcat hash: **NetNTLMv2** (variable-length response → mode **5600**,
+  unchanged) and **NetNTLMv1** (24-byte response → mode **5500**, in a new
+  `meta.ntlmv1_hash`), including the **NTLM2 session-response / ESS** variant
+  (LM = client challenge + zero-padding; the effective challenge is
+  `MD5(serverChallenge‖clientChallenge)[:8]`, flagged `meta.ntlm_ess`). Flagged
+  `*-ntlmv1-capture`. Previously a v1 (or ESS-v1) response was mis-emitted as a
+  malformed v2 line and the LM field was ignored; now both v1 and v2 are captured
+  correctly and surface on `/captures` as hash credentials.
+
 ## [2.12.0] — 2026-06-06
 
 ### Added
