@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"net"
@@ -58,6 +59,18 @@ func (m *mms) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	res.Meta["mms_request_len"] = len(aarq)
 	flagAnomaly(&res, "ics-mms-probe")
 
+	// ICCP / TASE.2 (IEC 60870-6) rides this same MMS/ISO-on-TCP stack but
+	// between control centers rather than to a substation IED. The AARQ
+	// carries the TASE.2 application-context / version objects, and the
+	// session is full of TASE.2-named variables (Bilateral_Table, Transfer
+	// Sets, VCC/ICC domains). Detecting it relabels the association and lets
+	// us classify the inter-control-center operations downstream.
+	if iccpAssociation(aarq) {
+		res.Meta["mms_profile"] = "ICCP/TASE.2"
+		flagAnomaly(&res, "ics-iccp-association")
+		res.Meta["intent"] = "ICCP/TASE.2 association — inter-control-center (utility-to-utility) data exchange"
+	}
+
 	// Reply with a COTP DT carrying a canned AARE (association accept) + MMS
 	// Initiate-Response. Structurally a valid ISO-on-TCP data PDU so the peer
 	// records a live MMS server; the IED model itself is not emulated.
@@ -80,10 +93,73 @@ func (m *mms) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		if name, svc, found := mmsDetectService(pdu); found {
 			res.Meta["mms_service"] = name
 			mmsClassify(svc, &res)
+			classifyICCPObject(pdu, &res)
 			break
 		}
 	}
 	return res, nil
+}
+
+// iccpMarkers are the TASE.2 / ICCP object-name and identifier substrings
+// that distinguish an inter-control-center association from a substation IED
+// session. TASE.2 names its domains and variables from a fixed vocabulary
+// (IEC 60870-6-503), so their ASCII presence in the BER-encoded PDU is a
+// strong tell. Lower-cased compares are avoided — these are case-exact names.
+var iccpMarkers = []string{
+	"Bilateral_Table", "BILATERAL_TABLE", "Transfer_Set", "TransferSet",
+	"DSTransferSet", "DSConditions", "TASE2", "TASE.2", "Supported_Features",
+	"VCC", "Next_DSTransfer_Set", "Transfer_Report",
+}
+
+// iccpAssociation reports whether the association payload carries a TASE.2
+// fingerprint — the TASE.2 version OID arc (1.0.10000) or a TASE.2 named
+// object in the AARQ user-information.
+func iccpAssociation(buf []byte) bool {
+	// TASE.2 version object identifier arc: { iso(1) standard(0) iccp(10000) }
+	// encoded in BER as 0x28 0xCE 0x10 (40*1+0=0x28, then 10000 as 0xCE 0x10).
+	for i := 0; i+2 < len(buf); i++ {
+		if buf[i] == 0x28 && buf[i+1] == 0xCE && buf[i+2] == 0x10 {
+			return true
+		}
+	}
+	return containsAnyBytes(buf, iccpMarkers)
+}
+
+// classifyICCPObject inspects a TASE.2 confirmed-request PDU for the operations
+// that matter on an inter-control-center link: writing/operating a Device
+// (TASE.2 Block 5 device control — actuating a remote breaker/setpoint across
+// utilities), manipulating Transfer Sets (Block 2 — the reporting subscriptions
+// that drive real-time exchange), and reading Bilateral Tables (the access
+// agreement enumerating what the peer is allowed to see).
+func classifyICCPObject(pdu []byte, res *Result) {
+	if res.Meta["mms_profile"] == nil && !iccpAssociation(pdu) {
+		return
+	}
+	switch {
+	case containsAnyBytes(pdu, []string{"Transfer_Set", "TransferSet", "DSTransferSet", "DSConditions"}):
+		flagAnomaly(res, "ics-iccp-transfer-set")
+		res.Meta["intent"] = "ICCP Transfer Set operation — altering inter-control-center reporting subscriptions"
+	case containsAnyBytes(pdu, []string{"Bilateral_Table", "BILATERAL_TABLE"}):
+		flagAnomaly(res, "ics-iccp-bilateral-table")
+		res.Meta["intent"] = "ICCP Bilateral Table access — enumerating the peer access agreement"
+	}
+	// A Write/Operate touching a Device/Command/Tag object on an ICCP link is
+	// Block-5 device control — a cross-utility actuation.
+	if svc, _ := res.Meta["mms_service"].(string); svc == "write" &&
+		containsAnyBytes(pdu, []string{"Device", "Command", "_Tag", "SBO"}) {
+		flagAnomaly(res, "ics-iccp-control")
+		res.Meta["intent"] = "ICCP Device control (Block 5) — operating a remote control point across control centers"
+	}
+}
+
+// containsAnyBytes reports whether any of subs appears as a byte substring of b.
+func containsAnyBytes(b []byte, subs []string) bool {
+	for _, s := range subs {
+		if bytes.Contains(b, []byte(s)) {
+			return true
+		}
+	}
+	return false
 }
 
 // mmsDetectService locates an MMS confirmed-RequestPDU inside an ISO-on-TCP

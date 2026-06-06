@@ -92,7 +92,8 @@ Handlers are classed by fidelity:
 | `dnp3` | 20000 | DNP3 / IEEE 1815 | Deep | Data-link LINK_STATUS/ACK + application layer (READ, WRITE, SELECT/OPERATE/DIRECT_OPERATE, COLD/WARM_RESTART, STOP_APPL, enable/disable unsolicited) |
 | `ethernetip` | 44818 | EtherNet/IP + CIP (Rockwell) | Deep | RegisterSession, ListIdentity (1756-L73 ControlLogix), SendRRData/SendUnitData CIP (Get/Set/Read_Tag/Write_Tag/Reset/Start/Stop/Forward_Open) |
 | `opcua` | 4840 | OPC-UA TCP | Deep | HEL→ACK (endpoint URL + buffers), OpenSecureChannel SecurityPolicyUri capture (`#None` flagged) |
-| `mms` | 102 | IEC 61850 MMS (ISO-on-TCP) | Deep | COTP CR→CC, ACSE/MMS association (AARE accept), confirmed-service detection (getNameList / identify / read / write) |
+| `mms` | 102 | IEC 61850 MMS (ISO-on-TCP) | Deep | COTP CR→CC, ACSE/MMS association (AARE accept), confirmed-service detection (getNameList / identify / read / write); **ICCP/TASE.2** profile detection (TASE.2 version OID + Bilateral_Table / Transfer_Set / VCC objects) with Transfer-Set, Bilateral-Table, and Block-5 Device-control classification |
+| `iccp_secure` | 3782 | Secure ICCP / TASE.2 over TLS (IEC 62351) | Deep | TLS termination (JA3/JA4/JA3S) then the full `mms`/ICCP stack over the encrypted channel |
 | `melsec` | 1025 / 5006 / 5007 | Mitsubishi MELSEC MC (3E) | Deep | Batch/Random read+write, Remote RUN/STOP/PAUSE/Latch-Clear, Remote Reset, Read-CPU-Model (`Q03UDVCPU`) |
 | `ads` | 48898 | Beckhoff ADS/AMS (TwinCAT) | Deep | Read, Write, ReadWrite, WriteControl (run-state), ReadDeviceInfo/ReadState (TwinCAT identity) |
 | `fins_tcp` | 9600 | Omron FINS/TCP | Deep | Node-address handshake, Memory-Area read/write, RUN/STOP, Program-Area download, CPU-data read |
@@ -288,6 +289,9 @@ D3FEND countermeasures are derived from each technique (see
 | `ics-device-restart`, `bacnet-reinitialize-device` | T0816 |
 | `ics-modbus-diagnostic`, `bacnet-device-comm-control` | T0814 |
 | `ics-dnp3-control`, `ics-iec104-command`, `secs-remote-command`, `profinet-iod-control`, `ics-pmu-command`, `ics-actuator-command` | T0855 |
+| `ics-iccp-association`, `ics-iccp-bilateral-table` | T0888 / T0846 |
+| `ics-iccp-transfer-set` | T0855 + T0856 |
+| `ics-iccp-control` (Block-5 device control) | T0855 + T0831 |
 | `ics-comms-reconfigure` (osdp_COMSET) | T0855 + T0856 |
 | `ics-key-install` (osdp_KEYSET) | T0859 |
 | `ics-secure-channel-setup` (osdp_CHLNG/SCRYPT) | T0830 |
@@ -450,10 +454,16 @@ Be clear-eyed about what these decoys are and are not:
 - **"Successful" writes are fiction.** A write/mode-change/reset ACK is
   fabricated. This is intentional (no real control surface) but means a decoy
   cannot reproduce *downstream* process effects an attacker might check for.
-- **Shared port 102.** S7comm (`s7` / `s7comm_plus`) and IEC 61850 MMS (`mms`)
-  all live on TCP 102; pick the one that matches the device you are pretending
-  to be (a Siemens PLC vs a substation IED), since a single listener serves one
-  handler.
+- **Shared port 102.** S7comm (`s7` / `s7comm_plus`), IEC 61850 MMS (`mms`),
+  and ICCP/TASE.2 (also `mms` — it rides the same MMS stack, and the handler
+  detects the TASE.2 profile at runtime) all live on TCP 102; pick the handler
+  that matches the device you are pretending to be (a Siemens PLC vs a
+  substation IED / control-center ICCP node), since a single listener serves
+  one handler. Secure ICCP (`iccp_secure`) is MMS-over-TLS on TCP 3782.
+- **ICCP/TASE.2 detection is heuristic.** The profile is inferred from the
+  TASE.2 version OID and the TASE.2 object-name vocabulary appearing in the
+  BER, not a full TASE.2 server — Block-1/2/5 operations are classified by
+  object name, and no bilateral table or transfer-set engine is emulated.
 - **No control-logic emulation.** There is no ladder/FBD/ST program, no tag
   database, and no I/O simulation; tag/symbol browsing beyond the canned
   identity is not served.
