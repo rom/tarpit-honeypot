@@ -6,6 +6,7 @@
 # the classic edge services (SSH, web, mail, DNS, FTP) it now also exposes:
 #   - Telnet    (23)                  — legacy remote shell, captures creds + cmds
 #   - SNMP v2c  (UDP 161)             — agent; captures community strings
+#   - NTP       (UDP 123)             — time server; MONLIST / mode-6/7 abuse
 #   - SMB/CIFS  (445)                 — Samba; SMB negotiate + NTLM capture
 #   - MSSQL     (1433 + UDP 1434)     — SQL Server (Linux); login + browser probe
 #   - MySQL/MariaDB (3306)            — DB login handshake + creds
@@ -135,6 +136,14 @@ ui:
   hidden_ips: []
     # - 10.0.0.0/24        # internal monitoring subnet
     # - 203.0.113.7        # your vuln scanner
+  # service_activity: true  # tint summary service cards that saw access/attempts (default on)
+  # Hide individual secondary pages from the console (nav link + route). Core
+  # pages (summary/events/search/timeline/profiles/health/config) can't be
+  # disabled; this is presentation-only — events stay in the store + exports.
+  # pages:
+  #   docs: false           # hide the in-product docs library
+  #   topology: false
+  #   fingerprints: false
 
 listeners:
   # Binds use the IPv6 wildcard "[::]" (quoted — a bare [::] would be read as a
@@ -233,6 +242,11 @@ listeners:
   # Answers Get/GetNext/GetBulk from a believable MIB; never writable. ---
   - { id: snmp, proto: udp, bind: "[::]:161", mode: banner, handler: snmp, severity: high, capture: true }
 
+  # --- NTP: time server (UDP 123). Answers client (mode 3) queries from a
+  # believable stratum-2 server, and recognizes the amplification/DDoS abuse
+  # vectors — MONLIST (CVE-2013-5211), mode-6/mode-7 control & private queries. ---
+  - { id: ntp, proto: udp, bind: "[::]:123", mode: banner, handler: ntp, severity: medium, capture: true }
+
   # --- SMB/CIFS: Samba file sharing (445). SMB1/2/3 negotiate + session setup,
   # NTLMSSP challenge/response capture, and EternalBlue-class probe recognition. ---
   - { id: smb, proto: tcp, bind: "[::]:445", mode: banner, handler: smb, severity: high, capture: true }
@@ -301,6 +315,7 @@ honeynets:
           - { port: 993,   handler: imaps }
           - { port: 995,   handler: pop3s }
           - { port: 53,    handler: dns }
+          - { port: 123,   handler: ntp }
           - { port: 21,    handler: ftp_files }
           - { port: 990,   handler: ftps }
           - { port: 161,   handler: snmp }

@@ -598,6 +598,50 @@ type UI struct {
 	// to keep your own scanners / health-checkers out of the console. Edit the
 	// list in config and reload (SIGHUP) to add/remove.
 	HiddenIPs []string `yaml:"hidden_ips"`
+	// Pages enables/disables individual secondary nav pages in the console —
+	// keyed by the page slug ("charts", "credentials", "dns", "web",
+	// "databases", "tunnels", "fleet", "iocs", "campaigns", "correlation",
+	// "attack", "map", "captures", "fingerprints", "devices", "topology",
+	// "alerting", "errors", "docs"). Omitted or true = shown; false = hidden
+	// from the nav AND its route returns 404. The core pages (summary, events,
+	// search, timeline, profiles, health, config) cannot be disabled. This is
+	// presentation only — disabling a page does not drop the underlying events
+	// from the store or any export. Reload (SIGHUP) after editing.
+	Pages map[string]bool `yaml:"pages"`
+	// ServiceActivity tints the summary's service board, highlighting which
+	// listeners actually saw access/attempts in the window (with their event
+	// count). nil/omitted = on; false = off.
+	ServiceActivity *bool `yaml:"service_activity"`
+}
+
+// TogglablePages is the set of secondary pages an operator may hide via
+// ui.pages. Core pages are intentionally absent (always shown).
+var TogglablePages = map[string]bool{
+	"attack": true, "correlation": true, "campaigns": true, "map": true,
+	"captures": true, "credentials": true, "dns": true, "web": true,
+	"databases": true, "fleet": true, "iocs": true, "tunnels": true,
+	"fingerprints": true, "devices": true, "topology": true, "charts": true,
+	"alerting": true, "errors": true, "docs": true,
+}
+
+// PageEnabled reports whether a nav page should be shown / reachable. Core
+// pages (not in TogglablePages) are always enabled; togglable pages default to
+// enabled unless explicitly set false in ui.pages.
+func (u UI) PageEnabled(slug string) bool {
+	if !TogglablePages[slug] {
+		return true
+	}
+	if u.Pages == nil {
+		return true
+	}
+	v, ok := u.Pages[slug]
+	return !ok || v
+}
+
+// ServiceActivityEnabled reports whether the summary's service-activity tint is
+// on (default on).
+func (u UI) ServiceActivityEnabled() bool {
+	return u.ServiceActivity == nil || *u.ServiceActivity
 }
 
 // UIRefreshInterval returns the effective auto-refresh interval in seconds

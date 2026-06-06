@@ -623,7 +623,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/FAQ.md`](docs/FAQ.md) — common questions grouped by topic (general, deployment & safety, detection, fleet, IOCs, performance, operations).
 - [`docs/tarpit-honeypot.1`](docs/tarpit-honeypot.1) — man page (`man ./docs/tarpit-honeypot.1`).
 - [`examples/`](examples/) — ready-to-run scenario configs grouped by deployment shape: **office LAN** (workstations + printers), **internet DMZ** for a few large corporations and a few small businesses, an **IT/OT DMZ** (IDMZ), a **university classroom**, a **data-center server farm**, a **DevOps / cloud-native** tooling surface, a **big-data / secrets / logging platform**, a **virtualization management plane**, a **legacy-Unix big-iron** estate, a **telecom / ISP edge**, plus the OT Purdue-model decoys and edge-device sensors. Several use large or multiple honeynets, and all but the tiniest enable enrichment. [`examples/EXAMPLES.md`](examples/EXAMPLES.md) is the full walkthrough (what each models, how to adapt and combine them); [`examples/README.md`](examples/README.md) is the index. [`examples/fleet/`](examples/fleet/) is a worked multi-tier **fleet** topology (leaf sensor → site aggregator → global hub).
-- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-CENTOS-SERVER` (small legacy CentOS all-in-one: web + SMTP + DNS + FTP + ping, all emulations on), `example-CENTOS-SERVER-EXTENDED` (the same box with a much wider surface: + Telnet, SNMP, SMB, MSSQL, MySQL, PostgreSQL, Redis, MongoDB, RDP, IMAPS/POP3S, web API decoys, and ping/ping6 capture), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
+- [`configs/tarpit-honeypot.example.yaml`](configs/tarpit-honeypot.example.yaml) — canonical default-values reference. Sibling examples in [`configs/`](configs/): `example-MINIMAL` (smallest useful deployment), `example-FULL` (every handler + feature ON), `example-LARGE` (big multi-segment estate), `example-AD-ENTERPRISE` (Windows / Active Directory decoy), `example-FAKEWEB` (the fake-vulnerable web application on its own), `example-CENTOS-SERVER` (small legacy CentOS all-in-one: web + SMTP + DNS + FTP + ping, all emulations on), `example-CENTOS-SERVER-EXTENDED` (the same box with a much wider surface: + Telnet, SNMP, NTP, SMB, MSSQL, MySQL, PostgreSQL, Redis, MongoDB, RDP, IMAPS/POP3S, web API decoys, and ping/ping6 capture), `example-DATASTORES-WEB` (web app + Redis/Mongo/Elasticsearch/memcached), `example-LOW-INTERACTION-STRICT` (interaction guardrails pinned low), `example-archeservices` (role bundles), and the OT examples (`example-ADVANCED-OT` / `example-SMALL-OT`). Validate any with `validate-config -c <file>`.
 
 ## Status
 
@@ -1919,7 +1919,10 @@ segment, and `false` keeps them on the internal drill-down); the summary + map
 an optional equirectangular world-image backdrop (`ui.map_tiles_url`); and
 `ui.hidden_ips` is a **presentation-layer hide list** — listed source IPs/CIDRs
 are dropped from every view (and JSON endpoint) while staying in the store and
-all exports.
+all exports. **`ui.pages`** enables/disables individual secondary pages by slug
+(a disabled page is hidden from the nav and its route 404s; core pages can't be
+disabled), and **`ui.service_activity`** (default on) tints the summary's service
+cards that saw access/attempts.
 
 Endpoints:
 

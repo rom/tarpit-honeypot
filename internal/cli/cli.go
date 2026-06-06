@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/version"
@@ -129,7 +130,11 @@ func printUsage(cmds []command) {
 	fmt.Fprintln(os.Stderr, "usage: tarpit-honeypot [--version|-V] [-h|--help] <subcommand> [flags]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "subcommands:")
-	for _, c := range cmds {
+	// List subcommands alphabetically so they're easy to scan (the dispatch
+	// order above is grouped by purpose, not name).
+	sorted := append([]command(nil), cmds...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].name < sorted[j].name })
+	for _, c := range sorted {
 		fmt.Fprintf(os.Stderr, "  %-18s %s\n", c.name, c.desc)
 	}
 	fmt.Fprintln(os.Stderr, "")

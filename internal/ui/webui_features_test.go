@@ -122,7 +122,7 @@ func TestAttackLinkURLToggle(t *testing.T) {
 	on := true
 	off := false
 	linkFunc := func(linkPtr *bool) func(string) string {
-		funcs := tmplFuncs(func() int { return 0 }, "nvd", "", config.UI{AttackLinks: linkPtr}.AttackLinksEnabled(), func(string) bool { return true })
+		funcs := tmplFuncs(func() int { return 0 }, "nvd", "", config.UI{AttackLinks: linkPtr}.AttackLinksEnabled(), navFuncs{has: func(string) bool { return true }, enabled: func(string) bool { return true }})
 		return funcs["attackLinkURL"].(func(string) string)
 	}
 	// Enabled (default) -> external link; disabled -> "" so templates fall back

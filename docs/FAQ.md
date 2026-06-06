@@ -642,6 +642,18 @@ No — it's read-only. It can't edit config, delete events, or trigger alerts. T
 single exception is the opt-in, token-gated device delete/whitelist
 (`ui.allow_device_actions`), off by default.
 
+**Can I hide pages I don't use from the console?**
+Yes. Set `ui.pages` with the page slug → `false` to hide a **secondary** page
+(it disappears from the nav and its route returns 404), e.g. `ui.pages: { docs:
+false, topology: false }`. The togglable slugs are `attack`, `correlation`,
+`campaigns`, `map`, `captures`, `credentials`, `dns`, `web`, `databases`,
+`fleet`, `iocs`, `tunnels`, `fingerprints`, `devices`, `topology`, `charts`,
+`alerting`, `errors`, `docs`. The **core** pages (summary / events / search /
+timeline / profiles / health / config) can't be disabled, and the `dns` / `web` /
+`databases` pages only appear when a relevant listener is configured. It's
+presentation only — events still land in the store and every export. The summary
+service-board highlight is `ui.service_activity` (default on).
+
 **Is there a JSON API?**
 Yes, read-only: `/api/events`, `/api/summary`, `/api/fleet`, `/api/iocs`,
 `/api/profiles`, `/api/fingerprints`, `/api/topology`, `/api/devices`,
