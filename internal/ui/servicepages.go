@@ -479,8 +479,8 @@ func buildWeb(evs []*event.Event) webView {
 		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
 	}
 	v.Attacks = attackTable(evs)
-	v.URLList = sortedSetKeys(urlSet, 500)
-	v.Files = sortedSetKeys(fileSet, 300)
+	v.URLList = sortedSetKeys(urlSet, 5000)
+	v.Files = sortedSetKeys(fileSet, 5000)
 	return v
 }
 
