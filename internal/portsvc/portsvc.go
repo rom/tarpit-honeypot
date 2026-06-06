@@ -25,7 +25,7 @@ var names = map[int]string{
 	6379: "redis", 8080: "http-alt", 8443: "https-alt", 9100: "jetdirect/pjl",
 	9200: "elasticsearch", 9600: "fins", 10001: "atg", 11211: "memcached",
 	18245: "ge-srtp", 20000: "dnp3", 27017: "mongodb", 44818: "ethernet/ip",
-	47808: "bacnet", 48898: "ads",
+	47808: "bacnet", 48898: "ads", 48899: "ads-discovery",
 }
 
 // Name returns the service name for a port, or "" when unknown.

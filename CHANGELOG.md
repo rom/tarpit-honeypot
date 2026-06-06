@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Beckhoff TwinCAT — AMS/UDP discovery + route (UDP 48899).** A new
+  `ads_discovery` handler emulates the TwinCAT AMS/UDP service the "Add Route"
+  dialog / TcAmsRemoteMgr broadcasts use: it parses the AMS/UDP header, captures
+  the sender AmsNetId, flags **discovery** (`ics-ads-discovery`, T0846) with a
+  bounded rate-limited identity reply, and flags **AddRoute**
+  (`ics-ads-route-add`, T0866) — an attacker adding a trusted engineering route
+  / control-system foothold — capturing the embedded route/host/user strings.
+  The existing ADS/TCP (48898) handler now also names the target **AMS port**
+  (`ams_target_port`: system-service/router 10000, TC2/TC3 PLC runtimes, …) and
+  flags system-service access. New `beckhoffplc` role bundle.
 - **GOOSE attack analysis (IEC 61850).** The L2 GOOSE sniffer now keeps
   per-control-block (`gocbRef`) state and detects manipulation, not just
   presence: **spoofing** (a second publisher / different src MAC for an existing

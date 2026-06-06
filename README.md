@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **133 TCP + 113 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **133 TCP + 114 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -637,7 +637,7 @@ factory-reset (DCP Set); plus a dedicated NFS (2049) handler.** See
 [`docs/ot.md`](docs/ot.md).
 The v2.4–2.13 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**133 TCP + 113 UDP protocol handlers**, **528 CVE detections**, **469 built-in
+**133 TCP + 114 UDP protocol handlers**, **528 CVE detections**, **469 built-in
 YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **166
 OS/device archetypes**, **900+ attack-tool/scanner fingerprints**, **30
 single-sensor + 27 cross-sensor (`fleet:*`) correlators**, **18 typed IOC
@@ -1613,6 +1613,7 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | `ge_egd` | 18246 | GE **Ethernet Global Data** (PACSystems / 90-30 / 90-70 producer/consumer). Decodes the PDU type + producer id. **Capture-only** (EGD is one-way). | — | — |
 | `lontalk` | 1628 | Echelon **LonTalk / LonWorks-IP** (CEA-852) building/industrial control. Decodes the data-packet header. **Capture-only** (config-server-mediated; replying would risk reflection). | — | — |
 | `wdbrpc` | 17185 | VxWorks **WDB target agent** — the RTOS debug RCE surface (URGENT/11 class). Flags the probe + connect (`wdbrpc-connect`, T0866); bounded, rate-limited reply. | — | — |
+| `ads_discovery` | 48899 | Beckhoff **TwinCAT AMS/UDP discovery + route** (the "Add Route" / TcAmsRemoteMgr broadcast). Flags discovery (`ics-ads-discovery`, T0846; bounded identity reply) and **AddRoute** (`ics-ads-route-add`, T0866 — engineering foothold; captures route/host/user). | ✓ | — |
 | `isakmp` | 500 | IKE / ISAKMP (VPN). Parses the ISAKMP header (initiator/responder cookies, exchange type, first SA proposal), captures it, and flags `ike-probe` — a VPN-endpoint discovery / `ike-scan` sweep. No negotiation is completed. | — | — |
 | `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
 | `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query, **DGA-suspected** domains, and **encrypted-DNS** recognition — DoH / DoT / DNSCrypt probes). | — | ✓ |

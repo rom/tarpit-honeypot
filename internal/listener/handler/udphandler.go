@@ -116,6 +116,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &mssqlBrowser{lim: newUDPReflectLimiter()}, nil
 	case "profinet":
 		return &profinet{}, nil
+	case "ads_discovery":
+		return &adsDiscovery{id: deps.Identity, lim: newUDPReflectLimiter()}, nil
 	case "wdbrpc":
 		return &wdbrpc{lim: newUDPReflectLimiter()}, nil
 	case "iax2":

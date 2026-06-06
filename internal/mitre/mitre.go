@@ -446,6 +446,8 @@ var anomalyTags = map[string]Tag{
 	"ics-plc-mode-change":                {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
 	"ics-plc-program-access":             {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
 	"ics-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"ics-ads-discovery":                  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"ics-ads-route-add":                  {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	"ics-dnp3-control":                   {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-iec104-command":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},

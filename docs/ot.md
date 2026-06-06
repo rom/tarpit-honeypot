@@ -123,6 +123,7 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `ge_egd` | 18246 | GE Ethernet Global Data | Fingerprint | **capture-only** | PDU type + producer id |
 | `lontalk` | 1628 | Echelon LonTalk / LonWorks-IP (CEA-852) | Fingerprint | **capture-only** | data-packet header |
 | `wdbrpc` | 17185 | VxWorks WDB target agent (URGENT/11) | Fingerprint | bounded ack | probe + connect |
+| `ads_discovery` | 48899 | Beckhoff TwinCAT AMS/UDP discovery + route | Deep | bounded ack | Identify/Discovery (`ics-ads-discovery`), AddRoute (`ics-ads-route-add`, captures route/host/user) |
 
 ### L2 (sniffer / responder)
 
@@ -345,6 +346,7 @@ OT-relevant roles:
 | `substation` | IEC 61850 MMS 102, DNP3 20000, IEC-104 2404, SNMP 161 |
 | `buildingautomation` | BACnet 47808, Niagara Fox 1911, OPC-UA 4840, BMS HTTP 80 |
 | `rockwellplc` | EtherNet/IP 44818 + 2222, PLC HTTP 80, SNMP 161 |
+| `beckhoffplc` | ADS/AMS 48898, TwinCAT AMS/UDP discovery 48899, Modbus 502, CX web 80 |
 | `omronplc` | FINS/TCP + FINS/UDP 9600 |
 | `emersonrtu` | ROC Plus 4000, Modbus 502, RTU HTTP 80, SNMP 161 |
 | `bristolrtu` | BSAP-IP 1234, Modbus 502, RTU HTTP 80, SNMP 161 |

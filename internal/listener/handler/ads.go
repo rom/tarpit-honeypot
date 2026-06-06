@@ -49,10 +49,17 @@ func (a *ads) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	// dataLength[20:24], errorCode[24:28], invokeId[28:32].
 	cmdID := binary.LittleEndian.Uint16(pkt[16:18])
 	stateFlags := binary.LittleEndian.Uint16(pkt[18:20])
+	targetPort := binary.LittleEndian.Uint16(pkt[6:8])
 	res.Meta["ads_command"] = adsCommandName(cmdID)
 	res.Meta["ams_target"] = amsNetID(pkt[0:6])
+	res.Meta["ams_target_port"] = adsPortName(targetPort)
 	res.Meta["ams_source"] = amsNetID(pkt[8:14])
 	flagAnomaly(&res, "ics-ads-probe")
+	// AMS port 10000 is the TwinCAT system service / router — reaching it is a
+	// system-level admin surface, not just a PLC-runtime data access.
+	if targetPort == 10000 {
+		flagAnomaly(&res, "ics-field-device-probe")
+	}
 	adsClassify(cmdID, &res)
 
 	// Read Device Info -> reply with a TwinCAT identity.
@@ -129,6 +136,26 @@ func adsClassify(cmdID uint16, res *Result) {
 		flagAnomaly(res, "ics-field-device-probe")
 		res.Meta["intent"] = "Beckhoff ADS " + adsCommandName(cmdID) + " — fingerprinting the TwinCAT controller"
 	}
+}
+
+// adsPortName names the well-known TwinCAT AMS target ports so a SIEM sees
+// which runtime/service the attacker is reaching for.
+func adsPortName(p uint16) string {
+	switch p {
+	case 10000:
+		return "system-service/router"
+	case 801, 811, 821, 831:
+		return "TC2 PLC runtime"
+	case 851, 852, 853, 854:
+		return "TC3 PLC runtime"
+	case 27905:
+		return "IO device"
+	case 500:
+		return "license server"
+	case 14000:
+		return "scope server"
+	}
+	return "port-" + itoa(int(p))
 }
 
 func adsCommandName(id uint16) string {

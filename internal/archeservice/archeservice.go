@@ -397,6 +397,12 @@ var roles = map[string][]Service{
 		{9600, "udp", "fins", "Omron FINS/UDP"},
 		{80, "tcp", "http", "PLC web"},
 	},
+	"beckhoffplc": {
+		{48898, "tcp", "ads", "Beckhoff ADS/AMS (TwinCAT)"},
+		{48899, "udp", "ads_discovery", "TwinCAT AMS/UDP discovery + route"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "CX device web"},
+	},
 	"semiconductorfab": {
 		{5000, "tcp", "secs_gem", "SECS/GEM (HSMS)"},
 		{80, "tcp", "http", "equipment web"},
