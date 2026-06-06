@@ -50,27 +50,45 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			// mode 7 (ntpdc private). Decode the implementation + request code:
 			// REQ_MON_GETLIST (42) / REQ_MON_GETLIST_1 (20) is the monlist
 			// amplifier; the others are reconnaissance.
-			flagAnomaly(&res, "ntp-monlist-amplification")
 			res.Meta["ntp_impl"] = payload[2]
 			rc := payload[3]
 			res.Meta["ntp_request_code"] = rc
 			switch rc {
 			case 20, 42:
+				// The classic NTP monlist DRDoS reflector (huge amplification).
 				res.Meta["ntp_request"] = "REQ_MON_GETLIST"
+				flagAnomaly(&res, "ntp-monlist-amplification")
+				flagAnomaly(&res, "cve:CVE-2013-5211")
+				res.Meta["intent"] = "NTP monlist (mode 7) amplification — staging a DRDoS reflector (CVE-2013-5211, up to ~556x)"
 			case 0:
 				res.Meta["ntp_request"] = "REQ_PEER_LIST"
+				flagAnomaly(&res, "ntp-mode7-private")
+				res.Meta["intent"] = "NTP peer-list recon (mode 7 ntpdc private)"
 			case 16:
 				res.Meta["ntp_request"] = "REQ_GET_RESTRICT"
+				flagAnomaly(&res, "ntp-mode7-private")
+				res.Meta["intent"] = "NTP restrict-list recon (mode 7 ntpdc private)"
+			default:
+				flagAnomaly(&res, "ntp-mode7-private")
+				res.Meta["intent"] = "NTP mode-7 (ntpdc private) query — amplification / recon surface"
 			}
 		case 6:
 			// mode 6 (control). Decode the opcode; READVAR is the ntpq
-			// amplification/recon vector.
+			// amplification/recon vector (also abused by CVE-2016-9311-class crashes).
 			flagAnomaly(&res, "ntp-control-query")
 			op := payload[1] & 0x1f
 			res.Meta["ntp_control_opcode"] = op
 			if op == 2 {
 				res.Meta["ntp_control"] = "READVAR"
+				res.Meta["intent"] = "NTP mode-6 READVAR control query — ntpq config/version recon + amplification"
+			} else {
+				res.Meta["intent"] = "NTP mode-6 control query (ntpq) — recon / amplification"
 			}
+		default:
+			// Other non-client modes (symmetric/broadcast/reserved): not normal
+			// for an inbound probe to a public time server.
+			flagAnomaly(&res, "ntp-nonclient-mode")
+			res.Meta["intent"] = "NTP non-client mode " + modeName(mode) + " probe"
 		}
 		return res, nil
 	}

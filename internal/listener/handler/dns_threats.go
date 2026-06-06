@@ -16,6 +16,19 @@ func dnsApplyDetections(res *Result, msg []byte, q dnsQuery) {
 	for _, a := range dnsThreatMarkers(msg, q) {
 		flagAnomaly(res, a)
 	}
+	// SIG-record query (qtype 24) — the integer-overflow vector behind SIGRed
+	// (CVE-2020-1350) in Windows DNS. A SIG lookup is otherwise near-extinct, so
+	// it's a high-signal exploit/recon probe.
+	if q.qtype == 24 {
+		flagAnomaly(res, "dns-sig-query")
+		flagAnomaly(res, "cve:CVE-2020-1350")
+	}
+	// TKEY query (qtype 249) — the ISC BIND assertion-failure DoS vector
+	// (CVE-2015-5477); a legitimate client never sends a bare TKEY lookup.
+	if q.qtype == 249 {
+		flagAnomaly(res, "dns-tkey-query")
+		flagAnomaly(res, "cve:CVE-2015-5477")
+	}
 	// Fingerprint the DNS recon/tunnel/OOB-interaction tool from the QNAME.
 	if tools := toolfp.IdentifyDNS(q.name); len(tools) > 0 {
 		if _, ok := res.Meta["tools"]; !ok {
@@ -27,6 +40,60 @@ func dnsApplyDetections(res *Result, msg []byte, q dnsQuery) {
 			flagAnomaly(res, "tool:"+t)
 		}
 	}
+	// Summarize what the attacker is actually doing, for the UI intent column.
+	if it := dnsIntent(res); it != "" {
+		res.Meta["intent"] = it
+	}
+}
+
+// dnsIntent reduces the flagged anomalies to a single human-readable "what the
+// attacker is trying to do" label (most-severe-wins).
+func dnsIntent(res *Result) string {
+	set := map[string]bool{}
+	if list, ok := res.Meta["anomalies"].([]string); ok {
+		for _, a := range list {
+			set[a] = true
+		}
+	}
+	any := func(ms ...string) bool {
+		for _, m := range ms {
+			if set[m] {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case any("cve:CVE-2020-1350", "dns-sig-query"):
+		return "DNS SIG-record query — SIGRed (CVE-2020-1350) RCE/DoS probe"
+	case any("cve:CVE-2015-5477", "dns-tkey-query"):
+		return "DNS TKEY query — ISC BIND assertion-failure DoS probe (CVE-2015-5477)"
+	case any("dns-zone-transfer", "dns-zone-transfer-served"):
+		return "DNS zone transfer (AXFR/IXFR) — full-zone reconnaissance"
+	case any("dns-dynamic-update"):
+		return "DNS dynamic update — unauthorized record injection (RFC 2136)"
+	case any("dns-null-record", "dns-cname-tunnel", "dns-long-encoded-label", "dns-many-labels", "dns-repeated-label"):
+		return "DNS tunneling / data exfiltration over DNS"
+	case any("dns-oob-interaction"):
+		return "DNS out-of-band interaction — SSRF/RCE callback / blind-exploit confirmation"
+	case any("dns-any-amplification", "dns-dnssec-amplification", "dns-edns-large-udpsize"):
+		return "DNS amplification — staging a DRDoS reflector"
+	case any("dns-rebind-lookup"):
+		return "DNS rebinding lookup — browser SOP bypass setup"
+	case any("dns-wpad-probe", "dns-isatap-probe", "dns-response-as-query", "dns-prestuffed-answers", "dns-additional-stuffing"):
+		return "DNS spoofing / MITM positioning (WPAD/ISATAP/cache-poison)"
+	case any("dns-srv-ad-discovery"):
+		return "Active Directory service discovery via DNS SRV"
+	case any("dns-ptr-reverse-sweep"):
+		return "DNS reverse-PTR sweep — network mapping"
+	case any("dns-dnssec-recon", "dns-nsec-walk"):
+		return "DNSSEC zone-walk reconnaissance"
+	case any("dns-internal-tld-leak", "dns-mail-policy-probe", "dns-chaos-class", "dns-srv-ad-discovery"):
+		return "DNS namespace / policy reconnaissance"
+	case any("dns-inverse-query", "dns-notify-opcode", "dns-multi-question", "dns-nonstandard-class"):
+		return "DNS protocol-anomaly / fuzzing probe"
+	}
+	return ""
 }
 
 // dnsThreatMarkers inspects a parsed DNS query (plus the raw message for header
