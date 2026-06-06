@@ -46,14 +46,24 @@ func (f *fins) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	res.Meta["sna"] = payload[6]
 	res.Meta["sid"] = payload[9]
 	// Protocol-misuse flags: a memory/program write or a RUN/STOP mode change
-	// against the PLC is an actuation attempt (we still never apply it).
+	// against the PLC is an actuation attempt (we still never apply it); reads
+	// and CPU/status queries are reconnaissance.
 	switch {
 	case mrc == 0x01 && src_ == 0x02: // MEMORY_AREA_WRITE
 		flagAnomaly(&res, "ics-plc-write")
+		res.Meta["intent"] = "FINS Memory-Area Write — writing PLC memory (control manipulation)"
+	case mrc == 0x01 && (src_ == 0x01 || src_ == 0x03): // MEMORY_AREA_READ / FILL
+		flagAnomaly(&res, "ics-process-data-access")
+		res.Meta["intent"] = "FINS Memory-Area Read — reading the PLC process image"
 	case mrc == 0x03: // PROGRAM_AREA read/write
 		flagAnomaly(&res, "ics-plc-program-access")
+		res.Meta["intent"] = "FINS Program-Area access — reading/downloading PLC logic"
 	case mrc == 0x04: // RUN (0x01) / STOP (0x02) — operating-mode change
 		flagAnomaly(&res, "ics-plc-mode-change")
+		res.Meta["intent"] = "FINS " + finsCommandName(mrc, src_) + " — changing the PLC operating mode"
+	case mrc == 0x05 || mrc == 0x06 || mrc == 0x07: // CPU data / status / cycle-time read
+		flagAnomaly(&res, "ics-field-device-probe")
+		res.Meta["intent"] = "FINS " + finsCommandName(mrc, src_) + " — fingerprinting the Omron PLC"
 	}
 
 	// Build reply header: swap source/destination, set ICF response bit,

@@ -62,23 +62,44 @@ func startProfinetDCP(ctx context.Context, cfg ProfinetCfg, topo *Topology, onPr
 			slog.Warn("profinet_responder: recvfrom", "err", err)
 			continue
 		}
-		reqMAC, xid, nameFilter, ok := parseDCPIdentify(buf[:n])
-		if !ok {
+		if reqMAC, xid, nameFilter, ok := parseDCPIdentify(buf[:n]); ok {
+			if onProbe != nil {
+				meta := map[string]any{"xid": xid, "service": "identify"}
+				if nameFilter != "" {
+					meta["name_filter"] = nameFilter
+				} else {
+					meta["scope"] = "identify-all"
+				}
+				onProbe(macString(reqMAC), meta)
+			}
+			for _, st := range stationsForRequest(stations, nameFilter) {
+				frame := buildDCPIdentifyResponse(st, reqMAC, xid)
+				if err := sendPNFrame(fd, iface.Index, reqMAC, frame); err != nil {
+					slog.Debug("profinet_responder: send", "err", err)
+				}
+			}
 			continue
 		}
-		if onProbe != nil {
-			meta := map[string]any{"xid": xid}
-			if nameFilter != "" {
-				meta["name_filter"] = nameFilter
-			} else {
-				meta["scope"] = "identify-all"
+		// A DCP Set reassigns a station's NameOfStation / IP or issues a
+		// Control/reset — a configuration-manipulation attempt, not recon.
+		if set, ok := parseDCPSet(buf[:n]); ok {
+			if onProbe != nil {
+				meta := map[string]any{"xid": set.xid, "service": "set", "set_target": set.label}
+				if set.factory {
+					meta["factory_reset"] = true
+				}
+				onProbe(macString(set.reqMAC), meta)
 			}
-			onProbe(macString(reqMAC), meta)
-		}
-		for _, st := range stationsForRequest(stations, nameFilter) {
-			frame := buildDCPIdentifyResponse(st, reqMAC, xid)
-			if err := sendPNFrame(fd, iface.Index, reqMAC, frame); err != nil {
-				slog.Debug("profinet_responder: send", "err", err)
+			// ACK from the targeted station (L2 unicast to the requester) so the
+			// set appears to succeed — only if it addresses one of our stations.
+			for _, st := range stations {
+				if st.mac == set.dstMAC {
+					frame := buildDCPSetResponse(st, set.reqMAC, set.xid, set.option, set.sub)
+					if err := sendPNFrame(fd, iface.Index, set.reqMAC, frame); err != nil {
+						slog.Debug("profinet_responder: send", "err", err)
+					}
+					break
+				}
 			}
 		}
 	}

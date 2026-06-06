@@ -49,6 +49,24 @@ func TestProfinetIODWrite(t *testing.T) {
 	if !hasAnomaly(res, "profinet-iod-write") {
 		t.Errorf("profinet write: %v", res.Meta["anomalies"])
 	}
+	if res.Meta["profinet_operation"] != "IODWrite" {
+		t.Errorf("profinet_operation = %v, want IODWrite", res.Meta["profinet_operation"])
+	}
+}
+
+func TestProfinetIODReadIsRecon(t *testing.T) {
+	pkt := make([]byte, 32)
+	pkt[0] = 0x04 // DCE-RPC v4
+	pkt[1] = 0x00 // request
+	pkt[28] = 0x02
+	pkt[29] = 0x00 // opnum 2 = IODReadReq
+	res := udpResult(t, &profinet{}, pkt)
+	if !hasAnomaly(res, "ics-process-data-access") {
+		t.Errorf("profinet read not flagged as recon: %v", res.Meta["anomalies"])
+	}
+	if res.Meta["profinet_operation"] != "IODRead" {
+		t.Errorf("profinet_operation = %v, want IODRead", res.Meta["profinet_operation"])
+	}
 }
 
 func TestSTUNClassicAmplification(t *testing.T) {

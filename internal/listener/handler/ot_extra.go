@@ -42,10 +42,12 @@ func (t *tristation) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 	res.Meta["ts_msg_type"] = mt
 	res.Meta["ts_msg"] = tristationMsgName(mt)
 	flagAnomaly(&res, "ics-tristation-probe")
+	res.Meta["intent"] = "Triconex TriStation probe — Safety Instrumented System fingerprinting (TRITON surface)"
 	// Program-download / control-program messages are the TRITON reprogramming
 	// path — flag them as a (would-be) safety-controller manipulation attempt.
 	if mt == 0x05 || mt == 0x0a || mt == 0x0d {
 		flagAnomaly(&res, "ics-safety-controller-manipulation")
+		res.Meta["intent"] = "Triconex " + tristationMsgName(mt) + " — safety-controller reprogramming (TRITON/TRISIS path)"
 	}
 	// A minimal, bounded, rate-limited ack so a probe gets a plausible reply.
 	// reply <= request length guarantees no amplification.
@@ -97,14 +99,22 @@ func (r *rocPlus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	req := buf[:n]
 	res.Payload = append([]byte(nil), req...)
 	flagAnomaly(&res, "ics-roc-plus-command")
+	res.Meta["intent"] = "Emerson ROC Plus command — gas/oil flow-computer RTU access"
 	// ROC Plus header: dst_unit, dst_group, src_unit, src_group, opcode, len...
 	if n >= 6 {
 		res.Meta["roc_dst_unit"] = req[0]
 		res.Meta["roc_dst_group"] = req[1]
 		res.Meta["roc_opcode"] = req[4]
 		// opcode 17 = login / opcode 24 = read parameters: credential / config theft.
-		if req[4] == 17 {
+		switch req[4] {
+		case 17: // login
 			flagAnomaly(&res, "ics-roc-plus-login")
+			res.Meta["intent"] = "Emerson ROC Plus login — flow-computer credential attempt"
+		case 24, 25: // parameter read (config / measurement theft)
+			res.Meta["intent"] = "Emerson ROC Plus parameter read — exfiltrating RTU config/measurements"
+		case 16, 26: // parameter / opcode write (configuration change)
+			flagAnomaly(&res, "ics-plc-write")
+			res.Meta["intent"] = "Emerson ROC Plus parameter write — changing RTU configuration"
 		}
 	}
 	// Minimal echo-style ack (swap the addressing, opcode 255 = error/ack),
@@ -135,6 +145,7 @@ func (c *crimson) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	res.Payload = append([]byte(nil), buf[:n]...)
 	res.Meta["crimson_request"] = safe.SanitizeForLog(string(buf[:n]))
 	flagAnomaly(&res, "ics-crimson-probe")
+	res.Meta["intent"] = "Red Lion Crimson management probe — HMI / data-station access attempt"
 	// Crimson management opens with a small framed request; answer with a short
 	// "G3" identity reply so a Red Lion-aware scanner believes it found a panel.
 	_, _ = conn.Write([]byte{0x47, 0x33, 0x00, 0x01}) // "G3" + minimal status
@@ -158,6 +169,7 @@ func (g *geEGD) Name() string { return "ge_egd" }
 func (g *geEGD) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.PacketConn, _ config.Listener) (Result, error) {
 	res := Result{Payload: append([]byte(nil), payload...), Meta: map[string]any{}}
 	flagAnomaly(&res, "ics-ge-egd-probe")
+	res.Meta["intent"] = "GE EGD probe — enumerating GE PACSystems producer/consumer data exchange"
 	if len(payload) < 8 {
 		res.Meta["short_packet"] = true
 		return res, nil
@@ -200,6 +212,7 @@ func (b *bsap) Name() string { return "bsap" }
 func (b *bsap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.PacketConn, _ config.Listener) (Result, error) {
 	res := Result{Payload: append([]byte(nil), payload...), Meta: map[string]any{}}
 	flagAnomaly(&res, "ics-bsap-probe")
+	res.Meta["intent"] = "BSAP-IP probe — Bristol/Emerson ControlWave RTU SCADA polling"
 	if len(payload) < 4 {
 		res.Meta["short_packet"] = true
 		return res, nil
@@ -235,6 +248,7 @@ func (l *lonTalk) Name() string { return "lontalk" }
 func (l *lonTalk) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.PacketConn, _ config.Listener) (Result, error) {
 	res := Result{Payload: append([]byte(nil), payload...), Meta: map[string]any{}}
 	flagAnomaly(&res, "ics-lontalk-probe")
+	res.Meta["intent"] = "LonTalk/IP probe — Echelon building/industrial control-network enumeration"
 	if len(payload) < 4 {
 		res.Meta["short_packet"] = true
 		return res, nil

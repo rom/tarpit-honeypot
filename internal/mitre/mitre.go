@@ -116,6 +116,9 @@ var exactRules = map[string]Tag{
 	"sniffer:icmp_tunnel": {Techniques: []string{"T1095", "T1572"}, Tactics: []string{"command-and-control"}},
 	// PROFINET-DCP Identify = ICS remote system discovery on the segment.
 	"honeynet:profinet_dcp_identify": {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	// PROFINET-DCP Set reassigns a station's NameOfStation/IP or factory-resets
+	// it — configuration manipulation of the PROFINET cell.
+	"honeynet:profinet_dcp_set": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.
 	"sniffer:goose":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"dnscanary:hit":       {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},

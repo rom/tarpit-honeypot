@@ -53,6 +53,7 @@ func (a *ads) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	res.Meta["ams_target"] = amsNetID(pkt[0:6])
 	res.Meta["ams_source"] = amsNetID(pkt[8:14])
 	flagAnomaly(&res, "ics-ads-probe")
+	adsClassify(cmdID, &res)
 
 	// Read Device Info -> reply with a TwinCAT identity.
 	var data []byte
@@ -108,6 +109,26 @@ func amsNetID(b []byte) string {
 		out = append(out, d[x%10])
 	}
 	return string(out)
+}
+
+// adsClassify flags the anomaly + intent for an ADS command: Read = process
+// data access, Write/ReadWrite = manipulation, WriteControl changes the TwinCAT
+// run state (RUN/STOP/CONFIG), ReadDeviceInfo/ReadState = fingerprinting.
+func adsClassify(cmdID uint16, res *Result) {
+	switch cmdID {
+	case 2: // Read
+		flagAnomaly(res, "ics-process-data-access")
+		res.Meta["intent"] = "Beckhoff ADS Read — reading TwinCAT PLC variables"
+	case 3, 9: // Write / ReadWrite
+		flagAnomaly(res, "ics-plc-write")
+		res.Meta["intent"] = "Beckhoff ADS " + adsCommandName(cmdID) + " — writing TwinCAT PLC variables (control manipulation)"
+	case 5: // WriteControl — change ADS/run state
+		flagAnomaly(res, "ics-plc-mode-change")
+		res.Meta["intent"] = "Beckhoff ADS WriteControl — changing the TwinCAT run state (RUN/STOP/CONFIG)"
+	case 1, 4: // ReadDeviceInfo / ReadState
+		flagAnomaly(res, "ics-field-device-probe")
+		res.Meta["intent"] = "Beckhoff ADS " + adsCommandName(cmdID) + " — fingerprinting the TwinCAT controller"
+	}
 }
 
 func adsCommandName(id uint16) string {

@@ -2309,12 +2309,22 @@ func (s *Sensor) Run(ctx context.Context) error {
 				}
 				meta["src_mac"] = srcMAC
 				meta["honeynet"] = netID
+				// A DCP Set (station rename / IP reassignment / factory reset)
+				// is configuration manipulation, not the recon a DCP Identify is.
+				ruleID := "honeynet:profinet_dcp_identify"
+				evSev := sev
+				if meta["service"] == "set" {
+					ruleID = "honeynet:profinet_dcp_set"
+					if evSev < event.SeverityHigh {
+						evSev = event.SeverityHigh
+					}
+				}
 				ev := &event.Event{
 					ID:       event.NewID(),
 					Time:     timeNow(),
 					Sensor:   s.name,
-					RuleID:   "honeynet:profinet_dcp_identify",
-					Severity: sev,
+					RuleID:   ruleID,
+					Severity: evSev,
 					Proto:    "profinet",
 					Meta:     meta,
 				}

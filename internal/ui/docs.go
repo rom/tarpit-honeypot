@@ -35,6 +35,7 @@ var docCatalog = []docLink{
 	{"internals", "Internals", "The architecture and how the subsystems fit together."},
 	{"archetypes", "OS / device archetypes", "The host personalities the sensor can present."},
 	{"attribution", "ATT&CK / D3FEND / CVE", "How interactions map to ATT&CK, D3FEND, and the CVE/CWE/CPE/EPSS catalog."},
+	{"ot", "ICS / OT decoys", "The industrial-protocol decoy suite: supported protocols, emulated commands, attacker-intent + ATT&CK-for-ICS mapping, the deception model, and limitations."},
 	{"attack-tools", "Attack-tool fingerprinting", "The scanners and attack tools the sensor recognizes: how identification works, the categories, and what's covered."},
 	{"yara", "YARA artifact rules", "The CGO-free YARA engine: the built-in rule pack, the supported subset + modules, per-rule severity, and loading your own rules."},
 	{"lua", "Lua service personas", "Writing Lua personas: the persona API, the sandbox limits, recipes, and the personas that ship."},

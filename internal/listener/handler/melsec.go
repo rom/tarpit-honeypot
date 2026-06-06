@@ -52,6 +52,8 @@ func (m *melsec) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		sub := binary.LittleEndian.Uint16(body[2:4])
 		res.Meta["command"] = cmd
 		res.Meta["subcommand"] = sub
+		res.Meta["command_name"] = melsecCommandName(cmd)
+		melsecClassify(cmd, &res)
 	}
 
 	// Build a 3E response: subhdr=0xD000, swap network/PC, data_len,
@@ -70,4 +72,56 @@ func (m *melsec) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	res.BannerSent = "melsec response (Q03UDVCPU)"
 	_ = cfg
 	return res, nil
+}
+
+// melsecCommandName decodes the MELSEC MC-protocol command word.
+func melsecCommandName(cmd uint16) string {
+	switch cmd {
+	case 0x0401:
+		return "Batch Read"
+	case 0x0403:
+		return "Random Read"
+	case 0x1401:
+		return "Batch Write"
+	case 0x1402:
+		return "Random Write"
+	case 0x1001:
+		return "Remote RUN"
+	case 0x1002:
+		return "Remote STOP"
+	case 0x1003:
+		return "Remote PAUSE"
+	case 0x1005:
+		return "Remote Reset"
+	case 0x1006:
+		return "Remote Latch Clear"
+	case 0x0101:
+		return "Read CPU Model"
+	case 0x0619:
+		return "Loopback Test"
+	}
+	return ""
+}
+
+// melsecClassify flags the anomaly + intent for an MC-protocol command: device
+// reads are recon, device writes manipulate the process, and the remote-control
+// commands change the CPU operating mode or reset it.
+func melsecClassify(cmd uint16, res *Result) {
+	switch cmd {
+	case 0x0401, 0x0403: // Batch / Random Read
+		flagAnomaly(res, "ics-process-data-access")
+		res.Meta["intent"] = "MELSEC " + melsecCommandName(cmd) + " — reading PLC device memory"
+	case 0x1401, 0x1402: // Batch / Random Write
+		flagAnomaly(res, "ics-plc-write")
+		res.Meta["intent"] = "MELSEC " + melsecCommandName(cmd) + " — writing PLC device memory (control manipulation)"
+	case 0x1001, 0x1002, 0x1003, 0x1006: // Remote RUN/STOP/PAUSE/Latch-Clear
+		flagAnomaly(res, "ics-plc-mode-change")
+		res.Meta["intent"] = "MELSEC " + melsecCommandName(cmd) + " — changing the CPU operating mode"
+	case 0x1005: // Remote Reset
+		flagAnomaly(res, "ics-device-restart")
+		res.Meta["intent"] = "MELSEC Remote Reset — resetting the PLC CPU"
+	case 0x0101: // Read CPU Model
+		flagAnomaly(res, "ics-field-device-probe")
+		res.Meta["intent"] = "MELSEC Read CPU Model — fingerprinting the Mitsubishi PLC"
+	}
 }

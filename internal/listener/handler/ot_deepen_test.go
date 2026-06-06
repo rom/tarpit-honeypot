@@ -244,3 +244,69 @@ func TestMMSReadService(t *testing.T) {
 		t.Errorf("MMS read not flagged: %v", r.Meta["anomalies"])
 	}
 }
+
+// MELSEC MC-protocol Batch Write is control manipulation.
+func TestMELSECBatchWrite(t *testing.T) {
+	hdr := []byte{0x00, 0x50, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x06, 0x00, 0x00, 0x00}
+	body := []byte{0x01, 0x14, 0x00, 0x00} // command 0x1401 Batch Write, sub 0
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&melsec{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, append(hdr, body...))
+	if r.Meta["command_name"] != "Batch Write" {
+		t.Errorf("command_name = %v, want Batch Write", r.Meta["command_name"])
+	}
+	if !hasAnom(r, "ics-plc-write") {
+		t.Errorf("MELSEC write not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// Beckhoff ADS Write is control manipulation.
+func TestADSWrite(t *testing.T) {
+	pkt := make([]byte, 32)
+	binary.LittleEndian.PutUint16(pkt[16:18], 3) // command id = Write
+	frame := make([]byte, 6)
+	binary.LittleEndian.PutUint32(frame[2:6], 32)
+	frame = append(frame, pkt...)
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&ads{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, frame)
+	if r.Meta["ads_command"] != "Write" {
+		t.Errorf("ads_command = %v, want Write", r.Meta["ads_command"])
+	}
+	if !hasAnom(r, "ics-plc-write") {
+		t.Errorf("ADS write not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// Omron FINS (UDP) Memory-Area Write is control manipulation.
+func TestFINSMemoryWrite(t *testing.T) {
+	pkt := make([]byte, 12)
+	pkt[10] = 0x01 // MRC
+	pkt[11] = 0x02 // SRC -> MEMORY_AREA_WRITE
+	pc := &fakePacketConn{}
+	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 9), Port: 9600}
+	r, _ := (&fins{lim: newUDPReflectLimiter()}).Handle(context.Background(), pkt, src, pc, config.Listener{})
+	if r.Meta["command"] != "MEMORY_AREA_WRITE" {
+		t.Errorf("command = %v, want MEMORY_AREA_WRITE", r.Meta["command"])
+	}
+	if !hasAnom(r, "ics-plc-write") {
+		t.Errorf("FINS write not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// Emerson ROC Plus login is a flow-computer credential attempt (intent label).
+func TestROCPlusLoginIntent(t *testing.T) {
+	req := []byte{0x01, 0x02, 0x03, 0x04, 17, 0x00} // opcode 17 = login
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&rocPlus{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, req)
+	if !hasAnom(r, "ics-roc-plus-login") {
+		t.Errorf("ROC Plus login not flagged: %v", r.Meta["anomalies"])
+	}
+	if it, _ := r.Meta["intent"].(string); it == "" {
+		t.Error("missing intent")
+	}
+}

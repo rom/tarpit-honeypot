@@ -47,5 +47,6 @@ func (g *geSRTP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	}
 	res.BannerSent = "ge-srtp response"
 	flagAnomaly(&res, "ics-ge-srtp-probe")
+	res.Meta["intent"] = "GE-SRTP service request — GE/Emerson PACSystems PLC access / fingerprint"
 	return res, nil
 }
