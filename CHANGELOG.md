@@ -58,6 +58,36 @@ documented in `docs/`).
   malformed v2 line and the LM field was ignored; now both v1 and v2 are captured
   correctly and surface on `/captures` as hash credentials.
 
+- **20 more emulated HTTP vulnerabilities.** The deceptive web app now serves
+  convincing loot for 20 additional probe paths: exposed VCS metadata
+  (`/.git/HEAD`, `/.svn/entries`, `/.hg`, `/.bzr`), auth/config files
+  (`/.htpasswd`, `/.htaccess`, `/web.config`, `/WEB-INF/web.xml`), leaked
+  credentials (`/.aws/credentials`, `/.ssh/id_rsa`, `/docker-compose.yml`,
+  `/.dockercfg`, `/.npmrc`, `/.netrc`, `/.env.local|.production|.dev|.example`),
+  and exposed management/observability endpoints (`/server-status`,
+  `/server-info`, `/actuator/*`, `/jolokia`, `/solr/admin`, `/debug/pprof`,
+  `/metrics`, `/telescope`, `/_profiler`, `/manager/html`). File leaks flag
+  `webapp:secret-file-probe`; endpoint exposures flag dedicated anomalies
+  (`apache-status-exposed`, `spring-actuator-exposed`, `jolokia-exposed`,
+  `solr-admin-exposed`, `pprof-exposed`, `metrics-exposed`,
+  `laravel-telescope-exposed`, `symfony-profiler-exposed`, `tomcat-manager-probe`,
+  `apache-info-exposed`), each mapped to ATT&CK reconnaissance/access techniques.
+
+- **Deeper BGP / SunRPC(NFS) / MQTT protocol analysis + new CVEs & ATT&CK.**
+  - **BGP** — OPEN now decodes the protocol version, 4-octet ASN capability
+    (`bgp_peer_as4`) and multiprotocol capability; **UPDATE** parses NLRI and
+    flags **route-injection** (prefix hijack, `bgp-route-injection`→T1557) and
+    **route-withdrawal** (`bgp-route-withdrawal`→T1498), with per-message
+    `intent` labels. New CVEs **CVE-2023-38802** and **CVE-2022-40302** (FRR
+    BGP).
+  - **SunRPC / rpcbind** — names the queried RPC program (`rpc_program_name`),
+    parses **GETPORT** targets, and flags **NFS-stack enumeration**
+    (`rpcbind-nfs-enum`→T1135) when nfs / mountd / nlockmgr / statd / nfs_acl is
+    looked up — NFS reconnaissance is captured at the portmapper entry point.
+    New CVE **CVE-2017-8779** (rpcbomb).
+  - **MQTT** — stamps attacker-`intent` for broker login / anonymous probe and
+    for **wildcard subscribe** (`#`/`+`/`$SYS` topic harvesting / exfil).
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

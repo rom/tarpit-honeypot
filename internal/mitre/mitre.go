@@ -755,15 +755,17 @@ var anomalyTags = map[string]Tag{
 	// SIP INVITE scanning = VoIP toll-fraud / service reconnaissance.
 	"sip-invite-attempt": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// New-handler protocol-misuse markers.
-	"rsync-module-list":   {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
-	"rsync-module-access": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
-	"gopher-request":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"gopher-ssrf":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"socks-proxy-attempt": {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
-	"bgp-open-attempt":    {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"rsync-module-list":    {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"rsync-module-access":  {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"gopher-request":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"gopher-ssrf":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks-proxy-attempt":  {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp-open-attempt":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"bgp-probe":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"bgp-route-injection":  {Techniques: []string{"T1557"}, Tactics: []string{"collection"}},
+	"bgp-route-withdrawal": {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
+	"ike-probe":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"netbios-datagram":     {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	// Developer / data-infrastructure service decoys (internal/listener/handler/devsvc.go).
 	// An exposed JDWP handshake is unauthenticated RCE; RMI is the Java
 	// deserialization entry point; git clone/push is source access / supply
@@ -783,6 +785,7 @@ var anomalyTags = map[string]Tag{
 	"rpcbind-query":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"rpcbind-dump":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
 	"rpcbind-getport":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"rpcbind-nfs-enum":       {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
 	"pptp-probe":             {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
 	"stun-binding":           {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
 	// Round-three IoT / app-server / cluster / AAA / DB decoys (devsvc3.go).

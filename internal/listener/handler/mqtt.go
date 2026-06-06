@@ -121,6 +121,9 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	if mqUser != "" {
 		flagAnomaly(&res, "mqtt-credential-attempt")
 		flagDefaultCred(&res, mqUser, mqPass)
+		meta["intent"] = "MQTT broker login — IoT/message-broker credential attempt"
+	} else {
+		meta["intent"] = "MQTT CONNECT — anonymous broker access / probe"
 	}
 
 	// CONNACK, version-aware. v3.1/3.1.1 (level 3/4) carry session_present +
@@ -200,6 +203,7 @@ func mqttSession(conn net.Conn, br *bufio.Reader, res *Result, meta map[string]a
 				subTopics = append(subTopics, topic)
 				if strings.ContainsAny(topic, "#+") || strings.HasPrefix(topic, "$SYS") {
 					flagAnomaly(res, "mqtt-wildcard-subscribe")
+					meta["intent"] = "MQTT wildcard subscribe (" + topic + ") — harvesting all broker topics / data exfiltration"
 				}
 			}
 			// SUBACK: type 0x90, remlen = 2 (pktID) + 1 granted QoS per topic.
