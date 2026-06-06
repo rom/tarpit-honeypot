@@ -13,6 +13,7 @@ package mitre
 import (
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/rom/tarpit-honeypot/internal/cve"
 )
@@ -1140,6 +1141,11 @@ func Describe(tid string) string {
 // into a base Tag (from the rule_id/handler lookup). Deduplicated, base
 // entries first.
 func Augment(base Tag, anomalies []string) Tag {
+	// Fast path: most events carry no anomaly markers, so there's nothing to
+	// merge — return the base tag without allocating copies + dedup sets.
+	if len(anomalies) == 0 {
+		return base
+	}
 	tech := append([]string(nil), base.Techniques...)
 	tac := append([]string(nil), base.Tactics...)
 	seenT, seenTac := toSet(tech), toSet(tac)
@@ -1363,29 +1369,40 @@ type CoverageEntry struct {
 // Used by `tarpit-honeypot list-techniques` so an operator can audit the
 // sensor's ATT&CK / D3FEND coverage without reading the source.
 func Coverage() []CoverageEntry {
-	out := make([]CoverageEntry, 0, len(exactRules)+len(handlerTags)+len(anomalyTags))
-	add := func(kind string, m map[string]Tag) {
-		for k, t := range m {
-			out = append(out, CoverageEntry{
-				Kind:       kind,
-				Key:        k,
-				Techniques: t.Techniques,
-				Tactics:    t.Tactics,
-				Defenses:   DefensesFor(t.Techniques),
-			})
+	// The mapping tables are immutable, so build the (sorted, DefensesFor-
+	// annotated) coverage once and hand back copies — avoids rebuilding +
+	// re-resolving D3FEND for ~700 entries on every CLI/UI/API call.
+	coverageOnce.Do(func() {
+		out := make([]CoverageEntry, 0, len(exactRules)+len(handlerTags)+len(anomalyTags))
+		add := func(kind string, m map[string]Tag) {
+			for k, t := range m {
+				out = append(out, CoverageEntry{
+					Kind:       kind,
+					Key:        k,
+					Techniques: t.Techniques,
+					Tactics:    t.Tactics,
+					Defenses:   DefensesFor(t.Techniques),
+				})
+			}
 		}
-	}
-	add("rule", exactRules)
-	add("handler", handlerTags)
-	add("anomaly", anomalyTags)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Key < out[j].Key
+		add("rule", exactRules)
+		add("handler", handlerTags)
+		add("anomaly", anomalyTags)
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Kind != out[j].Kind {
+				return out[i].Kind < out[j].Kind
+			}
+			return out[i].Key < out[j].Key
+		})
+		cachedCoverage = out
 	})
-	return out
+	return append([]CoverageEntry(nil), cachedCoverage...)
 }
+
+var (
+	coverageOnce   sync.Once
+	cachedCoverage []CoverageEntry
+)
 
 // DefensesFor returns the deduplicated set of D3FEND countermeasure IDs
 // for a list of ATT&CK techniques (sub-techniques inherit their base

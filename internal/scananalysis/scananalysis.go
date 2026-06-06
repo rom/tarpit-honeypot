@@ -193,6 +193,18 @@ func fingerprintTool(low string) string {
 // ---- stateful per-source tracking ----
 
 // Tracker accumulates per-source observations to estimate scan timing,
+// Memory caps so a flood of distinct/spoofed source IPs (or a single source
+// touching a /8 or forging tool/script names) can't exhaust memory: the source
+// table and every per-source set is bounded.
+const (
+	maxScanSources        = 65536
+	maxScanHostsPerSrc    = 256
+	maxScanHandlersPerSrc = 32
+	maxScanToolsPerSrc    = 16
+	maxScanNSEPerSrc      = 64
+	maxScanPortsPerSrc    = 2048
+)
+
 // scope, and aggressiveness. Safe for single-goroutine use behind the
 // sensor's bus loop (which is serialized).
 type Tracker struct {
@@ -310,6 +322,19 @@ func (t *Tracker) Observe(o Observation) *Result {
 	}
 	st, ok := t.srcs[o.SourceIP]
 	if !ok || now.Sub(st.last) > t.window {
+		// Hard cap the source table so a flood of distinct/spoofed source IPs
+		// can't exhaust memory between the throttled GC sweeps. When full, do an
+		// emergency idle sweep; if still full, stop tracking new sources.
+		if !ok && len(t.srcs) >= maxScanSources {
+			for ip, s := range t.srcs {
+				if now.Sub(s.last) > t.window {
+					delete(t.srcs, ip)
+				}
+			}
+			if len(t.srcs) >= maxScanSources {
+				return nil
+			}
+		}
 		st = &srcState{first: now, ports: map[int]bool{}, hosts: map[string]bool{}, handlers: map[string]bool{}, tools: map[string]bool{}, nseScripts: map[string]bool{}}
 		t.srcs[o.SourceIP] = st
 	}
@@ -325,12 +350,14 @@ func (t *Tracker) Observe(o Observation) *Result {
 		if !st.ports[o.DestPort] && len(st.portSeq) < 512 {
 			st.portSeq = append(st.portSeq, o.DestPort)
 		}
-		st.ports[o.DestPort] = true
+		if len(st.ports) < maxScanPortsPerSrc {
+			st.ports[o.DestPort] = true
+		}
 	}
-	if o.DestIP != "" {
+	if o.DestIP != "" && len(st.hosts) < maxScanHostsPerSrc {
 		st.hosts[o.DestIP] = true
 	}
-	if o.Handler != "" {
+	if o.Handler != "" && len(st.handlers) < maxScanHandlersPerSrc {
 		st.handlers[o.Handler] = true
 	}
 	if o.Verdict.VersionProbe {
@@ -342,10 +369,10 @@ func (t *Tracker) Observe(o Observation) *Result {
 	if o.Verdict.ConnectScan {
 		st.connectScans++
 	}
-	if o.Verdict.NSEScript != "" {
+	if o.Verdict.NSEScript != "" && len(st.nseScripts) < maxScanNSEPerSrc {
 		st.nseScripts[o.Verdict.NSEScript] = true
 	}
-	if o.Verdict.Tool != "" {
+	if o.Verdict.Tool != "" && len(st.tools) < maxScanToolsPerSrc {
 		st.tools[o.Verdict.Tool] = true
 	}
 	if o.OSProbeHint {
