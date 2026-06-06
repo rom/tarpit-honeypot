@@ -10,6 +10,52 @@ documented in `docs/`).
 
 ### Added
 
+- **OSIsoft/AVEVA PI** (`osisoft_pi`, TCP 5450) — fingerprint-grade PI Data
+  Archive / PI Network Manager responder; flags historian access (IT→OT pivot,
+  T0811/T0801).
+- **Web vulnerability detection.** Nine new 2024–25 web/appliance CVEs
+  (CyberPanel, SimpleHelp, Apache OFBiz/mod_rewrite, MOVEit SFTP, Cisco Smart
+  Licensing, ProjectSend, Cleo, BeyondTrust, Notepad++) plus three new web
+  attack-class detectors: **CRLF injection**, **LDAP injection**, **XPath
+  injection** (base HTTP handler + vulnweb emulation).
+- **Kerberos misuse + legacy variants.** Detection of **Kerberos 4 / KTH-KRB**
+  (the legacy v4 wire format), **AS-REP roasting** (AS-REQ without pre-auth),
+  **PKINIT / Shadow Credentials**, **S4U2Self** constrained-delegation abuse,
+  and the **Bronze Bit** (PA-PAC-OPTIONS) path — over both TCP and UDP.
+- **Scanner vendor/affiliation reference.** `toolfp.Vendor()` maps tool
+  identifiers to the org/project behind them (Nozomi Networks, Claroty,
+  Tenable.ot, Dragos, Rapid7 Project Sonar, Censys, ISF, …); surfaced as
+  `tool_vendor(s)` on HTTP events + the scananalysis profile, and in the new
+  statistics page.
+- **Web UI `/stats` statistics page** — numeric headline metrics + top-N tables
+  across severity, protocol, service, geography, ASN, ATT&CK, CVE, tools
+  (vendor-annotated) and sources; companion to the visual `/charts` page.
+- **OPC vendor identity is archetype-driven** — the OPC-DA (DCOM) GetStatus
+  vendor string follows the archetype; new **MatrikonOPC** and **Kepware
+  KEPServerEX** Windows archetypes pin it.
+- **Legacy OS / network-gear archetypes** (era-correct, no anachronisms):
+  Ubuntu 14.04/16.04/18.04/20.04, Debian 8, FreeBSD 12, Solaris 10, MikroTik
+  RouterOS 7 + 6.40 (Winbox CVE-2018-14847), Cisco 2811 ISR (IOS 12.4).
+- **Deployment-wide TLS certificate identity** — `sensor.tls_domain` /
+  `sensor.tls_org` give every TLS decoy one consistent cert (the admin's
+  name/domain) instead of the per-service `localhost` default; `install.sh`
+  prompts for and wires them.
+
+### Fixed
+
+- **SSH algorithm anachronisms.** The server KEXINIT now tracks the real
+  OpenSSH feature timeline — a pre-6.5 banner no longer offers Ed25519 /
+  Curve25519 / chacha20, and pre-5.7 offers no elliptic curve at all (the
+  "OpenSSH 5.3 advertising an Ed25519 host key" tell). CentOS 5/6 TLS posture
+  pinned to their OpenSSL era.
+- **PostgreSQL fingerprint fidelity** — full `ErrorResponse` field set
+  (S/V/C/M/F/L/R) so port 5432 is identified as PostgreSQL, not a generic / H2
+  service; an invalid startup now gets a FATAL `0A000` instead of a silent close.
+- **SMB timestamps** — SMB1/SMB2 NEGOTIATE now stamp a real SystemTime (was
+  zero) and a plausible deployment-stable ServerStartTime (boot/uptime).
+
+### Earlier in this cycle
+
 - **More OT protocols + ICCP/TASE.2.** Four new control-system handlers and a
   deep inter-control-center implementation:
   - **IEEE C37.118.2 synchrophasor** (`c37118`, TCP 4712) — parses the frame

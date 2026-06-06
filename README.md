@@ -41,18 +41,18 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **142 TCP + 114 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **143 TCP + 114 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
-  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium) — the `mms` handler also detects the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `osisoft_pi` (OSIsoft/AVEVA PI Data Archive), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium) — the `mms` handler also detects the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer / responder)**: `goose` (IEC 61850 GOOSE substation multicast detection); **PROFINET-DCP** responder (EtherType 0x8892) — answers DCP **Identify** (station enumeration) and flags DCP **Set** (NameOfStation/IP reassignment + factory-reset, `honeynet:profinet_dcp_set`, T0836/T0831)
   - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `profinet`, `tristation`, `bsap`, `ge_egd`, `lontalk`, `wdbrpc`, `isakmp`, `dhcp`, `dns`, `dtls`, `quic`, `netflow`, `sflow`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, **UDP + TCP**): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection. The TCP variant (RFC 7766, 2-byte length framing) draws out truncation fallback, zone-transfer (`AXFR`/`IXFR`) probes, and DNS-over-TCP tunneling — configure it as a second `proto: tcp` listener on port 53.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **174 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **186 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -583,7 +583,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (142 TCP + 114 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (143 TCP + 114 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -637,7 +637,7 @@ factory-reset (DCP Set); plus a dedicated NFS (2049) handler.** See
 [`docs/ot.md`](docs/ot.md).
 The v2.4–2.13 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**142 TCP + 114 UDP protocol handlers**, **528 CVE detections**, **469 built-in
+**143 TCP + 114 UDP protocol handlers**, **568 CVE detections**, **469 built-in
 YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **174
 OS/device archetypes**, **900+ attack-tool/scanner fingerprints**, **30
 single-sensor + 27 cross-sensor (`fleet:*`) correlators**, **18 typed IOC
@@ -1581,6 +1581,7 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | `focas` | 8193 | FANUC FOCAS (CNC / machine tool; Shodan `fanuc`). Captures the request, returns a believable `FANUC Series 30i` sysinfo reply. Fingerprint-grade. | — | — |
 | `osdp` | (configurable) | SIA OSDP / IEC 60839-11-5 (access-control reader↔panel) over an IP serial gateway. Parses the OSDP frame, classifies osdp_OUT (door-strike, `ics-actuator-command`), osdp_COMSET (channel hijack), osdp_KEYSET/CHLNG/SCRYPT (secure-channel key); replies osdp_ACK / osdp_PDID with the right checksum or CRC. | — | — |
 | `iccp_secure` | 3782 | Secure ICCP / TASE.2 over TLS (IEC 62351). TLS termination (JA3/JA4/JA3S) then the full `mms`/ICCP stack — see `mms` for the TASE.2 profile + Block-2/5 classification. | ✓ | — |
+| `osisoft_pi` | 5450 | OSIsoft / AVEVA PI Data Archive (PI Network Manager). Captures the client's opening message, returns a believable PI server name + version, flags historian access (`ics-historian-access`, T0811/T0801 — IT→OT pivot / data exfil). Fingerprint-grade. | — | — |
 | `atg` | 10001 | Veeder-Root TLS-350 Automatic Tank Gauge (the "internet-exposed gas pump" target; nmap atg-info). Answers `^A`+`I20100/I20200/I20300` with a believable per-deployment tank report; flags `ics-atg-command`. Report-only. | — | ✓ |
 | `fox` | 1911 | Niagara / Tridium Fox (building automation; Shodan's `fox` probe). Emits a per-deployment "fox hello" advertising station name / host id / app+VM+OS versions / brand. | — | ✓ |
 | `pjl` | 9100 | HP JetDirect raw-print port speaking PJL — the channel PRET drives. Interactive loop: answers `@PJL INFO ID/STATUS/CONFIG/VARIABLES/FILESYS/MEMORY/PAGECOUNT/...` believably and **decoys the read-style filesystem ops** (FSDIRLIST/FSUPLOAD/FSQUERY return a fake directory tree + file contents so PRET keeps walking). Captures jobs/commands + a PJL password and flags panel defacement, filesystem access + the destructive `FSINIT` format, path traversal, config/password writes + credential reads, service-mode + firmware-upgrade + language-switch, NVRAM/DM commands, embedded **PostScript** abuse (exitserver, file ops, `set*params`), and **ZPL** (Zebra) / PCL jobs (`printer-zpl-job`/`printer-zpl-config`/`printer-pcl-job`). Nothing prints or touches a real FS. | ✓ | — |

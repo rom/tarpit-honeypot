@@ -182,6 +182,64 @@ A minimal Grafana dashboard JSON for the metrics above is not bundled in-tree �
 
 ---
 
+## 1a. Sensor → collector (the built-in fleet aggregator)
+
+When you run more than one sensor, point them all at a **collector** — a
+tarpit-honeypot node running in *aggregator* mode. The collector ingests every
+forwarded event into the same pipeline as its own, so one store / UI / set of
+channels covers the whole estate, and the cross-sensor detectors (an actor
+sweeping the fleet, a CVE wave, a canary token surfacing elsewhere) light up.
+
+This is first-class and needs no external broker. The full reference is
+[`fleet.md`](fleet.md); the minimum to get sensors reporting to a collector:
+
+**The collector (aggregator).** Enable an `ingest:` endpoint with a bearer
+token (unauthenticated ingest is refused — it will not start without a token)
+and a store so the merged stream is queryable:
+
+```yaml
+sensor:
+  data_dir: /var/lib/tarpit-honeypot          # the store the merged events land in
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470
+  token_env: TARPIT_INGEST_TOKEN              # required; read from the environment
+  tls_cert: /etc/tarpit-honeypot/ingest.crt   # optional — or front with a TLS proxy
+  tls_key:  /etc/tarpit-honeypot/ingest.key
+channels:
+  - { id: store, type: sqlite }               # so /fleet, dashboards, IOCs persist
+# fleet: cross-sensor correlation is auto-on wherever ingest: is enabled.
+```
+
+```bash
+export TARPIT_INGEST_TOKEN=$(openssl rand -hex 32)   # the shared secret
+```
+
+**Each sensor (forwarder).** Keep its normal listener config and add a
+`forward:` block pointing at the collector's `/ingest` URL with the *same*
+token. Events are batched, retried, and (with TLS) encrypted in transit:
+
+```yaml
+forward:
+  parents:
+    - url: https://collector.corp:8470/ingest
+      token_env: TARPIT_FWD_TOKEN             # must equal the collector's ingest token
+```
+
+```bash
+export TARPIT_FWD_TOKEN=$(cat /run/secrets/tarpit_fwd_token)
+```
+
+**Establishing the link, checklist:**
+
+1. Network path from each forwarder to the collector's `ingest.bind` port (8470/TCP here) is open; if `egress.enforce` is on at a forwarder, allowlist the forward URL.
+2. `forward.parents[].token_env` value **equals** `ingest.token_env` value (a 401 at `/ingest` means a token mismatch).
+3. Verify the endpoint: `curl https://collector.corp:8470/healthz` from a forwarder; a leaf that can't reach it logs `forward: batch dropped`.
+4. List several `parents:` to fan out to multiple collectors (site SOC + global hub); mid-tier collectors can both `ingest:` from leaves and `forward:` upward.
+5. Events keep their origin `sensor_id`, so the collector's `/fleet` view and dashboards break activity down per sensor.
+
+> Prefer a *third-party* collector (Splunk/ELK/QRadar/Sentinel) instead of — or in addition to — the built-in aggregator? Use the outbound `channels:` in §1; the fleet aggregator and SIEM channels compose freely (a collector can re-emit the merged stream to a SIEM).
+
 ## 2. Inbound — what the sensor accepts
 
 ### Non-standard ports

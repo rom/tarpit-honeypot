@@ -1,6 +1,6 @@
 # Archetype catalog
 
-`tarpit-honeypot` ships **174** OS / device *archetypes*. An archetype is a
+`tarpit-honeypot` ships **186** OS / device *archetypes*. An archetype is a
 coherent identity — the banners, SNMP MIB-2 identity, MAC vendor OUI, TLS
 posture, ICMP TTL, default service map, web-UI body, and advertised
 CVEs — that a real instance of a given operating system or device would
