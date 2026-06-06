@@ -14,6 +14,7 @@ var names = map[int]string{
 	143: "imap", 161: "snmp", 162: "snmptrap", 389: "ldap", 443: "https",
 	445: "smb", 464: "kpasswd", 502: "modbus", 514: "syslog", 515: "lpd",
 	554: "rtsp", 587: "smtp-submission", 623: "ipmi", 631: "ipp", 636: "ldaps",
+	802: "modbus-security",
 	993: "imaps", 995: "pop3s", 1025: "melsec", 1080: "socks", 1099: "java-rmi",
 	1217: "codesys", 1433: "mssql", 1521: "oracle-tns", 1723: "pptp", 1883: "mqtt",
 	1900: "ssdp", 1911: "fox", 1962: "pcworx", 2049: "nfs", 2375: "docker",

@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **Modbus/TCP Security (Modbus-over-TLS) handler** (`modbus_security` /
+  `modbuss`, port 802). Terminates TLS (requesting the client's role
+  certificate), computes JA3/JA4/JA3S, captures the client-cert subject + the
+  **Modbus role** (X.509 extension OID `1.3.6.1.4.1.50316.802.1`), flags the
+  secure session (and a missing client cert), then runs the normal Modbus PDU
+  handler over the encrypted channel — so reads/writes/diagnostics are
+  classified exactly as on plaintext 502. Added to the `scadaserver` role.
 - **HTTP evasion / obfuscation detection.** The base HTTP handler now flags the
   encoding tricks attackers use to slip payloads past signature filters —
   **double/triple percent-encoding** (`..%252f`), **overlong-UTF-8** and

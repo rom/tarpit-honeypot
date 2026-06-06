@@ -128,6 +128,7 @@ var roles = map[string][]Service{
 	},
 	"scadaserver": {
 		{502, "tcp", "modbus", "Modbus/TCP"},
+		{802, "tcp", "modbus_security", "Modbus/TCP Security (TLS)"},
 		{102, "tcp", "s7", "S7comm"},
 		{20000, "tcp", "dnp3", "DNP3"},
 		{80, "tcp", "http", "HMI web UI"},

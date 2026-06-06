@@ -85,6 +85,7 @@ Handlers are classed by fidelity:
 | Handler | Port(s) | Vendor / standard | Fidelity | Emulated |
 |---|---|---|---|---|
 | `modbus` | 502 | Modbus/TCP (MBAP) | Deep | Read coils/registers, write coils/registers, FC 0x08 diagnostics, Report Server ID, FC 0x2B/MEI Read-Device-ID (→ Schneider Modicon M340) |
+| `modbus_security` / `modbuss` | 802 | Modbus/TCP Security (TLS + client-cert role) | Deep | TLS termination (JA3/JA4/JA3S), client-cert subject + Modbus role (OID 1.3.6.1.4.1.50316.802.1) capture, then the full `modbus` command set over the encrypted channel |
 | `s7` | 102 | Siemens S7comm (TPKT/COTP) | Deep | COTP CR→CC, Setup Communication, SZL read (S7-300 identity), Read/Write Var, PLC control/STOP, block up/download |
 | `s7comm_plus` | 102 | Siemens S7-1200/1500 | Fingerprint | COTP CR→CC, classifies first PDU (`0x72` plus vs `0x32` classic) |
 | `iec104` | 2404 | IEC 60870-5-104 | Deep | STARTDT/STOPDT/TESTFR, I/S/U-frame parsing, General/Counter Interrogation, single/double commands, set-point commands, reset-process |

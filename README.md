@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **132 TCP + 113 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **133 TCP + 113 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -637,7 +637,7 @@ factory-reset (DCP Set); plus a dedicated NFS (2049) handler.** See
 [`docs/ot.md`](docs/ot.md).
 The v2.4–2.13 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**132 TCP + 113 UDP protocol handlers**, **528 CVE detections**, **469 built-in
+**133 TCP + 113 UDP protocol handlers**, **528 CVE detections**, **469 built-in
 YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **166
 OS/device archetypes**, **900+ attack-tool/scanner fingerprints**, **30
 single-sensor + 27 cross-sensor (`fleet:*`) correlators**, **18 typed IOC
@@ -1557,6 +1557,7 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | Handler | Port | What it does | arch | id |
 |---|---|---|:-:|:-:|
 | `modbus` | 502 | MBAP multi-PDU parser. Reads (FC 1–4) get plausible coil/register data; writes (5/6/0F/10/16/17) echo + capture written values (`modbus-write-attempt`, T0836/T0831); **FC 0x08 Diagnostics** restart/listen-only flagged `ics-modbus-diagnostic` (T0814); Report Server ID (11) + the FC 0x2B/MEI Read-Device-ID probe (nmap modbus-discover → Schneider Modicon M340). | — | — |
+| `modbus_security` / `modbuss` | 802 | **Modbus/TCP Security** (Modbus-over-TLS). Terminates TLS (JA3/JA4/JA3S), captures the client-cert subject + the **Modbus role** X.509 extension, flags the secure session / missing client cert, then runs the `modbus` PDU handler over the encrypted channel. | ✓ | — |
 | `s7` | 102 | Siemens **S7comm** over TPKT/COTP. Completes CR→CC, negotiates **Setup Communication**, then services the session: **SZL reads** answered with a believable S7-300 module/firmware identity (the CPU fingerprint nmap `s7-info`/plcscan parse), plus **Read Var** (T0801), **Write Var** (T0836/T0831), **PLC STOP/control** (T0858), **block up/download** (T0843). | — | — |
 | `s7comm_plus` | 102 | S7-1200/1500 S7comm-Plus over TPKT/COTP. Answers the COTP CR with a CC, then captures + classifies the first data PDU (S7comm-Plus `0x72` vs classic `0x32`). | — | — |
 | `iec104` | 2404 | IEC 60870-5-104 APCI parser; replies STARTDT_CON/TESTFR_CON and a believable **General Interrogation** result. Flags GI/counter-interrogation (T0801), single/double **commands** (`ics-iec104-command`, T0855), **set-point** commands (T0836), **reset-process** (T0816). | — | — |

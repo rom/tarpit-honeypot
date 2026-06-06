@@ -407,6 +407,10 @@ var anomalyTags = map[string]Tag{
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"modbus-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// Modbus/TCP Security (TLS on 802): reaching the secure endpoint / probing
+	// it without the required client cert is discovery of the control device.
+	"modbus-secure-session":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"modbus-secure-no-clientcert": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 
 	// --- New-protocol coverage: amplification, ICS/IIoT control, building
 	// automation, IoT actuation, and the discovery/credential markers the
