@@ -730,6 +730,9 @@ var anomalyTags = map[string]Tag{
 	// DNS SIG / TKEY exploit-probe qtypes (SIGRed / BIND TKEY DoS).
 	"dns-sig-query":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dns-tkey-query": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// IBM MQ channel recon + MQCSP credential flow.
+	"ibmmq-connect":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"ibmmq-security-flow": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
 	// Postgres streaming-replication connection = bulk data access.
 	"postgres-replication-connection": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
 	// Auth submissions / brute on services whose base tag isn't already creds.

@@ -1441,22 +1441,52 @@ var dnsToolSignatures = []dnsToolSig{
 	{"authors.bind", "dns-recon-probe"},
 	// Out-of-band interaction / SSRF-RCE callback services.
 	{"burpcollaborator", "burp-collaborator"},
+	{"oastify.com", "burp-collaborator"}, // Burp's current default OOB domain
 	{"oast.fun", "interactsh"},
 	{"oast.site", "interactsh"},
 	{"oast.online", "interactsh"},
+	{"oast.live", "interactsh"},
+	{"oast.pro", "interactsh"},
+	{"oast.me", "interactsh"},
 	{"interact.sh", "interactsh"},
+	{"interactsh.com", "interactsh"},
 	{"dnslog.cn", "dnslog"},
+	{"dnslog.pw", "dnslog"},
+	{"dnslog.store", "dnslog"},
 	{"ceye.io", "ceye"},
+	{"requestrepo.com", "requestrepo"},
+	{"pipedream.net", "requestbin"},
+	{"requestbin", "requestbin"},
 	{"canarytokens.com", "canarytoken"},
+	{"canarytokens.org", "canarytoken"},
+	{"webhook.site", "webhook.site"},
+	{".bxss.me", "xsshunter"}, // XSS-hunter blind-XSS callback
+	{".knary.", "knary"},
 	// Public DNS-rebinding services.
 	{"nip.io", "dns-rebind-service"},
 	{"sslip.io", "dns-rebind-service"},
 	{"xip.io", "dns-rebind-service"},
 	{"1u.ms", "dns-rebind-service"},
+	{"rbndr.us", "dns-rebind-service"},
+	{"rebind.network", "dns-rebind-service"},
 	// DNS tunneling / C2 tools.
 	{"dnscat", "dnscat2"},
 	{"dns2tcp", "dns2tcp"},
 	{"tcpoverdns", "tcp-over-dns"},
+	{"iodined", "iodine"}, // iodine tunnel server-name handshake leaks "iodined"
+	{"dnsteal", "dnsteal"},
+	{"reqrypt", "reqrypt"},
+	{"cobaltstrike", "cobaltstrike"},
+	// Resolver / open-resolver reconnaissance probes.
+	{"whoami.akamai.net", "resolver-recon"},
+	{"whoami.ultradns.net", "resolver-recon"},
+	{"o-o.myaddr.l.google.com", "resolver-recon"},
+	{"resolver.dnscrypt.info", "resolver-recon"},
+	{"test.openresolver.com", "open-resolver-scan"},
+	// Active Directory / service-record enumeration tells.
+	{"_ldap._tcp.dc._msdcs", "ad-dns-recon"},
+	{"_kerberos._tcp", "ad-dns-recon"},
+	{"_gc._tcp", "ad-dns-recon"},
 }
 
 // IdentifyDNS maps a DNS QNAME to known DNS recon / tunnel / OOB-interaction
@@ -1473,6 +1503,48 @@ func IdentifyDNS(qname string) []string {
 		}
 	}
 	return tools
+}
+
+// IdentifyNTP classifies the NTP client/tool from the packet's mode + version +
+// (for mode 7) implementation/request code. NTP carries no strings, so the
+// fingerprint is structural: ntpdc (mode 7) vs ntpq (mode 6), the monlist
+// DRDoS-scanner request, and legacy (v1/v2) clients.
+func IdentifyNTP(mode, version, impl, reqCode byte) []string {
+	var tools []string
+	switch mode {
+	case 7: // ntpdc private mode
+		if reqCode == 42 || reqCode == 20 {
+			tools = appendUnique(tools, "ntpdc-monlist") // monlist amplification scanner
+		} else {
+			tools = appendUnique(tools, "ntpdc")
+		}
+	case 6: // ntpq control mode
+		tools = appendUnique(tools, "ntpq")
+	}
+	if version >= 1 && version <= 2 {
+		tools = appendUnique(tools, "legacy-ntp-client")
+	}
+	return tools
+}
+
+// snmpWeakCommunities is the onesixtyone/Metasploit-class default-community
+// wordlist that SNMP brute/spray tools cycle through.
+var snmpWeakCommunities = map[string]bool{
+	"public": true, "private": true, "community": true, "manager": true,
+	"admin": true, "cisco": true, "secret": true, "snmp": true, "snmpd": true,
+	"default": true, "write": true, "all private": true, "ilmi": true,
+	"read": true, "monitor": true, "agent": true, "test": true, "guest": true,
+	"router": true, "switch": true, "internal": true, "0": true,
+}
+
+// IdentifySNMP fingerprints an SNMP scanner/brute tool from the community string
+// it presents — a default/weak community is what onesixtyone, snmp-check,
+// nmap snmp-brute and Metasploit's community scanner spray.
+func IdentifySNMP(community string) []string {
+	if snmpWeakCommunities[strings.ToLower(strings.TrimSpace(community))] {
+		return []string{"snmp-community-brute"}
+	}
+	return nil
 }
 
 // IdentifyFTP fingerprints an FTP client / scanner from the credentials it

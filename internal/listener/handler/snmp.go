@@ -12,6 +12,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // snmp parses incoming SNMPv1/v2c Get / GetNext / GetBulk packets, extracts
@@ -181,6 +182,13 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 		res.Meta["snmp_default_community"] = true
 		defaultCommunity = true
 		flagAnomaly(&res, "snmp-default-community")
+	}
+	// Fingerprint SNMP brute/spray tools from the (weak) community string.
+	if tools := toolfp.IdentifySNMP(pkt.Community); len(tools) > 0 {
+		res.Meta["tools"] = tools
+		for _, t := range tools {
+			flagAnomaly(&res, "tool:"+t)
+		}
 	}
 
 	// Config-exfil / tampering: a request touching CISCO-CONFIG-COPY-MIB
