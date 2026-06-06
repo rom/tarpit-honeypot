@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **RDP now harvests offline-crackable NetNTLMv2 hashes.** The `rdp` handler
+  previously stopped after the TLS handshake and only read one CredSSP message
+  (so a standards-compliant NLA client — which sends NTLM **type 1** first —
+  leaked nothing crackable). It now drives the CredSSP/NLA exchange one round
+  further: it issues the NTLMSSP **CHALLENGE** (type 2, wrapped in SPNEGO + a
+  CredSSP `TSRequest`), reads the client's **AUTHENTICATE** (type 3), and emits
+  the hashcat-mode-5600 **NetNTLMv2** hash (`ntlmv2_hash`) plus the
+  username/domain/workstation — reaching parity with the SMB/WinRM capture, and
+  surfacing on `/captures` as a hash credential. The credential is never
+  validated (capture only); it still also records the pre-auth `mstshash`
+  username, JA3/JA3S, and BlueKeep probes. Flagged `rdp-ntlmv2-capture`.
+
 - **`example-CENTOS-SERVER-EXTENDED` config.** A superset of the CentOS
   all-in-one decoy with a much wider service surface — adds **Telnet (23)**,
   **SNMP v2c (UDP 161)**, **SMB/CIFS (445)**, **MSSQL (1433 + UDP 1434 browser)**,

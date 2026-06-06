@@ -12,15 +12,17 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/fingerprint"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 type rdp struct {
 	tlsMgr *certManager
 	arch   *archetype.Profile
+	id     *identity.Identity
 }
 
 func newRDP(deps Deps) *rdp {
-	return &rdp{tlsMgr: maybeCertMgr(deps), arch: deps.Archetype}
+	return &rdp{tlsMgr: maybeCertMgr(deps), arch: deps.Archetype, id: deps.Identity}
 }
 
 func (r *rdp) Name() string { return "rdp" }
@@ -31,12 +33,15 @@ func (r *rdp) Name() string { return "rdp" }
 //	X.224 Connection Request: length(1), code=0xE0, dst_ref(2), src_ref(2),
 //	                          class(1), then optional Cookie/RDP_NEG_REQ
 //
-// Inside the variable part the client puts a "Cookie: mstshc=<user>\r\n"
+// Inside the variable part the client puts a "Cookie: mstshash=<user>\r\n"
 // line and/or an RDP_NEG_REQ TLV announcing supported security protocols
 // (PROTOCOL_SSL=0x01, PROTOCOL_HYBRID=0x02, etc.). We capture both and
-// reply with an X.224 Connection Confirm announcing PROTOCOL_SSL only —
-// which makes most scanners attempt TLS, at which point our flow ends
-// (we can't speak full RDP).
+// reply with an X.224 Connection Confirm announcing PROTOCOL_SSL. The client
+// then starts TLS; with a cert manager we complete it (recording JA3/JA3S) and
+// drive the CredSSP/NLA NTLM exchange one round further than a real server
+// needs to — issuing the NTLMSSP CHALLENGE so the client sends its
+// AUTHENTICATE — to harvest the offline-crackable NetNTLMv2. We never speak
+// full RDP and never validate the credential (capture only).
 func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{}
@@ -142,23 +147,102 @@ func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	addFP(res.Meta, ja3Hash, ja3Raw, ja4, ja3sHash, ja3sRaw)
 	res.BannerSent = "rdp TLS + CredSSP"
 
-	// Read the first post-TLS message (CredSSP TSRequest carrying SPNEGO/NTLM).
-	withTimeout(tlsConn, cfg.ReadTimeout)
-	buf := make([]byte, 4096)
-	if n, _ := tlsConn.Read(buf); n > 0 {
-		res.Payload = append(res.Payload, buf[:n]...)
-		if tok := findNTLMSSP(buf[:n]); tok != nil {
-			if dom, user, nt := parseNTLMType3(tok); user != "" {
-				res.Meta["ntlm_domain"] = dom
-				res.Meta["ntlm_user"] = user
-				if nt != "" {
-					res.Meta["ntlm_response_hex"] = nt
-				}
-				flagAnomaly(&res, "rdp-ntlm-auth")
+	// Drive the CredSSP/NLA NTLM exchange to completion so we harvest the
+	// offline-crackable NetNTLMv2 response (not just the pre-auth username).
+	r.captureNLA(tlsConn, cfg, &res)
+	return res, nil
+}
+
+// captureNLA runs the post-TLS CredSSP/NLA NTLM handshake far enough to harvest
+// the attacker's NetNTLMv2: it reads the client's NTLMSSP NEGOTIATE (type 1),
+// replies with an NTLMSSP CHALLENGE (type 2) wrapped in SPNEGO + a CredSSP
+// TSRequest, then reads the client's AUTHENTICATE (type 3) and extracts the
+// hashcat-format NetNTLMv2 hash. We never validate it — capture only.
+func (r *rdp) captureNLA(conn net.Conn, cfg config.Listener, res *Result) {
+	withTimeout(conn, cfg.ReadTimeout)
+	buf := make([]byte, 8192)
+	n, _ := conn.Read(buf)
+	if n <= 0 {
+		return
+	}
+	msg1 := buf[:n]
+	res.Payload = append(res.Payload, msg1...)
+	ntlm1 := findNTLMSSP(msg1)
+	if ntlm1 == nil || len(ntlm1) < 12 {
+		return
+	}
+	switch binary.LittleEndian.Uint32(ntlm1[8:12]) { // NTLMSSP MessageType
+	case 3:
+		// Some tools send the AUTHENTICATE unsolicited (no challenge round).
+		// Without our challenge it isn't crackable, but record what we can.
+		if dom, user, nt := parseNTLMType3(ntlm1); user != "" {
+			res.Meta["ntlm_domain"] = dom
+			res.Meta["ntlm_user"] = user
+			if nt != "" {
+				res.Meta["ntlm_response_hex"] = nt
 			}
+			flagAnomaly(res, "rdp-ntlm-auth")
+		}
+		return
+	case 1:
+		// fall through to the challenge/response below
+	default:
+		return
+	}
+
+	// Send our CHALLENGE (type 2) wrapped in SPNEGO + a CredSSP TSRequest.
+	serverChallenge := randomChallenge(r.id)
+	challenge := buildCredSSPTSRequest(credsspVersion(msg1), spnegoChallenge(ntlmsspChallenge(serverChallenge)))
+	if _, err := conn.Write(challenge); err != nil {
+		return
+	}
+
+	// Read the client's AUTHENTICATE (type 3) and harvest the NetNTLMv2.
+	withTimeout(conn, cfg.ReadTimeout)
+	n2, _ := conn.Read(buf)
+	if n2 <= 0 {
+		return
+	}
+	msg3 := buf[:n2]
+	res.Payload = append(res.Payload, msg3...)
+	ntlm3 := findNTLMSSP(msg3)
+	if ntlm3 == nil || len(ntlm3) < 12 || binary.LittleEndian.Uint32(ntlm3[8:12]) != 3 {
+		return
+	}
+	res.Meta["nla"] = true
+	captureNetNTLMv2("rdp", ntlm3, serverChallenge, res)
+}
+
+// buildCredSSPTSRequest wraps a single SPNEGO/NTLM token in a CredSSP
+// (MS-CSSP) TSRequest negoTokens field, announcing the given protocol version:
+//
+//	TSRequest ::= SEQUENCE { version [0] INTEGER, negoTokens [1] NegoData, ... }
+//	NegoData  ::= SEQUENCE OF SEQUENCE { negoToken [0] OCTET STRING }
+func buildCredSSPTSRequest(version int, negoToken []byte) []byte {
+	ver := der(0xa0, der(0x02, []byte{byte(version)}))                // [0] version INTEGER
+	tok := der(0xa0, der(0x04, negoToken))                            // [0] negoToken OCTET STRING
+	negoData := der(0x30, der(0x30, tok))                             // NegoData: SEQUENCE OF SEQUENCE
+	negoTokens := der(0xa1, negoData)                                 // [1] negoTokens
+	return der(0x30, append(append([]byte{}, ver...), negoTokens...)) // TSRequest
+}
+
+// credsspVersion reads the [0] version INTEGER from the head of a TSRequest,
+// clamped to the CredSSP-defined 2..6 range; defaults to 6 when absent.
+func credsspVersion(ts []byte) int {
+	for i := 0; i+5 <= len(ts) && i < 16; i++ {
+		// [0] { INTEGER len=1 value } == a0 03 02 01 0X
+		if ts[i] == 0xa0 && ts[i+1] == 0x03 && ts[i+2] == 0x02 && ts[i+3] == 0x01 {
+			v := int(ts[i+4])
+			if v < 2 {
+				v = 2
+			}
+			if v > 6 {
+				v = 6
+			}
+			return v
 		}
 	}
-	return res, nil
+	return 6
 }
 
 // findNTLMSSP returns the slice of b starting at the NTLMSSP signature (the NTLM
