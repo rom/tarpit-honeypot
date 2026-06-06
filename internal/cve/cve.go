@@ -2330,6 +2330,41 @@ func init() {
 			catalog[i].EPSS = e.EPSS
 		}
 	}
+	// Build the lookup indexes once (the catalog never changes at runtime), so
+	// the per-request MatchPayload / per-event Lookup / list paths don't rescan
+	// or re-sort all ~500 records on every call.
+	catalogByService = make(map[string][]Record, 64)
+	catalogByID = make(map[string]Record, len(catalog))
+	for _, r := range catalog {
+		catalogByService[r.Service] = append(catalogByService[r.Service], r)
+		catalogByID[r.ID] = r
+	}
+	catalogSorted = append([]Record(nil), catalog...)
+	sort.Slice(catalogSorted, func(i, j int) bool { return catalogSorted[i].ID < catalogSorted[j].ID })
+}
+
+// catalog indexes built in init() (the catalog is immutable at runtime).
+var (
+	catalogByService map[string][]Record // record.Service → records
+	catalogByID      map[string]Record   // record.ID → record
+	catalogSorted    []Record            // catalog sorted by ID
+)
+
+// candidateServices returns the record services a listener handler can match,
+// applying the service aliasing (https→http; implicit-TLS mail variants
+// imaps/pop3s/smtps inherit their plaintext service's CVEs).
+func candidateServices(handler string) []string {
+	switch handler {
+	case "https":
+		return []string{"https", "http"}
+	case "imaps":
+		return []string{"imaps", "imap"}
+	case "pop3s":
+		return []string{"pop3s", "pop3"}
+	case "smtps":
+		return []string{"smtps", "smtp_recv"}
+	}
+	return []string{handler}
 }
 
 // MatchPayload returns the catalog records whose exploit signature
@@ -2341,14 +2376,13 @@ func MatchPayload(handler, payload string) []Record {
 	}
 	low := strings.ToLower(payload)
 	var out []Record
-	for _, r := range catalog {
-		if !serviceMatches(r.Service, handler) {
-			continue
-		}
-		for _, sig := range r.Signatures { // sigs are already lowercase
-			if strings.Contains(low, sig) {
-				out = append(out, r)
-				break
+	for _, svc := range candidateServices(handler) {
+		for _, r := range catalogByService[svc] {
+			for _, sig := range r.Signatures { // sigs are already lowercase
+				if strings.Contains(low, sig) {
+					out = append(out, r)
+					break
+				}
 			}
 		}
 	}
@@ -2360,10 +2394,8 @@ func MatchPayload(handler, payload string) []Record {
 // includes "http" records.
 func ForService(handler string) []Record {
 	var out []Record
-	for _, r := range catalog {
-		if serviceMatches(r.Service, handler) {
-			out = append(out, r)
-		}
+	for _, svc := range candidateServices(handler) {
+		out = append(out, catalogByService[svc]...)
 	}
 	return out
 }
@@ -2373,44 +2405,17 @@ func ForService(handler string) []Record {
 // rest are also recognized as live exploit attempts by MatchPayload.
 // Used by `tarpit-honeypot list-cves`.
 func All() []Record {
-	out := append([]Record(nil), catalog...)
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	// catalogSorted is built once in init(); return a copy so callers can't
+	// mutate the cached order.
+	return append([]Record(nil), catalogSorted...)
 }
 
 // Detectable reports whether a record carries exploit signatures (so
 // MatchPayload can flag a live attempt) versus being advisory-only.
 func (r Record) Detectable() bool { return len(r.Signatures) > 0 }
 
-// Lookup returns the record for an exact CVE id.
+// Lookup returns the record for an exact CVE id (O(1) via the id index).
 func Lookup(id string) (Record, bool) {
-	for _, r := range catalog {
-		if r.ID == id {
-			return r, true
-		}
-	}
-	return Record{}, false
-}
-
-// serviceMatches reports whether a catalog record for recordService
-// applies to a listener running handler.
-func serviceMatches(recordService, handler string) bool {
-	if recordService == handler {
-		return true
-	}
-	// HTTP-layer CVEs apply over TLS too.
-	if recordService == "http" && handler == "https" {
-		return true
-	}
-	// Implicit-TLS mail variants run the same plaintext handler under TLS, so
-	// they inherit the plaintext service's CVEs.
-	switch handler {
-	case "imaps":
-		return recordService == "imap"
-	case "pop3s":
-		return recordService == "pop3"
-	case "smtps":
-		return recordService == "smtp_recv"
-	}
-	return false
+	r, ok := catalogByID[id]
+	return r, ok
 }
