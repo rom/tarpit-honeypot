@@ -696,6 +696,8 @@ var anomalyTags = map[string]Tag{
 	"ssh-roaming-offered":             {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
 	"http-method-unknown":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"http-request-line-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-method-enumeration":         {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-account-enumeration":        {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	"telnet-credential-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// Printer command recon + passive DHCP client observation.
 	"pjl-command":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
@@ -933,6 +935,10 @@ func AnomalyTag(a string) Tag {
 	case strings.HasPrefix(a, "uri-"):
 		// suspicious-URI probes: recon / file discovery against the app.
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
+	case strings.HasPrefix(a, "evasion:"):
+		// Obfuscated/encoded payloads (percent / double / unicode / overlong-UTF-8
+		// encoding, null-byte, comment-splitting) to evade signature detection.
+		return Tag{Techniques: []string{"T1027"}, Tactics: []string{"defense-evasion"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
 	case strings.HasPrefix(a, "ba-"):

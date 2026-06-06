@@ -506,6 +506,7 @@ When no exact/handler/anomaly entry matches, these by-class rules apply:
 | Pattern | ATT&CK | Tactic |
 |---|---|---|
 | `uri-*` (suspicious-URI probes) | T1595.003, T1083 | reconnaissance, discovery |
+| `evasion:*` (percent/double/unicode/overlong-UTF-8 encoding, null-byte, comment-splitting) | T1027 | defense-evasion |
 | `ics-*` | T0888 | discovery |
 | `printer-*` (generic) | T1083 | discovery |
 | `tool:*` (identified scanner) | T1595 | reconnaissance |

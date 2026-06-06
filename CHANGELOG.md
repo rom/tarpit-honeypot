@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP evasion / obfuscation detection.** The base HTTP handler now flags the
+  encoding tricks attackers use to slip payloads past signature filters —
+  **double/triple percent-encoding** (`..%252f`), **overlong-UTF-8** and
+  **`%u`-style Unicode** dot-dot, **null-byte** truncation, **backslash /
+  mixed-slash** path obfuscation, and **SQL-comment splitting** (`UNION/**/SELECT`)
+  — as `evasion:*` markers (→ ATT&CK **T1027**, defense-evasion). It also
+  **percent-decodes the request through successive layers and re-runs** the
+  path + attack-class checks, so a single- or double-encoded traversal / Log4Shell
+  / SSTI payload is still caught and additionally tagged `evasion:encoded-payload`.
+- **HTTP active-enumeration detection.** Flags verb/method enumeration
+  (`OPTIONS`/`TRACE`/`TRACK`/`PROPFIND`/`DEBUG`/`SEARCH` → `http-method-enumeration`,
+  T1595) and account enumeration (a username-style parameter on a login/auth
+  endpoint → `http-account-enumeration`, T1087). Complements the existing
+  protocol enumeration signals (SMTP `VRFY`/`EXPN`, LDAP, SNMP walk, mDNS, NBD).
+
 ## [2.13.0] — 2026-06-06
 
 ### Added
