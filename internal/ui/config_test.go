@@ -37,7 +37,7 @@ func TestConfigYAMLNilConfig(t *testing.T) {
 
 // The config template renders the YAML inside the page.
 func TestConfigTemplateRenders(t *testing.T) {
-	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true)).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true, func(string) bool { return true })).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -186,7 +186,7 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			return nil, fmt.Errorf("ui: env %s is empty", cfg.AuthTokenEnv)
 		}
 	}
-	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL, s.cfg.AttackLinksEnabled())).Parse(tmpls)
+	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL, s.cfg.AttackLinksEnabled(), func(kind string) bool { return s.hasServicePage(kind) })).Parse(tmpls)
 	if err != nil {
 		return nil, err
 	}
@@ -197,9 +197,16 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 // tmplFuncs is the single source of truth for the template function map, used by
 // New and by the package tests so they can never drift. refresh supplies the
 // auto-refresh interval.
-func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool) template.FuncMap {
+func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool, hasPage func(string) bool) template.FuncMap {
+	if hasPage == nil {
+		hasPage = func(string) bool { return false }
+	}
 	return template.FuncMap{
 		"mapTiles": func() string { return mapTiles },
+		// hasPage reports whether a conditional service page (dns / web /
+		// databases) should appear in the nav — true only when the running
+		// config has a relevant listener.
+		"hasPage": hasPage,
 		// attackURL: the canonical MITRE page (always, e.g. for the drill-down's
 		// "on attack.mitre.org" link). attackLinkURL: the same, but "" when the
 		// operator disabled out-linking, so labels fall back to the internal
@@ -624,6 +631,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/download", s.handleDownload)
 	mux.HandleFunc("/captures", s.handleCaptures)
 	mux.HandleFunc("/credentials", s.handleCredentials)
+	// Conditional per-protocol analytics pages (each 404s unless the running
+	// config exposes a relevant listener; the nav links are gated the same way).
+	mux.HandleFunc("/dns", s.handleDNS)
+	mux.HandleFunc("/web", s.handleWeb)
+	mux.HandleFunc("/databases", s.handleDatabases)
 	mux.HandleFunc("/loot/", s.handleLoot)
 	mux.HandleFunc("/replay", s.handleReplay)
 	mux.HandleFunc("/config", s.handleConfig)

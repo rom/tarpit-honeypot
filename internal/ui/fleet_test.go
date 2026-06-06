@@ -20,7 +20,7 @@ func fleetTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true)).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true, func(string) bool { return true })).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -562,7 +562,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/credentials">credentials</a> · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a> · <a href="/attack">att&amp;ck</a> · <a href="/correlation">correlation</a> · <a href="/campaign">campaigns</a> · <a href="/map">map</a> · <a href="/captures">captures</a> · <a href="/credentials">credentials</a>{{ if hasPage "dns" }} · <a href="/dns">dns</a>{{ end }}{{ if hasPage "web" }} · <a href="/web">web</a>{{ end }}{{ if hasPage "database" }} · <a href="/databases">databases</a>{{ end }} · <a href="/fleet">fleet</a> · <a href="/iocs">iocs</a> · <a href="/tunnels">tunnels</a> · <a href="/profiles">profiles</a> · <a href="/fingerprints">fingerprints</a> · <a href="/devices">devices</a> · <a href="/topology">topology</a> · <a href="/charts">charts</a> · <a href="/health">health</a> · <a href="/alerting">alerting</a> · <a href="/errors">errors</a> · <a href="/config">config</a> · <a href="/docs">docs</a></nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -636,6 +636,66 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range .Reuse }}<tr><td><a href="/search?q={{ .Secret }}"><code>{{ .Secret }}</code></a></td><td>{{ .Sources }}</td><td>{{ .Services }}</td><td>{{ .Count }}</td></tr>{{ end }}
 </table>{{ end }}
 <p class="note">Derived from a scan of {{ .Scanned }} recent events. Full credential dump via the <code>export-creds</code> CLI; the raw per-attempt list is on <a href="/captures">captures</a>.</p>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "attacktable" }}{{ if . }}<table data-filter><tr><th>attack / misuse / manipulation / vulnerability</th><th>events</th><th>CVE</th><th>CWE</th></tr>
+{{ range . }}<tr><td><a href="/search?tag={{ .Name }}" title="find events carrying this marker"><code>{{ .Name }}</code></a></td><td>{{ .Count }}</td><td>{{ if .CVE }}<a href="/search?q={{ .CVE }}">{{ .CVE }}</a>{{ if .Desc }} <span class="meta">{{ .Desc }}</span>{{ end }}{{ else }}—{{ end }}</td><td>{{ if .CWE }}<span class="tag" title="{{ .CWEName }}">{{ .CWE }}{{ if .CWEName }} {{ .CWEName }}{{ end }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
+</table>{{ else }}<p class="note">No attacks, misuses, or vulnerabilities triggered in this window.</p>{{ end }}{{ end }}
+
+{{ define "dns" }}{{ template "head" . }}
+<h1 data-help="DNS resolver decoy analytics: query volume over time, the query types/opcodes used, the top query names + registrable domains, what the sensor answered, and the tunnelling / amplification / zone-transfer / DGA abuse it detected.">DNS analytics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No DNS queries observed yet — they appear once a resolver/scanner hits the <a href="/events?handler=dns">dns</a> listener.</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/events?handler=dns"><b>{{ .Total }}</b><span>queries</span></a>
+  <span class="counter c-tcp"><b>{{ .Domains }}</b><span>domains</span></span>
+  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+<h2>Attacks / misuses / manipulations / vulnerabilities</h2>
+{{ template "attacktable" .Attacks }}
+{{ if .Queries }}<h2>Query log <span class="meta">({{ len .Queries }})</span></h2>
+<table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>reply</th><th>labels</th></tr>
+{{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "web" }}{{ template "head" . }}
+<h1 data-help="Web app decoy analytics: request volume over time, top URLs / HTTP headers / response statuses, the top attacks + attackers, every unique URL and file touched, and the web-attack classes / CVEs / CWEs triggered.">web analytics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No web requests observed yet — they appear once a client hits the <a href="/events?handler=http">http</a> / https listener.</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/events?handler=http"><b>{{ .Total }}</b><span>requests</span></a>
+  <span class="counter c-tcp"><b>{{ .URLs }}</b><span>unique URLs</span></span>
+  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ if .Attackers }}<h2>Top attackers</h2>
+<table><tr><th>source</th><th>requests</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+<h2>Attacks / misuses / manipulations / vulnerabilities</h2>
+{{ template "attacktable" .Attacks }}
+{{ if .Files }}<h2>Unique files accessed <span class="meta">({{ len .Files }})</span></h2>
+<div>{{ range .Files }}<a class="tag" href="/search?q={{ . }}"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
+{{ if .URLList }}<h2>Unique URLs <span class="meta">({{ len .URLList }})</span></h2>
+<table data-filter><tr><th>url</th></tr>{{ range .URLList }}<tr><td><a href="/search?q={{ . }}"><code>{{ . }}</code></a></td></tr>{{ end }}</table>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "databases" }}{{ template "head" . }}
+<h1 data-help="Database decoy analytics across mysql / postgres / mssql / mongodb / redis / …: event volume over time, the engines hit, the top queries/commands + databases requested, the version banners served, the top attacks + attackers, and the injection / abuse / CVEs / CWEs triggered.">database analytics — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No database traffic observed yet — it appears once a client hits a database listener (mysql / postgres / mssql / mongodb / redis / …).</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/events"><b>{{ .Total }}</b><span>events</span></a>
+  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ if .Attackers }}<h2>Top attackers</h2>
+<table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+<h2>Attacks / misuses / manipulations / vulnerabilities</h2>
+{{ template "attacktable" .Attacks }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
