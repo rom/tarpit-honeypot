@@ -581,6 +581,11 @@ var anomalyTags = map[string]Tag{
 	// Active Directory / Kerberos abuse.
 	"kerberos-tgs-request":   {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
 	"kerberos-rc4-requested": {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
+	"kerberos-asrep-roast":   {Techniques: []string{"T1558.004"}, Tactics: []string{"credential-access"}},
+	"kerberos-pkinit":        {Techniques: []string{"T1556.005", "T1649"}, Tactics: []string{"credential-access"}},
+	"kerberos-s4u":           {Techniques: []string{"T1558", "T1550.003"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"kerberos-pac-options":   {Techniques: []string{"T1558", "T1550.003"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"kerberos-v4-legacy":     {Techniques: []string{"T1558", "T1040"}, Tactics: []string{"credential-access"}},
 	"ldap-spn-enumeration":   {Techniques: []string{"T1558.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-asrep-roast-recon": {Techniques: []string{"T1558.004", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-enumeration":       {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
@@ -1250,6 +1255,9 @@ var d3fend = map[string][]string{
 	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information
 	"T1557": {"D3-NTA"},                             // adversary-in-the-middle
 	"T1558": {"D3-MFA", "D3-DUC"},                   // steal/forge Kerberos tickets
+	"T1550": {"D3-MFA", "D3-NTA", "D3-DE"},          // use alternate authentication material
+	"T1556": {"D3-MFA", "D3-DE"},                    // modify authentication process
+	"T1649": {"D3-MFA", "D3-DE"},                    // steal or forge authentication certificates
 	"T1498": {"D3-ITF"},                             // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)

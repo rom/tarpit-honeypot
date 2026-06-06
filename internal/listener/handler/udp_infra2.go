@@ -78,14 +78,15 @@ func (k *kerberosUDP) Name() string { return "kerberos_udp" }
 
 func (k *kerberosUDP) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.PacketConn, _ config.Listener) (Result, error) {
 	res := captureUDP(payload, "kerberos-udp-probe")
-	// AS-REQ/TGS-REQ are ASN.1 application tags 10/12 (0x6a / 0x6c).
-	if len(payload) >= 1 {
-		switch payload[0] {
-		case 0x6a:
-			res.Meta["krb_msg"] = "AS-REQ"
+	// Full classification (KRB5 message type + padata, plus legacy Kerberos 4 /
+	// KTH-KRB detection and the roasting / delegation-abuse tells) is shared
+	// with the TCP KDC handler. AS-REQ over UDP from an untrusted source is
+	// itself pre-auth / AS-REP-roast recon.
+	classifyKRB(payload, &res)
+	if mt, _ := res.Meta["message_type"].(string); mt != "" {
+		res.Meta["krb_msg"] = mt // back-compat alias for the UDP probe
+		if mt == "AS-REQ" {
 			flagAnomaly(&res, "kerberos-pre-auth-probe")
-		case 0x6c:
-			res.Meta["krb_msg"] = "TGS-REQ"
 		}
 	}
 	// The realm is an uppercase GENERALSTRING in the request — surface the
