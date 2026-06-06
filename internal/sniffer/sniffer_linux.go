@@ -29,10 +29,11 @@ type linuxSniffer struct {
 	mu    sync.Mutex
 	state map[string]*scanState // key: source MAC string
 
-	tcp   *scanTracker // nil unless TCPScan enabled
-	frag  *rateLimiter // nil unless TCPScan enabled
-	encap *rateLimiter // nil unless TCPScan enabled (encapsulation + STP dedup)
-	goose *rateLimiter // nil unless GOOSE enabled
+	tcp    *scanTracker  // nil unless TCPScan enabled
+	frag   *rateLimiter  // nil unless TCPScan enabled
+	encap  *rateLimiter  // nil unless TCPScan enabled (encapsulation + STP dedup)
+	goose  *rateLimiter  // nil unless GOOSE enabled
+	gooseT *gooseTracker // nil unless GOOSE enabled (stateful attack analysis)
 
 	p0fDB *p0f.DB // passive OS fingerprint DB (embedded curated set + optional p0f.fp)
 
@@ -125,6 +126,7 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 			w = 60 * time.Second
 		}
 		s.goose = newRateLimiter(w)
+		s.gooseT = newGOOSETracker()
 	}
 	return s, nil
 }
@@ -707,9 +709,38 @@ func (s *linuxSniffer) handleGOOSE(ctx context.Context, frame []byte, bus chan<-
 	if !ok {
 		return
 	}
-	// Rate-limit per source MAC so a normal (high-rate) GOOSE stream emits
-	// at most one event per window.
-	if !s.goose.allow(gi.srcMAC, time.Now()) {
+	now := time.Now()
+
+	// Stateful attack analysis: spoofing (a second publisher for a control
+	// block), replay (stNum regression), storm (rapid state changes), and
+	// simulation (the simulate/test bit). These are high-signal manipulation
+	// events and bypass the benign per-source rate limit (they are gated by
+	// their own per-source+marker key so an attack flood still can't drown us).
+	if markers := s.gooseT.analyze(gi, now); len(markers) > 0 {
+		rule, sev := gooseAttackRule(markers)
+		if s.goose.allow(gi.srcMAC+"|"+rule, now) {
+			ev := s.newEvent(rule, sev, gi.srcMAC, "", "")
+			ev.Proto = "goose"
+			ev.Meta["appid"] = gi.appid
+			if gi.gocbRef != "" {
+				ev.Meta["gocb_ref"] = gi.gocbRef
+			}
+			if gi.goID != "" {
+				ev.Meta["go_id"] = gi.goID
+			}
+			ev.Meta["st_num"] = gi.stNum
+			ev.Meta["sq_num"] = gi.sqNum
+			ev.Meta["goose_anomalies"] = markers
+			ev.Meta["simulated"] = gi.simulated
+			ev.Meta["test"] = gi.test
+			send(ctx, bus, ev)
+		}
+		return
+	}
+
+	// Benign observation: rate-limit per source MAC so a normal (high-rate)
+	// GOOSE stream emits at most one event per window.
+	if !s.goose.allow(gi.srcMAC, now) {
 		return
 	}
 	ev := s.newEvent("sniffer:goose", s.sev, gi.srcMAC, "", "")
@@ -723,7 +754,34 @@ func (s *linuxSniffer) handleGOOSE(ctx context.Context, frame []byte, bus chan<-
 	}
 	ev.Meta["st_num"] = gi.stNum
 	ev.Meta["sq_num"] = gi.sqNum
+	if gi.confRev != 0 {
+		ev.Meta["conf_rev"] = gi.confRev
+	}
 	send(ctx, bus, ev)
+}
+
+// gooseAttackRule picks the rule ID + severity for a set of GOOSE attack
+// markers, by priority: spoofing/replay (active manipulation) are critical;
+// storm/simulation are high.
+func gooseAttackRule(markers []string) (string, event.Severity) {
+	has := func(m string) bool {
+		for _, x := range markers {
+			if x == m {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("goose-spoofing"):
+		return "sniffer:goose_spoof", event.SeverityCritical
+	case has("goose-replay"):
+		return "sniffer:goose_replay", event.SeverityCritical
+	case has("goose-storm"):
+		return "sniffer:goose_storm", event.SeverityHigh
+	default:
+		return "sniffer:goose_simulation", event.SeverityHigh
+	}
 }
 
 // newIPEvent builds a layer-3/4 sniffer event (no MAC, caller sets proto).

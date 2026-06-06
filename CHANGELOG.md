@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **GOOSE attack analysis (IEC 61850).** The L2 GOOSE sniffer now keeps
+  per-control-block (`gocbRef`) state and detects manipulation, not just
+  presence: **spoofing** (a second publisher / different src MAC for an existing
+  control block → `sniffer:goose_spoof`, critical), **replay** (an `stNum`
+  regression → `sniffer:goose_replay`, critical), **storm** (rapid `stNum`
+  state-change flood → `sniffer:goose_storm`), and **simulation** (the header
+  simulate bit / `test` flag → `sniffer:goose_simulation`) — mapped to ATT&CK
+  for ICS **T0856** (Spoof Reporting Message) + T0831 / T0814 (new T0856
+  technique + D3FEND). The parser now also extracts `test`, `confRev`, and the
+  simulate bit; benign streams still emit the rate-limited `sniffer:goose`.
 - **Modbus/TCP Security (Modbus-over-TLS) handler** (`modbus_security` /
   `modbuss`, port 802). Terminates TLS (requesting the client's role
   certificate), computes JA3/JA4/JA3S, captures the client-cert subject + the

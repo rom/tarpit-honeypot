@@ -128,7 +128,7 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 
 | Component | EtherType / frame | Mode | Emulated |
 |---|---|---|---|
-| GOOSE detection | IEC 61850 GOOSE (`0x88B8`) | sniffer (detect) | flags `sniffer:goose` (substation multicast observed) |
+| GOOSE detection + attack analysis | IEC 61850 GOOSE (`0x88B8`) | sniffer (detect) | benign multicast → `sniffer:goose`; **stateful per-`gocbRef` analysis** flags **spoofing** (2nd publisher → `sniffer:goose_spoof`), **replay** (`stNum` regression → `sniffer:goose_replay`), **storm** (state-change flood → `sniffer:goose_storm`), **simulation** (simulate/`test` bit → `sniffer:goose_simulation`) → T0856/T0831/T0814 |
 | PROFINET-DCP responder | PROFINET (`0x8892`) | L2 responder (Linux, CAP_NET_RAW) | answers DCP **Identify** per virtual station (cell enumeration); detects DCP **Set** — NameOfStation/IP reassignment or Control/factory-reset — raises `honeynet:profinet_dcp_set` and ACKs the Set as if it applied |
 
 ---
@@ -287,6 +287,9 @@ D3FEND countermeasures are derived from each technique (see
 | `ics-safety-controller-manipulation` | T0831 + T0880 |
 | `wdbrpc-connect` | T0866 |
 | `honeynet:profinet_dcp_identify`, `bacnet-device-discovery` | T0846 |
+| `sniffer:goose_spoof`, `sniffer:goose_replay` | T0856 + T0831 |
+| `sniffer:goose_storm` | T0814 + T0831 |
+| `sniffer:goose_simulation` | T0856 |
 | `sniffer:goose` | T0888 |
 
 ---

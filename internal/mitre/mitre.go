@@ -120,10 +120,16 @@ var exactRules = map[string]Tag{
 	// it — configuration manipulation of the PROFINET cell.
 	"honeynet:profinet_dcp_set": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.
-	"sniffer:goose":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
-	"dnscanary:hit":       {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":    {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	"sniffer:goose": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	// GOOSE manipulation: a spoofed publisher / replayed (stNum-regressed) /
+	// stormed / simulate-bit frame driving subscribers to a forged state.
+	"sniffer:goose_spoof":      {Techniques: []string{"T0856", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_replay":     {Techniques: []string{"T0856", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_storm":      {Techniques: []string{"T0814", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_simulation": {Techniques: []string{"T0856"}, Tactics: []string{"impact"}},
+	"dnscanary:hit":            {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier":      {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":         {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
@@ -1087,6 +1093,7 @@ var techDescriptions = map[string]string{
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
 	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
+	"T0856": "Spoof Reporting Message (ICS) — forging device/process reporting messages (e.g. GOOSE) to mislead subscribers.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
@@ -1217,6 +1224,7 @@ var d3fend = map[string][]string{
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
 	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
+	"T0856": {"D3-NTA", "D3-DE"},                    // ICS: spoof reporting message (GOOSE)
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
