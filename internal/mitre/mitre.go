@@ -469,6 +469,13 @@ var anomalyTags = map[string]Tag{
 	"profinet-iod-write":                 {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
 	"profinet-iod-control":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"knx-bus-write":                      {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"knx-bus-read":                       {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"knx-routing-injection":              {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"knx-memory-write":                   {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"knx-programming":                    {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"knx-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"knx-device-mgmt":                    {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"knx-tunnel-connect":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	// IoT actuation + building automation control.
 	"iot-actuation-attempt": {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
 	"iot-mqtt-sn-publish":   {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},

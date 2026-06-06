@@ -80,18 +80,22 @@ func (k *knx) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 		}
 	case knxSvcConnectRequest:
 		res.Meta["op"] = "CONNECT_REQUEST"
+		flagAnomaly(&res, "knx-tunnel-connect")
+		setIfEmpty(res.Meta, "intent", "KNXnet/IP CONNECT — opening a tunnel to the building bus")
 		// Reply with status=0x24 (no more connections) so the scanner
 		// records a live device but we don't get tied up in a tunnel.
 		reply = k.buildConnectError()
 		banner = "knx CONNECT_RESPONSE err=0x24"
-	case 0x0420: // TUNNELLING_REQUEST — carries a cEMI frame
+	case 0x0420: // TUNNELLING_REQUEST — cEMI after the 4-byte connection header
 		res.Meta["op"] = "TUNNELLING_REQUEST"
-		// A tunnelling request carrying an L_Data.req cEMI (message code
-		// 0x11) is the path used to drive the bus — GroupValueWrite toggles
-		// lights / actuators / HVAC. We never act; we flag the write.
-		if len(payload) >= 11 && payload[10] == 0x11 {
-			flagAnomaly(&res, "knx-bus-write")
-		}
+		knxClassifyCEMI(payload, 10, false, &res)
+	case 0x0530: // ROUTING_INDICATION — multicast cEMI, no connection header
+		res.Meta["op"] = "ROUTING_INDICATION"
+		knxClassifyCEMI(payload, 6, true, &res)
+	case 0x0310: // DEVICE_CONFIGURATION_REQUEST — device management (property r/w)
+		res.Meta["op"] = "DEVICE_CONFIGURATION_REQUEST"
+		flagAnomaly(&res, "knx-device-mgmt")
+		setIfEmpty(res.Meta, "intent", "KNXnet/IP device configuration — property read/write (management)")
 	default:
 		res.Meta["op"] = "other"
 	}
@@ -108,6 +112,103 @@ func (k *knx) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 	}
 	_ = cfg
 	return res, nil
+}
+
+// knxClassifyCEMI parses the cEMI L_Data frame carried in a TUNNELLING_REQUEST
+// or ROUTING_INDICATION and classifies the application-layer service (APCI):
+// GroupValue read/write (drive lights/HVAC/actuators), A_Memory_Write and
+// property/key/restart management (firmware/config tampering, the KNX
+// "backdoor" surface). cemiOff is where the cEMI frame starts; routing marks a
+// multicast ROUTING_INDICATION (no tunnel needed).
+//
+// cEMI L_Data: msg_code(1) | add_info_len(1) | ctrl1(1) ctrl2(1) |
+//
+//	src(2) | dst(2) | npdu_len(1) | tpci(1) apci...
+func knxClassifyCEMI(payload []byte, cemiOff int, routing bool, res *Result) {
+	if len(payload) < cemiOff+1 {
+		return
+	}
+	msgCode := payload[cemiOff]
+	res.Meta["cemi_msg_code"] = fmtByte(msgCode)
+	// Only L_Data frames (req 0x11 / ind 0x29 / con 0x2E) carry an APCI.
+	if msgCode != 0x11 && msgCode != 0x29 && msgCode != 0x2E {
+		return
+	}
+	addInfo := int(payload[cemiOff+1])
+	p := cemiOff + 2 + addInfo // skip msg_code, add_info_len, additional info
+	if len(payload) < p+8 {
+		return
+	}
+	src := binary.BigEndian.Uint16(payload[p+2 : p+4])
+	dst := binary.BigEndian.Uint16(payload[p+4 : p+6])
+	res.Meta["knx_src"] = knxIndAddr(src)
+	res.Meta["knx_dst"] = knxGroupAddr(dst)
+	// npdu_len at p+6; TPCI/APCI at p+7..p+8 (10-bit APCI).
+	if len(payload) < p+9 {
+		return
+	}
+	apci := (uint16(payload[p+7]&0x03) << 8) | uint16(payload[p+8])
+	apci &= 0x03C0 // top 4 APCI bits select the service group
+	res.Meta["knx_apci"] = knxAPCIName(apci)
+	switch apci {
+	case 0x0000: // A_GroupValue_Read
+		flagAnomaly(res, "knx-bus-read")
+		setIfEmpty(res.Meta, "intent", "KNX GroupValueRead — reading bus state (sensor/actuator values)")
+	case 0x0080: // A_GroupValue_Write — drive lights/HVAC/actuators
+		flagAnomaly(res, "knx-bus-write")
+		res.Meta["intent"] = "KNX GroupValueWrite — driving the building bus (lights/HVAC/actuators)"
+		if routing {
+			flagAnomaly(res, "knx-routing-injection")
+		}
+	case 0x0280: // A_Memory_Write — write device memory (firmware/config)
+		flagAnomaly(res, "knx-memory-write")
+		res.Meta["intent"] = "KNX A_Memory_Write — writing device memory (firmware/config tampering)"
+	case 0x0380: // A_Restart — restart the device
+		flagAnomaly(res, "knx-device-restart")
+		res.Meta["intent"] = "KNX A_Restart — restarting a bus device"
+	case 0x00C0, 0x0100: // IndividualAddress write/read — re-addressing
+		flagAnomaly(res, "knx-programming")
+		setIfEmpty(res.Meta, "intent", "KNX device programming — individual-address (re)assignment")
+	case 0x03C0: // property/key/authorize management services
+		flagAnomaly(res, "knx-programming")
+		setIfEmpty(res.Meta, "intent", "KNX management — property/key/authorize (device programming)")
+	}
+}
+
+// knxIndAddr formats a KNX individual address (area.line.device).
+func knxIndAddr(a uint16) string {
+	return itoa(int(a>>12)) + "." + itoa(int(a>>8&0xF)) + "." + itoa(int(a&0xFF))
+}
+
+// knxGroupAddr formats a KNX 3-level group address (main/middle/sub).
+func knxGroupAddr(a uint16) string {
+	return itoa(int(a>>11)) + "/" + itoa(int(a>>8&0x7)) + "/" + itoa(int(a&0xFF))
+}
+
+func knxAPCIName(apci uint16) string {
+	switch apci {
+	case 0x0000:
+		return "A_GroupValue_Read"
+	case 0x0040:
+		return "A_GroupValue_Response"
+	case 0x0080:
+		return "A_GroupValue_Write"
+	case 0x00C0:
+		return "A_IndividualAddress_Write"
+	case 0x0100:
+		return "A_IndividualAddress_Read"
+	case 0x0200:
+		return "A_Memory_Read"
+	case 0x0280:
+		return "A_Memory_Write"
+	case 0x0300:
+		return "A_DeviceDescriptor_Read"
+	case 0x0380:
+		return "A_Restart"
+	case 0x03C0:
+		return "A_Management"
+	}
+	return "apci-0x" + fmtByteU16(apci)
 }
 
 // dibDevice + dibSupp form the body advertised in both SEARCH_RESPONSE
