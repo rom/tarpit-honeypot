@@ -307,6 +307,11 @@ server-rendered (strict CSP, no external JS), and auto-refreshes. Key endpoints:
 - `/docs` — the documentation library; `/docs/<name>` renders each guide
   in-product (the same Markdown shipped under `docs/`). See [`webui.md`](webui.md)
   for a full tab-by-tab walkthrough.
+
+Secondary pages can be hidden per deployment via `ui.pages` (slug → `false` hides
+the nav link and 404s the route; core pages can't be disabled), and the summary's
+service-activity highlight is toggled with `ui.service_activity` (default on) —
+see [`config.md`](config.md).
 - `/api/events`, `/api/summary`, `/api/config`, `/api/config/canvas`,
   `/api/topology`, `/api/devices`, `/api/alerting`, `/api/fleet`,
   `/api/iocs`, `/api/profiles`, `/api/fingerprints` — JSON equivalents

@@ -66,6 +66,19 @@ func (s *Server) hasServicePage(kind string) bool {
 	return false
 }
 
+// pageRoute registers a secondary page whose nav link + route honor ui.pages:
+// when the operator disables the page's slug it is hidden from the nav and the
+// route returns 404.
+func (s *Server) pageRoute(mux *http.ServeMux, pattern, slug string, h http.HandlerFunc) {
+	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if !s.cfg.PageEnabled(slug) {
+			http.NotFound(w, r)
+			return
+		}
+		h(w, r)
+	})
+}
+
 // filterByCategory returns the events whose handler belongs to kind.
 func filterByCategory(evs []*event.Event, kind string) []*event.Event {
 	out := make([]*event.Event, 0, len(evs))

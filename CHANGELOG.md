@@ -8,8 +8,22 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-06-06
+
 ### Added
 
+- **Web-UI page toggles + service-activity tint config.** New `ui.pages` map
+  enables/disables individual secondary console pages by slug (`charts`,
+  `credentials`, `dns`, `web`, `databases`, `tunnels`, `fleet`, `iocs`,
+  `campaigns`, `correlation`, `attack`, `map`, `captures`, `fingerprints`,
+  `devices`, `topology`, `alerting`, `errors`, `docs`) — a disabled page is
+  hidden from the nav and its route returns 404; the core pages (summary /
+  events / search / timeline / profiles / health / config) can't be disabled.
+  New `ui.service_activity` (default on) toggles the summary's service-card
+  activity highlight. An unknown `ui.pages` slug is rejected at config validation.
+- **NTP decoy in `example-CENTOS-SERVER-EXTENDED`.** Adds an `ntp` listener
+  (UDP 123) and honeynet host service — a believable time server that recognizes
+  the MONLIST / mode-6 / mode-7 amplification-abuse vectors.
 - **Per-protocol analytics pages: DNS, web, and databases.** Three new pages
   appear in the nav (and respond) only when the running config exposes a relevant
   listener:
@@ -162,6 +176,9 @@ documented in `docs/`).
 
 ### Changed
 
+- **`--help` lists subcommands alphabetically.** The top-level usage now prints
+  the subcommand table sorted by name (the dispatch order is grouped by purpose),
+  so commands are easy to scan.
 - **More clickable UI labels.** On the **threat map** page the *events* /
   *countries* / *ASNs* counter boxes are now links (events → the event log;
   countries / ASNs → their on-page breakdown). In an attacker profile the

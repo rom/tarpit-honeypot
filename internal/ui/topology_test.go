@@ -13,7 +13,7 @@ import (
 
 func uiTmpl(t *testing.T) *template.Template {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true, func(string) bool { return true })).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 0 }, "nvd", "", true, navFuncs{has: func(string) bool { return true }, enabled: func(string) bool { return true }})).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

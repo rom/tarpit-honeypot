@@ -10,7 +10,7 @@ import (
 // assert the docs reader stays static even when the rest of the UI live-updates.
 func docsTmpl(t *testing.T) *template.Template {
 	t.Helper()
-	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 10 }, "nvd", "", true, func(string) bool { return true })).Parse(tmpls)
+	tmpl, err := template.New("").Funcs(tmplFuncs(func() int { return 10 }, "nvd", "", true, navFuncs{has: func(string) bool { return true }, enabled: func(string) bool { return true }})).Parse(tmpls)
 	if err != nil {
 		t.Fatal(err)
 	}

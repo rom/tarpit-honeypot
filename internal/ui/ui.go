@@ -186,7 +186,10 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 			return nil, fmt.Errorf("ui: env %s is empty", cfg.AuthTokenEnv)
 		}
 	}
-	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL, s.cfg.AttackLinksEnabled(), func(kind string) bool { return s.hasServicePage(kind) })).Parse(tmpls)
+	t, err := template.New("").Funcs(tmplFuncs(func() int { return s.refresh }, s.cfg.CVESource, s.cfg.MapTilesURL, s.cfg.AttackLinksEnabled(), navFuncs{
+		has:     func(kind string) bool { return s.hasServicePage(kind) },
+		enabled: func(slug string) bool { return s.cfg.PageEnabled(slug) },
+	})).Parse(tmpls)
 	if err != nil {
 		return nil, err
 	}
@@ -197,16 +200,29 @@ func New(cfg config.UI, st *store.Store) (*Server, error) {
 // tmplFuncs is the single source of truth for the template function map, used by
 // New and by the package tests so they can never drift. refresh supplies the
 // auto-refresh interval.
-func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool, hasPage func(string) bool) template.FuncMap {
-	if hasPage == nil {
-		hasPage = func(string) bool { return false }
+// navFuncs supplies the nav-gating template predicates: has reports whether a
+// conditional service page has a relevant listener; enabled reports whether the
+// operator has hidden a page via ui.pages.
+type navFuncs struct {
+	has     func(string) bool
+	enabled func(string) bool
+}
+
+func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool, nav navFuncs) template.FuncMap {
+	if nav.has == nil {
+		nav.has = func(string) bool { return false }
+	}
+	if nav.enabled == nil {
+		nav.enabled = func(string) bool { return true }
 	}
 	return template.FuncMap{
 		"mapTiles": func() string { return mapTiles },
 		// hasPage reports whether a conditional service page (dns / web /
 		// databases) should appear in the nav — true only when the running
-		// config has a relevant listener.
-		"hasPage": hasPage,
+		// config has a relevant listener. pageEnabled reports whether the
+		// operator left a togglable page visible (ui.pages).
+		"hasPage":     nav.has,
+		"pageEnabled": nav.enabled,
 		// attackURL: the canonical MITRE page (always, e.g. for the drill-down's
 		// "on attack.mitre.org" link). attackLinkURL: the same, but "" when the
 		// operator disabled out-linking, so labels fall back to the internal
@@ -624,41 +640,42 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/events/", s.handleEvent)
 	mux.HandleFunc("/profiles", s.handleProfiles)
 	mux.HandleFunc("/profiles/", s.handleProfile)
-	mux.HandleFunc("/fingerprints", s.handleFingerprints)
-	mux.HandleFunc("/fingerprints/", s.handleFingerprint)
+	s.pageRoute(mux, "/fingerprints", "fingerprints", s.handleFingerprints)
+	s.pageRoute(mux, "/fingerprints/", "fingerprints", s.handleFingerprint)
 	mux.HandleFunc("/pcap/", s.handlePcap)
 	mux.HandleFunc("/session/", s.handleSession)
 	mux.HandleFunc("/download", s.handleDownload)
-	mux.HandleFunc("/captures", s.handleCaptures)
-	mux.HandleFunc("/credentials", s.handleCredentials)
-	// Conditional per-protocol analytics pages (each 404s unless the running
-	// config exposes a relevant listener; the nav links are gated the same way).
-	mux.HandleFunc("/dns", s.handleDNS)
-	mux.HandleFunc("/web", s.handleWeb)
-	mux.HandleFunc("/databases", s.handleDatabases)
+	// Secondary pages are gated by ui.pages: a disabled page is hidden from the
+	// nav and its route returns 404. Per-protocol pages (dns/web/databases) also
+	// 404 unless the config has a relevant listener (checked in the handler).
+	s.pageRoute(mux, "/captures", "captures", s.handleCaptures)
+	s.pageRoute(mux, "/credentials", "credentials", s.handleCredentials)
+	s.pageRoute(mux, "/dns", "dns", s.handleDNS)
+	s.pageRoute(mux, "/web", "web", s.handleWeb)
+	s.pageRoute(mux, "/databases", "databases", s.handleDatabases)
 	mux.HandleFunc("/loot/", s.handleLoot)
 	mux.HandleFunc("/replay", s.handleReplay)
 	mux.HandleFunc("/config", s.handleConfig)
-	mux.HandleFunc("/attack", s.handleAttack)
-	mux.HandleFunc("/attack/technique", s.handleAttackTechnique)
+	s.pageRoute(mux, "/attack", "attack", s.handleAttack)
+	s.pageRoute(mux, "/attack/technique", "attack", s.handleAttackTechnique)
 	mux.HandleFunc("/timeline", s.handleTimeline)
-	mux.HandleFunc("/correlation", s.handleCorrelation)
-	mux.HandleFunc("/campaign", s.handleCampaign)
-	mux.HandleFunc("/map", s.handleThreatMap)
-	mux.HandleFunc("/fleet", s.handleFleet)
-	mux.HandleFunc("/iocs", s.handleIOCs)
-	mux.HandleFunc("/tunnels", s.handleTunnels)
+	s.pageRoute(mux, "/correlation", "correlation", s.handleCorrelation)
+	s.pageRoute(mux, "/campaign", "campaigns", s.handleCampaign)
+	s.pageRoute(mux, "/map", "map", s.handleThreatMap)
+	s.pageRoute(mux, "/fleet", "fleet", s.handleFleet)
+	s.pageRoute(mux, "/iocs", "iocs", s.handleIOCs)
+	s.pageRoute(mux, "/tunnels", "tunnels", s.handleTunnels)
 	mux.HandleFunc("/search", s.handleSearch)
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/charts", s.handleCharts)
-	mux.HandleFunc("/topology", s.handleTopology)
-	mux.HandleFunc("/hosts", s.handleHosts)
-	mux.HandleFunc("/devices", s.handleHosts)
+	s.pageRoute(mux, "/charts", "charts", s.handleCharts)
+	s.pageRoute(mux, "/topology", "topology", s.handleTopology)
+	s.pageRoute(mux, "/hosts", "devices", s.handleHosts)
+	s.pageRoute(mux, "/devices", "devices", s.handleHosts)
 	mux.HandleFunc("/devices/action", s.handleDeviceAction)
-	mux.HandleFunc("/alerting", s.handleAlerting)
-	mux.HandleFunc("/errors", s.handleErrors)
-	mux.HandleFunc("/docs", s.handleDocs)
-	mux.HandleFunc("/docs/", s.handleDoc)
+	s.pageRoute(mux, "/alerting", "alerting", s.handleAlerting)
+	s.pageRoute(mux, "/errors", "errors", s.handleErrors)
+	s.pageRoute(mux, "/docs", "docs", s.handleDocs)
+	s.pageRoute(mux, "/docs/", "docs", s.handleDoc)
 	mux.HandleFunc("/theme", s.handleTheme)
 	mux.HandleFunc("/size", s.handleSize)
 	mux.HandleFunc("/api/events", s.handleAPIEvents)
@@ -913,7 +930,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// from a bounded scan of the window.
 	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
-		markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
+		if s.cfg.ServiceActivityEnabled() {
+			markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
+		}
 	}
 	// Carry the active window into every /events pivot link so the listing
 	// covers the same span the summary aggregated over (otherwise /events

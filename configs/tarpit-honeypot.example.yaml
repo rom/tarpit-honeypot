@@ -102,6 +102,16 @@ ui:
   # tls_cert: /etc/tarpit-honeypot/ui.crt
   # tls_key:  /etc/tarpit-honeypot/ui.key
   # auth_token_env: TARPIT_UI_TOKEN
+  # service_activity: true   # tint summary service cards that saw access/attempts (default on)
+  # Enable/disable individual secondary pages in the console (nav link + route).
+  # Core pages (summary/events/search/timeline/profiles/health/config) can't be
+  # disabled. Omitted/true = shown; false = hidden + route 404s. Togglable slugs:
+  # attack, correlation, campaigns, map, captures, credentials, dns, web,
+  # databases, fleet, iocs, tunnels, fingerprints, devices, topology, charts,
+  # alerting, errors, docs.
+  # pages:
+  #   docs: false
+  #   topology: false
 
 listeners:
   - id: ssh-bait

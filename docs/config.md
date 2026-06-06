@@ -153,10 +153,16 @@ ui:
   map_tiles_url: ""     # optional equirectangular world-map IMAGE for the attack source map
   hidden_ips: []        # presentation-only: source IPs/CIDRs to hide from every view
   attack_links: true    # ATT&CK technique labels link out to attack.mitre.org (omit = on)
+  service_activity: true # tint summary service cards that saw access/attempts (omit = on)
+  pages:                # enable/disable individual secondary pages (omit = all on)
+    docs: false
+    topology: false
 ```
 
 - Bind to anything non-loopback **requires both** `tls_cert + tls_key` and `auth_token_env`. Validation rejects the config otherwise.
 - The UI is strictly read-only — no write endpoints.
+- **`pages`** enables/disables individual **secondary** console pages, keyed by the nav slug — `attack`, `correlation`, `campaigns`, `map`, `captures`, `credentials`, `dns`, `web`, `databases`, `fleet`, `iocs`, `tunnels`, `fingerprints`, `devices`, `topology`, `charts`, `alerting`, `errors`, `docs`. Omitted or `true` = shown; `false` = **hidden from the nav and its route returns 404**. The **core** pages (`summary`, `events`, `search`, `timeline`, `profiles`, `health`, `config`) cannot be disabled. This is presentation only — disabling a page never drops events from the store or any export. An unknown slug is rejected at validation. Reload (SIGHUP) after editing.
+- **`service_activity`** (default **on**) tints the summary's service-board cards — and shows each one's event count — when that listener saw any access or attempt in the window. Set `false` to keep the board uniform.
 - **`cve_source`** selects the external reference CVE labels link to: NVD (`https://nvd.nist.gov/vuln/detail/<id>`) or CVE.org (`https://www.cve.org/CVERecord?id=<id>`).
 - **`map_tiles_url`** sets a backdrop image for the GeoIP "attack source map" (charts + map views). It must be a single **equirectangular / plate-carrée world image** (the map's projection is lon −180…180 → x, lat 90…−90 → y). Prefer a self-hosted image under `/static` (no external requests from the operator's browser); a non-`/` URL automatically relaxes the UI `img-src` CSP to *just* that origin. Empty = the built-in graticule only.
 - **`hidden_ips`** is a presentation-layer display allowlist: the listed source IPs / CIDRs are hidden from **every** view and JSON endpoint (event lists, timeline, profiles, campaigns, map, top sources, IOCs). The events stay in the store and in every export / SIEM feed — they're just not shown. Use it to keep your own scanners / health-checkers out of the console; edit the list and reload (SIGHUP) to add/remove.

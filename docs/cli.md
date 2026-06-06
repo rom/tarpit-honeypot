@@ -31,6 +31,8 @@ tarpit-honeypot --version | -V
 
 All subcommands exit 0 on success and 1 on error. Errors are written to stderr; data goes to stdout.
 
+`tarpit-honeypot --help` (or `-h`, with no subcommand) prints the usage banner and lists **all subcommands in alphabetical order**, followed by the common flags.
+
 ### Common flags
 
 Most subcommands accept the shared logging + config-override set:

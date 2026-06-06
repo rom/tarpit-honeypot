@@ -1417,6 +1417,13 @@ func (c *Config) Validate() error {
 		if c.UI.Bind == "" {
 			return fmt.Errorf("ui.bind is required when ui.enabled")
 		}
+		// Reject unknown page slugs in ui.pages so a typo can't silently fail to
+		// hide a page (the core pages are not togglable).
+		for slug := range c.UI.Pages {
+			if !TogglablePages[slug] {
+				return fmt.Errorf("ui.pages: %q is not a togglable page (one of: attack, correlation, campaigns, map, captures, credentials, dns, web, databases, fleet, iocs, tunnels, fingerprints, devices, topology, charts, alerting, errors, docs)", slug)
+			}
+		}
 		host, _, err := net.SplitHostPort(c.UI.Bind)
 		if err != nil {
 			return fmt.Errorf("ui.bind: %w", err)

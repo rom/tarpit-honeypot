@@ -26,6 +26,13 @@ refresh is **state-preserving**: a column sort you chose, the live-pause toggle,
 and the timeline order all survive the reload (persisted per-page in
 `localStorage`), so a periodic refresh never resets your view.
 
+The **secondary** pages above can be turned off per deployment with `ui.pages`
+(keyed by the nav slug — a disabled page is hidden from the nav and its route
+returns 404); the **core** pages (summary, events, search, timeline, profiles,
+health, config) are always present. The `dns` / `web` / `databases` pages only
+appear when the config has a relevant listener. See [`config.md`](config.md)
+for the full slug list.
+
 ## Presentation options
 
 - **Pervasive linking.** Source IPs everywhere (event lists, detail, timeline,
