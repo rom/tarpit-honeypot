@@ -220,7 +220,7 @@ var roles = map[string][]Service{
 	},
 	"nfsserver": {
 		{111, "tcp", "rpcbind", "SunRPC portmapper"},
-		{2049, "tcp", "raw", "NFS"},
+		{2049, "tcp", "nfs", "NFS"},
 		{20048, "tcp", "raw", "mountd"},
 	},
 	"vpngateway": {

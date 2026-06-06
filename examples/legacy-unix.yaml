@@ -38,6 +38,7 @@ listeners:
   - { id: https,   proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https,     severity: medium,   capture: true }
   - { id: ftp,     proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,       severity: high,     capture: true }
   - { id: rpcbind, proto: tcp, bind: 0.0.0.0:111,  mode: banner, handler: rpcbind,   severity: high,     capture: true }
+  - { id: nfs,     proto: tcp, bind: 0.0.0.0:2049, mode: banner, handler: nfs,       severity: high,     capture: true }
   - { id: smb,     proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,       severity: high,     capture: true }
 
 honeynets:
@@ -52,7 +53,7 @@ honeynets:
       - { ip: 10.70.0.11, hostname: sun-oracle,    os: solaris, archetype: solaris-11, services: [ {port: 22, handler: ssh}, {port: 111, handler: rpcbind} ] }
       - { ip: 10.70.0.20, hostname: aix-erp,       os: aix,     archetype: aix-7,      services: [ {port: 22, handler: ssh}, {port: 23, handler: telnet}, {port: 111, handler: rpcbind} ] }
       - { ip: 10.70.0.21, hostname: aix-db2,       os: aix,     archetype: aix-7,      services: [ {port: 22, handler: ssh}, {port: 111, handler: rpcbind} ] }
-      - { ip: 10.70.0.30, hostname: nfs-archive,   os: linux,   archetype: gentoo,     services: [ {port: 111, handler: rpcbind}, {port: 445, handler: smb}, {port: 21, handler: ftp} ] }
+      - { ip: 10.70.0.30, hostname: nfs-archive,   os: linux,   archetype: gentoo,     services: [ {port: 111, handler: rpcbind}, {port: 2049, handler: nfs}, {port: 445, handler: smb}, {port: 21, handler: ftp} ] }
       - { ip: 10.70.0.31, hostname: gentoo-build,  os: linux,   archetype: gentoo,     services: [ {port: 22, handler: ssh}, {port: 80, handler: http}, {port: 443, handler: https} ] }
 
 correlate:

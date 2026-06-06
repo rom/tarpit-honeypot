@@ -43,7 +43,7 @@ var tcpHandlers = map[string]bool{
 	"websocket": true, "grpc": true, "ssrf_canary": true,
 	"kubernetes_api": true, "vault": true,
 	"jdwp": true, "rmi": true, "git": true, "svn": true, "nbd": true, "roc_plus": true, "crimson": true, "zookeeper": true, "kafka": true,
-	"cassandra": true, "nats": true, "rpcbind": true, "pptp": true,
+	"cassandra": true, "nats": true, "rpcbind": true, "nfs": true, "pptp": true,
 	"adb": true, "ajp13": true, "epmd": true, "tacacs": true,
 	"fins_tcp": true, "secs_gem": true, "pcom": true,
 	"rexec": true, "rsh": true, "pcanywhere": true, "radmin": true,

@@ -76,3 +76,89 @@ func TestRPCBindNFSEnum(t *testing.T) {
 		t.Errorf("rpcbind-nfs-enum not flagged: %v", r.Meta["anomalies"])
 	}
 }
+
+// rpcRecord wraps an RPC message body in a last-fragment record marker.
+func rpcRecord(msg []byte) []byte {
+	rec := binary.BigEndian.AppendUint32(nil, uint32(len(msg))|0x80000000)
+	return append(rec, msg...)
+}
+
+// nfsCall builds a record-marked NFS RPC CALL with the given version/proc, an
+// AUTH_UNIX cred carrying uid, and trailing procedure-argument bytes.
+func nfsCall(vers, proc, uid uint32, args []byte) []byte {
+	msg := make([]byte, 24)
+	binary.BigEndian.PutUint32(msg[0:4], 0xC0FFEE00) // xid
+	// msg_type=0 (CALL) at [4:8] already zero
+	binary.BigEndian.PutUint32(msg[8:12], 2)       // rpcvers
+	binary.BigEndian.PutUint32(msg[12:16], 100003) // nfs
+	binary.BigEndian.PutUint32(msg[16:20], vers)
+	binary.BigEndian.PutUint32(msg[20:24], proc)
+	// AUTH_UNIX cred: stamp(4)+machinename<0>(4)+uid(4)+gid(4)+numgids(4) = 20.
+	cred := make([]byte, 20)
+	binary.BigEndian.PutUint32(cred[8:12], uid)
+	msg = binary.BigEndian.AppendUint32(msg, 1) // cred flavor AUTH_UNIX
+	msg = binary.BigEndian.AppendUint32(msg, uint32(len(cred)))
+	msg = append(msg, cred...)
+	msg = binary.BigEndian.AppendUint32(msg, 0) // verf flavor AUTH_NULL
+	msg = binary.BigEndian.AppendUint32(msg, 0) // verf length
+	msg = append(msg, args...)
+	return rpcRecord(msg)
+}
+
+// An NFSv4 COMPOUND of PUTROOTFH;GETFH;READDIR as uid 0 is export traversal
+// plus a no_root_squash bypass.
+func TestNFSCompoundEnum(t *testing.T) {
+	// COMPOUND args: tag<0>, minorversion=0, numops=3, ops.
+	var args []byte
+	args = binary.BigEndian.AppendUint32(args, 0)  // tag length 0
+	args = binary.BigEndian.AppendUint32(args, 0)  // minorversion
+	args = binary.BigEndian.AppendUint32(args, 3)  // numops
+	args = binary.BigEndian.AppendUint32(args, 24) // PUTROOTFH
+	args = binary.BigEndian.AppendUint32(args, 10) // GETFH
+	args = binary.BigEndian.AppendUint32(args, 26) // READDIR
+	// READDIR args: cookie(8)+verf(8)+dircount(4)+maxcount(4)+attrbitmap count 0(4).
+	args = append(args, make([]byte, 28)...)
+
+	r := drive(t, func(c net.Conn) Result {
+		res, _ := (&nfs{}).Handle(context.Background(), c, config.Listener{ReadTimeout: 2 * time.Second})
+		return res
+	}, nfsCall(4, 1, 0, args))
+
+	ops, _ := r.Meta["nfs_ops"].([]string)
+	found := false
+	for _, o := range ops {
+		if o == "READDIR" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("READDIR not parsed from COMPOUND ops: %v", ops)
+	}
+	if !hasAnom(r, "nfs-export-enum") {
+		t.Errorf("nfs-export-enum not flagged: %v", r.Meta["anomalies"])
+	}
+	if !hasAnom(r, "nfs-root-access") {
+		t.Errorf("nfs-root-access (uid 0) not flagged: %v", r.Meta["anomalies"])
+	}
+	if r.Meta["nfs_auth_uid"] != uint32(0) {
+		t.Errorf("nfs_auth_uid = %v, want 0", r.Meta["nfs_auth_uid"])
+	}
+	if it, _ := r.Meta["intent"].(string); it == "" {
+		t.Error("missing intent")
+	}
+}
+
+// An NFSv3 READ is a file-read over the share.
+func TestNFSv3Read(t *testing.T) {
+	r := drive(t, func(c net.Conn) Result {
+		res, _ := (&nfs{}).Handle(context.Background(), c, config.Listener{ReadTimeout: 2 * time.Second})
+		return res
+	}, nfsCall(3, 6, 1000, nil))
+
+	if r.Meta["nfs_proc"] != "READ" {
+		t.Errorf("nfs_proc = %v, want READ", r.Meta["nfs_proc"])
+	}
+	if !hasAnom(r, "nfs-file-read") {
+		t.Errorf("nfs-file-read not flagged: %v", r.Meta["anomalies"])
+	}
+}

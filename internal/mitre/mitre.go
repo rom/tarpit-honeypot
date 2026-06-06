@@ -786,8 +786,16 @@ var anomalyTags = map[string]Tag{
 	"rpcbind-dump":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
 	"rpcbind-getport":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"rpcbind-nfs-enum":       {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
-	"pptp-probe":             {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
-	"stun-binding":           {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
+	// NFS (2049) mount/traversal/read attempts (nfs.go). Share discovery,
+	// reading from a network share, and a uid-0 no_root_squash bypass.
+	"nfs-access":       {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-root-probe":   {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-export-enum":  {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-file-read":    {Techniques: []string{"T1039"}, Tactics: []string{"collection"}},
+	"nfs-client-setup": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"nfs-root-access":  {Techniques: []string{"T1078.003"}, Tactics: []string{"privilege-escalation"}},
+	"pptp-probe":       {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"stun-binding":     {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
 	// Round-three IoT / app-server / cluster / AAA / DB decoys (devsvc3.go).
 	// An exposed ADB daemon is unauthenticated RCE (OPEN shell: is the exec
 	// step); AJP forward-request is the Ghostcat carrier; epmd enumerates
@@ -1002,6 +1010,7 @@ var techDescriptions = map[string]string{
 	"T1021": "Remote Services — moving laterally over RDP/SMB/SSH/VNC/WinRM.",
 	"T1210": "Exploitation of Remote Services — exploiting a remote service to move laterally.",
 	"T1213": "Data from Information Repositories — pulling data from a database/repository.",
+	"T1039": "Data from Network Shared Drive — reading files from a network share (NFS/SMB).",
 	"T1114": "Email Collection — accessing mailboxes to collect messages.",
 	"T1005": "Data from Local System — collecting files from the compromised host.",
 	"T1056": "Input Capture — keylogging/credential-prompt capture.",
@@ -1214,6 +1223,7 @@ var d3fend = map[string][]string{
 	"T1136": {"D3-CH", "D3-DUC"},           // create account
 	"T1140": {"D3-FA", "D3-DA"},            // deobfuscate / decode files or information
 	"T1213": {"D3-DO", "D3-NTA"},           // data from information repositories
+	"T1039": {"D3-DO", "D3-NTA"},           // data from network shared drive
 	"T1482": {"D3-DNR", "D3-NTA"},          // domain trust discovery
 	"T1555": {"D3-CH", "D3-DUC", "D3-NTA"}, // credentials from password stores (Vault)
 	"T1528": {"D3-CH", "D3-DUC"},           // steal application access token (k8s / cloud)

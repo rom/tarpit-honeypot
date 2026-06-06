@@ -246,6 +246,8 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `bacnet-write-attempt` | T0836, T0831 | impact |
 | `bgp-open-attempt` | T1190 | initial-access |
 | `bgp-probe` | T1595 | reconnaissance |
+| `bgp-route-injection` | T1557 | collection |
+| `bgp-route-withdrawal` | T1498 | impact |
 | `c2-framework` | T1071.001, T1219 | command-and-control |
 | `cassandra-auth-attempt` | T1110.001 | credential-access |
 | `cassandra-probe` | T1046 | discovery |
@@ -333,6 +335,12 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `nats-connect` | T1046 | discovery |
 | `nats-publish` | T1565 | impact |
 | `netbios-datagram` | T1018 | discovery |
+| `nfs-access` | T1135 | discovery |
+| `nfs-client-setup` | T1046 | discovery |
+| `nfs-export-enum` | T1135 | discovery |
+| `nfs-file-read` | T1039 | collection |
+| `nfs-root-access` | T1078.003 | privilege-escalation |
+| `nfs-root-probe` | T1135 | discovery |
 | `ntp-control-query` | T1498.002 | impact |
 | `ntp-monlist-amplification` | T1498.002 | impact |
 | `nx-probe` | T1595 | reconnaissance |
@@ -382,6 +390,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `rmi-probe` | T1595 | reconnaissance |
 | `rpcbind-dump` | T1135 | discovery |
 | `rpcbind-getport` | T1046 | discovery |
+| `rpcbind-nfs-enum` | T1135 | discovery |
 | `rpcbind-query` | T1046 | discovery |
 | `rsh-attempt` | T1021 | lateral-movement |
 | `rsh-command` | T1059, T1021 | execution, lateral-movement |

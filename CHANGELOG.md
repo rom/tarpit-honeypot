@@ -88,6 +88,22 @@ documented in `docs/`).
   - **MQTT** — stamps attacker-`intent` for broker login / anonymous probe and
     for **wildcard subscribe** (`#`/`+`/`$SYS` topic harvesting / exfil).
 
+- **Dedicated NFS (2049) handler.** New `nfs` handler that captures the
+  mount/traversal/read attempt itself (the `rpcbind` handler captures the
+  enumeration that precedes it). It parses the record-marked RPC call, names
+  the program / version / procedure, and for **NFSv4 COMPOUND** decodes the
+  operation list (`nfs_ops`: PUTROOTFH / GETFH / LOOKUP / READDIR / READ / …).
+  It captures the **AUTH_UNIX** uid/gid/hostname the client claims — a **uid 0**
+  is flagged `nfs-root-access` (no_root_squash bypass, →T1078.003). It flags
+  export traversal (`nfs-export-enum`→T1135), file reads (`nfs-file-read`→T1039)
+  and client negotiation (`nfs-client-setup`), and answers like a live-but-
+  locked-down NFSv4 root: `PUTROOTFH`/`PUTFH`/`GETFH` succeed (handing back a
+  root filehandle so the scanner keeps probing) while any traversal/read gets
+  `NFS4ERR_ACCESS` — no real data leaves. NFSv3 data procedures get a plausible
+  `NFS3ERR_ACCES` reply. Wired into the `nfsserver` archetype role and the
+  `legacy-unix` example. New ATT&CK technique **T1039** (Data from Network
+  Shared Drive) with its D3FEND mapping.
+
 ## [2.12.0] — 2026-06-06
 
 ### Added
