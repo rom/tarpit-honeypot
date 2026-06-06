@@ -50,7 +50,7 @@ var tcpHandlers = map[string]bool{
 	"dameware": true, "pcoip": true, "spice": true, "lantronix": true,
 	"tn3270": true, "ard": true,
 	"sip_tcp": true, "sccp": true, "h323": true, "asterisk_ami": true,
-	"xmpp": true, "amqp": true, "ipp": true,
+	"xmpp": true, "amqp": true, "ibmmq": true, "mq": true, "websphere_mq": true, "ipp": true,
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
 	"vmware_authd": true, "x11": true, "rlogin": true, "nx": true, "redfish": true,
