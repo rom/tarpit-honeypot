@@ -81,8 +81,23 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		// manipulating the control process, not a benign scan — flag it
 		// (maps to ATT&CK for ICS T0836 Modify Parameter / T0831
 		// Manipulation of Control).
-		if fcv, ok := entry["function_code"].(byte); ok && modbusIsWrite(fcv) {
-			flagAnomaly(&res, "modbus-write-attempt")
+		if fcv, ok := entry["function_code"].(byte); ok {
+			switch {
+			case modbusIsWrite(fcv):
+				flagAnomaly(&res, "modbus-write-attempt")
+				res.Meta["intent"] = "Modbus " + modbusFCName(fcv) + " — writing to a PLC (control manipulation)"
+			case fcv == 0x08: // Diagnostics — restart/listen-only are control/DoS.
+				if sub, ok := entry["diag_subfunction"].(uint16); ok && (sub == 0x0001 || sub == 0x0004) {
+					flagAnomaly(&res, "ics-modbus-diagnostic")
+					res.Meta["intent"] = "Modbus Diagnostics — " + modbusDiagName(sub) + " (control/DoS)"
+				}
+			case fcv == 0x2B: // Read Device Identification = PLC fingerprinting.
+				setIfEmpty(res.Meta, "intent", "Modbus Read Device Identification — PLC vendor/model fingerprinting")
+			case fcv == 0x11: // Report Server ID = device fingerprinting.
+				setIfEmpty(res.Meta, "intent", "Modbus Report Server ID — device fingerprinting")
+			default:
+				setIfEmpty(res.Meta, "intent", "Modbus "+modbusFCName(fcv)+" — sampling registers/coils (recon)")
+			}
 		}
 
 		if rpdu != nil {
@@ -238,6 +253,15 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 			return out
 		}
 		return []byte{fc | 0x80, 0x03}
+	case 0x08: // Diagnostics
+		// sub-function(2) + data(2). Echo the request like a real device
+		// (FC 0x08 is a request/echo loopback for most sub-functions).
+		if len(pdu) >= 3 {
+			meta["diag_subfunction"] = binary.BigEndian.Uint16(pdu[1:3])
+		}
+		out := make([]byte, len(pdu))
+		copy(out, pdu)
+		return out
 	case 0x11: // Report Server ID
 		// vendor: "MX3 " + run-status 0xff (running).
 		return []byte{0x11, 0x05, 0x4d, 0x58, 0x33, 0x20, 0xff}
@@ -346,6 +370,18 @@ func modbusIsWrite(fc byte) bool {
 		return true
 	}
 	return false
+}
+
+// modbusDiagName names the notable Modbus Diagnostics (FC 0x08) sub-functions
+// that affect device availability rather than just looping data back.
+func modbusDiagName(sub uint16) string {
+	switch sub {
+	case 0x0001:
+		return "Restart Communications Option"
+	case 0x0004:
+		return "Force Listen Only Mode"
+	}
+	return "sub-function 0x" + itoa(int(sub))
 }
 
 // modbusFCName returns the symbolic function-code name for the meta

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -98,7 +99,58 @@ func (o *opcua) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 
 	if _, err := conn.Write(ack); err != nil {
 		res.Meta["write_err"] = err.Error()
+		return res, nil
 	}
 	res.BannerSent = "opcua ACK"
+	setIfEmpty(res.Meta, "intent", "OPC-UA Hello — handshake / endpoint probe")
+
+	// After the ACK, a client opens a secure channel (OPN). We don't run the
+	// full crypto handshake, but the OPN carries the SecurityPolicyUri in the
+	// clear — capturing it shows whether the attacker is reaching for an
+	// unauthenticated (#None) endpoint, the classic exposed-OPC-UA misconfig.
+	o.readPostHello(conn, &res)
 	return res, nil
+}
+
+// readPostHello reads a bounded number of post-Hello messages and, for an
+// OpenSecureChannel (OPN), records the requested SecurityPolicyUri.
+func (o *opcua) readPostHello(conn net.Conn, res *Result) {
+	for i := 0; i < 4; i++ {
+		h := make([]byte, 8)
+		if _, err := io.ReadFull(conn, h); err != nil {
+			return
+		}
+		mt := string(h[0:3])
+		ml := binary.LittleEndian.Uint32(h[4:8])
+		if ml < 8 || ml > 65535 {
+			return
+		}
+		b := make([]byte, int(ml)-8)
+		if _, err := io.ReadFull(conn, b); err != nil {
+			return
+		}
+		res.Payload = append(res.Payload, h...)
+		res.Payload = append(res.Payload, b...)
+		switch mt {
+		case "OPN": // OpenSecureChannel: SecureChannelId(4) + SecurityPolicyUri
+			if len(b) >= 8 {
+				l := int32(binary.LittleEndian.Uint32(b[4:8]))
+				if l > 0 && 8+int(l) <= len(b) {
+					uri := string(b[8 : 8+int(l)])
+					res.Meta["opcua_security_policy"] = uri
+					flagAnomaly(res, "ics-opcua-open-channel")
+					if strings.HasSuffix(uri, "#None") {
+						flagAnomaly(res, "ics-opcua-insecure-policy")
+						res.Meta["intent"] = "OPC-UA OpenSecureChannel (SecurityPolicy#None) — unauthenticated/cleartext session attempt"
+					} else {
+						setIfEmpty(res.Meta, "intent", "OPC-UA OpenSecureChannel — establishing a secure channel")
+					}
+				}
+			}
+		case "MSG":
+			res.Meta["opcua_message"] = true
+		case "CLO":
+			return
+		}
+	}
 }

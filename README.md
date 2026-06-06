@@ -819,7 +819,7 @@ A large post-v2.0 sprint. Highlights below; the
   the full documentation in-product (`/docs/<name>`).
 - **Breadth + depth (six rounds).** Thirty-five more protocol decoys across
   data-infra (`jdwp`, `rmi`, `git`, `zookeeper`, `kafka`, `cassandra`, `nats`,
-  `rpcbind`, `pptp`, `stun`), IoT/app/AAA (`adb`, `ajp13`, `epmd`, `tacacs`,
+  `rpcbind`, `nfs`, `pptp`, `stun`), IoT/app/AAA (`adb`, `ajp13`, `epmd`, `tacacs`,
   `mssql_browser`), OT/ICS (`fins_tcp`, `secs_gem`, `pcom` (Unitronics),
   `profinet`, `wdbrpc` (VxWorks)), remote-access / out-of-band management
   (`rexec`, `rsh`, `pcanywhere`, `radmin`, `dameware`, `pcoip`, `spice`,

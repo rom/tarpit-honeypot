@@ -142,14 +142,32 @@ func (h *rpcbind) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	prog := binary.BigEndian.Uint32(msg[12:16])
 	proc := binary.BigEndian.Uint32(msg[20:24])
 	res.Meta["rpc_program"] = prog
+	res.Meta["rpc_program_name"] = rpcProgramName(prog)
 	res.Meta["rpc_proc"] = proc
 	if prog == 100000 { // portmapper
 		switch proc {
 		case 4:
 			flagAnomaly(&res, "rpcbind-dump")
+			res.Meta["intent"] = "SunRPC portmap DUMP — full RPC service enumeration (pre-NFS-mount recon)"
 		case 3:
 			flagAnomaly(&res, "rpcbind-getport")
+			res.Meta["intent"] = "SunRPC GETPORT lookup — locating an RPC service to attack"
+			// GETPORT carries the target {prog,vers,prot,port}; with the usual
+			// AUTH_NULL cred+verf it sits at msg offset 40. Name the target so a
+			// lookup for nfs/mountd/nlockmgr (the share-mount chain) stands out.
+			if len(msg) >= 44 && binary.BigEndian.Uint32(msg[24:28]) == 0 && binary.BigEndian.Uint32(msg[32:36]) == 0 {
+				tgt := binary.BigEndian.Uint32(msg[40:44])
+				res.Meta["rpc_target_program"] = tgt
+				res.Meta["rpc_target_name"] = rpcProgramName(tgt)
+				switch tgt {
+				case 100003, 100005, 100021, 100024, 100227: // nfs, mountd, nlockmgr, statd, nfs_acl
+					flagAnomaly(&res, "rpcbind-nfs-enum")
+					res.Meta["intent"] = "SunRPC GETPORT for " + rpcProgramName(tgt) + " — locating NFS to mount/exploit shares"
+				}
+			}
 		}
+	} else if prog != 100000 && prog != 0 {
+		res.Meta["intent"] = "Direct SunRPC call to " + rpcProgramName(prog)
 	}
 	reply := append([]byte{}, xid...)
 	reply = binary.BigEndian.AppendUint32(reply, 1) // REPLY
@@ -163,6 +181,41 @@ func (h *rpcbind) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	_, _ = conn.Write(out)
 	res.BannerSent = "rpc accepted reply"
 	return res, nil
+}
+
+// rpcProgramName maps a SunRPC program number to its well-known service name.
+func rpcProgramName(prog uint32) string {
+	switch prog {
+	case 100000:
+		return "portmapper"
+	case 100003:
+		return "nfs"
+	case 100005:
+		return "mountd"
+	case 100021:
+		return "nlockmgr"
+	case 100024:
+		return "status"
+	case 100227:
+		return "nfs_acl"
+	case 100001:
+		return "rstatd"
+	case 100002:
+		return "rusersd"
+	case 100007:
+		return "ypbind"
+	case 100009:
+		return "yppasswdd"
+	case 100011:
+		return "rquotad"
+	case 100083:
+		return "ttdbserverd"
+	case 391002:
+		return "sgi_fam"
+	case 0:
+		return ""
+	}
+	return "unknown"
 }
 
 // --- PPTP VPN control (1723) ---------------------------------------------

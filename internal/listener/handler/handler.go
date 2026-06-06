@@ -329,6 +329,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &natsBroker{}, nil
 	case "rpcbind":
 		return &rpcbind{}, nil
+	case "nfs":
+		return &nfs{}, nil
 	case "pptp":
 		return &pptp{}, nil
 	case "adb":

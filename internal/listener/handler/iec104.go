@@ -73,6 +73,7 @@ func (i *iec104) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 
 		frame := classifyFrame(body)
 		frames = append(frames, frame)
+		iec104Classify(frame, &res)
 
 		// Reply per control type.
 		ctype, _ := frame["control_type"].(string)
@@ -93,6 +94,44 @@ func (i *iec104) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	res.Payload = totalPayload
 	res.BannerSent = "iec104 multi-frame engagement"
 	return res, nil
+}
+
+// iec104Classify stamps an attacker-intent summary and flags the control /
+// recon operations a scanner or attacker performs against the RTU.
+func iec104Classify(frame map[string]any, res *Result) {
+	ct, _ := frame["control_type"].(string)
+	switch ct {
+	case "STARTDT_ACT":
+		setIfEmpty(res.Meta, "intent", "IEC-104 STARTDT — opening data transfer with the RTU/substation")
+		return
+	case "STOPDT_ACT", "TESTFR_ACT":
+		setIfEmpty(res.Meta, "intent", "IEC-104 "+ct+" — link supervision / teardown")
+		return
+	case "I-format":
+		// fall through to ASDU-type classification
+	default:
+		return
+	}
+	at, _ := frame["asdu_type"].(byte)
+	cot, _ := frame["cot"].(int)
+	switch at {
+	case 100, 101: // general / counter interrogation = process-image enumeration
+		flagAnomaly(res, "ics-process-data-access")
+		res.Meta["intent"] = "IEC-104 interrogation — enumerating the RTU process image"
+	case 45, 46: // single / double command = actuating a control point
+		if cot == 6 {
+			flagAnomaly(res, "ics-iec104-command")
+			res.Meta["intent"] = "IEC-104 command — actuating a control point (breaker/switch)"
+		}
+	case 48, 49, 50: // set-point commands (C_SE_*) = changing a setpoint
+		if cot == 6 {
+			flagAnomaly(res, "ics-plc-write")
+			res.Meta["intent"] = "IEC-104 set-point command — changing an RTU setpoint"
+		}
+	case 105: // reset process
+		flagAnomaly(res, "ics-device-restart")
+		res.Meta["intent"] = "IEC-104 reset-process — resetting the RTU"
+	}
 }
 
 // classifyFrame inspects the 4 control bytes + optional ASDU body and
@@ -178,6 +217,14 @@ func (i *iec104) replyToIFrame(conn net.Conn, body []byte, meta map[string]any) 
 			// either execute or reject.
 			i.writeIFrame(conn, asduType, 7, body[10:14])
 		}
+	case 48, 49, 50: // C_SE_NA_1 / C_SE_NB_1 / C_SE_NC_1 — set-point commands
+		if cot == 6 && len(body) >= 13 {
+			i.writeIFrame(conn, asduType, 7, body[10:13]) // act-con, IOA echoed
+		}
+	case 105: // C_RP_NA_1 — Reset process
+		if cot == 6 {
+			i.writeIFrame(conn, 105, 7, []byte{0, 0, 0}) // act-con
+		}
 	}
 }
 
@@ -249,6 +296,12 @@ func asduTypeName(t byte) string {
 		return "C_SC_NA_1" // single command
 	case 46:
 		return "C_DC_NA_1" // double command
+	case 48:
+		return "C_SE_NA_1" // set-point, normalized
+	case 49:
+		return "C_SE_NB_1" // set-point, scaled
+	case 50:
+		return "C_SE_NC_1" // set-point, short float
 	case 100:
 		return "C_IC_NA_1" // general interrogation
 	case 101:

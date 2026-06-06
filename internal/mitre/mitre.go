@@ -432,7 +432,9 @@ var anomalyTags = map[string]Tag{
 	"ics-plc-write":                      {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	"ics-plc-mode-change":                {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
 	"ics-plc-program-access":             {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"ics-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
 	"ics-dnp3-control":                   {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"ics-iec104-command":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},
 	"ics-unitronics-plc":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-pmu-command":                    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
@@ -592,14 +594,33 @@ var anomalyTags = map[string]Tag{
 	"webapp:jwt-none":              {Techniques: []string{"T1078"}, Tactics: []string{"defense-evasion"}},
 	"webapp:deserialize":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"webapp:secret-file-probe":     {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	// Exposed management / diagnostic / debug endpoints (info disclosure; the
+	// actuator/jolokia/tomcat-manager ones are RCE footholds).
+	"webapp:apache-status-exposed":     {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:apache-info-exposed":       {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:metrics-exposed":           {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:pprof-exposed":             {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:symfony-profiler-exposed":  {Techniques: []string{"T1592", "T1552"}, Tactics: []string{"reconnaissance", "credential-access"}},
+	"webapp:laravel-telescope-exposed": {Techniques: []string{"T1592", "T1552"}, Tactics: []string{"reconnaissance", "credential-access"}},
+	"webapp:spring-actuator-exposed":   {Techniques: []string{"T1190", "T1552"}, Tactics: []string{"initial-access", "credential-access"}},
+	"webapp:jolokia-exposed":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:solr-admin-exposed":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:tomcat-manager-probe":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// SSH/telnet protocol-misuse + auth markers.
 	"x11-connection-attempt": {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"rlogin-attempt":         {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"redfish-auth-attempt":   {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"vmware-authd-login":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	// BACnet WriteProperty against a control point = ICS manipulation (the
-	// BACnet analogue of modbus-write-attempt).
-	"bacnet-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// BACnet building-automation services. WriteProperty against a control
+	// point = ICS manipulation (the BACnet analogue of modbus-write-attempt);
+	// the rest cover point enumeration, device discovery, comms-disable (DoS),
+	// reboot, and file overwrite.
+	"bacnet-write-attempt":       {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	"bacnet-property-read":       {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"bacnet-device-discovery":    {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"bacnet-device-comm-control": {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"bacnet-reinitialize-device": {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"bacnet-file-write-attempt":  {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// A probe to chargen/echo etc. — the reflection-amplifier scouting target.
 	"udp-amplifier-probe": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	// A planted bait file was retrieved from the decoy FTP tree.
@@ -743,15 +764,17 @@ var anomalyTags = map[string]Tag{
 	// SIP INVITE scanning = VoIP toll-fraud / service reconnaissance.
 	"sip-invite-attempt": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// New-handler protocol-misuse markers.
-	"rsync-module-list":   {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
-	"rsync-module-access": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
-	"gopher-request":      {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"gopher-ssrf":         {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"socks-proxy-attempt": {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
-	"bgp-open-attempt":    {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
-	"bgp-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"ike-probe":           {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
-	"netbios-datagram":    {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
+	"rsync-module-list":    {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"rsync-module-access":  {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"gopher-request":       {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"gopher-ssrf":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"socks-proxy-attempt":  {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"bgp-open-attempt":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"bgp-probe":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"bgp-route-injection":  {Techniques: []string{"T1557"}, Tactics: []string{"collection"}},
+	"bgp-route-withdrawal": {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
+	"ike-probe":            {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"netbios-datagram":     {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	// Developer / data-infrastructure service decoys (internal/listener/handler/devsvc.go).
 	// An exposed JDWP handshake is unauthenticated RCE; RMI is the Java
 	// deserialization entry point; git clone/push is source access / supply
@@ -771,8 +794,17 @@ var anomalyTags = map[string]Tag{
 	"rpcbind-query":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"rpcbind-dump":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
 	"rpcbind-getport":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"pptp-probe":             {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
-	"stun-binding":           {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
+	"rpcbind-nfs-enum":       {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	// NFS (2049) mount/traversal/read attempts (nfs.go). Share discovery,
+	// reading from a network share, and a uid-0 no_root_squash bypass.
+	"nfs-access":       {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-root-probe":   {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-export-enum":  {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"nfs-file-read":    {Techniques: []string{"T1039"}, Tactics: []string{"collection"}},
+	"nfs-client-setup": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"nfs-root-access":  {Techniques: []string{"T1078.003"}, Tactics: []string{"privilege-escalation"}},
+	"pptp-probe":       {Techniques: []string{"T1133"}, Tactics: []string{"initial-access"}},
+	"stun-binding":     {Techniques: []string{"T1016"}, Tactics: []string{"discovery"}},
 	// Round-three IoT / app-server / cluster / AAA / DB decoys (devsvc3.go).
 	// An exposed ADB daemon is unauthenticated RCE (OPEN shell: is the exec
 	// step); AJP forward-request is the Ghostcat carrier; epmd enumerates
@@ -987,6 +1019,7 @@ var techDescriptions = map[string]string{
 	"T1021": "Remote Services — moving laterally over RDP/SMB/SSH/VNC/WinRM.",
 	"T1210": "Exploitation of Remote Services — exploiting a remote service to move laterally.",
 	"T1213": "Data from Information Repositories — pulling data from a database/repository.",
+	"T1039": "Data from Network Shared Drive — reading files from a network share (NFS/SMB).",
 	"T1114": "Email Collection — accessing mailboxes to collect messages.",
 	"T1005": "Data from Local System — collecting files from the compromised host.",
 	"T1056": "Input Capture — keylogging/credential-prompt capture.",
@@ -1040,6 +1073,7 @@ var techDescriptions = map[string]string{
 	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
+	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
@@ -1169,6 +1203,7 @@ var d3fend = map[string][]string{
 	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
+	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
@@ -1199,6 +1234,7 @@ var d3fend = map[string][]string{
 	"T1136": {"D3-CH", "D3-DUC"},           // create account
 	"T1140": {"D3-FA", "D3-DA"},            // deobfuscate / decode files or information
 	"T1213": {"D3-DO", "D3-NTA"},           // data from information repositories
+	"T1039": {"D3-DO", "D3-NTA"},           // data from network shared drive
 	"T1482": {"D3-DNR", "D3-NTA"},          // domain trust discovery
 	"T1555": {"D3-CH", "D3-DUC", "D3-NTA"}, // credentials from password stores (Vault)
 	"T1528": {"D3-CH", "D3-DUC"},           // steal application access token (k8s / cloud)

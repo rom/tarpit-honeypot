@@ -58,6 +58,96 @@ documented in `docs/`).
   malformed v2 line and the LM field was ignored; now both v1 and v2 are captured
   correctly and surface on `/captures` as hash credentials.
 
+- **20 more emulated HTTP vulnerabilities.** The deceptive web app now serves
+  convincing loot for 20 additional probe paths: exposed VCS metadata
+  (`/.git/HEAD`, `/.svn/entries`, `/.hg`, `/.bzr`), auth/config files
+  (`/.htpasswd`, `/.htaccess`, `/web.config`, `/WEB-INF/web.xml`), leaked
+  credentials (`/.aws/credentials`, `/.ssh/id_rsa`, `/docker-compose.yml`,
+  `/.dockercfg`, `/.npmrc`, `/.netrc`, `/.env.local|.production|.dev|.example`),
+  and exposed management/observability endpoints (`/server-status`,
+  `/server-info`, `/actuator/*`, `/jolokia`, `/solr/admin`, `/debug/pprof`,
+  `/metrics`, `/telescope`, `/_profiler`, `/manager/html`). File leaks flag
+  `webapp:secret-file-probe`; endpoint exposures flag dedicated anomalies
+  (`apache-status-exposed`, `spring-actuator-exposed`, `jolokia-exposed`,
+  `solr-admin-exposed`, `pprof-exposed`, `metrics-exposed`,
+  `laravel-telescope-exposed`, `symfony-profiler-exposed`, `tomcat-manager-probe`,
+  `apache-info-exposed`), each mapped to ATT&CK reconnaissance/access techniques.
+
+- **Deeper BGP / SunRPC(NFS) / MQTT protocol analysis + new CVEs & ATT&CK.**
+  - **BGP** — OPEN now decodes the protocol version, 4-octet ASN capability
+    (`bgp_peer_as4`) and multiprotocol capability; **UPDATE** parses NLRI and
+    flags **route-injection** (prefix hijack, `bgp-route-injection`→T1557) and
+    **route-withdrawal** (`bgp-route-withdrawal`→T1498), with per-message
+    `intent` labels. New CVEs **CVE-2023-38802** and **CVE-2022-40302** (FRR
+    BGP).
+  - **SunRPC / rpcbind** — names the queried RPC program (`rpc_program_name`),
+    parses **GETPORT** targets, and flags **NFS-stack enumeration**
+    (`rpcbind-nfs-enum`→T1135) when nfs / mountd / nlockmgr / statd / nfs_acl is
+    looked up — NFS reconnaissance is captured at the portmapper entry point.
+    New CVE **CVE-2017-8779** (rpcbomb).
+  - **MQTT** — stamps attacker-`intent` for broker login / anonymous probe and
+    for **wildcard subscribe** (`#`/`+`/`$SYS` topic harvesting / exfil).
+
+- **Dedicated NFS (2049) handler.** New `nfs` handler that captures the
+  mount/traversal/read attempt itself (the `rpcbind` handler captures the
+  enumeration that precedes it). It parses the record-marked RPC call, names
+  the program / version / procedure, and for **NFSv4 COMPOUND** decodes the
+  operation list (`nfs_ops`: PUTROOTFH / GETFH / LOOKUP / READDIR / READ / …).
+  It captures the **AUTH_UNIX** uid/gid/hostname the client claims — a **uid 0**
+  is flagged `nfs-root-access` (no_root_squash bypass, →T1078.003). It flags
+  export traversal (`nfs-export-enum`→T1135), file reads (`nfs-file-read`→T1039)
+  and client negotiation (`nfs-client-setup`), and answers like a live-but-
+  locked-down NFSv4 root: `PUTROOTFH`/`PUTFH`/`GETFH` succeed (handing back a
+  root filehandle so the scanner keeps probing) while any traversal/read gets
+  `NFS4ERR_ACCESS` — no real data leaves. NFSv3 data procedures get a plausible
+  `NFS3ERR_ACCES` reply. Wired into the `nfsserver` archetype role and the
+  `legacy-unix` example. New ATT&CK technique **T1039** (Data from Network
+  Shared Drive) with its D3FEND mapping.
+
+- **Deeper OT / building-automation protocol analysis (S7comm, DNP3, Modbus,
+  BACnet) + attacker-intent + ATT&CK-for-ICS.** Each handler now stamps an
+  `intent` summary and recognizes the dangerous control/recon operations:
+  - **S7comm (102)** — previously stopped after the COTP handshake; now runs
+    the S7comm session: negotiates **Setup Communication**, answers **SZL
+    reads** with a believable S7-300 module/firmware identity (the CPU
+    fingerprint nmap's `s7-info` / plcscan parse, `ics-field-device-probe`),
+    and classifies **Read Var** (`ics-process-data-access`), **Write Var**
+    (`ics-plc-write`), **PLC STOP/control** (`ics-plc-mode-change`) and
+    **block up/download** (`ics-plc-program-access`).
+  - **DNP3 (20000)** — previously only the data-link layer; now de-blocks the
+    user data and parses the **application function**: READ
+    (`ics-process-data-access`), WRITE (`ics-plc-write`), SELECT/OPERATE/
+    DIRECT_OPERATE (`ics-dnp3-control`), and COLD/WARM_RESTART / STOP_APPL
+    (`ics-device-restart`).
+  - **Modbus (502)** — adds per-operation `intent` and handles **FC 0x08
+    Diagnostics**, flagging Restart-Communications / Force-Listen-Only as
+    control/DoS (`ics-modbus-diagnostic`).
+  - **BACnet (47808)** — adds `intent` and flags **ReadProperty** point
+    enumeration (`bacnet-property-read`), **Who-Is/Who-Has** discovery
+    (`bacnet-device-discovery`), and maps the previously-unmapped
+    DeviceCommunicationControl / ReinitializeDevice / AtomicWriteFile markers.
+  - New ATT&CK-for-ICS technique **T0816** (Device Restart/Shutdown) with its
+    D3FEND mapping; new `ics-device-restart` + BACnet anomaly mappings.
+
+- **Deeper IEC-104 / EtherNet/IP / OPC-UA / MMS analysis + attacker-intent.**
+  - **IEC-104 (2404)** — flags **General/Counter Interrogation** as process-
+    image enumeration (`ics-process-data-access`), **single/double commands**
+    as control-point actuation (`ics-iec104-command`→T0855), **set-point
+    commands** as setpoint changes (`ics-plc-write`), and **reset-process** as
+    a device reset (`ics-device-restart`); answers set-point/reset confirmations.
+  - **EtherNet/IP (44818)** — now services **SendRRData/SendUnitData**: parses
+    the embedded **CIP** request, names the service (`cip_service`), and flags
+    Get/Read (`ics-process-data-access`), Set/Write (`ics-plc-write`),
+    Reset/Stop (`ics-device-restart`), Start (`ics-plc-mode-change`) and
+    Forward_Open (`ics-field-device-probe`), answering a believable CIP success.
+  - **OPC-UA (4840)** — after the Hello/ACK, reads the **OpenSecureChannel** and
+    records the requested **SecurityPolicyUri**; a `#None` policy (the classic
+    exposed-server misconfig) is flagged `ics-opcua-insecure-policy`.
+  - **MMS / IEC-61850 (102)** — after the association completes, parses the
+    first MMS confirmed-request and names the service (`mms_service`): getNameList/
+    identify = data-model enumeration (`ics-field-device-probe`), read
+    (`ics-process-data-access`), write (`ics-plc-write`).
+
 ## [2.12.0] — 2026-06-06
 
 ### Added
