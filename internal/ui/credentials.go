@@ -79,6 +79,7 @@ func buildCredentials(evs []*event.Event) credView {
 	secretSrc := map[string]map[string]bool{}
 	secretSvc := map[string]map[string]bool{}
 	secretCount := map[string]int{}
+	bySvc := map[string]int{} // credential captures grouped by service (ssh/ftp/telnet/…)
 	userSet, passSet, srcSet := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	total := 0
 
@@ -92,6 +93,9 @@ func buildCredentials(evs []*event.Event) credView {
 				continue
 			}
 			total++
+			if c.Service != "" {
+				bySvc[c.Service]++
+			}
 			if c.User != "" {
 				userCount[c.User]++
 				userSet[c.User] = true
@@ -139,6 +143,14 @@ func buildCredentials(evs []*event.Event) credView {
 	}
 	v.Total, v.Users, v.Passwords, v.Sources = total, len(userSet), len(passSet), len(srcSet)
 
+	// Where the captured logins came from — compare ssh / ftp / telnet / … so an
+	// operator can see which service is bearing the credential-attack load.
+	if len(bySvc) > 0 {
+		v.Figs = append(v.Figs,
+			chartFigure("pie", "Credential captures by service", map[string]any{"slices": slicesFromMap(bySvc), "donut": true}),
+			chartFigure("hbar", "Credential captures by service", map[string]any{"series": topBarsFromMap(bySvc, 20)}),
+		)
+	}
 	v.Figs = append(v.Figs,
 		chartFigure("hbar", "Top usernames tried", map[string]any{"series": topBarsFromMap(userCount, 20)}),
 		chartFigure("hbar", "Top passwords tried", map[string]any{"series": topBarsFromMap(passCount, 20)}),

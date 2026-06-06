@@ -279,6 +279,28 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	d.CVEs = topBars(cve, 12, "/search?q=")
 }
 
+// markCanvasActivity tints the summary's service board: it counts events per
+// destination port over the scanned window and marks each matching listener
+// card as "hit" (with its event count), so an operator sees at a glance which
+// services have actually been accessed or probed.
+func markCanvasActivity(cv *configCanvas, evs []*event.Event) {
+	if len(cv.Listeners) == 0 {
+		return
+	}
+	perPort := map[int]int{}
+	for _, ev := range evs {
+		if ev.Dest.Port > 0 {
+			perPort[ev.Dest.Port]++
+		}
+	}
+	for i := range cv.Listeners {
+		if n := perPort[cv.Listeners[i].Port]; n > 0 {
+			cv.Listeners[i].Hit = true
+			cv.Listeners[i].Hits = n
+		}
+	}
+}
+
 // eventCVEs returns the CVE IDs an event recorded — from a "cve:"-prefixed
 // rule, "cve:" anomaly markers, or the emulated-vuln meta — normalized to
 // upper case and de-duplicated.

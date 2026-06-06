@@ -901,6 +901,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// from a bounded scan of the window.
 	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
+		markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
 	}
 	// Carry the active window into every /events pivot link so the listing
 	// covers the same span the summary aggregated over (otherwise /events

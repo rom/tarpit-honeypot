@@ -407,6 +407,8 @@ a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03);
 .pcard.mode-tarpit { border-left-color: var(--pcard-mode-tarpit); }
 .pcard.mode-drop { border-left-color: var(--pcard-mode-drop); }
 .pcard.mode-banner { border-left-color: var(--pcard-mode-banner); }
+.pcard.hit { background: rgba(213,154,58,0.16); box-shadow: inset 0 0 0 1px rgba(213,154,58,0.5); }
+.pcard-hits { background: #d59a3a; color: #1a1205; font-weight: 700; font-size: 0.7rem; border-radius: 3px; padding: 0 .3rem; }
 .pcard-top { display: flex; align-items: baseline; justify-content: space-between; }
 .pcard-port { font-size: 1.15rem; font-weight: 700; color: var(--text); }
 .pcard-svc { font-weight: 600; color: var(--text-strong); margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -647,11 +649,11 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 {{ if .Canvas.Listeners }}<h2>services <span class="meta">({{ .Canvas.ListenerCount }} listener{{ if ne .Canvas.ListenerCount 1 }}s{{ end }} · {{ .Canvas.TCPCount }} tcp / {{ .Canvas.UDPCount }} udp)</span></h2>
-<p class="note">Click a port to see the source addresses that hit that service.</p>
+<p class="note">Click a port to see the source addresses that hit that service. <span class="pcard-hits">Highlighted</span> services saw access or attempts in this window.</p>
 <div class="canvas-grid">
-  {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}{{ if $.RangeQuery }}&amp;range={{ $.RangeQuery }}{{ end }}" title="events that hit port {{ .Port }}">{{ end }}
-  <div class="pcard mode-{{ .Mode }}">
-    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span></div>
+  {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}{{ if $.RangeQuery }}&amp;range={{ $.RangeQuery }}{{ end }}" title="{{ if .Hit }}{{ .Hits }} event(s) hit{{ else }}events that hit{{ end }} port {{ .Port }}">{{ end }}
+  <div class="pcard mode-{{ .Mode }}{{ if .Hit }} hit{{ end }}">
+    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span>{{ if .Hit }}<span class="pcard-hits" title="access/attempts in this window">{{ .Hits }}</span>{{ end }}</div>
     <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
     <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>
     <div>{{ if .TLS }}<span class="ctag tls">tls</span>{{ end }}{{ if .Capture }}<span class="ctag cap">pcap</span>{{ end }}</div>
