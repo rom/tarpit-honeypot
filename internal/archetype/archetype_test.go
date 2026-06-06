@@ -241,6 +241,16 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Aruba 2930F (ArubaOS-Switch)",
 		"MatrikonOPC Server (Windows)",
 		"Kepware KEPServerEX (Windows)",
+		"Ubuntu 14.04 LTS (Trusty)",
+		"Ubuntu 16.04 LTS (Xenial)",
+		"Ubuntu 18.04 LTS (Bionic)",
+		"Ubuntu 20.04 LTS (Focal)",
+		"Debian 8 (jessie)",
+		"FreeBSD 12",
+		"Oracle Solaris 10",
+		"MikroTik RouterOS 7 (RB5009)",
+		"MikroTik RouterOS 6.40 (Winbox CVE-2018-14847)",
+		"Cisco 2811 ISR (IOS 12.4)",
 	}
 	got := Names()
 	if len(got) != len(want) {

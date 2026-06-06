@@ -15,6 +15,52 @@ var ciscoArchetypes = map[string]*Profile{
 	"cisco-ie-2000":         ciscoIEProfile("cisco-ie-2000"),
 	"cisco-ie-3400":         ciscoIEProfile("cisco-ie-3400"),
 	"cisco-ir1101":          ciscoIEProfile("cisco-ir1101"),
+	"cisco-ios-12":          ciscoIOS12Profile(),
+	"cisco-2811":            ciscoIOS12Profile(),
+}
+
+// ciscoIOS12Profile models a classic Cisco 2811 Integrated Services Router on
+// IOS 12.4(15)T — the ubiquitous mid-2000s/2010s branch router still found on
+// legacy networks. IOS 12.4 offered SSH v1.99 (v1+v2) and only an SSLv3/TLS1.0
+// HTTPS stack, so the posture is deliberately ancient (and internally
+// consistent — no modern algorithms).
+func ciscoIOS12Profile() *Profile {
+	return &Profile{
+		Name:        "cisco-2811",
+		DisplayName: "Cisco 2811 ISR (IOS 12.4)",
+		Family:      "cisco",
+		macOUI:      [3]byte{0x00, 0x1a, 0x2b},
+		loginPrompt: "\r\nUser Access Verification\r\n\r\nUsername: ",
+		cliPrompt:   "Router>",
+		// IOS 12.4 negotiates SSH v1.99 (both protocol versions).
+		sshBanner:  "SSH-1.99-Cisco-1.25",
+		httpServer: "cisco-IOS",
+		httpTitle:  "Cisco Systems",
+		httpBodyHTML: "<html><head><title>Cisco Systems</title></head><body>" +
+			"<h1>Cisco 2811</h1><p>Cisco Systems, Inc. — accessing Cisco IOS HTTP server.</p>" +
+			"<p>Authentication required.</p></body></html>",
+		snmpSysDescr:    "Cisco IOS Software, 2800 Software (C2800NM-ADVENTERPRISEK9-M), Version 12.4(15)T17, RELEASE SOFTWARE (fc2)",
+		snmpSysObjectID: ".1.3.6.1.4.1.9.1.576", // cisco2811
+		snmpSysName:     "Router",
+		snmpSysContact:  "noc@corp.local",
+		snmpSysLocation: "Branch-DMARC",
+		icmpTTL:         255,
+		snmpIfTable: []Interface{
+			{Index: 1, Descr: "FastEthernet0/0", Type: 6, Speed: 100_000_000, OperUp: true},
+			{Index: 2, Descr: "FastEthernet0/1", Type: 6, Speed: 100_000_000, OperUp: true},
+			{Index: 3, Descr: "Serial0/0/0", Type: 22, Speed: 1_544_000, OperUp: true},
+		},
+		// IOS 12.4 HTTPS: SSLv3 / TLS 1.0 only, legacy ciphers.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS10, WeakCiphers: true},
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh", Note: "SSH management"},
+			{Port: 23, Handler: "telnet", Note: "Telnet (vty)"},
+			{Port: 80, Handler: "http", Note: "IOS web device manager"},
+			{Port: 161, Handler: "snmp", Note: "SNMP"},
+		},
+		patchLevel: "12.4(15)T17",
+		quirks:     []string{"cisco-ios", "cisco-legacy"},
+	}
 }
 
 // ciscoIEProfile models Cisco's Industrial Ethernet switches (IE-2000 on

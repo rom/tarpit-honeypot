@@ -6,11 +6,13 @@ package archetype
 // Linux-based (icmpTTL 64) but present very distinct, recognisable service
 // banners + SNMP identities that scanners (Shodan/Censys) key on.
 var networkDeviceArchetypes = map[string]*Profile{
-	"mikrotik-router":      mikrotikProfile(),
-	"mikrotik-routeros":    mikrotikProfile(),
-	"mikrotik-routerboard": mikrotikProfile(),
-	"teltonika-rut240":     teltonikaRUT240(),
-	"teltonika-router":     teltonikaRUT240(),
+	"mikrotik-router":       mikrotikProfile(),
+	"mikrotik-routeros":     mikrotikProfile(),
+	"mikrotik-routerboard":  mikrotikProfile(),
+	"mikrotik-routeros-7":   mikrotikProfileVer("7.15.3", "RB5009UG+S+", "mikrotik-routeros-7", "MikroTik RouterOS 7 (RB5009)", nil),
+	"mikrotik-routeros-640": mikrotikProfileVer("6.40.8", "RB951G-2HnD", "mikrotik-routeros-640", "MikroTik RouterOS 6.40 (Winbox CVE-2018-14847)", []string{"CVE-2018-14847"}),
+	"teltonika-rut240":      teltonikaRUT240(),
+	"teltonika-router":      teltonikaRUT240(),
 }
 
 // mikrotikProfile is a MikroTik RouterOS device. RouterOS has a wholly
@@ -20,12 +22,20 @@ var networkDeviceArchetypes = map[string]*Profile{
 // enterprise tree (.1.3.6.1.4.1.14988). Family "mikrotik" routes the
 // interactive shell to the RouterOS CLI emulator.
 func mikrotikProfile() *Profile {
-	const ver = "6.49.10"
+	return mikrotikProfileVer("6.49.10", "RB750Gr3", "mikrotik-routeros", "MikroTik RouterOS (RB750Gr3, 6.49.10)", nil)
+}
+
+// mikrotikProfileVer builds a RouterOS profile pinned to a specific version +
+// board so the catalog can carry several RouterOS generations (the current 7.x
+// line and the legacy 6.40 build that shipped the Winbox path-traversal,
+// CVE-2018-14847). The fingerprint is otherwise identical RouterOS shape.
+func mikrotikProfileVer(ver, board, name, display string, cves []string) *Profile {
 	return &Profile{
-		Name:        "mikrotik-routeros",
-		DisplayName: "MikroTik RouterOS (RB750Gr3, " + ver + ")",
+		Name:        name,
+		DisplayName: display,
 		Family:      "mikrotik",
 		macOUI:      [3]byte{0x4c, 0x5e, 0x0c}, // Routerboard.com / MikroTikls
+		cveVulns:    cves,
 		sshBanner:   "SSH-2.0-ROSSSH",
 		ftpBanner:   "220 router FTP server (MikroTik " + ver + ") ready",
 		// RouterOS console login: a "MikroTik v<ver>" header then a login.
@@ -37,7 +47,7 @@ func mikrotikProfile() *Profile {
 			"<body><p>You have connected to a router. Administrative access only.</p>" +
 			"<p>If this device is not yours, please disconnect now.</p>" +
 			"<p><a href=\"/webfig/\">webfig</a></p></body></html>",
-		snmpSysDescr:    "RouterOS RB750Gr3",
+		snmpSysDescr:    "RouterOS " + board,
 		snmpSysObjectID: ".1.3.6.1.4.1.14988.1",
 		snmpSysName:     "MikroTik",
 		snmpSysContact:  "",

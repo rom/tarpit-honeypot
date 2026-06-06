@@ -817,4 +817,84 @@ var registry = map[string]*Profile{
 		smtpProduct:  "Postfix 3.10.0",
 		mysqlVersion: "8.4.4-0ubuntu0.26.04.1",
 	},
+
+	// ---- Older LTS / legacy server OS (accurate per-release package
+	// versions; TLS posture pinned to the era's OpenSSL). ----
+	"ubuntu-14-04-lts": {
+		Name: "ubuntu-14.04", DisplayName: "Ubuntu 14.04 LTS (Trusty)", Family: "ubuntu",
+		sshBanner:    "SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13",
+		httpServer:   "Apache/2.4.7 (Ubuntu)",
+		ftpBanner:    "220 (vsFTPd 3.0.2)",
+		telnetBanner: "\r\nUbuntu 14.04.6 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 2.11.0",
+		mysqlVersion: "5.5.62-0ubuntu0.14.04.1",
+		// OpenSSL 1.0.1f: TLS 1.0–1.2, no TLS 1.3.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+	},
+	"ubuntu-16-04-lts": {
+		Name: "ubuntu-16.04", DisplayName: "Ubuntu 16.04 LTS (Xenial)", Family: "ubuntu",
+		sshBanner:    "SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.10",
+		httpServer:   "Apache/2.4.18 (Ubuntu)",
+		ftpBanner:    "220 (vsFTPd 3.0.3)",
+		telnetBanner: "\r\nUbuntu 16.04.7 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.1.0",
+		mysqlVersion: "5.7.33-0ubuntu0.16.04.1",
+		// OpenSSL 1.0.2g: TLS 1.0–1.2.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12},
+	},
+	"ubuntu-18-04-lts": {
+		Name: "ubuntu-18.04", DisplayName: "Ubuntu 18.04 LTS (Bionic)", Family: "ubuntu",
+		sshBanner:    "SSH-2.0-OpenSSH_7.6p1 Ubuntu-4ubuntu0.7",
+		httpServer:   "Apache/2.4.29 (Ubuntu)",
+		ftpBanner:    "220 (vsFTPd 3.0.3)",
+		telnetBanner: "\r\nUbuntu 18.04.6 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.3.0",
+		mysqlVersion: "5.7.42-0ubuntu0.18.04.1",
+		// OpenSSL 1.1.1 (via updates): TLS 1.2 default; keep 1.2 cap for the
+		// stock Apache/nginx config of the era.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS12},
+	},
+	"ubuntu-20-04-lts": {
+		Name: "ubuntu-20.04", DisplayName: "Ubuntu 20.04 LTS (Focal)", Family: "ubuntu",
+		sshBanner:    "SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11",
+		httpServer:   "Apache/2.4.41 (Ubuntu)",
+		ftpBanner:    "220 (vsFTPd 3.0.3)",
+		telnetBanner: "\r\nUbuntu 20.04.6 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.4.13",
+		mysqlVersion: "8.0.36-0ubuntu0.20.04.1",
+	},
+	"debian-8": {
+		Name: "debian-8", DisplayName: "Debian 8 (jessie)", Family: "debian",
+		sshBanner:    "SSH-2.0-OpenSSH_6.7p1 Debian-5+deb8u8",
+		httpServer:   "Apache/2.4.10 (Debian)",
+		ftpBanner:    "220 (vsFTPd 3.0.2)",
+		telnetBanner: "\r\nDebian GNU/Linux 8 \\n \\l\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 2.11.3",
+		mysqlVersion: "5.5.59-0+deb8u1",
+		// OpenSSL 1.0.1k: TLS 1.0–1.2.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+	},
+	"freebsd-12": {
+		Name: "freebsd-12", DisplayName: "FreeBSD 12", Family: "bsd",
+		sshBanner:    "SSH-2.0-OpenSSH_7.8 FreeBSD-20180909",
+		httpServer:   "Apache/2.4.51 (FreeBSD)",
+		ftpBanner:    "220 FreeBSD-12 FTP server ready.",
+		telnetBanner: "\r\nFreeBSD/amd64 (freebsd) (ttyv0)\r\n\r\nlogin: ",
+		smtpProduct:  "Sendmail 8.16.1",
+		mysqlVersion: "5.7.38",
+		// FreeBSD 12 base OpenSSL 1.1.1: TLS 1.2 default for base services.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS12},
+	},
+	"solaris-10": {
+		Name: "solaris-10", DisplayName: "Oracle Solaris 10", Family: "solaris",
+		// Solaris 10 ships SunSSH, not OpenSSH — a distinctive banner.
+		sshBanner:    "SSH-2.0-Sun_SSH_1.1.5",
+		httpServer:   "Apache/2.2.31 (Unix)",
+		ftpBanner:    "220 solaris10 FTP server ready.",
+		telnetBanner: "\r\nSunOS 5.10\r\n\r\nlogin: ",
+		smtpProduct:  "Sendmail 8.14.4+Sun",
+		mysqlVersion: "5.1.37",
+		// Solaris 10 (very old) — TLS 1.0 era.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS10, WeakCiphers: true},
+	},
 }
