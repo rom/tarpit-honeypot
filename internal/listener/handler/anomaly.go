@@ -140,6 +140,27 @@ func httpAttackClasses(payload string) []string {
 	if strings.Contains(low, "\"alg\":\"none\"") || strings.Contains(low, "eyjhbgcioijub25l") {
 		add("webapp:jwt-none")
 	}
+	// CRLF injection / HTTP response splitting (header injection via %0d%0a).
+	for _, s := range []string{"%0d%0aset-cookie", "%0d%0alocation", "%0aset-cookie", "%0d%0acontent-length", "%250d%250a", "%0d%0a%0d%0a"} {
+		if strings.Contains(low, s) {
+			add("webapp:crlf")
+			break
+		}
+	}
+	// LDAP injection (filter smuggling).
+	for _, s := range []string{"*)(uid=*", "*)(|(", ")(cn=*", "admin)(&", "*)(objectclass=*", ")(|(uid=*"} {
+		if strings.Contains(low, s) {
+			add("webapp:ldap-injection")
+			break
+		}
+	}
+	// XPath injection.
+	for _, s := range []string{"count(//", "string-length(", "' or position()=", "extractvalue(//", "']|//*['"} {
+		if strings.Contains(low, s) {
+			add("webapp:xpath-injection")
+			break
+		}
+	}
 	return out
 }
 

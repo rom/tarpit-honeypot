@@ -130,6 +130,18 @@ var webAttackClasses = []webAttackClass{
 	{"log4shell", []string{"${jndi:", "jndi:ldap", "jndi:rmi", "jndi:dns", "${env:", "${lower:j}"}},
 	{"xxe", []string{"<!entity", "<!doctype", "system \"file:", "system \"http:", "system 'file:"}},
 	{"deserialize", []string{"ro0ab", "aced0005", "o:8:\"", "a:2:{", "__proto__", "constructor.prototype"}},
+	{"crlf", []string{
+		"%0d%0aset-cookie", "%0d%0alocation", "%0aset-cookie", "%0alocation",
+		"%0d%0acontent-length", "%250d%250a", "\r\nset-cookie:", "%0d%0a%0d%0a",
+	}},
+	{"ldap-injection", []string{
+		"*)(uid=*", "*)(|(", "*))%00", ")(cn=*", "admin)(&", "*)(objectclass=*",
+		")(|(uid=*", "*)(&(", "*)%29%28",
+	}},
+	{"xpath-injection", []string{
+		"' or '1'='1' or '", "count(//", "string-length(", "substring(name(",
+		"' or position()=", "']|//*['", "extractvalue(//",
+	}},
 }
 
 // phpCGIArgInjection reports whether a query string looks like php-cgi command-

@@ -14,6 +14,9 @@ func TestHTTPAttackClasses(t *testing.T) {
 		{"GraphQL", "POST /graphql HTTP/1.1\r\nHost: x\r\nContent-Length: 24\r\n\r\n{\"query\":\"{__schema{x}}\"}", "webapp:graphql-introspection"},
 		{"JWT-none", "GET /api HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer eyJhbGciOiJub25lIn0.e30. \r\n\r\n", "webapp:jwt-none"},
 		{"Java-deser", "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 12\r\n\r\nrO0ABXNyAAVk", "webapp:deserialize"},
+		{"CRLF", "GET /redir?u=%0d%0aSet-Cookie:sessid=evil HTTP/1.1\r\nHost: x\r\n\r\n", "webapp:crlf"},
+		{"LDAP-injection", "GET /login?user=*)(uid=*))%00 HTTP/1.1\r\nHost: x\r\n\r\n", "webapp:ldap-injection"},
+		{"XPath-injection", "GET /q?x=count(//user) HTTP/1.1\r\nHost: x\r\n\r\n", "webapp:xpath-injection"},
 	}
 	for _, c := range cases {
 		got := anomaliesOf(serveHTTPOnce(t, c.req))
