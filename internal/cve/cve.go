@@ -123,6 +123,13 @@ var catalog = []Record{
 		Description: "Drupal form-API render-array RCE.",
 	},
 	{
+		// Advisory-only (no substring signatures — OT payloads are binary). The
+		// modbus handler attributes this directly when it sees UMAS (FC 0x5A).
+		ID: "CVE-2018-7842", Name: "Schneider Modicon UMAS auth bypass", CVSS: 9.8, Service: "modbus",
+		Technique: "T0855", Tactic: "impact",
+		Description: "Schneider Electric Modicon M340/M580 UMAS reservation/auth bypass.",
+	},
+	{
 		ID: "CVE-2018-12613", Name: "phpMyAdmin LFI", CVSS: 8.8, Service: "http",
 		Signatures: []string{"target=db_sql.php%253f", "?target=sql.php%3f", "db_datadict.php%253f"},
 		Technique:  "T1190", Tactic: "initial-access",
@@ -2117,6 +2124,7 @@ var cveExtra = map[string]struct {
 	"CVE-2002-0640":  {[]string{"CWE-787"}, "cpe:2.3:a:openbsd:openssh:*", 0.50},
 	"CVE-2008-1657":  {[]string{"CWE-269"}, "cpe:2.3:a:openbsd:openssh:*", 0.10},
 	"CVE-2018-7600":  {[]string{"CWE-20", "CWE-94"}, "cpe:2.3:a:drupal:drupal:*", 0.97},
+	"CVE-2018-7842":  {[]string{"CWE-287", "CWE-294"}, "cpe:2.3:o:schneider-electric:modicon_m340_firmware:*", 0.20},
 	"CVE-2018-12613": {[]string{"CWE-22", "CWE-98"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.97},
 	"CVE-2009-1151":  {[]string{"CWE-94"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.90},
 	"CVE-2018-20062": {[]string{"CWE-94"}, "cpe:2.3:a:thinkphp:thinkphp:*", 0.97},

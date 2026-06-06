@@ -10,6 +10,28 @@ documented in `docs/`).
 
 ### Added
 
+- **Deeper Modbus + Modbus/TCP Security.** Both the plaintext (502) and TLS
+  (802) Modbus handlers now share a much deeper analysis layer:
+  - **More function codes** — Read Exception Status (0x07), Get Comm Event
+    Counter/Log (0x0B/0x0C), Read FIFO Queue (0x18), Read/Write File Record
+    (0x14/0x15), CANopen General Reference (MEI 0x0D), program/firmware transfer
+    (0x28/0x29/0x2A), and the **Schneider UMAS** engineering channel (FC 0x5A,
+    with sub-function naming: read/write memory & variables, START/STOP, take/
+    release reservation).
+  - **Register-reference + vendor-tag enrichment** — every coil/register
+    operation is stamped with its Modicon reference (0/1/3/4xxxx), register
+    class, and a Schneider/IEC `%M`/`%MW`/`%IW` **tag hint**.
+  - **Vendor extensions & backdoors** — vendor/reserved function codes
+    (65-72, 100-110) flagged as proprietary/backdoor channels
+    (`modbus-vendor-function`); UMAS flagged `modbus-umas` with the Schneider
+    Modicon auth-bypass CVE (**CVE-2018-7842**); program/firmware transfer →
+    `modbus-program-download`; diagnostic counter-clear → `modbus-diagnostic-clear`
+    (anti-forensics); **config/system register-area** access flagged.
+  - **Enumeration / fingerprinting** — session-level unit-id sweep
+    (`modbus-uid-enumeration`, T0846), function-code scan (`modbus-fc-scan`,
+    T0888), and broadcast (unit 0) write (`modbus-broadcast-write`).
+  - New ATT&CK-for-ICS mappings for all markers; CVE-2018-7842 added to the
+    catalog (advisory-only, CWE-287/294).
 - **15 more PHP vulnerability emulations** in the fake web app: phpMyAdmin LFI
   (**CVE-2018-12613**) + setup RCE (**CVE-2009-1151**), Drupalgeddon2
   (**CVE-2018-7600**), Laravel Ignition RCE (**CVE-2021-3129**), ThinkPHP 5.x

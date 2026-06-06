@@ -77,28 +77,10 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		rpdu := m.respondPDU(pduBuf, entry)
 		pdus = append(pdus, entry)
 
-		// Writing to a "PLC" (coils/registers/file records) is an attacker
-		// manipulating the control process, not a benign scan — flag it
-		// (maps to ATT&CK for ICS T0836 Modify Parameter / T0831
-		// Manipulation of Control).
-		if fcv, ok := entry["function_code"].(byte); ok {
-			switch {
-			case modbusIsWrite(fcv):
-				flagAnomaly(&res, "modbus-write-attempt")
-				res.Meta["intent"] = "Modbus " + modbusFCName(fcv) + " — writing to a PLC (control manipulation)"
-			case fcv == 0x08: // Diagnostics — restart/listen-only are control/DoS.
-				if sub, ok := entry["diag_subfunction"].(uint16); ok && (sub == 0x0001 || sub == 0x0004) {
-					flagAnomaly(&res, "ics-modbus-diagnostic")
-					res.Meta["intent"] = "Modbus Diagnostics — " + modbusDiagName(sub) + " (control/DoS)"
-				}
-			case fcv == 0x2B: // Read Device Identification = PLC fingerprinting.
-				setIfEmpty(res.Meta, "intent", "Modbus Read Device Identification — PLC vendor/model fingerprinting")
-			case fcv == 0x11: // Report Server ID = device fingerprinting.
-				setIfEmpty(res.Meta, "intent", "Modbus Report Server ID — device fingerprinting")
-			default:
-				setIfEmpty(res.Meta, "intent", "Modbus "+modbusFCName(fcv)+" — sampling registers/coils (recon)")
-			}
-		}
+		// Per-PDU enrichment + intent/anomaly classification: register-reference
+		// + vendor-tag, control-vs-recon, UMAS / vendor-function / program-
+		// transfer / diagnostics. Maps to ATT&CK for ICS (T0836/T0831/...).
+		modbusClassify(entry, &res)
 
 		if rpdu != nil {
 			rlen := uint16(len(rpdu) + 1)
@@ -117,6 +99,9 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 
 	if len(pdus) > 0 {
 		res.Meta["pdus"] = pdus
+		// Session-level enumeration: unit-id sweep, function-code scan,
+		// broadcast write.
+		modbusSessionAnalysis(pdus, &res)
 		// Convenience: keep flat top-level fields for SIEM rules that
 		// matched on these in v1.x.
 		if first, ok := pdus[0]["function_code"].(byte); ok {
@@ -265,12 +250,6 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 	case 0x11: // Report Server ID
 		// vendor: "MX3 " + run-status 0xff (running).
 		return []byte{0x11, 0x05, 0x4d, 0x58, 0x33, 0x20, 0xff}
-	case 0x14: // Read File Record
-		// Capture the record numbers requested, then deny.
-		if len(pdu) >= 2 {
-			meta["byte_count"] = pdu[1]
-		}
-		return []byte{fc | 0x80, 0x02} // illegal data address
 	case 0x2B: // Encapsulated Interface Transport
 		// Subfunction 0x0E = Read Device Identification (MEI 14).
 		// This is the nmap modbus-discover probe.
@@ -282,10 +261,105 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 			meta["object_id"] = objID
 			return modbusReadDeviceID(deviceID, objID)
 		}
+		if len(pdu) >= 2 && pdu[1] == 0x0D { // MEI 13 = CANopen General Reference
+			meta["mei_subfunction"] = pdu[1]
+			return []byte{0x2B, 0x0D, 0x00}
+		}
+		return []byte{fc | 0x80, 0x01}
+	case 0x07: // Read Exception Status
+		return []byte{0x07, 0x00}
+	case 0x0B: // Get Comm Event Counter
+		return []byte{0x0B, 0x00, 0x00, 0x12, 0x34}
+	case 0x0C: // Get Comm Event Log
+		// byte_count, status(2), event_count(2), message_count(2), events…
+		return []byte{0x0C, 0x08, 0x00, 0x00, 0x01, 0x08, 0x01, 0x21, 0x20, 0x00}
+	case 0x18: // Read FIFO Queue
+		// byte_count(2), fifo_count(2), then fifo_count registers.
+		return []byte{0x18, 0x00, 0x06, 0x00, 0x02, 0x01, 0xB8, 0x12, 0x84}
+	case 0x14: // Read File Record — return a believable record (config exfil).
+		if len(pdu) >= 2 {
+			meta["byte_count"] = pdu[1]
+		}
+		// resp_len, then sub-resp: file_resp_len, ref_type, record data.
+		return []byte{0x14, 0x07, 0x06, 0x06, 0x0D, 0xFE, 0x00, 0x20}
+	case 0x15: // Write File Record — capture the write attempt.
+		if len(pdu) >= 2 {
+			meta["byte_count"] = pdu[1]
+		}
+		out := make([]byte, len(pdu))
+		copy(out, pdu) // a real device echoes the request
+		return out
+	case 0x28: // Schneider program/firmware transfer (vendor)
+		meta["vendor_function"] = "program-transfer"
+		return []byte{0x28, 0x00}
+	case 0x5A: // Schneider UMAS (Unified Messaging Application Services)
+		return modbusUMASResponse(pdu, meta)
+	case 0x29, 0x2A: // vendor program/firmware (Schneider/others)
+		meta["vendor_function"] = "vendor-program"
+		return []byte{fc, 0x00}
+	}
+	// Reserved / vendor-defined function codes (65-72, 100-110, 0x5A handled
+	// above): a real device answers vendor-specific; we capture + echo-deny.
+	if (fc >= 0x41 && fc <= 0x48) || (fc >= 0x64 && fc <= 0x6E) {
+		meta["vendor_function"] = "fc-0x" + itoa(int(fc))
 		return []byte{fc | 0x80, 0x01}
 	}
 	// Exception: illegal function.
 	return []byte{fc | 0x80, 0x01}
+}
+
+// modbusUMASResponse parses a Schneider UMAS request (Modbus FC 0x5A — the
+// proprietary engineering protocol tunnelled inside Modbus that Unity Pro /
+// EcoStruxure use). UMAS is unauthenticated by default on Modicon M340/M580 and
+// is the channel behind several Schneider advisories; we name the UMAS function
+// and return a plausible reply.
+func modbusUMASResponse(pdu []byte, meta map[string]any) []byte {
+	if len(pdu) < 3 {
+		return []byte{0x5A, 0xFE} // UMAS error
+	}
+	umasFunc := pdu[2] // pdu[1] is the session/pairing byte
+	meta["umas_function"] = modbusUMASName(umasFunc)
+	meta["umas_function_code"] = umasFunc
+	// 0xFD = UMAS positive response prefix.
+	return []byte{0x5A, pdu[1], 0xFD}
+}
+
+// modbusUMASName names the Schneider UMAS sub-functions that matter for
+// attribution (the read/write/run-state/reservation ones).
+func modbusUMASName(f byte) string {
+	switch f {
+	case 0x01:
+		return "INIT_COMM"
+	case 0x02:
+		return "READ_ID"
+	case 0x03:
+		return "READ_PROJECT_INFO"
+	case 0x04:
+		return "READ_PLC_INFO"
+	case 0x10:
+		return "TAKE_PLC_RESERVATION"
+	case 0x11:
+		return "RELEASE_PLC_RESERVATION"
+	case 0x20:
+		return "READ_MEMORY_BLOCK"
+	case 0x21:
+		return "WRITE_MEMORY_BLOCK"
+	case 0x22:
+		return "READ_VARIABLES"
+	case 0x23:
+		return "WRITE_VARIABLES"
+	case 0x24:
+		return "READ_COILS_REGISTERS"
+	case 0x25:
+		return "WRITE_COILS_REGISTERS"
+	case 0x40:
+		return "START_PLC"
+	case 0x41:
+		return "STOP_PLC"
+	case 0x50:
+		return "MONITOR_PLC"
+	}
+	return "umas-0x" + itoa(int(f))
 }
 
 // modbusReadDeviceID builds the response for FC 0x2B / MEI 0x0E
@@ -426,8 +500,19 @@ func modbusFCName(fc byte) string {
 		return "Read/Write Multiple Registers"
 	case 0x18:
 		return "Read FIFO Queue"
+	case 0x28:
+		return "Program (Schneider)"
+	case 0x29:
+		return "Program 2 (vendor)"
+	case 0x2A:
+		return "Firmware (vendor)"
 	case 0x2B:
 		return "Encapsulated Interface Transport"
+	case 0x5A:
+		return "UMAS (Schneider)"
+	}
+	if (fc >= 0x41 && fc <= 0x48) || (fc >= 0x64 && fc <= 0x6E) {
+		return "Vendor/Reserved 0x" + itoa(int(fc))
 	}
 	return ""
 }

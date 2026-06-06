@@ -417,6 +417,18 @@ var anomalyTags = map[string]Tag{
 	// it without the required client cert is discovery of the control device.
 	"modbus-secure-session":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"modbus-secure-no-clientcert": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	// Deep-Modbus markers: Schneider UMAS engineering channel, program/firmware
+	// transfer, vendor/reserved (backdoor) function codes, diagnostic-clear
+	// (anti-forensics), config-area access, and session enumeration.
+	"modbus-umas":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"modbus-umas-reservation":   {Techniques: []string{"T0855", "T0814"}, Tactics: []string{"impact"}},
+	"modbus-program-download":   {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"modbus-vendor-function":    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"modbus-diagnostic-clear":   {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"modbus-config-area-access": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"modbus-broadcast-write":    {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"modbus-uid-enumeration":    {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"modbus-fc-scan":            {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 
 	// --- New-protocol coverage: amplification, ICS/IIoT control, building
 	// automation, IoT actuation, and the discovery/credential markers the
