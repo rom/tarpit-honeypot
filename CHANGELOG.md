@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **More PHP vulnerability emulation in the fake web app.** The vulnerable-webapp
+  decoy now emulates the major PHP-specific attack surfaces: **PHP stream
+  wrappers** in LFI — `php://filter` source disclosure (returns believable
+  base64-encoded "config.php"), `php://input`/`data:`/`expect:` wrapper RCE,
+  `phar://` deserialization, and `/proc/self/environ` + `/var/log` log-poisoning
+  targets; **php-cgi argument injection** (`?-d+allow_url_include…` →
+  **CVE-2012-1823**, and the Windows soft-hyphen `%AD` best-fit →
+  **CVE-2024-4577**); the **PHPUnit `eval-stdin.php` RCE** (**CVE-2017-9841**,
+  echoes plausible command output); and generic **PHP source-backup disclosure**
+  (`*.php.bak` / `.php~` / `.phps`). New `webapp:php-*` markers (mapped via the
+  `webapp:` → T1190 fallback) plus the three enriched CVE hits.
 - **Beckhoff TwinCAT — AMS/UDP discovery + route (UDP 48899).** A new
   `ads_discovery` handler emulates the TwinCAT AMS/UDP service the "Add Route"
   dialog / TcAmsRemoteMgr broadcasts use: it parses the AMS/UDP header, captures

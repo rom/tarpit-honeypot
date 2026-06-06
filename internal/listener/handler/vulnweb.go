@@ -132,6 +132,45 @@ var webAttackClasses = []webAttackClass{
 	{"deserialize", []string{"ro0ab", "aced0005", "o:8:\"", "a:2:{", "__proto__", "constructor.prototype"}},
 }
 
+// phpCGIArgInjection reports whether a query string looks like php-cgi command-
+// line argument injection — a bare query with no '=' that php-cgi feeds to the
+// PHP interpreter as switches (CVE-2012-1823 / CVE-2024-4577).
+func phpCGIArgInjection(rawQuery string) bool {
+	if rawQuery == "" {
+		return false
+	}
+	low := strings.ToLower(rawQuery)
+	// The reliable tells: the php.ini-override switch, the soft-hyphen bypass,
+	// or a leading dash with no key=value structure.
+	if strings.Contains(low, "allow_url_include") || strings.Contains(low, "auto_prepend_file") ||
+		strings.Contains(low, "%add") || strings.Contains(low, "%ad-") || strings.Contains(low, "-d+") {
+		return true
+	}
+	if (strings.HasPrefix(rawQuery, "-") || strings.HasPrefix(low, "%2d")) && !strings.Contains(rawQuery, "=") {
+		return true
+	}
+	return false
+}
+
+// phpEvalEcho mimics a host vulnerable to the PHPUnit eval-stdin RCE: it echoes
+// the most common reconnaissance payloads' expected output without running
+// anything, so the attacker's tool believes the RCE worked.
+func phpEvalEcho(body []byte) string {
+	low := strings.ToLower(string(body))
+	switch {
+	case strings.Contains(low, "phpinfo"):
+		return "<html><body><h1>PHP Version 7.4.3</h1><table><tr><td>System</td><td>Linux web01 5.4.0</td></tr></table></body></html>"
+	case strings.Contains(low, "md5("):
+		return "ce114e4501d2f4e2dcea3e17b546f339\n" // md5("a"... placeholder)
+	case strings.Contains(low, "system(") || strings.Contains(low, "passthru(") ||
+		strings.Contains(low, "shell_exec") || strings.Contains(low, "exec("):
+		return "uid=33(www-data) gid=33(www-data) groups=33(www-data)\n"
+	case strings.Contains(low, "echo"):
+		return "1\n"
+	}
+	return ""
+}
+
 // classifyWebAttacks returns the distinct attack-family names whose
 // signatures appear in s (already lower-cased by the caller).
 func classifyWebAttacks(low string) []string {
@@ -178,6 +217,20 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		res.Meta["webapp_attacks"] = attacks
 		for _, a := range attacks {
 			flagAnomaly(res, "webapp:"+a)
+		}
+	}
+
+	// php-cgi argument injection: a query string that php-cgi would parse as
+	// command-line switches. CVE-2012-1823 (the classic `?-d+allow_url_include…`)
+	// and CVE-2024-4577 (Windows best-fit, the soft-hyphen `%AD`-encoded `-`).
+	if phpCGIArgInjection(rawQuery) {
+		flagAnomaly(res, "webapp:php-cgi-arg-injection")
+		if strings.Contains(strings.ToLower(rawQuery), "%ad") {
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2024-4577")
+			flagAnomaly(res, "cve:CVE-2024-4577")
+		} else {
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2012-1823")
+			flagAnomaly(res, "cve:CVE-2012-1823")
 		}
 	}
 
@@ -351,6 +404,28 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 	case path == "/phpinfo.php" || path == "/info.php":
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappPhpinfo(id), nil)
 
+	case strings.Contains(path, "/phpunit/") && strings.HasSuffix(path, "eval-stdin.php"),
+		strings.HasSuffix(path, "/eval-stdin.php"):
+		// PHPUnit eval-stdin RCE (CVE-2017-9841): the body is run as PHP. We
+		// "execute" nothing; we record the unauthenticated-RCE attempt + capture
+		// the payload echoed back the way a vulnerable host would.
+		flagAnomaly(res, "webapp:php-eval-stdin")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2017-9841")
+		flagAnomaly(res, "cve:CVE-2017-9841")
+		out := phpEvalEcho(body)
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", out, nil)
+
+	case strings.HasSuffix(path, ".php.bak") || strings.HasSuffix(path, ".php~") ||
+		strings.HasSuffix(path, ".php.save") || strings.HasSuffix(path, ".php.swp") ||
+		strings.HasSuffix(path, ".phps"):
+		// PHP source-backup disclosure for any *.php (editor/backup leftovers),
+		// generalizing the config.php.bak case to the whole app.
+		flagAnomaly(res, "webapp:secret-file-probe")
+		flagAnomaly(res, "webapp:php-source-disclosure")
+		recordProbedFile(res, path)
+		src := "<?php\n// " + htmlEscape(strings.TrimPrefix(path, "/")) + "\n$config = array(\n  'db_user' => 'app_rw',\n  'db_pass' => '" + shortToken(hc.secretKey) + "',\n  'app_key' => '" + hc.appKey + "',\n);\n?>\n"
+		return webappResponse(server, 200, "OK", "text/plain", src, nil)
+
 	case strings.HasPrefix(path, "/admin"):
 		// Unauthenticated admin → bounce to login (believable).
 		return webappResponse(server, 302, "Found", "text/html", "", []string{"Location: /login.php", cookie})
@@ -423,6 +498,39 @@ func webappFileResponse(server, f string, brand webBrand, cookie string, res *Re
 	dec, _ := url.QueryUnescape(f)
 	low := strings.ToLower(dec)
 	switch {
+	// PHP stream wrappers — the canonical PHP LFI escalation surface.
+	case strings.Contains(low, "php://filter"):
+		// Source disclosure: php://filter/convert.base64-encode/resource=… reads
+		// a PHP file's source as base64 (so it isn't executed). Return a
+		// believable base64-encoded "config.php" so the read appears to work.
+		flagAnomaly(res, "webapp:lfi")
+		flagAnomaly(res, "webapp:php-filter-wrapper")
+		recordProbedFile(res, dec)
+		src := "<?php\n// application bootstrap\n$db_host = '127.0.0.1';\n$db_name = 'app';\n$db_user = 'app_rw';\n$db_pass = 'S3cr3t_DB_p4ss!';\ndefine('APP_KEY', 'base64:" + shortToken(dec) + "');\n?>\n"
+		return webappResponse(server, 200, "OK", "text/plain", base64.StdEncoding.EncodeToString([]byte(src)), []string{cookie})
+	case strings.Contains(low, "php://input") || strings.HasPrefix(low, "data:") ||
+		strings.Contains(low, "expect://") || strings.Contains(low, "data://"):
+		// Wrapper-driven code execution (allow_url_include + php://input / data: /
+		// expect:). The decoy "executes" nothing — it records the attempt.
+		flagAnomaly(res, "webapp:lfi")
+		flagAnomaly(res, "webapp:php-wrapper-rce")
+		recordProbedFile(res, dec)
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8",
+			"<html><body><!-- include() ok --></body></html>", []string{cookie})
+	case strings.HasPrefix(low, "phar://") || strings.Contains(low, ".phar"):
+		// phar:// deserialization (object injection via a crafted PHAR).
+		flagAnomaly(res, "webapp:lfi")
+		flagAnomaly(res, "webapp:php-phar-deserialize")
+		recordProbedFile(res, dec)
+		return webappResponse(server, 500, "Internal Server Error", "text/html; charset=UTF-8",
+			"<html><body><h1>500</h1><p>phar error: unable to open phar.</p></body></html>", []string{cookie})
+	case strings.Contains(low, "/proc/self/environ") || strings.Contains(low, "/proc/self/cmdline") || strings.Contains(low, "/var/log/"):
+		// Log / environ poisoning LFI target (write-then-include RCE chain).
+		flagAnomaly(res, "webapp:lfi")
+		flagAnomaly(res, "webapp:lfi-log-poison")
+		recordProbedFile(res, dec)
+		return webappResponse(server, 200, "OK", "text/plain",
+			"HTTP_USER_AGENT=Mozilla/5.0\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\nDOCUMENT_ROOT=/var/www/html\n", []string{cookie})
 	case strings.Contains(low, "passwd"):
 		flagAnomaly(res, "webapp:lfi")
 		recordProbedFile(res, dec)
