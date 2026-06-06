@@ -52,9 +52,10 @@ func TestStaticJSFeaturesPresent(t *testing.T) {
 		t.Error("charts.js missing click-to-zoom")
 	}
 	app := get("/static/app.js")
-	for _, want := range []string{"setupWidgets", "setupHelp", "widget-toggle", "data-help"} {
+	for _, want := range []string{"setupWidgets", "setupHelp", "widget-toggle", "data-help",
+		"setupRangePersist", "tarpit.range", "setupCopyButtons", "copybtn", "clipboard"} {
 		if !strings.Contains(app, want) {
-			t.Errorf("app.js missing %q (widget toggle / tooltip help)", want)
+			t.Errorf("app.js missing %q", want)
 		}
 	}
 }

@@ -268,6 +268,8 @@ type dnsView struct {
 	Domains    int
 	Figs       []chartFig
 	Attacks    []attackRow
+	TopDomains []countRow
+	Attackers  []countRow
 	Queries    []dnsQueryRow
 	Empty      bool
 }
@@ -347,6 +349,12 @@ func buildDNS(evs []*event.Event) dnsView {
 		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies", map[string]any{"series": topBarsFromMap(reply, 20)}))
 	}
 	v.Attacks = attackTable(evs)
+
+	// Drill-down tables behind the "domains" / "sources" counters.
+	for _, d := range topKeys(domain, 100) {
+		v.TopDomains = append(v.TopDomains, countRow{Label: d, Count: domain[d], Href: "/search?q=" + d})
+	}
+	_, v.Attackers = topAttackers(evs)
 
 	// Query log (most recent first), bounded.
 	sorted := append([]*event.Event(nil), evs...)

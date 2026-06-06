@@ -409,6 +409,9 @@ a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03);
 .pcard.mode-banner { border-left-color: var(--pcard-mode-banner); }
 .pcard.hit { background: rgba(213,154,58,0.16); box-shadow: inset 0 0 0 1px rgba(213,154,58,0.5); }
 .pcard-hits { background: #d59a3a; color: #1a1205; font-weight: 700; font-size: 0.7rem; border-radius: 3px; padding: 0 .3rem; }
+.copybtn { margin-top: .3rem; font: inherit; font-size: 0.8rem; cursor: pointer; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); border-radius: 4px; padding: .1rem .5rem; }
+.copybtn:hover { border-color: var(--link); }
+.copybtn.copied { background: var(--ok-bg, #1f3a24); border-color: #5ee090; color: #5ee090; }
 .pcard-top { display: flex; align-items: baseline; justify-content: space-between; }
 .pcard-port { font-size: 1.15rem; font-weight: 700; color: var(--text); }
 .pcard-svc { font-weight: 600; color: var(--text-strong); margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -649,12 +652,16 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Empty }}<p class="note">No DNS queries observed yet — they appear once a resolver/scanner hits the <a href="/events?handler=dns">dns</a> listener.</p>{{ else }}
 <div class="counters">
   <a class="counter c-total" href="/events?handler=dns"><b>{{ .Total }}</b><span>queries</span></a>
-  <span class="counter c-tcp"><b>{{ .Domains }}</b><span>domains</span></span>
-  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+  <a class="counter c-tcp" href="#domains"><b>{{ .Domains }}</b><span>domains</span></a>
+  <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
+{{ if .TopDomains }}<h2 id="domains">Top domains <span class="meta">({{ len .TopDomains }})</span></h2>
+<table data-filter><tr><th>domain</th><th>queries</th></tr>{{ range .TopDomains }}<tr><td><a href="{{ .Href }}"><code>{{ .Label }}</code></a></td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+{{ if .Attackers }}<h2 id="sources">Top sources <span class="meta">({{ len .Attackers }})</span></h2>
+<table><tr><th>source</th><th>queries</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 {{ if .Queries }}<h2>Query log <span class="meta">({{ len .Queries }})</span></h2>
 <table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>reply</th><th>labels</th></tr>
 {{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
@@ -668,17 +675,17 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Empty }}<p class="note">No web requests observed yet — they appear once a client hits the <a href="/events?handler=http">http</a> / https listener.</p>{{ else }}
 <div class="counters">
   <a class="counter c-total" href="/events?handler=http"><b>{{ .Total }}</b><span>requests</span></a>
-  <span class="counter c-tcp"><b>{{ .URLs }}</b><span>unique URLs</span></span>
-  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+  <a class="counter c-tcp" href="#urls"><b>{{ .URLs }}</b><span>unique URLs</span></a>
+  <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
-{{ if .Attackers }}<h2>Top attackers</h2>
+{{ if .Attackers }}<h2 id="sources">Top attackers</h2>
 <table><tr><th>source</th><th>requests</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
 {{ if .Files }}<h2>Unique files accessed <span class="meta">({{ len .Files }})</span></h2>
 <div>{{ range .Files }}<a class="tag" href="/search?q={{ . }}"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
-{{ if .URLList }}<h2>Unique URLs <span class="meta">({{ len .URLList }})</span></h2>
+{{ if .URLList }}<h2 id="urls">Unique URLs <span class="meta">({{ len .URLList }})</span></h2>
 <table data-filter><tr><th>url</th></tr>{{ range .URLList }}<tr><td><a href="/search?q={{ . }}"><code>{{ . }}</code></a></td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
@@ -689,10 +696,10 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Empty }}<p class="note">No database traffic observed yet — it appears once a client hits a database listener (mysql / postgres / mssql / mongodb / redis / …).</p>{{ else }}
 <div class="counters">
   <a class="counter c-total" href="/events"><b>{{ .Total }}</b><span>events</span></a>
-  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+  <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
-{{ if .Attackers }}<h2>Top attackers</h2>
+{{ if .Attackers }}<h2 id="sources">Top attackers</h2>
 <table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
@@ -1224,8 +1231,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ with index .Meta "http_javascript" }}<h3>captured JavaScript <span class="tag bad">not executed</span></h3>{{ range . }}<div class="kv">{{ . }}</div>{{ end }}{{ end }}
 {{ end }}
 {{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
-{{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div>{{ end }}
-<details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div></details>{{ end }}
+{{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy to clipboard">⧉ copy</button>{{ end }}
+<details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy the base64 to the clipboard">⧉ copy base64</button></details>{{ end }}
 {{ $rest := metaScalar .Meta }}{{ if $rest }}<h2>meta</h2><table>
 {{ range $k, $v := $rest }}<tr><th>{{ $k }}</th><td>{{ if eq $k "geo_country" }}{{ $v }} {{ countryFlag (printf "%v" $v) }}{{ else }}{{ $v }}{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
