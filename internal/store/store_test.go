@@ -482,3 +482,46 @@ func TestDiagnosePath(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// TestSummaryUsesIndexes guards the dashboard's scalability: each
+// "WHERE time >= ? GROUP BY <col>" summary pass must be served by a composite
+// (col,time) index, not a full table SCAN — otherwise the summary degrades to
+// O(rows) row reads and times out as the events table grows.
+func TestSummaryUsesIndexes(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now().UTC()
+	sinceNS := now.Add(-time.Hour).UnixNano()
+	cases := []struct{ name, query, wantIndex string }{
+		{"severity", `SELECT severity, COUNT(*) FROM events WHERE time >= ? GROUP BY severity`, "idx_events_severity_time"},
+		{"rule_id", `SELECT rule_id, COUNT(*) FROM events WHERE time >= ? GROUP BY rule_id`, "idx_events_rule_id_time"},
+		{"proto", `SELECT proto, COUNT(*) FROM events WHERE time >= ? AND proto != '' GROUP BY proto`, "idx_events_proto_time"},
+		{"src_ip", `SELECT src_ip, COUNT(*) FROM events WHERE time >= ? AND src_ip != '' GROUP BY src_ip`, "idx_events_src_ip_time"},
+	}
+	for _, c := range cases {
+		rows, err := s.db.Query("EXPLAIN QUERY PLAN "+c.query, sinceNS)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		var plan string
+		for rows.Next() {
+			var id, parent, notused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			plan += detail + "\n"
+		}
+		rows.Close()
+		if !strings.Contains(plan, c.wantIndex) {
+			t.Errorf("%s GROUP BY does not use %s; plan=\n%s", c.name, c.wantIndex, plan)
+		}
+		if strings.Contains(plan, "SCAN events\n") || strings.HasSuffix(strings.TrimSpace(plan), "SCAN events") {
+			t.Errorf("%s GROUP BY falls back to a full table SCAN; plan=\n%s", c.name, plan)
+		}
+	}
+}
