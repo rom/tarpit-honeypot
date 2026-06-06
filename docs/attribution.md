@@ -243,6 +243,11 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `ami-login` | T1110.001 | credential-access |
 | `ami-originate` | T1657 | impact |
 | `ard-probe` | T1219 | command-and-control |
+| `bacnet-device-comm-control` | T0814 | impact |
+| `bacnet-device-discovery` | T0846 | discovery |
+| `bacnet-file-write-attempt` | T0836, T0831 | impact |
+| `bacnet-property-read` | T0801 | collection |
+| `bacnet-reinitialize-device` | T0816 | impact |
 | `bacnet-write-attempt` | T0836, T0831 | impact |
 | `bgp-open-attempt` | T1190 | initial-access |
 | `bgp-probe` | T1595 | reconnaissance |

@@ -104,6 +104,31 @@ documented in `docs/`).
   `legacy-unix` example. New ATT&CK technique **T1039** (Data from Network
   Shared Drive) with its D3FEND mapping.
 
+- **Deeper OT / building-automation protocol analysis (S7comm, DNP3, Modbus,
+  BACnet) + attacker-intent + ATT&CK-for-ICS.** Each handler now stamps an
+  `intent` summary and recognizes the dangerous control/recon operations:
+  - **S7comm (102)** — previously stopped after the COTP handshake; now runs
+    the S7comm session: negotiates **Setup Communication**, answers **SZL
+    reads** with a believable S7-300 module/firmware identity (the CPU
+    fingerprint nmap's `s7-info` / plcscan parse, `ics-field-device-probe`),
+    and classifies **Read Var** (`ics-process-data-access`), **Write Var**
+    (`ics-plc-write`), **PLC STOP/control** (`ics-plc-mode-change`) and
+    **block up/download** (`ics-plc-program-access`).
+  - **DNP3 (20000)** — previously only the data-link layer; now de-blocks the
+    user data and parses the **application function**: READ
+    (`ics-process-data-access`), WRITE (`ics-plc-write`), SELECT/OPERATE/
+    DIRECT_OPERATE (`ics-dnp3-control`), and COLD/WARM_RESTART / STOP_APPL
+    (`ics-device-restart`).
+  - **Modbus (502)** — adds per-operation `intent` and handles **FC 0x08
+    Diagnostics**, flagging Restart-Communications / Force-Listen-Only as
+    control/DoS (`ics-modbus-diagnostic`).
+  - **BACnet (47808)** — adds `intent` and flags **ReadProperty** point
+    enumeration (`bacnet-property-read`), **Who-Is/Who-Has** discovery
+    (`bacnet-device-discovery`), and maps the previously-unmapped
+    DeviceCommunicationControl / ReinitializeDevice / AtomicWriteFile markers.
+  - New ATT&CK-for-ICS technique **T0816** (Device Restart/Shutdown) with its
+    D3FEND mapping; new `ics-device-restart` + BACnet anomaly mappings.
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

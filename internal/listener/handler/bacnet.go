@@ -82,8 +82,12 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 		csvc := payload[apduStart+3]
 		res.Meta["apdu_service"] = bacnetConfirmedName(csvc)
 		switch csvc {
+		case 0x0C, 0x0E: // ReadProperty / ReadPropertyMultiple — point enumeration.
+			flagAnomaly(&res, "bacnet-property-read")
+			setIfEmpty(res.Meta, "intent", "BACnet ReadProperty — enumerating control points / values")
 		case 0x0F, 0x10: // WriteProperty / WritePropertyMultiple
 			flagAnomaly(&res, "bacnet-write-attempt")
+			res.Meta["intent"] = "BACnet WriteProperty — changing a control point value (manipulation)"
 			ack := buildSimpleACK(invokeID, csvc)
 			if _, err := pc.WriteTo(ack, src); err != nil {
 				res.Meta["write_err"] = err.Error()
@@ -92,10 +96,13 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 			}
 		case 0x11: // DeviceCommunicationControl — disable a device's comms (DoS)
 			flagAnomaly(&res, "bacnet-device-comm-control")
+			res.Meta["intent"] = "BACnet DeviceCommunicationControl — silencing a device (denial of service)"
 		case 0x14: // ReinitializeDevice — warm/cold reboot
 			flagAnomaly(&res, "bacnet-reinitialize-device")
+			res.Meta["intent"] = "BACnet ReinitializeDevice — rebooting the controller"
 		case 0x07: // AtomicWriteFile — overwrite a device file
 			flagAnomaly(&res, "bacnet-file-write-attempt")
+			res.Meta["intent"] = "BACnet AtomicWriteFile — overwriting a device file (config/program)"
 		}
 		_ = cfg
 		return res, nil
@@ -109,6 +116,10 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 	}
 	service := payload[apduStart+1]
 	res.Meta["apdu_service"] = bacnetServiceName(service)
+	if service == 0x08 || service == 0x07 { // Who-Is / Who-Has — device discovery.
+		flagAnomaly(&res, "bacnet-device-discovery")
+		setIfEmpty(res.Meta, "intent", "BACnet Who-Is — discovering building-automation devices")
+	}
 	if service != 0x08 {
 		// 0x08 = Who-Is. We only respond to Who-Is.
 		return res, nil

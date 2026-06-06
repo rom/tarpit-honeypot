@@ -432,6 +432,7 @@ var anomalyTags = map[string]Tag{
 	"ics-plc-write":                      {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	"ics-plc-mode-change":                {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
 	"ics-plc-program-access":             {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"ics-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
 	"ics-dnp3-control":                   {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},
 	"ics-unitronics-plc":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
@@ -609,9 +610,16 @@ var anomalyTags = map[string]Tag{
 	"rlogin-attempt":         {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"redfish-auth-attempt":   {Techniques: []string{"T1078"}, Tactics: []string{"credential-access"}},
 	"vmware-authd-login":     {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
-	// BACnet WriteProperty against a control point = ICS manipulation (the
-	// BACnet analogue of modbus-write-attempt).
-	"bacnet-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// BACnet building-automation services. WriteProperty against a control
+	// point = ICS manipulation (the BACnet analogue of modbus-write-attempt);
+	// the rest cover point enumeration, device discovery, comms-disable (DoS),
+	// reboot, and file overwrite.
+	"bacnet-write-attempt":       {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	"bacnet-property-read":       {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"bacnet-device-discovery":    {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"bacnet-device-comm-control": {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"bacnet-reinitialize-device": {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"bacnet-file-write-attempt":  {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// A probe to chargen/echo etc. — the reflection-amplifier scouting target.
 	"udp-amplifier-probe": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	// A planted bait file was retrieved from the decoy FTP tree.
@@ -1064,6 +1072,7 @@ var techDescriptions = map[string]string{
 	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
+	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
@@ -1193,6 +1202,7 @@ var d3fend = map[string][]string{
 	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
+	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
