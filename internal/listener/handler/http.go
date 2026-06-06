@@ -217,6 +217,9 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if len(verdict.Tools) > 0 {
 		res.Meta["tools"] = verdict.Tools
 		flagAnomaly(&res, "tool:"+verdict.Tools[0])
+		if vs := toolfp.Vendors(verdict.Tools); len(vs) > 0 {
+			res.Meta["tool_vendors"] = vs
+		}
 	}
 	if verdict.Confidence > 0 {
 		res.Meta["tool_confidence"] = verdict.Confidence
