@@ -2000,6 +2000,12 @@ func (s *Sensor) emitReloadEvent(diff config.Diff) {
 func (s *Sensor) Run(ctx context.Context) error {
 	s.rootCtx = ctx
 	var wg sync.WaitGroup
+	// busDone signals the bus loop to drain + exit. We never close(s.bus)
+	// because it has many concurrent senders (handlers, sniffer, op events) and
+	// closing a channel out from under a live sender is a send-on-closed-channel
+	// panic during shutdown; instead shutdown closes busDone after the senders
+	// have been drained.
+	busDone := make(chan struct{})
 
 	s.curRouter().Start(ctx)
 
@@ -2034,7 +2040,27 @@ func (s *Sensor) Run(ctx context.Context) error {
 		// or a correlator bug shouldn't take down event flow for the
 		// whole sensor. The guard logs + emits a high-severity panic
 		// event before continuing with the next event.
-		for ev := range s.bus {
+		//
+		// The loop exits on busDone (shutdown), draining whatever is buffered
+		// first so in-flight events aren't lost. We never range over a closed
+		// s.bus — see busDone's declaration.
+		draining := false
+		for {
+			var ev *event.Event
+			if draining {
+				select {
+				case ev = <-s.bus:
+				default:
+					return
+				}
+			} else {
+				select {
+				case ev = <-s.bus:
+				case <-busDone:
+					draining = true
+					continue
+				}
+			}
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -2497,7 +2523,10 @@ func (s *Sensor) Run(ctx context.Context) error {
 	// Final lifecycle event before the bus closes (still drained downstream).
 	s.emitOpEvent("sensor:stopped", event.SeverityMedium, map[string]any{"sensor": s.name})
 
-	close(s.bus)
+	// Signal the bus loop to drain + exit. We deliberately do NOT close(s.bus):
+	// late senders (a handler that outran the drain timeout) would otherwise
+	// panic on send-to-closed-channel. They instead see their ctx cancelled.
+	close(busDone)
 	wg.Wait()
 	s.curRouter().Stop()
 	for _, sk := range s.curSinks() {

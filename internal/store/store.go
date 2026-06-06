@@ -13,11 +13,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -34,6 +36,10 @@ type Store struct {
 	// banner (the overwhelmingly common case) is interned without a DB hit.
 	bannerMu    sync.Mutex
 	bannerCache map[string]int64
+
+	// pruneTick gates the cap check so we don't os.Stat the DB file on every
+	// single insert — only every prunePeriod writes.
+	pruneTick atomic.Uint64
 }
 
 // rowQueryer is satisfied by both *sql.DB and *sql.Tx, so banner interning can
@@ -434,8 +440,16 @@ func (s *Store) InsertBatch(ctx context.Context, evs []*event.Event) error {
 	return nil
 }
 
+// prunePeriod gates the cap check: stat the DB file (and possibly prune) once
+// per this many writes rather than on every insert.
+const prunePeriod = 256
+
 func (s *Store) maybePrune(ctx context.Context) {
 	if s.capMB <= 0 {
+		return
+	}
+	// Only check periodically — os.Stat per insert is wasted syscalls under load.
+	if s.pruneTick.Add(1)%prunePeriod != 0 {
 		return
 	}
 	info, err := os.Stat(s.path)
@@ -445,13 +459,16 @@ func (s *Store) maybePrune(ctx context.Context) {
 	if info.Size() < int64(s.capMB)*1024*1024 {
 		return
 	}
-	// Delete the oldest 10% of events.
-	_, _ = s.db.ExecContext(ctx, `
+	// Delete the oldest 10% of events. Surface failures (disk full, locked,
+	// corrupt index) so a silently-failing prune can't let the DB grow forever.
+	if _, err := s.db.ExecContext(ctx, `
 DELETE FROM events WHERE id IN (
   SELECT id FROM events ORDER BY time ASC LIMIT (
     SELECT MAX(CAST(COUNT(*) * 0.1 AS INTEGER), 100) FROM events
   )
-)`)
+)`); err != nil {
+		slog.Warn("store: retention prune failed; cap enforcement paused", "err", err, "path", s.path)
+	}
 }
 
 // Filter narrows what Query returns. Zero values mean "no constraint".
