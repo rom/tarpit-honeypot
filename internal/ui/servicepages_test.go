@@ -46,18 +46,24 @@ func TestHasServicePage(t *testing.T) {
 
 func TestBuildDNSAndRender(t *testing.T) {
 	now := time.Now()
-	mk := func(ip, qname, qtype string, anoms ...string) *event.Event {
+	mk := func(ip, qname, qtype, intent string, anoms ...string) *event.Event {
+		m := map[string]any{"qname": qname, "qtype_name": qtype}
+		if intent != "" {
+			m["intent"] = intent
+		}
 		return &event.Event{Time: now, Source: event.Endpoint{IP: ip}, Handler: "dns",
-			BannerSent: "dns answer (" + qtype + ")", Anomalies: anoms,
-			Meta: map[string]any{"qname": qname, "qtype_name": qtype}}
+			BannerSent: "dns answer (" + qtype + ")", Anomalies: anoms, Meta: m}
 	}
 	evs := []*event.Event{
-		mk("1.1.1.1", "www.example.com", "A"),
-		mk("1.1.1.1", "mail.example.com", "MX"),
-		mk("2.2.2.2", "x.evil.test", "TXT", "dns-tunneling-qtype"),
-		mk("2.2.2.2", "internal.corp", "AXFR", "dns-zone-transfer"),
+		mk("1.1.1.1", "www.example.com", "A", ""),
+		mk("1.1.1.1", "mail.example.com", "MX", ""),
+		mk("2.2.2.2", "x.evil.test", "TXT", "DNS tunneling / data exfiltration over DNS", "dns-tunneling-qtype"),
+		mk("2.2.2.2", "internal.corp", "AXFR", "DNS zone transfer (AXFR/IXFR) — full-zone reconnaissance", "dns-zone-transfer"),
 	}
 	v := buildDNS(evs)
+	if len(v.Intents) == 0 {
+		t.Error("expected aggregated attacker-intent rows")
+	}
 	if v.Empty || v.Total != 4 {
 		t.Fatalf("Total = %d, empty=%v", v.Total, v.Empty)
 	}
@@ -86,7 +92,8 @@ func TestBuildDNSAndRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"DNS analytics", "Query log", "dns-zone-transfer", "www.example.com",
-		`href="#domains"`, `href="#sources"`, `id="domains"`, `id="sources"`, "Top domains", "Top sources"} {
+		`href="#domains"`, `href="#sources"`, `id="domains"`, `id="sources"`, "Top domains", "Top sources",
+		"Attacker intent", "full-zone reconnaissance"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("dns page missing %q", want)
 		}

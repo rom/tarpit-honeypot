@@ -377,6 +377,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &xmpp{}, nil
 	case "amqp":
 		return &amqp{}, nil
+	case "ibmmq", "mq", "websphere_mq":
+		return &ibmmq{}, nil
 	case "ipp":
 		return &ipp{arch: deps.Archetype}, nil
 	case "mssql":

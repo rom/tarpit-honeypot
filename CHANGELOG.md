@@ -10,6 +10,25 @@ documented in `docs/`).
 
 ### Added
 
+- **Combined traffic graphs + attacks-by-service donut.** On `/charts`, incoming
+  and outgoing throughput (kb/s↔Mb/s) now share one graph and packet-rate
+  shares another (two series each). A new **"Attacks by service (%)"** donut
+  (attacks = events with an anomaly / CVE / high severity, grouped by handler)
+  appears on both the summary "visual overview" and the `/charts` Overview.
+- **IBM MQ (WebSphere MQ) decoy** on TCP 1414 (`ibmmq` / `mq` / `websphere_mq`):
+  parses the MQ channel TSH segment, names the control opcode, extracts the
+  SVRCONN channel + queue-manager from Initial Data, and labels the MQCSP
+  security flow (AMQP + MQTT already existed; IBM MQ did not).
+- **Infrastructure tool fingerprinting** — extended DNS (`IdentifyDNS`/fpdns:
+  +20 OOB-callback / tunnel / rebind / open-resolver / AD-recon signatures) and
+  new `IdentifyNTP` (ntpdc / ntpq / monlist-scanner / legacy) + `IdentifySNMP`
+  (default-community brute) fingerprinters, wired into the ntp / snmp handlers.
+- **More CVEs** (CWE+CVSS+EPSS+ATT&CK each): OMIGOD (signature-detected),
+  HTTP.sys ×2, noPac, KeyTrap DNSSEC DoS, ntpd crypto-NAK — plus the DNS/SNMP/NTP
+  exploit-detection + intent analysis added earlier. (CWE and CVSS are already
+  present on 100% of catalog records; D3FEND flows from each record's ATT&CK
+  technique via the mitre map.)
+
 - **Deeper DNS / SNMP / NTP attacker-intent analysis + new CVEs & ATT&CK.** Each
   of these handlers now stamps an `intent` meta summary of what the attacker is
   actually doing, and recognizes more exploit/abuse vectors:

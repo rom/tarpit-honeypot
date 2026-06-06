@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
 // ntp implements the bare minimum of NTPv4 (RFC 5905) needed to fingerprint
@@ -89,6 +90,17 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			// for an inbound probe to a public time server.
 			flagAnomaly(&res, "ntp-nonclient-mode")
 			res.Meta["intent"] = "NTP non-client mode " + modeName(mode) + " probe"
+		}
+		// Structural tool fingerprint (ntpdc / ntpq / monlist scanner / legacy).
+		var impl, rc byte
+		if mode == 7 && len(payload) >= 4 {
+			impl, rc = payload[2], payload[3]
+		}
+		if tools := toolfp.IdentifyNTP(mode, ver, impl, rc); len(tools) > 0 {
+			res.Meta["tools"] = tools
+			for _, t := range tools {
+				flagAnomaly(&res, "tool:"+t)
+			}
 		}
 		return res, nil
 	}
