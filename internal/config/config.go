@@ -621,7 +621,7 @@ var TogglablePages = map[string]bool{
 	"captures": true, "credentials": true, "dns": true, "web": true,
 	"databases": true, "fleet": true, "iocs": true, "tunnels": true,
 	"fingerprints": true, "devices": true, "topology": true, "charts": true,
-	"alerting": true, "errors": true, "docs": true,
+	"statistics": true, "alerting": true, "errors": true, "docs": true,
 }
 
 // PageEnabled reports whether a nav page should be shown / reachable. Core
@@ -680,8 +680,15 @@ type Sensor struct {
 	Jitter    Jitter    `yaml:"jitter"`
 	Shutdown  Shutdown  `yaml:"shutdown"`
 	TLSRotate TLSRotate `yaml:"tls_rotate"`
-	GeoIP     GeoIP     `yaml:"geoip"`
-	RDNS      RDNS      `yaml:"rdns"`
+	// TLSDomain is the deployment-wide certificate CN/SAN used for every
+	// TLS-bearing decoy service that doesn't pin its own https.hosts/cn —
+	// so the whole host presents one consistent cert identity (the admin's
+	// name/domain) instead of the per-service "localhost" default. TLSOrg
+	// likewise pins the certificate Organization. install.sh prompts for both.
+	TLSDomain string `yaml:"tls_domain"`
+	TLSOrg    string `yaml:"tls_org"`
+	GeoIP     GeoIP  `yaml:"geoip"`
+	RDNS      RDNS   `yaml:"rdns"`
 	// ThreatIntel tags source IPs that appear on operator-supplied
 	// reputation lists. Tor flags Tor exit nodes. NetClass adds a coarse
 	// built-in network classification (bogon / cloud-hosting). All three

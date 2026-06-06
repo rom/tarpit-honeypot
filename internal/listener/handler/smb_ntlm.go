@@ -39,6 +39,25 @@ const (
 	smb2MaxMessages        = 8
 )
 
+// smbServerStartTime returns a plausible, deployment-stable boot time as a
+// Windows FILETIME — "now" minus an uptime between ~2 and ~62 days derived
+// from the deployment identity. A zero ServerStartTime (the old behavior) is
+// an obvious honeypot tell; a fresh-every-poll value is equally implausible,
+// so we anchor it to a stable per-deployment uptime.
+func smbServerStartTime(id *identity.Identity) uint64 {
+	now := filetimeNow()
+	days := uint64(2)
+	if id != nil {
+		days = 2 + uint64(id.Uint32("smb-uptime-days"))%60 // 2..61 days
+	}
+	// Add an hour-granularity offset so two sensors don't share an exact boot.
+	hours := uint64(0)
+	if id != nil {
+		hours = uint64(id.Uint32("smb-uptime-hours")) % 24
+	}
+	return filetimeAgo(now, time.Duration(days*24+hours)*time.Hour)
+}
+
 // handleSMB2 services a direct-SMB2 client starting from its first message
 // (the NEGOTIATE request already read into firstMsg). It records the captured
 // NetNTLMv2 credential into res.Meta. The connection is read in a bounded loop.
@@ -49,7 +68,7 @@ func handleSMB2(conn net.Conn, firstMsg []byte, readTimeout time.Duration, id *i
 	}
 	negMsgID := smb2MessageID(firstMsg)
 	serverGUID := smb2ServerGUID(id)
-	if _, err := conn.Write(buildNBSS(smb2NegotiateResponse(negMsgID, serverGUID))); err != nil {
+	if _, err := conn.Write(buildNBSS(smb2NegotiateResponse(negMsgID, serverGUID, id))); err != nil {
 		res.Meta["smb2_write_err"] = err.Error()
 		return
 	}
@@ -152,7 +171,7 @@ func smb2Header(command uint16, status uint32, msgID, sessionID uint64) []byte {
 
 // smb2NegotiateResponse builds an SMB 2.0.2 NEGOTIATE response whose security
 // buffer is a SPNEGO negTokenInit offering NTLMSSP.
-func smb2NegotiateResponse(msgID uint64, serverGUID []byte) []byte {
+func smb2NegotiateResponse(msgID uint64, serverGUID []byte, id *identity.Identity) []byte {
 	hdr := smb2Header(smb2CmdNegotiate, 0, msgID, 0)
 	sec := spnegoNegTokenInit()
 	const fixed = 64 // negotiate response fixed body
@@ -161,11 +180,12 @@ func smb2NegotiateResponse(msgID uint64, serverGUID []byte) []byte {
 	binary.LittleEndian.PutUint16(body[2:4], 1)      // SecurityMode = signing enabled
 	binary.LittleEndian.PutUint16(body[4:6], 0x0202) // DialectRevision = SMB 2.0.2
 	copy(body[8:24], serverGUID)
-	binary.LittleEndian.PutUint32(body[24:28], 0x00000007) // Capabilities (DFS|LEASING|LARGE_MTU)
-	binary.LittleEndian.PutUint32(body[28:32], 0x00100000) // MaxTransactSize
-	binary.LittleEndian.PutUint32(body[32:36], 0x00100000) // MaxReadSize
-	binary.LittleEndian.PutUint32(body[36:40], 0x00100000) // MaxWriteSize
-	binary.LittleEndian.PutUint64(body[40:48], filetimeNow())
+	binary.LittleEndian.PutUint32(body[24:28], 0x00000007)             // Capabilities (DFS|LEASING|LARGE_MTU)
+	binary.LittleEndian.PutUint32(body[28:32], 0x00100000)             // MaxTransactSize
+	binary.LittleEndian.PutUint32(body[32:36], 0x00100000)             // MaxReadSize
+	binary.LittleEndian.PutUint32(body[36:40], 0x00100000)             // MaxWriteSize
+	binary.LittleEndian.PutUint64(body[40:48], filetimeNow())          // SystemTime
+	binary.LittleEndian.PutUint64(body[48:56], smbServerStartTime(id)) // ServerStartTime (boot)
 	secOff := smb2HeaderSize + fixed
 	binary.LittleEndian.PutUint16(body[56:58], uint16(secOff))
 	binary.LittleEndian.PutUint16(body[58:60], uint16(len(sec)))

@@ -169,4 +169,57 @@ var industrialExtArchetypes = map[string]*Profile{
 		},
 		quirks: []string{"aruba", "hpe"},
 	},
+
+	// ---- OPC servers (Windows hosts running OPC Classic/DCOM + OPC-UA) ----
+	// These sit at the IT/OT boundary: an OPC server box bridges field
+	// controllers to SCADA/historian clients. The OPC-DA vendor string the
+	// dcerpc/OPCEnum stub reports is pinned via opcVendor so a DCOM probe sees
+	// the specific product.
+	"matrikon-opc-server": {
+		Name: "matrikon-opc-server", DisplayName: "MatrikonOPC Server (Windows)", Family: "windows",
+		sshBanner:       "SSH-2.0-OpenSSH_for_Windows_8.1", // Win Server 2019 OpenSSH feature
+		httpServer:      "Microsoft-IIS/10.0",
+		smtpProduct:     "Microsoft ESMTP MAIL Service",
+		cliPrompt:       "C:\\Windows\\system32>",
+		httpTitle:       "MatrikonOPC",
+		httpBodyHTML:    `<html><head><title>MatrikonOPC</title></head><body><h2>MatrikonOPC Server</h2><p>OPC Data Access / OPC-UA gateway</p></body></html>`,
+		snmpSysDescr:    "Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 17763 Multiprocessor Free)",
+		snmpSysObjectID: ".1.3.6.1.4.1.311.1.1.3.1.2",
+		snmpSysName:     "OPC-SRV01",
+		icmpTTL:         128,
+		opcVendor:       "Matrikon OPC Server for Simulation",
+		cpe:             "cpe:2.3:a:matrikon:opc_server:*:*:*:*:*:*:*:*",
+		defaultServices: []DefaultService{
+			{Port: 135, Handler: "dcerpc", Note: "DCOM / OPCEnum"},
+			{Port: 445, Handler: "smb"},
+			{Port: 3389, Handler: "rdp"},
+			{Port: 4840, Handler: "opcua", Note: "OPC-UA"},
+			{Port: 21379, Handler: "auto", Note: "MatrikonOPC Tunneller"},
+			{Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"windows", "opc"},
+	},
+	"kepware-kepserverex": {
+		Name: "kepware-kepserverex", DisplayName: "Kepware KEPServerEX (Windows)", Family: "windows",
+		sshBanner:       "SSH-2.0-OpenSSH_for_Windows_8.1",
+		httpServer:      "Microsoft-IIS/10.0",
+		cliPrompt:       "C:\\Windows\\system32>",
+		httpTitle:       "KEPServerEX Configuration",
+		httpBodyHTML:    `<html><head><title>KEPServerEX</title></head><body><h2>PTC Kepware KEPServerEX</h2><p>OPC / IoT Gateway</p></body></html>`,
+		snmpSysDescr:    "Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 17763 Multiprocessor Free)",
+		snmpSysObjectID: ".1.3.6.1.4.1.311.1.1.3.1.2",
+		snmpSysName:     "KEP-SRV01",
+		icmpTTL:         128,
+		opcVendor:       "Kepware Technologies KEPServerEX",
+		cpe:             "cpe:2.3:a:ptc:kepserverex:*:*:*:*:*:*:*:*",
+		defaultServices: []DefaultService{
+			{Port: 135, Handler: "dcerpc", Note: "DCOM / OPCEnum"},
+			{Port: 445, Handler: "smb"},
+			{Port: 3389, Handler: "rdp"},
+			{Port: 4840, Handler: "opcua", Note: "OPC-UA"},
+			{Port: 57412, Handler: "auto", Note: "KEPServerEX OPC-UA / config"},
+			{Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"windows", "opc"},
+	},
 }

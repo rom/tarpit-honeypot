@@ -67,6 +67,50 @@ var sshLegacy = sshAlgoSet{
 	comp: []string{"none", "zlib@openssh.com"},
 }
 
+// sshTransitional is OpenSSH 5.7–6.4: ECDSA / ECDH-nistp arrived in 5.7 and
+// SHA-2 HMACs in 5.9, but Curve25519 / Ed25519 / chacha20-poly1305 did NOT
+// land until 6.5 — so this set has the NIST-curve ECC but no 25519 and no
+// chacha20 (offering ed25519 from a 5.x banner is the classic honeypot tell).
+var sshTransitional = sshAlgoSet{
+	kex: []string{
+		"ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
+		"diffie-hellman-group-exchange-sha256", "diffie-hellman-group-exchange-sha1",
+		"diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1",
+	},
+	hostKeys: []string{"ssh-rsa", "ecdsa-sha2-nistp256", "ssh-dss"},
+	ciphers: []string{
+		"aes128-ctr", "aes192-ctr", "aes256-ctr", "arcfour256", "arcfour128",
+		"aes128-cbc", "3des-cbc", "blowfish-cbc", "cast128-cbc", "aes192-cbc",
+		"aes256-cbc", "arcfour", "rijndael-cbc@lysator.liu.se",
+	},
+	macs: []string{
+		"hmac-md5", "hmac-sha1", "umac-64@openssh.com", "hmac-sha2-256",
+		"hmac-sha2-512", "hmac-ripemd160", "hmac-sha1-96", "hmac-md5-96",
+	},
+	comp: []string{"none", "zlib@openssh.com"},
+}
+
+// sshAncient is pre-5.7 OpenSSH (e.g. 4.3 on RHEL/CentOS 5, 5.3 on CentOS 6):
+// NO elliptic curve at all — ECDH/ECDSA only arrived in 5.7. Only DH
+// group-exchange + group14/group1-sha1, ssh-rsa/ssh-dss host keys, the
+// CBC/CTR/arcfour cipher suite, and MD5/SHA1 MACs.
+var sshAncient = sshAlgoSet{
+	kex: []string{
+		"diffie-hellman-group-exchange-sha256", "diffie-hellman-group-exchange-sha1",
+		"diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1",
+	},
+	hostKeys: []string{"ssh-rsa", "ssh-dss"},
+	ciphers: []string{
+		"aes128-ctr", "aes192-ctr", "aes256-ctr", "arcfour256", "arcfour128",
+		"aes128-cbc", "3des-cbc", "blowfish-cbc", "cast128-cbc", "aes192-cbc",
+		"aes256-cbc", "arcfour", "rijndael-cbc@lysator.liu.se",
+	},
+	macs: []string{
+		"hmac-md5", "hmac-sha1", "hmac-ripemd160", "hmac-sha1-96", "hmac-md5-96",
+	},
+	comp: []string{"none", "zlib@openssh.com"},
+}
+
 // sshDropbear is the smaller set Dropbear (embedded routers / cameras /
 // Teltonika) advertises.
 var sshDropbear = sshAlgoSet{
@@ -83,7 +127,10 @@ var sshDropbear = sshAlgoSet{
 
 // sshAlgosForBanner picks the algorithm set consistent with the SSH version
 // banner, so the server KEXINIT (and its HASSH) matches what a real install
-// of that software would emit.
+// of that software would emit. The OpenSSH buckets track the actual feature
+// timeline so we never advertise an algorithm before the release that
+// introduced it (e.g. Ed25519/Curve25519/chacha20 first shipped in 6.5; ECC
+// in 5.7) — that mismatch is a honeypot tell.
 func sshAlgosForBanner(banner string) sshAlgoSet {
 	b := strings.ToLower(banner)
 	switch {
@@ -91,27 +138,48 @@ func sshAlgosForBanner(banner string) sshAlgoSet {
 		return sshDropbear
 	case strings.Contains(b, "rosssh"), strings.Contains(b, "cisco"):
 		return sshLegacy
-	case oldOpenSSHMajor(b):
-		return sshLegacy
-	default:
+	}
+	major, minor, ok := openSSHVersion(b)
+	if !ok {
+		return sshModern // non-OpenSSH banner: default to the modern set
+	}
+	switch {
+	case major >= 8:
 		return sshModern
+	case major > 6 || (major == 6 && minor >= 5):
+		return sshLegacy // 6.5–7.x: Ed25519 / Curve25519 / chacha20 present
+	case major == 6 || (major == 5 && minor >= 7):
+		return sshTransitional // 5.7–6.4: NIST ECC, but no 25519 / chacha20
+	default:
+		return sshAncient // < 5.7: no elliptic curve at all
 	}
 }
 
-// oldOpenSSHMajor reports whether the (lowercased) banner names an OpenSSH
-// release older than 8.0.
-func oldOpenSSHMajor(b string) bool {
+// openSSHVersion parses the major.minor of an OpenSSH banner (lowercased),
+// e.g. "ssh-2.0-openssh_5.3" -> (5, 3). minor is 0 when absent.
+func openSSHVersion(b string) (major, minor int, ok bool) {
 	i := strings.Index(b, "openssh_")
 	if i < 0 {
-		return false
+		return 0, 0, false
 	}
 	rest := b[i+len("openssh_"):]
-	n, got := 0, false
-	for j := 0; j < len(rest) && rest[j] >= '0' && rest[j] <= '9'; j++ {
-		n = n*10 + int(rest[j]-'0')
-		got = true
+	j := 0
+	for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+		major = major*10 + int(rest[j]-'0')
+		j++
+		ok = true
 	}
-	return got && n < 8
+	if !ok {
+		return 0, 0, false
+	}
+	if j < len(rest) && rest[j] == '.' {
+		j++
+		for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+			minor = minor*10 + int(rest[j]-'0')
+			j++
+		}
+	}
+	return major, minor, true
 }
 
 // buildKEXINITPayload renders an SSH_MSG_KEXINIT payload (starting at the

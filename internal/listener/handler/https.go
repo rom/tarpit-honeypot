@@ -235,7 +235,11 @@ func (h *https) vhostProfile(cfg config.Listener, vh config.TLSVHost) certProfil
 		p.cn = vh.ServerName
 	}
 	if p.org == "" {
-		p.org = deriveOrg(h.id, idKey)
+		if defaultTLSOrg != "" {
+			p.org = defaultTLSOrg
+		} else {
+			p.org = deriveOrg(h.id, idKey)
+		}
 	}
 	if p.keyType == "" {
 		p.keyType = deriveKeyType(h.id, idKey)
@@ -261,7 +265,7 @@ type certProfile struct {
 func (h *https) profileFor(cfg config.Listener) certProfile {
 	hs := cfg.HTTPS.Hosts
 	if len(hs) == 0 {
-		hs = []string{"localhost"}
+		hs = []string{defaultCertHost()}
 	}
 	p := certProfile{
 		listenerID: cfg.ID,
@@ -275,7 +279,11 @@ func (h *https) profileFor(cfg config.Listener) certProfile {
 		p.cn = hs[0]
 	}
 	if p.org == "" {
-		p.org = deriveOrg(h.id, cfg.ID)
+		if defaultTLSOrg != "" {
+			p.org = defaultTLSOrg
+		} else {
+			p.org = deriveOrg(h.id, cfg.ID)
+		}
 	}
 	if p.keyType == "" {
 		p.keyType = deriveKeyType(h.id, cfg.ID)

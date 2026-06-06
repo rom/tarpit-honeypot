@@ -52,6 +52,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/tokentrack"
+	"github.com/rom/tarpit-honeypot/internal/toolfp"
 	"github.com/rom/tarpit-honeypot/internal/trust"
 	"github.com/rom/tarpit-honeypot/internal/tunnet"
 	"github.com/rom/tarpit-honeypot/internal/version"
@@ -174,6 +175,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 	if !cfg.Sensor.Jitter.Enabled {
 		jit = jitter.New(0, 0)
 	}
+
+	// Install the deployment-wide TLS certificate identity (CN/SAN domain +
+	// organization) so every TLS decoy presents one consistent cert instead of
+	// the per-service "localhost" default. Set once, before any listener starts.
+	handler.SetTLSDefaults(cfg.Sensor.TLSDomain, cfg.Sensor.TLSOrg)
 
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).
@@ -876,9 +882,15 @@ func (s *Sensor) observeScan(ev *event.Event, payload []byte) *event.Event {
 	}
 	if r.Tool != "" {
 		meta["tool"] = r.Tool
+		if v := toolfp.Vendor(r.Tool); v != "" {
+			meta["tool_vendor"] = v
+		}
 	}
 	if len(r.Tools) > 0 {
 		meta["tools"] = r.Tools
+		if vs := toolfp.Vendors(r.Tools); len(vs) > 0 {
+			meta["tool_vendors"] = vs
+		}
 	}
 	if len(r.NSEScripts) > 0 {
 		meta["nse_scripts"] = r.NSEScripts

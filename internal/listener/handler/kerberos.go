@@ -62,13 +62,41 @@ func (k *kerberos) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 
 // analyzeKRB records the message type, principal/realm/service names, and the
 // requested encryption types from a KDC-REQ, flagging the Kerberoasting /
-// roasting tells.
-func (k *kerberos) analyzeKRB(body []byte, res *Result) {
-	if len(body) < 1 {
+// roasting / delegation-abuse tells. Shared by the TCP KDC and the UDP probe.
+func (k *kerberos) analyzeKRB(body []byte, res *Result) { classifyKRB(body, res) }
+
+// classifyKRB is the protocol-agnostic Kerberos request classifier. It detects
+// the legacy Kerberos 4 / KTH-KRB wire format, the KRB5 message type, the
+// padata set (which distinguishes pre-auth brute-force, AS-REP roasting,
+// PKINIT / Shadow-Credentials, S4U constrained-delegation abuse, and the
+// Bronze Bit RBCD path), the requested enctypes (RC4 downgrade), and the
+// targeted principals.
+func classifyKRB(body []byte, res *Result) {
+	if len(body) < 2 {
 		return
 	}
+	// --- Legacy Kerberos 4 / KTH-KRB / eBones --------------------------------
+	// A KRB5 message is always a DER [APPLICATION n] tag (0x6A/0x6C/0x6E/0x7E).
+	// Kerberos 4 instead opens with the protocol-version byte (4) followed by a
+	// small message-type byte (the low bit is a byte-order flag). KTH-KRB and
+	// the eBones lineage share this v4 wire format. A v4 request hitting a
+	// modern KDC port is either an ancient client or a downgrade probe.
+	if body[0] == 0x04 && body[1] <= 0x20 {
+		res.Meta["kerberos_version"] = 4
+		res.Meta["message_type"] = krb4MsgName(body[1])
+		flagAnomaly(res, "kerberos-v4-legacy")
+		res.Meta["intent"] = "Legacy Kerberos 4 / KTH-KRB request — obsolete protocol (downgrade or ancient client)"
+		if names := kerberosStrings(body); len(names) > 0 {
+			res.Meta["principals"] = names
+			res.Meta["principal"] = names[0]
+		}
+		return
+	}
+
+	res.Meta["kerberos_version"] = 5
 	tag := body[0]
 	res.Meta["asn1_tag"] = tag
+	isAS := tag == 0x6A
 	switch tag {
 	case 0x6A:
 		res.Meta["message_type"] = "AS-REQ"
@@ -81,6 +109,36 @@ func (k *kerberos) analyzeKRB(body []byte, res *Result) {
 	default:
 		res.Meta["message_type"] = "unknown"
 	}
+
+	// --- padata classification ----------------------------------------------
+	pa := kerberosPadataTypes(body)
+	if len(pa) > 0 {
+		res.Meta["padata_types"] = pa
+	}
+	hasPreauth := false
+	for _, t := range pa {
+		switch t {
+		case 2: // PA-ENC-TIMESTAMP — pre-authentication present.
+			hasPreauth = true
+		case 16, 17: // PA-PK-AS-REQ/REP — PKINIT (certificate / Shadow Credentials).
+			flagAnomaly(res, "kerberos-pkinit")
+			res.Meta["intent"] = "Kerberos PKINIT request — certificate pre-auth (key-trust / Shadow-Credentials abuse vector)"
+		case 129: // PA-FOR-USER — S4U2Self (protocol transition / constrained delegation).
+			flagAnomaly(res, "kerberos-s4u")
+			res.Meta["intent"] = "Kerberos S4U2Self (PA-FOR-USER) — constrained-delegation / protocol-transition abuse"
+		case 167: // PA-PAC-OPTIONS — resource-based constrained delegation / Bronze Bit.
+			flagAnomaly(res, "kerberos-pac-options")
+			res.Meta["intent"] = "Kerberos PA-PAC-OPTIONS — resource-based delegation / Bronze Bit (CVE-2020-17049) path"
+		}
+	}
+	// AS-REQ with no PA-ENC-TIMESTAMP = the account allows pre-auth-less AS-REP
+	// (or the attacker is probing for one): the AS-REP roasting primitive, where
+	// the returned AS-REP is encrypted with the user's key and cracked offline.
+	if isAS && !hasPreauth {
+		flagAnomaly(res, "kerberos-asrep-roast")
+		setIfEmpty(res.Meta, "intent", "Kerberos AS-REQ without pre-auth — AS-REP roasting (offline crack of accounts with pre-auth disabled)")
+	}
+
 	if names := kerberosStrings(body); len(names) > 0 {
 		res.Meta["principals"] = names
 		res.Meta["principal"] = names[0]
@@ -98,6 +156,45 @@ func (k *kerberos) analyzeKRB(body []byte, res *Result) {
 			}
 		}
 	}
+}
+
+// krb4MsgName names a Kerberos 4 message type (the low bit is a byte-order
+// flag, so we mask it off before naming).
+func krb4MsgName(b byte) string {
+	switch b & 0xFE {
+	case 2:
+		return "KRB4 AUTH_MSG_KDC_REQUEST"
+	case 4:
+		return "KRB4 AUTH_MSG_KDC_REPLY"
+	case 6:
+		return "KRB4 AUTH_MSG_APPL_REQUEST"
+	case 8:
+		return "KRB4 AUTH_MSG_APPL_REQUEST_MUTUAL"
+	case 10:
+		return "KRB4 AUTH_MSG_ERR_REPLY"
+	}
+	return "KRB4 msg-type " + itoa(int(b))
+}
+
+// kerberosPadataTypes scans a KDC-REQ for the padata-type integers in its
+// PA-DATA sequence. Each PA-DATA is SEQUENCE { [1] padata-type INTEGER,
+// [2] padata-value OCTET STRING }; the [1] wrapper around a 1-byte type is
+// 0xA1 0x03 0x02 0x01 <type>, and around a 2-byte type (>=128) is
+// 0xA1 0x04 0x02 0x02 <hi> <lo>. We match both forms.
+func kerberosPadataTypes(body []byte) []int {
+	var out []int
+	for i := 0; i+4 < len(body) && len(out) < 32; i++ {
+		if body[i] != 0xA1 {
+			continue
+		}
+		switch {
+		case body[i+1] == 0x03 && body[i+2] == 0x02 && body[i+3] == 0x01:
+			out = append(out, int(body[i+4]))
+		case body[i+1] == 0x04 && body[i+2] == 0x02 && body[i+3] == 0x02 && i+5 < len(body):
+			out = append(out, int(body[i+4])<<8|int(body[i+5]))
+		}
+	}
+	return out
 }
 
 // readKRB reads one length-prefixed Kerberos message body (4-byte big-endian

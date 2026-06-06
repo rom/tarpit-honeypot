@@ -182,10 +182,13 @@ func smb1NegotiateResponse(req []byte, dialectIndex uint16, id *identity.Identit
 	wordData = binary.LittleEndian.AppendUint32(wordData, 65536)      // MaxRawSize
 	wordData = binary.LittleEndian.AppendUint32(wordData, sessionKey) // SessionKey (per-deployment)
 	wordData = binary.LittleEndian.AppendUint32(wordData, 0x8001f3fd) // Capabilities (UNICODE+...)
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0)          // SystemTime low
-	wordData = binary.LittleEndian.AppendUint32(wordData, 0)          // SystemTime high
-	wordData = binary.LittleEndian.AppendUint16(wordData, 0)          // ServerTimeZone
-	wordData = append(wordData, 0x08)                                 // EncryptionKeyLength = 8
+	// SystemTime: a real server stamps the current time here as a 64-bit
+	// FILETIME; leaving it zero (the old behavior) is an obvious tell.
+	now := filetimeNow()
+	wordData = binary.LittleEndian.AppendUint32(wordData, uint32(now&0xffffffff)) // SystemTime low
+	wordData = binary.LittleEndian.AppendUint32(wordData, uint32(now>>32))        // SystemTime high
+	wordData = binary.LittleEndian.AppendUint16(wordData, 0)                      // ServerTimeZone (UTC)
+	wordData = append(wordData, 0x08)                                             // EncryptionKeyLength = 8
 
 	// Byte data: 8-byte challenge (per-deployment) + UTF-16LE "WORKGROUP\0"
 	bytesField := append([]byte{}, challenge...)

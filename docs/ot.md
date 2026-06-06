@@ -139,6 +139,110 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 
 ---
 
+## 2a. Per-protocol implementation detail
+
+This is the honest, function-level account of *what subset* each protocol
+implements and *how it behaves on the wire*. Behavior legend:
+
+- **Interactive reply** — completes the protocol handshake and answers each
+  request with a believable, protocol-legal response (TCP). Nothing is ever
+  actually actuated; "successful" writes/mode-changes are fabricated ACKs.
+- **Bounded reply (rate-limited)** — UDP handler that answers, but behind a
+  global reflection limiter with a size-bounded datagram (records
+  `rate_limited` when it declines, so a spoofed-source flood can't amplify).
+- **Capture-only (passive)** — records + classifies the request and sends
+  **nothing** (the reflection-safe choice for spoofable UDP / L2).
+
+Every handler stamps `intent` + ATT&CK-for-ICS markers regardless of whether it
+replies. Any listener can be wrapped/replaced with a **`lua`** or **`scripted`**
+handler to customize the exact bytes returned (see [`lua.md`](lua.md)) — the Lua
+script sees the request payload and returns the response, so you can pin a
+vendor-specific identity or add a function code the built-in handler treats
+generically.
+
+### Modbus/TCP (`modbus`, 502) — Interactive reply, deep
+
+Full MBAP framing + per-PDU dispatch. Implemented function codes:
+
+| FC | Name | Behavior |
+|---|---|---|
+| `0x01`/`0x02` | Read Coils / Discrete Inputs | answers with believable bit values |
+| `0x03`/`0x04` | Read Holding / Input Registers | answers with believable register values |
+| `0x05` | Write Single Coil | echoes (write attempt → `ics-modbus-write`) |
+| `0x06` | Write Single Register | echoes (write attempt) |
+| `0x0F` | Write Multiple Coils | ACKs (write attempt) |
+| `0x10` | Write Multiple Registers | ACKs (write attempt) |
+| `0x16` | Mask Write Register | echoes (write attempt) |
+| `0x17` | Read/Write Multiple Registers | answers + write attempt |
+| `0x07` | Read Exception Status | answers (Metasploit `modbus_detect` tell) |
+| `0x08` | Diagnostics | request/echo loopback (`ics-modbus-diagnostic`) |
+| `0x0B`/`0x0C` | Get Comm Event Counter / Log | answers |
+| `0x11` | Report Server ID | answers with the deviceID identity |
+| `0x14`/`0x15` | Read / Write File Record | read returns a believable record (config exfil); write captured |
+| `0x18` | Read FIFO Queue | answers |
+| `0x2B`/MEI `0x0E` | Read Device Identification | vendor/product/version strings (the asset-scanner deception, → Schneider Modicon by default) |
+| `0x28`/`0x29`/`0x2A` | Schneider program/firmware transfer | captured as program access |
+| `0x5A` | **UMAS** (Schneider) | sub-function parsed (reservation, read/write memory, run/stop, program) → `modbus-umas*` |
+| 65–72, 100–110 | reserved / vendor-defined | captured, generic ack |
+
+Unknown/unsupported FCs return a Modbus **exception** (the real-server reply).
+**Modbus/TCP Security** (`modbus_security`/`modbuss`, 802) is the same command
+set after TLS termination (JA3/JA4/JA3S + client-cert subject + the Modbus role
+OID `1.3.6.1.4.1.50316.802.1`).
+
+### Other deep TCP control protocols (Interactive reply)
+
+- **S7comm** (`s7`, 102) — COTP CR→CC, Setup Communication, SZL read (S7-300
+  identity), Read/Write Var, PLC STOP/control, block up/download. **S7comm-Plus**
+  (`s7comm_plus`, 102) parses the S7-1200/1500 PDU (version→firmware, opcode,
+  Explore/Get-Set-MultiVar/CreateObject/Invoke). The integrity-protected session
+  is *not* emulated.
+- **IEC 60870-5-104** (`iec104`, 2404) — STARTDT/STOPDT/TESTFR, I/S/U-frame
+  parsing, General/Counter Interrogation, single/double + set-point commands,
+  reset-process.
+- **DNP3** (`dnp3`, 20000) — data-link LINK_STATUS/ACK (correct CRC) **plus**
+  application layer (de-blocked): READ, WRITE, SELECT/OPERATE/DIRECT_OPERATE(_NR),
+  COLD/WARM_RESTART, STOP_APPL, ENABLE/DISABLE_UNSOLICITED.
+- **EtherNet/IP + CIP** (`ethernetip`, 44818) — RegisterSession, ListIdentity,
+  SendRRData/SendUnitData CIP (Get/Set/Read_Tag/Write_Tag/Reset/Start/Stop/
+  Forward_Open). Full DCOM-style connected messaging not completed.
+- **IEC 61850 MMS** (`mms`, 102) — COTP + ACSE/MMS association, confirmed-service
+  detection (getNameList/identify/read/write); **ICCP/TASE.2** profile detection
+  + Transfer-Set / Bilateral-Table / Block-5 device-control classification.
+  Heuristic BER scan, not a full ASN.1 decoder. **Secure ICCP** (`iccp_secure`,
+  3782) is the same over TLS.
+- **MELSEC** (`melsec`), **ADS/AMS** (`ads`/`ads_discovery`), **FINS**
+  (`fins_tcp`/`fins`), **ROC Plus** (`roc_plus`), **PCOM** (`pcom`), **SECS/GEM**
+  (`secs_gem`), **CODESYS V3** (`codesys`), **PCWorx** (`pcworx`), **KNXnet/IP**
+  (`knx`) — each decodes its session/service layer and classifies recon vs
+  control vs program-access (see the table in §2 for the exact verbs).
+- **IEEE C37.118.2** (`c37118`, 4712) — frame parse + COMMAND classification
+  (turn-on/off transmission, send CFG/HEADER); answers a CRC-checked CFG-2.
+- **OSDP** (`osdp`) — access-control frame parse; classifies osdp_OUT (door
+  strike), osdp_COMSET, osdp_KEYSET/CHLNG/SCRYPT; replies osdp_ACK/PDID.
+- **ProConOS** (`proconos`, 20547) — opcode classification (START/STOP, logic
+  DOWNLOAD); short ack.
+
+### Fingerprint-grade TCP (Interactive reply, identity-only)
+
+`ge_srtp`, `hartip`, `crimson`, `fox`, `atg`, `focas`, `osisoft_pi` — complete
+the opening exchange and return a believable **identity** (model / firmware /
+version) so a scanner records a live device, and flag the probe, but do **not**
+decode per-command control vs recon.
+
+### UDP
+
+- **Bounded reply (rate-limited):** `bacnet` (Who-Is→I-Am, ReadProperty,
+  WriteProperty, DeviceCommunicationControl, ReinitializeDevice,
+  AtomicWriteFile), `fins` (UDP), `tristation` (TriStation/TSAA — program-
+  download/control flagged safety-controller manipulation, the TRITON/TRISIS
+  vector), `bsap`, `wdbrpc` (WDB memory/context-call + URGENT/11).
+- **Capture-only (passive):** `profinet` (DCE-RPC CM opnums), `ge_egd`
+  (producer id), `lontalk` (data-packet header), `knx` discovery — record +
+  classify, never reply (reflection-safe).
+
+---
+
 ## 3. Emulated commands & attacker-intent
 
 Each deep handler decodes the protocol's command/operation and stamps an

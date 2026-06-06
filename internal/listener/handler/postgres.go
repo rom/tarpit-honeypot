@@ -48,8 +48,15 @@ func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			return res, nil
 		}
 		length := int(binary.BigEndian.Uint32(head))
-		if length < 4 || length > 8192 {
+		if length < 8 || length > 8192 {
+			// Not a valid PostgreSQL message frame (a bare banner-grab / nmap
+			// NULL or GenericLines probe). Real PostgreSQL answers an invalid
+			// startup packet with a FATAL "unsupported frontend protocol"
+			// ErrorResponse — emit one so a scanner fingerprints us as
+			// PostgreSQL rather than guessing a generic / H2 service.
 			res.Meta["bad_length"] = length
+			_, _ = conn.Write(buildPgErrorFATAL("0A000", "unsupported frontend protocol 0.0: server supports 3.0 to 3.0"))
+			res.BannerSent = "postgres FATAL 0A000"
 			return res, nil
 		}
 		body := make([]byte, length-4)
@@ -170,19 +177,28 @@ func bytesTrimNull(b []byte) []byte {
 	return b
 }
 
-// buildPgErrorFATAL constructs an ErrorResponse with severity FATAL.
-// Fields: S=FATAL, C=<code>, M=<message>, then terminating 0 byte.
+// buildPgErrorFATAL constructs an ErrorResponse matching what a real
+// PostgreSQL 12+ backend emits: the localized severity (S), the
+// non-localized severity (V, added in 9.6), the SQLSTATE code (C), the
+// message (M), and the source-location fields (F/L/R). Emitting the full
+// field set — not just S/C/M — is what nmap's PostgreSQL service signature
+// keys on, so the decoy is fingerprinted as PostgreSQL rather than a
+// generic / H2 database. Each field is a tagged, null-terminated string;
+// the body ends with an extra null.
 func buildPgErrorFATAL(code, msg string) []byte {
+	field := func(b []byte, tag byte, val string) []byte {
+		b = append(b, tag)
+		b = append(b, []byte(val)...)
+		return append(b, 0)
+	}
 	body := []byte{}
-	body = append(body, 'S')
-	body = append(body, []byte("FATAL")...)
-	body = append(body, 0)
-	body = append(body, 'C')
-	body = append(body, []byte(code)...)
-	body = append(body, 0)
-	body = append(body, 'M')
-	body = append(body, []byte(msg)...)
-	body = append(body, 0)
+	body = field(body, 'S', "FATAL")
+	body = field(body, 'V', "FATAL")
+	body = field(body, 'C', code)
+	body = field(body, 'M', msg)
+	body = field(body, 'F', "postmaster.c")
+	body = field(body, 'L', "2138")
+	body = field(body, 'R', "ProcessStartupPacket")
 	body = append(body, 0)
 	out := make([]byte, 5+len(body))
 	out[0] = 'E'

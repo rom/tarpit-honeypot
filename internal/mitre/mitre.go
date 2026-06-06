@@ -456,6 +456,7 @@ var anomalyTags = map[string]Tag{
 	"ics-field-device-probe":  {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"ics-data-bus-discovery":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"ics-process-data-access": {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"ics-historian-access":    {Techniques: []string{"T0811", "T0801"}, Tactics: []string{"collection"}},
 	// ICS control / manipulation (impact).
 	"ics-modbus-write":                   {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	"ics-modbus-diagnostic":              {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
@@ -581,6 +582,11 @@ var anomalyTags = map[string]Tag{
 	// Active Directory / Kerberos abuse.
 	"kerberos-tgs-request":   {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
 	"kerberos-rc4-requested": {Techniques: []string{"T1558.003"}, Tactics: []string{"credential-access"}},
+	"kerberos-asrep-roast":   {Techniques: []string{"T1558.004"}, Tactics: []string{"credential-access"}},
+	"kerberos-pkinit":        {Techniques: []string{"T1556.005", "T1649"}, Tactics: []string{"credential-access"}},
+	"kerberos-s4u":           {Techniques: []string{"T1558", "T1550.003"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"kerberos-pac-options":   {Techniques: []string{"T1558", "T1550.003"}, Tactics: []string{"credential-access", "lateral-movement"}},
+	"kerberos-v4-legacy":     {Techniques: []string{"T1558", "T1040"}, Tactics: []string{"credential-access"}},
 	"ldap-spn-enumeration":   {Techniques: []string{"T1558.003", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-asrep-roast-recon": {Techniques: []string{"T1558.004", "T1087.002"}, Tactics: []string{"credential-access", "discovery"}},
 	"ldap-enumeration":       {Techniques: []string{"T1087.002"}, Tactics: []string{"discovery"}},
@@ -1129,6 +1135,7 @@ var techDescriptions = map[string]string{
 	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
+	"T0811": "Data from Information Repositories (ICS) — collecting from a historian / data repository (e.g. OSIsoft PI).",
 	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
 	"T0856": "Spoof Reporting Message (ICS) — forging device/process reporting messages (e.g. GOOSE) to mislead subscribers.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
@@ -1250,6 +1257,9 @@ var d3fend = map[string][]string{
 	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information
 	"T1557": {"D3-NTA"},                             // adversary-in-the-middle
 	"T1558": {"D3-MFA", "D3-DUC"},                   // steal/forge Kerberos tickets
+	"T1550": {"D3-MFA", "D3-NTA", "D3-DE"},          // use alternate authentication material
+	"T1556": {"D3-MFA", "D3-DE"},                    // modify authentication process
+	"T1649": {"D3-MFA", "D3-DE"},                    // steal or forge authentication certificates
 	"T1498": {"D3-ITF"},                             // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
@@ -1267,6 +1277,7 @@ var d3fend = map[string][]string{
 	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
+	"T0811": {"D3-NTA", "D3-DE"},                    // ICS: data from information repositories (historian)
 	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
 	"T0856": {"D3-NTA", "D3-DE"},                    // ICS: spoof reporting message (GOOSE)
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety

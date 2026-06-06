@@ -586,7 +586,69 @@ var catalog = []Record{
 		Technique:  "T1190", Tactic: "initial-access",
 		Description: "Elasticsearch default dynamic MVEL scripting remote code execution.",
 	},
+	// ---- Web app / appliance CVEs (2024–2025), detectable by request shape ----
+	{
+		ID: "CVE-2024-51378", Name: "CyberPanel getresetstatus RCE", CVSS: 10.0, Service: "http",
+		Signatures: []string{"/dataBases/upgrademysqlstatus", "/ftp/getresetstatus", "/dns/getresetstatus"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "CyberPanel pre-auth command injection via the *getresetstatus endpoints (statusfile) — mass-exploited by PSAUX ransomware.",
+	},
+	{
+		ID: "CVE-2024-57727", Name: "SimpleHelp path traversal", CVSS: 7.5, Service: "http",
+		Signatures: []string{"/toolbox-resource/", "..%2f..%2f..%2f..%2fprogramdata"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "SimpleHelp remote support unauthenticated path traversal — arbitrary file read (server config / credentials).",
+	},
+	{
+		ID: "CVE-2024-32113", Name: "Apache OFBiz path traversal RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/webtools/control/main/programexport", "/programexport;/", "viewjavascript;/"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache OFBiz path traversal to the ProgramExport screen — Groovy RCE via a view-handler override.",
+	},
+	{
+		ID: "CVE-2024-38475", Name: "Apache mod_rewrite path traversal", CVSS: 9.1, Service: "http",
+		Signatures: []string{"/cgi-bin/%2e%2e%2f", "/legacyendpoint/%2f%2f", "%3f/etc/passwd"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Apache HTTP Server mod_rewrite output normalization flaw — substitution escapes the doc root (source disclosure / RCE depending on config).",
+	},
+	{
+		ID: "CVE-2024-5806", Name: "MOVEit Transfer SFTP auth bypass", CVSS: 9.1, Service: "http",
+		Signatures: []string{"/api/v1/folders", "guestaccess.aspx", "/machine2.aspx"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Progress MOVEit Transfer SFTP module improper authentication — impersonation / auth bypass.",
+	},
+	{
+		ID: "CVE-2024-20439", Name: "Cisco Smart Licensing static cred", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/cslu/v1/scheduler/jobs", "/cslu/v1/files"},
+		Technique:  "T1078", Tactic: "initial-access",
+		Description: "Cisco Smart Licensing Utility undocumented static administrative credential — full API access.",
+	},
+	{
+		ID: "CVE-2024-11680", Name: "ProjectSend auth bypass", CVSS: 9.8, Service: "http",
+		Signatures: []string{"options.php?action=add_user", "/? section=options", "default_options.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "ProjectSend improper authorization (options.php) — set config, create accounts, upload webshells.",
+	},
+	{
+		ID: "CVE-2025-49144", Name: "Notepad++ installer privilege escalation", CVSS: 7.3, Service: "http",
+		Signatures: nil,
+		Technique:  "T1574", Tactic: "privilege-escalation",
+		Description: "Notepad++ v8.8.1 installer uncontrolled executable search path — local privilege escalation (advisory).",
+	},
+
 	// ---- Additional advisory-only records (binary/version/non-HTTP) ----
+	{
+		ID: "CVE-2024-50623", Name: "Cleo Harmony/VLTrader unrestricted upload", CVSS: 9.8, Service: "http",
+		Signatures: nil, // exploited via the Autorun/Synchronization path; advisory to avoid FPs
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "Cleo Harmony / VLTrader / LexiCom unrestricted file upload+download → RCE (Cl0p mass exploitation). Advisory-only.",
+	},
+	{
+		ID: "CVE-2024-12356", Name: "BeyondTrust PRA/RS command injection", CVSS: 9.8, Service: "http",
+		Signatures: nil,
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "BeyondTrust Privileged Remote Access / Remote Support unauthenticated command injection. Advisory-only.",
+	},
 	// No single TCP-side exploit string (heap overflows, NTLM relay, version
 	// gates); these advertise the unpatched product + give cve:<id> events
 	// and vuln_emulation advisories an ATT&CK mapping via Lookup.
@@ -1936,6 +1998,9 @@ var catalog = []Record{
 	{ID: "CVE-2024-20353", Name: "Cisco ASA/FTD web services DoS", CVSS: 8.6, Service: "https", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-400"}, CPE: "cpe:2.3:o:cisco:adaptive_security_appliance_software:*:*:*:*:*:*:*:*", EPSS: 0.50, Description: "Cisco ASA/FTD management / VPN web server denial of service exploited in the ArcaneDoor campaign."},
 	{ID: "CVE-2024-20359", Name: "Cisco ASA/FTD persistent code execution", CVSS: 6.0, Service: "https", Technique: "T1542", Tactic: "persistence", CWE: []string{"CWE-94"}, CPE: "cpe:2.3:o:cisco:adaptive_security_appliance_software:*:*:*:*:*:*:*:*", EPSS: 0.20, Description: "Cisco ASA/FTD legacy capability lets an authenticated attacker run crafted code persisted across reboots (ArcaneDoor, paired with CVE-2024-20353)."},
 	{ID: "CVE-2016-6366", Name: "Cisco ASA SNMP RCE (EXTRABACON)", CVSS: 8.8, Service: "snmp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-120"}, CPE: "cpe:2.3:o:cisco:adaptive_security_appliance_software:*:*:*:*:*:*:*:*", EPSS: 0.70, Description: "Cisco ASA SNMP buffer overflow (Equation Group EXTRABACON) → unauthenticated RCE given the community string."},
+	// MikroTik RouterOS — Winbox path traversal (advisory; Winbox is the
+	// binary protocol on TCP 8291, not HTTP, so this is version-advisory only).
+	{ID: "CVE-2018-14847", Name: "MikroTik Winbox path traversal", CVSS: 9.1, Service: "winbox", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-22"}, CPE: "cpe:2.3:o:mikrotik:routeros:*:*:*:*:*:*:*:*", EPSS: 0.94, Description: "MikroTik RouterOS Winbox (8291) directory traversal lets an unauthenticated attacker read the user database / credentials (Vault7 Chimay-Red, mass-exploited)."},
 	// Cisco IOS / IOS-XE / Small Business routers / HyperFlex.
 	{ID: "CVE-2023-20273", Name: "Cisco IOS-XE web UI command injection", CVSS: 7.2, Service: "http", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, CPE: "cpe:2.3:o:cisco:ios_xe:*:*:*:*:*:*:*:*", EPSS: 0.85, Description: "Cisco IOS-XE web UI command injection used after CVE-2023-20198 to write the BadCandy implant as root."},
 	{ID: "CVE-2017-3881", Name: "Cisco IOS CMP Telnet RCE", CVSS: 9.8, Service: "telnet", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-20"}, CPE: "cpe:2.3:o:cisco:ios:*:*:*:*:*:*:*:*", EPSS: 0.50, Description: "Cisco IOS/IOS-XE Cluster Management Protocol mishandles crafted Telnet options → unauthenticated RCE (Vault7)."},

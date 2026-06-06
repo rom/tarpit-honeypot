@@ -1,6 +1,6 @@
 # Archetype catalog
 
-`tarpit-honeypot` ships **162** OS / device *archetypes*. An archetype is a
+`tarpit-honeypot` ships **186** OS / device *archetypes*. An archetype is a
 coherent identity — the banners, SNMP MIB-2 identity, MAC vendor OUI, TLS
 posture, ICMP TTL, default service map, web-UI body, and advertised
 CVEs — that a real instance of a given operating system or device would
@@ -30,6 +30,36 @@ exploitable** either way:
 
 Every archetype below lists the CVEs it advertises. Run
 `tarpit-honeypot list-cves` for the full catalog with CVSS + detectability.
+
+## Consistency & anachronism audit
+
+An archetype is only useful if it has no *internal* anachronism — a feature
+that could not coexist with the version it claims. The catalog is audited for
+these; findings and fixes:
+
+- **SSH algorithm timeline (fixed).** The server KEXINIT now advertises only
+  the algorithms that existed in the OpenSSH release named in the banner. The
+  generator buckets by the real feature timeline: `< 5.7` → no elliptic curve
+  at all; `5.7–6.4` → NIST-curve ECDH/ECDSA but **no** Curve25519 / Ed25519 /
+  chacha20 (those first shipped in **6.5**, Jan 2014); `6.5–7.x` → legacy set
+  with 25519 + chacha20 + CBC/3DES; `≥ 8.0` → modern. This removes the classic
+  *"OpenSSH 5.3 (2009) offering an Ed25519 host key"* tell (the CentOS 5 /
+  CentOS 6 / HPE OnBoard Administrator archetypes were affected). A regression
+  test (`TestSSHNoAlgorithmAnachronisms`) pins the mapping.
+- **TLS posture vs OS era (fixed).** Old OSes no longer negotiate TLS they
+  could not speak: **CentOS 5** (OpenSSL 0.9.8) is capped at TLS 1.0 with the
+  legacy cipher suites, **CentOS 6** (OpenSSL 1.0.1) at TLS 1.2; the Windows
+  7 / 8 / Server 2008 archetypes already pinned TLS 1.1 / 1.2 / 1.0
+  respectively. A modern OS that advertised only SSLv3/TLS 1.0 would be an
+  equal-and-opposite tell, so the modern archetypes keep the TLS 1.2+ default.
+- **Verified-correct (no change).** Some apparent mismatches are historically
+  accurate and were left alone: **Windows Server 2019** genuinely shipped
+  *OpenSSH for Windows 7.7* (Win10 1809 lineage); **CentOS 5** really did ship
+  OpenSSH 4.3 / Apache 2.2.3 / vsftpd 2.0.5 / MySQL 5.0.95; HPE OnBoard
+  Administrator firmware legitimately runs a very old OpenSSH. Daemon versions
+  are taken from each distro's package archive at the relevant point release.
+- **IIS ↔ Windows mapping.** Windows Server 2016/2019/2022 → IIS 10.0; 2012 →
+  8.0/8.5; 2008 R2 → 7.5 — verified consistent with each `httpServer`.
 
 ## Catalog at a glance
 

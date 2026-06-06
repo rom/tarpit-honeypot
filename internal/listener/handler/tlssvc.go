@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,33 @@ import (
 // ldaps / mqtts / ftps) and the PostgreSQL SSLRequest upgrade. It reuses the
 // same on-disk format, per-service subject/key spread, and rotation as the
 // https handler so every TLS service on a sensor shares one coherent cert store.
+// Process-wide deployment TLS identity. Set once at startup from
+// sensor.tls_domain / sensor.tls_org (see SetTLSDefaults) and read-only
+// thereafter, so every TLS-bearing service on the host presents a *consistent*
+// certificate identity — the admin's real name/domain — instead of the old
+// per-service "localhost" default. Empty values preserve the prior behavior.
+var (
+	defaultTLSDomain string
+	defaultTLSOrg    string
+)
+
+// SetTLSDefaults installs the deployment-wide certificate CN/SAN domain and
+// organization used as the fallback for any TLS service that doesn't pin its
+// own https.hosts / https.cn / https.org. Call once before listeners start.
+func SetTLSDefaults(domain, org string) {
+	defaultTLSDomain = strings.TrimSpace(domain)
+	defaultTLSOrg = strings.TrimSpace(org)
+}
+
+// defaultCertHost returns the deployment TLS domain, or "localhost" when none
+// is configured.
+func defaultCertHost() string {
+	if defaultTLSDomain != "" {
+		return defaultTLSDomain
+	}
+	return "localhost"
+}
+
 type certManager struct {
 	mu         sync.Mutex
 	cache      map[string]*tls.Certificate
@@ -85,13 +113,17 @@ func (m *certManager) certFor(prof certProfile) (*tls.Certificate, error) {
 // matches the decoy's advertised age.
 func (m *certManager) serverConfig(listenerID string, hosts []string, arch *archetype.Profile) (*tls.Config, error) {
 	if len(hosts) == 0 {
-		hosts = []string{"localhost"}
+		hosts = []string{defaultCertHost()}
+	}
+	org := deriveOrg(m.id, listenerID)
+	if defaultTLSOrg != "" {
+		org = defaultTLSOrg // deployment-wide org for a consistent cert identity
 	}
 	prof := certProfile{
 		listenerID: listenerID,
 		hosts:      hosts,
 		cn:         hosts[0],
-		org:        deriveOrg(m.id, listenerID),
+		org:        org,
 		keyType:    deriveKeyType(m.id, listenerID),
 	}
 	cert, err := m.certFor(prof)
@@ -111,7 +143,7 @@ func tlsHosts(cfg config.Listener) []string {
 	if len(cfg.HTTPS.Hosts) > 0 {
 		return cfg.HTTPS.Hosts
 	}
-	return []string{"localhost"}
+	return []string{defaultCertHost()}
 }
 
 // maybeCertMgr builds a cert manager from deps, or nil when no data dir is
