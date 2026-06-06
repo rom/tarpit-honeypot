@@ -15,7 +15,10 @@
 // archetype has nothing to say.
 package archetype
 
-import "strings"
+import (
+	"crypto/tls"
+	"strings"
+)
 
 // init merges every Profile in deviceArchetypes (FreeBSD / OpenBSD /
 // Arch / Rocky / Alma / Oracle / Moxa / Siemens) into the main
@@ -669,6 +672,8 @@ var registry = map[string]*Profile{
 		telnetBanner: "\r\nCentOS release 5.11 (Final)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
 		smtpProduct:  "Postfix 2.3.3",
 		mysqlVersion: "5.0.95",
+		// OpenSSL 0.9.8e: SSLv3/TLS 1.0 only — no TLS 1.1/1.2/1.3.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS10, WeakCiphers: true},
 	},
 	"centos-6": {
 		Name: "centos-6", DisplayName: "CentOS 6", Family: "rhel",
@@ -678,6 +683,8 @@ var registry = map[string]*Profile{
 		telnetBanner: "\r\nCentOS release 6.10 (Final)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
 		smtpProduct:  "Postfix 2.6.6",
 		mysqlVersion: "5.1.73",
+		// OpenSSL 1.0.1: TLS 1.0–1.2 (1.2 only from 6.5+), no TLS 1.3.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
 	},
 	"centos-7": {
 		Name: "centos-7", DisplayName: "CentOS 7", Family: "rhel",
