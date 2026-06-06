@@ -448,6 +448,10 @@ var anomalyTags = map[string]Tag{
 	"service-enumeration":     {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"device-discovery-probe":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"remote-desktop-probe":    {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"vnc-auth-attempt":        {Techniques: []string{"T1021.005", "T1110.001"}, Tactics: []string{"lateral-movement", "credential-access"}},
+	"vnc-none-auth-probe":     {Techniques: []string{"T1021.005", "T1595"}, Tactics: []string{"lateral-movement", "reconnaissance"}},
+	"vnc-session":             {Techniques: []string{"T1021.005"}, Tactics: []string{"lateral-movement"}},
+	"vnc-clipboard-capture":   {Techniques: []string{"T1115"}, Tactics: []string{"collection"}},
 	"ics-device-enumeration":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"ics-field-device-probe":  {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"ics-data-bus-discovery":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
@@ -1240,6 +1244,7 @@ var d3fend = map[string][]string{
 	"T1110": {"D3-MFA", "D3-DUC", "D3-DE", "D3-CH"}, // brute force
 	"T1078": {"D3-MFA", "D3-DUC", "D3-CH"},          // valid accounts
 	"T1021": {"D3-MFA", "D3-NTA", "D3-RTSD"},        // remote services
+	"T1115": {"D3-NTA", "D3-DE"},                    // clipboard data
 	"T1071": {"D3-NTA", "D3-DNSTA"},                 // application-layer C2
 	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"},          // ingress tool transfer
 	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information

@@ -53,6 +53,9 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	res.Meta = map[string]any{
 		"client_version": string(clientVer),
 	}
+	if fam := vncClientFamily(string(clientVer)); fam != "" {
+		res.Meta["vnc_client"] = fam
+	}
 
 	// The security-handshake form depends on the negotiated RFB version. In
 	// RFB 3.3 the SERVER chooses the single security type and sends it as a
@@ -80,8 +83,16 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 			return res, nil
 		}
 		res.Meta["security_type_selected"] = sel[0]
+		res.Meta["security_type_name"] = vncSecurityTypeName(sel[0])
 		if sel[0] != 2 {
-			// Client picked something we didn't offer; just close.
+			// Client picked a type we didn't offer (a well-behaved client only
+			// picks from the list). Type 1 (None) means a scanner hunting for an
+			// unauthenticated VNC server; the higher types (Tight/TLS/VeNCrypt/
+			// Apple-ARD) leak the client family. Record + flag, then close.
+			if sel[0] == 1 {
+				flagAnomaly(&res, "vnc-none-auth-probe")
+				res.Meta["intent"] = "VNC None-auth probe — scanning for an unauthenticated VNC server"
+			}
 			return res, nil
 		}
 	}
@@ -128,10 +139,66 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		res.BannerSent = "rfb 003.008 + VNC auth accepted (session)"
 		return res, nil
 	}
-	// SecurityResult = 1 (failed).
-	_, _ = conn.Write([]byte{0, 0, 0, 1})
+	// SecurityResult = 1 (failed). In RFB 3.8 the server follows the status
+	// word with a length-prefixed reason string; older versions send only the
+	// 4-byte status. Omitting the reason on a 3.8 association is itself a
+	// honeypot tell, so we mirror a real server.
+	failure := []byte{0, 0, 0, 1}
+	if rfbMinor(clientVer) >= 8 {
+		reason := "Authentication failed"
+		rl := make([]byte, 4)
+		binary.BigEndian.PutUint32(rl, uint32(len(reason)))
+		failure = append(failure, rl...)
+		failure = append(failure, []byte(reason)...)
+	}
+	_, _ = conn.Write(failure)
 	res.BannerSent = "rfb 003.008 + VNC auth failed"
 	return res, nil
+}
+
+// vncClientFamily fingerprints the VNC client/server product from its RFB
+// version string. Apple Remote Desktop / macOS Screen Sharing uses the
+// non-standard minor 889 ("RFB 003.889") — a strong, documented tell;
+// other products mostly share "RFB 003.008", so we only name what is
+// genuinely distinctive and leave the rest to the encodings fingerprint.
+func vncClientFamily(ver string) string {
+	switch {
+	case len(ver) >= 11 && ver[:8] == "RFB 003." && ver[8:11] == "889":
+		return "apple-remote-desktop"
+	case len(ver) >= 11 && ver[:8] == "RFB 004.":
+		return "apple-screen-sharing"
+	case len(ver) >= 11 && ver[:8] == "RFB 003." && ver[8:11] == "006":
+		return "ultravnc"
+	}
+	return ""
+}
+
+// vncSecurityTypeName names the RFB security type a client selects (RFC 6143
+// + the common vendor extensions a scanner/real client may pick).
+func vncSecurityTypeName(t byte) string {
+	switch t {
+	case 0:
+		return "Invalid"
+	case 1:
+		return "None"
+	case 2:
+		return "VNC-Authentication"
+	case 5:
+		return "RA2"
+	case 6:
+		return "RA2ne"
+	case 16:
+		return "Tight"
+	case 17:
+		return "Ultra"
+	case 18:
+		return "TLS"
+	case 19:
+		return "VeNCrypt"
+	case 30:
+		return "Apple-ARD"
+	}
+	return "type-" + itoa(int(t))
 }
 
 // runVNCSession plays the post-auth RFB server role: read ClientInit, send a
@@ -170,8 +237,18 @@ func (v *vnc) runVNCSession(conn net.Conn, res *Result) {
 				return
 			}
 			n := int(b[1])<<8 | int(b[2])
-			if n < 0 || n > 4096 || !skipN(conn, n*4) {
+			if n < 0 || n > 4096 {
 				return
+			}
+			// The advertised encodings are a strong client fingerprint (Tight,
+			// ZRLE, the Apple/TightVNC pseudo-encodings, the JPEG-quality and
+			// cursor pseudo-encodings). Capture them once.
+			enc := make([]byte, n*4)
+			if _, err := io.ReadFull(conn, enc); err != nil {
+				return
+			}
+			if res.Meta["vnc_encodings"] == nil {
+				res.Meta["vnc_encodings"] = vncEncodingNames(enc)
 			}
 		case 3: // FramebufferUpdateRequest: 9
 			if !skipN(conn, 9) {
@@ -211,6 +288,56 @@ func (v *vnc) runVNCSession(conn net.Conn, res *Result) {
 			return // unknown message type — end the session
 		}
 	}
+}
+
+// vncEncodingNames decodes a SetEncodings body (big-endian int32 encoding
+// numbers) into human-readable names for the recognized encodings and
+// pseudo-encodings. Unknown numbers are rendered as their signed value.
+func vncEncodingNames(b []byte) []string {
+	var out []string
+	for i := 0; i+4 <= len(b) && len(out) < 64; i += 4 {
+		e := int32(binary.BigEndian.Uint32(b[i : i+4]))
+		out = appendUnique(out, vncEncodingName(e))
+	}
+	return out
+}
+
+func vncEncodingName(e int32) string {
+	switch e {
+	case 0:
+		return "Raw"
+	case 1:
+		return "CopyRect"
+	case 2:
+		return "RRE"
+	case 5:
+		return "Hextile"
+	case 6:
+		return "Zlib"
+	case 7:
+		return "Tight"
+	case 8:
+		return "ZlibHex"
+	case 16:
+		return "ZRLE"
+	case -239:
+		return "Cursor"
+	case -223:
+		return "DesktopSize"
+	case -257:
+		return "PointerPos"
+	case -307:
+		return "ExtDesktopSize"
+	case -224:
+		return "LastRect"
+	}
+	if e <= -23 && e >= -32 {
+		return "JPEG-Quality"
+	}
+	if e <= -247 && e >= -256 {
+		return "Compression"
+	}
+	return "enc" + itoa(int(e))
 }
 
 // serverInit builds an RFB ServerInit: 1024x768, 32bpp true-colour pixel format,
