@@ -2,8 +2,10 @@ package handler
 
 import (
 	"context"
+	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,5 +138,109 @@ func TestBACnetReinitialize(t *testing.T) {
 	r, _ := (&bacnet{}).Handle(context.Background(), pkt, src, pc, config.Listener{})
 	if !hasAnom(r, "bacnet-reinitialize-device") {
 		t.Errorf("ReinitializeDevice not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// IEC-104: STARTDT, a General Interrogation (process-image enum) and a single
+// command (control-point actuation).
+func TestIEC104InterrogationAndCommand(t *testing.T) {
+	startdt := []byte{0x68, 0x04, 0x07, 0x00, 0x00, 0x00}
+	gi := []byte{0x68, 0x0E, 0x00, 0x00, 0x00, 0x00,
+		0x64, 0x01, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x14}
+	cmd := []byte{0x68, 0x0E, 0x00, 0x00, 0x00, 0x00,
+		0x2D, 0x01, 0x06, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01}
+	msg := append(append(append([]byte{}, startdt...), gi...), cmd...)
+
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&iec104{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, msg)
+	if !hasAnom(r, "ics-process-data-access") {
+		t.Errorf("General Interrogation not flagged: %v", r.Meta["anomalies"])
+	}
+	if !hasAnom(r, "ics-iec104-command") {
+		t.Errorf("single command not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// EtherNet/IP: a SendRRData carrying a CIP Write_Tag is control manipulation.
+func TestEtherNetIPCIPWrite(t *testing.T) {
+	mr := []byte{0x4D, 0x02, 0x20, 0x04, 0x24, 0x01} // Write_Tag, path to obj
+	var data []byte
+	data = binary.LittleEndian.AppendUint32(data, 0)      // interface handle
+	data = binary.LittleEndian.AppendUint16(data, 0)      // timeout
+	data = binary.LittleEndian.AppendUint16(data, 2)      // CPF item count
+	data = binary.LittleEndian.AppendUint16(data, 0x0000) // null address item
+	data = binary.LittleEndian.AppendUint16(data, 0)      // ...len 0
+	data = binary.LittleEndian.AppendUint16(data, 0x00B2) // unconnected data item
+	data = binary.LittleEndian.AppendUint16(data, uint16(len(mr)))
+	data = append(data, mr...)
+
+	hdr := make([]byte, 24)
+	binary.LittleEndian.PutUint16(hdr[0:2], 0x006F) // SendRRData
+	binary.LittleEndian.PutUint16(hdr[2:4], uint16(len(data)))
+	binary.LittleEndian.PutUint32(hdr[4:8], 0xdeadbeef) // session
+	frame := append(hdr, data...)
+
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&ethernetip{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, frame)
+	if r.Meta["cip_service"] != "Write_Tag" {
+		t.Errorf("cip_service = %v, want Write_Tag", r.Meta["cip_service"])
+	}
+	if !hasAnom(r, "ics-plc-write") {
+		t.Errorf("CIP write not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// OPC-UA: an OpenSecureChannel for SecurityPolicy#None is an unauthenticated
+// endpoint attempt.
+func TestOPCUAInsecurePolicy(t *testing.T) {
+	endpoint := "opc.tcp://target/UA"
+	hb := make([]byte, 24+len(endpoint))
+	binary.LittleEndian.PutUint32(hb[20:24], uint32(len(endpoint)))
+	copy(hb[24:], endpoint)
+	hel := append([]byte("HELF"), make([]byte, 4)...)
+	binary.LittleEndian.PutUint32(hel[4:8], uint32(8+len(hb)))
+	hel = append(hel, hb...)
+
+	uri := "http://opcfoundation.org/UA/SecurityPolicy#None"
+	ob := make([]byte, 8+len(uri)+8)
+	binary.LittleEndian.PutUint32(ob[4:8], uint32(len(uri)))
+	copy(ob[8:], uri)
+	opn := append([]byte("OPNF"), make([]byte, 4)...)
+	binary.LittleEndian.PutUint32(opn[4:8], uint32(8+len(ob)))
+	opn = append(opn, ob...)
+
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&opcua{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, append(hel, opn...))
+	if p, _ := r.Meta["opcua_security_policy"].(string); !strings.HasSuffix(p, "#None") {
+		t.Errorf("opcua_security_policy = %v, want ...#None", r.Meta["opcua_security_policy"])
+	}
+	if !hasAnom(r, "ics-opcua-insecure-policy") {
+		t.Errorf("insecure policy not flagged: %v", r.Meta["anomalies"])
+	}
+}
+
+// MMS: after the association completes, an MMS Read request reads IED values.
+func TestMMSReadService(t *testing.T) {
+	cr := []byte{0x03, 0x00, 0x00, 0x0B, 0x06, 0xE0, 0x00, 0x00, 0x00, 0x01, 0x00}
+	aarq := []byte{0x03, 0x00, 0x00, 0x08, 0x02, 0xF0, 0x80, 0x00}
+	read := []byte{0x03, 0x00, 0x00, 0x0E, 0x02, 0xF0, 0x80,
+		0xA0, 0x06, 0x02, 0x01, 0x01, 0xA4, 0x00}
+	msg := append(append(append([]byte{}, cr...), aarq...), read...)
+
+	r := driveDrain(t, func(c net.Conn) Result {
+		res, _ := (&mms{}).Handle(context.Background(), c, config.Listener{ReadTimeout: time.Second})
+		return res
+	}, msg)
+	if r.Meta["mms_service"] != "read" {
+		t.Errorf("mms_service = %v, want read", r.Meta["mms_service"])
+	}
+	if !hasAnom(r, "ics-process-data-access") {
+		t.Errorf("MMS read not flagged: %v", r.Meta["anomalies"])
 	}
 }

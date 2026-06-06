@@ -129,6 +129,25 @@ documented in `docs/`).
   - New ATT&CK-for-ICS technique **T0816** (Device Restart/Shutdown) with its
     D3FEND mapping; new `ics-device-restart` + BACnet anomaly mappings.
 
+- **Deeper IEC-104 / EtherNet/IP / OPC-UA / MMS analysis + attacker-intent.**
+  - **IEC-104 (2404)** — flags **General/Counter Interrogation** as process-
+    image enumeration (`ics-process-data-access`), **single/double commands**
+    as control-point actuation (`ics-iec104-command`→T0855), **set-point
+    commands** as setpoint changes (`ics-plc-write`), and **reset-process** as
+    a device reset (`ics-device-restart`); answers set-point/reset confirmations.
+  - **EtherNet/IP (44818)** — now services **SendRRData/SendUnitData**: parses
+    the embedded **CIP** request, names the service (`cip_service`), and flags
+    Get/Read (`ics-process-data-access`), Set/Write (`ics-plc-write`),
+    Reset/Stop (`ics-device-restart`), Start (`ics-plc-mode-change`) and
+    Forward_Open (`ics-field-device-probe`), answering a believable CIP success.
+  - **OPC-UA (4840)** — after the Hello/ACK, reads the **OpenSecureChannel** and
+    records the requested **SecurityPolicyUri**; a `#None` policy (the classic
+    exposed-server misconfig) is flagged `ics-opcua-insecure-policy`.
+  - **MMS / IEC-61850 (102)** — after the association completes, parses the
+    first MMS confirmed-request and names the service (`mms_service`): getNameList/
+    identify = data-model enumeration (`ics-field-device-probe`), read
+    (`ics-process-data-access`), write (`ics-plc-write`).
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

@@ -63,9 +63,84 @@ func (m *mms) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	// records a live MMS server; the IED model itself is not emulated.
 	if err := writeTPKT(conn, append([]byte{0x02, 0xF0, 0x80}, mmsInitiateResponse...)); err != nil {
 		res.Meta["write_err"] = err.Error()
+		return res, nil
 	}
 	res.BannerSent = "iec61850 mms initiate response"
+	setIfEmpty(res.Meta, "intent", "IEC-61850 MMS association — substation IED access attempt")
+
+	// After the association completes, the client issues MMS confirmed
+	// requests. Read the first one and name the service — getNameList is data-
+	// model enumeration, read/write touch the IED's logical nodes, a write to a
+	// control object is the manipulation vector.
+	for n := 0; n < 4; n++ {
+		pdu, ok := readTPKT(conn, &res)
+		if !ok {
+			break
+		}
+		if name, svc, found := mmsDetectService(pdu); found {
+			res.Meta["mms_service"] = name
+			mmsClassify(svc, &res)
+			break
+		}
+	}
 	return res, nil
+}
+
+// mmsDetectService locates an MMS confirmed-RequestPDU inside an ISO-on-TCP
+// data PDU and returns the requested service. The PDU is BER-encoded and
+// wrapped in session/presentation layers, so we scan for the confirmed-request
+// tag (0xA0) followed by an invokeID INTEGER and read the service CHOICE tag.
+func mmsDetectService(buf []byte) (string, byte, bool) {
+	for i := 0; i+1 < len(buf); i++ {
+		if buf[i] != 0xA0 { // confirmed-RequestPDU [0]
+			continue
+		}
+		j := i + 2 // skip tag + (short-form) length
+		if j+1 >= len(buf) || buf[j] != 0x02 {
+			continue // expect invokeID INTEGER
+		}
+		k := j + 2 + int(buf[j+1])
+		if k >= len(buf) {
+			continue
+		}
+		if name := mmsServiceName(buf[k]); name != "" {
+			return name, buf[k], true
+		}
+	}
+	return "", 0, false
+}
+
+// mmsClassify flags the anomaly + intent for an MMS confirmed-service tag.
+func mmsClassify(svc byte, res *Result) {
+	switch svc {
+	case 0xA1, 0xA2, 0xA6: // getNameList / identify / getVariableAccessAttributes
+		flagAnomaly(res, "ics-field-device-probe")
+		res.Meta["intent"] = "MMS " + mmsServiceName(svc) + " — enumerating the IEC-61850 data model"
+	case 0xA4: // read
+		flagAnomaly(res, "ics-process-data-access")
+		res.Meta["intent"] = "MMS Read — reading IED logical-node values"
+	case 0xA5: // write
+		flagAnomaly(res, "ics-plc-write")
+		res.Meta["intent"] = "MMS Write — writing an IED object (control / setpoint manipulation)"
+	}
+}
+
+// mmsServiceName names the MMS confirmedServiceRequest CHOICE context tags a
+// recon/attack tool emits.
+func mmsServiceName(tag byte) string {
+	switch tag {
+	case 0xA1:
+		return "getNameList"
+	case 0xA2:
+		return "identify"
+	case 0xA4:
+		return "read"
+	case 0xA5:
+		return "write"
+	case 0xA6:
+		return "getVariableAccessAttributes"
+	}
+	return ""
 }
 
 // mmsInitiateResponse is a canned ISO session ACCEPT + presentation CPA +
