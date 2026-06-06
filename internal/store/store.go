@@ -127,6 +127,15 @@ CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
 CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC);
 CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
+-- Composite (column, time) covering indexes for the dashboard's
+-- "WHERE time >= ? GROUP BY <column>" summary passes. With the grouped column
+-- leading and time second, SQLite groups + range-filters straight from the
+-- index (no full-row reads, no temp sort), which is what keeps the summary
+-- fast as the events table grows into the tens/hundreds of thousands. (src_ip
+-- is already covered by idx_events_src_ip_time above.)
+CREATE INDEX IF NOT EXISTS idx_events_severity_time ON events(severity, time);
+CREATE INDEX IF NOT EXISTS idx_events_rule_id_time ON events(rule_id, time);
+CREATE INDEX IF NOT EXISTS idx_events_proto_time ON events(proto, time);
 CREATE TABLE IF NOT EXISTS iocs (
   type TEXT NOT NULL,
   value TEXT NOT NULL,
