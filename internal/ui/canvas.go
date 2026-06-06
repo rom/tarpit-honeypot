@@ -47,6 +47,12 @@ type portCard struct {
 	Capture   bool   `json:"capture"`
 	TLS       bool   `json:"tls"`
 	Severity  string `json:"severity,omitempty"`
+	// Hit / Hits are set on the summary board only (markCanvasActivity): Hit is
+	// true when this service saw at least one access/attempt in the window, and
+	// Hits is the event count. The template tints a hit card so an operator can
+	// see at a glance which services are actually being touched.
+	Hit  bool `json:"hit,omitempty"`
+	Hits int  `json:"hits,omitempty"`
 }
 
 // collectorCard is one background subsystem on the board.
