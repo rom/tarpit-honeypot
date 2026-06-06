@@ -57,6 +57,7 @@ var cweNames = map[string]string{
 	"CWE-502":  "Deserialization of Untrusted Data",
 	"CWE-522":  "Insufficiently Protected Credentials",
 	"CWE-611":  "XML External Entity (XXE)",
+	"CWE-617":  "Reachable Assertion",
 	"CWE-640":  "Weak Password Recovery Mechanism",
 	"CWE-674":  "Uncontrolled Recursion",
 	"CWE-732":  "Incorrect Permission Assignment for Critical Resource",

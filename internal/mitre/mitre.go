@@ -464,8 +464,14 @@ var anomalyTags = map[string]Tag{
 	// A source walking the SNMP MIB faster than the configured rate =
 	// network/device enumeration via SNMP.
 	"snmp-walk-rate-exceeded": {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
-	"smtp-open-relay-probe":   {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
-	"smtp-user-enumeration":   {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	// GetBulk with a huge max-repetitions = amplification primitive / bulk exfil.
+	"snmp-getbulk-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	// Default community ("public"/"private") = a weak/guessed credential.
+	"snmp-default-community": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access", "defense-evasion"}},
+	// SNMP CISCO-CONFIG-COPY-MIB access = exfiltrate/overwrite the running config.
+	"snmp-config-exfil":     {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
+	"smtp-open-relay-probe": {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
 	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
 	// Encrypted-DNS channels (DoH / DoT / DNSCrypt) = DNS tunnelled inside
@@ -719,6 +725,11 @@ var anomalyTags = map[string]Tag{
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
 	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-mode7-private":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-nonclient-mode":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// DNS SIG / TKEY exploit-probe qtypes (SIGRed / BIND TKEY DoS).
+	"dns-sig-query":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dns-tkey-query": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	// Postgres streaming-replication connection = bulk data access.
 	"postgres-replication-connection": {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
 	// Auth submissions / brute on services whose base tag isn't already creds.

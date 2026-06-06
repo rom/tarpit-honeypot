@@ -77,12 +77,16 @@ func TestBuildDNSAndRender(t *testing.T) {
 	if !sawTunnel {
 		t.Errorf("dns-tunneling-qtype not in attack table: %+v", v.Attacks)
 	}
+	if len(v.TopDomains) == 0 || len(v.Attackers) == 0 {
+		t.Errorf("expected TopDomains + Attackers drill-down tables; got %d / %d", len(v.TopDomains), len(v.Attackers))
+	}
 	var b strings.Builder
 	v.RangeLabel = "last 24h"
 	if err := uiTmpl(t).ExecuteTemplate(&b, "dns", v); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"DNS analytics", "Query log", "dns-zone-transfer", "www.example.com"} {
+	for _, want := range []string{"DNS analytics", "Query log", "dns-zone-transfer", "www.example.com",
+		`href="#domains"`, `href="#sources"`, `id="domains"`, `id="sources"`, "Top domains", "Top sources"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("dns page missing %q", want)
 		}

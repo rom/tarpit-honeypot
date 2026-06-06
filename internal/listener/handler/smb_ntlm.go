@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/md5"
 	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -16,15 +17,16 @@ import (
 // credential-capture tooling (impacket, CrackMapExec, coerced Windows auth)
 // never reached the authentication exchange. This file negotiates SMB2 for
 // real and drives the NTLMSSP SESSION_SETUP handshake to completion so we
-// capture the attacker's **NetNTLMv2** response (username, domain, and the
-// offline-crackable hash) — then always fails the logon (we never grant
-// access; capture only).
+// capture the attacker's **NetNTLM** response (username, domain, and the
+// offline-crackable hash — NetNTLMv2 / hashcat 5600, or NetNTLMv1 / 5500 for a
+// client pinned to LmCompatibilityLevel <= 2) — then always fails the logon (we
+// never grant access; capture only).
 //
 // Flow: client SMB2 NEGOTIATE -> our NEGOTIATE response offering NTLM via a
 // SPNEGO blob -> client SESSION_SETUP with NTLMSSP NEGOTIATE (type 1) -> our
 // SESSION_SETUP (STATUS_MORE_PROCESSING_REQUIRED) carrying an NTLMSSP
 // CHALLENGE (type 2) with a random server challenge -> client SESSION_SETUP
-// with NTLMSSP AUTHENTICATE (type 3) -> we extract the NetNTLMv2 and reply
+// with NTLMSSP AUTHENTICATE (type 3) -> we extract the NetNTLM hash and reply
 // STATUS_LOGON_FAILURE.
 
 const (
@@ -87,7 +89,7 @@ func handleSMB2(conn net.Conn, firstMsg []byte, readTimeout time.Duration, id *i
 				return
 			}
 		case 3: // AUTHENTICATE -> capture and fail
-			captureNetNTLMv2("smb", ntlm, serverChallenge, res)
+			captureNetNTLM("smb", ntlm, serverChallenge, res)
 			resp := smb2SessionSetupResponse(msgID, sessionID, ntStatusLogonFailure, nil)
 			_, _ = conn.Write(buildNBSS(resp))
 			return
@@ -270,27 +272,40 @@ func ntlmField(msg []byte, off int) (int, int, bool) {
 	return o, l, true
 }
 
-// captureNetNTLMv2 parses an NTLMSSP AUTHENTICATE (type 3) message and writes
-// the captured NetNTLMv2 credential (user, domain, workstation, and the
-// hashcat-format hash) into res.Meta. source names the protocol the capture
-// came over (e.g. "smb", "rdp") and prefixes the emitted anomaly marker.
-func captureNetNTLMv2(source string, msg, serverChallenge []byte, res *Result) {
-	if len(msg) < 64 {
+// captureNetNTLM parses an NTLMSSP AUTHENTICATE (type 3) message and records the
+// captured credential into res.Meta. It distinguishes the two NetNTLM dialects
+// by the NtChallengeResponse length:
+//
+//   - NetNTLMv2 — a variable-length response (NTProofStr(16) + AV-pair blob,
+//     always > 24 bytes): emitted as a hashcat mode-5600 line in ntlmv2_hash.
+//   - NetNTLMv1 — a fixed 24-byte DES response: emitted as a hashcat mode-5500
+//     line in ntlmv1_hash. This includes the NTLM2 "session response" / ESS
+//     variant (negotiated when we advertise EXTENDED_SESSIONSECURITY), where the
+//     LM field carries an 8-byte client challenge padded with 16 zero bytes; for
+//     that case the effective challenge is MD5(serverChallenge||clientChallenge)
+//     truncated to 8 bytes, and ntlm_ess is set.
+//
+// source names the protocol the capture came over (e.g. "smb", "rdp") and
+// prefixes the emitted anomaly marker. The credential is never validated.
+func captureNetNTLM(source string, msg, serverChallenge []byte, res *Result) {
+	if len(msg) < 64 || len(serverChallenge) != 8 {
 		return
 	}
 	// Field descriptors: LmChallengeResponse@12, NtChallengeResponse@20,
 	// DomainName@28, UserName@36, Workstation@44.
-	ntOff, ntLen, ok1 := ntlmField(msg, 20)
+	lmOff, lmLen, _ := ntlmField(msg, 12)
+	ntOff, ntLen, ok := ntlmField(msg, 20)
 	dOff, dLen, _ := ntlmField(msg, 28)
 	uOff, uLen, _ := ntlmField(msg, 36)
 	wOff, wLen, _ := ntlmField(msg, 44)
-	if !ok1 {
+	if !ok {
 		return
 	}
 	domain := fromUTF16le(msg[dOff : dOff+dLen])
 	user := fromUTF16le(msg[uOff : uOff+uLen])
 	workstation := fromUTF16le(msg[wOff : wOff+wLen])
 	ntResp := msg[ntOff : ntOff+ntLen]
+	lmResp := msg[lmOff : lmOff+lmLen]
 
 	if user != "" {
 		res.Meta["ntlm_user"] = user
@@ -301,24 +316,50 @@ func captureNetNTLMv2(source string, msg, serverChallenge []byte, res *Result) {
 	if workstation != "" {
 		res.Meta["ntlm_workstation"] = workstation
 	}
-	res.Meta["auth_type"] = "ntlmv2"
-	flagAnomaly(res, source+"-ntlmv2-capture")
+	res.Meta["ntlm_response_hex"] = hex.EncodeToString(ntResp)
 
-	// NetNTLMv2 needs the NtChallengeResponse (>= 16 bytes: NTProofStr + blob)
-	// and the 8-byte server challenge we issued.
-	if len(ntResp) >= 16 && len(serverChallenge) == 8 {
+	u := user
+	if u == "" {
+		u = "(null)"
+	}
+	switch {
+	case len(ntResp) == 24:
+		// NetNTLMv1 (or the ESS / NTLM2 session-response variant).
+		res.Meta["auth_type"] = "ntlmv1"
+		flagAnomaly(res, source+"-ntlmv1-capture")
+		chal := serverChallenge
+		// ESS: LM field = 8-byte client challenge + 16 zero bytes. The NT
+		// response was then computed against MD5(serverChal||clientChal)[:8].
+		if len(lmResp) == 24 && isZeroBytes(lmResp[8:24]) && !isZeroBytes(lmResp[:8]) {
+			res.Meta["ntlm_ess"] = true
+			sum := md5.Sum(append(append([]byte{}, serverChallenge...), lmResp[:8]...))
+			chal = sum[:8]
+		}
+		// hashcat mode 5500: user::domain:LMresponse:NTresponse:challenge
+		res.Meta["ntlmv1_hash"] = u + "::" + domain + ":" +
+			hex.EncodeToString(lmResp) + ":" + hex.EncodeToString(ntResp) + ":" +
+			hex.EncodeToString(chal)
+	case len(ntResp) > 24:
+		// NetNTLMv2: NTProofStr(16) + blob.
+		res.Meta["auth_type"] = "ntlmv2"
+		flagAnomaly(res, source+"-ntlmv2-capture")
 		ntProof := ntResp[:16]
 		blob := ntResp[16:]
-		u := user
-		if u == "" {
-			u = "(null)"
-		}
 		// hashcat mode 5600: user::domain:serverchallenge:ntproofstr:blob
 		res.Meta["ntlmv2_hash"] = u + "::" + domain + ":" +
 			hex.EncodeToString(serverChallenge) + ":" +
 			hex.EncodeToString(ntProof) + ":" + hex.EncodeToString(blob)
-		res.Meta["ntlm_response_hex"] = hex.EncodeToString(ntResp)
 	}
+}
+
+// isZeroBytes reports whether every byte of b is zero.
+func isZeroBytes(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // --- SPNEGO (minimal DER) --------------------------------------------------

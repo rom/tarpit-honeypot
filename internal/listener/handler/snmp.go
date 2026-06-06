@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -175,8 +176,47 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 	}
 	// Default community strings are the first credential a scanner tries —
 	// worth surfacing as a (weak) captured credential.
+	defaultCommunity := false
 	if c := pkt.Community; c == "public" || c == "private" || c == "PUBLIC" || c == "PRIVATE" {
 		res.Meta["snmp_default_community"] = true
+		defaultCommunity = true
+		flagAnomaly(&res, "snmp-default-community")
+	}
+
+	// Config-exfil / tampering: a request touching CISCO-CONFIG-COPY-MIB
+	// (1.3.6.1.4.1.9.9.96, ccCopyTable) is the textbook "copy running-config to
+	// my TFTP server" attack (or push a new config onto the device). Detect it
+	// on any OID, whichever PDU carries it.
+	configExfil := false
+	for _, v := range pkt.Variables {
+		if strings.Contains(v.Name, "1.3.6.1.4.1.9.9.96") {
+			configExfil = true
+			break
+		}
+	}
+	if configExfil {
+		flagAnomaly(&res, "snmp-config-exfil")
+	}
+
+	// Summarize what the attacker is actually doing (the human "intent" label).
+	intent := ""
+	switch {
+	case configExfil:
+		intent = "SNMP CISCO-CONFIG-COPY-MIB access — running-config exfil/overwrite to attacker TFTP"
+	case pkt.PDUType == g.SetRequest:
+		intent = "SNMP SET — writing device configuration (interface/ACL/route tampering)"
+	case pkt.PDUType == g.GetBulkRequest && pkt.MaxRepetitions >= 100:
+		intent = "SNMP GetBulk amplification — DRDoS reflector staging / bulk MIB exfil"
+	case pkt.PDUType == g.GetNextRequest || pkt.PDUType == g.GetBulkRequest:
+		intent = "SNMP MIB walk — device / network-inventory enumeration"
+	case pkt.PDUType == g.GetRequest:
+		intent = "SNMP GET — device fingerprint / OID probe"
+	}
+	if intent != "" {
+		if defaultCommunity {
+			intent += " (default community '" + pkt.Community + "')"
+		}
+		res.Meta["intent"] = intent
 	}
 
 	// Only reply to Get / GetNext / GetBulk. Traps/responses (and the

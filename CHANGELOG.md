@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Deeper DNS / SNMP / NTP attacker-intent analysis + new CVEs & ATT&CK.** Each
+  of these handlers now stamps an `intent` meta summary of what the attacker is
+  actually doing, and recognizes more exploit/abuse vectors:
+  - **DNS** — a **SIG** query (qtype 24) is flagged as a **SIGRed (CVE-2020-1350)**
+    probe and a **TKEY** query (qtype 249) as the **ISC BIND assertion-failure DoS
+    (CVE-2015-5477)** vector; the `intent` label distinguishes tunneling /
+    exfil / amplification / zone-transfer / AD-discovery / cache-poison / DoS.
+  - **SNMP** — detects **CISCO-CONFIG-COPY-MIB** access (`snmp-config-exfil`,
+    running-config exfil/overwrite), flags **default-community** use as a weak
+    credential, and labels SET / GetBulk-amplification / walk intent.
+  - **NTP** — refines mode-7 classification (monlist vs other private queries)
+    and ties the **monlist** vector to **CVE-2013-5211** (DRDoS amplification).
+  - New CVE-catalog records (CVE-2013-5211, CVE-2014-9295, CVE-2016-7434,
+    CVE-2016-9311, CVE-2015-5477, CVE-2008-1447, CVE-2002-0013) and new
+    ATT&CK mappings (`snmp-config-exfil`→T1602.001, `snmp-getbulk-amplification`
+    /`ntp-mode7-private`→T1498.002, `snmp-default-community`→T1078.001,
+    `dns-sig-query`→T1190, `dns-tkey-query`→T1499, …); added CWE-617.
+
+- **NetNTLMv1 capture (SMB + RDP).** The NTLMSSP AUTHENTICATE parser now
+  distinguishes the two NetNTLM dialects by the NT-response length and emits the
+  correct hashcat hash: **NetNTLMv2** (variable-length response → mode **5600**,
+  unchanged) and **NetNTLMv1** (24-byte response → mode **5500**, in a new
+  `meta.ntlmv1_hash`), including the **NTLM2 session-response / ESS** variant
+  (LM = client challenge + zero-padding; the effective challenge is
+  `MD5(serverChallenge‖clientChallenge)[:8]`, flagged `meta.ntlm_ess`). Flagged
+  `*-ntlmv1-capture`. Previously a v1 (or ESS-v1) response was mis-emitted as a
+  malformed v2 line and the LM field was ignored; now both v1 and v2 are captured
+  correctly and surface on `/captures` as hash credentials.
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

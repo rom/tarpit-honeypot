@@ -495,10 +495,79 @@
     if (linesOnly) linesOnly.addEventListener("change", render);
   }
 
+  // Range persistence: keep the chosen time window (24h / 7d / …) when the user
+  // moves between pages. The active range is remembered (localStorage) and
+  // appended to every nav link, so switching pages keeps the same window. The
+  // param-less "24h" chip resets it. Pure presentation — no-JS users just don't
+  // get cross-page persistence.
+  var RANGE_KEY = "tarpit.range";
+  function rangeOfHref(href) {
+    var m = /[?&]range=([^&]+)/.exec(href || "");
+    return m ? decodeURIComponent(m[1]) : "24h";
+  }
+  function setupRangePersist() {
+    var params = new URLSearchParams(location.search);
+    var urlRange = params.get("range");
+    if (urlRange) lsSet(RANGE_KEY, urlRange);
+    // Record explicit range-selector clicks (including the param-less 24h chip).
+    Array.prototype.forEach.call(document.querySelectorAll(".rangesel a"), function (a) {
+      a.addEventListener("click", function () { lsSet(RANGE_KEY, rangeOfHref(a.getAttribute("href"))); });
+    });
+    var active = urlRange || lsGet(RANGE_KEY) || "24h";
+    if (!active || active === "24h") return;
+    Array.prototype.forEach.call(document.querySelectorAll("nav a"), function (a) {
+      var href = a.getAttribute("href");
+      if (!href || href.charAt(0) !== "/" || /[?&]range=/.test(href)) return;
+      a.setAttribute("href", href + (href.indexOf("?") >= 0 ? "&" : "?") + "range=" + encodeURIComponent(active));
+    });
+  }
+
+  // Copy-to-clipboard buttons. Any <button class="copybtn"> copies the text of
+  // its data-copy attribute, or (default) the textContent of its previous
+  // element sibling — used next to displayed base64 / payload strings.
+  function copyText(text, btn) {
+    var done = function (ok) {
+      if (!ok) return;
+      var prev = btn.textContent;
+      btn.classList.add("copied");
+      btn.textContent = "✓ copied";
+      setTimeout(function () { btn.classList.remove("copied"); btn.textContent = prev; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallbackCopy(text)); });
+    } else {
+      done(fallbackCopy(text));
+    }
+  }
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
+  function setupCopyButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll("button.copybtn"), function (btn) {
+      if (btn.dataset.copyWired) return;
+      btn.dataset.copyWired = "1";
+      btn.addEventListener("click", function () {
+        var text = btn.getAttribute("data-copy");
+        if (text == null) {
+          var src = btn.previousElementSibling;
+          text = src ? (src.textContent || "") : "";
+        }
+        copyText(text.trim(), btn);
+      });
+    });
+  }
+
   // Enhancers that inject controls into / operate on the page CONTENT. Re-run
   // after each in-place refresh swap (the once-only ones — refresh + the
   // document-level external-link guard — are not in this list).
-  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch];
+  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons];
   function runContentEnhancers() {
     contentEnhancers.forEach(function (fn) { try { fn(); } catch (e) { /* never break the page */ } });
   }

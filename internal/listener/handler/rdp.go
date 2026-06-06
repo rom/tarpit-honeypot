@@ -40,7 +40,7 @@ func (r *rdp) Name() string { return "rdp" }
 // then starts TLS; with a cert manager we complete it (recording JA3/JA3S) and
 // drive the CredSSP/NLA NTLM exchange one round further than a real server
 // needs to — issuing the NTLMSSP CHALLENGE so the client sends its
-// AUTHENTICATE — to harvest the offline-crackable NetNTLMv2. We never speak
+// AUTHENTICATE — to harvest the offline-crackable NetNTLMv1 / v2. We never speak
 // full RDP and never validate the credential (capture only).
 func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
@@ -148,16 +148,16 @@ func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 	res.BannerSent = "rdp TLS + CredSSP"
 
 	// Drive the CredSSP/NLA NTLM exchange to completion so we harvest the
-	// offline-crackable NetNTLMv2 response (not just the pre-auth username).
+	// offline-crackable NetNTLMv1 / v2 response (not just the pre-auth username).
 	r.captureNLA(tlsConn, cfg, &res)
 	return res, nil
 }
 
 // captureNLA runs the post-TLS CredSSP/NLA NTLM handshake far enough to harvest
-// the attacker's NetNTLMv2: it reads the client's NTLMSSP NEGOTIATE (type 1),
+// the attacker's NetNTLM (v1 or v2): it reads the client's NTLMSSP NEGOTIATE (type 1),
 // replies with an NTLMSSP CHALLENGE (type 2) wrapped in SPNEGO + a CredSSP
 // TSRequest, then reads the client's AUTHENTICATE (type 3) and extracts the
-// hashcat-format NetNTLMv2 hash. We never validate it — capture only.
+// hashcat-format NetNTLM hash (mode 5500 for v1, 5600 for v2). We never validate it — capture only.
 func (r *rdp) captureNLA(conn net.Conn, cfg config.Listener, res *Result) {
 	withTimeout(conn, cfg.ReadTimeout)
 	buf := make([]byte, 8192)
@@ -197,7 +197,7 @@ func (r *rdp) captureNLA(conn net.Conn, cfg config.Listener, res *Result) {
 		return
 	}
 
-	// Read the client's AUTHENTICATE (type 3) and harvest the NetNTLMv2.
+	// Read the client's AUTHENTICATE (type 3) and harvest the NetNTLM hash.
 	withTimeout(conn, cfg.ReadTimeout)
 	n2, _ := conn.Read(buf)
 	if n2 <= 0 {
@@ -210,7 +210,7 @@ func (r *rdp) captureNLA(conn net.Conn, cfg config.Listener, res *Result) {
 		return
 	}
 	res.Meta["nla"] = true
-	captureNetNTLMv2("rdp", ntlm3, serverChallenge, res)
+	captureNetNTLM("rdp", ntlm3, serverChallenge, res)
 }
 
 // buildCredSSPTSRequest wraps a single SPNEGO/NTLM token in a CredSSP
