@@ -13,6 +13,7 @@ package mitre
 import (
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/rom/tarpit-honeypot/internal/cve"
 )
@@ -120,10 +121,16 @@ var exactRules = map[string]Tag{
 	// it — configuration manipulation of the PROFINET cell.
 	"honeynet:profinet_dcp_set": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	// IEC 61850 GOOSE substation multicast observed on the segment.
-	"sniffer:goose":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
-	"dnscanary:hit":       {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
-	"dnscanary:amplifier": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
-	"protocol_anomaly":    {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
+	"sniffer:goose": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	// GOOSE manipulation: a spoofed publisher / replayed (stNum-regressed) /
+	// stormed / simulate-bit frame driving subscribers to a forged state.
+	"sniffer:goose_spoof":      {Techniques: []string{"T0856", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_replay":     {Techniques: []string{"T0856", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_storm":      {Techniques: []string{"T0814", "T0831"}, Tactics: []string{"impact"}},
+	"sniffer:goose_simulation": {Techniques: []string{"T0856"}, Tactics: []string{"impact"}},
+	"dnscanary:hit":            {Techniques: []string{"T1071.004"}, Tactics: []string{"command-and-control"}},
+	"dnscanary:amplifier":      {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"protocol_anomaly":         {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
 	// A previously-unseen host appearing on the segment maps to
 	// network-service / remote-system discovery from the defender's
 	// vantage (the device is doing the discovering).
@@ -407,6 +414,22 @@ var anomalyTags = map[string]Tag{
 	// Chrome / PhantomJS) — scripted recon, not a real user.
 	"headless-browser":     {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"modbus-write-attempt": {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
+	// Modbus/TCP Security (TLS on 802): reaching the secure endpoint / probing
+	// it without the required client cert is discovery of the control device.
+	"modbus-secure-session":       {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"modbus-secure-no-clientcert": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	// Deep-Modbus markers: Schneider UMAS engineering channel, program/firmware
+	// transfer, vendor/reserved (backdoor) function codes, diagnostic-clear
+	// (anti-forensics), config-area access, and session enumeration.
+	"modbus-umas":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"modbus-umas-reservation":   {Techniques: []string{"T0855", "T0814"}, Tactics: []string{"impact"}},
+	"modbus-program-download":   {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"modbus-vendor-function":    {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	"modbus-diagnostic-clear":   {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
+	"modbus-config-area-access": {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"modbus-broadcast-write":    {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"modbus-uid-enumeration":    {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"modbus-fc-scan":            {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 
 	// --- New-protocol coverage: amplification, ICS/IIoT control, building
 	// automation, IoT actuation, and the discovery/credential markers the
@@ -436,6 +459,8 @@ var anomalyTags = map[string]Tag{
 	"ics-plc-mode-change":                {Techniques: []string{"T0858"}, Tactics: []string{"impact"}},
 	"ics-plc-program-access":             {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
 	"ics-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"ics-ads-discovery":                  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
+	"ics-ads-route-add":                  {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	"ics-dnp3-control":                   {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-iec104-command":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"ics-saia-control":                   {Techniques: []string{"T0855", "T0836"}, Tactics: []string{"impact"}},
@@ -445,6 +470,13 @@ var anomalyTags = map[string]Tag{
 	"profinet-iod-write":                 {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
 	"profinet-iod-control":               {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	"knx-bus-write":                      {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"knx-bus-read":                       {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"knx-routing-injection":              {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
+	"knx-memory-write":                   {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"knx-programming":                    {Techniques: []string{"T0843"}, Tactics: []string{"lateral-movement"}},
+	"knx-device-restart":                 {Techniques: []string{"T0816"}, Tactics: []string{"impact"}},
+	"knx-device-mgmt":                    {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+	"knx-tunnel-connect":                 {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	// IoT actuation + building automation control.
 	"iot-actuation-attempt": {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
 	"iot-mqtt-sn-publish":   {Techniques: []string{"T1071"}, Tactics: []string{"command-and-control"}},
@@ -696,6 +728,8 @@ var anomalyTags = map[string]Tag{
 	"ssh-roaming-offered":             {Techniques: []string{"T1552"}, Tactics: []string{"credential-access"}},
 	"http-method-unknown":             {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"http-request-line-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-method-enumeration":         {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
+	"http-account-enumeration":        {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	"telnet-credential-non-printable": {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	// Printer command recon + passive DHCP client observation.
 	"pjl-command":          {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
@@ -840,6 +874,9 @@ var anomalyTags = map[string]Tag{
 	"profinet-connect":       {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-probe":           {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"wdbrpc-connect":         {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-mem-access":      {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-rce":             {Techniques: []string{"T0866", "T0843"}, Tactics: []string{"lateral-movement"}},
+	"wdbrpc-urgent11":        {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	// Round-five remote-access / OOB-management decoys (remoteoob.go).
 	"rexec-attempt":    {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"rexec-command":    {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
@@ -933,6 +970,10 @@ func AnomalyTag(a string) Tag {
 	case strings.HasPrefix(a, "uri-"):
 		// suspicious-URI probes: recon / file discovery against the app.
 		return Tag{Techniques: []string{"T1595.003", "T1083"}, Tactics: []string{"reconnaissance", "discovery"}}
+	case strings.HasPrefix(a, "evasion:"):
+		// Obfuscated/encoded payloads (percent / double / unicode / overlong-UTF-8
+		// encoding, null-byte, comment-splitting) to evade signature detection.
+		return Tag{Techniques: []string{"T1027"}, Tactics: []string{"defense-evasion"}}
 	case strings.HasPrefix(a, "ics-"):
 		return Tag{Techniques: []string{"T0888"}, Tactics: []string{"discovery"}}
 	case strings.HasPrefix(a, "ba-"):
@@ -1077,6 +1118,7 @@ var techDescriptions = map[string]string{
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
 	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
+	"T0856": "Spoof Reporting Message (ICS) — forging device/process reporting messages (e.g. GOOSE) to mislead subscribers.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
 	"T0866": "Exploitation of Remote Services (ICS) — exploiting a remote service to reach control devices.",
 }
@@ -1099,6 +1141,11 @@ func Describe(tid string) string {
 // into a base Tag (from the rule_id/handler lookup). Deduplicated, base
 // entries first.
 func Augment(base Tag, anomalies []string) Tag {
+	// Fast path: most events carry no anomaly markers, so there's nothing to
+	// merge — return the base tag without allocating copies + dedup sets.
+	if len(anomalies) == 0 {
+		return base
+	}
 	tech := append([]string(nil), base.Techniques...)
 	tac := append([]string(nil), base.Tactics...)
 	seenT, seenTac := toSet(tech), toSet(tac)
@@ -1207,6 +1254,7 @@ var d3fend = map[string][]string{
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
 	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
+	"T0856": {"D3-NTA", "D3-DE"},                    // ICS: spoof reporting message (GOOSE)
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
@@ -1321,29 +1369,40 @@ type CoverageEntry struct {
 // Used by `tarpit-honeypot list-techniques` so an operator can audit the
 // sensor's ATT&CK / D3FEND coverage without reading the source.
 func Coverage() []CoverageEntry {
-	out := make([]CoverageEntry, 0, len(exactRules)+len(handlerTags)+len(anomalyTags))
-	add := func(kind string, m map[string]Tag) {
-		for k, t := range m {
-			out = append(out, CoverageEntry{
-				Kind:       kind,
-				Key:        k,
-				Techniques: t.Techniques,
-				Tactics:    t.Tactics,
-				Defenses:   DefensesFor(t.Techniques),
-			})
+	// The mapping tables are immutable, so build the (sorted, DefensesFor-
+	// annotated) coverage once and hand back copies — avoids rebuilding +
+	// re-resolving D3FEND for ~700 entries on every CLI/UI/API call.
+	coverageOnce.Do(func() {
+		out := make([]CoverageEntry, 0, len(exactRules)+len(handlerTags)+len(anomalyTags))
+		add := func(kind string, m map[string]Tag) {
+			for k, t := range m {
+				out = append(out, CoverageEntry{
+					Kind:       kind,
+					Key:        k,
+					Techniques: t.Techniques,
+					Tactics:    t.Tactics,
+					Defenses:   DefensesFor(t.Techniques),
+				})
+			}
 		}
-	}
-	add("rule", exactRules)
-	add("handler", handlerTags)
-	add("anomaly", anomalyTags)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Key < out[j].Key
+		add("rule", exactRules)
+		add("handler", handlerTags)
+		add("anomaly", anomalyTags)
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Kind != out[j].Kind {
+				return out[i].Kind < out[j].Kind
+			}
+			return out[i].Key < out[j].Key
+		})
+		cachedCoverage = out
 	})
-	return out
+	return append([]CoverageEntry(nil), cachedCoverage...)
 }
+
+var (
+	coverageOnce   sync.Once
+	cachedCoverage []CoverageEntry
+)
 
 // DefensesFor returns the deduplicated set of D3FEND countermeasure IDs
 // for a list of ATT&CK techniques (sub-techniques inherit their base

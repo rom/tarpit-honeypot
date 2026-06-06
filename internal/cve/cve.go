@@ -123,6 +123,37 @@ var catalog = []Record{
 		Description: "Drupal form-API render-array RCE.",
 	},
 	{
+		// Advisory-only (no substring signatures — OT payloads are binary). The
+		// modbus handler attributes this directly when it sees UMAS (FC 0x5A).
+		ID: "CVE-2018-7842", Name: "Schneider Modicon UMAS auth bypass", CVSS: 9.8, Service: "modbus",
+		Technique: "T0855", Tactic: "impact",
+		Description: "Schneider Electric Modicon M340/M580 UMAS reservation/auth bypass.",
+	},
+	{
+		ID: "CVE-2018-12613", Name: "phpMyAdmin LFI", CVSS: 8.8, Service: "http",
+		Signatures: []string{"target=db_sql.php%253f", "?target=sql.php%3f", "db_datadict.php%253f"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "phpMyAdmin 4.8.x local file inclusion via the target parameter.",
+	},
+	{
+		ID: "CVE-2009-1151", Name: "phpMyAdmin setup RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"/scripts/setup.php", "/setup/index.php"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "phpMyAdmin setup-script PHP code injection via crafted POST.",
+	},
+	{
+		ID: "CVE-2018-20062", Name: "ThinkPHP RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"invokefunction&function=call_user_func_array", "\\think\\app/invokefunction", "s=/index/\\think"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "ThinkPHP 5.x request-routing remote code execution.",
+	},
+	{
+		ID: "CVE-2019-11043", Name: "PHP-FPM RCE", CVSS: 9.8, Service: "http",
+		Signatures: []string{"/php-fpm%0a", "index.php%0a", "PHP_VALUE%0a"},
+		Technique:  "T1190", Tactic: "initial-access",
+		Description: "PHP-FPM + nginx underflow remote code execution (env_path_info).",
+	},
+	{
 		ID: "CVE-2017-0144", Name: "EternalBlue", CVSS: 8.1, Service: "smb",
 		// The "\PIPE\" tree-connect path appears as ASCII in the SMB1
 		// request the EternalBlue toolchain sends; matched by the smb
@@ -876,6 +907,22 @@ var catalog = []Record{
 		ID: "CVE-2016-8367", Name: "Phoenix Contact ILC missing auth", CVSS: 9.8, Service: "pcworx",
 		Technique: "T1190", Tactic: "initial-access",
 		Description: "Phoenix Contact ILC 1xx controllers (PCWorx) expose read/write of PLC variables without authentication.",
+	},
+	{
+		// Advisory-only (the wdbrpc handler attributes these on WDB access).
+		ID: "CVE-2010-2965", Name: "VxWorks WDB debug agent exposed", CVSS: 10.0, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks WDB target/debug agent left enabled — unauthenticated memory read/write and code execution on the RTOS.",
+	},
+	{
+		ID: "CVE-2019-12256", Name: "URGENT/11 IPv4-options overflow", CVSS: 9.8, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks IPnet stack overflow parsing IPv4 options (URGENT/11) — remote code execution.",
+	},
+	{
+		ID: "CVE-2019-12255", Name: "URGENT/11 TCP urgent-pointer", CVSS: 9.8, Service: "wdbrpc",
+		Technique: "T1190", Tactic: "initial-access",
+		Description: "VxWorks IPnet TCP urgent-pointer out-of-bounds (URGENT/11) — memory corruption / RCE.",
 	},
 	{
 		ID: "CVE-2020-16209", Name: "FieldComm HART-IP hipserver overflow", CVSS: 9.8, Service: "hartip",
@@ -2093,6 +2140,11 @@ var cveExtra = map[string]struct {
 	"CVE-2002-0640":  {[]string{"CWE-787"}, "cpe:2.3:a:openbsd:openssh:*", 0.50},
 	"CVE-2008-1657":  {[]string{"CWE-269"}, "cpe:2.3:a:openbsd:openssh:*", 0.10},
 	"CVE-2018-7600":  {[]string{"CWE-20", "CWE-94"}, "cpe:2.3:a:drupal:drupal:*", 0.97},
+	"CVE-2018-7842":  {[]string{"CWE-287", "CWE-294"}, "cpe:2.3:o:schneider-electric:modicon_m340_firmware:*", 0.20},
+	"CVE-2018-12613": {[]string{"CWE-22", "CWE-98"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.97},
+	"CVE-2009-1151":  {[]string{"CWE-94"}, "cpe:2.3:a:phpmyadmin:phpmyadmin:*", 0.90},
+	"CVE-2018-20062": {[]string{"CWE-94"}, "cpe:2.3:a:thinkphp:thinkphp:*", 0.97},
+	"CVE-2019-11043": {[]string{"CWE-787"}, "cpe:2.3:a:php:fpm:*", 0.96},
 	"CVE-2019-0708":  {[]string{"CWE-416"}, "cpe:2.3:o:microsoft:windows:*", 0.95},
 	"CVE-2019-11510": {[]string{"CWE-22"}, "cpe:2.3:a:pulsesecure:pulse_connect_secure:*", 0.97},
 	"CVE-2019-18935": {[]string{"CWE-502"}, "cpe:2.3:a:telerik:ui_for_asp.net_ajax:*", 0.95},
@@ -2195,6 +2247,9 @@ var cveExtra = map[string]struct {
 	"CVE-2013-2783":  {[]string{"CWE-835", "CWE-20"}, "cpe:2.3:a:trianglemicroworks:scada_data_gateway:*", 0.04},
 	"CVE-2017-16744": {[]string{"CWE-22"}, "cpe:2.3:a:tridium:niagara:*", 0.05},
 	"CVE-2016-8367":  {[]string{"CWE-306"}, "cpe:2.3:o:phoenixcontact:ilc_151_eth_firmware:*", 0.05},
+	"CVE-2010-2965":  {[]string{"CWE-489", "CWE-306"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
+	"CVE-2019-12256": {[]string{"CWE-787"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
+	"CVE-2019-12255": {[]string{"CWE-787"}, "cpe:2.3:o:windriver:vxworks:*", 0.10},
 	"CVE-2020-16209": {[]string{"CWE-787", "CWE-120"}, "cpe:2.3:a:fieldcommgroup:hipserver:*", 0.08},
 	"CVE-2025-58428": {[]string{"CWE-78"}, "cpe:2.3:o:veeder-root:tls4b_firmware:*", 0.05},
 	"CVE-2018-8867":  {[]string{"CWE-20"}, "cpe:2.3:o:ge:pacsystems_rx3i_cpe330_firmware:*", 0.03},
@@ -2275,6 +2330,41 @@ func init() {
 			catalog[i].EPSS = e.EPSS
 		}
 	}
+	// Build the lookup indexes once (the catalog never changes at runtime), so
+	// the per-request MatchPayload / per-event Lookup / list paths don't rescan
+	// or re-sort all ~500 records on every call.
+	catalogByService = make(map[string][]Record, 64)
+	catalogByID = make(map[string]Record, len(catalog))
+	for _, r := range catalog {
+		catalogByService[r.Service] = append(catalogByService[r.Service], r)
+		catalogByID[r.ID] = r
+	}
+	catalogSorted = append([]Record(nil), catalog...)
+	sort.Slice(catalogSorted, func(i, j int) bool { return catalogSorted[i].ID < catalogSorted[j].ID })
+}
+
+// catalog indexes built in init() (the catalog is immutable at runtime).
+var (
+	catalogByService map[string][]Record // record.Service → records
+	catalogByID      map[string]Record   // record.ID → record
+	catalogSorted    []Record            // catalog sorted by ID
+)
+
+// candidateServices returns the record services a listener handler can match,
+// applying the service aliasing (https→http; implicit-TLS mail variants
+// imaps/pop3s/smtps inherit their plaintext service's CVEs).
+func candidateServices(handler string) []string {
+	switch handler {
+	case "https":
+		return []string{"https", "http"}
+	case "imaps":
+		return []string{"imaps", "imap"}
+	case "pop3s":
+		return []string{"pop3s", "pop3"}
+	case "smtps":
+		return []string{"smtps", "smtp_recv"}
+	}
+	return []string{handler}
 }
 
 // MatchPayload returns the catalog records whose exploit signature
@@ -2286,14 +2376,13 @@ func MatchPayload(handler, payload string) []Record {
 	}
 	low := strings.ToLower(payload)
 	var out []Record
-	for _, r := range catalog {
-		if !serviceMatches(r.Service, handler) {
-			continue
-		}
-		for _, sig := range r.Signatures { // sigs are already lowercase
-			if strings.Contains(low, sig) {
-				out = append(out, r)
-				break
+	for _, svc := range candidateServices(handler) {
+		for _, r := range catalogByService[svc] {
+			for _, sig := range r.Signatures { // sigs are already lowercase
+				if strings.Contains(low, sig) {
+					out = append(out, r)
+					break
+				}
 			}
 		}
 	}
@@ -2305,10 +2394,8 @@ func MatchPayload(handler, payload string) []Record {
 // includes "http" records.
 func ForService(handler string) []Record {
 	var out []Record
-	for _, r := range catalog {
-		if serviceMatches(r.Service, handler) {
-			out = append(out, r)
-		}
+	for _, svc := range candidateServices(handler) {
+		out = append(out, catalogByService[svc]...)
 	}
 	return out
 }
@@ -2318,44 +2405,17 @@ func ForService(handler string) []Record {
 // rest are also recognized as live exploit attempts by MatchPayload.
 // Used by `tarpit-honeypot list-cves`.
 func All() []Record {
-	out := append([]Record(nil), catalog...)
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	// catalogSorted is built once in init(); return a copy so callers can't
+	// mutate the cached order.
+	return append([]Record(nil), catalogSorted...)
 }
 
 // Detectable reports whether a record carries exploit signatures (so
 // MatchPayload can flag a live attempt) versus being advisory-only.
 func (r Record) Detectable() bool { return len(r.Signatures) > 0 }
 
-// Lookup returns the record for an exact CVE id.
+// Lookup returns the record for an exact CVE id (O(1) via the id index).
 func Lookup(id string) (Record, bool) {
-	for _, r := range catalog {
-		if r.ID == id {
-			return r, true
-		}
-	}
-	return Record{}, false
-}
-
-// serviceMatches reports whether a catalog record for recordService
-// applies to a listener running handler.
-func serviceMatches(recordService, handler string) bool {
-	if recordService == handler {
-		return true
-	}
-	// HTTP-layer CVEs apply over TLS too.
-	if recordService == "http" && handler == "https" {
-		return true
-	}
-	// Implicit-TLS mail variants run the same plaintext handler under TLS, so
-	// they inherit the plaintext service's CVEs.
-	switch handler {
-	case "imaps":
-		return recordService == "imap"
-	case "pop3s":
-		return recordService == "pop3"
-	case "smtps":
-		return recordService == "smtp_recv"
-	}
-	return false
+	r, ok := catalogByID[id]
+	return r, ok
 }

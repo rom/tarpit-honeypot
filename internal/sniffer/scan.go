@@ -572,12 +572,15 @@ func (r *rateLimiter) allow(key string, now time.Time) bool {
 
 // gooseInfo is the fingerprint extracted from one IEC 61850 GOOSE frame.
 type gooseInfo struct {
-	srcMAC  string
-	appid   uint16
-	gocbRef string
-	goID    string
-	stNum   uint32
-	sqNum   uint32
+	srcMAC    string
+	appid     uint16
+	gocbRef   string
+	goID      string
+	stNum     uint32
+	sqNum     uint32
+	test      bool // GOOSE `test` boolean (tag 0x87) — test/maintenance frame
+	confRev   uint32
+	simulated bool // the GOOSE header "simulate"/S bit (reserved1 bit 15)
 }
 
 // parseGOOSE parses an Ethernet frame carrying an IEC 61850-8-1 GOOSE PDU
@@ -606,6 +609,9 @@ func parseGOOSE(frame []byte) (gooseInfo, bool) {
 	gi := gooseInfo{
 		srcMAC: net.HardwareAddr(append([]byte(nil), frame[6:12]...)).String(),
 		appid:  binary.BigEndian.Uint16(frame[off : off+2]),
+		// reserved1 (off+4..off+6) bit 15 is the IEC 61850-90-5 "simulate" (S)
+		// bit: a frame published by a test set rather than the real IED.
+		simulated: binary.BigEndian.Uint16(frame[off+4:off+6])&0x8000 != 0,
 	}
 	apdu := frame[off+8:]
 	if len(apdu) < 2 || apdu[0] != 0x61 { // GOOSE PDU SEQUENCE tag
@@ -641,10 +647,96 @@ func parseGOOSE(frame []byte) (gooseInfo, bool) {
 			gi.stNum = beUint(v)
 		case 0x86:
 			gi.sqNum = beUint(v)
+		case 0x87: // test (BOOLEAN)
+			gi.test = len(v) > 0 && v[len(v)-1] != 0
+		case 0x88: // confRev
+			gi.confRev = beUint(v)
 		}
 		p = ve
 	}
 	return gi, true
+}
+
+// --- GOOSE attack analysis ----------------------------------------------
+//
+// A GOOSE publisher emits a steady stream for each control block (gocbRef):
+// stNum is constant while the state is unchanged and sqNum increments; a real
+// state change bumps stNum and resets sqNum. Attacks against this trust model:
+//
+//   - spoofing  — a second publisher (different src MAC) emits frames for an
+//     existing gocbRef, usually with a higher stNum to win the "latest state"
+//     race and drive subscribers (trip a breaker). T0856 + T0831.
+//   - replay    — an stNum that goes backwards (an old/captured state injected).
+//   - storm     — stNum incrementing rapidly (a flood of fake state changes).
+//   - simulation— the header simulate bit (or `test`) set, injecting via the
+//     test channel without the real IED. T0856.
+
+type gooseState struct {
+	publisher string // first-seen src MAC = the legitimate publisher
+	stNum     uint32
+	sqNum     uint32
+	winStart  time.Time
+	stChanges int
+}
+
+// gooseTracker keeps per-control-block state to detect the attacks above. It is
+// used from a single goroutine (the GOOSE capture loop), so it needs no lock.
+type gooseTracker struct {
+	st  map[string]*gooseState
+	max int
+}
+
+func newGOOSETracker() *gooseTracker {
+	return &gooseTracker{st: map[string]*gooseState{}, max: 4096}
+}
+
+const (
+	gooseStormWindow = 2 * time.Second
+	gooseStormCount  = 4 // stNum (state) changes within the window
+)
+
+// analyze records a GOOSE frame and returns any attack markers it reveals.
+func (g *gooseTracker) analyze(gi gooseInfo, now time.Time) []string {
+	key := gi.gocbRef
+	if key == "" {
+		key = gi.goID
+	}
+	if key == "" {
+		return nil // can't correlate an unidentified control block
+	}
+	var out []string
+	if gi.simulated || gi.test {
+		out = append(out, "goose-simulation")
+	}
+	prev, ok := g.st[key]
+	if !ok {
+		if len(g.st) >= g.max {
+			g.st = map[string]*gooseState{} // bounded: reset under flood
+		}
+		g.st[key] = &gooseState{publisher: gi.srcMAC, stNum: gi.stNum, sqNum: gi.sqNum, winStart: now}
+		return out
+	}
+	if gi.srcMAC != prev.publisher {
+		out = append(out, "goose-spoofing")
+	}
+	if gi.stNum < prev.stNum {
+		out = append(out, "goose-replay")
+	} else if gi.stNum > prev.stNum {
+		// A state change. Count them in a short window to catch a storm.
+		if now.Sub(prev.winStart) > gooseStormWindow {
+			prev.winStart = now
+			prev.stChanges = 0
+		}
+		prev.stChanges++
+		if prev.stChanges >= gooseStormCount {
+			out = append(out, "goose-storm")
+		}
+	}
+	if gi.stNum >= prev.stNum {
+		prev.stNum = gi.stNum
+	}
+	prev.sqNum = gi.sqNum
+	return out
 }
 
 // berLen decodes a BER length at the start of b: returns the length value

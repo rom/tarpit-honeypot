@@ -312,6 +312,33 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		flagAnomaly(&res, marker)
 	}
 
+	// Evasion / obfuscation detection. Flag the encoding artifacts themselves,
+	// then percent-decode the request through successive layers and re-run the
+	// path + attack-class checks so a single- or double-encoded payload
+	// ("..%252f", "%c0%ae", "UNION/**/SELECT") is still caught — and tag it
+	// `evasion:encoded-payload` so the SOC sees the obfuscation, not just the hit.
+	rawReq := string(res.Payload)
+	for _, marker := range evasionMarkers(rawReq) {
+		flagAnomaly(&res, marker)
+	}
+	layers := percentDecodeLayers(rawReq)
+	for _, decoded := range layers[1:] { // skip the raw layer (already scanned)
+		if marker := suspiciousURI(decoded); marker != "" {
+			flagAnomaly(&res, marker)
+			flagAnomaly(&res, "evasion:encoded-payload")
+		}
+		for _, marker := range httpAttackClasses(decoded) {
+			flagAnomaly(&res, marker)
+			flagAnomaly(&res, "evasion:encoded-payload")
+		}
+	}
+
+	// Active-enumeration detection: verb/method enumeration (OPTIONS/TRACE/
+	// PROPFIND/DEBUG) and account-enumeration parameters on an auth endpoint.
+	for _, marker := range httpEnumerationMarkers(extractMethod(firstLine), rawReq) {
+		flagAnomaly(&res, marker)
+	}
+
 	// Method-level anomaly: legit clients use a small set; everything
 	// else (binary blobs, "ATTACK", junk) is a worth-tagging.
 	if method := extractMethod(firstLine); method != "" && !isKnownHTTPMethod(method) {

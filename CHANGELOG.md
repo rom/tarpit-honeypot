@@ -8,6 +8,124 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Deep ICS protocol implementations.** Five fingerprint-grade handlers now
+  decode their session/service layer and classify recon vs control:
+  - **CODESYS V3** (1217) — classifies the targeted component/service from the
+    in-clear tokens (CmpUserMgr login, CmpFileTransfer / CmpApp download &
+    online-change, start/stop/reset, CmpDevice info, CmpTraceMgr) and attributes
+    the CODESYS no-default-auth (**CVE-2022-31806**) + gateway auth-bypass
+    (**CVE-2022-31802**). Embedded across WAGO/Beckhoff/Schneider/ABB/Festo.
+  - **S7comm-Plus** (102) — parses the S7-1200/1500 PDU: version→firmware family,
+    opcode, and function (Explore, Get/SetMultiVariables, CreateObject/Invoke) →
+    explore/read/write/program-access markers.
+  - **KNXnet/IP** (3671) — parses the cEMI/APCI layer of TUNNELLING_REQUEST +
+    ROUTING_INDICATION: GroupValue read/write (bus drive), A_Memory_Write,
+    A_Restart, individual-address/property/key programming, with the KNX
+    individual+group addresses; flags CONNECT and DEVICE_CONFIGURATION.
+  - **Phoenix Contact PCWorx** (1962) — richer ILC identification + a bounded
+    session classifying run-state / program-transfer / variable write-read /
+    login, attributing the ILC unauthenticated-access **CVE-2016-8367**.
+  - **VxWorks WDB target agent** (UDP 17185) — parses the ONC-RPC/WDB header
+    (WDBPROG 0x55555555), classifies memory access / context-create+function-call
+    (RCE) / connect, attributes the exposed-WDB-agent backdoor (**CVE-2010-2965**)
+    and detects oversized **URGENT/11** IPnet requests (**CVE-2019-12256/-12255**).
+- **Deeper Modbus + Modbus/TCP Security.** Both the plaintext (502) and TLS
+  (802) Modbus handlers now share a much deeper analysis layer:
+  - **More function codes** — Read Exception Status (0x07), Get Comm Event
+    Counter/Log (0x0B/0x0C), Read FIFO Queue (0x18), Read/Write File Record
+    (0x14/0x15), CANopen General Reference (MEI 0x0D), program/firmware transfer
+    (0x28/0x29/0x2A), and the **Schneider UMAS** engineering channel (FC 0x5A,
+    with sub-function naming: read/write memory & variables, START/STOP, take/
+    release reservation).
+  - **Register-reference + vendor-tag enrichment** — every coil/register
+    operation is stamped with its Modicon reference (0/1/3/4xxxx), register
+    class, and a Schneider/IEC `%M`/`%MW`/`%IW` **tag hint**.
+  - **Vendor extensions & backdoors** — vendor/reserved function codes
+    (65-72, 100-110) flagged as proprietary/backdoor channels
+    (`modbus-vendor-function`); UMAS flagged `modbus-umas` with the Schneider
+    Modicon auth-bypass CVE (**CVE-2018-7842**); program/firmware transfer →
+    `modbus-program-download`; diagnostic counter-clear → `modbus-diagnostic-clear`
+    (anti-forensics); **config/system register-area** access flagged.
+  - **Enumeration / fingerprinting** — session-level unit-id sweep
+    (`modbus-uid-enumeration`, T0846), function-code scan (`modbus-fc-scan`,
+    T0888), and broadcast (unit 0) write (`modbus-broadcast-write`).
+  - New ATT&CK-for-ICS mappings for all markers; CVE-2018-7842 added to the
+    catalog (advisory-only, CWE-287/294).
+- **15 more PHP vulnerability emulations** in the fake web app: phpMyAdmin LFI
+  (**CVE-2018-12613**) + setup RCE (**CVE-2009-1151**), Drupalgeddon2
+  (**CVE-2018-7600**), Laravel Ignition RCE (**CVE-2021-3129**), ThinkPHP 5.x
+  RCE (**CVE-2018-20062**), PHP-FPM status leak, Composer manifest leak,
+  exposed `php-cgi`, Adminer, WordPress REST/`?author=` **user enumeration** +
+  `xmlrpc.php` `system.multicall` brute / pingback SSRF, webshell-filename
+  probes, PHP **superglobal pollution**, **type-juggling / magic-hash** auth
+  bypass, **RFI** (`allow_url_include`), and **code-eval** sinks
+  (`preg_replace /e`, `assert`, `create_function`). New `webapp:*` markers
+  (mapped via the `webapp:`→T1190 fallback) + 4 new catalog CVEs
+  (CVE-2018-12613, CVE-2009-1151, CVE-2018-20062, CVE-2019-11043) with
+  CWE/CVSS/CPE/EPSS.
+
+- **8 more OS/device archetypes (ICS/OT + networking)** — Schneider Modicon
+  M340, Allen-Bradley ControlLogix 1756-L73, GE PACSystems RX3i, WAGO PFC200
+  (CODESYS Linux PLC); and Juniper SRX340 (Junos), Arista 7050SX (EOS), Palo
+  Alto PA-220 (PAN-OS), Aruba 2930F (ArubaOS-Switch). Each ships the device
+  fingerprint surface (MAC OUI, SNMP sysDescr/sysObjectID, CPE, default
+  services) so a scan keys on the right vendor/product. The existing Beckhoff
+  CX9020 archetype now also advertises the TwinCAT AMS/UDP discovery port.
+- **More PHP vulnerability emulation in the fake web app.** The vulnerable-webapp
+  decoy now emulates the major PHP-specific attack surfaces: **PHP stream
+  wrappers** in LFI — `php://filter` source disclosure (returns believable
+  base64-encoded "config.php"), `php://input`/`data:`/`expect:` wrapper RCE,
+  `phar://` deserialization, and `/proc/self/environ` + `/var/log` log-poisoning
+  targets; **php-cgi argument injection** (`?-d+allow_url_include…` →
+  **CVE-2012-1823**, and the Windows soft-hyphen `%AD` best-fit →
+  **CVE-2024-4577**); the **PHPUnit `eval-stdin.php` RCE** (**CVE-2017-9841**,
+  echoes plausible command output); and generic **PHP source-backup disclosure**
+  (`*.php.bak` / `.php~` / `.phps`). New `webapp:php-*` markers (mapped via the
+  `webapp:` → T1190 fallback) plus the three enriched CVE hits.
+- **Beckhoff TwinCAT — AMS/UDP discovery + route (UDP 48899).** A new
+  `ads_discovery` handler emulates the TwinCAT AMS/UDP service the "Add Route"
+  dialog / TcAmsRemoteMgr broadcasts use: it parses the AMS/UDP header, captures
+  the sender AmsNetId, flags **discovery** (`ics-ads-discovery`, T0846) with a
+  bounded rate-limited identity reply, and flags **AddRoute**
+  (`ics-ads-route-add`, T0866) — an attacker adding a trusted engineering route
+  / control-system foothold — capturing the embedded route/host/user strings.
+  The existing ADS/TCP (48898) handler now also names the target **AMS port**
+  (`ams_target_port`: system-service/router 10000, TC2/TC3 PLC runtimes, …) and
+  flags system-service access. New `beckhoffplc` role bundle.
+- **GOOSE attack analysis (IEC 61850).** The L2 GOOSE sniffer now keeps
+  per-control-block (`gocbRef`) state and detects manipulation, not just
+  presence: **spoofing** (a second publisher / different src MAC for an existing
+  control block → `sniffer:goose_spoof`, critical), **replay** (an `stNum`
+  regression → `sniffer:goose_replay`, critical), **storm** (rapid `stNum`
+  state-change flood → `sniffer:goose_storm`), and **simulation** (the header
+  simulate bit / `test` flag → `sniffer:goose_simulation`) — mapped to ATT&CK
+  for ICS **T0856** (Spoof Reporting Message) + T0831 / T0814 (new T0856
+  technique + D3FEND). The parser now also extracts `test`, `confRev`, and the
+  simulate bit; benign streams still emit the rate-limited `sniffer:goose`.
+- **Modbus/TCP Security (Modbus-over-TLS) handler** (`modbus_security` /
+  `modbuss`, port 802). Terminates TLS (requesting the client's role
+  certificate), computes JA3/JA4/JA3S, captures the client-cert subject + the
+  **Modbus role** (X.509 extension OID `1.3.6.1.4.1.50316.802.1`), flags the
+  secure session (and a missing client cert), then runs the normal Modbus PDU
+  handler over the encrypted channel — so reads/writes/diagnostics are
+  classified exactly as on plaintext 502. Added to the `scadaserver` role.
+- **HTTP evasion / obfuscation detection.** The base HTTP handler now flags the
+  encoding tricks attackers use to slip payloads past signature filters —
+  **double/triple percent-encoding** (`..%252f`), **overlong-UTF-8** and
+  **`%u`-style Unicode** dot-dot, **null-byte** truncation, **backslash /
+  mixed-slash** path obfuscation, and **SQL-comment splitting** (`UNION/**/SELECT`)
+  — as `evasion:*` markers (→ ATT&CK **T1027**, defense-evasion). It also
+  **percent-decodes the request through successive layers and re-runs** the
+  path + attack-class checks, so a single- or double-encoded traversal / Log4Shell
+  / SSTI payload is still caught and additionally tagged `evasion:encoded-payload`.
+- **HTTP active-enumeration detection.** Flags verb/method enumeration
+  (`OPTIONS`/`TRACE`/`TRACK`/`PROPFIND`/`DEBUG`/`SEARCH` → `http-method-enumeration`,
+  T1595) and account enumeration (a username-style parameter on a login/auth
+  endpoint → `http-account-enumeration`, T1087). Complements the existing
+  protocol enumeration signals (SMTP `VRFY`/`EXPN`, LDAP, SNMP walk, mDNS, NBD).
+
 ## [2.13.0] — 2026-06-06
 
 ### Added

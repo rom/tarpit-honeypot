@@ -709,6 +709,7 @@ var industrialArchetypes = map[string]*Profile{
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http"}, {Port: 161, Handler: "snmp"},
 			{Port: 48898, Handler: "ads", Note: "Beckhoff ADS/AMS"},
+			{Port: 48899, Handler: "ads_discovery", Note: "TwinCAT AMS/UDP discovery (udp)"},
 			{Port: 502, Handler: "modbus", Note: "Modbus/TCP (TF6250)"},
 		},
 		quirks: []string{"beckhoff", "twincat", "ads"},

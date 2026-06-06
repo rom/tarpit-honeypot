@@ -128,6 +128,7 @@ var roles = map[string][]Service{
 	},
 	"scadaserver": {
 		{502, "tcp", "modbus", "Modbus/TCP"},
+		{802, "tcp", "modbus_security", "Modbus/TCP Security (TLS)"},
 		{102, "tcp", "s7", "S7comm"},
 		{20000, "tcp", "dnp3", "DNP3"},
 		{80, "tcp", "http", "HMI web UI"},
@@ -395,6 +396,12 @@ var roles = map[string][]Service{
 		{9600, "tcp", "fins_tcp", "Omron FINS/TCP"},
 		{9600, "udp", "fins", "Omron FINS/UDP"},
 		{80, "tcp", "http", "PLC web"},
+	},
+	"beckhoffplc": {
+		{48898, "tcp", "ads", "Beckhoff ADS/AMS (TwinCAT)"},
+		{48899, "udp", "ads_discovery", "TwinCAT AMS/UDP discovery + route"},
+		{502, "tcp", "modbus", "Modbus/TCP"},
+		{80, "tcp", "http", "CX device web"},
 	},
 	"semiconductorfab": {
 		{5000, "tcp", "secs_gem", "SECS/GEM (HSMS)"},

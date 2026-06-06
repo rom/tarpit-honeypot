@@ -41,7 +41,7 @@ rationale covering the current implementation.
   request), then tarpits the same connection — any emulator becomes a
   tarpit.
 - **UDP honeypots** in `drop` or `banner` mode with protocol handlers.
-- **132 TCP + 113 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **133 TCP + 114 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
@@ -52,7 +52,7 @@ rationale covering the current implementation.
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, **UDP + TCP**): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection. The TCP variant (RFC 7766, 2-byte length framing) draws out truncation fallback, zone-transfer (`AXFR`/`IXFR`) probes, and DNS-over-TCP tunneling — configure it as a second `proto: tcp` listener on port 53.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **166 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **174 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -637,8 +637,8 @@ factory-reset (DCP Set); plus a dedicated NFS (2049) handler.** See
 [`docs/ot.md`](docs/ot.md).
 The v2.4–2.13 line widens the platform from a sensor into a deception suite and
 then deepens detection and operability across every subsystem. Current totals:
-**132 TCP + 113 UDP protocol handlers**, **528 CVE detections**, **469 built-in
-YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **166
+**133 TCP + 114 UDP protocol handlers**, **528 CVE detections**, **469 built-in
+YARA artifact-classification rules**, **230 dynamic Lua service scripts**, **174
 OS/device archetypes**, **900+ attack-tool/scanner fingerprints**, **30
 single-sensor + 27 cross-sensor (`fleet:*`) correlators**, **18 typed IOC
 kinds**, and full ATT&CK + **20 D3FEND** countermeasure mapping.
@@ -1556,7 +1556,8 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 
 | Handler | Port | What it does | arch | id |
 |---|---|---|:-:|:-:|
-| `modbus` | 502 | MBAP multi-PDU parser. Reads (FC 1–4) get plausible coil/register data; writes (5/6/0F/10/16/17) echo + capture written values (`modbus-write-attempt`, T0836/T0831); **FC 0x08 Diagnostics** restart/listen-only flagged `ics-modbus-diagnostic` (T0814); Report Server ID (11) + the FC 0x2B/MEI Read-Device-ID probe (nmap modbus-discover → Schneider Modicon M340). | — | — |
+| `modbus` | 502 | Deep MBAP multi-PDU parser. Reads (FC 1–4) get plausible data + **Modicon reference / `%MW` tag enrichment**; writes (5/6/0F/10/16/17/15) → `modbus-write-attempt` (T0836/T0831); FC 0x07/0x0B/0x0C/0x18 status/event recon; FC 0x08 diagnostics (restart/listen-only → `ics-modbus-diagnostic`, counter-clear → anti-forensics); program/firmware transfer (0x28-0x2A → `modbus-program-download`); **Schneider UMAS** (FC 0x5A → `modbus-umas`, CVE-2018-7842); vendor/reserved FCs (65-72/100-110 → `modbus-vendor-function`); FC 0x2B/MEI device-ID + Report Server ID fingerprinting; session-level **unit-id sweep / FC scan / broadcast-write** enumeration. | — | — |
+| `modbus_security` / `modbuss` | 802 | **Modbus/TCP Security** (Modbus-over-TLS). Terminates TLS (JA3/JA4/JA3S), captures the client-cert subject + the **Modbus role** X.509 extension, flags the secure session / missing client cert, then runs the `modbus` PDU handler over the encrypted channel. | ✓ | — |
 | `s7` | 102 | Siemens **S7comm** over TPKT/COTP. Completes CR→CC, negotiates **Setup Communication**, then services the session: **SZL reads** answered with a believable S7-300 module/firmware identity (the CPU fingerprint nmap `s7-info`/plcscan parse), plus **Read Var** (T0801), **Write Var** (T0836/T0831), **PLC STOP/control** (T0858), **block up/download** (T0843). | — | — |
 | `s7comm_plus` | 102 | S7-1200/1500 S7comm-Plus over TPKT/COTP. Answers the COTP CR with a CC, then captures + classifies the first data PDU (S7comm-Plus `0x72` vs classic `0x32`). | — | — |
 | `iec104` | 2404 | IEC 60870-5-104 APCI parser; replies STARTDT_CON/TESTFR_CON and a believable **General Interrogation** result. Flags GI/counter-interrogation (T0801), single/double **commands** (`ics-iec104-command`, T0855), **set-point** commands (T0836), **reset-process** (T0816). | — | — |
@@ -1612,6 +1613,7 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | `ge_egd` | 18246 | GE **Ethernet Global Data** (PACSystems / 90-30 / 90-70 producer/consumer). Decodes the PDU type + producer id. **Capture-only** (EGD is one-way). | — | — |
 | `lontalk` | 1628 | Echelon **LonTalk / LonWorks-IP** (CEA-852) building/industrial control. Decodes the data-packet header. **Capture-only** (config-server-mediated; replying would risk reflection). | — | — |
 | `wdbrpc` | 17185 | VxWorks **WDB target agent** — the RTOS debug RCE surface (URGENT/11 class). Flags the probe + connect (`wdbrpc-connect`, T0866); bounded, rate-limited reply. | — | — |
+| `ads_discovery` | 48899 | Beckhoff **TwinCAT AMS/UDP discovery + route** (the "Add Route" / TcAmsRemoteMgr broadcast). Flags discovery (`ics-ads-discovery`, T0846; bounded identity reply) and **AddRoute** (`ics-ads-route-add`, T0866 — engineering foothold; captures route/host/user). | ✓ | — |
 | `isakmp` | 500 | IKE / ISAKMP (VPN). Parses the ISAKMP header (initiator/responder cookies, exchange type, first SA proposal), captures it, and flags `ike-probe` — a VPN-endpoint discovery / `ike-scan` sweep. No negotiation is completed. | — | — |
 | `dhcp` | 67 | **Passive** DHCP observer — never hands out leases. Parses broadcast DISCOVER/REQUEST/INFORM, captures the client MAC, hostname (opt 12), vendor class (opt 60), requested IP (opt 50), and the option-55 parameter-request-list as a fingerbank-style DHCP fingerprint. Feeds the learned-device registry. | — | — |
 | `dns` | 53 | Resolving DNS server. Answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with fabricated, **deterministic-per-deployment** records (same name → same fake IP within a sensor, avoiding RFC1918/loopback so it looks like a real internet host); unsupported qtypes get NOERROR/0-answers. Captures `qname`/`qtype` and runs every query through tunneling/exfil detection (overlong qname, high-entropy labels, TXT/NULL tunneling qtypes, oversize query, **DGA-suspected** domains, and **encrypted-DNS** recognition — DoH / DoT / DNSCrypt probes). | — | ✓ |

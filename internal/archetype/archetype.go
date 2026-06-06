@@ -67,6 +67,9 @@ func init() {
 	for k, p := range industrialArchetypes {
 		registry[k] = p
 	}
+	for k, p := range industrialExtArchetypes {
+		registry[k] = p
+	}
 	for k, p := range printerArchetypes {
 		registry[k] = p
 	}
