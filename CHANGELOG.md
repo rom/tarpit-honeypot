@@ -10,6 +10,25 @@ documented in `docs/`).
 
 ### Added
 
+- **Per-protocol analytics pages: DNS, web, and databases.** Three new pages
+  appear in the nav (and respond) only when the running config exposes a relevant
+  listener:
+  - **`/dns`** — queries/hour, query types/commands, top queries (qname) + top
+    registrable domains, top replies, the bounded query log, and the
+    attacks/misuses/manipulations table (tunnelling / amplification / zone
+    transfer / DGA …) with CVE→CWE.
+  - **`/web`** — requests/hour, top URLs, top HTTP headers, top replies (HTTP
+    status), **top-10 attacks** + **top-10 attackers**, every unique URL and file
+    accessed, and the web-attack-class / CVE / CWE table.
+  - **`/databases`** — events/hour, by-engine split, top queries/commands, top
+    databases, top replies (version banners), top-10 attacks + attackers, and the
+    injection/abuse / CVE / CWE table — across mysql/postgres/mssql/mongodb/redis/….
+- **Credential captures by service.** The `/credentials` page gains a pie + bar
+  comparing how many captured logins came from each service (ssh / ftp / telnet /
+  …), so the credential-attack load per protocol is visible at a glance.
+- **Summary service-activity highlight.** Each service card on the summary's
+  listener board is now tinted (and shows its event count) when that service saw
+  any access or attempt in the window.
 - **RDP now harvests offline-crackable NetNTLMv2 hashes.** The `rdp` handler
   previously stopped after the TLS handshake and only read one CredSSP message
   (so a standards-compliant NLA client — which sends NTLM **type 1** first —
