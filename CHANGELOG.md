@@ -10,6 +10,37 @@ documented in `docs/`).
 
 ### Added
 
+- **More OT protocols + ICCP/TASE.2.** Four new control-system handlers and a
+  deep inter-control-center implementation:
+  - **IEEE C37.118.2 synchrophasor** (`c37118`, TCP 4712) — parses the frame
+    header + FRAMESIZE, classifies COMMAND frames (turn-on/off transmission,
+    send CFG/HEADER) and answers with a CRC-checked CFG-2; turn-off against a
+    PMU flags `ics-pmu-command` (blinds wide-area monitoring).
+  - **SIA OSDP / IEC 60839-11-5** (`osdp`) over IP — access-control reader/panel
+    framing; classifies osdp_OUT (door-strike actuation), osdp_COMSET (channel
+    hijack), osdp_KEYSET/CHLNG/SCRYPT (secure-channel key install/negotiation);
+    replies osdp_ACK / osdp_PDID with the right checksum or CRC.
+  - **FANUC FOCAS** (`focas`, TCP 8193) — CNC fingerprint → Series 30i sysinfo.
+  - **ProConOS / eCLR** (`proconos`, TCP 20547) — the soft-PLC runtime PCWorx /
+    MULTIPROG download logic to; classifies START/STOP and unauthenticated
+    logic DOWNLOAD (ICS-ALERT-13-016 class).
+  - **ICCP / TASE.2** detection on the `mms` handler — recognizes the TASE.2
+    profile (version OID + Bilateral_Table / Transfer_Set / VCC objects) and
+    classifies Transfer-Set, Bilateral-Table, and Block-5 Device-control
+    operations. **Secure ICCP** (`iccp_secure`, TCP 3782) wraps it in TLS
+    (JA3/JA4/JA3S) per IEC 62351.
+- **OT scanner & tool fingerprinting.** `toolfp` adds User-Agent signatures for
+  the OT asset-discovery/monitoring platforms (Claroty, Nozomi, Tenable.ot,
+  Forescout, Dragos, Otorio, ScadaFence), Rapid7 Project Sonar, and the ICS
+  exploitation toolkits (ISF, smod, plcscan, s7scan, modscan). `scananalysis`
+  fingerprints the binary-protocol recon probes that carry no UA — nmap's ICS
+  NSE scripts (modbus-discover / s7-info / enip-info / bacnet / pcworx / fox),
+  Metasploit's scada modules — surfacing them in `scananalysis:profile`.
+- **Deeper VNC/RFB.** Client fingerprinting from the RFB version (Apple Remote
+  Desktop 003.889, UltraVNC), the RFB 3.8 auth-failure reason string, selected
+  security-type naming with None-auth probe detection (`vnc-none-auth-probe`),
+  and a SetEncodings client fingerprint (`vnc_encodings`). VNC anomalies now
+  carry explicit ATT&CK/D3FEND mappings.
 - **Deep ICS protocol implementations.** Five fingerprint-grade handlers now
   decode their session/service layer and classify recon vs control:
   - **CODESYS V3** (1217) — classifies the targeted component/service from the
