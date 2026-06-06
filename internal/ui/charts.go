@@ -326,6 +326,9 @@ func buildAnalytics(d dashboard, hours []store.HourBucket, evs []*event.Event) c
 	if len(d.Severity) > 0 {
 		overview.Figs = append(overview.Figs, chartFigure("pie", "Events by severity", barsToPie(d.Severity, true)))
 	}
+	if sl := attacksByService(evs); len(sl) > 0 {
+		overview.Figs = append(overview.Figs, chartFigure("pie", "Attacks by service (%)", map[string]any{"slices": sl, "donut": true}))
+	}
 	if len(hours) > 0 {
 		overview.Figs = append(overview.Figs, trendLine(hours))
 	}

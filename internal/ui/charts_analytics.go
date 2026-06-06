@@ -356,22 +356,28 @@ func trafficCharts(evs []*event.Event, hours []store.HourBucket) []chartFig {
 	}
 
 	const inColor, outColor = "#4a6fa5", "#d59a3a"
-	rateLine := func(title, color string, sums []float64, perSecDiv float64) chartFig {
+	mkPts := func(sums []float64, perSecDiv float64) []chPoint {
 		pts := make([]chPoint, n)
 		for i := 0; i < n; i++ {
 			v := (sums[i] / secs) / perSecDiv
 			pts[i] = chPoint{X: xs[i], Y: math.Round(v*1000) / 1000}
 		}
+		return pts
+	}
+	// Incoming + outgoing share one chart each (one for throughput, one for
+	// packet-rate) so the two directions are directly comparable.
+	twoSeries := func(title string, in, out []float64, perSecDiv float64) chartFig {
 		return chartFigure("line", title, map[string]any{
-			"series": []map[string]any{{"name": title, "points": pts, "color": color}},
-			"xType":  "time",
+			"series": []map[string]any{
+				{"name": "incoming", "points": mkPts(in, perSecDiv), "color": inColor},
+				{"name": "outgoing", "points": mkPts(out, perSecDiv), "color": outColor},
+			},
+			"xType": "time",
 		})
 	}
 	return []chartFig{
-		rateLine("Incoming network traffic ("+unit+")", inColor, bytesIn, div),
-		rateLine("Outgoing network traffic ("+unit+")", outColor, bytesOut, div),
-		rateLine("Incoming network traffic (packets/s)", inColor, pktsIn, 1),
-		rateLine("Outgoing network traffic (packets/s)", outColor, pktsOut, 1),
+		twoSeries("Network traffic — incoming vs outgoing ("+unit+")", bytesIn, bytesOut, div),
+		twoSeries("Network packet rate — incoming vs outgoing (packets/s)", pktsIn, pktsOut, 1),
 	}
 }
 

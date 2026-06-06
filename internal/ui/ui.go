@@ -928,11 +928,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
 	// from a bounded scan of the window.
+	var attackSvc []chSlice
 	if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
 		enrichDashboard(&d, evs)
 		if s.cfg.ServiceActivityEnabled() {
 			markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
 		}
+		attackSvc = attacksByService(evs)
 	}
 	// Carry the active window into every /events pivot link so the listing
 	// covers the same span the summary aggregated over (otherwise /events
@@ -941,6 +943,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// A compact visual overview (charts.js); the full gallery lives at /charts.
 	if len(d.Severity) > 0 {
 		d.Charts = append(d.Charts, chartFigure("pie", "Severity", barsToPie(d.Severity, true)))
+	}
+	if len(attackSvc) > 0 {
+		d.Charts = append(d.Charts, chartFigure("pie", "Attacks by service (%)", map[string]any{"slices": attackSvc, "donut": true}))
 	}
 	if len(hours) > 0 {
 		d.Charts = append(d.Charts, trendLine(hours))

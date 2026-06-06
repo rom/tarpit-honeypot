@@ -279,6 +279,39 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	d.CVEs = topBars(cve, 12, "/search?q=")
 }
 
+// isAttackEvent reports whether an event represents an attack / misuse /
+// exploit (vs. a benign probe) — it carries an anomaly marker, a CVE, or is
+// high/critical severity.
+func isAttackEvent(ev *event.Event) bool {
+	if len(ev.Anomalies) > 0 || len(eventCVEs(ev)) > 0 {
+		return true
+	}
+	if len(metaStrings(ev.Meta, "anomalies")) > 0 {
+		return true
+	}
+	return ev.Severity >= event.SeverityHigh
+}
+
+// attacksByService returns the share of attack events per service (handler),
+// for a "% of attacks by active service" pie/donut.
+func attacksByService(evs []*event.Event) []chSlice {
+	c := map[string]int{}
+	for _, ev := range evs {
+		if !isAttackEvent(ev) {
+			continue
+		}
+		svc := ev.Handler
+		if svc == "" {
+			svc = ev.Proto
+		}
+		if svc == "" {
+			continue
+		}
+		c[svc]++
+	}
+	return slicesFromMap(c)
+}
+
 // markCanvasActivity tints the summary's service board: it counts events per
 // destination port over the scanned window and marks each matching listener
 // card as "hit" (with its event count), so an operator sees at a glance which
