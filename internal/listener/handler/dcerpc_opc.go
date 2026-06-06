@@ -75,7 +75,7 @@ func opcCallName(uuid string, opnum uint16) string {
 // the interface granted at bind time. It records each call (opnum, method,
 // decoded argument strings) into res.Meta["dcerpc_calls"] and replies with an
 // NDR response or fault. Bounded by opcMaxRequests and the read timeout.
-func handleDCERPCRequests(conn net.Conn, boundUUID string, readTimeout time.Duration, res *Result) {
+func handleDCERPCRequests(conn net.Conn, boundUUID, opcVendor string, readTimeout time.Duration, res *Result) {
 	var calls []map[string]any
 	var itemStrings []string
 	for n := 0; n < opcMaxRequests; n++ {
@@ -131,7 +131,7 @@ func handleDCERPCRequests(conn net.Conn, boundUUID string, readTimeout time.Dura
 		var resp []byte
 		switch {
 		case method == "GetStatus":
-			resp = buildResponsePDU(callID, contID, opcServerStatusStub())
+			resp = buildResponsePDU(callID, contID, opcServerStatusStub(opcVendor))
 		case method == "AddGroup":
 			resp = buildResponsePDU(callID, contID, opcAddGroupStub())
 		case method == "Read" || method == "AddItems" || method == "ValidateItems":
@@ -255,7 +255,10 @@ func orpcThat(e *ndrEnc) {
 // a unique pointer to an OPCSERVERSTATUS (running, with vendor info), then the
 // HRESULT (S_OK). The structure is the real OPC-DA layout so a decoder sees a
 // live, running OPC server.
-func opcServerStatusStub() []byte {
+func opcServerStatusStub(vendor string) []byte {
+	if vendor == "" {
+		vendor = "Matrikon OPC Server for Simulation"
+	}
 	e := &ndrEnc{}
 	orpcThat(e)
 	e.uniquePtr(0x20000) // referent for ppServerStatus
@@ -273,7 +276,7 @@ func opcServerStatusStub() []byte {
 	e.u16(1408)                                       // wBuildNumber
 	e.u16(0)                                          // wReserved
 	e.uniquePtr(0x20004)                              // referent for szVendorInfo
-	e.wstr("Matrikon OPC Server for Simulation")
+	e.wstr(vendor)
 	e.u32(0) // HRESULT S_OK
 	return e.buf
 }

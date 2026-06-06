@@ -211,6 +211,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &focas{}, nil
 	case "proconos":
 		return &proconos{}, nil
+	case "osisoft_pi":
+		return &osisoftPI{id: deps.Identity}, nil
 	case "codesys":
 		return &codesys{}, nil
 	case "rsync":
@@ -259,7 +261,11 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "winrm":
 		return &winrm{}, nil
 	case "dcerpc":
-		return &dcerpc{}, nil
+		d := &dcerpc{}
+		if deps.Archetype != nil {
+			d.opcVendor = deps.Archetype.OPCVendor()
+		}
+		return d, nil
 	case "ldap":
 		return &ldap{}, nil
 	case "kerberos":

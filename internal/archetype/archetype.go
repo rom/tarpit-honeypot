@@ -187,7 +187,17 @@ type Profile struct {
 	// cpe is an optional explicit CPE 2.3 identifier override. When empty, CPE()
 	// derives one from Family + Name (see deriveCPE).
 	cpe string
+
+	// opcVendor pins the OPC-DA server vendor string (IOPCServer::GetStatus
+	// szVendorInfo) the dcerpc/OPC handler reports for this archetype — e.g.
+	// "Matrikon OPC Server for Simulation", "Kepware KEPServerEX". Empty =
+	// the handler default.
+	opcVendor string
 }
+
+// OPCVendor returns the OPC-DA server vendor string this archetype presents
+// over DCOM, or "" for the handler default.
+func (p *Profile) OPCVendor() string { return p.opcVendor }
 
 // TLSPosture describes the TLS version + cipher posture an archetype
 // presents. Used by the https handler to make an old device negotiate

@@ -456,6 +456,7 @@ var anomalyTags = map[string]Tag{
 	"ics-field-device-probe":  {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
 	"ics-data-bus-discovery":  {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"ics-process-data-access": {Techniques: []string{"T0801"}, Tactics: []string{"collection"}},
+	"ics-historian-access":    {Techniques: []string{"T0811", "T0801"}, Tactics: []string{"collection"}},
 	// ICS control / manipulation (impact).
 	"ics-modbus-write":                   {Techniques: []string{"T0836", "T0831"}, Tactics: []string{"impact"}},
 	"ics-modbus-diagnostic":              {Techniques: []string{"T0814"}, Tactics: []string{"impact"}},
@@ -1134,6 +1135,7 @@ var techDescriptions = map[string]string{
 	"T0858": "Change Operating Mode (ICS) — switching a controller's RUN/STOP/PROGRAM mode.",
 	"T0855": "Unauthorized Command Message (ICS) — sending an unauthorized control command.",
 	"T0801": "Monitor Process State (ICS) — reading the live process image / I/O of a controller.",
+	"T0811": "Data from Information Repositories (ICS) — collecting from a historian / data repository (e.g. OSIsoft PI).",
 	"T0816": "Device Restart/Shutdown (ICS) — restarting/shutting down a control device to disrupt it.",
 	"T0856": "Spoof Reporting Message (ICS) — forging device/process reporting messages (e.g. GOOSE) to mislead subscribers.",
 	"T0880": "Loss of Safety (ICS) — defeating or manipulating a safety-instrumented function.",
@@ -1275,6 +1277,7 @@ var d3fend = map[string][]string{
 	"T0858": {"D3-NTA", "D3-DE"},                    // ICS: change operating mode
 	"T0855": {"D3-NTA", "D3-DE"},                    // ICS: unauthorized command message
 	"T0801": {"D3-NTA", "D3-DE"},                    // ICS: monitor process state (data access)
+	"T0811": {"D3-NTA", "D3-DE"},                    // ICS: data from information repositories (historian)
 	"T0816": {"D3-NTA", "D3-DE"},                    // ICS: device restart/shutdown
 	"T0856": {"D3-NTA", "D3-DE"},                    // ICS: spoof reporting message (GOOSE)
 	"T0880": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: loss of safety

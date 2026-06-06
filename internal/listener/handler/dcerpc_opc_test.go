@@ -60,7 +60,7 @@ func TestScavengeWStrings(t *testing.T) {
 }
 
 func TestOPCServerStatusStubWellFormed(t *testing.T) {
-	stub := opcServerStatusStub()
+	stub := opcServerStatusStub("") // empty -> default Matrikon vendor
 	// The vendor string must be embedded as UTF-16LE.
 	want := utf16.Encode([]rune("Matrikon OPC Server for Simulation"))
 	wantBytes := make([]byte, len(want)*2)
@@ -74,6 +74,16 @@ func TestOPCServerStatusStubWellFormed(t *testing.T) {
 	// FILETIMEs(24) = offset 36.
 	if got := binary.LittleEndian.Uint32(stub[36:]); got != 1 {
 		t.Errorf("dwServerState = %d, want 1 (running)", got)
+	}
+	// A custom (archetype-driven) vendor string must be honored.
+	kep := opcServerStatusStub("Kepware Technologies KEPServerEX")
+	kw := utf16.Encode([]rune("Kepware Technologies KEPServerEX"))
+	kb := make([]byte, len(kw)*2)
+	for i, u := range kw {
+		binary.LittleEndian.PutUint16(kb[i*2:], u)
+	}
+	if !containsBytes(kep, kb) {
+		t.Error("custom OPC vendor string not present in GetStatus stub")
 	}
 }
 

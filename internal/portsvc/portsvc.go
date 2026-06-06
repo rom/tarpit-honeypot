@@ -21,6 +21,7 @@ var names = map[int]string{
 	2376: "docker-tls", 2404: "iec104", 3268: "globalcatalog", 3269: "globalcatalog-ssl",
 	3306: "mysql", 3389: "rdp", 3671: "knx", 3782: "iccp-secure", 4840: "opcua", 5060: "sip",
 	5094: "hartip", 5222: "xmpp", 5353: "mdns", 5355: "llmnr", 5432: "postgres",
+	5450: "osisoft-pi",
 	5683: "coap", 5672: "amqp", 5900: "vnc", 5985: "winrm", 5986: "winrm-tls",
 	6379: "redis", 8080: "http-alt", 8443: "https-alt", 9100: "jetdirect/pjl",
 	9200: "elasticsearch", 9600: "fins", 10001: "atg", 11211: "memcached",

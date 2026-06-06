@@ -239,6 +239,8 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Arista 7050SX (EOS)",
 		"Palo Alto PA-220 (PAN-OS)",
 		"Aruba 2930F (ArubaOS-Switch)",
+		"MatrikonOPC Server (Windows)",
+		"Kepware KEPServerEX (Windows)",
 	}
 	got := Names()
 	if len(got) != len(want) {

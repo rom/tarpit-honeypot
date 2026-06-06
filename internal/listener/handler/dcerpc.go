@@ -11,6 +11,10 @@ import (
 
 type dcerpc struct {
 	hosts []HoneynetHost
+	// opcVendor pins the OPC-DA server vendor string the IOPCServer::GetStatus
+	// stub reports (so a DCOM/OPCEnum probe sees a specific product). Empty =
+	// the default "Matrikon OPC Server for Simulation".
+	opcVendor string
 }
 
 func (d *dcerpc) Name() string { return "dcerpc" }
@@ -125,7 +129,7 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	// attacker reaches for and marshal believable NDR responses
 	// (OPCSERVERSTATUS, AddGroup, …). Capture-only; see dcerpc_opc.go.
 	if isOPCInterface(boundUUID) {
-		handleDCERPCRequests(conn, boundUUID, cfg.ReadTimeout, &res)
+		handleDCERPCRequests(conn, boundUUID, d.opcVendor, cfg.ReadTimeout, &res)
 	}
 	// The endpoint mapper advertises the interfaces registered on this
 	// host. Always surface the well-known set — including OPCEnum, the
