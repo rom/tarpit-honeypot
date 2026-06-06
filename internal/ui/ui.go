@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -75,6 +76,18 @@ type Server struct {
 	configPaths   []string   // config file path(s), for the /config "files in use" panel
 	hidden        *ipMatcher // presentation-layer source-IP hide list (ui.hidden_ips)
 	startTime     time.Time  // process start, for the config page uptime
+
+	// dashCache holds the off-request dashboard build per time-range window
+	// (stale-while-revalidate), so "/" stays fast regardless of event count.
+	dashMu     sync.Mutex
+	dashCache  map[string]dashEntry
+	dashFlight map[string]bool
+}
+
+// dashEntry is one cached dashboard build + when it was produced.
+type dashEntry struct {
+	d  dashboard
+	at time.Time
 }
 
 // SetConfigPaths wires the config file path(s) so the /config page can list
@@ -720,6 +733,17 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		_ = s.srv.Shutdown(shutCtx)
 	}()
 
+	// Pre-warm the default dashboard window off the request path so the first
+	// "/" load is served from cache rather than blocking on a cold full-window
+	// aggregation over a large event table.
+	if s.store != nil {
+		go func() {
+			if _, err := s.refreshIndexDashboard(summaryRange("")); err != nil {
+				slog.Debug("ui: dashboard pre-warm failed", "err", err)
+			}
+		}()
+	}
+
 	slog.Info("ui up", "bind", s.cfg.Bind, "tls", s.cfg.TLSCert != "", "auth", s.authToken != "")
 	if s.cfg.TLSCert != "" {
 		return s.srv.ListenAndServeTLS(s.cfg.TLSCert, s.cfg.TLSKey)
@@ -878,20 +902,103 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
-	since := time.Now().Add(-win.dur)
-	sum, err := s.store.Summary(ctx, since)
+	// The dashboard aggregates the whole event window (a multi-pass summary
+	// plus a bounded full-row enrichment scan). At hundreds of thousands of
+	// events — and under the write contention of a live pentest — doing that
+	// synchronously inside the request blows the deadline. Serve a cached build
+	// instead (stale-while-revalidate), so the page latency is independent of
+	// event count and write load.
+	d, err := s.cachedIndexDashboard(win)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "index", d); err != nil {
+		slog.Warn("ui: render index", "err", err)
+	}
+}
+
+// dashTTL is how long a cached dashboard build is served before a background
+// refresh is triggered. The dashboard is a whole-window rollup, so a few
+// seconds of staleness is fine and keeps page loads instant at any scale.
+const dashTTL = 20 * time.Second
+
+// cachedIndexDashboard returns the dashboard for a window, computing it off the
+// request path: a fresh cache entry is served as-is; a stale one is served
+// immediately while a background refresh runs; a missing one is computed now
+// (with a generous internal budget, not the caller's request deadline) so the
+// first load can't 500.
+func (s *Server) cachedIndexDashboard(win sumWindow) (dashboard, error) {
+	s.dashMu.Lock()
+	ent, ok := s.dashCache[win.key]
+	s.dashMu.Unlock()
+	if ok && time.Since(ent.at) < dashTTL {
+		return ent.d, nil
+	}
+	if ok {
+		s.refreshIndexDashboardAsync(win)
+		return ent.d, nil // serve stale while it refreshes
+	}
+	return s.refreshIndexDashboard(win)
+}
+
+// refreshIndexDashboard rebuilds + caches the dashboard for a window under an
+// internal timeout decoupled from any request deadline.
+func (s *Server) refreshIndexDashboard(win sumWindow) (dashboard, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	d, err := s.buildIndexDashboard(ctx, win)
+	if err != nil {
+		return d, err
+	}
+	s.dashMu.Lock()
+	if s.dashCache == nil {
+		s.dashCache = map[string]dashEntry{}
+	}
+	s.dashCache[win.key] = dashEntry{d: d, at: time.Now()}
+	s.dashMu.Unlock()
+	return d, nil
+}
+
+// refreshIndexDashboardAsync kicks a single background refresh per window
+// (deduped) so a stale serve doesn't fan out into many concurrent rebuilds.
+func (s *Server) refreshIndexDashboardAsync(win sumWindow) {
+	s.dashMu.Lock()
+	if s.dashFlight == nil {
+		s.dashFlight = map[string]bool{}
+	}
+	if s.dashFlight[win.key] {
+		s.dashMu.Unlock()
+		return
+	}
+	s.dashFlight[win.key] = true
+	s.dashMu.Unlock()
+	go func() {
+		defer func() {
+			s.dashMu.Lock()
+			delete(s.dashFlight, win.key)
+			s.dashMu.Unlock()
+		}()
+		if _, err := s.refreshIndexDashboard(win); err != nil {
+			slog.Warn("ui: dashboard refresh failed", "range", win.key, "err", err)
+		}
+	}()
+}
+
+// buildIndexDashboard performs the actual (expensive) dashboard aggregation for
+// a window. Callers run it off the request path via the cache above.
+func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow) (dashboard, error) {
+	since := time.Now().Add(-win.dur)
+	sum, err := s.store.Summary(ctx, since)
+	if err != nil {
+		return dashboard{}, err
+	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
 	hours, err := s.store.EventsPerBucket(ctx, since, win.bucket)
 	if err != nil {
-		serverError(w, r.URL.Path, err)
-		return
+		return dashboard{}, err
 	}
 	d := buildDashboard(sum, hours, win.bucket)
 	d.RangeLabel = win.label
@@ -953,10 +1060,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if len(d.Sources) > 0 {
 		d.Charts = append(d.Charts, chartFigure("hbar", "Top sources", barsToBar(d.Sources)))
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "index", d); err != nil {
-		slog.Warn("ui: render index", "err", err)
-	}
+	return d, nil
 }
 
 type colHeader struct {
