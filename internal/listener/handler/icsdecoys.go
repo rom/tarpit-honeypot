@@ -205,27 +205,55 @@ func (h *profinet) Name() string { return "profinet" }
 func (h *profinet) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.PacketConn, _ config.Listener) (Result, error) {
 	res := Result{Meta: map[string]any{}, Payload: payload}
 	flagAnomaly(&res, "profinet-io-probe")
+	res.Meta["intent"] = "PROFINET-IO probe — enumerating cyclic-I/O field devices"
 	if len(payload) >= 2 && payload[0] == 0x04 { // DCE-RPC version 4
 		res.Meta["dce_rpc_ptype"] = int(payload[1])
 		if payload[1] == 0x00 { // request PDU = a Connect / IODControl attempt
 			flagAnomaly(&res, "profinet-connect")
 			// The CL DCE-RPC v4 header carries the operation number (little-
-			// endian) at offset 28. PROFINET CM opnum 3 = IODWriteReq (write a
-			// device parameter / record) and 4 = IODControlReq (application
-			// ready / mode change) — both are device-manipulation attempts.
+			// endian) at offset 28. PROFINET CM opnums: 0 Connect, 1 Release,
+			// 2 Read (IODReadReq), 3 Write (IODWriteReq), 4 Control
+			// (IODControlReq), 5 ReadImplicit.
 			if len(payload) >= 30 {
 				opnum := binary.LittleEndian.Uint16(payload[28:30])
 				res.Meta["profinet_opnum"] = opnum
+				res.Meta["profinet_operation"] = profinetOpName(opnum)
 				switch opnum {
-				case 3:
+				case 0: // Connect — establish the application relation (cyclic I/O)
+					res.Meta["intent"] = "PROFINET-IO Connect — establishing an application relation (cyclic I/O foothold)"
+				case 2, 5: // IODRead / ReadImplicit — reading device records/params
+					flagAnomaly(&res, "ics-process-data-access")
+					res.Meta["intent"] = "PROFINET-IO " + profinetOpName(opnum) + " — reading device records/parameters"
+				case 3: // IODWrite — write a device parameter/record
 					flagAnomaly(&res, "profinet-iod-write")
-				case 4:
+					res.Meta["intent"] = "PROFINET-IO IODWrite — writing a device parameter/record (control manipulation)"
+				case 4: // IODControl — application-ready / mode change
 					flagAnomaly(&res, "profinet-iod-control")
+					res.Meta["intent"] = "PROFINET-IO IODControl — application-ready / device mode change"
 				}
 			}
 		}
 	}
 	return res, nil
+}
+
+// profinetOpName names the PROFINET CM (Context Manager) DCE-RPC operations.
+func profinetOpName(op uint16) string {
+	switch op {
+	case 0:
+		return "Connect"
+	case 1:
+		return "Release"
+	case 2:
+		return "IODRead"
+	case 3:
+		return "IODWrite"
+	case 4:
+		return "IODControl"
+	case 5:
+		return "ReadImplicit"
+	}
+	return "op-" + itoa(int(op))
 }
 
 // --- VxWorks WDB target agent (UDP 17185) --------------------------------

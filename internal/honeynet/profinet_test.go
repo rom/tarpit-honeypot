@@ -159,3 +159,78 @@ func TestVendorIDFor(t *testing.T) {
 		t.Errorf("default vendor ID wrong")
 	}
 }
+
+// buildDCPSetRequest synthesizes a DCP Set request frame targeting one
+// station MAC, setting the given option/suboption.
+func buildDCPSetRequest(reqMAC, dstMAC [6]byte, xid uint32, option, sub byte, value []byte) []byte {
+	// Set block: Option, Suboption, BlockLength(2), BlockQualifier(2), value.
+	block := []byte{option, sub}
+	bl := 2 + len(value) // BlockQualifier + value
+	block = append(block, byte(bl>>8), byte(bl&0xff))
+	block = append(block, 0x00, 0x01) // BlockQualifier: set permanent
+	block = append(block, value...)
+	if len(block)%2 == 1 {
+		block = append(block, 0x00)
+	}
+	frame := make([]byte, 26)
+	copy(frame[0:6], dstMAC[:])
+	copy(frame[6:12], reqMAC[:])
+	binary.BigEndian.PutUint16(frame[12:14], ethTypePROFINET)
+	binary.BigEndian.PutUint16(frame[14:16], dcpFrameIDGetSet)
+	frame[16] = dcpServiceSet
+	frame[17] = dcpServiceTypeRequest
+	binary.BigEndian.PutUint32(frame[18:22], xid)
+	binary.BigEndian.PutUint16(frame[24:26], uint16(len(block)))
+	frame = append(frame, block...)
+	return frame
+}
+
+func TestParseDCPSetNameOfStation(t *testing.T) {
+	req := [6]byte{0xaa, 0xbb, 0xcc, 0x11, 0x22, 0x33}
+	dst := [6]byte{0x00, 0x1b, 0x1b, 0x44, 0x55, 0x66}
+	frame := buildDCPSetRequest(req, dst, 0xdeadbeef, dcpOptDeviceProps, dcpSubNameOfStation, []byte("plc-evil"))
+	s, ok := parseDCPSet(frame)
+	if !ok {
+		t.Fatal("parseDCPSet failed on a valid Set frame")
+	}
+	if s.label != "NameOfStation" {
+		t.Errorf("label = %q, want NameOfStation", s.label)
+	}
+	if s.factory {
+		t.Error("NameOfStation set wrongly flagged as factory reset")
+	}
+	if s.reqMAC != req || s.dstMAC != dst || s.xid != 0xdeadbeef {
+		t.Errorf("addressing/xid mismatch: %+v", s)
+	}
+	// A Set response should be built and addressed back to the requester.
+	st := pnStation{name: "plc1", mac: dst}
+	resp := buildDCPSetResponse(st, s.reqMAC, s.xid, s.option, s.sub)
+	if !bytes.Equal(resp[0:6], req[:]) {
+		t.Errorf("response dst = %x, want requester %x", resp[0:6], req)
+	}
+	if binary.BigEndian.Uint16(resp[14:16]) != dcpFrameIDGetSet || resp[16] != dcpServiceSet {
+		t.Error("response is not a DCP Set response")
+	}
+}
+
+func TestParseDCPSetFactoryReset(t *testing.T) {
+	req := [6]byte{0xaa, 0xbb, 0xcc, 0x11, 0x22, 0x33}
+	dst := [6]byte{0x00, 0x1b, 0x1b, 0x44, 0x55, 0x66}
+	frame := buildDCPSetRequest(req, dst, 1, dcpOptControl, dcpSubCtrlFactory, nil)
+	s, ok := parseDCPSet(frame)
+	if !ok {
+		t.Fatal("parseDCPSet failed on a Control/ResetToFactory frame")
+	}
+	if !s.factory {
+		t.Errorf("factory reset not flagged; label=%q", s.label)
+	}
+}
+
+// An Identify frame must not be misparsed as a Set.
+func TestParseDCPSetRejectsIdentify(t *testing.T) {
+	req := [6]byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	frame := buildDCPIdentifyRequest(req, 1, "")
+	if _, ok := parseDCPSet(frame); ok {
+		t.Error("parseDCPSet accepted an Identify frame")
+	}
+}

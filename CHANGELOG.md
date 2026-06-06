@@ -168,6 +168,21 @@ documented in `docs/`).
     GE-EGD, BSAP-IP, LonTalk** — intent labels (the TriStation program-download
     path keeps its `ics-safety-controller-manipulation` flag).
 
+- **Deeper PROFINET analysis (DCE-RPC + DCP).**
+  - **PROFINET-IO (UDP 34964)** — now names the CM operation
+    (`profinet_operation`: Connect / Release / IODRead / IODWrite / IODControl /
+    ReadImplicit) and adds `intent` + read classification
+    (`ics-process-data-access` for IODRead/ReadImplicit) alongside the existing
+    IODWrite / IODControl flags.
+  - **PROFINET-DCP responder (L2, sniffer side)** — previously answered only
+    **Identify** requests. It now also recognizes **DCP Set** (FrameID 0xFEFD):
+    a NameOfStation / IPParameter reassignment or a Control/factory-reset, which
+    is configuration manipulation of the cell, not recon. Set requests raise a
+    new high-severity `honeynet:profinet_dcp_set` event (→T0836/T0831) carrying
+    the targeted option, and the addressed virtual station ACKs the Set (L2
+    unicast) so it appears to land. The Identify probe meta now also carries
+    `service: identify`.
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

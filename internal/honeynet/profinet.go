@@ -41,7 +41,10 @@ const (
 	ethTypePROFINET    = 0x8892
 	dcpFrameIDIdentReq = 0xFEFE
 	dcpFrameIDIdentRes = 0xFEFF
+	dcpFrameIDGetSet   = 0xFEFD
 
+	dcpServiceGet         = 0x03
+	dcpServiceSet         = 0x04
 	dcpServiceIdentify    = 0x05
 	dcpServiceTypeRequest = 0x00
 	dcpServiceTypeRespOK  = 0x01
@@ -53,6 +56,11 @@ const (
 	dcpSubNameOfStation = 0x02
 	dcpSubDeviceID      = 0x03
 	dcpSubDeviceRole    = 0x04
+	dcpOptControl       = 0x05
+	dcpSubCtrlSignal    = 0x03
+	dcpSubCtrlResponse  = 0x04
+	dcpSubCtrlFactory   = 0x05
+	dcpSubCtrlResetData = 0x06
 	dcpOptAll           = 0xFF
 )
 
@@ -224,6 +232,116 @@ func extractNameFilter(blocks []byte) string {
 		}
 	}
 	return ""
+}
+
+// dcpSet describes an observed DCP Set request — the configuration-change
+// vector (reassign a station's NameOfStation/IP, or a Control/factory-reset).
+type dcpSet struct {
+	reqMAC  [6]byte // requester (engineering station)
+	dstMAC  [6]byte // targeted PROFINET station
+	xid     uint32
+	option  byte
+	sub     byte
+	label   string // human-readable target, e.g. "NameOfStation"
+	factory bool   // a reset-to-factory / reset-communication-parameters
+}
+
+// parseDCPSet validates an inbound frame as a DCP Set request (FrameID
+// 0xFEFD, service 0x04) and returns what it targets. ok=false otherwise.
+func parseDCPSet(frame []byte) (dcpSet, bool) {
+	var s dcpSet
+	if len(frame) < 26 {
+		return s, false
+	}
+	if binary.BigEndian.Uint16(frame[12:14]) != ethTypePROFINET {
+		return s, false
+	}
+	if binary.BigEndian.Uint16(frame[14:16]) != dcpFrameIDGetSet {
+		return s, false
+	}
+	if frame[16] != dcpServiceSet || frame[17] != dcpServiceTypeRequest {
+		return s, false
+	}
+	copy(s.dstMAC[:], frame[0:6])
+	copy(s.reqMAC[:], frame[6:12])
+	s.xid = binary.BigEndian.Uint32(frame[18:22])
+	dataLen := int(binary.BigEndian.Uint16(frame[24:26]))
+	blocks := frame[26:]
+	if dataLen < len(blocks) {
+		blocks = blocks[:dataLen]
+	}
+	if len(blocks) >= 2 {
+		s.option, s.sub = blocks[0], blocks[1]
+		s.label, s.factory = dcpSetLabel(s.option, s.sub)
+	}
+	return s, true
+}
+
+// dcpSetLabel names the target of a Set block and flags the destructive
+// Control/reset sub-options.
+func dcpSetLabel(option, sub byte) (string, bool) {
+	switch {
+	case option == dcpOptDeviceProps && sub == dcpSubNameOfStation:
+		return "NameOfStation", false
+	case option == dcpOptIP && sub == dcpSubIPParameter:
+		return "IPParameter", false
+	case option == dcpOptControl:
+		switch sub {
+		case dcpSubCtrlSignal:
+			return "Control/Signal", false
+		case dcpSubCtrlFactory:
+			return "Control/ResetToFactory", true
+		case dcpSubCtrlResetData:
+			return "Control/ResetCommParameters", true
+		}
+		return "Control", false
+	}
+	return "option-" + itoaPN(int(option)) + "/" + itoaPN(int(sub)), false
+}
+
+// buildDCPSetResponse assembles a DCP Set response (service 0x04, type OK)
+// carrying a Control/Response block that ACKs the set as successful — so an
+// attacker probing with a Set believes it landed against a live station.
+func buildDCPSetResponse(st pnStation, dstMAC [6]byte, xid uint32, setOpt, setSub byte) []byte {
+	// Control/Response block payload: the set Option, Suboption, BlockError(0).
+	blocks := dcpBlock(dcpOptControl, dcpSubCtrlResponse, 0x0000, []byte{setOpt, setSub, 0x00})
+
+	hdr := make([]byte, 10)
+	hdr[0] = dcpServiceSet
+	hdr[1] = dcpServiceTypeRespOK
+	binary.BigEndian.PutUint32(hdr[2:6], xid)
+	binary.BigEndian.PutUint16(hdr[8:10], uint16(len(blocks)))
+
+	frame := make([]byte, 0, 16+len(hdr)+len(blocks))
+	frame = append(frame, dstMAC[:]...)
+	frame = append(frame, st.mac[:]...)
+	frame = append(frame, byte(ethTypePROFINET>>8), byte(ethTypePROFINET&0xff))
+	frame = append(frame, byte(dcpFrameIDGetSet>>8), byte(dcpFrameIDGetSet&0xff))
+	frame = append(frame, hdr...)
+	frame = append(frame, blocks...)
+	return frame
+}
+
+func itoaPN(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [12]byte
+	i := len(b)
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }
 
 // buildDCPIdentifyResponse assembles a full Ethernet+PROFINET+DCP Identify
