@@ -592,6 +592,18 @@ var anomalyTags = map[string]Tag{
 	"webapp:jwt-none":              {Techniques: []string{"T1078"}, Tactics: []string{"defense-evasion"}},
 	"webapp:deserialize":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"webapp:secret-file-probe":     {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	// Exposed management / diagnostic / debug endpoints (info disclosure; the
+	// actuator/jolokia/tomcat-manager ones are RCE footholds).
+	"webapp:apache-status-exposed":     {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:apache-info-exposed":       {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:metrics-exposed":           {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:pprof-exposed":             {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"webapp:symfony-profiler-exposed":  {Techniques: []string{"T1592", "T1552"}, Tactics: []string{"reconnaissance", "credential-access"}},
+	"webapp:laravel-telescope-exposed": {Techniques: []string{"T1592", "T1552"}, Tactics: []string{"reconnaissance", "credential-access"}},
+	"webapp:spring-actuator-exposed":   {Techniques: []string{"T1190", "T1552"}, Tactics: []string{"initial-access", "credential-access"}},
+	"webapp:jolokia-exposed":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:solr-admin-exposed":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"webapp:tomcat-manager-probe":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// SSH/telnet protocol-misuse + auth markers.
 	"x11-connection-attempt": {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"rlogin-attempt":         {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},

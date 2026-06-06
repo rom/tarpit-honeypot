@@ -273,6 +273,81 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		res.Meta["honeytoken"] = hc.dbPass
 		return webappResponse(server, 200, "OK", "text/plain", webappFakeConfig(app, hc), nil)
 
+	// --- 20 more emulated vulnerabilities: exposed VCS metadata, secret files,
+	// management/diagnostic endpoints, and framework debug consoles. Each returns
+	// believable "loot" (active deception) and flags the probe; nothing real is
+	// exposed and the planted secrets are per-deployment honeytokens.
+	case path == "/.git/HEAD" || path == "/.git/index":
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "text/plain", "ref: refs/heads/main\n", nil)
+	case path == "/.svn/entries" || path == "/.svn/wc.db":
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "text/plain", "12\n\ndir\nhttps://svn.internal/"+app+"\n", nil)
+	case path == "/.hg/store" || path == "/.bzr/branch/branch.conf":
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "text/plain", "default = https://hg.internal/"+app+"\n", nil)
+	case path == "/.htpasswd":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.secretKey
+		return webappResponse(server, 200, "OK", "text/plain", "admin:$apr1$"+shortToken(hc.secretKey)+"\n", nil)
+	case path == "/.htaccess":
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "text/plain", "AuthType Basic\nAuthName \"Restricted\"\nAuthUserFile /var/www/.htpasswd\nRequire valid-user\n", nil)
+	case path == "/web.config":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/xml", webappWebConfig(hc), nil)
+	case path == "/WEB-INF/web.xml" || path == "/WEB-INF/classes/application.properties":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/xml", "<web-app>\n  <context-param><param-name>jdbc.url</param-name><param-value>jdbc:mysql://127.0.0.1:3306/intranet?user=intranet_app&amp;password="+hc.dbPass+"</param-value></context-param>\n</web-app>\n", nil)
+	case path == "/.aws/credentials" || path == "/.aws/config":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.awsSecret
+		return webappResponse(server, 200, "OK", "text/plain", "[default]\naws_access_key_id = "+hc.awsKeyID+"\naws_secret_access_key = "+hc.awsSecret+"\nregion = us-east-1\n", nil)
+	case path == "/.ssh/id_rsa" || path == "/id_rsa" || path == "/.ssh/id_ed25519":
+		recordProbedFile(res, path)
+		return webappResponse(server, 200, "OK", "text/plain", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA"+shortToken(hc.secretKey)+"\n-----END OPENSSH PRIVATE KEY-----\n", nil)
+	case path == "/docker-compose.yml" || path == "/.dockercfg" || path == "/.npmrc" || path == "/.netrc":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/plain", "version: '3'\nservices:\n  db:\n    image: mysql:5.7\n    environment:\n      MYSQL_ROOT_PASSWORD: "+hc.dbPass+"\n", nil)
+	case path == "/.env.local" || path == "/.env.production" || path == "/.env.dev" || path == "/.env.example":
+		recordProbedFile(res, path)
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "text/plain", webappFakeEnv(app, hc), nil)
+	case path == "/server-status" || path == "/server-status/":
+		flagAnomaly(res, "webapp:apache-status-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>Apache Status</title></head><body><h1>Apache Server Status for "+brand.Name+"</h1><dl><dt>Server Version: Apache/2.4.29 (Ubuntu)</dt><dt>Total accesses: 184213 - Total Traffic: 2.1 GB</dt></dl></body></html>", nil)
+	case path == "/server-info":
+		flagAnomaly(res, "webapp:apache-info-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><body><h1>Apache Server Information</h1><dl><dt>Server Version: Apache/2.4.29</dt><dt>Server Built: 2018-09-26</dt></dl></body></html>", nil)
+	case path == "/actuator" || strings.HasPrefix(path, "/actuator/"):
+		flagAnomaly(res, "webapp:spring-actuator-exposed")
+		res.Meta["honeytoken"] = hc.dbPass
+		return webappResponse(server, 200, "OK", "application/json", webappActuator(path, hc), nil)
+	case path == "/jolokia" || strings.HasPrefix(path, "/jolokia/"):
+		flagAnomaly(res, "webapp:jolokia-exposed")
+		return webappResponse(server, 200, "OK", "application/json", `{"request":{"type":"version"},"value":{"agent":"1.6.2","protocol":"7.2","config":{"agentId":"`+webappSessionID(id)+`"}},"status":200}`, nil)
+	case path == "/solr/" || strings.HasPrefix(path, "/solr/admin"):
+		flagAnomaly(res, "webapp:solr-admin-exposed")
+		return webappResponse(server, 200, "OK", "application/json", `{"responseHeader":{"status":0},"status":{"intranet":{"name":"intranet","instanceDir":"/var/solr/intranet"}}}`, nil)
+	case strings.HasPrefix(path, "/debug/pprof"):
+		flagAnomaly(res, "webapp:pprof-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>/debug/pprof/</title></head><body>/debug/pprof/<br><a href=\"heap\">heap</a> <a href=\"goroutine\">goroutine</a> <a href=\"profile\">profile</a></body></html>", nil)
+	case path == "/metrics":
+		flagAnomaly(res, "webapp:metrics-exposed")
+		return webappResponse(server, 200, "OK", "text/plain", "# HELP process_open_fds Number of open file descriptors.\nprocess_open_fds 18\n# HELP go_goroutines Number of goroutines.\ngo_goroutines 42\n", nil)
+	case strings.HasPrefix(path, "/telescope"):
+		flagAnomaly(res, "webapp:laravel-telescope-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(brand, "Telescope", "<div class=\"nw-card\"><h2>Laravel Telescope</h2><p>Requests · Queries · Mail · Cache</p></div>"), nil)
+	case strings.HasPrefix(path, "/_profiler"):
+		flagAnomaly(res, "webapp:symfony-profiler-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>Symfony Profiler</title></head><body><h1>Symfony Profiler</h1></body></html>", nil)
+	case path == "/manager/html" || path == "/host-manager/html":
+		flagAnomaly(res, "webapp:tomcat-manager-probe")
+		return webappResponse(server, 401, "Unauthorized", "text/html", "", []string{`WWW-Authenticate: Basic realm="Tomcat Manager Application"`})
+
 	case path == "/phpinfo.php" || path == "/info.php":
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappPhpinfo(id), nil)
 
@@ -491,6 +566,37 @@ func webappFakeEnv(app string, hc honeyCreds) string {
 		"DB_USERNAME=intranet_app\nDB_PASSWORD=" + hc.dbPass + "\n" +
 		"APP_KEY=" + hc.appKey + "\n" +
 		"AWS_ACCESS_KEY_ID=" + hc.awsKeyID + "\nAWS_SECRET_ACCESS_KEY=" + hc.awsSecret + "\n"
+}
+
+// shortToken returns a short slice of a secret for use inside fake .htpasswd /
+// private-key blobs (believable shape, never a real secret).
+func shortToken(s string) string {
+	if len(s) > 22 {
+		return s[:22]
+	}
+	return s
+}
+
+// webappWebConfig is a fake IIS/.NET web.config exposing a connection string
+// (the planted DB password / machine key are per-deployment honeytokens).
+func webappWebConfig(hc honeyCreds) string {
+	return "<?xml version=\"1.0\"?>\n<configuration>\n  <connectionStrings>\n" +
+		"    <add name=\"Intranet\" connectionString=\"Server=127.0.0.1;Database=intranet;User Id=intranet_app;Password=" + hc.dbPass + ";\" providerName=\"System.Data.SqlClient\"/>\n" +
+		"  </connectionStrings>\n  <appSettings>\n    <add key=\"MachineKey\" value=\"" + hc.secretKey + "\"/>\n  </appSettings>\n</configuration>\n"
+}
+
+// webappActuator fakes a Spring Boot Actuator endpoint; /actuator/env leaks a
+// (honeytoken) datasource password — the classic actuator-exposure loot.
+func webappActuator(path string, hc honeyCreds) string {
+	switch {
+	case strings.Contains(path, "/env"):
+		return `{"activeProfiles":["prod"],"propertySources":[{"name":"applicationConfig","properties":{"spring.datasource.url":{"value":"jdbc:mysql://127.0.0.1:3306/intranet"},"spring.datasource.password":{"value":"` + hc.dbPass + `"}}}]}`
+	case strings.Contains(path, "/health"):
+		return `{"status":"UP","components":{"db":{"status":"UP"},"diskSpace":{"status":"UP"}}}`
+	case strings.Contains(path, "/mappings") || strings.Contains(path, "/beans"):
+		return `{"contexts":{"application":{"mappings":{"dispatcherServlet":[{"predicate":"/api/**"}]}}}}`
+	}
+	return `{"_links":{"self":{"href":"/actuator"},"env":{"href":"/actuator/env"},"health":{"href":"/actuator/health"},"beans":{"href":"/actuator/beans"},"mappings":{"href":"/actuator/mappings"}}}`
 }
 
 func webappFakeConfig(app string, hc honeyCreds) string {
