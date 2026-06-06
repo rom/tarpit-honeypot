@@ -60,12 +60,102 @@ func (s *s7commPlus) Handle(_ context.Context, conn net.Conn, cfg config.Listene
 	case 0x72:
 		res.Meta["s7_protocol"] = "S7comm-Plus"
 		flagAnomaly(&res, "ics-s7commplus-probe")
+		s7plusClassify(dt, &res)
 	case 0x32:
 		res.Meta["s7_protocol"] = "S7comm"
 	default:
 		res.Meta["s7_protocol"] = "unknown"
 	}
 	return res, nil
+}
+
+// s7plusClassify parses an S7comm-Plus data PDU and classifies the function.
+// Layout after the COTP DT header (dt[0:3] = 02 F0 80):
+//
+//	protocolID(1)=0x72 | version(1) | dataLen(2) | opcode(1) | reserved(2) |
+//	function(2 BE) | ...
+//
+// We name the opcode + function and map read/write/explore/object ops to the
+// ATT&CK-for-ICS techniques. The protocol version hints the firmware family
+// (v1 ≈ S7-1200, v2/v3 ≈ S7-1500).
+func s7plusClassify(dt []byte, res *Result) {
+	if len(dt) < 5 {
+		return
+	}
+	ver := dt[4]
+	res.Meta["s7plus_version"] = ver
+	switch ver {
+	case 0x01:
+		res.Meta["s7plus_family"] = "S7-1200"
+	case 0x02, 0x03:
+		res.Meta["s7plus_family"] = "S7-1500"
+	}
+	if len(dt) < 8 {
+		return
+	}
+	res.Meta["s7plus_opcode"] = s7plusOpcodeName(dt[7])
+	if len(dt) < 12 {
+		return
+	}
+	fn := binary.BigEndian.Uint16(dt[10:12])
+	res.Meta["s7plus_function"] = s7plusFuncName(fn)
+	switch fn {
+	case 0x04bb: // Explore — browse the object/variable tree
+		flagAnomaly(res, "ics-field-device-probe")
+		setIfEmpty(res.Meta, "intent", "S7comm-Plus Explore — enumerating the S7-1500 object tree")
+	case 0x0560, 0x04f2, 0x0586: // GetMultiVariables / GetVarSubStreamed
+		flagAnomaly(res, "ics-process-data-access")
+		setIfEmpty(res.Meta, "intent", "S7comm-Plus read — reading PLC variables")
+	case 0x0524, 0x0554, 0x0556: // SetVariable / SetMultiVariables / SetVarSubStreamed
+		flagAnomaly(res, "ics-plc-write")
+		res.Meta["intent"] = "S7comm-Plus write — writing PLC variables (control manipulation)"
+	case 0x04ca, 0x04d4, 0x0589: // CreateObject / DeleteObject / Invoke
+		flagAnomaly(res, "ics-plc-program-access")
+		res.Meta["intent"] = "S7comm-Plus " + s7plusFuncName(fn) + " — object/program manipulation"
+	}
+}
+
+func s7plusOpcodeName(op byte) string {
+	switch op {
+	case 0x31:
+		return "Request"
+	case 0x32:
+		return "Response"
+	case 0x33:
+		return "Notification"
+	}
+	return "op-0x" + fmtByte(op)[2:]
+}
+
+func s7plusFuncName(fn uint16) string {
+	switch fn {
+	case 0x04bb:
+		return "Explore"
+	case 0x04ca:
+		return "CreateObject"
+	case 0x04d4:
+		return "DeleteObject"
+	case 0x04f2:
+		return "GetVarSubStreamed"
+	case 0x0524:
+		return "SetVariable"
+	case 0x0554:
+		return "SetMultiVariables"
+	case 0x0556:
+		return "SetVarSubStreamed"
+	case 0x0560:
+		return "GetMultiVariables"
+	case 0x0586:
+		return "GetVarSubStreamed2"
+	case 0x0589:
+		return "Invoke"
+	}
+	return "fn-0x" + fmtByteU16(fn)
+}
+
+func fmtByteU16(v uint16) string {
+	const hex = "0123456789abcdef"
+	return string([]byte{hex[v>>12&0xf], hex[v>>8&0xf], hex[v>>4&0xf], hex[v&0xf]})
 }
 
 // readTPKT reads one TPKT (RFC 1006) message and returns its COTP+payload
