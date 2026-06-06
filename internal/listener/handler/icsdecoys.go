@@ -55,12 +55,21 @@ func (h *finsTCP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 			mrcSrc := binary.BigEndian.Uint16(got[26:28])
 			res.Meta["fins_command_code"] = int(mrcSrc)
 			switch mrcSrc {
+			case 0x0101, 0x0103: // Memory Area Read / Fill
+				flagAnomaly(&res, "ics-process-data-access")
+				res.Meta["intent"] = "FINS/TCP Memory-Area Read — reading the PLC process image"
 			case 0x0102: // Memory Area Write
 				flagAnomaly(&res, "fins-tcp-write-attempt")
+				res.Meta["intent"] = "FINS/TCP Memory-Area Write — writing PLC memory (control manipulation)"
 			case 0x0401, 0x0402: // RUN / STOP
 				flagAnomaly(&res, "fins-run-mode-change")
+				res.Meta["intent"] = "FINS/TCP RUN/STOP — changing the PLC operating mode"
 			case 0x0307: // Program Area Write (logic download)
 				flagAnomaly(&res, "fins-program-download")
+				res.Meta["intent"] = "FINS/TCP Program-Area Write — downloading PLC logic"
+			case 0x0501, 0x0601: // CPU Unit Data / Status read
+				flagAnomaly(&res, "ics-field-device-probe")
+				res.Meta["intent"] = "FINS/TCP CPU data read — fingerprinting the Omron PLC"
 			}
 		}
 		// FINS/TCP response: command 2, a FINS frame with end code 0x0000.

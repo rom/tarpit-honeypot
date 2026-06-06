@@ -148,6 +148,26 @@ documented in `docs/`).
     identify = data-model enumeration (`ics-field-device-probe`), read
     (`ics-process-data-access`), write (`ics-plc-write`).
 
+- **Attacker-intent + control/recon classification for the remaining ICS
+  decoys.** Adds an `intent` summary to every remaining OT handler and, where
+  the protocol carries a command, distinguishes recon reads from control
+  writes / mode changes / resets:
+  - **MELSEC (MC 3E)** — names the command (`command_name`) and flags Batch/
+    Random Read (`ics-process-data-access`), Batch/Random Write (`ics-plc-write`),
+    Remote RUN/STOP/PAUSE (`ics-plc-mode-change`), Remote Reset
+    (`ics-device-restart`), Read-CPU-Model (`ics-field-device-probe`).
+  - **Beckhoff ADS/AMS** — flags Read (`ics-process-data-access`), Write/ReadWrite
+    (`ics-plc-write`), WriteControl run-state change (`ics-plc-mode-change`),
+    ReadDeviceInfo/ReadState (`ics-field-device-probe`).
+  - **Omron FINS** (UDP + FINS/TCP) — adds Memory-Area Read recon
+    (`ics-process-data-access`) and CPU-data fingerprint (`ics-field-device-probe`)
+    alongside the existing write / mode-change / program-download flags.
+  - **Emerson ROC Plus** — classifies parameter read (config/measurement theft),
+    parameter write (`ics-plc-write`), and login (`ics-roc-plus-login`).
+  - **CODESYS, GE-SRTP, HART-IP, PCWorx, Red Lion Crimson, Triconex TriStation,
+    GE-EGD, BSAP-IP, LonTalk** — intent labels (the TriStation program-download
+    path keeps its `ics-safety-controller-manipulation` flag).
+
 ## [2.12.0] — 2026-06-06
 
 ### Added

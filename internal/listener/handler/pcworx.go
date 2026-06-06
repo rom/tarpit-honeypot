@@ -31,6 +31,7 @@ func (p *pcworx) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	res.Payload = append([]byte(nil), buf[:n]...)
 	res.Meta["pcworx_request_len"] = n
 	flagAnomaly(&res, "ics-pcworx-probe")
+	res.Meta["intent"] = "PCWorx identify — Phoenix Contact ILC PLC fingerprinting"
 
 	// Identification response: a PCWorx-shaped frame whose payload carries
 	// the ASCII model + firmware a scanner extracts.

@@ -39,5 +39,6 @@ func (c *codesys) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	}
 	res.BannerSent = "codesys ack"
 	flagAnomaly(&res, "ics-codesys-probe")
+	res.Meta["intent"] = "CODESYS V3 runtime/gateway probe — soft-PLC control-channel access attempt"
 	return res, nil
 }

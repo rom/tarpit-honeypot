@@ -36,6 +36,7 @@ func (h *hartIP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	res.Meta["hartip_msg_type"] = int(msgType)
 	res.Meta["hartip_msg_id"] = hartMsgIDName(msgID)
 	flagAnomaly(&res, "ics-hartip-probe")
+	res.Meta["intent"] = "HART-IP " + hartMsgIDName(msgID) + " — process field-instrument gateway access"
 
 	// Drain any declared body (bounded) so the framing stays aligned.
 	if n >= 8 {
