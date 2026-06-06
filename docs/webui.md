@@ -318,9 +318,14 @@ a relevant listener** (a `dns` handler; an `http`/`https` handler; a
 mysql/postgres/mssql/mongodb/redis/… handler):
 
 - **dns** — DNS queries per hour, query types / commands, top queries (qname) and
-  top registrable domains, top replies, and a bounded **query log**; plus the
-  **attacks / misuses / manipulations / vulnerabilities** table (tunnelling,
-  amplification, zone transfer, DGA, NOTIFY/UPDATE opcodes …) with each CVE's CWE.
+  top registrable domains, top replies, and a bounded **query log** (with a
+  per-query **intent** column); plus an **Attacker intent** breakdown (the
+  handler-inferred "what they're doing" label) and the **attacks / misuses /
+  manipulations / vulnerabilities** table (tunnelling, amplification, zone
+  transfer, DGA, SIGRed/TKEY probes, NOTIFY/UPDATE opcodes …) with each CVE's CWE.
+
+The **Attacker intent** breakdown appears on any of these pages whose events
+carry an inferred `intent` (today: dns / snmp / ntp traffic).
 - **web** — requests per hour, **top URLs**, **top HTTP headers**, **top replies**
   (HTTP status), **top-10 attacks** and **top-10 attackers**, every **unique URL**
   and **unique file accessed**, and the web-attack-class / CVE / CWE table.

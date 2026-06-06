@@ -646,6 +646,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ range . }}<tr><td><a href="/search?tag={{ .Name }}" title="find events carrying this marker"><code>{{ .Name }}</code></a></td><td>{{ .Count }}</td><td>{{ if .CVE }}<a href="/search?q={{ .CVE }}">{{ .CVE }}</a>{{ if .Desc }} <span class="meta">{{ .Desc }}</span>{{ end }}{{ else }}—{{ end }}</td><td>{{ if .CWE }}<span class="tag" title="{{ .CWEName }}">{{ .CWE }}{{ if .CWEName }} {{ .CWEName }}{{ end }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">No attacks, misuses, or vulnerabilities triggered in this window.</p>{{ end }}{{ end }}
 
+{{ define "intenttable" }}{{ if . }}<h2 data-help="The per-event &quot;intent&quot; the handler inferred — what the attacker is actually trying to do, summarized from the protocol + flagged anomalies.">Attacker intent</h2>
+<table data-filter><tr><th>intent</th><th>events</th></tr>{{ range . }}<tr><td><span class="tag bad">{{ .Label }}</span></td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}{{ end }}
+
 {{ define "dns" }}{{ template "head" . }}
 <h1 data-help="DNS resolver decoy analytics: query volume over time, the query types/opcodes used, the top query names + registrable domains, what the sensor answered, and the tunnelling / amplification / zone-transfer / DGA abuse it detected.">DNS analytics — {{ .RangeLabel }}</h1>
 <p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
@@ -656,6 +659,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ template "intenttable" .Intents }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
 {{ if .TopDomains }}<h2 id="domains">Top domains <span class="meta">({{ len .TopDomains }})</span></h2>
@@ -663,8 +667,8 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ if .Attackers }}<h2 id="sources">Top sources <span class="meta">({{ len .Attackers }})</span></h2>
 <table><tr><th>source</th><th>queries</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 {{ if .Queries }}<h2>Query log <span class="meta">({{ len .Queries }})</span></h2>
-<table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>reply</th><th>labels</th></tr>
-{{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+<table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>intent</th><th>reply</th><th>labels</th></tr>
+{{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
@@ -679,6 +683,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ template "intenttable" .Intents }}
 {{ if .Attackers }}<h2 id="sources">Top attackers</h2>
 <table><tr><th>source</th><th>requests</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
@@ -699,6 +704,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
 </div>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ template "intenttable" .Intents }}
 {{ if .Attackers }}<h2 id="sources">Top attackers</h2>
 <table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>

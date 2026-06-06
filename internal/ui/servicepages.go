@@ -268,6 +268,7 @@ type dnsView struct {
 	Domains    int
 	Figs       []chartFig
 	Attacks    []attackRow
+	Intents    []countRow
 	TopDomains []countRow
 	Attackers  []countRow
 	Queries    []dnsQueryRow
@@ -280,7 +281,25 @@ type dnsQueryRow struct {
 	Name   string
 	Type   string
 	Reply  string
+	Intent string
 	Anoms  []string
+}
+
+// topIntents aggregates the per-event `intent` meta label (set by the DNS / SNMP
+// / NTP handlers — "what the attacker is actually doing") into a ranked list.
+func topIntents(evs []*event.Event) []countRow {
+	c := map[string]int{}
+	for _, ev := range evs {
+		if it := metaStr(ev, "intent"); it != "" {
+			c[it]++
+		}
+	}
+	keys := topKeys(c, 20)
+	rows := make([]countRow, 0, len(keys))
+	for _, k := range keys {
+		rows = append(rows, countRow{Label: k, Count: c[k]})
+	}
+	return rows
 }
 
 func (s *Server) handleDNS(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +368,7 @@ func buildDNS(evs []*event.Event) dnsView {
 		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies", map[string]any{"series": topBarsFromMap(reply, 20)}))
 	}
 	v.Attacks = attackTable(evs)
+	v.Intents = topIntents(evs)
 
 	// Drill-down tables behind the "domains" / "sources" counters.
 	for _, d := range topKeys(domain, 100) {
@@ -373,6 +393,7 @@ func buildDNS(evs []*event.Event) dnsView {
 			Name:   q,
 			Type:   metaStr(ev, "qtype_name"),
 			Reply:  ev.BannerSent,
+			Intent: metaStr(ev, "intent"),
 			Anoms:  append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
 		})
 	}
@@ -390,6 +411,7 @@ type webView struct {
 	Figs       []chartFig
 	Attackers  []countRow
 	Attacks    []attackRow
+	Intents    []countRow
 	URLList    []string
 	Files      []string
 	Empty      bool
@@ -487,6 +509,7 @@ func buildWeb(evs []*event.Event) webView {
 		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
 	}
 	v.Attacks = attackTable(evs)
+	v.Intents = topIntents(evs)
 	v.URLList = sortedSetKeys(urlSet, 5000)
 	v.Files = sortedSetKeys(fileSet, 5000)
 	return v
@@ -518,6 +541,7 @@ type dbView struct {
 	Figs       []chartFig
 	Attackers  []countRow
 	Attacks    []attackRow
+	Intents    []countRow
 	Empty      bool
 }
 
@@ -617,6 +641,7 @@ func buildDatabases(evs []*event.Event) dbView {
 		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
 	}
 	v.Attacks = attackTable(evs)
+	v.Intents = topIntents(evs)
 	return v
 }
 
