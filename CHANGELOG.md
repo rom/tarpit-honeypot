@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-06-06
+
 ### Added
 
 - **Combined traffic graphs + attacks-by-service donut.** On `/charts`, incoming
