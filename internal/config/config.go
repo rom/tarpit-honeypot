@@ -695,6 +695,12 @@ type Sensor struct {
 	// (especially heavy operations), so the decoy DB feels like a real, loaded
 	// server (seconds rather than microseconds). 0 = no delay.
 	DBReplyDelay time.Duration `yaml:"db_reply_delay"`
+	// WebSampleRetrieval enables automated second-stage sample retrieval: when an
+	// attacker references a URL in a web exploit, the sensor fetches it (bounded,
+	// never executes it) and YARA-scans the result. OFF by default — it makes
+	// the sensor an active outbound fetcher, so it is opt-in, respects mute mode,
+	// and honors the egress allowlist.
+	WebSampleRetrieval bool `yaml:"web_sample_retrieval"`
 	// Domain is the deployment's DNS domain. It makes service identities
 	// consistent: the SMTP banner host, DNS hostname.bind / id.server, the
 	// telnet \h escape, etc. all derive from it (default "example.internal").
