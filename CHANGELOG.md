@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Fixed
 
+- **.deb / .rpm now produce a working install.** Beyond the wrong service
+  account (fixed above), the packages contradicted the systemd unit they ship:
+  the bundled config kept the repo-local relative `data_dir: ./var` (the unit
+  makes `/var/lib/tarpit-honeypot` writable, so the daemon wrote to the wrong
+  place), neither package created `/var/log/tarpit-honeypot` (in the unit's
+  `ReadWritePaths`, so startup failed on the missing path), and the RPM laid the
+  binary in `/usr/bin` while the unit's `ExecStart` pointed at
+  `/usr/local/bin`. The packages now rewrite the installed config's `data_dir`
+  to `/var/lib/tarpit-honeypot`, create + own `/var/log/tarpit-honeypot`
+  (`honey:honeypot`), and the RPM repoints `ExecStart` to `%{_bindir}`.
+
 - **Consistent service account (`honey`:`honeypot`) everywhere; .deb/.rpm now
   create the right one.** The Debian postinst and RPM spec created a `tarpit`
   user/group while shipping a systemd unit that runs `User=honey

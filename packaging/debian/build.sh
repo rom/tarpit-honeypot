@@ -44,6 +44,7 @@ install -d -m 0755 \
     "$STAGE/etc/tarpit-honeypot" \
     "$STAGE/etc/tarpit-honeypot/conf.d" \
     "$STAGE/var/lib/tarpit-honeypot" \
+    "$STAGE/var/log/tarpit-honeypot" \
     "$STAGE/lib/systemd/system" \
     "$STAGE/usr/share/doc/tarpit-honeypot" \
     "$STAGE/usr/share/bash-completion/completions" \
@@ -53,6 +54,12 @@ install -d -m 0755 \
 
 install -m 0755 "$BIN"                                              "$STAGE/usr/local/bin/tarpit-honeypot"
 install -m 0640 "$REPO_ROOT/configs/tarpit-honeypot.example.yaml"   "$STAGE/etc/tarpit-honeypot/config.yaml"
+# The example config ships with a relative data_dir (./var) for repo-local runs;
+# a system service needs the absolute path the package creates + the unit's
+# ReadWritePaths makes writable, or the daemon writes to ./var (relative to a
+# undefined CWD) and fails. Point it at /var/lib/tarpit-honeypot.
+sed -i -E 's#^([[:space:]]*)data_dir:.*#\1data_dir: /var/lib/tarpit-honeypot#' \
+    "$STAGE/etc/tarpit-honeypot/config.yaml"
 install -m 0644 "$REPO_ROOT/packaging/systemd/tarpit-honeypot.service" "$STAGE/lib/systemd/system/"
 install -m 0644 "$REPO_ROOT/README.md"      "$STAGE/usr/share/doc/tarpit-honeypot/"
 install -m 0644 "$REPO_ROOT/CHANGELOG.md"   "$STAGE/usr/share/doc/tarpit-honeypot/"
@@ -91,8 +98,8 @@ getent group honeypot >/dev/null 2>&1 || groupadd --system honeypot
 if ! getent passwd honey >/dev/null 2>&1; then
     useradd --system --gid honeypot --no-create-home --shell /usr/sbin/nologin honey
 fi
-chown -R honey:honeypot /var/lib/tarpit-honeypot || true
-chmod 0750 /var/lib/tarpit-honeypot || true
+chown -R honey:honeypot /var/lib/tarpit-honeypot /var/log/tarpit-honeypot || true
+chmod 0750 /var/lib/tarpit-honeypot /var/log/tarpit-honeypot || true
 systemctl daemon-reload || true
 echo "Edit /etc/tarpit-honeypot/config.yaml, then: systemctl enable --now tarpit-honeypot"
 EOF
