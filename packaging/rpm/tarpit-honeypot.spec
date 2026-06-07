@@ -38,6 +38,7 @@ install -d -m 0755 %{buildroot}%{_sysconfdir}/tarpit-honeypot
 install -d -m 0755 %{buildroot}%{_sysconfdir}/tarpit-honeypot/conf.d
 install -d -m 0755 %{buildroot}%{_unitdir}
 install -d -m 0750 %{buildroot}/var/lib/tarpit-honeypot
+install -d -m 0750 %{buildroot}/var/log/tarpit-honeypot
 install -d -m 0755 %{buildroot}%{_datadir}/bash-completion/completions
 install -d -m 0755 %{buildroot}%{_datadir}/zsh/site-functions
 install -d -m 0755 %{buildroot}%{_datadir}/fish/vendor_completions.d
@@ -45,6 +46,17 @@ install -d -m 0755 %{buildroot}%{_datadir}/fish/vendor_completions.d
 install -m 0755 %{src_root}/%{bin_path}                                   %{buildroot}%{_bindir}/tarpit-honeypot
 install -m 0640 %{src_root}/configs/tarpit-honeypot.example.yaml          %{buildroot}%{_sysconfdir}/tarpit-honeypot/config.yaml
 install -m 0644 %{src_root}/packaging/systemd/tarpit-honeypot.service     %{buildroot}%{_unitdir}/tarpit-honeypot.service
+
+# The example config ships a relative data_dir (./var) for repo-local runs; a
+# system service needs the absolute path the package creates + the unit's
+# ReadWritePaths makes writable. Point it at /var/lib/tarpit-honeypot.
+sed -i -E 's#^([[:space:]]*)data_dir:.*#\1data_dir: /var/lib/tarpit-honeypot#' \
+    %{buildroot}%{_sysconfdir}/tarpit-honeypot/config.yaml
+# The shared unit hardcodes /usr/local/bin (the install.sh path); the RPM lays
+# the binary down in %{_bindir}. Repoint ExecStart so the packaged service runs
+# the binary it actually shipped.
+sed -i "s#/usr/local/bin/tarpit-honeypot#%{_bindir}/tarpit-honeypot#g" \
+    %{buildroot}%{_unitdir}/tarpit-honeypot.service
 
 %{buildroot}%{_bindir}/tarpit-honeypot completion bash > %{buildroot}%{_datadir}/bash-completion/completions/tarpit-honeypot
 %{buildroot}%{_bindir}/tarpit-honeypot completion zsh  > %{buildroot}%{_datadir}/zsh/site-functions/_tarpit-honeypot
@@ -57,14 +69,18 @@ install -m 0644 %{src_root}/packaging/systemd/tarpit-honeypot.service     %{buil
 %config(noreplace) %{_sysconfdir}/tarpit-honeypot/config.yaml
 %dir %{_sysconfdir}/tarpit-honeypot/conf.d
 %{_unitdir}/tarpit-honeypot.service
-%dir %attr(0750, tarpit, tarpit) /var/lib/tarpit-honeypot
+%dir %attr(0750, honey, honeypot) /var/lib/tarpit-honeypot
+%dir %attr(0750, honey, honeypot) /var/log/tarpit-honeypot
 %{_datadir}/bash-completion/completions/tarpit-honeypot
 %{_datadir}/zsh/site-functions/_tarpit-honeypot
 %{_datadir}/fish/vendor_completions.d/tarpit-honeypot.fish
 
 %pre
-getent passwd tarpit >/dev/null 2>&1 || \
-    useradd --system --no-create-home --shell /sbin/nologin tarpit
+# Service account must match the shipped systemd unit (User=honey,
+# Group=honeypot) or the service won't start.
+getent group honeypot >/dev/null 2>&1 || groupadd --system honeypot
+getent passwd honey >/dev/null 2>&1 || \
+    useradd --system --gid honeypot --no-create-home --shell /sbin/nologin honey
 
 %post
 %systemd_post tarpit-honeypot.service

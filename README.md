@@ -2059,9 +2059,10 @@ the hot-reload path.
 Install pattern:
 
 ```
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin tarpit
+sudo groupadd --system honeypot
+sudo useradd --system --gid honeypot --no-create-home --shell /usr/sbin/nologin honey
 sudo install -o root -g root -m 0755 bin/tarpit-honeypot /usr/local/bin/
-sudo install -d -o tarpit -g tarpit -m 0750 /var/lib/tarpit-honeypot
+sudo install -d -o honey -g honeypot -m 0750 /var/lib/tarpit-honeypot
 sudo install -d -o root  -g root  -m 0755 /etc/tarpit-honeypot
 sudo install -o root -g root -m 0640 configs/tarpit-honeypot.example.yaml /etc/tarpit-honeypot/config.yaml
 sudo install -o root -g root -m 0644 packaging/systemd/tarpit-honeypot.service /etc/systemd/system/

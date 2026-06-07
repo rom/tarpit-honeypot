@@ -37,8 +37,8 @@ user. The sensor refuses to keep running as uid 0.
 
 ```yaml
 sensor:
-  drop_user: tarpit
-  drop_group: tarpit
+  drop_user: honey
+  drop_group: honeypot
 ```
 
 Grant the caps without starting as root via systemd

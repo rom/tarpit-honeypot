@@ -1050,7 +1050,7 @@ In Docker, add `--cap-add=NET_BIND_SERVICE`.
 
 **`arp_responder disabled: needs AF_PACKET (linux-only)` / `need CAP_NET_RAW`.**
 The sniffer and L2/L3 responders are Linux-only and need `CAP_NET_RAW`. Pair
-`User=tarpit` with `AmbientCapabilities=CAP_NET_RAW`; on macOS use
+`User=honey` with `AmbientCapabilities=CAP_NET_RAW`; on macOS use
 `ifconfig <iface> alias <ip>` instead. See [`usage.md` §14](usage.md#14-platform-support).
 
 **My `fleet:*` detectors never fire.**

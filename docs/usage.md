@@ -330,9 +330,10 @@ The shipped unit at `packaging/systemd/tarpit-honeypot.service` runs as `tarpit:
 Standard install:
 
 ```bash
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin tarpit
+sudo groupadd --system honeypot
+sudo useradd --system --gid honeypot --no-create-home --shell /usr/sbin/nologin honey
 sudo install -o root -g root -m 0755 bin/tarpit-honeypot /usr/local/bin/
-sudo install -d -o tarpit -g tarpit -m 0750 /var/lib/tarpit-honeypot
+sudo install -d -o honey -g honeypot -m 0750 /var/lib/tarpit-honeypot
 sudo install -o root -g root -m 0640 configs/tarpit-honeypot.example.yaml /etc/tarpit-honeypot/config.yaml
 sudo install -o root -g root -m 0644 packaging/systemd/tarpit-honeypot.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -841,7 +842,7 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `sensor stopped: listen 0.0.0.0:53: bind: permission denied` | privileged port, no caps | systemd unit has `AmbientCapabilities=CAP_NET_BIND_SERVICE` already; verify with `systemctl show -p CapabilityBoundingSet tarpit-honeypot`. For Docker, `--cap-add=NET_BIND_SERVICE`. |
 | `sensor stopped: listen 0.0.0.0:53: bind: address already in use` | systemd-resolved owns :53 | Either disable systemd-resolved DNSStubListener (`/etc/systemd/resolved.conf`: `DNSStubListener=no`) or use a non-standard port and NAT. |
 | Listener events fire but `correlate:brute_force` never does | per-rule dedup window covers the burst | Lower `dedup.default_window` or set `correlate.brute_force.window` shorter. |
-| `arp_responder disabled: need CAP_NET_RAW` | running as a non-privileged user without the cap | Pair `User=tarpit` with `AmbientCapabilities=CAP_NET_RAW` in the unit. |
+| `arp_responder disabled: need CAP_NET_RAW` | running as a non-privileged user without the cap | Pair `User=honey` with `AmbientCapabilities=CAP_NET_RAW` in the unit. |
 | `arp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | See §14 — use `ifconfig alias` per honeynet host or run the responder on a Linux gateway. |
 | `lldp_responder disabled: needs AF_PACKET (linux-only)` | running on macOS | LLDP advertising is unavailable on macOS today; the rest of the deception still works. |
 | TUN listener fails with `open /dev/net/tun: no such file` | running inside an unprivileged container | `docker run --device=/dev/net/tun --cap-add=NET_ADMIN ...` |

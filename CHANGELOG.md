@@ -8,7 +8,46 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`install.sh` sets the deployment identity, not just the TLS name.** It now
+  prompts for (and accepts `--hostname` / `--domain`, or `TARPIT_HOSTNAME` /
+  `TARPIT_DOMAIN`) the sensor's host label (`sensor.name`) and DNS domain
+  (`sensor.domain`) — the suffix every banner-aware decoy uses (DNS zone, SMTP
+  HELO, Kerberos realm, LDAP base, …). Previously it asked only for the TLS
+  certificate name, so services kept advertising the generic
+  `*.example.internal` default while the cert said something else. The TLS name
+  (`--tls-domain`) now **defaults to `<hostname>.<domain>`**, so the certificate
+  stays coherent with the deployment domain out of the box. The install summary
+  prints the resolved `host` / `domain` / TLS name.
+
 ### Fixed
+
+- **.deb / .rpm now produce a working install.** Beyond the wrong service
+  account (fixed above), the packages contradicted the systemd unit they ship:
+  the bundled config kept the repo-local relative `data_dir: ./var` (the unit
+  makes `/var/lib/tarpit-honeypot` writable, so the daemon wrote to the wrong
+  place), neither package created `/var/log/tarpit-honeypot` (in the unit's
+  `ReadWritePaths`, so startup failed on the missing path), and the RPM laid the
+  binary in `/usr/bin` while the unit's `ExecStart` pointed at
+  `/usr/local/bin`. The packages now rewrite the installed config's `data_dir`
+  to `/var/lib/tarpit-honeypot`, create + own `/var/log/tarpit-honeypot`
+  (`honey:honeypot`), and the RPM repoints `ExecStart` to `%{_bindir}`.
+
+- **Consistent service account (`honey`:`honeypot`) everywhere; .deb/.rpm now
+  create the right one.** The Debian postinst and RPM spec created a `tarpit`
+  user/group while shipping a systemd unit that runs `User=honey
+  Group=honeypot` — so a packaged install couldn't start. They now create
+  `honey` (primary group `honeypot`) and own the data dir `honey:honeypot`. The
+  docs (README, usage, hardening, FAQ, INTEGRATIONS) that still showed
+  `useradd … tarpit` / `User=tarpit` / `drop_user: tarpit` were corrected to
+  match `scripts/install.sh` and the unit.
+
+- **`install.sh` confirms the data dir at the end.** It prints whether the
+  config's `data_dir` matches the dir `--data` made writable and, under
+  SELinux, whether that dir carries the `tarpit_honeypot_var_lib_t` label — so a
+  mismatch (the cause of "unable to open database file (14) … not writable") is
+  obvious at install time, not after a failed start.
 
 - **`install.sh --data DIR` now actually moves the data directory.** It created
   the dir and pointed the systemd unit's `ReadWritePaths` at it, but left

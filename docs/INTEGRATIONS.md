@@ -530,7 +530,7 @@ Drop into `/Library/LaunchDaemons/com.example.tarpit-honeypot.plist`,
 and `sudo launchctl kickstart system/com.example.tarpit-honeypot`.
 
 For privileged port binding (ports < 1024) the simplest path is to
-start as root and let `sensor.drop_user: tarpit` drop privilege after
+start as root and let `sensor.drop_user: honey` drop privilege after
 bind — the `setuid` darwin path also drops the saved-uid so a later
 `setuid(0)` regain attempt fails (same posture as Linux's
 `setresuid`).
