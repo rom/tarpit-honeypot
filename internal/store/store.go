@@ -119,30 +119,6 @@ CREATE TABLE IF NOT EXISTS banners (
   hash TEXT UNIQUE NOT NULL,
   text TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
-CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip);
--- Composite index for the per-source profile query (WHERE src_ip = ? AND time
--- >= ? ORDER BY time DESC): lets SQLite both filter and order from one index,
--- avoiding a transient sort entirely.
-CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC);
-CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id);
-CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
--- Composite (column, time) covering indexes for the dashboard's
--- "WHERE time >= ? GROUP BY <column>" summary passes. With the grouped column
--- leading and time second, SQLite groups + range-filters straight from the
--- index (no full-row reads, no temp sort), which is what keeps the summary
--- fast as the events table grows into the tens/hundreds of thousands. (src_ip
--- is already covered by idx_events_src_ip_time above.)
-CREATE INDEX IF NOT EXISTS idx_events_severity_time ON events(severity, time);
-CREATE INDEX IF NOT EXISTS idx_events_rule_id_time ON events(rule_id, time);
-CREATE INDEX IF NOT EXISTS idx_events_proto_time ON events(proto, time);
--- Composite (handler, time) index for the per-service pages (DNS / web /
--- database), which filter "WHERE handler IN (…) AND time >= ? ORDER BY time
--- DESC". With handler leading and time second SQLite range-filters + orders
--- straight from the index instead of scanning every recent row and discarding
--- the non-matching handlers Go-side — the difference between a sub-second page
--- and a timeout once the table reaches the hundreds of thousands.
-CREATE INDEX IF NOT EXISTS idx_events_handler_time ON events(handler, time DESC);
 CREATE TABLE IF NOT EXISTS iocs (
   type TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -155,9 +131,63 @@ CREATE TABLE IF NOT EXISTS iocs (
   last_source TEXT,
   PRIMARY KEY (type, value)
 );
-CREATE INDEX IF NOT EXISTS idx_iocs_last_seen ON iocs(last_seen DESC);
-CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type);
 `
+
+// indexStmts are created best-effort AFTER the tables + column migrations, each
+// in its own statement (see ensureIndexes). They are deliberately NOT part of
+// the schema const: creating an index on an already-large events table is a
+// one-time write that needs scratch space, and on a full or nearly-full disk
+// that write fails. Folding it into the mandatory schema exec at Open would
+// turn a slow page into a crash loop — the daemon couldn't start, so it could
+// never prune the table back under its cap to recover. Run separately and
+// non-fatally, a failed index just means the dependent page does a full scan
+// (still bounded by its query deadline) until a later restart can build it.
+var indexStmts = []string{
+	`CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip)`,
+	// Composite index for the per-source profile query (WHERE src_ip = ? AND
+	// time >= ? ORDER BY time DESC): lets SQLite both filter and order from one
+	// index, avoiding a transient sort entirely.
+	`CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity)`,
+	// Composite (column, time) covering indexes for the dashboard's
+	// "WHERE time >= ? GROUP BY <column>" summary passes. With the grouped
+	// column leading and time second, SQLite groups + range-filters straight
+	// from the index (no full-row reads, no temp sort), which is what keeps the
+	// summary fast as the events table grows into the tens/hundreds of
+	// thousands. (src_ip is already covered by idx_events_src_ip_time above.)
+	`CREATE INDEX IF NOT EXISTS idx_events_severity_time ON events(severity, time)`,
+	`CREATE INDEX IF NOT EXISTS idx_events_rule_id_time ON events(rule_id, time)`,
+	`CREATE INDEX IF NOT EXISTS idx_events_proto_time ON events(proto, time)`,
+	// Composite (handler, time) index for the per-service pages (DNS / web /
+	// database), which filter "WHERE handler IN (…) AND time >= ? ORDER BY time
+	// DESC". With handler leading and time second SQLite range-filters + orders
+	// straight from the index instead of scanning every recent row and
+	// discarding the non-matching handlers Go-side.
+	`CREATE INDEX IF NOT EXISTS idx_events_handler_time ON events(handler, time DESC)`,
+	// sensor_id is added by migrate(); ensureIndexes runs after migrate so the
+	// column exists by the time this runs.
+	`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_iocs_last_seen ON iocs(last_seen DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type)`,
+}
+
+// ensureIndexes creates the secondary indexes best-effort. A failure (most
+// likely a full disk while building an index over a large table) is logged but
+// never fatal: the sensor must still start so it keeps capturing and can prune
+// the table back under its cap. Returns the number that failed.
+func ensureIndexes(db *sql.DB) int {
+	failed := 0
+	for _, stmt := range indexStmts {
+		if _, err := db.Exec(stmt); err != nil {
+			failed++
+			slog.Warn("store: could not create index (continuing without it; dependent pages will full-scan)",
+				"stmt", stmt, "err", err)
+		}
+	}
+	return failed
+}
 
 // Open creates (if necessary) and opens the events database under dataDir.
 // capMB is the soft cap on database size; when exceeded, the oldest events
@@ -192,6 +222,10 @@ func Open(dataDir string, capMB int) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Secondary indexes are created here, separately and non-fatally: a full
+	// disk while building an index over a large table must not stop the sensor
+	// from starting (and thus from pruning back under its cap). See indexStmts.
+	ensureIndexes(db)
 	// The DB holds captured payloads, source IPs, and harvested
 	// credentials — restrict it (and its WAL/SHM siblings, created by the
 	// schema write above) to owner-only. Best-effort: a chmod failure
@@ -199,8 +233,22 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		_ = os.Chmod(p, 0o600)
 	}
+	// Proactively warn when the filesystem is nearly full: SQLite can't grow the
+	// WAL/-shm on a full disk (the writes fail with disk I/O error / SHMMAP), so
+	// surface it loudly while the operator can still act — before inserts start
+	// failing and the table freezes.
+	if free, ok := freeDiskBytes(filepath.Dir(path)); ok && free < lowDiskBytes {
+		slog.Warn("store: low free disk space on the data filesystem — SQLite cannot grow once full",
+			"path", path, "free_mb", free/(1024*1024),
+			"hint", "lower sensor.disk.sqlite_mb below the partition's free space, or grow the partition")
+	}
 	return &Store{db: db, path: path, capMB: capMB}, nil
 }
+
+// lowDiskBytes is the free-space floor below which Open warns: a honeypot under
+// load can burn through this quickly, and once the filesystem is full SQLite
+// can no longer grow the WAL/-shm (writes fail with disk I/O error / SHMMAP).
+const lowDiskBytes = 128 * 1024 * 1024 // 128 MiB
 
 // openError wraps a database open/initialise failure with the file path and,
 // where it can tell, the most likely cause. modernc's SQLITE_CANTOPEN bubbles
@@ -232,6 +280,15 @@ func diagnosePath(path string) string {
 	case !dirWritable(dir):
 		return "directory " + dir + " is not writable by uid " + uid +
 			" — SQLite needs to create the -wal/-shm sidecar files"
+	}
+	// A full (or nearly-full) filesystem is the usual cause of a "disk I/O
+	// error" / SHMMAP at open: SQLite can't extend the -wal/-shm. The empty
+	// temp-file probe above can still succeed on a full disk (it writes no
+	// bytes), so check free space explicitly.
+	if free, ok := freeDiskBytes(dir); ok && free < 1024*1024 {
+		return "filesystem holding " + dir + " is full (only " +
+			strconv.FormatInt(free/1024, 10) + " KiB free) — SQLite cannot grow the " +
+			"-wal/-shm; free space (or lower sensor.disk.sqlite_mb) and restart"
 	}
 	if fi, err := os.Stat(path); err == nil {
 		if fi.IsDir() {
@@ -288,10 +345,9 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("store: add sensor_id column: %w", err)
 		}
 	}
-	// Index after the column exists (covers both fresh + migrated DBs).
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`); err != nil {
-		return fmt.Errorf("store: index sensor_id: %w", err)
-	}
+	// The idx_events_sensor_id index is created (best-effort) by ensureIndexes,
+	// which Open runs right after migrate — once this column is guaranteed to
+	// exist on both fresh and migrated databases.
 	// ATT&CK / D3FEND attribution, persisted so /api/events + the UI carry the
 	// same techniques/tactics/defenses the streaming sinks already get.
 	for _, col := range []string{"mitre_techniques", "mitre_tactics", "mitre_defenses"} {
@@ -472,8 +528,21 @@ func (s *Store) maybePrune(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	if info.Size() < int64(s.capMB)*1024*1024 {
+	overCap := info.Size() >= int64(s.capMB)*1024*1024
+	// Safety net: prune even when under the configured cap if the filesystem is
+	// running low. A sqlite_mb cap larger than the partition's free space would
+	// otherwise let the DB grow until the disk fills and SQLite can no longer
+	// write (disk I/O error / SHMMAP) — the exact failure this guards against.
+	lowDisk := false
+	if free, ok := freeDiskBytes(filepath.Dir(s.path)); ok && free < lowDiskBytes {
+		lowDisk = true
+	}
+	if !overCap && !lowDisk {
 		return
+	}
+	if lowDisk && !overCap {
+		slog.Warn("store: low free disk — pruning oldest events below the configured cap to keep writing",
+			"path", s.path, "cap_mb", s.capMB)
 	}
 	// Delete the oldest 10% of events. Surface failures (disk full, locked,
 	// corrupt index) so a silently-failing prune can't let the DB grow forever.
@@ -484,6 +553,14 @@ DELETE FROM events WHERE id IN (
   )
 )`); err != nil {
 		slog.Warn("store: retention prune failed; cap enforcement paused", "err", err, "path", s.path)
+		return
+	}
+	// Return the freed WAL space to the filesystem: a TRUNCATE checkpoint shrinks
+	// the -wal file back (best-effort). The main DB file itself doesn't shrink —
+	// SQLite reuses the freed pages for new rows — but this keeps the WAL from
+	// holding space on a tight disk.
+	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		slog.Debug("store: wal checkpoint after prune failed", "err", err)
 	}
 }
 

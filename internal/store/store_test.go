@@ -206,6 +206,50 @@ func TestQueryTextAndEventsPerHour(t *testing.T) {
 	}
 }
 
+func TestEnsureIndexesCreatesAll(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type='index'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	have := map[string]bool{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		have[n] = true
+	}
+	// Every named index in indexStmts (the ones we manage) must be present —
+	// confirms ensureIndexes runs after migrate so sensor_id's column exists,
+	// and that moving them out of the schema const didn't drop any.
+	for _, want := range []string{
+		"idx_events_time", "idx_events_src_ip", "idx_events_src_ip_time",
+		"idx_events_rule_id", "idx_events_severity", "idx_events_severity_time",
+		"idx_events_rule_id_time", "idx_events_proto_time", "idx_events_handler_time",
+		"idx_events_sensor_id", "idx_iocs_last_seen", "idx_iocs_type",
+	} {
+		if !have[want] {
+			t.Errorf("index %q missing after Open", want)
+		}
+	}
+}
+
+func TestFreeDiskBytes(t *testing.T) {
+	// On the test platform (unix) this should resolve; the non-unix stub returns
+	// ok=false, which we accept too — we only assert it never reports a bogus
+	// negative free count.
+	if free, ok := freeDiskBytes(t.TempDir()); ok && free < 0 {
+		t.Errorf("freeDiskBytes returned negative free space: %d", free)
+	}
+}
+
 func TestQueryHandlersAndNoPayload(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {
