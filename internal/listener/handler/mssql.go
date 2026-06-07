@@ -36,6 +36,7 @@ const (
 
 func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	dbReplyDelaySleep() // heavy-DB realism: a loaded server answers in seconds
 	res := Result{Meta: map[string]any{}}
 
 	hdr := make([]byte, 8)

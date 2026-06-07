@@ -39,6 +39,7 @@ func (p *postgres) Name() string { return "postgres" }
 // capture that, then send a FATAL error response and close.
 func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	dbReplyDelaySleep() // heavy-DB realism: a loaded server answers in seconds
 	res := Result{Meta: map[string]any{}}
 
 	for i := 0; i < 2; i++ {

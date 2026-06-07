@@ -10,6 +10,29 @@ documented in `docs/`).
 
 ### Added
 
+- **Reply-policy modes** (`sensor.reply_policy`) — one deployment-wide lever,
+  enforced centrally for every TCP + UDP service: `full` (default), `non-ot`
+  (mute OT-class handlers), `fingerprint` / `fingerprint-non-ot` (reply only
+  enough to fingerprint / capture creds — no deep sessions or call-outs), and
+  `mute` (receive-only — every outgoing byte and call-out dropped). Plus
+  `sensor.no_amplifier_replies` (suppress NTP mode 6/7 + reflector replies with
+  a special warning).
+- **Fake web ↔ decoy MySQL** — a fake-web listener auto-stands-up a MySQL on the
+  same host (`:3306`), and the DB credentials it leaks in `.env` (user
+  `intranet_app`, db `intranet`, the per-deployment password) now actually
+  authenticate against that MySQL (`mysql-honeytoken-auth`), which then captures
+  the attacker's post-auth SQL.
+- **Web second-stage sample retrieval** finished + made policy-safe
+  (`sensor.web_sample_retrieval`, opt-in/off): egress-gated download, YARA scan,
+  never executed, persisted to the captures page; suppressed under mute /
+  fingerprint modes. New **`captured`** counter on the summary dashboard.
+- **`sensor.db_reply_delay`** — configurable multi-second answer delay on the
+  SQL handlers (MySQL/Postgres/MSSQL) so a heavy decoy DB feels real.
+- **Config page** now shows the deployment domain / TLS-cert domain / honeynet
+  domains, the active reply policy + amplifier/DB-delay modes, and the fake-web
+  state (portal name + sample-retrieval on/off).
+- The fake-web **portal name** is set via `listener.webapp_brand.name` and drives
+  both the displayed page and the leaked `.env` `APP_NAME`.
 - **NTS-KE** (`nts`, TCP 4460) — Network Time Security Key Establishment over
   TLS (RFC 8915, ALPN ntske/1): JA3/JA4/JA3S + offered next-protocols/AEAD
   capture, believable NTPv4 + AES-SIV-CMAC-256 + cookies response.
