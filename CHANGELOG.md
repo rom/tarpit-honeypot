@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Multiple honeypots on one host, one per server IP (systemd template).** A
+  new `tarpit-honeypot@.service` template runs independent, fully-isolated
+  instances — each with its own config (`/etc/tarpit-honeypot/instances/NAME
+  .yaml`), data dir (`/var/lib/tarpit-honeypot/NAME` → own SQLite DB,
+  `.deployment-id` and certificates), syslog identity and UI port.
+  `scripts/add-instance.sh --name NAME --listen-ip IP` provisions one (derives +
+  patches the per-IP config, creates/labels the dirs for SELinux, auto-assigns a
+  loopback UI port, and enables the unit). `install.sh` lays down the template
+  and the rsyslog routing now matches every `tarpit-honeypot*` instance tag.
+
 - **Multi-IP binding (`sensor.listen_addresses`).** A wildcard listener
   (`[::]`/`0.0.0.0`) already answers on every host IP; now you can also pin all
   listeners to a specific set of IPs. One logical listener owns several sockets

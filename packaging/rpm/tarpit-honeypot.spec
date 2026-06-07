@@ -58,6 +58,12 @@ sed -i -E 's#^([[:space:]]*)data_dir:.*#\1data_dir: /var/lib/tarpit-honeypot#' \
 sed -i "s#/usr/local/bin/tarpit-honeypot#%{_bindir}/tarpit-honeypot#g" \
     %{buildroot}%{_unitdir}/tarpit-honeypot.service
 
+# Multi-instance template + provisioner (one honeypot per server IP).
+install -m 0644 %{src_root}/packaging/systemd/tarpit-honeypot@.service %{buildroot}%{_unitdir}/tarpit-honeypot@.service
+sed -i "s#/usr/local/bin/tarpit-honeypot#%{_bindir}/tarpit-honeypot#g" \
+    %{buildroot}%{_unitdir}/tarpit-honeypot@.service
+install -m 0755 %{src_root}/scripts/add-instance.sh %{buildroot}%{_bindir}/tarpit-add-instance
+
 %{buildroot}%{_bindir}/tarpit-honeypot completion bash > %{buildroot}%{_datadir}/bash-completion/completions/tarpit-honeypot
 %{buildroot}%{_bindir}/tarpit-honeypot completion zsh  > %{buildroot}%{_datadir}/zsh/site-functions/_tarpit-honeypot
 %{buildroot}%{_bindir}/tarpit-honeypot completion fish > %{buildroot}%{_datadir}/fish/vendor_completions.d/tarpit-honeypot.fish
@@ -66,9 +72,11 @@ sed -i "s#/usr/local/bin/tarpit-honeypot#%{_bindir}/tarpit-honeypot#g" \
 %license %{src_root}/LICENSE
 %doc %{src_root}/README.md %{src_root}/CHANGELOG.md
 %{_bindir}/tarpit-honeypot
+%{_bindir}/tarpit-add-instance
 %config(noreplace) %{_sysconfdir}/tarpit-honeypot/config.yaml
 %dir %{_sysconfdir}/tarpit-honeypot/conf.d
 %{_unitdir}/tarpit-honeypot.service
+%{_unitdir}/tarpit-honeypot@.service
 %dir %attr(0750, honey, honeypot) /var/lib/tarpit-honeypot
 %dir %attr(0750, honey, honeypot) /var/log/tarpit-honeypot
 %{_datadir}/bash-completion/completions/tarpit-honeypot

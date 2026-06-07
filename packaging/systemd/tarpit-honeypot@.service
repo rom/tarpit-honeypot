@@ -1,0 +1,60 @@
+# Template unit for running MULTIPLE honeypot instances on one host, each
+# servicing a different server IP with its own config, database, certs and UI.
+#
+#   systemctl enable --now tarpit-honeypot@<name>
+#
+# %i is the instance name. Each instance is fully isolated:
+#   config : /etc/tarpit-honeypot/instances/%i.yaml
+#   state  : /var/lib/tarpit-honeypot/%i   (events.db, .deployment-id, tls/, captures/)
+#   logs   : /var/log/tarpit-honeypot      (shared dir; lines tagged tarpit-honeypot@%i)
+#
+# Provision an instance with scripts/add-instance.sh (creates the dirs, derives
+# + patches the per-IP config, labels for SELinux, and enables this unit). The
+# config should pin the instance to its IP via sensor.listen_addresses: [<ip>]
+# and give it a unique ui.bind port.
+[Unit]
+Description=tarpit-honeypot deception sensor (instance %i)
+Documentation=https://github.com/rom/tarpit-honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=honey
+Group=honeypot
+ExecStart=/usr/local/bin/tarpit-honeypot run -c /etc/tarpit-honeypot/instances/%i.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Per-instance syslog identity so journal/rsyslog can tell instances apart; the
+# rsyslog drop-in routes every "tarpit-honeypot*" tag to the dedicated log file.
+SyslogIdentifier=tarpit-honeypot@%i
+
+# Grant the capabilities the sensor needs even after privilege drop.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=true
+
+# Pin the SELinux domain (same domain for every instance; isolation between
+# instances is by file path + the per-instance data dir, not by SELinux type).
+SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
+
+# Hardening. Only this instance's own state dir is writable (plus the shared log
+# dir); the config tree stays read-only.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tarpit-honeypot/%i /var/log/tarpit-honeypot
+ReadOnlyPaths=/etc/tarpit-honeypot
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

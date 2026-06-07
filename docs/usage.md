@@ -349,6 +349,41 @@ curl http://127.0.0.1:8088/healthz
 curl http://127.0.0.1:8088/metrics
 ```
 
+## 5b. Multiple IP addresses on one host
+
+A host with several IPs can be covered two ways.
+
+**One sensor on every IP (default).** A wildcard listener (`bind: "[::]:22"`,
+the shipped default) already answers on **every** IP the box has — current or
+added later. Each event records which IP was hit (`dst_ip`). To restrict the
+sensor to a specific set of IPs instead of all of them, list them:
+
+```yaml
+sensor:
+  listen_addresses: [192.0.2.10, 192.0.2.11]   # bind every listener on these IPs only
+```
+
+Empty = wildcard (all IPs). One logical listener then owns one socket per
+address, all feeding the same handler. (`sensor.interfaces` similarly constrains
+wildcard listeners to all IPs of the named interfaces.)
+
+**A separate honeypot per IP (own config / DB / certs / UI).** To present a
+*different* machine on each IP — isolated database, deployment identity,
+certificates and UI — run one instance per IP via the `tarpit-honeypot@.service`
+template. After the one-time `scripts/install.sh`, add instances:
+
+```bash
+sudo scripts/add-instance.sh --name web1 --listen-ip 192.0.2.10 --domain corp.example.com
+sudo scripts/add-instance.sh --name db1  --listen-ip 192.0.2.11 --domain corp.example.com
+systemctl status 'tarpit-honeypot@*'
+```
+
+Each instance gets `/etc/tarpit-honeypot/instances/NAME.yaml`,
+`/var/lib/tarpit-honeypot/NAME/` (own `events.db`, `.deployment-id`, `tls/`),
+its own loopback UI port (auto-assigned from 8089), and the syslog tag
+`tarpit-honeypot@NAME`. Manage them with `systemctl … tarpit-honeypot@NAME` and
+`journalctl -u tarpit-honeypot@NAME`.
+
 ## 6. Docker
 
 ```bash
