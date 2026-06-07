@@ -206,6 +206,68 @@ func TestQueryTextAndEventsPerHour(t *testing.T) {
 	}
 }
 
+func TestQueryHandlersAndNoPayload(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	mk := func(id, handler string) *event.Event {
+		e := mkEvent(id, "1.1.1.1", "r", event.SeverityLow, now)
+		e.Handler = handler
+		e.PayloadBase64 = "c2VjcmV0LWJ5dGVz" // base64("secret-bytes")
+		e.PayloadLen = 12
+		e.BannerSent = "banner-" + handler
+		return e
+	}
+	for _, e := range []*event.Event{
+		mk("h1", "http"), mk("h2", "https"), mk("h3", "http2"),
+		mk("d1", "dns"), mk("m1", "mysql"), mk("s1", "ssh"),
+	} {
+		if err := s.Insert(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	since := now.Add(-time.Hour)
+
+	// Handlers IN (…) returns only the named handlers (the web-category set).
+	got, err := s.Query(ctx, Filter{Since: since, Handlers: []string{"http", "https", "http2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("web handlers query = %d events; want 3", len(got))
+	}
+	for _, ev := range got {
+		if ev.Handler != "http" && ev.Handler != "https" && ev.Handler != "http2" {
+			t.Errorf("unexpected handler %q in web query", ev.Handler)
+		}
+	}
+
+	// A single-element set behaves like an equality filter.
+	dns, err := s.Query(ctx, Filter{Since: since, Handlers: []string{"dns"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dns) != 1 || dns[0].ID != "d1" {
+		t.Errorf("dns handler query = %v; want one event d1", dns)
+	}
+
+	// NoPayload elides the payload blob + banner without dropping the row.
+	np, err := s.Query(ctx, Filter{Since: since, Handlers: []string{"dns"}, NoPayload: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(np) != 1 {
+		t.Fatalf("NoPayload query = %d events; want 1", len(np))
+	}
+	if np[0].PayloadBase64 != "" || np[0].BannerSent != "" {
+		t.Errorf("NoPayload should elide payload/banner, got payload=%q banner=%q", np[0].PayloadBase64, np[0].BannerSent)
+	}
+}
+
 func TestSourceAggregates(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {

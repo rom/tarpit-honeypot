@@ -136,6 +136,13 @@ CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
 CREATE INDEX IF NOT EXISTS idx_events_severity_time ON events(severity, time);
 CREATE INDEX IF NOT EXISTS idx_events_rule_id_time ON events(rule_id, time);
 CREATE INDEX IF NOT EXISTS idx_events_proto_time ON events(proto, time);
+-- Composite (handler, time) index for the per-service pages (DNS / web /
+-- database), which filter "WHERE handler IN (…) AND time >= ? ORDER BY time
+-- DESC". With handler leading and time second SQLite range-filters + orders
+-- straight from the index instead of scanning every recent row and discarding
+-- the non-matching handlers Go-side — the difference between a sub-second page
+-- and a timeout once the table reaches the hundreds of thousands.
+CREATE INDEX IF NOT EXISTS idx_events_handler_time ON events(handler, time DESC);
 CREATE TABLE IF NOT EXISTS iocs (
   type TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -492,6 +499,11 @@ type Filter struct {
 	// Handler restricts to events produced by a given protocol handler (the
 	// "all attacks against this service" pivot off the summary). Empty = any.
 	Handler string
+	// Handlers restricts to events whose handler is one of the given set (an
+	// "OR" pushdown for service pages whose category spans several handlers —
+	// web = http/https/http2, database = mysql/postgres/…). Empty = any. When
+	// both Handler and Handlers are set, both constraints apply.
+	Handlers []string
 	// DstPort restricts to a destination (listener) port; 0 = any.
 	DstPort int
 	// Country restricts to events whose GeoIP meta.geo_country matches (the
@@ -551,6 +563,12 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.Handler != "" {
 		q += " AND handler = ?"
 		args = append(args, f.Handler)
+	}
+	if len(f.Handlers) > 0 {
+		q += " AND handler IN (" + strings.Repeat("?,", len(f.Handlers)-1) + "?)"
+		for _, h := range f.Handlers {
+			args = append(args, h)
+		}
 	}
 	if f.DstPort > 0 {
 		q += " AND dst_port = ?"
