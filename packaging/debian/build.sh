@@ -81,14 +81,17 @@ Description: Low-to-medium interaction deception sensor
  outbound channels (CEF / LEEF / OCSF / JSON / MQTT / SMS / SNS).
 EOF
 
-# postinst — create the dedicated system user + chown the data dir
+# postinst — create the dedicated service account + chown the data dir.
+# The account MUST match the shipped systemd unit (User=honey, Group=honeypot)
+# or the service won't start.
 cat >"$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
-if ! getent passwd tarpit >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin tarpit
+getent group honeypot >/dev/null 2>&1 || groupadd --system honeypot
+if ! getent passwd honey >/dev/null 2>&1; then
+    useradd --system --gid honeypot --no-create-home --shell /usr/sbin/nologin honey
 fi
-chown -R tarpit:tarpit /var/lib/tarpit-honeypot || true
+chown -R honey:honeypot /var/lib/tarpit-honeypot || true
 chmod 0750 /var/lib/tarpit-honeypot || true
 systemctl daemon-reload || true
 echo "Edit /etc/tarpit-honeypot/config.yaml, then: systemctl enable --now tarpit-honeypot"

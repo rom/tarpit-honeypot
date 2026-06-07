@@ -10,6 +10,21 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Consistent service account (`honey`:`honeypot`) everywhere; .deb/.rpm now
+  create the right one.** The Debian postinst and RPM spec created a `tarpit`
+  user/group while shipping a systemd unit that runs `User=honey
+  Group=honeypot` — so a packaged install couldn't start. They now create
+  `honey` (primary group `honeypot`) and own the data dir `honey:honeypot`. The
+  docs (README, usage, hardening, FAQ, INTEGRATIONS) that still showed
+  `useradd … tarpit` / `User=tarpit` / `drop_user: tarpit` were corrected to
+  match `scripts/install.sh` and the unit.
+
+- **`install.sh` confirms the data dir at the end.** It prints whether the
+  config's `data_dir` matches the dir `--data` made writable and, under
+  SELinux, whether that dir carries the `tarpit_honeypot_var_lib_t` label — so a
+  mismatch (the cause of "unable to open database file (14) … not writable") is
+  obvious at install time, not after a failed start.
+
 - **`install.sh --data DIR` now actually moves the data directory.** It created
   the dir and pointed the systemd unit's `ReadWritePaths` at it, but left
   `sensor.data_dir` in the deployed config unchanged — so the daemon kept

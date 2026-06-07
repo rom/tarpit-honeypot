@@ -57,14 +57,17 @@ install -m 0644 %{src_root}/packaging/systemd/tarpit-honeypot.service     %{buil
 %config(noreplace) %{_sysconfdir}/tarpit-honeypot/config.yaml
 %dir %{_sysconfdir}/tarpit-honeypot/conf.d
 %{_unitdir}/tarpit-honeypot.service
-%dir %attr(0750, tarpit, tarpit) /var/lib/tarpit-honeypot
+%dir %attr(0750, honey, honeypot) /var/lib/tarpit-honeypot
 %{_datadir}/bash-completion/completions/tarpit-honeypot
 %{_datadir}/zsh/site-functions/_tarpit-honeypot
 %{_datadir}/fish/vendor_completions.d/tarpit-honeypot.fish
 
 %pre
-getent passwd tarpit >/dev/null 2>&1 || \
-    useradd --system --no-create-home --shell /sbin/nologin tarpit
+# Service account must match the shipped systemd unit (User=honey,
+# Group=honeypot) or the service won't start.
+getent group honeypot >/dev/null 2>&1 || groupadd --system honeypot
+getent passwd honey >/dev/null 2>&1 || \
+    useradd --system --gid honeypot --no-create-home --shell /sbin/nologin honey
 
 %post
 %systemd_post tarpit-honeypot.service

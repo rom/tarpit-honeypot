@@ -693,6 +693,34 @@ install_syslog_routing() {
 install_syslog_routing
 
 # ---------------------------------------------------------------------------
+# 11. Confirm the data dir is consistent end-to-end (config data_dir == --data,
+# and — under SELinux — the dir carries the tarpit_honeypot_var_lib_t label the
+# confined domain needs to write it). A mismatch here is exactly what makes the
+# sensor die with "unable to open database file (14) ... not writable", so make
+# it obvious at install time instead of in the journal after a failed start.
+# ---------------------------------------------------------------------------
+verify_data_dir() {
+	local cfg_data
+	cfg_data="$(sed -nE 's/^[[:space:]]*data_dir:[[:space:]]*"?([^"#]*)"?[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null | head -1)"
+	cfg_data="${cfg_data%"${cfg_data##*[![:space:]]}"}" # rtrim
+	if [ "$cfg_data" = "$DATA" ]; then
+		info "data_dir: $DATA (config matches the systemd ReadWritePaths)"
+	else
+		warn "data_dir MISMATCH: config has '${cfg_data:-<unset>}' but the unit only makes '$DATA' writable — the sensor will fail to open its DB. Re-run with -c on that config, or set 'data_dir: $DATA'."
+	fi
+	# SELinux label check (only meaningful when enforcing + tools present).
+	if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" != "Disabled" ] && command -v stat >/dev/null 2>&1; then
+		local ctx; ctx="$(stat -c '%C' "$DATA" 2>/dev/null)"
+		case "$ctx" in
+			*:tarpit_honeypot_var_lib_t:*) info "data_dir SELinux label: tarpit_honeypot_var_lib_t (OK)" ;;
+			"") : ;; # no context (SELinux off for this fs); nothing to assert
+			*) warn "data_dir SELinux label is '${ctx}', not tarpit_honeypot_var_lib_t — the confined domain can't write it. Fix: semanage fcontext -a -e /var/lib/tarpit-honeypot '$DATA'; restorecon -RFv '$DATA'" ;;
+		esac
+	fi
+}
+verify_data_dir
+
+# ---------------------------------------------------------------------------
 # Done.
 # ---------------------------------------------------------------------------
 cat <<EOF
