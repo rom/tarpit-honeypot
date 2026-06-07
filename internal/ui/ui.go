@@ -1041,6 +1041,10 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich 
 		{Label: "high", Value: sum.BySeverity["high"], Class: "sev-bg-high", Href: "/events?severity=high"},
 		{Label: "medium", Value: sum.BySeverity["medium"], Class: "sev-bg-medium", Href: "/events?severity=medium"},
 		{Label: "low", Value: sum.BySeverity["low"], Class: "sev-bg-low", Href: "/events?severity=low"},
+		// Captured second-stage samples / dropped artifacts (downloaded payloads,
+		// YARA-scanned, never executed). Links to the malware-capture events;
+		// the raw files are on the captures page.
+		{Label: "captured", Value: sum.ByRule["malware:capture"], Class: "c-captured", Href: "/events?rule=malware:capture"},
 	}
 	if s.stats != nil {
 		fr := map[string]int{}
@@ -1481,7 +1485,7 @@ func (s *Server) deploymentInfo() deploymentInfo {
 				}
 			}
 		}
-		d.SampleRetrieval = c.Sensor.WebSampleRetrieval
+		d.SampleRetrieval = c.Sensor.WebSampleRetrieval || c.Sensor.Payloads.FetchURLs
 	}
 	if s.topo != nil {
 		d.Hosts = len(s.topo.HostsInNetwork(""))
