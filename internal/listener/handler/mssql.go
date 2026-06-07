@@ -36,6 +36,7 @@ const (
 
 func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
+	dbReplyDelaySleep() // heavy-DB realism: a loaded server answers in seconds
 	res := Result{Meta: map[string]any{}}
 
 	hdr := make([]byte, 8)
@@ -82,9 +83,12 @@ func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	res.BannerSent = "mssql PRELOGIN response (15.0)"
 	res.Meta["server_version"] = "15.0." + itoa(int(build)) + "." + itoa(int(subBuild))
 
-	// Optionally read the LOGIN7 packet — it carries the username +
-	// (encrypted) password. We just capture the username offset/len if
-	// the client sends one.
+	// Optionally read the LOGIN7 packet. It is a rich intel source — beyond the
+	// username/password it carries the client hostname, the application name and
+	// the client library/driver (which reveal the tool), the target server +
+	// database + language, the client PID and TDS/program version, and the
+	// client's MAC address. parseLogin7 extracts them all (and de-obfuscates the
+	// trivially-encoded password) into res.Meta.
 	lhdr := make([]byte, 8)
 	if _, err := io.ReadFull(conn, lhdr); err == nil && lhdr[0] == tdsLogin7 {
 		llen := int(binary.BigEndian.Uint16(lhdr[2:4]))
@@ -92,10 +96,7 @@ func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 			lbody, ok := safe.AllocBytes(llen - 8)
 			if ok {
 				if _, err := io.ReadFull(conn, lbody); err == nil {
-					if u := parseLogin7User(lbody); u != "" {
-						res.Meta["login_user"] = safe.SanitizeForLog(u)
-						flagAnomaly(&res, "mssql-login-attempt")
-					}
+					parseLogin7(lbody, &res)
 				}
 			}
 		}
@@ -178,30 +179,135 @@ func wrapTDS(pktType byte, payload []byte) []byte {
 	return out
 }
 
-// parseLogin7User pulls the user-name field out of a LOGIN7 packet
-// body. LOGIN7 has a fixed header then offset/length pairs for
-// hostname, username, password, etc. (UCS-2). The username
-// offset/len live at a fixed location; we bounds-check everything.
-func parseLogin7User(body []byte) string {
-	// LOGIN7 fixed portion is 36 bytes of dwords then the
-	// offset/length table. ibUserName is at offset 0+... — rather than
-	// hard-code the full layout (fragile), scan for the
-	// OffsetLength block: it starts at byte 36. ibUserName at 36+8,
-	// cchUserName at 36+10 (each entry is 2x uint16).
-	const tableStart = 36
-	if len(body) < tableStart+12 {
-		return ""
+// parseLogin7 extracts the rich intel a TDS LOGIN7 packet carries into res.Meta.
+//
+// LOGIN7 layout (MS-TDS §2.2.6.4): a 36-byte fixed header (TDSVersion,
+// PacketSize, ClientProgVer, ClientPID, ConnectionID, the OptionFlags,
+// ClientTimeZone, ClientLCID) followed by an OffsetLength table of (ib,cch)
+// uint16 pairs whose offsets are relative to the start of this body. The
+// password field is obfuscated with the trivial swap-nibbles + XOR-0xA5
+// scheme, which we reverse. Everything is bounds-checked.
+func parseLogin7(body []byte, res *Result) {
+	const t = 36 // OffsetLength table start
+	if len(body) < t+24 {
+		return
 	}
-	ibUser := int(binary.LittleEndian.Uint16(body[tableStart+8 : tableStart+10]))
-	cchUser := int(binary.LittleEndian.Uint16(body[tableStart+10 : tableStart+12]))
-	// Offsets in LOGIN7 are relative to the start of the packet DATA
-	// (i.e. body here). cchUser is a character count (UCS-2 -> *2).
-	byteLen := cchUser * 2
-	chunk, ok := safe.Slice(body, ibUser, byteLen)
-	if !ok || byteLen == 0 {
-		return ""
+	// field reads a UCS-2 string given the byte offset of its (ib,cch) pair.
+	field := func(pairOff int) string {
+		if pairOff+4 > len(body) {
+			return ""
+		}
+		ib := int(binary.LittleEndian.Uint16(body[pairOff : pairOff+2]))
+		cch := int(binary.LittleEndian.Uint16(body[pairOff+2 : pairOff+4]))
+		chunk, ok := safe.Slice(body, ib, cch*2)
+		if !ok || cch == 0 {
+			return ""
+		}
+		return fromUTF16le(chunk)
 	}
-	return fromUTF16le(chunk)
+	// OffsetLength table order: HostName, UserName, Password, AppName,
+	// ServerName, (Unused/Extension), CltIntName, Language, Database.
+	host := field(t + 0)
+	user := field(t + 4)
+	pwEnc := body // password decoded separately (needs de-obfuscation)
+	app := field(t + 12)
+	server := field(t + 16)
+	library := field(t + 24) // CltIntName — the client driver / interface
+	language := field(t + 28)
+	database := field(t + 32)
+
+	set := func(k, v string) {
+		if v != "" {
+			res.Meta[k] = safe.SanitizeForLog(v)
+		}
+	}
+	set("login_hostname", host)
+	set("login_user", user)
+	set("login_app", app)         // e.g. "Microsoft SQL Server Management Studio", "sqlcmd"
+	set("login_server", server)   // the server name the client targeted
+	set("login_library", library) // ".Net SqlClient Data Provider" / "ODBC" / "go-mssqldb"
+	set("login_language", language)
+	set("login_database", database)
+
+	// Password: ib@t+8, cch@t+10 — read raw then de-obfuscate.
+	if t+12 <= len(body) {
+		ib := int(binary.LittleEndian.Uint16(body[t+8 : t+10]))
+		cch := int(binary.LittleEndian.Uint16(body[t+10 : t+12]))
+		if raw, ok := safe.Slice(pwEnc, ib, cch*2); ok && cch > 0 {
+			if pw := decodeTDSPassword(raw); pw != "" {
+				res.Meta["login_password"] = safe.SanitizeForLog(pw)
+			}
+		}
+	}
+
+	// Fixed-header intel: TDS version, client program version, client PID, LCID.
+	res.Meta["tds_version"] = "0x" + itoa32hex(binary.LittleEndian.Uint32(body[0:4]))
+	if pid := binary.LittleEndian.Uint32(body[16:20]); pid != 0 {
+		res.Meta["client_pid"] = pid
+	}
+
+	// ClientID (the client MAC address) sits right after the 9 (ib,cch) pairs:
+	// table start + 9*4 = t+36, 6 bytes.
+	if mac, ok := safe.Slice(body, t+36, 6); ok && !allZero(mac) {
+		res.Meta["client_mac"] = fmtMAC(mac)
+	}
+
+	if user != "" || res.Meta["login_password"] != nil {
+		flagAnomaly(res, "mssql-login-attempt")
+		u, _ := res.Meta["login_user"].(string)
+		p, _ := res.Meta["login_password"].(string)
+		flagDefaultCred(res, u, p)
+	}
+}
+
+// decodeTDSPassword reverses the LOGIN7 password obfuscation. The client
+// encodes each byte as swap-nibbles(b) XOR 0xA5, so decoding is the inverse:
+// XOR 0xA5 first, then swap the nibbles back. The result is UTF-16LE.
+func decodeTDSPassword(raw []byte) string {
+	dec := make([]byte, len(raw))
+	for i, b := range raw {
+		x := b ^ 0xA5
+		dec[i] = (x << 4) | (x >> 4)
+	}
+	return fromUTF16le(dec)
+}
+
+func allZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// fmtMAC renders 6 bytes as aa:bb:cc:dd:ee:ff.
+func fmtMAC(b []byte) string {
+	const hexd = "0123456789abcdef"
+	out := make([]byte, 0, 17)
+	for i, x := range b {
+		if i > 0 {
+			out = append(out, ':')
+		}
+		out = append(out, hexd[x>>4], hexd[x&0x0f])
+	}
+	return string(out)
+}
+
+// itoa32hex renders a uint32 as a hex string (no leading 0x).
+func itoa32hex(v uint32) string {
+	if v == 0 {
+		return "0"
+	}
+	const hexd = "0123456789abcdef"
+	var buf [8]byte
+	i := len(buf)
+	for v > 0 {
+		i--
+		buf[i] = hexd[v&0x0f]
+		v >>= 4
+	}
+	return string(buf[i:])
 }
 
 // utf16le encodes an ASCII string as little-endian UTF-16.

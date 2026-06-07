@@ -108,7 +108,9 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 							"listener", u.cfg.ID, "panic", r)
 					}
 				}()
-				res, _ = activeHandler.Handle(ctx, payload, raddr, pc, u.cfg)
+				// Reply-policy gate: mute / OT-muted policy discards WriteTo so
+				// the handler captures the datagram but emits no reply / reflection.
+				res, _ = activeHandler.Handle(ctx, payload, raddr, handler.GatePacketConn(pc, u.cfg.Handler), u.cfg)
 			}()
 			ev.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {

@@ -259,18 +259,31 @@ func TestElasticsearchGroovyCVE(t *testing.T) {
 
 // --- UDP enhancements ---
 
-func TestNTPControlQueryFlaggedNoReply(t *testing.T) {
+func TestNTPControlReadvarAnswered(t *testing.T) {
+	// mode 6 READVAR (`ntpq -c rv`): now answered (rate-limited, minimal) with
+	// the system-variable string, AND still flagged as recon.
 	req := make([]byte, 48)
 	req[0] = 0x16 // ver=2, mode=6 (control)
+	req[1] = 0x02 // opcode 2 = READVAR
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 12345}
-	res, _ := (&ntp{}).Handle(context.Background(), req, src, pc, config.Listener{})
-	if len(pc.written) != 0 {
-		t.Fatalf("mode 6 must not be answered; got %d writes", len(pc.written))
+	res, _ := (&ntp{lim: newUDPReflectLimiter()}).Handle(context.Background(), req, src, pc, config.Listener{})
+	if len(pc.written) != 1 {
+		t.Fatalf("READVAR should be answered once; got %d writes", len(pc.written))
+	}
+	reply := pc.written[0]
+	if reply[1]&0x80 == 0 {
+		t.Errorf("control reply missing the response bit: % x", reply[:2])
+	}
+	if !containsBytes(reply, []byte("version=")) {
+		t.Errorf("READVAR reply lacks system variables: %q", reply)
 	}
 	anoms, _ := res.Meta["anomalies"].([]string)
 	if !containsStr(anoms, "ntp-control-query") {
 		t.Errorf("mode 6 not flagged: %v", anoms)
+	}
+	if res.Meta["ntp_control"] != "READVAR" {
+		t.Errorf("ntp_control = %v; want READVAR", res.Meta["ntp_control"])
 	}
 }
 

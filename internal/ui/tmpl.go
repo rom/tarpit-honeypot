@@ -1449,6 +1449,17 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
 device tracking: {{ if .Deployment.DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .Deployment.UIBind }}</code><br>
 uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <b>{{ .OldestEvent }}</b> ({{ .RetentionSpan }} ago){{ else }} · database empty{{ end }}
 </p>
+
+<h2 data-help="The names and modes that shape how this sensor presents itself and how far it talks back.">identity &amp; modes</h2>
+<table class="kv">
+<tr><th>deployment domain</th><td><code>{{ .Deployment.Domain }}</code> <span class="meta">(SMTP banner host, DNS hostname.bind/id.server, telnet \h, …)</span></td></tr>
+<tr><th>TLS cert domain</th><td><code>{{ .Deployment.TLSDomain }}</code> <span class="meta">(CN/SAN for TLS-bearing services)</span></td></tr>
+{{ if .Deployment.NetworkDomains }}<tr><th>honeynet domain(s)</th><td>{{ range .Deployment.NetworkDomains }}<code>{{ . }}</code> {{ end }}</td></tr>{{ end }}
+<tr><th>reply policy</th><td><b>{{ .Deployment.ReplyPolicy }}</b>{{ if eq .Deployment.ReplyPolicy "mute" }} <span class="tag">receive-only — no outbound replies</span>{{ else if eq .Deployment.ReplyPolicy "non-ot" }} <span class="tag">OT-class muted</span>{{ else if eq .Deployment.ReplyPolicy "fingerprint" }} <span class="tag">fingerprint/capture only</span>{{ else if eq .Deployment.ReplyPolicy "fingerprint-non-ot" }} <span class="tag">fingerprint, OT-class muted</span>{{ end }}</td></tr>
+<tr><th>amplifier replies</th><td>{{ if .Deployment.NoAmplifier }}suppressed <span class="meta">(NTP mode 6/7, UDP reflectors)</span>{{ else }}allowed (bounded + rate-limited){{ end }}</td></tr>
+{{ if .Deployment.DBReplyDelay }}<tr><th>DB reply delay</th><td><code>{{ .Deployment.DBReplyDelay }}</code></td></tr>{{ end }}
+<tr><th>fake web</th><td>{{ if .Deployment.WebappEnabled }}enabled{{ if .Deployment.WebappName }} · portal name <b>{{ .Deployment.WebappName }}</b>{{ end }} · sample retrieval {{ if .Deployment.SampleRetrieval }}<b>enabled</b>{{ else }}disabled{{ end }}{{ else }}disabled{{ end }}</td></tr>
+</table>
 {{ if .Themes }}
 <h2>UI theme</h2>
 <p class="note">Pick a theme — applied via a per-browser cookie, persists across reloads. <code>default</code> clears the cookie.</p>

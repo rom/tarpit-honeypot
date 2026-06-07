@@ -176,10 +176,27 @@ func New(cfg *config.Config) (*Sensor, error) {
 		jit = jitter.New(0, 0)
 	}
 
+	// Pin the deployment DNS domain so hostnames are consistent across SMTP /
+	// DNS / telnet / IPMI / … (default "example.internal" when unset).
+	if cfg.Sensor.Domain != "" {
+		id.SetDomain(cfg.Sensor.Domain)
+	}
+
 	// Install the deployment-wide TLS certificate identity (CN/SAN domain +
 	// organization) so every TLS decoy presents one consistent cert instead of
-	// the per-service "localhost" default. Set once, before any listener starts.
-	handler.SetTLSDefaults(cfg.Sensor.TLSDomain, cfg.Sensor.TLSOrg)
+	// the per-service "localhost" default. When tls_domain is unset, fall back
+	// to the deployment domain so the cert matches the service hostnames.
+	tlsDomain := cfg.Sensor.TLSDomain
+	if tlsDomain == "" {
+		tlsDomain = cfg.Sensor.Domain
+	}
+	handler.SetTLSDefaults(tlsDomain, cfg.Sensor.TLSOrg)
+
+	// Install the deployment-wide outbound-reply policy (mute / fingerprint /
+	// non-OT / full) + the amplifier-reply suppression toggle. Gates every
+	// service centrally; set once before listeners start.
+	handler.SetReplyPolicy(cfg.Sensor.ReplyPolicy, cfg.Sensor.NoAmplifierReplies)
+	handler.SetDBReplyDelay(cfg.Sensor.DBReplyDelay)
 
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).
@@ -516,12 +533,18 @@ func New(cfg *config.Config) (*Sensor, error) {
 				}
 			}
 		}
-		// Opt-in active fetch of harvested ingress URLs, dialing through the
-		// egress allowlist so it can't be an SSRF/exfil vector.
-		if cfg.Sensor.Payloads.FetchURLs && payloadStore != nil {
-			urlFetcher = fetcher.New(egress.Default(),
-				20*time.Second, int64(cfg.Sensor.Payloads.FetchMaxBytes))
-			slog.Info("payload url fetch enabled (active download through egress allowlist)")
+		// Opt-in active fetch of harvested ingress URLs (second-stage samples),
+		// dialing through the egress allowlist so it can't be an SSRF/exfil
+		// vector. Enabled by either payloads.fetch_urls or the higher-level
+		// sensor.web_sample_retrieval toggle. Fetches are additionally gated at
+		// run time by the reply policy (suppressed under mute/fingerprint).
+		if (cfg.Sensor.Payloads.FetchURLs || cfg.Sensor.WebSampleRetrieval) && payloadStore != nil {
+			maxBytes := int64(cfg.Sensor.Payloads.FetchMaxBytes)
+			if maxBytes <= 0 {
+				maxBytes = 8 << 20 // 8 MiB default cap for a second-stage sample
+			}
+			urlFetcher = fetcher.New(egress.Default(), 20*time.Second, maxBytes)
+			slog.Info("payload url fetch enabled (active second-stage sample download through egress allowlist)")
 		}
 	}
 
@@ -1230,6 +1253,11 @@ func artifactReportMeta(rep artifactscan.Report) map[string]any {
 // both URL count and per-fetch time so a flood of URLs in one event can't fan
 // out into unbounded outbound work.
 func (s *Sensor) fetchHarvestedURLs(urls []string) []payload.Artifact {
+	// Respect the reply policy: sample retrieval is an outbound call-out, so it
+	// is suppressed under mute / fingerprint modes (FullInteractionAllowed=false).
+	if !handler.FullInteractionAllowed() {
+		return nil
+	}
 	const maxURLsPerEvent = 3
 	var out []payload.Artifact
 	seen := map[string]bool{}

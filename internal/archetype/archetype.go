@@ -307,6 +307,111 @@ func (p *Profile) TelnetBanner() string {
 	}
 	return p.telnetBanner
 }
+
+// KernelRelease returns a believable `uname -r` kernel-release string for the
+// archetype — what the getty `\r` /etc/issue escape expands to on a real Linux
+// login. Derived from the OS family + the version parsed out of DisplayName so
+// it stays consistent with the rest of the archetype (a CentOS 6 box reports a
+// 2.6.32 el6 kernel, Ubuntu 20.04 a 5.4.0 kernel, …). Empty for non-Linux.
+func (p *Profile) KernelRelease() string {
+	if p == nil {
+		return ""
+	}
+	m := p.Machine()
+	d := strings.ToLower(p.DisplayName)
+	major := firstVersionMajor(d)
+	switch p.Family {
+	case "rhel", "centos":
+		switch major {
+		case 5:
+			return "2.6.18-419.el5"
+		case 6:
+			return "2.6.32-754.el6." + m
+		case 7:
+			return "3.10.0-1160.el7." + m
+		case 8:
+			return "4.18.0-553.el8." + m
+		case 9:
+			return "5.14.0-503.el9." + m
+		default: // 10 / Stream 10
+			return "6.12.0-55.el10." + m
+		}
+	case "debian":
+		switch major {
+		case 8:
+			return "3.16.0-11-amd64"
+		case 9:
+			return "4.9.0-19-amd64"
+		case 10:
+			return "4.19.0-27-amd64"
+		case 11:
+			return "5.10.0-33-amd64"
+		case 12:
+			return "6.1.0-29-amd64"
+		default:
+			return "6.12.0-1-amd64"
+		}
+	case "ubuntu":
+		switch major {
+		case 14:
+			return "3.13.0-170-generic"
+		case 16:
+			return "4.4.0-210-generic"
+		case 18:
+			return "4.15.0-213-generic"
+		case 20:
+			return "5.4.0-200-generic"
+		case 22:
+			return "5.15.0-122-generic"
+		case 24:
+			return "6.8.0-45-generic"
+		default:
+			return "6.14.0-10-generic"
+		}
+	}
+	return ""
+}
+
+// Machine returns the hardware architecture (`uname -m`, the getty `\m`
+// escape). x86_64 unless the archetype is an ARM-class device.
+func (p *Profile) Machine() string {
+	if p == nil {
+		return "x86_64"
+	}
+	n := strings.ToLower(p.Name + " " + p.DisplayName)
+	switch {
+	case strings.Contains(n, "raspberry"):
+		return "aarch64"
+	case strings.Contains(n, "openwrt"), strings.Contains(n, "mikrotik"),
+		strings.Contains(n, "teltonika"):
+		return "mips"
+	}
+	return "x86_64"
+}
+
+// firstVersionMajor parses the first integer that looks like a release major
+// version out of s (e.g. "centos linux release 7.9.2009" -> 7), or 0.
+func firstVersionMajor(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			continue
+		}
+		// Skip a leading version embedded in a word like "x86_64".
+		if i > 0 && (s[i-1] == '_' || s[i-1] == 'x') {
+			continue
+		}
+		n := 0
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			n = n*10 + int(s[i]-'0')
+			i++
+		}
+		if n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 func (p *Profile) SMTPHost() string {
 	if p == nil {
 		return ""

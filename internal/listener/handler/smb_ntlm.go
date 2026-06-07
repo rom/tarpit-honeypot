@@ -336,6 +336,19 @@ func captureNetNTLM(source string, msg, serverChallenge []byte, res *Result) {
 	if workstation != "" {
 		res.Meta["ntlm_workstation"] = workstation
 	}
+	// NTLMSSP Version block (offset 48, 8 bytes) — present when the client set
+	// NTLMSSP_NEGOTIATE_VERSION (flags@60, bit 0x02000000). It leaks the
+	// client's Windows version: ProductMajor.Minor (Build) — e.g. 10.0 (19045)
+	// = Windows 10 22H2, 6.1 (7601) = Windows 7 SP1.
+	if len(msg) >= 56 {
+		if flags := binary.LittleEndian.Uint32(msg[60:64]); len(msg) >= 64 && flags&0x02000000 != 0 {
+			major, minor := msg[48], msg[49]
+			build := binary.LittleEndian.Uint16(msg[50:52])
+			if major != 0 {
+				res.Meta["ntlm_client_os"] = itoa(int(major)) + "." + itoa(int(minor)) + " (build " + itoa(int(build)) + ")"
+			}
+		}
+	}
 	res.Meta["ntlm_response_hex"] = hex.EncodeToString(ntResp)
 
 	u := user

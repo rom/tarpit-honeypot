@@ -26,6 +26,7 @@ var tcpHandlers = map[string]bool{
 	"s7comm_plus": true, "dnp3": true, "ge_srtp": true, "codesys": true,
 	"c37118": true, "osdp": true, "focas": true, "proconos": true,
 	"osisoft_pi":      true,
+	"nts":             true,
 	"modbus_security": true, "modbuss": true,
 	"rsync": true, "gopher": true, "socks": true, "bgp": true,
 	"atg": true, "fox": true, "hartip": true, "pcworx": true, "mms": true,
@@ -160,6 +161,9 @@ func (c *Config) applyDefaults() {
 	// Expand archeservice role bundles into listeners first, so the
 	// generated listeners pick up the per-listener defaults below.
 	c.expandArcheservices()
+	// A fake-web listener leaks DB credentials in its .env; auto-stand-up a
+	// decoy MySQL on the same host so those credentials actually authenticate.
+	c.autoActivateWebappDB()
 	c.Interaction.ApplyDefaults()
 	if c.Sensor.DataDir == "" {
 		c.Sensor.DataDir = "/var/lib/tarpit-honeypot"
@@ -1540,4 +1544,53 @@ func SeverityMatches(spec string, sev event.Severity) (bool, error) {
 		return sev <= target, nil
 	}
 	return false, fmt.Errorf("unknown operator %q", op)
+}
+
+// autoActivateWebappDB stands up a decoy MySQL alongside any fake-web listener.
+// The fake web app leaks DB credentials (DB_DATABASE/DB_USERNAME/DB_PASSWORD)
+// in its .env / config files; the decoy MySQL honors exactly those, so an
+// attacker who harvests the loot finds it "works". For each webapp listener we
+// add a `mysql` listener on the same bind IP, port 3306 — unless a MySQL
+// listener already binds that IP (operator-defined wins, no port clobber).
+func (c *Config) autoActivateWebappDB() {
+	// Bind IPs already served by a MySQL listener.
+	mysqlIPs := map[string]bool{}
+	for _, l := range c.Listeners {
+		if l.Handler == "mysql" {
+			if h, _, err := net.SplitHostPort(l.Bind); err == nil {
+				mysqlIPs[h] = true
+			}
+		}
+	}
+	var add []Listener
+	seen := map[string]bool{}
+	for _, l := range c.Listeners {
+		if !l.Webapp || l.Proto == "udp" {
+			continue
+		}
+		host, _, err := net.SplitHostPort(l.Bind)
+		if err != nil || mysqlIPs[host] || seen[host] {
+			continue
+		}
+		seen[host] = true
+		add = append(add, Listener{
+			ID:       "webapp-db-" + sanitizeID(host),
+			Proto:    "tcp",
+			Bind:     net.JoinHostPort(host, "3306"),
+			Mode:     "banner",
+			Handler:  "mysql",
+			Severity: "high",
+		})
+	}
+	c.Listeners = append(c.Listeners, add...)
+}
+
+// sanitizeID turns a bind host into a listener-id-safe token.
+func sanitizeID(host string) string {
+	r := strings.NewReplacer(".", "-", ":", "-", "[", "", "]", "")
+	id := r.Replace(host)
+	if id == "" || id == "0-0-0-0" {
+		id = "any"
+	}
+	return id
 }

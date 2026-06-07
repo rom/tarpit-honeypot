@@ -50,7 +50,10 @@ func FuzzParseNTLMType3Dumb(f *testing.F) {
 func FuzzParseLogin7UserDumb(f *testing.F) {
 	f.Add(make([]byte, 48))
 	f.Add([]byte{})
-	f.Fuzz(func(t *testing.T, data []byte) { _ = parseLogin7User(data) })
+	f.Fuzz(func(t *testing.T, data []byte) {
+		res := Result{Meta: map[string]any{}}
+		parseLogin7(data, &res)
+	})
 }
 
 func FuzzParsePgParamsDumb(f *testing.F) {

@@ -680,6 +680,32 @@ type Sensor struct {
 	Jitter    Jitter    `yaml:"jitter"`
 	Shutdown  Shutdown  `yaml:"shutdown"`
 	TLSRotate TLSRotate `yaml:"tls_rotate"`
+	// ReplyPolicy is the deployment-wide outbound-reply policy applied to every
+	// service. One of: "full" (default — full bidirectional / interactive),
+	// "non-ot" (full except OT-class handlers are muted), "fingerprint" (reply
+	// only enough to fingerprint the client / capture credentials — no deep
+	// sessions or call-outs), "fingerprint-non-ot", or "mute" (receive only —
+	// every outgoing byte and call-out is dropped).
+	ReplyPolicy string `yaml:"reply_policy"`
+	// NoAmplifierReplies, when true, suppresses replies to amplifier-mode
+	// requests (NTP mode 6/7, UDP reflectors) regardless of ReplyPolicy and logs
+	// a special warning when such a probe is declined.
+	NoAmplifierReplies bool `yaml:"no_amplifier_replies"`
+	// DBReplyDelay adds an artificial delay before database handlers answer
+	// (especially heavy operations), so the decoy DB feels like a real, loaded
+	// server (seconds rather than microseconds). 0 = no delay.
+	DBReplyDelay time.Duration `yaml:"db_reply_delay"`
+	// WebSampleRetrieval enables automated second-stage sample retrieval: when an
+	// attacker references a URL in a web exploit, the sensor fetches it (bounded,
+	// never executes it) and YARA-scans the result. OFF by default — it makes
+	// the sensor an active outbound fetcher, so it is opt-in, respects mute mode,
+	// and honors the egress allowlist.
+	WebSampleRetrieval bool `yaml:"web_sample_retrieval"`
+	// Domain is the deployment's DNS domain. It makes service identities
+	// consistent: the SMTP banner host, DNS hostname.bind / id.server, the
+	// telnet \h escape, etc. all derive from it (default "example.internal").
+	// When TLSDomain is unset, the certificate identity derives from it too.
+	Domain string `yaml:"domain"`
 	// TLSDomain is the deployment-wide certificate CN/SAN used for every
 	// TLS-bearing decoy service that doesn't pin its own https.hosts/cn —
 	// so the whole host presents one consistent cert identity (the admin's

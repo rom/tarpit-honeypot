@@ -18,7 +18,7 @@ func TestNTPMonlistIntent(t *testing.T) {
 	pkt[0] = (2 << 3) | 7 // version 2, mode 7 (private/ntpdc)
 	pkt[3] = 42           // REQ_MON_GETLIST
 	pc := &fakePacketConn{}
-	res, _ := (&ntp{}).Handle(context.Background(), pkt, &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4)}, pc, config.Listener{})
+	res, _ := (&ntp{lim: newUDPReflectLimiter()}).Handle(context.Background(), pkt, &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4)}, pc, config.Listener{})
 
 	an := anomaliesOf(res)
 	for _, want := range []string{"ntp-monlist-amplification", "cve:CVE-2013-5211"} {
@@ -29,8 +29,13 @@ func TestNTPMonlistIntent(t *testing.T) {
 	if it, _ := res.Meta["intent"].(string); !strings.Contains(it, "monlist") {
 		t.Errorf("intent = %q, want a monlist label", it)
 	}
-	if len(pc.written) != 0 {
-		t.Error("must not answer mode-7 (would be an amplifier)")
+	// monlist is now answered (engages ntpdc) but with exactly ONE entry — a
+	// single mon_getlist_1 record (72 bytes), never the ~600-entry amplifier.
+	if len(pc.written) != 1 {
+		t.Fatalf("monlist should be answered with one bounded reply; got %d", len(pc.written))
+	}
+	if n := len(pc.written[0]); n != 8+72 {
+		t.Errorf("monlist reply = %d bytes; want 80 (8 hdr + 1 entry, non-amplifying)", n)
 	}
 }
 

@@ -800,6 +800,7 @@ var anomalyTags = map[string]Tag{
 	"tls-decrypted-credentials": {Techniques: []string{"T1040", "T1557"}, Tactics: []string{"credential-access", "collection"}},
 	// NTP mode-6/7 control queries + monlist = reflection-amplification recon.
 	"ntp-control-query":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"nts-ke-probe":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-mode7-private":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-nonclient-mode":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},

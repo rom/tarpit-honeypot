@@ -1041,6 +1041,10 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich 
 		{Label: "high", Value: sum.BySeverity["high"], Class: "sev-bg-high", Href: "/events?severity=high"},
 		{Label: "medium", Value: sum.BySeverity["medium"], Class: "sev-bg-medium", Href: "/events?severity=medium"},
 		{Label: "low", Value: sum.BySeverity["low"], Class: "sev-bg-low", Href: "/events?severity=low"},
+		// Captured second-stage samples / dropped artifacts (downloaded payloads,
+		// YARA-scanned, never executed). Links to the malware-capture events;
+		// the raw files are on the captures page.
+		{Label: "captured", Value: sum.ByRule["malware:capture"], Class: "c-captured", Href: "/events?rule=malware:capture"},
 	}
 	if s.stats != nil {
 		fr := map[string]int{}
@@ -1440,9 +1444,48 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deploymentInfo() deploymentInfo {
 	d := deploymentInfo{UIBind: s.cfg.Bind}
 	if s.fullConfig != nil {
-		d.Listeners = len(s.fullConfig.Listeners)
-		d.Networks = len(s.fullConfig.Honeynets)
-		d.DevicesOn = s.fullConfig.Devices.Enabled
+		c := s.fullConfig
+		d.Listeners = len(c.Listeners)
+		d.Networks = len(c.Honeynets)
+		d.DevicesOn = c.Devices.Enabled
+
+		// Identity / naming.
+		d.Domain = c.Sensor.Domain
+		if d.Domain == "" {
+			d.Domain = "example.internal"
+		}
+		d.TLSDomain = c.Sensor.TLSDomain
+		if d.TLSDomain == "" {
+			d.TLSDomain = d.Domain
+		}
+		seenDom := map[string]bool{}
+		for _, hn := range c.Honeynets {
+			if hn.Domain != "" && !seenDom[hn.Domain] {
+				seenDom[hn.Domain] = true
+				d.NetworkDomains = append(d.NetworkDomains, hn.Domain)
+			}
+		}
+
+		// Modes.
+		d.ReplyPolicy = c.Sensor.ReplyPolicy
+		if d.ReplyPolicy == "" {
+			d.ReplyPolicy = "full"
+		}
+		d.NoAmplifier = c.Sensor.NoAmplifierReplies
+		if c.Sensor.DBReplyDelay > 0 {
+			d.DBReplyDelay = c.Sensor.DBReplyDelay.String()
+		}
+
+		// Fake web.
+		for _, l := range c.Listeners {
+			if l.Webapp {
+				d.WebappEnabled = true
+				if n := strings.TrimSpace(l.WebappBrand.Name); n != "" && d.WebappName == "" {
+					d.WebappName = n
+				}
+			}
+		}
+		d.SampleRetrieval = c.Sensor.WebSampleRetrieval || c.Sensor.Payloads.FetchURLs
 	}
 	if s.topo != nil {
 		d.Hosts = len(s.topo.HostsInNetwork(""))
@@ -1477,6 +1520,18 @@ type deploymentInfo struct {
 	Hosts     int
 	DevicesOn bool
 	UIBind    string
+	// Identity / naming.
+	Domain         string   // deployment DNS domain used for service identities
+	TLSDomain      string   // cert CN/SAN domain (falls back to Domain)
+	NetworkDomains []string // per-honeynet-network DNS domains
+	// Modes.
+	ReplyPolicy  string // full / non-ot / fingerprint / fingerprint-non-ot / mute
+	NoAmplifier  bool   // amplifier-mode replies suppressed
+	DBReplyDelay string // artificial DB answer delay ("" = none)
+	// Fake web.
+	WebappEnabled   bool
+	WebappName      string
+	SampleRetrieval bool
 }
 
 // handleAPIConfigCanvas returns the listener/collector board as JSON for

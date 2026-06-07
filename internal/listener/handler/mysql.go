@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/binary"
 	"io"
 	"net"
@@ -30,6 +31,9 @@ func (m *mysql) Name() string { return "mysql" }
 func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
+
+	// Heavy-DB realism: a real loaded SQL server doesn't answer in microseconds.
+	dbReplyDelaySleep()
 
 	// Build handshake packet (sequence id = 0).
 	salt1 := make([]byte, 8)
@@ -106,9 +110,11 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 			res.Meta["ssl_requested"] = true
 		}
 		p := 32
+		username, authResp := "", []byte(nil)
 		nullEnd := indexByte(respBody[p:], 0)
 		if nullEnd > 0 {
-			res.Meta["username"] = string(respBody[p : p+nullEnd])
+			username = string(respBody[p : p+nullEnd])
+			res.Meta["username"] = username
 			p += nullEnd + 1
 			flagAnomaly(&res, "mysql-login-attempt")
 		}
@@ -118,15 +124,18 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 			alen := int(respBody[p])
 			p++
 			if p+alen <= len(respBody) && alen > 0 {
-				res.Meta["auth_response_hex"] = byteToHex(respBody[p : p+alen])
+				authResp = respBody[p : p+alen]
+				res.Meta["auth_response_hex"] = byteToHex(authResp)
 				p += alen
 			}
 		}
 		// Optional database name (null-terminated, present with CLIENT_CONNECT_WITH_DB).
+		db := ""
 		if p < len(respBody) {
 			dbEnd := indexByte(respBody[p:], 0)
 			if dbEnd > 0 {
-				res.Meta["database"] = string(respBody[p : p+dbEnd])
+				db = string(respBody[p : p+dbEnd])
+				res.Meta["database"] = db
 				p += dbEnd + 1
 			} else if dbEnd == 0 {
 				p++ // empty db name
@@ -139,9 +148,29 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 				res.Meta["auth_plugin"] = string(respBody[p : p+pEnd])
 			}
 		}
+
+		// Honeytoken authentication: if the attacker presents the exact DB
+		// credential planted in the fake web app's leaked .env (user
+		// "intranet_app", the per-deployment password, db "intranet" or none),
+		// accept the login — they harvested loot from the webapp and it "works",
+		// which is the intended deception (and a very high-signal event).
+		salt := append(append([]byte{}, salt1...), salt2...)
+		if username == webDBUser {
+			if m.id != nil && mysqlNativeAuthOK(webappHoneyCreds(m.id).dbPass, salt, authResp) &&
+				(db == "" || db == webDBName) {
+				dbReplyDelaySleep()
+				_, _ = conn.Write(mysqlOKPacket(2))
+				res.Meta["auth_accepted"] = true
+				flagAnomaly(&res, "mysql-honeytoken-auth")
+				res.Meta["intent"] = "MySQL login with the planted .env DB credential — attacker reused harvested webapp loot"
+				m.runQuerySession(conn, &res)
+				return res, nil
+			}
+		}
 	}
 
 	// Send ERR_Packet 1045 Access denied. Sequence id = 2.
+	dbReplyDelaySleep()
 	errBody := []byte{}
 	errBody = append(errBody, 0xff)                           // ERR_Packet marker
 	errBody = binary.LittleEndian.AppendUint16(errBody, 1045) // error code
@@ -165,4 +194,100 @@ func indexByte(b []byte, c byte) int {
 		}
 	}
 	return -1
+}
+
+// webDBUser / webDBName are the database identity the fake web app leaks in its
+// .env / config files. The decoy MySQL honors exactly this user + the planted
+// per-deployment password so the harvested credential authenticates.
+const (
+	webDBUser = "intranet_app"
+	webDBName = "intranet"
+)
+
+// mysqlNativeAuthOK validates a mysql_native_password handshake response against
+// a known plaintext password + the 20-byte server salt. The client sends
+//
+//	resp = SHA1(pw) XOR SHA1( salt || SHA1(SHA1(pw)) )
+//
+// so we recompute it and compare. Returns false on any length mismatch.
+func mysqlNativeAuthOK(password string, salt, resp []byte) bool {
+	if len(resp) != sha1.Size || len(salt) < 20 {
+		return false
+	}
+	salt = salt[:20]
+	h1 := sha1.Sum([]byte(password)) // SHA1(pw)
+	h2 := sha1.Sum(h1[:])            // SHA1(SHA1(pw))
+	hh := sha1.New()
+	hh.Write(salt)
+	hh.Write(h2[:])
+	tok := hh.Sum(nil) // SHA1(salt || SHA1(SHA1(pw)))
+	var match byte
+	for i := 0; i < sha1.Size; i++ {
+		match |= (h1[i] ^ tok[i]) ^ resp[i]
+	}
+	return match == 0
+}
+
+// mysqlOKPacket builds a minimal OK_Packet (auth success) with the given
+// sequence id: header 0x00, affected_rows 0, last_insert_id 0, status flags
+// AUTOCOMMIT, 0 warnings.
+func mysqlOKPacket(seq byte) []byte {
+	body := []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00}
+	pkt := make([]byte, 4+len(body))
+	pkt[0] = byte(len(body))
+	pkt[1] = byte(len(body) >> 8)
+	pkt[2] = byte(len(body) >> 16)
+	pkt[3] = seq
+	copy(pkt[4:], body)
+	return pkt
+}
+
+// runQuerySession reads a bounded number of post-auth COM_QUERY commands from a
+// client that authenticated with the honeytoken credential, capturing the SQL
+// it runs (high-value intel — what the attacker does once "inside"). Each query
+// is answered with a believable empty result / OK. Only entered when the reply
+// policy permits full interaction; otherwise we accept the login and stop.
+func (m *mysql) runQuerySession(conn net.Conn, res *Result) {
+	if !FullInteractionAllowed() {
+		return
+	}
+	var queries []string
+	defer func() {
+		if len(queries) > 0 {
+			res.Meta["sql_queries"] = queries
+			flagAnomaly(res, "mysql-post-auth-query")
+		}
+	}()
+	hdr := make([]byte, 4)
+	for i := 0; i < 32; i++ {
+		if _, err := io.ReadFull(conn, hdr); err != nil {
+			return
+		}
+		n := int(hdr[0]) | int(hdr[1])<<8 | int(hdr[2])<<16
+		if n <= 0 || n > 1<<16 {
+			return
+		}
+		buf := make([]byte, n)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			return
+		}
+		cmd := buf[0]
+		switch cmd {
+		case 0x01: // COM_QUIT
+			return
+		case 0x03: // COM_QUERY
+			q := string(buf[1:])
+			if len(q) > 2048 {
+				q = q[:2048]
+			}
+			if len(queries) < 64 {
+				queries = append(queries, q)
+			}
+			dbReplyDelaySleep()
+			_, _ = conn.Write(mysqlOKPacket(1)) // empty result / OK
+		default:
+			dbReplyDelaySleep()
+			_, _ = conn.Write(mysqlOKPacket(1))
+		}
+	}
 }
