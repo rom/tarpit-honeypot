@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`install.sh` sets the deployment identity, not just the TLS name.** It now
+  prompts for (and accepts `--hostname` / `--domain`, or `TARPIT_HOSTNAME` /
+  `TARPIT_DOMAIN`) the sensor's host label (`sensor.name`) and DNS domain
+  (`sensor.domain`) — the suffix every banner-aware decoy uses (DNS zone, SMTP
+  HELO, Kerberos realm, LDAP base, …). Previously it asked only for the TLS
+  certificate name, so services kept advertising the generic
+  `*.example.internal` default while the cert said something else. The TLS name
+  (`--tls-domain`) now **defaults to `<hostname>.<domain>`**, so the certificate
+  stays coherent with the deployment domain out of the box. The install summary
+  prints the resolved `host` / `domain` / TLS name.
+
 ### Fixed
 
 - **.deb / .rpm now produce a working install.** Beyond the wrong service

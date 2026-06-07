@@ -29,6 +29,14 @@
 #       --group NAME    service group (default: honeypot)
 #       --prefix DIR    binary dir    (default: /usr/local/bin)
 #       --data DIR      data dir      (default: /var/lib/tarpit-honeypot)
+#       --hostname NAME this sensor's host label (sensor.name; default: short
+#                       hostname). Used by every banner-aware decoy service.
+#       --domain NAME   deployment DNS domain for ALL decoy services
+#                       (sensor.domain; e.g. corp.example.com) — DNS zone, SMTP
+#                       HELO, Kerberos realm, LDAP base, etc.
+#       --tls-domain N  TLS cert CN/SAN (sensor.tls_domain; default:
+#                       <hostname>.<domain>, so the cert matches the identity)
+#       --tls-org NAME  TLS cert organization (sensor.tls_org)
 #       --tun           also grant CAP_NET_ADMIN (TUN adapter / nft egress backstop)
 #       --force-config  overwrite an existing /etc/tarpit-honeypot/config.yaml
 #       --no-build      use prebuilt ./bin/tarpit-honeypot instead of `go build`
@@ -67,6 +75,11 @@ RELOCATE_SSHD=1
 SSH_RELO_PORT=10022
 TLS_DOMAIN="${TLS_DOMAIN:-}"
 TLS_ORG="${TLS_ORG:-}"
+# Deployment identity used by every decoy service (not just TLS). sensor.name +
+# sensor.domain; env TARPIT_HOSTNAME / TARPIT_DOMAIN (TARPIT_-prefixed so the
+# domain one doesn't collide with the shell's $HOSTNAME).
+DEPLOY_HOST="${TARPIT_HOSTNAME:-}"
+DEPLOY_DOMAIN="${TARPIT_DOMAIN:-}"
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEFAULT_CONFIG="$REPO/configs/tarpit-honeypot.example-CENTOS-SERVER.yaml"
@@ -78,6 +91,8 @@ while [ $# -gt 0 ]; do
 	--group) SVC_GROUP="$2"; shift 2 ;;
 	--prefix) PREFIX="$2"; shift 2 ;;
 	--data) DATA="$2"; shift 2 ;;
+	--hostname) DEPLOY_HOST="$2"; shift 2 ;;
+	--domain) DEPLOY_DOMAIN="$2"; shift 2 ;;
 	--tun) WITH_TUN=1; shift ;;
 	--force-config) FORCE_CONFIG=1; shift ;;
 	--no-build) DO_BUILD=0; shift ;;
@@ -88,7 +103,7 @@ while [ $# -gt 0 ]; do
 	--ssh-relocate-port) SSH_RELO_PORT="$2"; shift 2 ;;
 	--tls-domain) TLS_DOMAIN="$2"; shift 2 ;;
 	--tls-org) TLS_ORG="$2"; shift 2 ;;
-	-h | --help) sed -n '2,41p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,49p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
 done
@@ -293,13 +308,36 @@ fi
 # Encrypt cert exists — point the UI at it. The validator stat()s the cert, so
 # we only wire TLS when the files are actually there (re-run install.sh after
 # letsencrypt-cert.sh, which also wires it). Idempotent; only touches our keys.
-# prompt_tls_identity asks the admin for the certificate domain + organization
-# that every TLS-bearing decoy service will present (instead of the default
-# "localhost"). Honors --tls-domain/--tls-org and the TLS_DOMAIN/TLS_ORG env;
-# falls back to an interactive prompt (and the box's FQDN as the default).
-prompt_tls_identity() {
+#
+# prompt_identity resolves the ONE deployment identity every decoy service uses:
+# the host label (sensor.name), the DNS domain (sensor.domain — DNS zone, SMTP
+# HELO, Kerberos realm, LDAP base, …), and the TLS cert CN/SAN (sensor.tls_domain).
+# Precedence: --hostname/--domain/--tls-domain flags (or TARPIT_HOSTNAME /
+# TARPIT_DOMAIN / TLS_DOMAIN env) win; otherwise prompt interactively. The TLS
+# name DEFAULTS to <host>.<domain> so the certificate stays coherent with the
+# deployment domain instead of drifting to a generic "localhost"/example.internal.
+prompt_identity() {
+	# Host label (sensor.name).
+	if [ -z "$DEPLOY_HOST" ]; then
+		local h; h="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo host)"
+		if [ -t 0 ]; then
+			printf 'Hostname for this sensor (sensor.name) [%s]: ' "$h"
+			read -r DEPLOY_HOST || true
+		fi
+		DEPLOY_HOST="${DEPLOY_HOST:-$h}"
+	fi
+	# Deployment DNS domain (sensor.domain) — the suffix EVERY decoy advertises.
+	if [ -z "$DEPLOY_DOMAIN" ]; then
+		local d; d="$(hostname -d 2>/dev/null || true)"; d="${d:-example.internal}"
+		if [ -t 0 ]; then
+			printf 'Deployment DNS domain for all decoy services (sensor.domain) [%s]: ' "$d"
+			read -r DEPLOY_DOMAIN || true
+		fi
+		DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-$d}"
+	fi
+	# TLS cert identity — default to <host>.<domain> so it matches the above.
 	if [ -z "$TLS_DOMAIN" ]; then
-		local fqdn; fqdn="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+		local fqdn="${DEPLOY_HOST}.${DEPLOY_DOMAIN}"
 		if [ -t 0 ]; then
 			printf 'TLS certificate domain/name for decoy services [%s]: ' "$fqdn"
 			read -r TLS_DOMAIN || true
@@ -310,15 +348,19 @@ prompt_tls_identity() {
 		printf 'TLS certificate organization (optional, blank to vary per service): '
 		read -r TLS_ORG || true
 	fi
-	info "TLS cert identity: domain=$TLS_DOMAIN org=${TLS_ORG:-<per-service>}"
+	info "Deployment identity: host=$DEPLOY_HOST domain=$DEPLOY_DOMAIN tls=$TLS_DOMAIN org=${TLS_ORG:-<per-service>}"
 }
 
-# set_sensor_key inserts or replaces a key under the top-level "sensor:" block.
+# set_sensor_key inserts or replaces a scalar key in the top-level "sensor:"
+# block. It deliberately matches only a 2-space-indented key (the sensor block's
+# own scalars) and only the FIRST occurrence: other blocks (webapp brand,
+# honeynet hosts/networks) carry name:/domain: keys at deeper indentation, and
+# rewriting those would corrupt unrelated config.
 set_sensor_key() {
 	local f="$1" key="$2" val="$3"
 	[ -n "$val" ] || return 0
-	if grep -qE "^[[:space:]]+$key:" "$f"; then
-		sed -i -E "s|^([[:space:]]+)$key:.*|\1$key: \"$val\"|" "$f"
+	if grep -qE "^  $key:" "$f"; then
+		sed -i -E "0,/^  $key:.*/s||  $key: \"$val\"|" "$f"
 	else
 		# insert right after the "sensor:" line (2-space indent to match the block)
 		sed -i "/^sensor:/a\\  $key: \"$val\"" "$f"
@@ -333,8 +375,11 @@ patch_config() {
 	# only $DATA writable — so SQLite can't create its DB/-wal/-shm and the
 	# sensor dies with "unable to open database file (14) ... not writable".
 	set_sensor_key "$f" "data_dir" "$DATA"
-	# Pin the deployment-wide TLS cert identity so all decoy TLS services share
-	# one consistent certificate (not the per-service "localhost" default).
+	# Pin the deployment identity so every banner-aware decoy (DNS / SMTP /
+	# Kerberos / LDAP / …) advertises the operator's real host + domain instead
+	# of the generic example default, and the TLS cert (tls_domain) matches it.
+	set_sensor_key "$f" "name" "$DEPLOY_HOST"
+	set_sensor_key "$f" "domain" "$DEPLOY_DOMAIN"
 	set_sensor_key "$f" "tls_domain" "$TLS_DOMAIN"
 	set_sensor_key "$f" "tls_org" "$TLS_ORG"
 	if [ -f "$ETC/tls/cert.pem" ] && [ -f "$ETC/tls/key.pem" ]; then
@@ -349,7 +394,7 @@ patch_config() {
 	grep -q "drop_user:" "$f" || warn "config has no sensor.drop_user — add 'drop_user: $SVC_USER' / 'drop_group: $SVC_GROUP'"
 	grep -q "seccomp:" "$f"  || warn "config has no sensor.sandbox.seccomp — add 'sandbox: { seccomp: true, landlock: true }'"
 }
-prompt_tls_identity
+prompt_identity
 patch_config "$CONFIG"
 
 if "$BIN" validate-config -c "$CONFIG" >/dev/null 2>&1; then
@@ -729,6 +774,7 @@ $(info "Install complete.")
 
   binary   : $BIN  ($(getcap "$BIN" 2>/dev/null || echo 'no file caps'))
   user     : $SVC_USER:$SVC_GROUP
+  identity : host=$DEPLOY_HOST domain=$DEPLOY_DOMAIN  (TLS cert: $TLS_DOMAIN)
   config   : $CONFIG
   data     : $DATA
   logs     : $LOGDIR/tarpit-honeypot.log  (sensor logs + events; kept out of /var/log/messages)
