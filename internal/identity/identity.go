@@ -33,6 +33,28 @@ type Identity struct {
 
 	mu       sync.Mutex
 	smtpHost string
+	domain   string // deployment DNS domain for hostnames (default example.internal)
+}
+
+// Domain returns the deployment's DNS domain used to build hostnames (SMTP
+// banner, DNS hostname.bind, telnet \h, …) so every service is internally
+// consistent. Defaults to "example.internal" when none is configured.
+func (i *Identity) Domain() string {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.domain == "" {
+		return "example.internal"
+	}
+	return i.domain
+}
+
+// SetDomain pins the deployment DNS domain (from sensor.domain). A blank value
+// leaves the default in place.
+func (i *Identity) SetDomain(d string) {
+	d = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(d), "."))
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.domain = d
 }
 
 // Load reads the deployment id from <dataDir>/.deployment-id, generating
@@ -151,7 +173,7 @@ func (i *Identity) HTTPServerHeader() string {
 func (i *Identity) HostName() string {
 	prefixes := []string{"mail", "srv", "host", "fw", "edge", "core", "app"}
 	r := i.deterministicRand("hostname")
-	return fmt.Sprintf("%s%02d.example.internal", prefixes[r.Intn(len(prefixes))], 10+r.Intn(80))
+	return fmt.Sprintf("%s%02d.%s", prefixes[r.Intn(len(prefixes))], 10+r.Intn(80), i.Domain())
 }
 
 // ApacheVersion returns a deployment-unique Apache httpd version

@@ -680,6 +680,11 @@ type Sensor struct {
 	Jitter    Jitter    `yaml:"jitter"`
 	Shutdown  Shutdown  `yaml:"shutdown"`
 	TLSRotate TLSRotate `yaml:"tls_rotate"`
+	// Domain is the deployment's DNS domain. It makes service identities
+	// consistent: the SMTP banner host, DNS hostname.bind / id.server, the
+	// telnet \h escape, etc. all derive from it (default "example.internal").
+	// When TLSDomain is unset, the certificate identity derives from it too.
+	Domain string `yaml:"domain"`
 	// TLSDomain is the deployment-wide certificate CN/SAN used for every
 	// TLS-bearing decoy service that doesn't pin its own https.hosts/cn —
 	// so the whole host presents one consistent cert identity (the admin's

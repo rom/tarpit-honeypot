@@ -176,10 +176,21 @@ func New(cfg *config.Config) (*Sensor, error) {
 		jit = jitter.New(0, 0)
 	}
 
+	// Pin the deployment DNS domain so hostnames are consistent across SMTP /
+	// DNS / telnet / IPMI / … (default "example.internal" when unset).
+	if cfg.Sensor.Domain != "" {
+		id.SetDomain(cfg.Sensor.Domain)
+	}
+
 	// Install the deployment-wide TLS certificate identity (CN/SAN domain +
 	// organization) so every TLS decoy presents one consistent cert instead of
-	// the per-service "localhost" default. Set once, before any listener starts.
-	handler.SetTLSDefaults(cfg.Sensor.TLSDomain, cfg.Sensor.TLSOrg)
+	// the per-service "localhost" default. When tls_domain is unset, fall back
+	// to the deployment domain so the cert matches the service hostnames.
+	tlsDomain := cfg.Sensor.TLSDomain
+	if tlsDomain == "" {
+		tlsDomain = cfg.Sensor.Domain
+	}
+	handler.SetTLSDefaults(tlsDomain, cfg.Sensor.TLSOrg)
 
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).

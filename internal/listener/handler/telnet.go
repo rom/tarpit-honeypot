@@ -8,8 +8,11 @@ import (
 	"net"
 	"strings"
 
+	"time"
+
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
@@ -19,6 +22,7 @@ import (
 type telnet struct {
 	jit  *jitter.Jitterer
 	arch *archetype.Profile
+	id   *identity.Identity
 	rec  *sessionrec.Store
 }
 
@@ -55,6 +59,11 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 			banner = "\r\nUbuntu 20.04.6 LTS\r\n\r\nlogin: "
 		}
 	}
+	// Real getty expands the /etc/issue escapes (\r kernel release, \m machine,
+	// \n/\h nodename, \l tty, \s OS, …) before printing the banner. The
+	// archetype strings carry the raw escapes, so substitute them here —
+	// otherwise the decoy prints a literal "Kernel \r on an \m", an obvious tell.
+	banner = expandLoginEscapes(banner, t.arch, t.id)
 	res := Result{Meta: map[string]any{}}
 	if _, err := conn.Write(telnetIAC); err != nil {
 		res.Meta["write_err"] = err.Error()
@@ -110,7 +119,7 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	if t.arch != nil && t.arch.CLIPrompt() != "" {
 		// Second login banner.
 		if t.arch.LoginPrompt() != "" {
-			_, _ = conn.Write([]byte(t.arch.LoginPrompt()))
+			_, _ = conn.Write([]byte(expandLoginEscapes(t.arch.LoginPrompt(), t.arch, t.id)))
 		} else {
 			_, _ = conn.Write([]byte("\r\nlogin: "))
 		}
@@ -365,4 +374,67 @@ func readBoundedLineFromReader(br *bufio.Reader, max int) (string, error) {
 		}
 	}
 	return string(out), nil
+}
+
+// expandLoginEscapes substitutes the getty / agetty /etc/issue escape
+// sequences a real login service expands before printing its banner. The
+// archetype banners carry the raw escapes (e.g. "Kernel \r on an \m"), so
+// without this the decoy would print them verbatim — an obvious honeypot tell.
+// Recognized escapes (the common subset): \r kernel release, \m machine arch,
+// \s OS name, \n/\h nodename(hostname), \l tty line, \d date, \t time,
+// \o/\O domain. \\ -> \. Unknown escapes are left intact.
+func expandLoginEscapes(s string, arch *archetype.Profile, id *identity.Identity) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	host, domain := "localhost", "example.internal"
+	if id != nil {
+		// id.HostName() returns "host.domain"; split for \h (short) vs \o (domain).
+		full := id.HostName()
+		domain = id.Domain()
+		if i := strings.IndexByte(full, '.'); i > 0 {
+			host = full[:i]
+		} else {
+			host = full
+		}
+	}
+	kernel := arch.KernelRelease()
+	if kernel == "" {
+		kernel = "5.4.0-200-generic" // generic Linux fallback
+	}
+	now := time.Now()
+	var b strings.Builder
+	b.Grow(len(s) + 32)
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 >= len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch s[i+1] {
+		case 'r': // kernel release (uname -r)
+			b.WriteString(kernel)
+		case 'm': // machine hardware (uname -m)
+			b.WriteString(arch.Machine())
+		case 's': // OS name
+			b.WriteString("Linux")
+		case 'n', 'h': // nodename / hostname (short)
+			b.WriteString(host)
+		case 'l': // tty line
+			b.WriteString("ttyS0")
+		case 'o', 'O': // domain
+			b.WriteString(domain)
+		case 'd': // date
+			b.WriteString(now.Format("Mon Jan _2 2006"))
+		case 't': // time
+			b.WriteString(now.Format("15:04:05"))
+		case '\\':
+			b.WriteByte('\\')
+		default:
+			// Unknown escape: keep both bytes so we don't corrupt real content.
+			b.WriteByte('\\')
+			b.WriteByte(s[i+1])
+		}
+		i++ // consumed the escape letter
+	}
+	return b.String()
 }

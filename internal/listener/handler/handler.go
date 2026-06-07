@@ -186,7 +186,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		h.vuln = deps.VulnEmulation
 		return h, nil
 	case "telnet":
-		return &telnet{jit: deps.Jitter, arch: deps.Archetype, rec: deps.SessionRec}, nil
+		return &telnet{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, rec: deps.SessionRec}, nil
 	case "ftp":
 		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, tlsMgr: maybeCertMgr(deps), maxUpload: deps.MaxUploadBytes}, nil
 	case "ftp_files":
