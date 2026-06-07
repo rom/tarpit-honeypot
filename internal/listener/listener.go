@@ -24,7 +24,14 @@ type Listener interface {
 // construction time. Keeps Build's signature stable as we add deployment
 // identity, jitter, retry-queue stats, etc.
 type BuildArgs struct {
-	SensorName  string
+	SensorName string
+	// Binds is the concrete set of "host:port" addresses this listener should
+	// bind (resolved from the listener's bind + sensor.listen_addresses /
+	// interfaces). One logical listener can own several sockets — e.g. the same
+	// SSH decoy on three server IPs — all feeding one handler; the destination
+	// IP is still recorded per connection. Empty falls back to the listener's
+	// own cfg.Bind (the single-socket default).
+	Binds       []string
 	DataDir     string
 	CaptureMgr  *capture.Manager
 	URLCanaries []config.URLCanary
@@ -87,9 +94,9 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 	}
 	switch l.Proto {
 	case "tcp":
-		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID, args.Honeynet)
+		return newTCP(l, args.SensorName, deps, args.CaptureMgr, sevByID, args.Honeynet, args.Binds)
 	case "udp":
-		return newUDP(l, args.SensorName, args.Honeynet, args.HoneynetSnapshot, deps)
+		return newUDP(l, args.SensorName, args.Honeynet, args.HoneynetSnapshot, deps, args.Binds)
 	}
 	return nil, errUnknownProto
 }

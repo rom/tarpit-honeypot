@@ -767,6 +767,16 @@ type Sensor struct {
 	// Settable on the CLI with -i/--interface (repeatable), which
 	// overrides this list.
 	Interfaces []string `yaml:"interfaces"`
+
+	// ListenAddresses optionally pins every wildcard listener (bind host
+	// 0.0.0.0 / :: / empty) to a specific set of IP addresses, binding each
+	// listener once per address. Empty (the default) keeps the wildcard bind,
+	// so the listener answers on EVERY IP the host has now or later — the "all
+	// services on all IPs" posture. Set it to ONE IP to dedicate this sensor
+	// instance to a single server IP (the multi-instance, one-honeypot-per-IP
+	// deployment). A listener whose bind is already a concrete IP is left
+	// untouched. Takes precedence over Interfaces.
+	ListenAddresses []string `yaml:"listen_addresses"`
 }
 
 // EgressPolicy is the outbound allowlist. Configured channel destinations are

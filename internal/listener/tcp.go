@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/capture"
@@ -34,14 +35,18 @@ type tcpListener struct {
 	// sema is non-nil when the listener has a max_concurrent cap.
 	// We acquire one slot per accepted connection and release on exit.
 	sema chan struct{}
+
+	// binds is the set of host:port addresses to listen on. Empty = [cfg.Bind].
+	// More than one when the same logical listener serves several server IPs.
+	binds []string
 }
 
-func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *capture.Manager, urlSevByID map[string]event.Severity, topo *honeynet.Topology) (*tcpListener, error) {
+func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *capture.Manager, urlSevByID map[string]event.Severity, topo *honeynet.Topology, binds []string) (*tcpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID, topo: topo}
+	t := &tcpListener{cfg: l, sensorName: sensorName, sev: sev, urlCanarySev: urlSevByID, topo: topo, binds: binds}
 	if l.Mode == "banner" {
 		h, err := handler.Get(l.Handler, deps)
 		if err != nil {
@@ -70,23 +75,57 @@ func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *cap
 func (t *tcpListener) ID() string { return t.cfg.ID }
 
 func (t *tcpListener) Start(ctx context.Context, bus chan<- *event.Event) error {
-	lc := net.ListenConfig{}
-	ln, err := lc.Listen(ctx, "tcp", t.cfg.Bind)
-	if err != nil {
-		return fmt.Errorf("listener %s: listen %s: %w", t.cfg.ID, t.cfg.Bind, err)
+	binds := t.binds
+	if len(binds) == 0 {
+		binds = []string{t.cfg.Bind}
 	}
-	slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", t.cfg.Bind, "mode", t.cfg.Mode, "handler", t.cfg.Handler, "capture", t.captureMgr != nil)
+	lc := net.ListenConfig{}
+	var lns []net.Listener
+	for _, b := range binds {
+		ln, err := lc.Listen(ctx, "tcp", b)
+		if err != nil {
+			// One bad address (e.g. an IP not on this host) must not take the
+			// whole listener — and the other server IPs — down. Warn and keep
+			// the rest; only fail if every bind failed.
+			slog.Warn("listener bind failed", "id", t.cfg.ID, "proto", "tcp", "bind", b, "err", err)
+			continue
+		}
+		slog.Info("listener up", "id", t.cfg.ID, "proto", "tcp", "bind", b, "mode", t.cfg.Mode, "handler", t.cfg.Handler, "capture", t.captureMgr != nil)
+		lns = append(lns, ln)
+	}
+	if len(lns) == 0 {
+		return fmt.Errorf("listener %s: no usable bind among %v", t.cfg.ID, binds)
+	}
 
 	go func() {
 		<-ctx.Done()
-		_ = ln.Close()
+		for _, ln := range lns {
+			_ = ln.Close()
+		}
 	}()
 
+	// One accept loop per socket, all feeding the same handler; the destination
+	// IP (conn.LocalAddr) records which server IP each connection hit.
+	var wg sync.WaitGroup
+	for _, ln := range lns {
+		wg.Add(1)
+		go func(ln net.Listener) {
+			defer wg.Done()
+			t.acceptLoop(ctx, ln, bus)
+		}(ln)
+	}
+	wg.Wait()
+	return nil
+}
+
+// acceptLoop services one socket until ctx is cancelled (or the listener is
+// closed). Shared by every bind a tcpListener owns.
+func (t *tcpListener) acceptLoop(ctx context.Context, ln net.Listener, bus chan<- *event.Event) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil
+				return
 			}
 			slog.Warn("accept error", "id", t.cfg.ID, "err", err)
 			continue

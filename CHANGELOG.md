@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Multi-IP binding (`sensor.listen_addresses`).** A wildcard listener
+  (`[::]`/`0.0.0.0`) already answers on every host IP; now you can also pin all
+  listeners to a specific set of IPs. One logical listener owns several sockets
+  — the same SSH/HTTP/… decoy on N server IPs feeding one handler — and the
+  destination IP is still recorded per connection (`dst_ip`). Set one IP to
+  dedicate an instance to a single address (the per-IP multi-honeypot model).
+  Also fixed `sensor.interfaces`, which bound only the *first* interface IP; it
+  now binds every usable IP on the named interfaces (matching its documented
+  intent). A failed bind (an IP not on the host) warns and is skipped instead of
+  taking the whole listener down.
+
 - **`install.sh` sets the deployment identity, not just the TLS name.** It now
   prompts for (and accepts `--hostname` / `--domain`, or `TARPIT_HOSTNAME` /
   `TARPIT_DOMAIN`) the sensor's host label (`sensor.name`) and DNS domain
