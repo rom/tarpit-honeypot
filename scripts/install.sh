@@ -327,6 +327,12 @@ set_sensor_key() {
 
 patch_config() {
 	local f="$1"
+	# Keep the config's data_dir in lockstep with --data (and the systemd unit's
+	# ReadWritePaths, which is set to $DATA). Without this the daemon writes to
+	# whatever path the config shipped with while ProtectSystem=strict leaves
+	# only $DATA writable — so SQLite can't create its DB/-wal/-shm and the
+	# sensor dies with "unable to open database file (14) ... not writable".
+	set_sensor_key "$f" "data_dir" "$DATA"
 	# Pin the deployment-wide TLS cert identity so all decoy TLS services share
 	# one consistent certificate (not the per-service "localhost" default).
 	set_sensor_key "$f" "tls_domain" "$TLS_DOMAIN"
@@ -361,10 +367,17 @@ install_selinux() {
 	info "SELinux: $(getenforce)"
 	if [ -d "$REPO/packaging/selinux" ] && command -v make >/dev/null 2>&1; then
 		command -v checkmodule >/dev/null 2>&1 || pkg_install policycoreutils-devel selinux-policy-devel
-		if ( cd "$REPO/packaging/selinux" && make >/dev/null 2>&1 && make install >/dev/null 2>&1 ); then
+		# Capture the build/install output so a failure shows the actual compiler
+		# error (a missing perm/interface on an older selinux-policy is the usual
+		# cause) instead of a generic "build failed" with the reason swallowed.
+		local sel_log; sel_log="$(mktemp /tmp/tarpit-selinux.XXXXXX.log)"
+		if ( cd "$REPO/packaging/selinux" && make && make install ) >"$sel_log" 2>&1; then
 			info "SELinux policy module installed (tarpit_honeypot)"
+			rm -f "$sel_log"
 		else
-			warn "SELinux module build failed; install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux"
+			warn "SELinux module build failed — compiler output below (also at $sel_log):"
+			sed 's/^/    /' "$sel_log" >&2
+			warn "Fix: install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux."
 		fi
 	fi
 	# NoNewPrivileges=yes BLOCKS the SELinux domain transition unless the policy
@@ -385,6 +398,14 @@ install_selinux() {
 	# install may have left behind, then let restorecon apply the module label.
 	if command -v semanage >/dev/null 2>&1; then
 		semanage fcontext -d "$BIN" 2>/dev/null || true
+		# A custom --data dir isn't covered by the policy module's .fc (which maps
+		# only the default /var/lib/tarpit-honeypot to tarpit_honeypot_var_lib_t).
+		# Add a file-context equivalence so $DATA inherits the same labels, or the
+		# confined domain can't write there (CANTOPEN / "permission denied").
+		if [ "$DATA" != "/var/lib/tarpit-honeypot" ]; then
+			semanage fcontext -a -e /var/lib/tarpit-honeypot "$DATA" 2>/dev/null ||
+				semanage fcontext -m -e /var/lib/tarpit-honeypot "$DATA" 2>/dev/null || true
+		fi
 	fi
 	if command -v restorecon >/dev/null 2>&1; then
 		# Recurse (-R) so pre-existing files inside the data/etc/log dirs get the
