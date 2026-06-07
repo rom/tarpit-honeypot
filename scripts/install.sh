@@ -361,10 +361,17 @@ install_selinux() {
 	info "SELinux: $(getenforce)"
 	if [ -d "$REPO/packaging/selinux" ] && command -v make >/dev/null 2>&1; then
 		command -v checkmodule >/dev/null 2>&1 || pkg_install policycoreutils-devel selinux-policy-devel
-		if ( cd "$REPO/packaging/selinux" && make >/dev/null 2>&1 && make install >/dev/null 2>&1 ); then
+		# Capture the build/install output so a failure shows the actual compiler
+		# error (a missing perm/interface on an older selinux-policy is the usual
+		# cause) instead of a generic "build failed" with the reason swallowed.
+		local sel_log; sel_log="$(mktemp /tmp/tarpit-selinux.XXXXXX.log)"
+		if ( cd "$REPO/packaging/selinux" && make && make install ) >"$sel_log" 2>&1; then
 			info "SELinux policy module installed (tarpit_honeypot)"
+			rm -f "$sel_log"
 		else
-			warn "SELinux module build failed; install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux"
+			warn "SELinux module build failed — compiler output below (also at $sel_log):"
+			sed 's/^/    /' "$sel_log" >&2
+			warn "Fix: install policycoreutils-devel + selinux-policy-devel and re-run, or run with --no-selinux."
 		fi
 	fi
 	# NoNewPrivileges=yes BLOCKS the SELinux domain transition unless the policy
