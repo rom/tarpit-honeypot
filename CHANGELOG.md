@@ -10,6 +10,20 @@ documented in `docs/`).
 
 ### Added
 
+- **SNMP trap / inform receiver (`snmptrap`, udp/162) + Cisco SNMP RCE
+  detection.** A passive receiver parses SNMPv1 and v2c traps *and* informs
+  (and notes v3) with a tolerant BER walker that never feeds attacker bytes into
+  a real SNMP stack: it captures version / community (v3 user) / enterprise OID
+  / generic+specific trap / varbind OIDs, acknowledges informs (PDU flipped to
+  GetResponse, no amplification) when the reply policy allows, and flags
+  malformed ASN.1, oversized packets, oversized/truncated PDUs, non-standard
+  SNMP versions, randomized/off-tree enterprise OIDs and varbind floods. The
+  same inspector runs on the udp/161 agent, so the **Cisco IOS / IOS XE SNMP RCE
+  class** (`CVE-2017-6736`, `CVE-2025-20352`, and advisory `CVE-2025-20312` /
+  `CVE-2024-20373` / `CVE-2025-68615`) is attributed on its shared overflow
+  primitive — an over-long / malformed OID or a PDU whose declared length runs
+  past the packet — and surfaced as `cisco-snmp-rce-attempt` + `cve:<id>`.
+
 - **Multiple honeypots on one host, one per server IP (systemd template).** A
   new `tarpit-honeypot@.service` template runs independent, fully-isolated
   instances — each with its own config (`/etc/tarpit-honeypot/instances/NAME

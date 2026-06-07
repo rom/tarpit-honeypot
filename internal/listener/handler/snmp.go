@@ -118,6 +118,10 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 	pkt, err := client.SnmpDecodePacket(payload)
 	if err != nil {
 		res.Meta = map[string]any{"decode_err": err.Error()}
+		// A malformed/oversized request the strict decoder rejected is exactly
+		// the SNMP-subsystem exploit / fuzz class — run the tolerant inspector
+		// so the structural anomalies + Cisco SNMP RCE CVEs still surface.
+		applySNMPInspect(&res, inspectSNMP(payload))
 		// Still record what we saw, just don't reply (don't echo crap).
 		return res, nil
 	}
@@ -156,6 +160,10 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 		}
 	}
 	res.Meta = meta
+	// Tolerant structural inspection on the raw bytes: flags oversized/randomized
+	// OIDs and the Cisco IOS / IOS XE SNMP RCE class even on a packet gosnmp
+	// decoded cleanly (a crafted-but-valid-framing exploit OID).
+	applySNMPInspect(&res, inspectSNMP(payload))
 
 	// Protocol-misuse detection. An SNMP SetRequest is an attempt to
 	// *write* the device's configuration — flip an interface, rewrite an

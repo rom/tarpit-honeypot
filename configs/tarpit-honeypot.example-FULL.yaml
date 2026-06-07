@@ -508,6 +508,19 @@ listeners:
       mib_profile: full
       walk_rate_per_min: 200
       walk_tarpit: 500ms
+  # SNMP trap / inform receiver (the standard 162/udp). Captures v1/v2c traps +
+  # informs (and notes v3), acknowledges informs, and flags malformed / oversized
+  # / non-standard-version / randomized-OID structure plus the Cisco IOS/IOS XE
+  # SNMP RCE class. read_bytes is large so oversized exploit packets are observed
+  # whole rather than silently truncated by the UDP read buffer.
+  - id: udp-snmptrap
+    proto: udp
+    bind: 0.0.0.0:162
+    mode: banner
+    handler: snmptrap
+    severity: medium
+    read_bytes: 65535
+    read_timeout: 10s
   - id: udp-ntp
     proto: udp
     bind: 0.0.0.0:20049

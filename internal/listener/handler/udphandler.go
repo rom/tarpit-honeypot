@@ -76,6 +76,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &rawUDP{}, nil
 	case "snmp":
 		return &snmp{arch: deps.Archetype}, nil
+	case "snmptrap":
+		return &snmptrap{}, nil
 	case "ntp":
 		return &ntp{lim: newUDPReflectLimiter(), id: deps.Identity}, nil
 	case "bacnet":
