@@ -10,6 +10,12 @@ documented in `docs/`).
 
 ### Fixed
 
+- **SELinux: `syslog` channel failed under confinement ("Unix syslog delivery
+  error").** The `syslog` output channel dials the local syslog socket
+  (`/dev/log`) to emit events to the system logger; the confined domain wasn't
+  allowed to, so the sink build failed and the daemon exited at startup. The
+  policy now includes `logging_send_syslog_msg(tarpit_honeypot_t)`.
+
 - **SELinux: `disk I/O error (5386)` under confinement (missing `map`).** Once
   the `init_t → tarpit_honeypot_t` domain transition actually fired (i.e. when
   started via systemd, not by hand), the confined daemon could no longer open

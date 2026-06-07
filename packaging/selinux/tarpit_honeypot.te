@@ -131,6 +131,14 @@ optional_policy(`
 	manage_files_pattern(syslogd_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
 ')
 
+# The `syslog` output channel (config: channels[].type: syslog, network: local)
+# dials the local syslog socket /dev/log to emit CEF/LEEF/JSON events to the
+# system logger. Under confinement that connect is denied (the sink build fails
+# with "Unix syslog delivery error" and the daemon exits), so grant the
+# canonical send-to-syslog permission. Harmless when no syslog channel is
+# configured.
+logging_send_syslog_msg(tarpit_honeypot_t)
+
 # System state the Go runtime + TLS + DNS need.
 kernel_read_system_state(tarpit_honeypot_t)
 kernel_read_network_state(tarpit_honeypot_t)
