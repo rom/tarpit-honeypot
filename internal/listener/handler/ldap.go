@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -95,6 +96,17 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			res.BannerSent = "ldap BindResponse"
 		case 0x63: // SearchRequest [APPLICATION 3]
 			detectLDAPEnumeration(&res, pkt)
+			// A rootDSE base search (empty baseObject) reads the directory's
+			// naming contexts — answer like a real DC with the AD naming-context
+			// attributes derived from the deployment domain, then the done.
+			if isRootDSESearch(opBody) {
+				res.Meta["ldap_rootdse_query"] = true
+				dom := deploymentDomainOr("example.internal")
+				res.Meta["ldap_default_naming_context"] = domainToDN(dom)
+				if _, err := conn.Write(buildLDAPRootDSE(messageID, dom)); err != nil {
+					res.Meta["write_err"] = err.Error()
+				}
+			}
 			if _, err := conn.Write(buildLDAPSearchDone(messageID, 0)); err != nil {
 				res.Meta["write_err"] = err.Error()
 			}
@@ -143,6 +155,84 @@ func buildLDAPSearchDone(messageID, code int) []byte {
 	op := append([]byte{0x65, byte(len(inner))}, inner...)
 	body := append(encodeBERInt(messageID), op...)
 	return append([]byte{0x30, byte(len(body))}, body...)
+}
+
+// --- rootDSE / Active Directory naming-context emission --------------------
+
+// isRootDSESearch reports whether a SearchRequest body targets the rootDSE: an
+// empty baseObject (LDAPDN ""), which is how a client/scanner reads the
+// directory's defaultNamingContext / namingContexts (base scope, base "").
+func isRootDSESearch(opBody []byte) bool {
+	return len(opBody) >= 2 && opBody[0] == 0x04 && opBody[1] == 0x00
+}
+
+// berLen encodes a BER definite length (short form < 128, else long form).
+func ldapBERLen(n int) []byte {
+	switch {
+	case n < 0x80:
+		return []byte{byte(n)}
+	case n < 0x100:
+		return []byte{0x81, byte(n)}
+	default:
+		return []byte{0x82, byte(n >> 8), byte(n)}
+	}
+}
+
+// berTLV wraps content in a tag + definite length.
+func berTLV(tag byte, content []byte) []byte {
+	out := append([]byte{tag}, ldapBERLen(len(content))...)
+	return append(out, content...)
+}
+
+func berOctet(s string) []byte { return berTLV(0x04, []byte(s)) }
+
+// ldapAttr builds a PartialAttribute: SEQUENCE { type OCTET STRING, vals SET OF }.
+func ldapAttr(name string, vals ...string) []byte {
+	var set []byte
+	for _, v := range vals {
+		set = append(set, berOctet(v)...)
+	}
+	content := append(berOctet(name), berTLV(0x31, set)...) // 0x31 = SET
+	return berTLV(0x30, content)
+}
+
+// domainToDN turns "corp.example.com" into "DC=corp,DC=example,DC=com".
+func domainToDN(domain string) string {
+	parts := strings.Split(domain, ".")
+	for i := range parts {
+		parts[i] = "DC=" + parts[i]
+	}
+	return strings.Join(parts, ",")
+}
+
+// buildLDAPRootDSE builds a SearchResultEntry [APPLICATION 4] for the rootDSE,
+// advertising the Active-Directory naming contexts + service identity derived
+// from the deployment domain — what a real DC returns to an anonymous base
+// search, and what AD-recon tools read first.
+func buildLDAPRootDSE(messageID int, domain string) []byte {
+	base := domainToDN(domain)
+	cfgNC := "CN=Configuration," + base
+	schemaNC := "CN=Schema," + cfgNC
+	realm := strings.ToUpper(domain)
+	host := "dc01." + domain
+
+	var attrs []byte
+	add := func(b []byte) { attrs = append(attrs, b...) }
+	add(ldapAttr("namingContexts", base, cfgNC, schemaNC))
+	add(ldapAttr("defaultNamingContext", base))
+	add(ldapAttr("rootDomainNamingContext", base))
+	add(ldapAttr("configurationNamingContext", cfgNC))
+	add(ldapAttr("schemaNamingContext", schemaNC))
+	add(ldapAttr("dnsHostName", host))
+	add(ldapAttr("ldapServiceName", domain+":dc01$@"+realm))
+	add(ldapAttr("dsServiceName", "CN=NTDS Settings,CN=DC01,CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
+	add(ldapAttr("supportedLDAPVersion", "3", "2"))
+
+	// SearchResultEntry: objectName LDAPDN ("") + attributes SEQUENCE OF.
+	entry := append(berOctet(""), berTLV(0x30, attrs)...)
+	op := berTLV(0x64, entry) // [APPLICATION 4]
+	body := append(encodeBERInt(messageID), op...)
+	return berTLV(0x30, body)
 }
 
 func ldapOpName(op byte) string {

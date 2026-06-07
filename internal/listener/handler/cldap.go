@@ -16,6 +16,7 @@ import (
 // A CLDAP probe from a wandering scanner is a strong AD-recon signal.
 type cldap struct {
 	hosts []HoneynetHost
+	lim   *udpReflectLimiter
 }
 
 func (c *cldap) Name() string { return "cldap" }
@@ -52,12 +53,27 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 			res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-41089")
 			flagAnomaly(&res, "cve:CVE-2026-41089")
 		}
-		// Reply searchResDone (resultCode 0 = success)
-		reply := buildLDAPSearchResDone(mid)
-		if _, err := pc.WriteTo(reply, src); err != nil {
-			res.Meta["write_err"] = err.Error()
+		// CLDAP Netlogon is itself an amplifier, so the reply is gated by the
+		// amplifier policy + a global reflection limiter. When allowed, answer
+		// like a real DC: a rootDSE SearchResultEntry carrying the AD naming
+		// contexts (defaultNamingContext etc.) derived from the deployment
+		// domain, followed by the searchResDone — all in one bounded datagram.
+		if !AmplifierReplyAllowed("cldap", "netlogon", src) {
+			res.Meta["amplifier_suppressed"] = true
+		} else if !c.lim.allow() {
+			res.Meta["rate_limited"] = true
+		} else {
+			dom := deploymentDomainOr("example.internal")
+			res.Meta["ldap_default_naming_context"] = domainToDN(dom)
+			reply := buildLDAPSearchResDone(mid)
+			if isRootDSESearch(opBody) {
+				reply = append(buildLDAPRootDSE(mid, dom), reply...)
+			}
+			if _, err := pc.WriteTo(reply, src); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			res.BannerSent = "cldap rootDSE + searchResDone"
 		}
-		res.BannerSent = "cldap searchResDone success"
 	} else if op == 0x60 { // BindRequest — rare on CLDAP but log it
 		_, bindDN, simplePw, _ := parseBindRequest(opBody)
 		res.Meta["bind_dn"] = bindDN
