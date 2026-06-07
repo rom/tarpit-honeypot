@@ -437,6 +437,17 @@ func (c *Config) applyDefaults() {
 			c.Correlate.HostSweep.Severity = "high"
 		}
 	}
+	if c.Correlate.CrossTarget.Enabled {
+		if c.Correlate.CrossTarget.DistinctTargets == 0 {
+			c.Correlate.CrossTarget.DistinctTargets = 2
+		}
+		if c.Correlate.CrossTarget.Window == 0 {
+			c.Correlate.CrossTarget.Window = 5 * time.Minute
+		}
+		if c.Correlate.CrossTarget.Severity == "" {
+			c.Correlate.CrossTarget.Severity = "high"
+		}
+	}
 	if c.Correlate.ServiceSweep.Enabled {
 		if c.Correlate.ServiceSweep.DistinctServices == 0 {
 			c.Correlate.ServiceSweep.DistinctServices = 5

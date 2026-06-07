@@ -929,6 +929,11 @@ correlate:
   # Additional opt-in correlators (default-off; shown here enabled).
   # host_sweep: horizontal scan — one source touching many honeynet hosts.
   host_sweep:        { enabled: true, distinct_hosts: 10, window: 60s, severity: high }
+  # cross_target: one source reaching several of THIS host's server IPs — records
+  # the order, timing and per-target ports, and the ports hit on >1 target (a
+  # scripted same-service sweep across the fleet). For multi-IP / multi-instance
+  # deployments. Lower distinct_targets than host_sweep since there are few IPs.
+  cross_target:      { enabled: true, distinct_targets: 2, window: 300s, severity: high }
   # service_sweep: cross-protocol recon — many distinct service handlers.
   service_sweep:     { enabled: true, distinct_services: 5, window: 60s, severity: medium }
   # ua_rotation: one source cycling many distinct HTTP User-Agents (evasion).

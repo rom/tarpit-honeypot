@@ -141,6 +141,7 @@ var exactRules = map[string]Tag{
 	"correlate:icmp_sweep": {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
 	// Additional opt-in correlators.
 	"correlate:host_sweep":         {Techniques: []string{"T1018", "T1046"}, Tactics: []string{"discovery"}},
+	"correlate:cross_target":       {Techniques: []string{"T1018", "T1046", "T1595"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"correlate:service_sweep":      {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"correlate:ua_rotation":        {Techniques: []string{"T1595"}, Tactics: []string{"reconnaissance"}},
 	"correlate:exploit_chain":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},

@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Cross-target correlation (`correlate:cross_target`).** On a host serving
+  several decoy IPs, this detector fires when one source reaches multiple target
+  IPs within a window and records the dimensions an analyst asks for: the
+  targets in first-seen **order**, the **timing** (first-touch offset per
+  target), the **ports per target**, and the **ports hit on more than one
+  target** (`shared_ports` — a scripted same-service sweep across the fleet).
+  Opt-in (`correlate.cross_target`), ATT&CK-mapped (T1018/T1046/T1595), enabled
+  in the FULL example; the event persists like any other so it shows in the
+  source profile + event views.
+
 - **SNMP trap / inform receiver (`snmptrap`, udp/162) + Cisco SNMP RCE
   detection.** A passive receiver parses SNMPv1 and v2c traps *and* informs
   (and notes v3) with a tolerant BER walker that never feeds attacker bytes into

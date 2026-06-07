@@ -1620,6 +1620,7 @@ type Correlate struct {
 	Beacon        CorrBeacon        `yaml:"beacon"`
 	// Additional opt-in correlators (all default-off; enable per deployment).
 	HostSweep           CorrHostSweep           `yaml:"host_sweep"`
+	CrossTarget         CorrCrossTarget         `yaml:"cross_target"`
 	ServiceSweep        CorrServiceSweep        `yaml:"service_sweep"`
 	UARotation          CorrUARotation          `yaml:"ua_rotation"`
 	ExploitChain        CorrExploitChain        `yaml:"exploit_chain"`
@@ -1994,6 +1995,19 @@ type CorrHostSweep struct {
 	DistinctHosts int           `yaml:"distinct_hosts"`
 	Window        time.Duration `yaml:"window"`
 	Severity      string        `yaml:"severity"`
+}
+
+// CorrCrossTarget detects one source reaching DistinctTargets distinct target
+// (server) IPs within a window and records the cross-target dimensions a
+// multi-IP deployment cares about: the ORDER targets were reached, the TIMING
+// (first-touch offset per target), the ports hit per target, and the ports hit
+// on MORE THAN ONE target (a scripted same-service sweep across the fleet).
+// Richer than host_sweep, which only counts distinct targets.
+type CorrCrossTarget struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctTargets int           `yaml:"distinct_targets"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
 }
 
 // CorrServiceSweep detects cross-protocol reconnaissance: one source
