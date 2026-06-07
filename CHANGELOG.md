@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Cross-protocol extraction audit.** Surfaced more high-value client intel
+  several handlers received but discarded: HTTP **UA client hints** (Sec-CH-UA
+  family → client OS / version / CPU arch / device / browser), the proxy chain
+  (`forwarded_for`) and locale (`accept_language`); the **IMAP `ID`** client
+  name/version (`imap_client_id`); **Postgres** `application_name` + database
+  from the startup params; the **STUN `SOFTWARE`** attribute (`stun_software`);
+  the **SNMPv3** USM `msgUserName` (`snmp_v3_user`); and the **Redis** client
+  name (`CLIENT SETNAME`/`SETINFO` → `redis_client_name`).
+- **LDAP/CLDAP/LDAPS rootDSE** `defaultNamingContext` derived from the
+  deployment domain (e.g. `corp.example.com` → `DC=corp,DC=example,DC=com`),
+  with the CLDAP reply gated by the amplifier policy + a reflection limiter.
+
 - **Reply-policy modes** (`sensor.reply_policy`) — one deployment-wide lever,
   enforced centrally for every TCP + UDP service: `full` (default), `non-ot`
   (mute OT-class handlers), `fingerprint` / `fingerprint-non-ot` (reply only
