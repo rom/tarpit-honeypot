@@ -1458,6 +1458,9 @@ func (s *Server) deploymentInfo() deploymentInfo {
 		if d.TLSDomain == "" {
 			d.TLSDomain = d.Domain
 		}
+		// Flag any divergence between the generated TLS cert identity and the
+		// deployment domain the rest of the deception advertises.
+		d.TLSWarnings = c.TLSCoherenceWarnings()
 		seenDom := map[string]bool{}
 		for _, hn := range c.Honeynets {
 			if hn.Domain != "" && !seenDom[hn.Domain] {
@@ -1524,6 +1527,7 @@ type deploymentInfo struct {
 	Domain         string   // deployment DNS domain used for service identities
 	TLSDomain      string   // cert CN/SAN domain (falls back to Domain)
 	NetworkDomains []string // per-honeynet-network DNS domains
+	TLSWarnings    []string // TLS-cert ↔ domain coherence problems (empty = OK)
 	// Modes.
 	ReplyPolicy  string // full / non-ot / fingerprint / fingerprint-non-ot / mute
 	NoAmplifier  bool   // amplifier-mode replies suppressed

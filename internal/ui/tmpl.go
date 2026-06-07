@@ -1453,7 +1453,8 @@ uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <
 <h2 data-help="The names and modes that shape how this sensor presents itself and how far it talks back.">identity &amp; modes</h2>
 <table class="kv">
 <tr><th>deployment domain</th><td><code>{{ .Deployment.Domain }}</code> <span class="meta">(SMTP banner host, DNS hostname.bind/id.server, telnet \h, …)</span></td></tr>
-<tr><th>TLS cert domain</th><td><code>{{ .Deployment.TLSDomain }}</code> <span class="meta">(CN/SAN for TLS-bearing services)</span></td></tr>
+<tr><th>TLS cert domain</th><td><code>{{ .Deployment.TLSDomain }}</code> <span class="meta">(CN/SAN for TLS-bearing services)</span>{{ if .Deployment.TLSWarnings }} <span class="tag bad">⚠ mismatch</span>{{ end }}</td></tr>
+{{ if .Deployment.TLSWarnings }}<tr><th class="sev-high">TLS ↔ domain</th><td>{{ range .Deployment.TLSWarnings }}<div class="note sev-high">⚠ {{ . }}</div>{{ end }}<span class="meta">A certificate whose name disagrees with the deployment domain is a fingerprinting tell. Also logged at startup.</span></td></tr>{{ end }}
 {{ if .Deployment.NetworkDomains }}<tr><th>honeynet domain(s)</th><td>{{ range .Deployment.NetworkDomains }}<code>{{ . }}</code> {{ end }}</td></tr>{{ end }}
 <tr><th>reply policy</th><td><b>{{ .Deployment.ReplyPolicy }}</b>{{ if eq .Deployment.ReplyPolicy "mute" }} <span class="tag">receive-only — no outbound replies</span>{{ else if eq .Deployment.ReplyPolicy "non-ot" }} <span class="tag">OT-class muted</span>{{ else if eq .Deployment.ReplyPolicy "fingerprint" }} <span class="tag">fingerprint/capture only</span>{{ else if eq .Deployment.ReplyPolicy "fingerprint-non-ot" }} <span class="tag">fingerprint, OT-class muted</span>{{ end }}</td></tr>
 <tr><th>amplifier replies</th><td>{{ if .Deployment.NoAmplifier }}suppressed <span class="meta">(NTP mode 6/7, UDP reflectors)</span>{{ else }}allowed (bounded + rate-limited){{ end }}</td></tr>
