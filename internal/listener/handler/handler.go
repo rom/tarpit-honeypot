@@ -397,7 +397,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "asterisk_ami":
 		return &asteriskAMI{}, nil
 	case "xmpp":
-		return &xmpp{}, nil
+		return &xmpp{id: deps.Identity}, nil
 	case "amqp":
 		return &amqp{}, nil
 	case "ibmmq", "mq", "websphere_mq":

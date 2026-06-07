@@ -29,7 +29,42 @@ import (
 var (
 	defaultTLSDomain string
 	defaultTLSOrg    string
+	// deploymentDNSDomain is the sensor.domain value, mirrored here so the
+	// handler functions that don't carry an *identity (e.g. the NTLM challenge
+	// builders) can still answer with a consistent domain. Set once at startup.
+	deploymentDNSDomain string
 )
+
+// SetDeploymentDomain mirrors sensor.domain into the handler package for the
+// id-less response builders. Empty leaves the per-function defaults in place.
+func SetDeploymentDomain(d string) {
+	deploymentDNSDomain = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(d), "."))
+}
+
+// deploymentDomainOr returns the configured deployment domain, or fallback.
+func deploymentDomainOr(fallback string) string {
+	if deploymentDNSDomain != "" {
+		return deploymentDNSDomain
+	}
+	return fallback
+}
+
+// netbiosDomain derives a NetBIOS-style (uppercase, <=15 char, first-label)
+// domain name from the deployment domain, e.g. "corp.example.com" -> "CORP".
+func netbiosDomain(fallback string) string {
+	d := deploymentDNSDomain
+	if d == "" {
+		return fallback
+	}
+	if i := strings.IndexByte(d, '.'); i > 0 {
+		d = d[:i]
+	}
+	d = strings.ToUpper(d)
+	if len(d) > 15 {
+		d = d[:15]
+	}
+	return d
+}
 
 // SetTLSDefaults installs the deployment-wide certificate CN/SAN domain and
 // organization used as the fallback for any TLS service that doesn't pin its

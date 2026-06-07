@@ -126,7 +126,10 @@ func (i *Identity) Seed() string { return i.seed }
 // honeynet to give each artificial host its own stable identity.
 func (i *Identity) Derive(label string) *Identity {
 	mix := sha256.Sum256(append([]byte(label), i.hash[:]...))
-	return &Identity{seed: i.seed + "/" + label, hash: mix}
+	// Propagate the deployment domain so every per-host identity builds
+	// hostnames in the same domain (set once at startup, so reading it here
+	// without the lock is safe).
+	return &Identity{seed: i.seed + "/" + label, hash: mix, domain: i.domain}
 }
 
 // deterministicRand returns a *math/rand.Rand seeded with sha256(seed||label),

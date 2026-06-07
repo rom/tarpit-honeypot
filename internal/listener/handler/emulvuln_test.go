@@ -20,7 +20,7 @@ func TestWebappEmulatedVulnEndpoints(t *testing.T) {
 	}
 	cases := []tc{
 		{"/.git/HEAD", "refs/heads/main", "webapp:secret-file-probe"},
-		{"/.svn/entries", "svn.internal", "webapp:secret-file-probe"},
+		{"/.svn/entries", "svn.example.internal", "webapp:secret-file-probe"},
 		{"/.htpasswd", "admin:$apr1$", "webapp:secret-file-probe"},
 		{"/web.config", "connectionString", "webapp:secret-file-probe"},
 		{"/WEB-INF/web.xml", "jdbc:mysql", "webapp:secret-file-probe"},
