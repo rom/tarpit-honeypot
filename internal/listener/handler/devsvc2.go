@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // Round-two protocol decoys: the Cassandra CQL native protocol, the NATS
@@ -280,6 +281,11 @@ func (h *stun) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	msgType := binary.BigEndian.Uint16(payload[0:2])
 	res.Meta["stun_msg_type"] = int(msgType)
 	flagAnomaly(&res, "stun-binding")
+	// SOFTWARE attribute (0x8022) names the client's STUN/ICE implementation
+	// (browser WebRTC stack / coturn / PJSIP) — volunteered client intel.
+	if sw := stunSoftware(payload); sw != "" {
+		res.Meta["stun_software"] = safe.SanitizeForLog(clipStr(sw, 128))
+	}
 	if msgType != 0x0001 || !h.lim.allow() {
 		return res, nil // only answer Binding Requests; bounded
 	}
@@ -321,4 +327,34 @@ func (h *stun) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	_, _ = pc.WriteTo(resp, src)
 	res.BannerSent = "stun binding success"
 	return res, nil
+}
+
+// stunSoftware extracts the SOFTWARE attribute (type 0x8022, RFC 5389 §15.10)
+// from a STUN message — the client's implementation name/version. Walks the
+// attribute TLVs after the 20-byte header, bounded by the message length.
+func stunSoftware(payload []byte) string {
+	if len(payload) < 20 {
+		return ""
+	}
+	mlen := int(binary.BigEndian.Uint16(payload[2:4]))
+	end := 20 + mlen
+	if end > len(payload) {
+		end = len(payload)
+	}
+	for off := 20; off+4 <= end; {
+		atyp := binary.BigEndian.Uint16(payload[off : off+2])
+		alen := int(binary.BigEndian.Uint16(payload[off+2 : off+4]))
+		vstart := off + 4
+		if vstart+alen > end {
+			break
+		}
+		if atyp == 0x8022 {
+			return string(payload[vstart : vstart+alen])
+		}
+		off = vstart + alen
+		if pad := alen % 4; pad != 0 { // attributes are 4-byte aligned
+			off += 4 - pad
+		}
+	}
+	return ""
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
 
@@ -145,6 +146,14 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 			oids = append(oids, v.Name)
 		}
 		meta["oids"] = oids
+	}
+	// SNMPv3 USM: the msgUserName a client presents is the security identity
+	// being used/brute-forced (gosnmp doesn't surface it on a decode-only
+	// path, so pull it from the raw msgSecurityParameters).
+	if pkt.Version == g.Version3 {
+		if u := snmpV3UserName(payload); u != "" {
+			meta["snmp_v3_user"] = safe.SanitizeForLog(u)
+		}
 	}
 	res.Meta = meta
 
@@ -445,4 +454,72 @@ func pduTypeName(t g.PDUType) string {
 		return "SNMPv2Trap"
 	}
 	return fmt.Sprintf("0x%02x", byte(t))
+}
+
+// berTLVAt reads one definite-length BER TLV at offset off, returning the tag,
+// value, and the offset just past it. Bounds-checked.
+func berTLVAt(b []byte, off int) (tag byte, val []byte, next int, ok bool) {
+	if off < 0 || off+2 > len(b) {
+		return 0, nil, 0, false
+	}
+	tag = b[off]
+	l := int(b[off+1])
+	p := off + 2
+	if l&0x80 != 0 {
+		nb := l & 0x7f
+		if nb == 0 || nb > 4 || p+nb > len(b) {
+			return 0, nil, 0, false
+		}
+		l = 0
+		for i := 0; i < nb; i++ {
+			l = l<<8 | int(b[p+i])
+		}
+		p += nb
+	}
+	if l < 0 || p+l > len(b) {
+		return 0, nil, 0, false
+	}
+	return tag, b[p : p+l], p + l, true
+}
+
+// snmpV3UserName extracts msgUserName from a raw SNMPv3 message. The outer
+// SEQUENCE is { msgVersion, msgGlobalData, msgSecurityParameters OCTET STRING,
+// msgData }; the security parameters wrap a SEQUENCE whose 4th field is the
+// userName (after engineID, engineBoots, engineTime).
+func snmpV3UserName(b []byte) string {
+	tag, outer, _, ok := berTLVAt(b, 0)
+	if !ok || tag != 0x30 {
+		return ""
+	}
+	var sec []byte
+	off := 0
+	for i := 0; i < 3 && off < len(outer); i++ {
+		t, v, next, ok := berTLVAt(outer, off)
+		if !ok {
+			return ""
+		}
+		if i == 2 && t == 0x04 {
+			sec = v
+		}
+		off = next
+	}
+	if sec == nil {
+		return ""
+	}
+	t, inner, _, ok := berTLVAt(sec, 0)
+	if !ok || t != 0x30 {
+		return ""
+	}
+	o := 0
+	for i := 0; i < 4 && o < len(inner); i++ {
+		tt, vv, nx, ok := berTLVAt(inner, o)
+		if !ok {
+			return ""
+		}
+		if i == 3 && tt == 0x04 {
+			return string(vv)
+		}
+		o = nx
+	}
+	return ""
 }
