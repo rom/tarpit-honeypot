@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Fixed
 
+- **SELinux: `disk I/O error (5386)` under confinement (missing `map`).** Once
+  the `init_t → tarpit_honeypot_t` domain transition actually fired (i.e. when
+  started via systemd, not by hand), the confined daemon could no longer open
+  its DB: WAL mode memory-maps the `events.db-shm` wal-index, and on RHEL 8/9
+  `mmap` is a *separate* `map` permission not covered by the read/write/manage
+  sets the policy granted — so the mmap was denied and SQLite returned
+  `SQLITE_IOERR_SHMMAP` (5386), even though the same files opened fine when run
+  unconfined. The SELinux policy now grants `map` on the data files
+  (`tarpit_honeypot_var_lib_t`, for the WAL `-shm`) and the config files
+  (`tarpit_honeypot_etc_t`, for the memory-mapped GeoIP/ASN `.mmdb` databases).
+  Rebuild + reinstall the module (re-run `scripts/install.sh`) to apply.
+
 - **Full-disk crash loop / cryptic `disk I/O error (5386)`.** When the data
   filesystem fills, SQLite can no longer grow the WAL/`-shm` (extended error
   `SQLITE_IOERR_SHMMAP` = 5386), `events.db` stops growing, and — because index

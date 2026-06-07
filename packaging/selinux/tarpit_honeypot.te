@@ -91,10 +91,22 @@ corenet_all_recvfrom_unlabeled(tarpit_honeypot_t)
 manage_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, tarpit_honeypot_var_lib_t)
 manage_files_pattern(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, tarpit_honeypot_var_lib_t)
 files_var_lib_filetrans(tarpit_honeypot_t, tarpit_honeypot_var_lib_t, { dir file })
+# SQLite runs the events DB in WAL mode, which memory-maps the wal-index
+# sidecar (events.db-shm). On modern SELinux (RHEL 8/9) mmap is gated by a
+# SEPARATE `map` permission that the read/write/manage_file_perms sets do NOT
+# include — so without this the mmap is denied and SQLite fails to open with
+# "disk I/O error" / SQLITE_IOERR_SHMMAP (5386), even though the same files
+# open fine when the binary is run unconfined. Grant map on the data files.
+allow tarpit_honeypot_t tarpit_honeypot_var_lib_t:file map;
 
 # Configuration: read-only.
 read_files_pattern(tarpit_honeypot_t, tarpit_honeypot_etc_t, tarpit_honeypot_etc_t)
 list_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_etc_t, tarpit_honeypot_etc_t)
+# The GeoIP/ASN MaxMind databases under the config dir are memory-mapped by the
+# reader (same separate `map` permission as above), so grant map on config
+# files too — otherwise enrichment fails to load the .mmdb files under
+# confinement.
+allow tarpit_honeypot_t tarpit_honeypot_etc_t:file map;
 
 # Log directory: create + append.
 manage_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
