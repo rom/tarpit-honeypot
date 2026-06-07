@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Full-disk crash loop / cryptic `disk I/O error (5386)`.** When the data
+  filesystem fills, SQLite can no longer grow the WAL/`-shm` (extended error
+  `SQLITE_IOERR_SHMMAP` = 5386), `events.db` stops growing, and — because index
+  creation lived in the mandatory schema exec — the daemon failed at `Open` and
+  crash-looped, so it could never prune back under its cap to recover. Now:
+  secondary indexes are built **non-fatally after** the tables/migrations
+  (`ensureIndexes`), so a failed index build only makes a page full-scan instead
+  of blocking startup; `Open` and the open-error diagnostics detect a
+  full/near-full filesystem and say so (instead of a bare `(5386)`); and the
+  retention prune fires as a **safety net when free disk is low even under the
+  configured `sensor.disk.sqlite_mb` cap** (a cap larger than the partition is
+  the usual root cause), truncating the WAL afterward. Note: a prune frees rows
+  but does not shrink `events.db` itself (SQLite reuses the pages) — reclaiming
+  file space still needs a `VACUUM`.
+
 ### Added
 
 - **TLS ↔ deployment-domain coherence check.** The sensor now verifies that the
