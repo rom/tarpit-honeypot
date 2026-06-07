@@ -213,6 +213,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &proconos{}, nil
 	case "osisoft_pi":
 		return &osisoftPI{id: deps.Identity}, nil
+	case "nts":
+		return &nts{mgr: maybeCertMgr(deps), arch: deps.Archetype}, nil
 	case "codesys":
 		return &codesys{}, nil
 	case "rsync":
