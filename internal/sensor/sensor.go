@@ -196,6 +196,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 	// non-OT / full) + the amplifier-reply suppression toggle. Gates every
 	// service centrally; set once before listeners start.
 	handler.SetReplyPolicy(cfg.Sensor.ReplyPolicy, cfg.Sensor.NoAmplifierReplies)
+	handler.SetDBReplyDelay(cfg.Sensor.DBReplyDelay)
 
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).

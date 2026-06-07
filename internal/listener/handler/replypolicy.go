@@ -5,7 +5,28 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
+	"time"
 )
+
+// dbReplyDelay is the deployment-wide artificial delay database handlers add
+// before answering, so a decoy DB feels like a real, loaded server (seconds,
+// not microseconds). 0 = no delay. Set once at startup.
+var dbReplyDelay atomic.Int64
+
+// SetDBReplyDelay installs the database reply delay (config sensor.db_reply_delay).
+func SetDBReplyDelay(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	dbReplyDelay.Store(int64(d))
+}
+
+// dbReplyDelaySleep blocks for the configured DB reply delay (a no-op when 0).
+func dbReplyDelaySleep() {
+	if d := dbReplyDelay.Load(); d > 0 {
+		time.Sleep(time.Duration(d))
+	}
+}
 
 // replyPolicy is the deployment-wide outbound-reply policy. It is the single
 // lever that decides whether — and how far — a handler may talk back to a
