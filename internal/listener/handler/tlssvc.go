@@ -49,6 +49,18 @@ func deploymentDomainOr(fallback string) string {
 	return fallback
 }
 
+// shortHostLabel returns the first label of an FQDN ("srv12.corp.example.com"
+// -> "srv12"), or the input unchanged when it has no dot.
+func shortHostLabel(fqdn string) string {
+	if i := strings.IndexByte(fqdn, '.'); i > 0 {
+		return fqdn[:i]
+	}
+	if fqdn == "" {
+		return "host"
+	}
+	return fqdn
+}
+
 // netbiosDomain derives a NetBIOS-style (uppercase, <=15 char, first-label)
 // domain name from the deployment domain, e.g. "corp.example.com" -> "CORP".
 func netbiosDomain(fallback string) string {

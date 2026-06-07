@@ -255,8 +255,11 @@ func (i *ipp) buildOK(rid uint32, name, model string) []byte {
 	out = appendIPPAttr(out, ippTagText, "printer-make-and-model", model)
 	out = appendIPPAttr(out, ippTagText, "printer-info", "Office MFP")
 	out = appendIPPAttr(out, ippTagText, "printer-location", "1st floor copy room")
-	out = appendIPPAttr(out, ippTagURI, "printer-uri-supported", "ipp://printer.local:631/ipp/print")
-	out = appendIPPAttr(out, ippTagURI, "printer-more-info", "http://printer.local/")
+	// Printer host in the URIs uses the deployment domain so it's consistent
+	// with the rest of the sensor ("printer.<domain>", default printer.local).
+	phost := "printer." + deploymentDomainOr("local")
+	out = appendIPPAttr(out, ippTagURI, "printer-uri-supported", "ipp://"+phost+":631/ipp/print")
+	out = appendIPPAttr(out, ippTagURI, "printer-more-info", "http://"+phost+"/")
 	out = appendIPPAttr(out, ippTagURI, "printer-uuid", "urn:uuid:564e4333-4e50-4831-3832-363043445720")
 	out = appendIPPAttr(out, ippTagName, "printer-dns-sd-name", name)
 	out = appendIPPAttr(out, ippTagKeyword, "printer-state-reasons", "none")

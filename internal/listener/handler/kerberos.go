@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -319,11 +320,20 @@ func kerberosStrings(b []byte) []string {
 // outer tag and outer error code field. We send a [APPLICATION 30] (0x7E)
 // wrapping a SEQUENCE with a small error-code INTEGER.
 func buildKRBError(code int) []byte {
-	// Inner: SEQUENCE { [0] pvno INTEGER, [1] msg-type INTEGER, [4] error-code INTEGER }
+	// Inner: SEQUENCE { [0] pvno INTEGER, [1] msg-type INTEGER,
+	// [6] error-code INTEGER, [9] realm GeneralString }. The realm is the KDC's
+	// realm — the deployment DNS domain, uppercased (AD convention), so the KDC
+	// identity is consistent with the rest of the sensor.
 	inner := []byte{
 		0xA0, 0x03, 0x02, 0x01, 0x05, // [0] pvno = 5
 		0xA1, 0x03, 0x02, 0x01, 0x1E, // [1] msg-type = 30 (KRB-ERROR)
 		0xA6, 0x03, 0x02, 0x01, byte(code), // [6] error-code
+	}
+	realm := strings.ToUpper(deploymentDomainOr("EXAMPLE.INTERNAL"))
+	if len(realm) > 0 && len(realm) < 250 {
+		gs := append([]byte{0x1B, byte(len(realm))}, []byte(realm)...) // GeneralString
+		field := append([]byte{0xA9, byte(len(gs))}, gs...)            // [9] realm
+		inner = append(inner, field...)
 	}
 	seq := append([]byte{0x30, byte(len(inner))}, inner...)
 	wrapped := append([]byte{0x7E, byte(len(seq))}, seq...)

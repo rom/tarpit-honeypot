@@ -212,7 +212,13 @@ func (v *vnc) runVNCSession(conn net.Conn, res *Result) {
 	if _, err := io.ReadFull(conn, hdr); err != nil { // ClientInit (shared-flag)
 		return
 	}
-	if _, err := conn.Write(serverInit("honeypot")); err != nil {
+	// Desktop name = the deployment hostname (short), so the VNC session is
+	// consistent with the host's identity rather than a static "honeypot".
+	desktop := "desktop"
+	if v.id != nil {
+		desktop = shortHostLabel(v.id.HostName())
+	}
+	if _, err := conn.Write(serverInit(desktop)); err != nil {
 		return
 	}
 	var typed []byte
