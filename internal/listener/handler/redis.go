@@ -121,6 +121,11 @@ func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (
 	case "CLIENT":
 		switch sub {
 		case "SETNAME", "SETINFO", "NO-EVICT", "NO-TOUCH":
+			// CLIENT SETNAME <name> / SETINFO lib-name <v> volunteers the
+			// connecting client's app/library identity — capture it.
+			if (sub == "SETNAME" || sub == "SETINFO") && len(cmd) >= 3 {
+				res.Meta["redis_client_name"] = clipStr(strings.Join(cmd[2:], " "), 256)
+			}
 			_, _ = conn.Write([]byte("+OK\r\n"))
 		case "GETNAME":
 			_, _ = conn.Write([]byte("$0\r\n\r\n"))

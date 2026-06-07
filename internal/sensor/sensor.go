@@ -195,6 +195,14 @@ func New(cfg *config.Config) (*Sensor, error) {
 	}
 	handler.SetTLSDefaults(tlsDomain, cfg.Sensor.TLSOrg)
 
+	// Surface any divergence between the TLS cert identity and the deployment
+	// domain (also shown on the UI config page). A cert whose name disagrees
+	// with the DNS/SMTP/Kerberos identities is a fingerprinting tell, so log it
+	// loudly at startup rather than letting it pass silently.
+	for _, w := range cfg.TLSCoherenceWarnings() {
+		slog.Warn("tls: certificate identity diverges from deployment domain", "detail", w)
+	}
+
 	// Install the deployment-wide outbound-reply policy (mute / fingerprint /
 	// non-OT / full) + the amplifier-reply suppression toggle. Gates every
 	// service centrally; set once before listeners start.

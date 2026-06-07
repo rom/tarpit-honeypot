@@ -16,6 +16,12 @@ ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
 
+# Tag the daemon's stderr (its slog startup/warning output) under a stable
+# syslog identity so the rsyslog drop-in (packaging/rsyslog/30-tarpit-honeypot
+# .conf) can route it — together with the CEF event stream, which carries the
+# same tag — into /var/log/tarpit-honeypot/ instead of /var/log/messages.
+SyslogIdentifier=tarpit-honeypot
+
 # Grant the capabilities the sensor needs even after privilege drop.
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW

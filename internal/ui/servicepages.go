@@ -42,6 +42,30 @@ func serviceCategory(handler string) string {
 	return ""
 }
 
+// categoryHandlers returns the handler names belonging to a service category,
+// used to push the category filter into the SQL query (WHERE handler IN (…))
+// instead of scanning every recent event and discarding the non-matching
+// handlers Go-side.
+func categoryHandlers(kind string) []string {
+	var set map[string]bool
+	switch kind {
+	case "dns":
+		set = dnsHandlers
+	case "web":
+		set = webHandlers
+	case "database":
+		set = dbHandlers
+	default:
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // hasServicePage reports whether the running config exposes a listener (or
 // honeynet host service) in the named category, so the nav link + page show
 // only when relevant.
@@ -251,7 +275,18 @@ func (s *Server) servicePageEvents(r *http.Request, kind string) ([]*event.Event
 	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
 	since := time.Now().Add(-win.dur)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000})
+	// Push the category filter into SQL (handler IN (…), served by
+	// idx_events_handler_time) and drop the payload blob + banner subquery
+	// (NoPayload) — these pages aggregate over meta, never the raw bytes. This
+	// reads only the matching handlers' metadata rows instead of pulling 50k
+	// full rows across every service and filtering them down Go-side, which is
+	// what made these pages time out once the table grew past ~100k events.
+	evs, err := s.query(ctx, store.Filter{
+		Since:     since,
+		Handlers:  categoryHandlers(kind),
+		Limit:     50000,
+		NoPayload: true,
+	})
 	if err != nil {
 		return nil, win, err
 	}

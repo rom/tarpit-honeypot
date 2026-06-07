@@ -5,7 +5,7 @@ package version
 // current release series so a plain `go build` / `go install` reports a
 // meaningful version.
 var (
-	Version   = "2.17.0"
+	Version   = "2.19.0"
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )

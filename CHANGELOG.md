@@ -10,6 +10,52 @@ documented in `docs/`).
 
 ### Added
 
+- **TLS ↔ deployment-domain coherence check.** The sensor now verifies that the
+  TLS certificate identity it presents (`sensor.tls_domain`, falling back to
+  `sensor.domain`, plus any per-listener `https.hosts`/`https.cn` overrides) is
+  coherent with the deployment domain the rest of the deception advertises
+  (DNS zone, SMTP HELO, Kerberos realm, NTLM target). A divergence — e.g. a cert
+  for `acme.test` on a `corp.example.com` deployment — is a fingerprinting tell;
+  it's now surfaced on the UI **config page** (a `⚠ mismatch` badge + the
+  specific discrepancies) and logged once at startup
+  (`config.TLSCoherenceWarnings`).
+
+### Changed
+
+- **Web-UI pages scale to 100k+ events.** The **captures**, **credentials**, and
+  **DNS/web/database** pages returned `internal server error` once the event
+  table reached ~160k rows: each pulled 20k–50k full rows (payload blob +
+  per-row banner subquery) and filtered/aggregated in Go inside a short
+  deadline. Now they query `NoPayload` (these pages aggregate over event meta,
+  never the raw bytes), the service pages push their category filter into SQL
+  (`store.Filter.Handlers` IN-clause), and a new composite index
+  `idx_events_handler_time(handler, time DESC)` lets those queries
+  range-filter + order straight from the index. The index ships in the schema
+  DDL (`CREATE INDEX IF NOT EXISTS`), so it also lands on existing databases on
+  next open.
+- **Sensor logs no longer pollute `/var/log/messages`.** An installer rsyslog
+  drop-in (`packaging/rsyslog/30-tarpit-honeypot.conf`) routes the sensor's own
+  output — operational startup/warning logs *and* the CEF event stream, both
+  tagged `tarpit-honeypot` — to a dedicated
+  `/var/log/tarpit-honeypot/tarpit-honeypot.log` and `stop`s it from falling
+  through to `/var/log/messages`. `scripts/install.sh` installs the drop-in +
+  a logrotate policy, provisions the log file with ownership the local syslog
+  daemon can write (handling Debian's priv-dropped `syslog` user), and the
+  SELinux policy grants `syslogd_t` access to `tarpit_honeypot_log_t`. The
+  systemd unit pins `SyslogIdentifier=tarpit-honeypot`.
+
+- **Cross-protocol extraction audit.** Surfaced more high-value client intel
+  several handlers received but discarded: HTTP **UA client hints** (Sec-CH-UA
+  family → client OS / version / CPU arch / device / browser), the proxy chain
+  (`forwarded_for`) and locale (`accept_language`); the **IMAP `ID`** client
+  name/version (`imap_client_id`); **Postgres** `application_name` + database
+  from the startup params; the **STUN `SOFTWARE`** attribute (`stun_software`);
+  the **SNMPv3** USM `msgUserName` (`snmp_v3_user`); and the **Redis** client
+  name (`CLIENT SETNAME`/`SETINFO` → `redis_client_name`).
+- **LDAP/CLDAP/LDAPS rootDSE** `defaultNamingContext` derived from the
+  deployment domain (e.g. `corp.example.com` → `DC=corp,DC=example,DC=com`),
+  with the CLDAP reply gated by the amplifier policy + a reflection limiter.
+
 - **Reply-policy modes** (`sensor.reply_policy`) — one deployment-wide lever,
   enforced centrally for every TCP + UDP service: `full` (default), `non-ot`
   (mute OT-class handlers), `fingerprint` / `fingerprint-non-ot` (reply only

@@ -222,7 +222,10 @@ func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	since := time.Now().Add(-capturesWindow)
 	var evs []*event.Event
-	if e, err := s.query(ctx, store.Filter{Since: since, Limit: capturesScanMax}); err == nil {
+	// NoPayload: the credential summary reads event meta (extractCreds), never
+	// the raw payload blob, so skip the payload column + per-row banner subquery
+	// — the heavy part of the scan that made this page 500 at 100k+ events.
+	if e, err := s.query(ctx, store.Filter{Since: since, Limit: capturesScanMax, NoPayload: true}); err == nil {
 		evs = e
 	}
 	kind := r.URL.Query().Get("kind")

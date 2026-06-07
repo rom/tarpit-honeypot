@@ -53,7 +53,11 @@ func (s *Server) handleCredentials(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
 	since := time.Now().Add(-win.dur)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000})
+	// NoPayload: credentials are read from event meta (extractCreds), never the
+	// raw payload blob, so skip the payload column + per-row banner subquery —
+	// the heavy part of the scan that pushed this page over its deadline at
+	// 100k+ events.
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000, NoPayload: true})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

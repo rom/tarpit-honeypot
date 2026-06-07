@@ -71,3 +71,53 @@ func contains2(s, sub string) bool {
 	}
 	return false
 }
+
+func TestSNMPV3UserName(t *testing.T) {
+	// SNMPv3: outer SEQ { version INT 3, globalData SEQ{}, secParams OCTET{
+	// SEQ{ engineID OCTET, boots INT, time INT, userName OCTET "admin", auth
+	// OCTET, priv OCTET } }, ... }.
+	inner := func() []byte {
+		b := []byte{0x30, 0x00} // placeholder, fill below
+		body := []byte{}
+		body = append(body, 0x04, 0x03, 'e', 'n', 'g')           // engineID
+		body = append(body, 0x02, 0x01, 0x01)                    // boots
+		body = append(body, 0x02, 0x01, 0x02)                    // time
+		body = append(body, 0x04, 0x05, 'a', 'd', 'm', 'i', 'n') // userName
+		body = append(body, 0x04, 0x00)                          // auth params
+		body = append(body, 0x04, 0x00)                          // priv params
+		b[1] = byte(len(body))
+		return append(b[:2], body...)
+	}()
+	secOctet := append([]byte{0x04, byte(len(inner))}, inner...)
+	global := []byte{0x30, 0x02, 0x02, 0x00} // tiny globalData SEQ
+	ver := []byte{0x02, 0x01, 0x03}
+	outerBody := append(append(append([]byte{}, ver...), global...), secOctet...)
+	msg := append([]byte{0x30, byte(len(outerBody))}, outerBody...)
+
+	if u := snmpV3UserName(msg); u != "admin" {
+		t.Errorf("snmpV3UserName = %q; want admin", u)
+	}
+	if snmpV3UserName([]byte{0x30, 0x00}) != "" {
+		t.Error("empty v3 message should yield no user")
+	}
+}
+
+func TestStunSoftware(t *testing.T) {
+	// STUN Binding Request header (20 bytes) + SOFTWARE attribute (0x8022).
+	sw := "coturn-4.5.2"
+	hdr := make([]byte, 20)
+	hdr[0], hdr[1] = 0x00, 0x01 // Binding Request
+	copy(hdr[4:8], []byte{0x21, 0x12, 0xA4, 0x42})
+	attr := []byte{0x80, 0x22, 0x00, byte(len(sw))}
+	attr = append(attr, []byte(sw)...)
+	for len(attr)%4 != 0 {
+		attr = append(attr, 0)
+	}
+	pkt := append(hdr, attr...)
+	// fix message length
+	pkt[2] = byte(len(attr) >> 8)
+	pkt[3] = byte(len(attr))
+	if got := stunSoftware(pkt); got != sw {
+		t.Errorf("stunSoftware = %q; want %q", got, sw)
+	}
+}
