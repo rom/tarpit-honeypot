@@ -147,7 +147,7 @@ func TestIsExternalAddr(t *testing.T) {
 		"spammer@evil.ru>":   true,
 	}
 	for in, want := range cases {
-		if got := isExternalAddr(in); got != want {
+		if got := isExternalAddr(in, ""); got != want {
 			t.Errorf("isExternalAddr(%q) = %v; want %v", in, got, want)
 		}
 	}

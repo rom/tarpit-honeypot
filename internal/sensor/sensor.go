@@ -181,6 +181,9 @@ func New(cfg *config.Config) (*Sensor, error) {
 	if cfg.Sensor.Domain != "" {
 		id.SetDomain(cfg.Sensor.Domain)
 	}
+	// Mirror it into the handler package for the id-less response builders
+	// (NTLM challenge target name / AV pairs).
+	handler.SetDeploymentDomain(cfg.Sensor.Domain)
 
 	// Install the deployment-wide TLS certificate identity (CN/SAN domain +
 	// organization) so every TLS decoy presents one consistent cert instead of

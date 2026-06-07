@@ -177,10 +177,10 @@ func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery, cfg config.Listener) 
 		rdata = answerRR(2, encodeDNSName(d.nsName(dom)))
 		ancount = 1
 	case 5: // CNAME
-		rdata = answerRR(5, encodeDNSName("www."+orDefault(dom)))
+		rdata = answerRR(5, encodeDNSName("www."+d.domDefault(dom)))
 		ancount = 1
 	case 6: // SOA
-		rdata = answerRR(6, d.soaData(orDefault(dom)))
+		rdata = answerRR(6, d.soaData(d.domDefault(dom)))
 		ancount = 1
 	case 12: // PTR
 		if name, ok := d.reverseLookup(q.name); ok {
@@ -195,7 +195,7 @@ func (d *dnsHandler) buildAnswer(query []byte, q dnsQuery, cfg config.Listener) 
 		rdata = answerRR(15, mxData(10, d.mailName(dom)))
 		ancount = 1
 	case 16: // TXT
-		rdata = answerRR(16, charString("v=spf1 include:_spf."+orDefault(dom)+" ~all"))
+		rdata = answerRR(16, charString("v=spf1 include:_spf."+d.domDefault(dom)+" ~all"))
 		ancount = 1
 	case 29: // LOC
 		rdata = answerRR(29, locData())
@@ -333,14 +333,14 @@ func (d *dnsHandler) nsName(dom string) string {
 			}
 		}
 	}
-	return "ns1." + orDefault(dom)
+	return "ns1." + d.domDefault(dom)
 }
 
 func (d *dnsHandler) mailName(dom string) string {
 	if h := d.hostWithHandler(dom, "smtp_recv"); h.Hostname != "" {
 		return h.Hostname + "." + dom
 	}
-	return "mail." + orDefault(dom)
+	return "mail." + d.domDefault(dom)
 }
 
 // reverseLookup resolves an in-addr.arpa PTR query to a virtual host's
@@ -487,11 +487,17 @@ func reverseToIP(name string) (string, bool) {
 	return rev[3] + "." + rev[2] + "." + rev[1] + "." + rev[0], true
 }
 
-func orDefault(dom string) string {
-	if dom == "" {
-		return "example.com"
+// domDefault returns dom, or the deployment DNS domain when dom is empty, so
+// every fabricated DNS answer (SOA/MX/NS/TXT, fake zone) is consistent with the
+// rest of the sensor's identity instead of a stray "example.com" / "corp.local".
+func (d *dnsHandler) domDefault(dom string) string {
+	if dom != "" {
+		return dom
 	}
-	return dom
+	if d != nil && d.id != nil {
+		return d.id.Domain()
+	}
+	return "example.com"
 }
 
 // publicFirstOctets is a curated set of first octets that fall in
@@ -767,7 +773,7 @@ func (d *dnsHandler) buildFakeZone(query []byte, q dnsQuery, cfg config.Listener
 		dom = strings.TrimSuffix(cfg.DNS.ZoneDomain, ".")
 	}
 	if dom == "" {
-		dom = "corp.local"
+		dom = d.domDefault("")
 	}
 	resp := make([]byte, q.questionEnd)
 	copy(resp, query[:q.questionEnd])

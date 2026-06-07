@@ -231,7 +231,7 @@ var ntlmsspSig = []byte("NTLMSSP\x00")
 // 8-byte server challenge and a target-info block (AV_PAIRs) — required for the
 // client to compute a NetNTLMv2 response.
 func ntlmsspChallenge(serverChallenge []byte) []byte {
-	targetName := utf16le("WORKGROUP")
+	targetName := utf16le(netbiosDomain("WORKGROUP"))
 	targetInfo := ntlmTargetInfo()
 
 	const fixed = 56 // up to end of TargetInfoFields (no version)
@@ -270,12 +270,14 @@ func ntlmTargetInfo() []byte {
 		copy(b[4:], val)
 		return b
 	}
-	var out []byte
-	out = append(out, av(2, utf16le("WORKGROUP"))...)                 // NetBIOS domain
-	out = append(out, av(1, utf16le("FILESRV01"))...)                 // NetBIOS computer
-	out = append(out, av(4, utf16le("workgroup.local"))...)           // DNS domain
-	out = append(out, av(3, utf16le("filesrv01.workgroup.local"))...) // DNS computer
-	out = append(out, av(0, nil)...)                                  // EOL
+	nb := netbiosDomain("WORKGROUP")
+	dnsDom := deploymentDomainOr("workgroup.local")
+	out := []byte{}
+	out = append(out, av(2, utf16le(nb))...)                  // NetBIOS domain
+	out = append(out, av(1, utf16le("FILESRV01"))...)         // NetBIOS computer
+	out = append(out, av(4, utf16le(dnsDom))...)              // DNS domain
+	out = append(out, av(3, utf16le("filesrv01."+dnsDom))...) // DNS computer
+	out = append(out, av(0, nil)...)                          // EOL
 	return out
 }
 

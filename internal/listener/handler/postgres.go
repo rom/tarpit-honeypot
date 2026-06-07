@@ -117,6 +117,15 @@ func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			if len(params) > 0 {
 				res.Meta["startup_params"] = params
 				pgUser = params["user"]
+				// application_name reveals the client tool (psql / pgAdmin /
+				// JDBC / "PostgreSQL JDBC Driver" / a scanner); database +
+				// client_encoding round out the connecting party's intent.
+				if app := params["application_name"]; app != "" {
+					res.Meta["application_name"] = app
+				}
+				if db := params["database"]; db != "" {
+					res.Meta["database"] = db
+				}
 				// A replication startup is how pg_basebackup / a rogue
 				// standby clones the whole cluster — high-signal.
 				if r := params["replication"]; r != "" && r != "false" && r != "0" {

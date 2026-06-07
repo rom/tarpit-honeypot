@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/safe"
 )
 
 // imap emulates an IMAP4rev1 server (RFC 3501, TCP 143). It greets, answers
@@ -95,8 +96,14 @@ func (m *imap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (
 		case "CAPABILITY":
 			_, _ = conn.Write([]byte("* CAPABILITY " + caps + "\r\n" + tag + " OK CAPABILITY completed.\r\n"))
 		case "ID":
-			// Clients send their own ID; we answer with a Dovecot-shaped one
-			// (carrying the vulnerable version string under vuln emulation).
+			// Capture the client's own ID parameters — the mail client's name +
+			// version + GUID (e.g. Thunderbird / Outlook / a Python imaplib
+			// scanner), high-value attribution the client volunteers.
+			if cid := strings.TrimSpace(strings.Trim(rest, "()")); cid != "" && cid != "NIL" {
+				res.Meta["imap_client_id"] = safe.SanitizeForLog(clipStr(cid, 512))
+			}
+			// We answer with a Dovecot-shaped one (carrying the vulnerable
+			// version string under vuln emulation).
 			idResp := "* ID (\"name\" \"Dovecot\")\r\n"
 			if m.vuln {
 				idResp = "* ID (\"name\" \"Dovecot\" \"version\" \"" + vulnDovecotVersion + "\")\r\n"

@@ -184,6 +184,18 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	if len(allHeaders) > 0 {
 		res.Meta["http_headers"] = allHeaders
+		// Structured client intel: UA client hints (the modern, structured
+		// counterpart of the User-Agent — client OS / OS version / CPU arch /
+		// device model / browser), the locale, and any proxy chain.
+		if ch := extractClientHints(allHeaders); len(ch) > 0 {
+			res.Meta["client_hints"] = ch
+		}
+		if proxies := proxyChain(allHeaders); proxies != "" {
+			res.Meta["forwarded_for"] = proxies
+		}
+		if lang := allHeaders["accept-language"]; lang != "" {
+			res.Meta["accept_language"] = clipStr(lang, 128)
+		}
 	}
 	if cookieHeader != "" {
 		res.Meta["cookie"] = safe.SanitizeForLog(clipStr(cookieHeader, 2048))
@@ -787,4 +799,51 @@ func extractJavaScript(payload string) []string {
 		}
 	}
 	return out
+}
+
+// extractClientHints pulls the UA Client Hints (RFC 8942 / Sec-CH-UA family)
+// out of the captured headers into a structured client OS / version / arch /
+// device / browser map. These are sent by modern Chromium-based browsers and
+// are a stronger, harder-to-spoof identity than the (frozen) User-Agent — and
+// reveal the platform + version + CPU architecture + device model directly.
+func extractClientHints(h map[string]string) map[string]string {
+	out := map[string]string{}
+	unq := func(s string) string { return strings.Trim(strings.TrimSpace(s), `"`) }
+	if v := unq(h["sec-ch-ua-platform"]); v != "" {
+		out["os"] = v // "Windows", "macOS", "Linux", "Android", "Chrome OS"
+	}
+	if v := unq(h["sec-ch-ua-platform-version"]); v != "" {
+		out["os_version"] = v
+	}
+	if v := unq(h["sec-ch-ua-arch"]); v != "" {
+		out["arch"] = v // "x86", "arm"
+	}
+	if v := unq(h["sec-ch-ua-bitness"]); v != "" {
+		out["bitness"] = v // "64" / "32"
+	}
+	if v := unq(h["sec-ch-ua-model"]); v != "" {
+		out["device"] = v // phone/tablet model
+	}
+	if v := h["sec-ch-ua-mobile"]; v != "" {
+		out["mobile"] = strings.TrimSpace(v) // "?0" / "?1"
+	}
+	// Sec-CH-UA / -Full-Version-List carry the brand+version list verbatim.
+	if v := h["sec-ch-ua-full-version-list"]; v != "" {
+		out["browser"] = clipStr(strings.TrimSpace(v), 256)
+	} else if v := h["sec-ch-ua"]; v != "" {
+		out["browser"] = clipStr(strings.TrimSpace(v), 256)
+	}
+	return out
+}
+
+// proxyChain returns the client-supplied forwarding chain (X-Forwarded-For /
+// Forwarded / X-Real-IP / Via) — the upstream proxies/IPs an attacker reveals
+// (or spoofs), useful for attribution and for spotting header-spoofing.
+func proxyChain(h map[string]string) string {
+	for _, k := range []string{"x-forwarded-for", "forwarded", "x-real-ip", "via", "x-client-ip", "true-client-ip"} {
+		if v := strings.TrimSpace(h[k]); v != "" {
+			return clipStr(k+"="+v, 256)
+		}
+	}
+	return ""
 }

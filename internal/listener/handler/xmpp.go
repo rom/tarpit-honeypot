@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // xmpp handles inbound XMPP client connections on TCP 5222. RFC 6120
@@ -18,7 +19,7 @@ import (
 // stream:stream + a STARTTLS feature so the scanner records us as a
 // real Prosody / ejabberd server. Then we wait for either a <auth>
 // PLAIN mechanism (credentials) or a stream close.
-type xmpp struct{}
+type xmpp struct{ id *identity.Identity }
 
 func (x *xmpp) Name() string { return "xmpp" }
 
@@ -55,7 +56,10 @@ func (x *xmpp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 
 	streamHost := xmppAttr(open, "to")
 	if streamHost == "" {
-		streamHost = "im.example.com"
+		streamHost = "example.com"
+		if x.id != nil {
+			streamHost = x.id.Domain()
+		}
 	}
 	reply := `<?xml version='1.0'?>` +
 		`<stream:stream from='` + streamHost + `' id='deadbeef' version='1.0' xml:lang='en' ` +

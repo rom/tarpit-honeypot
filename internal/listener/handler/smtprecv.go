@@ -109,7 +109,11 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			// Open-relay probe: MAIL FROM and RCPT TO both reference
 			// external domains (relaying mail for a third party). A
 			// spammer testing whether we'll relay lands here.
-			if from, _ := res.Meta["mail_from"].(string); isExternalAddr(from) && isExternalAddr(to) {
+			localDom := ""
+			if s.id != nil {
+				localDom = s.id.Domain()
+			}
+			if from, _ := res.Meta["mail_from"].(string); isExternalAddr(from, localDom) && isExternalAddr(to, localDom) {
 				flagAnomaly(&res, "smtp-open-relay-probe")
 			}
 			fmt.Fprintf(conn, "250 OK\r\n")
@@ -192,7 +196,7 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 // to detect open-relay probes: a relayer sends mail FROM and TO
 // addresses both outside our domain. We treat example.com/.internal/
 // localhost as "ours"; everything else is external.
-func isExternalAddr(addr string) bool {
+func isExternalAddr(addr string, local string) bool {
 	at := strings.LastIndexByte(addr, '@')
 	if at < 0 {
 		return false
@@ -201,6 +205,11 @@ func isExternalAddr(addr string) bool {
 	domain = strings.TrimRight(domain, ">")
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	if domain == "" {
+		return false
+	}
+	// The deployment's own DNS domain counts as local (so mail within our
+	// pretend org isn't mistaken for an open-relay probe).
+	if local != "" && (domain == local || strings.HasSuffix(domain, "."+local)) {
 		return false
 	}
 	switch {

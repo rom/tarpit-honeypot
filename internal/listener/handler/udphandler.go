@@ -93,7 +93,7 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 	case "ssdp":
 		return &ssdp{lim: newUDPReflectLimiter()}, nil
 	case "cldap":
-		return &cldap{}, nil
+		return &cldap{lim: newUDPReflectLimiter()}, nil
 	case "llmnr":
 		return &llmnr{}, nil
 	case "nbns":

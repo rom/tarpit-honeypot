@@ -365,6 +365,12 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 	brand := resolveBrand(brandCfg, id)
 	app := brand.Name
 	hc := webappHoneyCreds(id)
+	// Deployment DNS domain — used in leaked VCS remotes / user emails so the
+	// fake app's internal references match the rest of the sensor's identity.
+	dom := "example.internal"
+	if id != nil {
+		dom = id.Domain()
+	}
 	cookie := "Set-Cookie: PHPSESSID=" + webappSessionID(id) + "; path=/; HttpOnly"
 	q := parseQuery(rawQuery)
 
@@ -404,7 +410,7 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		return webappFileResponse(server, f, brand, cookie, res)
 
 	case path == "/api/users" || path == "/api/user" || path == "/api/user.php":
-		return webappAPIUser(server, q.Get("id"))
+		return webappAPIUser(server, q.Get("id"), dom)
 
 	case path == "/api" || path == "/api/" || path == "/api/v1" || path == "/api/v1/" || path == "/api/v2" || path == "/api/v2/":
 		// REST API discovery root — a scanner hitting this is mapping the API.
@@ -446,7 +452,7 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 
 	case path == "/.git/config":
 		recordProbedFile(res, path)
-		body := "[core]\n\trepositoryformatversion = 0\n\tbare = false\n[remote \"origin\"]\n\turl = https://git.internal/" + app + ".git\n"
+		body := "[core]\n\trepositoryformatversion = 0\n\tbare = false\n[remote \"origin\"]\n\turl = https://git." + dom + "/" + app + ".git\n"
 		return webappResponse(server, 200, "OK", "text/plain", body, nil)
 
 	case path == "/config.php.bak" || path == "/config.php~" || path == "/backup.zip":
@@ -463,10 +469,10 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		return webappResponse(server, 200, "OK", "text/plain", "ref: refs/heads/main\n", nil)
 	case path == "/.svn/entries" || path == "/.svn/wc.db":
 		recordProbedFile(res, path)
-		return webappResponse(server, 200, "OK", "text/plain", "12\n\ndir\nhttps://svn.internal/"+app+"\n", nil)
+		return webappResponse(server, 200, "OK", "text/plain", "12\n\ndir\nhttps://svn."+dom+"/"+app+"\n", nil)
 	case path == "/.hg/store" || path == "/.bzr/branch/branch.conf":
 		recordProbedFile(res, path)
-		return webappResponse(server, 200, "OK", "text/plain", "default = https://hg.internal/"+app+"\n", nil)
+		return webappResponse(server, 200, "OK", "text/plain", "default = https://hg."+dom+"/"+app+"\n", nil)
 	case path == "/.htpasswd":
 		recordProbedFile(res, path)
 		res.Meta["honeytoken"] = hc.secretKey
@@ -748,12 +754,16 @@ func webappFileResponse(server, f string, brand webBrand, cookie string, res *Re
 		"<html><body><h1>Not Found</h1><p>include("+htmlEscape(f)+"): failed to open stream.</p></body></html>", []string{cookie})
 }
 
-// webappAPIUser returns a fake JSON user record (IDOR surface).
-func webappAPIUser(server, id string) string {
+// webappAPIUser returns a fake JSON user record (IDOR surface). The email uses
+// the deployment domain so it matches the rest of the fake app's identity.
+func webappAPIUser(server, id, dom string) string {
 	if id == "" {
 		id = "1"
 	}
-	body := `{"id":"` + jsonEscape(id) + `","username":"jdoe","email":"jdoe@corp.internal","role":"user","active":true}`
+	if dom == "" {
+		dom = "example.internal"
+	}
+	body := `{"id":"` + jsonEscape(id) + `","username":"jdoe","email":"jdoe@` + dom + `","role":"user","active":true}`
 	return webappResponse(server, 200, "OK", "application/json", body, nil)
 }
 
