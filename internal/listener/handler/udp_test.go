@@ -75,15 +75,24 @@ func TestNTPClientResponse(t *testing.T) {
 	}
 }
 
-func TestNTPNonClientNoReply(t *testing.T) {
-	// mode=7 (private / monlist amplifier) — must NOT be answered.
+func TestNTPMode7BoundedReply(t *testing.T) {
+	// mode=7 (private / ntpdc) is now answered to engage the tool, but the
+	// reply is minimal — an empty item list for a non-monlist request code —
+	// and rate-limited, so the box is not a useful amplifier.
 	req := make([]byte, 48)
 	req[0] = 0x27 // ver=4, mode=7
+	req[3] = 0    // REQ_PEER_LIST (not monlist)
 	pc := &fakePacketConn{}
 	src := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 12345}
-	_, _ = (&ntp{}).Handle(context.Background(), req, src, pc, config.Listener{})
-	if len(pc.written) != 0 {
-		t.Fatalf("mode 7 must not be answered; got %d writes", len(pc.written))
+	res, _ := (&ntp{lim: newUDPReflectLimiter()}).Handle(context.Background(), req, src, pc, config.Listener{})
+	if len(pc.written) != 1 {
+		t.Fatalf("mode 7 should get one bounded reply; got %d writes", len(pc.written))
+	}
+	if n := len(pc.written[0]); n != 8 {
+		t.Errorf("non-monlist mode-7 reply = %d bytes; want 8 (empty item list)", n)
+	}
+	if !containsStr(anomaliesOf(res), "ntp-mode7-private") {
+		t.Errorf("mode 7 not flagged: %v", res.Meta["anomalies"])
 	}
 }
 
