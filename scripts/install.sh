@@ -557,6 +557,10 @@ ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=5s
 
+# Tag stderr (slog startup/warning output) so the rsyslog drop-in can route the
+# sensor's logs into $LOGDIR instead of /var/log/messages.
+SyslogIdentifier=tarpit-honeypot
+
 # Capabilities the sensor keeps after privilege drop.
 AmbientCapabilities=$amb
 CapabilityBoundingSet=$amb
@@ -608,6 +612,66 @@ EOF
 install_systemd
 
 # ---------------------------------------------------------------------------
+# 10. Local syslog routing: keep the sensor's own logs out of /var/log/messages.
+#
+# The sensor emits two streams under the syslog identity "tarpit-honeypot": its
+# operational logs (startup/warnings — slog -> stderr -> journald, tagged by the
+# unit's SyslogIdentifier) and the CEF event stream (the `syslog` channel, same
+# tag). Both otherwise land in /var/log/messages. An rsyslog drop-in matches
+# that program name, writes a dedicated file under $LOGDIR, and stops further
+# processing so the lines don't also hit /var/log/messages. A logrotate policy
+# keeps that file bounded.
+# ---------------------------------------------------------------------------
+install_syslog_routing() {
+	local logfile="$LOGDIR/tarpit-honeypot.log"
+	# rsyslog writes the file: as root on RHEL/SUSE/Arch (no priv drop) it can
+	# write the honey-owned $LOGDIR directly; on Debian/Ubuntu it drops to the
+	# 'syslog' user, so pre-create the file owned by that writer and grant it
+	# access to the dir (which stays honey:honeypot 0750 for the sensor's own
+	# artifacts) via an ACL, falling back to a group membership.
+	local rsuser="root" rsgroup="$SVC_GROUP"
+	if getent passwd syslog >/dev/null 2>&1; then
+		rsuser="syslog"
+		getent group adm >/dev/null 2>&1 && rsgroup="adm"
+	fi
+	install -o "$rsuser" -g "$rsgroup" -m 0640 /dev/null "$logfile" 2>/dev/null \
+		|| { : >"$logfile" 2>/dev/null && chmod 0640 "$logfile" 2>/dev/null; } || true
+	if [ "$rsuser" = "syslog" ]; then
+		if command -v setfacl >/dev/null 2>&1; then
+			setfacl -m u:syslog:rwx "$LOGDIR" 2>/dev/null || true
+			setfacl -m u:syslog:rw "$logfile" 2>/dev/null || true
+		else
+			usermod -aG "$SVC_GROUP" syslog 2>/dev/null && chmod 0770 "$LOGDIR" 2>/dev/null || true
+		fi
+	fi
+	# SELinux: the file inherits the dir's tarpit_honeypot_log_t label; the policy
+	# module (section 8) grants syslogd_t management of that type. Relabel so a
+	# fresh file definitely carries it.
+	command -v restorecon >/dev/null 2>&1 && restorecon -F "$logfile" 2>/dev/null || true
+
+	local conf_src="$REPO/packaging/rsyslog/30-tarpit-honeypot.conf"
+	if [ -d /etc/rsyslog.d ] && [ -f "$conf_src" ]; then
+		info "Installing rsyslog drop-in -> /etc/rsyslog.d/30-tarpit-honeypot.conf"
+		install -o root -g root -m 0644 "$conf_src" /etc/rsyslog.d/30-tarpit-honeypot.conf
+		if command -v systemctl >/dev/null 2>&1; then
+			systemctl restart rsyslog >/dev/null 2>&1 ||
+				systemctl restart syslog >/dev/null 2>&1 ||
+				warn "could not restart rsyslog; reload it for the drop-in to take effect"
+		fi
+		info "Sensor logs route to $logfile (kept out of /var/log/messages)"
+	else
+		warn "rsyslog not detected (no /etc/rsyslog.d) — sensor logs stay in the journal: journalctl -u tarpit-honeypot"
+	fi
+
+	local lr_src="$REPO/packaging/logrotate/tarpit-honeypot"
+	if [ -d /etc/logrotate.d ] && [ -f "$lr_src" ]; then
+		info "Installing logrotate policy -> /etc/logrotate.d/tarpit-honeypot"
+		install -o root -g root -m 0644 "$lr_src" /etc/logrotate.d/tarpit-honeypot
+	fi
+}
+install_syslog_routing
+
+# ---------------------------------------------------------------------------
 # Done.
 # ---------------------------------------------------------------------------
 cat <<EOF
@@ -618,6 +682,7 @@ $(info "Install complete.")
   user     : $SVC_USER:$SVC_GROUP
   config   : $CONFIG
   data     : $DATA
+  logs     : $LOGDIR/tarpit-honeypot.log  (sensor logs + events; kept out of /var/log/messages)
   scripts  : $SHARE/scripts
 
 Next steps:

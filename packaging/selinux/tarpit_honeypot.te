@@ -101,6 +101,24 @@ manage_dirs_pattern(tarpit_honeypot_t, tarpit_honeypot_log_t, tarpit_honeypot_lo
 manage_files_pattern(tarpit_honeypot_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
 logging_log_filetrans(tarpit_honeypot_t, tarpit_honeypot_log_t, { dir file })
 
+# Local syslog daemon writes the sensor's dedicated log file.
+#
+# scripts/install.sh installs an rsyslog drop-in that routes the sensor's own
+# logs — operational startup/warning messages AND the CEF event stream, both
+# emitted under the syslog identity "tarpit-honeypot" — to
+# /var/log/tarpit-honeypot/tarpit-honeypot.log instead of /var/log/messages.
+# That file lives in the sensor's private log dir (tarpit_honeypot_log_t), so
+# rsyslog (syslogd_t) needs to traverse the dir and manage the file. Wrapped in
+# optional_policy/gen_require so the module still builds where the logging
+# module's syslogd_t happens to be absent.
+optional_policy(`
+	gen_require(`
+		type syslogd_t;
+	')
+	allow syslogd_t tarpit_honeypot_log_t:dir list_dir_perms;
+	manage_files_pattern(syslogd_t, tarpit_honeypot_log_t, tarpit_honeypot_log_t)
+')
+
 # System state the Go runtime + TLS + DNS need.
 kernel_read_system_state(tarpit_honeypot_t)
 kernel_read_network_state(tarpit_honeypot_t)

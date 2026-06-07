@@ -1,0 +1,15 @@
+# logrotate policy for tarpit-honeypot's dedicated syslog file — installed to
+# /etc/logrotate.d/. Pairs with packaging/rsyslog/30-tarpit-honeypot.conf, which
+# routes the sensor's operational logs + CEF event stream here instead of
+# /var/log/messages. An internet-facing sensor is chatty, so rotate daily and
+# keep two weeks compressed; copytruncate avoids needing to signal the local
+# syslog daemon (rsyslog re-opens on HUP, but copytruncate is portable).
+/var/log/tarpit-honeypot/tarpit-honeypot.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
