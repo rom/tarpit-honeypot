@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Fixed
 
+- **`install.sh --data DIR` now actually moves the data directory.** It created
+  the dir and pointed the systemd unit's `ReadWritePaths` at it, but left
+  `sensor.data_dir` in the deployed config unchanged — so the daemon kept
+  writing to the old path, which `ProtectSystem=strict` now made read-only,
+  and SQLite died with "unable to open database file (14) … not writable".
+  `install.sh` now patches `sensor.data_dir` to `--data` (keeping config + unit
+  in lockstep) and, under SELinux, adds a file-context equivalence so a custom
+  data dir inherits the `tarpit_honeypot_var_lib_t` labels the policy expects.
+
 - **SELinux: `syslog` channel failed under confinement ("Unix syslog delivery
   error").** The `syslog` output channel dials the local syslog socket
   (`/dev/log`) to emit events to the system logger; the confined domain wasn't

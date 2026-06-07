@@ -327,6 +327,12 @@ set_sensor_key() {
 
 patch_config() {
 	local f="$1"
+	# Keep the config's data_dir in lockstep with --data (and the systemd unit's
+	# ReadWritePaths, which is set to $DATA). Without this the daemon writes to
+	# whatever path the config shipped with while ProtectSystem=strict leaves
+	# only $DATA writable — so SQLite can't create its DB/-wal/-shm and the
+	# sensor dies with "unable to open database file (14) ... not writable".
+	set_sensor_key "$f" "data_dir" "$DATA"
 	# Pin the deployment-wide TLS cert identity so all decoy TLS services share
 	# one consistent certificate (not the per-service "localhost" default).
 	set_sensor_key "$f" "tls_domain" "$TLS_DOMAIN"
@@ -392,6 +398,14 @@ install_selinux() {
 	# install may have left behind, then let restorecon apply the module label.
 	if command -v semanage >/dev/null 2>&1; then
 		semanage fcontext -d "$BIN" 2>/dev/null || true
+		# A custom --data dir isn't covered by the policy module's .fc (which maps
+		# only the default /var/lib/tarpit-honeypot to tarpit_honeypot_var_lib_t).
+		# Add a file-context equivalence so $DATA inherits the same labels, or the
+		# confined domain can't write there (CANTOPEN / "permission denied").
+		if [ "$DATA" != "/var/lib/tarpit-honeypot" ]; then
+			semanage fcontext -a -e /var/lib/tarpit-honeypot "$DATA" 2>/dev/null ||
+				semanage fcontext -m -e /var/lib/tarpit-honeypot "$DATA" 2>/dev/null || true
+		fi
 	fi
 	if command -v restorecon >/dev/null 2>&1; then
 		# Recurse (-R) so pre-existing files inside the data/etc/log dirs get the
