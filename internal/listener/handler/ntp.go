@@ -231,6 +231,10 @@ func ntpPeerStatus() []byte {
 // opcode with the response bit set, carrying body (the system-variable string
 // or the peer-status list). Rate-limited; minimal body (no amplification).
 func (n *ntp) sendControl(res *Result, req []byte, src net.Addr, pc net.PacketConn, ver, op byte, body []byte) {
+	if !AmplifierReplyAllowed("ntp", "mode6-control", src) {
+		res.Meta["amplifier_suppressed"] = true
+		return
+	}
 	if !n.lim.allow() {
 		res.Meta["rate_limited"] = true
 		return
@@ -281,6 +285,10 @@ func (n *ntp) monlistEntry(src net.Addr) []byte {
 // sendMode7 emits a mode-7 (ntpdc private) response. When entry is non-nil it
 // carries exactly one monlist record; otherwise an empty item list. Rate-limited.
 func (n *ntp) sendMode7(res *Result, req []byte, src net.Addr, pc net.PacketConn, ver, rc byte, entry []byte) {
+	if !AmplifierReplyAllowed("ntp", "mode7-private", src) {
+		res.Meta["amplifier_suppressed"] = true
+		return
+	}
 	if !n.lim.allow() {
 		res.Meta["rate_limited"] = true
 		return

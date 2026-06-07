@@ -225,7 +225,9 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		var canaryHits []string
 		var cveHits []string
 		if hnHandler != nil {
-			res, _ := hnHandler.Handle(ctx, conn, t.cfg)
+			// Reply-policy gate: under mute / OT-muted policy the conn discards
+			// writes so the handler still captures the request but emits nothing.
+			res, _ := hnHandler.Handle(ctx, handler.GateConn(conn, t.cfg.Handler), t.cfg)
 			ev.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {
 				ev.PayloadLen = len(res.Payload)
@@ -334,7 +336,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 		// scanner gets a believable banner + we capture its request,
 		// then fall through to the tarpit strategy on the same conn.
 		if t.cfg.Tarpit.Emulate && hnHandler != nil {
-			res, _ := hnHandler.Handle(ctx, conn, t.cfg)
+			res, _ := hnHandler.Handle(ctx, handler.GateConn(conn, t.cfg.Handler), t.cfg)
 			startEv.BannerSent = res.BannerSent
 			if len(res.Payload) > 0 {
 				startEv.PayloadLen = len(res.Payload)

@@ -192,6 +192,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 	}
 	handler.SetTLSDefaults(tlsDomain, cfg.Sensor.TLSOrg)
 
+	// Install the deployment-wide outbound-reply policy (mute / fingerprint /
+	// non-OT / full) + the amplifier-reply suppression toggle. Gates every
+	// service centrally; set once before listeners start.
+	handler.SetReplyPolicy(cfg.Sensor.ReplyPolicy, cfg.Sensor.NoAmplifierReplies)
+
 	// Resolve the deployment-default archetype (already validated in
 	// config.Validate, so Lookup returning nil here means empty).
 	arch := archetype.Lookup(cfg.Sensor.Archetype)
