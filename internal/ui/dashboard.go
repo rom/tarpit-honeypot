@@ -83,7 +83,11 @@ type dashboard struct {
 	// them would hide both axes.
 	Attacks []barRow
 	CVEs    []barRow
-	Scanned int
+	// TargetIPs ranks the host's own server IPs (destinations) that were hit —
+	// the multi-IP breakdown ("which of my addresses are getting attacked").
+	// Only meaningful when the host serves more than one IP.
+	TargetIPs []barRow
+	Scanned   int
 	// Charts are charts.js figures rendered alongside the CSS bars (JS on).
 	Charts []chartFig
 	// Time-range selector (24h / 7d / 14d / 31d / 3mo / 6mo) + the labels.
@@ -225,6 +229,7 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	d.Scanned = len(evs)
 	tac, country, asn, tool, handler := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	tech, cve := map[string]int{}, map[string]int{}
+	target := map[string]int{}
 	for _, ev := range evs {
 		tag := eventTag(ev)
 		for _, t := range tag.Tactics {
@@ -248,6 +253,9 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 		if ev.Handler != "" {
 			handler[ev.Handler]++
 		}
+		if ev.Dest.IP != "" {
+			target[ev.Dest.IP]++
+		}
 	}
 	// Every summary line item links to the filtered event list. Countries /
 	// handler / tool / tactic map directly to a query param; ASN is keyed on the
@@ -269,6 +277,9 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	}
 	d.Tools = topBars(tool, 10, "/events?tool=")
 	d.Handlers = topBars(handler, 12, "/events?handler=")
+	// Per-target-IP breakdown (the host's own server IPs). Links to list-events
+	// filtered by that target via the search page.
+	d.TargetIPs = topBars(target, 20, "/search?q=")
 	// Top attacks: ATT&CK techniques, labelled with their human name and linking
 	// to the internal technique drill-down.
 	d.Attacks = topBars(tech, 12, "/attack/technique?id=")

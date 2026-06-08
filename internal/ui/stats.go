@@ -87,14 +87,30 @@ func buildStatsView(d dashboard, sum store.Summary, win sumWindow) statsView {
 	v.Headline = []statKV{
 		{Label: "Events", Value: humanInt(sum.Total), Sub: win.label},
 		{Label: "High + Critical", Value: humanInt(highCrit), Sub: pct(highCrit) + " of events"},
+	}
+	// On a multi-IP host, lead with how many of our own server IPs were hit and
+	// the busiest one — the breakdown an operator of a multi-address sensor needs.
+	if len(d.TargetIPs) > 1 {
+		busiest := d.TargetIPs[0].Label
+		v.Headline = append(v.Headline,
+			statKV{Label: "Targeted server IPs", Value: humanInt(len(d.TargetIPs)), Sub: "of this host's addresses (sampled)"},
+			statKV{Label: "Busiest target IP", Value: busiest, Sub: humanInt(d.TargetIPs[0].Count) + " events"},
+		)
+	}
+	v.Headline = append(v.Headline, []statKV{
 		{Label: "Events / hour", Value: fmt.Sprintf("%.1f", float64(sum.Total)/hours), Sub: "average over window"},
 		{Label: "Attacker sources", Value: humanInt(len(sum.TopSources)), Sub: "tracked (top-N)"},
 		{Label: "Source countries", Value: humanInt(len(d.Countries)), Sub: "distinct (sampled)"},
 		{Label: "ATT&CK techniques", Value: humanInt(len(d.Attacks)), Sub: "distinct (sampled)"},
 		{Label: "CVEs probed", Value: humanInt(len(d.CVEs)), Sub: "distinct (sampled)"},
 		{Label: "Tools fingerprinted", Value: humanInt(len(d.Tools)), Sub: "distinct (sampled)"},
-	}
+	}...)
 
+	// Multi-IP breakdown: which of the host's own server IPs are being hit.
+	// Shown first (and only) when the host actually serves more than one IP.
+	if len(d.TargetIPs) > 1 {
+		v.Blocks = append(v.Blocks, statBlock{Title: "Targeted server IPs (this host)", Rows: d.TargetIPs})
+	}
 	// Protocol distribution from the authoritative SQL summary.
 	v.Blocks = append(v.Blocks, statBlock{Title: "Severity", Rows: d.Severity})
 	v.Blocks = append(v.Blocks, statBlock{Title: "Transport / protocol", Rows: protoBars(sum)})
