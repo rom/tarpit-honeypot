@@ -69,6 +69,7 @@ sensor:
   deployment_id: ""           # blank = auto-generate + persist
   archetype: ""               # see "archetypes" section / `help archetypes`
   interfaces: []              # network interface(s) to use; e.g. [eth0]
+  listen_addresses: []        # pin wildcard listeners to these IPs; [] = all IPs
   drop_user: ""               # Linux: setresuid/setresgid target after bind
   drop_group: ""
   disk:
@@ -98,7 +99,8 @@ sensor:
 |---|---|
 | `name` | Identifies the sensor in every event meta. Blank → hostname. |
 | `data_dir` | Where SQLite, jsonlog, captures, certs, and `.deployment-id` live. |
-| `interfaces` | Network interface(s) the sensor uses. Supplies the default interface for the AF_PACKET layer (sniffer + honeynet ARP/ICMP/LLDP/PROFINET responders) when those sections leave `interface` blank, and pins wildcard-bound listeners (`0.0.0.0`/`::`) to the first interface's primary IP. Override on the CLI with `-i`/`--interface` (repeatable). Empty = all interfaces. |
+| `interfaces` | Network interface(s) the sensor uses. Supplies the default interface for the AF_PACKET layer (sniffer + honeynet ARP/ICMP/LLDP/PROFINET responders) when those sections leave `interface` blank, and constrains wildcard-bound listeners (`0.0.0.0`/`::`) to **all** usable IPs of the named interfaces. Override on the CLI with `-i`/`--interface` (repeatable). Empty = all interfaces. |
+| `listen_addresses` | Pin every wildcard listener (`0.0.0.0`/`::`/empty bind host) to a specific set of IP addresses — one socket per address, all feeding the same handler; the destination IP is still recorded per event. Empty (default) keeps the wildcard so the service answers on **every** IP the host has. Set one IP to dedicate this instance to a single server address (the multi-instance, one-honeypot-per-IP model — see `scripts/add-instance.sh` + the `tarpit-honeypot@.service` template). Takes precedence over `interfaces`. |
 | `deployment_id` | Stable random seed feeding every "fixed" handler string. Auto-generated to `<data_dir>/.deployment-id` on first run. Override here to align two sensors that should look identical. |
 | `archetype` | OS-shaped banner profile (e.g. `debian 12`, `Ubuntu 24.04 LTS`, `Red Hat Enterprise Linux 9`). Pins SSH / HTTP / FTP / Telnet / SMTP / MySQL banners to values consistent with a stock install of that distro, so a scanner can't catch the sensor by spotting a version-vs-distro mismatch. Blank = fall back to the deployment-id-keyed variant pool. See `tarpit-honeypot help archetypes` for the list. |
 | `drop_user` / `drop_group` | After privileged setup, drop to this uid/gid. Refuses uid 0. Linux only — non-Linux warns and ignores. |

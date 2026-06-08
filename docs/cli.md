@@ -7,7 +7,7 @@ tarpit-honeypot run            -c <config> [--dry-run] [common flags]
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
-tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
+tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--target <ip>] [--handler <name>] [--port N] [--rule <id>] [--fleet] [--limit N]
 tarpit-honeypot gen-token      --type=dns|url|hex|ssrf [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
@@ -108,7 +108,7 @@ On **macOS**, the AF_PACKET/TUN steps are no-ops (Linux-only — see [`docs/usag
 
 ## `validate-config`
 
-Parse + validate a YAML file. Optionally diff against another file to see what would hot-reload vs require restart.
+Parse + validate a YAML file. Also reports TLS-cert ↔ deployment-domain coherence warnings (the same the sensor logs at startup and shows on the config page), so a mismatch is caught before deploy. Optionally diff against another file to see what would hot-reload vs require restart.
 
 ```
 tarpit-honeypot validate-config -c new.yaml
@@ -188,6 +188,9 @@ tarpit-honeypot list-events -c cfg.yaml --since 24h --source 198.51.100.42
 | `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file. |
 | `--since <dur>` | `24h` | Time window relative to now. Go duration syntax (`5m`, `2h`, `7d` — actually only `m/h` for now; multiply for longer). |
 | `--source <ip>` | — | Exact-match source IP filter. |
+| `--target <ip>` | — | Exact-match destination/server-IP filter — which of the host's own IPs was hit (the multi-IP pivot). |
+| `--handler <name>` | — | Exact-match protocol-handler filter (e.g. `ssh`, `http`, `snmptrap`). |
+| `--port <n>` | — | Exact-match destination-port filter. |
 | `--rule <id>` | — | Exact-match rule_id filter (e.g. `listener:ssh-bait`, `correlate:port_scan`). |
 | `--fleet` | off | Show only cross-sensor `fleet:*` findings (prefix filter). |
 | `--limit <N>` | `100` | Max events to return (newest first). |

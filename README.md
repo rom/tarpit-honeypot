@@ -838,7 +838,8 @@ A large post-v2.0 sprint. Highlights below; the
   (`rexec`, `rsh`, `pcanywhere`, `radmin`, `dameware`, `pcoip`, `spice`,
   `lantronix`, `tn3270` (mainframe), `ard`) and VoIP/telephony (`sip_tcp`,
   `sccp`, `h323`, `asterisk_ami`, `iax2`) — taking the catalog to
-  **112 TCP + 33 UDP handlers**. Seventeen enrichment-/campaign-/OT-/remote-
+  **112 TCP + 34 UDP handlers** (incl. an SNMP trap/inform receiver on
+  udp/162). Seventeen enrichment-/campaign-/OT-/remote-
   access-/VoIP-driven correlators including the OT set `plc_program_download`
   (Stuxnet/Triton), `ics_mode_change`, `ot_kill_chain`, the remote-access set
   `remote_tool_sweep`, `oob_mgmt_access`, `remote_exec_command`, and the VoIP
@@ -1143,7 +1144,7 @@ tarpit-honeypot rotate-db      -c <config> [--out file.gz] [--reset --yes]  # ar
 tarpit-honeypot prune-db       -c <config> (--keep-days N | --keep-rows N | --max-mb N) [--yes]  # drop oldest events to free space
 tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
-tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--rule <id>] [--fleet] [--limit N]
+tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--target <ip>] [--handler <name>] [--port N] [--rule <id>] [--fleet] [--limit N]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json]
@@ -2006,6 +2007,14 @@ Endpoints:
   DNS, DGA, sniffer encapsulation 6in4/6to4/GRE/…, QUIC, unknown-protocol),
   by type / source / recency. Honest by design: these are *detections*, not
   live tunnels (the sensor terminates connections, it doesn't carry pivots).
+- `/dns`, `/web`, `/databases`, `/remote`, `/mail`, `/ntp` — **per-service
+  analytics** (shown only when a relevant listener exists): volume over time,
+  top entities, top attackers, the attacks/CVE table, an **attacker-intent**
+  breakdown, and a per-event activity log with an **intent** column.
+- `/interactions` — **attacker work** captured by the emulated shells / web
+  shell / decoys: commands run, keystrokes, and recorded session casts.
+- `/stats` — numeric companion to `/charts`; on a multi-IP host it leads with
+  the **targeted server IPs** breakdown (which of the host's addresses are hit).
 - `/attack` — **ATT&CK mapping** view: a kill-chain-ordered tactic timeline
   (with the techniques nested under each tactic), a top-technique heatmap,
   and the recent `storyline:multi_stage` kill-chain progressions. Techniques
@@ -2050,7 +2059,7 @@ binds are rejected at validate-time without both TLS and auth.
 ## systemd integration
 
 A hardened unit lives at `packaging/systemd/tarpit-honeypot.service`. It
-runs as user `tarpit:tarpit` with `AmbientCapabilities=CAP_NET_BIND_SERVICE
+runs as user `honey:honeypot` with `AmbientCapabilities=CAP_NET_BIND_SERVICE
 CAP_NET_RAW`, `NoNewPrivileges=true`, `ProtectSystem=strict`,
 `ProtectHome=true`, `PrivateTmp/Devices=true`, and
 `RestrictNamespaces=true`. `ExecReload=/bin/kill -HUP $MAINPID` ties into
@@ -2069,6 +2078,21 @@ sudo install -o root -g root -m 0644 packaging/systemd/tarpit-honeypot.service /
 sudo systemctl daemon-reload
 sudo systemctl enable --now tarpit-honeypot
 ```
+
+`scripts/install.sh` automates all of the above (service account, file caps,
+SELinux/AppArmor policy, rsyslog routing, config patching) and prompts for the
+deployment hostname / domain / TLS identity.
+
+### Multiple IPs and multiple instances
+
+On a host with several IP addresses, a wildcard listener (`bind: "[::]:22"`, the
+default) already answers on **every** address, and each event records which IP
+was hit (`dst_ip`). Set `sensor.listen_addresses: [ip, …]` to pin listeners to
+specific IPs instead. To run **several independent honeypots on one host — one
+per server IP, each with its own config, database, certificates and UI** — use
+the `tarpit-honeypot@.service` template and provision instances with
+`scripts/add-instance.sh --name NAME --listen-ip IP` (creates the per-instance
+dirs/config/labels and enables `tarpit-honeypot@NAME`).
 
 ## Operating model
 
