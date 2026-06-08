@@ -278,6 +278,17 @@ func TestAllShipArchetypes(t *testing.T) {
 		"OKI ES network printer",
 		"Toshiba e-STUDIO (MFP)",
 		"ABB Advant Controller 450 (AC450)",
+		// SP / DC routers & switches added later.
+		"Juniper MX480 (Junos)",
+		"Juniper MX960 (Junos)",
+		"Juniper EX4300 (Junos switch)",
+		"Juniper QFX5120 (Junos DC switch)",
+		"Arista 7280R (EOS)",
+		"Cisco NCS 5500 (IOS XR)",
+		"Cisco ASR 9000 (IOS XR)",
+		"Nokia 7750 SR-1 (SR OS)",
+		"Ubiquiti UniFi Switch (USW)",
+		"Ubiquiti UniFi AP (UAP)",
 	}
 	got := Names()
 	if len(got) != len(want) {

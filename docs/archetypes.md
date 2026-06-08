@@ -72,42 +72,49 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | ABB Advant Controller 450 (AC450) | `abb-ac450` | abb | 3 |
 | ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
 | ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
+| APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
+| ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
 | Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
 | Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
+| Allen-Bradley ControlLogix 1756-L73 | `rockwell-controllogix-1756` | rockwell | 4 |
 | AlmaLinux 9 | `almalinux-9` | rhel | 1 |
 | Alpine Linux 3.20 | `alpine-3.20` | alpine | 3 |
 | Amazon Linux 2023 | `amazon-linux-2023` | amazonlinux | 3 |
-| APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
-| ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
 | Arch Linux | `arch-linux` | arch | 1 |
+| Arista 7050SX (EOS) | `arista-7050` | arista | 3 |
+| Arista 7280R (EOS) | `arista-7280r` | arista | 3 |
 | Arista EOS switch | `arista-eos` | arista | 4 |
+| Aruba 2930F (ArubaOS-Switch) | `aruba-2930f` | aruba | 4 |
 | Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
 | AudioCodes Mediant gateway | `audiocodes` | audiocodes | 4 |
 | Avaya Aura Communication Manager | `avaya-aura` | avaya | 4 |
-| Axis network camera | `axis-camera` | axis | 2 |
 | Axis P3245-LVE dome camera | `axis-p3245` | axis | 3 |
 | Axis Q6075 PTZ camera | `axis-q6075` | axis | 3 |
+| Axis network camera | `axis-camera` | axis | 2 |
 | B&R X20 (PLC) | `br-x20` | br | 4 |
 | Bachmann M1 (controller) | `bachmann-m1` | bachmann | 4 |
-| Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 4 |
-| Bosch IP camera | `bosch-camera` | bosch | 3 |
-| Bosch FLEXIDOME IP camera | `bosch-flexidome` | bosch | 3 |
+| Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 5 |
 | Bosch AUTODOME PTZ camera | `bosch-autodome` | bosch | 3 |
+| Bosch FLEXIDOME IP camera | `bosch-flexidome` | bosch | 3 |
+| Bosch IP camera | `bosch-camera` | bosch | 3 |
 | Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
 | Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
 | CentOS 6 | `centos-6` | rhel | 0 |
 | CentOS 7 | `centos-7` | rhel | 0 |
 | CentOS 8 | `centos-8` | rhel | 0 |
-| CentOS Stream 9 | `centos-stream-9` | rhel | 0 |
 | CentOS Stream 10 | `centos-stream-10` | rhel | 0 |
+| CentOS Stream 9 | `centos-stream-9` | rhel | 0 |
 | Check Point Gaia firewall | `checkpoint-gaia` | checkpoint | 2 |
+| Cisco 2811 ISR (IOS 12.4) | `cisco-2811` | cisco | 4 |
+| Cisco ASR 9000 (IOS XR) | `cisco-asr9000` | cisco | 4 |
 | Cisco Catalyst 2960 (IOS 15) | `cisco-catalyst-2960` | cisco | 5 |
 | Cisco Catalyst 9300 (IOS-XE 17) | `cisco-catalyst-9300` | cisco | 5 |
 | Cisco Catalyst IE-3400 (IOS-XE 17) | `cisco-ie-3400` | cisco | 6 |
-| Cisco Industrial Ethernet 2000 (IOS 15) | `cisco-ie-2000` | cisco | 6 |
 | Cisco IR1101 (industrial router, IOS-XE) | `cisco-ir1101` | cisco | 6 |
+| Cisco Industrial Ethernet 2000 (IOS 15) | `cisco-ie-2000` | cisco | 6 |
+| Cisco NCS 5500 (IOS XR) | `cisco-ncs5500` | cisco | 4 |
 | Cisco UCS CIMC | `cisco-ucs-cimc` | ciscoucs | 4 |
 | Cisco Unified CM (CUCM) | `cisco-cucm` | ciscocucm | 4 |
 | Citrix NetScaler ADC | `citrix-netscaler` | citrix | 2 |
@@ -116,10 +123,14 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Debian 12 (bookworm) | `debian-12` | debian | 0 |
 | Debian 13 (trixie) | `debian-13` | debian | 0 |
 | Debian 7 (wheezy) | `debian-7` | debian | 0 |
+| Debian 8 (jessie) | `debian-8` | debian | 0 |
 | Debian 9 (stretch) | `debian-9` | debian | 0 |
 | Dell iDRAC 9 (lights-out) | `dell-idrac` | dell | 2 |
 | DrayTek Vigor router | `draytek-vigor` | draytek | 2 |
+| Echelon LonWorks i.LON Gateway | `echelon-lonworks` | echelon | 4 |
+| Emerson Bristol ControlWave RTU | `bristol-controlwave` | bristol | 4 |
 | Emerson DeltaV (DCS controller) | `emerson-deltav` | emerson | 4 |
+| Emerson ROC800 RTU | `emerson-roc800` | emerson | 4 |
 | Epson WorkForce Pro (MFP) | `epson-workforce` | printer | 6 |
 | F5 BIG-IP (TMOS) | `f5-bigip` | f5 | 2 |
 | Fedora 40 | `fedora-40` | fedora | 3 |
@@ -131,31 +142,40 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | FreePBX (Sangoma) | `freepbx` | freepbx | 5 |
 | FreeSWITCH | `freeswitch` | freeswitch | 4 |
 | Fujitsu iRMC | `fujitsu-irmc` | fujitsu | 3 |
+| GE PACSystems RX3i (IC695) | `ge-pacsystems-rx3i` | ge | 4 |
 | GE PACSystems RX3i (PLC) | `ge-pacsystems` | ge | 4 |
 | Gentoo Linux | `gentoo` | gentoo | 3 |
 | Grandstream UCM (VoIP PBX) | `grandstream-ucm` | grandstream | 2 |
-| Hikvision IP camera | `hikvision-camera` | hikvision | 3 |
+| HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
+| HP LaserJet (network printer) | `hp-printer` | printer | 6 |
+| HPE Onboard Administrator | `hpe-oa` | hpeoa | 3 |
+| HPE iLO 5 (lights-out) | `hpe-ilo` | hp | 2 |
 | Hikvision DS-2DE PTZ camera | `hikvision-ptz` | hikvision | 3 |
 | Hikvision DS-7608NI NVR | `hikvision-nvr` | hikvision | 3 |
-| HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
+| Hikvision IP camera | `hikvision-camera` | hikvision | 3 |
 | Hirschmann EAGLE20 (industrial firewall) | `hirschmann-eagle20` | hirschmann | 3 |
 | Hirschmann RS20 (Classic managed switch) | `hirschmann-rs20` | hirschmann | 4 |
 | Hirschmann RSP35 (HiOS managed switch) | `hirschmann-rsp35` | hirschmann | 5 |
 | Honeywell ControlEdge 900 (PLC/RTU) | `honeywell-controledge` | honeywell | 5 |
 | Honeywell Experion C300 (DCS controller) | `honeywell-experion` | honeywell | 3 |
-| HP LaserJet (network printer) | `hp-printer` | printer | 6 |
-| HPE iLO 5 (lights-out) | `hpe-ilo` | hp | 2 |
-| HPE Onboard Administrator | `hpe-oa` | hpeoa | 3 |
 | Huawei VRP (router/switch) | `huawei-vrp` | huawei | 3 |
 | IBM AIX 7.2 | `aix-7` | aix | 3 |
+| Juniper EX4300 (Junos switch) | `juniper-ex4300` | juniper | 5 |
+| Juniper MX480 (Junos) | `juniper-mx480` | juniper | 5 |
+| Juniper MX960 (Junos) | `juniper-mx960` | juniper | 5 |
+| Juniper QFX5120 (Junos DC switch) | `juniper-qfx5120` | juniper | 4 |
 | Juniper SRX (JunOS) | `juniper-srx` | juniper | 4 |
+| Juniper SRX340 (Junos) | `juniper-srx340` | juniper | 5 |
+| Kepware KEPServerEX (Windows) | `kepware-kepserverex` | windows | 6 |
 | Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
 | Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
 | Lantronix SLC console server | `lantronix-slc` | lantronix | 4 |
 | Lenovo XClarity Controller (XCC) | `lenovo-xcc` | lenovo | 3 |
 | Lexmark MX622 (MFP) | `lexmark-printer` | printer | 6 |
-| macOS Sonoma 14 | `macos-sonoma` | macos | 4 |
+| MatrikonOPC Server (Windows) | `matrikon-opc-server` | windows | 6 |
 | MikroTik RouterOS (RB750Gr3, 6.49.10) | `mikrotik-routeros` | mikrotik | 7 |
+| MikroTik RouterOS 6.40 (Winbox CVE-2018-14847) | `mikrotik-routeros-640` | mikrotik | 7 |
+| MikroTik RouterOS 7 (RB5009) | `mikrotik-routeros-7` | mikrotik | 7 |
 | Mitel MiVoice Business | `mitel-mivoice` | mitel | 3 |
 | Mitsubishi MELSEC iQ-R (R04CPU) | `mitsubishi-melsec-iq-r` | mitsubishi | 3 |
 | Moxa AWK-3131A (industrial wireless AP) | `moxa-awk-3131a` | moxa | 5 |
@@ -165,26 +185,28 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Moxa MGate MB3180 (Modbus gateway) | `moxa-mgate-mb3180` | moxa | 4 |
 | Moxa NPort 5210 | `moxa-nport-5210` | moxa | 5 |
 | Moxa NPort 5650-8 (serial device server) | `moxa-nport-5650` | moxa | 6 |
-| NetBSD 9 | `netbsd-9` | bsd | 1 |
 | NetBSD 10 | `netbsd-10` | bsd | 1 |
+| NetBSD 9 | `netbsd-9` | bsd | 1 |
 | Netgear Nighthawk router | `netgear-nighthawk` | netgear | 3 |
 | Netgear ReadyNAS | `netgear-readynas` | netgear | 4 |
+| Nokia 7750 SR-1 (SR OS) | `nokia-7750-sr1` | nokia | 4 |
+| OKI ES network printer | `oki-printer` | printer | 6 |
+| OPNsense firewall | `opnsense` | opnsense | 2 |
 | Omron NX1P2 (Sysmac) | `omron-nx1p2` | omron | 4 |
 | Omron PLC (FINS) | `omron-plc` | ics | 3 |
-| OKI ES network printer | `oki-printer` | printer | 6 |
 | OpenBSD 7.4 | `openbsd-7.4` | bsd | 2 |
 | OpenBSD 7.5 | `openbsd-7.5` | bsd | 2 |
 | OpenBSD 7.6 | `openbsd-7.6` | bsd | 1 |
 | OpenBSD 7.7 | `openbsd-7.7` | bsd | 1 |
-| Opengear console server | `opengear-cm` | opengear | 4 |
 | OpenWrt router | `openwrt` | openwrt | 3 |
-| OPNsense firewall | `opnsense` | opnsense | 2 |
+| Opengear console server | `opengear-cm` | opengear | 4 |
 | Oracle Linux 8 | `oracle-linux-8` | rhel | 1 |
 | Oracle Linux 9 | `oracle-linux-9` | rhel | 1 |
+| Oracle Solaris 10 | `solaris-10` | solaris | 0 |
 | Oracle Solaris 11 | `solaris-11` | solaris | 4 |
 | Oracle/Sun ILOM | `oracle-ilom` | ilom | 3 |
+| Palo Alto PA-220 (PAN-OS) | `paloalto-pa220` | paloalto | 3 |
 | Palo Alto PAN-OS firewall | `paloalto-panos` | paloalto | 2 |
-| pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
 | Phoenix Contact FL MGUARD (security router) | `phoenix-fl-mguard` | phoenix | 3 |
 | Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 3 |
 | Poly/Polycom VVX phone | `polycom-vvx` | polycom | 3 |
@@ -196,14 +218,19 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Red Hat Enterprise Linux 7 | `rhel-7` | rhel | 0 |
 | Red Hat Enterprise Linux 8 | `rhel-8` | rhel | 0 |
 | Red Hat Enterprise Linux 9 | `rhel-9` | rhel | 0 |
+| Red Lion Graphite HMI (Crimson 3.0) | `redlion-crimson` | redlion | 5 |
 | Ribbon SBC (session border controller) | `ribbon-sbc` | ribbon | 4 |
 | Ricoh IM C3000 (MFP) | `ricoh-mfp` | printer | 6 |
 | Rockwell MicroLogix 1400 (PLC) | `rockwell-micrologix` | rockwell | 4 |
 | Rocky Linux 9 | `rocky-9` | rhel | 1 |
+| SEL-751 (protection relay) | `sel-751` | sel | 4 |
+| SMA Sunny (solar inverter) | `sma-inverter` | sma | 4 |
+| SUSE Linux Enterprise Server 12 SP5 | `sles-12` | suse | 0 |
+| SUSE Linux Enterprise Server 15 SP6 | `sles-15` | suse | 0 |
+| Schneider Modicon M340 (BMX P34) | `schneider-modicon-m340` | schneider | 4 |
 | Schneider Modicon M340 PLC | `schneider-modicon` | ics | 4 |
 | Schneider Modicon M580 (BME P58) | `schneider-modicon-m580` | schneider | 5 |
 | Schneider Triconex Tricon (SIS) | `triconex-tricon` | triconex | 3 |
-| SEL-751 (protection relay) | `sel-751` | sel | 4 |
 | Sharp MX-3071 (MFP) | `sharp-mfp` | printer | 6 |
 | Siemens PN/PN Coupler | `siemens-pn-pn-coupler` | siemens | 3 |
 | Siemens S7-1200 PLC | `siemens-s7-1200` | siemens | 3 |
@@ -211,10 +238,6 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Siemens SCALANCE S615 | `siemens-scalance-s615` | siemens | 4 |
 | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 3 |
 | Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 5 |
-| SMA Sunny (solar inverter) | `sma-inverter` | sma | 4 |
-| SUSE Linux Enterprise Server 12 SP5 | `sles-12` | suse | 0 |
-| SUSE Linux Enterprise Server 15 SP6 | `sles-15` | suse | 0 |
-| openSUSE Leap 15.6 | `opensuse-leap-15` | suse | 0 |
 | SonicWall TZ (SonicOS) | `sonicwall-tz` | sonicwall | 2 |
 | Sophos XG firewall | `sophos-xg` | sophos | 2 |
 | Supermicro BMC (IPMI/Redfish) | `supermicro-bmc` | supermicro | 4 |
@@ -228,6 +251,12 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
 | TrueNAS SCALE (Debian) | `truenas-scale` | truenas | 4 |
 | Ubiquiti EdgeRouter (EdgeOS) | `ubiquiti-edgerouter` | ubiquiti | 3 |
+| Ubiquiti UniFi AP (UAP) | `ubiquiti-unifi-ap` | ubiquiti | 4 |
+| Ubiquiti UniFi Switch (USW) | `ubiquiti-unifi-switch` | ubiquiti | 4 |
+| Ubuntu 14.04 LTS (Trusty) | `ubuntu-14.04` | ubuntu | 0 |
+| Ubuntu 16.04 LTS (Xenial) | `ubuntu-16.04` | ubuntu | 0 |
+| Ubuntu 18.04 LTS (Bionic) | `ubuntu-18.04` | ubuntu | 0 |
+| Ubuntu 20.04 LTS (Focal) | `ubuntu-20.04` | ubuntu | 0 |
 | Ubuntu 22.04 LTS (Jammy) | `ubuntu-22.04` | ubuntu | 0 |
 | Ubuntu 24.04 LTS | `ubuntu-24.04` | ubuntu | 0 |
 | Ubuntu 26.04 LTS | `ubuntu-26.04` | ubuntu | 0 |
@@ -235,6 +264,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | VMware vCenter Server Appliance | `vmware-vcenter` | vmware | 2 |
 | VyOS router | `vyos` | vyos | 3 |
 | WAGO 750-8212 PFC200 | `wago-750-pfc` | wago | 7 |
+| WAGO PFC200 (750-8212) | `wago-pfc200` | wago | 5 |
 | Westermo Ibex (industrial wireless) | `westermo-ibex` | westermo | 4 |
 | Westermo Lynx (WeOS managed switch) | `westermo-lynx` | westermo | 5 |
 | Westermo Merlin-4400 (cellular router) | `westermo-merlin-4400` | westermo | 4 |
@@ -245,8 +275,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Windows 7 | `windows-7` | windows | 4 |
 | Windows 8 | `windows-8` | windows | 3 |
 | Windows Server 2008 | `windows-server-2008` | windows | 6 |
-| Windows Server 2012 | `windows-server-2012` | windows | 6 |
 | Windows Server 2012 R2 | `windows-server-2012-r2` | windows | 6 |
+| Windows Server 2012 | `windows-server-2012` | windows | 6 |
 | Windows Server 2016 | `windows-server-2016` | windows | 6 |
 | Windows Server 2019 | `windows-server-2019` | windows | 7 |
 | Windows Server 2022 | `windows-server-2022` | windows | 7 |
@@ -255,6 +285,9 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Yokogawa CENTUM VP (DCS) | `yokogawa-centum` | yokogawa | 4 |
 | Zebra ZT411 (label printer) | `zebra-printer` | printer | 3 |
 | Zyxel USG FLEX firewall | `zyxel-usg` | zyxel | 2 |
+| macOS Sonoma 14 | `macos-sonoma` | macos | 4 |
+| openSUSE Leap 15.6 | `opensuse-leap-15` | suse | 0 |
+| pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
 
 ## Linux distributions
 
@@ -782,6 +815,103 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd`
 - **SNMP sysDescr:** EdgeOS v2.0.9 ER-X
 - **Services:** :443 `https`, :22 `ssh`, :161 `snmp`
+- **CVEs advertised:** —
+
+### Juniper MX480 (Junos) — `juniper-mx480`
+
+**Family:** juniper · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2636.1.1.1.2.25`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4`
+- **HTTP Server:** `Juniper Networks J-Web`
+- **SNMP sysDescr:** Juniper Networks, Inc. mx480 internet router, kernel JUNOS 21.4R3
+- **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Juniper MX960 (Junos) — `juniper-mx960`
+
+**Family:** juniper · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2636.1.1.1.2.29`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4`
+- **HTTP Server:** `Juniper Networks J-Web`
+- **SNMP sysDescr:** Juniper Networks, Inc. mx960 internet router, kernel JUNOS 21.4R3
+- **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Juniper EX4300 (Junos switch) — `juniper-ex4300`
+
+**Family:** juniper · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2636.1.1.1.2.82`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4`
+- **HTTP Server:** `Juniper Networks J-Web`
+- **SNMP sysDescr:** Juniper Networks, Inc. ex4300-48t Ethernet Switch, kernel JUNOS 20.4R3
+- **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Juniper QFX5120 (Junos DC switch) — `juniper-qfx5120`
+
+**Family:** juniper · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2636.1.1.1.2.158`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4`
+- **HTTP Server:** `Juniper Networks J-Web`
+- **SNMP sysDescr:** Juniper Networks, Inc. qfx5120-48y Ethernet Switch, kernel JUNOS 21.2R3
+- **Services:** :22 `ssh`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Arista 7280R (EOS) — `arista-7280r`
+
+**Family:** arista · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.30065.1.3011.7280`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.0`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** Arista Networks EOS version 4.30.3M running on an Arista Networks DCS-7280R3-24
+- **Services:** :22 `ssh`, :443 `https` (eAPI), :161 `snmp`
+- **CVEs advertised:** —
+
+### Cisco NCS 5500 (IOS XR) — `cisco-ncs5500`
+
+**Family:** cisco · **TTL:** 255 · **SNMP OID:** `.1.3.6.1.4.1.9.1.2734`
+
+- **SSH:** `SSH-2.0-Cisco-2.0`
+- **SNMP sysDescr:** Cisco IOS XR Software (NCS-5500), Version 7.5.2
+- **Services:** :22 `ssh`, :23 `telnet`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Cisco ASR 9000 (IOS XR) — `cisco-asr9000`
+
+**Family:** cisco · **TTL:** 255 · **SNMP OID:** `.1.3.6.1.4.1.9.1.1639`
+
+- **SSH:** `SSH-2.0-Cisco-2.0`
+- **SNMP sysDescr:** Cisco IOS XR Software (Cisco ASR9K Series), Version 7.5.2
+- **Services:** :22 `ssh`, :23 `telnet`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Nokia 7750 SR-1 (SR OS) — `nokia-7750-sr1`
+
+**Family:** nokia · **TTL:** 255 · **SNMP OID:** `.1.3.6.1.4.1.6527.1.3.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.5`
+- **SNMP sysDescr:** TiMOS-B-22.10.R1 both/x86_64 Nokia 7750 SR
+- **Services:** :22 `ssh`, :23 `telnet`, :161 `snmp`, :830 `raw` (NETCONF)
+- **CVEs advertised:** —
+
+### Ubiquiti UniFi Switch (USW) — `ubiquiti-unifi-switch`
+
+**Family:** ubiquiti · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.41112`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** USW-24-PoE, 6.5.59.14555
+- **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
+- **CVEs advertised:** —
+
+### Ubiquiti UniFi AP (UAP) — `ubiquiti-unifi-ap`
+
+**Family:** ubiquiti · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.41112`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** U6-Pro, 6.5.59.14555
+- **Services:** :22 `ssh`, :80 `http`, :8443 `https`, :161 `snmp`
 - **CVEs advertised:** —
 
 

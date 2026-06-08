@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Service-provider / data-center router & switch archetypes.** `juniper-mx480`,
+  `juniper-mx960` (MX routers), `juniper-ex4300`, `juniper-qfx5120` (Junos
+  switches), `arista-7280r`, `cisco-ncs5500`, `cisco-asr9000` (Cisco IOS XR),
+  `nokia-7750-sr1` (new `nokia` family, SR OS), and Ubiquiti UniFi
+  `ubiquiti-unifi-switch` / `ubiquiti-unifi-ap` — each with vendor-accurate SSH /
+  J-Web / SNMP identity, product sysObjectID, and CPE.
+- **Catalog table completeness.** `docs/archetypes.md`'s quick-reference table is
+  now regenerated from the live catalog, so all 221 archetypes appear (it had
+  drifted, missing ~23 existing entries such as `ubuntu-20.04`, `debian-8`,
+  `arista-7050`, `cisco-2811`, the M340 / RX3i / ControlLogix ICS variants, …).
 - **18 more OS / NAS / printer / ICS archetype variants.** OS: `freebsd-11`,
   `openbsd-7.4`, `openbsd-7.7`, `netbsd-9`, `netbsd-10` (NetBSD is new to the
   catalog), `debian-7`, `centos-stream-9`, `rhel-7`, `ubuntu-22.04`, plus a new

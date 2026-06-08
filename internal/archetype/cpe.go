@@ -26,7 +26,7 @@ var familyVendor = map[string]string{
 	"citrix": "citrix", "vyos": "vyos", "openwrt": "openwrt", "mikrotik": "mikrotik",
 	"cisco": "cisco", "ciscoucs": "cisco", "ciscocucm": "cisco", "arista": "arista",
 	"huawei": "huawei", "zyxel": "zyxel", "draytek": "draytek", "netgear": "netgear",
-	"ubiquiti": "ui", "teltonika": "teltonika",
+	"ubiquiti": "ui", "teltonika": "teltonika", "nokia": "nokia",
 	"vmware": "vmware", "esxi": "vmware", "proxmox": "proxmox", "truenas": "truenas",
 	"synology": "synology", "qnap": "qnap",
 	"dell": "dell", "hp": "hp", "hpeoa": "hpe", "ilom": "oracle", "supermicro": "supermicro",
