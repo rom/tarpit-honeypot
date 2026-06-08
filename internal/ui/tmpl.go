@@ -1353,6 +1353,19 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
 
+{{ with .CrossTarget }}<h2 data-help="When this source reached more than one of THIS host's server IPs: the targets in the order they were first touched, the timing offset of each from the first, the ports hit per target, and the ports hit on more than one target (a scripted same-service sweep across the fleet).">cross-target activity <span class="meta">({{ .DistinctTargets }} target IPs over {{ .SpanSeconds }}s)</span></h2>
+{{ if .SharedPorts }}<p class="note">⚠ ports hit on more than one target (same-service fleet sweep): {{ range .SharedPorts }}<span class="tag bad">{{ . }}</span> {{ end }}</p>{{ end }}
+<table><tr><th>target</th><th>first touch</th><th>timeline</th><th>ports</th><th>services</th><th>hits</th></tr>
+{{ range .Targets }}<tr>
+  <td><code>{{ .IP }}</code></td>
+  <td class="meta" style="white-space:nowrap">+{{ .FirstOffset }}s</td>
+  <td style="min-width:140px"><div style="height:10px;width:{{ .BarPct }}%;min-width:3px;background:#4a6fa5;border-radius:3px" title="first touched +{{ .FirstOffset }}s into the run"></div></td>
+  <td>{{ range .Ports }}<span class="tag">{{ . }}</span> {{ end }}</td>
+  <td>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</td>
+  <td>{{ .Hits }}</td>
+</tr>{{ end }}
+</table>{{ end }}
+
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;tactic={{ . }}" title="this source's events in this ATT&amp;CK tactic">{{ . }}</a> {{ end }}</div>{{ end }}
 

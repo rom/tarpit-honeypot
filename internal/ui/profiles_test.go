@@ -99,6 +99,52 @@ func TestBuildProfile(t *testing.T) {
 	}
 }
 
+func TestBuildCrossTarget(t *testing.T) {
+	base := time.Now().UTC()
+	mk := func(dst string, port int, h string, dt time.Duration) *event.Event {
+		return &event.Event{
+			ID: dst, Time: base.Add(dt), RuleID: "listener:" + h, Severity: event.SeverityMedium,
+			Handler: h, Source: event.Endpoint{IP: "203.0.113.9"},
+			Dest: event.Endpoint{IP: dst, Port: port},
+		}
+	}
+	// One source hits three target IPs; port 22 on all three (fleet sweep) + 445 on one.
+	evs := []*event.Event{
+		mk("10.0.0.10", 22, "ssh", 0),
+		mk("10.0.0.11", 22, "ssh", 30*time.Second),
+		mk("10.0.0.11", 445, "smb", 31*time.Second),
+		mk("10.0.0.12", 22, "ssh", 60*time.Second),
+	}
+	p := buildProfile("203.0.113.9", evs)
+	ct := p.CrossTarget
+	if ct == nil {
+		t.Fatal("CrossTarget nil for a 3-target source")
+	}
+	if ct.DistinctTargets != 3 {
+		t.Errorf("distinct targets = %d; want 3", ct.DistinctTargets)
+	}
+	want := []string{"10.0.0.10", "10.0.0.11", "10.0.0.12"}
+	for i, tr := range ct.Targets {
+		if tr.IP != want[i] {
+			t.Fatalf("targets order = %v; want %v", ct.Targets, want)
+		}
+	}
+	if ct.Targets[0].FirstOffset != 0 || ct.Targets[2].FirstOffset != 60 {
+		t.Errorf("offsets wrong: %d / %d", ct.Targets[0].FirstOffset, ct.Targets[2].FirstOffset)
+	}
+	if len(ct.SharedPorts) != 1 || ct.SharedPorts[0] != 22 {
+		t.Errorf("shared_ports = %v; want [22]", ct.SharedPorts)
+	}
+	if ct.Targets[2].BarPct != 100 {
+		t.Errorf("last target BarPct = %d; want 100", ct.Targets[2].BarPct)
+	}
+	// A single-target source gets no cross-target section.
+	single := buildProfile("198.51.100.1", []*event.Event{mk("10.0.0.10", 22, "ssh", 0)})
+	if single.CrossTarget != nil {
+		t.Error("CrossTarget should be nil for a single-target source")
+	}
+}
+
 func TestProfilesHandlersEndToEnd(t *testing.T) {
 	st, err := store.Open(t.TempDir(), 0)
 	if err != nil {
