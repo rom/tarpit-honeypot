@@ -69,6 +69,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 |---|---|---|---|
 | 3CX Phone System | `3cx` | 3cx | 4 |
 | ABB AC500 PLC (PM573) | `abb-ac500` | abb | 6 |
+| ABB Advant Controller 450 (AC450) | `abb-ac450` | abb | 3 |
 | ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
 | ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
@@ -78,6 +79,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Alpine Linux 3.20 | `alpine-3.20` | alpine | 3 |
 | Amazon Linux 2023 | `amazon-linux-2023` | amazonlinux | 3 |
 | APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
+| ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
 | Arch Linux | `arch-linux` | arch | 1 |
 | Arista EOS switch | `arista-eos` | arista | 4 |
 | Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
@@ -98,6 +100,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | CentOS 6 | `centos-6` | rhel | 0 |
 | CentOS 7 | `centos-7` | rhel | 0 |
 | CentOS 8 | `centos-8` | rhel | 0 |
+| CentOS Stream 9 | `centos-stream-9` | rhel | 0 |
 | CentOS Stream 10 | `centos-stream-10` | rhel | 0 |
 | Check Point Gaia firewall | `checkpoint-gaia` | checkpoint | 2 |
 | Cisco Catalyst 2960 (IOS 15) | `cisco-catalyst-2960` | cisco | 5 |
@@ -112,6 +115,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Debian 11 (bullseye) | `debian-11` | debian | 0 |
 | Debian 12 (bookworm) | `debian-12` | debian | 0 |
 | Debian 13 (trixie) | `debian-13` | debian | 0 |
+| Debian 7 (wheezy) | `debian-7` | debian | 0 |
 | Debian 9 (stretch) | `debian-9` | debian | 0 |
 | Dell iDRAC 9 (lights-out) | `dell-idrac` | dell | 2 |
 | DrayTek Vigor router | `draytek-vigor` | draytek | 2 |
@@ -120,6 +124,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | F5 BIG-IP (TMOS) | `f5-bigip` | f5 | 2 |
 | Fedora 40 | `fedora-40` | fedora | 3 |
 | Fortinet FortiGate (FortiOS) | `fortigate` | fortios | 4 |
+| FreeBSD 11 | `freebsd-11` | bsd | 1 |
+| FreeBSD 12 | `freebsd-12` | bsd | 0 |
 | FreeBSD 13 | `freebsd-13` | bsd | 2 |
 | FreeBSD 14 | `freebsd-14` | bsd | 1 |
 | FreePBX (Sangoma) | `freepbx` | freepbx | 5 |
@@ -159,11 +165,17 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Moxa MGate MB3180 (Modbus gateway) | `moxa-mgate-mb3180` | moxa | 4 |
 | Moxa NPort 5210 | `moxa-nport-5210` | moxa | 5 |
 | Moxa NPort 5650-8 (serial device server) | `moxa-nport-5650` | moxa | 6 |
+| NetBSD 9 | `netbsd-9` | bsd | 1 |
+| NetBSD 10 | `netbsd-10` | bsd | 1 |
 | Netgear Nighthawk router | `netgear-nighthawk` | netgear | 3 |
+| Netgear ReadyNAS | `netgear-readynas` | netgear | 4 |
 | Omron NX1P2 (Sysmac) | `omron-nx1p2` | omron | 4 |
 | Omron PLC (FINS) | `omron-plc` | ics | 3 |
+| OKI ES network printer | `oki-printer` | printer | 6 |
+| OpenBSD 7.4 | `openbsd-7.4` | bsd | 2 |
 | OpenBSD 7.5 | `openbsd-7.5` | bsd | 2 |
 | OpenBSD 7.6 | `openbsd-7.6` | bsd | 1 |
+| OpenBSD 7.7 | `openbsd-7.7` | bsd | 1 |
 | Opengear console server | `opengear-cm` | opengear | 4 |
 | OpenWrt router | `openwrt` | openwrt | 3 |
 | OPNsense firewall | `opnsense` | opnsense | 2 |
@@ -181,6 +193,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Raritan Dominion KX (KVM) | `raritan-kx` | raritan | 4 |
 | Raspberry Pi OS (Debian) | `raspberry-pi-os` | raspbian | 2 |
 | Red Hat Enterprise Linux 10 | `rhel-10` | rhel | 0 |
+| Red Hat Enterprise Linux 7 | `rhel-7` | rhel | 0 |
 | Red Hat Enterprise Linux 8 | `rhel-8` | rhel | 0 |
 | Red Hat Enterprise Linux 9 | `rhel-9` | rhel | 0 |
 | Ribbon SBC (session border controller) | `ribbon-sbc` | ribbon | 4 |
@@ -199,6 +212,9 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Siemens SCALANCE SC-600 | `siemens-scalance-sc-600` | siemens | 3 |
 | Siemens SCALANCE XB-208 | `siemens-scalance-xb-208` | siemens | 5 |
 | SMA Sunny (solar inverter) | `sma-inverter` | sma | 4 |
+| SUSE Linux Enterprise Server 12 SP5 | `sles-12` | suse | 0 |
+| SUSE Linux Enterprise Server 15 SP6 | `sles-15` | suse | 0 |
+| openSUSE Leap 15.6 | `opensuse-leap-15` | suse | 0 |
 | SonicWall TZ (SonicOS) | `sonicwall-tz` | sonicwall | 2 |
 | Sophos XG firewall | `sophos-xg` | sophos | 2 |
 | Supermicro BMC (IPMI/Redfish) | `supermicro-bmc` | supermicro | 4 |
@@ -208,8 +224,11 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
 | Teltonika RUTX11 (LTE Cat6 router) | `teltonika-rutx11` | teltonika | 4 |
 | Teltonika TRB140 (LTE gateway) | `teltonika-trb140` | teltonika | 4 |
+| Toshiba e-STUDIO (MFP) | `toshiba-estudio` | printer | 6 |
 | TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
+| TrueNAS SCALE (Debian) | `truenas-scale` | truenas | 4 |
 | Ubiquiti EdgeRouter (EdgeOS) | `ubiquiti-edgerouter` | ubiquiti | 3 |
+| Ubuntu 22.04 LTS (Jammy) | `ubuntu-22.04` | ubuntu | 0 |
 | Ubuntu 24.04 LTS | `ubuntu-24.04` | ubuntu | 0 |
 | Ubuntu 26.04 LTS | `ubuntu-26.04` | ubuntu | 0 |
 | VMware ESXi 8.0 | `vmware-esxi` | esxi | 3 |
@@ -295,6 +314,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** —
 - **CVEs advertised:** —
 
+### CentOS Stream 9 — `centos-stream-9`
+
+**Family:** rhel · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.7`
+- **HTTP Server:** `Apache/2.4.57 (CentOS Stream)`
+- **Services:** —
+- **CVEs advertised:** —
+
 ### CentOS Stream 10 — `centos-stream-10`
 
 **Family:** rhel · **TTL:** 64
@@ -331,6 +359,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Patch level:** Debian 12 (no 2024 security rollup)
 - **Services:** —
 - **CVEs advertised:** CVE-2021-41773, CVE-2018-15473
+
+### Debian 7 (wheezy) — `debian-7`
+
+**Family:** debian · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u7`
+- **HTTP Server:** `Apache/2.2.22 (Debian)`
+- **Services:** —
+- **CVEs advertised:** —
 
 ### Debian 13 (trixie) — `debian-13`
 
@@ -379,6 +416,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** —
 - **CVEs advertised:** —
 
+### Red Hat Enterprise Linux 7 — `rhel-7`
+
+**Family:** rhel · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4`
+- **HTTP Server:** `Apache/2.4.6 (Red Hat Enterprise Linux)`
+- **Services:** —
+- **CVEs advertised:** —
+
 ### Red Hat Enterprise Linux 8 — `rhel-8`
 
 **Family:** rhel · **TTL:** 64
@@ -407,6 +453,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :22 `ssh`
 - **CVEs advertised:** —
 
+### Ubuntu 22.04 LTS (Jammy) — `ubuntu-22.04`
+
+**Family:** ubuntu · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10`
+- **HTTP Server:** `Apache/2.4.52 (Ubuntu)`
+- **Services:** —
+- **CVEs advertised:** —
+
 ### Ubuntu 24.04 LTS — `ubuntu-24.04`
 
 **Family:** ubuntu · **TTL:** 64
@@ -425,8 +480,45 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** —
 - **CVEs advertised:** —
 
+### SUSE Linux Enterprise Server 12 SP5 — `sles-12`
+
+**Family:** suse · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_7.2p2`
+- **HTTP Server:** `Apache/2.4.23 (Linux/SUSE)`
+- **Services:** —
+- **CVEs advertised:** —
+
+### SUSE Linux Enterprise Server 15 SP6 — `sles-15`
+
+**Family:** suse · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4p1`
+- **HTTP Server:** `Apache/2.4.51 (Linux/SUSE)`
+- **Services:** —
+- **CVEs advertised:** —
+
+### openSUSE Leap 15.6 — `opensuse-leap-15`
+
+**Family:** suse · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4p1`
+- **HTTP Server:** `Apache/2.4.51 (Linux/SUSE)`
+- **Services:** —
+- **CVEs advertised:** —
+
 
 ## BSD
+
+### FreeBSD 11 — `freebsd-11`
+
+**Family:** bsd · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2238.1.0`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.2 FreeBSD-20161230`
+- **HTTP Server:** `Apache/2.4.34 (FreeBSD)`
+- **SNMP sysDescr:** FreeBSD host.example.com 11.4-RELEASE FreeBSD 11.4-RELEASE GENERIC amd64
+- **Services:** :22 `ssh`
+- **CVEs advertised:** —
 
 ### FreeBSD 13 — `freebsd-13`
 
@@ -448,6 +540,16 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :22 `ssh`
 - **CVEs advertised:** —
 
+### OpenBSD 7.4 — `openbsd-7.4`
+
+**Family:** bsd · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.30155.1.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_9.5`
+- **HTTP Server:** `OpenBSD httpd`
+- **SNMP sysDescr:** OpenBSD obsd.example.com 7.4 GENERIC#10 amd64
+- **Services:** :22 `ssh`, :25 `smtp_recv`
+- **CVEs advertised:** —
+
 ### OpenBSD 7.5 — `openbsd-7.5`
 
 **Family:** bsd · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.30155.1.1`
@@ -465,6 +567,36 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SSH:** `SSH-2.0-OpenSSH_9.8`
 - **HTTP Server:** `OpenBSD httpd`
 - **SNMP sysDescr:** OpenBSD obsd.example.com 7.6 GENERIC#10 amd64
+- **Services:** :22 `ssh`
+- **CVEs advertised:** —
+
+### OpenBSD 7.7 — `openbsd-7.7`
+
+**Family:** bsd · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.30155.1.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_10.0`
+- **HTTP Server:** `OpenBSD httpd`
+- **SNMP sysDescr:** OpenBSD obsd.example.com 7.7 GENERIC#10 amd64
+- **Services:** :22 `ssh`
+- **CVEs advertised:** —
+
+### NetBSD 9 — `netbsd-9`
+
+**Family:** bsd · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.0 NetBSD_Secure_Shell-20190418`
+- **HTTP Server:** `bozohttpd/20190228`
+- **SNMP sysDescr:** NetBSD nbsd.example.com 9.3 NetBSD 9.3 (GENERIC) amd64
+- **Services:** :22 `ssh`
+- **CVEs advertised:** —
+
+### NetBSD 10 — `netbsd-10`
+
+**Family:** bsd · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_9.6 NetBSD_Secure_Shell-20240115`
+- **HTTP Server:** `bozohttpd/20240126`
+- **SNMP sysDescr:** NetBSD nbsd.example.com 10.0 NetBSD 10.0 (GENERIC) amd64
 - **Services:** :22 `ssh`
 - **CVEs advertised:** —
 
@@ -686,6 +818,36 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :5000 `http`, :5001 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
 - **CVEs advertised:** —
 
+### TrueNAS SCALE (Debian) — `truenas-scale`
+
+**Family:** truenas · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.50536`
+
+- **SSH:** `SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** Linux truenas 6.6.44-production+truenas #1 SMP x86_64
+- **Services:** :443 `https`, :80 `http`, :445 `smb`, :22 `ssh`
+- **CVEs advertised:** —
+
+### Netgear ReadyNAS — `netgear-readynas`
+
+**Family:** netgear · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.4526`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4p1 Debian-10`
+- **HTTP Server:** `Apache`
+- **SNMP sysDescr:** NETGEAR ReadyNAS RN424 ReadyNASOS 6.10
+- **Services:** :80 `http`, :443 `https`, :445 `smb`, :22 `ssh`
+- **CVEs advertised:** —
+
+### ASUSTOR NAS (ADM) — `asustor-nas`
+
+**Family:** asustor · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.43000`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** ASUSTOR AS5304T ADM 4.2
+- **Services:** :8000 `http`, :8001 `https`, :445 `smb`, :22 `ssh`
+- **CVEs advertised:** —
+
 ### pfSense (Netgate firewall) — `pfsense`
 
 **Family:** pfsense · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.12325.1.1.2.1.1`
@@ -832,6 +994,24 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :80 `http`, :443 `https`, :9100 `pjl`, :631 `ipp`, :515 `lpd`, :161 `snmp`
 - **CVEs advertised:** —
 
+### OKI ES network printer — `oki-printer`
+
+**Family:** printer · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2001.1.2`
+
+- **HTTP Server:** `EWS/2.0`
+- **SNMP sysDescr:** OKI ES8434 MFP
+- **Services:** :80 `http`, :443 `https`, :9100 `pjl`, :631 `ipp`, :515 `lpd`, :161 `snmp`
+- **CVEs advertised:** —
+
+### Toshiba e-STUDIO (MFP) — `toshiba-estudio`
+
+**Family:** printer · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.1129`
+
+- **HTTP Server:** `TOSHIBA e-STUDIO`
+- **SNMP sysDescr:** TOSHIBA e-STUDIO3508A
+- **Services:** :80 `http`, :443 `https`, :9100 `pjl`, :631 `ipp`, :515 `lpd`, :161 `snmp`
+- **CVEs advertised:** —
+
 ### Konica Minolta bizhub C284e (MFP) — `konica-minolta-bizhub`
 
 **Family:** printer · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.18334.1.1.1.1.1`
@@ -897,6 +1077,14 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 
 
 ## Industrial / OT (PLCs, RTUs, switches, routers)
+
+### ABB Advant Controller 450 (AC450) — `abb-ac450`
+
+**Family:** abb · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.8072.3.2.10`
+
+- **SNMP sysDescr:** ABB Advant Controller 450 (AC450) MasterBus 300
+- **Services:** :23 `telnet`, :502 `modbus`, :161 `snmp`
+- **CVEs advertised:** —
 
 ### ABB AC500 PLC (PM573) — `abb-ac500`
 

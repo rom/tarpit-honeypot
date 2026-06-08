@@ -1,5 +1,7 @@
 package archetype
 
+import "crypto/tls"
+
 // devices.go holds the "non-distro" archetypes: BSD family + the
 // industrial / embedded devices (Moxa, Siemens SCALANCE / S7). Split
 // from archetype.go so the OS-distro registry stays a quick read.
@@ -80,6 +82,93 @@ var deviceArchetypes = map[string]*Profile{
 		snmpSysDescr:    "OpenBSD obsd.example.com 7.6 GENERIC#10 amd64",
 		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
 		snmpSysName:     "obsd76",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+		},
+	},
+	"freebsd-11": {
+		Name: "freebsd-11", DisplayName: "FreeBSD 11", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_7.2 FreeBSD-20161230",
+		httpServer:      "Apache/2.4.34 (FreeBSD)",
+		ftpBanner:       "220 FreeBSD-11 FTP server ready.",
+		telnetBanner:    "\r\nFreeBSD/amd64 (freebsd) (ttyv0)\r\n\r\nlogin: ",
+		smtpProduct:     "Sendmail 8.15.2",
+		mysqlVersion:    "5.6.51",
+		cliPrompt:       "host% ",
+		httpTitle:       "FreeBSD Web Console",
+		httpBodyHTML:    "<html><body><h1>It works! (FreeBSD)</h1></body></html>",
+		snmpSysDescr:    "FreeBSD host.example.com 11.4-RELEASE FreeBSD 11.4-RELEASE GENERIC amd64",
+		snmpSysObjectID: ".1.3.6.1.4.1.2238.1.0",
+		snmpSysName:     "freebsd11",
+		// FreeBSD 11 base OpenSSL 1.0.2: TLS 1.0–1.2, no TLS 1.3.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+		},
+	},
+	"openbsd-7-4": {
+		Name: "openbsd-7.4", DisplayName: "OpenBSD 7.4", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_9.5",
+		httpServer:      "OpenBSD httpd",
+		ftpBanner:       "220 OpenBSD ftpd ready",
+		telnetBanner:    "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
+		smtpProduct:     "OpenSMTPD",
+		cliPrompt:       "obsd$ ",
+		httpTitle:       "OpenBSD httpd",
+		httpBodyHTML:    "<html><body><pre>It works.</pre></body></html>",
+		snmpSysDescr:    "OpenBSD obsd.example.com 7.4 GENERIC#10 amd64",
+		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
+		snmpSysName:     "obsd74",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+			{Port: 25, Handler: "smtp_recv", Note: "OpenSMTPD default"},
+		},
+	},
+	"openbsd-7-7": {
+		Name: "openbsd-7.7", DisplayName: "OpenBSD 7.7", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_10.0",
+		httpServer:      "OpenBSD httpd",
+		ftpBanner:       "220 OpenBSD ftpd ready",
+		telnetBanner:    "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
+		smtpProduct:     "OpenSMTPD",
+		cliPrompt:       "obsd$ ",
+		httpTitle:       "OpenBSD httpd",
+		httpBodyHTML:    "<html><body><pre>It works.</pre></body></html>",
+		snmpSysDescr:    "OpenBSD obsd.example.com 7.7 GENERIC#10 amd64",
+		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
+		snmpSysName:     "obsd77",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+		},
+	},
+	"netbsd-9": {
+		Name: "netbsd-9", DisplayName: "NetBSD 9", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_8.0 NetBSD_Secure_Shell-20190418",
+		httpServer:      "bozohttpd/20190228",
+		ftpBanner:       "220 nbsd.example.com FTP server (NetBSD-ftpd 20180605) ready.",
+		telnetBanner:    "\r\nNetBSD/amd64 (nbsd.example.com) (ttyp0)\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.4.8",
+		cliPrompt:       "nbsd# ",
+		httpTitle:       "NetBSD",
+		httpBodyHTML:    "<html><body><pre>It works (NetBSD).</pre></body></html>",
+		snmpSysDescr:    "NetBSD nbsd.example.com 9.3 NetBSD 9.3 (GENERIC) amd64",
+		snmpSysName:     "netbsd9",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+		},
+	},
+	"netbsd-10": {
+		Name: "netbsd-10", DisplayName: "NetBSD 10", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_9.6 NetBSD_Secure_Shell-20240115",
+		httpServer:      "bozohttpd/20240126",
+		ftpBanner:       "220 nbsd.example.com FTP server (NetBSD-ftpd 20240114) ready.",
+		telnetBanner:    "\r\nNetBSD/amd64 (nbsd.example.com) (ttyp0)\r\n\r\nlogin: ",
+		smtpProduct:     "Postfix 3.8.5",
+		cliPrompt:       "nbsd# ",
+		httpTitle:       "NetBSD",
+		httpBodyHTML:    "<html><body><pre>It works (NetBSD).</pre></body></html>",
+		snmpSysDescr:    "NetBSD nbsd.example.com 10.0 NetBSD 10.0 (GENERIC) amd64",
+		snmpSysName:     "netbsd10",
 		defaultServices: []DefaultService{
 			{Port: 22, Handler: "ssh"},
 		},

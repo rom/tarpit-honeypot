@@ -13,6 +13,10 @@ var applianceArchetypes = map[string]*Profile{
 	"fortigate":             fortigate(),
 	"synology-dsm":          synologyDSM(),
 	"qnap-qts":              qnapQTS(),
+	"netgear-readynas":      netgearReadyNAS(),
+	"asustor-nas":           asustorNAS(),
+	"oki-printer":           okiPrinter(),
+	"toshiba-estudio":       toshibaEStudio(),
 	"hikvision-camera":      hikvisionCamera(),
 	"hikvision-ptz":         hikvisionPTZ(),
 	"hikvision-nvr":         hikvisionNVR(),
@@ -347,6 +351,80 @@ func omronPLC() *Profile {
 			{Port: 80, Handler: "http", Note: "web"},
 		},
 		quirks: []string{"fins", "omron"},
+	}
+}
+
+func netgearReadyNAS() *Profile {
+	return &Profile{
+		Name: "netgear-readynas", DisplayName: "Netgear ReadyNAS", Family: "netgear",
+		sshBanner:    "SSH-2.0-OpenSSH_7.4p1 Debian-10",
+		httpServer:   "Apache",
+		httpTitle:    "ReadyNAS",
+		httpBodyHTML: "<html><head><title>ReadyNAS</title></head><body>ReadyNAS OS 6</body></html>",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+		snmpSysDescr: "NETGEAR ReadyNAS RN424 ReadyNASOS 6.10", snmpSysName: "ReadyNAS", snmpSysObjectID: ".1.3.6.1.4.1.4526",
+		macOUI:  [3]byte{0x00, 0x0f, 0xb5}, // Netgear
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "admin web"}, {Port: 443, Handler: "https", Note: "admin web (TLS)"},
+			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
+		},
+		quirks: []string{"nas"},
+	}
+}
+
+func asustorNAS() *Profile {
+	return &Profile{
+		Name: "asustor-nas", DisplayName: "ASUSTOR NAS (ADM)", Family: "asustor",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		httpServer:   "nginx",
+		httpTitle:    "ASUSTOR",
+		httpBodyHTML: "<html><head><title>ASUSTOR ADM</title></head><body>ADM</body></html>",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+		snmpSysDescr: "ASUSTOR AS5304T ADM 4.2", snmpSysName: "AS-NAS", snmpSysObjectID: ".1.3.6.1.4.1.43000",
+		macOUI:  [3]byte{0x00, 0x1f, 0xc6}, // ASUSTeK
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 8000, Handler: "http", Note: "ADM web"}, {Port: 8001, Handler: "https", Note: "ADM web (TLS)"},
+			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
+		},
+		quirks: []string{"nas"},
+	}
+}
+
+func okiPrinter() *Profile {
+	return &Profile{
+		Name: "oki-printer", DisplayName: "OKI ES network printer", Family: "printer",
+		httpServer:   "EWS/2.0",
+		httpTitle:    "OKI",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+		snmpSysDescr: "OKI ES8434 MFP", snmpSysName: "OKI", snmpSysObjectID: ".1.3.6.1.4.1.2001.1.2",
+		macOUI:  [3]byte{0x00, 0x80, 0x92}, // OKI
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "EWS web"}, {Port: 443, Handler: "https", Note: "EWS web (TLS)"},
+			{Port: 9100, Handler: "pjl", Note: "JetDirect / PJL"}, {Port: 631, Handler: "ipp", Note: "IPP"},
+			{Port: 515, Handler: "lpd", Note: "LPD"}, {Port: 161, Handler: "snmp", Note: "SNMP"},
+		},
+		quirks: []string{"printer", "pjl"},
+	}
+}
+
+func toshibaEStudio() *Profile {
+	return &Profile{
+		Name: "toshiba-estudio", DisplayName: "Toshiba e-STUDIO (MFP)", Family: "printer",
+		httpServer:   "TOSHIBA e-STUDIO",
+		httpTitle:    "TOSHIBA e-STUDIO",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+		snmpSysDescr: "TOSHIBA e-STUDIO3508A", snmpSysName: "MFP", snmpSysObjectID: ".1.3.6.1.4.1.1129",
+		macOUI:  [3]byte{0x00, 0x80, 0x91}, // Toshiba
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "TopAccess web"}, {Port: 443, Handler: "https", Note: "TopAccess web (TLS)"},
+			{Port: 9100, Handler: "pjl", Note: "JetDirect / PJL"}, {Port: 631, Handler: "ipp", Note: "IPP"},
+			{Port: 515, Handler: "lpd", Note: "LPD"}, {Port: 161, Handler: "snmp", Note: "SNMP"},
+		},
+		quirks: []string{"printer", "pjl"},
 	}
 }
 

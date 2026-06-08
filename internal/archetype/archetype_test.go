@@ -258,6 +258,26 @@ func TestAllShipArchetypes(t *testing.T) {
 		"MikroTik RouterOS 7 (RB5009)",
 		"MikroTik RouterOS 6.40 (Winbox CVE-2018-14847)",
 		"Cisco 2811 ISR (IOS 12.4)",
+		// OS variants added later.
+		"FreeBSD 11",
+		"OpenBSD 7.4",
+		"OpenBSD 7.7",
+		"NetBSD 9",
+		"NetBSD 10",
+		"CentOS Stream 9",
+		"Red Hat Enterprise Linux 7",
+		"Ubuntu 22.04 LTS (Jammy)",
+		"Debian 7 (wheezy)",
+		"SUSE Linux Enterprise Server 12 SP5",
+		"SUSE Linux Enterprise Server 15 SP6",
+		"openSUSE Leap 15.6",
+		// NAS / printer / ICS variants added later.
+		"TrueNAS SCALE (Debian)",
+		"Netgear ReadyNAS",
+		"ASUSTOR NAS (ADM)",
+		"OKI ES network printer",
+		"Toshiba e-STUDIO (MFP)",
+		"ABB Advant Controller 450 (AC450)",
 	}
 	got := Names()
 	if len(got) != len(want) {

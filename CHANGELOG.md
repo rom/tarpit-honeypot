@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Added
 
+- **18 more OS / NAS / printer / ICS archetype variants.** OS: `freebsd-11`,
+  `openbsd-7.4`, `openbsd-7.7`, `netbsd-9`, `netbsd-10` (NetBSD is new to the
+  catalog), `debian-7`, `centos-stream-9`, `rhel-7`, `ubuntu-22.04`, plus a new
+  **SUSE** family — `sles-12`, `sles-15`, `opensuse-leap-15`. Storage:
+  `truenas-scale`, `netgear-readynas`, `asustor-nas`. Printers/MFP:
+  `oki-printer`, `toshiba-estudio`. ICS: `abb-ac450` (ABB Advant Controller
+  450). Each has era-accurate banners / SNMP identity / TLS posture; the SUSE
+  family gets a `suse` kernel-version mapping. Catalog table + per-archetype
+  detail sections in `docs/archetypes.md` updated.
 - **More IP-camera archetype variants.** Beyond the base `axis-camera` /
   `hikvision-camera` / `bosch-camera`, added fixed-dome / PTZ / NVR variants:
   `axis-p3245` (P3245-LVE dome), `axis-q6075` (Q6075 PTZ), `hikvision-ptz`
