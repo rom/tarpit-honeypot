@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -21,14 +22,16 @@ type udpListener struct {
 	sev        event.Severity
 	handler    handler.UDPHandler
 	topo       *honeynet.Topology
+	// binds is the set of host:port addresses to listen on. Empty = [cfg.Bind].
+	binds []string
 }
 
-func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnView handler.HoneynetSnapshot, deps handler.Deps) (*udpListener, error) {
+func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnView handler.HoneynetSnapshot, deps handler.Deps, binds []string) (*udpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
 	if err != nil {
 		return nil, fmt.Errorf("listener %s: %w", l.ID, err)
 	}
-	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev, topo: topo}
+	u := &udpListener{cfg: l, sensorName: sensorName, sev: sev, topo: topo, binds: binds}
 	if l.Mode == "banner" {
 		h, err := handler.GetUDP(l.Handler, deps)
 		if err != nil {
@@ -45,17 +48,45 @@ func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnVie
 func (u *udpListener) ID() string { return u.cfg.ID }
 
 func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error {
-	lc := net.ListenConfig{}
-	pc, err := lc.ListenPacket(ctx, "udp", u.cfg.Bind)
-	if err != nil {
-		return fmt.Errorf("listener %s: listen %s: %w", u.cfg.ID, u.cfg.Bind, err)
+	binds := u.binds
+	if len(binds) == 0 {
+		binds = []string{u.cfg.Bind}
 	}
-	slog.Info("listener up", "id", u.cfg.ID, "proto", "udp", "bind", u.cfg.Bind, "mode", u.cfg.Mode, "handler", u.cfg.Handler)
+	lc := net.ListenConfig{}
+	var conns []net.PacketConn
+	for _, b := range binds {
+		pc, err := lc.ListenPacket(ctx, "udp", b)
+		if err != nil {
+			slog.Warn("listener bind failed", "id", u.cfg.ID, "proto", "udp", "bind", b, "err", err)
+			continue
+		}
+		slog.Info("listener up", "id", u.cfg.ID, "proto", "udp", "bind", b, "mode", u.cfg.Mode, "handler", u.cfg.Handler)
+		conns = append(conns, pc)
+	}
+	if len(conns) == 0 {
+		return fmt.Errorf("listener %s: no usable bind among %v", u.cfg.ID, binds)
+	}
 	go func() {
 		<-ctx.Done()
-		_ = pc.Close()
+		for _, pc := range conns {
+			_ = pc.Close()
+		}
 	}()
+	var wg sync.WaitGroup
+	for _, pc := range conns {
+		wg.Add(1)
+		go func(pc net.PacketConn) {
+			defer wg.Done()
+			u.readLoop(ctx, pc, bus)
+		}(pc)
+	}
+	wg.Wait()
+	return nil
+}
 
+// readLoop services one UDP socket until ctx is cancelled. Shared by every bind
+// the listener owns; each gets its own receive buffer (concurrent reads).
+func (u *udpListener) readLoop(ctx context.Context, pc net.PacketConn, bus chan<- *event.Event) {
 	bufSize := u.cfg.ReadBytes
 	if bufSize == 0 {
 		bufSize = 1500
@@ -69,7 +100,7 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 		n, raddr, err := pc.ReadFrom(buf)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil
+				return
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
@@ -148,10 +179,11 @@ func (u *udpListener) Start(ctx context.Context, bus chan<- *event.Event) error 
 			ev.Meta["bytes_out"] = int64(out)
 			ev.Meta["pkts_out"] = int64(1)
 		}
+		deriveEventIntent(ev) // authoritative intent in exports/search/UI
 		select {
 		case bus <- ev:
 		case <-ctx.Done():
-			return nil
+			return
 		}
 	}
 }

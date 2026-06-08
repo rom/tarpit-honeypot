@@ -60,7 +60,9 @@ install -m 0640 "$REPO_ROOT/configs/tarpit-honeypot.example.yaml"   "$STAGE/etc/
 # undefined CWD) and fails. Point it at /var/lib/tarpit-honeypot.
 sed -i -E 's#^([[:space:]]*)data_dir:.*#\1data_dir: /var/lib/tarpit-honeypot#' \
     "$STAGE/etc/tarpit-honeypot/config.yaml"
-install -m 0644 "$REPO_ROOT/packaging/systemd/tarpit-honeypot.service" "$STAGE/lib/systemd/system/"
+install -m 0644 "$REPO_ROOT/packaging/systemd/tarpit-honeypot.service"  "$STAGE/lib/systemd/system/"
+install -m 0644 "$REPO_ROOT/packaging/systemd/tarpit-honeypot@.service" "$STAGE/lib/systemd/system/"
+install -m 0755 "$REPO_ROOT/scripts/add-instance.sh" "$STAGE/usr/local/bin/tarpit-add-instance"
 install -m 0644 "$REPO_ROOT/README.md"      "$STAGE/usr/share/doc/tarpit-honeypot/"
 install -m 0644 "$REPO_ROOT/CHANGELOG.md"   "$STAGE/usr/share/doc/tarpit-honeypot/"
 install -m 0644 "$REPO_ROOT/LICENSE"        "$STAGE/usr/share/doc/tarpit-honeypot/copyright"

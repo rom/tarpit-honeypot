@@ -128,7 +128,94 @@ type Profile struct {
 	// OPCItems are the OPC-DA / ICS item IDs / group names this source reached
 	// for (from the dcerpc OPC-DA call layer).
 	OPCItems []string       `json:"opc_items,omitempty"`
-	Recent   []*event.Event `json:"-"`
+	// CrossTarget is the cross-target picture when this source reached more than
+	// one of the host's target IPs: targets in first-seen order with timing
+	// offsets + per-target ports, and the ports hit on >1 target. nil otherwise.
+	CrossTarget *CrossTarget   `json:"cross_target,omitempty"`
+	Recent      []*event.Event `json:"-"`
+}
+
+// CrossTarget summarizes one source reaching several of the host's target IPs.
+type CrossTarget struct {
+	DistinctTargets int           `json:"distinct_targets"`
+	SpanSeconds     int           `json:"span_seconds"`
+	SharedPorts     []int         `json:"shared_ports,omitempty"`
+	Targets         []TargetReach `json:"targets"`
+}
+
+// TargetReach is one target IP within a source's cross-target timeline.
+type TargetReach struct {
+	IP          string   `json:"ip"`
+	FirstOffset int      `json:"first_offset_s"` // seconds from the first target touched
+	BarPct      int      `json:"-"`              // FirstOffset as % of the span (timeline bar width)
+	Hits        int      `json:"hits"`
+	Ports       []int    `json:"ports,omitempty"`
+	Handlers    []string `json:"handlers,omitempty"`
+}
+
+// targetAccum is the per-target accumulator used while building the profile.
+type targetAccum struct {
+	first, last time.Time
+	hits        int
+	ports       map[int]struct{}
+	handlers    map[string]struct{}
+}
+
+// buildCrossTarget assembles the cross-target timeline from the per-target
+// accumulators, or returns nil when the source reached fewer than two targets.
+// Targets are ordered by first-touch time; offsets are relative to the first.
+func buildCrossTarget(targets map[string]*targetAccum) *CrossTarget {
+	if len(targets) < 2 {
+		return nil
+	}
+	order := make([]string, 0, len(targets))
+	for ip := range targets {
+		order = append(order, ip)
+	}
+	sort.Slice(order, func(i, j int) bool {
+		a, b := targets[order[i]], targets[order[j]]
+		if !a.first.Equal(b.first) {
+			return a.first.Before(b.first)
+		}
+		return order[i] < order[j]
+	})
+	base := targets[order[0]].first
+	ct := &CrossTarget{DistinctTargets: len(targets)}
+	portTargets := map[int]int{}
+	for _, ip := range order {
+		ta := targets[ip]
+		ports := make([]int, 0, len(ta.ports))
+		for pt := range ta.ports {
+			ports = append(ports, pt)
+		}
+		sort.Ints(ports)
+		for _, pt := range ports {
+			portTargets[pt]++
+		}
+		if d := int(ta.last.Sub(base).Seconds()); d > ct.SpanSeconds {
+			ct.SpanSeconds = d
+		}
+		ct.Targets = append(ct.Targets, TargetReach{
+			IP:          ip,
+			FirstOffset: int(ta.first.Sub(base).Seconds()),
+			Hits:        ta.hits,
+			Ports:       ports,
+			Handlers:    sortedSet(ta.handlers),
+		})
+	}
+	for pt, n := range portTargets {
+		if n >= 2 {
+			ct.SharedPorts = append(ct.SharedPorts, pt)
+		}
+	}
+	sort.Ints(ct.SharedPorts)
+	// Timeline bar width: each target's first-touch offset as a % of the span.
+	for i := range ct.Targets {
+		if ct.SpanSeconds > 0 {
+			ct.Targets[i].BarPct = ct.Targets[i].FirstOffset * 100 / ct.SpanSeconds
+		}
+	}
+	return ct
 }
 
 // OriginInfo is the per-actor infrastructure/geo enrichment.
@@ -200,6 +287,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	quicSNISet := map[string]struct{}{}
 	quicALPNSet := map[string]struct{}{}
 	opcSet := map[string]struct{}{}
+	targets := map[string]*targetAccum{} // cross-target: per-destination-IP accumulator
 	// firstStr records the first non-empty string value for an origin field.
 	firstStr := func(dst *string, ev *event.Event, key string) {
 		if *dst == "" {
@@ -237,6 +325,28 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		if ev.Dest.Port != 0 {
 			portSet[ev.Dest.Port] = struct{}{}
+		}
+		// Cross-target accumulation: which of the host's target IPs this source
+		// reached, when, and on which ports.
+		if dst := ev.Dest.IP; dst != "" {
+			ta := targets[dst]
+			if ta == nil {
+				ta = &targetAccum{first: ev.Time, last: ev.Time, ports: map[int]struct{}{}, handlers: map[string]struct{}{}}
+				targets[dst] = ta
+			}
+			if ev.Time.Before(ta.first) {
+				ta.first = ev.Time
+			}
+			if ev.Time.After(ta.last) {
+				ta.last = ev.Time
+			}
+			ta.hits++
+			if ev.Dest.Port != 0 {
+				ta.ports[ev.Dest.Port] = struct{}{}
+			}
+			if ev.Handler != "" {
+				ta.handlers[ev.Handler] = struct{}{}
+			}
 		}
 		if ev.Sensor != "" {
 			sensorSet[ev.Sensor] = struct{}{}
@@ -414,6 +524,7 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	if _, weak := anomSet["ssh-kex-weak-primitive"]; weak {
 		p.Proto.SSHKexWeak = true
 	}
+	p.CrossTarget = buildCrossTarget(targets)
 	p.synthesize()
 	return p
 }

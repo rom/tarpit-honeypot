@@ -1692,27 +1692,54 @@ func (s *Sensor) effIface(sectionIface string) string {
 	return ""
 }
 
-// bindForInterfaces rewrites a wildcard bind host to the primary IP of the
-// first configured interface so sensor.interfaces constrains where
-// listeners bind. Non-wildcard binds and the no-interfaces case pass
-// through unchanged; if the interface has no usable IP we warn and keep
-// the wildcard so the sensor still starts.
-func (s *Sensor) bindForInterfaces(bind string) string {
-	ifaces := s.curConfig().Sensor.Interfaces
-	if len(ifaces) == 0 {
-		return bind
-	}
-	host, port, err := net.SplitHostPort(bind)
+// resolveBinds returns the concrete host:port addresses a listener should bind.
+// A bind whose host is already a concrete IP is honored as-is. For a wildcard
+// bind (0.0.0.0 / :: / empty):
+//   - sensor.listen_addresses wins: one bind per listed IP — pin to specific
+//     server IPs (set one IP to dedicate this instance to a single address).
+//   - else sensor.interfaces constrains it to EVERY usable IP on the named
+//     interfaces (not just the first, the prior behavior).
+//   - else the wildcard is kept, so the service answers on every host IP.
+//
+// One logical listener then owns all the returned sockets (see tcp/udp Start);
+// the destination IP is still recorded per connection.
+func (s *Sensor) resolveBinds(l config.Listener) []string {
+	host, port, err := net.SplitHostPort(l.Bind)
 	if err != nil || !isWildcardHost(host) {
-		return bind
+		return []string{l.Bind}
 	}
-	ip := ifacePrimaryIP(ifaces[0])
-	if ip == "" {
-		slog.Warn("interface has no usable IP; leaving bind wildcard",
-			"interface", ifaces[0], "bind", bind)
-		return bind
+	cfg := s.curConfig()
+	var ips []string
+	switch {
+	case len(cfg.Sensor.ListenAddresses) > 0:
+		for _, a := range cfg.Sensor.ListenAddresses {
+			if a = strings.TrimSpace(a); a != "" {
+				ips = append(ips, a)
+			}
+		}
+	case len(cfg.Sensor.Interfaces) > 0:
+		ips = ifaceIPs(cfg.Sensor.Interfaces)
+		if len(ips) == 0 {
+			slog.Warn("interfaces have no usable IP; leaving bind wildcard (all IPs)",
+				"interfaces", cfg.Sensor.Interfaces, "bind", l.Bind)
+			return []string{l.Bind}
+		}
+	default:
+		return []string{l.Bind} // wildcard = every host IP
 	}
-	return net.JoinHostPort(ip, port)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		b := net.JoinHostPort(ip, port)
+		if !seen[b] {
+			seen[b] = true
+			out = append(out, b)
+		}
+	}
+	if len(out) == 0 {
+		return []string{l.Bind}
+	}
+	return out
 }
 
 func isWildcardHost(h string) bool {
@@ -1723,37 +1750,39 @@ func isWildcardHost(h string) bool {
 	return false
 }
 
-// ifacePrimaryIP returns the interface's primary global-unicast IP,
-// preferring IPv4. Returns "" if the interface is unknown / has none.
-func ifacePrimaryIP(name string) string {
-	ifi, err := net.InterfaceByName(name)
-	if err != nil {
-		return ""
-	}
-	addrs, err := ifi.Addrs()
-	if err != nil {
-		return ""
-	}
-	var v6 string
-	for _, a := range addrs {
-		var ip net.IP
-		switch v := a.(type) {
-		case *net.IPNet:
-			ip = v.IP
-		case *net.IPAddr:
-			ip = v.IP
-		}
-		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+// ifaceIPs returns every usable (global-unicast, non-loopback, non-link-local)
+// IP — IPv4 and IPv6 — across the named interfaces, de-duplicated. Used to bind
+// a wildcard listener on all addresses of sensor.interfaces.
+func ifaceIPs(names []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, name := range names {
+		ifi, err := net.InterfaceByName(name)
+		if err != nil {
 			continue
 		}
-		if ip.To4() != nil {
-			return ip.String()
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			continue
 		}
-		if v6 == "" {
-			v6 = ip.String()
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if s := ip.String(); !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
 		}
 	}
-	return v6
+	return out
 }
 
 // startListener builds and launches a single listener. It uses the sensor's
@@ -1764,10 +1793,14 @@ func (s *Sensor) startListener(l config.Listener) error {
 	}
 	ctx, cancel := context.WithCancel(s.rootCtx)
 	cfg := s.curConfig()
-	// sensor.interfaces constrains where wildcard listeners bind.
-	l.Bind = s.bindForInterfaces(l.Bind)
+	// Resolve the concrete bind set: a wildcard bind stays wildcard (reachable
+	// on every host IP) unless sensor.listen_addresses / interfaces pin it to
+	// specific IPs, in which case one socket is opened per address under this
+	// one logical listener.
+	binds := s.resolveBinds(l)
 	ln, err := listener.Build(l, listener.BuildArgs{
 		SensorName:       s.name,
+		Binds:            binds,
 		DataDir:          cfg.Sensor.DataDir,
 		CaptureMgr:       s.captureMgr,
 		URLCanaries:      cfg.URLCanaries,

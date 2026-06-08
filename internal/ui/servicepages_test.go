@@ -13,7 +13,12 @@ func TestServiceCategory(t *testing.T) {
 	cases := map[string]string{
 		"dns": "dns", "http": "web", "https": "web",
 		"mysql": "database", "postgres": "database", "redis": "database",
-		"mongodb": "database", "ssh": "", "ftp_files": "", "telnet": "",
+		"mongodb": "database",
+		"ssh": "remote", "ssh_interactive": "remote", "telnet": "remote",
+		"rdp": "remote", "vnc": "remote",
+		"smtp_recv": "mail", "smtps": "mail", "pop3": "mail", "imaps": "mail",
+		"ntp": "ntp",
+		"ftp_files": "",
 	}
 	for h, want := range cases {
 		if got := serviceCategory(h); got != want {

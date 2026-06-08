@@ -10,6 +10,79 @@ documented in `docs/`).
 
 ### Added
 
+- **Attacker interactions view (`/interactions`).** A new page showing what
+  attackers actually *did* once engaged: commands typed into the emulated
+  SSH/Telnet shells (`shell_commands`), exec requests, fake-web-shell commands
+  (`webshell_cmd`), keystrokes, and recorded session casts (linked for
+  download). Top-commands table + by-service/top-command charts + per-session
+  command transcripts, newest first. The "work" view, distinct from the
+  recon/attack tables.
+- **Remote-access / mail / NTP analytics views.** Three new DNS-style pages
+  (`/remote`, `/mail`, `/ntp`) driven by one generic service-view builder +
+  template: event volume over time, services hit, top usernames/commands/
+  senders, banners, top attackers, attacks/CVEs, the attacker-intent table, and
+  a per-event activity log with an intent column. Categories: remote =
+  ssh/telnet/rdp/vnc/…, mail = all SMTP/POP3/IMAP variants, ntp. Nav-gated +
+  togglable like the existing service pages.
+- **Attacker-intent on the web + database views — and in every export.** The
+  intent table near the top is now populated and an intent column appears in the
+  per-request / activity listings. The http handler labels intent itself, and a
+  listener-level deriver (`deriveEventIntent`) now sets an authoritative
+  `meta["intent"]` for every event a handler didn't already label — remote
+  (shell session / login / probe), mail (relay / login / address harvesting),
+  database (auth / command / probe), and the CVE-exploit case — so the intent
+  appears in search and in all SIEM exports (JSON / CEF / LEEF / OCSF), not just
+  the UI pages.
+- **Cross-target timeline on the source profile.** When a source reached more
+  than one of the host's server IPs, the profile shows the targets in first-seen
+  order with timing-offset bars, per-target ports + services + hit counts, and a
+  ⚠ list of ports hit on more than one target (same-service fleet sweep).
+
+- **Cross-target correlation (`correlate:cross_target`).** On a host serving
+  several decoy IPs, this detector fires when one source reaches multiple target
+  IPs within a window and records the dimensions an analyst asks for: the
+  targets in first-seen **order**, the **timing** (first-touch offset per
+  target), the **ports per target**, and the **ports hit on more than one
+  target** (`shared_ports` — a scripted same-service sweep across the fleet).
+  Opt-in (`correlate.cross_target`), ATT&CK-mapped (T1018/T1046/T1595), enabled
+  in the FULL example; the event persists like any other so it shows in the
+  source profile + event views.
+
+- **SNMP trap / inform receiver (`snmptrap`, udp/162) + Cisco SNMP RCE
+  detection.** A passive receiver parses SNMPv1 and v2c traps *and* informs
+  (and notes v3) with a tolerant BER walker that never feeds attacker bytes into
+  a real SNMP stack: it captures version / community (v3 user) / enterprise OID
+  / generic+specific trap / varbind OIDs, acknowledges informs (PDU flipped to
+  GetResponse, no amplification) when the reply policy allows, and flags
+  malformed ASN.1, oversized packets, oversized/truncated PDUs, non-standard
+  SNMP versions, randomized/off-tree enterprise OIDs and varbind floods. The
+  same inspector runs on the udp/161 agent, so the **Cisco IOS / IOS XE SNMP RCE
+  class** (`CVE-2017-6736`, `CVE-2025-20352`, and advisory `CVE-2025-20312` /
+  `CVE-2024-20373` / `CVE-2025-68615`) is attributed on its shared overflow
+  primitive — an over-long / malformed OID or a PDU whose declared length runs
+  past the packet — and surfaced as `cisco-snmp-rce-attempt` + `cve:<id>`.
+
+- **Multiple honeypots on one host, one per server IP (systemd template).** A
+  new `tarpit-honeypot@.service` template runs independent, fully-isolated
+  instances — each with its own config (`/etc/tarpit-honeypot/instances/NAME
+  .yaml`), data dir (`/var/lib/tarpit-honeypot/NAME` → own SQLite DB,
+  `.deployment-id` and certificates), syslog identity and UI port.
+  `scripts/add-instance.sh --name NAME --listen-ip IP` provisions one (derives +
+  patches the per-IP config, creates/labels the dirs for SELinux, auto-assigns a
+  loopback UI port, and enables the unit). `install.sh` lays down the template
+  and the rsyslog routing now matches every `tarpit-honeypot*` instance tag.
+
+- **Multi-IP binding (`sensor.listen_addresses`).** A wildcard listener
+  (`[::]`/`0.0.0.0`) already answers on every host IP; now you can also pin all
+  listeners to a specific set of IPs. One logical listener owns several sockets
+  — the same SSH/HTTP/… decoy on N server IPs feeding one handler — and the
+  destination IP is still recorded per connection (`dst_ip`). Set one IP to
+  dedicate an instance to a single address (the per-IP multi-honeypot model).
+  Also fixed `sensor.interfaces`, which bound only the *first* interface IP; it
+  now binds every usable IP on the named interfaces (matching its documented
+  intent). A failed bind (an IP not on the host) warns and is skipped instead of
+  taking the whole listener down.
+
 - **`install.sh` sets the deployment identity, not just the TLS name.** It now
   prompts for (and accepts `--hostname` / `--domain`, or `TARPIT_HOSTNAME` /
   `TARPIT_DOMAIN`) the sensor's host label (`sensor.name`) and DNS domain

@@ -28,6 +28,19 @@ var (
 		"redis": true, "elasticsearch": true, "oracle_tns": true,
 		"cassandra": true, "etcd": true, "memcached": true, "memcached_udp": true,
 	}
+	// Remote-access services (interactive / remote-control surfaces).
+	remoteHandlers = map[string]bool{
+		"ssh": true, "ssh_interactive": true, "telnet": true,
+		"rdp": true, "rdp_udp": true, "vnc": true, "winrm": true, "x11": true,
+		"rlogin": true, "rsh": true, "pcanywhere": true, "teamviewer": true,
+	}
+	// Mail services (all SMTP / POP3 / IMAP variants).
+	mailHandlers = map[string]bool{
+		"smtp": true, "smtp_recv": true, "smtps": true, "submission": true,
+		"pop3": true, "pop3s": true, "imap": true, "imaps": true,
+	}
+	// Time service.
+	ntpHandlers = map[string]bool{"ntp": true}
 )
 
 func serviceCategory(handler string) string {
@@ -38,6 +51,12 @@ func serviceCategory(handler string) string {
 		return "web"
 	case dbHandlers[handler]:
 		return "database"
+	case remoteHandlers[handler]:
+		return "remote"
+	case mailHandlers[handler]:
+		return "mail"
+	case ntpHandlers[handler]:
+		return "ntp"
 	}
 	return ""
 }
@@ -55,6 +74,12 @@ func categoryHandlers(kind string) []string {
 		set = webHandlers
 	case "database":
 		set = dbHandlers
+	case "remote":
+		set = remoteHandlers
+	case "mail":
+		set = mailHandlers
+	case "ntp":
+		set = ntpHandlers
 	default:
 		return nil
 	}
@@ -321,11 +346,13 @@ type dnsQueryRow struct {
 }
 
 // topIntents aggregates the per-event `intent` meta label (set by the DNS / SNMP
-// / NTP handlers — "what the attacker is actually doing") into a ranked list.
+// / NTP / http / db handlers — "what the attacker is actually doing") into a
+// ranked list, deriving one from the event's signals when a handler didn't set
+// it (so the web / database views always have a populated intent table).
 func topIntents(evs []*event.Event) []countRow {
 	c := map[string]int{}
 	for _, ev := range evs {
-		if it := metaStr(ev, "intent"); it != "" {
+		if it := eventIntent(ev); it != "" {
 			c[it]++
 		}
 	}
@@ -335,6 +362,42 @@ func topIntents(evs []*event.Event) []countRow {
 		rows = append(rows, countRow{Label: k, Count: c[k]})
 	}
 	return rows
+}
+
+// eventIntent returns the handler-set intent, or derives a concise "what the
+// attacker is doing" label from the event's signals (CVE hits, web-attack
+// classes, DB auth/commands, …) so views can show intent even for handlers that
+// don't label it themselves.
+func eventIntent(ev *event.Event) string {
+	if it := metaStr(ev, "intent"); it != "" {
+		return it
+	}
+	return deriveIntent(ev)
+}
+
+func deriveIntent(ev *event.Event) string {
+	anoms := append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...)
+	for _, a := range anoms {
+		if strings.HasPrefix(a, "cve:") {
+			return "exploit attempt (" + strings.TrimPrefix(a, "cve:") + ")"
+		}
+	}
+	switch serviceCategory(ev.Handler) {
+	case "database":
+		switch {
+		case ev.Meta["password"] != nil || ev.Meta["login7_user"] != nil || metaStr(ev, "auth_user") != "" || metaStr(ev, "user") != "":
+			return "database auth attempt"
+		case len(metaStrings(ev.Meta, "commands")) > 0 || metaStr(ev, "mongo_command") != "" || metaStr(ev, "tns_command") != "" || metaStr(ev, "http_method") != "":
+			return "database command / query"
+		default:
+			return "database probe / banner-grab"
+		}
+	case "web":
+		if metaStr(ev, "http_uri") != "" || metaStr(ev, "http_method") != "" {
+			return "web recon / content discovery"
+		}
+	}
+	return ""
 }
 
 func (s *Server) handleDNS(w http.ResponseWriter, r *http.Request) {
@@ -449,7 +512,20 @@ type webView struct {
 	Intents    []countRow
 	URLList    []string
 	Files      []string
+	Requests   []reqRow
 	Empty      bool
+}
+
+// reqRow is one entry of the web request log (newest-first), carrying the
+// per-request attacker intent + anomalies.
+type reqRow struct {
+	Time   string
+	Source string
+	Method string
+	URI    string
+	Status string
+	Intent string
+	Anoms  []string
 }
 
 func (s *Server) handleWeb(w http.ResponseWriter, r *http.Request) {
@@ -547,6 +623,29 @@ func buildWeb(evs []*event.Event) webView {
 	v.Intents = topIntents(evs)
 	v.URLList = sortedSetKeys(urlSet, 5000)
 	v.Files = sortedSetKeys(fileSet, 5000)
+
+	// Per-request log (newest first), with the per-request intent + anomalies.
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Requests) >= 200 {
+			break
+		}
+		u := metaStr(ev, "http_uri")
+		m := metaStr(ev, "http_method")
+		if u == "" && m == "" {
+			continue
+		}
+		v.Requests = append(v.Requests, reqRow{
+			Time:   ev.Time.UTC().Format(time.RFC3339),
+			Source: ev.Source.IP,
+			Method: m,
+			URI:    u,
+			Status: httpStatus(ev.BannerSent),
+			Intent: eventIntent(ev),
+			Anoms:  append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
 	return v
 }
 
@@ -577,7 +676,19 @@ type dbView struct {
 	Attackers  []countRow
 	Attacks    []attackRow
 	Intents    []countRow
+	Events     []dbRow
 	Empty      bool
+}
+
+// dbRow is one entry of the database activity log (newest-first), with the
+// per-event attacker intent + anomalies.
+type dbRow struct {
+	Time    string
+	Source  string
+	Engine  string
+	Command string
+	Intent  string
+	Anoms   []string
 }
 
 func (s *Server) handleDatabases(w http.ResponseWriter, r *http.Request) {
@@ -677,7 +788,224 @@ func buildDatabases(evs []*event.Event) dbView {
 	}
 	v.Attacks = attackTable(evs)
 	v.Intents = topIntents(evs)
+
+	// Per-event activity log (newest first), with engine + command + intent.
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Events) >= 200 {
+			break
+		}
+		v.Events = append(v.Events, dbRow{
+			Time:    ev.Time.UTC().Format(time.RFC3339),
+			Source:  ev.Source.IP,
+			Engine:  ev.Handler,
+			Command: dbCommandSummary(ev),
+			Intent:  eventIntent(ev),
+			Anoms:   append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
 	return v
+}
+
+// dbCommandSummary picks the most descriptive command/query string an event
+// carries across the database engines.
+func dbCommandSummary(ev *event.Event) string {
+	for _, k := range []string{"mongo_command", "tns_command", "http_method", "database", "auth_user", "user"} {
+		if v := metaStr(ev, k); v != "" {
+			return v
+		}
+	}
+	if cmds := metaStrings(ev.Meta, "commands"); len(cmds) > 0 {
+		return strings.Join(cmds, " ")
+	}
+	return ""
+}
+
+// ============== Generic service views: remote-access / mail / ntp ==========
+//
+// These mirror the DNS view (charts, top attackers, attacks/CVEs, attacker
+// intent, and a per-event log) but are driven by one generic builder + template
+// so the three categories share the scaffolding.
+
+type svcView struct {
+	RangeLabel string
+	RangeLinks []rangeLink
+	Title      string
+	Slug       string
+	Total      int
+	Sources    int
+	Figs       []chartFig
+	Attackers  []countRow
+	Attacks    []attackRow
+	Intents    []countRow
+	Log        []svcLogRow
+	Empty      bool
+}
+
+// svcLogRow is one entry of a service page's per-event log, with the per-event
+// attacker intent + anomalies.
+type svcLogRow struct {
+	Time    string
+	Source  string
+	Service string
+	Detail  string
+	Intent  string
+	Anoms   []string
+}
+
+func (s *Server) handleRemote(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "remote", "remote-access analytics", "remote")
+}
+func (s *Server) handleMail(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "mail", "mail analytics", "mail")
+}
+func (s *Server) handleNTPPage(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "ntp", "ntp analytics", "ntp")
+}
+
+func (s *Server) servicePage(w http.ResponseWriter, r *http.Request, kind, title, slug string) {
+	if !s.hasServicePage(kind) {
+		http.NotFound(w, r)
+		return
+	}
+	evs, win, err := s.servicePageEvents(r, kind)
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	v := buildServiceView(kind, title, evs)
+	v.Slug = slug
+	v.RangeLabel = win.label
+	v.RangeLinks = rangeLinksFor("/"+slug, win.key)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "service", v); err != nil {
+		slog.Warn("ui: render service page", "slug", slug, "err", err)
+	}
+}
+
+func buildServiceView(kind, title string, evs []*event.Event) svcView {
+	v := svcView{Title: title}
+	if len(evs) == 0 {
+		v.Empty = true
+		return v
+	}
+	engine := map[string]int{}
+	srcSet := map[string]bool{}
+	reply := map[string]int{}
+	detail := map[string]int{}
+	for _, ev := range evs {
+		v.Total++
+		if ev.Source.IP != "" {
+			srcSet[ev.Source.IP] = true
+		}
+		if ev.Handler != "" {
+			engine[ev.Handler]++
+		}
+		if ev.BannerSent != "" {
+			reply[ev.BannerSent]++
+		}
+		if d := serviceDetail(ev, kind); d != "" {
+			detail[d]++
+		}
+	}
+	v.Sources = len(srcSet)
+
+	if fig, ok := perHourChart(title+" per hour", evs, "#4a6fa5"); ok {
+		v.Figs = append(v.Figs, fig)
+	}
+	if len(engine) > 0 {
+		v.Figs = append(v.Figs, chartFigure("pie", "By service", map[string]any{"slices": slicesFromMap(engine), "donut": true}))
+	}
+	if len(detail) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", serviceDetailTitle(kind), map[string]any{"series": topBarsFromMap(detail, 20)}))
+	}
+	if len(reply) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies / banners", map[string]any{"series": topBarsFromMap(reply, 20)}))
+	}
+	_, v.Attackers = topAttackers(evs)
+	if len(v.Attackers) > 0 {
+		bars := make([]chBar, 0, len(v.Attackers))
+		for _, rr := range v.Attackers {
+			bars = append(bars, chBar{Label: rr.Label, Value: rr.Count})
+		}
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
+	}
+	v.Attacks = attackTable(evs)
+	v.Intents = topIntents(evs)
+
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Log) >= 200 {
+			break
+		}
+		v.Log = append(v.Log, svcLogRow{
+			Time:    ev.Time.UTC().Format(time.RFC3339),
+			Source:  ev.Source.IP,
+			Service: ev.Handler,
+			Detail:  serviceDetail(ev, kind),
+			Intent:  eventIntent(ev),
+			Anoms:   append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
+	return v
+}
+
+func serviceDetailTitle(kind string) string {
+	switch kind {
+	case "remote":
+		return "Top usernames / commands"
+	case "mail":
+		return "Top senders / recipients / commands"
+	case "ntp":
+		return "Top NTP requests / intents"
+	}
+	return "Top details"
+}
+
+// serviceDetail picks the most telling per-event detail for the category, from
+// the meta keys the relevant handlers actually set.
+func serviceDetail(ev *event.Event, kind string) string {
+	switch kind {
+	case "remote":
+		if c := metaStr(ev, "exec_command"); c != "" {
+			return c
+		}
+		if cmds := metaStrings(ev.Meta, "shell_commands"); len(cmds) > 0 {
+			return cmds[0]
+		}
+		if cmds := metaStrings(ev.Meta, "commands"); len(cmds) > 0 {
+			return cmds[0]
+		}
+		for _, k := range []string{"user_attempt", "accepted_user", "auth_user", "ntlm_user"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
+	case "mail":
+		if f := metaStr(ev, "mail_from"); f != "" {
+			if t := metaStr(ev, "rcpt_to"); t != "" {
+				return f + " → " + t
+			}
+			return f
+		}
+		for _, k := range []string{"rcpt_to", "auth_user", "helo"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
+		if e := metaStrings(ev.Meta, "expn_list"); len(e) > 0 {
+			return "EXPN/VRFY " + strings.Join(e, ",")
+		}
+	case "ntp":
+		for _, k := range []string{"intent", "ntp_request", "ntp_control_opcode"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 // sortedSetKeys returns the set's keys sorted, capped at n.

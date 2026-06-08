@@ -618,8 +618,9 @@ type UI struct {
 // ui.pages. Core pages are intentionally absent (always shown).
 var TogglablePages = map[string]bool{
 	"attack": true, "correlation": true, "campaigns": true, "map": true,
-	"captures": true, "credentials": true, "dns": true, "web": true,
-	"databases": true, "fleet": true, "iocs": true, "tunnels": true,
+	"captures": true, "credentials": true, "interactions": true, "dns": true, "web": true,
+	"databases": true, "remote": true, "mail": true, "ntp": true,
+	"fleet": true, "iocs": true, "tunnels": true,
 	"fingerprints": true, "devices": true, "topology": true, "charts": true,
 	"statistics": true, "alerting": true, "errors": true, "docs": true,
 }
@@ -767,6 +768,16 @@ type Sensor struct {
 	// Settable on the CLI with -i/--interface (repeatable), which
 	// overrides this list.
 	Interfaces []string `yaml:"interfaces"`
+
+	// ListenAddresses optionally pins every wildcard listener (bind host
+	// 0.0.0.0 / :: / empty) to a specific set of IP addresses, binding each
+	// listener once per address. Empty (the default) keeps the wildcard bind,
+	// so the listener answers on EVERY IP the host has now or later — the "all
+	// services on all IPs" posture. Set it to ONE IP to dedicate this sensor
+	// instance to a single server IP (the multi-instance, one-honeypot-per-IP
+	// deployment). A listener whose bind is already a concrete IP is left
+	// untouched. Takes precedence over Interfaces.
+	ListenAddresses []string `yaml:"listen_addresses"`
 }
 
 // EgressPolicy is the outbound allowlist. Configured channel destinations are
@@ -1610,6 +1621,7 @@ type Correlate struct {
 	Beacon        CorrBeacon        `yaml:"beacon"`
 	// Additional opt-in correlators (all default-off; enable per deployment).
 	HostSweep           CorrHostSweep           `yaml:"host_sweep"`
+	CrossTarget         CorrCrossTarget         `yaml:"cross_target"`
 	ServiceSweep        CorrServiceSweep        `yaml:"service_sweep"`
 	UARotation          CorrUARotation          `yaml:"ua_rotation"`
 	ExploitChain        CorrExploitChain        `yaml:"exploit_chain"`
@@ -1984,6 +1996,19 @@ type CorrHostSweep struct {
 	DistinctHosts int           `yaml:"distinct_hosts"`
 	Window        time.Duration `yaml:"window"`
 	Severity      string        `yaml:"severity"`
+}
+
+// CorrCrossTarget detects one source reaching DistinctTargets distinct target
+// (server) IPs within a window and records the cross-target dimensions a
+// multi-IP deployment cares about: the ORDER targets were reached, the TIMING
+// (first-touch offset per target), the ports hit per target, and the ports hit
+// on MORE THAN ONE target (a scripted same-service sweep across the fleet).
+// Richer than host_sweep, which only counts distinct targets.
+type CorrCrossTarget struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctTargets int           `yaml:"distinct_targets"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
 }
 
 // CorrServiceSweep detects cross-protocol reconnaissance: one source

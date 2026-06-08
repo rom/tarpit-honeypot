@@ -565,7 +565,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -686,6 +686,47 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
+{{ define "interactions" }}{{ template "head" . }}
+<h1 data-help="What attackers actually DID once they engaged a decoy: commands typed into the emulated SSH/Telnet shells, exec requests, fake-web-shell commands, keystrokes, and recorded session casts. The 'work' view, distinct from the recon/attack tables.">attacker interactions — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No interactive sessions captured yet — they appear once an attacker runs commands in the emulated shells (ssh / telnet), the fake web shell, or another decoy that records what they ran.</p>{{ else }}
+<div class="counters">
+  <span class="counter c-total"><b>{{ .Total }}</b><span>interactions</span></span>
+  <span class="counter c-kind"><b>{{ .Commands }}</b><span>commands</span></span>
+  <span class="counter c-udp"><b>{{ .Sources }}</b><span>sources</span></span>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ if .TopCmds }}<h2>Top commands captured</h2>
+<table data-filter><tr><th>command</th><th>count</th></tr>{{ range .TopCmds }}<tr><td><a href="{{ .Href }}"><code>{{ .Label }}</code></a></td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+<h2>Sessions <span class="meta">({{ len .Rows }})</span></h2>
+{{ range .Rows }}<div style="margin:.7em 0">
+  <p class="note" style="margin:.2em 0"><span class="tag">{{ .Kind }}</span> <span class="tag">{{ .Service }}</span> {{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }} · {{ .Time }}{{ if .Cast }} · <a href="/loot/?kind=session&amp;name={{ .Cast }}">⤓ session cast</a>{{ end }}</p>
+  <pre class="kv">{{ range .Commands }}{{ . }}
+{{ end }}{{ if .More }}… +{{ .More }} more{{ end }}</pre>
+</div>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "service" }}{{ template "head" . }}
+<h1 data-help="Per-service decoy analytics (mirrors the DNS view): event volume over time, the services hit, the top usernames/commands/senders, the version banners served, the top attackers, the attacks/misuses/CVEs triggered, the attacker-intent breakdown, and a per-event log with intent.">{{ .Title }} — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No traffic observed yet for this service category in this window.</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/events"><b>{{ .Total }}</b><span>events</span></a>
+  <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ template "intenttable" .Intents }}
+{{ if .Attackers }}<h2 id="sources">Top attackers</h2>
+<table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+<h2>Attacks / misuses / manipulations / vulnerabilities</h2>
+{{ template "attacktable" .Attacks }}
+{{ if .Log }}<h2>Activity log <span class="meta">({{ len .Log }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>service</th><th>detail</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Log }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Service }}</span></td><td><code>{{ .Detail }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
 {{ define "web" }}{{ template "head" . }}
 <h1 data-help="Web app decoy analytics: request volume over time, top URLs / HTTP headers / response statuses, the top attacks + attackers, every unique URL and file touched, and the web-attack classes / CVEs / CWEs triggered.">web analytics — {{ .RangeLabel }}</h1>
 <p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
@@ -705,6 +746,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <div>{{ range .Files }}<a class="tag" href="/search?q={{ . }}"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
 {{ if .URLList }}<h2 id="urls">Unique URLs <span class="meta">({{ len .URLList }})</span></h2>
 <table data-filter><tr><th>url</th></tr>{{ range .URLList }}<tr><td><a href="/search?q={{ . }}"><code>{{ . }}</code></a></td></tr>{{ end }}</table>{{ end }}
+{{ if .Requests }}<h2>Request log <span class="meta">({{ len .Requests }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>method</th><th>url</th><th>status</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Requests }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Method }}<span class="tag">{{ .Method }}</span>{{ end }}</td><td><code>{{ .URI }}</code></td><td>{{ .Status }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -722,6 +766,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
+{{ if .Events }}<h2>Activity log <span class="meta">({{ len .Events }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>engine</th><th>command / db</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Events }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Engine }}</span></td><td><code>{{ .Command }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -1346,6 +1393,19 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Handlers }}<h2>services targeted</h2><div>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</div>
 {{ if .Ports }}<p class="note">ports: {{ join .Ports }}</p>{{ end }}{{ end }}
+
+{{ with .CrossTarget }}<h2 data-help="When this source reached more than one of THIS host's server IPs: the targets in the order they were first touched, the timing offset of each from the first, the ports hit per target, and the ports hit on more than one target (a scripted same-service sweep across the fleet).">cross-target activity <span class="meta">({{ .DistinctTargets }} target IPs over {{ .SpanSeconds }}s)</span></h2>
+{{ if .SharedPorts }}<p class="note">⚠ ports hit on more than one target (same-service fleet sweep): {{ range .SharedPorts }}<span class="tag bad">{{ . }}</span> {{ end }}</p>{{ end }}
+<table><tr><th>target</th><th>first touch</th><th>timeline</th><th>ports</th><th>services</th><th>hits</th></tr>
+{{ range .Targets }}<tr>
+  <td><code>{{ .IP }}</code></td>
+  <td class="meta" style="white-space:nowrap">+{{ .FirstOffset }}s</td>
+  <td style="min-width:140px"><div style="height:10px;width:{{ .BarPct }}%;min-width:3px;background:#4a6fa5;border-radius:3px" title="first touched +{{ .FirstOffset }}s into the run"></div></td>
+  <td>{{ range .Ports }}<span class="tag">{{ . }}</span> {{ end }}</td>
+  <td>{{ range .Handlers }}<a class="tag" href="/events?handler={{ . }}">{{ . }}</a> {{ end }}</td>
+  <td>{{ .Hits }}</td>
+</tr>{{ end }}
+</table>{{ end }}
 
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;tactic={{ . }}" title="this source's events in this ATT&amp;CK tactic">{{ . }}</a> {{ end }}</div>{{ end }}

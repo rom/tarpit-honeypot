@@ -29,48 +29,49 @@ type Correlator struct {
 	dnsSev    event.Severity
 	beaconSev event.Severity
 	// Additional opt-in correlators.
-	hostSweepSev  event.Severity
-	svcSweepSev   event.Severity
-	uaRotSev      event.Severity
-	exploitSev    event.Severity
-	icsSev        event.Severity
-	canarySev     event.Severity
-	fpReuseSev    event.Severity
-	protoViolSev  event.Severity
-	exfilSev      event.Severity
-	floodSev      event.Severity
-	lateralSev    event.Severity
-	otReconSev    event.Severity
-	dataAccSev    event.Severity
-	malwareSev    event.Severity
-	webshellSev   event.Severity
-	tiBurstSev    event.Severity
-	geoVelSev     event.Severity
-	ampSev        event.Severity
-	defCredSev    event.Severity
-	cveCampSev    event.Severity
-	destructSev   event.Severity
-	cloudCredSev  event.Severity
-	ssrfCbSev     event.Severity
-	mitmCapSev    event.Severity
-	fpRotSev      event.Severity
-	ctrTakeSev    event.Severity
-	webProbeSev   event.Severity
-	sshKeySev     event.Severity
-	spamRelaySev  event.Severity
-	dnsTunnelSev  event.Severity
-	reconExpSev   event.Severity
-	honeytokenSev event.Severity
-	toolRotSev    event.Severity
-	plcProgSev    event.Severity
-	modeChgSev    event.Severity
-	otKillSev     event.Severity
-	remoteToolSev event.Severity
-	oobMgmtSev    event.Severity
-	remoteExecSev event.Severity
-	tollFraudSev  event.Severity
-	voipEnumSev   event.Severity
-	pbxCtrlSev    event.Severity
+	hostSweepSev   event.Severity
+	crossTargetSev event.Severity
+	svcSweepSev    event.Severity
+	uaRotSev       event.Severity
+	exploitSev     event.Severity
+	icsSev         event.Severity
+	canarySev      event.Severity
+	fpReuseSev     event.Severity
+	protoViolSev   event.Severity
+	exfilSev       event.Severity
+	floodSev       event.Severity
+	lateralSev     event.Severity
+	otReconSev     event.Severity
+	dataAccSev     event.Severity
+	malwareSev     event.Severity
+	webshellSev    event.Severity
+	tiBurstSev     event.Severity
+	geoVelSev      event.Severity
+	ampSev         event.Severity
+	defCredSev     event.Severity
+	cveCampSev     event.Severity
+	destructSev    event.Severity
+	cloudCredSev   event.Severity
+	ssrfCbSev      event.Severity
+	mitmCapSev     event.Severity
+	fpRotSev       event.Severity
+	ctrTakeSev     event.Severity
+	webProbeSev    event.Severity
+	sshKeySev      event.Severity
+	spamRelaySev   event.Severity
+	dnsTunnelSev   event.Severity
+	reconExpSev    event.Severity
+	honeytokenSev  event.Severity
+	toolRotSev     event.Severity
+	plcProgSev     event.Severity
+	modeChgSev     event.Severity
+	otKillSev      event.Severity
+	remoteToolSev  event.Severity
+	oobMgmtSev     event.Severity
+	remoteExecSev  event.Severity
+	tollFraudSev   event.Severity
+	voipEnumSev    event.Severity
+	pbxCtrlSev     event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -84,50 +85,51 @@ type Correlator struct {
 	beacon   map[string]*beaconState    // key: source IP (call-home timestamps)
 	story    map[string]*storylineState // key: source IP
 	// Additional opt-in correlator state.
-	hostSweep  map[string]*setState   // key: source IP (distinct dest hosts)
-	svcSweep   map[string]*setState   // key: source IP (distinct handlers)
-	uaRot      map[string]*setState   // key: source IP (distinct user-agents)
-	exploit    map[string]*setState   // key: source IP (distinct CVE ids)
-	ics        map[string]*countState // key: source IP (control-command count)
-	canary     map[string]*setState   // key: source IP (distinct canary tokens)
-	fpReuse    map[string]*reuseState // key: fingerprint value (distinct sources)
-	protoViol  map[string]*setState   // key: source IP (distinct anomaly markers)
-	exfil      map[string]*byteState  // key: source IP (cumulative request bytes)
-	flood      map[string]*countState // key: source IP (connection count)
-	lateral    map[string]*setState   // key: source IP (distinct lateral handlers)
-	otRecon    map[string]*setState   // key: source IP (distinct ICS handlers)
-	dataAcc    map[string]*countState // key: source IP (data-access event count)
-	malware    map[string]*countState // key: source IP (malware:capture count)
-	webshell   map[string]*countState // key: source IP (webshell event count)
-	tiBurst    map[string]*countState // key: source IP (threat-listed/Tor event count)
-	geoVel     map[string]*setState   // key: credential pair (distinct countries)
-	amp        map[string]*setState   // key: source IP (distinct amplifier services)
-	defCred    map[string]*setState   // key: source IP (distinct default-cred services)
-	cveCamp    map[string]*reuseState // key: cve id (distinct source IPs)
-	destruct   map[string]*countState // key: source IP (data-destruction op count)
-	cloudCred  map[string]*countState // key: source IP (cloud cred-theft op count)
-	ssrfCb     map[string]*setState   // key: source IP (distinct ssrf tokens)
-	mitmCap    map[string]*countState // key: source IP (tls-decrypted exploit/cred count)
-	fpRot      map[string]*setState   // key: source IP (distinct network fingerprints)
-	ctrTake    map[string]*setState   // key: source IP (distinct container/k8s control ops)
-	webProbe   map[string]*setState   // key: source IP (distinct webapp:* attack classes)
-	sshKey     map[string]*setState   // key: source IP (distinct offered SSH pubkeys)
-	spamRelay  map[string]*countState // key: source IP (open-relay / rcpt-enum attempts)
-	dnsTunnel  map[string]*countState // key: source IP (DNS tunnel/DGA anomaly count)
-	reconExp   map[string]*setState   // key: source IP (recon-then-exploit progression)
-	honeytoken map[string]*reuseState // key: canary token id (distinct source IPs)
-	toolRot    map[string]*setState   // key: source IP (distinct attack tools)
-	plcProg    map[string]*countState // key: source IP (program-download count)
-	modeChg    map[string]*countState // key: source IP (mode-change count)
-	otKill     map[string]*setState   // key: source IP (recon+control tokens)
-	remoteTool map[string]*setState   // key: source IP (distinct remote tools)
-	oobMgmt    map[string]*setState   // key: source IP (distinct OOB mgmt surfaces)
-	remoteExec map[string]*countState // key: source IP (cleartext remote-exec count)
-	tollFraud  map[string]*countState // key: source IP (call-placement count)
-	voipEnum   map[string]*setState   // key: source IP (distinct VoIP protocols)
-	pbxCtrl    map[string]*countState // key: source IP (PBX admin-action count)
-	emitted    map[string]time.Time   // dedup of aggregate emission
-	lastGC     time.Time              // last idle-state sweep
+	hostSweep   map[string]*setState       // key: source IP (distinct dest hosts)
+	crossTarget map[string]*targetSeqState // key: source IP (per-target order/timing/ports)
+	svcSweep    map[string]*setState       // key: source IP (distinct handlers)
+	uaRot       map[string]*setState       // key: source IP (distinct user-agents)
+	exploit     map[string]*setState       // key: source IP (distinct CVE ids)
+	ics         map[string]*countState     // key: source IP (control-command count)
+	canary      map[string]*setState       // key: source IP (distinct canary tokens)
+	fpReuse     map[string]*reuseState     // key: fingerprint value (distinct sources)
+	protoViol   map[string]*setState       // key: source IP (distinct anomaly markers)
+	exfil       map[string]*byteState      // key: source IP (cumulative request bytes)
+	flood       map[string]*countState     // key: source IP (connection count)
+	lateral     map[string]*setState       // key: source IP (distinct lateral handlers)
+	otRecon     map[string]*setState       // key: source IP (distinct ICS handlers)
+	dataAcc     map[string]*countState     // key: source IP (data-access event count)
+	malware     map[string]*countState     // key: source IP (malware:capture count)
+	webshell    map[string]*countState     // key: source IP (webshell event count)
+	tiBurst     map[string]*countState     // key: source IP (threat-listed/Tor event count)
+	geoVel      map[string]*setState       // key: credential pair (distinct countries)
+	amp         map[string]*setState       // key: source IP (distinct amplifier services)
+	defCred     map[string]*setState       // key: source IP (distinct default-cred services)
+	cveCamp     map[string]*reuseState     // key: cve id (distinct source IPs)
+	destruct    map[string]*countState     // key: source IP (data-destruction op count)
+	cloudCred   map[string]*countState     // key: source IP (cloud cred-theft op count)
+	ssrfCb      map[string]*setState       // key: source IP (distinct ssrf tokens)
+	mitmCap     map[string]*countState     // key: source IP (tls-decrypted exploit/cred count)
+	fpRot       map[string]*setState       // key: source IP (distinct network fingerprints)
+	ctrTake     map[string]*setState       // key: source IP (distinct container/k8s control ops)
+	webProbe    map[string]*setState       // key: source IP (distinct webapp:* attack classes)
+	sshKey      map[string]*setState       // key: source IP (distinct offered SSH pubkeys)
+	spamRelay   map[string]*countState     // key: source IP (open-relay / rcpt-enum attempts)
+	dnsTunnel   map[string]*countState     // key: source IP (DNS tunnel/DGA anomaly count)
+	reconExp    map[string]*setState       // key: source IP (recon-then-exploit progression)
+	honeytoken  map[string]*reuseState     // key: canary token id (distinct source IPs)
+	toolRot     map[string]*setState       // key: source IP (distinct attack tools)
+	plcProg     map[string]*countState     // key: source IP (program-download count)
+	modeChg     map[string]*countState     // key: source IP (mode-change count)
+	otKill      map[string]*setState       // key: source IP (recon+control tokens)
+	remoteTool  map[string]*setState       // key: source IP (distinct remote tools)
+	oobMgmt     map[string]*setState       // key: source IP (distinct OOB mgmt surfaces)
+	remoteExec  map[string]*countState     // key: source IP (cleartext remote-exec count)
+	tollFraud   map[string]*countState     // key: source IP (call-placement count)
+	voipEnum    map[string]*setState       // key: source IP (distinct VoIP protocols)
+	pbxCtrl     map[string]*countState     // key: source IP (PBX admin-action count)
+	emitted     map[string]time.Time       // dedup of aggregate emission
+	lastGC      time.Time                  // last idle-state sweep
 }
 
 // countState tracks a per-source count within a window (control commands,
@@ -197,60 +199,61 @@ type sweepState struct {
 
 func New(cfg config.Correlate) (*Correlator, error) {
 	c := &Correlator{
-		cfg:        cfg,
-		scan:       map[string]*scanState{},
-		brute:      map[string]*bruteState{},
-		slow:       map[string]*slowState{},
-		sweep:      map[string]*sweepState{},
-		spray:      map[string]*sprayState{},
-		reuse:      map[string]*reuseState{},
-		pathEnum:   map[string]*setState{},
-		dnsEnum:    map[string]*setState{},
-		beacon:     map[string]*beaconState{},
-		story:      map[string]*storylineState{},
-		hostSweep:  map[string]*setState{},
-		svcSweep:   map[string]*setState{},
-		uaRot:      map[string]*setState{},
-		exploit:    map[string]*setState{},
-		ics:        map[string]*countState{},
-		canary:     map[string]*setState{},
-		fpReuse:    map[string]*reuseState{},
-		protoViol:  map[string]*setState{},
-		exfil:      map[string]*byteState{},
-		flood:      map[string]*countState{},
-		lateral:    map[string]*setState{},
-		otRecon:    map[string]*setState{},
-		dataAcc:    map[string]*countState{},
-		malware:    map[string]*countState{},
-		webshell:   map[string]*countState{},
-		tiBurst:    map[string]*countState{},
-		geoVel:     map[string]*setState{},
-		amp:        map[string]*setState{},
-		defCred:    map[string]*setState{},
-		cveCamp:    map[string]*reuseState{},
-		destruct:   map[string]*countState{},
-		cloudCred:  map[string]*countState{},
-		ssrfCb:     map[string]*setState{},
-		mitmCap:    map[string]*countState{},
-		fpRot:      map[string]*setState{},
-		ctrTake:    map[string]*setState{},
-		webProbe:   map[string]*setState{},
-		sshKey:     map[string]*setState{},
-		spamRelay:  map[string]*countState{},
-		dnsTunnel:  map[string]*countState{},
-		reconExp:   map[string]*setState{},
-		honeytoken: map[string]*reuseState{},
-		toolRot:    map[string]*setState{},
-		plcProg:    map[string]*countState{},
-		modeChg:    map[string]*countState{},
-		otKill:     map[string]*setState{},
-		remoteTool: map[string]*setState{},
-		oobMgmt:    map[string]*setState{},
-		remoteExec: map[string]*countState{},
-		tollFraud:  map[string]*countState{},
-		voipEnum:   map[string]*setState{},
-		pbxCtrl:    map[string]*countState{},
-		emitted:    map[string]time.Time{},
+		cfg:         cfg,
+		scan:        map[string]*scanState{},
+		brute:       map[string]*bruteState{},
+		slow:        map[string]*slowState{},
+		sweep:       map[string]*sweepState{},
+		spray:       map[string]*sprayState{},
+		reuse:       map[string]*reuseState{},
+		pathEnum:    map[string]*setState{},
+		dnsEnum:     map[string]*setState{},
+		beacon:      map[string]*beaconState{},
+		story:       map[string]*storylineState{},
+		hostSweep:   map[string]*setState{},
+		crossTarget: map[string]*targetSeqState{},
+		svcSweep:    map[string]*setState{},
+		uaRot:       map[string]*setState{},
+		exploit:     map[string]*setState{},
+		ics:         map[string]*countState{},
+		canary:      map[string]*setState{},
+		fpReuse:     map[string]*reuseState{},
+		protoViol:   map[string]*setState{},
+		exfil:       map[string]*byteState{},
+		flood:       map[string]*countState{},
+		lateral:     map[string]*setState{},
+		otRecon:     map[string]*setState{},
+		dataAcc:     map[string]*countState{},
+		malware:     map[string]*countState{},
+		webshell:    map[string]*countState{},
+		tiBurst:     map[string]*countState{},
+		geoVel:      map[string]*setState{},
+		amp:         map[string]*setState{},
+		defCred:     map[string]*setState{},
+		cveCamp:     map[string]*reuseState{},
+		destruct:    map[string]*countState{},
+		cloudCred:   map[string]*countState{},
+		ssrfCb:      map[string]*setState{},
+		mitmCap:     map[string]*countState{},
+		fpRot:       map[string]*setState{},
+		ctrTake:     map[string]*setState{},
+		webProbe:    map[string]*setState{},
+		sshKey:      map[string]*setState{},
+		spamRelay:   map[string]*countState{},
+		dnsTunnel:   map[string]*countState{},
+		reconExp:    map[string]*setState{},
+		honeytoken:  map[string]*reuseState{},
+		toolRot:     map[string]*setState{},
+		plcProg:     map[string]*countState{},
+		modeChg:     map[string]*countState{},
+		otKill:      map[string]*setState{},
+		remoteTool:  map[string]*setState{},
+		oobMgmt:     map[string]*setState{},
+		remoteExec:  map[string]*countState{},
+		tollFraud:   map[string]*countState{},
+		voipEnum:    map[string]*setState{},
+		pbxCtrl:     map[string]*countState{},
+		emitted:     map[string]time.Time{},
 	}
 	if cfg.PortScan.Enabled {
 		s, err := event.ParseSeverity(cfg.PortScan.Severity)
@@ -322,6 +325,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		dst *event.Severity
 	}{
 		{cfg.HostSweep.Enabled, cfg.HostSweep.Severity, &c.hostSweepSev},
+		{cfg.CrossTarget.Enabled, cfg.CrossTarget.Severity, &c.crossTargetSev},
 		{cfg.ServiceSweep.Enabled, cfg.ServiceSweep.Severity, &c.svcSweepSev},
 		{cfg.UARotation.Enabled, cfg.UARotation.Severity, &c.uaRotSev},
 		{cfg.ExploitChain.Enabled, cfg.ExploitChain.Severity, &c.exploitSev},
@@ -590,6 +594,11 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.HostSweep.Enabled {
 		if extra := c.checkHostSweep(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.CrossTarget.Enabled {
+		if extra := c.checkCrossTarget(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1339,6 +1348,12 @@ func (c *Correlator) gc(now time.Time) {
 	// Additional opt-in correlator state: evict idle entries past each
 	// detector's window so the maps don't grow unbounded.
 	gcSet(c.hostSweep, now, effWindow(c.cfg.HostSweep.Window, time.Minute))
+	ctWin := effWindow(c.cfg.CrossTarget.Window, time.Minute)
+	for k, st := range c.crossTarget {
+		if now.Sub(st.since) > ctWin {
+			delete(c.crossTarget, k)
+		}
+	}
 	gcSet(c.svcSweep, now, effWindow(c.cfg.ServiceSweep.Window, time.Minute))
 	gcSet(c.uaRot, now, effWindow(c.cfg.UARotation.Window, 5*time.Minute))
 	gcSet(c.exploit, now, effWindow(c.cfg.ExploitChain.Window, 10*time.Minute))

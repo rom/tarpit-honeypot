@@ -289,7 +289,7 @@ install -d -o root        -g "$SVC_GROUP" -m 0755 "$SHARE" "$SHARE/scripts"
 chown -R "$SVC_USER:$SVC_GROUP" "$DATA" "$LOGDIR" "$ETC/tls" 2>/dev/null || true
 
 # Ship the helper scripts where the systemd units expect them.
-for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh selinux-verify.sh; do
+for s in fetch-enrichment.sh install-enrichment.sh update-enrichment.sh letsencrypt-cert.sh selinux-verify.sh add-instance.sh; do
 	[ -f "$REPO/scripts/$s" ] && install -o root -g "$SVC_GROUP" -m 0755 "$REPO/scripts/$s" "$SHARE/scripts/$s"
 done
 
@@ -662,6 +662,59 @@ SystemCallArchitectures=native
 # NB: no SystemCallFilter allowlist here — the sensor's in-process seccomp
 # DENYLIST (sensor.sandbox.seccomp) blocks the dangerous syscalls precisely,
 # without risk of an allowlist blocking the in-process Landlock syscalls.
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	# Template unit for the multi-instance model (one honeypot per server IP,
+	# each its own config/DB/certs/UI). Not enabled here — provision instances
+	# with scripts/add-instance.sh, which enables tarpit-honeypot@<name>.
+	info "Installing systemd template unit -> /etc/systemd/system/tarpit-honeypot@.service"
+	cat >/etc/systemd/system/tarpit-honeypot@.service <<EOF
+[Unit]
+Description=tarpit-honeypot deception sensor (instance %i)
+Documentation=https://github.com/rom/tarpit-honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_GROUP
+ExecStart=$BIN run -c $ETC/instances/%i.yaml
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Per-instance syslog identity; the rsyslog drop-in routes every tarpit-honeypot*
+# tag to $LOGDIR.
+SyslogIdentifier=tarpit-honeypot@%i
+
+AmbientCapabilities=$amb
+CapabilityBoundingSet=$amb
+NoNewPrivileges=$SVC_NNP
+SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
+
+ProtectSystem=strict
+ReadWritePaths=$DATA/%i $LOGDIR
+ReadOnlyPaths=$ETC
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET AF_NETLINK
+MemoryDenyWriteExecute=true
+LockPersonality=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

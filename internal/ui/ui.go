@@ -663,9 +663,13 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// 404 unless the config has a relevant listener (checked in the handler).
 	s.pageRoute(mux, "/captures", "captures", s.handleCaptures)
 	s.pageRoute(mux, "/credentials", "credentials", s.handleCredentials)
+	s.pageRoute(mux, "/interactions", "interactions", s.handleInteractions)
 	s.pageRoute(mux, "/dns", "dns", s.handleDNS)
 	s.pageRoute(mux, "/web", "web", s.handleWeb)
 	s.pageRoute(mux, "/databases", "databases", s.handleDatabases)
+	s.pageRoute(mux, "/remote", "remote", s.handleRemote)
+	s.pageRoute(mux, "/mail", "mail", s.handleMail)
+	s.pageRoute(mux, "/ntp", "ntp", s.handleNTPPage)
 	mux.HandleFunc("/loot/", s.handleLoot)
 	mux.HandleFunc("/replay", s.handleReplay)
 	mux.HandleFunc("/config", s.handleConfig)

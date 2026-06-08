@@ -478,7 +478,53 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		res.Meta["write_err"] = err.Error()
 	}
 	res.BannerSent = banner
+	setHTTPIntent(&res)
 	return res, nil
+}
+
+// setHTTPIntent labels "what the attacker is doing" from the signals already
+// gathered on the request, feeding the web view's attacker-intent table. Only
+// set when a more specific handler hasn't already set it.
+func setHTTPIntent(res *Result) {
+	if res.Meta == nil {
+		return
+	}
+	if v, _ := res.Meta["intent"].(string); v != "" {
+		return
+	}
+	anoms, _ := res.Meta["anomalies"].([]string)
+	firstWith := func(prefix string) string {
+		for _, a := range anoms {
+			if strings.HasPrefix(a, prefix) {
+				return a
+			}
+		}
+		return ""
+	}
+	has := func(m string) bool { return firstWith(m) == m }
+	attacks, _ := res.Meta["webapp_attacks"].([]string)
+	method, _ := res.Meta["http_method"].(string)
+	uri, _ := res.Meta["http_uri"].(string)
+	switch {
+	case firstWith("cve:") != "":
+		res.Meta["intent"] = "exploit attempt (" + strings.TrimPrefix(firstWith("cve:"), "cve:") + ")"
+	case res.Meta["webshell"] != nil || firstWith("webshell") != "":
+		res.Meta["intent"] = "web-shell interaction"
+	case has("cobaltstrike-stager"):
+		res.Meta["intent"] = "C2 stager retrieval"
+	case len(attacks) > 0:
+		res.Meta["intent"] = "web attack: " + attacks[0]
+	case has("vulnerability-scanner"):
+		res.Meta["intent"] = "vulnerability scanning"
+	case has("http-connect-proxy"):
+		res.Meta["intent"] = "open-proxy abuse"
+	case has("dns-over-https"):
+		res.Meta["intent"] = "DNS-over-HTTPS tunneling"
+	case res.Meta["login_user"] != nil || res.Meta["login_pass"] != nil || (method == "POST" && res.Meta["form_fields"] != nil):
+		res.Meta["intent"] = "credential / form submission"
+	case method != "" && uri != "":
+		res.Meta["intent"] = "web recon / content discovery"
+	}
 }
 
 // applyArchHeaders inserts extra headers into an HTTP response before the

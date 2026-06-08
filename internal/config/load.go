@@ -69,7 +69,7 @@ var tcpHandlers = map[string]bool{
 }
 
 var udpHandlers = map[string]bool{
-	"raw": true, "snmp": true, "ntp": true,
+	"raw": true, "snmp": true, "snmptrap": true, "ntp": true,
 	"bacnet": true, "tftp": true, "ipmi": true,
 	"syslog_udp": true, "radius": true, "sip": true,
 	"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,
@@ -435,6 +435,17 @@ func (c *Config) applyDefaults() {
 		}
 		if c.Correlate.HostSweep.Severity == "" {
 			c.Correlate.HostSweep.Severity = "high"
+		}
+	}
+	if c.Correlate.CrossTarget.Enabled {
+		if c.Correlate.CrossTarget.DistinctTargets == 0 {
+			c.Correlate.CrossTarget.DistinctTargets = 2
+		}
+		if c.Correlate.CrossTarget.Window == 0 {
+			c.Correlate.CrossTarget.Window = 5 * time.Minute
+		}
+		if c.Correlate.CrossTarget.Severity == "" {
+			c.Correlate.CrossTarget.Severity = "high"
 		}
 	}
 	if c.Correlate.ServiceSweep.Enabled {
