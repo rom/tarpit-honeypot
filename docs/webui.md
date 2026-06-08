@@ -17,8 +17,9 @@ attribution, the fleet view, and the IOC view.
 ## The navigation
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
-map · captures · credentials · dns · web · databases · fleet · iocs · tunnels · profiles · fingerprints ·
-devices · topology · charts · health · alerting · errors · config · docs`
+map · captures · credentials · interactions · dns · web · databases · remote · mail · ntp ·
+fleet · iocs · tunnels · profiles · fingerprints ·
+devices · topology · charts · statistics · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
 console stays live during an attack without JavaScript. With JavaScript on, the
@@ -29,9 +30,9 @@ and the timeline order all survive the reload (persisted per-page in
 The **secondary** pages above can be turned off per deployment with `ui.pages`
 (keyed by the nav slug — a disabled page is hidden from the nav and its route
 returns 404); the **core** pages (summary, events, search, timeline, profiles,
-health, config) are always present. The `dns` / `web` / `databases` pages only
-appear when the config has a relevant listener. See [`config.md`](config.md)
-for the full slug list.
+health, config) are always present. The per-service pages (`dns` / `web` /
+`databases` / `remote` / `mail` / `ntp`) only appear when the config has a
+relevant listener. See [`config.md`](config.md) for the full slug list.
 
 ## Presentation options
 
@@ -260,7 +261,11 @@ senders** it used, and a **confirmed-compromise banner** when the source
 replayed a planted honeytoken (`canary:token_used`). The assessment escalates
 accordingly — *honeytoken reuse*, *malware delivery / staging*, and *web
 application attack* (3+ distinct attack classes) rank above generic
-exploitation.
+exploitation. On a multi-IP host, when the source reached more than one of the
+host's server IPs the profile adds a **cross-target timeline**: the targets in
+first-seen order with timing-offset bars, the ports + services hit per target,
+hit counts, and a ⚠ list of ports hit on more than one target (a scripted
+same-service sweep across the fleet).
 
 ### fingerprints (`/fingerprints`)
 JA3 / JA4 / JA4H / JA3S / HASSH reputation — pivot from a client TLS/SSH stack to
@@ -301,6 +306,14 @@ cluster); and a **coverage-gap report** — destination ports that were probed b
 that no configured listener answers, ranked by hits, doubling as a "which decoy
 to add next" recommendation.
 
+### statistics (`/stats`)
+A compact, numeric companion to `/charts`: headline metrics (events, high+crit,
+events/hour, attacker breadth) and top-N tables across every dimension
+(severity, protocol, services, countries, ASNs, ATT&CK, CVEs, tools, sources).
+On a host serving more than one IP it additionally leads with **targeted server
+IPs** (how many of the host's own addresses were hit + the busiest) and adds a
+**"Targeted server IPs (this host)"** top-N table.
+
 ### credentials (`/credentials`)
 Credential analytics over every captured login attempt: **top usernames /
 passwords** tried, **password-length** and **composition** (digits-only /
@@ -312,26 +325,42 @@ more distinct sources — shared wordlists, or a single actor rotating IPs. A
 **credential-captures-by-service** pie + bar compares how many captured logins
 came from each service (ssh / ftp / telnet / …).
 
-### dns (`/dns`), web (`/web`), databases (`/databases`)
-Per-protocol analytics that appear in the nav **only when the running config has
-a relevant listener** (a `dns` handler; an `http`/`https` handler; a
-mysql/postgres/mssql/mongodb/redis/… handler):
+### per-service analytics: dns, web, databases, remote, mail, ntp
+Per-protocol analytics pages that appear in the nav **only when the running
+config has a relevant listener**. Each carries an **Attacker intent** breakdown
+near the top (the inferred "what they're doing" label, now set on *every* event
+at the listener — see below) and the **attacks / misuses / vulnerabilities**
+table with each CVE's CWE.
 
-- **dns** — DNS queries per hour, query types / commands, top queries (qname) and
-  top registrable domains, top replies, and a bounded **query log** (with a
-  per-query **intent** column); plus an **Attacker intent** breakdown (the
-  handler-inferred "what they're doing" label) and the **attacks / misuses /
-  manipulations / vulnerabilities** table (tunnelling, amplification, zone
-  transfer, DGA, SIGRed/TKEY probes, NOTIFY/UPDATE opcodes …) with each CVE's CWE.
+- **dns** (`/dns`) — DNS queries per hour, query types, top queries (qname) and
+  registrable domains, top replies, and a bounded **query log** with a per-query
+  **intent** column; tunnelling / amplification / zone-transfer / DGA /
+  SIGRed-TKEY / NOTIFY-UPDATE detection.
+- **web** (`/web`) — requests per hour, **top URLs / HTTP headers / replies**,
+  top attacks + attackers, unique URLs + files, the web-attack/CVE/CWE table,
+  and a **request log** (method / url / status) with a per-request **intent**
+  column.
+- **databases** (`/databases`) — events per hour, engine split, top queries /
+  databases / replies, top attacks + attackers, the injection/CVE table, and an
+  **activity log** (engine / command) with a per-event **intent** column.
+- **remote** (`/remote`) — ssh / telnet / rdp / vnc / … : per-hour volume,
+  service split, top usernames / commands, banners, attackers, attacks, intent,
+  and an activity log.
+- **mail** (`/mail`) — all SMTP / POP3 / IMAP variants: top senders → recipients
+  / commands, attacks, intent, activity log.
+- **ntp** (`/ntp`) — NTP request / control / intent breakdown, attackers, log.
 
-The **Attacker intent** breakdown appears on any of these pages whose events
-carry an inferred `intent` (today: dns / snmp / ntp traffic).
-- **web** — requests per hour, **top URLs**, **top HTTP headers**, **top replies**
-  (HTTP status), **top-10 attacks** and **top-10 attackers**, every **unique URL**
-  and **unique file accessed**, and the web-attack-class / CVE / CWE table.
-- **databases** — events per hour, the engine split, **top queries / commands**,
-  **top databases**, **top replies** (version banners), **top-10 attacks** and
-  **attackers**, and the injection / abuse / CVE / CWE table.
+**Attacker intent** is set authoritatively on every event by the listener
+(`deriveEventIntent`) — remote (shell session / login / probe), mail (relay /
+login / harvesting), database (auth / command / probe), web (the http handler's
+own label), and the CVE-exploit case — so it appears in these views, on the
+source profile, in `/search`, and in every SIEM export.
+
+### interactions (`/interactions`)
+What attackers **did** once engaged, not just their recon: commands typed into
+the emulated SSH/Telnet shells, exec requests, fake-web-shell commands,
+keystrokes, and recorded **session casts** (download-linked). A top-commands
+table + by-service / top-command charts + per-session command transcripts.
 
 The summary's service board additionally **tints each service card** (with its
 event count) when that service saw any access or attempt in the window.

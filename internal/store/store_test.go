@@ -250,6 +250,35 @@ func TestFreeDiskBytes(t *testing.T) {
 	}
 }
 
+func TestQueryDstIP(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for i, dst := range []string{"192.0.2.10", "192.0.2.10", "192.0.2.11"} {
+		e := mkEvent(fmt.Sprintf("e%d", i), "9.9.9.9", "r", event.SeverityLow, now)
+		e.Dest.IP = dst
+		if err := s.Insert(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Query(ctx, Filter{Since: now.Add(-time.Hour), DstIP: "192.0.2.10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("DstIP filter = %d events; want 2", len(got))
+	}
+	for _, ev := range got {
+		if ev.Dest.IP != "192.0.2.10" {
+			t.Errorf("got dst %q; want 192.0.2.10", ev.Dest.IP)
+		}
+	}
+}
+
 func TestQueryHandlersAndNoPayload(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {

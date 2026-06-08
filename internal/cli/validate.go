@@ -28,6 +28,15 @@ func cmdValidate(args []string) error {
 	fmt.Printf("config OK: %d listeners, %d channels, %d routes, %d canaries, %d url canaries, %d dns canaries\n",
 		len(cfg.Listeners), len(cfg.Channels), len(cfg.Routes),
 		len(cfg.Canaries), len(cfg.URLCanaries), len(cfg.DNSCanaries))
+	// Surface TLS-cert ↔ deployment-domain coherence warnings (the same the
+	// sensor logs at startup + shows on the config page) so a mismatch is caught
+	// before deploy, not after.
+	if warns := cfg.TLSCoherenceWarnings(); len(warns) > 0 {
+		fmt.Printf("\nTLS ↔ domain coherence warnings (%d):\n", len(warns))
+		for _, w := range warns {
+			fmt.Println("  ⚠ " + w)
+		}
+	}
 	if *diffPath == "" {
 		return nil
 	}

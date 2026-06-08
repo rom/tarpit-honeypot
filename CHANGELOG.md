@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **`list-events` target/handler/port filters + `validate-config` TLS check.**
+  `list-events` gains `--target <ip>` (filter by which of the host's server IPs
+  was hit — the multi-IP pivot), `--handler`, and `--port`; the store `Filter`
+  gains a `DstIP` clause. `validate-config` now prints the TLS-cert ↔
+  deployment-domain coherence warnings (same as the startup log / config page)
+  so a mismatch is caught before deploy.
+- **Statistics page multi-IP breakdown.** On a host serving more than one IP,
+  `/stats` now leads with "targeted server IPs" + the busiest one, and adds a
+  "Targeted server IPs (this host)" top-N table — so a multi-address sensor
+  shows which of its own addresses are under attack.
+
 - **Attacker interactions view (`/interactions`).** A new page showing what
   attackers actually *did* once engaged: commands typed into the emulated
   SSH/Telnet shells (`shell_commands`), exec requests, fake-web-shell commands

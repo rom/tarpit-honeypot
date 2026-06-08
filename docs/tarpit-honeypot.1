@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-06-01" "tarpit-honeypot 2.3.1" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-06-08" "tarpit-honeypot 2.20.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -48,6 +48,19 @@ can see, derives indicators of compromise, and can serve them back down
 as a threat-intel feed (STIX 2.1 / TAXII 2.1 / MISP). Events flow up;
 intel flows down. See
 .BR "tarpit-honeypot list-fleet-rules" ", " docs/fleet.md ", and " docs/ioc.md .
+.PP
+On a host with several IP addresses a wildcard listener answers on every
+address (the destination IP is recorded per event); set
+.B sensor.listen_addresses
+to pin listeners to specific IPs. To run several independent honeypots on one
+host \(em one per server IP, each with its own config, database, certificates
+and UI \(em use the
+.B tarpit-honeypot@.service
+systemd template and
+.BR scripts/add-instance.sh .
+The web console adds per-service analytics pages (dns / web / databases /
+remote / mail / ntp), an attacker-interactions view, attacker-intent on every
+view, and a cross-target timeline on the source profile.
 .SH GLOBAL FLAGS
 .TP
 .BR --version ", " -V
@@ -96,7 +109,8 @@ Start the sensor (listeners + sinks). Reloads config on
 loads and validates without binding.
 .TP
 .B validate-config
-Parse and validate a config; with
+Parse and validate a config; also reports TLS-cert \(em deployment-domain
+coherence warnings. With
 .B --diff
 classify hot-reloadable vs restart-required changes between two configs.
 .TP
@@ -109,7 +123,9 @@ Emit a synthetic event through the configured channels.
 .TP
 .B list-events
 Tail / query events from the local SQLite store or JSON logs
-.RB ( --since ", " --source ", " --rule ", " --fleet ", " --limit ).
+.RB ( --since ", " --source ", " --target ", " --handler ", " --port ", " --rule ", " --fleet ", " --limit ).
+.B --target
+filters by which of the host's own server IPs was hit \(em the multi-IP pivot.
 .TP
 .B gen-token
 Print or write an unguessable canary token

@@ -566,9 +566,13 @@ DELETE FROM events WHERE id IN (
 
 // Filter narrows what Query returns. Zero values mean "no constraint".
 type Filter struct {
-	Since       time.Time
-	Until       time.Time
-	SourceIP    string
+	Since    time.Time
+	Until    time.Time
+	SourceIP string
+	// DstIP restricts to events whose destination (the host's server IP that
+	// was hit) matches — the "which of my IPs did this target" pivot on a
+	// multi-IP deployment. Empty = any.
+	DstIP       string
 	RuleID      string
 	MinSeverity event.Severity
 	// Proto restricts to a transport (tcp / udp / icmp / l2 / …); empty = any.
@@ -628,6 +632,10 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	if f.SourceIP != "" {
 		q += " AND src_ip = ?"
 		args = append(args, f.SourceIP)
+	}
+	if f.DstIP != "" {
+		q += " AND dst_ip = ?"
+		args = append(args, f.DstIP)
 	}
 	if f.RuleID != "" {
 		q += " AND rule_id = ?"
