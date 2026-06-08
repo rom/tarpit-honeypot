@@ -289,6 +289,14 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Nokia 7750 SR-1 (SR OS)",
 		"Ubiquiti UniFi Switch (USW)",
 		"Ubiquiti UniFi AP (UAP)",
+		// Serial / Ethernet converters (terminal / device servers).
+		"Moxa NPort 5150 (1-port serial-to-Ethernet)",
+		"Digi PortServer TS (terminal server)",
+		"Lantronix UDS1100 (1-port device server)",
+		"Lantronix EDS2100 (2-port device server)",
+		"Lantronix XPort (embedded device server)",
+		"Westermo Lynx 3510 (WeOS managed switch)",
+		"Westermo Lynx 5512 (WeOS managed switch)",
 	}
 	got := Names()
 	if len(got) != len(want) {

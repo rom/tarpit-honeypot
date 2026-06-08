@@ -126,6 +126,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Debian 8 (jessie) | `debian-8` | debian | 0 |
 | Debian 9 (stretch) | `debian-9` | debian | 0 |
 | Dell iDRAC 9 (lights-out) | `dell-idrac` | dell | 2 |
+| Digi PortServer TS (terminal server) | `digi-portserver-ts` | digi | 5 |
 | DrayTek Vigor router | `draytek-vigor` | draytek | 2 |
 | Echelon LonWorks i.LON Gateway | `echelon-lonworks` | echelon | 4 |
 | Emerson Bristol ControlWave RTU | `bristol-controlwave` | bristol | 4 |
@@ -169,7 +170,10 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Kepware KEPServerEX (Windows) | `kepware-kepserverex` | windows | 6 |
 | Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
 | Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
+| Lantronix EDS2100 (2-port device server) | `lantronix-eds2100` | lantronix | 6 |
 | Lantronix SLC console server | `lantronix-slc` | lantronix | 4 |
+| Lantronix UDS1100 (1-port device server) | `lantronix-uds1100` | lantronix | 3 |
+| Lantronix XPort (embedded device server) | `lantronix-xport` | lantronix | 3 |
 | Lenovo XClarity Controller (XCC) | `lenovo-xcc` | lenovo | 3 |
 | Lexmark MX622 (MFP) | `lexmark-printer` | printer | 6 |
 | MatrikonOPC Server (Windows) | `matrikon-opc-server` | windows | 6 |
@@ -183,6 +187,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Moxa EDS-405A (managed switch) | `moxa-eds-405a` | moxa | 4 |
 | Moxa EDS-G516E (gigabit managed switch) | `moxa-eds-g516e` | moxa | 5 |
 | Moxa MGate MB3180 (Modbus gateway) | `moxa-mgate-mb3180` | moxa | 4 |
+| Moxa NPort 5150 (1-port serial-to-Ethernet) | `moxa-nport-5150` | moxa | 4 |
 | Moxa NPort 5210 | `moxa-nport-5210` | moxa | 5 |
 | Moxa NPort 5650-8 (serial device server) | `moxa-nport-5650` | moxa | 6 |
 | NetBSD 10 | `netbsd-10` | bsd | 1 |
@@ -267,6 +272,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | WAGO PFC200 (750-8212) | `wago-pfc200` | wago | 5 |
 | Westermo Ibex (industrial wireless) | `westermo-ibex` | westermo | 4 |
 | Westermo Lynx (WeOS managed switch) | `westermo-lynx` | westermo | 5 |
+| Westermo Lynx 3510 (WeOS managed switch) | `westermo-lynx-3510` | westermo | 5 |
+| Westermo Lynx 5512 (WeOS managed switch) | `westermo-lynx-5512` | westermo | 5 |
 | Westermo Merlin-4400 (cellular router) | `westermo-merlin-4400` | westermo | 4 |
 | Westermo RedFox (rugged managed switch) | `westermo-redfox` | westermo | 5 |
 | Westermo Viper (EN50155 rail switch) | `westermo-viper` | westermo | 4 |
@@ -1374,6 +1381,73 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Moxa-HTTPd`
 - **SNMP sysDescr:** Moxa NPort 5210 V2.7
 - **Services:** :23 `telnet`, :80 `http`, :161 `snmp`, :4001 `raw`, :4002 `raw`
+- **CVEs advertised:** —
+
+### Moxa NPort 5150 (1-port serial-to-Ethernet) — `moxa-nport-5150`
+
+**Family:** moxa · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.8691.5.5`
+
+- **SSH:** `SSH-2.0-MoxaSSH_1.0`
+- **HTTP Server:** `Moxa-HTTPd`
+- **SNMP sysDescr:** Moxa NPort 5150 V3.7
+- **Services:** :23 `telnet`, :80 `http`, :161 `snmp`, :4001 `raw` (serial 1)
+- **CVEs advertised:** —
+
+### Digi PortServer TS (terminal server) — `digi-portserver-ts`
+
+**Family:** digi · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.332.11.6`
+
+- **SSH:** `SSH-2.0-OpenSSH_5.5`
+- **HTTP Server:** `Digi/EmbeddedWeb`
+- **SNMP sysDescr:** Digi PortServer TS 16 Version 82000747_T2
+- **Services:** :23 `telnet`, :80 `http`, :161 `snmp`, :771 `raw` (RealPort), :2001 `raw` (serial 1)
+- **CVEs advertised:** —
+
+### Lantronix UDS1100 (1-port device server) — `lantronix-uds1100`
+
+**Family:** lantronix · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.244`
+
+- **HTTP Server:** `Lantronix Web Manager`
+- **SNMP sysDescr:** Lantronix UDS1100 V6.8.0.2
+- **Services:** :9999 `lantronix` (setup), :80 `http`, :10001 `raw` (serial 1)
+- **CVEs advertised:** —
+
+### Lantronix EDS2100 (2-port device server) — `lantronix-eds2100`
+
+**Family:** lantronix · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.244`
+
+- **HTTP Server:** `Lantronix Web Manager`
+- **SNMP sysDescr:** Lantronix EDS2100 V5.2.0.1
+- **Services:** :9999 `lantronix` (setup), :80 `http`, :443 `https`, :161 `snmp`, :10001 `raw`, :10002 `raw`
+- **CVEs advertised:** —
+
+### Lantronix XPort (embedded device server) — `lantronix-xport`
+
+**Family:** lantronix · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.244`
+
+- **HTTP Server:** `Lantronix Web Manager`
+- **SNMP sysDescr:** Lantronix XPort-03 V6.10.0.0
+- **Services:** :9999 `lantronix` (setup), :80 `http`, :10001 `raw` (serial)
+- **CVEs advertised:** —
+
+### Westermo Lynx 3510 (WeOS managed switch) — `westermo-lynx-3510`
+
+**Family:** westermo · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.16177.1.5.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4 WeOS`
+- **HTTP Server:** `GoAhead-Webs`
+- **SNMP sysDescr:** Westermo Lynx 3510-F2G-T8 WeOS v4.32.4
+- **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :443 `https`, :161 `snmp`
+- **CVEs advertised:** —
+
+### Westermo Lynx 5512 (WeOS managed switch) — `westermo-lynx-5512`
+
+**Family:** westermo · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.16177.1.5.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_7.4 WeOS`
+- **HTTP Server:** `GoAhead-Webs`
+- **SNMP sysDescr:** Westermo Lynx 5512-F4G-T8 WeOS v4.32.4
+- **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :443 `https`, :161 `snmp`
 - **CVEs advertised:** —
 
 ### Moxa NPort 5650-8 (serial device server) — `moxa-nport-5650`
