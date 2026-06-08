@@ -28,6 +28,19 @@ var (
 		"redis": true, "elasticsearch": true, "oracle_tns": true,
 		"cassandra": true, "etcd": true, "memcached": true, "memcached_udp": true,
 	}
+	// Remote-access services (interactive / remote-control surfaces).
+	remoteHandlers = map[string]bool{
+		"ssh": true, "ssh_interactive": true, "telnet": true,
+		"rdp": true, "rdp_udp": true, "vnc": true, "winrm": true, "x11": true,
+		"rlogin": true, "rsh": true, "pcanywhere": true, "teamviewer": true,
+	}
+	// Mail services (all SMTP / POP3 / IMAP variants).
+	mailHandlers = map[string]bool{
+		"smtp": true, "smtp_recv": true, "smtps": true, "submission": true,
+		"pop3": true, "pop3s": true, "imap": true, "imaps": true,
+	}
+	// Time service.
+	ntpHandlers = map[string]bool{"ntp": true}
 )
 
 func serviceCategory(handler string) string {
@@ -38,6 +51,12 @@ func serviceCategory(handler string) string {
 		return "web"
 	case dbHandlers[handler]:
 		return "database"
+	case remoteHandlers[handler]:
+		return "remote"
+	case mailHandlers[handler]:
+		return "mail"
+	case ntpHandlers[handler]:
+		return "ntp"
 	}
 	return ""
 }
@@ -55,6 +74,12 @@ func categoryHandlers(kind string) []string {
 		set = webHandlers
 	case "database":
 		set = dbHandlers
+	case "remote":
+		set = remoteHandlers
+	case "mail":
+		set = mailHandlers
+	case "ntp":
+		set = ntpHandlers
 	default:
 		return nil
 	}
@@ -793,6 +818,192 @@ func dbCommandSummary(ev *event.Event) string {
 	}
 	if cmds := metaStrings(ev.Meta, "commands"); len(cmds) > 0 {
 		return strings.Join(cmds, " ")
+	}
+	return ""
+}
+
+// ============== Generic service views: remote-access / mail / ntp ==========
+//
+// These mirror the DNS view (charts, top attackers, attacks/CVEs, attacker
+// intent, and a per-event log) but are driven by one generic builder + template
+// so the three categories share the scaffolding.
+
+type svcView struct {
+	RangeLabel string
+	RangeLinks []rangeLink
+	Title      string
+	Slug       string
+	Total      int
+	Sources    int
+	Figs       []chartFig
+	Attackers  []countRow
+	Attacks    []attackRow
+	Intents    []countRow
+	Log        []svcLogRow
+	Empty      bool
+}
+
+// svcLogRow is one entry of a service page's per-event log, with the per-event
+// attacker intent + anomalies.
+type svcLogRow struct {
+	Time    string
+	Source  string
+	Service string
+	Detail  string
+	Intent  string
+	Anoms   []string
+}
+
+func (s *Server) handleRemote(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "remote", "remote-access analytics", "remote")
+}
+func (s *Server) handleMail(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "mail", "mail analytics", "mail")
+}
+func (s *Server) handleNTPPage(w http.ResponseWriter, r *http.Request) {
+	s.servicePage(w, r, "ntp", "ntp analytics", "ntp")
+}
+
+func (s *Server) servicePage(w http.ResponseWriter, r *http.Request, kind, title, slug string) {
+	if !s.hasServicePage(kind) {
+		http.NotFound(w, r)
+		return
+	}
+	evs, win, err := s.servicePageEvents(r, kind)
+	if err != nil {
+		serverError(w, r.URL.Path, err)
+		return
+	}
+	v := buildServiceView(kind, title, evs)
+	v.Slug = slug
+	v.RangeLabel = win.label
+	v.RangeLinks = rangeLinksFor("/"+slug, win.key)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "service", v); err != nil {
+		slog.Warn("ui: render service page", "slug", slug, "err", err)
+	}
+}
+
+func buildServiceView(kind, title string, evs []*event.Event) svcView {
+	v := svcView{Title: title}
+	if len(evs) == 0 {
+		v.Empty = true
+		return v
+	}
+	engine := map[string]int{}
+	srcSet := map[string]bool{}
+	reply := map[string]int{}
+	detail := map[string]int{}
+	for _, ev := range evs {
+		v.Total++
+		if ev.Source.IP != "" {
+			srcSet[ev.Source.IP] = true
+		}
+		if ev.Handler != "" {
+			engine[ev.Handler]++
+		}
+		if ev.BannerSent != "" {
+			reply[ev.BannerSent]++
+		}
+		if d := serviceDetail(ev, kind); d != "" {
+			detail[d]++
+		}
+	}
+	v.Sources = len(srcSet)
+
+	if fig, ok := perHourChart(title+" per hour", evs, "#4a6fa5"); ok {
+		v.Figs = append(v.Figs, fig)
+	}
+	if len(engine) > 0 {
+		v.Figs = append(v.Figs, chartFigure("pie", "By service", map[string]any{"slices": slicesFromMap(engine), "donut": true}))
+	}
+	if len(detail) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", serviceDetailTitle(kind), map[string]any{"series": topBarsFromMap(detail, 20)}))
+	}
+	if len(reply) > 0 {
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top replies / banners", map[string]any{"series": topBarsFromMap(reply, 20)}))
+	}
+	_, v.Attackers = topAttackers(evs)
+	if len(v.Attackers) > 0 {
+		bars := make([]chBar, 0, len(v.Attackers))
+		for _, rr := range v.Attackers {
+			bars = append(bars, chBar{Label: rr.Label, Value: rr.Count})
+		}
+		v.Figs = append(v.Figs, chartFigure("hbar", "Top 10 attackers", map[string]any{"series": bars}))
+	}
+	v.Attacks = attackTable(evs)
+	v.Intents = topIntents(evs)
+
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Log) >= 200 {
+			break
+		}
+		v.Log = append(v.Log, svcLogRow{
+			Time:    ev.Time.UTC().Format(time.RFC3339),
+			Source:  ev.Source.IP,
+			Service: ev.Handler,
+			Detail:  serviceDetail(ev, kind),
+			Intent:  eventIntent(ev),
+			Anoms:   append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
+	return v
+}
+
+func serviceDetailTitle(kind string) string {
+	switch kind {
+	case "remote":
+		return "Top usernames / commands"
+	case "mail":
+		return "Top senders / recipients / commands"
+	case "ntp":
+		return "Top NTP requests / intents"
+	}
+	return "Top details"
+}
+
+// serviceDetail picks the most telling per-event detail for the category, from
+// the meta keys the relevant handlers actually set.
+func serviceDetail(ev *event.Event, kind string) string {
+	switch kind {
+	case "remote":
+		if c := metaStr(ev, "exec_command"); c != "" {
+			return c
+		}
+		if cmds := metaStrings(ev.Meta, "shell_commands"); len(cmds) > 0 {
+			return cmds[0]
+		}
+		if cmds := metaStrings(ev.Meta, "commands"); len(cmds) > 0 {
+			return cmds[0]
+		}
+		for _, k := range []string{"user_attempt", "accepted_user", "auth_user", "ntlm_user"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
+	case "mail":
+		if f := metaStr(ev, "mail_from"); f != "" {
+			if t := metaStr(ev, "rcpt_to"); t != "" {
+				return f + " → " + t
+			}
+			return f
+		}
+		for _, k := range []string{"rcpt_to", "auth_user", "helo"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
+		if e := metaStrings(ev.Meta, "expn_list"); len(e) > 0 {
+			return "EXPN/VRFY " + strings.Join(e, ",")
+		}
+	case "ntp":
+		for _, k := range []string{"intent", "ntp_request", "ntp_control_opcode"} {
+			if v := metaStr(ev, k); v != "" {
+				return v
+			}
+		}
 	}
 	return ""
 }

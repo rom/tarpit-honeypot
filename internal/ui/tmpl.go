@@ -565,7 +565,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -683,6 +683,26 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>intent</th><th>reply</th><th>labels</th></tr>
 {{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "service" }}{{ template "head" . }}
+<h1 data-help="Per-service decoy analytics (mirrors the DNS view): event volume over time, the services hit, the top usernames/commands/senders, the version banners served, the top attackers, the attacks/misuses/CVEs triggered, the attacker-intent breakdown, and a per-event log with intent.">{{ .Title }} — {{ .RangeLabel }}</h1>
+<p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
+{{ if .Empty }}<p class="note">No traffic observed yet for this service category in this window.</p>{{ else }}
+<div class="counters">
+  <a class="counter c-total" href="/events"><b>{{ .Total }}</b><span>events</span></a>
+  <a class="counter c-udp" href="#sources"><b>{{ .Sources }}</b><span>sources</span></a>
+</div>
+<div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
+{{ template "intenttable" .Intents }}
+{{ if .Attackers }}<h2 id="sources">Top attackers</h2>
+<table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
+<h2>Attacks / misuses / manipulations / vulnerabilities</h2>
+{{ template "attacktable" .Attacks }}
+{{ if .Log }}<h2>Activity log <span class="meta">({{ len .Log }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>service</th><th>detail</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Log }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Service }}</span></td><td><code>{{ .Detail }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 

@@ -10,6 +10,23 @@ documented in `docs/`).
 
 ### Added
 
+- **Remote-access / mail / NTP analytics views.** Three new DNS-style pages
+  (`/remote`, `/mail`, `/ntp`) driven by one generic service-view builder +
+  template: event volume over time, services hit, top usernames/commands/
+  senders, banners, top attackers, attacks/CVEs, the attacker-intent table, and
+  a per-event activity log with an intent column. Categories: remote =
+  ssh/telnet/rdp/vnc/…, mail = all SMTP/POP3/IMAP variants, ntp. Nav-gated +
+  togglable like the existing service pages.
+- **Attacker-intent on the web + database views.** The intent table near the top
+  is now populated and an intent column appears in the per-request / activity
+  listings. The http handler labels intent (exploit attempt / web-shell / C2
+  stager / scanning / proxy abuse / credential submission / recon), and the UI
+  derives a label for DB engines that don't self-label.
+- **Cross-target timeline on the source profile.** When a source reached more
+  than one of the host's server IPs, the profile shows the targets in first-seen
+  order with timing-offset bars, per-target ports + services + hit counts, and a
+  ⚠ list of ports hit on more than one target (same-service fleet sweep).
+
 - **Cross-target correlation (`correlate:cross_target`).** On a host serving
   several decoy IPs, this detector fires when one source reaches multiple target
   IPs within a window and records the dimensions an analyst asks for: the
