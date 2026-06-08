@@ -618,7 +618,7 @@ type UI struct {
 // ui.pages. Core pages are intentionally absent (always shown).
 var TogglablePages = map[string]bool{
 	"attack": true, "correlation": true, "campaigns": true, "map": true,
-	"captures": true, "credentials": true, "dns": true, "web": true,
+	"captures": true, "credentials": true, "interactions": true, "dns": true, "web": true,
 	"databases": true, "remote": true, "mail": true, "ntp": true,
 	"fleet": true, "iocs": true, "tunnels": true,
 	"fingerprints": true, "devices": true, "topology": true, "charts": true,

@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **Attacker interactions view (`/interactions`).** A new page showing what
+  attackers actually *did* once engaged: commands typed into the emulated
+  SSH/Telnet shells (`shell_commands`), exec requests, fake-web-shell commands
+  (`webshell_cmd`), keystrokes, and recorded session casts (linked for
+  download). Top-commands table + by-service/top-command charts + per-session
+  command transcripts, newest first. The "work" view, distinct from the
+  recon/attack tables.
 - **Remote-access / mail / NTP analytics views.** Three new DNS-style pages
   (`/remote`, `/mail`, `/ntp`) driven by one generic service-view builder +
   template: event volume over time, services hit, top usernames/commands/
