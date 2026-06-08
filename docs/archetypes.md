@@ -84,10 +84,14 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | AudioCodes Mediant gateway | `audiocodes` | audiocodes | 4 |
 | Avaya Aura Communication Manager | `avaya-aura` | avaya | 4 |
 | Axis network camera | `axis-camera` | axis | 2 |
+| Axis P3245-LVE dome camera | `axis-p3245` | axis | 3 |
+| Axis Q6075 PTZ camera | `axis-q6075` | axis | 3 |
 | B&R X20 (PLC) | `br-x20` | br | 4 |
 | Bachmann M1 (controller) | `bachmann-m1` | bachmann | 4 |
 | Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 4 |
 | Bosch IP camera | `bosch-camera` | bosch | 3 |
+| Bosch FLEXIDOME IP camera | `bosch-flexidome` | bosch | 3 |
+| Bosch AUTODOME PTZ camera | `bosch-autodome` | bosch | 3 |
 | Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
 | Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
@@ -125,6 +129,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Gentoo Linux | `gentoo` | gentoo | 3 |
 | Grandstream UCM (VoIP PBX) | `grandstream-ucm` | grandstream | 2 |
 | Hikvision IP camera | `hikvision-camera` | hikvision | 3 |
+| Hikvision DS-2DE PTZ camera | `hikvision-ptz` | hikvision | 3 |
+| Hikvision DS-7608NI NVR | `hikvision-nvr` | hikvision | 3 |
 | HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
 | Hirschmann EAGLE20 (industrial firewall) | `hirschmann-eagle20` | hirschmann | 3 |
 | Hirschmann RS20 (Classic managed switch) | `hirschmann-rs20` | hirschmann | 4 |
@@ -712,12 +718,48 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :80 `http`, :554 `rtsp`
 - **CVEs advertised:** —
 
+### Axis P3245-LVE dome camera — `axis-p3245`
+
+**Family:** axis · **TTL:** 64
+
+- **HTTP Server:** `Apache/2.4.53`
+- **SNMP sysDescr:** AXIS P3245-LVE Network Camera
+- **Services:** :80 `http`, :443 `https`, :554 `rtsp`
+- **CVEs advertised:** —
+
+### Axis Q6075 PTZ camera — `axis-q6075`
+
+**Family:** axis · **TTL:** 64
+
+- **HTTP Server:** `Apache/2.4.53`
+- **SNMP sysDescr:** AXIS Q6075 PTZ Network Camera
+- **Services:** :80 `http`, :443 `https`, :554 `rtsp`
+- **CVEs advertised:** —
+
 ### Bosch IP camera — `bosch-camera`
 
 **Family:** bosch · **TTL:** 64
 
 - **HTTP Server:** `lighttpd`
 - **SNMP sysDescr:** Bosch DINION IP starlight 7000
+- **Services:** :80 `http`, :554 `rtsp`, :1756 `raw` (RCP+)
+- **CVEs advertised:** —
+
+### Bosch FLEXIDOME IP camera — `bosch-flexidome`
+
+**Family:** bosch · **TTL:** 64
+
+- **HTTP Server:** `lighttpd`
+- **SNMP sysDescr:** Bosch FLEXIDOME IP 5000i
+- **Services:** :80 `http`, :554 `rtsp`, :1756 `raw` (RCP+)
+- **CVEs advertised:** —
+
+### Bosch AUTODOME PTZ camera — `bosch-autodome`
+
+**Family:** bosch · **TTL:** 64
+
+- **HTTP Server:** `lighttpd`
+- **SNMP sysDescr:** Bosch AUTODOME IP 5000i
 - **Services:** :80 `http`, :554 `rtsp`, :1756 `raw` (RCP+)
 - **CVEs advertised:** —
 
@@ -730,6 +772,26 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Patch level:** V5.4.0
 - **Services:** :80 `http`, :554 `rtsp`, :8000 `raw`
 - **CVEs advertised:** CVE-2017-7921
+
+### Hikvision DS-2DE PTZ camera — `hikvision-ptz`
+
+**Family:** hikvision · **TTL:** 64
+
+- **HTTP Server:** `App-webs/`
+- **SNMP sysDescr:** Hikvision DS-2DE4A425IW-DE
+- **Patch level:** V5.5.800
+- **Services:** :80 `http`, :554 `rtsp`, :8000 `raw`
+- **CVEs advertised:** CVE-2021-36260
+
+### Hikvision DS-7608NI NVR — `hikvision-nvr`
+
+**Family:** hikvision · **TTL:** 64
+
+- **HTTP Server:** `App-webs/`
+- **SNMP sysDescr:** Hikvision DS-7608NI-K2 NVR
+- **Patch level:** V4.30.000
+- **Services:** :80 `http`, :554 `rtsp`, :8000 `raw`
+- **CVEs advertised:** CVE-2021-36260
 
 
 ## Printers & multi-function devices

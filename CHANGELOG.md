@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **More IP-camera archetype variants.** Beyond the base `axis-camera` /
+  `hikvision-camera` / `bosch-camera`, added fixed-dome / PTZ / NVR variants:
+  `axis-p3245` (P3245-LVE dome), `axis-q6075` (Q6075 PTZ), `hikvision-ptz`
+  (DS-2DE, CVE-2021-36260), `hikvision-nvr` (DS-7608NI, CVE-2021-36260),
+  `bosch-flexidome` (FLEXIDOME IP 5000i), `bosch-autodome` (AUTODOME PTZ) — each
+  with its own model banner / SNMP sysDescr / services (+ https on the Axis
+  variants), so the web/RTSP/SNMP/ONVIF identities stay coherent per model.
 - **`bosch-camera` archetype.** A Bosch IP-camera device identity (family
   `bosch`, lighttpd web UI / "BOSCH" title + digest realm, SNMP "Bosch DINION IP
   starlight 7000", Bosch Security Systems MAC OUI, services http/rtsp + RCP+ on

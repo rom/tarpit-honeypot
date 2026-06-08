@@ -14,8 +14,14 @@ var applianceArchetypes = map[string]*Profile{
 	"synology-dsm":          synologyDSM(),
 	"qnap-qts":              qnapQTS(),
 	"hikvision-camera":      hikvisionCamera(),
+	"hikvision-ptz":         hikvisionPTZ(),
+	"hikvision-nvr":         hikvisionNVR(),
 	"axis-camera":           axisCamera(),
+	"axis-p3245":            axisP3245(),
+	"axis-q6075":            axisQ6075(),
 	"bosch-camera":          boschCamera(),
+	"bosch-flexidome":       boschFlexidome(),
+	"bosch-autodome":        boschAutodome(),
 	"ubiquiti-edgerouter":   ubiquitiEdgeRouter(),
 	"rockwell-controllogix": rockwellControlLogix(),
 	"schneider-modicon":     schneiderModicon(),
@@ -170,6 +176,112 @@ func boschCamera() *Profile {
 			{Port: 1756, Handler: "raw", Note: "Bosch RCP+ control"},
 		},
 		quirks: []string{"camera", "onvif"},
+	}
+}
+
+// --- Additional camera variants (fixed dome / PTZ / NVR) -------------------
+
+func axisP3245() *Profile {
+	return &Profile{
+		Name: "axis-p3245", DisplayName: "Axis P3245-LVE dome camera", Family: "axis",
+		httpServer:   "Apache/2.4.53",
+		httpTitle:    "AXIS",
+		httpHeaders:  map[string]string{"WWW-Authenticate": "Digest realm=\"AXIS_ACCC8E000000\""},
+		snmpSysDescr: "AXIS P3245-LVE Network Camera", snmpSysName: "axis-p3245",
+		macOUI:  [3]byte{0x00, 0x40, 0x8c}, // Axis
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI / VAPIX"}, {Port: 443, Handler: "https", Note: "web UI (TLS)"},
+			{Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+		},
+		quirks: []string{"camera", "onvif"},
+	}
+}
+
+func axisQ6075() *Profile {
+	return &Profile{
+		Name: "axis-q6075", DisplayName: "Axis Q6075 PTZ camera", Family: "axis",
+		httpServer:   "Apache/2.4.53",
+		httpTitle:    "AXIS",
+		httpHeaders:  map[string]string{"WWW-Authenticate": "Digest realm=\"AXIS_ACCC8E000000\""},
+		snmpSysDescr: "AXIS Q6075 PTZ Network Camera", snmpSysName: "axis-q6075",
+		macOUI:  [3]byte{0x00, 0x40, 0x8c}, // Axis
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI / VAPIX"}, {Port: 443, Handler: "https", Note: "web UI (TLS)"},
+			{Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+		},
+		quirks: []string{"camera", "onvif", "ptz"},
+	}
+}
+
+func hikvisionPTZ() *Profile {
+	return &Profile{
+		Name: "hikvision-ptz", DisplayName: "Hikvision DS-2DE PTZ camera", Family: "hikvision",
+		httpServer:   "App-webs/",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN", "WWW-Authenticate": "Digest realm=\"IP Camera\""},
+		snmpSysDescr: "Hikvision DS-2DE4A425IW-DE", snmpSysName: "IPCamera",
+		macOUI:  [3]byte{0x44, 0x19, 0xb6}, // Hikvision
+		icmpTTL: 64,
+		// CVE-2021-36260: webserver command injection across many Hikvision
+		// IP cameras / PTZ — the signature exposure for current firmware.
+		patchLevel: "V5.5.800", cveVulns: []string{"CVE-2021-36260"},
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+			{Port: 8000, Handler: "raw", Note: "SDK / proprietary"},
+		},
+		quirks: []string{"camera", "onvif", "ptz"},
+	}
+}
+
+func hikvisionNVR() *Profile {
+	return &Profile{
+		Name: "hikvision-nvr", DisplayName: "Hikvision DS-7608NI NVR", Family: "hikvision",
+		httpServer:   "App-webs/",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN", "WWW-Authenticate": "Digest realm=\"Embedded Net DVR\""},
+		snmpSysDescr: "Hikvision DS-7608NI-K2 NVR", snmpSysName: "NVR",
+		macOUI:  [3]byte{0x44, 0x19, 0xb6}, // Hikvision
+		icmpTTL: 64,
+		patchLevel: "V4.30.000", cveVulns: []string{"CVE-2021-36260"},
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+			{Port: 8000, Handler: "raw", Note: "SDK / proprietary"},
+		},
+		quirks: []string{"camera", "onvif", "nvr"},
+	}
+}
+
+func boschFlexidome() *Profile {
+	return &Profile{
+		Name: "bosch-flexidome", DisplayName: "Bosch FLEXIDOME IP camera", Family: "bosch",
+		httpServer:   "lighttpd",
+		httpTitle:    "BOSCH",
+		httpHeaders:  map[string]string{"WWW-Authenticate": "Digest realm=\"Bosch Security Systems\""},
+		snmpSysDescr: "Bosch FLEXIDOME IP 5000i", snmpSysName: "Camera",
+		macOUI:  [3]byte{0x00, 0x07, 0x5f}, // Bosch Security Systems
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+			{Port: 1756, Handler: "raw", Note: "Bosch RCP+ control"},
+		},
+		quirks: []string{"camera", "onvif"},
+	}
+}
+
+func boschAutodome() *Profile {
+	return &Profile{
+		Name: "bosch-autodome", DisplayName: "Bosch AUTODOME PTZ camera", Family: "bosch",
+		httpServer:   "lighttpd",
+		httpTitle:    "BOSCH",
+		httpHeaders:  map[string]string{"WWW-Authenticate": "Digest realm=\"Bosch Security Systems\""},
+		snmpSysDescr: "Bosch AUTODOME IP 5000i", snmpSysName: "Camera",
+		macOUI:  [3]byte{0x00, 0x07, 0x5f}, // Bosch Security Systems
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+			{Port: 1756, Handler: "raw", Note: "Bosch RCP+ control"},
+		},
+		quirks: []string{"camera", "onvif", "ptz"},
 	}
 }
 
