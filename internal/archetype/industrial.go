@@ -558,6 +558,21 @@ var industrialArchetypes = map[string]*Profile{
 	},
 
 	// ---- ABB controllers / remote I/O / substation RTU ----
+	"abb-ac450": {
+		Name: "abb-ac450", DisplayName: "ABB Advant Controller 450 (AC450)", Family: "abb",
+		macOUI:          [3]byte{0x00, 0x24, 0x59},
+		telnetBanner:    "\r\nABB Advant Controller AC450\r\nMasterPiece 200/1\r\n\r\nlogin: ",
+		snmpSysDescr:    "ABB Advant Controller 450 (AC450) MasterBus 300",
+		snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		snmpSysName:     "AC450",
+		snmpSysLocation: "Process cell 1",
+		defaultServices: []DefaultService{
+			{Port: 23, Handler: "telnet", Note: "engineering console"},
+			{Port: 502, Handler: "modbus", Note: "Modbus/TCP gateway"},
+			{Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"abb"},
+	},
 	"abb-ac500": {
 		Name: "abb-ac500", DisplayName: "ABB AC500 PLC (PM573)", Family: "abb",
 		macOUI:          [3]byte{0x00, 0x24, 0x59},

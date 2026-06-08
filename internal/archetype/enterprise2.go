@@ -117,6 +117,7 @@ var enterprise2Archetypes = map[string]*Profile{
 	},
 	"checkpoint-gaia": {
 		Name: "checkpoint-gaia", DisplayName: "Check Point Gaia firewall", Family: "checkpoint",
+		patchLevel: "R81.10", cveVulns: []string{"CVE-2024-24919"},
 		sshBanner:    "SSH-2.0-OpenSSH_7.4",
 		httpServer:   "Check Point SVN foundation",
 		httpTitle:    "Check Point Gaia",

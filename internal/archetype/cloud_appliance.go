@@ -71,6 +71,22 @@ var cloudArchetypes = map[string]*Profile{
 		},
 		quirks: []string{"freebsd"},
 	},
+	"truenas-scale": {
+		Name: "truenas-scale", DisplayName: "TrueNAS SCALE (Debian)", Family: "truenas",
+		sshBanner:    "SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3",
+		httpServer:   "nginx",
+		httpTitle:    "TrueNAS",
+		httpBodyHTML: "<html><head><title>TrueNAS</title></head><body>TrueNAS SCALE</body></html>",
+		cliPrompt:    "root@truenas[~]# ",
+		snmpSysDescr: "Linux truenas 6.6.44-production+truenas #1 SMP x86_64",
+		snmpSysName:  "truenas", snmpSysObjectID: ".1.3.6.1.4.1.50536",
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 443, Handler: "https", Note: "web UI"}, {Port: 80, Handler: "http"},
+			{Port: 445, Handler: "smb", Note: "SMB shares"}, {Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"nas"},
+	},
 	"vmware-esxi": {
 		Name: "vmware-esxi", DisplayName: "VMware ESXi 8.0", Family: "esxi",
 		macOUI:       [3]byte{0x00, 0x50, 0x56}, // VMware
@@ -90,6 +106,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"juniper-srx": {
 		Name: "juniper-srx", DisplayName: "Juniper SRX (JunOS)", Family: "juniper",
+		patchLevel: "Junos 20.4R1", cveVulns: []string{"CVE-2023-36845"},
 		macOUI:       [3]byte{0x00, 0x05, 0x85}, // Juniper
 		sshBanner:    "SSH-2.0-OpenSSH_7.4",
 		httpServer:   "lighttpd",
@@ -142,6 +159,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"sonicwall-tz": {
 		Name: "sonicwall-tz", DisplayName: "SonicWall TZ (SonicOS)", Family: "sonicwall",
+		patchLevel: "SonicOS 7.0.1-5050", cveVulns: []string{"CVE-2024-40766"},
 		macOUI:       [3]byte{0x00, 0x06, 0xb1}, // SonicWall
 		sshBanner:    "SSH-2.0-OpenSSH_8.4",
 		httpServer:   "SonicWALL",
@@ -158,6 +176,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"netgear-nighthawk": {
 		Name: "netgear-nighthawk", DisplayName: "Netgear Nighthawk router", Family: "netgear",
+		patchLevel: "V1.0.4.84", cveVulns: []string{"CVE-2016-6277", "CVE-2017-5521"},
 		macOUI:       [3]byte{0x00, 0x14, 0x6c}, // Netgear
 		httpServer:   "uhttpd",
 		httpTitle:    "NETGEAR Router",

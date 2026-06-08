@@ -59,7 +59,9 @@ func ciscoIOS12Profile() *Profile {
 			{Port: 161, Handler: "snmp", Note: "SNMP"},
 		},
 		patchLevel: "12.4(15)T17",
-		quirks:     []string{"cisco-ios", "cisco-legacy"},
+		// Smart Install (smi) RCE — the signature exposure of legacy IOS routers.
+		cveVulns: []string{"CVE-2018-0171"},
+		quirks:   []string{"cisco-ios", "cisco-legacy"},
 	}
 }
 
@@ -70,6 +72,9 @@ func ciscoIOS12Profile() *Profile {
 // differs from the enterprise Catalyst line.
 func ciscoIEProfile(name string) *Profile {
 	var display, sysDescr, sysObjectID, model, prompt string
+	// IOS-XE models advertise the web-UI implant chain (CVE-2023-20198); the
+	// IOS-15 IE-2000 advertises Smart Install (CVE-2018-0171).
+	cves := []string{"CVE-2023-20198"}
 	ifs := []Interface{
 		{Index: 1, Descr: "GigabitEthernet1/1", Type: 6, Speed: 1_000_000_000, OperUp: true},
 		{Index: 2, Descr: "GigabitEthernet1/2", Type: 6, Speed: 1_000_000_000, OperUp: true},
@@ -101,6 +106,7 @@ func ciscoIEProfile(name string) *Profile {
 		sysObjectID = ".1.3.6.1.4.1.9.1.1409"
 		model = "IE-2000-8TC-G-E"
 		prompt = "IE2000>"
+		cves = []string{"CVE-2018-0171"}
 	}
 	return &Profile{
 		Name:        name,
@@ -128,6 +134,7 @@ func ciscoIEProfile(name string) *Profile {
 		},
 		tls:        TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
 		patchLevel: "IOS 15.2(7)E3",
+		cveVulns:   cves,
 		defaultServices: []DefaultService{
 			{Port: 22, Handler: "ssh", Note: "SSH management"},
 			{Port: 23, Handler: "telnet", Note: "Telnet (legacy)"},
@@ -151,6 +158,11 @@ func ciscoProfile(name string) *Profile {
 	sysDescr := "Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE11, RELEASE SOFTWARE (fc3)"
 	sysObjectID := ".1.3.6.1.4.1.9.1.716" // catalyst2960
 	model := "WS-C2960-24TT-L"
+	// IOS-15 access switches advertise Smart Install (CVE-2018-0171); the
+	// IOS-XE 9300 additionally advertises the web-UI implant chain (the
+	// CVE-2023-20198 → CVE-2023-20273 in-the-wild campaign).
+	patch := "15.0(2)SE11"
+	cves := []string{"CVE-2018-0171"}
 	switch name {
 	case "cisco-catalyst-switch", "cisco-catalyst-9300":
 		display = "Cisco Catalyst 9300 (IOS-XE 17)"
@@ -158,6 +170,8 @@ func ciscoProfile(name string) *Profile {
 		sysDescr = "Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4a, RELEASE SOFTWARE (fc1)"
 		sysObjectID = ".1.3.6.1.4.1.9.1.2494" // cat9300
 		model = "C9300-24T"
+		patch = "IOS-XE 17.9.4a"
+		cves = []string{"CVE-2023-20198", "CVE-2018-0171"}
 	}
 
 	p := &Profile{
@@ -209,8 +223,8 @@ func ciscoProfile(name string) *Profile {
 		// on 4786 is a famous unauthenticated-RCE / config-grab vector on
 		// Catalyst access switches left at default. Advertised only when
 		// vuln_emulation is on; never actually exploitable.
-		patchLevel: "15.0(2)SE11",
-		cveVulns:   []string{"CVE-2018-0171"},
+		patchLevel: patch,
+		cveVulns:   cves,
 		quirks:     []string{"cisco-ios"},
 	}
 	return p

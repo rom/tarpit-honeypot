@@ -368,6 +368,11 @@ func (p *Profile) KernelRelease() string {
 		default:
 			return "6.14.0-10-generic"
 		}
+	case "suse":
+		if major == 12 {
+			return "4.12.14-122.179-default"
+		}
+		return "6.4.0-150600.23.25-default" // SLES 15 SP6 / Leap 15.6
 	}
 	return ""
 }
@@ -809,6 +814,15 @@ var registry = map[string]*Profile{
 		smtpProduct:  "Postfix 3.3.1",
 		mysqlVersion: "10.3.28-MariaDB",
 	},
+	"centos-stream-9": {
+		Name: "centos-stream-9", DisplayName: "CentOS Stream 9", Family: "rhel",
+		sshBanner:    "SSH-2.0-OpenSSH_8.7",
+		httpServer:   "Apache/2.4.57 (CentOS Stream)",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		telnetBanner: "\r\nCentOS Stream release 9\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.5.25",
+		mysqlVersion: "10.5.22-MariaDB",
+	},
 	"centos-stream-10": {
 		Name: "centos-stream-10", DisplayName: "CentOS Stream 10", Family: "rhel",
 		sshBanner:    "SSH-2.0-OpenSSH_9.9",
@@ -876,6 +890,17 @@ var registry = map[string]*Profile{
 		mysqlVersion: "11.4.3-MariaDB",
 	},
 
+	"red-hat-enterprise-linux-7": {
+		Name: "rhel-7", DisplayName: "Red Hat Enterprise Linux 7", Family: "rhel",
+		sshBanner:    "SSH-2.0-OpenSSH_7.4",
+		httpServer:   "Apache/2.4.6 (Red Hat Enterprise Linux)",
+		ftpBanner:    "220 (vsFTPd 3.0.2)",
+		telnetBanner: "\r\nRed Hat Enterprise Linux Server release 7.9 (Maipo)\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 2.10.1",
+		mysqlVersion: "5.5.68-MariaDB",
+		// OpenSSL 1.0.2k: TLS 1.0–1.2, no TLS 1.3.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+	},
 	"red-hat-enterprise-linux-8": {
 		Name: "rhel-8", DisplayName: "Red Hat Enterprise Linux 8", Family: "rhel",
 		sshBanner:    "SSH-2.0-OpenSSH_8.0",
@@ -967,6 +992,56 @@ var registry = map[string]*Profile{
 		telnetBanner: "\r\nUbuntu 20.04.6 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
 		smtpProduct:  "Postfix 3.4.13",
 		mysqlVersion: "8.0.36-0ubuntu0.20.04.1",
+	},
+	"ubuntu-22-04-lts": {
+		Name: "ubuntu-22.04", DisplayName: "Ubuntu 22.04 LTS (Jammy)", Family: "ubuntu",
+		sshBanner:    "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
+		httpServer:   "Apache/2.4.52 (Ubuntu)",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		telnetBanner: "\r\nUbuntu 22.04.5 LTS\r\n\\m \\r \\h\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.6.4",
+		mysqlVersion: "8.0.39-0ubuntu0.22.04.1",
+	},
+	// ---- SUSE family (SLES + openSUSE Leap). ----
+	"sles-12": {
+		Name: "sles-12", DisplayName: "SUSE Linux Enterprise Server 12 SP5", Family: "suse",
+		sshBanner:    "SSH-2.0-OpenSSH_7.2p2",
+		httpServer:   "Apache/2.4.23 (Linux/SUSE)",
+		ftpBanner:    "220 (vsFTPd 3.3.2)",
+		telnetBanner: "\r\nSUSE Linux Enterprise Server 12 SP5\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 2.11.10",
+		mysqlVersion: "10.2.33-MariaDB",
+		// OpenSSL 1.0.2: TLS 1.0–1.2.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
+	},
+	"sles-15": {
+		Name: "sles-15", DisplayName: "SUSE Linux Enterprise Server 15 SP6", Family: "suse",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4p1",
+		httpServer:   "Apache/2.4.51 (Linux/SUSE)",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		telnetBanner: "\r\nSUSE Linux Enterprise Server 15 SP6\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.5.9",
+		mysqlVersion: "10.6.16-MariaDB",
+	},
+	"opensuse-leap-15": {
+		Name: "opensuse-leap-15", DisplayName: "openSUSE Leap 15.6", Family: "suse",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4p1",
+		httpServer:   "Apache/2.4.51 (Linux/SUSE)",
+		ftpBanner:    "220 (vsFTPd 3.0.5)",
+		telnetBanner: "\r\nopenSUSE Leap 15.6\r\nKernel \\r on an \\m\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 3.5.9",
+		mysqlVersion: "10.6.16-MariaDB",
+	},
+	"debian-7": {
+		Name: "debian-7", DisplayName: "Debian 7 (wheezy)", Family: "debian",
+		sshBanner:    "SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u7",
+		httpServer:   "Apache/2.2.22 (Debian)",
+		ftpBanner:    "220 (vsFTPd 3.0.2)",
+		telnetBanner: "\r\nDebian GNU/Linux 7 \\n \\l\r\n\r\nlogin: ",
+		smtpProduct:  "Postfix 2.9.6",
+		mysqlVersion: "5.5.62-0+deb7u1",
+		// OpenSSL 1.0.1e: TLS 1.0–1.2 (1.1/1.2 only with updates), weak ciphers.
+		tls: TLSPosture{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS12, WeakCiphers: true},
 	},
 	"debian-8": {
 		Name: "debian-8", DisplayName: "Debian 8 (jessie)", Family: "debian",

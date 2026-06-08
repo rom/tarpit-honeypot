@@ -8,6 +8,59 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **SOHO router / UDM / NAS archetypes.** `dlink-router` (DIR-882), `tplink-router`
+  (Archer AX21), `asus-router` (RT-AX88U / ASUSWRT), `mikrotik-hap-ax3`,
+  `ubiquiti-udm` (Dream Machine), and the NAS models `synology-ds220plus`,
+  `synology-ds920plus`, `qnap-ts251plus`, `qnap-ts873a`. (SonicWall, FortiGate
+  60F, Juniper MX480, Cisco NCS5500, TrueNAS CORE already shipped.)
+- **CVE / exploit decoys across the comms & network-gear archetypes.** 32 router /
+  switch / firewall / VPN archetypes now advertise a vendor-accurate `patchLevel`
+  + `cveVulns` so a version scanner sees an exploitable box and the follow-up
+  exploit attempt is recognised: Cisco IOS Smart Install (CVE-2018-0171) / IOS-XE
+  web-UI (CVE-2023-20198) / IOS-XR Redis (CVE-2022-20821), Juniper J-Web
+  (CVE-2023-36845), Citrix Bleed (CVE-2023-4966 + CVE-2019-19781), PAN-OS
+  GlobalProtect (CVE-2024-3400), F5 (CVE-2022-1388 + CVE-2020-5902), FortiOS
+  (CVE-2018-13379), Check Point (CVE-2024-24919), Sophos (CVE-2022-1040),
+  SonicWall (CVE-2024-40766), Zyxel (CVE-2022-30525), DrayTek (CVE-2020-8515),
+  Huawei (CVE-2017-17215), MikroTik (CVE-2023-30799 / CVE-2018-14847), Netgear,
+  Ubiquiti EdgeRouter (CVE-2021-22909), D-Link, TP-Link, ASUS (CVE-2024-3080).
+  Six new CVE catalog records added (Cisco IOS-XR, MikroTik, SonicWall, Sophos,
+  Ubiquiti, ASUS).
+
+- **Service-provider / data-center router & switch archetypes.** `juniper-mx480`,
+  `juniper-mx960` (MX routers), `juniper-ex4300`, `juniper-qfx5120` (Junos
+  switches), `arista-7280r`, `cisco-ncs5500`, `cisco-asr9000` (Cisco IOS XR),
+  `nokia-7750-sr1` (new `nokia` family, SR OS), and Ubiquiti UniFi
+  `ubiquiti-unifi-switch` / `ubiquiti-unifi-ap` — each with vendor-accurate SSH /
+  J-Web / SNMP identity, product sysObjectID, and CPE.
+- **Catalog table completeness.** `docs/archetypes.md`'s quick-reference table is
+  now regenerated from the live catalog, so all 221 archetypes appear (it had
+  drifted, missing ~23 existing entries such as `ubuntu-20.04`, `debian-8`,
+  `arista-7050`, `cisco-2811`, the M340 / RX3i / ControlLogix ICS variants, …).
+- **18 more OS / NAS / printer / ICS archetype variants.** OS: `freebsd-11`,
+  `openbsd-7.4`, `openbsd-7.7`, `netbsd-9`, `netbsd-10` (NetBSD is new to the
+  catalog), `debian-7`, `centos-stream-9`, `rhel-7`, `ubuntu-22.04`, plus a new
+  **SUSE** family — `sles-12`, `sles-15`, `opensuse-leap-15`. Storage:
+  `truenas-scale`, `netgear-readynas`, `asustor-nas`. Printers/MFP:
+  `oki-printer`, `toshiba-estudio`. ICS: `abb-ac450` (ABB Advant Controller
+  450). Each has era-accurate banners / SNMP identity / TLS posture; the SUSE
+  family gets a `suse` kernel-version mapping. Catalog table + per-archetype
+  detail sections in `docs/archetypes.md` updated.
+- **More IP-camera archetype variants.** Beyond the base `axis-camera` /
+  `hikvision-camera` / `bosch-camera`, added fixed-dome / PTZ / NVR variants:
+  `axis-p3245` (P3245-LVE dome), `axis-q6075` (Q6075 PTZ), `hikvision-ptz`
+  (DS-2DE, CVE-2021-36260), `hikvision-nvr` (DS-7608NI, CVE-2021-36260),
+  `bosch-flexidome` (FLEXIDOME IP 5000i), `bosch-autodome` (AUTODOME PTZ) — each
+  with its own model banner / SNMP sysDescr / services (+ https on the Axis
+  variants), so the web/RTSP/SNMP/ONVIF identities stay coherent per model.
+- **`bosch-camera` archetype.** A Bosch IP-camera device identity (family
+  `bosch`, lighttpd web UI / "BOSCH" title + digest realm, SNMP "Bosch DINION IP
+  starlight 7000", Bosch Security Systems MAC OUI, services http/rtsp + RCP+ on
+  tcp/1756, ONVIF quirk) — joining the existing `axis-camera` and
+  `hikvision-camera`.
+
 ## [2.20.0] - 2026-06-08
 
 ### Added

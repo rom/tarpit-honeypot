@@ -67,6 +67,7 @@ var enterprise3Archetypes = map[string]*Profile{
 	},
 	"citrix-netscaler": {
 		Name: "citrix-netscaler", DisplayName: "Citrix NetScaler ADC", Family: "citrix",
+		patchLevel: "NetScaler 13.1-49.13", cveVulns: []string{"CVE-2023-4966", "CVE-2019-19781"},
 		sshBanner:    "SSH-2.0-OpenSSH_8.0",
 		httpServer:   "NetScaler",
 		httpTitle:    "Citrix Gateway",
@@ -83,6 +84,7 @@ var enterprise3Archetypes = map[string]*Profile{
 	},
 	"huawei-vrp": {
 		Name: "huawei-vrp", DisplayName: "Huawei VRP (router/switch)", Family: "huawei",
+		patchLevel: "VRP V200R010", cveVulns: []string{"CVE-2017-17215"},
 		macOUI:       [3]byte{0x00, 0xe0, 0xfc}, // Huawei
 		sshBanner:    "SSH-2.0-HUAWEI-1.5",
 		httpServer:   "Huawei",
@@ -99,6 +101,7 @@ var enterprise3Archetypes = map[string]*Profile{
 	},
 	"zyxel-usg": {
 		Name: "zyxel-usg", DisplayName: "Zyxel USG FLEX firewall", Family: "zyxel",
+		patchLevel: "ZLD V5.30", cveVulns: []string{"CVE-2022-30525"},
 		sshBanner:    "SSH-2.0-OpenSSH_8.4",
 		httpServer:   "Zyxel",
 		httpTitle:    "USG FLEX",
@@ -115,6 +118,7 @@ var enterprise3Archetypes = map[string]*Profile{
 	},
 	"draytek-vigor": {
 		Name: "draytek-vigor", DisplayName: "DrayTek Vigor router", Family: "draytek",
+		patchLevel: "3.8.4", cveVulns: []string{"CVE-2020-8515"},
 		sshBanner:    "SSH-2.0-dropbear_2019.78",
 		httpServer:   "DrayTek",
 		httpTitle:    "Vigor Router",
@@ -142,6 +146,7 @@ var enterprise3Archetypes = map[string]*Profile{
 	},
 	"sophos-xg": {
 		Name: "sophos-xg", DisplayName: "Sophos XG firewall", Family: "sophos",
+		patchLevel: "SFOS 18.5.1 MR-1", cveVulns: []string{"CVE-2022-1040"},
 		sshBanner:    "SSH-2.0-OpenSSH_8.4",
 		httpServer:   "xxxxxxxx-xxxxx",
 		httpTitle:    "Sophos Firewall",
