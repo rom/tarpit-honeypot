@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-06-08
+
 ### Added
 
 - **`list-events` target/handler/port filters + `validate-config` TLS check.**
