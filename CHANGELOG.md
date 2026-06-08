@@ -24,11 +24,15 @@ documented in `docs/`).
   a per-event activity log with an intent column. Categories: remote =
   ssh/telnet/rdp/vnc/…, mail = all SMTP/POP3/IMAP variants, ntp. Nav-gated +
   togglable like the existing service pages.
-- **Attacker-intent on the web + database views.** The intent table near the top
-  is now populated and an intent column appears in the per-request / activity
-  listings. The http handler labels intent (exploit attempt / web-shell / C2
-  stager / scanning / proxy abuse / credential submission / recon), and the UI
-  derives a label for DB engines that don't self-label.
+- **Attacker-intent on the web + database views — and in every export.** The
+  intent table near the top is now populated and an intent column appears in the
+  per-request / activity listings. The http handler labels intent itself, and a
+  listener-level deriver (`deriveEventIntent`) now sets an authoritative
+  `meta["intent"]` for every event a handler didn't already label — remote
+  (shell session / login / probe), mail (relay / login / address harvesting),
+  database (auth / command / probe), and the CVE-exploit case — so the intent
+  appears in search and in all SIEM exports (JSON / CEF / LEEF / OCSF), not just
+  the UI pages.
 - **Cross-target timeline on the source profile.** When a source reached more
   than one of the host's server IPs, the profile shows the targets in first-seen
   order with timing-offset bars, per-target ports + services + hit counts, and a

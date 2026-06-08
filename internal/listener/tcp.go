@@ -244,6 +244,7 @@ func (t *tcpListener) handle(ctx context.Context, conn net.Conn, bus chan<- *eve
 			}
 		}
 		counter.stamp(ev)
+		deriveEventIntent(ev) // authoritative intent in exports/search/UI
 		send(ctx, bus, ev)
 	}
 

@@ -179,6 +179,7 @@ func (u *udpListener) readLoop(ctx context.Context, pc net.PacketConn, bus chan<
 			ev.Meta["bytes_out"] = int64(out)
 			ev.Meta["pkts_out"] = int64(1)
 		}
+		deriveEventIntent(ev) // authoritative intent in exports/search/UI
 		select {
 		case bus <- ev:
 		case <-ctx.Done():
