@@ -244,8 +244,8 @@ func hikvisionNVR() *Profile {
 		httpServer:   "App-webs/",
 		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN", "WWW-Authenticate": "Digest realm=\"Embedded Net DVR\""},
 		snmpSysDescr: "Hikvision DS-7608NI-K2 NVR", snmpSysName: "NVR",
-		macOUI:  [3]byte{0x44, 0x19, 0xb6}, // Hikvision
-		icmpTTL: 64,
+		macOUI:     [3]byte{0x44, 0x19, 0xb6}, // Hikvision
+		icmpTTL:    64,
 		patchLevel: "V4.30.000", cveVulns: []string{"CVE-2021-36260"},
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
