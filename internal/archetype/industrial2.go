@@ -85,6 +85,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	// ---- enterprise / edge networking ----
 	"juniper-srx340": {
 		Name: "juniper-srx340", DisplayName: "Juniper SRX340 (Junos)", Family: "juniper",
+		patchLevel: "Junos 20.4R3", cveVulns: []string{"CVE-2023-36845"},
 		macOUI:          [3]byte{0x3C, 0x61, 0x04},
 		sshBanner:       "SSH-2.0-OpenSSH_7.4",
 		telnetBanner:    "\r\nSRX340 (ttyu0)\r\n\r\nlogin: ",
@@ -128,6 +129,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	},
 	"paloalto-pa220": {
 		Name: "paloalto-pa220", DisplayName: "Palo Alto PA-220 (PAN-OS)", Family: "paloalto",
+		patchLevel: "PAN-OS 11.1.0", cveVulns: []string{"CVE-2024-3400"},
 		macOUI:          [3]byte{0x00, 0x1B, 0x17},
 		sshBanner:       "SSH-2.0-OpenSSH_8.6",
 		loginPrompt:     "PA-220 login: ",

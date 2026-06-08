@@ -106,6 +106,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"juniper-srx": {
 		Name: "juniper-srx", DisplayName: "Juniper SRX (JunOS)", Family: "juniper",
+		patchLevel: "Junos 20.4R1", cveVulns: []string{"CVE-2023-36845"},
 		macOUI:       [3]byte{0x00, 0x05, 0x85}, // Juniper
 		sshBanner:    "SSH-2.0-OpenSSH_7.4",
 		httpServer:   "lighttpd",
@@ -158,6 +159,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"sonicwall-tz": {
 		Name: "sonicwall-tz", DisplayName: "SonicWall TZ (SonicOS)", Family: "sonicwall",
+		patchLevel: "SonicOS 7.0.1-5050", cveVulns: []string{"CVE-2024-40766"},
 		macOUI:       [3]byte{0x00, 0x06, 0xb1}, // SonicWall
 		sshBanner:    "SSH-2.0-OpenSSH_8.4",
 		httpServer:   "SonicWALL",
@@ -174,6 +176,7 @@ var cloudArchetypes = map[string]*Profile{
 	},
 	"netgear-nighthawk": {
 		Name: "netgear-nighthawk", DisplayName: "Netgear Nighthawk router", Family: "netgear",
+		patchLevel: "V1.0.4.84", cveVulns: []string{"CVE-2016-6277", "CVE-2017-5521"},
 		macOUI:       [3]byte{0x00, 0x14, 0x6c}, // Netgear
 		httpServer:   "uhttpd",
 		httpTitle:    "NETGEAR Router",

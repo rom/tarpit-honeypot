@@ -73,6 +73,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
 | ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
 | APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
+| ASUS RT-AX router (ASUSWRT) | `asus-router` | asus | 4 |
 | ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
 | Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
@@ -118,6 +119,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Cisco UCS CIMC | `cisco-ucs-cimc` | ciscoucs | 4 |
 | Cisco Unified CM (CUCM) | `cisco-cucm` | ciscocucm | 4 |
 | Citrix NetScaler ADC | `citrix-netscaler` | citrix | 2 |
+| D-Link DIR router | `dlink-router` | dlink | 4 |
 | Debian 10 (buster) | `debian-10` | debian | 0 |
 | Debian 11 (bullseye) | `debian-11` | debian | 0 |
 | Debian 12 (bookworm) | `debian-12` | debian | 0 |
@@ -180,6 +182,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | MikroTik RouterOS (RB750Gr3, 6.49.10) | `mikrotik-routeros` | mikrotik | 7 |
 | MikroTik RouterOS 6.40 (Winbox CVE-2018-14847) | `mikrotik-routeros-640` | mikrotik | 7 |
 | MikroTik RouterOS 7 (RB5009) | `mikrotik-routeros-7` | mikrotik | 7 |
+| MikroTik hAP ax3 (RouterOS 7) | `mikrotik-hap-ax3` | mikrotik | 7 |
 | Mitel MiVoice Business | `mitel-mivoice` | mitel | 3 |
 | Mitsubishi MELSEC iQ-R (R04CPU) | `mitsubishi-melsec-iq-r` | mitsubishi | 3 |
 | Moxa AWK-3131A (industrial wireless AP) | `moxa-awk-3131a` | moxa | 5 |
@@ -216,6 +219,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Phoenix Contact FL SWITCH 2008 | `phoenix-fl-switch-2008` | phoenix | 3 |
 | Poly/Polycom VVX phone | `polycom-vvx` | polycom | 3 |
 | Proxmox VE 8 (Debian) | `proxmox-ve` | proxmox | 3 |
+| QNAP TS-251+ (QTS) | `qnap-ts251plus` | qnap | 5 |
+| QNAP TS-873A (QuTS hero) | `qnap-ts873a` | qnap | 5 |
 | QNAP Turbo NAS (QTS) | `qnap-qts` | qnap | 5 |
 | Raritan Dominion KX (KVM) | `raritan-kx` | raritan | 4 |
 | Raspberry Pi OS (Debian) | `raspberry-pi-os` | raspbian | 2 |
@@ -246,7 +251,10 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | SonicWall TZ (SonicOS) | `sonicwall-tz` | sonicwall | 2 |
 | Sophos XG firewall | `sophos-xg` | sophos | 2 |
 | Supermicro BMC (IPMI/Redfish) | `supermicro-bmc` | supermicro | 4 |
+| Synology DS220+ (DSM) | `synology-ds220plus` | synology | 5 |
+| Synology DS920+ (DSM) | `synology-ds920plus` | synology | 5 |
 | Synology DiskStation (DSM) | `synology-dsm` | synology | 5 |
+| TP-Link Archer router | `tplink-router` | tplink | 3 |
 | Teltonika RUT240 (RutOS, LTE router) | `teltonika-rut240` | teltonika | 4 |
 | Teltonika RUT955 (industrial router, GPS) | `teltonika-rut955` | teltonika | 5 |
 | Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
@@ -255,6 +263,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Toshiba e-STUDIO (MFP) | `toshiba-estudio` | printer | 6 |
 | TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
 | TrueNAS SCALE (Debian) | `truenas-scale` | truenas | 4 |
+| Ubiquiti Dream Machine (UniFi OS) | `ubiquiti-udm` | ubiquiti | 4 |
 | Ubiquiti EdgeRouter (EdgeOS) | `ubiquiti-edgerouter` | ubiquiti | 3 |
 | Ubiquiti UniFi AP (UAP) | `ubiquiti-unifi-ap` | ubiquiti | 4 |
 | Ubiquiti UniFi Switch (USW) | `ubiquiti-unifi-switch` | ubiquiti | 4 |
@@ -781,7 +790,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SNMP sysDescr:** Cisco IOS Software [Cupertino], IE3400 Switch Software (IE3400-UNIVERSALK9-M), Version 17.9.4, RELEASE SOFTWARE (fc1)
 - **Patch level:** IOS 15.2(7)E3
 - **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :443 `https`, :161 `snmp`, :4840 `opcua`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-20198
 
 ### Cisco IR1101 (industrial router, IOS-XE) — `cisco-ir1101`
 
@@ -792,7 +801,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SNMP sysDescr:** Cisco IOS Software [Cupertino], ir1101 Software (ir1101-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc1)
 - **Patch level:** IOS 15.2(7)E3
 - **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :443 `https`, :161 `snmp`, :4840 `opcua`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-20198
 
 ### Cisco Industrial Ethernet 2000 (IOS 15) — `cisco-ie-2000`
 
@@ -803,7 +812,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SNMP sysDescr:** Cisco IOS Software, IE2000 Software (IE2000-UNIVERSALK9-M), Version 15.2(7)E3, RELEASE SOFTWARE (fc3)
 - **Patch level:** IOS 15.2(7)E3
 - **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :443 `https`, :161 `snmp`, :4840 `opcua`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2018-0171
 
 ### MikroTik RouterOS (RB750Gr3, 6.49.10) — `mikrotik-routeros`
 
@@ -822,7 +831,53 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd`
 - **SNMP sysDescr:** EdgeOS v2.0.9 ER-X
 - **Services:** :443 `https`, :22 `ssh`, :161 `snmp`
+- **CVEs advertised:** CVE-2021-22909
+
+### Ubiquiti Dream Machine (UniFi OS) — `ubiquiti-udm`
+
+**Family:** ubiquiti · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.41112`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** UniFi Dream Machine Pro, UniFi OS 3.2.12
+- **Services:** :22 `ssh`, :443 `https`, :80 `http`, :161 `snmp`
 - **CVEs advertised:** —
+
+### MikroTik hAP ax3 (RouterOS 7) — `mikrotik-hap-ax3`
+
+**Family:** mikrotik · **TTL:** 64
+
+- **SNMP sysDescr:** RouterOS RB hAP ax3 (C53UiG+5HPaxD2HPaxD) 7.15.3
+- **Services:** :22 `ssh`, :23 `telnet`, :80 `http`, :8291 `winbox`, :8728 `api`, :161 `snmp`
+- **CVEs advertised:** CVE-2023-30799
+
+### D-Link DIR router — `dlink-router`
+
+**Family:** dlink · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.171`
+
+- **HTTP Server:** `lighttpd/1.4.45`
+- **SNMP sysDescr:** D-Link DIR-882 Wireless Router
+- **Services:** :80 `http`, :443 `https`, :23 `telnet`, :161 `snmp`
+- **CVEs advertised:** CVE-2019-16920, CVE-2015-2051
+
+### TP-Link Archer router — `tplink-router`
+
+**Family:** tplink · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.11863`
+
+- **HTTP Server:** `Router Webserver`
+- **SNMP sysDescr:** TP-Link Archer AX21 (AX1800)
+- **Services:** :80 `http`, :443 `https`, :161 `snmp`
+- **CVEs advertised:** CVE-2023-1389
+
+### ASUS RT-AX router (ASUSWRT) — `asus-router`
+
+**Family:** asus · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.2623`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.7`
+- **HTTP Server:** `httpd/2.0`
+- **SNMP sysDescr:** ASUSTeK RT-AX88U ASUSWRT 3.0.0.4.388
+- **Services:** :80 `http`, :8443 `https`, :22 `ssh`, :161 `snmp`
+- **CVEs advertised:** CVE-2024-3080
 
 ### Juniper MX480 (Junos) — `juniper-mx480`
 
@@ -832,7 +887,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Juniper Networks J-Web`
 - **SNMP sysDescr:** Juniper Networks, Inc. mx480 internet router, kernel JUNOS 21.4R3
 - **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-36845
 
 ### Juniper MX960 (Junos) — `juniper-mx960`
 
@@ -842,7 +897,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Juniper Networks J-Web`
 - **SNMP sysDescr:** Juniper Networks, Inc. mx960 internet router, kernel JUNOS 21.4R3
 - **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-36845
 
 ### Juniper EX4300 (Junos switch) — `juniper-ex4300`
 
@@ -852,7 +907,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Juniper Networks J-Web`
 - **SNMP sysDescr:** Juniper Networks, Inc. ex4300-48t Ethernet Switch, kernel JUNOS 20.4R3
 - **Services:** :22 `ssh`, :23 `telnet`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-36845
 
 ### Juniper QFX5120 (Junos DC switch) — `juniper-qfx5120`
 
@@ -862,7 +917,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Juniper Networks J-Web`
 - **SNMP sysDescr:** Juniper Networks, Inc. qfx5120-48y Ethernet Switch, kernel JUNOS 21.2R3
 - **Services:** :22 `ssh`, :443 `https`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-36845
 
 ### Arista 7280R (EOS) — `arista-7280r`
 
@@ -881,7 +936,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SSH:** `SSH-2.0-Cisco-2.0`
 - **SNMP sysDescr:** Cisco IOS XR Software (NCS-5500), Version 7.5.2
 - **Services:** :22 `ssh`, :23 `telnet`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2022-20821
 
 ### Cisco ASR 9000 (IOS XR) — `cisco-asr9000`
 
@@ -890,7 +945,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **SSH:** `SSH-2.0-Cisco-2.0`
 - **SNMP sysDescr:** Cisco IOS XR Software (Cisco ASR9K Series), Version 7.5.2
 - **Services:** :22 `ssh`, :23 `telnet`, :161 `snmp`, :830 `raw` (NETCONF)
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2022-20821
 
 ### Nokia 7750 SR-1 (SR OS) — `nokia-7750-sr1`
 
@@ -953,6 +1008,46 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** Synology DS920+ DSM 7.2
 - **Services:** :5000 `http`, :5001 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
+- **CVEs advertised:** —
+
+### Synology DS220+ (DSM) — `synology-ds220plus`
+
+**Family:** synology · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.6574.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.2p1`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** Synology DS220+ DSM 7.2
+- **Services:** :5000 `http`, :5001 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
+- **CVEs advertised:** —
+
+### Synology DS920+ (DSM) — `synology-ds920plus`
+
+**Family:** synology · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.6574.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.2p1`
+- **HTTP Server:** `nginx`
+- **SNMP sysDescr:** Synology DS920+ DSM 7.2
+- **Services:** :5000 `http`, :5001 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
+- **CVEs advertised:** —
+
+### QNAP TS-251+ (QTS) — `qnap-ts251plus`
+
+**Family:** qnap · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.24681.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `http server`
+- **SNMP sysDescr:** QNAP TS-251+ QTS 5.0
+- **Services:** :8080 `http`, :443 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
+- **CVEs advertised:** —
+
+### QNAP TS-873A (QuTS hero) — `qnap-ts873a`
+
+**Family:** qnap · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.24681.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_8.4`
+- **HTTP Server:** `http server`
+- **SNMP sysDescr:** QNAP TS-873A QTS 5.0
+- **Services:** :8080 `http`, :443 `https`, :445 `smb`, :22 `ssh`, :21 `ftp`
 - **CVEs advertised:** —
 
 ### TrueNAS SCALE (Debian) — `truenas-scale`

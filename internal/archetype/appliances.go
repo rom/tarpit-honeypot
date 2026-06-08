@@ -12,7 +12,11 @@ var applianceArchetypes = map[string]*Profile{
 	"pfsense":               pfsense(),
 	"fortigate":             fortigate(),
 	"synology-dsm":          synologyDSM(),
+	"synology-ds220plus":    synologyModel("synology-ds220plus", "DS220+", "Synology DS220+ (DSM)"),
+	"synology-ds920plus":    synologyModel("synology-ds920plus", "DS920+", "Synology DS920+ (DSM)"),
 	"qnap-qts":              qnapQTS(),
+	"qnap-ts251plus":        qnapModel("qnap-ts251plus", "TS-251+", "QNAP TS-251+ (QTS)"),
+	"qnap-ts873a":           qnapModel("qnap-ts873a", "TS-873A", "QNAP TS-873A (QuTS hero)"),
 	"netgear-readynas":      netgearReadyNAS(),
 	"asustor-nas":           asustorNAS(),
 	"oki-printer":           okiPrinter(),
@@ -121,6 +125,50 @@ func qnapQTS() *Profile {
 			"MLST type*;size*;modify*;UNIX.mode*", "PASV", "REST STREAM",
 			"SIZE", "TVFS", "UTF8",
 		},
+		defaultServices: []DefaultService{
+			{Port: 8080, Handler: "http", Note: "QTS web"}, {Port: 443, Handler: "https", Note: "QTS web (TLS)"},
+			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
+			{Port: 21, Handler: "ftp", Note: "FTP"},
+		},
+		quirks: []string{"nas"},
+	}
+}
+
+// synologyModel builds a Synology DiskStation profile pinned to a specific
+// model, so the catalog can carry several DSM boxes that share the DSM 7.2
+// fingerprint (nginx web on 5000/5001, SMB, SSH, FTP).
+func synologyModel(name, model, display string) *Profile {
+	return &Profile{
+		Name: name, DisplayName: display, Family: "synology",
+		sshBanner:    "SSH-2.0-OpenSSH_8.2p1",
+		httpServer:   "nginx",
+		httpTitle:    "Synology DiskStation",
+		httpBodyHTML: "<html><head><title>Synology DiskStation</title></head><body>QuickConnect</body></html>",
+		httpHeaders:  map[string]string{"X-Content-Type-Options": "nosniff", "Set-Cookie": "id=; path=/; HttpOnly"},
+		snmpSysDescr: "Synology " + model + " DSM 7.2", snmpSysName: "DiskStation", snmpSysObjectID: ".1.3.6.1.4.1.6574.1",
+		macOUI:  [3]byte{0x00, 0x11, 0x32}, // Synology
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 5000, Handler: "http", Note: "DSM web"}, {Port: 5001, Handler: "https", Note: "DSM web (TLS)"},
+			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
+			{Port: 21, Handler: "ftp", Note: "FTP"},
+		},
+		quirks: []string{"nas"},
+	}
+}
+
+// qnapModel builds a QNAP NAS profile pinned to a specific model.
+func qnapModel(name, model, display string) *Profile {
+	return &Profile{
+		Name: name, DisplayName: display, Family: "qnap",
+		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		httpServer:   "http server",
+		httpTitle:    "QNAP Turbo NAS",
+		httpBodyHTML: "<html><head><title>QNAP Turbo NAS</title></head><body>QTS</body></html>",
+		httpHeaders:  map[string]string{"X-Frame-Options": "SAMEORIGIN"},
+		snmpSysDescr: "QNAP " + model + " QTS 5.0", snmpSysName: "NAS", snmpSysObjectID: ".1.3.6.1.4.1.24681.1",
+		macOUI:  [3]byte{0x24, 0x5e, 0xbe}, // QNAP
+		icmpTTL: 64,
 		defaultServices: []DefaultService{
 			{Port: 8080, Handler: "http", Note: "QTS web"}, {Port: 443, Handler: "https", Note: "QTS web (TLS)"},
 			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
@@ -292,6 +340,7 @@ func boschAutodome() *Profile {
 func ubiquitiEdgeRouter() *Profile {
 	return &Profile{
 		Name: "ubiquiti-edgerouter", DisplayName: "Ubiquiti EdgeRouter (EdgeOS)", Family: "ubiquiti",
+		patchLevel: "EdgeOS 2.0.8", cveVulns: []string{"CVE-2021-22909"},
 		sshBanner:    "SSH-2.0-OpenSSH_7.4 Debian",
 		httpServer:   "lighttpd",
 		httpTitle:    "EdgeOS",

@@ -26,6 +26,7 @@ var familyVendor = map[string]string{
 	"citrix": "citrix", "vyos": "vyos", "openwrt": "openwrt", "mikrotik": "mikrotik",
 	"cisco": "cisco", "ciscoucs": "cisco", "ciscocucm": "cisco", "arista": "arista",
 	"huawei": "huawei", "zyxel": "zyxel", "draytek": "draytek", "netgear": "netgear",
+	"dlink": "dlink", "tplink": "tp-link", "asus": "asus",
 	"ubiquiti": "ui", "teltonika": "teltonika", "nokia": "nokia",
 	"vmware": "vmware", "esxi": "vmware", "proxmox": "proxmox", "truenas": "truenas",
 	"synology": "synology", "qnap": "qnap",
@@ -76,6 +77,7 @@ var hwFamilies = map[string]bool{
 	"cisco": true, "arista": true, "huawei": true, "apc": true, "raritan": true,
 	"lantronix": true, "opengear": true, "yealink": true, "polycom": true,
 	"grandstream": true, "audiocodes": true, "digi": true, "nokia": true,
+	"dlink": true, "tplink": true, "asus": true,
 }
 
 var cpeTokenStrip = regexp.MustCompile(`[^a-z0-9._-]+`)

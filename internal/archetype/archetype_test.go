@@ -297,6 +297,16 @@ func TestAllShipArchetypes(t *testing.T) {
 		"Lantronix XPort (embedded device server)",
 		"Westermo Lynx 3510 (WeOS managed switch)",
 		"Westermo Lynx 5512 (WeOS managed switch)",
+		// SOHO routers / UDM / NAS models added later.
+		"D-Link DIR router",
+		"TP-Link Archer router",
+		"ASUS RT-AX router (ASUSWRT)",
+		"MikroTik hAP ax3 (RouterOS 7)",
+		"Ubiquiti Dream Machine (UniFi OS)",
+		"Synology DS220+ (DSM)",
+		"Synology DS920+ (DSM)",
+		"QNAP TS-251+ (QTS)",
+		"QNAP TS-873A (QuTS hero)",
 	}
 	got := Names()
 	if len(got) != len(want) {

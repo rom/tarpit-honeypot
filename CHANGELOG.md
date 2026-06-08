@@ -10,6 +10,25 @@ documented in `docs/`).
 
 ### Added
 
+- **SOHO router / UDM / NAS archetypes.** `dlink-router` (DIR-882), `tplink-router`
+  (Archer AX21), `asus-router` (RT-AX88U / ASUSWRT), `mikrotik-hap-ax3`,
+  `ubiquiti-udm` (Dream Machine), and the NAS models `synology-ds220plus`,
+  `synology-ds920plus`, `qnap-ts251plus`, `qnap-ts873a`. (SonicWall, FortiGate
+  60F, Juniper MX480, Cisco NCS5500, TrueNAS CORE already shipped.)
+- **CVE / exploit decoys across the comms & network-gear archetypes.** 32 router /
+  switch / firewall / VPN archetypes now advertise a vendor-accurate `patchLevel`
+  + `cveVulns` so a version scanner sees an exploitable box and the follow-up
+  exploit attempt is recognised: Cisco IOS Smart Install (CVE-2018-0171) / IOS-XE
+  web-UI (CVE-2023-20198) / IOS-XR Redis (CVE-2022-20821), Juniper J-Web
+  (CVE-2023-36845), Citrix Bleed (CVE-2023-4966 + CVE-2019-19781), PAN-OS
+  GlobalProtect (CVE-2024-3400), F5 (CVE-2022-1388 + CVE-2020-5902), FortiOS
+  (CVE-2018-13379), Check Point (CVE-2024-24919), Sophos (CVE-2022-1040),
+  SonicWall (CVE-2024-40766), Zyxel (CVE-2022-30525), DrayTek (CVE-2020-8515),
+  Huawei (CVE-2017-17215), MikroTik (CVE-2023-30799 / CVE-2018-14847), Netgear,
+  Ubiquiti EdgeRouter (CVE-2021-22909), D-Link, TP-Link, ASUS (CVE-2024-3080).
+  Six new CVE catalog records added (Cisco IOS-XR, MikroTik, SonicWall, Sophos,
+  Ubiquiti, ASUS).
+
 - **Service-provider / data-center router & switch archetypes.** `juniper-mx480`,
   `juniper-mx960` (MX routers), `juniper-ex4300`, `juniper-qfx5120` (Junos
   switches), `arista-7280r`, `cisco-ncs5500`, `cisco-asr9000` (Cisco IOS XR),
