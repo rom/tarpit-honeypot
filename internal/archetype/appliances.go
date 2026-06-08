@@ -15,6 +15,7 @@ var applianceArchetypes = map[string]*Profile{
 	"qnap-qts":              qnapQTS(),
 	"hikvision-camera":      hikvisionCamera(),
 	"axis-camera":           axisCamera(),
+	"bosch-camera":          boschCamera(),
 	"ubiquiti-edgerouter":   ubiquitiEdgeRouter(),
 	"rockwell-controllogix": rockwellControlLogix(),
 	"schneider-modicon":     schneiderModicon(),
@@ -150,6 +151,23 @@ func axisCamera() *Profile {
 		icmpTTL: 64,
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "web UI / VAPIX"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+		},
+		quirks: []string{"camera", "onvif"},
+	}
+}
+
+func boschCamera() *Profile {
+	return &Profile{
+		Name: "bosch-camera", DisplayName: "Bosch IP camera", Family: "bosch",
+		httpServer:   "lighttpd",
+		httpTitle:    "BOSCH",
+		httpHeaders:  map[string]string{"WWW-Authenticate": "Digest realm=\"Bosch Security Systems\""},
+		snmpSysDescr: "Bosch DINION IP starlight 7000", snmpSysName: "Camera",
+		macOUI:  [3]byte{0x00, 0x07, 0x5f}, // Bosch Security Systems
+		icmpTTL: 64,
+		defaultServices: []DefaultService{
+			{Port: 80, Handler: "http", Note: "web UI"}, {Port: 554, Handler: "rtsp", Note: "RTSP stream"},
+			{Port: 1756, Handler: "raw", Note: "Bosch RCP+ control"},
 		},
 		quirks: []string{"camera", "onvif"},
 	}

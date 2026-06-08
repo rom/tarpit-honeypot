@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`bosch-camera` archetype.** A Bosch IP-camera device identity (family
+  `bosch`, lighttpd web UI / "BOSCH" title + digest realm, SNMP "Bosch DINION IP
+  starlight 7000", Bosch Security Systems MAC OUI, services http/rtsp + RCP+ on
+  tcp/1756, ONVIF quirk) — joining the existing `axis-camera` and
+  `hikvision-camera`.
+
 ## [2.20.0] - 2026-06-08
 
 ### Added

@@ -39,7 +39,7 @@ var familyVendor = map[string]string{
 	"westermo": "westermo", "advantech": "advantech", "bachmann": "bachmann",
 	"br": "br-automation", "bristol": "emerson", "redlion": "redlion", "echelon": "echelon",
 	"sel": "selinc", "sma": "sma", "triconex": "schneider", "hima": "hima",
-	"hikvision": "hikvision", "axis": "axis",
+	"hikvision": "hikvision", "axis": "axis", "bosch": "bosch",
 	"printer": "generic",
 	"freepbx": "sangoma", "freeswitch": "signalwire", "3cx": "3cx", "avaya": "avaya",
 	"mitel": "mitel", "ribbon": "ribboncommunications", "audiocodes": "audiocodes",

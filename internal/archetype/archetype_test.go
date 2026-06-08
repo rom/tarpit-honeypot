@@ -105,6 +105,7 @@ func TestAllShipArchetypes(t *testing.T) {
 		"QNAP Turbo NAS (QTS)",
 		"Hikvision IP camera",
 		"Axis network camera",
+		"Bosch IP camera",
 		"Ubiquiti EdgeRouter (EdgeOS)",
 		"Allen-Bradley ControlLogix (Rockwell)",
 		"Schneider Modicon M340 PLC",

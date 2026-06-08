@@ -87,6 +87,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | B&R X20 (PLC) | `br-x20` | br | 4 |
 | Bachmann M1 (controller) | `bachmann-m1` | bachmann | 4 |
 | Beckhoff CX9020 (TwinCAT) | `beckhoff-cx` | beckhoff | 4 |
+| Bosch IP camera | `bosch-camera` | bosch | 3 |
 | Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
 | Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
@@ -709,6 +710,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Apache/2.4.53`
 - **SNMP sysDescr:** AXIS M3045-V Network Camera
 - **Services:** :80 `http`, :554 `rtsp`
+- **CVEs advertised:** —
+
+### Bosch IP camera — `bosch-camera`
+
+**Family:** bosch · **TTL:** 64
+
+- **HTTP Server:** `lighttpd`
+- **SNMP sysDescr:** Bosch DINION IP starlight 7000
+- **Services:** :80 `http`, :554 `rtsp`, :1756 `raw` (RCP+)
 - **CVEs advertised:** —
 
 ### Hikvision IP camera — `hikvision-camera`
