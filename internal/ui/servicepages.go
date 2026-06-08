@@ -321,11 +321,13 @@ type dnsQueryRow struct {
 }
 
 // topIntents aggregates the per-event `intent` meta label (set by the DNS / SNMP
-// / NTP handlers — "what the attacker is actually doing") into a ranked list.
+// / NTP / http / db handlers — "what the attacker is actually doing") into a
+// ranked list, deriving one from the event's signals when a handler didn't set
+// it (so the web / database views always have a populated intent table).
 func topIntents(evs []*event.Event) []countRow {
 	c := map[string]int{}
 	for _, ev := range evs {
-		if it := metaStr(ev, "intent"); it != "" {
+		if it := eventIntent(ev); it != "" {
 			c[it]++
 		}
 	}
@@ -335,6 +337,42 @@ func topIntents(evs []*event.Event) []countRow {
 		rows = append(rows, countRow{Label: k, Count: c[k]})
 	}
 	return rows
+}
+
+// eventIntent returns the handler-set intent, or derives a concise "what the
+// attacker is doing" label from the event's signals (CVE hits, web-attack
+// classes, DB auth/commands, …) so views can show intent even for handlers that
+// don't label it themselves.
+func eventIntent(ev *event.Event) string {
+	if it := metaStr(ev, "intent"); it != "" {
+		return it
+	}
+	return deriveIntent(ev)
+}
+
+func deriveIntent(ev *event.Event) string {
+	anoms := append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...)
+	for _, a := range anoms {
+		if strings.HasPrefix(a, "cve:") {
+			return "exploit attempt (" + strings.TrimPrefix(a, "cve:") + ")"
+		}
+	}
+	switch serviceCategory(ev.Handler) {
+	case "database":
+		switch {
+		case ev.Meta["password"] != nil || ev.Meta["login7_user"] != nil || metaStr(ev, "auth_user") != "" || metaStr(ev, "user") != "":
+			return "database auth attempt"
+		case len(metaStrings(ev.Meta, "commands")) > 0 || metaStr(ev, "mongo_command") != "" || metaStr(ev, "tns_command") != "" || metaStr(ev, "http_method") != "":
+			return "database command / query"
+		default:
+			return "database probe / banner-grab"
+		}
+	case "web":
+		if metaStr(ev, "http_uri") != "" || metaStr(ev, "http_method") != "" {
+			return "web recon / content discovery"
+		}
+	}
+	return ""
 }
 
 func (s *Server) handleDNS(w http.ResponseWriter, r *http.Request) {
@@ -449,7 +487,20 @@ type webView struct {
 	Intents    []countRow
 	URLList    []string
 	Files      []string
+	Requests   []reqRow
 	Empty      bool
+}
+
+// reqRow is one entry of the web request log (newest-first), carrying the
+// per-request attacker intent + anomalies.
+type reqRow struct {
+	Time   string
+	Source string
+	Method string
+	URI    string
+	Status string
+	Intent string
+	Anoms  []string
 }
 
 func (s *Server) handleWeb(w http.ResponseWriter, r *http.Request) {
@@ -547,6 +598,29 @@ func buildWeb(evs []*event.Event) webView {
 	v.Intents = topIntents(evs)
 	v.URLList = sortedSetKeys(urlSet, 5000)
 	v.Files = sortedSetKeys(fileSet, 5000)
+
+	// Per-request log (newest first), with the per-request intent + anomalies.
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Requests) >= 200 {
+			break
+		}
+		u := metaStr(ev, "http_uri")
+		m := metaStr(ev, "http_method")
+		if u == "" && m == "" {
+			continue
+		}
+		v.Requests = append(v.Requests, reqRow{
+			Time:   ev.Time.UTC().Format(time.RFC3339),
+			Source: ev.Source.IP,
+			Method: m,
+			URI:    u,
+			Status: httpStatus(ev.BannerSent),
+			Intent: eventIntent(ev),
+			Anoms:  append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
 	return v
 }
 
@@ -577,7 +651,19 @@ type dbView struct {
 	Attackers  []countRow
 	Attacks    []attackRow
 	Intents    []countRow
+	Events     []dbRow
 	Empty      bool
+}
+
+// dbRow is one entry of the database activity log (newest-first), with the
+// per-event attacker intent + anomalies.
+type dbRow struct {
+	Time    string
+	Source  string
+	Engine  string
+	Command string
+	Intent  string
+	Anoms   []string
 }
 
 func (s *Server) handleDatabases(w http.ResponseWriter, r *http.Request) {
@@ -677,7 +763,38 @@ func buildDatabases(evs []*event.Event) dbView {
 	}
 	v.Attacks = attackTable(evs)
 	v.Intents = topIntents(evs)
+
+	// Per-event activity log (newest first), with engine + command + intent.
+	sorted := append([]*event.Event(nil), evs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
+	for _, ev := range sorted {
+		if len(v.Events) >= 200 {
+			break
+		}
+		v.Events = append(v.Events, dbRow{
+			Time:    ev.Time.UTC().Format(time.RFC3339),
+			Source:  ev.Source.IP,
+			Engine:  ev.Handler,
+			Command: dbCommandSummary(ev),
+			Intent:  eventIntent(ev),
+			Anoms:   append(append([]string(nil), ev.Anomalies...), metaStrings(ev.Meta, "anomalies")...),
+		})
+	}
 	return v
+}
+
+// dbCommandSummary picks the most descriptive command/query string an event
+// carries across the database engines.
+func dbCommandSummary(ev *event.Event) string {
+	for _, k := range []string{"mongo_command", "tns_command", "http_method", "database", "auth_user", "user"} {
+		if v := metaStr(ev, k); v != "" {
+			return v
+		}
+	}
+	if cmds := metaStrings(ev.Meta, "commands"); len(cmds) > 0 {
+		return strings.Join(cmds, " ")
+	}
+	return ""
 }
 
 // sortedSetKeys returns the set's keys sorted, capped at n.

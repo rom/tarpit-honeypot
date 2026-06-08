@@ -705,6 +705,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <div>{{ range .Files }}<a class="tag" href="/search?q={{ . }}"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
 {{ if .URLList }}<h2 id="urls">Unique URLs <span class="meta">({{ len .URLList }})</span></h2>
 <table data-filter><tr><th>url</th></tr>{{ range .URLList }}<tr><td><a href="/search?q={{ . }}"><code>{{ . }}</code></a></td></tr>{{ end }}</table>{{ end }}
+{{ if .Requests }}<h2>Request log <span class="meta">({{ len .Requests }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>method</th><th>url</th><th>status</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Requests }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Method }}<span class="tag">{{ .Method }}</span>{{ end }}</td><td><code>{{ .URI }}</code></td><td>{{ .Status }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -722,6 +725,9 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <table><tr><th>source</th><th>events</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 <h2>Attacks / misuses / manipulations / vulnerabilities</h2>
 {{ template "attacktable" .Attacks }}
+{{ if .Events }}<h2>Activity log <span class="meta">({{ len .Events }})</span></h2>
+<table data-filter><tr><th>time</th><th>source</th><th>engine</th><th>command / db</th><th>intent</th><th>anomalies</th></tr>
+{{ range .Events }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Engine }}</span></td><td><code>{{ .Command }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
