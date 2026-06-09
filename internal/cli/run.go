@@ -163,6 +163,19 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 			return err
 		}
 		srv.SetStatsProvider(buildStatsProvider(s))
+		if cfg.Detection.RulesDir != "" {
+			srv.SetRulesProvider(func() []ui.DetectRuleStat {
+				rs := s.DetectRuleStats()
+				out := make([]ui.DetectRuleStat, 0, len(rs))
+				for _, r := range rs {
+					out = append(out, ui.DetectRuleStat{
+						ID: r.ID, Title: r.Title, Severity: r.Severity,
+						Tags: r.Tags, Conditions: r.Conditions, Hits: r.Hits,
+					})
+				}
+				return out
+			})
+		}
 		srv.SetConfig(cfg)
 		srv.SetConfigPaths(f.paths())
 		srv.SetTopology(s.Honeynet())

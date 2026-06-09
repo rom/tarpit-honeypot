@@ -166,6 +166,11 @@ var indexStmts = []string{
 	// straight from the index instead of scanning every recent row and
 	// discarding the non-matching handlers Go-side.
 	`CREATE INDEX IF NOT EXISTS idx_events_handler_time ON events(handler, time DESC)`,
+	// (dst_ip, time) index for the multi-IP pivots — list-events --target and the
+	// /stats "targeted server IPs" breakdown filter "WHERE dst_ip = ? AND
+	// time >= ?". Without it those scan every recent row on a multi-address
+	// sensor, which is what timed those pages out.
+	`CREATE INDEX IF NOT EXISTS idx_events_dst_ip_time ON events(dst_ip, time DESC)`,
 	// sensor_id is added by migrate(); ensureIndexes runs after migrate so the
 	// column exists by the time this runs.
 	`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`,
@@ -188,6 +193,53 @@ func ensureIndexes(db *sql.DB) int {
 	}
 	return failed
 }
+
+// indexName extracts the "idx_…" name from a CREATE INDEX statement.
+func indexName(stmt string) string {
+	const marker = "EXISTS "
+	i := strings.Index(stmt, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := stmt[i+len(marker):]
+	if j := strings.IndexByte(rest, ' '); j >= 0 {
+		return rest[:j]
+	}
+	return rest
+}
+
+// MissingIndexes returns the names of expected secondary indexes that are not
+// present in the database — e.g. one whose creation failed earlier because the
+// disk was full. Empty slice = healthy. Surfaced on /health and used by the
+// periodic self-heal (EnsureIndexes).
+func (s *Store) MissingIndexes() []string {
+	have := map[string]bool{}
+	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type='index'`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil {
+			have[n] = true
+		}
+	}
+	var missing []string
+	for _, stmt := range indexStmts {
+		if n := indexName(stmt); n != "" && !have[n] {
+			missing = append(missing, n)
+		}
+	}
+	return missing
+}
+
+// EnsureIndexes (re)creates any missing secondary index, best-effort. It is safe
+// to call repeatedly (CREATE INDEX IF NOT EXISTS) and is invoked both at Open
+// and periodically by the sensor, so an index that couldn't be built during a
+// full-disk window is healed automatically once space frees up. Returns how
+// many statements failed this pass.
+func (s *Store) EnsureIndexes() int { return ensureIndexes(s.db) }
 
 // Open creates (if necessary) and opens the events database under dataDir.
 // capMB is the soft cap on database size; when exceeded, the oldest events

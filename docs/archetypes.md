@@ -1847,9 +1847,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 ## Process historians & industrial data platforms
 
 The "data tier" of an OT estate — historians, OPC servers and time-series
-databases. Each landing page links the product's real web/API base paths so a
-crawler records them; serving live JSON at each path is an http-handler concern,
-not the archetype layer.
+databases. Each landing page links the product's real web/API base paths, and
+the http handler now **answers those paths with a believable product-shaped
+body** (`serveProductAPI`): e.g. PI Web API returns JSON for `/piwebapi`,
+`/piwebapi/system`, `/piwebapi/dataservers`, `/piwebapi/assetservers`; Proficy /
+Canary / dataPARC / AVEVA-Wonderware serve their consoles; Ignition answers
+`/system/gwinfo`; InfluxDB `/health`; Keycloak the OIDC discovery document. A
+probe to one of these is flagged `product-api-probe`. The responses are static
+plausible shapes (no live tag data); the binary protocol ports remain capture-
+oriented.
 
 ### Kepware OPC UA server (KEPServerEX) — `kepware-opcua`
 

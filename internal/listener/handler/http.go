@@ -394,6 +394,17 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if banner == "" {
 		method := extractMethod(firstLine)
 		path := extractPath(firstLine)
+		// Product-API deception: a historian / data-platform archetype answers
+		// its own well-known API base paths (/piwebapi/…, /ProficyHistorian,
+		// /CanaryData, /dataPARC, /Ignition, InfluxDB /health, Keycloak OIDC
+		// discovery, …) with a believable product-shaped body, so a scanner that
+		// queries the API — not just the homepage — records a real product. The
+		// probe is flagged; nothing is executed.
+		if pbody, pct, pok := serveProductAPI(arch, method, path); pok {
+			flagAnomaly(&res, "product-api-probe")
+			res.Meta["product_api_path"] = path
+			banner = renderHTTPResponse(server, 200, pct, pbody)
+		}
 		// Web-deception trio: robots.txt / security.txt / sitemap.xml, plus
 		// detection of probes against the bait Disallow / sitemap paths. A
 		// sitemap page may be delivered slowly (tarpit) by serveWebDeception

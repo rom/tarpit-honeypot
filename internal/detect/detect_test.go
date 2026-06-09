@@ -108,3 +108,22 @@ func has(xs []string, x string) bool {
 	}
 	return false
 }
+
+func TestEngineStatsHitCounts(t *testing.T) {
+	eng := loadTmp(t, sampleRules)
+	// Fire the ssh-root rule twice.
+	for i := 0; i < 2; i++ {
+		eng.Apply(&event.Event{Handler: "ssh", Meta: map[string]any{"user_attempt": "root"}})
+	}
+	stats := eng.Stats()
+	if len(stats) != 3 {
+		t.Fatalf("Stats len = %d; want 3", len(stats))
+	}
+	// Sorted by hits desc, so the ssh-root rule is first with 2.
+	if stats[0].ID != "custom-ssh-root" || stats[0].Hits != 2 {
+		t.Errorf("top stat = %+v; want custom-ssh-root hits=2", stats[0])
+	}
+	if stats[0].Title == "" || stats[0].Conditions == 0 {
+		t.Errorf("stat metadata not populated: %+v", stats[0])
+	}
+}

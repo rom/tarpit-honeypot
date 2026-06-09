@@ -1691,6 +1691,10 @@ func (s *Sensor) Correlator() *correlate.Correlator { return s.curCorrelator() }
 func (s *Sensor) Store() *store.Store               { return s.store }
 func (s *Sensor) Config() *config.Config            { return s.curConfig() }
 
+// DetectRuleStats snapshots the loaded operator detection rules + their match
+// counts (for the UI /rules page). Reads the hot-swappable engine.
+func (s *Sensor) DetectRuleStats() []detect.RuleStat { return s.curDetect().Stats() }
+
 // DiskUsedPercent returns the data_dir filesystem usage percent (and ok=false
 // on platforms without statfs). Used by the stats provider for the UI health
 // dashboard + /metrics.

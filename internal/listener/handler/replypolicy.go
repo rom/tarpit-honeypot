@@ -96,6 +96,7 @@ var otHandlers = map[string]bool{
 	"bacnet": true, "ge_srtp": true, "codesys": true, "hartip": true,
 	"pcworx": true, "proconos": true, "c37118": true, "osdp": true,
 	"focas": true, "osisoft_pi": true, "fox": true, "atg": true,
+	"proficy_historian": true, "canary_historian": true, "aspen_ip21": true,
 	"melsec": true, "ads": true, "ads_discovery": true, "fins": true,
 	"fins_tcp": true, "fins_udp": true, "roc_plus": true, "pcom": true,
 	"secs_gem": true, "crimson": true, "knx": true, "profinet": true,

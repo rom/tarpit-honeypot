@@ -230,6 +230,18 @@ the opening exchange and return a believable **identity** (model / firmware /
 version) so a scanner records a live device, and flag the probe, but do **not**
 decode per-command control vs recon.
 
+**Process historians** (`osisoft_pi` 5450, `proficy_historian` 14000,
+`canary_historian` 9990, `aspen_ip21` 10014) — the proprietary binary data ports
+of the big process historians (OSIsoft/AVEVA PI, GE Proficy, Canary Labs,
+AspenTech InfoPlus.21). Their wire protocols are closed and undocumented, so
+these are fingerprint-grade only: they capture the client's opening message,
+classify its framing (length-prefixed BE/LE vs raw stream), scavenge the
+cleartext app/user/version strings these SDK handshakes leak, greet with a
+minimal product identification a scanner greps, and surface the connection as
+**historian / process-data access** (an IT→OT pivot and exfil target). No tag /
+point database is served and the proprietary record formats are never
+fabricated.
+
 ### UDP
 
 - **Bounded reply (rate-limited):** `bacnet` (Who-Is→I-Am, ReadProperty,

@@ -16,9 +16,10 @@ import (
 //
 // A CLDAP probe from a wandering scanner is a strong AD-recon signal.
 type cldap struct {
-	hosts []HoneynetHost
-	lim   *udpReflectLimiter
-	arch  *archetype.Profile
+	hosts    []HoneynetHost
+	lim      *udpReflectLimiter
+	arch     *archetype.Profile
+	hostname string
 }
 
 func (c *cldap) Name() string { return "cldap" }
@@ -69,7 +70,7 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 			res.Meta["ldap_default_naming_context"] = domainToDN(dom)
 			reply := buildLDAPSearchResDone(mid)
 			if isRootDSESearch(opBody) {
-				reply = append(buildLDAPRootDSE(mid, dom, c.arch.ADFunctionalLevel()), reply...)
+				reply = append(buildLDAPRootDSE(mid, dom, c.arch.ADFunctionalLevel(), c.hostname), reply...)
 			}
 			if _, err := pc.WriteTo(reply, src); err != nil {
 				res.Meta["write_err"] = err.Error()

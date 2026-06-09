@@ -31,6 +31,11 @@ import (
 type Deps struct {
 	Identity *identity.Identity
 	Jitter   *jitter.Jitterer
+	// Hostname, when set (honeynet per-host services), is the virtual host's
+	// short name — used by identity-bearing handlers (e.g. the LDAP rootDSE) so
+	// each virtual DC presents its own serverName/dnsHostName instead of a shared
+	// default. Empty = handler default.
+	Hostname string
 	DataDir  string
 	// MaxUploadBytes caps how much of an uploaded file (FTP STOR / web upload)
 	// a handler captures for retention + classification (0 = handler default).
@@ -213,6 +218,21 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &proconos{}, nil
 	case "osisoft_pi":
 		return &osisoftPI{id: deps.Identity}, nil
+	case "proficy_historian":
+		return &historian{
+			proto: "proficy_historian", label: "GE Proficy Historian Data Archiver",
+			version: "Historian 2023 (10.5)", marker: []byte{'G', 'E', 'H', 'I'}, id: deps.Identity,
+		}, nil
+	case "canary_historian":
+		return &historian{
+			proto: "canary_historian", label: "Canary Labs Historian (Sender)",
+			version: "Canary 23.3", marker: []byte{'C', 'N', 'R', 'Y'}, id: deps.Identity,
+		}, nil
+	case "aspen_ip21":
+		return &historian{
+			proto: "aspen_ip21", label: "AspenTech InfoPlus.21",
+			version: "aspenONE V14 (IP.21)", marker: []byte{'I', 'P', '2', '1'}, id: deps.Identity,
+		}, nil
 	case "nts":
 		return &nts{mgr: maybeCertMgr(deps), arch: deps.Archetype}, nil
 	case "codesys":
@@ -269,7 +289,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		}
 		return d, nil
 	case "ldap":
-		return &ldap{arch: deps.Archetype}, nil
+		return &ldap{arch: deps.Archetype, hostname: deps.Hostname}, nil
 	case "kerberos":
 		return &kerberos{}, nil
 	case "postgres":

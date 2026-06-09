@@ -464,14 +464,23 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   the actual HTTP/3 request — the `:method`/`:path`, sent as **1-RTT**
   application data — needs the TLS 1.3 handshake completed so the application
   traffic secret is known, which needs a full QUIC handshake across several
-  datagrams. The **connection-oriented UDP primitive now exists**: a listener
-  with `udp_session: true` demultiplexes datagrams per source into a
-  `handler.UDPSession` (Read next datagram / Write reply) handed to a
-  `handler.UDPSessionHandler` — so a multi-datagram QUIC/DTLS handshake handler
-  can now be built on top. What remains is the QUIC handler itself (full
-  handshake + QPACK for HTTP/3 header decode). The RFC-9001 1-RTT
-  **packet-protection layer** (key derivation + short-header header-protection
-  removal + AEAD, verified against the RFC's published vector) is implemented in
-  `internal/listener/handler/quic_1rtt.go` as a tested foundation; it is not yet
-  wired into a live session flow.
+  datagrams. The **connection-oriented UDP primitive now exists and the QUIC
+  handler consumes it**: a listener with `udp_session: true` demultiplexes
+  datagrams per source into a `handler.UDPSession` (Read next datagram / Write
+  reply), and `quicH.HandleSession` uses it to (a) reassemble a ClientHello that
+  spans **multiple** Initial datagrams (common with post-quantum key shares /
+  ECH / long extension sets, where the stateless path sees only a fragment) and
+  (b) perform **address validation** by emitting a real QUIC **Retry** (RFC 9000
+  §17.2.5 / RFC 9001 §5.8 Retry Integrity Tag, verified against the RFC 9001 A.4
+  vector) and recognising a retried Initial that echoes the token — proof the
+  source is not spoofed. A Retry is smaller than the ≥1200-byte Initial it
+  answers, so it is never an amplifier, and it is gated by the reply policy like
+  any other UDP reply. What remains genuinely out of scope is the **live TLS 1.3
+  handshake** itself (real (EC)DHE + server certificate + transcript) and QPACK
+  for HTTP/3 header decode — i.e. recovering 1-RTT application data. The
+  RFC-9001 1-RTT **packet-protection layer** (key derivation + short-header
+  header-protection removal + AEAD, verified against the RFC's published vector)
+  is implemented in `internal/listener/handler/quic_1rtt.go` as a tested
+  foundation for that remaining step; it is not yet wired into a live session
+  flow.
 - **Decoy-scan attribution.** See "Open risks".
