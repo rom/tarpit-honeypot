@@ -10,6 +10,14 @@ documented in `docs/`).
 
 ### Added
 
+- **`replay` subcommand — record-and-replay regression harness.** Re-runs a
+  recorded request back through its protocol handler offline (no socket,
+  nothing executed): `--event <id>` replays the bytes the sensor captured for
+  an event and reports whether the recomputed anomalies drifted from what was
+  stored (detection-regression signal); `--handler <name>` + `--file`/stdin
+  feeds arbitrary bytes to any TCP/UDP handler. Prints anomalies / CVE hits /
+  meta as JSON.
+
 - **CI + signed-release / SBOM supply chain.** `.github/workflows/ci.yml`
   (gofmt, vet, build, test, `-race`, fuzz smoke over every `FuzzXxx`,
   `govulncheck`) and `.github/workflows/release.yml` + `.goreleaser.yaml`:

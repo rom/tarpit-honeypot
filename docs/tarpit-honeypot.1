@@ -127,6 +127,11 @@ Tail / query events from the local SQLite store or JSON logs
 .B --target
 filters by which of the host's own server IPs was hit \(em the multi-IP pivot.
 .TP
+.B replay
+Re-run a recorded request through its protocol handler offline (no socket,
+nothing executed) and print the recomputed anomalies / CVE hits / meta.
+.RB ( --event " " \fIid\fR " replays a stored event's captured payload and reports detection drift; " --handler " " \fIname\fR " + " --file / stdin " feeds arbitrary bytes; " --udp ", " --vuln ).
+.TP
 .B gen-token
 Print or write an unguessable canary token
 .RB ( --type " " dns | url | hex | ssrf | doc ).
