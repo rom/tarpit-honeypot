@@ -502,16 +502,18 @@ figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface
 .cols2 h4 { margin: .2rem 0 .3rem; font-size: .9rem; color: var(--heading-h2); }
 /* Statistics page: far wider columns + larger bars/labels so the top-N
    tables are readable instead of cramped into many narrow 240px columns. */
-.statwide { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 1.4rem 2.4rem; }
-.statwide > div { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .9rem 1rem; }
-.statwide h4 { font-size: 1.15rem; margin: .1rem 0 .6rem; }
-.statwide table.chart td { padding: .3rem .5rem; font-size: 1rem; }
-.statwide td.blabel { width: 42%; font-size: 1rem; }
-.statwide td.bcell { width: 42%; }
-.statwide td.bnum { width: 16%; font-size: .95rem; }
-.statwide .bar { height: 1.25rem; border-radius: 3px; }
-.statwide .bpct { font-size: .9rem; }
-@media (max-width: 640px) { .statwide { grid-template-columns: 1fr; } }
+/* Wide columns so only 1–2 tables sit per row (was many cramped 240px cols),
+   with larger bars/labels/numbers. */
+.statwide { grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 1.6rem 2.6rem; }
+.statwide > div { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1.1rem 1.1rem; }
+.statwide h4 { font-size: 1.3rem; margin: .1rem 0 .7rem; }
+.statwide table.chart td { padding: .42rem .6rem; font-size: 1.1rem; }
+.statwide td.blabel { width: 40%; font-size: 1.1rem; }
+.statwide td.bcell { width: 44%; }
+.statwide td.bnum { width: 16%; font-size: 1.05rem; }
+.statwide .bar { height: 1.6rem; border-radius: 3px; }
+.statwide .bpct { font-size: 1rem; }
+@media (max-width: 980px) { .statwide { grid-template-columns: 1fr; } }
 figcaption.tc-cap, .tc-cap { font-weight: 600; color: var(--heading-h2); margin-bottom: .3rem; font-size: .95rem; }
 svg.tc { background: var(--bg-surface); max-width: 100%; height: auto; }
 svg.tc text { font: 0.786rem ui-monospace, monospace; }

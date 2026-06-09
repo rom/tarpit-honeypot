@@ -70,6 +70,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | 3CX Phone System | `3cx` | 3cx | 4 |
 | ABB AC500 PLC (PM573) | `abb-ac500` | abb | 6 |
 | ABB Advant Controller 450 (AC450) | `abb-ac450` | abb | 3 |
+| ABB RNRP router (800xA control network) | `abb-rnrp` | abb | 4 |
 | ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
 | ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
 | APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
@@ -1316,6 +1317,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 
 - **SNMP sysDescr:** ABB Advant Controller 450 (AC450) MasterBus 300
 - **Services:** :23 `telnet`, :502 `modbus`, :161 `snmp`
+- **CVEs advertised:** —
+
+### ABB RNRP router (800xA control network) — `abb-rnrp`
+
+**Family:** abb · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.8072.3.2.10`
+
+- **HTTP Server:** `ABB`
+- **SNMP sysDescr:** ABB AC 800M PM866 800xA RNRP node
+- **Services:** :23 `telnet`, :80 `http`, :102 `mms` (800xA), :161 `snmp`
 - **CVEs advertised:** —
 
 ### ABB AC500 PLC (PM573) — `abb-ac500`

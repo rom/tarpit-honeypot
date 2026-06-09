@@ -562,6 +562,25 @@ var industrialArchetypes = map[string]*Profile{
 	},
 
 	// ---- ABB controllers / remote I/O / substation RTU ----
+	"abb-rnrp": {
+		Name: "abb-rnrp", DisplayName: "ABB RNRP router (800xA control network)", Family: "abb",
+		macOUI:          [3]byte{0x00, 0x24, 0x59},
+		telnetBanner:    "\r\nABB AC 800M (800xA)\r\nRNRP node\r\n\r\nlogin: ",
+		httpServer:      "ABB",
+		httpTitle:       "ABB 800xA",
+		httpBodyHTML:    `<html><head><title>ABB 800xA</title></head><body><h2>ABB AC 800M PM866</h2><p>RNRP (Redundant Network Routing Protocol) node</p></body></html>`,
+		snmpSysDescr:    "ABB AC 800M PM866 800xA RNRP node",
+		snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		snmpSysName:     "RNRP-node",
+		snmpSysLocation: "Control network area 1",
+		defaultServices: []DefaultService{
+			{Port: 23, Handler: "telnet", Note: "engineering console"},
+			{Port: 80, Handler: "http", Note: "web"},
+			{Port: 102, Handler: "mms", Note: "MMS / 800xA"},
+			{Port: 161, Handler: "snmp"},
+		},
+		quirks: []string{"abb", "rnrp"},
+	},
 	"abb-ac450": {
 		Name: "abb-ac450", DisplayName: "ABB Advant Controller 450 (AC450)", Family: "abb",
 		macOUI:          [3]byte{0x00, 0x24, 0x59},

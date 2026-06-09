@@ -278,6 +278,7 @@ func TestAllShipArchetypes(t *testing.T) {
 		"OKI ES network printer",
 		"Toshiba e-STUDIO (MFP)",
 		"ABB Advant Controller 450 (AC450)",
+		"ABB RNRP router (800xA control network)",
 		// SP / DC routers & switches added later.
 		"Juniper MX480 (Junos)",
 		"Juniper MX960 (Junos)",
