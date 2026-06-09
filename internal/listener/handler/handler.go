@@ -269,7 +269,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		}
 		return d, nil
 	case "ldap":
-		return &ldap{}, nil
+		return &ldap{arch: deps.Archetype}, nil
 	case "kerberos":
 		return &kerberos{}, nil
 	case "postgres":

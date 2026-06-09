@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
@@ -17,6 +18,7 @@ import (
 type cldap struct {
 	hosts []HoneynetHost
 	lim   *udpReflectLimiter
+	arch  *archetype.Profile
 }
 
 func (c *cldap) Name() string { return "cldap" }
@@ -67,7 +69,7 @@ func (c *cldap) Handle(_ context.Context, payload []byte, src net.Addr, pc net.P
 			res.Meta["ldap_default_naming_context"] = domainToDN(dom)
 			reply := buildLDAPSearchResDone(mid)
 			if isRootDSESearch(opBody) {
-				reply = append(buildLDAPRootDSE(mid, dom), reply...)
+				reply = append(buildLDAPRootDSE(mid, dom, c.arch.ADFunctionalLevel()), reply...)
 			}
 			if _, err := pc.WriteTo(reply, src); err != nil {
 				res.Meta["write_err"] = err.Error()

@@ -680,6 +680,11 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Patch level:** Windows Server 2019 RTM (build 17763.107, pre-2020-08 rollup)
 - **Services:** :53 `dns`, :88 `kerberos`, :135 `dcerpc`, :139 `raw`, :389 `ldap`, :445 `smb`, :464 `raw`, :636 `https`, :3268 `ldap`, :3269 `https`, :3389 `rdp`, :5985 `winrm`, :9389 `raw`
 - **CVEs advertised:** CVE-2020-1472, CVE-2021-34527, CVE-2021-26855, CVE-2021-42278
+- **LDAP rootDSE:** the `ldap`/`ldaps`/`cldap` handlers advertise the AD
+  functional level (`domainFunctionality` / `forestFunctionality` /
+  `domainControllerFunctionality` = msDS-Behavior-Version; 7 for 2019, and
+  4 / 5 / 7 for the `windows-2008r2-ad` / `windows-2012-ad` / `windows-2016-ad`
+  DC archetypes) plus level-appropriate `supportedCapabilities` OIDs.
 
 ### Active Directory DC (Windows Server 2008 R2, FFL 4) — `windows-2008r2-ad`
 

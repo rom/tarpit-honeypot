@@ -180,6 +180,11 @@ type Profile struct {
 	// moxa-nport advertises raw TCP on 4001/4002).
 	quirks []string
 
+	// adFunctionalLevel is the Active Directory forest/domain functional level
+	// (msDS-Behavior-Version: 2008R2=4, 2012=5, 2012R2=6, 2016/2019/2022=7) the
+	// LDAP rootDSE advertises for a domain-controller archetype. 0 = not a DC.
+	adFunctionalLevel int
+
 	// Vulnerability emulation (advisory only — never makes the service
 	// actually exploitable). When sensor/listener vuln_emulation is on,
 	// banner-aware handlers prefer vulnBanners[service] over the patched
@@ -645,6 +650,16 @@ func (p *Profile) ICMPTTL() int {
 		return 128
 	}
 	return 64
+}
+
+// ADFunctionalLevel returns the AD forest/domain functional level the LDAP
+// rootDSE should advertise (msDS-Behavior-Version). 0 means "not a domain
+// controller" — the LDAP handler falls back to a modern default.
+func (p *Profile) ADFunctionalLevel() int {
+	if p == nil {
+		return 0
+	}
+	return p.adFunctionalLevel
 }
 
 func (p *Profile) MRPRings() []MRPRing {

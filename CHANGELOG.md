@@ -8,6 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **LDAP rootDSE advertises the AD functional level.** The `ldap` / `ldaps` /
+  `cldap` handlers now return `domainFunctionality` / `forestFunctionality` /
+  `domainControllerFunctionality` (msDS-Behavior-Version) from the domain-
+  controller archetype's pinned level — 4 / 5 / 7 for the 2008R2 / 2012 / 2016
+  AD DCs (default 7) — plus `supportedCapabilities` LDAP_CAP_* OIDs that grow
+  with the level, `isGlobalCatalogReady`, `serverName`, SASL mechanisms, and the
+  DomainDnsZones/ForestDnsZones naming contexts. AD-recon tools (e.g. BloodHound,
+  ldapsearch) now read a coherent level off the rootDSE.
+
 ## [2.21.0] - 2026-06-09
 
 ### Added

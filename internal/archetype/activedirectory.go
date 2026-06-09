@@ -82,9 +82,10 @@ func adDCProfile(name, display, build, iisHTML, sysName string, fl int, cves []s
 			{Port: 5985, Handler: "winrm", Note: "WinRM / PowerShell Remoting"},
 			{Port: 9389, Handler: "raw", Note: "AD Web Services (ADWS)"},
 		},
-		patchLevel: display,
-		cveVulns:   cves,
-		quirks:     []string{"active-directory", "domain-controller", "powershell", "adfl:" + string(rune('0'+fl))},
+		patchLevel:        display,
+		cveVulns:          cves,
+		adFunctionalLevel: fl,
+		quirks:            []string{"active-directory", "domain-controller", "powershell", "adfl:" + string(rune('0'+fl))},
 	}
 }
 
@@ -131,6 +132,9 @@ func adProfile() *Profile {
 			"CVE-2021-26855", // ProxyLogon (when co-hosting Exchange)
 			"CVE-2021-42278", // sAMAccountName spoofing (noPac)
 		},
-		quirks: []string{"active-directory", "domain-controller", "powershell"},
+		// Server 2019 DCs run at the "Windows2016" functional level (7) — MS
+		// stopped raising FFL after 2016.
+		adFunctionalLevel: 7,
+		quirks:            []string{"active-directory", "domain-controller", "powershell"},
 	}
 }
