@@ -1100,10 +1100,29 @@ subcommand.
 make build         # native binary in bin/
 make cross         # all 8 targets in dist/ (linux x4, darwin x2, windows x2)
 make test          # full unit test suite
+make race          # test suite under the race detector
+make fuzz          # 10s of each FuzzXxx target
+make govulncheck   # vulnerability scan of the module graph
 ```
 
 The binary is statically linked and uses no CGO. Final size is ~14 MB,
 mostly the pure-Go SQLite engine.
+
+### CI & supply chain
+
+`.github/workflows/ci.yml` runs gofmt/vet/build/test, the race detector, a
+short fuzz smoke over every `FuzzXxx` target, and `govulncheck` on every push.
+Tagged releases (`v*`) run **GoReleaser** (`.goreleaser.yaml`): cross-compiled
+archives + `checksums.txt`, a **CycloneDX SBOM per artifact** (syft), and
+**keyless cosign signatures** (Sigstore / GitHub OIDC) over the checksums.
+Locally, `make release-artifacts` produces the cross binaries + `dist/sbom.cdx.json`
++ checksums (unsigned); `make sbom` writes the SBOM alone. Verify a release with:
+
+```
+cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
+  --certificate-identity-regexp '.*' --certificate-oidc-issuer-regexp '.*' checksums.txt
+sha256sum -c checksums.txt
+```
 
 ## Try it locally
 

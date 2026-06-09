@@ -10,6 +10,14 @@ documented in `docs/`).
 
 ### Added
 
+- **CI + signed-release / SBOM supply chain.** `.github/workflows/ci.yml`
+  (gofmt, vet, build, test, `-race`, fuzz smoke over every `FuzzXxx`,
+  `govulncheck`) and `.github/workflows/release.yml` + `.goreleaser.yaml`:
+  tagged `v*` releases produce cross-compiled archives, `checksums.txt`, a
+  CycloneDX SBOM per artifact (syft), and keyless cosign signatures (Sigstore
+  OIDC). New Makefile targets `sbom`, `checksums`, `govulncheck`,
+  `release-artifacts` for the same locally.
+
 - **CVE decoys extended to the remaining network gear.** Aruba ArubaOS-Switch
   (CVE-2020-7115), OpenWrt (CVE-2020-7982), pfSense (CVE-2022-31814), Teltonika
   RUTOS routers (CVE-2023-32347, all RUT/TRB models) and Cisco UCS CIMC
