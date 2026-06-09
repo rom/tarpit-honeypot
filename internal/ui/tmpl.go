@@ -579,7 +579,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -718,6 +718,23 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
   <pre class="kv">{{ range .Commands }}{{ . }}
 {{ end }}{{ if .More }}… +{{ .More }} more{{ end }}</pre>
 </div>{{ end }}
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "rules" }}{{ template "head" . }}
+<h1 data-help="Operator detection rules (detection-as-code): the Sigma-style YAML rules loaded from detection.rules_dir, matched against every event, with how often each has fired since start. A match adds the rule's tags as anomaly markers and may raise severity.">detection rules <span class="meta">({{ len .Rules }} loaded · {{ .TotalHits }} matches)</span></h1>
+{{ if not .Rules }}<p class="note">No operator detection rules loaded. Point <code>detection.rules_dir</code> at a directory of Sigma-style YAML rules — see <a href="/docs/detection-rules">docs/detection-rules</a>.</p>{{ else }}
+<table data-filter><tr><th>id</th><th>title</th><th>severity</th><th>conditions</th><th>tags</th><th>matches</th></tr>
+{{ range .Rules }}<tr>
+  <td><a href="/search?tag=detect:{{ .ID }}"><code>{{ .ID }}</code></a></td>
+  <td>{{ .Title }}</td>
+  <td>{{ if .Severity }}<span class="tag sev-{{ .Severity }}">{{ .Severity }}</span>{{ end }}</td>
+  <td>{{ .Conditions }}</td>
+  <td>{{ range .Tags }}<a class="tag" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td>
+  <td>{{ .Hits }}</td>
+</tr>{{ end }}
+</table>
+<p class="note">Match counts are since the sensor (re)started. Click a rule id to find the events it tagged (<code>detect:&lt;id&gt;</code>).</p>
 {{ end }}
 {{ template "foot" . }}{{ end }}
 

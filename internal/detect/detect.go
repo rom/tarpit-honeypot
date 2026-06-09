@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"gopkg.in/yaml.v3"
 
@@ -55,6 +56,7 @@ type condition struct {
 // no-op, so callers can hold one unconditionally.
 type Engine struct {
 	rules []Rule
+	hits  []atomic.Uint64 // per-rule match count (index-aligned with rules)
 }
 
 // Rules returns how many rules are loaded (for validate-config / logging).
@@ -63,6 +65,39 @@ func (e *Engine) Count() int {
 		return 0
 	}
 	return len(e.rules)
+}
+
+// RuleStat is one rule's metadata + lifetime match count, for the /rules UI.
+type RuleStat struct {
+	ID         string
+	Title      string
+	Severity   string
+	Tags       []string
+	Conditions int
+	Hits       uint64
+}
+
+// Stats returns a snapshot of every loaded rule with its lifetime hit count,
+// sorted by hits (desc) then id, for the operator rules view.
+func (e *Engine) Stats() []RuleStat {
+	if e == nil {
+		return nil
+	}
+	out := make([]RuleStat, len(e.rules))
+	for i := range e.rules {
+		r := &e.rules[i]
+		out[i] = RuleStat{
+			ID: r.ID, Title: r.Title, Severity: r.Severity, Tags: r.Tags,
+			Conditions: len(r.conds), Hits: e.hits[i].Load(),
+		}
+	}
+	sort.Slice(out, func(a, b int) bool {
+		if out[a].Hits != out[b].Hits {
+			return out[a].Hits > out[b].Hits
+		}
+		return out[a].ID < out[b].ID
+	})
+	return out
 }
 
 // Load reads every *.yml / *.yaml file in dir (non-recursive) and compiles the
@@ -112,6 +147,7 @@ func Load(dir string) (*Engine, []error) {
 			e.rules = append(e.rules, r)
 		}
 	}
+	e.hits = make([]atomic.Uint64, len(e.rules))
 	return e, errs
 }
 
@@ -192,6 +228,7 @@ func (e *Engine) Apply(ev *event.Event) []string {
 	for i := range e.rules {
 		r := &e.rules[i]
 		if r.matches(ev) {
+			e.hits[i].Add(1)
 			matched = append(matched, r.ID)
 			addAnomaly(ev, "detect:"+r.ID)
 			for _, t := range r.Tags {

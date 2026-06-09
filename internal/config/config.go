@@ -629,7 +629,7 @@ type UI struct {
 var TogglablePages = map[string]bool{
 	"attack": true, "correlation": true, "campaigns": true, "map": true,
 	"captures": true, "credentials": true, "interactions": true, "dns": true, "web": true,
-	"databases": true, "remote": true, "mail": true, "ntp": true,
+	"databases": true, "remote": true, "mail": true, "ntp": true, "rules": true,
 	"fleet": true, "iocs": true, "tunnels": true,
 	"fingerprints": true, "devices": true, "topology": true, "charts": true,
 	"statistics": true, "alerting": true, "errors": true, "docs": true,

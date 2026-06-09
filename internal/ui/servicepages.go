@@ -95,7 +95,15 @@ func categoryHandlers(kind string) []string {
 // honeynet host service) in the named category, so the nav link + page show
 // only when relevant.
 func (s *Server) hasServicePage(kind string) bool {
-	if s == nil || s.fullConfig == nil {
+	if s == nil {
+		return false
+	}
+	// The /rules page shows only when the operator detection-rule engine is
+	// wired (a rules_dir is configured).
+	if kind == "rules" {
+		return s.rules != nil
+	}
+	if s.fullConfig == nil {
 		return false
 	}
 	for _, l := range s.fullConfig.Listeners {

@@ -72,6 +72,7 @@ type Server struct {
 	topo          *honeynet.Topology
 	hosts         HostsProvider
 	hostsSummary  HostsSummaryProvider
+	rules         RulesProvider
 	deviceActions DeviceActions
 	dataDir       string
 	configPaths   []string   // config file path(s), for the /config "files in use" panel
@@ -668,6 +669,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	s.pageRoute(mux, "/dns", "dns", s.handleDNS)
 	s.pageRoute(mux, "/web", "web", s.handleWeb)
 	s.pageRoute(mux, "/databases", "databases", s.handleDatabases)
+	s.pageRoute(mux, "/rules", "rules", s.handleRules)
 	s.pageRoute(mux, "/remote", "remote", s.handleRemote)
 	s.pageRoute(mux, "/mail", "mail", s.handleMail)
 	s.pageRoute(mux, "/ntp", "ntp", s.handleNTPPage)
