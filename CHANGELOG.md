@@ -10,6 +10,24 @@ documented in `docs/`).
 
 ### Added
 
+- **Connection-oriented QUIC session handler (HTTP/3).** The `quic` handler is
+  now the first consumer of the `udp_session` primitive: on a listener with
+  `udp_session: true` it (1) reassembles a TLS ClientHello split across multiple
+  QUIC Initial datagrams — common with post-quantum key shares / ECH / long
+  extension sets, where the stateless single-datagram path saw only a fragment —
+  and (2) validates the source address by emitting a real QUIC **Retry** (RFC
+  9000 §17.2.5 with the RFC 9001 §5.8 Retry Integrity Tag, verified against the
+  RFC 9001 A.4 vector); a retried Initial that echoes the token is flagged
+  `quic-address-validated` (it cannot be a spoofed source). The Retry is smaller
+  than the ≥1200-byte Initial it answers (never an amplifier) and is gated by the
+  reply policy. Recovering 1-RTT HTTP/3 application data (a live TLS 1.3
+  handshake) remains out of scope.
+
+- **Per-virtual-host LDAP rootDSE identity.** Each honeynet DC now presents its
+  own `dnsHostName` / `serverName` / `dsServiceName` / `ldapServiceName` derived
+  from the virtual host's name, so hosts sharing an AD archetype no longer look
+  identical to recon tools. The stand-alone listener keeps the canonical `dc01`.
+
 - **LDAP rootDSE advertises the AD functional level.** The `ldap` / `ldaps` /
   `cldap` handlers now return `domainFunctionality` / `forestFunctionality` /
   `domainControllerFunctionality` (msDS-Behavior-Version) from the domain-

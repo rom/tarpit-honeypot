@@ -86,56 +86,74 @@ func (q *quicH) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.Pack
 // the QUIC version. Returns ok=false for anything that isn't a decryptable
 // v1/v2 Initial carrying a ClientHello.
 func quicClientHello(p []byte) (handshake []byte, version uint32, ok bool) {
+	version, _, plaintext, dok := quicDecryptInitial(p)
+	if !dok {
+		return nil, version, false
+	}
+	cryptoData, rok := quicReassembleCrypto(plaintext)
+	if !rok || len(cryptoData) < 4 || cryptoData[0] != 0x01 {
+		return nil, version, false
+	}
+	return cryptoData, version, true
+}
+
+// quicDecryptInitial removes header protection and AEAD-decrypts a QUIC Initial
+// packet, returning the QUIC version, the client's Destination Connection ID
+// (the per-flight key material — and the ODCID a Retry must bind), and the
+// decrypted QUIC frame bytes. Anyone can do this: the Initial keys derive from a
+// public salt plus the client DCID (RFC 9001 §5.2), so no handshake state is
+// needed. Returns ok=false for anything that isn't a decryptable v1/v2 Initial.
+func quicDecryptInitial(p []byte) (version uint32, dcid []byte, plaintext []byte, ok bool) {
 	// Long header: first byte has 0x80 (header form) + 0x40 (fixed bit); the
 	// low bits are protected. Then version(4), DCID len(1)+DCID, SCID len(1)+SCID.
 	if len(p) < 7 || p[0]&0xc0 != 0xc0 {
-		return nil, 0, false
+		return 0, nil, nil, false
 	}
 	version = binary.BigEndian.Uint32(p[1:5])
 	salt, vok := quicSaltFor(version)
 	if !vok {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	off := 5
 	dcidLen := int(p[off])
 	off++
 	if off+dcidLen > len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
-	dcid := p[off : off+dcidLen]
+	dcid = p[off : off+dcidLen]
 	off += dcidLen
 	if off >= len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	scidLen := int(p[off])
 	off++
 	off += scidLen
 	if off >= len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	// Initial packet: token length (varint) + token, then payload length
 	// (varint), then the protected packet-number + payload.
 	tokLen, n := quicVarint(p[off:])
 	if n == 0 {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	off += n + int(tokLen)
 	if off >= len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	payLen, n := quicVarint(p[off:])
 	if n == 0 {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	off += n
 	pnOffset := off
 	if pnOffset+int(payLen) > len(p) || int(payLen) < 20 {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 
 	key, iv, hp, derr := quicInitialKeys(salt, dcid)
 	if derr != nil {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 
 	// Header protection: sample 16 bytes starting 4 bytes past the PN offset,
@@ -143,11 +161,11 @@ func quicClientHello(p []byte) (handshake []byte, version uint32, ok bool) {
 	// and the packet number.
 	sampleOff := pnOffset + 4
 	if sampleOff+16 > len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	block, err := aes.NewCipher(hp)
 	if err != nil {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	mask := make([]byte, 16)
 	block.Encrypt(mask, p[sampleOff:sampleOff+16])
@@ -173,12 +191,12 @@ func quicClientHello(p []byte) (handshake []byte, version uint32, ok bool) {
 
 	aead, err := cipher.NewGCM(block2(key))
 	if err != nil {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	ciphertextStart := pnOffset + pnLen
 	ciphertextEnd := pnOffset + int(payLen)
 	if ciphertextStart >= ciphertextEnd || ciphertextEnd > len(p) {
-		return nil, version, false
+		return version, nil, nil, false
 	}
 	// AAD is the packet header with the unprotected first byte + packet number,
 	// from byte 0 through the end of the (now-known-length) packet number.
@@ -186,16 +204,11 @@ func quicClientHello(p []byte) (handshake []byte, version uint32, ok bool) {
 	copy(aad, p[:ciphertextStart])
 	aad[0] = firstByte
 	copy(aad[pnOffset:], pnBytes)
-	plaintext, err := aead.Open(nil, nonce, p[ciphertextStart:ciphertextEnd], aad)
+	pt, err := aead.Open(nil, nonce, p[ciphertextStart:ciphertextEnd], aad)
 	if err != nil {
-		return nil, version, false
+		return version, nil, nil, false
 	}
-
-	cryptoData, ok := quicReassembleCrypto(plaintext)
-	if !ok || len(cryptoData) < 4 || cryptoData[0] != 0x01 {
-		return nil, version, false
-	}
-	return cryptoData, version, true
+	return version, dcid, pt, true
 }
 
 func quicSaltFor(v uint32) ([]byte, bool) {
@@ -244,17 +257,20 @@ func block2(key []byte) cipher.Block {
 	return b
 }
 
-// quicReassembleCrypto walks the decrypted Initial payload's frames and
-// concatenates the CRYPTO frame (0x06) data in offset order (the common case is
-// a single CRYPTO frame at offset 0). PADDING (0x00) and PING (0x01) are
-// skipped; an unrecognized frame stops the walk (whatever CRYPTO we have by
+// quicCryptoChunk is one CRYPTO frame's (offset, data) recovered from a
+// decrypted QUIC payload. Chunks from several datagrams (a ClientHello split
+// across multiple Initial packets) can be merged before reassembly.
+type quicCryptoChunk struct {
+	off  uint64
+	data []byte
+}
+
+// quicCryptoChunks walks one decrypted Initial payload's frames and returns its
+// CRYPTO frames (0x06) as (offset, data) chunks. PADDING (0x00) and PING (0x01)
+// are skipped; an unrecognized frame stops the walk (whatever CRYPTO we have by
 // then is enough to fingerprint the ClientHello head).
-func quicReassembleCrypto(b []byte) ([]byte, bool) {
-	type chunk struct {
-		off  uint64
-		data []byte
-	}
-	var chunks []chunk
+func quicCryptoChunks(b []byte) []quicCryptoChunk {
+	var chunks []quicCryptoChunk
 	i := 0
 	for i < len(b) {
 		switch b[i] {
@@ -266,18 +282,18 @@ func quicReassembleCrypto(b []byte) ([]byte, bool) {
 			i++
 			off, n := quicVarint(b[i:])
 			if n == 0 {
-				return nil, false
+				return chunks
 			}
 			i += n
 			ln, n2 := quicVarint(b[i:])
 			if n2 == 0 {
-				return nil, false
+				return chunks
 			}
 			i += n2
 			if i+int(ln) > len(b) {
-				return nil, false
+				return chunks
 			}
-			chunks = append(chunks, chunk{off: off, data: append([]byte(nil), b[i:i+int(ln)]...)})
+			chunks = append(chunks, quicCryptoChunk{off: off, data: append([]byte(nil), b[i:i+int(ln)]...)})
 			i += int(ln)
 		default:
 			// Unknown / unsupported frame: stop. If we already have CRYPTO at
@@ -285,13 +301,15 @@ func quicReassembleCrypto(b []byte) ([]byte, bool) {
 			i = len(b)
 		}
 	}
-	if len(chunks) == 0 {
-		return nil, false
-	}
-	// Order by offset and concatenate contiguous data from 0. Skip
-	// zero-length chunks and stop as soon as no chunk advances the cursor —
-	// otherwise a CRYPTO frame with length 0 at offset 0 would spin forever
-	// (next never advances) allocating without bound.
+	return chunks
+}
+
+// quicReassembleChunks concatenates contiguous CRYPTO data starting at offset 0,
+// across any number of chunks (possibly recovered from multiple datagrams). It
+// skips zero-length chunks and stops as soon as no chunk advances the cursor —
+// otherwise a CRYPTO frame with length 0 at offset 0 would spin forever (next
+// never advances) allocating without bound.
+func quicReassembleChunks(chunks []quicCryptoChunk) []byte {
 	var out []byte
 	for next := uint64(0); ; {
 		found := false
@@ -306,6 +324,17 @@ func quicReassembleCrypto(b []byte) ([]byte, bool) {
 			break
 		}
 	}
+	return out
+}
+
+// quicReassembleCrypto reassembles the ClientHello bytes from a single decrypted
+// Initial payload (the common single-CRYPTO-frame-at-offset-0 case).
+func quicReassembleCrypto(b []byte) ([]byte, bool) {
+	chunks := quicCryptoChunks(b)
+	if len(chunks) == 0 {
+		return nil, false
+	}
+	out := quicReassembleChunks(chunks)
 	return out, len(out) > 0
 }
 
