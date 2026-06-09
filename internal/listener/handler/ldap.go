@@ -13,8 +13,9 @@ import (
 )
 
 type ldap struct {
-	hosts []HoneynetHost
-	arch  *archetype.Profile
+	hosts    []HoneynetHost
+	arch     *archetype.Profile
+	hostname string // virtual-host short name for per-host rootDSE identity
 }
 
 func (l *ldap) Name() string { return "ldap" }
@@ -106,7 +107,7 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 				res.Meta["ldap_rootdse_query"] = true
 				dom := deploymentDomainOr("example.internal")
 				res.Meta["ldap_default_naming_context"] = domainToDN(dom)
-				if _, err := conn.Write(buildLDAPRootDSE(messageID, dom, l.arch.ADFunctionalLevel())); err != nil {
+				if _, err := conn.Write(buildLDAPRootDSE(messageID, dom, l.arch.ADFunctionalLevel(), l.hostname)); err != nil {
 					res.Meta["write_err"] = err.Error()
 				}
 			}
@@ -212,12 +213,19 @@ func domainToDN(domain string) string {
 // advertising the Active-Directory naming contexts + service identity derived
 // from the deployment domain — what a real DC returns to an anonymous base
 // search, and what AD-recon tools read first.
-func buildLDAPRootDSE(messageID int, domain string, level int) []byte {
+func buildLDAPRootDSE(messageID int, domain string, level int, hostname string) []byte {
 	base := domainToDN(domain)
 	cfgNC := "CN=Configuration," + base
 	schemaNC := "CN=Schema," + cfgNC
 	realm := strings.ToUpper(domain)
-	host := "dc01." + domain
+	// Per-virtual-host identity: each honeynet DC presents its own name; the
+	// stand-alone listener (no hostname) keeps the canonical dc01.
+	short := strings.ToLower(hostname)
+	if short == "" {
+		short = "dc01"
+	}
+	upper := strings.ToUpper(short)
+	host := short + "." + domain
 	// A real DC always reports a functional level; default to 7 ("Windows2016",
 	// the level 2016/2019/2022 DCs run at) when the archetype didn't pin one.
 	if level <= 0 {
@@ -234,9 +242,9 @@ func buildLDAPRootDSE(messageID int, domain string, level int) []byte {
 	add(ldapAttr("configurationNamingContext", cfgNC))
 	add(ldapAttr("schemaNamingContext", schemaNC))
 	add(ldapAttr("dnsHostName", host))
-	add(ldapAttr("ldapServiceName", domain+":dc01$@"+realm))
-	add(ldapAttr("serverName", "CN=DC01,CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
-	add(ldapAttr("dsServiceName", "CN=NTDS Settings,CN=DC01,CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
+	add(ldapAttr("ldapServiceName", domain+":"+short+"$@"+realm))
+	add(ldapAttr("serverName", "CN="+upper+",CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
+	add(ldapAttr("dsServiceName", "CN=NTDS Settings,CN="+upper+",CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
 	add(ldapAttr("supportedLDAPVersion", "3", "2"))
 	// AD forest/domain functional level (msDS-Behavior-Version), what AD-recon
 	// tools read to gauge the domain's age + attack surface.

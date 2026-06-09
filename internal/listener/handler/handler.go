@@ -31,6 +31,11 @@ import (
 type Deps struct {
 	Identity *identity.Identity
 	Jitter   *jitter.Jitterer
+	// Hostname, when set (honeynet per-host services), is the virtual host's
+	// short name — used by identity-bearing handlers (e.g. the LDAP rootDSE) so
+	// each virtual DC presents its own serverName/dnsHostName instead of a shared
+	// default. Empty = handler default.
+	Hostname string
 	DataDir  string
 	// MaxUploadBytes caps how much of an uploaded file (FTP STOR / web upload)
 	// a handler captures for retention + classification (0 = handler default).
@@ -269,7 +274,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		}
 		return d, nil
 	case "ldap":
-		return &ldap{arch: deps.Archetype}, nil
+		return &ldap{arch: deps.Archetype, hostname: deps.Hostname}, nil
 	case "kerberos":
 		return &kerberos{}, nil
 	case "postgres":

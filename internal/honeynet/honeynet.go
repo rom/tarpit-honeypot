@@ -186,6 +186,7 @@ func buildBoundService(h *Host, s *Service, jit *jitter.Jitterer, dataDir string
 	deps := handler.Deps{
 		Identity:    h.Identity,
 		Jitter:      jit,
+		Hostname:    h.Hostname,
 		DataDir:     dataDir,
 		URLCanaries: urlCanaries,
 		TLSRotate:   tlsRotate,
