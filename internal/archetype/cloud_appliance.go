@@ -7,6 +7,43 @@ import "crypto/tls"
 // TrueNAS, VMware ESXi, and the Juniper / Palo Alto / F5 / SonicWall /
 // Netgear edge devices. Merged into the registry by init().
 var cloudArchetypes = map[string]*Profile{
+	"guacamole-server": {
+		Name: "guacamole-server", DisplayName: "Apache Guacamole (remote desktop gateway)", Family: "guacamole",
+		sshBanner:    "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
+		httpServer:   "Apache Tomcat",
+		httpTitle:    "Apache Guacamole",
+		httpBodyHTML: "<html><head><title>Apache Guacamole</title></head><body>Apache Guacamole</body></html>",
+		cliPrompt:    "guac@gateway:~$ ",
+		snmpSysDescr: "Linux guacamole 5.15.0-122-generic #132-Ubuntu x86_64",
+		snmpSysName:  "guacamole", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 8080, Handler: "http", Note: "Guacamole web app (Tomcat)"},
+			{Port: 443, Handler: "https", Note: "Guacamole (TLS reverse proxy)"},
+			{Port: 4822, Handler: "raw", Note: "guacd (Guacamole protocol)"},
+			{Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"guacamole", "remote-desktop-gateway"},
+	},
+	"keycloak-server": {
+		Name: "keycloak-server", DisplayName: "Keycloak (identity & SSO)", Family: "keycloak",
+		sshBanner:    "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
+		httpServer:   "",
+		httpTitle:    "Sign in to Keycloak",
+		httpBodyHTML: "<html><head><title>Sign in to Keycloak</title></head><body>Keycloak</body></html>",
+		cliPrompt:    "keycloak@idp:~$ ",
+		snmpSysDescr: "Linux keycloak 5.15.0-122-generic #132-Ubuntu x86_64",
+		snmpSysName:  "keycloak", snmpSysObjectID: ".1.3.6.1.4.1.8072.3.2.10",
+		icmpTTL: 64,
+		tls:     TLSPosture{MinVersion: tls.VersionTLS12},
+		defaultServices: []DefaultService{
+			{Port: 8080, Handler: "http", Note: "Keycloak HTTP"},
+			{Port: 8443, Handler: "https", Note: "Keycloak HTTPS / admin console"},
+			{Port: 22, Handler: "ssh"},
+		},
+		quirks: []string{"keycloak", "sso", "oidc"},
+	},
 	"macos-sonoma": {
 		Name: "macos-sonoma", DisplayName: "macOS Sonoma 14", Family: "macos",
 		macOUI:       [3]byte{0x3c, 0x07, 0x54}, // Apple

@@ -258,6 +258,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		"MikroTik RouterOS 7 (RB5009)",
 		"MikroTik RouterOS 6.40 (Winbox CVE-2018-14847)",
 		"Cisco 2811 ISR (IOS 12.4)",
+		"Apache Guacamole (remote desktop gateway)",
+		"Keycloak (identity & SSO)",
+		"Windows RDP / RDS host (Server 2008 R2)",
 		// OS variants added later.
 		"FreeBSD 11",
 		"OpenBSD 7.4",

@@ -12,6 +12,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	"schneider-modicon-m340": {
 		Name: "schneider-modicon-m340", DisplayName: "Schneider Modicon M340 (BMX P34)", Family: "schneider",
 		macOUI:          [3]byte{0x00, 0x80, 0xF4},
+		ftpBanner:       "220 FactoryCast FTP server (Modicon M340) ready.",
 		httpServer:      "Schneider-WEB/V3",
 		httpTitle:       "Modicon M340",
 		httpBodyHTML:    `<html><head><title>Modicon M340</title></head><body><h2>Schneider Electric — BMX P34 2020</h2><p>FactoryCast HMI · firmware V2.70</p></body></html>`,

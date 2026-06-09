@@ -135,6 +135,8 @@ var enterprise5Archetypes = map[string]*Profile{
 		Name: "opengear-cm", DisplayName: "Opengear console server", Family: "opengear",
 		macOUI:       [3]byte{0x00, 0x13, 0xc6}, // Opengear
 		sshBanner:    "SSH-2.0-OpenSSH_8.4",
+		telnetBanner: "\r\nOpengear Console Manager\r\nlogin: ",
+		loginPrompt:  "login: ",
 		httpServer:   "Opengear",
 		httpTitle:    "Opengear Console Manager",
 		httpBodyHTML: "<html><head><title>Opengear</title></head><body>Opengear Console Manager</body></html>",
@@ -151,6 +153,7 @@ var enterprise5Archetypes = map[string]*Profile{
 	"raritan-kx": {
 		Name: "raritan-kx", DisplayName: "Raritan Dominion KX (KVM)", Family: "raritan",
 		macOUI:       [3]byte{0x00, 0x0d, 0x5d}, // Raritan
+		sshBanner:    "SSH-2.0-OpenSSH_5.2",
 		httpServer:   "Raritan",
 		httpTitle:    "Dominion KX III",
 		httpBodyHTML: "<html><head><title>Dominion KX</title></head><body>Raritan Dominion KX III</body></html>",

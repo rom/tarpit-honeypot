@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Archetypes: `guacamole-server`, `keycloak-server`, `rdp-server`.** Apache
+  Guacamole remote-desktop gateway (Tomcat web + guacd/4822), Keycloak IAM/SSO
+  (8080/8443 admin console), and a legacy Windows RDP/RDS host (Server 2008 R2,
+  3389 + RD Web, advertising BlueKeep CVE-2019-0708).
+- **Archetype service audit + fixes.** A new integrity test
+  (`TestArchetypeServicesResolve`) verifies every archetype's defaultServices
+  name a *registered* handler with valid, non-duplicate ports — all 241 pass.
+  A companion coherence check found and closed 7 service/identity gaps
+  (Synology/QNAP model FTP feature sets, Schneider M340 FTP banner, Raritan KX
+  SSH banner, Opengear telnet login prompt).
+
 - **Operator detection rules (detection-as-code).** A new `detection.rules_dir`
   points the sensor at a directory of Sigma-style YAML rules
   (`internal/detect`) matched against every event with no recompile (re-read on

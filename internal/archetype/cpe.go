@@ -29,6 +29,7 @@ var familyVendor = map[string]string{
 	"dlink": "dlink", "tplink": "tp-link", "asus": "asus",
 	"ubiquiti": "ui", "teltonika": "teltonika", "nokia": "nokia",
 	"vmware": "vmware", "esxi": "vmware", "proxmox": "proxmox", "truenas": "truenas",
+	"guacamole": "apache", "keycloak": "keycloak",
 	"synology": "synology", "qnap": "qnap",
 	"dell": "dell", "hp": "hp", "hpeoa": "hpe", "ilom": "oracle", "supermicro": "supermicro",
 	"lenovo": "lenovo", "fujitsu": "fujitsu", "apc": "apc", "raritan": "raritan",

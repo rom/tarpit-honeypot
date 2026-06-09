@@ -83,6 +83,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | AlmaLinux 9 | `almalinux-9` | rhel | 1 |
 | Alpine Linux 3.20 | `alpine-3.20` | alpine | 3 |
 | Amazon Linux 2023 | `amazon-linux-2023` | amazonlinux | 3 |
+| Apache Guacamole (remote desktop gateway) | `guacamole-server` | guacamole | 4 |
 | Arch Linux | `arch-linux` | arch | 1 |
 | Arista 7050SX (EOS) | `arista-7050` | arista | 3 |
 | Arista 7280R (EOS) | `arista-7280r` | arista | 3 |
@@ -171,6 +172,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Juniper SRX (JunOS) | `juniper-srx` | juniper | 4 |
 | Juniper SRX340 (Junos) | `juniper-srx340` | juniper | 5 |
 | Kepware KEPServerEX (Windows) | `kepware-kepserverex` | windows | 6 |
+| Keycloak (identity & SSO) | `keycloak-server` | keycloak | 3 |
 | Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
 | Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
 | Lantronix EDS2100 (2-port device server) | `lantronix-eds2100` | lantronix | 6 |
@@ -291,6 +293,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Windows 11 | `windows-11` | windows | 5 |
 | Windows 7 | `windows-7` | windows | 4 |
 | Windows 8 | `windows-8` | windows | 3 |
+| Windows RDP / RDS host (Server 2008 R2) | `rdp-server` | windows | 5 |
 | Windows Server 2008 | `windows-server-2008` | windows | 6 |
 | Windows Server 2012 R2 | `windows-server-2012-r2` | windows | 6 |
 | Windows Server 2012 | `windows-server-2012` | windows | 6 |
@@ -745,6 +748,33 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Microsoft-IIS/10.0`
 - **SNMP sysDescr:** Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 17763 Multiprocessor Free)
 - **Services:** :22 `ssh`, :135 `dcerpc`, :445 `smb`, :389 `ldap`, :88 `kerberos`, :3389 `rdp`, :5985 `winrm`
+- **CVEs advertised:** —
+
+### Windows RDP / RDS host (Server 2008 R2) — `rdp-server`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/7.5` (RD Web Access)
+- **SNMP sysDescr:** Hardware: Intel64 … Windows Version 6.1 (Build 7601)
+- **Services:** :3389 `rdp`, :443 `https` (RD Web/Gateway), :445 `smb`, :135 `dcerpc`, :139 `smb`
+- **CVEs advertised:** CVE-2019-0708 (BlueKeep)
+
+### Apache Guacamole (remote desktop gateway) — `guacamole-server`
+
+**Family:** guacamole · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10`
+- **HTTP Server:** `Apache Tomcat` · **title:** Apache Guacamole
+- **Services:** :8080 `http` (web app), :443 `https`, :4822 `raw` (guacd), :22 `ssh`
+- **CVEs advertised:** —
+
+### Keycloak (identity & SSO) — `keycloak-server`
+
+**Family:** keycloak · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10`
+- **HTTP title:** Sign in to Keycloak
+- **Services:** :8080 `http`, :8443 `https` (admin console), :22 `ssh`
 - **CVEs advertised:** —
 
 ### Windows Server 2022 — `windows-server-2022`
