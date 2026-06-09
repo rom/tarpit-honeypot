@@ -80,6 +80,9 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | AVEVA PI Asset Framework (PI AF) server | `aveva-pi-af` | osisoft | 4 |
 | AVEVA PI System / OSIsoft PI Data Archive | `aveva-pi` | osisoft | 5 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
+| Active Directory DC (Windows Server 2008 R2, FFL 4) | `windows-2008r2-ad` | windows | 13 |
+| Active Directory DC (Windows Server 2012, FFL 5) | `windows-2012-ad` | windows | 13 |
+| Active Directory DC (Windows Server 2016, FFL 7) | `windows-2016-ad` | windows | 13 |
 | Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
 | Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
 | Allen-Bradley ControlLogix 1756-L73 | `rockwell-controllogix-1756` | rockwell | 4 |
@@ -677,6 +680,30 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Patch level:** Windows Server 2019 RTM (build 17763.107, pre-2020-08 rollup)
 - **Services:** :53 `dns`, :88 `kerberos`, :135 `dcerpc`, :139 `raw`, :389 `ldap`, :445 `smb`, :464 `raw`, :636 `https`, :3268 `ldap`, :3269 `https`, :3389 `rdp`, :5985 `winrm`, :9389 `raw`
 - **CVEs advertised:** CVE-2020-1472, CVE-2021-34527, CVE-2021-26855, CVE-2021-42278
+
+### Active Directory DC (Windows Server 2008 R2, FFL 4) — `windows-2008r2-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/7.5` · **functional level (msDS-Behavior-Version):** 4 · **sysName:** DC-2008R2
+- **Services:** :53 `dns`, :88 `kerberos`, :135 `dcerpc`, :139 `raw`, :389 `ldap`, :445 `smb`, :464 `raw`, :636 `https`, :3268 `ldap`, :3269 `https`, :3389 `rdp`, :5985 `winrm`, :9389 `raw`
+- **CVEs advertised:** CVE-2017-0144 (EternalBlue), CVE-2020-1472 (ZeroLogon)
+
+### Active Directory DC (Windows Server 2012, FFL 5) — `windows-2012-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/8.0` · **functional level:** 5 · **sysName:** DC-2012
+- **Services:** (DC protocol mix) :53 `dns`, :88 `kerberos`, :389 `ldap`, :636 `https`, :445 `smb`, :3268 `ldap`, :3389 `rdp`, :5985 `winrm`, :9389 `raw` …
+- **CVEs advertised:** CVE-2017-0144, CVE-2020-1472, CVE-2021-34527 (PrintNightmare)
+
+### Active Directory DC (Windows Server 2016, FFL 7) — `windows-2016-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/10.0` · **functional level:** 7 · **sysName:** DC-2016
+- **Services:** (DC protocol mix) :53 `dns`, :88 `kerberos`, :389 `ldap`, :636 `https`, :445 `smb`, :3268 `ldap`, :3389 `rdp`, :5985 `winrm`, :9389 `raw` …
+- **CVEs advertised:** CVE-2020-1472, CVE-2021-34527, CVE-2021-42278 (noPac)
 
 ### Windows 10 — `windows-10`
 

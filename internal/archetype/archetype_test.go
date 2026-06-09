@@ -91,6 +91,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		// Active Directory DC (registered under several aliases that
 		// collapse to one display name).
 		"Active Directory (Windows Server 2019 DC)",
+		"Active Directory DC (Windows Server 2008 R2, FFL 4)",
+		"Active Directory DC (Windows Server 2012, FFL 5)",
+		"Active Directory DC (Windows Server 2016, FFL 7)",
 		// Cisco IOS switches.
 		"Cisco Catalyst 2960 (IOS 15)",
 		"Cisco Catalyst 9300 (IOS-XE 17)",

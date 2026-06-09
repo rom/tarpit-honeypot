@@ -8,7 +8,16 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-06-09
+
 ### Added
+
+- **Active Directory DC archetypes pinned to a forest/domain functional level.**
+  `windows-2008r2-ad` (FFL 4), `windows-2012-ad` (FFL 5), `windows-2016-ad`
+  (FFL 7) — the full DC protocol mix (DNS/Kerberos/LDAP/LDAPS/GC/SMB/DCE-RPC/
+  WinRM/ADWS) with era-accurate OS build, IIS version and CVEs (EternalBlue /
+  ZeroLogon / PrintNightmare / noPac as appropriate). The level (msDS-Behavior-
+  Version) is carried in the display name + an `adfl:<n>` quirk.
 
 - **Process-historian / industrial-data-platform archetypes (12).**
   `kepware-opcua` (OPC UA / KEPServerEX), `aveva-pi` (OSIsoft/AVEVA PI Data
@@ -123,6 +132,15 @@ documented in `docs/`).
   starlight 7000", Bosch Security Systems MAC OUI, services http/rtsp + RCP+ on
   tcp/1756, ONVIF quirk) — joining the existing `axis-camera` and
   `hikvision-camera`.
+
+### Fixed
+
+- **Analytics pages degrade instead of 500 on a slow store.** When an aggregate
+  page query (e.g. `/remote`, `/dns`, `/web`, `/databases`) exceeds its time
+  budget — a large/busy event store or an index still (re)building — the page
+  now serves a friendly, auto-refreshing 503 "this view is taking longer than
+  usual" page (with a shorter-range hint) instead of a bare "internal server
+  error" 500.
 
 ## [2.20.0] - 2026-06-08
 
