@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Process-historian / industrial-data-platform archetypes (12).**
+  `kepware-opcua` (OPC UA / KEPServerEX), `aveva-pi` (OSIsoft/AVEVA PI Data
+  Archive, PI-SRV01, /piwebapi + 5450/5457), `aveva-pi-af` (PI AF, PI-AF01),
+  `wonderware-historian` (AVEVA/Wonderware, HISTORIAN01), `aspentech-ip21`
+  (InfoPlus.21, IP21-SERVER), `ge-proficy-historian` (PROFICY-HIST01,
+  /ProficyHistorian), `emerson-historian` (Ovation/DeltaV, PHD-HIST01),
+  `canary-historian` (CANARY-HIST01, /CanaryData), `dataparc` (PARCVIEW01,
+  /PARCview), `ignition-gateway` (Ignition, 8088/8043/62541 OPC UA),
+  `influxdb` (8086/8088), `timescaledb` (5432). Each carries product-accurate
+  ports, hostnames, banners and a landing page linking the real web/API base
+  paths + a sample point/tag.
+
 - **Archetypes: `guacamole-server`, `keycloak-server`, `rdp-server`.** Apache
   Guacamole remote-desktop gateway (Tomcat web + guacd/4822), Keycloak IAM/SSO
   (8080/8443 admin console), and a legacy Windows RDP/RDS host (Server 2008 R2,

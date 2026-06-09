@@ -30,6 +30,10 @@ var familyVendor = map[string]string{
 	"ubiquiti": "ui", "teltonika": "teltonika", "nokia": "nokia",
 	"vmware": "vmware", "esxi": "vmware", "proxmox": "proxmox", "truenas": "truenas",
 	"guacamole": "apache", "keycloak": "keycloak",
+	// Process historians / industrial data platforms.
+	"osisoft": "osisoft", "aveva": "aveva", "aspentech": "aspentech",
+	"canary": "canarylabs", "dataparc": "capstonetechnology",
+	"ignition": "inductiveautomation", "influxdb": "influxdata", "timescaledb": "timescale",
 	"synology": "synology", "qnap": "qnap",
 	"dell": "dell", "hp": "hp", "hpeoa": "hpe", "ilom": "oracle", "supermicro": "supermicro",
 	"lenovo": "lenovo", "fujitsu": "fujitsu", "apc": "apc", "raritan": "raritan",

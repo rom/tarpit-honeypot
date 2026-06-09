@@ -76,6 +76,9 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
 | ASUS RT-AX router (ASUSWRT) | `asus-router` | asus | 4 |
 | ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
+| AVEVA Historian / Wonderware Historian | `wonderware-historian` | aveva | 5 |
+| AVEVA PI Asset Framework (PI AF) server | `aveva-pi-af` | osisoft | 4 |
+| AVEVA PI System / OSIsoft PI Data Archive | `aveva-pi` | osisoft | 5 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
 | Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
 | Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
@@ -89,6 +92,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Arista 7280R (EOS) | `arista-7280r` | arista | 3 |
 | Arista EOS switch | `arista-eos` | arista | 4 |
 | Aruba 2930F (ArubaOS-Switch) | `aruba-2930f` | aruba | 4 |
+| AspenTech InfoPlus.21 (IP.21) historian | `aspentech-ip21` | aspentech | 4 |
 | Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
 | AudioCodes Mediant gateway | `audiocodes` | audiocodes | 4 |
 | Avaya Aura Communication Manager | `avaya-aura` | avaya | 4 |
@@ -102,6 +106,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Bosch FLEXIDOME IP camera | `bosch-flexidome` | bosch | 3 |
 | Bosch IP camera | `bosch-camera` | bosch | 3 |
 | Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
+| Canary Historian | `canary-historian` | canary | 4 |
 | Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
 | CentOS 6 | `centos-6` | rhel | 0 |
@@ -135,6 +140,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Echelon LonWorks i.LON Gateway | `echelon-lonworks` | echelon | 4 |
 | Emerson Bristol ControlWave RTU | `bristol-controlwave` | bristol | 4 |
 | Emerson DeltaV (DCS controller) | `emerson-deltav` | emerson | 4 |
+| Emerson Ovation / DeltaV Historian (PHD) | `emerson-historian` | emerson | 4 |
 | Emerson ROC800 RTU | `emerson-roc800` | emerson | 4 |
 | Epson WorkForce Pro (MFP) | `epson-workforce` | printer | 6 |
 | F5 BIG-IP (TMOS) | `f5-bigip` | f5 | 2 |
@@ -149,6 +155,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Fujitsu iRMC | `fujitsu-irmc` | fujitsu | 3 |
 | GE PACSystems RX3i (IC695) | `ge-pacsystems-rx3i` | ge | 4 |
 | GE PACSystems RX3i (PLC) | `ge-pacsystems` | ge | 4 |
+| GE Proficy Historian | `ge-proficy-historian` | ge | 4 |
 | Gentoo Linux | `gentoo` | gentoo | 3 |
 | Grandstream UCM (VoIP PBX) | `grandstream-ucm` | grandstream | 2 |
 | HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
@@ -165,6 +172,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Honeywell Experion C300 (DCS controller) | `honeywell-experion` | honeywell | 3 |
 | Huawei VRP (router/switch) | `huawei-vrp` | huawei | 3 |
 | IBM AIX 7.2 | `aix-7` | aix | 3 |
+| Inductive Automation Ignition Gateway | `ignition-gateway` | ignition | 4 |
+| InfluxDB (time-series database) | `influxdb` | influxdb | 3 |
 | Juniper EX4300 (Junos switch) | `juniper-ex4300` | juniper | 5 |
 | Juniper MX480 (Junos) | `juniper-mx480` | juniper | 5 |
 | Juniper MX960 (Junos) | `juniper-mx960` | juniper | 5 |
@@ -172,6 +181,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Juniper SRX (JunOS) | `juniper-srx` | juniper | 4 |
 | Juniper SRX340 (Junos) | `juniper-srx340` | juniper | 5 |
 | Kepware KEPServerEX (Windows) | `kepware-kepserverex` | windows | 6 |
+| Kepware OPC UA server (KEPServerEX) | `kepware-opcua` | windows | 5 |
 | Keycloak (identity & SSO) | `keycloak-server` | keycloak | 3 |
 | Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
 | Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
@@ -263,6 +273,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
 | Teltonika RUTX11 (LTE Cat6 router) | `teltonika-rutx11` | teltonika | 4 |
 | Teltonika TRB140 (LTE gateway) | `teltonika-trb140` | teltonika | 4 |
+| TimescaleDB (PostgreSQL time-series) | `timescaledb` | timescaledb | 2 |
 | Toshiba e-STUDIO (MFP) | `toshiba-estudio` | printer | 6 |
 | TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
 | TrueNAS SCALE (Debian) | `truenas-scale` | truenas | 4 |
@@ -305,6 +316,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Yokogawa CENTUM VP (DCS) | `yokogawa-centum` | yokogawa | 4 |
 | Zebra ZT411 (label printer) | `zebra-printer` | printer | 3 |
 | Zyxel USG FLEX firewall | `zyxel-usg` | zyxel | 2 |
+| dataPARC Historian / PARCview | `dataparc` | dataparc | 4 |
 | macOS Sonoma 14 | `macos-sonoma` | macos | 4 |
 | openSUSE Leap 15.6 | `opensuse-leap-15` | suse | 0 |
 | pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
@@ -1799,3 +1811,97 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
 - **CVEs advertised:** —
 
+
+## Process historians & industrial data platforms
+
+The "data tier" of an OT estate — historians, OPC servers and time-series
+databases. Each landing page links the product's real web/API base paths so a
+crawler records them; serving live JSON at each path is an http-handler concern,
+not the archetype layer.
+
+### Kepware OPC UA server (KEPServerEX) — `kepware-opcua`
+
+**Family:** windows · **TTL:** 128
+
+- **HTTP Server:** `Microsoft-IIS/10.0` · **OPC vendor:** Kepware KEPServerEX
+- **Services:** :4840 `opcua`, :49320 `raw` (runtime), :135 `dcerpc` (OPCEnum), :80 `http`, :161 `snmp`
+- **sysName:** KEP-OPCUA01
+
+### AVEVA PI System / OSIsoft PI Data Archive — `aveva-pi`
+
+**Family:** osisoft · **TTL:** 128 · **sysName:** PI-SRV01
+
+- **API:** `/piwebapi/system`, `/piwebapi/dataservers`, `/piwebapi/assetservers`, `/PIVision`, `/ProcessBook`
+- **Services:** :5450 `raw` (PI Data Archive / Network Manager), :5457 `raw` (PI buffering/AF), :443 `https` (PI Web API), :80 `http`, :161 `snmp`
+- **Sample point:** `Plant1.AreaA.Line3.Temperature`
+
+### AVEVA PI Asset Framework (PI AF) — `aveva-pi-af`
+
+**Family:** osisoft · **TTL:** 128 · **sysName:** PI-AF01
+
+- **Services:** :5457 `raw` (PI AF), :1433 `mssql` (PIFD asset DB), :443 `https` (PI Web API), :161 `snmp`
+
+### AVEVA Historian / Wonderware Historian — `wonderware-historian`
+
+**Family:** aveva · **TTL:** 128 · **sysName:** HISTORIAN01
+
+- **API:** `/Historian`, `/Wonderware`, `/AVEVA/Insight`
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :32568 `raw`, :161 `snmp`
+- **Sample tag:** `Boiler01.SteamPressure`
+
+### AspenTech InfoPlus.21 (IP.21) — `aspentech-ip21`
+
+**Family:** aspentech · **TTL:** 128 · **sysName:** IP21-SERVER
+
+- **Services:** :80 `http` (Aspen Process Explorer), :443 `https`, :10014 `raw` (IP.21 SQLplus), :161 `snmp`
+- **Sample tag:** `Compressor02.Vibration`
+
+### GE Proficy Historian — `ge-proficy-historian`
+
+**Family:** ge · **TTL:** 128 · **sysName:** PROFICY-HIST01
+
+- **API:** `/ProficyHistorian`, `/ProficyWebspace`
+- **Services:** :80 `http`, :443 `https`, :14000 `raw` (data archiver), :161 `snmp`
+- **Sample tag:** `Turbine01.Speed`
+
+### Emerson Ovation / DeltaV Historian (PHD) — `emerson-historian`
+
+**Family:** emerson · **TTL:** 128 · **sysName:** PHD-HIST01
+
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :161 `snmp`
+- **Sample tag:** `Substation.TR1.OilTemp`
+
+### Canary Historian — `canary-historian`
+
+**Family:** canary · **TTL:** 128 · **sysName:** CANARY-HIST01
+
+- **API:** `/CanaryAdmin`, `/CanaryData`
+- **Services:** :80 `http`, :443 `https`, :9990 `raw` (Sender), :161 `snmp`
+- **Sample tag:** `TankFarm.TK-101.Level`
+
+### dataPARC Historian / PARCview — `dataparc`
+
+**Family:** dataparc · **TTL:** 128 · **sysName:** PARCVIEW01
+
+- **API:** `/dataPARC`, `/PARCview`
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :161 `snmp`
+- **Sample tag:** `WWTP.Pump03.Runtime`
+
+### Inductive Automation Ignition Gateway — `ignition-gateway`
+
+**Family:** ignition · **TTL:** 64 · **sysName:** IGNITION-GW01
+
+- **API:** `/Ignition`, `/vision`, `/web/home`
+- **Services:** :8088 `http`, :8043 `https`, :62541 `opcua`, :22 `ssh`
+
+### InfluxDB — `influxdb`
+
+**Family:** influxdb · **TTL:** 64 · **sysName:** INFLUXDB01
+
+- **Services:** :8086 `http` (HTTP API), :8088 `raw` (RPC/backup), :22 `ssh`
+
+### TimescaleDB — `timescaledb`
+
+**Family:** timescaledb · **TTL:** 64 · **sysName:** TIMESCALE01
+
+- **Services:** :5432 `postgres`, :22 `ssh`
