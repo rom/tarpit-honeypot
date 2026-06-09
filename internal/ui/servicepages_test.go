@@ -14,10 +14,10 @@ func TestServiceCategory(t *testing.T) {
 		"dns": "dns", "http": "web", "https": "web",
 		"mysql": "database", "postgres": "database", "redis": "database",
 		"mongodb": "database",
-		"ssh": "remote", "ssh_interactive": "remote", "telnet": "remote",
+		"ssh":     "remote", "ssh_interactive": "remote", "telnet": "remote",
 		"rdp": "remote", "vnc": "remote",
 		"smtp_recv": "mail", "smtps": "mail", "pop3": "mail", "imaps": "mail",
-		"ntp": "ntp",
+		"ntp":       "ntp",
 		"ftp_files": "",
 	}
 	for h, want := range cases {

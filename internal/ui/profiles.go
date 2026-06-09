@@ -127,7 +127,7 @@ type Profile struct {
 	Proto ProtoIntel `json:"proto_intel,omitempty"`
 	// OPCItems are the OPC-DA / ICS item IDs / group names this source reached
 	// for (from the dcerpc OPC-DA call layer).
-	OPCItems []string       `json:"opc_items,omitempty"`
+	OPCItems []string `json:"opc_items,omitempty"`
 	// CrossTarget is the cross-target picture when this source reached more than
 	// one of the host's target IPs: targets in first-seen order with timing
 	// offsets + per-target ports, and the ports hit on >1 target. nil otherwise.

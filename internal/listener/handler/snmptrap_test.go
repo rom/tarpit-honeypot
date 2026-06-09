@@ -62,10 +62,10 @@ func TestInspectSNMP_V1Trap(t *testing.T) {
 	pdu := snmpTLV(pduV1Trap, catB(
 		oidB(oidCiscoEnt),
 		snmpTLV(0x40, []byte{10, 0, 0, 1}), // agent-addr
-		intB(6),                           // generic = enterpriseSpecific
-		intB(1),                           // specific
+		intB(6),                            // generic = enterpriseSpecific
+		intB(1),                            // specific
 		snmpTLV(0x43, []byte{0x00}),        // timestamp
-		seqB(),                            // empty varbind list
+		seqB(),                             // empty varbind list
 	))
 	in := inspectSNMP(seqB(intB(0), octB("public"), pdu))
 	if in.Version != 0 || !in.IsTrap {
