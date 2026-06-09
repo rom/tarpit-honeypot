@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"net"
+	"sort"
 
 	"golang.org/x/crypto/hkdf"
 
@@ -304,24 +305,38 @@ func quicCryptoChunks(b []byte) []quicCryptoChunk {
 	return chunks
 }
 
+// quicMaxClientHello caps the reassembled CRYPTO so a crafted flight can't grow
+// the buffer without bound. A real TLS ClientHello (even with post-quantum key
+// shares + ECH) is far under 64 KiB.
+const quicMaxClientHello = 1 << 16
+
 // quicReassembleChunks concatenates contiguous CRYPTO data starting at offset 0,
 // across any number of chunks (possibly recovered from multiple datagrams). It
-// skips zero-length chunks and stops as soon as no chunk advances the cursor —
-// otherwise a CRYPTO frame with length 0 at offset 0 would spin forever (next
-// never advances) allocating without bound.
+// sorts by offset once and walks the result in a single pass: an attacker can
+// craft a (publicly decryptable) Initial flight carrying thousands of tiny
+// CRYPTO frames, so the previous repeated-scan approach was O(n²) and a
+// CPU-amplification vector — sorting makes it O(n log n). It skips zero-length
+// chunks, stops at the first gap (can't extend contiguously), trims overlapping
+// frames to the new bytes only, and caps the output at quicMaxClientHello.
 func quicReassembleChunks(chunks []quicCryptoChunk) []byte {
+	if len(chunks) == 0 {
+		return nil
+	}
+	sort.Slice(chunks, func(i, j int) bool { return chunks[i].off < chunks[j].off })
 	var out []byte
-	for next := uint64(0); ; {
-		found := false
-		for _, c := range chunks {
-			if c.off == next && len(c.data) > 0 {
-				out = append(out, c.data...)
-				next += uint64(len(c.data))
-				found = true
-			}
+	next := uint64(0)
+	for _, c := range chunks {
+		if c.off > next {
+			break // gap before this chunk: nothing contiguous follows
 		}
-		if !found {
-			break
+		end := c.off + uint64(len(c.data))
+		if end <= next {
+			continue // fully overlapped by data we already have (or zero-length)
+		}
+		out = append(out, c.data[next-c.off:]...) // append only the new tail
+		next = end
+		if len(out) >= quicMaxClientHello {
+			return out[:quicMaxClientHello]
 		}
 	}
 	return out

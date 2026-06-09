@@ -181,3 +181,41 @@ func TestQUICReassembleMixedChunks(t *testing.T) {
 		t.Fatalf("reassembly = %q (ok=%v), want abcde", out, ok)
 	}
 }
+
+// TestQUICReassembleOutOfOrderAndOverlap confirms the sort-based reassembly
+// (the O(n log n) rewrite) yields the correct contiguous ClientHello regardless
+// of chunk order, trims overlapping frames to their new tail, stops at a gap,
+// and caps the output — so a crafted many-frame flight can't drive O(n²) CPU or
+// unbounded growth.
+func TestQUICReassembleOutOfOrderAndOverlap(t *testing.T) {
+	// Out-of-order + an overlapping frame ([2..7) overlaps [0..5)).
+	chunks := []quicCryptoChunk{
+		{off: 5, data: []byte("FGHIJ")},
+		{off: 0, data: []byte("ABCDE")},
+		{off: 2, data: []byte("CDEFG")}, // overlaps; only the tail past `next` is taken
+	}
+	if got := string(quicReassembleChunks(chunks)); got != "ABCDEFGHIJ" {
+		t.Errorf("out-of-order/overlap reassembly = %q; want ABCDEFGHIJ", got)
+	}
+
+	// A gap before the next chunk stops reassembly at the contiguous prefix.
+	gapped := []quicCryptoChunk{
+		{off: 0, data: []byte("ABC")},
+		{off: 10, data: []byte("XYZ")}, // gap at offset 3..10
+	}
+	if got := string(quicReassembleChunks(gapped)); got != "ABC" {
+		t.Errorf("gapped reassembly = %q; want ABC", got)
+	}
+
+	// Thousands of tiny contiguous 1-byte frames reassemble fully and the
+	// output is capped (no O(n²) blowup, no unbounded growth).
+	n := quicMaxClientHello + 5000
+	many := make([]quicCryptoChunk, n)
+	for i := 0; i < n; i++ {
+		many[i] = quicCryptoChunk{off: uint64(i), data: []byte{'x'}}
+	}
+	out := quicReassembleChunks(many)
+	if len(out) != quicMaxClientHello {
+		t.Errorf("output not capped: len=%d want %d", len(out), quicMaxClientHello)
+	}
+}

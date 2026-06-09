@@ -17,7 +17,7 @@ import (
 // structure, attribute the Cisco SNMP RCE CVEs on a clear overflow primitive,
 // and — for an inform, when the reply policy allows — return the acknowledgement
 // a real receiver would so the sender proceeds (and reveals more).
-type snmptrap struct{}
+type snmptrap struct{ lim *udpReflectLimiter }
 
 func (s *snmptrap) Name() string { return "snmptrap" }
 
@@ -70,14 +70,24 @@ func (s *snmptrap) Handle(ctx context.Context, payload []byte, src net.Addr, pc 
 
 	// Acknowledge a well-formed inform (a real receiver must, or the sender
 	// retransmits): echo the datagram back with the PDU type flipped from
-	// InformRequest to GetResponse. No amplification (response == request size),
-	// and only when the structure is sane and the reply policy permits.
+	// InformRequest to GetResponse. The ack is size-neutral (response == request,
+	// no amplification), but it is still an unsolicited reply to a spoofable UDP
+	// source, so — like the other UDP responders — it is gated by the reply
+	// policy (AmplifierReplyAllowed) and a global reflection rate limiter so the
+	// sensor can't be turned into a 1:1 reflector.
 	if in.IsInform && in.PDUTagOffset >= 0 && len(in.Anomalies) == 0 {
-		ack := make([]byte, len(payload))
-		copy(ack, payload)
-		ack[in.PDUTagOffset] = pduGetResponse
-		if _, err := pc.WriteTo(ack, src); err == nil {
-			res.Meta["inform_ack"] = true
+		switch {
+		case !AmplifierReplyAllowed("snmptrap", "inform-ack", src):
+			res.Meta["amplifier_suppressed"] = true
+		case !s.lim.allow():
+			res.Meta["rate_limited"] = true
+		default:
+			ack := make([]byte, len(payload))
+			copy(ack, payload)
+			ack[in.PDUTagOffset] = pduGetResponse
+			if _, err := pc.WriteTo(ack, src); err == nil {
+				res.Meta["inform_ack"] = true
+			}
 		}
 	}
 	return res, nil
