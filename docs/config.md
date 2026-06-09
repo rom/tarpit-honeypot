@@ -16,6 +16,7 @@ dns:           { ... }     # DNS canary listener
 dns_canaries:  [ ... ]     # DNS-side canary names
 sniffer:       { ... }     # AF_PACKET ARP + TCP scan detector (linux only)
 correlate:     { ... }     # port-scan / brute-force / slow-scan
+detection:     { rules_dir: /etc/tarpit-honeypot/rules }  # operator YAML rules
 honeynets:     [ ... ]     # artificial networks of virtual hosts
 dedup:         { ... }     # event dedup window
 allowlist:     [ ... ]     # source IPs that bypass outbound alerts

@@ -10,6 +10,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Operator detection rules (detection-as-code).** A new `detection.rules_dir`
+  points the sensor at a directory of Sigma-style YAML rules
+  (`internal/detect`) matched against every event with no recompile (re-read on
+  SIGHUP). A match adds the rule's `tags` as anomaly markers (flowing into
+  search / attack tables / exports / ATT&CK chips) and may raise the event
+  severity. Conditions AND across fields / OR within a value list, with
+  `contains|prefix|suffix|re|gt|lt|exists` modifiers over event fields +
+  `meta.<dotted.path>`. `validate-config` loads + validates them; docs in
+  `detection-rules.md` + an example rule set in `configs/rules/`.
+
 - **Connection-oriented UDP listener (`udp_session`).** A new opt-in UDP path
   that demultiplexes datagrams per source into multi-datagram `handler.UDPSession`s
   (Read next datagram / Write reply) handed to handlers implementing

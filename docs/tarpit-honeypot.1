@@ -110,7 +110,8 @@ loads and validates without binding.
 .TP
 .B validate-config
 Parse and validate a config; also reports TLS-cert \(em deployment-domain
-coherence warnings. With
+coherence warnings and loads/validates the operator detection rules
+(\fBdetection.rules_dir\fR). With
 .B --diff
 classify hot-reloadable vs restart-required changes between two configs.
 .TP

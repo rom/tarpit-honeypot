@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Detection configures the declarative operator-rule engine: a directory of
+// Sigma-style YAML rules matched against every event (internal/detect). Empty
+// rules_dir = disabled.
+type Detection struct {
+	RulesDir string `yaml:"rules_dir"`
+}
+
 type Config struct {
 	Sensor    Sensor     `yaml:"sensor"`
 	UI        UI         `yaml:"ui"`
@@ -22,11 +29,14 @@ type Config struct {
 	DNSCanaries   []DNSCanary    `yaml:"dns_canaries"`
 	Sniffer       Sniffer        `yaml:"sniffer"`
 	Correlate     Correlate      `yaml:"correlate"`
-	Honeynets     []Honeynet     `yaml:"honeynets"`
-	Dedup         Dedup          `yaml:"dedup"`
-	Allowlist     []string       `yaml:"allowlist"`
-	Channels      []Channel      `yaml:"channels"`
-	Routes        []Route        `yaml:"routes"`
+	// Detection points the operator detection-rule engine at a directory of
+	// Sigma-style YAML rules (internal/detect) matched against every event.
+	Detection Detection  `yaml:"detection"`
+	Honeynets []Honeynet `yaml:"honeynets"`
+	Dedup     Dedup      `yaml:"dedup"`
+	Allowlist []string   `yaml:"allowlist"`
+	Channels  []Channel  `yaml:"channels"`
+	Routes    []Route    `yaml:"routes"`
 	// Forward ships this node's events to parent aggregator node(s) for
 	// fleet-wide correlation. Multiple targets fan out (HA, or a site SOC plus
 	// a global hub). See internal/forward.
