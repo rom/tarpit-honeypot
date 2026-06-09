@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -827,6 +828,27 @@ func serverError(w http.ResponseWriter, where string, err error) {
 	// already gone. A genuine timeout (DeadlineExceeded) still logs.
 	if errors.Is(err, context.Canceled) {
 		slog.Debug("ui: request cancelled by client", "path", where)
+		return
+	}
+	// A query deadline (DeadlineExceeded) is transient, not a code fault: the
+	// event store is large/busy or an index is still building, so the aggregate
+	// query for this page didn't finish in its window. Don't surface a bare 500
+	// "internal server error" — serve a friendly, auto-refreshing page so the
+	// operator isn't staring at an error, and hint at a shorter range.
+	if errors.Is(err, context.DeadlineExceeded) {
+		slog.Warn("ui: page query timed out (store busy/large or index building)", "path", where)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `<!doctype html><html><head><meta charset="utf-8">`+
+			`<meta http-equiv="refresh" content="5"><title>busy</title>`+
+			`<style>body{font-family:system-ui,sans-serif;margin:3rem;color:#444}`+
+			`a{color:#4a6fa5}</style></head><body>`+
+			`<h2>⏳ This view is taking longer than usual</h2>`+
+			`<p>The event store is large or busy (or an index is still building), so the `+
+			`query for this page exceeded its time budget. The page will retry automatically.</p>`+
+			`<p>Tip: pick a shorter time range, or check <a href="/health">/health</a> and `+
+			`<a href="/errors">/errors</a>.</p></body></html>`)
 		return
 	}
 	slog.Warn("ui: request failed", "path", where, "err", err)
