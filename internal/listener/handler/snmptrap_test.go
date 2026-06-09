@@ -123,6 +123,28 @@ func TestSNMPTrapHandler_InformAck(t *testing.T) {
 	}
 }
 
+func TestSNMPTrapHandler_InformAckSuppressedNoAmplifier(t *testing.T) {
+	defer SetReplyPolicy("full", false)
+	SetReplyPolicy("full", true) // suppress amplifier/reflector replies
+	vb := seqB(seqB(oidB(oidSysUpTime), intB(0)))
+	pkt := v2cTrap("public", pduInform, vb)
+	pc := &capPC{}
+	h := &snmptrap{lim: newUDPReflectLimiter()}
+	res, err := h.Handle(context.Background(), pkt, &net.UDPAddr{IP: net.ParseIP("203.0.113.5"), Port: 4000}, pc, config.Listener{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pc.wrote) != 0 {
+		t.Errorf("inform-ack should be suppressed under no-amplifier policy; wrote % x", pc.wrote)
+	}
+	if res.Meta["amplifier_suppressed"] != true {
+		t.Errorf("expected amplifier_suppressed meta; got %v", res.Meta)
+	}
+	if res.Meta["inform_ack"] == true {
+		t.Errorf("inform_ack must not be set when suppressed")
+	}
+}
+
 func TestSNMPTrapHandler_MalformedNoPanic(t *testing.T) {
 	pc := &capPC{}
 	h := &snmptrap{}
