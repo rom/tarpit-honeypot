@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **Connection-oriented UDP listener (`udp_session`).** A new opt-in UDP path
+  that demultiplexes datagrams per source into multi-datagram `handler.UDPSession`s
+  (Read next datagram / Write reply) handed to handlers implementing
+  `handler.UDPSessionHandler` — the missing primitive for QUIC/DTLS/TFTP-style
+  exchanges. Bounded session table (falls back to the stateless path when full),
+  one event per session. Stateless UDP handlers and TCP are unaffected.
+
 - **`replay` subcommand — record-and-replay regression harness.** Re-runs a
   recorded request back through its protocol handler offline (no socket,
   nothing executed): `--event <id>` replays the bytes the sensor captured for

@@ -464,11 +464,14 @@ responders/sniffer, fanotify read-detect, TUN, seccomp/Landlock,
   the actual HTTP/3 request — the `:method`/`:path`, sent as **1-RTT**
   application data — needs the TLS 1.3 handshake completed so the application
   traffic secret is known, which needs a full QUIC handshake across several
-  datagrams. The current UDP listener hands each handler a single datagram with
-  no per-connection state, so a live handshake requires a **new connection-
-  oriented QUIC listener** that owns its socket (plus QPACK for HTTP/3 header
-  decode). The RFC-9001 1-RTT **packet-protection layer** (key derivation +
-  short-header header-protection removal + AEAD, verified against the RFC's
-  published vector) is implemented in `internal/listener/handler/quic_1rtt.go`
-  as a tested foundation for that listener, but is not wired into a live flow.
+  datagrams. The **connection-oriented UDP primitive now exists**: a listener
+  with `udp_session: true` demultiplexes datagrams per source into a
+  `handler.UDPSession` (Read next datagram / Write reply) handed to a
+  `handler.UDPSessionHandler` — so a multi-datagram QUIC/DTLS handshake handler
+  can now be built on top. What remains is the QUIC handler itself (full
+  handshake + QPACK for HTTP/3 header decode). The RFC-9001 1-RTT
+  **packet-protection layer** (key derivation + short-header header-protection
+  removal + AEAD, verified against the RFC's published vector) is implemented in
+  `internal/listener/handler/quic_1rtt.go` as a tested foundation; it is not yet
+  wired into a live session flow.
 - **Decoy-scan attribution.** See "Open risks".

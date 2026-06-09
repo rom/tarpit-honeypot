@@ -191,6 +191,7 @@ listeners:
     read_timeout: 5s
     capture: false                      # write per-event pcap of bidirectional bytes
     max_concurrent: 0                   # 0 = unlimited; otherwise SYN-flood guard
+    udp_session: false                  # UDP only: per-source multi-datagram sessions
     archetype: ""                       # overrides sensor.archetype for this listener
     banner: ""                          # raw banner string for handler: raw
     https:                              # only for handler: https

@@ -1002,6 +1002,11 @@ type Listener struct {
 	ReadTimeout   time.Duration `yaml:"read_timeout"`
 	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	// UDPSession enables the connection-oriented UDP path: datagrams are
+	// demultiplexed per source into multi-datagram sessions and handed to a
+	// handler that implements handler.UDPSessionHandler (QUIC/DTLS/TFTP-style
+	// exchanges). No effect on stateless UDP handlers or TCP. UDP only.
+	UDPSession bool `yaml:"udp_session"`
 	// Archetype overrides sensor.archetype for this listener. Empty
 	// = inherit sensor.archetype. Useful when one sensor serves a
 	// mix of OS-shaped traps on different ports.

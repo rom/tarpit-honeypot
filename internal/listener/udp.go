@@ -24,7 +24,16 @@ type udpListener struct {
 	topo       *honeynet.Topology
 	// binds is the set of host:port addresses to listen on. Empty = [cfg.Bind].
 	binds []string
+	// sessions tracks live connection-oriented UDP sessions by source address
+	// (only used when cfg.UDPSession is set and the handler is session-aware).
+	sessMu   sync.Mutex
+	sessions map[string]*handler.UDPSession
 }
+
+// maxUDPSessions bounds the per-listener live-session table so a flood of
+// distinct sources can't exhaust memory; beyond it we fall back to the
+// stateless single-datagram path (still captured).
+const maxUDPSessions = 2048
 
 func newUDP(l config.Listener, sensorName string, topo *honeynet.Topology, hnView handler.HoneynetSnapshot, deps handler.Deps, binds []string) (*udpListener, error) {
 	sev, err := event.ParseSeverity(l.Severity)
@@ -130,6 +139,17 @@ func (u *udpListener) readLoop(ctx context.Context, pc net.PacketConn, bus chan<
 		// Copy out the packet before launching the handler goroutine because
 		// the next ReadFrom will reuse buf.
 		payload := append([]byte(nil), buf[:n]...)
+
+		// Connection-oriented path: when udp_session is enabled and the handler
+		// is session-aware, demux this datagram into a per-source multi-datagram
+		// session (one event emitted when the session ends). Falls through to
+		// the stateless path if the session table is full.
+		if sh, ok := activeHandler.(handler.UDPSessionHandler); ok && u.cfg.UDPSession && u.cfg.Mode == "banner" {
+			if u.routeToSession(ctx, pc, raddr, payload, ev, bus, sh) {
+				continue
+			}
+		}
+
 		var res handler.Result
 		if activeHandler != nil && u.cfg.Mode == "banner" {
 			func() {
@@ -143,49 +163,97 @@ func (u *udpListener) readLoop(ctx context.Context, pc net.PacketConn, bus chan<
 				// the handler captures the datagram but emits no reply / reflection.
 				res, _ = activeHandler.Handle(ctx, payload, raddr, handler.GatePacketConn(pc, u.cfg.Handler), u.cfg)
 			}()
-			ev.BannerSent = res.BannerSent
-			if len(res.Payload) > 0 {
-				ev.PayloadLen = len(res.Payload)
-				ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
-			}
-			if res.Meta != nil {
-				// Sanitize attacker-controlled string values
-				// recursively before merging into the event meta —
-				// see tcp.go for the threat-model rationale.
-				safe.SanitizeMetaStrings(res.Meta)
-				if ev.Meta == nil {
-					ev.Meta = map[string]any{}
-				}
-				for k, v := range res.Meta {
-					ev.Meta[k] = v
-				}
-				if anoms, ok := res.Meta["anomalies"].([]string); ok {
-					ev.Anomalies = append(ev.Anomalies, anoms...)
-				}
-			}
 		} else if n > 0 {
 			ev.PayloadLen = n
 			ev.PayloadBase64 = base64.StdEncoding.EncodeToString(payload)
 		}
-		// Traffic accounting (one datagram in, an optional response datagram
-		// out). UDP is connectionless, so we count per packet here rather than
-		// via a conn wrapper; the response size is the banner the handler sent.
+		u.finishUDPResult(ctx, ev, res, n, bus)
+	}
+}
+
+// finishUDPResult merges a handler Result into the event, stamps traffic
+// accounting + intent, and publishes it. Shared by the stateless datagram path
+// and the connection-oriented session path.
+func (u *udpListener) finishUDPResult(ctx context.Context, ev *event.Event, res handler.Result, n int, bus chan<- *event.Event) {
+	if res.BannerSent != "" {
+		ev.BannerSent = res.BannerSent
+	}
+	if len(res.Payload) > 0 {
+		ev.PayloadLen = len(res.Payload)
+		ev.PayloadBase64 = base64.StdEncoding.EncodeToString(res.Payload)
+	}
+	if res.Meta != nil {
+		// Sanitize attacker-controlled string values recursively before merging
+		// into the event meta — see tcp.go for the threat-model rationale.
+		safe.SanitizeMetaStrings(res.Meta)
 		if ev.Meta == nil {
 			ev.Meta = map[string]any{}
 		}
-		ev.Meta["bytes_in"] = int64(n)
-		ev.Meta["pkts_in"] = int64(1)
-		if out := len(res.BannerSent); out > 0 {
-			ev.Meta["bytes_out"] = int64(out)
-			ev.Meta["pkts_out"] = int64(1)
+		for k, v := range res.Meta {
+			ev.Meta[k] = v
 		}
-		deriveEventIntent(ev) // authoritative intent in exports/search/UI
-		select {
-		case bus <- ev:
-		case <-ctx.Done():
-			return
+		if anoms, ok := res.Meta["anomalies"].([]string); ok {
+			ev.Anomalies = append(ev.Anomalies, anoms...)
 		}
 	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["bytes_in"] = int64(n)
+	ev.Meta["pkts_in"] = int64(1)
+	if out := len(res.BannerSent); out > 0 {
+		ev.Meta["bytes_out"] = int64(out)
+		ev.Meta["pkts_out"] = int64(1)
+	}
+	deriveEventIntent(ev) // authoritative intent in exports/search/UI
+	select {
+	case bus <- ev:
+	case <-ctx.Done():
+	}
+}
+
+// routeToSession demuxes a datagram into a per-source UDP session, creating one
+// (and a goroutine running the handler's HandleSession) on the first datagram.
+// Returns false when the session table is full so the caller falls back to the
+// stateless path. base is the per-datagram event template used to emit the
+// session's single event on completion.
+func (u *udpListener) routeToSession(ctx context.Context, pc net.PacketConn, raddr net.Addr, payload []byte, base *event.Event, bus chan<- *event.Event, sh handler.UDPSessionHandler) bool {
+	key := raddr.String()
+	u.sessMu.Lock()
+	if u.sessions == nil {
+		u.sessions = map[string]*handler.UDPSession{}
+	}
+	if s := u.sessions[key]; s != nil {
+		u.sessMu.Unlock()
+		s.Deliver(payload) // subsequent datagram for an in-flight session
+		return true
+	}
+	if len(u.sessions) >= maxUDPSessions {
+		u.sessMu.Unlock()
+		return false
+	}
+	sess := handler.NewUDPSession(raddr, handler.GatePacketConn(pc, u.cfg.Handler), 64)
+	u.sessions[key] = sess
+	u.sessMu.Unlock()
+	sess.Deliver(payload) // first datagram
+
+	go func() {
+		var res handler.Result
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("udp session handler panic recovered", "listener", u.cfg.ID, "panic", r)
+				}
+			}()
+			res, _ = sh.HandleSession(ctx, sess, u.cfg)
+		}()
+		u.sessMu.Lock()
+		delete(u.sessions, key)
+		u.sessMu.Unlock()
+		sess.Close()
+		u.finishUDPResult(ctx, base, res, len(payload), bus)
+	}()
+	return true
 }
 
 func hostPort(a net.Addr) (string, int) {
