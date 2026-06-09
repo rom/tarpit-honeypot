@@ -16,6 +16,7 @@ dns:           { ... }     # DNS canary listener
 dns_canaries:  [ ... ]     # DNS-side canary names
 sniffer:       { ... }     # AF_PACKET ARP + TCP scan detector (linux only)
 correlate:     { ... }     # port-scan / brute-force / slow-scan
+detection:     { rules_dir: /etc/tarpit-honeypot/rules }  # operator YAML rules
 honeynets:     [ ... ]     # artificial networks of virtual hosts
 dedup:         { ... }     # event dedup window
 allowlist:     [ ... ]     # source IPs that bypass outbound alerts
@@ -191,6 +192,7 @@ listeners:
     read_timeout: 5s
     capture: false                      # write per-event pcap of bidirectional bytes
     max_concurrent: 0                   # 0 = unlimited; otherwise SYN-flood guard
+    udp_session: false                  # UDP only: per-source multi-datagram sessions
     archetype: ""                       # overrides sensor.archetype for this listener
     banner: ""                          # raw banner string for handler: raw
     https:                              # only for handler: https

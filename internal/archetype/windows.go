@@ -180,6 +180,27 @@ var windowsArchetypes = map[string]*Profile{
 			{Port: 5985, Handler: "winrm"},
 		},
 	},
+	"rdp-server": {
+		Name: "rdp-server", DisplayName: "Windows RDP / RDS host (Server 2008 R2)", Family: "windows",
+		httpServer:      "Microsoft-IIS/7.5",
+		httpTitle:       "RD Web Access",
+		httpBodyHTML:    "<html><head><title>RD Web Access</title></head><body><h1>Work Resources</h1><p>RemoteApp and Desktop Connection</p></body></html>",
+		cliPrompt:       "C:\\Windows\\system32>",
+		snmpSysDescr:    "Hardware: Intel64 Family 6 - Software: Windows Version 6.1 (Build 7601 Multiprocessor Free)",
+		snmpSysObjectID: ".1.3.6.1.4.1.311.1.1.3.1.2",
+		snmpSysName:     "RDS-HOST",
+		icmpTTL:         128,
+		// BlueKeep (CVE-2019-0708): the canonical pre-auth RDP RCE on Server
+		// 2008 R2 / 7 — the signature exposure of an exposed legacy RDP host.
+		patchLevel: "Windows Server 2008 R2 SP1",
+		cveVulns:   []string{"CVE-2019-0708"},
+		defaultServices: []DefaultService{
+			{Port: 3389, Handler: "rdp", Note: "Remote Desktop"},
+			{Port: 443, Handler: "https", Note: "RD Web Access / Gateway"},
+			{Port: 445, Handler: "smb"}, {Port: 135, Handler: "dcerpc"},
+			{Port: 139, Handler: "smb", Note: "NetBIOS session"},
+		},
+	},
 	"windows-server-2022": {
 		Name: "windows-server-2022", DisplayName: "Windows Server 2022", Family: "windows",
 		sshBanner:       "SSH-2.0-OpenSSH_for_Windows_8.6",

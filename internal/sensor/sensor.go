@@ -21,6 +21,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/capture"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
+	"github.com/rom/tarpit-honeypot/internal/detect"
 	"github.com/rom/tarpit-honeypot/internal/devices"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/egress"
@@ -79,6 +80,7 @@ type Sensor struct {
 	archetype   *archetype.Profile
 	honeynet    *honeynet.Topology
 	enrich      *enrich.Enricher
+	detectEng   *detect.Engine // operator detection-rule engine (guarded by stateMu)
 	devices     *devices.Registry
 	scanTrack   *scananalysis.Tracker
 	fuzzTrack   *fuzzdos.Tracker
@@ -150,6 +152,12 @@ func (s *Sensor) curEnricher() *enrich.Enricher {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
 	return s.enrich
+}
+
+func (s *Sensor) curDetect() *detect.Engine {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.detectEng
 }
 
 func New(cfg *config.Config) (*Sensor, error) {
@@ -476,6 +484,16 @@ func New(cfg *config.Config) (*Sensor, error) {
 		return nil, err
 	}
 
+	// Operator detection-rule engine: declarative Sigma-style YAML rules matched
+	// against every event. A bad rule file is logged, not fatal.
+	detectEng, derrs := detect.Load(cfg.Detection.RulesDir)
+	for _, de := range derrs {
+		slog.Warn("detection rule load", "err", de)
+	}
+	if cfg.Detection.RulesDir != "" {
+		slog.Info("detection rules loaded", "dir", cfg.Detection.RulesDir, "rules", detectEng.Count())
+	}
+
 	// Load the full MAC-vendor (OUI) database if one is configured, so both
 	// the device inventory and event enrichment resolve vendors from it. Off
 	// the hot path; failure is non-fatal (the built-in table still applies).
@@ -572,6 +590,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		archetype:     arch,
 		honeynet:      topo,
 		enrich:        enr,
+		detectEng:     detectEng,
 		devices:       devReg,
 		deviceSev:     devSev,
 		scanTrack:     scananalysis.NewTracker(5 * time.Minute),
@@ -2023,14 +2042,20 @@ func (s *Sensor) ReloadEnrichment() error {
 	if err != nil {
 		return err
 	}
+	// Re-read the operator detection rules so edits apply on SIGHUP.
+	detectEng, derrs := detect.Load(cfg.Detection.RulesDir)
+	for _, de := range derrs {
+		slog.Warn("reload: detection rule load", "err", de)
+	}
 	s.stateMu.Lock()
 	old := s.enrich
 	s.enrich = enr
+	s.detectEng = detectEng
 	s.stateMu.Unlock()
 	if old != nil {
 		_ = old.Close()
 	}
-	slog.Info("reload: enrichment databases re-read")
+	slog.Info("reload: enrichment databases re-read", "detection_rules", detectEng.Count())
 	return nil
 }
 
@@ -2172,6 +2197,10 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.MitreTechniques = tag.Techniques
 					ev.MitreTactics = tag.Tactics
 				}
+				// Operator detection rules: match declarative YAML rules and, on
+				// a hit, stamp their tags as anomaly markers (+ raise severity)
+				// in place — before correlation/risk/dispatch see the event.
+				s.curDetect().Apply(ev)
 				// First-seen: emit source:first_seen the first time a source
 				// produces a >= medium event (opt-in, low-noise).
 				if fs := s.observeFirstSeen(ev); fs != nil {

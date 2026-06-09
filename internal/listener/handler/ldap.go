@@ -5,13 +5,16 @@ import (
 	"context"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
 
 type ldap struct {
 	hosts []HoneynetHost
+	arch  *archetype.Profile
 }
 
 func (l *ldap) Name() string { return "ldap" }
@@ -103,7 +106,7 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 				res.Meta["ldap_rootdse_query"] = true
 				dom := deploymentDomainOr("example.internal")
 				res.Meta["ldap_default_naming_context"] = domainToDN(dom)
-				if _, err := conn.Write(buildLDAPRootDSE(messageID, dom)); err != nil {
+				if _, err := conn.Write(buildLDAPRootDSE(messageID, dom, l.arch.ADFunctionalLevel())); err != nil {
 					res.Meta["write_err"] = err.Error()
 				}
 			}
@@ -209,30 +212,68 @@ func domainToDN(domain string) string {
 // advertising the Active-Directory naming contexts + service identity derived
 // from the deployment domain — what a real DC returns to an anonymous base
 // search, and what AD-recon tools read first.
-func buildLDAPRootDSE(messageID int, domain string) []byte {
+func buildLDAPRootDSE(messageID int, domain string, level int) []byte {
 	base := domainToDN(domain)
 	cfgNC := "CN=Configuration," + base
 	schemaNC := "CN=Schema," + cfgNC
 	realm := strings.ToUpper(domain)
 	host := "dc01." + domain
+	// A real DC always reports a functional level; default to 7 ("Windows2016",
+	// the level 2016/2019/2022 DCs run at) when the archetype didn't pin one.
+	if level <= 0 {
+		level = 7
+	}
+	lvl := strconv.Itoa(level)
 
 	var attrs []byte
 	add := func(b []byte) { attrs = append(attrs, b...) }
-	add(ldapAttr("namingContexts", base, cfgNC, schemaNC))
+	add(ldapAttr("namingContexts", base, cfgNC, schemaNC,
+		"DC=DomainDnsZones,"+base, "DC=ForestDnsZones,"+base))
 	add(ldapAttr("defaultNamingContext", base))
 	add(ldapAttr("rootDomainNamingContext", base))
 	add(ldapAttr("configurationNamingContext", cfgNC))
 	add(ldapAttr("schemaNamingContext", schemaNC))
 	add(ldapAttr("dnsHostName", host))
 	add(ldapAttr("ldapServiceName", domain+":dc01$@"+realm))
+	add(ldapAttr("serverName", "CN=DC01,CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
 	add(ldapAttr("dsServiceName", "CN=NTDS Settings,CN=DC01,CN=Servers,CN=Default-First-Site-Name,CN=Sites,"+cfgNC))
 	add(ldapAttr("supportedLDAPVersion", "3", "2"))
+	// AD forest/domain functional level (msDS-Behavior-Version), what AD-recon
+	// tools read to gauge the domain's age + attack surface.
+	add(ldapAttr("domainControllerFunctionality", lvl))
+	add(ldapAttr("forestFunctionality", lvl))
+	add(ldapAttr("domainFunctionality", lvl))
+	add(ldapAttr("isGlobalCatalogReady", "TRUE"))
+	add(ldapAttr("isSynchronized", "TRUE"))
+	add(ldapAttr("supportedSASLMechanisms", "GSSAPI", "GSS-SPNEGO", "EXTERNAL", "DIGEST-MD5"))
+	add(ldapAttr("supportedCapabilities", adCapabilityOIDs(level)...))
 
 	// SearchResultEntry: objectName LDAPDN ("") + attributes SEQUENCE OF.
 	entry := append(berOctet(""), berTLV(0x30, attrs)...)
 	op := berTLV(0x64, entry) // [APPLICATION 4]
 	body := append(encodeBERInt(messageID), op...)
 	return berTLV(0x30, body)
+}
+
+// adCapabilityOIDs returns the supportedCapabilities LDAP_CAP_* OIDs a DC at the
+// given functional level advertises — tools cross-check these against
+// domainControllerFunctionality, so they grow with the level.
+func adCapabilityOIDs(level int) []string {
+	caps := []string{
+		"1.2.840.113556.1.4.800",  // ACTIVE_DIRECTORY
+		"1.2.840.113556.1.4.1670", // ACTIVE_DIRECTORY_V51
+		"1.2.840.113556.1.4.1791", // ACTIVE_DIRECTORY_LDAP_INTEG
+	}
+	if level >= 4 { // 2008 R2+
+		caps = append(caps, "1.2.840.113556.1.4.1935") // V61_R2
+	}
+	if level >= 5 { // 2012+
+		caps = append(caps, "1.2.840.113556.1.4.2080") // V80
+	}
+	if level >= 6 { // 2012 R2+
+		caps = append(caps, "1.2.840.113556.1.4.2237") // V81
+	}
+	return caps
 }
 
 func ldapOpName(op byte) string {

@@ -8,6 +8,7 @@ tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--target <ip>] [--handler <name>] [--port N] [--rule <id>] [--fleet] [--limit N]
+tarpit-honeypot replay         -c <config> (--event <id> | --handler <name> [--file f|-]) [--udp] [--vuln]
 tarpit-honeypot gen-token      --type=dns|url|hex|ssrf [--label LBL] [--bits N] [--domain D]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
@@ -173,6 +174,28 @@ tarpit-honeypot test-alert -c cfg.yaml --severity high --note "smoke test"
 The synthetic event uses `rule_id=synthetic:test-alert`, `source=203.0.113.42:65000`, `dest=10.0.0.1:22`. It flows through the same dedup / allowlist / rate-limit / per-channel routing logic as a real event.
 
 ---
+
+## `replay`
+
+Re-run a recorded request back through its protocol handler **offline** — no
+socket, nothing executed, just the parse + detect path. A deterministic
+regression / tuning harness.
+
+```
+# Replay what the sensor captured for an event, and report if detection drifted:
+tarpit-honeypot replay -c cfg.yaml --event cca7b6a945c42b46ecd9e1fb
+# Feed an arbitrary request to a handler from a file or stdin:
+printf 'GET /../../etc/passwd HTTP/1.1\r\n\r\n' | tarpit-honeypot replay --handler http
+```
+
+| Flag | Meaning |
+|---|---|
+| `--event <id>` | Replay the bytes captured for this event back through its handler; prints `regression:` match/diff vs the stored anomalies. |
+| `--handler <name>` | Handler to drive (inferred from `--event`). |
+| `--file <path>` | Request bytes (`-`/unset = stdin). |
+| `--udp` | Drive the handler as a UDP datagram. |
+| `--vuln` | Enable vulnerable-banner emulation for the replay. |
+| `--json` | JSON output (default true). |
 
 ## `list-events`
 

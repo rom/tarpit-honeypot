@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/detect"
 )
 
 func cmdValidate(args []string) error {
@@ -35,6 +36,18 @@ func cmdValidate(args []string) error {
 		fmt.Printf("\nTLS ↔ domain coherence warnings (%d):\n", len(warns))
 		for _, w := range warns {
 			fmt.Println("  ⚠ " + w)
+		}
+	}
+	// Operator detection rules: load + report so a malformed rule (bad regex,
+	// unknown modifier, missing id) is caught before deploy.
+	if cfg.Detection.RulesDir != "" {
+		eng, derrs := detect.Load(cfg.Detection.RulesDir)
+		fmt.Printf("\ndetection rules: %d loaded from %s\n", eng.Count(), cfg.Detection.RulesDir)
+		for _, de := range derrs {
+			fmt.Println("  ⚠ " + de.Error())
+		}
+		if len(derrs) > 0 {
+			return fmt.Errorf("%d detection-rule error(s)", len(derrs))
 		}
 	}
 	if *diffPath == "" {

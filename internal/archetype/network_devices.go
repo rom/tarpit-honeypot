@@ -387,6 +387,8 @@ func teltonikaRUT240() *Profile {
 	return &Profile{
 		Name:         "teltonika-rut240",
 		DisplayName:  "Teltonika RUT240 (RutOS, LTE router)",
+		patchLevel:   "RUTOS 00.07.02",
+		cveVulns:     []string{"CVE-2023-32347"},
 		Family:       "teltonika",
 		macOUI:       [3]byte{0x20, 0x97, 0x27}, // Teltonika OUI
 		sshBanner:    "SSH-2.0-dropbear",

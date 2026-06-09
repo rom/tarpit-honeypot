@@ -1,0 +1,85 @@
+# GoReleaser config — signed, SBOM-bearing releases.
+# Local dry run:  goreleaser release --snapshot --clean --skip=sign,publish
+version: 2
+
+project_name: tarpit-honeypot
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: tarpit-honeypot
+    main: ./cmd/tarpit-honeypot
+    binary: tarpit-honeypot
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/rom/tarpit-honeypot/internal/version.Version={{.Version}}
+      - -X github.com/rom/tarpit-honeypot/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/rom/tarpit-honeypot/internal/version.BuildDate={{.Date}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64, arm]
+    goarm: ["6", "7"]
+    ignore:
+      - { goos: darwin, goarch: arm }
+      - { goos: windows, goarch: arm }
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - { goos: windows, formats: [zip] }
+    files:
+      - README.md
+      - CHANGELOG.md
+      - LICENSE*
+      - docs/tarpit-honeypot.1
+      - configs/**/*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# CycloneDX SBOM per archive (syft), published alongside the artifacts.
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.cdx.json"
+    cmd: syft
+    args: ["$artifact", "--output", "cyclonedx-json=$document"]
+
+# Keyless cosign signatures (Sigstore / GitHub OIDC) over every artifact +
+# the checksums file. Verify with:
+#   cosign verify-blob --certificate <art>.pem --signature <art>.sig \
+#     --certificate-identity-regexp '.*' --certificate-oidc-issuer-regexp '.*' <art>
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ---
+    All artifacts are CycloneDX-SBOM'd and cosign-signed (keyless, Sigstore).
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:", "merge"]

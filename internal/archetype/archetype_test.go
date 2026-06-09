@@ -91,6 +91,9 @@ func TestAllShipArchetypes(t *testing.T) {
 		// Active Directory DC (registered under several aliases that
 		// collapse to one display name).
 		"Active Directory (Windows Server 2019 DC)",
+		"Active Directory DC (Windows Server 2008 R2, FFL 4)",
+		"Active Directory DC (Windows Server 2012, FFL 5)",
+		"Active Directory DC (Windows Server 2016, FFL 7)",
 		// Cisco IOS switches.
 		"Cisco Catalyst 2960 (IOS 15)",
 		"Cisco Catalyst 9300 (IOS-XE 17)",
@@ -258,6 +261,21 @@ func TestAllShipArchetypes(t *testing.T) {
 		"MikroTik RouterOS 7 (RB5009)",
 		"MikroTik RouterOS 6.40 (Winbox CVE-2018-14847)",
 		"Cisco 2811 ISR (IOS 12.4)",
+		"Apache Guacamole (remote desktop gateway)",
+		"Keycloak (identity & SSO)",
+		"Windows RDP / RDS host (Server 2008 R2)",
+		"Kepware OPC UA server (KEPServerEX)",
+		"AVEVA PI System / OSIsoft PI Data Archive",
+		"AVEVA PI Asset Framework (PI AF) server",
+		"AVEVA Historian / Wonderware Historian",
+		"AspenTech InfoPlus.21 (IP.21) historian",
+		"GE Proficy Historian",
+		"Emerson Ovation / DeltaV Historian (PHD)",
+		"Canary Historian",
+		"dataPARC Historian / PARCview",
+		"Inductive Automation Ignition Gateway",
+		"InfluxDB (time-series database)",
+		"TimescaleDB (PostgreSQL time-series)",
 		// OS variants added later.
 		"FreeBSD 11",
 		"OpenBSD 7.4",
@@ -278,6 +296,7 @@ func TestAllShipArchetypes(t *testing.T) {
 		"OKI ES network printer",
 		"Toshiba e-STUDIO (MFP)",
 		"ABB Advant Controller 450 (AC450)",
+		"ABB RNRP router (800xA control network)",
 		// SP / DC routers & switches added later.
 		"Juniper MX480 (Junos)",
 		"Juniper MX960 (Junos)",

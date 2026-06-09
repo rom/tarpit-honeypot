@@ -70,23 +70,32 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | 3CX Phone System | `3cx` | 3cx | 4 |
 | ABB AC500 PLC (PM573) | `abb-ac500` | abb | 6 |
 | ABB Advant Controller 450 (AC450) | `abb-ac450` | abb | 3 |
+| ABB RNRP router (800xA control network) | `abb-rnrp` | abb | 4 |
 | ABB RTU560 (substation RTU) | `abb-rtu560` | abb | 4 |
 | ABB S500 remote I/O (CI502 PROFINET) | `abb-s500-io` | abb | 3 |
 | APC Network Management Card (rPDU) | `apc-nmc` | apc | 4 |
 | ASUS RT-AX router (ASUSWRT) | `asus-router` | asus | 4 |
 | ASUSTOR NAS (ADM) | `asustor-nas` | asustor | 4 |
+| AVEVA Historian / Wonderware Historian | `wonderware-historian` | aveva | 5 |
+| AVEVA PI Asset Framework (PI AF) server | `aveva-pi-af` | osisoft | 4 |
+| AVEVA PI System / OSIsoft PI Data Archive | `aveva-pi` | osisoft | 5 |
 | Active Directory (Windows Server 2019 DC) | `active-directory` | windows | 13 |
+| Active Directory DC (Windows Server 2008 R2, FFL 4) | `windows-2008r2-ad` | windows | 13 |
+| Active Directory DC (Windows Server 2012, FFL 5) | `windows-2012-ad` | windows | 13 |
+| Active Directory DC (Windows Server 2016, FFL 7) | `windows-2016-ad` | windows | 13 |
 | Advantech EKI-5528 (managed switch) | `advantech-eki-5528` | advantech | 4 |
 | Allen-Bradley ControlLogix (Rockwell) | `rockwell-controllogix` | ics | 4 |
 | Allen-Bradley ControlLogix 1756-L73 | `rockwell-controllogix-1756` | rockwell | 4 |
 | AlmaLinux 9 | `almalinux-9` | rhel | 1 |
 | Alpine Linux 3.20 | `alpine-3.20` | alpine | 3 |
 | Amazon Linux 2023 | `amazon-linux-2023` | amazonlinux | 3 |
+| Apache Guacamole (remote desktop gateway) | `guacamole-server` | guacamole | 4 |
 | Arch Linux | `arch-linux` | arch | 1 |
 | Arista 7050SX (EOS) | `arista-7050` | arista | 3 |
 | Arista 7280R (EOS) | `arista-7280r` | arista | 3 |
 | Arista EOS switch | `arista-eos` | arista | 4 |
 | Aruba 2930F (ArubaOS-Switch) | `aruba-2930f` | aruba | 4 |
+| AspenTech InfoPlus.21 (IP.21) historian | `aspentech-ip21` | aspentech | 4 |
 | Asterisk PBX (VoIP) | `asterisk-voip` | voip | 3 |
 | AudioCodes Mediant gateway | `audiocodes` | audiocodes | 4 |
 | Avaya Aura Communication Manager | `avaya-aura` | avaya | 4 |
@@ -100,6 +109,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Bosch FLEXIDOME IP camera | `bosch-flexidome` | bosch | 3 |
 | Bosch IP camera | `bosch-camera` | bosch | 3 |
 | Brother HL-L8260CDW (printer) | `brother-printer` | printer | 6 |
+| Canary Historian | `canary-historian` | canary | 4 |
 | Canon imageRUNNER ADVANCE (MFP) | `canon-imagerunner` | printer | 6 |
 | CentOS 5 | `centos-5` | rhel | 0 |
 | CentOS 6 | `centos-6` | rhel | 0 |
@@ -133,6 +143,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Echelon LonWorks i.LON Gateway | `echelon-lonworks` | echelon | 4 |
 | Emerson Bristol ControlWave RTU | `bristol-controlwave` | bristol | 4 |
 | Emerson DeltaV (DCS controller) | `emerson-deltav` | emerson | 4 |
+| Emerson Ovation / DeltaV Historian (PHD) | `emerson-historian` | emerson | 4 |
 | Emerson ROC800 RTU | `emerson-roc800` | emerson | 4 |
 | Epson WorkForce Pro (MFP) | `epson-workforce` | printer | 6 |
 | F5 BIG-IP (TMOS) | `f5-bigip` | f5 | 2 |
@@ -147,6 +158,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Fujitsu iRMC | `fujitsu-irmc` | fujitsu | 3 |
 | GE PACSystems RX3i (IC695) | `ge-pacsystems-rx3i` | ge | 4 |
 | GE PACSystems RX3i (PLC) | `ge-pacsystems` | ge | 4 |
+| GE Proficy Historian | `ge-proficy-historian` | ge | 4 |
 | Gentoo Linux | `gentoo` | gentoo | 3 |
 | Grandstream UCM (VoIP PBX) | `grandstream-ucm` | grandstream | 2 |
 | HIMA HIMax (safety PLC) | `hima-himax` | hima | 2 |
@@ -163,6 +175,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Honeywell Experion C300 (DCS controller) | `honeywell-experion` | honeywell | 3 |
 | Huawei VRP (router/switch) | `huawei-vrp` | huawei | 3 |
 | IBM AIX 7.2 | `aix-7` | aix | 3 |
+| Inductive Automation Ignition Gateway | `ignition-gateway` | ignition | 4 |
+| InfluxDB (time-series database) | `influxdb` | influxdb | 3 |
 | Juniper EX4300 (Junos switch) | `juniper-ex4300` | juniper | 5 |
 | Juniper MX480 (Junos) | `juniper-mx480` | juniper | 5 |
 | Juniper MX960 (Junos) | `juniper-mx960` | juniper | 5 |
@@ -170,6 +184,8 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Juniper SRX (JunOS) | `juniper-srx` | juniper | 4 |
 | Juniper SRX340 (Junos) | `juniper-srx340` | juniper | 5 |
 | Kepware KEPServerEX (Windows) | `kepware-kepserverex` | windows | 6 |
+| Kepware OPC UA server (KEPServerEX) | `kepware-opcua` | windows | 5 |
+| Keycloak (identity & SSO) | `keycloak-server` | keycloak | 3 |
 | Konica Minolta bizhub C284e (MFP) | `konica-minolta-bizhub` | printer | 6 |
 | Kyocera ECOSYS M3550idn (MFP) | `kyocera-ecosys` | printer | 6 |
 | Lantronix EDS2100 (2-port device server) | `lantronix-eds2100` | lantronix | 6 |
@@ -260,6 +276,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Teltonika RUT956 (industrial router) | `teltonika-rut956` | teltonika | 5 |
 | Teltonika RUTX11 (LTE Cat6 router) | `teltonika-rutx11` | teltonika | 4 |
 | Teltonika TRB140 (LTE gateway) | `teltonika-trb140` | teltonika | 4 |
+| TimescaleDB (PostgreSQL time-series) | `timescaledb` | timescaledb | 2 |
 | Toshiba e-STUDIO (MFP) | `toshiba-estudio` | printer | 6 |
 | TrueNAS CORE (FreeBSD) | `truenas-core` | truenas | 4 |
 | TrueNAS SCALE (Debian) | `truenas-scale` | truenas | 4 |
@@ -290,6 +307,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Windows 11 | `windows-11` | windows | 5 |
 | Windows 7 | `windows-7` | windows | 4 |
 | Windows 8 | `windows-8` | windows | 3 |
+| Windows RDP / RDS host (Server 2008 R2) | `rdp-server` | windows | 5 |
 | Windows Server 2008 | `windows-server-2008` | windows | 6 |
 | Windows Server 2012 R2 | `windows-server-2012-r2` | windows | 6 |
 | Windows Server 2012 | `windows-server-2012` | windows | 6 |
@@ -301,6 +319,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Yokogawa CENTUM VP (DCS) | `yokogawa-centum` | yokogawa | 4 |
 | Zebra ZT411 (label printer) | `zebra-printer` | printer | 3 |
 | Zyxel USG FLEX firewall | `zyxel-usg` | zyxel | 2 |
+| dataPARC Historian / PARCview | `dataparc` | dataparc | 4 |
 | macOS Sonoma 14 | `macos-sonoma` | macos | 4 |
 | openSUSE Leap 15.6 | `opensuse-leap-15` | suse | 0 |
 | pfSense (Netgate firewall) | `pfsense` | pfsense | 4 |
@@ -661,6 +680,35 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Patch level:** Windows Server 2019 RTM (build 17763.107, pre-2020-08 rollup)
 - **Services:** :53 `dns`, :88 `kerberos`, :135 `dcerpc`, :139 `raw`, :389 `ldap`, :445 `smb`, :464 `raw`, :636 `https`, :3268 `ldap`, :3269 `https`, :3389 `rdp`, :5985 `winrm`, :9389 `raw`
 - **CVEs advertised:** CVE-2020-1472, CVE-2021-34527, CVE-2021-26855, CVE-2021-42278
+- **LDAP rootDSE:** the `ldap`/`ldaps`/`cldap` handlers advertise the AD
+  functional level (`domainFunctionality` / `forestFunctionality` /
+  `domainControllerFunctionality` = msDS-Behavior-Version; 7 for 2019, and
+  4 / 5 / 7 for the `windows-2008r2-ad` / `windows-2012-ad` / `windows-2016-ad`
+  DC archetypes) plus level-appropriate `supportedCapabilities` OIDs.
+
+### Active Directory DC (Windows Server 2008 R2, FFL 4) — `windows-2008r2-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/7.5` · **functional level (msDS-Behavior-Version):** 4 · **sysName:** DC-2008R2
+- **Services:** :53 `dns`, :88 `kerberos`, :135 `dcerpc`, :139 `raw`, :389 `ldap`, :445 `smb`, :464 `raw`, :636 `https`, :3268 `ldap`, :3269 `https`, :3389 `rdp`, :5985 `winrm`, :9389 `raw`
+- **CVEs advertised:** CVE-2017-0144 (EternalBlue), CVE-2020-1472 (ZeroLogon)
+
+### Active Directory DC (Windows Server 2012, FFL 5) — `windows-2012-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/8.0` · **functional level:** 5 · **sysName:** DC-2012
+- **Services:** (DC protocol mix) :53 `dns`, :88 `kerberos`, :389 `ldap`, :636 `https`, :445 `smb`, :3268 `ldap`, :3389 `rdp`, :5985 `winrm`, :9389 `raw` …
+- **CVEs advertised:** CVE-2017-0144, CVE-2020-1472, CVE-2021-34527 (PrintNightmare)
+
+### Active Directory DC (Windows Server 2016, FFL 7) — `windows-2016-ad`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/10.0` · **functional level:** 7 · **sysName:** DC-2016
+- **Services:** (DC protocol mix) :53 `dns`, :88 `kerberos`, :389 `ldap`, :636 `https`, :445 `smb`, :3268 `ldap`, :3389 `rdp`, :5985 `winrm`, :9389 `raw` …
+- **CVEs advertised:** CVE-2020-1472, CVE-2021-34527, CVE-2021-42278 (noPac)
 
 ### Windows 10 — `windows-10`
 
@@ -744,6 +792,33 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Microsoft-IIS/10.0`
 - **SNMP sysDescr:** Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 17763 Multiprocessor Free)
 - **Services:** :22 `ssh`, :135 `dcerpc`, :445 `smb`, :389 `ldap`, :88 `kerberos`, :3389 `rdp`, :5985 `winrm`
+- **CVEs advertised:** —
+
+### Windows RDP / RDS host (Server 2008 R2) — `rdp-server`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.2`
+
+- **HTTP Server:** `Microsoft-IIS/7.5` (RD Web Access)
+- **SNMP sysDescr:** Hardware: Intel64 … Windows Version 6.1 (Build 7601)
+- **Services:** :3389 `rdp`, :443 `https` (RD Web/Gateway), :445 `smb`, :135 `dcerpc`, :139 `smb`
+- **CVEs advertised:** CVE-2019-0708 (BlueKeep)
+
+### Apache Guacamole (remote desktop gateway) — `guacamole-server`
+
+**Family:** guacamole · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10`
+- **HTTP Server:** `Apache Tomcat` · **title:** Apache Guacamole
+- **Services:** :8080 `http` (web app), :443 `https`, :4822 `raw` (guacd), :22 `ssh`
+- **CVEs advertised:** —
+
+### Keycloak (identity & SSO) — `keycloak-server`
+
+**Family:** keycloak · **TTL:** 64
+
+- **SSH:** `SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10`
+- **HTTP title:** Sign in to Keycloak
+- **Services:** :8080 `http`, :8443 `https` (admin console), :22 `ssh`
 - **CVEs advertised:** —
 
 ### Windows Server 2022 — `windows-server-2022`
@@ -1088,7 +1163,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** pfSense fw01.local FreeBSD 14.0-RELEASE-p6 amd64
 - **Services:** :443 `https`, :80 `http`, :22 `ssh`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2022-31814
 
 
 ## IP cameras & VoIP
@@ -1316,6 +1391,15 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 
 - **SNMP sysDescr:** ABB Advant Controller 450 (AC450) MasterBus 300
 - **Services:** :23 `telnet`, :502 `modbus`, :161 `snmp`
+- **CVEs advertised:** —
+
+### ABB RNRP router (800xA control network) — `abb-rnrp`
+
+**Family:** abb · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.8072.3.2.10`
+
+- **HTTP Server:** `ABB`
+- **SNMP sysDescr:** ABB AC 800M PM866 800xA RNRP node
+- **Services:** :23 `telnet`, :80 `http`, :102 `mms` (800xA), :161 `snmp`
 - **CVEs advertised:** —
 
 ### ABB AC500 PLC (PM573) — `abb-ac500`
@@ -1657,7 +1741,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika RUT240 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUT955 (industrial router, GPS) — `teltonika-rut955`
 
@@ -1667,7 +1751,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika RUT955 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUT956 (industrial router) — `teltonika-rut956`
 
@@ -1677,7 +1761,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** Teltonika RUT956 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUTX11 (LTE Cat6 router) — `teltonika-rutx11`
 
@@ -1687,7 +1771,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** Teltonika RUTX11 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika TRB140 (LTE gateway) — `teltonika-trb140`
 
@@ -1697,7 +1781,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika TRB140 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### WAGO 750-8212 PFC200 — `wago-750-pfc`
 
@@ -1759,3 +1843,97 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
 - **CVEs advertised:** —
 
+
+## Process historians & industrial data platforms
+
+The "data tier" of an OT estate — historians, OPC servers and time-series
+databases. Each landing page links the product's real web/API base paths so a
+crawler records them; serving live JSON at each path is an http-handler concern,
+not the archetype layer.
+
+### Kepware OPC UA server (KEPServerEX) — `kepware-opcua`
+
+**Family:** windows · **TTL:** 128
+
+- **HTTP Server:** `Microsoft-IIS/10.0` · **OPC vendor:** Kepware KEPServerEX
+- **Services:** :4840 `opcua`, :49320 `raw` (runtime), :135 `dcerpc` (OPCEnum), :80 `http`, :161 `snmp`
+- **sysName:** KEP-OPCUA01
+
+### AVEVA PI System / OSIsoft PI Data Archive — `aveva-pi`
+
+**Family:** osisoft · **TTL:** 128 · **sysName:** PI-SRV01
+
+- **API:** `/piwebapi/system`, `/piwebapi/dataservers`, `/piwebapi/assetservers`, `/PIVision`, `/ProcessBook`
+- **Services:** :5450 `raw` (PI Data Archive / Network Manager), :5457 `raw` (PI buffering/AF), :443 `https` (PI Web API), :80 `http`, :161 `snmp`
+- **Sample point:** `Plant1.AreaA.Line3.Temperature`
+
+### AVEVA PI Asset Framework (PI AF) — `aveva-pi-af`
+
+**Family:** osisoft · **TTL:** 128 · **sysName:** PI-AF01
+
+- **Services:** :5457 `raw` (PI AF), :1433 `mssql` (PIFD asset DB), :443 `https` (PI Web API), :161 `snmp`
+
+### AVEVA Historian / Wonderware Historian — `wonderware-historian`
+
+**Family:** aveva · **TTL:** 128 · **sysName:** HISTORIAN01
+
+- **API:** `/Historian`, `/Wonderware`, `/AVEVA/Insight`
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :32568 `raw`, :161 `snmp`
+- **Sample tag:** `Boiler01.SteamPressure`
+
+### AspenTech InfoPlus.21 (IP.21) — `aspentech-ip21`
+
+**Family:** aspentech · **TTL:** 128 · **sysName:** IP21-SERVER
+
+- **Services:** :80 `http` (Aspen Process Explorer), :443 `https`, :10014 `raw` (IP.21 SQLplus), :161 `snmp`
+- **Sample tag:** `Compressor02.Vibration`
+
+### GE Proficy Historian — `ge-proficy-historian`
+
+**Family:** ge · **TTL:** 128 · **sysName:** PROFICY-HIST01
+
+- **API:** `/ProficyHistorian`, `/ProficyWebspace`
+- **Services:** :80 `http`, :443 `https`, :14000 `raw` (data archiver), :161 `snmp`
+- **Sample tag:** `Turbine01.Speed`
+
+### Emerson Ovation / DeltaV Historian (PHD) — `emerson-historian`
+
+**Family:** emerson · **TTL:** 128 · **sysName:** PHD-HIST01
+
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :161 `snmp`
+- **Sample tag:** `Substation.TR1.OilTemp`
+
+### Canary Historian — `canary-historian`
+
+**Family:** canary · **TTL:** 128 · **sysName:** CANARY-HIST01
+
+- **API:** `/CanaryAdmin`, `/CanaryData`
+- **Services:** :80 `http`, :443 `https`, :9990 `raw` (Sender), :161 `snmp`
+- **Sample tag:** `TankFarm.TK-101.Level`
+
+### dataPARC Historian / PARCview — `dataparc`
+
+**Family:** dataparc · **TTL:** 128 · **sysName:** PARCVIEW01
+
+- **API:** `/dataPARC`, `/PARCview`
+- **Services:** :80 `http`, :443 `https`, :1433 `mssql`, :161 `snmp`
+- **Sample tag:** `WWTP.Pump03.Runtime`
+
+### Inductive Automation Ignition Gateway — `ignition-gateway`
+
+**Family:** ignition · **TTL:** 64 · **sysName:** IGNITION-GW01
+
+- **API:** `/Ignition`, `/vision`, `/web/home`
+- **Services:** :8088 `http`, :8043 `https`, :62541 `opcua`, :22 `ssh`
+
+### InfluxDB — `influxdb`
+
+**Family:** influxdb · **TTL:** 64 · **sysName:** INFLUXDB01
+
+- **Services:** :8086 `http` (HTTP API), :8088 `raw` (RPC/backup), :22 `ssh`
+
+### TimescaleDB — `timescaledb`
+
+**Family:** timescaledb · **TTL:** 64 · **sysName:** TIMESCALE01
+
+- **Services:** :5432 `postgres`, :22 `ssh`

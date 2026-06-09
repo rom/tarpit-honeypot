@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt (must be clean)
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: build (all packages + cross-compile smoke)
+        run: |
+          go build ./...
+          GOOS=linux  GOARCH=arm64 go build ./cmd/tarpit-honeypot
+          GOOS=darwin GOARCH=arm64 go build ./cmd/tarpit-honeypot
+
+      - name: test
+        run: go test -trimpath ./...
+
+      - name: test -race (CGO)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -trimpath -race ./...
+
+  fuzz-smoke:
+    # Short smoke run of every FuzzXxx target so the corpus + parsers stay
+    # exercised on each push without a long fuzzing budget.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: fuzz (10s each)
+        run: |
+          set -e
+          # Discover packages that declare a Fuzz target and run each briefly.
+          for pkg in $(grep -rl --include='*_test.go' -E 'func Fuzz' internal | xargs -n1 dirname | sort -u); do
+            for fn in $(grep -hoE 'func (Fuzz[A-Za-z0-9_]+)' "$pkg"/*_test.go | awk '{print $2}' | sort -u); do
+              echo "== $pkg $fn =="
+              go test -run='^$' -fuzz="^${fn}$" -fuzztime=10s "./$pkg" || exit 1
+            done
+          done
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

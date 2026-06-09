@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-06-08" "tarpit-honeypot 2.20.0" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-06-09" "tarpit-honeypot 2.21.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -110,7 +110,8 @@ loads and validates without binding.
 .TP
 .B validate-config
 Parse and validate a config; also reports TLS-cert \(em deployment-domain
-coherence warnings. With
+coherence warnings and loads/validates the operator detection rules
+(\fBdetection.rules_dir\fR). With
 .B --diff
 classify hot-reloadable vs restart-required changes between two configs.
 .TP
@@ -126,6 +127,11 @@ Tail / query events from the local SQLite store or JSON logs
 .RB ( --since ", " --source ", " --target ", " --handler ", " --port ", " --rule ", " --fleet ", " --limit ).
 .B --target
 filters by which of the host's own server IPs was hit \(em the multi-IP pivot.
+.TP
+.B replay
+Re-run a recorded request through its protocol handler offline (no socket,
+nothing executed) and print the recomputed anomalies / CVE hits / meta.
+.RB ( --event " " \fIid\fR " replays a stored event's captured payload and reports detection drift; " --handler " " \fIname\fR " + " --file / stdin " feeds arbitrary bytes; " --udp ", " --vuln ).
 .TP
 .B gen-token
 Print or write an unguessable canary token

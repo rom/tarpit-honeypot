@@ -10,6 +10,89 @@ documented in `docs/`).
 
 ### Added
 
+- **LDAP rootDSE advertises the AD functional level.** The `ldap` / `ldaps` /
+  `cldap` handlers now return `domainFunctionality` / `forestFunctionality` /
+  `domainControllerFunctionality` (msDS-Behavior-Version) from the domain-
+  controller archetype's pinned level — 4 / 5 / 7 for the 2008R2 / 2012 / 2016
+  AD DCs (default 7) — plus `supportedCapabilities` LDAP_CAP_* OIDs that grow
+  with the level, `isGlobalCatalogReady`, `serverName`, SASL mechanisms, and the
+  DomainDnsZones/ForestDnsZones naming contexts. AD-recon tools (e.g. BloodHound,
+  ldapsearch) now read a coherent level off the rootDSE.
+
+## [2.21.0] - 2026-06-09
+
+### Added
+
+- **Active Directory DC archetypes pinned to a forest/domain functional level.**
+  `windows-2008r2-ad` (FFL 4), `windows-2012-ad` (FFL 5), `windows-2016-ad`
+  (FFL 7) — the full DC protocol mix (DNS/Kerberos/LDAP/LDAPS/GC/SMB/DCE-RPC/
+  WinRM/ADWS) with era-accurate OS build, IIS version and CVEs (EternalBlue /
+  ZeroLogon / PrintNightmare / noPac as appropriate). The level (msDS-Behavior-
+  Version) is carried in the display name + an `adfl:<n>` quirk.
+
+- **Process-historian / industrial-data-platform archetypes (12).**
+  `kepware-opcua` (OPC UA / KEPServerEX), `aveva-pi` (OSIsoft/AVEVA PI Data
+  Archive, PI-SRV01, /piwebapi + 5450/5457), `aveva-pi-af` (PI AF, PI-AF01),
+  `wonderware-historian` (AVEVA/Wonderware, HISTORIAN01), `aspentech-ip21`
+  (InfoPlus.21, IP21-SERVER), `ge-proficy-historian` (PROFICY-HIST01,
+  /ProficyHistorian), `emerson-historian` (Ovation/DeltaV, PHD-HIST01),
+  `canary-historian` (CANARY-HIST01, /CanaryData), `dataparc` (PARCVIEW01,
+  /PARCview), `ignition-gateway` (Ignition, 8088/8043/62541 OPC UA),
+  `influxdb` (8086/8088), `timescaledb` (5432). Each carries product-accurate
+  ports, hostnames, banners and a landing page linking the real web/API base
+  paths + a sample point/tag.
+
+- **Archetypes: `guacamole-server`, `keycloak-server`, `rdp-server`.** Apache
+  Guacamole remote-desktop gateway (Tomcat web + guacd/4822), Keycloak IAM/SSO
+  (8080/8443 admin console), and a legacy Windows RDP/RDS host (Server 2008 R2,
+  3389 + RD Web, advertising BlueKeep CVE-2019-0708).
+- **Archetype service audit + fixes.** A new integrity test
+  (`TestArchetypeServicesResolve`) verifies every archetype's defaultServices
+  name a *registered* handler with valid, non-duplicate ports — all 241 pass.
+  A companion coherence check found and closed 7 service/identity gaps
+  (Synology/QNAP model FTP feature sets, Schneider M340 FTP banner, Raritan KX
+  SSH banner, Opengear telnet login prompt).
+
+- **Operator detection rules (detection-as-code).** A new `detection.rules_dir`
+  points the sensor at a directory of Sigma-style YAML rules
+  (`internal/detect`) matched against every event with no recompile (re-read on
+  SIGHUP). A match adds the rule's `tags` as anomaly markers (flowing into
+  search / attack tables / exports / ATT&CK chips) and may raise the event
+  severity. Conditions AND across fields / OR within a value list, with
+  `contains|prefix|suffix|re|gt|lt|exists` modifiers over event fields +
+  `meta.<dotted.path>`. `validate-config` loads + validates them; docs in
+  `detection-rules.md` + an example rule set in `configs/rules/`.
+
+- **Connection-oriented UDP listener (`udp_session`).** A new opt-in UDP path
+  that demultiplexes datagrams per source into multi-datagram `handler.UDPSession`s
+  (Read next datagram / Write reply) handed to handlers implementing
+  `handler.UDPSessionHandler` — the missing primitive for QUIC/DTLS/TFTP-style
+  exchanges. Bounded session table (falls back to the stateless path when full),
+  one event per session. Stateless UDP handlers and TCP are unaffected.
+
+- **`replay` subcommand — record-and-replay regression harness.** Re-runs a
+  recorded request back through its protocol handler offline (no socket,
+  nothing executed): `--event <id>` replays the bytes the sensor captured for
+  an event and reports whether the recomputed anomalies drifted from what was
+  stored (detection-regression signal); `--handler <name>` + `--file`/stdin
+  feeds arbitrary bytes to any TCP/UDP handler. Prints anomalies / CVE hits /
+  meta as JSON.
+
+- **CI + signed-release / SBOM supply chain.** `.github/workflows/ci.yml`
+  (gofmt, vet, build, test, `-race`, fuzz smoke over every `FuzzXxx`,
+  `govulncheck`) and `.github/workflows/release.yml` + `.goreleaser.yaml`:
+  tagged `v*` releases produce cross-compiled archives, `checksums.txt`, a
+  CycloneDX SBOM per artifact (syft), and keyless cosign signatures (Sigstore
+  OIDC). New Makefile targets `sbom`, `checksums`, `govulncheck`,
+  `release-artifacts` for the same locally.
+
+- **CVE decoys extended to the remaining network gear.** Aruba ArubaOS-Switch
+  (CVE-2020-7115), OpenWrt (CVE-2020-7982), pfSense (CVE-2022-31814), Teltonika
+  RUTOS routers (CVE-2023-32347, all RUT/TRB models) and Cisco UCS CIMC
+  (CVE-2024-20356) now advertise a CVE; 5 new catalog records added. (Arista,
+  Nokia SR OS, VyOS, OPNsense and the already-patched base MikroTik builds are
+  intentionally left without one — no high-confidence/applicable CVE.)
+
 - **SOHO router / UDM / NAS archetypes.** `dlink-router` (DIR-882), `tplink-router`
   (Archer AX21), `asus-router` (RT-AX88U / ASUSWRT), `mikrotik-hap-ax3`,
   `ubiquiti-udm` (Dream Machine), and the NAS models `synology-ds220plus`,
@@ -60,6 +143,15 @@ documented in `docs/`).
   starlight 7000", Bosch Security Systems MAC OUI, services http/rtsp + RCP+ on
   tcp/1756, ONVIF quirk) — joining the existing `axis-camera` and
   `hikvision-camera`.
+
+### Fixed
+
+- **Analytics pages degrade instead of 500 on a slow store.** When an aggregate
+  page query (e.g. `/remote`, `/dns`, `/web`, `/databases`) exceeds its time
+  budget — a large/busy event store or an index still (re)building — the page
+  now serves a friendly, auto-refreshing 503 "this view is taking longer than
+  usual" page (with a shorter-range hint) instead of a bare "internal server
+  error" 500.
 
 ## [2.20.0] - 2026-06-08
 

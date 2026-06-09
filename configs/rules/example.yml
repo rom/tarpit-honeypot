@@ -1,0 +1,48 @@
+# Operator detection rules (detection-as-code).
+#
+# Point the sensor at this directory with:
+#
+#   detection:
+#     rules_dir: /etc/tarpit-honeypot/rules
+#
+# Every *.yml / *.yaml file here is loaded and matched against every event,
+# with no recompile (re-read on SIGHUP). A match adds the rule's `tags` as
+# anomaly markers — so they show up in /search, the attack tables, exports
+# (JSON/CEF/LEEF/OCSF), and ATT&CK chips — and may RAISE the event severity.
+#
+# Matching model (deliberately simple, never executes anything):
+#   match:                      # every key is ANDed
+#     field: value             # equals (case-insensitive)
+#     field: [a, b]            # OR within the list
+#     field|contains: "x"      # substring
+#     field|prefix / |suffix   # starts/ends with
+#     field|re: "(?i)regexp"   # RE2 regular expression
+#     field|gt / |lt: "1024"   # numeric compare
+#     field|exists: true       # field is present / non-empty
+#
+# Fields: handler, rule_id, proto, severity, source_ip, dest_ip, dest_port,
+#   banner, sensor, anomaly (any captured marker), mitre/tactic, and
+#   meta.<dotted.path> into the event meta map.
+
+- id: example-log4shell-anywhere
+  title: Log4Shell JNDI string in a request
+  description: ${jndi:...} lookup string seen in any captured field.
+  severity: critical
+  tags: [custom:log4shell, attack.t1190]
+  match:
+    meta.user_agent|contains: "${jndi:"
+
+- id: example-ssh-root-login
+  title: SSH root login attempt
+  severity: high
+  tags: [custom:ssh-root-login]
+  match:
+    handler: ssh
+    meta.user_attempt: root
+
+- id: example-internal-recon
+  title: Scanner User-Agent hitting the web decoy
+  tags: [custom:scanner-ua]
+  match:
+    handler: [http, https]
+    meta.user_agent|re: "(?i)(nuclei|nikto|sqlmap|masscan|zgrab)"

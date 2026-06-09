@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Detection configures the declarative operator-rule engine: a directory of
+// Sigma-style YAML rules matched against every event (internal/detect). Empty
+// rules_dir = disabled.
+type Detection struct {
+	RulesDir string `yaml:"rules_dir"`
+}
+
 type Config struct {
 	Sensor    Sensor     `yaml:"sensor"`
 	UI        UI         `yaml:"ui"`
@@ -22,11 +29,14 @@ type Config struct {
 	DNSCanaries   []DNSCanary    `yaml:"dns_canaries"`
 	Sniffer       Sniffer        `yaml:"sniffer"`
 	Correlate     Correlate      `yaml:"correlate"`
-	Honeynets     []Honeynet     `yaml:"honeynets"`
-	Dedup         Dedup          `yaml:"dedup"`
-	Allowlist     []string       `yaml:"allowlist"`
-	Channels      []Channel      `yaml:"channels"`
-	Routes        []Route        `yaml:"routes"`
+	// Detection points the operator detection-rule engine at a directory of
+	// Sigma-style YAML rules (internal/detect) matched against every event.
+	Detection Detection  `yaml:"detection"`
+	Honeynets []Honeynet `yaml:"honeynets"`
+	Dedup     Dedup      `yaml:"dedup"`
+	Allowlist []string   `yaml:"allowlist"`
+	Channels  []Channel  `yaml:"channels"`
+	Routes    []Route    `yaml:"routes"`
 	// Forward ships this node's events to parent aggregator node(s) for
 	// fleet-wide correlation. Multiple targets fan out (HA, or a site SOC plus
 	// a global hub). See internal/forward.
@@ -1002,6 +1012,11 @@ type Listener struct {
 	ReadTimeout   time.Duration `yaml:"read_timeout"`
 	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	// UDPSession enables the connection-oriented UDP path: datagrams are
+	// demultiplexed per source into multi-datagram sessions and handed to a
+	// handler that implements handler.UDPSessionHandler (QUIC/DTLS/TFTP-style
+	// exchanges). No effect on stateless UDP handlers or TCP. UDP only.
+	UDPSession bool `yaml:"udp_session"`
 	// Archetype overrides sensor.archetype for this listener. Empty
 	// = inherit sensor.archetype. Useful when one sensor serves a
 	// mix of OS-shaped traps on different ports.

@@ -500,6 +500,20 @@ figure[data-chart], .tc-fig { margin: .4rem 0 1rem; background: var(--bg-surface
 .rsel.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .6rem 1.2rem; align-items: start; }
 .cols2 h4 { margin: .2rem 0 .3rem; font-size: .9rem; color: var(--heading-h2); }
+/* Statistics page: far wider columns + larger bars/labels so the top-N
+   tables are readable instead of cramped into many narrow 240px columns. */
+/* Wide columns so only 1–2 tables sit per row (was many cramped 240px cols),
+   with larger bars/labels/numbers. */
+.statwide { grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 1.6rem 2.6rem; }
+.statwide > div { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1.1rem 1.1rem; }
+.statwide h4 { font-size: 1.3rem; margin: .1rem 0 .7rem; }
+.statwide table.chart td { padding: .42rem .6rem; font-size: 1.1rem; }
+.statwide td.blabel { width: 40%; font-size: 1.1rem; }
+.statwide td.bcell { width: 44%; }
+.statwide td.bnum { width: 16%; font-size: 1.05rem; }
+.statwide .bar { height: 1.6rem; border-radius: 3px; }
+.statwide .bpct { font-size: 1rem; }
+@media (max-width: 980px) { .statwide { grid-template-columns: 1fr; } }
 figcaption.tc-cap, .tc-cap { font-weight: 600; color: var(--heading-h2); margin-bottom: .3rem; font-size: .95rem; }
 svg.tc { background: var(--bg-surface); max-width: 100%; height: auto; }
 svg.tc text { font: 0.786rem ui-monospace, monospace; }
@@ -624,7 +638,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <div class="counters">
 {{ range .Headline }}<span class="counter"><b>{{ .Value }}</b><span>{{ .Label }}</span>{{ if .Sub }}<span class="meta">{{ .Sub }}</span>{{ end }}</span>{{ end }}
 </div>
-<div class="cols2">
+<div class="cols2 statwide">
 {{ range .Blocks }}<div><h4>{{ .Title }}</h4>{{ if .Rows }}{{ template "bars" .Rows }}{{ else }}<p class="note">none</p>{{ end }}</div>{{ end }}
 </div>
 <p class="note">Headline event/severity/protocol counts are authoritative (from the store); the distinct-count and geo/ASN/ATT&amp;CK/CVE/tool breakdowns are derived from a scan of recent events in the window. Visual charts on <a href="/charts">charts</a>; raw events on <a href="/events">events</a>.</p>

@@ -12,6 +12,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	"schneider-modicon-m340": {
 		Name: "schneider-modicon-m340", DisplayName: "Schneider Modicon M340 (BMX P34)", Family: "schneider",
 		macOUI:          [3]byte{0x00, 0x80, 0xF4},
+		ftpBanner:       "220 FactoryCast FTP server (Modicon M340) ready.",
 		httpServer:      "Schneider-WEB/V3",
 		httpTitle:       "Modicon M340",
 		httpBodyHTML:    `<html><head><title>Modicon M340</title></head><body><h2>Schneider Electric — BMX P34 2020</h2><p>FactoryCast HMI · firmware V2.70</p></body></html>`,
@@ -151,6 +152,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	},
 	"aruba-2930f": {
 		Name: "aruba-2930f", DisplayName: "Aruba 2930F (ArubaOS-Switch)", Family: "aruba",
+		patchLevel: "WC.16.10.0009", cveVulns: []string{"CVE-2020-7115"},
 		macOUI:          [3]byte{0x94, 0xF1, 0x28},
 		sshBanner:       "SSH-2.0-OpenSSH",
 		loginPrompt:     "Username: ",

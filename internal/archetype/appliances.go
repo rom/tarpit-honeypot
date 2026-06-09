@@ -41,6 +41,7 @@ var applianceArchetypes = map[string]*Profile{
 func pfsense() *Profile {
 	return &Profile{
 		Name: "pfsense", DisplayName: "pfSense (Netgate firewall)", Family: "pfsense",
+		patchLevel: "2.6.0-RELEASE", cveVulns: []string{"CVE-2022-31814"},
 		sshBanner:    "SSH-2.0-OpenSSH_8.8 FreeBSD-20211221",
 		httpServer:   "nginx",
 		httpTitle:    "Login - pfSense",
@@ -148,6 +149,11 @@ func synologyModel(name, model, display string) *Profile {
 		snmpSysDescr: "Synology " + model + " DSM 7.2", snmpSysName: "DiskStation", snmpSysObjectID: ".1.3.6.1.4.1.6574.1",
 		macOUI:  [3]byte{0x00, 0x11, 0x32}, // Synology
 		icmpTTL: 64,
+		ftpFeatures: []string{
+			"EPRT", "EPSV", "MDTM", "MFMT", "MLSD",
+			"MLST type*;size*;modify*;UNIX.mode*;UNIX.owner*;UNIX.group*",
+			"PASV", "REST STREAM", "SIZE", "TVFS", "UTF8",
+		},
 		defaultServices: []DefaultService{
 			{Port: 5000, Handler: "http", Note: "DSM web"}, {Port: 5001, Handler: "https", Note: "DSM web (TLS)"},
 			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
@@ -169,6 +175,11 @@ func qnapModel(name, model, display string) *Profile {
 		snmpSysDescr: "QNAP " + model + " QTS 5.0", snmpSysName: "NAS", snmpSysObjectID: ".1.3.6.1.4.1.24681.1",
 		macOUI:  [3]byte{0x24, 0x5e, 0xbe}, // QNAP
 		icmpTTL: 64,
+		ftpFeatures: []string{
+			"CLNT", "EPRT", "EPSV", "MDTM", "MFMT", "MLSD",
+			"MLST type*;size*;modify*;UNIX.mode*", "PASV", "REST STREAM",
+			"SIZE", "TVFS", "UTF8",
+		},
 		defaultServices: []DefaultService{
 			{Port: 8080, Handler: "http", Note: "QTS web"}, {Port: 443, Handler: "https", Note: "QTS web (TLS)"},
 			{Port: 445, Handler: "smb", Note: "SMB"}, {Port: 22, Handler: "ssh", Note: "SSH"},
