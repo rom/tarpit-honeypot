@@ -46,6 +46,7 @@ var enterprise5Archetypes = map[string]*Profile{
 	},
 	"cisco-ucs-cimc": {
 		Name: "cisco-ucs-cimc", DisplayName: "Cisco UCS CIMC", Family: "ciscoucs",
+		patchLevel: "CIMC 4.2(3b)", cveVulns: []string{"CVE-2024-20356"},
 		macOUI:       [3]byte{0x00, 0x25, 0xb4}, // Cisco UCS
 		sshBanner:    "SSH-2.0-OpenSSH_7.4",
 		httpServer:   "CIMC",

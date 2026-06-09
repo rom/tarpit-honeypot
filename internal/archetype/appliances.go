@@ -41,6 +41,7 @@ var applianceArchetypes = map[string]*Profile{
 func pfsense() *Profile {
 	return &Profile{
 		Name: "pfsense", DisplayName: "pfSense (Netgate firewall)", Family: "pfsense",
+		patchLevel: "2.6.0-RELEASE", cveVulns: []string{"CVE-2022-31814"},
 		sshBanner:    "SSH-2.0-OpenSSH_8.8 FreeBSD-20211221",
 		httpServer:   "nginx",
 		httpTitle:    "Login - pfSense",

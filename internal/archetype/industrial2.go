@@ -151,6 +151,7 @@ var industrialExtArchetypes = map[string]*Profile{
 	},
 	"aruba-2930f": {
 		Name: "aruba-2930f", DisplayName: "Aruba 2930F (ArubaOS-Switch)", Family: "aruba",
+		patchLevel: "WC.16.10.0009", cveVulns: []string{"CVE-2020-7115"},
 		macOUI:          [3]byte{0x94, 0xF1, 0x28},
 		sshBanner:       "SSH-2.0-OpenSSH",
 		loginPrompt:     "Username: ",

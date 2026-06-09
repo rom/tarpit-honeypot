@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **CVE decoys extended to the remaining network gear.** Aruba ArubaOS-Switch
+  (CVE-2020-7115), OpenWrt (CVE-2020-7982), pfSense (CVE-2022-31814), Teltonika
+  RUTOS routers (CVE-2023-32347, all RUT/TRB models) and Cisco UCS CIMC
+  (CVE-2024-20356) now advertise a CVE; 5 new catalog records added. (Arista,
+  Nokia SR OS, VyOS, OPNsense and the already-patched base MikroTik builds are
+  intentionally left without one — no high-confidence/applicable CVE.)
+
 - **SOHO router / UDM / NAS archetypes.** `dlink-router` (DIR-882), `tplink-router`
   (Archer AX21), `asus-router` (RT-AX88U / ASUSWRT), `mikrotik-hap-ax3`,
   `ubiquiti-udm` (Dream Machine), and the NAS models `synology-ds220plus`,

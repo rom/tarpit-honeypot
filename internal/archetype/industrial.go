@@ -323,6 +323,7 @@ var industrialArchetypes = map[string]*Profile{
 	// ---- more Teltonika ----
 	"teltonika-rut955": {
 		Name: "teltonika-rut955", DisplayName: "Teltonika RUT955 (industrial router, GPS)", Family: "teltonika",
+		patchLevel: "RUTOS 00.07.02", cveVulns: []string{"CVE-2023-32347"},
 		macOUI:          [3]byte{0x20, 0x97, 0x27},
 		sshBanner:       "SSH-2.0-dropbear",
 		httpServer:      "lighttpd/1.4.59",
@@ -349,6 +350,7 @@ var industrialArchetypes = map[string]*Profile{
 	},
 	"teltonika-rutx11": {
 		Name: "teltonika-rutx11", DisplayName: "Teltonika RUTX11 (LTE Cat6 router)", Family: "teltonika",
+		patchLevel: "RUTOS 00.07.02", cveVulns: []string{"CVE-2023-32347"},
 		macOUI:          [3]byte{0x20, 0x97, 0x27},
 		sshBanner:       "SSH-2.0-dropbear",
 		httpServer:      "nginx",
@@ -374,6 +376,7 @@ var industrialArchetypes = map[string]*Profile{
 	},
 	"teltonika-rut956": {
 		Name: "teltonika-rut956", DisplayName: "Teltonika RUT956 (industrial router)", Family: "teltonika",
+		patchLevel: "RUTOS 00.07.02", cveVulns: []string{"CVE-2023-32347"},
 		macOUI:          [3]byte{0x20, 0x97, 0x27},
 		sshBanner:       "SSH-2.0-dropbear",
 		httpServer:      "nginx",
@@ -398,6 +401,7 @@ var industrialArchetypes = map[string]*Profile{
 	},
 	"teltonika-trb140": {
 		Name: "teltonika-trb140", DisplayName: "Teltonika TRB140 (LTE gateway)", Family: "teltonika",
+		patchLevel: "RUTOS 00.07.02", cveVulns: []string{"CVE-2023-32347"},
 		macOUI:          [3]byte{0x20, 0x97, 0x27},
 		sshBanner:       "SSH-2.0-dropbear",
 		httpServer:      "lighttpd/1.4.59",

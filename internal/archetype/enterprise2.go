@@ -85,6 +85,7 @@ var enterprise2Archetypes = map[string]*Profile{
 	},
 	"openwrt": {
 		Name: "openwrt", DisplayName: "OpenWrt router", Family: "openwrt",
+		patchLevel: "OpenWrt 19.07.3", cveVulns: []string{"CVE-2020-7982"},
 		sshBanner:    "SSH-2.0-dropbear_2022.83",
 		httpServer:   "uhttpd",
 		httpTitle:    "LuCI - Lua Configuration Interface",

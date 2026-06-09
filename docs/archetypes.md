@@ -1088,7 +1088,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** pfSense fw01.local FreeBSD 14.0-RELEASE-p6 amd64
 - **Services:** :443 `https`, :80 `http`, :22 `ssh`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2022-31814
 
 
 ## IP cameras & VoIP
@@ -1657,7 +1657,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika RUT240 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUT955 (industrial router, GPS) — `teltonika-rut955`
 
@@ -1667,7 +1667,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika RUT955 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUT956 (industrial router) — `teltonika-rut956`
 
@@ -1677,7 +1677,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** Teltonika RUT956 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika RUTX11 (LTE Cat6 router) — `teltonika-rutx11`
 
@@ -1687,7 +1687,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `nginx`
 - **SNMP sysDescr:** Teltonika RUTX11 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :443 `https`, :161 `snmp`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### Teltonika TRB140 (LTE gateway) — `teltonika-trb140`
 
@@ -1697,7 +1697,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `lighttpd/1.4.59`
 - **SNMP sysDescr:** Teltonika TRB140 RutOS
 - **Services:** :22 `ssh`, :80 `http`, :161 `snmp`, :502 `modbus`
-- **CVEs advertised:** —
+- **CVEs advertised:** CVE-2023-32347
 
 ### WAGO 750-8212 PFC200 — `wago-750-pfc`
 
