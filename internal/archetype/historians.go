@@ -50,7 +50,7 @@ var historianArchetypes = map[string]*Profile{
 		tls:             TLSPosture{MinVersion: tls.VersionTLS12},
 		cpe:             "cpe:2.3:a:osisoft:pi_server:*:*:*:*:*:*:*:*",
 		defaultServices: []DefaultService{
-			{Port: 5450, Handler: "raw", Note: "PI Data Archive / PI Network Manager"},
+			{Port: 5450, Handler: "osisoft_pi", Note: "PI Data Archive / PI Network Manager"},
 			{Port: 5457, Handler: "raw", Note: "PI buffering / AF"},
 			{Port: 443, Handler: "https", Note: "PI Web API (/piwebapi)"},
 			{Port: 80, Handler: "http", Note: "PI Vision / ProcessBook"},
@@ -118,7 +118,7 @@ var historianArchetypes = map[string]*Profile{
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "Aspen Process Explorer web"},
 			{Port: 443, Handler: "https", Note: "A1PE (TLS)"},
-			{Port: 10014, Handler: "raw", Note: "InfoPlus.21 SQLplus / client"},
+			{Port: 10014, Handler: "aspen_ip21", Note: "InfoPlus.21 SQLplus / client"},
 			{Port: 161, Handler: "snmp"},
 		},
 		quirks: []string{"historian", "aspentech", "ip21"},
@@ -140,7 +140,7 @@ var historianArchetypes = map[string]*Profile{
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "Proficy Webspace / Historian web admin"},
 			{Port: 443, Handler: "https", Note: "Proficy (TLS)"},
-			{Port: 14000, Handler: "raw", Note: "Proficy Historian data archiver"},
+			{Port: 14000, Handler: "proficy_historian", Note: "Proficy Historian data archiver"},
 			{Port: 161, Handler: "snmp"},
 		},
 		quirks: []string{"historian", "ge", "proficy"},
@@ -182,7 +182,7 @@ var historianArchetypes = map[string]*Profile{
 		defaultServices: []DefaultService{
 			{Port: 80, Handler: "http", Note: "Canary Web / Axiom"},
 			{Port: 443, Handler: "https", Note: "Canary Web API (/CanaryData)"},
-			{Port: 9990, Handler: "raw", Note: "Canary Sender service"},
+			{Port: 9990, Handler: "canary_historian", Note: "Canary Sender service"},
 			{Port: 161, Handler: "snmp"},
 		},
 		quirks: []string{"historian", "canary"},

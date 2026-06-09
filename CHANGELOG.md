@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Process-historian binary protocol depth.** GE Proficy Historian (14000),
+  Canary Labs Historian / Sender (9990), and AspenTech InfoPlus.21 (10014) — the
+  proprietary binary data ports that were previously captured raw — now have
+  fingerprint-grade handlers (`proficy_historian`, `canary_historian`,
+  `aspen_ip21`), and the AVEVA PI archetype's port 5450 is wired to the existing
+  `osisoft_pi` handler. Each captures the client's opening message, classifies
+  its framing (length-prefixed big-/little-endian vs raw stream), scavenges the
+  cleartext app/user/version strings these SDK handshakes leak, greets with a
+  minimal product identification, and surfaces the connection as historian /
+  process-data access (IT→OT pivot / exfil). The closed wire protocols are not
+  fabricated — no tag/point database is served.
+
 - **Connection-oriented QUIC session handler (HTTP/3).** The `quic` handler is
   now the first consumer of the `udp_session` primitive: on a listener with
   `udp_session: true` it (1) reassembles a TLS ClientHello split across multiple
