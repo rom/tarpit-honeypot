@@ -2,6 +2,7 @@ package sensor
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -56,11 +57,26 @@ func (s *Sensor) runHealthMonitor(ctx context.Context) {
 	defer t.Stop()
 	var lastDrops int64
 	diskWarned := false
+	ticks := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			ticks++
+			// Index self-heal: every ~30 min re-create any missing secondary
+			// index (one may have failed to build during a full-disk window)
+			// and flag persistent gaps — a missing index is why aggregate pages
+			// full-scan and time out on a large store.
+			if s.store != nil && ticks%30 == 1 {
+				s.store.EnsureIndexes()
+				if miss := s.store.MissingIndexes(); len(miss) > 0 {
+					slog.Warn("store: secondary indexes missing (pages may full-scan)", "missing", miss)
+					s.emitOpEvent("sensor:health", event.SeverityMedium, map[string]any{
+						"check": "db_indexes", "missing": miss,
+					})
+				}
+			}
 			if used, ok := diskUsedPercent(s.curConfig().Sensor.DataDir); ok {
 				switch {
 				case used >= warnPct && !diskWarned:
