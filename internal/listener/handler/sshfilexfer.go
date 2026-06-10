@@ -49,6 +49,25 @@ func sshReqString(payload []byte) string {
 	return string(payload[4 : 4+n])
 }
 
+// sshEnvPair parses an SSH "env" channel-request payload (string name, string
+// value) per RFC 4254 §6.4.
+func sshEnvPair(payload []byte) (name, value string, ok bool) {
+	if len(payload) < 4 {
+		return "", "", false
+	}
+	n := int(binary.BigEndian.Uint32(payload))
+	if n < 0 || 4+n+4 > len(payload) {
+		return "", "", false
+	}
+	name = string(payload[4 : 4+n])
+	rest := payload[4+n:]
+	v := int(binary.BigEndian.Uint32(rest))
+	if v < 0 || 4+v > len(rest) {
+		return name, "", false
+	}
+	return name, string(rest[4 : 4+v]), true
+}
+
 // isSCPCommand reports whether an exec command line invokes scp (the server side
 // of an scp transfer, e.g. `scp -t /tmp` or `scp -f /etc/passwd`).
 func isSCPCommand(cmd string) bool {

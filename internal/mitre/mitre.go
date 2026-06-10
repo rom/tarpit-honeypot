@@ -847,6 +847,12 @@ var anomalyTags = map[string]Tag{
 	"telnet-env-injection":    {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
 	"telnet-mirai-credential": {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
 	"telnet-busybox-probe":    {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	// SSH second-pass: Terrapin, null cipher, tunneling, env Shellshock.
+	"ssh-terrapin-vulnerable": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ssh-none-cipher":         {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ssh-direct-tcpip":        {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-remote-forward":      {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-env-shellshock":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	// FTP second-pass: traversal, ProFTPD IAC overflow, anon login, SITE exec.
 	"ftp-path-traversal":      {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	"ftp-telnet-iac-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
