@@ -840,6 +840,13 @@ var anomalyTags = map[string]Tag{
 	"dns-ecs-subnet":             {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
 	"dns-embedded-ip-rebind":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"dns-malformed-query":        {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	// Telnet second-pass: ENCRYPT/AUTH overflow, IAC fuzzing, env injection,
+	// Mirai-class default creds + busybox loader probe.
+	"telnet-encrypt-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"telnet-iac-fuzzing":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"telnet-env-injection":    {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
+	"telnet-mirai-credential": {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"telnet-busybox-probe":    {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	// SMB second-pass structural exploits + NTLM downgrade.
 	"smb-compression-capabilities": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
 	"smb-compression-transform":    {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
@@ -1308,6 +1315,7 @@ var d3fend = map[string][]string{
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
 	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
+	"T1574": {"D3-EAL", "D3-FH"},                    // hijack execution flow (LD_PRELOAD / search_path)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

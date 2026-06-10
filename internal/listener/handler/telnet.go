@@ -100,6 +100,16 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	res.Meta["pass_attempt"] = safe.SanitizeForLog(pass)
 	res.Payload = []byte(user + "\n" + pass)
 	flagDefaultCred(&res, user, pass)
+	if telnetMiraiCredential(user, pass) {
+		flagAnomaly(&res, "telnet-mirai-credential")
+		res.Meta["intent"] = "telnet IoT default-credential login (Mirai/Gafgyt-class botnet)"
+	}
+	// Mirai's loader fingerprints the device with `enable`/`system`/`shell` and a
+	// `/bin/busybox <TOKEN>` probe (sent in the login field on many devices).
+	if telnetBusyboxProbe(user) || telnetBusyboxProbe(pass) {
+		flagAnomaly(&res, "telnet-busybox-probe")
+		res.Meta["intent"] = "telnet busybox/system command-injection probe (IoT botnet loader)"
+	}
 	if hasNonPrintable(user) || hasNonPrintable(pass) {
 		flagAnomaly(&res, "telnet-credential-non-printable")
 	}
@@ -166,6 +176,8 @@ const (
 	telOptNAWS   = 0x1f // 31 negotiate-about-window-size
 	telOptTSpeed = 0x20 // 32 terminal-speed
 	telOptNewEnv = 0x27 // 39 new-environ (RFC 1572)
+	telOptAuth   = 0x25 // 37 AUTHENTICATION (RFC 2941)
+	telOptEncl   = 0x26 // 38 ENCRYPT (RFC 2946) — CVE-2011-4862 surface
 )
 
 // readTelnetLine reads one line, transparently consuming and answering IAC
@@ -247,6 +259,20 @@ func parseTelnetSubneg(sub []byte, res *Result) {
 	if res == nil || len(sub) == 0 {
 		return
 	}
+	// An ENCRYPT / AUTHENTICATION suboption carrying an over-long key-id is the
+	// netkit/BSD telnetd encrypt_keyid stack overflow (CVE-2011-4862); the AUTH
+	// option overflow is the inetutils class. A legit suboption here is tiny.
+	if (sub[0] == telOptEncl || sub[0] == telOptAuth) && len(sub) > 64 {
+		flagAnomaly(res, "telnet-encrypt-overflow")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2011-4862")
+		flagAnomaly(res, "cve:CVE-2011-4862")
+		res.Meta["intent"] = "telnet ENCRYPT/AUTH suboption overflow — telnetd pre-auth RCE (CVE-2011-4862)"
+	}
+	// An abnormally large subnegotiation body is option fuzzing / a DoS probe.
+	if len(sub) > 512 {
+		flagAnomaly(res, "telnet-iac-fuzzing")
+		setIfEmpty(res.Meta, "intent", "telnet IAC option fuzzing")
+	}
 	switch sub[0] {
 	case telOptTType:
 		if len(sub) >= 2 && sub[1] == 0x00 { // IS
@@ -268,6 +294,12 @@ func parseTelnetSubneg(sub []byte, res *Result) {
 				clean := make(map[string]string, len(env))
 				for k, v := range env {
 					clean[safe.SanitizeForLog(k)] = safe.SanitizeForLog(v)
+					// A client pushing a dynamic-loader variable through
+					// NEW-ENVIRON is attempting library-injection on the server.
+					if k == "LD_PRELOAD" || k == "LD_LIBRARY_PATH" || strings.HasPrefix(k, "LD_") {
+						flagAnomaly(res, "telnet-env-injection")
+						res.Meta["intent"] = "telnet NEW-ENVIRON dynamic-loader injection (" + safe.SanitizeForLog(k) + ")"
+					}
 				}
 				res.Meta["telnet_env"] = clean
 			}
@@ -437,4 +469,43 @@ func expandLoginEscapes(s string, arch *archetype.Profile, id *identity.Identity
 		i++ // consumed the escape letter
 	}
 	return b.String()
+}
+
+// telnetMiraiCredential reports whether a user/pass pair is on the well-known
+// Mirai/Gafgyt IoT-botnet default-credential list (a curated subset).
+func telnetMiraiCredential(user, pass string) bool {
+	type cred struct{ u, p string }
+	mirai := []cred{
+		{"root", "xc3511"}, {"root", "vizxv"}, {"root", "admin"}, {"admin", "admin"},
+		{"root", "888888"}, {"root", "xmhdipc"}, {"root", "default"}, {"root", "juantech"},
+		{"root", "123456"}, {"root", "54321"}, {"support", "support"}, {"root", "12345"},
+		{"admin", "password"}, {"root", "root"}, {"root", "12345678"}, {"root", "pass"},
+		{"admin", "admin1234"}, {"root", "1111"}, {"admin", "smcadmin"}, {"root", "666666"},
+		{"root", "password"}, {"root", "1234"}, {"root", "klv123"}, {"admin", "1111111"},
+		{"root", "Zte521"}, {"root", "hi3518"}, {"root", "jvbzd"}, {"root", "anko"},
+		{"root", "zlxx."}, {"root", "7ujMko0vizxv"}, {"root", "7ujMko0admin"}, {"root", "system"},
+		{"root", "ikwb"}, {"root", "dreambox"}, {"root", "user"}, {"root", "realtek"},
+		{"admin", "1234"}, {"admin", "12345"}, {"admin", "54321"}, {"admin", "123456"},
+		{"admin", "7ujMko0admin"}, {"admin", "1234567890"}, {"guest", "guest"}, {"guest", "12345"},
+		{"telnet", "telnet"}, {"telnetadmin", "telnetadmin"}, {"root", "GM8182"}, {"root", "1001chin"},
+	}
+	for _, c := range mirai {
+		if user == c.u && pass == c.p {
+			return true
+		}
+	}
+	return false
+}
+
+// telnetBusyboxProbe reports whether a line is an IoT-botnet loader probe.
+func telnetBusyboxProbe(s string) bool {
+	l := strings.ToLower(strings.TrimSpace(s))
+	if strings.Contains(l, "/bin/busybox") {
+		return true
+	}
+	switch l {
+	case "enable", "system", "shell", "sh":
+		return true
+	}
+	return false
 }
