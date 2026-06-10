@@ -82,6 +82,13 @@ func (d *dcerpc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 				// high-signal AD-enumeration / lateral-movement tell.
 				if marker := dcerpcAbuse(name); marker != "" {
 					flagAnomaly(&res, marker)
+					if tech, cve := dcerpcCoercion(name); tech != "" {
+						res.Meta["intent"] = "DCE-RPC coerced authentication — " + tech + " (NTLM relay / forced auth)"
+						if cve != "" {
+							res.CVEHits = appendUnique(res.CVEHits, cve)
+							flagAnomaly(&res, "cve:"+cve)
+						}
+					}
 				}
 			}
 			// OPC-DA (classic, DCOM): a bind to OPCEnum / IOPCServer(List)
@@ -180,6 +187,16 @@ var dcerpcInterfaces = map[string]string{
 	"e3514235-4b06-11d1-ab04-00c04fc2dcd2": "drsuapi", // AD replication → DCSync
 	"12345678-1234-abcd-ef00-01234567cffb": "netlogon",
 	"8a885d04-1ceb-11c9-9fe8-08002b104860": "ndr",
+	// Coerced-authentication interfaces (MS-EFSRPC / MS-RPRN / MS-PAR /
+	// MS-DFSNM / MS-FSRVP / MS-EVEN): binding these from off-box is an attempt
+	// to force the host to authenticate to an attacker (NTLM relay → AD CS, etc.).
+	"c681d488-d850-11d0-8c52-00c04fd90f7e": "efsrpc",      // MS-EFSRPC (PetitPotam)
+	"df1941c5-fe89-4e79-bf10-463657acf44d": "efsrpc",      // MS-EFSRPC (lsarpc-hosted)
+	"12345678-1234-abcd-ef00-0123456789ab": "spoolss",     // MS-RPRN (PrinterBug)
+	"76f03f96-cdfd-44fc-a22c-64950a001209": "spoolss-par", // MS-PAR (PrinterBug variant)
+	"4fc742e0-4a10-11cf-8273-00aa004ae673": "netdfs",      // MS-DFSNM (DFSCoerce)
+	"a8e0653c-2744-4389-a61d-7373df8b2292": "fsrvp",       // MS-FSRVP (ShadowCoerce)
+	"82273fdc-e32a-18c3-3f78-827929dc23ea": "eventlog",    // MS-EVEN (Coercer)
 }
 
 // dcerpcAbuse maps a sensitive MSRPC interface to an anomaly marker. Binding
@@ -203,8 +220,28 @@ func dcerpcAbuse(iface string) string {
 		return "dcerpc-dcsync"
 	case "netlogon":
 		return "dcerpc-netlogon-access"
+	case "efsrpc", "spoolss", "spoolss-par", "netdfs", "fsrvp", "eventlog":
+		return "dcerpc-coerced-auth"
 	}
 	return ""
+}
+
+// dcerpcCoercion maps a coerced-authentication interface to its named technique
+// and (where applicable) CVE, for the intent label + attribution.
+func dcerpcCoercion(iface string) (name, cve string) {
+	switch iface {
+	case "efsrpc":
+		return "PetitPotam (MS-EFSRPC)", "CVE-2021-36942"
+	case "spoolss", "spoolss-par":
+		return "PrinterBug / SpoolSample (MS-RPRN/PAR)", ""
+	case "netdfs":
+		return "DFSCoerce (MS-DFSNM)", ""
+	case "fsrvp":
+		return "ShadowCoerce (MS-FSRVP)", ""
+	case "eventlog":
+		return "Coercer (MS-EVEN)", ""
+	}
+	return "", ""
 }
 
 // opcInterfaces is the subset of dcerpcInterfaces that means "OPC-DA".
