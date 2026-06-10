@@ -905,6 +905,11 @@ var anomalyTags = map[string]Tag{
 	// Management: IPMI auth-bypass + RAKP hash disclosure.
 	"ipmi-cipher-zero-auth-bypass": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"ipmi-rakp-hash-disclosure":    {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	// 25-protocol round: x11/redfish/tn3270/pjlink markers.
+	"x11-no-auth":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"redfish-auth-bypass":   {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	"redfish-unauth-access": {Techniques: []string{"T1190"}, Tactics: []string{"discovery"}},
+	"tn3270-logon-attempt":  {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
 	// WinRM / vmware_authd cleartext credential exposure; BACnet priority override.
 	"winrm-basic-cleartext":        {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
 	"vmware-authd-cleartext-creds": {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},

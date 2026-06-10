@@ -228,6 +228,13 @@ func (h *tn3270) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	flagAnomaly(&res, "tn3270-probe")
 	_, _ = conn.Write([]byte("\r\n  z/OS TSO/E LOGON\r\n\r\n  Enter LOGON parameters\r\n  Userid    ===> "))
 	res.BannerSent = "tn3270 logon"
+	// A client that sends a userid in response to the TSO/E LOGON prompt is
+	// attempting a mainframe logon — high-signal for an exposed z/OS system.
+	if uid := readCapped(conn, cfg, make([]byte, 256)); len(uid) > 0 {
+		res.Payload = append(res.Payload, uid...)
+		flagAnomaly(&res, "tn3270-logon-attempt")
+		res.Meta["intent"] = "mainframe TSO/E logon attempt (TN3270)"
+	}
 	return res, nil
 }
 
