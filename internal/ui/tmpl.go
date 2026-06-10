@@ -1371,6 +1371,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <h1>attacker profile — {{ .IP }}{{ ipv6Tag .IP }} {{ sourceBadges .Reputation }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
+{{ if .Intents }}<div class="depl" data-help="What this source was doing, aggregated across every one of its events — the per-event 'intent' label set by the handler or derived at the listener."><b>intent:</b> {{ range .Intents }}<span class="tag warn">{{ . }}</span> {{ end }}</div>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
 {{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<span class="tag bad">{{ . }}</span> {{ end }}<span class="note">recognized attack patterns from the storyline correlator</span></div>{{ end }}
 <div class="depl">
@@ -1385,6 +1386,12 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   <a href="/events?source={{ .IP }}&amp;since=2160h">all events</a> ·
   <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts (ZIP)</a> ·
   <a href="/api/profiles/{{ .IP }}">JSON</a></p>
+
+{{ if or .CVEs .AttackClasses .MisuseAnomalies }}<h2 data-help="Every attack, misuse, manipulation and vulnerability this source threw at the host, in one place: the CVEs it tried to exploit, the web-application attack classes, and the protocol-misuse / control-manipulation markers (anomalies).">attacks, misuse &amp; manipulation</h2>
+{{ if .CVEs }}<div class="depl"><b>vulnerabilities / exploit attempts:</b> {{ range .CVEs }}<a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .AttackClasses }}<div class="depl"><b>web-application attacks:</b> {{ range .AttackClasses }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events for this web-attack class">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .MisuseAnomalies }}<div class="depl"><b>protocol misuse / manipulation:</b> {{ range .MisuseAnomalies }}<a class="tag warn" href="/search?source={{ $.IP }}&amp;tag={{ . }}" title="find this source's events carrying this anomaly">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ end }}
 
 {{ if not .Origin.Empty }}<h2>origin &amp; infrastructure</h2>
 <table>
@@ -1409,8 +1416,8 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 </table>
 <p class="note">Fingerprint links open a cross-sensor reputation report (where else this client stack has been seen).</p>{{ end }}
 
-{{ if not .Proto.Empty }}<h2>protocol intelligence</h2>
-<table>
+{{ if or (not .Proto.Empty) .Protocols }}<h2>protocol intelligence</h2>
+{{ if not .Proto.Empty }}<table>
   {{ if .Proto.TLSVersions }}<tr><th>TLS versions</th><td>{{ range .Proto.TLSVersions }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
   {{ if .Proto.SSHKex }}<tr><th>SSH KEX</th><td><a class="tag" href="/events?source={{ $.IP }}&amp;q={{ .Proto.SSHKex }}">{{ .Proto.SSHKex }}</a> {{ if .Proto.SSHKexWeak }}<span class="tag bad">weak primitive offered</span>{{ end }}</td></tr>{{ end }}
   {{ if or .Proto.HTTP2 .Proto.HTTP3 }}<tr><th>HTTP</th><td>{{ if .Proto.HTTP2 }}<span class="tag">HTTP/2 (h2c)</span> {{ end }}{{ if .Proto.HTTP3 }}<span class="tag">HTTP/3 (QUIC)</span>{{ end }}</td></tr>{{ end }}
@@ -1418,6 +1425,15 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
   {{ if .Proto.QUICALPN }}<tr><th>QUIC ALPN</th><td>{{ range .Proto.QUICALPN }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>
 <p class="note">Negotiated transport-stack details captured from this source (beyond the raw fingerprints above).</p>{{ end }}
+{{ if .Protocols }}<h3 data-help="Every protocol this source spoke (not only TLS), with the protocol versions observed and the negotiated / selected parameters captured per protocol.">per-protocol summary</h3>
+<table><tr><th>protocol</th><th>events</th><th>versions</th><th>negotiated / observed</th></tr>
+{{ range .Protocols }}<tr>
+  <td><a class="tag" href="/events?source={{ $.IP }}&amp;handler={{ .Name }}" title="this source's events on this protocol">{{ .Name }}</a></td>
+  <td>{{ .Events }}</td>
+  <td>{{ range .Versions }}<span class="tag">{{ . }}</span> {{ else }}<span class="meta">—</span>{{ end }}</td>
+  <td>{{ range .Details }}<span class="tag">{{ . }}</span> {{ else }}<span class="meta">—</span>{{ end }}</td>
+</tr>{{ end }}
+</table>{{ end }}{{ end }}
 
 {{ if .OPCItems }}<h2>OPC-DA / ICS items probed</h2><div>{{ range .OPCItems }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
 <p class="note">OPC-DA item IDs / group names this source reached for over DCOM — the ICS tags an attacker tried to read or write.</p>{{ end }}
@@ -1441,17 +1457,25 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 {{ if .Mitre }}<h2>ATT&amp;CK techniques</h2><div>{{ range .Mitre }}{{ $u := attackLinkURL . }}{{ if $u }}<a href="{{ $u }}" target="_blank" rel="noreferrer noopener" class="tag warn" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a href="/attack/technique?id={{ . }}" class="tag warn">{{ . }}</a>{{ end }} {{ end }}</div>{{ end }}
 {{ if .Tactics }}<h2>ATT&amp;CK tactics</h2><div>{{ range .Tactics }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;tactic={{ . }}" title="this source's events in this ATT&amp;CK tactic">{{ . }}</a> {{ end }}</div>{{ end }}
 
-{{ if .CVEs }}<h2>CVE exploit attempts</h2><div>{{ range .CVEs }}<a class="tag bad" href="{{ cveURL . }}" rel="noreferrer noopener" target="_blank">{{ . }}</a> {{ end }}</div>{{ end }}
-
 {{ if .Artifacts }}<h2>captured artifacts</h2><div>{{ range .Artifacts }}<span class="tag bad">{{ . }}</span> {{ end }}</div>
 <p class="note">Malware / payload artifacts the sensor captured from this source (kind:sha256). Pull the bytes from the <a href="/download?source={{ .IP }}&amp;since=2160h&amp;what=all">artifacts ZIP</a>.</p>{{ end }}
+
+{{ if .FilesTaken }}<h2 data-help="Files this source downloaded or exfiltrated over a file-transfer protocol (FTP / SCP / SFTP / TFTP) or a DNS zone transfer — the decoy 'loot' it actually pulled off the host.">files downloaded / exfiltrated <span class="meta">({{ len .FilesTaken }})</span></h2>
+<table><tr><th>file</th><th>method</th></tr>
+{{ range .FilesTaken }}<tr><td><a href="/events?source={{ $.IP }}&amp;q={{ .Path }}" title="this source's events that touched this file"><code>{{ .Path }}</code></a></td><td><span class="tag bad">{{ .Method }}</span></td></tr>{{ end }}
+</table>{{ end }}
 
 {{ if .URLs }}<h2>harvested URLs</h2><div>{{ range .URLs }}<a class="tag warn" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events that harvested this URL">{{ . }}</a> {{ end }}</div>
 <p class="note">C2 / dropper URLs harvested from this source's payloads (candidate next-hop infrastructure).</p>{{ end }}
 
-{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events mentioning this domain/SNI">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .URLsRequested }}<h2 data-help="Every distinct HTTP request target (path / URI) this source asked for across the HTTP-family handlers — the URLs it actually hit, distinct from the C2 / dropper URLs harvested from its payloads above.">URLs requested <span class="meta">({{ len .URLsRequested }})</span></h2><div>{{ range .URLsRequested }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events that requested this URL"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
 
-{{ if .AttackClasses }}<h2>web-attack classes</h2><div>{{ range .AttackClasses }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events for this web-attack class">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .HTTPHeaders }}<h2 data-help="Distinct HTTP request headers this source sent across all its requests, with a sample of the values each carried and how many requests set it.">HTTP headers seen</h2>
+<table><tr><th>header</th><th>value(s)</th><th>requests</th></tr>
+{{ range .HTTPHeaders }}<tr><td><code>{{ .Name }}</code></td><td>{{ range .Values }}<code>{{ . }}</code> {{ else }}<span class="meta">—</span>{{ end }}</td><td>{{ .Count }}</td></tr>{{ end }}
+</table>{{ end }}
+
+{{ if .Domains }}<h2>domains / SNIs requested</h2><div>{{ range .Domains }}<a class="tag" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events mentioning this domain/SNI">{{ . }}</a> {{ end }}</div>{{ end }}
 
 {{ if .ProbedFiles }}<h2>sensitive files probed</h2><div>{{ range .ProbedFiles }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;q={{ . }}" title="this source's events that tried to read this file"><code>{{ . }}</code></a> {{ end }}</div>{{ end }}
 
@@ -1460,7 +1484,11 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Emails }}<h2>SMTP senders</h2><div>{{ range .Emails }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
 
-{{ if .Anomalies }}<h2>anomalies</h2><div>{{ range .Anomalies }}<a class="tag warn" href="/search?source={{ $.IP }}&amp;tag={{ . }}" title="find this source's events carrying this anomaly">{{ . }}</a> {{ end }}</div>{{ end }}
+{{ if .Honeytokens }}<h2 data-help="Planted secrets (honeytokens / decoy credentials / canary accounts) this source pulled from a decoy or replayed back. A replayed token is a closed canary loop — strong proof of compromise.">honeytokens served / stolen <span class="meta">({{ len .Honeytokens }})</span></h2>
+<table><tr><th>kind</th><th>token / account</th><th>service</th></tr>
+{{ range .Honeytokens }}<tr><td><span class="tag bad">{{ .Kind }}</span></td><td><code>{{ .Token }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}<span class="meta">—</span>{{ end }}</td></tr>{{ end }}
+</table>
+<p class="note">A <code>replayed</code> entry means this source re-used a secret the sensor had previously served — a confirmed compromise (see the <code>canary:token_used</code> event).</p>{{ end }}
 
 {{ if .Credentials }}<h2>credentials &amp; secrets captured</h2><table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range .Credentials }}<tr><td><span class="tag">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}

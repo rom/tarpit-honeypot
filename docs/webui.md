@@ -251,21 +251,35 @@ exports: [ioc.md](ioc.md).
 Per-source-IP **attacker dossiers** compiled over time: a synthesized assessment
 + threat score, the tools/scanners identified (with confidence), fingerprints
 (JA3/JA4/JA4H/JA4T/JA3S/HASSH), credentials tried, ATT&CK coverage, and targeted
-services. Also surfaces the forensic observables that used to live only in
-per-event meta: **captured malware artifacts** (kind:sha256), **harvested
-C2/dropper URLs**, the **domains/SNIs** the source requested, the **web-attack
-classes** it threw at the app, the **sensitive files probed** (the specific
-`/.env` / config-backup / `.git/config` / LFI targets each secret-file-probe
-tried to read), the **SSH public keys** it offered, the **SMTP
-senders** it used, and a **confirmed-compromise banner** when the source
-replayed a planted honeytoken (`canary:token_used`). The assessment escalates
-accordingly — *honeytoken reuse*, *malware delivery / staging*, and *web
-application attack* (3+ distinct attack classes) rank above generic
-exploitation. On a multi-IP host, when the source reached more than one of the
-host's server IPs the profile adds a **cross-target timeline**: the targets in
-first-seen order with timing-offset bars, the ports + services hit per target,
-hit counts, and a ⚠ list of ports hit on more than one target (a scripted
-same-service sweep across the fleet).
+services. The dossier opens with the source's **intent** — the per-event "what
+the attacker was doing" labels (set by the handlers / derived at the listener),
+aggregated across every event — and a consolidated **attacks, misuse &
+manipulation** catalog that lists, in one place, the **vulnerabilities /
+exploit attempts** (CVEs), the **web-application attack classes**, and the
+**protocol misuse / manipulation** markers (the non-webapp anomalies — ICS
+control writes, FTP SITE EXEC, downgrade attempts, …). Also surfaces the
+forensic observables that used to live only in per-event meta: **captured
+malware artifacts** (kind:sha256), **harvested C2/dropper URLs**, every distinct
+**URL requested** (the request targets it hit, separate from the harvested C2
+URLs), the **HTTP headers seen** across its requests (name → sample values +
+per-header count), the **domains/SNIs** the source requested, the **sensitive
+files probed** (the specific `/.env` / config-backup / `.git/config` / LFI
+targets each secret-file-probe tried to read), the **files downloaded /
+exfiltrated** over a transfer protocol (FTP / SCP / SFTP / TFTP) or a DNS zone
+transfer, the **honeytokens served / stolen** (the planted decoy secrets /
+canary accounts it pulled or replayed), the **SSH public keys** it offered, the
+**SMTP senders** it used, and a **confirmed-compromise banner** when the source
+replayed a planted honeytoken (`canary:token_used`). **Protocol intelligence**
+goes beyond TLS: alongside the TLS/SSH/HTTP/QUIC transport summary, a
+**per-protocol summary** lists every protocol the source spoke with the versions
+observed and the negotiated/selected parameters (KEX, ALPN, SNMP MIB profile,
+VNC/RDP security type, …). The assessment escalates accordingly — *honeytoken
+reuse*, *malware delivery / staging*, and *web application attack* (3+ distinct
+attack classes) rank above generic exploitation. On a multi-IP host, when the
+source reached more than one of the host's server IPs the profile adds a
+**cross-target timeline**: the targets in first-seen order with timing-offset
+bars, the ports + services hit per target, hit counts, and a ⚠ list of ports hit
+on more than one target (a scripted same-service sweep across the fleet).
 
 ### fingerprints (`/fingerprints`)
 JA3 / JA4 / JA4H / JA3S / HASSH reputation — pivot from a client TLS/SSH stack to

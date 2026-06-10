@@ -10,6 +10,24 @@ documented in `docs/`).
 
 ### Added
 
+- **Deeper attacker-profile dossier (`/profiles/{ip}`).** The per-source dossier
+  now aggregates, over *all* of an actor's events: its **intent** (the per-event
+  "what the attacker was doing" labels, deduped) shown up top; a consolidated
+  **attacks, misuse & manipulation** catalog that gathers the CVEs (vulnerabilities
+  / exploit attempts), the web-application attack classes, and the protocol
+  misuse / manipulation markers (non-webapp anomalies) into one place — folding in
+  the previously scattered standalone CVE / web-attack / anomalies sections; every
+  distinct **URL requested** (request targets, separate from harvested C2 URLs);
+  the **HTTP headers seen** (name → sampled values + per-header request count);
+  the **files downloaded / exfiltrated** over a transfer protocol (FTP `RETR`
+  honeyfiles, SCP source transfers, SFTP paths, TFTP read requests) or a DNS zone
+  transfer; and the **honeytokens served / stolen** (planted decoy secrets /
+  canary accounts the source pulled or replayed). **Protocol intelligence** now
+  goes beyond TLS with a **per-protocol summary**: every protocol the source spoke,
+  with the versions observed and the negotiated/selected parameters (KEX, ALPN,
+  SNMP MIB profile, VNC/RDP security type, …). All new fields are also in the
+  `/api/profiles/{ip}` JSON.
+
 - **Process-historian binary protocol depth.** GE Proficy Historian (14000),
   Canary Labs Historian / Sender (9990), and AspenTech InfoPlus.21 (10014) — the
   proprietary binary data ports that were previously captured raw — now have

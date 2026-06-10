@@ -244,6 +244,55 @@ func TestProfileClickableLabels(t *testing.T) {
 	}
 }
 
+// TestProfileNewSectionsRender renders the profile template for a rich actor
+// and asserts the new dossier sections show: the aggregated intent, the
+// consolidated attacks/misuse catalog, the per-protocol summary, the requested
+// URLs, the HTTP headers seen, the files downloaded, and the honeytokens — and
+// that the now-folded standalone CVE / web-attack / anomalies sections are gone.
+func TestProfileNewSectionsRender(t *testing.T) {
+	tmpl := uiTmpl(t)
+	now := time.Now()
+	prof := buildProfile("6.6.6.6", []*event.Event{
+		{ID: "1", Time: now, RuleID: "cve:CVE-2021-41773", Severity: event.SeverityCritical, Handler: "http",
+			Dest:      event.Endpoint{Port: 80},
+			Anomalies: []string{"webapp:sqli", "uri-path-traversal"},
+			Meta: map[string]any{
+				"intent": "path traversal to read /etc/passwd", "http_uri": "/cgi-bin/.%2e/etc/passwd",
+				"http_headers": map[string]string{"user-agent": "curl/8.1"}, "honeytoken": "AKIA_HONEY_KEY",
+				"tls_version": "TLS 1.3",
+			}},
+		{ID: "2", Time: now.Add(time.Minute), RuleID: "listener:ftp", Severity: event.SeverityHigh, Handler: "ftp",
+			Meta: map[string]any{"retrieved": []any{"/home/admin/.ssh/id_rsa"}}},
+	})
+	var b strings.Builder
+	if err := tmpl.ExecuteTemplate(&b, "profile", profileView{Profile: prof}); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"intent:", "path traversal to read /etc/passwd", // aggregated intent
+		"attacks, misuse &amp; manipulation",  // consolidated catalog
+		"vulnerabilities / exploit attempts:", // CVEs folded in
+		"web-application attacks:",            // attack classes folded in
+		"protocol misuse / manipulation:",     // non-webapp anomalies folded in
+		"per-protocol summary",                // protocol intel beyond TLS
+		"URLs requested", "/cgi-bin/",         // requested URLs
+		"HTTP headers seen", "user-agent", // headers
+		"files downloaded / exfiltrated", "id_rsa", // files taken
+		"honeytokens served / stolen", "AKIA_HONEY_KEY", // honeytokens
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("profile detail missing %q\nbody: %q", want, out)
+		}
+	}
+	// The folded-in standalone sections should no longer render their own headers.
+	for _, gone := range []string{"<h2>CVE exploit attempts</h2>", "<h2>web-attack classes</h2>", "<h2>anomalies</h2>"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("standalone section %q should be folded into the consolidated catalog", gone)
+		}
+	}
+}
+
 func TestThreatLevel(t *testing.T) {
 	cases := map[int]string{0: "low", 5: "low", 15: "elevated", 60: "high", 200: "critical", 999: "critical"}
 	for score, want := range cases {

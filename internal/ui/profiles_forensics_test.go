@@ -146,6 +146,161 @@ func TestBuildProfileNewSignals(t *testing.T) {
 	}
 }
 
+// TestBuildProfileAttackSurface verifies the dossier aggregates, over all of a
+// source's events: its intent, the consolidated attack/misuse signals
+// (web-attack classes + non-webapp misuse anomalies), the requested URLs, the
+// HTTP headers seen, the files downloaded/exfiltrated over every transfer
+// protocol, the honeytokens it pulled/replayed, and the per-protocol intel.
+func TestBuildProfileAttackSurface(t *testing.T) {
+	now := time.Now()
+	evs := []*event.Event{
+		{
+			ID: "1", Time: now, RuleID: "webapp:sqli", Severity: event.SeverityHigh,
+			Handler: "http", Source: event.Endpoint{IP: "6.6.6.6"}, Dest: event.Endpoint{Port: 80},
+			Anomalies: []string{"webapp:sqli", "http-method-unknown"},
+			Meta: map[string]any{
+				"intent":       "SQL injection against the login form",
+				"http_uri":     "/admin/login.php?id=1",
+				"http_headers": map[string]string{"user-agent": "sqlmap/1.7", "accept": "*/*"},
+				"honeytoken":   "DB_PASS_s3cret",
+				"tls_version":  "TLS 1.2",
+			},
+		},
+		{
+			ID: "2", Time: now.Add(time.Minute), RuleID: "listener:ftp", Severity: event.SeverityMedium,
+			Handler: "ftp", Source: event.Endpoint{IP: "6.6.6.6"}, Dest: event.Endpoint{Port: 21},
+			Anomalies: []string{"honeyfile-download"},
+			Meta: map[string]any{
+				"intent":    "FTP honeyfile download",
+				"retrieved": []any{"/home/admin/id_rsa", "/etc/passwd"},
+			},
+		},
+		{
+			ID: "3", Time: now.Add(2 * time.Minute), RuleID: "listener:ssh", Severity: event.SeverityHigh,
+			Handler: "ssh", Source: event.Endpoint{IP: "6.6.6.6"}, Dest: event.Endpoint{Port: 22},
+			Meta: map[string]any{
+				"scp_mode": "download", "scp_path": "/root/.ssh/id_rsa",
+				"sftp_paths":                 []any{"/etc/shadow"},
+				"ssh_kex_negotiated":         "curve25519-sha256",
+				"ssh_client_openssh_version": "9.6p1",
+				"honeytoken_account":         "svc-backup",
+			},
+		},
+		{
+			ID: "4", Time: now.Add(3 * time.Minute), RuleID: "listener:tftp", Severity: event.SeverityMedium,
+			Handler: "tftp", Source: event.Endpoint{IP: "6.6.6.6"}, Dest: event.Endpoint{Port: 69},
+			Meta: map[string]any{"opcode": "RRQ", "filename": "running-config"},
+		},
+		{
+			ID: "5", Time: now.Add(4 * time.Minute), RuleID: "listener:dns", Severity: event.SeverityHigh,
+			Handler: "dns", Source: event.Endpoint{IP: "6.6.6.6"}, Dest: event.Endpoint{Port: 53},
+			Meta: map[string]any{"zone_transfer_served": true, "qname": "corp.example"},
+		},
+		{
+			ID: "6", Time: now.Add(5 * time.Minute), RuleID: "canary:token_used", Severity: event.SeverityCritical,
+			Handler: "vault", Source: event.Endpoint{IP: "6.6.6.6"},
+			Meta: map[string]any{"reused_cred_key": "vault_token"},
+		},
+	}
+	p := buildProfile("6.6.6.6", evs)
+
+	// Intent aggregated across all events.
+	for _, want := range []string{"SQL injection against the login form", "FTP honeyfile download"} {
+		if !hasStr(p.Intents, want) {
+			t.Errorf("intent missing %q: %v", want, p.Intents)
+		}
+	}
+	// Consolidated attack catalog: webapp:* are attack classes; non-webapp
+	// anomalies are protocol-misuse markers.
+	if !hasStr(p.AttackClasses, "webapp:sqli") {
+		t.Errorf("attack classes missing webapp:sqli: %v", p.AttackClasses)
+	}
+	if !hasStr(p.MisuseAnomalies, "http-method-unknown") {
+		t.Errorf("misuse anomalies missing http-method-unknown: %v", p.MisuseAnomalies)
+	}
+	if hasStr(p.MisuseAnomalies, "webapp:sqli") {
+		t.Errorf("misuse anomalies should exclude webapp:* classes: %v", p.MisuseAnomalies)
+	}
+	// Requested URLs.
+	if !hasStr(p.URLsRequested, "/admin/login.php?id=1") {
+		t.Errorf("requested URLs missing: %v", p.URLsRequested)
+	}
+	// HTTP headers seen.
+	if h := findHeader(p.HTTPHeaders, "user-agent"); h == nil || !hasStr(h.Values, "sqlmap/1.7") {
+		t.Errorf("http header user-agent / value not captured: %+v", p.HTTPHeaders)
+	}
+	// Files downloaded / exfiltrated over every transfer protocol.
+	for _, want := range []FileTaken{
+		{Path: "/home/admin/id_rsa", Method: "ftp"},
+		{Path: "/etc/passwd", Method: "ftp"},
+		{Path: "/root/.ssh/id_rsa", Method: "scp"},
+		{Path: "/etc/shadow", Method: "sftp"},
+		{Path: "running-config", Method: "tftp"},
+		{Path: "corp.example", Method: "dns-axfr"},
+	} {
+		if !hasFile(p.FilesTaken, want.Path, want.Method) {
+			t.Errorf("files taken missing %v: %v", want, p.FilesTaken)
+		}
+	}
+	// Honeytokens served / replayed.
+	for _, want := range []TokenTaken{
+		{Token: "DB_PASS_s3cret", Kind: "honeytoken"},
+		{Token: "svc-backup", Kind: "account"},
+		{Token: "vault_token", Kind: "replayed"},
+	} {
+		if !hasToken(p.Honeytokens, want.Kind, want.Token) {
+			t.Errorf("honeytokens missing %v: %v", want, p.Honeytokens)
+		}
+	}
+	// Per-protocol intelligence (not only TLS): ssh version + negotiated KEX.
+	ssh := findProto(p.Protocols, "ssh")
+	if ssh == nil || !hasStr(ssh.Versions, "ssh_client_openssh_version: 9.6p1") {
+		t.Errorf("ssh protocol version not captured: %+v", ssh)
+	}
+	if ssh == nil || !hasStr(ssh.Details, "ssh_kex_negotiated: curve25519-sha256") {
+		t.Errorf("ssh negotiated KEX not captured: %+v", ssh)
+	}
+	if http := findProto(p.Protocols, "http"); http == nil || !hasStr(http.Versions, "tls_version: TLS 1.2") {
+		t.Errorf("http protocol version not captured: %+v", http)
+	}
+}
+
+func findHeader(hs []HeaderStat, name string) *HeaderStat {
+	for i := range hs {
+		if hs[i].Name == name {
+			return &hs[i]
+		}
+	}
+	return nil
+}
+
+func hasFile(fs []FileTaken, path, method string) bool {
+	for _, f := range fs {
+		if f.Path == path && f.Method == method {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToken(ts []TokenTaken, kind, token string) bool {
+	for _, tk := range ts {
+		if tk.Kind == kind && tk.Token == token {
+			return true
+		}
+	}
+	return false
+}
+
+func findProto(ps []ProtocolUse, name string) *ProtocolUse {
+	for i := range ps {
+		if ps[i].Name == name {
+			return &ps[i]
+		}
+	}
+	return nil
+}
+
 // TestBuildProfilePlaybooks: storyline playbooks attributed to a source are
 // collected onto its profile.
 func TestBuildProfilePlaybooks(t *testing.T) {
