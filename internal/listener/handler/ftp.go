@@ -104,6 +104,15 @@ loop:
 			break
 		}
 		transcript = append(transcript, line...)
+		// ProFTPD's command parser overflows on embedded Telnet IAC (0xff) bytes
+		// in a control line (CVE-2010-4221); a normal FTP command never contains
+		// 0xff, so a run of them is the pre-auth-RCE probe.
+		if strings.Count(line, "\xff") >= 4 {
+			flagAnomaly(&res, "ftp-telnet-iac-overflow")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2010-4221")
+			flagAnomaly(&res, "cve:CVE-2010-4221")
+			res.Meta["intent"] = "FTP Telnet-IAC control-line overflow — ProFTPD pre-auth RCE (CVE-2010-4221)"
+		}
 		cmd, arg := splitFTPCmd(line)
 		if loggedIn && cmd != "" {
 			commands = append(commands, strings.TrimSpace(line))
@@ -112,6 +121,10 @@ loop:
 		switch cmd {
 		case "USER":
 			user = arg
+			if u := strings.ToLower(strings.TrimSpace(arg)); u == "anonymous" || u == "ftp" {
+				flagAnomaly(&res, "ftp-anonymous-login")
+				setIfEmpty(res.Meta, "intent", "anonymous FTP login attempt")
+			}
 			_, _ = conn.Write([]byte("331 Please specify the password.\r\n"))
 		case "PASS":
 			pass = arg
@@ -252,6 +265,12 @@ func (s *ftpSession) closeData() {
 // a PASV data channel. Abusive intents are still flagged for detection; a
 // retrieved bait file raises honeyfile-download; uploads are captured.
 func (s *ftpSession) post(cmd, arg string) {
+	// Path traversal in any path-bearing command (RETR/STOR/CWD/LIST/DELE/…):
+	// `../`, `..\`, or their percent-encodings reaching outside the FTP root.
+	if ftpPathTraversal(arg) {
+		flagAnomaly(s.res, "ftp-path-traversal")
+		setIfEmpty(s.res.Meta, "intent", "FTP path traversal ("+cmd+" "+arg+")")
+	}
 	switch cmd {
 	case "PWD", "XPWD":
 		s.reply(`257 "` + s.cwd + `" is the current directory`)
@@ -304,6 +323,14 @@ func (s *ftpSession) post(cmd, arg string) {
 	case "SITE":
 		// SITE EXEC / SITE CHMOD are classic FTP RCE / privilege primitives.
 		flagAnomaly(s.res, "ftp-site-command")
+		switch sub := strings.ToUpper(strings.Fields(arg + " ")[0]); sub {
+		case "EXEC":
+			flagAnomaly(s.res, "ftp-site-exec")
+			s.res.Meta["intent"] = "FTP SITE EXEC — command execution attempt"
+		case "CHMOD":
+			flagAnomaly(s.res, "ftp-site-chmod")
+			setIfEmpty(s.res.Meta, "intent", "FTP SITE CHMOD — permission change (drop+exec setup)")
+		}
 		s.reply("500 Unknown SITE command.")
 	case "SIZE":
 		if file, ok := s.files.Lookup(s.cwd, arg); ok {
@@ -574,4 +601,13 @@ func readFTPLine(br *bufio.Reader, cap int) (string, error) {
 		}
 	}
 	return buf.String(), nil
+}
+
+// ftpPathTraversal reports whether an FTP command argument attempts directory
+// traversal outside the server root (raw or percent-encoded).
+func ftpPathTraversal(arg string) bool {
+	l := strings.ToLower(arg)
+	return strings.Contains(l, "../") || strings.Contains(l, "..\\") ||
+		strings.Contains(l, "..%2f") || strings.Contains(l, "..%5c") ||
+		strings.Contains(l, "%2e%2e/") || strings.Contains(l, "%2e%2e%2f")
 }

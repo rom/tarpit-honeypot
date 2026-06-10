@@ -847,6 +847,12 @@ var anomalyTags = map[string]Tag{
 	"telnet-env-injection":    {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
 	"telnet-mirai-credential": {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
 	"telnet-busybox-probe":    {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	// FTP second-pass: traversal, ProFTPD IAC overflow, anon login, SITE exec.
+	"ftp-path-traversal":      {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"ftp-telnet-iac-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ftp-anonymous-login":     {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"ftp-site-exec":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"ftp-site-chmod":          {Techniques: []string{"T1222"}, Tactics: []string{"defense-evasion"}},
 	// SMB second-pass structural exploits + NTLM downgrade.
 	"smb-compression-capabilities": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
 	"smb-compression-transform":    {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
@@ -1320,6 +1326,7 @@ var d3fend = map[string][]string{
 	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
 	"T1574": {"D3-EAL", "D3-FH"},                    // hijack execution flow (LD_PRELOAD / search_path)
 	"T1589": {"D3-NTA", "D3-DNR"},                   // gather victim identity info (RDP mstshash username harvest)
+	"T1222": {"D3-FH", "D3-DF"},                     // file/directory permissions modification (FTP SITE CHMOD)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery
