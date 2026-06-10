@@ -31,20 +31,21 @@ const (
 )
 
 type snmpInspection struct {
-	Version       int    // 0=v1, 1=v2c, 3=v3, -1=unknown/unparseable
-	Community     string // v1/v2c only
-	V3User        string // v3 msgUserName
-	PDUType       byte   // 0 if not reached
-	IsInform      bool
-	IsTrap        bool
-	EnterpriseOID string // v1 trap enterprise
-	GenericTrap   int    // v1 trap generic-trap (-1 if n/a)
-	SpecificTrap  int    // v1 trap specific-trap
-	VarbindCount  int
-	VarbindOIDs   []string
-	PDUTagOffset  int      // absolute offset of the PDU type tag (-1 if not found)
-	Anomalies     []string // structural anomaly markers (no "snmp-" caller prefix needed)
-	CVEs          []string // Cisco SNMP RCE-class CVE ids matched
+	Version        int    // 0=v1, 1=v2c, 3=v3, -1=unknown/unparseable
+	Community      string // v1/v2c only
+	V3User         string // v3 msgUserName
+	PDUType        byte   // 0 if not reached
+	IsInform       bool
+	IsTrap         bool
+	EnterpriseOID  string // v1 trap enterprise
+	GenericTrap    int    // v1 trap generic-trap (-1 if n/a)
+	SpecificTrap   int    // v1 trap specific-trap
+	VarbindCount   int
+	VarbindOIDs    []string
+	VarbindStrings []string // captured OCTET STRING varbind values (trap injection scan)
+	PDUTagOffset   int      // absolute offset of the PDU type tag (-1 if not found)
+	Anomalies      []string // structural anomaly markers (no "snmp-" caller prefix needed)
+	CVEs           []string // Cisco SNMP RCE-class CVE ids matched
 }
 
 // applySNMPInspect merges a tolerant inspection's structural anomaly markers
@@ -308,8 +309,8 @@ func inspectVarbinds(b []byte, off, end int, in *snmpInspection, addAnom func(st
 		if in.VarbindCount > snmpMaxVarbinds {
 			addAnom("snmp-varbind-flood")
 		}
-		// First field of the varbind is the name OID.
-		ot, oo, ol, _, ok := berField(b, o)
+		// First field of the varbind is the name OID; the second is the value.
+		ot, oo, ol, oNext, ok := berField(b, o)
 		if ok && ot == 0x06 && oo+ol <= len(b) {
 			oid, arcs := decodeOID(b[oo : oo+ol])
 			if len(in.VarbindOIDs) < 16 {
@@ -317,6 +318,12 @@ func inspectVarbinds(b []byte, off, end int, in *snmpInspection, addAnom func(st
 			}
 			if arcs > snmpMaxOIDArcs || ol > snmpMaxOIDBytes {
 				addAnom("snmp-oversized-oid")
+			}
+			// Capture OCTET STRING values: a trap whose varbind text carries
+			// shell metacharacters or CRLF is a traphandle-injection / log-
+			// injection attempt against the receiver (snmptrapd / SIEM).
+			if vt, vo, vl, _, vok := berField(b, oNext); vok && vt == 0x04 && vo+vl <= len(b) && len(in.VarbindStrings) < 8 {
+				in.VarbindStrings = append(in.VarbindStrings, string(b[vo:vo+vl]))
 			}
 		}
 		off = n

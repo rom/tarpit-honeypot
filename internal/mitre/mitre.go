@@ -520,9 +520,20 @@ var anomalyTags = map[string]Tag{
 	// Default community ("public"/"private") = a weak/guessed credential.
 	"snmp-default-community": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access", "defense-evasion"}},
 	// SNMP CISCO-CONFIG-COPY-MIB access = exfiltrate/overwrite the running config.
-	"snmp-config-exfil":     {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
-	"smtp-open-relay-probe": {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
-	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"snmp-config-exfil": {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
+	// SNMP SET-target classification + sensitive reads + v3 USM enum.
+	"snmp-extend-exec":        {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"snmp-interface-shutdown": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmp-identity-rewrite":   {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmp-sensitive-oid-read": {Techniques: []string{"T1602"}, Tactics: []string{"collection"}},
+	"snmp-v3-user-enum":       {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	// SNMP trap (162) injection / receiver abuse.
+	"snmptrap-injection":            {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmptrap-default-community":    {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
+	"snmptrap-traphandle-injection": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"snmptrap-log-injection":        {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"smtp-open-relay-probe":         {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration":         {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
 	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
 	// Encrypted-DNS channels (DoH / DoT / DNSCrypt) = DNS tunnelled inside

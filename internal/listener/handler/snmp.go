@@ -165,6 +165,18 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 	// decoded cleanly (a crafted-but-valid-framing exploit OID).
 	applySNMPInspect(&res, inspectSNMP(payload))
 
+	// SNMPv3 USM: the act of presenting (or probing) a security name is
+	// username enumeration / engine discovery — there is no legitimate reason
+	// for an external party to USM-probe a decoy.
+	if pkt.Version == g.Version3 {
+		flagAnomaly(&res, "snmp-v3-user-enum")
+		if u, _ := res.Meta["snmp_v3_user"].(string); u == "" {
+			res.Meta["intent"] = "SNMPv3 engine-discovery probe (empty USM user)"
+		} else {
+			setIfEmpty(res.Meta, "intent", "SNMPv3 USM username enumeration / auth probe")
+		}
+	}
+
 	// Protocol-misuse detection. An SNMP SetRequest is an attempt to
 	// *write* the device's configuration — flip an interface, rewrite an
 	// ACL, or trigger a running-config copy to an attacker TFTP server.
@@ -180,8 +192,22 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 			sets := make([]string, 0, len(pkt.Variables))
 			for _, v := range pkt.Variables {
 				sets = append(sets, v.Name+"="+snmpValueString(v))
+				classifySNMPSetTarget(&res, v.Name)
 			}
 			res.Meta["snmp_set"] = sets
+		}
+	}
+
+	// Reading a sensitive MIB table (process list, routing/ARP/TCP tables) is
+	// host/network reconnaissance even on a read PDU with a valid community.
+	if pkt.PDUType == g.GetRequest || pkt.PDUType == g.GetNextRequest || pkt.PDUType == g.GetBulkRequest {
+		for _, v := range pkt.Variables {
+			if what := snmpSensitiveOID(v.Name); what != "" {
+				flagAnomaly(&res, "snmp-sensitive-oid-read")
+				res.Meta["snmp_sensitive_oid"] = what
+				setIfEmpty(res.Meta, "intent", "SNMP sensitive-table read — "+what)
+				break
+			}
 		}
 	}
 
@@ -195,7 +221,7 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 	// Default community strings are the first credential a scanner tries —
 	// worth surfacing as a (weak) captured credential.
 	defaultCommunity := false
-	if c := pkt.Community; c == "public" || c == "private" || c == "PUBLIC" || c == "PRIVATE" {
+	if snmpIsDefaultCommunity(pkt.Community) {
 		res.Meta["snmp_default_community"] = true
 		defaultCommunity = true
 		flagAnomaly(&res, "snmp-default-community")
@@ -241,7 +267,9 @@ func (s *snmp) Handle(ctx context.Context, payload []byte, src net.Addr, pc net.
 		if defaultCommunity {
 			intent += " (default community '" + pkt.Community + "')"
 		}
-		res.Meta["intent"] = intent
+		// setIfEmpty so the more specific SET-target / sensitive-read / v3 intents
+		// set above win over this generic per-PDU label.
+		setIfEmpty(res.Meta, "intent", intent)
 	}
 
 	// Only reply to Get / GetNext / GetBulk. Traps/responses (and the
@@ -428,6 +456,56 @@ func snmpValueString(v g.SnmpPDU) string {
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// snmpDefaultCommunities is the wordlist a scanner sprays first. Matched
+// case-insensitively. Reaching a decoy with any of these is a credential
+// guess, not just the canonical public/private pair.
+var snmpDefaultCommunities = map[string]bool{
+	"public": true, "private": true, "cisco": true, "ilmi": true, "secret": true,
+	"admin": true, "read": true, "write": true, "snmpd": true, "community": true,
+	"manager": true, "default": true, "monitor": true, "security": true, "0": true,
+	"readwrite": true, "all private": true, "all public": true, "snmp": true,
+}
+
+func snmpIsDefaultCommunity(c string) bool {
+	return snmpDefaultCommunities[strings.ToLower(strings.TrimSpace(c))]
+}
+
+// classifySNMPSetTarget flags high-signal SetRequest targets: command execution
+// via the NET-SNMP-EXTEND-MIB (CVE-2020-15862), interface enable/disable, and
+// device-identity rewrites — beyond the generic snmp-set-attempt marker.
+func classifySNMPSetTarget(res *Result, oid string) {
+	switch {
+	case strings.Contains(oid, "1.3.6.1.4.1.8072.1.3.2"): // NET-SNMP-EXTEND-MIB nsExtendObjects
+		flagAnomaly(res, "snmp-extend-exec")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2020-15862")
+		flagAnomaly(res, "cve:CVE-2020-15862")
+		res.Meta["intent"] = "SNMP SET to NET-SNMP-EXTEND-MIB — arbitrary command execution (CVE-2020-15862)"
+	case strings.Contains(oid, "1.3.6.1.2.1.2.2.1.7"): // ifAdminStatus
+		flagAnomaly(res, "snmp-interface-shutdown")
+		res.Meta["intent"] = "SNMP SET ifAdminStatus — interface enable/disable (control manipulation)"
+	case strings.Contains(oid, "1.3.6.1.2.1.1.4"), strings.Contains(oid, "1.3.6.1.2.1.1.5"), strings.Contains(oid, "1.3.6.1.2.1.1.6"): // sysContact/sysName/sysLocation
+		flagAnomaly(res, "snmp-identity-rewrite")
+		res.Meta["intent"] = "SNMP SET sysName/sysContact/sysLocation — device identity rewrite"
+	}
+}
+
+// snmpSensitiveOID names the sensitive MIB table an OID targets, or "".
+func snmpSensitiveOID(oid string) string {
+	switch {
+	case strings.Contains(oid, "1.3.6.1.2.1.25.4.2.1.2"):
+		return "process list (hrSWRunName)"
+	case strings.Contains(oid, "1.3.6.1.2.1.25.6.3.1.2"):
+		return "installed software (hrSWInstalledName)"
+	case strings.Contains(oid, "1.3.6.1.2.1.4.21"):
+		return "routing table (ipRouteTable)"
+	case strings.Contains(oid, "1.3.6.1.2.1.4.22"), strings.Contains(oid, "1.3.6.1.2.1.4.35"):
+		return "ARP table (ipNetToMediaTable)"
+	case strings.Contains(oid, "1.3.6.1.2.1.6.13"), strings.Contains(oid, "1.3.6.1.2.1.6.19"):
+		return "TCP connection table (tcpConnTable)"
+	}
+	return ""
 }
 
 func versionName(v g.SnmpVersion) string {
