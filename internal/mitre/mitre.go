@@ -527,6 +527,7 @@ var anomalyTags = map[string]Tag{
 	"snmp-identity-rewrite":   {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
 	"snmp-sensitive-oid-read": {Techniques: []string{"T1602"}, Tactics: []string{"collection"}},
 	"snmp-v3-user-enum":       {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"snmp-device-control":     {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
 	// SNMP trap (162) injection / receiver abuse.
 	"snmptrap-injection":            {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
 	"snmptrap-default-community":    {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
@@ -821,6 +822,7 @@ var anomalyTags = map[string]Tag{
 	"ntp-crypto-nak":            {Techniques: []string{"T1070.006"}, Tactics: []string{"defense-evasion"}},
 	"ntp-autokey-extension":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"ntp-rogue-association":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ntp-mode7-config":          {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
 	// chrony cmdmon (UDP 323) control-channel reconnaissance and manipulation.
 	"chrony-cmdmon-probe":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"chrony-cmdmon-recon":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
@@ -840,6 +842,9 @@ var anomalyTags = map[string]Tag{
 	"dns-ecs-subnet":             {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
 	"dns-embedded-ip-rebind":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"dns-malformed-query":        {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-server-id-probe":        {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"dns-punycode-label":         {Techniques: []string{"T1583.001"}, Tactics: []string{"resource-development"}},
+	"dns-metadata-rebind":        {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	// Telnet second-pass: ENCRYPT/AUTH overflow, IAC fuzzing, env injection,
 	// Mirai-class default creds + busybox loader probe.
 	"telnet-encrypt-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},

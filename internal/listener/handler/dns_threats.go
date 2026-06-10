@@ -98,8 +98,14 @@ func dnsIntent(res *Result) string {
 		return "DNS out-of-band interaction — SSRF/RCE callback / blind-exploit confirmation"
 	case any("dns-any-amplification", "dns-dnssec-amplification", "dns-edns-large-udpsize", "dns-largeset-amplification"):
 		return "DNS amplification — staging a DRDoS reflector"
+	case any("dns-metadata-rebind"):
+		return "DNS rebinding to cloud-metadata/link-local — SSRF-to-metadata pivot"
 	case any("dns-rebind-lookup", "dns-embedded-ip-rebind"):
 		return "DNS rebinding lookup — browser SOP bypass setup"
+	case any("dns-server-id-probe"):
+		return "DNS server-identity probe (version.bind / id.server)"
+	case any("dns-punycode-label"):
+		return "DNS punycode/IDN lookup — homograph / phishing domain"
 	case any("dns-0x20-encoding"):
 		return "DNS 0x20 mixed-case query — cache-poisoning / spoofing probe"
 	case any("dns-ecs-subnet"):
@@ -171,6 +177,10 @@ func dnsThreatMarkers(msg []byte, q dnsQuery) []string {
 	}
 	if q.qclass == 3 { // CHAOS — server-identity recon/leak (version.bind family)
 		add("dns-chaos-class")
+		if n := strings.ToLower(name); n == "version.bind" || n == "hostname.bind" ||
+			n == "id.server" || n == "version.server" || n == "authors.bind" {
+			add("dns-server-id-probe") // version.bind / id.server software-version leak
+		}
 	}
 
 	// --- qtype-driven recon / DNSSEC / service binding / tunnelling ---
@@ -225,6 +235,19 @@ func dnsThreatMarkers(msg []byte, q dnsQuery) []string {
 	}
 	if dnsEmbeddedIPLabel(labels) {
 		add("dns-embedded-ip-rebind") // a literal IP encoded in a label (1-2-3-4 / 0x…)
+	}
+	// A rebinding name resolving to a cloud-metadata / link-local address is an
+	// SSRF-to-metadata pivot (169.254.169.254, Alibaba 100.100.100.200).
+	if strings.Contains(name, "169-254-169-254") || strings.Contains(name, "169.254.169.254") ||
+		strings.Contains(name, "100-100-100-200") || strings.Contains(name, "metadata.google") {
+		add("dns-metadata-rebind")
+	}
+	// A punycode/IDN label (xn--) in a lookup is a homograph / phishing-domain tell.
+	for _, l := range labels {
+		if strings.HasPrefix(l, "xn--") {
+			add("dns-punycode-label")
+			break
+		}
 	}
 	if dnsMixedCaseQName(msg, q.questionEnd) {
 		add("dns-0x20-encoding") // mixed-case QNAME — 0x20 anti-/cache-poison probe

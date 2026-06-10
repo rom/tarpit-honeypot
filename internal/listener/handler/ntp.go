@@ -73,6 +73,14 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			res.Meta["ntp_impl"] = payload[2]
 			rc := payload[3]
 			res.Meta["ntp_request_code"] = rc
+			// The auth bit (top bit of byte 1) marks a privileged ntpdc command
+			// (the set/config/reset request codes are authenticated). An inbound
+			// authenticated mode-7 request is an attempt at runtime
+			// reconfiguration of the time service, not mere recon.
+			if payload[1]&0x80 != 0 {
+				flagAnomaly(&res, "ntp-mode7-config")
+				res.Meta["intent"] = "NTP mode-7 authenticated (privileged) ntpdc command — runtime reconfiguration"
+			}
 			switch rc {
 			case 20, 42:
 				// The classic NTP monlist DRDoS reflector (huge amplification).

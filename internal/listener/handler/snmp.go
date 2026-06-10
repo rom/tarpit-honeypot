@@ -488,6 +488,15 @@ func classifySNMPSetTarget(res *Result, oid string) {
 	case strings.Contains(oid, "1.3.6.1.2.1.1.4"), strings.Contains(oid, "1.3.6.1.2.1.1.5"), strings.Contains(oid, "1.3.6.1.2.1.1.6"): // sysContact/sysName/sysLocation
 		flagAnomaly(res, "snmp-identity-rewrite")
 		res.Meta["intent"] = "SNMP SET sysName/sysContact/sysLocation — device identity rewrite"
+	case strings.Contains(oid, "1.3.6.1.2.1.43"): // Printer-MIB
+		flagAnomaly(res, "snmp-device-control")
+		res.Meta["intent"] = "SNMP SET to Printer-MIB — printer control/tampering"
+	case strings.Contains(oid, "1.3.6.1.2.1.33"): // UPS-MIB (upsControl)
+		flagAnomaly(res, "snmp-device-control")
+		res.Meta["intent"] = "SNMP SET to UPS-MIB — power/UPS control (potential shutdown)"
+	case strings.Contains(oid, "1.3.6.1.2.1.17"): // dot1dBridge
+		flagAnomaly(res, "snmp-device-control")
+		res.Meta["intent"] = "SNMP SET to BRIDGE-MIB — switch forwarding/VLAN tampering"
 	}
 }
 
