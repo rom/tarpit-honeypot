@@ -357,6 +357,13 @@ func captureNetNTLM(source string, msg, serverChallenge []byte, res *Result) {
 	if u == "" {
 		u = "(null)"
 	}
+	// An AUTHENTICATE with no user and no NT/LM response is an anonymous / null
+	// session — classic pre-auth share/IPC$ enumeration.
+	if user == "" && len(ntResp) == 0 && len(lmResp) <= 1 {
+		flagAnomaly(res, source+"-null-session")
+		setIfEmpty(res.Meta, "intent", "SMB anonymous/null session — pre-auth share/IPC$ enumeration")
+		return
+	}
 	switch {
 	case len(ntResp) == 24:
 		// NetNTLMv1 (or the ESS / NTLM2 session-response variant). A v1 response

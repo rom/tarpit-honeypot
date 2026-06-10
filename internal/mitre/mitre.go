@@ -908,6 +908,15 @@ var anomalyTags = map[string]Tag{
 	"smb-smbloris":                 {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	"smb-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"rdp-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	// Pass-3 additions (SMB/telnet/RDP/FTP/SSH).
+	"smb-v1-negotiation":         {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-null-session":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"telnet-device-backdoor":     {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"telnet-login-cmd-injection": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"rdp-routing-token":          {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
+	"ftp-brute-force":            {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ssh-x11-forward":            {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-agent-forward":          {Techniques: []string{"T1563.001"}, Tactics: []string{"lateral-movement"}},
 	// RDP second-pass: mstshash username harvest + NLA/CredSSP downgrade.
 	"rdp-username-harvest": {Techniques: []string{"T1589.001"}, Tactics: []string{"reconnaissance"}},
 	"rdp-nla-downgrade":    {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
@@ -1374,6 +1383,7 @@ var d3fend = map[string][]string{
 	"T1589": {"D3-NTA", "D3-DNR"},                   // gather victim identity info (RDP mstshash username harvest)
 	"T1222": {"D3-FH", "D3-DF"},                     // file/directory permissions modification (FTP SITE CHMOD)
 	"T1112": {"D3-FH", "D3-NTA"},                    // modify registry (MSSQL xp_regwrite)
+	"T1563": {"D3-NTA", "D3-MFA"},                   // remote service session hijack (SSH agent forwarding)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

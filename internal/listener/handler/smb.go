@@ -141,6 +141,11 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		cursor = end + 1
 	}
 	res.Meta["dialects"] = dialects
+	// A client negotiating SMB1 at all is speaking a protocol disabled on modern
+	// Windows — a legacy/downgrade posture (and the EternalBlue/MS17-010
+	// precondition).
+	flagAnomaly(&res, "smb-v1-negotiation")
+	setIfEmpty(res.Meta, "intent", "SMBv1 negotiation — legacy/downgrade dialect (MS17-010 precondition)")
 
 	// Pick the index of "NT LM 0.12" if offered, else the last dialect.
 	chosen := -1

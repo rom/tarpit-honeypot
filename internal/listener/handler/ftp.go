@@ -129,6 +129,10 @@ loop:
 		case "PASS":
 			pass = arg
 			passAttempts++
+			if passAttempts >= 3 {
+				flagAnomaly(&res, "ftp-brute-force")
+				setIfEmpty(res.Meta, "intent", "FTP in-session credential brute force")
+			}
 			// First attempt fails (we capture the credential); a retry is
 			// accepted so the session continues and post-auth TTPs surface.
 			if passAttempts == 1 {

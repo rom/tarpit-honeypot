@@ -272,6 +272,20 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 	safego.Run("ssh_interactive.session_reqs", func() {
 		for req := range reqs {
 			switch req.Type {
+			case "x11-req":
+				// X11 forwarding request — GUI tunneling / pivot intent.
+				flagAnomaly(res, "ssh-x11-forward")
+				setIfEmpty(res.Meta, "intent", "SSH X11 forwarding requested — tunneling / pivot")
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
+			case "auth-agent-req@openssh.com":
+				// Agent forwarding — credential-theft / lateral-movement primitive.
+				flagAnomaly(res, "ssh-agent-forward")
+				setIfEmpty(res.Meta, "intent", "SSH agent forwarding requested — credential theft / lateral movement")
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
 			case "pty-req":
 				if req.WantReply {
 					_ = req.Reply(true, nil)

@@ -110,6 +110,14 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		flagAnomaly(&res, "telnet-busybox-probe")
 		res.Meta["intent"] = "telnet busybox/system command-injection probe (IoT botnet loader)"
 	}
+	if telnetDeviceBackdoor(user, pass) {
+		flagAnomaly(&res, "telnet-device-backdoor")
+		res.Meta["intent"] = "telnet vendor-backdoor credential / magic string"
+	}
+	if telnetLoginCmdInjection(user) || telnetLoginCmdInjection(pass) {
+		flagAnomaly(&res, "telnet-login-cmd-injection")
+		setIfEmpty(res.Meta, "intent", "telnet command injection in the login field")
+	}
 	if hasNonPrintable(user) || hasNonPrintable(pass) {
 		flagAnomaly(&res, "telnet-credential-non-printable")
 	}
@@ -508,4 +516,35 @@ func telnetBusyboxProbe(s string) bool {
 		return true
 	}
 	return false
+}
+
+// telnetDeviceBackdoor reports whether a credential / token matches a known
+// embedded-device telnet backdoor (vendor magic strings + hardcoded creds).
+func telnetDeviceBackdoor(user, pass string) bool {
+	u, p := strings.ToLower(user), strings.ToLower(pass)
+	// D-Link web backdoor UA reversed, and well-known hardcoded device creds.
+	tokens := []string{"xmlset_roodkcableoj28840ybtide", "<<< %s(un='%s') = %u"}
+	for _, tk := range tokens {
+		if strings.Contains(u, tk) || strings.Contains(p, tk) {
+			return true
+		}
+	}
+	type cred struct{ u, p string }
+	backdoors := []cred{
+		{"root", "antslq"}, {"root", "Zte521"}, {"admin", "CenturyL1nk"}, {"root", "5up"},
+		{"e8telnet", "e8telnet"}, {"root", "bldms"}, {"telecomadmin", "admintelecom"},
+		{"root", "kj16d8x9k3"}, {"root", "OxhlwSG8"}, {"root", "GM8182"},
+	}
+	for _, c := range backdoors {
+		if u == c.u && p == c.p {
+			return true
+		}
+	}
+	return false
+}
+
+// telnetLoginCmdInjection reports whether a login field carries shell
+// command-injection metacharacters (device "command without auth" backdoors).
+func telnetLoginCmdInjection(s string) bool {
+	return strings.ContainsAny(s, ";|&") && strings.ContainsAny(s, "`$(/")
 }

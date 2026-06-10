@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -89,10 +90,17 @@ func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		variable := body[7:]
 		if cookie := extractCookie(variable); cookie != "" {
 			res.Meta["cookie"] = cookie
-			// mstshash carries the username the client is targeting — credential
-			// reconnaissance even before any auth.
-			flagAnomaly(&res, "rdp-username-harvest")
-			res.Meta["intent"] = "RDP username harvest via mstshash cookie (" + cookie + ")"
+			if strings.HasPrefix(strings.ToLower(cookie), "msts=") {
+				// "Cookie: msts=..." is the RD load-balancer routing token —
+				// reveals target collection/host routing, not a username.
+				flagAnomaly(&res, "rdp-routing-token")
+				setIfEmpty(res.Meta, "intent", "RDP load-balancer routing token (msts=) — backend routing recon")
+			} else {
+				// mstshash carries the username the client is targeting —
+				// credential reconnaissance even before any auth.
+				flagAnomaly(&res, "rdp-username-harvest")
+				res.Meta["intent"] = "RDP username harvest via mstshash cookie (" + cookie + ")"
+			}
 		}
 		if negReq := findNegReq(variable); negReq != nil {
 			nr := describeNegReq(negReq)
