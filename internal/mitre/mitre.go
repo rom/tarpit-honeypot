@@ -905,6 +905,11 @@ var anomalyTags = map[string]Tag{
 	// Management: IPMI auth-bypass + RAKP hash disclosure.
 	"ipmi-cipher-zero-auth-bypass": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"ipmi-rakp-hash-disclosure":    {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	// WinRM / vmware_authd cleartext credential exposure; BACnet priority override.
+	"winrm-basic-cleartext":        {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
+	"vmware-authd-cleartext-creds": {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
+	"bacnet-write-multiple":        {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
+	"bacnet-priority-override":     {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
 	// SSH second-pass: Terrapin, null cipher, tunneling, env Shellshock.
 	"ssh-terrapin-vulnerable": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"ssh-none-cipher":         {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},

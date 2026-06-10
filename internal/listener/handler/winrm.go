@@ -101,6 +101,10 @@ func winrmFlagBasic(res *Result) {
 	}
 	p, _ := res.Meta["basic_pass"].(string)
 	flagDefaultCred(res, u, p)
+	// Basic auth on the plaintext WinRM listener means AllowUnencrypted is on —
+	// the credentials cross the wire in (base64) cleartext, sniffable.
+	flagAnomaly(res, "winrm-basic-cleartext")
+	setIfEmpty(res.Meta, "intent", "WinRM HTTP Basic auth — cleartext credential exposure (AllowUnencrypted)")
 }
 
 // readHTTPHead reads an HTTP request head (through the blank CRLFCRLF line),

@@ -60,6 +60,12 @@ func (v *vmwareAuthd) Handle(_ context.Context, conn net.Conn, cfg config.Listen
 	res.Meta["pass"] = safe.SanitizeForLog(strings.TrimSpace(pass))
 	flagDefaultCred(&res, strings.TrimSpace(user), strings.TrimSpace(pass))
 	flagAnomaly(&res, "vmware-authd-login")
+	// The daemon banner says "SSL Required"; a client that submits USER/PASS in
+	// plaintext (no SSL upgrade) exposes the ESXi/vCenter credentials in the clear.
+	if strings.TrimSpace(user) != "" && strings.TrimSpace(pass) != "" {
+		flagAnomaly(&res, "vmware-authd-cleartext-creds")
+		res.Meta["intent"] = "VMware authd credentials sent without SSL — cleartext credential exposure"
+	}
 	return res, nil
 }
 
