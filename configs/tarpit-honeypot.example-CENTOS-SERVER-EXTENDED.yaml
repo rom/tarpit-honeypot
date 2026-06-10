@@ -247,6 +247,12 @@ listeners:
   # vectors — MONLIST (CVE-2013-5211), mode-6/mode-7 control & private queries. ---
   - { id: ntp, proto: udp, bind: "[::]:123", mode: banner, handler: ntp, severity: medium, capture: true }
 
+  # --- chrony cmdmon (UDP 323). CentOS 7+/RHEL default time daemon; chronyc's
+  # control channel. Normally loopback-only — a remote speaker is recon/control
+  # of the host clock. Classifies read vs clock/source/access manipulation,
+  # flags CVE-2012-4502/4503, and is reflection-safe (rate-limited NoHostAccess). ---
+  - { id: chronyd, proto: udp, bind: "[::]:323", mode: banner, handler: chronyd, severity: medium, capture: true }
+
   # --- SMB/CIFS: Samba file sharing (445). SMB1/2/3 negotiate + session setup,
   # NTLMSSP challenge/response capture, and EternalBlue-class probe recognition. ---
   - { id: smb, proto: tcp, bind: "[::]:445", mode: banner, handler: smb, severity: high, capture: true }
@@ -316,6 +322,7 @@ honeynets:
           - { port: 995,   handler: pop3s }
           - { port: 53,    handler: dns }
           - { port: 123,   handler: ntp }
+          - { port: 323,   handler: chronyd }
           - { port: 21,    handler: ftp_files }
           - { port: 990,   handler: ftps }
           - { port: 161,   handler: snmp }

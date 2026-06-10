@@ -70,7 +70,7 @@ var tcpHandlers = map[string]bool{
 }
 
 var udpHandlers = map[string]bool{
-	"raw": true, "snmp": true, "snmptrap": true, "ntp": true,
+	"raw": true, "snmp": true, "snmptrap": true, "ntp": true, "chronyd": true,
 	"bacnet": true, "tftp": true, "ipmi": true,
 	"syslog_udp": true, "radius": true, "sip": true,
 	"ssdp": true, "cldap": true, "llmnr": true, "nbns": true,

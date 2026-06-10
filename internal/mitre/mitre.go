@@ -805,6 +805,14 @@ var anomalyTags = map[string]Tag{
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-mode7-private":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-nonclient-mode":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// chrony cmdmon (UDP 323) control-channel reconnaissance and manipulation.
+	"chrony-cmdmon-probe":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"chrony-cmdmon-recon":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"chrony-cmdmon-malformed":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"chrony-clock-manipulation":    {Techniques: []string{"T1070.006"}, Tactics: []string{"defense-evasion"}},
+	"chrony-source-manipulation":   {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"chrony-access-control-change": {Techniques: []string{"T1562.001"}, Tactics: []string{"defense-evasion"}},
+	"chrony-service-control":       {Techniques: []string{"T1489"}, Tactics: []string{"impact"}},
 	// DNS SIG / TKEY exploit-probe qtypes (SIGRed / BIND TKEY DoS).
 	"dns-sig-query":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dns-tkey-query": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
@@ -1264,6 +1272,7 @@ var d3fend = map[string][]string{
 	"T1649": {"D3-MFA", "D3-DE"},                    // steal or forge authentication certificates
 	"T1498": {"D3-ITF"},                             // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
+	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

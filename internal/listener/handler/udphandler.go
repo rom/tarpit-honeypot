@@ -80,6 +80,8 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &snmptrap{lim: newUDPReflectLimiter()}, nil
 	case "ntp":
 		return &ntp{lim: newUDPReflectLimiter(), id: deps.Identity}, nil
+	case "chronyd":
+		return &chronyd{lim: newUDPReflectLimiter(), id: deps.Identity}, nil
 	case "bacnet":
 		return &bacnet{}, nil
 	case "tftp":
