@@ -220,6 +220,12 @@ func classifyTSQL(res *Result, sql string) {
 		setIfEmpty(res.Meta, "intent", "MSSQL BULK INSERT — arbitrary file read")
 	case strings.Contains(l, "xp_regread") || strings.Contains(l, "xp_regwrite"):
 		flagAnomaly(res, "mssql-registry-access")
+	case strings.Contains(l, "sp_add_job") || strings.Contains(l, "sp_add_jobstep") || strings.Contains(l, "cmdexec"):
+		flagAnomaly(res, "mssql-agent-job")
+		res.Meta["intent"] = "MSSQL Agent job (CmdExec/PowerShell step) — persistence / execution"
+	case strings.Contains(l, "execute as login") || strings.Contains(l, "execute as user"):
+		flagAnomaly(res, "mssql-impersonation")
+		res.Meta["intent"] = "MSSQL EXECUTE AS — privilege escalation via impersonation"
 	case sqlLooksInjection(l):
 		flagAnomaly(res, "mssql-sqli-probe")
 	}

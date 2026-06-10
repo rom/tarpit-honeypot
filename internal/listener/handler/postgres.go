@@ -261,6 +261,12 @@ func classifyPostgresQuery(res *Result, q string) {
 		flagAnomaly(res, "postgres-searchpath-hijack")
 		res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-1058")
 		flagAnomaly(res, "cve:CVE-2018-1058")
+	case strings.Contains(l, "create extension"):
+		flagAnomaly(res, "postgres-create-extension")
+		setIfEmpty(res.Meta, "intent", "PostgreSQL CREATE EXTENSION — loading an extension (adminpack / untrusted PL)")
+	case strings.Contains(l, "alter system"):
+		flagAnomaly(res, "postgres-alter-system")
+		res.Meta["intent"] = "PostgreSQL ALTER SYSTEM — server configuration write"
 	case sqlLooksInjection(l):
 		flagAnomaly(res, "postgres-sqli-probe")
 		setIfEmpty(res.Meta, "intent", "PostgreSQL SQL-injection probe")

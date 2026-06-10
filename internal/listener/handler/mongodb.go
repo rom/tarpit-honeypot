@@ -239,8 +239,11 @@ func mongoAbuse(cmd string) string {
 		// READ__ME ransom-note collection.
 		return "mongodb-write-or-ransom"
 	case "usersinfo", "rolesinfo", "createuser", "getparameter", "serverstatus",
-		"connpoolstats", "connectionstatus", "currentop", "hostinfo":
+		"connpoolstats", "connectionstatus", "currentop", "hostinfo", "getlog",
+		"replsetgetconfig", "replsetgetstatus", "replsetinitiate":
 		return "mongodb-admin-enum"
+	case "copydb", "clone", "clonecollection":
+		return "mongodb-data-clone"
 	}
 	return ""
 }
@@ -367,6 +370,14 @@ func mongoDeepScan(res *Result, body []byte) {
 		bytes.Contains(body, []byte("$accumulator")) {
 		flagAnomaly(res, "mongodb-server-side-js")
 		res.Meta["intent"] = "MongoDB server-side JavaScript ($where / $function) — code execution"
+	}
+	if bytes.Contains(body, []byte("$out")) || bytes.Contains(body, []byte("$merge")) || bytes.Contains(body, []byte("$lookup")) {
+		flagAnomaly(res, "mongodb-pipeline-exfil")
+		setIfEmpty(res.Meta, "intent", "MongoDB $out/$merge/$lookup — cross-collection exfil / overwrite")
+	}
+	if bytes.Contains(body, []byte("fs.chunks")) || bytes.Contains(body, []byte("fs.files")) {
+		flagAnomaly(res, "mongodb-gridfs-access")
+		setIfEmpty(res.Meta, "intent", "MongoDB GridFS access — stored-file extraction")
 	}
 	for _, op := range [][]byte{[]byte("$ne"), []byte("$gt"), []byte("$gte"), []byte("$lt"),
 		[]byte("$regex"), []byte("$expr"), []byte("$in")} {

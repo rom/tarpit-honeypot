@@ -887,6 +887,20 @@ var anomalyTags = map[string]Tag{
 	"postgres-dblink-ssrf":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"postgres-searchpath-hijack": {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
 	"postgres-sqli-probe":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// DB pass-3 additions.
+	"mysql-auth-downgrade":      {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"mysql-load-data-local":     {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"mysql-replication":         {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"mysql-recon-query":         {Techniques: []string{"T1082"}, Tactics: []string{"discovery"}},
+	"mssql-agent-job":           {Techniques: []string{"T1053.005"}, Tactics: []string{"persistence"}},
+	"mssql-impersonation":       {Techniques: []string{"T1134"}, Tactics: []string{"privilege-escalation"}},
+	"postgres-create-extension": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"postgres-alter-system":     {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"redis-acl-backdoor":        {Techniques: []string{"T1136"}, Tactics: []string{"persistence"}},
+	"redis-script-load":         {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mongodb-pipeline-exfil":    {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"mongodb-gridfs-access":     {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"mongodb-data-clone":        {Techniques: []string{"T1530"}, Tactics: []string{"collection"}},
 	// SSH second-pass: Terrapin, null cipher, tunneling, env Shellshock.
 	"ssh-terrapin-vulnerable": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"ssh-none-cipher":         {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
@@ -1384,6 +1398,9 @@ var d3fend = map[string][]string{
 	"T1222": {"D3-FH", "D3-DF"},                     // file/directory permissions modification (FTP SITE CHMOD)
 	"T1112": {"D3-FH", "D3-NTA"},                    // modify registry (MSSQL xp_regwrite)
 	"T1563": {"D3-NTA", "D3-MFA"},                   // remote service session hijack (SSH agent forwarding)
+	"T1082": {"D3-NTA", "D3-DNR"},                   // system information discovery (MySQL @@version recon)
+	"T1134": {"D3-MFA", "D3-DE"},                    // access token manipulation (MSSQL EXECUTE AS)
+	"T1530": {"D3-NTA", "D3-DA"},                    // data from cloud/remote storage (MongoDB clone)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

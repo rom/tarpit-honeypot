@@ -448,6 +448,16 @@ func redisClassifyExtra(res *Result, cmd []string, authSeen *bool) {
 	case "MIGRATE":
 		flagAnomaly(res, "redis-migrate-exfil")
 		setIfEmpty(res.Meta, "intent", "Redis MIGRATE to external host — data exfil / lateral movement")
+	case "ACL":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "SETUSER") {
+			flagAnomaly(res, "redis-acl-backdoor")
+			res.Meta["intent"] = "Redis ACL SETUSER — creating a backdoor account"
+		}
+	case "SCRIPT":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "LOAD") {
+			flagAnomaly(res, "redis-script-load")
+			setIfEmpty(res.Meta, "intent", "Redis SCRIPT LOAD — staging a Lua payload")
+		}
 	case "DEBUG":
 		flagAnomaly(res, "redis-debug")
 	case "KEYS", "SCAN", "DUMP":
@@ -459,7 +469,7 @@ func redisClassifyExtra(res *Result, cmd []string, authSeen *bool) {
 	if !*authSeen {
 		switch op {
 		case "CONFIG", "EVAL", "EVALSHA", "MODULE", "SLAVEOF", "REPLICAOF", "MIGRATE",
-			"KEYS", "FLUSHALL", "FLUSHDB", "DEBUG", "SAVE", "BGSAVE", "FUNCTION":
+			"KEYS", "FLUSHALL", "FLUSHDB", "DEBUG", "SAVE", "BGSAVE", "FUNCTION", "ACL", "SCRIPT":
 			flagAnomaly(res, "redis-unauthenticated-access")
 			setIfEmpty(res.Meta, "intent", "Redis unauthenticated access ("+op+" with no AUTH)")
 		}

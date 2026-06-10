@@ -152,7 +152,14 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		// whether the client expects mysql_native_password vs caching_sha2.
 		if capFlags&clientPluginAuth != 0 && p < len(respBody) {
 			if pEnd := indexByte(respBody[p:], 0); pEnd > 0 {
-				res.Meta["auth_plugin"] = string(respBody[p : p+pEnd])
+				ap := string(respBody[p : p+pEnd])
+				res.Meta["auth_plugin"] = ap
+				// Requesting the cleartext/legacy auth plugin is a downgrade so
+				// the password can be sniffed.
+				if ap == "mysql_clear_password" || ap == "mysql_old_password" {
+					flagAnomaly(&res, "mysql-auth-downgrade")
+					setIfEmpty(res.Meta, "intent", "MySQL weak auth-plugin requested ("+ap+") — cleartext/legacy downgrade")
+				}
 			}
 		}
 
@@ -322,6 +329,16 @@ func classifyMySQLQuery(res *Result, q string) {
 	case strings.Contains(l, "mysql.user") || strings.Contains(l, "authentication_string"):
 		flagAnomaly(res, "mysql-credential-dump")
 		setIfEmpty(res.Meta, "intent", "MySQL credential-hash dump (mysql.user)")
+	case strings.Contains(l, "load data") && strings.Contains(l, "local"):
+		flagAnomaly(res, "mysql-load-data-local")
+		setIfEmpty(res.Meta, "intent", "MySQL LOAD DATA LOCAL INFILE — client-side file read")
+	case strings.Contains(l, "change master") || strings.Contains(l, "change replication source"):
+		flagAnomaly(res, "mysql-replication")
+		setIfEmpty(res.Meta, "intent", "MySQL CHANGE MASTER — rogue replication setup")
+	case strings.Contains(l, "@@version") || strings.Contains(l, "@@datadir") ||
+		strings.Contains(l, "@@hostname") || strings.Contains(l, "@@secure_file_priv") || strings.Contains(l, "version()"):
+		flagAnomaly(res, "mysql-recon-query")
+		setIfEmpty(res.Meta, "intent", "MySQL server-variable reconnaissance")
 	case sqlLooksInjection(l):
 		flagAnomaly(res, "mysql-sqli-probe")
 		setIfEmpty(res.Meta, "intent", "MySQL SQL-injection probe")
