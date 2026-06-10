@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -32,6 +33,7 @@ const (
 	tdsPreLogin = 0x12
 	tdsLogin7   = 0x10
 	tdsResponse = 0x04
+	tdsSQLBatch = 0x01
 )
 
 func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
@@ -75,6 +77,16 @@ func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	if m.id != nil {
 		build = 1000 + uint16(m.id.Uint32("mssql-build")%3000)
 	}
+	// The client's PRELOGIN ENCRYPTION option tells us whether it will encrypt
+	// the LOGIN7 (and thus the credentials). OFF / NOT_SUP means the password
+	// crosses in the clear (only XOR-obfuscated) — sniffable credential exposure.
+	if enc, ok := tdsPreloginEncryption(body); ok {
+		res.Meta["client_encryption"] = enc
+		if enc == 0x00 || enc == 0x02 {
+			flagAnomaly(&res, "mssql-encryption-disabled")
+			setIfEmpty(res.Meta, "intent", "MSSQL login without TLS encryption — cleartext credential exposure")
+		}
+	}
 	resp := m.buildPreLoginResponse(15, 0, build, subBuild)
 	if _, err := conn.Write(resp); err != nil {
 		res.Meta["write_err"] = err.Error()
@@ -100,11 +112,137 @@ func (m *mssql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 				}
 			}
 		}
-		// Reply LOGINACK-shaped error so the client sees a real-looking
-		// auth failure (we never grant access).
-		_, _ = conn.Write(m.buildLoginError())
+		// In full-interaction mode, send a LOGINACK so the client proceeds to
+		// issue a SQLBatch — capturing post-auth T-SQL (xp_cmdshell, UNC
+		// coercion, CLR, linked-server, BULK). Otherwise reply with a
+		// real-looking auth failure (we never grant access).
+		if FullInteractionAllowed() {
+			_, _ = conn.Write(mssqlLoginAck())
+			m.readSQLBatch(conn, &res)
+		} else {
+			_, _ = conn.Write(m.buildLoginError())
+		}
 	}
 	return res, nil
+}
+
+// tdsPreloginEncryption extracts the ENCRYPTION option (token 0x01) value from a
+// client PRELOGIN body: a list of (type1, offset2, len2) option tokens
+// terminated by 0xFF, followed by the option data.
+func tdsPreloginEncryption(body []byte) (byte, bool) {
+	for i := 0; i+5 <= len(body); i += 5 {
+		if body[i] == 0xFF {
+			break
+		}
+		if body[i] == 0x01 { // ENCRYPTION
+			off := int(binary.BigEndian.Uint16(body[i+1 : i+3]))
+			if off >= 0 && off < len(body) {
+				return body[off], true
+			}
+		}
+	}
+	return 0, false
+}
+
+// mssqlLoginAck builds a minimal TDS Tabular-Result response carrying a LOGINACK
+// token + a final DONE token, so a client accepts the login and sends its first
+// SQLBatch. Capture-only — no session state is created.
+func mssqlLoginAck() []byte {
+	prog := utf16leBytes("Microsoft SQL Server")
+	inner := []byte{0x01}                   // interface = SQL
+	inner = append(inner, 0x04, 0, 0, 0x74) // TDS 7.4
+	inner = append(inner, byte(len(prog)/2))
+	inner = append(inner, prog...)
+	inner = append(inner, 15, 0, 0x07, 0xd0) // server version 15.0.2000
+	tok := []byte{0xAD, byte(len(inner)), byte(len(inner) >> 8)}
+	tok = append(tok, inner...)
+	// DONE token: status DONE_FINAL(0x0000), curcmd 0, rowcount 0 (8 bytes).
+	tok = append(tok, 0xFD, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0)
+	return wrapTDS(0x04, tok)
+}
+
+// readSQLBatch reads one post-login TDS packet; if it is a SQLBatch (type 0x01),
+// it extracts the UCS-2 T-SQL text and classifies it.
+func (m *mssql) readSQLBatch(conn net.Conn, res *Result) {
+	hdr := make([]byte, 8)
+	if _, err := io.ReadFull(conn, hdr); err != nil {
+		return
+	}
+	if hdr[0] != tdsSQLBatch {
+		return
+	}
+	length := int(binary.BigEndian.Uint16(hdr[2:4]))
+	if length <= 8 || length > 1<<16 {
+		return
+	}
+	b, ok := safe.AllocBytes(length - 8)
+	if !ok {
+		return
+	}
+	if _, err := io.ReadFull(conn, b); err != nil {
+		return
+	}
+	sql := decodeUCS2Printable(b)
+	if sql == "" {
+		return
+	}
+	if len(sql) > 4096 {
+		sql = sql[:4096]
+	}
+	res.Meta["tds_sql_batch"] = safe.SanitizeForLog(sql)
+	flagAnomaly(res, "mssql-post-auth-query")
+	classifyTSQL(res, sql)
+	// Reply DONE so a polite client doesn't hang.
+	_, _ = conn.Write(wrapTDS(0x04, []byte{0xFD, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0}))
+}
+
+// classifyTSQL flags post-auth T-SQL abuse primitives. Detection only.
+func classifyTSQL(res *Result, sql string) {
+	l := strings.ToLower(sql)
+	switch {
+	case strings.Contains(l, "xp_cmdshell"):
+		flagAnomaly(res, "mssql-xp-cmdshell")
+		res.Meta["intent"] = "MSSQL xp_cmdshell — OS command execution"
+	case strings.Contains(l, "sp_oacreate") || strings.Contains(l, "sp_oamethod"):
+		flagAnomaly(res, "mssql-ole-automation")
+		res.Meta["intent"] = "MSSQL OLE automation (sp_OACreate) — command execution"
+	case strings.Contains(l, "xp_dirtree") || strings.Contains(l, "xp_fileexist") || strings.Contains(l, "xp_subdirs"):
+		flagAnomaly(res, "mssql-unc-coercion")
+		res.Meta["intent"] = "MSSQL UNC auth coercion (xp_dirtree) — NetNTLM capture/relay"
+	case strings.Contains(l, "create assembly") || strings.Contains(l, "0x4d5a") || strings.Contains(l, "clr enabled"):
+		flagAnomaly(res, "mssql-clr-assembly")
+		res.Meta["intent"] = "MSSQL CLR assembly load — code execution"
+	case strings.Contains(l, "openquery") || strings.Contains(l, "openrowset") || strings.Contains(l, " at ["):
+		flagAnomaly(res, "mssql-linked-server")
+		setIfEmpty(res.Meta, "intent", "MSSQL linked-server / OPENROWSET — lateral movement / file read")
+	case strings.Contains(l, "bulk insert"):
+		flagAnomaly(res, "mssql-bulk-fileread")
+		setIfEmpty(res.Meta, "intent", "MSSQL BULK INSERT — arbitrary file read")
+	case strings.Contains(l, "xp_regread") || strings.Contains(l, "xp_regwrite"):
+		flagAnomaly(res, "mssql-registry-access")
+	case sqlLooksInjection(l):
+		flagAnomaly(res, "mssql-sqli-probe")
+	}
+}
+
+// utf16leBytes encodes an ASCII string as UTF-16LE.
+func utf16leBytes(s string) []byte {
+	out := make([]byte, 0, len(s)*2)
+	for i := 0; i < len(s); i++ {
+		out = append(out, s[i], 0)
+	}
+	return out
+}
+
+// decodeUCS2Printable extracts printable ASCII from a UTF-16LE byte run.
+func decodeUCS2Printable(b []byte) string {
+	var sb []byte
+	for i := 0; i+1 < len(b); i += 2 {
+		if b[i+1] == 0 && (b[i] == '\t' || b[i] == ' ' || (b[i] >= 0x21 && b[i] < 0x7f)) {
+			sb = append(sb, b[i])
+		}
+	}
+	return string(sb)
 }
 
 // buildPreLoginResponse assembles a TDS PRELOGIN response with VERSION,

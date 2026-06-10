@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -67,6 +68,10 @@ func (m *mongodb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 			flagAnomaly(&res, marker)
 		}
 	}
+	// Deep BSON scan: NoSQL-injection / server-side-JS operators ($where,
+	// $function, $accumulator, $ne/$gt/$regex/$expr) appear as BSON key
+	// cstrings in the request document.
+	mongoDeepScan(&res, body)
 
 	doc := mongoReplyDoc(cmd, version, wire)
 	_, _ = conn.Write(mongoFrameReply(opCode, reqID, doc))
@@ -351,4 +356,24 @@ func bsonArray(name string, doc []byte) []byte {
 		return append(e, 0x05, 0x00, 0x00, 0x00, 0x00)
 	}
 	return append(e, doc...)
+}
+
+// mongoDeepScan inspects the raw request document for the BSON operator keys
+// that signal server-side JavaScript execution or NoSQL injection. BSON element
+// names are NUL-terminated cstrings, so a bounded byte scan for the operator
+// tokens is reliable without a full recursive BSON parse.
+func mongoDeepScan(res *Result, body []byte) {
+	if bytes.Contains(body, []byte("$where")) || bytes.Contains(body, []byte("$function")) ||
+		bytes.Contains(body, []byte("$accumulator")) {
+		flagAnomaly(res, "mongodb-server-side-js")
+		res.Meta["intent"] = "MongoDB server-side JavaScript ($where / $function) — code execution"
+	}
+	for _, op := range [][]byte{[]byte("$ne"), []byte("$gt"), []byte("$gte"), []byte("$lt"),
+		[]byte("$regex"), []byte("$expr"), []byte("$in")} {
+		if bytes.Contains(body, op) {
+			flagAnomaly(res, "mongodb-nosql-injection")
+			setIfEmpty(res.Meta, "intent", "MongoDB NoSQL-injection operator in query ("+string(op)+")")
+			return
+		}
+	}
 }
