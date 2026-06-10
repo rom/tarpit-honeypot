@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 )
@@ -62,6 +63,30 @@ func (s *snmptrap) Handle(ctx context.Context, payload []byte, src net.Addr, pc 
 	// "intent" labels what the sender is doing, surfaced on the DNS/SNMP-style
 	// analytics ("what the attacker is actually doing").
 	res.Meta["intent"] = trapIntent(in)
+
+	// A trap arriving on 162 with a default/guessed community is recon that the
+	// receiver is open + which communities it accepts.
+	if snmpIsDefaultCommunity(in.Community) {
+		flagAnomaly(&res, "snmptrap-default-community")
+		setIfEmpty(res.Meta, "intent", "SNMP trap with default community on 162 — trap-receiver recon")
+	}
+
+	// A spoofed trap forges events into the monitoring/SIEM pipeline; if a
+	// varbind value carries shell metacharacters it targets snmptrapd traphandle
+	// command execution, and CRLF/control bytes are a SIEM log-injection attempt.
+	for _, v := range in.VarbindStrings {
+		if strings.ContainsAny(v, ";|`&$") && strings.ContainsAny(v, "()/ ") {
+			flagAnomaly(&res, "snmptrap-traphandle-injection")
+			res.Meta["intent"] = "SNMP trap varbind with shell metacharacters — snmptrapd traphandle command injection"
+		}
+		if strings.ContainsAny(v, "\r\n") || strings.ContainsRune(v, 0x1b) {
+			flagAnomaly(&res, "snmptrap-log-injection")
+			setIfEmpty(res.Meta, "intent", "SNMP trap varbind with CRLF/control bytes — SIEM log injection")
+		}
+	}
+	if in.IsTrap || in.IsInform {
+		flagAnomaly(&res, "snmptrap-injection")
+	}
 
 	// Structural anomalies + Cisco IOS / IOS XE SNMP RCE-class attribution.
 	applySNMPInspect(&res, in)

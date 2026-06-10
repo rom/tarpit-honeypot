@@ -39,6 +39,8 @@ func (d *dnsHandler) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 	q, ok := parseDNSQuery(payload)
 	if !ok {
 		res.Meta["malformed_dns"] = true
+		flagAnomaly(&res, "dns-malformed-query")
+		res.Meta["intent"] = "malformed DNS query — parser fuzzing / evasion"
 		return res, nil
 	}
 	res.Meta["qname"] = safe.SanitizeForLog(q.name)

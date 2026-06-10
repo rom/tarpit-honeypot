@@ -92,6 +92,11 @@ func (v *vnc) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 			if sel[0] == 1 {
 				flagAnomaly(&res, "vnc-none-auth-probe")
 				res.Meta["intent"] = "VNC None-auth probe — scanning for an unauthenticated VNC server"
+				// Selecting security type 1 (None) when the server advertised VNC
+				// auth is the RealVNC 4.1.1 authentication-bypass (the server must
+				// honour only what it offered; one that accepts None is exploitable).
+				res.CVEHits = appendUnique(res.CVEHits, "CVE-2006-2369")
+				flagAnomaly(&res, "cve:CVE-2006-2369")
 			}
 			return res, nil
 		}

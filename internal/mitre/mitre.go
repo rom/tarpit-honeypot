@@ -520,9 +520,21 @@ var anomalyTags = map[string]Tag{
 	// Default community ("public"/"private") = a weak/guessed credential.
 	"snmp-default-community": {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access", "defense-evasion"}},
 	// SNMP CISCO-CONFIG-COPY-MIB access = exfiltrate/overwrite the running config.
-	"snmp-config-exfil":     {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
-	"smtp-open-relay-probe": {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
-	"smtp-user-enumeration": {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"snmp-config-exfil": {Techniques: []string{"T1602.001"}, Tactics: []string{"collection"}},
+	// SNMP SET-target classification + sensitive reads + v3 USM enum.
+	"snmp-extend-exec":        {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"snmp-interface-shutdown": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmp-identity-rewrite":   {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmp-sensitive-oid-read": {Techniques: []string{"T1602"}, Tactics: []string{"collection"}},
+	"snmp-v3-user-enum":       {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"snmp-device-control":     {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// SNMP trap (162) injection / receiver abuse.
+	"snmptrap-injection":            {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"snmptrap-default-community":    {Techniques: []string{"T1078.001"}, Tactics: []string{"credential-access"}},
+	"snmptrap-traphandle-injection": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"snmptrap-log-injection":        {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"smtp-open-relay-probe":         {Techniques: []string{"T1071.003"}, Tactics: []string{"command-and-control"}},
+	"smtp-user-enumeration":         {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// DNS zone-transfer (AXFR/IXFR) = bulk enumeration of internal hosts.
 	"dns-zone-transfer": {Techniques: []string{"T1590.002", "T1018"}, Tactics: []string{"reconnaissance", "discovery"}},
 	// Encrypted-DNS channels (DoH / DoT / DNSCrypt) = DNS tunnelled inside
@@ -599,6 +611,7 @@ var anomalyTags = map[string]Tag{
 	"dcerpc-winreg-access":   {Techniques: []string{"T1012", "T1003.002"}, Tactics: []string{"discovery", "credential-access"}},
 	"dcerpc-dcsync":          {Techniques: []string{"T1003.006"}, Tactics: []string{"credential-access"}},
 	"dcerpc-netlogon-access": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"dcerpc-coerced-auth":    {Techniques: []string{"T1187"}, Tactics: []string{"credential-access"}},
 	// memcached abuse: stats recon, writes (cache poisoning), flush_all (wipe).
 	"memcached-stats-probe":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"memcached-write-attempt": {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
@@ -805,9 +818,142 @@ var anomalyTags = map[string]Tag{
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-mode7-private":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-nonclient-mode":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"ntp-mode7-reflected-loop":  {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-mrulist-probe":         {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"ntp-crypto-nak":            {Techniques: []string{"T1070.006"}, Tactics: []string{"defense-evasion"}},
+	"ntp-autokey-extension":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ntp-rogue-association":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ntp-mode7-config":          {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	// chrony cmdmon (UDP 323) control-channel reconnaissance and manipulation.
+	"chrony-cmdmon-probe":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"chrony-cmdmon-recon":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"chrony-cmdmon-malformed":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"chrony-clock-manipulation":    {Techniques: []string{"T1070.006"}, Tactics: []string{"defense-evasion"}},
+	"chrony-source-manipulation":   {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"chrony-access-control-change": {Techniques: []string{"T1562.001"}, Tactics: []string{"defense-evasion"}},
+	"chrony-service-control":       {Techniques: []string{"T1489"}, Tactics: []string{"impact"}},
 	// DNS SIG / TKEY exploit-probe qtypes (SIGRed / BIND TKEY DoS).
 	"dns-sig-query":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dns-tkey-query": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// DNS second-pass detections.
+	"dns-gss-tsig":               {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dns-tsig-present":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dns-largeset-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"dns-0x20-encoding":          {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"dns-ecs-subnet":             {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
+	"dns-embedded-ip-rebind":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"dns-malformed-query":        {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	"dns-server-id-probe":        {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"dns-punycode-label":         {Techniques: []string{"T1583.001"}, Tactics: []string{"resource-development"}},
+	"dns-metadata-rebind":        {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	// Telnet second-pass: ENCRYPT/AUTH overflow, IAC fuzzing, env injection,
+	// Mirai-class default creds + busybox loader probe.
+	"telnet-encrypt-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"telnet-iac-fuzzing":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"telnet-env-injection":    {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
+	"telnet-mirai-credential": {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"telnet-busybox-probe":    {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	// DB second-pass: MySQL post-auth abuse, Redis arg/sequence abuse, MongoDB.
+	"mysql-default-credential":     {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"mysql-udf-exec":               {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mysql-outfile-write":          {Techniques: []string{"T1505.003"}, Tactics: []string{"persistence"}},
+	"mysql-credential-dump":        {Techniques: []string{"T1003"}, Tactics: []string{"credential-access"}},
+	"mysql-sqli-probe":             {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"redis-lua-sandbox-escape":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"redis-function-load":          {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-rce-persistence":        {Techniques: []string{"T1505.003"}, Tactics: []string{"persistence"}},
+	"redis-migrate-exfil":          {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"redis-debug":                  {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"redis-bulk-dump":              {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"redis-unauthenticated-access": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"mongodb-server-side-js":       {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mongodb-write-or-ransom":      {Techniques: []string{"T1486"}, Tactics: []string{"impact"}},
+	"mongodb-admin-enum":           {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
+	"mongodb-nosql-injection":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// MSSQL / PostgreSQL post-auth (SQLBatch / SimpleQuery) abuse.
+	"mssql-post-auth-query":      {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mssql-encryption-disabled":  {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
+	"mssql-xp-cmdshell":          {Techniques: []string{"T1059.003"}, Tactics: []string{"execution"}},
+	"mssql-ole-automation":       {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mssql-unc-coercion":         {Techniques: []string{"T1187"}, Tactics: []string{"credential-access"}},
+	"mssql-clr-assembly":         {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mssql-linked-server":        {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"mssql-bulk-fileread":        {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"mssql-registry-access":      {Techniques: []string{"T1112"}, Tactics: []string{"defense-evasion"}},
+	"mssql-sqli-probe":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"postgres-post-auth-query":   {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"postgres-copy-program":      {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"postgres-untrusted-plang":   {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"postgres-file-access":       {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"postgres-dblink-ssrf":       {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"postgres-searchpath-hijack": {Techniques: []string{"T1574"}, Tactics: []string{"privilege-escalation"}},
+	"postgres-sqli-probe":        {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// DB pass-3 additions.
+	"mysql-auth-downgrade":      {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"mysql-load-data-local":     {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"mysql-replication":         {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"mysql-recon-query":         {Techniques: []string{"T1082"}, Tactics: []string{"discovery"}},
+	"mssql-agent-job":           {Techniques: []string{"T1053.005"}, Tactics: []string{"persistence"}},
+	"mssql-impersonation":       {Techniques: []string{"T1134"}, Tactics: []string{"privilege-escalation"}},
+	"postgres-create-extension": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"postgres-alter-system":     {Techniques: []string{"T1565.001"}, Tactics: []string{"impact"}},
+	"redis-acl-backdoor":        {Techniques: []string{"T1136"}, Tactics: []string{"persistence"}},
+	"redis-script-load":         {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"mongodb-pipeline-exfil":    {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"mongodb-gridfs-access":     {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"mongodb-data-clone":        {Techniques: []string{"T1530"}, Tactics: []string{"collection"}},
+	// Management: IPMI auth-bypass + RAKP hash disclosure.
+	"ipmi-cipher-zero-auth-bypass": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ipmi-rakp-hash-disclosure":    {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	// Precise mappings for high-signal markers that otherwise fell back to the
+	// coarse "ics-" -> T0888 / "printer-" -> T1083 discovery prefix rules.
+	"ics-codesys-login":         {Techniques: []string{"T0859"}, Tactics: []string{"lateral-movement"}},
+	"printer-filesystem-access": {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"printer-nvram-access":      {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"printer-dmcmd":             {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	// 25-protocol round: x11/redfish/tn3270/pjlink markers.
+	"x11-no-auth":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"redfish-auth-bypass":   {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	"redfish-unauth-access": {Techniques: []string{"T1190"}, Tactics: []string{"discovery"}},
+	"tn3270-logon-attempt":  {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
+	// WinRM / vmware_authd cleartext credential exposure; BACnet priority override.
+	"winrm-basic-cleartext":        {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
+	"vmware-authd-cleartext-creds": {Techniques: []string{"T1040"}, Tactics: []string{"credential-access"}},
+	"bacnet-write-multiple":        {Techniques: []string{"T0836"}, Tactics: []string{"impact"}},
+	"bacnet-priority-override":     {Techniques: []string{"T0855"}, Tactics: []string{"impact"}},
+	// SSH second-pass: Terrapin, null cipher, tunneling, env Shellshock.
+	"ssh-terrapin-vulnerable": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ssh-none-cipher":         {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"ssh-direct-tcpip":        {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-remote-forward":      {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-env-shellshock":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// FTP second-pass: traversal, ProFTPD IAC overflow, anon login, SITE exec.
+	"ftp-path-traversal":      {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
+	"ftp-telnet-iac-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ftp-anonymous-login":     {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"ftp-site-exec":           {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"ftp-site-chmod":          {Techniques: []string{"T1222"}, Tactics: []string{"defense-evasion"}},
+	// SMB second-pass structural exploits + NTLM downgrade.
+	"smb-compression-capabilities": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-compression-transform":    {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-negoex":                   {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-trans-exploit":            {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-doublepulsar":             {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-smbloris":                 {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"smb-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"rdp-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	// Pass-3 additions (SMB/telnet/RDP/FTP/SSH).
+	"smb-v1-negotiation":         {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-null-session":           {Techniques: []string{"T1135"}, Tactics: []string{"discovery"}},
+	"telnet-device-backdoor":     {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"telnet-login-cmd-injection": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"rdp-routing-token":          {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
+	"ftp-brute-force":            {Techniques: []string{"T1110.001"}, Tactics: []string{"credential-access"}},
+	"ssh-x11-forward":            {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
+	"ssh-agent-forward":          {Techniques: []string{"T1563.001"}, Tactics: []string{"lateral-movement"}},
+	// RDP second-pass: mstshash username harvest + NLA/CredSSP downgrade.
+	"rdp-username-harvest": {Techniques: []string{"T1589.001"}, Tactics: []string{"reconnaissance"}},
+	"rdp-nla-downgrade":    {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	// IBM MQ channel recon + MQCSP credential flow.
 	"ibmmq-connect":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"ibmmq-security-flow": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
@@ -1119,6 +1265,8 @@ var techDescriptions = map[string]string{
 	"T1496":     "Resource Hijacking — abusing compute (e.g. cryptomining).",
 	"T1657":     "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
 	"T1565":     "Data Manipulation — tampering with stored/displayed/transmitted data.",
+	"T1542":     "Pre-OS Boot / System Firmware — writing device firmware (e.g. a printer firmware upload) for persistence.",
+	"T1187":     "Forced Authentication — coercing a host to authenticate to an attacker-controlled endpoint (e.g. PetitPotam, MSSQL xp_dirtree UNC) to capture/relay credentials.",
 	"T1583":     "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
 	"T1020":     "Automated Exfiltration — automatically transferring collected data out.",
 	"T1041":     "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
@@ -1264,6 +1412,17 @@ var d3fend = map[string][]string{
 	"T1649": {"D3-MFA", "D3-DE"},                    // steal or forge authentication certificates
 	"T1498": {"D3-ITF"},                             // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
+	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
+	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
+	"T1574": {"D3-EAL", "D3-FH"},                    // hijack execution flow (LD_PRELOAD / search_path)
+	"T1589": {"D3-NTA", "D3-DNR"},                   // gather victim identity info (RDP mstshash username harvest)
+	"T1222": {"D3-FH", "D3-DF"},                     // file/directory permissions modification (FTP SITE CHMOD)
+	"T1112": {"D3-FH", "D3-NTA"},                    // modify registry (MSSQL xp_regwrite)
+	"T1542": {"D3-FH", "D3-NTA"},                    // pre-OS boot / firmware (printer firmware upload)
+	"T1563": {"D3-NTA", "D3-MFA"},                   // remote service session hijack (SSH agent forwarding)
+	"T1082": {"D3-NTA", "D3-DNR"},                   // system information discovery (MySQL @@version recon)
+	"T1134": {"D3-MFA", "D3-DE"},                    // access token manipulation (MSSQL EXECUTE AS)
+	"T1530": {"D3-NTA", "D3-DA"},                    // data from cloud/remote storage (MongoDB clone)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

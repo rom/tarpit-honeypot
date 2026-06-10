@@ -162,6 +162,21 @@ func captureExtendedKex(br *bufio.Reader, kexInitPayload []byte, serverKex []str
 	if hasWeakKexPrimitive(ki) {
 		flagAnomaly(res, "ssh-kex-weak-primitive")
 	}
+	// Terrapin (CVE-2023-48795): a client that does NOT advertise the
+	// kex-strict countermeasure while offering chacha20-poly1305 or a CBC-EtM
+	// cipher is prefix-truncation-downgrade exploitable.
+	if sshTerrapinVulnerable(ki) {
+		flagAnomaly(res, "ssh-terrapin-vulnerable")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2023-48795")
+		flagAnomaly(res, "cve:CVE-2023-48795")
+		res.Meta["intent"] = "SSH client lacks kex-strict with a Terrapin-affected cipher — prefix-truncation downgrade (CVE-2023-48795)"
+	}
+	// A client offering the `none` cipher or `none` MAC is requesting an
+	// unencrypted/unauthenticated transport — sniff/downgrade posture.
+	if sshOffersNone(ki) {
+		flagAnomaly(res, "ssh-none-cipher")
+		setIfEmpty(res.Meta, "intent", "SSH client offers null cipher/MAC — cleartext/downgrade posture")
+	}
 
 	// Read the client's first key-exchange message. With first_kex_packet_
 	// follows the client pipelines it right after KEXINIT (an optimistic
@@ -220,6 +235,53 @@ func hasWeakKexPrimitive(ki *sshKexInit) bool {
 	for _, a := range ki.encC2S {
 		if strings.Contains(a, "-cbc") || strings.Contains(a, "arcfour") ||
 			strings.Contains(a, "des-") || a == "none" {
+			return true
+		}
+	}
+	return false
+}
+
+// sshTerrapinVulnerable reports whether a client KEXINIT is exposed to the
+// Terrapin prefix-truncation attack (CVE-2023-48795): no kex-strict
+// countermeasure advertised, while a ChaCha20-Poly1305 or CBC-EtM cipher is
+// offered.
+func sshTerrapinVulnerable(ki *sshKexInit) bool {
+	for _, k := range ki.kex {
+		if k == "kex-strict-c-v00@openssh.com" {
+			return false
+		}
+	}
+	affected := func(ciphers, macs []string) bool {
+		cbc := false
+		for _, c := range ciphers {
+			if c == "chacha20-poly1305@openssh.com" {
+				return true
+			}
+			if strings.HasSuffix(c, "-cbc") {
+				cbc = true
+			}
+		}
+		if cbc {
+			for _, m := range macs {
+				if strings.HasSuffix(m, "-etm@openssh.com") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return affected(ki.encC2S, ki.macC2S) || affected(ki.encS2C, ki.macS2C)
+}
+
+// sshOffersNone reports whether the client offers the `none` cipher or MAC.
+func sshOffersNone(ki *sshKexInit) bool {
+	for _, c := range append(append([]string{}, ki.encC2S...), ki.encS2C...) {
+		if c == "none" {
+			return true
+		}
+	}
+	for _, m := range append(append([]string{}, ki.macC2S...), ki.macS2C...) {
+		if m == "none" {
 			return true
 		}
 	}

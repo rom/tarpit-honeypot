@@ -88,6 +88,18 @@ func (b *bacnet) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 		case 0x0F, 0x10: // WriteProperty / WritePropertyMultiple
 			flagAnomaly(&res, "bacnet-write-attempt")
 			res.Meta["intent"] = "BACnet WriteProperty — changing a control point value (manipulation)"
+			if csvc == 0x10 {
+				flagAnomaly(&res, "bacnet-write-multiple")
+			}
+			// A write targeting the priorityArray (property 87) or carrying a
+			// command-priority context tag at a high (life-safety) priority is an
+			// override of the BACnet command-priority scheme — the way an attacker
+			// seizes a control point above the BAS's own logic (HVAC/life-safety).
+			if pri, ok := bacnetPriorityOverride(payload[apduStart:]); ok {
+				flagAnomaly(&res, "bacnet-priority-override")
+				res.Meta["bacnet_write_priority"] = pri
+				res.Meta["intent"] = "BACnet command-priority override (priorityArray / high-priority write) — seizing a control point"
+			}
 			ack := buildSimpleACK(invokeID, csvc)
 			if _, err := pc.WriteTo(ack, src); err != nil {
 				res.Meta["write_err"] = err.Error()
@@ -232,4 +244,26 @@ func bacnetServiceName(s byte) string {
 		return "Who-Has"
 	}
 	return ""
+}
+
+// bacnetPriorityOverride scans a WriteProperty APDU body for a priorityArray
+// target (propertyIdentifier 87, encoded as context tag [1] => 0x19 0x57) or a
+// command-priority context tag ([4] => 0x49 <prio>). Returns the priority slot
+// (1 = highest / life-safety) and whether an override was found. Best-effort
+// byte scan, not a full APDU parse.
+func bacnetPriorityOverride(apdu []byte) (priority int, ok bool) {
+	for i := 0; i+1 < len(apdu); i++ {
+		// propertyIdentifier (context tag 1, len 1) = priorityArray (87).
+		if apdu[i] == 0x19 && apdu[i+1] == 0x57 {
+			return 0, true
+		}
+		// priority (context tag 4, len 1): an explicit write priority.
+		if apdu[i] == 0x49 && i+1 < len(apdu) {
+			p := int(apdu[i+1])
+			if p >= 1 && p <= 16 {
+				return p, true
+			}
+		}
+	}
+	return 0, false
 }

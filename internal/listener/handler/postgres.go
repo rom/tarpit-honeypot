@@ -153,6 +153,13 @@ func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 				}
 			}
 		}
+		// In full-interaction mode, accept the login and read one SimpleQuery so
+		// post-auth RCE/file-read TTPs (COPY FROM PROGRAM, pg_read_file,
+		// untrusted PL languages) surface. Otherwise fail like a locked server.
+		if FullInteractionAllowed() {
+			p.querySession(conn, &res)
+			return res, nil
+		}
 		// FATAL response: 'E' + length + fields + 0
 		errResp := buildPgErrorFATAL("28P01", "password authentication failed")
 		_, _ = conn.Write(errResp)
@@ -160,6 +167,110 @@ func (p *postgres) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		return res, nil
 	}
 	return res, nil
+}
+
+// querySession accepts the login (AuthenticationOk + ReadyForQuery) and reads a
+// bounded number of SimpleQuery ('Q') messages, classifying each for post-auth
+// abuse. Nothing is executed — every query is answered with an empty
+// CommandComplete. Mirrors the MySQL post-auth capture path.
+func (p *postgres) querySession(conn net.Conn, res *Result) {
+	// AuthenticationOk, a minimal ParameterStatus, BackendKeyData, ReadyForQuery.
+	var out []byte
+	out = append(out, 'R', 0, 0, 0, 8, 0, 0, 0, 0) // AuthenticationOk
+	out = append(out, pgParamStatus("server_version", "14.11")...)
+	out = append(out, 'K', 0, 0, 0, 12, 0, 0, 0x30, 0x39, 0, 0, 0x4d, 0x2) // BackendKeyData
+	out = append(out, 'Z', 0, 0, 0, 5, 'I')                                // ReadyForQuery (idle)
+	if _, err := conn.Write(out); err != nil {
+		return
+	}
+	var queries []string
+	defer func() {
+		if len(queries) > 0 {
+			res.Meta["pg_queries"] = queries
+			flagAnomaly(res, "postgres-post-auth-query")
+		}
+	}()
+	hdr := make([]byte, 5)
+	for i := 0; i < 16; i++ {
+		dbReplyDelaySleep()
+		if _, err := io.ReadFull(conn, hdr); err != nil {
+			return
+		}
+		n := int(binary.BigEndian.Uint32(hdr[1:5])) - 4
+		if n < 0 || n > 1<<16 {
+			return
+		}
+		payload := make([]byte, n)
+		if _, err := io.ReadFull(conn, payload); err != nil {
+			return
+		}
+		switch hdr[0] {
+		case 'Q': // SimpleQuery
+			q := string(bytesTrimNull(payload))
+			if len(q) > 2048 {
+				q = q[:2048]
+			}
+			if len(queries) < 32 {
+				queries = append(queries, q)
+			}
+			classifyPostgresQuery(res, q)
+			// CommandComplete ("SELECT 0") + ReadyForQuery.
+			cc := append([]byte{'C', 0, 0, 0, 0}, append([]byte("SELECT 0"), 0)...)
+			binary.BigEndian.PutUint32(cc[1:5], uint32(len(cc)-1))
+			_, _ = conn.Write(cc)
+			_, _ = conn.Write([]byte{'Z', 0, 0, 0, 5, 'I'})
+		case 'X': // Terminate
+			return
+		default:
+			_, _ = conn.Write([]byte{'Z', 0, 0, 0, 5, 'I'})
+		}
+	}
+}
+
+// pgParamStatus builds a ParameterStatus ('S') message.
+func pgParamStatus(k, v string) []byte {
+	body := append(append([]byte(k), 0), append([]byte(v), 0)...)
+	out := []byte{'S', 0, 0, 0, 0}
+	binary.BigEndian.PutUint32(out[1:5], uint32(4+len(body)))
+	return append(out, body...)
+}
+
+// classifyPostgresQuery flags post-auth RCE / file-read / lateral abuse.
+func classifyPostgresQuery(res *Result, q string) {
+	l := strings.ToLower(q)
+	switch {
+	case strings.Contains(l, "copy") && strings.Contains(l, "program"):
+		flagAnomaly(res, "postgres-copy-program")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2019-9193")
+		flagAnomaly(res, "cve:CVE-2019-9193")
+		res.Meta["intent"] = "PostgreSQL COPY ... FROM/TO PROGRAM — command execution (CVE-2019-9193)"
+	case strings.Contains(l, "plperlu") || strings.Contains(l, "plpythonu") ||
+		(strings.Contains(l, "create function") && strings.Contains(l, "language c")):
+		flagAnomaly(res, "postgres-untrusted-plang")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2024-10979")
+		flagAnomaly(res, "cve:CVE-2024-10979")
+		res.Meta["intent"] = "PostgreSQL untrusted procedural-language function — code execution"
+	case strings.Contains(l, "lo_import") || strings.Contains(l, "lo_export") ||
+		strings.Contains(l, "pg_read_file") || strings.Contains(l, "pg_ls_dir") || strings.Contains(l, "pg_read_binary_file"):
+		flagAnomaly(res, "postgres-file-access")
+		res.Meta["intent"] = "PostgreSQL server-side file read/write (lo_import / pg_read_file)"
+	case strings.Contains(l, "dblink") || strings.Contains(l, "postgres_fdw"):
+		flagAnomaly(res, "postgres-dblink-ssrf")
+		setIfEmpty(res.Meta, "intent", "PostgreSQL dblink/fdw — SSRF / lateral movement")
+	case strings.HasPrefix(strings.TrimSpace(l), "set search_path"):
+		flagAnomaly(res, "postgres-searchpath-hijack")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-1058")
+		flagAnomaly(res, "cve:CVE-2018-1058")
+	case strings.Contains(l, "create extension"):
+		flagAnomaly(res, "postgres-create-extension")
+		setIfEmpty(res.Meta, "intent", "PostgreSQL CREATE EXTENSION — loading an extension (adminpack / untrusted PL)")
+	case strings.Contains(l, "alter system"):
+		flagAnomaly(res, "postgres-alter-system")
+		res.Meta["intent"] = "PostgreSQL ALTER SYSTEM — server configuration write"
+	case sqlLooksInjection(l):
+		flagAnomaly(res, "postgres-sqli-probe")
+		setIfEmpty(res.Meta, "intent", "PostgreSQL SQL-injection probe")
+	}
 }
 
 func parsePgParams(b []byte) map[string]string {

@@ -75,6 +75,11 @@ var cweNames = map[string]string{
 	"CWE-1188": "Insecure Default Initialization of Resource",
 	"CWE-1336": "Server-Side Template Injection (SSTI)",
 	"CWE-1390": "Weak Authentication",
+	"CWE-1392": "Use of Default Credentials",
+	"CWE-358":  "Improperly Implemented Security Check for Standard",
+	"CWE-749":  "Exposed Dangerous Method or Function",
+	"CWE-757":  "Selection of Less-Secure Algorithm During Negotiation ('Algorithm Downgrade')",
+	"CWE-943":  "Improper Neutralization of Special Elements in Data Query Logic",
 
 	// Broader weakness-class coverage (forward-compatibility for custom rules
 	// and future catalog entries).

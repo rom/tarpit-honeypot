@@ -60,6 +60,12 @@ func (v *vmwareAuthd) Handle(_ context.Context, conn net.Conn, cfg config.Listen
 	res.Meta["pass"] = safe.SanitizeForLog(strings.TrimSpace(pass))
 	flagDefaultCred(&res, strings.TrimSpace(user), strings.TrimSpace(pass))
 	flagAnomaly(&res, "vmware-authd-login")
+	// The daemon banner says "SSL Required"; a client that submits USER/PASS in
+	// plaintext (no SSL upgrade) exposes the ESXi/vCenter credentials in the clear.
+	if strings.TrimSpace(user) != "" && strings.TrimSpace(pass) != "" {
+		flagAnomaly(&res, "vmware-authd-cleartext-creds")
+		res.Meta["intent"] = "VMware authd credentials sent without SSL — cleartext credential exposure"
+	}
 	return res, nil
 }
 
@@ -114,6 +120,12 @@ func (x *x11) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		}
 	}
 	flagAnomaly(&res, "x11-connection-attempt")
+	// A connection with no authorization protocol (name length 0) targets an
+	// unauthenticated X server (xhost +) — keylogging / screen-capture exposure.
+	if nameLen == 0 {
+		flagAnomaly(&res, "x11-no-auth")
+		res.Meta["intent"] = "X11 connection with no auth protocol — unauthenticated X server (keylog/screen-capture)"
+	}
 
 	// Failed setup reply: success=0, reason-length, major, minor,
 	// additional-data length (in 4-byte units), then the reason string.
@@ -258,15 +270,29 @@ func (rf *redfish) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	res.Meta["request_line"] = safe.SanitizeForLog(strings.TrimSpace(reqLine))
 
 	authUser, authPass := "", ""
+	spoofedHost := false
 	for i := 0; i < 40; i++ {
 		h, err := readFTPLine(br, lineCap)
 		if err != nil || h == "\r\n" || h == "\n" {
 			break
 		}
 		res.Payload = append(res.Payload, h...)
-		if strings.HasPrefix(strings.ToLower(h), "authorization:") {
+		lh := strings.ToLower(h)
+		if strings.HasPrefix(lh, "authorization:") {
 			authUser, authPass = parseBasicAuth(h)
 		}
+		// AMI MegaRAC Redfish auth bypass (CVE-2023-34329): a spoofed
+		// Host / X-Server-Addr making the BMC treat the request as internal.
+		if strings.HasPrefix(lh, "x-server-addr:") || strings.HasPrefix(lh, "x-forwarded-host:") ||
+			strings.Contains(lh, "127.0.0.1") || strings.Contains(lh, "localhost") {
+			spoofedHost = true
+		}
+	}
+	if spoofedHost {
+		flagAnomaly(&res, "redfish-auth-bypass")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2023-34329")
+		flagAnomaly(&res, "cve:CVE-2023-34329")
+		res.Meta["intent"] = "Redfish spoofed-host auth bypass (AMI MegaRAC CVE-2023-34329)"
 	}
 
 	server := "Server: Apache\r\n"
@@ -277,6 +303,12 @@ func (rf *redfish) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	case path == "/redfish/v1" || path == "/redfish/v1/":
 		writeRedfish(conn, "200 OK", server, redfishServiceRoot())
 	default:
+		// A privileged Redfish resource reached with no credentials is recon of
+		// protected BMC data (accounts / systems / managers).
+		if authUser == "" && authPass == "" && redfishPrivilegedPath(path) {
+			flagAnomaly(&res, "redfish-unauth-access")
+			setIfEmpty(res.Meta, "intent", "Redfish privileged resource probed without authentication")
+		}
 		// Anything below the service root needs auth.
 		if authUser != "" || authPass != "" {
 			res.Meta["basic_user"] = safe.SanitizeForLog(authUser)
@@ -293,6 +325,18 @@ func (rf *redfish) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 	res.Meta["method"] = method
 	res.BannerSent = "redfish"
 	return res, nil
+}
+
+// redfishPrivilegedPath reports whether a Redfish path targets a protected BMC
+// resource (accounts / systems / managers / sessions) rather than the public root.
+func redfishPrivilegedPath(path string) bool {
+	p := strings.ToLower(path)
+	for _, s := range []string{"/accountservice", "/systems", "/managers", "/sessionservice", "/chassis", "/updateservice"} {
+		if strings.Contains(p, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func redfishServiceRoot() string {

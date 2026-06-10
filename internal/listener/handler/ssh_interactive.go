@@ -12,7 +12,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	xssh "golang.org/x/crypto/ssh"
@@ -174,15 +176,31 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 	}
 	defer srvConn.Close()
 
-	// Discard global requests (keepalives, tcpip-forward). Wrapped in
-	// safego.Run so a panic in crypto/ssh request parsing — possible
-	// with a malformed payload from a hostile client — doesn't bring
-	// down the whole sensor process.
-	safego.Run("ssh_interactive.discard_requests", func() {
-		xssh.DiscardRequests(requests)
+	// Service global requests: reject them like a locked-down server, but flag a
+	// remote port-forward (tcpip-forward) — a tunneling/pivot intent. Wrapped in
+	// safego.Run so a panic in crypto/ssh request parsing — possible with a
+	// malformed payload from a hostile client — doesn't bring down the sensor.
+	var remoteForward atomic.Bool
+	safego.Run("ssh_interactive.global_requests", func() {
+		for req := range requests {
+			if req.Type == "tcpip-forward" || req.Type == "cancel-tcpip-forward" {
+				remoteForward.Store(true)
+			}
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+		}
 	})
 
 	for newChan := range channels {
+		// A direct-tcpip / forwarded-tcpip channel is local/dynamic port
+		// forwarding — a tunneling / pivot attempt through the honeypot.
+		if ct := newChan.ChannelType(); ct == "direct-tcpip" || ct == "forwarded-tcpip" {
+			flagAnomaly(&res, "ssh-direct-tcpip")
+			res.Meta["intent"] = "SSH " + ct + " channel — port-forward tunneling / pivot"
+			_ = newChan.Reject(xssh.Prohibited, "forwarding not permitted")
+			continue
+		}
 		if newChan.ChannelType() != "session" {
 			_ = newChan.Reject(xssh.UnknownChannelType, "unknown channel type")
 			continue
@@ -195,6 +213,10 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 		// Only run one session per engagement; clean up.
 		_ = ch.Close()
 		break
+	}
+	if remoteForward.Load() {
+		flagAnomaly(&res, "ssh-remote-forward")
+		setIfEmpty(res.Meta, "intent", "SSH remote port-forward (tcpip-forward) — tunneling / pivot")
 	}
 	// CVE-2016-0777: after the engagement, set the roaming trap for a
 	// vulnerable client (best-effort, bounded). See offerSSHRoaming.
@@ -250,6 +272,20 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 	safego.Run("ssh_interactive.session_reqs", func() {
 		for req := range reqs {
 			switch req.Type {
+			case "x11-req":
+				// X11 forwarding request — GUI tunneling / pivot intent.
+				flagAnomaly(res, "ssh-x11-forward")
+				setIfEmpty(res.Meta, "intent", "SSH X11 forwarding requested — tunneling / pivot")
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
+			case "auth-agent-req@openssh.com":
+				// Agent forwarding — credential-theft / lateral-movement primitive.
+				flagAnomaly(res, "ssh-agent-forward")
+				setIfEmpty(res.Meta, "intent", "SSH agent forwarding requested — credential theft / lateral movement")
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
 			case "pty-req":
 				if req.WantReply {
 					_ = req.Reply(true, nil)
@@ -301,7 +337,22 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 				}
 				finish()
 				return
-			case "env", "window-change":
+			case "env":
+				// An env value beginning with "() {" is a Bash function
+				// definition — Shellshock (CVE-2014-6271) pushed through
+				// AcceptEnv to a CGI/forced-command shell.
+				if name, val, ok := sshEnvPair(req.Payload); ok {
+					if strings.HasPrefix(strings.TrimSpace(val), "() {") {
+						flagAnomaly(res, "ssh-env-shellshock")
+						res.CVEHits = appendUnique(res.CVEHits, "CVE-2014-6271")
+						flagAnomaly(res, "cve:CVE-2014-6271")
+						res.Meta["intent"] = "SSH env Shellshock via AcceptEnv (" + safe.SanitizeForLog(name) + ") — CVE-2014-6271"
+					}
+				}
+				if req.WantReply {
+					_ = req.Reply(true, nil)
+				}
+			case "window-change":
 				if req.WantReply {
 					_ = req.Reply(true, nil)
 				}

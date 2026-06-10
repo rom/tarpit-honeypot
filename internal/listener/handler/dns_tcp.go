@@ -67,6 +67,8 @@ func (d *dnsTCP) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		q, ok := parseDNSQuery(msg)
 		if !ok {
 			res.Meta["malformed_dns"] = true
+			flagAnomaly(&res, "dns-malformed-query")
+			res.Meta["intent"] = "malformed DNS query — parser fuzzing / evasion"
 			break
 		}
 		if queries == 1 {

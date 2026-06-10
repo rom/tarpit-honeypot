@@ -240,14 +240,34 @@ func storyPlaybook(st *storylineState) string {
 		}
 		return false
 	}
+	anom := func(name string) bool { return st.anomalies[name] }
 	icsHandler := hasHandler("modbus", "s7", "s7comm_plus", "dnp3", "iec104", "ethernetip",
 		"bacnet", "opcua", "codesys", "fins", "melsec", "mms", "ge_srtp", "hartip", "pcworx", "profinet")
 	cloudHandler := hasHandler("cloud_metadata", "kubernetes_api", "vault", "etcd", "dockerapi")
+	dbHandler := hasHandler("mysql", "mssql", "postgres", "redis", "mongodb", "oracle_tns", "elasticsearch")
 
 	switch {
 	case st.tokenReuse:
 		// The attacker came back and used something they stole from the decoy.
 		return "credential-replay-compromise"
+	case anom("dcerpc-coerced-auth"):
+		// MS-EFSRPC/RPRN/DFSNM/FSRVP coercion → forced auth → NTLM relay (AD CS).
+		return "ad-coerced-authentication-relay"
+	case anom("dcerpc-svcctl-access") && (anom("dcerpc-samr-enum") || anom("smb-null-session") || anom("dcerpc-lsarpc-enum")):
+		// Enumerate the domain over MSRPC, then create a remote service (PsExec).
+		return "ad-lateral-movement-psexec"
+	case anom("redis-replication-takeover") && anom("redis-module-load"):
+		// SLAVEOF a rogue master, then MODULE LOAD the malicious module = RCE.
+		return "redis-rogue-replica-rce"
+	case anomPrefix("smb-") && (st.cveHits["CVE-2017-0144"] || st.cveHits["CVE-2020-0796"] ||
+		st.cveHits["CVE-2017-0143"] || st.cveHits["CVE-2020-1206"]):
+		// Wormable SMB memory-corruption (EternalBlue / SMBGhost family).
+		return "smb-wormable-exploit"
+	case dbHandler && st.stageSeen["execution"] && (anom("mysql-udf-exec") || anom("mssql-xp-cmdshell") ||
+		anom("postgres-copy-program") || anom("redis-lua-sandbox-escape") || anom("mongodb-server-side-js") ||
+		anom("mssql-ole-automation") || anom("postgres-untrusted-plang") || anom("mssql-clr-assembly")):
+		// Authenticated-then-RCE through a database's command/exec primitive.
+		return "database-to-rce"
 	case icsHandler && (anomPrefix("ics-") || anomPrefix("modbus-") || anomPrefix("fins-") ||
 		anomPrefix("pcom-") || st.stageSeen["impact"]):
 		return "ot-kill-chain"

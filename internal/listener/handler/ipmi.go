@@ -86,7 +86,17 @@ func (i *ipmi) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 					// 2nd byte of the first (authentication) payload.
 					if len(payload) >= 34 && payload[33] == 0x00 {
 						flagAnomaly(&res, "ipmi-cipher-zero-auth-bypass")
+						res.Meta["intent"] = "IPMI 2.0 cipher-zero — authentication bypass (no auth/integrity)"
 					}
+				} else if ptype == 0x12 || ptype == 0x14 {
+					// RAKP Message 1/3: the BMC returns a salted HMAC of the user's
+					// password to ANY requester (IPMI 2.0 design flaw), so an
+					// attacker grabs an offline-crackable password hash pre-auth.
+					res.Meta["rmcpplus_msg"] = "rakp-message"
+					flagAnomaly(&res, "ipmi-rakp-hash-disclosure")
+					res.CVEHits = appendUnique(res.CVEHits, "CVE-2013-4786")
+					flagAnomaly(&res, "cve:CVE-2013-4786")
+					res.Meta["intent"] = "IPMI 2.0 RAKP — remote password-hash disclosure (CVE-2013-4786)"
 				}
 			}
 		}

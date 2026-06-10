@@ -38,6 +38,7 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 
 	br := bufio.NewReader(conn)
 	var commands []string
+	authSeen := false
 	for i := 0; i < 12; i++ {
 		cmd, err := readRESPCommand(br)
 		if err != nil {
@@ -58,6 +59,9 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		if marker := redisDangerousCommand(cmd); marker != "" {
 			flagAnomaly(&res, marker)
 		}
+		// Argument-level + sequence-level classification (Lua escape CVEs,
+		// CONFIG SET targets, MIGRATE exfil, DEBUG, bulk dump, missing AUTH).
+		redisClassifyExtra(&res, cmd, &authSeen)
 		if r.dispatch(conn, &res, cmd, ver) {
 			res.Meta["commands"] = commands
 			return res, nil
@@ -389,4 +393,85 @@ func readRESPCommand(br *bufio.Reader) ([]string, error) {
 		out = append(out, string(buf))
 	}
 	return out, nil
+}
+
+// redisClassifyExtra adds argument- and sequence-level Redis detections beyond
+// redisDangerousCommand: the Lua sandbox-escape CVEs, CONFIG SET drop-target
+// classification, MIGRATE exfil, DEBUG abuse, bulk key dump, and access with no
+// prior AUTH. authSeen tracks whether the session authenticated.
+func redisClassifyExtra(res *Result, cmd []string, authSeen *bool) {
+	if len(cmd) == 0 {
+		return
+	}
+	op := strings.ToUpper(cmd[0])
+	if op == "AUTH" || op == "HELLO" {
+		*authSeen = true
+	}
+	switch op {
+	case "EVAL", "EVALSHA", "FCALL", "FCALL_RO":
+		body := strings.ToLower(strings.Join(cmd[1:], " "))
+		if strings.Contains(body, "package.loadlib") || strings.Contains(body, "io.popen") ||
+			strings.Contains(body, "os.execute") || strings.Contains(body, "ffi.") ||
+			strings.Contains(body, "io.open") {
+			flagAnomaly(res, "redis-lua-sandbox-escape")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2022-0543")
+			flagAnomaly(res, "cve:CVE-2022-0543")
+			res.Meta["intent"] = "Redis Lua sandbox escape — command execution (CVE-2022-0543)"
+		}
+		if strings.Contains(body, "bit.tohex") || strings.Contains(body, "bit.bor") || strings.Contains(body, "struct.pack") {
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2024-31449")
+			flagAnomaly(res, "cve:CVE-2024-31449")
+		}
+	case "FUNCTION":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "LOAD") {
+			flagAnomaly(res, "redis-function-load")
+			setIfEmpty(res.Meta, "intent", "Redis FUNCTION LOAD — server-side code injection")
+		}
+	case "CONFIG":
+		if len(cmd) >= 4 && strings.EqualFold(cmd[1], "SET") {
+			key := strings.ToLower(cmd[2])
+			val := strings.ToLower(cmd[3])
+			if key == "dir" || key == "dbfilename" {
+				flagAnomaly(res, "redis-rce-persistence")
+				switch {
+				case strings.Contains(val, "www") || strings.HasSuffix(val, ".php") || strings.HasSuffix(val, ".jsp"):
+					res.Meta["intent"] = "Redis CONFIG SET webshell drop (" + key + "=" + cmd[3] + ")"
+				case strings.Contains(val, ".ssh") || strings.Contains(val, "authorized_keys"):
+					res.Meta["intent"] = "Redis CONFIG SET SSH-key drop (" + key + "=" + cmd[3] + ")"
+				case strings.Contains(val, "cron") || strings.Contains(val, "spool"):
+					res.Meta["intent"] = "Redis CONFIG SET cron-job drop (" + key + "=" + cmd[3] + ")"
+				default:
+					setIfEmpty(res.Meta, "intent", "Redis CONFIG SET "+key+" — RCE-persistence chain")
+				}
+			}
+		}
+	case "MIGRATE":
+		flagAnomaly(res, "redis-migrate-exfil")
+		setIfEmpty(res.Meta, "intent", "Redis MIGRATE to external host — data exfil / lateral movement")
+	case "ACL":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "SETUSER") {
+			flagAnomaly(res, "redis-acl-backdoor")
+			res.Meta["intent"] = "Redis ACL SETUSER — creating a backdoor account"
+		}
+	case "SCRIPT":
+		if len(cmd) >= 2 && strings.EqualFold(cmd[1], "LOAD") {
+			flagAnomaly(res, "redis-script-load")
+			setIfEmpty(res.Meta, "intent", "Redis SCRIPT LOAD — staging a Lua payload")
+		}
+	case "DEBUG":
+		flagAnomaly(res, "redis-debug")
+	case "KEYS", "SCAN", "DUMP":
+		flagAnomaly(res, "redis-bulk-dump")
+		setIfEmpty(res.Meta, "intent", "Redis bulk key enumeration/dump ("+op+")")
+	}
+	// A data/abuse command issued before any AUTH on an exposed instance is the
+	// unauthenticated-access exposure (CWE-306).
+	if !*authSeen {
+		switch op {
+		case "CONFIG", "EVAL", "EVALSHA", "MODULE", "SLAVEOF", "REPLICAOF", "MIGRATE",
+			"KEYS", "FLUSHALL", "FLUSHDB", "DEBUG", "SAVE", "BGSAVE", "FUNCTION", "ACL", "SCRIPT":
+			flagAnomaly(res, "redis-unauthenticated-access")
+			setIfEmpty(res.Meta, "intent", "Redis unauthenticated access ("+op+" with no AUTH)")
+		}
+	}
 }

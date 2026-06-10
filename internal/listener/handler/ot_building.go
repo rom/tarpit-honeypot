@@ -53,6 +53,14 @@ func (p *pjlink) Handle(_ context.Context, payload []byte, _ net.Addr, _ net.Pac
 	case hasPrefixFold(body, "%1POWR"), hasPrefixFold(body, "%2POWR"):
 		res.Meta["pjlink_cmd"] = "power"
 		flagAnomaly(&res, "ba-projector-control")
+	case hasPrefixFold(body, "%1AVMT"), hasPrefixFold(body, "%2AVMT"):
+		// AV-mute blanks the projector (availability tampering in a venue/AV room).
+		res.Meta["pjlink_cmd"] = "avmute"
+		flagAnomaly(&res, "ba-projector-control")
+	case hasPrefixFold(body, "%1INPT"), hasPrefixFold(body, "%2INPT"):
+		// Input switch changes what the projector displays.
+		res.Meta["pjlink_cmd"] = "input"
+		flagAnomaly(&res, "ba-projector-control")
 	}
 	return res, nil
 }
