@@ -359,9 +359,13 @@ func captureNetNTLM(source string, msg, serverChallenge []byte, res *Result) {
 	}
 	switch {
 	case len(ntResp) == 24:
-		// NetNTLMv1 (or the ESS / NTLM2 session-response variant).
+		// NetNTLMv1 (or the ESS / NTLM2 session-response variant). A v1 response
+		// is the weak, relay/crack-friendly downgrade — the precondition for
+		// NTLM relay and offline cracking (CWE-294).
 		res.Meta["auth_type"] = "ntlmv1"
 		flagAnomaly(res, source+"-ntlmv1-capture")
+		flagAnomaly(res, source+"-ntlm-downgrade")
+		setIfEmpty(res.Meta, "intent", "NetNTLMv1 downgrade — relay / offline-crack precondition")
 		chal := serverChallenge
 		// ESS: LM field = 8-byte client challenge + 16 zero bytes. The NT
 		// response was then computed against MD5(serverChal||clientChal)[:8].

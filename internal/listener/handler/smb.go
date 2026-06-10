@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"encoding/binary"
@@ -58,6 +59,13 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	length := int(uint32(nbss[1])<<16 | uint32(nbss[2])<<8 | uint32(nbss[3]))
 	if length < 32 || length > 65535 {
 		res.Meta = map[string]any{"bad_nbss_length": length}
+		// SMBLoris reserves a huge per-connection buffer by declaring an
+		// oversized NBSS length (classically 0x1ffff) and then never completing
+		// the body — a memory-exhaustion DoS across many connections.
+		if length > 65535 {
+			flagAnomaly(&res, "smb-smbloris")
+			res.Meta["intent"] = "SMBLoris oversized NBSS length — connection/memory-exhaustion DoS"
+		}
 		return res, nil
 	}
 
@@ -74,6 +82,10 @@ func (s *smb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		res.CVEHits = appendUnique(res.CVEHits, rec.ID)
 		flagAnomaly(&res, "cve:"+rec.ID)
 	}
+	// Structural exploit recognition that isn't a simple substring: SMBGhost /
+	// SMBleed compression, SPNEGO NEGOEX, the MS17-010 Transaction family, and
+	// the DoublePulsar implant ping.
+	smbThreatMarkers(&res, body)
 
 	if len(body) < 4 {
 		return res, nil
@@ -234,4 +246,104 @@ func smb1CommandName(c byte) string {
 		return "SMB_COM_LOGOFF_ANDX"
 	}
 	return ""
+}
+
+// smbThreatMarkers flags SMB exploits that are structural, not simple
+// substrings: SMBGhost/SMBleed (SMBv3.1.1 compression), the SPNEGO NEGOEX
+// pre-auth overflow, the MS17-010 Transaction family, and the DoublePulsar
+// implant ping. Detection only; bounds-checked against malformed input.
+func smbThreatMarkers(res *Result, body []byte) {
+	// SMBGhost / SMBleed: SMB2 NEGOTIATE offering dialect 0x0311 together with a
+	// compression-capabilities negotiate context (type 0x0003).
+	if len(body) >= 4 && body[0] == 0xFE && string(body[1:4]) == "SMB" {
+		if smb2OffersDialect(body, 0x0311) && smb2HasNegContext(body, 0x0003) {
+			flagAnomaly(res, "smb-compression-capabilities")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2020-0796")
+			flagAnomaly(res, "cve:CVE-2020-0796")
+			flagAnomaly(res, "cve:CVE-2020-1206")
+			res.Meta["intent"] = "SMBv3.1.1 compression negotiation — SMBGhost/SMBleed probe (CVE-2020-0796/-1206)"
+		}
+	}
+	// Compressed-transform header (\xfcSMB) = an actual SMBGhost exploit packet.
+	if bytes.Contains(body, []byte{0xfc, 'S', 'M', 'B'}) {
+		flagAnomaly(res, "smb-compression-transform")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2020-0796")
+		flagAnomaly(res, "cve:CVE-2020-0796")
+		res.Meta["intent"] = "SMBv3 compressed-transform packet — SMBGhost exploit (CVE-2020-0796)"
+	}
+	// SPNEGO NEGOEX token — the CVE-2022-37958 pre-auth heap-overflow surface.
+	if bytes.Contains(body, []byte("NEGOEXTS")) {
+		flagAnomaly(res, "smb-negoex")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2022-37958")
+		flagAnomaly(res, "cve:CVE-2022-37958")
+		setIfEmpty(res.Meta, "intent", "SMB SPNEGO NEGOEX token — pre-auth overflow probe (CVE-2022-37958)")
+	}
+	// SMB1 Transaction (0x25) / Transaction2 (0x32): the MS17-010 exploit family
+	// and the DoublePulsar implant ride these.
+	if len(body) >= 5 && body[0] == 0xFF && string(body[1:4]) == "SMB" {
+		switch body[4] {
+		case 0x25: // SMB_COM_TRANSACTION
+			flagAnomaly(res, "smb-trans-exploit")
+			setIfEmpty(res.Meta, "intent", "SMBv1 Transaction — MS17-010 exploit family / named-pipe RCE")
+		case 0x32: // SMB_COM_TRANSACTION2
+			flagAnomaly(res, "smb-trans-exploit")
+			// Trans2 Setup[0] (the Trans2 subcommand) lives just past the
+			// 28-byte fixed parameter block: 32-byte SMB header + WordCount(1).
+			if len(body) >= 63 && binary.LittleEndian.Uint16(body[61:63]) == 0x000e {
+				flagAnomaly(res, "smb-doublepulsar")
+				res.Meta["intent"] = "SMBv1 Trans2 SESSION_SETUP — DoublePulsar implant ping"
+			}
+		}
+	}
+}
+
+// smb2OffersDialect reports whether an SMB2 NEGOTIATE request offers the given
+// dialect revision. Layout: 64-byte SMB2 header, then NEGOTIATE request
+// (StructureSize@0=36, DialectCount@2, ... Dialects[]@36, 2 bytes LE each).
+func smb2OffersDialect(body []byte, dialect uint16) bool {
+	const hdr = 64
+	if len(body) < hdr+38 {
+		return false
+	}
+	count := int(binary.LittleEndian.Uint16(body[hdr+2 : hdr+4]))
+	if count <= 0 || count > 64 {
+		return false
+	}
+	off := hdr + 36
+	for i := 0; i < count && off+2 <= len(body); i++ {
+		if binary.LittleEndian.Uint16(body[off:off+2]) == dialect {
+			return true
+		}
+		off += 2
+	}
+	return false
+}
+
+// smb2HasNegContext reports whether an SMB2 NEGOTIATE request carries a
+// negotiate context of the given type. NegotiateContextOffset is at header+28,
+// NegotiateContextCount at header+34 in the request body.
+func smb2HasNegContext(body []byte, ctxType uint16) bool {
+	const hdr = 64
+	if len(body) < hdr+38 {
+		return false
+	}
+	off := int(binary.LittleEndian.Uint32(body[hdr+28 : hdr+32]))
+	count := int(binary.LittleEndian.Uint16(body[hdr+32 : hdr+34]))
+	if off <= 0 || off >= len(body) || count <= 0 || count > 64 {
+		return false
+	}
+	for i := 0; i < count && off+8 <= len(body); i++ {
+		t := binary.LittleEndian.Uint16(body[off : off+2])
+		dlen := int(binary.LittleEndian.Uint16(body[off+2 : off+4]))
+		if t == ctxType {
+			return true
+		}
+		// Contexts are 8-byte aligned: header(8) + data, padded.
+		adv := 8 + dlen
+		if rem := adv % 8; rem != 0 {
+			adv += 8 - rem
+		}
+		off += adv
+	}
+	return false
 }

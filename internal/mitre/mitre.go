@@ -840,6 +840,15 @@ var anomalyTags = map[string]Tag{
 	"dns-ecs-subnet":             {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
 	"dns-embedded-ip-rebind":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"dns-malformed-query":        {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
+	// SMB second-pass structural exploits + NTLM downgrade.
+	"smb-compression-capabilities": {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-compression-transform":    {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-negoex":                   {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-trans-exploit":            {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-doublepulsar":             {Techniques: []string{"T1210"}, Tactics: []string{"lateral-movement"}},
+	"smb-smbloris":                 {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"smb-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"rdp-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	// IBM MQ channel recon + MQCSP credential flow.
 	"ibmmq-connect":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"ibmmq-security-flow": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
