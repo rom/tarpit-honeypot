@@ -832,6 +832,14 @@ var anomalyTags = map[string]Tag{
 	// DNS SIG / TKEY exploit-probe qtypes (SIGRed / BIND TKEY DoS).
 	"dns-sig-query":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"dns-tkey-query": {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	// DNS second-pass detections.
+	"dns-gss-tsig":               {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dns-tsig-present":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dns-largeset-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"dns-0x20-encoding":          {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"dns-ecs-subnet":             {Techniques: []string{"T1590"}, Tactics: []string{"reconnaissance"}},
+	"dns-embedded-ip-rebind":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	"dns-malformed-query":        {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
 	// IBM MQ channel recon + MQCSP credential flow.
 	"ibmmq-connect":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"ibmmq-security-flow": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},

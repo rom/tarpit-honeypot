@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/binary"
 	"strings"
 
@@ -28,6 +29,21 @@ func dnsApplyDetections(res *Result, msg []byte, q dnsQuery) {
 	if q.qtype == 249 {
 		flagAnomaly(res, "dns-tkey-query")
 		flagAnomaly(res, "cve:CVE-2015-5477")
+		// A TKEY negotiating the GSS-API ("gss-tsig") algorithm is the ISC BIND
+		// SPNEGO buffer overflow vector (CVE-2021-25216).
+		if bytes.Contains(bytes.ToLower(msg), []byte("gss-tsig")) {
+			flagAnomaly(res, "dns-gss-tsig")
+			flagAnomaly(res, "cve:CVE-2021-25216")
+		}
+	}
+	// A TSIG meta-RR carrying an invalid class triggers the ISC BIND assertion
+	// failure DoS (CVE-2025-40775). dnsHasTSIG gates on the algorithm name to
+	// keep the class scan from false-positiving on arbitrary bytes.
+	if dnsHasTSIG(msg) {
+		flagAnomaly(res, "dns-tsig-present")
+		if dnsTSIGBadClass(msg) {
+			flagAnomaly(res, "cve:CVE-2025-40775")
+		}
 	}
 	// Fingerprint the DNS recon/tunnel/OOB-interaction tool from the QNAME.
 	if tools := toolfp.IdentifyDNS(q.name); len(tools) > 0 {
@@ -66,6 +82,10 @@ func dnsIntent(res *Result) string {
 	switch {
 	case any("cve:CVE-2020-1350", "dns-sig-query"):
 		return "DNS SIG-record query — SIGRed (CVE-2020-1350) RCE/DoS probe"
+	case any("dns-gss-tsig", "cve:CVE-2021-25216"):
+		return "DNS GSS-TSIG query — ISC BIND SPNEGO overflow probe (CVE-2021-25216)"
+	case any("cve:CVE-2025-40775"):
+		return "DNS TSIG with invalid class — ISC BIND assertion-failure DoS (CVE-2025-40775)"
 	case any("cve:CVE-2015-5477", "dns-tkey-query"):
 		return "DNS TKEY query — ISC BIND assertion-failure DoS probe (CVE-2015-5477)"
 	case any("dns-zone-transfer", "dns-zone-transfer-served"):
@@ -76,10 +96,16 @@ func dnsIntent(res *Result) string {
 		return "DNS tunneling / data exfiltration over DNS"
 	case any("dns-oob-interaction"):
 		return "DNS out-of-band interaction — SSRF/RCE callback / blind-exploit confirmation"
-	case any("dns-any-amplification", "dns-dnssec-amplification", "dns-edns-large-udpsize"):
+	case any("dns-any-amplification", "dns-dnssec-amplification", "dns-edns-large-udpsize", "dns-largeset-amplification"):
 		return "DNS amplification — staging a DRDoS reflector"
-	case any("dns-rebind-lookup"):
+	case any("dns-rebind-lookup", "dns-embedded-ip-rebind"):
 		return "DNS rebinding lookup — browser SOP bypass setup"
+	case any("dns-0x20-encoding"):
+		return "DNS 0x20 mixed-case query — cache-poisoning / spoofing probe"
+	case any("dns-ecs-subnet"):
+		return "DNS EDNS Client-Subnet — client-network disclosure"
+	case any("dns-malformed-query"):
+		return "malformed DNS query — parser fuzzing / evasion"
 	case any("dns-wpad-probe", "dns-isatap-probe", "dns-response-as-query", "dns-prestuffed-answers", "dns-additional-stuffing"):
 		return "DNS spoofing / MITM positioning (WPAD/ISATAP/cache-poison)"
 	case any("dns-srv-ad-discovery"):
@@ -165,6 +191,11 @@ func dnsThreatMarkers(msg []byte, q dnsQuery) []string {
 			add("dns-cname-tunnel")
 		}
 	}
+	// Large-RRset amplification candidates regardless of the DO/ANY combo the
+	// dnssec-amplification marker keys on: DNSKEY / RRSIG / TXT return big RRsets.
+	if q.qtype == 48 || q.qtype == 46 || q.qtype == 16 {
+		add("dns-largeset-amplification")
+	}
 
 	// --- name-driven recon / leakage / MITM bait ---
 	if strings.Contains(name, "_dmarc.") || strings.Contains(name, "_domainkey") || strings.HasPrefix(name, "_spf.") {
@@ -191,6 +222,12 @@ func dnsThreatMarkers(msg []byte, q dnsQuery) []string {
 	}
 	if dnsRebindService(name) {
 		add("dns-rebind-lookup") // nip.io / sslip.io / xip.io style DNS rebinding
+	}
+	if dnsEmbeddedIPLabel(labels) {
+		add("dns-embedded-ip-rebind") // a literal IP encoded in a label (1-2-3-4 / 0x…)
+	}
+	if dnsMixedCaseQName(msg, q.questionEnd) {
+		add("dns-0x20-encoding") // mixed-case QNAME — 0x20 anti-/cache-poison probe
 	}
 
 	// --- tunnelling / exfil structure ---
@@ -222,7 +259,105 @@ func dnsThreatMarkers(msg []byte, q dnsQuery) []string {
 			add("dns-dnssec-amplification") // DO bit + ANY/DNSKEY/RRSIG — large-response amplification
 		}
 	}
+	if dnsHasECS(msg, q.questionEnd) {
+		add("dns-ecs-subnet") // EDNS Client Subnet — client-network disclosure
+	}
 	return out
+}
+
+// dnsMixedCaseQName reports whether the QNAME mixes upper- and lower-case ASCII
+// letters — the DNS-0x20 case-randomization pattern (anti-poisoning, or inbound
+// to a decoy a cache-poison/spoofing probe). It scans the raw question bytes
+// (the parsed q.name is normalized to lower case, so it can't be used here).
+// Length octets are < 0x40 and never collide with the 'A'–'z' range.
+func dnsMixedCaseQName(msg []byte, questionEnd int) bool {
+	start := 12
+	end := questionEnd - 4 // strip the trailing qtype(2) + qclass(2)
+	if start >= end || end > len(msg) {
+		return false
+	}
+	hasU, hasL := false, false
+	for _, c := range msg[start:end] {
+		switch {
+		case c >= 'A' && c <= 'Z':
+			hasU = true
+		case c >= 'a' && c <= 'z':
+			hasL = true
+		}
+	}
+	return hasU && hasL
+}
+
+// dnsEmbeddedIPLabel reports whether any label encodes a literal IPv4 address
+// (dashed "10-0-0-1" or hex "0x0a000001") — the building block of DNS-rebinding
+// names beyond the well-known nip.io/sslip.io services.
+func dnsEmbeddedIPLabel(labels []string) bool {
+	for _, l := range labels {
+		parts := strings.Split(l, "-")
+		if len(parts) == 4 {
+			ok := true
+			for _, p := range parts {
+				if n, valid := atoiSafe(p); !valid || n > 255 {
+					ok = false
+					break
+				}
+			}
+			if ok {
+				return true
+			}
+		}
+		if (strings.HasPrefix(l, "0x") || strings.HasPrefix(l, "0X")) && len(l) >= 10 {
+			return true
+		}
+	}
+	return false
+}
+
+// dnsHasTSIG reports whether the message carries a TSIG meta-RR, gated on a TSIG
+// algorithm name so the class scan can't false-positive on arbitrary bytes.
+func dnsHasTSIG(msg []byte) bool {
+	low := bytes.ToLower(msg)
+	return bytes.Contains(low, []byte("hmac-")) || bytes.Contains(low, []byte(".sig-alg.reg.int"))
+}
+
+// dnsTSIGBadClass reports whether a TSIG RR (TYPE 250) has a class other than
+// ANY (0x00ff) — the ISC BIND assertion-failure trigger (CVE-2025-40775).
+func dnsTSIGBadClass(msg []byte) bool {
+	for i := 12; i+4 <= len(msg); i++ {
+		if msg[i] == 0x00 && msg[i+1] == 0xfa { // TYPE 250 (TSIG)
+			if binary.BigEndian.Uint16(msg[i+2:i+4]) != 0x00ff {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dnsHasECS reports whether the EDNS(0) OPT RR carries the edns-client-subnet
+// option (option code 8, RFC 7871).
+func dnsHasECS(msg []byte, start int) bool {
+	if start < 12 || start > len(msg) {
+		start = 12
+	}
+	for i := start; i+11 <= len(msg); i++ {
+		if msg[i] == 0x00 && msg[i+1] == 0x00 && msg[i+2] == 0x29 { // root name + TYPE 41 (OPT)
+			rdlen := int(binary.BigEndian.Uint16(msg[i+9 : i+11]))
+			opt, end := i+11, i+11+rdlen
+			if end > len(msg) {
+				end = len(msg)
+			}
+			for opt+4 <= end {
+				code := binary.BigEndian.Uint16(msg[opt : opt+2])
+				olen := int(binary.BigEndian.Uint16(msg[opt+2 : opt+4]))
+				if code == 8 {
+					return true
+				}
+				opt += 4 + olen
+			}
+			return false
+		}
+	}
+	return false
 }
 
 // dnsLongOrEncodedLeftLabel reports whether the leftmost label looks like a
