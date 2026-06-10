@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -50,6 +51,16 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 	}
 
 	if mode != 3 {
+		// A mode-7 packet with the response bit (0x80) set is a *reply* arriving
+		// at our server, not a request — the mode-7 ping-pong reflected DoS where
+		// two NTP servers bounce private-mode replies at each other forever.
+		if mode == 7 && payload[0]&0x80 != 0 {
+			flagAnomaly(&res, "ntp-mode7-reflected-loop")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2009-3563")
+			flagAnomaly(&res, "cve:CVE-2009-3563")
+			res.Meta["intent"] = "NTP mode-7 reflected response loop — DRDoS ping-pong (CVE-2009-3563)"
+			return res, nil
+		}
 		// Non-client modes. Mode 6 (ntpq control) and mode 7 (ntpdc private) are
 		// the classic amplifiers — we answer them, but minimally and behind the
 		// global reflection limiter (see the type doc), so the scanner is engaged
@@ -91,6 +102,15 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			flagAnomaly(&res, "ntp-control-query")
 			op := payload[1] & 0x1f
 			res.Meta["ntp_control_opcode"] = op
+			// A mode-6 read of the MRU list (`ntpq -c mrulist`) with crafted
+			// variables (nonce/frags/mincount) crashes ntpd (NULL deref). The
+			// "mru"/"mrulist" token appears in cleartext in the control data.
+			if bytes.Contains(bytes.ToLower(payload[12:]), []byte("mru")) {
+				flagAnomaly(&res, "ntp-mrulist-probe")
+				res.CVEHits = appendUnique(res.CVEHits, "CVE-2016-7434")
+				flagAnomaly(&res, "cve:CVE-2016-7434")
+				res.Meta["intent"] = "NTP mode-6 mrulist read — ntpd NULL-deref DoS probe (CVE-2016-7434)"
+			}
 			switch op {
 			case 2: // READVAR — `ntpq -c rv target`
 				res.Meta["ntp_control"] = "READVAR"
@@ -106,9 +126,16 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			}
 		default:
 			// Other non-client modes (symmetric/broadcast/reserved): not normal
-			// for an inbound probe to a public time server.
-			flagAnomaly(&res, "ntp-nonclient-mode")
-			res.Meta["intent"] = "NTP non-client mode " + modeName(mode) + " probe"
+			// for an inbound probe to a public time server. Mode 1 (symmetric
+			// active) and mode 5 (broadcast) inbound are an attempt to establish a
+			// rogue association so the attacker becomes a trusted time source.
+			if mode == 1 || mode == 5 {
+				flagAnomaly(&res, "ntp-rogue-association")
+				res.Meta["intent"] = "NTP rogue " + modeName(mode) + " association — time-source spoofing attempt"
+			} else {
+				flagAnomaly(&res, "ntp-nonclient-mode")
+				res.Meta["intent"] = "NTP non-client mode " + modeName(mode) + " probe"
+			}
 		}
 		// Structural tool fingerprint (ntpdc / ntpq / monlist scanner / legacy).
 		var impl, rc byte
@@ -122,6 +149,14 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 			}
 		}
 		return res, nil
+	}
+
+	// A client/symmetric packet longer than the 48-byte header carries a MAC or
+	// extension fields. A bare crypto-NAK (key-id 0, no digest) or an Autokey
+	// extension field is the observable trigger for the ntpd crypto-NAK / Autokey
+	// DoS + clock time-shift class.
+	if len(payload) > 48 {
+		inspectNTPTrailer(&res, payload)
 	}
 
 	now := time.Now().UTC()
@@ -157,6 +192,37 @@ func (n *ntp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pac
 	}
 	_ = cfg
 	return res, nil
+}
+
+// inspectNTPTrailer classifies the bytes past the 48-byte NTP header. A real
+// internet client almost never sends one, so anything here is high-signal: a
+// crypto-NAK (a 4-byte MAC with key-id 0 and no digest, used to reset an
+// association and drive the crypto-NAK DoS / time-shift) or an Autokey
+// extension field (RFC 5906; crafted fields drove the ntpd crypto overflows).
+// A standard symmetric-key MAC (20/24 bytes) is just recorded.
+func inspectNTPTrailer(res *Result, payload []byte) {
+	trailer := payload[48:]
+	res.Meta["ntp_trailer_len"] = len(trailer)
+	if len(trailer) == 4 && bytes.Equal(trailer, []byte{0, 0, 0, 0}) {
+		flagAnomaly(res, "ntp-crypto-nak")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2016-1547")
+		flagAnomaly(res, "cve:CVE-2016-1547")
+		res.Meta["intent"] = "NTP crypto-NAK packet — association reset / clock time-shift (CVE-2015-7871/2016-1547)"
+		return
+	}
+	if len(trailer) == 20 || len(trailer) == 24 {
+		res.Meta["ntp_authenticated"] = true // symmetric-key MAC; unusual from the internet
+		return
+	}
+	// Extension-field head: a 16-bit field type (>= 0x0200 for Autokey).
+	if len(trailer) >= 8 {
+		if ft := binary.BigEndian.Uint16(trailer[0:2]); ft >= 0x0200 {
+			flagAnomaly(res, "ntp-autokey-extension")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2014-9295")
+			flagAnomaly(res, "cve:CVE-2014-9295")
+			res.Meta["intent"] = "NTP Autokey extension field — crypto-stack overflow probe (CVE-2014-9295)"
+		}
+	}
 }
 
 func ntpTime(t time.Time) (sec, frac uint32) {

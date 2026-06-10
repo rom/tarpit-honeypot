@@ -805,6 +805,11 @@ var anomalyTags = map[string]Tag{
 	"ntp-monlist-amplification": {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-mode7-private":         {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
 	"ntp-nonclient-mode":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"ntp-mode7-reflected-loop":  {Techniques: []string{"T1498.002"}, Tactics: []string{"impact"}},
+	"ntp-mrulist-probe":         {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
+	"ntp-crypto-nak":            {Techniques: []string{"T1070.006"}, Tactics: []string{"defense-evasion"}},
+	"ntp-autokey-extension":     {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ntp-rogue-association":     {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	// chrony cmdmon (UDP 323) control-channel reconnaissance and manipulation.
 	"chrony-cmdmon-probe":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"chrony-cmdmon-recon":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
