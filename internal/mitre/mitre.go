@@ -905,6 +905,12 @@ var anomalyTags = map[string]Tag{
 	// Management: IPMI auth-bypass + RAKP hash disclosure.
 	"ipmi-cipher-zero-auth-bypass": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"ipmi-rakp-hash-disclosure":    {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
+	// Precise mappings for high-signal markers that otherwise fell back to the
+	// coarse "ics-" -> T0888 / "printer-" -> T1083 discovery prefix rules.
+	"ics-codesys-login":         {Techniques: []string{"T0859"}, Tactics: []string{"lateral-movement"}},
+	"printer-filesystem-access": {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"printer-nvram-access":      {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
+	"printer-dmcmd":             {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
 	// 25-protocol round: x11/redfish/tn3270/pjlink markers.
 	"x11-no-auth":           {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 	"redfish-auth-bypass":   {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
@@ -1259,6 +1265,7 @@ var techDescriptions = map[string]string{
 	"T1496":     "Resource Hijacking — abusing compute (e.g. cryptomining).",
 	"T1657":     "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
 	"T1565":     "Data Manipulation — tampering with stored/displayed/transmitted data.",
+	"T1542":     "Pre-OS Boot / System Firmware — writing device firmware (e.g. a printer firmware upload) for persistence.",
 	"T1187":     "Forced Authentication — coercing a host to authenticate to an attacker-controlled endpoint (e.g. PetitPotam, MSSQL xp_dirtree UNC) to capture/relay credentials.",
 	"T1583":     "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
 	"T1020":     "Automated Exfiltration — automatically transferring collected data out.",
@@ -1411,6 +1418,7 @@ var d3fend = map[string][]string{
 	"T1589": {"D3-NTA", "D3-DNR"},                   // gather victim identity info (RDP mstshash username harvest)
 	"T1222": {"D3-FH", "D3-DF"},                     // file/directory permissions modification (FTP SITE CHMOD)
 	"T1112": {"D3-FH", "D3-NTA"},                    // modify registry (MSSQL xp_regwrite)
+	"T1542": {"D3-FH", "D3-NTA"},                    // pre-OS boot / firmware (printer firmware upload)
 	"T1563": {"D3-NTA", "D3-MFA"},                   // remote service session hijack (SSH agent forwarding)
 	"T1082": {"D3-NTA", "D3-DNR"},                   // system information discovery (MySQL @@version recon)
 	"T1134": {"D3-MFA", "D3-DE"},                    // access token manipulation (MSSQL EXECUTE AS)

@@ -2266,6 +2266,14 @@ var catalog = []Record{
 	{ID: "CVE-2023-6448", Name: "Unitronics Vision hardcoded password", CVSS: 9.8, Service: "pcom", Technique: "T0859", Tactic: "initial-access", CWE: []string{"CWE-798"}, Description: "Unitronics Vision/Samba PLC/HMI ship a default administrative password (exploited in the wild against water/wastewater HMIs)."},
 	{ID: "CVE-2011-3478", Name: "Symantec pcAnywhere remote code execution", CVSS: 9.8, Service: "pcanywhere", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-120"}, Description: "Symantec pcAnywhere awhost32 buffer overflow on a crafted login packet allows pre-auth remote code execution."},
 	{ID: "CVE-2023-34329", Name: "AMI MegaRAC Redfish authentication bypass", CVSS: 8.2, Service: "redfish", Technique: "T1190", Tactic: "credential-access", CWE: []string{"CWE-290"}, Description: "AMI MegaRAC BMCs treat a request as internal when a Host/X-Server-Addr header is spoofed, bypassing Redfish authentication."},
+
+	// ---- Round 3: a second CVE per protocol where a confident one exists ----
+	{ID: "CVE-2017-12741", Name: "Siemens S7 crafted-packet DoS", CVSS: 7.5, Service: "s7comm_plus", Technique: "T0814", Tactic: "impact", CWE: []string{"CWE-400"}, Description: "A crafted packet to UDP/161 or TCP/102 puts affected Siemens S7 / SIMATIC devices into defect mode (manual restart required)."},
+	{ID: "CVE-2023-3596", Name: "Rockwell 1756-EN2T major-fault DoS", CVSS: 8.6, Service: "ethernetip", Technique: "T0814", Tactic: "impact", CWE: []string{"CWE-20"}, Description: "A malformed CIP packet faults Allen-Bradley 1756-EN2T/EN3T communication modules, halting the controller (DoS)."},
+	{ID: "CVE-2023-42769", Name: "Red Lion missing authentication", CVSS: 9.1, Service: "crimson", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-306"}, Description: "Red Lion controllers expose privileged management functionality to an unauthenticated network client."},
+	{ID: "CVE-2018-7225", Name: "LibVNCServer out-of-bounds access", CVSS: 9.8, Service: "vnc", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-125"}, Description: "LibVNCServer rfbProcessClientNormalMessage mishandles a client message length, causing an out-of-bounds read/write."},
+	{ID: "CVE-2022-40259", Name: "AMI MegaRAC Redfish command injection", CVSS: 9.9, Service: "redfish", Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"}, Description: "AMI MegaRAC exposes a Redfish API operation that allows an authenticated low-privilege user to execute arbitrary commands."},
+	{ID: "CVE-2013-4031", Name: "Supermicro IPMI/BMC authentication bypass", CVSS: 9.8, Service: "ipmi", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"}, Description: "Supermicro IPMI/BMC firmware contains an authentication flaw allowing unauthorized administrative access."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
