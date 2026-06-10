@@ -902,6 +902,9 @@ var anomalyTags = map[string]Tag{
 	"mongodb-pipeline-exfil":    {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
 	"mongodb-gridfs-access":     {Techniques: []string{"T1005"}, Tactics: []string{"collection"}},
 	"mongodb-data-clone":        {Techniques: []string{"T1530"}, Tactics: []string{"collection"}},
+	// Management: IPMI auth-bypass + RAKP hash disclosure.
+	"ipmi-cipher-zero-auth-bypass": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"ipmi-rakp-hash-disclosure":    {Techniques: []string{"T1190"}, Tactics: []string{"credential-access"}},
 	// SSH second-pass: Terrapin, null cipher, tunneling, env Shellshock.
 	"ssh-terrapin-vulnerable": {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"ssh-none-cipher":         {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},

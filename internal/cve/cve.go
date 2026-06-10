@@ -2245,6 +2245,18 @@ var catalog = []Record{
 	{ID: "CVE-2021-20329", Name: "MongoDB BSON type-confusion injection", CVSS: 6.5, Service: "mongodb", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-843"}, Description: "Improper BSON validation in some MongoDB drivers allows query injection via type confusion."},
 	{ID: "CVE-2020-7921", Name: "MongoDB security-check bypass (JS)", CVSS: 4.9, Service: "mongodb", Technique: "T1059", Tactic: "execution", CWE: []string{"CWE-358"}, Description: "Improperly implemented security check lets server-side JavaScript run even when javascriptEnabled is set to false."},
 	{ID: "CVE-2019-2389", Name: "MongoDB cached-credential auth bypass", CVSS: 7.7, Service: "mongodb", Technique: "T1078", Tactic: "credential-access", CWE: []string{"CWE-287"}, Description: "MongoDB reuses cached authorization after a user's privileges are revoked (LDAP/SASL), allowing continued access."},
+
+	// ---- OT / remote-access / management / printer protocol deepening ----
+	// (CUPS chain 2024-47176/47076/47175, Schneider UMAS 2018-7842/2021-22779,
+	// Siemens 2019-10929 and Moxa 2016-9361 are already catalogued elsewhere.)
+	{ID: "CVE-2000-0917", Name: "LPRng format-string RCE", CVSS: 10.0, Service: "lpd", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-134"}, Description: "LPRng use_syslog format-string vulnerability allows remote code execution via crafted LPD control data."},
+	{ID: "CVE-2017-2741", Name: "HP LaserJet PJL path traversal / file access", CVSS: 7.5, Service: "pjl", Technique: "T1005", Tactic: "collection", CWE: []string{"CWE-22"}, Description: "HP printers expose the PJL filesystem (FSDOWNLOAD/FSUPLOAD), allowing remote read/write outside the intended directory."},
+	{ID: "CVE-2013-4786", Name: "IPMI 2.0 RAKP password-hash disclosure", CVSS: 7.5, Service: "ipmi", Technique: "T1190", Tactic: "credential-access", CWE: []string{"CWE-200"}, Description: "The IPMI 2.0 RAKP protocol returns a salted password hash for any username to an unauthenticated client (offline-crackable)."},
+	{ID: "CVE-2006-2369", Name: "RealVNC 4.1.1 authentication bypass", CVSS: 7.5, Service: "vnc", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"}, Description: "RealVNC 4.1.1 lets a client choose the 'None' security type even when the server requires a password — full auth bypass."},
+	{ID: "CVE-2019-15681", Name: "LibVNCServer memory disclosure", CVSS: 7.5, Service: "vnc", Technique: "T1190", Tactic: "collection", CWE: []string{"CWE-200"}, Description: "LibVNCServer leaks server memory to a connecting client through an uninitialized-data read."},
+	{ID: "CVE-2020-6998", Name: "Rockwell Logix stack overflow RCE", CVSS: 10.0, Service: "ethernetip", Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-787"}, Description: "Allen-Bradley CompactLogix/ControlLogix CIP handling stack overflow allows remote code execution / PLC compromise."},
+	{ID: "CVE-2013-2811", Name: "Triangle MicroWorks DNP3 outstation DoS", CVSS: 7.1, Service: "dnp3", Technique: "T0814", Tactic: "impact", CWE: []string{"CWE-20"}, Description: "Malformed DNP3 application fragments crash Triangle MicroWorks-based outstations/masters (widely OEM'd)."},
+	{ID: "CVE-2022-29862", Name: "open62541 OPC-UA infinite loop DoS", CVSS: 7.5, Service: "opcua", Technique: "T0814", Tactic: "impact", CWE: []string{"CWE-835"}, Description: "open62541 enters an infinite loop on a crafted OPC-UA message, denying service to the server."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
