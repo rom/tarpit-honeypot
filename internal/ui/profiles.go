@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,6 +129,34 @@ type Profile struct {
 	// OPCItems are the OPC-DA / ICS item IDs / group names this source reached
 	// for (from the dcerpc OPC-DA call layer).
 	OPCItems []string `json:"opc_items,omitempty"`
+	// Intents are the distinct per-event "intent" labels (what the attacker was
+	// doing — set by the handler or derived at the listener) observed across this
+	// source's events: its intent aggregated over all of its attacks.
+	Intents []string `json:"intents,omitempty"`
+	// URLsRequested are the distinct HTTP request targets (paths / URIs) this
+	// source asked for across the HTTP-family handlers — distinct from the C2 /
+	// dropper URLs harvested from payloads (URLs above).
+	URLsRequested []string `json:"urls_requested,omitempty"`
+	// HTTPHeaders are the distinct HTTP request headers seen across this source's
+	// requests: each header name with a sample of the values it carried and the
+	// number of requests that set it.
+	HTTPHeaders []HeaderStat `json:"http_headers_seen,omitempty"`
+	// FilesTaken are the distinct files this source downloaded / exfiltrated over
+	// a file-transfer protocol (FTP / SCP / SFTP / TFTP) or a DNS zone transfer —
+	// the decoy "loot" it actually pulled.
+	FilesTaken []FileTaken `json:"files_taken,omitempty"`
+	// Honeytokens are the distinct planted secrets (honeytokens / decoy
+	// credentials / canary accounts) this source pulled from a decoy or replayed
+	// back — the canary loot.
+	Honeytokens []TokenTaken `json:"honeytokens,omitempty"`
+	// Protocols is the per-protocol intelligence for every protocol this source
+	// used (versions + negotiated facts), not just the TLS/SSH/HTTP/QUIC transport
+	// stack summarized in Proto.
+	Protocols []ProtocolUse `json:"protocols,omitempty"`
+	// MisuseAnomalies are this source's anomalies excluding the webapp:* web-attack
+	// classes (surfaced separately): the protocol misuse / manipulation markers
+	// shown in the consolidated attack catalog.
+	MisuseAnomalies []string `json:"-"`
 	// CrossTarget is the cross-target picture when this source reached more than
 	// one of the host's target IPs: targets in first-seen order with timing
 	// offsets + per-target ports, and the ports hit on >1 target. nil otherwise.
@@ -258,6 +287,46 @@ func (p ProtoIntel) Empty() bool {
 		len(p.QUICSNI) == 0 && len(p.QUICALPN) == 0
 }
 
+// HeaderStat is one HTTP request-header name seen across the actor's requests,
+// with a sample of the distinct values it carried and how many requests set it.
+type HeaderStat struct {
+	Name   string   `json:"name"`
+	Values []string `json:"values,omitempty"`
+	Count  int      `json:"count"`
+}
+
+// FileTaken is one file the actor downloaded / exfiltrated, with the transfer
+// method it used (ftp / scp / sftp / tftp / dns-axfr).
+type FileTaken struct {
+	Path   string `json:"path"`
+	Method string `json:"method"`
+}
+
+// TokenTaken is one planted secret (honeytoken / decoy credential / canary
+// account) the actor pulled from a decoy or replayed, with where it was seen.
+type TokenTaken struct {
+	Token   string `json:"token,omitempty"`
+	Kind    string `json:"kind,omitempty"` // honeytoken | account | replayed
+	Service string `json:"service,omitempty"`
+}
+
+// ProtocolUse is the per-protocol intelligence for one protocol/handler the
+// actor touched: how many events, the protocol versions observed, and the
+// negotiated / selected facts captured.
+type ProtocolUse struct {
+	Name     string   `json:"name"`
+	Events   int      `json:"events"`
+	Versions []string `json:"versions,omitempty"`
+	Details  []string `json:"details,omitempty"`
+}
+
+// protoAccum accumulates per-protocol intelligence while building a profile.
+type protoAccum struct {
+	events   int
+	versions map[string]struct{}
+	details  map[string]struct{}
+}
+
 // buildProfile aggregates one source's events (expected newest-first) into a
 // dossier.
 func buildProfile(ip string, evs []*event.Event) Profile {
@@ -287,7 +356,40 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	quicSNISet := map[string]struct{}{}
 	quicALPNSet := map[string]struct{}{}
 	opcSet := map[string]struct{}{}
-	targets := map[string]*targetAccum{} // cross-target: per-destination-IP accumulator
+	intentSet := map[string]struct{}{}
+	urlReqSet := map[string]struct{}{}
+	headerVals := map[string]map[string]struct{}{} // header name -> distinct values (sampled)
+	headerCount := map[string]int{}                // header name -> requests that set it
+	fileSeen := map[string]struct{}{}              // dedup key: method\x00path
+	tokenSeen := map[string]struct{}{}             // dedup key: kind\x00token
+	protoAcc := map[string]*protoAccum{}           // protocol/handler -> intelligence accumulator
+	targets := map[string]*targetAccum{}           // cross-target: per-destination-IP accumulator
+	// addFile records a file the source downloaded / exfiltrated (deduped, capped).
+	addFile := func(path, method string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		key := method + "\x00" + path
+		if _, dup := fileSeen[key]; dup || len(p.FilesTaken) >= 200 {
+			return
+		}
+		fileSeen[key] = struct{}{}
+		p.FilesTaken = append(p.FilesTaken, FileTaken{Path: truncStr(path, 256), Method: method})
+	}
+	// addToken records a planted secret the source pulled / replayed (deduped, capped).
+	addToken := func(tok, kind, svc string) {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			return
+		}
+		key := kind + "\x00" + tok
+		if _, dup := tokenSeen[key]; dup || len(p.Honeytokens) >= 100 {
+			return
+		}
+		tokenSeen[key] = struct{}{}
+		p.Honeytokens = append(p.Honeytokens, TokenTaken{Token: truncStr(tok, 160), Kind: kind, Service: svc})
+	}
 	// firstStr records the first non-empty string value for an origin field.
 	firstStr := func(dst *string, ev *event.Event, key string) {
 		if *dst == "" {
@@ -482,6 +584,86 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		for _, s := range metaStrings(ev.Meta, "opc_strings") {
 			opcSet[s] = struct{}{}
 		}
+		// Intent: the concise "what the attacker was doing" label (set by the
+		// handler or derived at the listener) — aggregated over all events.
+		if it, _ := ev.Meta["intent"].(string); it != "" {
+			intentSet[it] = struct{}{}
+		}
+		// Requested URLs: the distinct HTTP request targets this source asked for
+		// (one per event; http_uri preferred, then uri_path / http_path).
+		for _, uk := range []string{"http_uri", "uri_path", "http_path"} {
+			if u, _ := ev.Meta[uk].(string); u != "" {
+				urlReqSet[truncStr(u, 512)] = struct{}{}
+				break
+			}
+		}
+		// HTTP request headers seen, with a sample of distinct values per header.
+		for name, val := range strMap(ev.Meta["http_headers"]) {
+			headerCount[name]++
+			if headerVals[name] == nil {
+				headerVals[name] = map[string]struct{}{}
+			}
+			if val != "" && len(headerVals[name]) < 6 {
+				headerVals[name][truncStr(val, 200)] = struct{}{}
+			}
+		}
+		// Files downloaded / exfiltrated over a file-transfer protocol or a DNS
+		// zone transfer (AXFR). FTP honeyfile pulls + SFTP paths + an SCP "source"
+		// transfer + a TFTP read request + a served zone.
+		for _, f := range metaStrings(ev.Meta, "retrieved") {
+			addFile(f, "ftp")
+		}
+		for _, f := range metaStrings(ev.Meta, "sftp_paths") {
+			addFile(f, "sftp")
+		}
+		if m, _ := ev.Meta["scp_mode"].(string); m == "download" {
+			if sp, _ := ev.Meta["scp_path"].(string); sp != "" {
+				addFile(sp, "scp")
+			}
+		}
+		if op, _ := ev.Meta["opcode"].(string); op == "RRQ" && ev.Handler == "tftp" {
+			if f, _ := ev.Meta["filename"].(string); f != "" {
+				addFile(f, "tftp")
+			}
+		}
+		if served, _ := ev.Meta["zone_transfer_served"].(bool); served {
+			zone, _ := ev.Meta["qname"].(string)
+			if zone == "" {
+				zone = "(zone)"
+			}
+			addFile(zone, "dns-axfr")
+		}
+		// Honeytokens / decoy secrets served to or replayed by this source.
+		if t, _ := ev.Meta["honeytoken"].(string); t != "" {
+			addToken(t, "honeytoken", ev.Handler)
+		}
+		if a, _ := ev.Meta["honeytoken_account"].(string); a != "" {
+			addToken(a, "account", ev.Handler)
+		}
+		if ev.RuleID == "canary:token_used" {
+			if k, _ := ev.Meta["reused_cred_key"].(string); k != "" {
+				addToken(k, "replayed", ev.Handler)
+			}
+		}
+		// Per-protocol intelligence: every protocol the source spoke, with the
+		// versions and negotiated parameters observed (not just TLS).
+		if pname := ev.Handler; pname != "" || ev.Proto != "" {
+			if pname == "" {
+				pname = ev.Proto
+			}
+			pa := protoAcc[pname]
+			if pa == nil {
+				pa = &protoAccum{versions: map[string]struct{}{}, details: map[string]struct{}{}}
+				protoAcc[pname] = pa
+			}
+			pa.events++
+			for _, vstr := range protoVersionStrings(ev.Meta) {
+				pa.versions[vstr] = struct{}{}
+			}
+			for _, dstr := range protoDetailStrings(ev.Meta) {
+				pa.details[dstr] = struct{}{}
+			}
+		}
 		if len(p.Recent) < 50 {
 			p.Recent = append(p.Recent, ev)
 		}
@@ -523,6 +705,53 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	p.OPCItems = sortedSet(opcSet)
 	if _, weak := anomSet["ssh-kex-weak-primitive"]; weak {
 		p.Proto.SSHKexWeak = true
+	}
+	p.Intents = sortedSet(intentSet)
+	p.URLsRequested = sortedSet(urlReqSet)
+	// HTTP headers seen: header name -> sampled values + request count, ranked by
+	// how many requests carried the header, then name; capped for the page.
+	for name, vals := range headerVals {
+		p.HTTPHeaders = append(p.HTTPHeaders, HeaderStat{Name: name, Values: sortedSet(vals), Count: headerCount[name]})
+	}
+	sort.Slice(p.HTTPHeaders, func(i, j int) bool {
+		if p.HTTPHeaders[i].Count != p.HTTPHeaders[j].Count {
+			return p.HTTPHeaders[i].Count > p.HTTPHeaders[j].Count
+		}
+		return p.HTTPHeaders[i].Name < p.HTTPHeaders[j].Name
+	})
+	if len(p.HTTPHeaders) > 60 {
+		p.HTTPHeaders = p.HTTPHeaders[:60]
+	}
+	sort.Slice(p.FilesTaken, func(i, j int) bool {
+		if p.FilesTaken[i].Method != p.FilesTaken[j].Method {
+			return p.FilesTaken[i].Method < p.FilesTaken[j].Method
+		}
+		return p.FilesTaken[i].Path < p.FilesTaken[j].Path
+	})
+	sort.Slice(p.Honeytokens, func(i, j int) bool {
+		if p.Honeytokens[i].Kind != p.Honeytokens[j].Kind {
+			return p.Honeytokens[i].Kind < p.Honeytokens[j].Kind
+		}
+		return p.Honeytokens[i].Token < p.Honeytokens[j].Token
+	})
+	for name, pa := range protoAcc {
+		p.Protocols = append(p.Protocols, ProtocolUse{
+			Name: name, Events: pa.events,
+			Versions: sortedSet(pa.versions), Details: sortedSet(pa.details),
+		})
+	}
+	sort.Slice(p.Protocols, func(i, j int) bool {
+		if p.Protocols[i].Events != p.Protocols[j].Events {
+			return p.Protocols[i].Events > p.Protocols[j].Events
+		}
+		return p.Protocols[i].Name < p.Protocols[j].Name
+	})
+	// MisuseAnomalies = anomalies minus the webapp:* web-attack classes (shown
+	// separately in the consolidated attack catalog).
+	for _, a := range p.Anomalies {
+		if !strings.HasPrefix(a, "webapp:") {
+			p.MisuseAnomalies = append(p.MisuseAnomalies, a)
+		}
 	}
 	p.CrossTarget = buildCrossTarget(targets)
 	p.synthesize()
@@ -679,6 +908,77 @@ func metaInt(meta map[string]any, key string) int {
 		return int(t)
 	}
 	return 0
+}
+
+// scalarStr renders a scalar meta value (string / bool / int / float — numbers
+// decode as float64 through the JSON store) as a string; "" for anything else.
+func scalarStr(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	case int:
+		return strconv.Itoa(t)
+	case int64:
+		return strconv.FormatInt(t, 10)
+	case float64:
+		if t == float64(int64(t)) {
+			return strconv.FormatInt(int64(t), 10)
+		}
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	}
+	return ""
+}
+
+// protoVersionStrings extracts the protocol-version facts from an event's meta:
+// every "version" / "*_version" key plus the protocol-level / revision markers,
+// labelled by the meta key so the protocol context is kept (e.g.
+// "tls_version: TLS 1.3", "ldap_version: 3", "ssh_client_openssh_version: 9.6").
+func protoVersionStrings(meta map[string]any) []string {
+	var out []string
+	for k, v := range meta {
+		if k != "version" && k != "protocol_version" && k != "protocol_level" &&
+			k != "proto_rev" && !strings.HasSuffix(k, "_version") {
+			continue
+		}
+		if s := scalarStr(v); s != "" {
+			out = append(out, k+": "+truncStr(s, 80))
+		}
+	}
+	return out
+}
+
+// protoDetailKeys are the negotiated / selected protocol parameters worth
+// surfacing per protocol (beyond the raw JA3/JA4/HASSH fingerprints, which have
+// their own section): the KEX/cipher chosen, ALPN, the auth mechanism, the
+// security type, the MIB/profile served, etc.
+var protoDetailKeys = []string{
+	"ssh_kex_negotiated", "alpn", "tls_intercept", "starttls",
+	"security_type_name", "security_type_selected", "rfb_security",
+	"mib_profile", "sasl_mechanism", "auth_mech", "auth_mechanism",
+	"ldap_default_naming_context", "redis_client_name", "vnc_client",
+	"historian_protocol", "mms_profile", "emulated_software", "snmp_v3_user",
+}
+
+// protoDetailStrings extracts the curated negotiated-parameter facts from an
+// event's meta (scalar keys above plus a couple of list-valued ones).
+func protoDetailStrings(meta map[string]any) []string {
+	var out []string
+	for _, k := range protoDetailKeys {
+		if s := scalarStr(meta[k]); s != "" {
+			out = append(out, k+": "+truncStr(s, 80))
+		}
+	}
+	for _, k := range []string{"dialects", "enctypes"} {
+		if vs := metaStrings(meta, k); len(vs) > 0 {
+			out = append(out, k+": "+truncStr(strings.Join(vs, ","), 80))
+		}
+	}
+	return out
 }
 
 // extractCreds pulls every captured credential / secret out of an event's meta
