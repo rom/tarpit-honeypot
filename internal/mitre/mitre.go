@@ -1127,6 +1127,7 @@ var techDescriptions = map[string]string{
 	"T1496":     "Resource Hijacking — abusing compute (e.g. cryptomining).",
 	"T1657":     "Financial Theft — monetizing access directly (e.g. VoIP toll fraud, fraudulent transactions).",
 	"T1565":     "Data Manipulation — tampering with stored/displayed/transmitted data.",
+	"T1187":     "Forced Authentication — coercing a host to authenticate to an attacker-controlled endpoint (e.g. PetitPotam, MSSQL xp_dirtree UNC) to capture/relay credentials.",
 	"T1583":     "Acquire Infrastructure — standing up or renting attacker infra (botnet nodes, domains, ASNs) used across a campaign.",
 	"T1020":     "Automated Exfiltration — automatically transferring collected data out.",
 	"T1041":     "Exfiltration Over C2 Channel — sending stolen data back over the C2 channel.",
@@ -1273,6 +1274,7 @@ var d3fend = map[string][]string{
 	"T1498": {"D3-ITF"},                             // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
+	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

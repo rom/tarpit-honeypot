@@ -2164,6 +2164,83 @@ var catalog = []Record{
 	{ID: "CVE-2020-15505", Name: "MobileIron Core RCE", CVSS: 9.8, Service: "http", Signatures: []string{"/mifs/.;/services/", "/mifs/.;/admin/"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, CPE: "cpe:2.3:a:mobileiron:core:*:*:*:*:*:*:*:*", EPSS: 0.96, Description: "Ivanti MobileIron Core/Connector unauthenticated remote code execution."},
 	{ID: "CVE-2012-1823", Name: "PHP-CGI argument injection", CVSS: 9.8, Service: "http", Signatures: []string{"?-d+allow_url_include", "-d+auto_prepend_file", "%2d%64+allow_url_include"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-88"}, CPE: "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*", EPSS: 0.97, Description: "PHP-CGI query-string argument injection remote code execution."},
 	{ID: "CVE-2022-1471", Name: "SnakeYAML deserialization RCE", CVSS: 9.8, Service: "http", Signatures: []string{"!!javax.script.scriptenginemanager", "!!java.net.urlclassloader"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-502"}, CPE: "cpe:2.3:a:snakeyaml_project:snakeyaml:*:*:*:*:*:*:*:*", EPSS: 0.70, Description: "SnakeYAML unsafe constructor YAML deserialization remote code execution."},
+
+	// ---- Time services: NTP (123) + chrony cmdmon (323). Advisory records;
+	// the ntp / chronyd handlers attribute live attempts via res.CVEHits. ----
+	{ID: "CVE-2016-1547", Name: "ntpd crypto-NAK DoS", CVSS: 6.5, Service: "ntp", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"}, Description: "ntpd accepts a spoofed crypto-NAK that triggers an off-path denial of service / association reset."},
+	{ID: "CVE-2016-1548", Name: "ntpd interleave/mode time-shift", CVSS: 6.4, Service: "ntp", Technique: "T1070.006", Tactic: "defense-evasion", CWE: []string{"CWE-290"}, Description: "ntpd can be forced between basic and interleaved/symmetric mode by a spoofed packet, shifting the victim clock."},
+	{ID: "CVE-2009-3563", Name: "ntpd mode-7 reflected DoS", CVSS: 6.4, Service: "ntp", Technique: "T1498.002", Tactic: "impact", CWE: []string{"CWE-406"}, Description: "ntpd responds to a spoofed mode-7 (ntpdc) packet, allowing a response loop between two servers (DRDoS)."},
+	{ID: "CVE-2014-9293", Name: "ntpd default Autokey key", CVSS: 7.3, Service: "ntp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-1188"}, Description: "ntpd generates a weak default key for ntpdc when none is configured, enabling unauthorized control."},
+	{ID: "CVE-2014-9294", Name: "ntp-keygen weak RNG", CVSS: 7.3, Service: "ntp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-330"}, Description: "ntp-keygen uses a weak, non-cryptographic RNG to create symmetric keys, making them predictable."},
+	{ID: "CVE-2012-4502", Name: "chronyd cmdmon buffer overflow", CVSS: 7.5, Service: "chronyd", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-120"}, Description: "chronyd cmdmon (UDP 323) overflows a fixed buffer building SUBNETS_ACCESSED / CLIENT_ACCESSES replies (chrony < 1.27)."},
+	{ID: "CVE-2012-4503", Name: "chronyd cmdmon NULL deref", CVSS: 5.0, Service: "chronyd", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"}, Description: "chronyd cmdmon crashes on a malformed/truncated command request (NULL pointer dereference, chrony < 1.27)."},
+
+	// ---- SNMP agent (161) / trap (162). ----
+	{ID: "CVE-2020-15862", Name: "net-snmp EXTEND-MIB command execution", CVSS: 7.2, Service: "snmp", Technique: "T1059", Tactic: "execution", CWE: []string{"CWE-78"}, Description: "net-snmp with a read-write community permits arbitrary command execution via SNMP SET to the NET-SNMP-EXTEND-MIB."},
+	{ID: "CVE-2018-18066", Name: "net-snmp NULL deref DoS", CVSS: 7.5, Service: "snmp", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"}, Description: "net-snmp agentx subagent NULL pointer dereference crashes snmpd on a crafted packet."},
+	{ID: "CVE-2002-0012", Name: "SNMPv1 trap PROTOS DoS", CVSS: 7.5, Service: "snmptrap", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-20"}, Description: "Malformed SNMPv1 trap-handling (PROTOS c06) crashes or destabilizes many SNMP trap implementations."},
+
+	// ---- DNS (53). ----
+	{ID: "CVE-2021-25216", Name: "BIND GSS-TSIG SPNEGO overflow", CVSS: 8.1, Service: "dns", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "ISC BIND GSS-TSIG (SPNEGO) buffer overflow reachable via a crafted TKEY/GSS query when GSS-TSIG is enabled."},
+	{ID: "CVE-2025-40775", Name: "BIND TSIG invalid-class assertion DoS", CVSS: 7.5, Service: "dns", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-617"}, Description: "ISC BIND aborts on a DNS message carrying a TSIG record with an invalid class (assertion failure / remote DoS)."},
+	{ID: "CVE-2022-2795", Name: "BIND delegation CPU DoS", CVSS: 5.3, Service: "dns", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-400"}, Description: "ISC BIND resolver spends excessive CPU processing a flood of queries into a deep/large delegation tree."},
+	{ID: "CVE-2023-50868", Name: "DNSSEC NSEC3 closest-encloser DoS (KeyTrap-adjacent)", CVSS: 7.5, Service: "dns", Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-400"}, Description: "Validating DNSSEC resolvers exhaust CPU on crafted NSEC3 closest-encloser proofs (high iteration counts)."},
+	{ID: "CVE-2020-12662", Name: "Unbound NXNSAttack amplification", CVSS: 7.5, Service: "dns", Technique: "T1498.002", Tactic: "impact", CWE: []string{"CWE-406"}, Description: "Unbound performs large referral amplification (NXNSAttack) on queries into a delegation with many unresolved nameservers."},
+	{ID: "CVE-2020-12667", Name: "Knot Resolver NXNSAttack amplification", CVSS: 7.5, Service: "dns", Technique: "T1498.002", Tactic: "impact", CWE: []string{"CWE-406"}, Description: "Knot Resolver referral amplification (NXNSAttack) via crafted delegations."},
+	{ID: "CVE-2020-25681", Name: "dnsmasq DNSpooq heap overflow", CVSS: 8.1, Service: "dns", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "dnsmasq DNSSEC response handling heap buffer overflow (one of the DNSpooq set)."},
+	{ID: "CVE-2020-25684", Name: "dnsmasq DNSpooq cache poisoning", CVSS: 4.0, Service: "dns", Technique: "T1557", Tactic: "credential-access", CWE: []string{"CWE-345"}, Description: "dnsmasq weak reply matching enables off-path DNS cache poisoning (DNSpooq)."},
+	{ID: "CVE-2020-25705", Name: "SAD DNS side-channel poisoning", CVSS: 7.4, Service: "dns", Technique: "T1557", Tactic: "credential-access", CWE: []string{"CWE-330"}, Description: "ICMP rate-limit side channel lets an off-path attacker infer the UDP source port and poison the DNS cache (SAD DNS)."},
+
+	// ---- SMB (445). ----
+	// NOTE: SMBGhost (CVE-2020-0796) is intentionally NOT catalogued — it is not
+	// substring-detectable; the smb handler attributes it structurally via
+	// res.CVEHits (SMB 3.1.1 dialect + compression negotiate-context).
+	{ID: "CVE-2020-1206", Name: "SMBleed (SMBv3 decompression info-leak)", CVSS: 9.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-125"}, Description: "Windows SMBv3 decompression out-of-bounds read leaking kernel memory; chained with SMBGhost."},
+	{ID: "CVE-2017-0143", Name: "EternalRomance/Synergy (MS17-010)", CVSS: 8.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-20"}, Description: "Windows SMBv1 remote code execution (MS17-010 family — EternalRomance/EternalSynergy)."},
+	{ID: "CVE-2017-0145", Name: "EternalChampion (MS17-010)", CVSS: 8.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-20"}, Description: "Windows SMBv1 transaction race remote code execution (MS17-010 — EternalChampion)."},
+	{ID: "CVE-2017-0146", Name: "MS17-010 SMBv1 RCE", CVSS: 8.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-20"}, Description: "Windows SMBv1 remote code execution (MS17-010 set)."},
+	{ID: "CVE-2017-0147", Name: "MS17-010 SMBv1 info disclosure", CVSS: 5.9, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-125"}, Description: "Windows SMBv1 information disclosure (MS17-010 set)."},
+	{ID: "CVE-2017-0148", Name: "MS17-010 SMBv1 RCE", CVSS: 8.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-20"}, Description: "Windows SMBv1 remote code execution (MS17-010 set)."},
+	{ID: "CVE-2021-36942", Name: "PetitPotam (MS-EFSRPC coerced auth)", CVSS: 7.5, Service: "smb", Technique: "T1187", Tactic: "credential-access", CWE: []string{"CWE-287"}, Description: "MS-EFSRPC EfsRpcOpenFileRaw coerces a host to authenticate to an attacker, enabling NTLM relay to AD CS (PetitPotam). NTLM MIC-stripping relay is catalogued as CVE-2019-1040 (dcerpc)."},
+	{ID: "CVE-2022-37958", Name: "SPNEGO NEGOEX pre-auth RCE", CVSS: 8.1, Service: "smb", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-787"}, Description: "Windows SPNEGO NEGOEX heap overflow reachable pre-auth through any SPNEGO-negotiating protocol (SMB/RDP/SMTP/LDAP) — wormable."},
+	{ID: "CVE-2016-3213", Name: "BadTunnel (WPAD over NetBIOS)", CVSS: 8.1, Service: "smb", Technique: "T1557", Tactic: "credential-access", CWE: []string{"CWE-358"}, Description: "Windows WPAD-over-NetBIOS name-resolution spoofing cross-network proxy hijack (BadTunnel)."},
+
+	// ---- Telnet (23). ----
+	{ID: "CVE-2011-4862", Name: "telnetd encrypt_keyid overflow", CVSS: 9.3, Service: "telnet", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-121"}, Description: "BSD/netkit telnetd stack buffer overflow in the ENCRYPT option key-id handling → pre-auth remote code execution."},
+	{ID: "CVE-2020-10188", Name: "inetutils telnetd overflow", CVSS: 9.8, Service: "telnet", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "GNU inetutils telnetd netclear/option-buffer overflow → pre-auth remote code execution."},
+
+	// ---- RDP (3389). ----
+	{ID: "CVE-2019-1181", Name: "DejaBlue RDP pre-auth RCE", CVSS: 9.8, Service: "rdp", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-416"}, Description: "Windows RDP pre-auth remote code execution (DejaBlue set)."},
+	{ID: "CVE-2019-1182", Name: "DejaBlue RDP pre-auth RCE", CVSS: 9.8, Service: "rdp", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-416"}, Description: "Windows RDP pre-auth remote code execution (DejaBlue set)."},
+	{ID: "CVE-2018-0886", Name: "CredSSP remote code execution", CVSS: 8.1, Service: "rdp", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-347"}, Description: "CredSSP (RDP/WinRM) logical flaw allows a MITM to relay credentials and run code (Return of the AitM)."},
+	{ID: "CVE-2020-0609", Name: "RD Gateway pre-auth RCE", CVSS: 9.8, Service: "rdp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "Windows Remote Desktop Gateway (UDP 3391) pre-auth remote code execution."},
+	{ID: "CVE-2020-0610", Name: "RD Gateway pre-auth RCE", CVSS: 9.8, Service: "rdp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "Windows Remote Desktop Gateway (UDP 3391) pre-auth remote code execution."},
+	{ID: "CVE-2019-0887", Name: "Reverse-RDP path traversal", CVSS: 7.5, Service: "rdp", Technique: "T1210", Tactic: "lateral-movement", CWE: []string{"CWE-22"}, Description: "Malicious RDP server escapes the client clipboard/drive redirection to write arbitrary client files (reverse RDP)."},
+
+	// ---- FTP (21). ----
+	{ID: "CVE-2010-4221", Name: "ProFTPD Telnet IAC overflow", CVSS: 10.0, Service: "ftp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-121"}, Description: "ProFTPD command parser stack overflow on embedded Telnet IAC sequences → pre-auth remote code execution."},
+	{ID: "CVE-2021-35211", Name: "SolarWinds Serv-U RCE", CVSS: 10.0, Service: "ftp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "SolarWinds Serv-U memory-corruption remote code execution (exploited in the wild). Serv-U path traversal is catalogued as CVE-2024-28995 (http)."},
+	{ID: "CVE-2011-3171", Name: "Pure-FTPd use-after-free", CVSS: 7.5, Service: "ftp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-415"}, Description: "Pure-FTPd double-free / use-after-free reachable via crafted commands."},
+
+	// ---- MySQL (3306). ----
+	{ID: "CVE-2012-2122", Name: "MySQL/MariaDB auth bypass", CVSS: 5.1, Service: "mysql", Technique: "T1110", Tactic: "credential-access", CWE: []string{"CWE-307", "CWE-203"}, Description: "memcmp return-value flaw lets a repeated login with any password succeed ~1/256 of the time (auth bypass by brute force)."},
+	{ID: "CVE-2016-6662", Name: "MySQL my.cnf injection RCE", CVSS: 7.2, Service: "mysql", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, Description: "An attacker with FILE/admin writes a malicious my.cnf (malloc_lib=) via INTO OUTFILE → code execution as the mysql user on restart."},
+	{ID: "CVE-2016-6663", Name: "MySQL/MariaDB privilege escalation", CVSS: 4.4, Service: "mysql", Technique: "T1068", Tactic: "privilege-escalation", CWE: []string{"CWE-269"}, Description: "Race condition in CREATE/RENAME TABLE lets a low-privileged DB user escalate to the mysql system user."},
+
+	// ---- PostgreSQL (5432). ----
+	{ID: "CVE-2019-9193", Name: "PostgreSQL COPY FROM PROGRAM RCE", CVSS: 9.8, Service: "postgres", Technique: "T1059", Tactic: "execution", CWE: []string{"CWE-78"}, Description: "A superuser (or pg_execute_server_program member) runs arbitrary commands via COPY ... FROM PROGRAM (vendor-disputed as intended behavior)."},
+	{ID: "CVE-2024-10979", Name: "PostgreSQL PL/Perl environment RCE", CVSS: 8.8, Service: "postgres", Technique: "T1059", Tactic: "execution", CWE: []string{"CWE-94"}, Description: "PL/Perl lets an unprivileged role change sensitive process environment variables (e.g. PATH) → arbitrary code/library execution."},
+	{ID: "CVE-2018-1058", Name: "PostgreSQL search_path schema hijack", CVSS: 8.8, Service: "postgres", Technique: "T1574", Tactic: "privilege-escalation", CWE: []string{"CWE-426"}, Description: "A user can create objects in the public schema that a higher-privileged role later executes via an unqualified search_path."},
+	{ID: "CVE-2024-10978", Name: "PostgreSQL SET ROLE privilege confusion", CVSS: 4.2, Service: "postgres", Technique: "T1078", Tactic: "privilege-escalation", CWE: []string{"CWE-285"}, Description: "Incorrect SET ROLE / SESSION AUTHORIZATION handling lets a user adopt the wrong identity for some settings."},
+
+	// ---- Redis (6379). ----
+	{ID: "CVE-2022-0543", Name: "Redis Lua sandbox escape RCE", CVSS: 10.0, Service: "redis", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, Description: "Debian/Ubuntu Redis Lua interpreter sandbox escape via package/loadlib → unauthenticated remote code execution (CISA KEV)."},
+	{ID: "CVE-2024-31449", Name: "Redis Lua bit-library stack overflow RCE", CVSS: 7.0, Service: "redis", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "An authenticated user triggers a stack overflow in the Lua bit library via a crafted EVAL script → remote code execution."},
+
+	// ---- MongoDB (27017). ----
+	{ID: "CVE-2021-20329", Name: "MongoDB BSON type-confusion injection", CVSS: 6.5, Service: "mongodb", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-843"}, Description: "Improper BSON validation in some MongoDB drivers allows query injection via type confusion."},
+	{ID: "CVE-2020-7921", Name: "MongoDB security-check bypass (JS)", CVSS: 4.9, Service: "mongodb", Technique: "T1059", Tactic: "execution", CWE: []string{"CWE-358"}, Description: "Improperly implemented security check lets server-side JavaScript run even when javascriptEnabled is set to false."},
+	{ID: "CVE-2019-2389", Name: "MongoDB cached-credential auth bypass", CVSS: 7.7, Service: "mongodb", Technique: "T1078", Tactic: "credential-access", CWE: []string{"CWE-287"}, Description: "MongoDB reuses cached authorization after a user's privileges are revoked (LDAP/SASL), allowing continued access."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
