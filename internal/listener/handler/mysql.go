@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
@@ -128,6 +129,12 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 				res.Meta["auth_response_hex"] = byteToHex(authResp)
 				p += alen
 			}
+		}
+		// An empty auth-response is a blank/default-password login attempt — the
+		// first thing a scanner tries against root/admin.
+		if len(authResp) == 0 && username != "" {
+			flagAnomaly(&res, "mysql-default-credential")
+			setIfEmpty(res.Meta, "intent", "MySQL empty/blank-password login attempt ("+username+")")
 		}
 		// Optional database name (null-terminated, present with CLIENT_CONNECT_WITH_DB).
 		db := ""
@@ -283,6 +290,7 @@ func (m *mysql) runQuerySession(conn net.Conn, res *Result) {
 			if len(queries) < 64 {
 				queries = append(queries, q)
 			}
+			classifyMySQLQuery(res, q)
 			dbReplyDelaySleep()
 			_, _ = conn.Write(mysqlOKPacket(1)) // empty result / OK
 		default:
@@ -290,4 +298,41 @@ func (m *mysql) runQuerySession(conn net.Conn, res *Result) {
 			_, _ = conn.Write(mysqlOKPacket(1))
 		}
 	}
+}
+
+// classifyMySQLQuery flags high-signal post-auth SQL: UDF command execution,
+// INTO OUTFILE/DUMPFILE webshell/my.cnf drops (CVE-2016-6662), credential-hash
+// dumps, and SQL-injection probes. Detection only — nothing is executed.
+func classifyMySQLQuery(res *Result, q string) {
+	l := strings.ToLower(q)
+	switch {
+	case strings.Contains(l, "lib_mysqludf_sys") || strings.Contains(l, "sys_exec") ||
+		strings.Contains(l, "sys_eval") || (strings.Contains(l, "create function") && strings.Contains(l, "soname")):
+		flagAnomaly(res, "mysql-udf-exec")
+		res.Meta["intent"] = "MySQL UDF command execution (sys_exec / lib_mysqludf_sys)"
+	case strings.Contains(l, "into outfile") || strings.Contains(l, "into dumpfile"):
+		flagAnomaly(res, "mysql-outfile-write")
+		if strings.Contains(l, "malloc_lib") || strings.Contains(l, "[mysqld]") {
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2016-6662")
+			flagAnomaly(res, "cve:CVE-2016-6662")
+			res.Meta["intent"] = "MySQL my.cnf injection via OUTFILE — code execution (CVE-2016-6662)"
+		} else {
+			setIfEmpty(res.Meta, "intent", "MySQL INTO OUTFILE/DUMPFILE — webshell / file drop")
+		}
+	case strings.Contains(l, "mysql.user") || strings.Contains(l, "authentication_string"):
+		flagAnomaly(res, "mysql-credential-dump")
+		setIfEmpty(res.Meta, "intent", "MySQL credential-hash dump (mysql.user)")
+	case sqlLooksInjection(l):
+		flagAnomaly(res, "mysql-sqli-probe")
+		setIfEmpty(res.Meta, "intent", "MySQL SQL-injection probe")
+	}
+}
+
+// sqlLooksInjection reports whether a (lowercased) query looks like an SQLi
+// probe. Shared by the SQL DB handlers.
+func sqlLooksInjection(l string) bool {
+	return strings.Contains(l, "union select") || strings.Contains(l, "' or '1'='1") ||
+		strings.Contains(l, "or 1=1") || strings.Contains(l, "sleep(") ||
+		strings.Contains(l, "benchmark(") || strings.Contains(l, "/*!") ||
+		strings.Contains(l, "information_schema") || strings.Contains(l, "' or 1=1--")
 }

@@ -224,8 +224,18 @@ func mongoCommand(opCode int32, body []byte) string {
 // benign handshake commands hello / isMaster / buildInfo / ping).
 func mongoAbuse(cmd string) string {
 	switch strings.ToLower(cmd) {
-	case "find", "aggregate", "getmore", "listcollections", "listdatabases", "count", "distinct", "mapreduce":
+	case "find", "aggregate", "getmore", "listcollections", "listdatabases", "count", "distinct":
 		return "mongodb-data-access"
+	case "mapreduce", "eval":
+		// Server-side JavaScript execution surface.
+		return "mongodb-server-side-js"
+	case "drop", "dropdatabase", "delete", "insert", "update", "renamecollection":
+		// The mass-ransack / ransom pattern: drop the data, then insert a
+		// READ__ME ransom-note collection.
+		return "mongodb-write-or-ransom"
+	case "usersinfo", "rolesinfo", "createuser", "getparameter", "serverstatus",
+		"connpoolstats", "connectionstatus", "currentop", "hostinfo":
+		return "mongodb-admin-enum"
 	}
 	return ""
 }
