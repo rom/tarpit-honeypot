@@ -856,6 +856,9 @@ var anomalyTags = map[string]Tag{
 	"smb-smbloris":                 {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},
 	"smb-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	"rdp-ntlm-downgrade":           {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
+	// RDP second-pass: mstshash username harvest + NLA/CredSSP downgrade.
+	"rdp-username-harvest": {Techniques: []string{"T1589.001"}, Tactics: []string{"reconnaissance"}},
+	"rdp-nla-downgrade":    {Techniques: []string{"T1557"}, Tactics: []string{"credential-access"}},
 	// IBM MQ channel recon + MQCSP credential flow.
 	"ibmmq-connect":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"ibmmq-security-flow": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
@@ -1316,6 +1319,7 @@ var d3fend = map[string][]string{
 	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
 	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
 	"T1574": {"D3-EAL", "D3-FH"},                    // hijack execution flow (LD_PRELOAD / search_path)
+	"T1589": {"D3-NTA", "D3-DNR"},                   // gather victim identity info (RDP mstshash username harvest)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
 	"T1087": {"D3-DUC"},                             // account discovery

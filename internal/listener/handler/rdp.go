@@ -89,9 +89,26 @@ func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 		variable := body[7:]
 		if cookie := extractCookie(variable); cookie != "" {
 			res.Meta["cookie"] = cookie
+			// mstshash carries the username the client is targeting — credential
+			// reconnaissance even before any auth.
+			flagAnomaly(&res, "rdp-username-harvest")
+			res.Meta["intent"] = "RDP username harvest via mstshash cookie (" + cookie + ")"
 		}
 		if negReq := findNegReq(variable); negReq != nil {
-			res.Meta["rdp_neg_req"] = describeNegReq(negReq)
+			nr := describeNegReq(negReq)
+			res.Meta["rdp_neg_req"] = nr
+			// PROTOCOL_RDP (0) = legacy "Standard RDP Security" with no NLA/TLS;
+			// requesting it (or SSL-only, no HYBRID) is an NLA/CredSSP downgrade
+			// — the precondition for a NetNTLM MITM/relay (e.g. Seth).
+			if p, ok := nr["requested_protocol"].(uint32); ok {
+				if p == 0 {
+					flagAnomaly(&res, "rdp-nla-downgrade")
+					setIfEmpty(res.Meta, "intent", "RDP standard-security requested (no NLA/TLS) — CredSSP/NLA downgrade")
+				} else if p&0x02 == 0 && p&0x08 == 0 { // SSL/RDSTLS but no HYBRID(_EX)
+					flagAnomaly(&res, "rdp-nla-downgrade")
+					setIfEmpty(res.Meta, "intent", "RDP requested without HYBRID/NLA — CredSSP downgrade (NetNTLM MITM setup)")
+				}
+			}
 		}
 	}
 
