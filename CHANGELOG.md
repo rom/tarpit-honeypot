@@ -110,6 +110,19 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Analytics aggregation pushed into SQL (follow-up to the timeout fixes).**
+  The `store.Summary` rollup now also computes the **by-handler** and
+  **by-target (dst_ip)** top-N via index-backed `GROUP BY` (covering indexes
+  `idx_events_handler_time` / `idx_events_dst_ip_time`), so those dashboard /
+  stats panels are full-window accurate and cost only an index walk — instead of
+  being counted Go-side over a sampled 20k-row scan (`enrichDashboard` keeps that
+  count only as a fallback when a caller has no summary). And **`/stats` now
+  reuses the shared, cached dashboard build** (the same one `/` uses) rather than
+  re-running its own `Summary` + trend + 20k-row enrichment scan on every
+  auto-refresh — a cache hit serves it with zero database work. (`/charts` still
+  scans, as its time-series figures need the raw events; it already skips the
+  payload/banner columns.)
+
 - **Web UI views no longer time out ("This view is taking longer than usual")
   at high event volume (~100k events/24h).** Five changes attack the worst
   offenders: (1) the `/profiles` list rollup now defaults to a **24h** window

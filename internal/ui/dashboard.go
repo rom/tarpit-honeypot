@@ -173,6 +173,12 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket, bucket time.Dur
 		d.Sources = append(d.Sources, barRow{Label: s.IP, Count: s.Count, Pct: pct(s.Count, maxSrc), Share: share(s.Count, sumSrc), Href: "/profiles/" + s.IP})
 	}
 
+	// Indexed dimensions straight from the SQL summary (full-window accurate).
+	// enrichDashboard only fills these from its sampled scan when the summary
+	// didn't provide them (callers that enrich a bare dashboard).
+	d.Handlers = topBars(sum.ByHandler, 12, "/events?handler=")
+	d.TargetIPs = topBars(sum.ByTarget, 20, "/search?q=")
+
 	maxH := 0
 	for _, h := range hours {
 		if h.Count > maxH {
@@ -276,10 +282,17 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 		}
 	}
 	d.Tools = topBars(tool, 10, "/events?tool=")
-	d.Handlers = topBars(handler, 12, "/events?handler=")
+	// Handlers + target IPs are normally sourced from the SQL summary
+	// (buildDashboard, full-window). Fall back to this sampled count only when a
+	// caller enriched a bare dashboard without a summary.
+	if len(d.Handlers) == 0 {
+		d.Handlers = topBars(handler, 12, "/events?handler=")
+	}
 	// Per-target-IP breakdown (the host's own server IPs). Links to list-events
 	// filtered by that target via the search page.
-	d.TargetIPs = topBars(target, 20, "/search?q=")
+	if len(d.TargetIPs) == 0 {
+		d.TargetIPs = topBars(target, 20, "/search?q=")
+	}
 	// Top attacks: ATT&CK techniques, labelled with their human name and linking
 	// to the internal technique drill-down.
 	d.Attacks = topBars(tech, 12, "/attack/technique?id=")

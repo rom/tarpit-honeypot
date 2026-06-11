@@ -436,6 +436,60 @@ func TestInsertAndQuery(t *testing.T) {
 	}
 }
 
+// TestSummaryHandlerTargetRollups verifies the index-backed by-handler and
+// by-target (dst_ip) rollups, and that they read from their covering indexes.
+func TestSummaryHandlerTargetRollups(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	mk := func(id, handler, dst string) *event.Event {
+		return &event.Event{ID: id, Time: now, Sensor: "t", RuleID: "r",
+			Severity: event.SeverityMedium, Source: event.Endpoint{IP: "1.2.3.4"},
+			Dest: event.Endpoint{IP: dst, Port: 80}, Proto: "tcp", Handler: handler}
+	}
+	_ = s.Insert(ctx, mk("a", "ssh", "10.0.0.1"))
+	_ = s.Insert(ctx, mk("b", "ssh", "10.0.0.1"))
+	_ = s.Insert(ctx, mk("c", "http", "10.0.0.2"))
+
+	sum, err := s.Summary(ctx, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.ByHandler["ssh"] != 2 || sum.ByHandler["http"] != 1 {
+		t.Errorf("ByHandler = %v; want ssh:2 http:1", sum.ByHandler)
+	}
+	if sum.ByTarget["10.0.0.1"] != 2 || sum.ByTarget["10.0.0.2"] != 1 {
+		t.Errorf("ByTarget = %v; want 10.0.0.1:2 10.0.0.2:1", sum.ByTarget)
+	}
+
+	// The rollups must read from their covering (col,time) indexes, not scan.
+	for _, c := range []struct{ col, idx string }{
+		{"handler", "idx_events_handler_time"}, {"dst_ip", "idx_events_dst_ip_time"},
+	} {
+		var plan strings.Builder
+		rows, err := s.db.QueryContext(ctx, `EXPLAIN QUERY PLAN
+SELECT `+c.col+`, COUNT(*) cc FROM events WHERE time >= ? AND `+c.col+` != '' GROUP BY `+c.col+` ORDER BY cc DESC LIMIT 50`,
+			now.Add(-time.Hour).UnixNano())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var a, b, d int
+			var detail string
+			_ = rows.Scan(&a, &b, &d, &detail)
+			plan.WriteString(detail + "\n")
+		}
+		rows.Close()
+		if !strings.Contains(plan.String(), c.idx) {
+			t.Errorf("%s rollup not using %s:\n%s", c.col, c.idx, plan.String())
+		}
+	}
+}
+
 func TestSummary(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {

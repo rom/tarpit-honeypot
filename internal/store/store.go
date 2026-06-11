@@ -863,6 +863,12 @@ type Summary struct {
 	BySeverity map[string]int `json:"by_severity"`
 	ByRule     map[string]int `json:"by_rule"`
 	ByProto    map[string]int `json:"by_proto"` // tcp / udp / icmp / device / ...
+	// ByHandler / ByTarget are index-backed top-N rollups (handler, dst_ip) — the
+	// single-valued, indexed dimensions the dashboard used to count Go-side over a
+	// sampled event scan. Computed via GROUP BY so they're full-window accurate
+	// and cost nothing per row beyond the covering-index walk.
+	ByHandler  map[string]int `json:"by_handler"`
+	ByTarget   map[string]int `json:"by_target"`
 	TopSources []SourceCount  `json:"top_sources"`
 }
 
@@ -1065,5 +1071,40 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
 	}
 	rows.Close()
 
+	// Indexed single-valued dimensions via GROUP BY (covering indexes
+	// idx_events_handler_time / idx_events_dst_ip_time) — full-window accurate and
+	// cheap, replacing the dashboard's Go-side counting over a sampled scan.
+	if sum.ByHandler, err = s.groupCount(ctx, "handler", sinceNS, 50); err != nil {
+		return sum, err
+	}
+	if sum.ByTarget, err = s.groupCount(ctx, "dst_ip", sinceNS, 50); err != nil {
+		return sum, err
+	}
+
 	return sum, nil
+}
+
+// groupCount runs a top-N rollup — SELECT <col>, COUNT(*) c FROM events WHERE
+// time >= ? AND <col> != ” GROUP BY <col> ORDER BY c DESC LIMIT ? — into a
+// label->count map. col MUST be a trusted column literal (never user input);
+// callers pass fixed names ("handler", "dst_ip") whose (col, time) covering
+// index lets SQLite group + count straight from the index.
+func (s *Store) groupCount(ctx context.Context, col string, sinceNS int64, limit int) (map[string]int, error) {
+	out := map[string]int{}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+col+`, COUNT(*) c FROM events WHERE time >= ? AND `+col+` != '' GROUP BY `+col+` ORDER BY c DESC LIMIT ?`,
+		sinceNS, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		var c int
+		if err := rows.Scan(&k, &c); err != nil {
+			return nil, err
+		}
+		out[k] = c
+	}
+	return out, rows.Err()
 }
