@@ -10,6 +10,35 @@ documented in `docs/`).
 
 ### Added
 
+- **TR-069 (CWMP), TR-369 (USP) and UPnP device-management handlers.** Three new
+  TCP handlers cover the CPE / IoT remote-management attack surface end to end —
+  attack **intent**, protocol **fingerprint**, **decoy** response, **CVE/CWE**,
+  and **ATT&CK**:
+  - `tr069` (CWMP connection-request, classically TCP 7547): serves a RomPager
+    Digest 401 / CWMP `InformResponse` decoy; fingerprints the SOAP action +
+    CWMP method + the spoofed device identity (`cwmp_oui`/`cwmp_serial`);
+    recognizes the **Misfortune Cookie** (CVE-2014-9222, CWE-787), the **TR-064
+    SetNTPServers RCE** reachable on 7547 (CVE-2016-10372, CWE-78 — the 2016
+    Deutsche Telekom / Mirai outage), firmware-push (`Download`) and disruptive
+    RPCs (reboot / factory-reset).
+  - `upnp` (UPnP IGD SOAP control + GENA eventing): serves a believable
+    `rootDesc.xml` / SOAP action response; flags **UPnProxy** `AddPortMapping`
+    NAT injection (CWE-441), **CallStranger** SUBSCRIBE-callback SSRF
+    (CVE-2020-12695, CWE-918), NAT-table enumeration, and Realtek/Huawei SOAP
+    command injection (CVE-2014-8361 / CVE-2017-17215, CWE-78).
+  - `tr369` (USP agent): completes the `v1.usp` WebSocket handshake (or
+    recognizes a raw USP **Record** protobuf), scavenges the controller/agent
+    endpoint IDs (`proto::`/`os::`) + USP version, and flags an unauthenticated /
+    cleartext USP MTP (CWE-319 / CWE-306).
+
+  The existing `ssdp` (UPnP discovery) handler now also stamps an `intent` and
+  flags the **libupnp** SSDP overflow (CVE-2012-5958, CWE-120) on an over-long
+  header. New CVEs are added to the catalog with their CWEs; the handlers attach
+  a `cwe` meta annotation for the protocol-misuse cases that have no single CVE;
+  ATT&CK handler + anomaly tags map the abuse (T1190/T1133 base, plus T1059
+  exec, T1542/T1105 firmware push, T1529 reboot, T1090 UPnProxy, T1048
+  CallStranger exfil, …), with a D3FEND defense for each.
+
 - **Deeper attacker-profile dossier (`/profiles/{ip}`).** The per-source dossier
   now aggregates, over *all* of an actor's events: its **intent** (the per-event
   "what the attacker was doing" labels, deduped) shown up top; a consolidated

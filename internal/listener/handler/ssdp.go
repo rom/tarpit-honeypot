@@ -34,8 +34,17 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	reqLine := lines[0]
 	res.Meta["request_line"] = reqLine
+	res.Meta["protocol_name"] = "UPnP SSDP"
 	st, man := "", ""
 	for _, line := range lines[1:] {
+		// Absurdly long SSDP header lines are the libupnp "Unplug Don't Play"
+		// SSDP stack-overflow vector (CVE-2012-5958/5959). The UDP path surfaces
+		// this as an anomaly (+ CWE) rather than a cve: event (CVEHits is the
+		// TCP-only channel); the CVE stays catalogued for advisory / list-cves.
+		if len(line) > 700 {
+			flagAnomaly(&res, "upnp-libupnp-overflow")
+			noteCWE(&res, "CWE-120") // classic buffer overflow
+		}
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "st:"):
@@ -52,6 +61,13 @@ func (s *ssdp) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	}
 	if !strings.HasPrefix(strings.ToUpper(reqLine), "M-SEARCH") {
 		return res, nil
+	}
+	// Intent: an ssdp:all M-SEARCH is the high-amplification reflection probe;
+	// any other ssdp:discover is internet-wide UPnP device enumeration.
+	if strings.EqualFold(st, "ssdp:all") {
+		setIfEmpty(res.Meta, "intent", "UPnP/SSDP ssdp:all M-SEARCH — reflection/amplification probe + full UPnP enumeration")
+	} else {
+		setIfEmpty(res.Meta, "intent", "UPnP/SSDP discovery probe — enumerating internet-facing UPnP devices")
 	}
 	// Only answer a complete ssdp:discover (MAN + ST present), and never
 	// amplify — a minimal/forged "M-SEARCH" probe with a spoofed source is

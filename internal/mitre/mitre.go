@@ -289,6 +289,14 @@ var handlerTags = map[string]Tag{
 	"vault":          {Techniques: []string{"T1190", "T1555"}, Tactics: []string{"initial-access", "credential-access"}},
 	"ipp":            {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
 
+	// CPE / device-management protocols. TR-069 (CWMP, 7547) and TR-369 (USP)
+	// are remote-management surfaces an attacker rides for code-exec + control
+	// (exploit public-facing app + external remote services); the UPnP IGD
+	// control plane is exploited for RCE, NAT injection (UPnProxy), and SSRF.
+	"tr069": {Techniques: []string{"T1190", "T1133"}, Tactics: []string{"initial-access", "persistence"}},
+	"tr369": {Techniques: []string{"T1190", "T1133"}, Tactics: []string{"initial-access", "persistence"}},
+	"upnp":  {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+
 	// Discovery / IoT scanning.
 	"snmp":       {Techniques: []string{"T1018", "T1110.001"}, Tactics: []string{"discovery", "credential-access"}},
 	"ssdp":       {Techniques: []string{"T1018"}, Tactics: []string{"discovery"}},
@@ -431,6 +439,23 @@ var anomalyTags = map[string]Tag{
 	"modbus-broadcast-write":    {Techniques: []string{"T0831"}, Tactics: []string{"impact"}},
 	"modbus-uid-enumeration":    {Techniques: []string{"T0846"}, Tactics: []string{"discovery"}},
 	"modbus-fc-scan":            {Techniques: []string{"T0888"}, Tactics: []string{"discovery"}},
+
+	// --- CPE / device-management (TR-069 CWMP, TR-369 USP, UPnP IGD). The
+	// markers that add precision beyond the handler base tag: command exec,
+	// firmware push, disruptive RPCs, UPnProxy NAT injection, CallStranger
+	// SSRF/exfil, port-map enumeration, and device-description recon.
+	"tr069-command-injection": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"tr069-misfortune-cookie": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"tr069-firmware-push":     {Techniques: []string{"T1542", "T1105"}, Tactics: []string{"persistence", "command-and-control"}},
+	"tr069-disruptive-rpc":    {Techniques: []string{"T1529"}, Tactics: []string{"impact"}},
+	"tr069-parameter-write":   {Techniques: []string{"T1601"}, Tactics: []string{"defense-evasion"}},
+	"upnp-command-injection":  {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+	"upnp-addportmapping":     {Techniques: []string{"T1090"}, Tactics: []string{"command-and-control"}},
+	"upnp-portmap-enum":       {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"upnp-callstranger":       {Techniques: []string{"T1190", "T1048"}, Tactics: []string{"initial-access", "exfiltration"}},
+	"upnp-device-description": {Techniques: []string{"T1592"}, Tactics: []string{"reconnaissance"}},
+	"upnp-libupnp-overflow":   {Techniques: []string{"T1190", "T1499"}, Tactics: []string{"initial-access", "impact"}},
+	"usp-agent-access":        {Techniques: []string{"T1133"}, Tactics: []string{"persistence"}},
 
 	// --- New-protocol coverage: amplification, ICS/IIoT control, building
 	// automation, IoT actuation, and the discovery/credential markers the
@@ -1494,6 +1519,7 @@ var d3fend = map[string][]string{
 	"T1572": {"D3-NTA", "D3-OTF"},         // protocol tunneling
 	"T1486": {"D3-NTA", "D3-DE", "D3-FA"}, // data encrypted for impact (ransomware)
 	"T1496": {"D3-NTA", "D3-OTF"},         // resource hijacking (cryptomining)
+	"T1529": {"D3-NTA", "D3-DE"},          // system shutdown/reboot (TR-069 CPE reboot/factory-reset)
 	"T1195": {"D3-FH", "D3-FA"},           // supply-chain compromise
 	"T1609": {"D3-NTA", "D3-EAL"},         // container administration command
 	"T1611": {"D3-PH", "D3-NTA"},          // escape to host (container escape)

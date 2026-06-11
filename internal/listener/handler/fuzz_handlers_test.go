@@ -73,6 +73,9 @@ var fuzzTCPNames = []string{
 	// header/frame parsers run on attacker bytes, so keep them in the hot loop.
 	"cloud_metadata", "etcd", "vault", "kubernetes_api",
 	"websocket", "grpc", "ssrf_canary",
+	// CPE / device-management protocols (TR-069 CWMP, UPnP IGD, TR-369 USP) —
+	// their HTTP/SOAP/protobuf parsers run on attacker bytes.
+	"tr069", "upnp", "tr369",
 }
 
 func fuzzDeps(dir string) Deps {
