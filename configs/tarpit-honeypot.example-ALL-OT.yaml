@@ -99,6 +99,27 @@ listeners:
   - { id: wdbrpc,   proto: udp, bind: 0.0.0.0:17185, mode: banner, handler: wdbrpc,    severity: high,     read_bytes: 1500 } # VxWorks WDB agent (URGENT/11)
   - { id: ads-disc, proto: udp, bind: 0.0.0.0:48899, mode: banner, handler: ads_discovery, severity: high, read_bytes: 1500 } # Beckhoff TwinCAT AMS/UDP discovery
 
+  # ====================== UDP / IIoT transport variants =====================
+  # UDP carriers of the control/process protocols above + IIoT pub-sub buses.
+  # All capture-only (reflection-safe): they record + classify the datagram and
+  # never reply. Ports differ from / coexist with the TCP listeners (separate
+  # protocol), so e.g. modbus_udp:502 sits beside modbus tcp:502.
+  - { id: modbus-udp,    proto: udp, bind: 0.0.0.0:502,   mode: banner, handler: modbus_udp,    severity: high,     read_bytes: 1500 } # Modbus over UDP
+  - { id: enip-udp,      proto: udp, bind: 0.0.0.0:44818, mode: banner, handler: enip_udp,      severity: high,     read_bytes: 1500 } # EtherNet/IP CIP discovery (ListIdentity)
+  - { id: cip-io,        proto: udp, bind: 0.0.0.0:2222,  mode: banner, handler: cip_io,        severity: high,     read_bytes: 1500 } # EtherNet/IP Class-1 cyclic I/O
+  - { id: dnp3-udp,      proto: udp, bind: 0.0.0.0:20000, mode: banner, handler: dnp3_udp,      severity: high,     read_bytes: 1500 } # DNP3 over UDP
+  - { id: hartip-udp,    proto: udp, bind: 0.0.0.0:5094,  mode: banner, handler: hartip_udp,    severity: high,     read_bytes: 1500 } # HART-IP over UDP
+  - { id: pcom-udp,      proto: udp, bind: 0.0.0.0:20256, mode: banner, handler: pcom_udp,      severity: high,     read_bytes: 1500 } # Unitronics PCOM over UDP
+  - { id: slmp,          proto: udp, bind: 0.0.0.0:5007,  mode: banner, handler: slmp,          severity: high,     read_bytes: 1500 } # Mitsubishi SLMP / MELSEC over UDP
+  - { id: powerlink,     proto: udp, bind: 0.0.0.0:3819,  mode: banner, handler: powerlink,     severity: high,     read_bytes: 1500 } # Ethernet POWERLINK
+  - { id: ff-hse,        proto: udp, bind: 0.0.0.0:1089,  mode: banner, handler: ff_hse,        severity: medium,   read_bytes: 1500 } # FOUNDATION Fieldbus HSE
+  - { id: saia-sbus,     proto: udp, bind: 0.0.0.0:5050,  mode: banner, handler: saia_sbus,     severity: medium,   read_bytes: 1500 } # Saia Ether-S-Bus PCD controllers
+  - { id: opcua-pubsub,  proto: udp, bind: 0.0.0.0:4840,  mode: banner, handler: opcua_pubsub,  severity: high,     read_bytes: 1500 } # OPC-UA PubSub over UDP
+  - { id: dds-rtps,      proto: udp, bind: 0.0.0.0:7400,  mode: banner, handler: dds_rtps,      severity: medium,   read_bytes: 1500 } # DDS / RTPS (OMG Data Distribution Service)
+  - { id: synchrophasor, proto: udp, bind: 0.0.0.0:4713,  mode: banner, handler: synchrophasor, severity: high,     read_bytes: 1500 } # IEEE C37.118 synchrophasor / PMU stream
+  - { id: c1222,         proto: udp, bind: 0.0.0.0:1153,  mode: banner, handler: c1222,         severity: high,     read_bytes: 1500 } # ANSI C12.22 smart-meter / AMI
+  - { id: siprotec-en100, proto: udp, bind: 0.0.0.0:50000, mode: banner, handler: siprotec_en100, severity: critical, read_bytes: 1500 } # Siemens SIPROTEC EN100 (CVE-2015-5374 relay-DoS)
+
 # L2 substation detection: passively flag IEC 61850 GOOSE multicast (spoof /
 # replay / storm / simulation) and answer PROFINET-DCP Identify/Set. Requires
 # the sensor to sit on the OT segment (CAP_NET_RAW); harmless if eth0 is absent.

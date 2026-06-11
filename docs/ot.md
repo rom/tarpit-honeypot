@@ -129,6 +129,21 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `lontalk` | 1628 | Echelon LonTalk / LonWorks-IP (CEA-852) | Fingerprint | **capture-only** | data-packet header |
 | `wdbrpc` | 17185 | VxWorks WDB target agent (URGENT/11) | Deep | bounded ack | WDBPROG parse: memory-access / context-call (RCE) / connect + CVE-2010-2965; oversized → URGENT/11 (CVE-2019-12256) |
 | `ads_discovery` | 48899 | Beckhoff TwinCAT AMS/UDP discovery + route | Deep | bounded ack | Identify/Discovery (`ics-ads-discovery`), AddRoute (`ics-ads-route-add`, captures route/host/user) |
+| `modbus_udp` | 502 | Modbus over UDP | Fingerprint | **capture-only** | MBAP + PDU decode; write-class function codes flagged (coexists with `modbus`/TCP) |
+| `enip_udp` | 44818 | EtherNet/IP CIP discovery (UDP) | Fingerprint | **capture-only** | ListIdentity / encapsulation-command capture |
+| `cip_io` | 2222 | EtherNet/IP Class-1 cyclic I/O | Fingerprint | **capture-only** | CIP I/O (forward-open data) connection-id / sequence decode |
+| `dnp3_udp` | 20000 | DNP3 over UDP (utility SCADA) | Fingerprint | **capture-only** | data-link/application function decode (coexists with `dnp3`/TCP) |
+| `hartip_udp` | 5094 | HART-IP over UDP | Fingerprint | **capture-only** | HART-IP header (message type / session) capture |
+| `pcom_udp` | 20256 | Unitronics PCOM over UDP | Fingerprint | **capture-only** | PCOM/ASCII + binary command capture |
+| `slmp` | 5007 | Mitsubishi SLMP / MELSEC over UDP | Fingerprint | **capture-only** | SLMP command/sub-command; Write / Remote-RUN-STOP flagged |
+| `powerlink` | 3819 | Ethernet POWERLINK | Fingerprint | **capture-only** | message-type decode (SoC/PReq/PRes/ASnd) |
+| `ff_hse` | 1089 | FOUNDATION Fieldbus HSE | Fingerprint | **capture-only** | HSE message-header capture |
+| `saia_sbus` | 5050 | Saia Ether-S-Bus PCD controllers | Fingerprint | **capture-only** | S-Bus telegram decode |
+| `opcua_pubsub` | 4840 | OPC-UA PubSub over UDP | Fingerprint | **capture-only** | UADP network-message header (publisher id / dataset) |
+| `dds_rtps` | 7400 | DDS / RTPS (OMG Data Distribution Service) | Fingerprint | **capture-only** | RTPS submessage / vendor-id capture |
+| `synchrophasor` | 4713 | IEEE C37.118 synchrophasor / PMU stream (UDP) | Fingerprint | **capture-only** | frame-type / id-code decode |
+| `c1222` | 1153 | ANSI C12.22 smart-meter / AMI | Fingerprint | **capture-only** | ACSE/EPSEM message capture |
+| `siprotec_en100` | 50000 | Siemens SIPROTEC 4 / Compact EN100 module | Deep | **capture-only** | crafted-datagram relay-DoS detection (CVE-2015-5374, INDUSTROYER `siprotec-en100-dos`) |
 
 ### L2 (sniffer / responder)
 
