@@ -87,7 +87,15 @@ fi
 [ -f "$BASE_CONFIG" ] || die "base config not found: $BASE_CONFIG"
 
 DEPLOY_HOST="${DEPLOY_HOST:-$NAME}"
-DATA="$DATA_ROOT/$NAME"
+DATA="$(printf '%s/%s' "$DATA_ROOT" "$NAME" | tr -s /)"   # collapse any // from --data-root
+# The hardened tarpit-honeypot@.service template hardwires its ReadWritePaths and
+# the shipped SELinux fcontext to /var/lib/tarpit-honeypot. A data dir outside
+# that tree (a custom --data-root) needs BOTH extended below, or systemd aborts
+# the sandbox (exit 226/NAMESPACE) and SELinux denies the sensor's writes.
+case "$DATA" in
+	/var/lib/tarpit-honeypot/*) CUSTOM_DATA_ROOT=0 ;;
+	*) CUSTOM_DATA_ROOT=1 ;;
+esac
 INST_DIR="$ETC/instances"
 CONFIG="$INST_DIR/$NAME.yaml"
 BIN="$(command -v tarpit-honeypot || echo /usr/local/bin/tarpit-honeypot)"
@@ -127,8 +135,9 @@ set_block_key() {
 
 info "Instance '$NAME' -> IP $LISTEN_IP, UI 127.0.0.1:$UI_PORT, data $DATA"
 
-# Directories. Instance data lives UNDER the labeled /var/lib/tarpit-honeypot
-# tree so the SELinux fcontext applies recursively.
+# Directories. Under the default root the data dir inherits the labeled
+# /var/lib/tarpit-honeypot fcontext; a custom --data-root is labeled + sandbox-
+# allowed explicitly further down.
 install -d -o root        -g "$SVC_GROUP" -m 0750 "$INST_DIR"
 install -d -o "$SVC_USER" -g "$SVC_GROUP" -m 0750 "$DATA"
 
@@ -147,7 +156,13 @@ set_block_key "$CONFIG" sensor name "\"$DEPLOY_HOST\""
 [ -n "$TLS_ORG" ] && set_block_key "$CONFIG" sensor tls_org "\"$TLS_ORG\""
 set_block_key "$CONFIG" ui bind "127.0.0.1:$UI_PORT"
 
-# SELinux: the new dir + config inherit their parents' labels; relabel to be sure.
+# SELinux: the config + a default-root data dir inherit the shipped fcontext. A
+# custom --data-root has no mapping, so add one (same type the policy uses for
+# /var/lib/tarpit-honeypot) before relabeling, or the confined domain can't write.
+if [ "$CUSTOM_DATA_ROOT" = 1 ] && command -v semanage >/dev/null 2>&1; then
+	semanage fcontext -a -t tarpit_honeypot_var_lib_t "${DATA}(/.*)?" 2>/dev/null \
+		|| semanage fcontext -m -t tarpit_honeypot_var_lib_t "${DATA}(/.*)?" 2>/dev/null || true
+fi
 if command -v restorecon >/dev/null 2>&1; then
 	restorecon -RF "$DATA" "$CONFIG" 2>/dev/null || true
 fi
@@ -161,6 +176,22 @@ fi
 if command -v systemctl >/dev/null 2>&1; then
 	[ -f /etc/systemd/system/tarpit-honeypot@.service ] || \
 		warn "tarpit-honeypot@.service template not installed — run scripts/install.sh first"
+	# A custom --data-root falls outside the template's ReadWritePaths
+	# (/var/lib/tarpit-honeypot/%i), so ProtectSystem=strict makes systemd abort
+	# the sandbox with 226/NAMESPACE. Drop in a per-instance override that resets
+	# ReadWritePaths to this instance's real data dir.
+	if [ "$CUSTOM_DATA_ROOT" = 1 ]; then
+		dropin="/etc/systemd/system/tarpit-honeypot@$NAME.service.d"
+		install -d -m 0755 "$dropin"
+		cat >"$dropin/10-data-root.conf" <<EOF
+[Service]
+# This instance's data_dir is a custom --data-root, not /var/lib/tarpit-honeypot/%i.
+# Reset + widen ReadWritePaths so the sensor can write there under ProtectSystem=strict.
+ReadWritePaths=
+ReadWritePaths=/var/log/tarpit-honeypot $DATA
+EOF
+		info "Wrote systemd data-dir override: $dropin/10-data-root.conf"
+	fi
 	systemctl daemon-reload
 	if [ "$DO_START" = 1 ]; then
 		systemctl enable --now "tarpit-honeypot@$NAME" >/dev/null 2>&1 || \
