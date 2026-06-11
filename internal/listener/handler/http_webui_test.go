@@ -152,6 +152,18 @@ func TestParseLoginFormAliases(t *testing.T) {
 		"login=a&passwd=b":      {"a", "b"},
 		"name=a&pwd=b":          {"a", "b"},
 		"u=root&p=toor":         {"root", "toor"},
+		// App-specific field names: phpMyAdmin, Tomcat, WordPress, and the
+		// generic *_username / *_password substring fallback for apps we don't
+		// list explicitly.
+		"pma_username=backup&pma_password=skyline": {"backup", "skyline"},
+		"j_username=tomcat&j_password=s3cret":      {"tomcat", "s3cret"},
+		"log=wpadmin&pwd=hunter2":                  {"wpadmin", "hunter2"},
+		"os_username=root&os_password=calvin":      {"root", "calvin"},
+		"vmware_username=a&vmware_password=b":      {"a", "b"},
+		"email=a@b.co&password=x":                  {"a@b.co", "x"},
+		// Non-credential fields must not be mistaken for a login (no FP).
+		"foo=bar&baz=qux":         {"", ""},
+		"user_agent=curl&debug=1": {"", ""},
 	}
 	for body, want := range cases {
 		u, p := parseLoginForm([]byte(body))

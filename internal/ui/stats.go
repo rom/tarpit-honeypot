@@ -1,13 +1,10 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
-	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
 )
@@ -38,26 +35,13 @@ type statBlock struct {
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
-	since := time.Now().Add(-win.dur)
-
-	sum, err := s.store.Summary(ctx, since)
-	if err != nil {
-		serverError(w, r.URL.Path, err)
-		return
-	}
-	sum.TopSources = s.visibleSourceCounts(sum.TopSources)
-	hours, _ := s.store.EventsPerBucket(ctx, since, win.bucket)
-	d := buildDashboard(sum, hours, win.bucket)
-	var evs []*event.Event
-	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
-		evs = e
-		enrichDashboard(&d, evs)
-	}
-
-	view := buildStatsView(d, sum, win)
+	// Reuse the shared, off-request dashboard build (the same cache "/" uses):
+	// the stats page is a numeric re-presentation of exactly that aggregation,
+	// so a cache hit serves it with zero DB work instead of re-running a Summary
+	// + trend + 20k-row enrichment scan on every (auto-refreshing) request.
+	d := s.cachedIndexDashboard(win)
+	view := buildStatsView(d, win)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "stats", view); err != nil {
 		slog.Warn("ui: render stats", "err", err)
@@ -65,8 +49,9 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildStatsView assembles the headline metrics + top-N blocks from an already
-// aggregated dashboard.
-func buildStatsView(d dashboard, sum store.Summary, win sumWindow) statsView {
+// aggregated dashboard (its embedded store.Summary + the enrichment bars).
+func buildStatsView(d dashboard, win sumWindow) statsView {
+	sum := d.Sum
 	v := statsView{
 		RangeLabel: win.label,
 		RangeLinks: rangeLinksFor("/stats", win.key),
@@ -93,14 +78,14 @@ func buildStatsView(d dashboard, sum store.Summary, win sumWindow) statsView {
 	if len(d.TargetIPs) > 1 {
 		busiest := d.TargetIPs[0].Label
 		v.Headline = append(v.Headline,
-			statKV{Label: "Targeted server IPs", Value: humanInt(len(d.TargetIPs)), Sub: "of this host's addresses (sampled)"},
+			statKV{Label: "Targeted server IPs", Value: humanInt(len(d.TargetIPs)), Sub: "of this host's addresses"},
 			statKV{Label: "Busiest target IP", Value: busiest, Sub: humanInt(d.TargetIPs[0].Count) + " events"},
 		)
 	}
 	v.Headline = append(v.Headline, []statKV{
 		{Label: "Events / hour", Value: fmt.Sprintf("%.1f", float64(sum.Total)/hours), Sub: "average over window"},
 		{Label: "Attacker sources", Value: humanInt(len(sum.TopSources)), Sub: "tracked (top-N)"},
-		{Label: "Source countries", Value: humanInt(len(d.Countries)), Sub: "distinct (sampled)"},
+		{Label: "Source countries", Value: humanInt(len(d.Countries)), Sub: "distinct (top 10)"},
 		{Label: "ATT&CK techniques", Value: humanInt(len(d.Attacks)), Sub: "distinct (sampled)"},
 		{Label: "CVEs probed", Value: humanInt(len(d.CVEs)), Sub: "distinct (sampled)"},
 		{Label: "Tools fingerprinted", Value: humanInt(len(d.Tools)), Sub: "distinct (sampled)"},

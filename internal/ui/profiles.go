@@ -27,9 +27,13 @@ import (
 // as the source keeps interacting.
 
 // profileListWindow / profileDetailWindow bound how far back the list and
-// the per-actor dossier look.
+// the per-actor dossier look. The list runs a GROUP-BY-src_ip rollup over the
+// whole window, so its default is kept to 24h: at high event volume a 30-day
+// window is millions of rows and times the page out. Operators can still widen
+// it with ?since= (e.g. 720h). The per-actor detail view stays at 90 days — it
+// filters by a single src_ip (indexed), so it's cheap regardless of window.
 const (
-	profileListWindow   = 30 * 24 * time.Hour
+	profileListWindow   = 24 * time.Hour
 	profileDetailWindow = 90 * 24 * time.Hour
 	profileDetailMax    = 2000 // events scanned per actor for the dossier
 )
@@ -1320,7 +1324,7 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	aggs, err := s.store.SourceAggregates(ctx, time.Now().Add(-since), 200)
+	aggs, err := s.cachedSourceAggregates(ctx, since, 200)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -1434,7 +1438,7 @@ func ruleSortHeader(ip, col, curSort, curOrder string) sortLink {
 func (s *Server) handleAPIProfiles(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	aggs, err := s.store.SourceAggregates(ctx, time.Now().Add(-profileListWindow), 500)
+	aggs, err := s.cachedSourceAggregates(ctx, profileListWindow, 500)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

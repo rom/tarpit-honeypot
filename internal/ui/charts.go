@@ -30,7 +30,11 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 	hours, _ := s.store.EventsPerBucket(ctx, since, win.bucket)
 	d := buildDashboard(sum, hours, win.bucket)
 	var evs []*event.Event
-	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000}); qerr == nil {
+	// NoPayload: the analytics enrichment reads meta-derived dimensions only
+	// (tactics / techniques / geo / ASN / tool / handler / CVE) — never the
+	// payload bytes or the banner — so skip dragging 20k payload blobs + the
+	// per-row banner subquery through, which is pure scan cost here.
+	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
 		evs = e
 		enrichDashboard(&d, evs)
 	}

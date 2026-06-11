@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Configurable BGP Autonomous System (`sensor.bgp_as`).** The `bgp` decoy can
+  now present a believable router identity: when `sensor.bgp_as` is set, it
+  answers a peer's OPEN with its own OPEN advertising that AS (My Autonomous
+  System; ASNs > 65535 are sent as AS_TRANS with the real value in the 4-octet-
+  ASN capability, RFC 6793) before declining with a NOTIFICATION (Cease). With
+  no AS configured it replies NOTIFICATION only, as before. The AS is carried on
+  the deployment identity, so every BGP responder (top-level listener and
+  honeynet `{handler: bgp}` services) shares it. `install.sh` gained a
+  `--bgp-as` flag / `TARPIT_BGP_AS` env and prompts for the AS when a deployed
+  config runs the BGP service but `sensor.bgp_as` is unset, saving it to the
+  config. The captured event records `bgp_local_as`.
+
 - **TR-069 (CWMP), TR-369 (USP) and UPnP device-management handlers.** Three new
   TCP handlers cover the CPE / IoT remote-management attack surface end to end —
   attack **intent**, protocol **fingerprint**, **decoy** response, **CVE/CWE**,
@@ -95,6 +107,65 @@ documented in `docs/`).
   with the level, `isGlobalCatalogReady`, `serverName`, SASL mechanisms, and the
   DomainDnsZones/ForestDnsZones naming contexts. AD-recon tools (e.g. BloodHound,
   ldapsearch) now read a coherent level off the rootDSE.
+
+### Fixed
+
+- **Geo country promoted to an indexed event column.** `meta.geo_country` is now
+  materialized into an indexed `country` column (set at insert; old rows healed
+  by a chunked, best-effort background backfill that yields the write lock to the
+  sink). The `country=` filter (`/events?country=XX`, the profile/dashboard geo
+  pivots) is now an index lookup instead of a `json_extract(meta_json, …)` scan
+  over every row in the window, and the dashboard / stats **country panel** is a
+  full-window SQL `GROUP BY` (`Summary.ByCountry`) rather than a sampled Go-side
+  count — same SQL-first / enrich-fallback pattern as the handler + target
+  rollups. (This is the indexed-`country`-column half of the meta-materialization
+  work; the captured-credentials side-table — which additionally touches the hot
+  ingest path + retention pruning — remains a separate follow-up.)
+
+- **Analytics aggregation pushed into SQL (follow-up to the timeout fixes).**
+  The `store.Summary` rollup now also computes the **by-handler** and
+  **by-target (dst_ip)** top-N via index-backed `GROUP BY` (covering indexes
+  `idx_events_handler_time` / `idx_events_dst_ip_time`), so those dashboard /
+  stats panels are full-window accurate and cost only an index walk — instead of
+  being counted Go-side over a sampled 20k-row scan (`enrichDashboard` keeps that
+  count only as a fallback when a caller has no summary). And **`/stats` now
+  reuses the shared, cached dashboard build** (the same one `/` uses) rather than
+  re-running its own `Summary` + trend + 20k-row enrichment scan on every
+  auto-refresh — a cache hit serves it with zero database work. (`/charts` still
+  scans, as its time-series figures need the raw events; it already skips the
+  payload/banner columns.)
+
+- **Web UI views no longer time out ("This view is taking longer than usual")
+  at high event volume (~100k events/24h).** Five changes attack the worst
+  offenders: (1) the `/profiles` list rollup now defaults to a **24h** window
+  instead of 30 days — at 100k/day a 30-day `GROUP BY src_ip` was millions of
+  rows (`?since=` still widens it; the per-actor detail view is unchanged, being
+  src_ip-indexed); (2) a new covering index `idx_events_src_agg(src_ip, time,
+  severity, rule_id)` makes that rollup an index-only scan (verified via
+  `EXPLAIN QUERY PLAN`: `SCAN … USING COVERING INDEX`, no temp-B-tree GROUP BY)
+  rather than a table scan + per-row lookups; (3) the SQLite read pool is raised
+  from 4 → **12** connections (WAL allows many concurrent readers) so a couple of
+  heavy scans can't starve every other auto-refreshing view into its deadline;
+  (4) a short-TTL cache for the `/profiles` rollup collapses concurrent
+  auto-refreshes into one scan and serves the last good result through a
+  transient slow/locked scan (the `/` dashboard was already cached); (5) the
+  credentials and interactions pages cap their meta scan at 20k (was 50k) and
+  the analytics-charts scan now skips the payload/banner columns (`NoPayload`).
+  names + any path.** `parseLoginForm` previously matched only a handful of
+  generic field names (`username`/`user`/… + `password`/`pass`/…), so a real
+  Hydra brute force against phpMyAdmin (`pma_username` / `pma_password`),
+  Tomcat (`j_username` / `j_password`), WordPress (`log` / `pwd`), or any
+  `*_username` / `*_password` app silently captured only the cookie — not the
+  credentials. The parser now recognizes the common app field names plus a
+  substring fallback (any field containing `user`/`login` resp. `pass`/`pwd`,
+  with `user_agent` excluded), and the capture runs for **any** POST form body
+  rather than only the known login routes (the fake 401 login-retry page stays
+  route-gated). It now also parses **JSON** request bodies (`application/json`,
+  any `*+json`, or a body that starts with `{` even when mislabeled) — the
+  modern API-login shape `{"username":...,"password":...}` and nested variants
+  like `{"auth":{"user":...,"pass":...}}`. Captured `http_login_user` /
+  `http_login_pass` flow to the captures page + attacker profile and flag
+  `http-login-attempt` (T1110.001).
 
 ## [2.21.0] - 2026-06-09
 

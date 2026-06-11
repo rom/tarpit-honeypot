@@ -2,6 +2,95 @@ package handler
 
 import "testing"
 
+// TestHTTPCapturesPhpMyAdminBruteForce reproduces a real captured Hydra POST
+// against a phpMyAdmin login (pma_username / pma_password) and verifies the
+// handler now extracts the credentials — not just the cookie — so they land on
+// the captures page and the attacker profile.
+func TestHTTPCapturesPhpMyAdminBruteForce(t *testing.T) {
+	body := "pma_username=backup&pma_password=skyline"
+	req := "POST /login.php HTTP/1.0\r\n" +
+		"Host: 193.180.173.12\r\n" +
+		"User-Agent: Mozilla/5.0 (Hydra)\r\n" +
+		"Content-Length: 40\r\n" +
+		"Content-Type: application/x-www-form-urlencoded\r\n" +
+		"Cookie: PHPSESSID=93e0c568475307e1db4d22dbb1\r\n\r\n" +
+		body
+	res := serveHTTPOnce(t, req)
+
+	if res.Meta["http_login_user"] != "backup" {
+		t.Errorf("http_login_user = %v; want backup", res.Meta["http_login_user"])
+	}
+	if res.Meta["http_login_pass"] != "skyline" {
+		t.Errorf("http_login_pass = %v; want skyline", res.Meta["http_login_pass"])
+	}
+	if !containsStr(anomaliesOf(res), "http-login-attempt") {
+		t.Errorf("http-login-attempt not flagged: %v", res.Meta["anomalies"])
+	}
+	// The cookie is still captured alongside the credentials.
+	if res.Meta["cookie"] == nil {
+		t.Error("cookie not captured")
+	}
+}
+
+// TestHTTPCapturesLoginOnNonLoginPath verifies credentials are captured even
+// when the brute force targets a path that isn't in the known login-route list
+// (capture is now path-independent; only the fake 401 page is route-gated).
+func TestHTTPCapturesLoginOnNonLoginPath(t *testing.T) {
+	body := "vmware_username=root&vmware_password=vmware"
+	req := "POST /some/app/auth HTTP/1.1\r\nHost: x\r\n" +
+		"Content-Type: application/x-www-form-urlencoded\r\n" +
+		"Content-Length: " + itoa(len(body)) + "\r\n\r\n" + body
+	res := serveHTTPOnce(t, req)
+	if res.Meta["http_login_user"] != "root" || res.Meta["http_login_pass"] != "vmware" {
+		t.Errorf("creds not captured on non-login path: user=%v pass=%v",
+			res.Meta["http_login_user"], res.Meta["http_login_pass"])
+	}
+}
+
+// TestHTTPCapturesJSONLogin verifies credentials are extracted from a JSON API
+// login body (the modern shape), top-level and nested, including a body sent
+// without a JSON Content-Type.
+func TestHTTPCapturesJSONLogin(t *testing.T) {
+	cases := []struct {
+		name, ctype, body, user, pass string
+	}{
+		{"top-level", "application/json", `{"username":"admin","password":"s3cret"}`, "admin", "s3cret"},
+		{"nested", "application/json", `{"auth":{"user":"root","pass":"toor"},"remember":true}`, "root", "toor"},
+		{"vendor+json", "application/vnd.api+json", `{"email":"a@b.co","passwd":"x"}`, "a@b.co", "x"},
+		{"no-content-type", "", `{"login":"oper","password":"p@ss"}`, "oper", "p@ss"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctHeader := ""
+			if c.ctype != "" {
+				ctHeader = "Content-Type: " + c.ctype + "\r\n"
+			}
+			req := "POST /api/login HTTP/1.1\r\nHost: x\r\n" + ctHeader +
+				"Content-Length: " + itoa(len(c.body)) + "\r\n\r\n" + c.body
+			res := serveHTTPOnce(t, req)
+			if res.Meta["http_login_user"] != c.user || res.Meta["http_login_pass"] != c.pass {
+				t.Errorf("JSON creds = (%v,%v); want (%q,%q)",
+					res.Meta["http_login_user"], res.Meta["http_login_pass"], c.user, c.pass)
+			}
+			if !containsStr(anomaliesOf(res), "http-login-attempt") {
+				t.Errorf("http-login-attempt not flagged: %v", res.Meta["anomalies"])
+			}
+		})
+	}
+}
+
+// A JSON body with no credential-shaped fields must not be mistaken for a login.
+func TestHTTPJSONNonLoginNoCapture(t *testing.T) {
+	body := `{"action":"status","count":3,"name":"widget"}`
+	req := "POST /api/x HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n" +
+		"Content-Length: " + itoa(len(body)) + "\r\n\r\n" + body
+	res := serveHTTPOnce(t, req)
+	if res.Meta["http_login_user"] != nil || res.Meta["http_login_pass"] != nil {
+		t.Errorf("unexpected JSON cred capture: user=%v pass=%v",
+			res.Meta["http_login_user"], res.Meta["http_login_pass"])
+	}
+}
+
 // The HTTP handler captures the full request surface — method, full URI +
 // parsed query params, every header, cookies, and any bearer/basic credential —
 // so an analyst sees exactly what an attacker sent and the captures page can

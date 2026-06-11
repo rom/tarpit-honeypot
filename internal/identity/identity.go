@@ -34,6 +34,22 @@ type Identity struct {
 	mu       sync.Mutex
 	smtpHost string
 	domain   string // deployment DNS domain for hostnames (default example.internal)
+	bgpAS    uint32 // deployment BGP Autonomous System number (0 = unset)
+}
+
+// BGPAS returns the deployment's configured BGP Autonomous System number, or 0
+// when none is set (the bgp responder then advertises no AS).
+func (i *Identity) BGPAS() uint32 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.bgpAS
+}
+
+// SetBGPAS pins the deployment BGP AS (from sensor.bgp_as). Zero leaves it unset.
+func (i *Identity) SetBGPAS(as uint32) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.bgpAS = as
 }
 
 // Domain returns the deployment's DNS domain used to build hostnames (SMTP

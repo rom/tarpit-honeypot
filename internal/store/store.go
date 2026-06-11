@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS events (
   mitre_techniques TEXT,
   mitre_tactics TEXT,
   mitre_defenses TEXT,
-  banner_id INTEGER
+  banner_id INTEGER,
+  country TEXT
 );
 -- Interned banner strings: the same static service banner is sent on every
 -- connection, so instead of storing a full copy per event we store it once here
@@ -149,6 +150,13 @@ var indexStmts = []string{
 	// time >= ? ORDER BY time DESC): lets SQLite both filter and order from one
 	// index, avoiding a transient sort entirely.
 	`CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC)`,
+	// Covering index for the /profiles list rollup (SourceAggregates):
+	// "WHERE time >= ? GROUP BY src_ip" with COUNT / MIN+MAX(time), MAX(severity),
+	// COUNT(DISTINCT rule_id) and SUM(severity*severity). With every referenced
+	// column in the index, SQLite groups by the leading src_ip and reads severity
+	// + rule_id straight from the index — no per-row main-table lookup — which is
+	// what keeps the profiles list from timing out as the table grows.
+	`CREATE INDEX IF NOT EXISTS idx_events_src_agg ON events(src_ip, time, severity, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity)`,
 	// Composite (column, time) covering indexes for the dashboard's
@@ -171,6 +179,11 @@ var indexStmts = []string{
 	// time >= ?". Without it those scan every recent row on a multi-address
 	// sensor, which is what timed those pages out.
 	`CREATE INDEX IF NOT EXISTS idx_events_dst_ip_time ON events(dst_ip, time DESC)`,
+	// (country, time) index for the geo pivots — /events?country=XX and the
+	// dashboard's country rollup. country is materialized from meta.geo_country
+	// (migrate adds it; ensureIndexes runs after) so these hit the index instead
+	// of json_extract over every recent row.
+	`CREATE INDEX IF NOT EXISTS idx_events_country_time ON events(country, time DESC)`,
 	// sensor_id is added by migrate(); ensureIndexes runs after migrate so the
 	// column exists by the time this runs.
 	`CREATE INDEX IF NOT EXISTS idx_events_sensor_id ON events(sensor_id)`,
@@ -262,7 +275,17 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	if err != nil {
 		return nil, openError("open", path, err)
 	}
-	db.SetMaxOpenConns(4)
+	// WAL mode allows many concurrent readers, so size the pool for the
+	// dashboard's fan-out: every page auto-refreshes and most fire several
+	// queries, so a pool of 4 lets a couple of heavy aggregate scans starve the
+	// rest — light pages then queue past their own deadline and show the "taking
+	// longer than usual" page even though they'd be instant. 12 read slots keep
+	// concurrent views from blocking each other; the single writer (the sink)
+	// still serializes via WAL + busy_timeout. Idle conns are kept warm so a
+	// refresh storm doesn't pay reconnect cost.
+	db.SetMaxOpenConns(12)
+	db.SetMaxIdleConns(12)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	// sql.Open is lazy — this is the first statement that actually opens the
 	// file, so a CANTOPEN (error 14) surfaces here. openError names the path
 	// and probes for the usual cause.
@@ -294,7 +317,44 @@ func Open(dataDir string, capMB int) (*Store, error) {
 			"path", path, "free_mb", free/(1024*1024),
 			"hint", "lower sensor.disk.sqlite_mb below the partition's free space, or grow the partition")
 	}
-	return &Store{db: db, path: path, capMB: capMB}, nil
+	st := &Store{db: db, path: path, capMB: capMB}
+	// Fill the materialized country column for rows ingested before it existed,
+	// off the startup path (chunked, best-effort). New rows already get it at
+	// insert; this converges the index + rollup over history without blocking
+	// Open or holding a long write lock against the sink.
+	go st.backfillCountry(context.Background())
+	return st, nil
+}
+
+// backfillCountry populates events.country from meta.geo_country for rows that
+// predate the column, in small chunks with a yield between them so it never
+// starves the sink's writes. Best-effort: any error (DB closing, locked, disk
+// full) just stops it — new rows are already correct and a later restart
+// resumes. COALESCE(...,”) guarantees every touched row becomes non-NULL, so
+// rows whose meta merely mentions "geo_country" elsewhere can't loop forever.
+func (s *Store) backfillCountry(ctx context.Context) {
+	for {
+		res, err := s.db.ExecContext(ctx, `
+UPDATE events SET country = COALESCE(json_extract(meta_json, '$.geo_country'), '')
+WHERE rowid IN (
+  SELECT rowid FROM events
+  WHERE country IS NULL AND json_valid(meta_json) AND meta_json LIKE '%geo_country%'
+  LIMIT 2000
+)`)
+		if err != nil {
+			slog.Debug("store: country backfill stopped", "err", err)
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond): // yield the write lock to the sink
+		}
+	}
 }
 
 // lowDiskBytes is the free-space floor below which Open warns: a honeypot under
@@ -412,6 +472,13 @@ func migrate(db *sql.DB) error {
 	if err := addColumn(db, "events", "banner_id", "INTEGER"); err != nil {
 		return err
 	}
+	// Materialized geo country (from meta.geo_country) so the country= filter +
+	// the dashboard country rollup hit an index instead of json_extract over
+	// every row. Set at insert for new rows; backfilled for old ones off the
+	// startup path (see backfillCountry).
+	if err := addColumn(db, "events", "country", "TEXT"); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   hash TEXT UNIQUE NOT NULL,
@@ -474,20 +541,21 @@ const insertSQL = `
 INSERT OR REPLACE INTO events
 (id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port, dst_ip, dst_port,
  proto, handler, banner_sent, payload_b64, payload_len, meta_json, anomalies,
- mitre_techniques, mitre_tactics, mitre_defenses, banner_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ mitre_techniques, mitre_tactics, mitre_defenses, banner_id, country)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // eventCols flattens an event into the insertSQL bind parameters. bannerID is
 // the interned banners.id (0 when none); the inline banner_sent column is left
 // empty for new rows so the banner is stored only once in the banners table.
 func eventCols(ev *event.Event, bannerID int64) []any {
+	country, _ := ev.Meta["geo_country"].(string)
 	return []any{
 		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, "", ev.PayloadBase64, ev.PayloadLen,
 		jsonOrEmpty(ev.Meta), jsonOrEmpty(ev.Anomalies),
 		jsonOrEmpty(ev.MitreTechniques), jsonOrEmpty(ev.MitreTactics), jsonOrEmpty(ev.MitreDefenses),
-		bannerID,
+		bannerID, country,
 	}
 }
 
@@ -712,9 +780,10 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		args = append(args, f.DstPort)
 	}
 	if f.Country != "" {
-		// json_valid guard: empty meta stores meta_json = '' which would make
-		// json_extract raise "malformed JSON".
-		q += " AND CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '$.geo_country') END = ?"
+		// Materialized, indexed column (idx_events_country_time) — set at insert
+		// from meta.geo_country and backfilled for old rows — so this is an index
+		// lookup, not a json_extract over every row in the window.
+		q += " AND country = ?"
 		args = append(args, f.Country)
 	}
 	if f.ASN > 0 {
@@ -846,6 +915,13 @@ type Summary struct {
 	BySeverity map[string]int `json:"by_severity"`
 	ByRule     map[string]int `json:"by_rule"`
 	ByProto    map[string]int `json:"by_proto"` // tcp / udp / icmp / device / ...
+	// ByHandler / ByTarget / ByCountry are index-backed top-N rollups (handler,
+	// dst_ip, country) — single-valued, indexed dimensions the dashboard used to
+	// count Go-side over a sampled event scan. Computed via GROUP BY so they're
+	// full-window accurate and cost nothing per row beyond the covering-index walk.
+	ByHandler  map[string]int `json:"by_handler"`
+	ByTarget   map[string]int `json:"by_target"`
+	ByCountry  map[string]int `json:"by_country"`
 	TopSources []SourceCount  `json:"top_sources"`
 }
 
@@ -1048,5 +1124,43 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
 	}
 	rows.Close()
 
+	// Indexed single-valued dimensions via GROUP BY (covering indexes
+	// idx_events_handler_time / idx_events_dst_ip_time) — full-window accurate and
+	// cheap, replacing the dashboard's Go-side counting over a sampled scan.
+	if sum.ByHandler, err = s.groupCount(ctx, "handler", sinceNS, 50); err != nil {
+		return sum, err
+	}
+	if sum.ByTarget, err = s.groupCount(ctx, "dst_ip", sinceNS, 50); err != nil {
+		return sum, err
+	}
+	if sum.ByCountry, err = s.groupCount(ctx, "country", sinceNS, 30); err != nil {
+		return sum, err
+	}
+
 	return sum, nil
+}
+
+// groupCount runs a top-N rollup — SELECT <col>, COUNT(*) c FROM events WHERE
+// time >= ? AND <col> != ” GROUP BY <col> ORDER BY c DESC LIMIT ? — into a
+// label->count map. col MUST be a trusted column literal (never user input);
+// callers pass fixed names ("handler", "dst_ip") whose (col, time) covering
+// index lets SQLite group + count straight from the index.
+func (s *Store) groupCount(ctx context.Context, col string, sinceNS int64, limit int) (map[string]int, error) {
+	out := map[string]int{}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+col+`, COUNT(*) c FROM events WHERE time >= ? AND `+col+` != '' GROUP BY `+col+` ORDER BY c DESC LIMIT ?`,
+		sinceNS, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		var c int
+		if err := rows.Scan(&k, &c); err != nil {
+			return nil, err
+		}
+		out[k] = c
+	}
+	return out, rows.Err()
 }
