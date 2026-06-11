@@ -114,7 +114,10 @@ func (s *Server) visibleAggregates(in []store.SourceAggregate) []store.SourceAgg
 	if s.hidden == nil {
 		return in
 	}
-	out := in[:0]
+	// Allocate a fresh slice rather than compacting in place: the input may be a
+	// shared cached snapshot (cachedSourceAggregates), so in[:0] reuse would
+	// corrupt it for the next reader.
+	out := make([]store.SourceAggregate, 0, len(in))
 	for _, a := range in {
 		if !s.hidden.match(a.IP) {
 			out = append(out, a)

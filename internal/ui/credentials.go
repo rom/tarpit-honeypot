@@ -57,7 +57,7 @@ func (s *Server) handleCredentials(w http.ResponseWriter, r *http.Request) {
 	// raw payload blob, so skip the payload column + per-row banner subquery —
 	// the heavy part of the scan that pushed this page over its deadline at
 	// 100k+ events.
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000, NoPayload: true})
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

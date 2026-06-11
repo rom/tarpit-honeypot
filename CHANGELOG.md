@@ -110,7 +110,22 @@ documented in `docs/`).
 
 ### Fixed
 
-- **HTTP/HTTPS form-login credential capture now handles app-specific field
+- **Web UI views no longer time out ("This view is taking longer than usual")
+  at high event volume (~100k events/24h).** Five changes attack the worst
+  offenders: (1) the `/profiles` list rollup now defaults to a **24h** window
+  instead of 30 days — at 100k/day a 30-day `GROUP BY src_ip` was millions of
+  rows (`?since=` still widens it; the per-actor detail view is unchanged, being
+  src_ip-indexed); (2) a new covering index `idx_events_src_agg(src_ip, time,
+  severity, rule_id)` makes that rollup an index-only scan (verified via
+  `EXPLAIN QUERY PLAN`: `SCAN … USING COVERING INDEX`, no temp-B-tree GROUP BY)
+  rather than a table scan + per-row lookups; (3) the SQLite read pool is raised
+  from 4 → **12** connections (WAL allows many concurrent readers) so a couple of
+  heavy scans can't starve every other auto-refreshing view into its deadline;
+  (4) a short-TTL cache for the `/profiles` rollup collapses concurrent
+  auto-refreshes into one scan and serves the last good result through a
+  transient slow/locked scan (the `/` dashboard was already cached); (5) the
+  credentials and interactions pages cap their meta scan at 20k (was 50k) and
+  the analytics-charts scan now skips the payload/banner columns (`NoPayload`).
   names + any path.** `parseLoginForm` previously matched only a handful of
   generic field names (`username`/`user`/… + `password`/`pass`/…), so a real
   Hydra brute force against phpMyAdmin (`pma_username` / `pma_password`),

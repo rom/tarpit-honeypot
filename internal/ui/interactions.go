@@ -49,8 +49,10 @@ func (s *Server) handleInteractions(w http.ResponseWriter, r *http.Request) {
 	if win.dur == 0 {
 		since = time.Now().Add(-interactionsWindow)
 	}
-	// Meta-only scan (commands live in meta, never the payload blob).
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 50000, NoPayload: true})
+	// Meta-only scan (commands live in meta, never the payload blob), capped at
+	// 20k newest so the per-event decode stays within the page's time budget at
+	// high event volume.
+	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true})
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

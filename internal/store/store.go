@@ -149,6 +149,13 @@ var indexStmts = []string{
 	// time >= ? ORDER BY time DESC): lets SQLite both filter and order from one
 	// index, avoiding a transient sort entirely.
 	`CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC)`,
+	// Covering index for the /profiles list rollup (SourceAggregates):
+	// "WHERE time >= ? GROUP BY src_ip" with COUNT / MIN+MAX(time), MAX(severity),
+	// COUNT(DISTINCT rule_id) and SUM(severity*severity). With every referenced
+	// column in the index, SQLite groups by the leading src_ip and reads severity
+	// + rule_id straight from the index — no per-row main-table lookup — which is
+	// what keeps the profiles list from timing out as the table grows.
+	`CREATE INDEX IF NOT EXISTS idx_events_src_agg ON events(src_ip, time, severity, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_events_rule_id ON events(rule_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity)`,
 	// Composite (column, time) covering indexes for the dashboard's
@@ -262,7 +269,17 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	if err != nil {
 		return nil, openError("open", path, err)
 	}
-	db.SetMaxOpenConns(4)
+	// WAL mode allows many concurrent readers, so size the pool for the
+	// dashboard's fan-out: every page auto-refreshes and most fire several
+	// queries, so a pool of 4 lets a couple of heavy aggregate scans starve the
+	// rest — light pages then queue past their own deadline and show the "taking
+	// longer than usual" page even though they'd be instant. 12 read slots keep
+	// concurrent views from blocking each other; the single writer (the sink)
+	// still serializes via WAL + busy_timeout. Idle conns are kept warm so a
+	// refresh storm doesn't pay reconnect cost.
+	db.SetMaxOpenConns(12)
+	db.SetMaxIdleConns(12)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	// sql.Open is lazy — this is the first statement that actually opens the
 	// file, so a CANTOPEN (error 14) surfaces here. openError names the path
 	// and probes for the usual cause.

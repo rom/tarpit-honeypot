@@ -84,6 +84,20 @@ type Server struct {
 	dashMu     sync.Mutex
 	dashCache  map[string]dashEntry
 	dashFlight map[string]bool
+
+	// aggCache is a short-TTL cache for the /profiles list rollup
+	// (SourceAggregates), keyed by (window, limit). The profiles list is a
+	// whole-window GROUP BY hit by every dashboard auto-refresh; caching it
+	// collapses N concurrent identical scans into one and lets a stale result
+	// cover a transient slow scan instead of showing the busy page.
+	aggMu    sync.Mutex
+	aggCache map[string]aggEntry
+}
+
+// aggEntry is one cached SourceAggregates rollup + when it was produced.
+type aggEntry struct {
+	aggs []store.SourceAggregate
+	at   time.Time
 }
 
 // dashEntry is one cached dashboard build + when it was produced.
@@ -950,6 +964,49 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 // refresh is triggered. The dashboard is a whole-window rollup, so a few
 // seconds of staleness is fine and keeps page loads instant at any scale.
 const dashTTL = 20 * time.Second
+
+// aggCacheTTL bounds how long a cached /profiles list rollup is reused.
+const aggCacheTTL = 5 * time.Second
+
+// cachedSourceAggregates wraps store.SourceAggregates with a short-TTL cache
+// keyed by (window, limit). Concurrent auto-refreshes of /profiles within the
+// TTL share one whole-window GROUP BY instead of each re-scanning the events
+// table; on a slow/cancelled scan a stale entry (when present) is served rather
+// than the busy page. The returned slice is treated as an immutable snapshot —
+// callers apply the presentation hide-list to a copy, never mutating it.
+func (s *Server) cachedSourceAggregates(ctx context.Context, window time.Duration, limit int) ([]store.SourceAggregate, error) {
+	key := window.String() + "|" + strconv.Itoa(limit)
+	s.aggMu.Lock()
+	ent, ok := s.aggCache[key]
+	s.aggMu.Unlock()
+	if ok && time.Since(ent.at) < aggCacheTTL {
+		return ent.aggs, nil
+	}
+	aggs, err := s.store.SourceAggregates(ctx, time.Now().Add(-window), limit)
+	if err != nil {
+		if ok { // serve the last good result through a transient slow/locked scan
+			return ent.aggs, nil
+		}
+		return nil, err
+	}
+	s.aggMu.Lock()
+	if s.aggCache == nil {
+		s.aggCache = map[string]aggEntry{}
+	}
+	// Bound the map: ?since= is arbitrary, so drop expired entries before growing
+	// (keys are (window,limit) pairs — realistically a handful, never large).
+	if len(s.aggCache) > 32 {
+		now := time.Now()
+		for k, e := range s.aggCache {
+			if now.Sub(e.at) >= aggCacheTTL {
+				delete(s.aggCache, k)
+			}
+		}
+	}
+	s.aggCache[key] = aggEntry{aggs: aggs, at: time.Now()}
+	s.aggMu.Unlock()
+	return aggs, nil
+}
 
 // cachedIndexDashboard returns the dashboard for a window, computing it off the
 // request path: a fresh cache entry is served as-is; a stale one is served

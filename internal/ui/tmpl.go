@@ -1343,7 +1343,7 @@ fingerprinting, credentials tried, and ATT&amp;CK technique observation — it b
 as the source keeps interacting. Ranked by a severity-weighted threat score. JSON at
 <a href="/api/profiles">/api/profiles</a>.</p>
 <form method="get" action="/profiles">
-  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="720h" size="6">
+  since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h (e.g. 720h for 30d)" size="14">
   <button type="submit">filter</button>
   <a href="/profiles">reset</a>
 </form>
