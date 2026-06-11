@@ -1795,6 +1795,25 @@ each tenant IP its own decoy.
   the policy and `add-instance.sh` labels the new state dir; if you created a dir
   by hand, run `restorecon -Rv /var/lib/tarpit-honeypot/<name>` (SELinux) or
   re-run `install.sh`, then verify with `scripts/selinux-verify.sh`.
+- **An instance fails to start with `status=226/NAMESPACE`** — systemd couldn't
+  set up the unit's sandbox, almost always because a `ReadWritePaths` entry is
+  missing. The `tarpit-honeypot@.service` template grants write access to
+  `/var/lib/tarpit-honeypot/%i`; with a custom **`--data-root`** the data dir is
+  elsewhere, so that path doesn't exist and `ProtectSystem=strict` aborts startup
+  (and the real data dir wouldn't be writable). `add-instance.sh` now writes a
+  per-instance override (`…@<name>.service.d/10-data-root.conf`) plus a SELinux
+  fcontext for custom roots — re-run it with `--force` to repair an existing
+  instance, or fix one by hand:
+  ```bash
+  sudo install -d /etc/systemd/system/tarpit-honeypot@OT.service.d
+  printf '[Service]\nReadWritePaths=\nReadWritePaths=/var/log/tarpit-honeypot /data/instances/OT\n' \
+    | sudo tee /etc/systemd/system/tarpit-honeypot@OT.service.d/10-data-root.conf
+  sudo semanage fcontext -a -t tarpit_honeypot_var_lib_t '/data/instances/OT(/.*)?'  # SELinux only
+  sudo restorecon -RvF /data/instances/OT
+  sudo systemctl daemon-reload && sudo systemctl restart tarpit-honeypot@OT
+  ```
+  (The simplest alternative is to **not** pass `--data-root` — the default
+  `/var/lib/tarpit-honeypot` already matches the template and the SELinux policy.)
 
 ## Operating model
 
