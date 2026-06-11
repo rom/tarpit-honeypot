@@ -521,13 +521,19 @@ become DCP stations; an `Identify` scan enumerates the cell, and a `Set`
   station MACs, tank reports).
 - **`tarpit.emulate: true`** on a `tarpit` listener runs the OT handler first,
   then tarpits the connection.
-- Ready-to-run scenarios: `configs/tarpit-honeypot.example-ADVANCED-OT.yaml`,
+- Ready-to-run scenarios: `configs/tarpit-honeypot.example-ALL-OT.yaml` (a flat
+  single-sensor decoy with **every** OT/ICS protocol in §2 enabled),
+  `configs/tarpit-honeypot.example-ADVANCED-OT.yaml`,
   `configs/tarpit-honeypot.example-SMALL-OT.yaml`, and the `examples/ot-*.yaml`
   scenarios (`ot-substation`, `ot-power-grid`, `ot-discrete-mfg`,
   `ot-safety-dcs`) + the `examples/it-ot-dmz` IDMZ.
 
 ### Ready-made example configs
 
+`configs/tarpit-honeypot.example-ALL-OT.yaml` is a flat, single-sensor decoy
+that turns on every OT/ICS protocol listed in §2 (one listener per protocol on
+its standard port, plus a small honeynet so the three TCP-102 protocols — S7comm,
+S7comm-Plus, and IEC-61850 MMS — each get their own virtual IP);
 `configs/tarpit-honeypot.example-ADVANCED-OT.yaml` builds a Purdue-model OT
 estate; `configs/tarpit-honeypot.example-SMALL-OT.yaml`, the `examples/ot-*.yaml`
 scenarios, and the `examples/it-ot-dmz` IDMZ are lighter starting points.
