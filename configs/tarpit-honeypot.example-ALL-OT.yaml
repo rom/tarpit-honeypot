@@ -1,0 +1,193 @@
+# tarpit-honeypot — ALL-OT example: every supported OT/ICS protocol enabled.
+#
+# A single, flat-listener deployment that turns on a decoy for EVERY OT/ICS
+# protocol the sensor speaks (the authoritative set documented in docs/ot.md
+# §2). Point it at an OT segment (or a /32 in your process network) and any
+# byte that touches an industrial port becomes a high-signal event — every
+# handler captures the request, classifies the command where the protocol
+# carries one, answers just enough to look real, and stamps an attacker-intent
+# + ATT&CK-for-ICS marker. Nothing is ever actually controlled (no process
+# image, no I/O); UDP handlers are reflection-safe.
+#
+#   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-ALL-OT.yaml
+#   sudo tarpit-honeypot run        -c configs/tarpit-honeypot.example-ALL-OT.yaml
+#
+# Ports follow each protocol's IANA / de-facto standard. Three protocols share
+# TCP 102 (Siemens S7comm, S7comm-Plus, and IEC-61850 MMS) — on a single IP only
+# one can bind, so the top-level 102 listener runs `s7` and a small honeynet
+# below exposes `s7comm_plus` and `mms` on their own virtual IPs (the documented
+# multi-device pattern; see honeynets:).
+
+sensor:
+  name: all-ot-sensor
+  data_dir: ./var
+  # Enrichment — canonical paths (run-safe: missing files are skipped, so this
+  # validates/runs as-is). Populate with scripts/fetch-enrichment.sh +
+  # scripts/install-enrichment.sh, then SIGHUP.
+  oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  net_class: { enabled: true }
+  geoip: { city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb, asn_db: /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb }
+  tor: { enabled: true, exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt }
+  threat_intel:
+    enabled: true
+    lists:
+      - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+  jitter: { enabled: true, min_ms: 5, max_ms: 60 }
+  tls_rotate: { days: 30 }
+  disk: { json_log_mb: 512, sqlite_mb: 1024, pcap_mb: 2048, retention_days: 90 }
+
+ui:
+  enabled: true
+  bind: 127.0.0.1:8088
+
+# OT decoys stay strictly low-interaction — answer the protocol, never run a
+# shell or anything that could be coerced into touching a real process.
+interaction:
+  mode: low
+
+listeners:
+  # ============================ TCP / ICS control ===========================
+  - { id: modbus,   proto: tcp, bind: 0.0.0.0:502,   mode: banner, handler: modbus,          severity: critical, capture: true }
+  - { id: modbuss,  proto: tcp, bind: 0.0.0.0:802,   mode: banner, handler: modbus_security, severity: critical, capture: true } # Modbus/TCP Security (TLS)
+  - { id: s7,       proto: tcp, bind: 0.0.0.0:102,   mode: banner, handler: s7,              severity: critical, capture: true } # S7comm (300/400); 1500 + MMS share 102 (honeynet)
+  - { id: iec104,   proto: tcp, bind: 0.0.0.0:2404,  mode: banner, handler: iec104,          severity: critical, capture: true }
+  - { id: dnp3,     proto: tcp, bind: 0.0.0.0:20000, mode: banner, handler: dnp3,            severity: critical, capture: true }
+  - { id: ethernetip, proto: tcp, bind: 0.0.0.0:44818, mode: banner, handler: ethernetip,   severity: high,     capture: true } # EtherNet/IP + CIP (Rockwell)
+  - { id: opcua,    proto: tcp, bind: 0.0.0.0:4840,  mode: banner, handler: opcua,           severity: high }
+  - { id: iccp,     proto: tcp, bind: 0.0.0.0:3782,  mode: banner, handler: iccp_secure,     severity: critical, capture: true } # Secure ICCP/TASE.2 over TLS
+  - { id: melsec,   proto: tcp, bind: 0.0.0.0:1025,  mode: banner, handler: melsec,          severity: critical } # Mitsubishi MELSEC MC (also 5006/5007)
+  - { id: ads,      proto: tcp, bind: 0.0.0.0:48898, mode: banner, handler: ads,             severity: high }     # Beckhoff TwinCAT ADS/AMS
+  - { id: fins-tcp, proto: tcp, bind: 0.0.0.0:9600,  mode: banner, handler: fins_tcp,        severity: high }     # Omron FINS/TCP
+  - { id: rocplus,  proto: tcp, bind: 0.0.0.0:4000,  mode: banner, handler: roc_plus,        severity: high }     # Emerson ROC Plus (flow computer)
+  - { id: pcom,     proto: tcp, bind: 0.0.0.0:20256, mode: banner, handler: pcom,            severity: high }     # Unitronics PCOM (Vision PLC)
+  - { id: codesys,  proto: tcp, bind: 0.0.0.0:1217,  mode: banner, handler: codesys,         severity: critical } # CODESYS V3 soft-PLC (WAGO/Beckhoff/Schneider/ABB)
+  - { id: pcworx,   proto: tcp, bind: 0.0.0.0:1962,  mode: banner, handler: pcworx,          severity: high }     # Phoenix Contact PCWorx
+  - { id: proconos, proto: tcp, bind: 0.0.0.0:20547, mode: banner, handler: proconos,        severity: critical } # ProConOS/eCLR soft-PLC runtime
+  - { id: gesrtp,   proto: tcp, bind: 0.0.0.0:18245, mode: banner, handler: ge_srtp,         severity: high }     # GE/Emerson PACSystems / Series 90
+  - { id: hartip,   proto: tcp, bind: 0.0.0.0:5094,  mode: banner, handler: hartip,          severity: high }     # HART-IP field-instrument gateway
+
+  # ====================== TCP / safety, power, machine ======================
+  - { id: c37118,   proto: tcp, bind: 0.0.0.0:4712,  mode: banner, handler: c37118,          severity: high }     # IEEE C37.118.2 synchrophasor (PMU/PDC)
+  - { id: secs-gem, proto: tcp, bind: 0.0.0.0:5000,  mode: banner, handler: secs_gem,        severity: medium }   # SEMI HSMS / SECS-GEM (semiconductor fab)
+  - { id: focas,    proto: tcp, bind: 0.0.0.0:8193,  mode: banner, handler: focas,           severity: medium }   # FANUC FOCAS (CNC / machine tool)
+  - { id: crimson,  proto: tcp, bind: 0.0.0.0:789,   mode: banner, handler: crimson,         severity: medium }   # Red Lion Crimson (HMI)
+
+  # ===================== TCP / building automation + BAS ====================
+  - { id: fox,      proto: tcp, bind: 0.0.0.0:1911,  mode: banner, handler: fox,             severity: medium }   # Niagara / Tridium Fox (BAS)
+  # OSDP-over-IP (access control) has no registered port — set this to your
+  # access-control gateway's port. 10002 is an arbitrary placeholder.
+  - { id: osdp,     proto: tcp, bind: 0.0.0.0:10002, mode: banner, handler: osdp,            severity: high }
+
+  # ==================== TCP / tank gauge + historians =======================
+  - { id: atg,      proto: tcp, bind: 0.0.0.0:10001, mode: banner, handler: atg,             severity: high }     # Veeder-Root TLS-350 tank gauge
+  - { id: osisoft,  proto: tcp, bind: 0.0.0.0:5450,  mode: banner, handler: osisoft_pi,      severity: high }     # OSIsoft / AVEVA PI Data Archive
+  - { id: proficy,  proto: tcp, bind: 0.0.0.0:14000, mode: banner, handler: proficy_historian, severity: high }   # GE Proficy Historian
+  - { id: canaryhist, proto: tcp, bind: 0.0.0.0:9990, mode: banner, handler: canary_historian, severity: high }   # Canary Labs Historian
+  - { id: aspen,    proto: tcp, bind: 0.0.0.0:10014, mode: banner, handler: aspen_ip21,      severity: high }     # AspenTech InfoPlus.21
+
+  # ============================ UDP / ICS + BAS =============================
+  # UDP handlers are reflection-safe (rate-limited / capture-only). read_bytes
+  # is raised so full discovery/datagram payloads are captured.
+  - { id: bacnet,   proto: udp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet,    severity: high,     read_bytes: 1500 } # BACnet/IP (building automation)
+  - { id: fins-udp, proto: udp, bind: 0.0.0.0:9600,  mode: banner, handler: fins,      severity: high,     read_bytes: 1500 } # Omron FINS/UDP
+  - { id: knx,      proto: udp, bind: 0.0.0.0:3671,  mode: banner, handler: knx,       severity: high,     read_bytes: 1500 } # KNXnet/IP (building automation)
+  - { id: profinet, proto: udp, bind: 0.0.0.0:34964, mode: banner, handler: profinet,  severity: high,     read_bytes: 1500 } # PROFINET-IO (DCE-RPC)
+  - { id: tristation, proto: udp, bind: 0.0.0.0:1502, mode: banner, handler: tristation, severity: critical, read_bytes: 1500 } # Triconex TriStation SIS (TRITON/TRISIS)
+  - { id: bsap,     proto: udp, bind: 0.0.0.0:1234,  mode: banner, handler: bsap,      severity: medium,   read_bytes: 1500 } # Bristol/Emerson BSAP-IP RTU
+  - { id: ge-egd,   proto: udp, bind: 0.0.0.0:18246, mode: banner, handler: ge_egd,    severity: medium,   read_bytes: 1500 } # GE Ethernet Global Data
+  - { id: lontalk,  proto: udp, bind: 0.0.0.0:1628,  mode: banner, handler: lontalk,   severity: medium,   read_bytes: 1500 } # Echelon LonTalk / LonWorks-IP
+  - { id: wdbrpc,   proto: udp, bind: 0.0.0.0:17185, mode: banner, handler: wdbrpc,    severity: high,     read_bytes: 1500 } # VxWorks WDB agent (URGENT/11)
+  - { id: ads-disc, proto: udp, bind: 0.0.0.0:48899, mode: banner, handler: ads_discovery, severity: high, read_bytes: 1500 } # Beckhoff TwinCAT AMS/UDP discovery
+
+  # ====================== UDP / IIoT transport variants =====================
+  # UDP carriers of the control/process protocols above + IIoT pub-sub buses.
+  # All capture-only (reflection-safe): they record + classify the datagram and
+  # never reply. Ports differ from / coexist with the TCP listeners (separate
+  # protocol), so e.g. modbus_udp:502 sits beside modbus tcp:502.
+  - { id: modbus-udp,    proto: udp, bind: 0.0.0.0:502,   mode: banner, handler: modbus_udp,    severity: high,     read_bytes: 1500 } # Modbus over UDP
+  - { id: enip-udp,      proto: udp, bind: 0.0.0.0:44818, mode: banner, handler: enip_udp,      severity: high,     read_bytes: 1500 } # EtherNet/IP CIP discovery (ListIdentity)
+  - { id: cip-io,        proto: udp, bind: 0.0.0.0:2222,  mode: banner, handler: cip_io,        severity: high,     read_bytes: 1500 } # EtherNet/IP Class-1 cyclic I/O
+  - { id: dnp3-udp,      proto: udp, bind: 0.0.0.0:20000, mode: banner, handler: dnp3_udp,      severity: high,     read_bytes: 1500 } # DNP3 over UDP
+  - { id: hartip-udp,    proto: udp, bind: 0.0.0.0:5094,  mode: banner, handler: hartip_udp,    severity: high,     read_bytes: 1500 } # HART-IP over UDP
+  - { id: pcom-udp,      proto: udp, bind: 0.0.0.0:20256, mode: banner, handler: pcom_udp,      severity: high,     read_bytes: 1500 } # Unitronics PCOM over UDP
+  - { id: slmp,          proto: udp, bind: 0.0.0.0:5007,  mode: banner, handler: slmp,          severity: high,     read_bytes: 1500 } # Mitsubishi SLMP / MELSEC over UDP
+  - { id: powerlink,     proto: udp, bind: 0.0.0.0:3819,  mode: banner, handler: powerlink,     severity: high,     read_bytes: 1500 } # Ethernet POWERLINK
+  - { id: ff-hse,        proto: udp, bind: 0.0.0.0:1089,  mode: banner, handler: ff_hse,        severity: medium,   read_bytes: 1500 } # FOUNDATION Fieldbus HSE
+  - { id: saia-sbus,     proto: udp, bind: 0.0.0.0:5050,  mode: banner, handler: saia_sbus,     severity: medium,   read_bytes: 1500 } # Saia Ether-S-Bus PCD controllers
+  - { id: opcua-pubsub,  proto: udp, bind: 0.0.0.0:4840,  mode: banner, handler: opcua_pubsub,  severity: high,     read_bytes: 1500 } # OPC-UA PubSub over UDP
+  - { id: dds-rtps,      proto: udp, bind: 0.0.0.0:7400,  mode: banner, handler: dds_rtps,      severity: medium,   read_bytes: 1500 } # DDS / RTPS (OMG Data Distribution Service)
+  - { id: synchrophasor, proto: udp, bind: 0.0.0.0:4713,  mode: banner, handler: synchrophasor, severity: high,     read_bytes: 1500 } # IEEE C37.118 synchrophasor / PMU stream
+  - { id: c1222,         proto: udp, bind: 0.0.0.0:1153,  mode: banner, handler: c1222,         severity: high,     read_bytes: 1500 } # ANSI C12.22 smart-meter / AMI
+  - { id: siprotec-en100, proto: udp, bind: 0.0.0.0:50000, mode: banner, handler: siprotec_en100, severity: critical, read_bytes: 1500 } # Siemens SIPROTEC EN100 (CVE-2015-5374 relay-DoS)
+
+# L2 substation detection: passively flag IEC 61850 GOOSE multicast (spoof /
+# replay / storm / simulation) and answer PROFINET-DCP Identify/Set. Requires
+# the sensor to sit on the OT segment (CAP_NET_RAW); harmless if eth0 is absent.
+sniffer:
+  enabled: true
+  interface: eth0
+  severity: high
+  arp_scan: { distinct_ips: 16, window: 30s }
+
+# The three TCP-102 protocols can't all bind 102 on one IP, so expose
+# S7comm-Plus (S7-1200/1500) and IEC-61850 MMS on their own virtual IPs. The
+# top-level :102 listener (s7) binds the socket; the honeynet overrides the
+# handler per destination IP. Requires the sensor to own/route this CIDR on the
+# interface (ARP responder claims the IPs); it validates regardless.
+honeynets:
+  - id: substation
+    cidr: 10.40.0.0/24
+    gateway: 10.40.0.1
+    domain: substation.ot.local
+    arp_responder:  { enabled: true, interface: eth0 }
+    icmp_responder: { enabled: true, interface: eth0 }
+    lldp_responder: { enabled: true, interface: eth0, interval_s: 30, include_cdp: true }
+    hosts:
+      - ip: 10.40.0.10
+        hostname: plc-s71500
+        os: ics
+        services:
+          - { port: 102,  handler: s7comm_plus } # Siemens S7-1200/1500
+          - { port: 4840, handler: opcua }
+      - ip: 10.40.0.20
+        hostname: ied-61850
+        os: ics
+        services:
+          - { port: 102, handler: mms }          # IEC 61850 MMS / ICCP
+
+# Scan / brute-force / sweep / beacon detection over the OT segment.
+correlate:
+  port_scan:   { enabled: true, distinct_ports: 6,  window: 30s, severity: high }
+  brute_force: { enabled: true, attempts: 8,        window: 60s, severity: high }
+  slow_scan:   { enabled: true, distinct_ports: 12, window: 24h, severity: high }
+  icmp_sweep:  { enabled: true, distinct_ips: 8,    window: 30s, severity: high }
+  beacon:      { enabled: true, min_hits: 6, max_jitter_pct: 20, window: 1h, severity: high }
+
+# Learn the OT baseline on first run, then alert on any new device.
+devices:
+  enabled: true
+  learn: true
+  severity: critical
+  allow:
+    - 10.0.0.0/8
+    - 192.168.0.0/16
+    - 127.0.0.1
+
+dedup:
+  default_window: 5m
+
+allowlist:
+  - 127.0.0.1/32
+  - ::1/128
+
+channels:
+  - { id: console, type: stdout }
+  - { id: db,      type: sqlite }
+  - { id: log,     type: jsonlog }
+  # Ship to your SIEM / SOC: point these at the real endpoints and flip enabled.
+  - { id: siem,        type: syslog,  enabled: false, network: udp, address: siem.ot.local:514, format: cef }
+  - { id: soc-webhook, type: webhook, enabled: false, url: https://soc.ot.local/hooks/tarpit, hmac_secret_env: TARPIT_WEBHOOK_SECRET, min_severity: high }
+
+routes:
+  - { match: {},                    channels: [db, log, siem] }
+  - { match: { severity: ">=high" }, channels: [console, soc-webhook] }

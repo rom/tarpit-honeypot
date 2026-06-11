@@ -11,6 +11,7 @@ All are plain `bash` (no extra deps beyond the tools they install).
 | `install-enrichment.sh` | sensor | Installs a fetched bundle into the live config's paths (read from `list-paths`) and reloads. |
 | `update-enrichment.sh` | sensor (root) | One-shot **fetch+install+reload** wrapper for cron / systemd timers (locked, logged). |
 | `selinux-verify.sh` | sensor (root) | **Read-only** SELinux containment check: walks enforcing mode → policy module loaded → binary label → the *running* process domain → recent AVC denials, and prints the exact fix for the first thing that's wrong. Exit 0 = the daemon is confined in `tarpit_honeypot_t`. |
+| `open-firewall.sh` | sensor (root) | Reads a config and **opens the host firewall** for every decoy `listeners:` port (both flow + block YAML), then reloads. Auto-detects firewalld / ufw / iptables. Scope the rules to a NIC or destination IP with `--interface` / `--ip` (or it asks interactively); `--dry-run` previews. Leaves the loopback management UI port closed by design. |
 
 ## Quick start (single hardened box)
 

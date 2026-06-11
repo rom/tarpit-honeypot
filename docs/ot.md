@@ -129,6 +129,21 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `lontalk` | 1628 | Echelon LonTalk / LonWorks-IP (CEA-852) | Fingerprint | **capture-only** | data-packet header |
 | `wdbrpc` | 17185 | VxWorks WDB target agent (URGENT/11) | Deep | bounded ack | WDBPROG parse: memory-access / context-call (RCE) / connect + CVE-2010-2965; oversized → URGENT/11 (CVE-2019-12256) |
 | `ads_discovery` | 48899 | Beckhoff TwinCAT AMS/UDP discovery + route | Deep | bounded ack | Identify/Discovery (`ics-ads-discovery`), AddRoute (`ics-ads-route-add`, captures route/host/user) |
+| `modbus_udp` | 502 | Modbus over UDP | Fingerprint | **capture-only** | MBAP + PDU decode; write-class function codes flagged (coexists with `modbus`/TCP) |
+| `enip_udp` | 44818 | EtherNet/IP CIP discovery (UDP) | Fingerprint | **capture-only** | ListIdentity / encapsulation-command capture |
+| `cip_io` | 2222 | EtherNet/IP Class-1 cyclic I/O | Fingerprint | **capture-only** | CIP I/O (forward-open data) connection-id / sequence decode |
+| `dnp3_udp` | 20000 | DNP3 over UDP (utility SCADA) | Fingerprint | **capture-only** | data-link/application function decode (coexists with `dnp3`/TCP) |
+| `hartip_udp` | 5094 | HART-IP over UDP | Fingerprint | **capture-only** | HART-IP header (message type / session) capture |
+| `pcom_udp` | 20256 | Unitronics PCOM over UDP | Fingerprint | **capture-only** | PCOM/ASCII + binary command capture |
+| `slmp` | 5007 | Mitsubishi SLMP / MELSEC over UDP | Fingerprint | **capture-only** | SLMP command/sub-command; Write / Remote-RUN-STOP flagged |
+| `powerlink` | 3819 | Ethernet POWERLINK | Fingerprint | **capture-only** | message-type decode (SoC/PReq/PRes/ASnd) |
+| `ff_hse` | 1089 | FOUNDATION Fieldbus HSE | Fingerprint | **capture-only** | HSE message-header capture |
+| `saia_sbus` | 5050 | Saia Ether-S-Bus PCD controllers | Fingerprint | **capture-only** | S-Bus telegram decode |
+| `opcua_pubsub` | 4840 | OPC-UA PubSub over UDP | Fingerprint | **capture-only** | UADP network-message header (publisher id / dataset) |
+| `dds_rtps` | 7400 | DDS / RTPS (OMG Data Distribution Service) | Fingerprint | **capture-only** | RTPS submessage / vendor-id capture |
+| `synchrophasor` | 4713 | IEEE C37.118 synchrophasor / PMU stream (UDP) | Fingerprint | **capture-only** | frame-type / id-code decode |
+| `c1222` | 1153 | ANSI C12.22 smart-meter / AMI | Fingerprint | **capture-only** | ACSE/EPSEM message capture |
+| `siprotec_en100` | 50000 | Siemens SIPROTEC 4 / Compact EN100 module | Deep | **capture-only** | crafted-datagram relay-DoS detection (CVE-2015-5374, INDUSTROYER `siprotec-en100-dos`) |
 
 ### L2 (sniffer / responder)
 
@@ -521,13 +536,19 @@ become DCP stations; an `Identify` scan enumerates the cell, and a `Set`
   station MACs, tank reports).
 - **`tarpit.emulate: true`** on a `tarpit` listener runs the OT handler first,
   then tarpits the connection.
-- Ready-to-run scenarios: `configs/tarpit-honeypot.example-ADVANCED-OT.yaml`,
+- Ready-to-run scenarios: `configs/tarpit-honeypot.example-ALL-OT.yaml` (a flat
+  single-sensor decoy with **every** OT/ICS protocol in §2 enabled),
+  `configs/tarpit-honeypot.example-ADVANCED-OT.yaml`,
   `configs/tarpit-honeypot.example-SMALL-OT.yaml`, and the `examples/ot-*.yaml`
   scenarios (`ot-substation`, `ot-power-grid`, `ot-discrete-mfg`,
   `ot-safety-dcs`) + the `examples/it-ot-dmz` IDMZ.
 
 ### Ready-made example configs
 
+`configs/tarpit-honeypot.example-ALL-OT.yaml` is a flat, single-sensor decoy
+that turns on every OT/ICS protocol listed in §2 (one listener per protocol on
+its standard port, plus a small honeynet so the three TCP-102 protocols — S7comm,
+S7comm-Plus, and IEC-61850 MMS — each get their own virtual IP);
 `configs/tarpit-honeypot.example-ADVANCED-OT.yaml` builds a Purdue-model OT
 estate; `configs/tarpit-honeypot.example-SMALL-OT.yaml`, the `examples/ot-*.yaml`
 scenarios, and the `examples/it-ot-dmz` IDMZ are lighter starting points.
