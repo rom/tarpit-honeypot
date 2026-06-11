@@ -37,6 +37,13 @@ listeners:
   - { id: http,  proto: tcp, bind: 0.0.0.0:80,  mode: banner, handler: http,  severity: medium }
   - { id: https, proto: tcp, bind: 0.0.0.0:443, mode: banner, handler: https, severity: medium }
   - { id: snmp,  proto: udp, bind: 0.0.0.0:161, mode: banner, handler: snmp,  severity: medium }
+  # CPE remote management — carrier-facing on cellular routers like the RUT240.
+  # TR-069/CWMP on 7547 is the single most-attacked router port (Misfortune
+  # Cookie + SetNTPServers RCE); UPnP IGD + SSDP discovery are the LAN-exposed
+  # control plane (UPnProxy / CallStranger).
+  - { id: tr069, proto: tcp, bind: 0.0.0.0:7547, mode: banner, handler: tr069, severity: high, capture: true }
+  - { id: upnp,  proto: tcp, bind: 0.0.0.0:5000, mode: banner, handler: upnp,  severity: high, capture: true }
+  - { id: ssdp,  proto: udp, bind: 0.0.0.0:1900, mode: banner, handler: ssdp,  severity: medium }
 
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }

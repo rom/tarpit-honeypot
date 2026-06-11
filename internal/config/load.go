@@ -60,6 +60,9 @@ var tcpHandlers = map[string]bool{
 	"mssql": true, "oracle_tns": true,
 	"teamviewer": true, "anydesk": true, "openvpn": true, "citrix_ica": true,
 	"vmware_authd": true, "x11": true, "rlogin": true, "nx": true, "redfish": true,
+	// CPE / device-management protocols: TR-069 (CWMP, 7547), UPnP IGD control,
+	// TR-369 (USP, WebSocket MTP).
+	"tr069": true, "upnp": true, "tr369": true,
 	"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
 	"fortinet": true, "pulse": true, "citrix_gateway": true,
 	"horizon": true, "moxa_mgmt": true,

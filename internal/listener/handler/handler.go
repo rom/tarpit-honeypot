@@ -446,6 +446,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &nx{}, nil
 	case "redfish":
 		return &redfish{}, nil
+	case "tr069":
+		return &tr069{id: deps.Identity}, nil
+	case "upnp":
+		return &upnp{id: deps.Identity}, nil
+	case "tr369":
+		return &tr369{}, nil
 	case "intel_amt", "ilo", "idrac", "esxi", "fortinet",
 		"pulse", "citrix_gateway", "horizon", "moxa_mgmt":
 		return &mgmtWeb{kind: name}, nil
