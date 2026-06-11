@@ -47,6 +47,50 @@ func TestHTTPCapturesLoginOnNonLoginPath(t *testing.T) {
 	}
 }
 
+// TestHTTPCapturesJSONLogin verifies credentials are extracted from a JSON API
+// login body (the modern shape), top-level and nested, including a body sent
+// without a JSON Content-Type.
+func TestHTTPCapturesJSONLogin(t *testing.T) {
+	cases := []struct {
+		name, ctype, body, user, pass string
+	}{
+		{"top-level", "application/json", `{"username":"admin","password":"s3cret"}`, "admin", "s3cret"},
+		{"nested", "application/json", `{"auth":{"user":"root","pass":"toor"},"remember":true}`, "root", "toor"},
+		{"vendor+json", "application/vnd.api+json", `{"email":"a@b.co","passwd":"x"}`, "a@b.co", "x"},
+		{"no-content-type", "", `{"login":"oper","password":"p@ss"}`, "oper", "p@ss"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctHeader := ""
+			if c.ctype != "" {
+				ctHeader = "Content-Type: " + c.ctype + "\r\n"
+			}
+			req := "POST /api/login HTTP/1.1\r\nHost: x\r\n" + ctHeader +
+				"Content-Length: " + itoa(len(c.body)) + "\r\n\r\n" + c.body
+			res := serveHTTPOnce(t, req)
+			if res.Meta["http_login_user"] != c.user || res.Meta["http_login_pass"] != c.pass {
+				t.Errorf("JSON creds = (%v,%v); want (%q,%q)",
+					res.Meta["http_login_user"], res.Meta["http_login_pass"], c.user, c.pass)
+			}
+			if !containsStr(anomaliesOf(res), "http-login-attempt") {
+				t.Errorf("http-login-attempt not flagged: %v", res.Meta["anomalies"])
+			}
+		})
+	}
+}
+
+// A JSON body with no credential-shaped fields must not be mistaken for a login.
+func TestHTTPJSONNonLoginNoCapture(t *testing.T) {
+	body := `{"action":"status","count":3,"name":"widget"}`
+	req := "POST /api/x HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n" +
+		"Content-Length: " + itoa(len(body)) + "\r\n\r\n" + body
+	res := serveHTTPOnce(t, req)
+	if res.Meta["http_login_user"] != nil || res.Meta["http_login_pass"] != nil {
+		t.Errorf("unexpected JSON cred capture: user=%v pass=%v",
+			res.Meta["http_login_user"], res.Meta["http_login_pass"])
+	}
+}
+
 // The HTTP handler captures the full request surface — method, full URI +
 // parsed query params, every header, cookies, and any bearer/basic credential —
 // so an analyst sees exactly what an attacker sent and the captures page can

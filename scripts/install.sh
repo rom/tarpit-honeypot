@@ -37,6 +37,9 @@
 #       --tls-domain N  TLS cert CN/SAN (sensor.tls_domain; default:
 #                       <hostname>.<domain>, so the cert matches the identity)
 #       --tls-org NAME  TLS cert organization (sensor.tls_org)
+#       --bgp-as N      BGP Autonomous System number the bgp decoy advertises
+#                       (sensor.bgp_as). Prompted for when the deployed config
+#                       runs the BGP service but no AS is set.
 #       --tun           also grant CAP_NET_ADMIN (TUN adapter / nft egress backstop)
 #       --force-config  overwrite an existing /etc/tarpit-honeypot/config.yaml
 #       --no-build      use prebuilt ./bin/tarpit-honeypot instead of `go build`
@@ -80,6 +83,10 @@ TLS_ORG="${TLS_ORG:-}"
 # domain one doesn't collide with the shell's $HOSTNAME).
 DEPLOY_HOST="${TARPIT_HOSTNAME:-}"
 DEPLOY_DOMAIN="${TARPIT_DOMAIN:-}"
+# BGP Autonomous System number (sensor.bgp_as) — only relevant when the deployed
+# config runs the `bgp` service. env TARPIT_BGP_AS or --bgp-as; otherwise the
+# installer prompts when BGP is configured but the AS is unset.
+BGP_AS="${TARPIT_BGP_AS:-}"
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEFAULT_CONFIG="$REPO/configs/tarpit-honeypot.example-CENTOS-SERVER.yaml"
@@ -103,6 +110,7 @@ while [ $# -gt 0 ]; do
 	--ssh-relocate-port) SSH_RELO_PORT="$2"; shift 2 ;;
 	--tls-domain) TLS_DOMAIN="$2"; shift 2 ;;
 	--tls-org) TLS_ORG="$2"; shift 2 ;;
+	--bgp-as) BGP_AS="$2"; shift 2 ;;
 	-h | --help) sed -n '2,49p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
@@ -367,6 +375,52 @@ set_sensor_key() {
 	fi
 }
 
+# set_sensor_num_key is set_sensor_key for a numeric scalar — written UNQUOTED
+# so YAML parses it as an integer (a quoted "64512" would be a string and fail
+# to unmarshal into the uint32 sensor.bgp_as field).
+set_sensor_num_key() {
+	local f="$1" key="$2" val="$3"
+	[ -n "$val" ] || return 0
+	if grep -qE "^  $key:" "$f"; then
+		sed -i -E "0,/^  $key:.*/s||  $key: $val|" "$f"
+	else
+		sed -i "/^sensor:/a\\  $key: $val" "$f"
+	fi
+}
+
+# prompt_bgp_as wires sensor.bgp_as when the deployed config runs the BGP
+# service (handler: bgp) but no AS is set. The bgp decoy uses it to answer a
+# peer's OPEN with its own OPEN advertising this AS; without it the decoy
+# advertises no AS. Value comes from --bgp-as / TARPIT_BGP_AS, else an
+# interactive prompt; non-interactive with neither leaves it unset (+ a warning)
+# rather than guessing an ASN.
+prompt_bgp_as() {
+	local f="$1"
+	grep -Eq 'handler:[[:space:]]*bgp([,}[:space:]]|$)' "$f" || return 0
+	if grep -Eq '^[[:space:]]*bgp_as:[[:space:]]*[0-9]+' "$f"; then
+		info "BGP AS already set (sensor.bgp_as) — leaving as-is"
+		return 0
+	fi
+	local as="$BGP_AS"
+	if [ -z "$as" ]; then
+		if [ -t 0 ]; then
+			printf 'This config runs the BGP service (handler: bgp) but sensor.bgp_as is unset.\n'
+			printf 'BGP Autonomous System number to advertise (1-4294967295; e.g. 64512, a private ASN) [64512]: '
+			read -r as || true
+			as="${as:-64512}"
+		else
+			warn "config runs BGP but sensor.bgp_as is unset and there's no TTY/--bgp-as to prompt; set sensor.bgp_as manually (the decoy won't advertise an AS until then)"
+			return 0
+		fi
+	fi
+	if ! printf '%s' "$as" | grep -Eq '^[0-9]+$' || [ "$as" -lt 1 ] || [ "$as" -gt 4294967295 ]; then
+		warn "invalid BGP AS '$as' (want 1-4294967295) — leaving sensor.bgp_as unset"
+		return 0
+	fi
+	set_sensor_num_key "$f" "bgp_as" "$as"
+	info "Set sensor.bgp_as=$as in $f"
+}
+
 patch_config() {
 	local f="$1"
 	# Keep the config's data_dir in lockstep with --data (and the systemd unit's
@@ -396,6 +450,7 @@ patch_config() {
 }
 prompt_identity
 patch_config "$CONFIG"
+prompt_bgp_as "$CONFIG"
 
 if "$BIN" validate-config -c "$CONFIG" >/dev/null 2>&1; then
 	info "Config validates"

@@ -15,6 +15,10 @@ sensor:
   drop_group: tarpit
   interfaces: [eth0]
   vuln_emulation: true
+  # BGP Autonomous System the bgp decoy advertises when a peer OPENs against it
+  # (a private ASN here). install.sh prompts for this when it's missing and the
+  # config runs the BGP service.
+  bgp_as: 64512
   # Enrichment — canonical paths (run-safe: missing files are skipped).
   oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
   net_class: { enabled: true }

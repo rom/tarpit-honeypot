@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/url"
@@ -213,14 +214,22 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	if referer != "" {
 		res.Meta["referer"] = safe.SanitizeForLog(clipStr(referer, 1024))
 	}
-	// POSTed login-form credentials, captured for ANY path (not just the known
-	// login routes that also get a fake 401 below) and a broad set of field
-	// names. This is what lands an HTTP/HTTPS credential brute force — phpMyAdmin
-	// (pma_username/pma_password), Tomcat (j_username/j_password), WordPress, or
-	// any app-specific field — on the captures page and the attacker profile
-	// (extractCreds keys off http_login_user / http_login_pass).
-	if extractMethod(firstLine) == "POST" && isFormBody(contentType) && len(body) > 0 {
-		if u, pw := parseLoginForm(body); u != "" || pw != "" {
+	// POSTed login credentials, captured for ANY path (not just the known login
+	// routes that also get a fake 401 below) from both urlencoded/multipart form
+	// bodies and JSON API bodies, over a broad set of field names. This is what
+	// lands an HTTP/HTTPS credential brute force — phpMyAdmin (pma_username),
+	// Tomcat (j_username), WordPress, or a JSON {"username","password"} API — on
+	// the captures page and the attacker profile (extractCreds keys off
+	// http_login_user / http_login_pass).
+	if extractMethod(firstLine) == "POST" && len(body) > 0 {
+		var u, pw string
+		switch {
+		case isFormBody(contentType):
+			u, pw = parseLoginForm(body)
+		case isJSONBody(contentType) || looksJSONObject(body):
+			u, pw = parseLoginJSON(body)
+		}
+		if u != "" || pw != "" {
 			res.Meta["http_login_user"] = safe.SanitizeForLog(clipStr(u, 256))
 			res.Meta["http_login_pass"] = safe.SanitizeForLog(clipStr(pw, 256))
 			flagAnomaly(&res, "http-login-attempt")
@@ -677,16 +686,116 @@ func parseLoginForm(body []byte) (user, pass string) {
 			}
 			lk := strings.ToLower(k)
 			switch {
-			case user == "" && !strings.Contains(lk, "agent") &&
-				(strings.Contains(lk, "user") || strings.Contains(lk, "login") ||
-					strings.HasSuffix(lk, "email") || strings.HasSuffix(lk, "uname")):
+			case user == "" && credUserField(lk):
 				user = v
-			case pass == "" && (strings.Contains(lk, "pass") || strings.HasSuffix(lk, "pwd")):
+			case pass == "" && credPassField(lk):
 				pass = v
 			}
 		}
 	}
 	return user, pass
+}
+
+// credUserField / credPassField classify a lower-cased form/JSON field name as
+// a username- or password-bearing field. Shared by parseLoginForm's fallback
+// and parseLoginJSON. Conservative on the user side: "agent" is excluded so
+// user_agent is never mistaken for a username.
+func credUserField(lk string) bool {
+	return !strings.Contains(lk, "agent") &&
+		(strings.Contains(lk, "user") || strings.Contains(lk, "login") ||
+			strings.HasSuffix(lk, "email") || strings.HasSuffix(lk, "uname"))
+}
+
+func credPassField(lk string) bool {
+	return strings.Contains(lk, "pass") || strings.HasSuffix(lk, "pwd")
+}
+
+// isJSONBody reports whether a Content-Type denotes a JSON request body
+// (application/json or any *+json media type, e.g. application/vnd.api+json).
+func isJSONBody(ct string) bool {
+	lower := strings.ToLower(ct)
+	if i := strings.IndexByte(lower, ';'); i >= 0 {
+		lower = lower[:i]
+	}
+	lower = strings.TrimSpace(lower)
+	return lower == "application/json" || strings.HasSuffix(lower, "+json")
+}
+
+// looksJSONObject reports whether body's first non-whitespace byte is '{', so a
+// JSON login body sent without (or with a wrong) Content-Type is still parsed.
+func looksJSONObject(body []byte) bool {
+	for _, c := range body {
+		switch c {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// parseLoginJSON extracts the user / pass fields from a JSON request body — the
+// modern API-login shape, e.g. {"username":"a","password":"b"} or a nested
+// {"auth":{"user":"a","pass":"b"}}. It walks the decoded value (bounded depth)
+// and returns the first username- and password-shaped fields by key name,
+// using the same classifiers as the form parser. Returns ("","") when no
+// credential-shaped field is present.
+func parseLoginJSON(body []byte) (user, pass string) {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return "", ""
+	}
+	walkJSONCreds(v, 0, &user, &pass)
+	return user, pass
+}
+
+// walkJSONCreds walks a decoded JSON value, filling *user / *pass from the
+// first credential-shaped string fields it finds. Scalar fields at each object
+// level are harvested before recursing, so a top-level {"username","password"}
+// wins over a nested object. Bounded to depth 4.
+func walkJSONCreds(v any, depth int, user, pass *string) {
+	if depth > 4 || (*user != "" && *pass != "") {
+		return
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			s, ok := t[k].(string)
+			if !ok || s == "" {
+				continue
+			}
+			lk := strings.ToLower(k)
+			if *user == "" && credUserField(lk) {
+				*user = s
+			} else if *pass == "" && credPassField(lk) {
+				*pass = s
+			}
+		}
+		for _, k := range keys {
+			if *user != "" && *pass != "" {
+				return
+			}
+			switch t[k].(type) {
+			case map[string]any, []any:
+				walkJSONCreds(t[k], depth+1, user, pass)
+			}
+		}
+	case []any:
+		for _, e := range t {
+			if *user != "" && *pass != "" {
+				return
+			}
+			walkJSONCreds(e, depth+1, user, pass)
+		}
+	}
 }
 
 // loginFormPage returns the archetype's login HTML body, falling

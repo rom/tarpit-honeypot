@@ -244,7 +244,7 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "socks":
 		return socksH{}, nil
 	case "bgp":
-		return bgpH{}, nil
+		return bgpH{id: deps.Identity}, nil
 	case "iec104":
 		return &iec104{}, nil
 	case "atg":

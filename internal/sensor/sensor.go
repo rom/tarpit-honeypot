@@ -189,6 +189,9 @@ func New(cfg *config.Config) (*Sensor, error) {
 	if cfg.Sensor.Domain != "" {
 		id.SetDomain(cfg.Sensor.Domain)
 	}
+	// Pin the deployment BGP AS so every bgp responder answers a peer OPEN with
+	// our own OPEN advertising it (sensor.bgp_as; 0 = advertise none).
+	id.SetBGPAS(cfg.Sensor.BGPAS)
 	// Mirror it into the handler package for the id-less response builders
 	// (NTLM challenge target name / AV pairs).
 	handler.SetDeploymentDomain(cfg.Sensor.Domain)

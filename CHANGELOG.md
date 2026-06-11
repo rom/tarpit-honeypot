@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Configurable BGP Autonomous System (`sensor.bgp_as`).** The `bgp` decoy can
+  now present a believable router identity: when `sensor.bgp_as` is set, it
+  answers a peer's OPEN with its own OPEN advertising that AS (My Autonomous
+  System; ASNs > 65535 are sent as AS_TRANS with the real value in the 4-octet-
+  ASN capability, RFC 6793) before declining with a NOTIFICATION (Cease). With
+  no AS configured it replies NOTIFICATION only, as before. The AS is carried on
+  the deployment identity, so every BGP responder (top-level listener and
+  honeynet `{handler: bgp}` services) shares it. `install.sh` gained a
+  `--bgp-as` flag / `TARPIT_BGP_AS` env and prompts for the AS when a deployed
+  config runs the BGP service but `sensor.bgp_as` is unset, saving it to the
+  config. The captured event records `bgp_local_as`.
+
 - **TR-069 (CWMP), TR-369 (USP) and UPnP device-management handlers.** Three new
   TCP handlers cover the CPE / IoT remote-management attack surface end to end —
   attack **intent**, protocol **fingerprint**, **decoy** response, **CVE/CWE**,
@@ -108,8 +120,12 @@ documented in `docs/`).
   substring fallback (any field containing `user`/`login` resp. `pass`/`pwd`,
   with `user_agent` excluded), and the capture runs for **any** POST form body
   rather than only the known login routes (the fake 401 login-retry page stays
-  route-gated). Captured `http_login_user` / `http_login_pass` flow to the
-  captures page + attacker profile and flag `http-login-attempt` (T1110.001).
+  route-gated). It now also parses **JSON** request bodies (`application/json`,
+  any `*+json`, or a body that starts with `{` even when mislabeled) — the
+  modern API-login shape `{"username":...,"password":...}` and nested variants
+  like `{"auth":{"user":...,"pass":...}}`. Captured `http_login_user` /
+  `http_login_pass` flow to the captures page + attacker profile and flag
+  `http-login-attempt` (T1110.001).
 
 ## [2.21.0] - 2026-06-09
 

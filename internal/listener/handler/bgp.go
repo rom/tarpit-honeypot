@@ -7,19 +7,24 @@ import (
 	"net"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/identity"
 )
 
 // bgpH emulates a BGP speaker (TCP 179). A BGP message is a 19-byte header
 // (16 bytes of 0xFF marker, 2-byte length, 1-byte type) followed by the
 // body; type 1 is OPEN. An external peer trying to OPEN a session against
 // a honeypot is high-signal routing-infrastructure reconnaissance / a
-// hijack attempt, so we capture the peer's AS + hold time and reply with a
-// NOTIFICATION (we never establish the session).
-type bgpH struct{}
+// hijack attempt, so we capture the peer's AS + hold time.
+//
+// When a local AS is configured (sensor.bgp_as), we answer a peer's OPEN with
+// our own OPEN advertising that AS — the believable "we are AS N" identity a
+// real router would return — and then a NOTIFICATION (Cease); we never bring
+// the session up. With no AS configured we reply NOTIFICATION only (no AS).
+type bgpH struct{ id *identity.Identity }
 
 func (bgpH) Name() string { return "bgp" }
 
-func (bgpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
+func (b bgpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
 	withTimeout(conn, cfg.ReadTimeout)
 	res := Result{Meta: map[string]any{}}
 
@@ -75,15 +80,38 @@ func (bgpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resul
 			}
 		}
 	}
+	// Local AS for our OPEN reply (sensor.bgp_as), carried on the deployment
+	// identity. 0 = none configured -> we advertise no AS (NOTIFICATION only).
+	var localAS uint32
+	if b.id != nil {
+		localAS = b.id.BGPAS()
+	}
+
 	switch msgType {
 	case 1:
 		flagAnomaly(&res, "bgp-open-attempt")
-		res.Meta["intent"] = "BGP OPEN — unsolicited peering attempt (route-hijack / infrastructure recon)"
+		if localAS > 0 {
+			res.Meta["intent"] = "BGP OPEN — unsolicited peering attempt (route-hijack / infrastructure recon); answered as AS" + itoaU(localAS)
+		} else {
+			res.Meta["intent"] = "BGP OPEN — unsolicited peering attempt (route-hijack / infrastructure recon)"
+		}
 	case 2:
 		res.Meta["intent"] = "BGP UPDATE — route announcement/withdrawal injected into our speaker (prefix hijack)"
 	default:
 		flagAnomaly(&res, "bgp-probe")
 		res.Meta["intent"] = "BGP " + bgpTypeName(msgType) + " probe"
+	}
+
+	// Answer a peer's OPEN with our own OPEN advertising the configured AS, so a
+	// scanner records "this is AS N" — a believable router identity — before we
+	// decline. Only on OPEN, and only when an AS is configured.
+	if msgType == 1 && localAS > 0 {
+		res.Meta["bgp_local_as"] = int(localAS)
+		open := bgpOpenMessage(localAS, b.routerID())
+		if _, err := conn.Write(open); err != nil {
+			res.Meta["write_err"] = err.Error()
+			return res, nil
+		}
 	}
 
 	// Reply with a NOTIFICATION (type 3): marker + len(21) + type + errcode
@@ -99,8 +127,56 @@ func (bgpH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resul
 	if _, err := conn.Write(notif); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
-	res.BannerSent = "bgp notification (cease)"
+	if msgType == 1 && localAS > 0 {
+		res.BannerSent = "bgp open (AS" + itoaU(localAS) + ") + notification (cease)"
+	} else {
+		res.BannerSent = "bgp notification (cease)"
+	}
 	return res, nil
+}
+
+// routerID returns a stable-per-deployment BGP Identifier (an IPv4, as a
+// big-endian uint32) for our OPEN. Derived from the deployment identity so it
+// stays consistent across probes; falls back to a fixed value without identity.
+func (b bgpH) routerID() uint32 {
+	if b.id == nil {
+		return 0x0A000001 // 10.0.0.1
+	}
+	// Keep it inside 10.0.0.0/8 so it reads like a router's loopback, and never
+	// 10.0.0.0 itself.
+	return 0x0A000000 | (b.id.Uint32("bgp/router-id") & 0x00FFFFFF) | 1
+}
+
+// bgpOpenMessage builds a BGP OPEN (type 1) advertising asn. ASNs that don't
+// fit the 2-byte "My Autonomous System" field are sent as AS_TRANS (23456) with
+// the real value in the 4-octet-ASN capability (RFC 6793) — exactly what a
+// modern speaker does. holdTime is a conventional 180s; routerID is our BGP id.
+func bgpOpenMessage(asn, routerID uint32) []byte {
+	// Optional parameter: Capabilities (type 2) carrying the 4-octet-ASN
+	// capability (code 65, length 4 = the real ASN).
+	caps := []byte{65, 4, byte(asn >> 24), byte(asn >> 16), byte(asn >> 8), byte(asn)}
+	optParam := append([]byte{2, byte(len(caps))}, caps...)
+
+	myAS := asn
+	if myAS > 0xFFFF {
+		myAS = 23456 // AS_TRANS
+	}
+	body := make([]byte, 10+len(optParam))
+	body[0] = 4 // BGP version 4
+	binary.BigEndian.PutUint16(body[1:3], uint16(myAS))
+	binary.BigEndian.PutUint16(body[3:5], 180) // hold time (seconds)
+	binary.BigEndian.PutUint32(body[5:9], routerID)
+	body[9] = byte(len(optParam))
+	copy(body[10:], optParam)
+
+	msg := make([]byte, 19+len(body))
+	for i := 0; i < 16; i++ {
+		msg[i] = 0xFF
+	}
+	binary.BigEndian.PutUint16(msg[16:18], uint16(len(msg)))
+	msg[18] = 1 // OPEN
+	copy(msg[19:], body)
+	return msg
 }
 
 // bgpOpenCaps parses the OPEN optional-parameters block (starting at the

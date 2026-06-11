@@ -724,8 +724,15 @@ type Sensor struct {
 	// likewise pins the certificate Organization. install.sh prompts for both.
 	TLSDomain string `yaml:"tls_domain"`
 	TLSOrg    string `yaml:"tls_org"`
-	GeoIP     GeoIP  `yaml:"geoip"`
-	RDNS      RDNS   `yaml:"rdns"`
+	// BGPAS is the deployment's BGP Autonomous System number. When set (non-zero),
+	// every `bgp` responder answers a peer's OPEN with its own OPEN advertising
+	// this AS (My Autonomous System; ASNs > 65535 use AS_TRANS + the 4-octet-ASN
+	// capability) so a scanner records a believable router identity. 0 = unset
+	// (the responder replies NOTIFICATION only, advertising no AS). install.sh
+	// prompts for it when a deployed config runs the BGP service without it.
+	BGPAS uint32 `yaml:"bgp_as"`
+	GeoIP GeoIP  `yaml:"geoip"`
+	RDNS  RDNS   `yaml:"rdns"`
 	// ThreatIntel tags source IPs that appear on operator-supplied
 	// reputation lists. Tor flags Tor exit nodes. NetClass adds a coarse
 	// built-in network classification (bogon / cloud-hosting). All three

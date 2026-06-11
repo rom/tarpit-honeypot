@@ -1091,7 +1091,7 @@ Bold flags: **arch** = consumes `archetype.Profile` for banner shape;
 | `rsync` | 873 | rsync daemon protocol. Sends the `@RSYNCD: <ver>` greeting, captures the module the client asks for, returns a believable fake module list on `#list`, and flags module enumeration (`rsync-module-list`) + module access (`rsync-module-access`). | — | — |
 | `gopher` | 70 | Gopher (RFC 1436). Captures the requested selector, replies with a small fake menu, and flags SSRF-shaped selectors used to smuggle other protocols through a Gopher gateway (`gopher-ssrf`). | — | — |
 | `socks` | 1080 | SOCKS4 / SOCKS5 proxy probe. Parses the greeting / connect request, captures the requested target `host:port`, and flags proxy-abuse attempts (`socks-proxy-attempt`) — it never relays. | — | — |
-| `bgp` | 179 | BGP. Parses the OPEN message (version, AS, hold-time, identifier, capabilities), captures it, replies a NOTIFICATION, and flags peering attempts (`bgp-open-attempt`) and bare probes (`bgp-probe`). | — | — |
+| `bgp` | 179 | BGP. Parses the OPEN message (version, AS, hold-time, identifier, capabilities), captures it, and flags peering attempts (`bgp-open-attempt`), route injection/withdrawal (`bgp-route-injection`), and bare probes (`bgp-probe`). When `sensor.bgp_as` is set it answers a peer's OPEN with its own OPEN advertising that AS (My Autonomous System; ASNs > 65535 use AS_TRANS + the 4-octet-ASN capability) — a believable "we are AS N" router identity — then a NOTIFICATION (Cease); with no AS it replies NOTIFICATION only. `install.sh` prompts for the AS when a deployed config runs BGP without it. | — | — |
 
 ### TCP — remote access / out-of-band management
 
