@@ -96,6 +96,21 @@ documented in `docs/`).
   DomainDnsZones/ForestDnsZones naming contexts. AD-recon tools (e.g. BloodHound,
   ldapsearch) now read a coherent level off the rootDSE.
 
+### Fixed
+
+- **HTTP/HTTPS form-login credential capture now handles app-specific field
+  names + any path.** `parseLoginForm` previously matched only a handful of
+  generic field names (`username`/`user`/… + `password`/`pass`/…), so a real
+  Hydra brute force against phpMyAdmin (`pma_username` / `pma_password`),
+  Tomcat (`j_username` / `j_password`), WordPress (`log` / `pwd`), or any
+  `*_username` / `*_password` app silently captured only the cookie — not the
+  credentials. The parser now recognizes the common app field names plus a
+  substring fallback (any field containing `user`/`login` resp. `pass`/`pwd`,
+  with `user_agent` excluded), and the capture runs for **any** POST form body
+  rather than only the known login routes (the fake 401 login-retry page stays
+  route-gated). Captured `http_login_user` / `http_login_pass` flow to the
+  captures page + attacker profile and flag `http-login-attempt` (T1110.001).
+
 ## [2.21.0] - 2026-06-09
 
 ### Added

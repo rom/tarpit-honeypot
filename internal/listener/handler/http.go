@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -211,6 +212,19 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 	}
 	if referer != "" {
 		res.Meta["referer"] = safe.SanitizeForLog(clipStr(referer, 1024))
+	}
+	// POSTed login-form credentials, captured for ANY path (not just the known
+	// login routes that also get a fake 401 below) and a broad set of field
+	// names. This is what lands an HTTP/HTTPS credential brute force — phpMyAdmin
+	// (pma_username/pma_password), Tomcat (j_username/j_password), WordPress, or
+	// any app-specific field — on the captures page and the attacker profile
+	// (extractCreds keys off http_login_user / http_login_pass).
+	if extractMethod(firstLine) == "POST" && isFormBody(contentType) && len(body) > 0 {
+		if u, pw := parseLoginForm(body); u != "" || pw != "" {
+			res.Meta["http_login_user"] = safe.SanitizeForLog(clipStr(u, 256))
+			res.Meta["http_login_pass"] = safe.SanitizeForLog(clipStr(pw, 256))
+			flagAnomaly(&res, "http-login-attempt")
+		}
 	}
 	// JavaScript carried in the request (stored-XSS / SSTI / template-injection
 	// payloads) — capture the snippets and flag, never execute.
@@ -427,12 +441,8 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 		if banner != "" {
 			// served the fake shell above
 		} else if method == "POST" && isLoginPath(path) && isFormBody(contentType) {
-			user, pass := parseLoginForm(body)
-			if user != "" || pass != "" {
-				res.Meta["http_login_user"] = safe.SanitizeForLog(user)
-				res.Meta["http_login_pass"] = safe.SanitizeForLog(pass)
-				flagAnomaly(&res, "http-login-attempt")
-			}
+			// Credentials are captured path-independently above; here we only
+			// serve the believable 401 login-retry page for the known routes.
 			banner = renderHTTPResponse(server, 401, "text/html; charset=utf-8",
 				loginRetryPage(arch))
 		} else if arch != nil && method == "GET" && isSwitchInfoPath(path) && hasSwitchTopology(arch) {
@@ -612,28 +622,68 @@ func isFormBody(ct string) bool {
 		strings.HasPrefix(lower, "multipart/form-data")
 }
 
-// parseLoginForm extracts the user / pass fields from a urlencoded
-// form body. We accept the common names (username/user/login/name and
-// password/pass/passwd). Returns ("","") when the body doesn't look
-// like a form.
+// parseLoginForm extracts the user / pass fields from a urlencoded or
+// multipart form body. It recognizes, in order of precision: the common
+// generic names (username/user/login/name/email/… + password/pass/passwd/…),
+// the well-known app-specific names (phpMyAdmin pma_username/pma_password,
+// Tomcat j_username/j_password, WordPress log/pwd, …), and — as a fallback —
+// any field whose name contains user/login (or email/uname) and any field
+// whose name contains pass (or ends pwd). The fallback means a brute force
+// against an app we don't special-case (os_username, vmware_username,
+// txtPassword, …) is still captured. Returns ("","") when no credential-shaped
+// field is present. Conservative on the user side ("agent" excluded so
+// user_agent isn't mistaken for a username).
 func parseLoginForm(body []byte) (user, pass string) {
 	if len(body) == 0 {
 		return "", ""
 	}
 	values, err := url.ParseQuery(string(body))
-	if err != nil {
+	if err != nil || len(values) == 0 {
 		return "", ""
 	}
-	for _, k := range []string{"username", "user", "login", "name", "uname", "u"} {
+	// 1) Exact, high-precision field names — generic plus the common apps that
+	//    prefix their fields (so they win over the broad fallback below).
+	for _, k := range []string{
+		"username", "user", "uname", "login", "name", "u", "email",
+		"userid", "user_id", "user_login", "j_username", "log",
+		"pma_username", "os_username", "_username",
+	} {
 		if v := values.Get(k); v != "" {
 			user = v
 			break
 		}
 	}
-	for _, k := range []string{"password", "pass", "passwd", "pwd", "p"} {
+	for _, k := range []string{
+		"password", "pass", "passwd", "pwd", "p", "passwort",
+		"user_pass", "j_password", "pma_password", "os_password", "_password",
+	} {
 		if v := values.Get(k); v != "" {
 			pass = v
 			break
+		}
+	}
+	// 2) Substring fallback for app-prefixed/suffixed names we don't list
+	//    explicitly. Deterministic (sorted key order) so the capture is stable.
+	if user == "" || pass == "" {
+		keys := make([]string, 0, len(values))
+		for k := range values {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := values.Get(k)
+			if v == "" {
+				continue
+			}
+			lk := strings.ToLower(k)
+			switch {
+			case user == "" && !strings.Contains(lk, "agent") &&
+				(strings.Contains(lk, "user") || strings.Contains(lk, "login") ||
+					strings.HasSuffix(lk, "email") || strings.HasSuffix(lk, "uname")):
+				user = v
+			case pass == "" && (strings.Contains(lk, "pass") || strings.HasSuffix(lk, "pwd")):
+				pass = v
+			}
 		}
 	}
 	return user, pass
