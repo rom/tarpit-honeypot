@@ -178,6 +178,7 @@ func buildDashboard(sum store.Summary, hours []store.HourBucket, bucket time.Dur
 	// didn't provide them (callers that enrich a bare dashboard).
 	d.Handlers = topBars(sum.ByHandler, 12, "/events?handler=")
 	d.TargetIPs = topBars(sum.ByTarget, 20, "/search?q=")
+	d.Countries = countryBars(sum.ByCountry)
 
 	maxH := 0
 	for _, h := range hours {
@@ -267,13 +268,11 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	// handler / tool / tactic map directly to a query param; ASN is keyed on the
 	// numeric AS extracted from its display label ("AS13335 Cloudflare").
 	d.Tactics = topBars(tac, 14, "/events?tactic=")
-	d.Countries = topBars(country, 10, "/events?country=")
-	// Append each country bar's flag emoji after its 2-letter code (the href
-	// keeps the raw code, which topBars already built).
-	for i := range d.Countries {
-		if f := countryFlag(d.Countries[i].Label); f != "" {
-			d.Countries[i].Label = d.Countries[i].Label + " " + f
-		}
+	// Countries are normally sourced from the SQL summary (buildDashboard,
+	// full-window, index-backed). Fall back to this sampled count only when a
+	// caller enriched a bare dashboard without a summary.
+	if len(d.Countries) == 0 {
+		d.Countries = countryBars(country)
 	}
 	d.ASNs = topBars(asn, 10, "")
 	for i := range d.ASNs {
@@ -413,6 +412,20 @@ func asnNumber(label string) string {
 		n++
 	}
 	return s[:n]
+}
+
+// countryBars ranks a country-code -> count map into the top-10 bars used by
+// the dashboard / stats country panel, appending each code's flag emoji to the
+// label (the href keeps the raw 2-letter code). Shared by the SQL-sourced path
+// (buildDashboard) and the enrich fallback.
+func countryBars(m map[string]int) []barRow {
+	bars := topBars(m, 10, "/events?country=")
+	for i := range bars {
+		if f := countryFlag(bars[i].Label); f != "" {
+			bars[i].Label = bars[i].Label + " " + f
+		}
+	}
+	return bars
 }
 
 func topBars(m map[string]int, n int, hrefPrefix string) []barRow {

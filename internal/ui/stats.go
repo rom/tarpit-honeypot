@@ -85,7 +85,7 @@ func buildStatsView(d dashboard, win sumWindow) statsView {
 	v.Headline = append(v.Headline, []statKV{
 		{Label: "Events / hour", Value: fmt.Sprintf("%.1f", float64(sum.Total)/hours), Sub: "average over window"},
 		{Label: "Attacker sources", Value: humanInt(len(sum.TopSources)), Sub: "tracked (top-N)"},
-		{Label: "Source countries", Value: humanInt(len(d.Countries)), Sub: "distinct (sampled)"},
+		{Label: "Source countries", Value: humanInt(len(d.Countries)), Sub: "distinct (top 10)"},
 		{Label: "ATT&CK techniques", Value: humanInt(len(d.Attacks)), Sub: "distinct (sampled)"},
 		{Label: "CVEs probed", Value: humanInt(len(d.CVEs)), Sub: "distinct (sampled)"},
 		{Label: "Tools fingerprinted", Value: humanInt(len(d.Tools)), Sub: "distinct (sampled)"},

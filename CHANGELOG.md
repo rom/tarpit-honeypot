@@ -110,6 +110,18 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Geo country promoted to an indexed event column.** `meta.geo_country` is now
+  materialized into an indexed `country` column (set at insert; old rows healed
+  by a chunked, best-effort background backfill that yields the write lock to the
+  sink). The `country=` filter (`/events?country=XX`, the profile/dashboard geo
+  pivots) is now an index lookup instead of a `json_extract(meta_json, …)` scan
+  over every row in the window, and the dashboard / stats **country panel** is a
+  full-window SQL `GROUP BY` (`Summary.ByCountry`) rather than a sampled Go-side
+  count — same SQL-first / enrich-fallback pattern as the handler + target
+  rollups. (This is the indexed-`country`-column half of the meta-materialization
+  work; the captured-credentials side-table — which additionally touches the hot
+  ingest path + retention pruning — remains a separate follow-up.)
+
 - **Analytics aggregation pushed into SQL (follow-up to the timeout fixes).**
   The `store.Summary` rollup now also computes the **by-handler** and
   **by-target (dst_ip)** top-N via index-backed `GROUP BY` (covering indexes

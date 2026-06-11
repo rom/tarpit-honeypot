@@ -438,6 +438,81 @@ func TestInsertAndQuery(t *testing.T) {
 
 // TestSummaryHandlerTargetRollups verifies the index-backed by-handler and
 // by-target (dst_ip) rollups, and that they read from their covering indexes.
+// TestCountryColumn covers the materialized country column: it's filled from
+// meta.geo_country at insert, feeds Summary.ByCountry + an indexed country
+// filter, and backfillCountry repopulates rows that predate the column.
+func TestCountryColumn(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	mk := func(id, cc string) *event.Event {
+		ev := &event.Event{ID: id, Time: now, Sensor: "t", RuleID: "r",
+			Severity: event.SeverityMedium, Source: event.Endpoint{IP: "1.2.3.4"}, Proto: "tcp"}
+		if cc != "" {
+			ev.Meta = map[string]any{"geo_country": cc}
+		}
+		return ev
+	}
+	_ = s.Insert(ctx, mk("a", "US"))
+	_ = s.Insert(ctx, mk("b", "US"))
+	_ = s.Insert(ctx, mk("c", "DE"))
+	_ = s.Insert(ctx, mk("d", "")) // no geo
+
+	// Summary rollup (index-backed) excludes the no-geo row.
+	sum, err := s.Summary(ctx, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.ByCountry["US"] != 2 || sum.ByCountry["DE"] != 1 {
+		t.Errorf("ByCountry = %v; want US:2 DE:1", sum.ByCountry)
+	}
+	if _, ok := sum.ByCountry[""]; ok {
+		t.Errorf("ByCountry should exclude empty country: %v", sum.ByCountry)
+	}
+
+	// Indexed country filter returns only matching rows.
+	evs, err := s.Query(ctx, Filter{Since: now.Add(-time.Hour), Country: "US"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 {
+		t.Errorf("country=US returned %d events; want 2", len(evs))
+	}
+
+	// The filter must use the country index, not a json_extract scan.
+	var plan strings.Builder
+	rows, _ := s.db.QueryContext(ctx,
+		`EXPLAIN QUERY PLAN SELECT id FROM events WHERE time >= ? AND country = ? ORDER BY time DESC`,
+		now.Add(-time.Hour).UnixNano(), "US")
+	for rows.Next() {
+		var a, b, c int
+		var detail string
+		_ = rows.Scan(&a, &b, &c, &detail)
+		plan.WriteString(detail + "\n")
+	}
+	rows.Close()
+	if !strings.Contains(plan.String(), "idx_events_country_time") {
+		t.Errorf("country filter not using idx_events_country_time:\n%s", plan.String())
+	}
+
+	// Backfill: simulate a pre-column row by nulling its country, then heal it.
+	if _, err := s.db.ExecContext(ctx, `UPDATE events SET country = NULL WHERE id = 'c'`); err != nil {
+		t.Fatal(err)
+	}
+	s.backfillCountry(ctx)
+	var got string
+	if err := s.db.QueryRowContext(ctx, `SELECT country FROM events WHERE id = 'c'`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "DE" {
+		t.Errorf("backfill country = %q; want DE", got)
+	}
+}
+
 func TestSummaryHandlerTargetRollups(t *testing.T) {
 	s, err := Open(t.TempDir(), 0)
 	if err != nil {
