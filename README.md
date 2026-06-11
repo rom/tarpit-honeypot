@@ -1660,14 +1660,141 @@ deployment hostname / domain / TLS identity.
 
 ### Multiple IPs and multiple instances
 
-On a host with several IP addresses, a wildcard listener (`bind: "[::]:22"`, the
-default) already answers on **every** address, and each event records which IP
-was hit (`dst_ip`). Set `sensor.listen_addresses: [ip, …]` to pin listeners to
-specific IPs instead. To run **several independent honeypots on one host — one
-per server IP, each with its own config, database, certificates and UI** — use
-the `tarpit-honeypot@.service` template and provision instances with
-`scripts/add-instance.sh --name NAME --listen-ip IP` (creates the per-instance
-dirs/config/labels and enables `tarpit-honeypot@NAME`).
+A sensor host usually has more than one address — several server IPs on one NIC,
+or a whole spare subnet. There are four ways to cover them; pick by **how much
+isolation you want between addresses**:
+
+| Model | Processes | Per-IP DB / UI / fingerprint | Binds IPs the host doesn't own? | Use when |
+|---|---|---|---|---|
+| **1. Wildcard** (default) | one | no — one shared store, every event tagged with `dst_ip` | no | cover every address with one pane of glass (the right answer for most) |
+| **2. Pinned subset** (`listen_addresses` / `-i`) | one | no | no | answer on *some* of the host's addresses (e.g. keep the management IP dark) |
+| **3. Honeynets** | one | virtual per-host identities | **yes** (claims them via ARP/ICMP) | fabricate a subnet of distinct fake devices on space the host doesn't own |
+| **4. Multiple instances** | one **per IP** | **yes** — own `events.db`, UI, certs, deployment-identity, retention | no | strongest isolation: distinct fingerprints + separate blast radius per address |
+
+Models 1, 2 and 4 bind the host's **real** addresses; model 3 ([honeynets](#honeynets))
+impersonates **unowned** ones. They compose — an instance (model 4) can also run
+honeynets (model 3).
+
+**1 — One sensor across every IP (default).** A wildcard bind (`bind: "[::]:22"`
+or `0.0.0.0:…`, the default) answers on every address the host has now or gains
+later, and each event records the destination it hit:
+
+```yaml
+listeners:
+  - { id: ssh, proto: tcp, bind: "0.0.0.0:22", handler: ssh }   # answers on every IP
+```
+
+The multi-IP picture is surfaced for you: the **attacker profile**
+(`/profiles/<ip>`) draws a **cross-target timeline** when one source touches
+several of your addresses (a scripted fleet sweep), **`/stats`** ranks the
+**"targeted server IPs"**, and you can pivot to one address from the CLI or the
+web search page's **dest IP** filter. Confirm what's actually bound and slice by
+target:
+
+```bash
+sudo ss -tulnp | grep tarpit-honeypot                          # every listening socket
+tarpit-honeypot list-events --target 192.0.2.10 --since 24h    # traffic to one address
+```
+
+**2 — Pin listeners to specific IPs.** To answer on a *subset* of the host's
+addresses — e.g. expose the decoys on the data-plane IPs but leave the
+management IP untouched — pin them:
+
+```yaml
+sensor:
+  listen_addresses: [192.0.2.10, 192.0.2.11]   # one socket per IP; the mgmt IP stays dark
+```
+
+`listen_addresses` rebinds every *wildcard* listener once per address (a listener
+already bound to a concrete IP is left alone) and takes precedence over
+`sensor.interfaces`. The CLI equivalent is `-i/--interface eth0` (repeatable),
+which pins the wildcard binds to that interface's IP. `dst_ip` is still recorded.
+
+**3 — Virtual IPs with honeynets.** To present a *subnet of distinct fake hosts*
+— each its own hostname, OS archetype and service mix, on addresses the host
+doesn't actually own — use [`honeynets`](#honeynets): the sensor claims the IPs
+with its ARP/ICMP responders and dispatches per destination IP. This is the tool
+for "make `10.30.1.0/24` look like a Siemens cell", not for binding your own
+server IPs.
+
+**4 — One isolated instance per server IP.** When each address should be a
+*fully separate honeypot* — its own database, UI, TLS certs, deployment
+fingerprint and retention, so a noisy neighbour or a tampered store on one can't
+touch another — run one process per IP via the `tarpit-honeypot@.service`
+template. Install once, then add an instance per address:
+
+```bash
+sudo scripts/install.sh -c configs/tarpit-honeypot.example-CENTOS-SERVER.yaml   # once
+sudo scripts/add-instance.sh --name web1 --listen-ip 192.0.2.10
+sudo scripts/add-instance.sh --name web2 --listen-ip 192.0.2.11 --ui-port 8090
+sudo scripts/add-instance.sh --name ot1  --listen-ip 192.0.2.20 \
+     -c configs/tarpit-honeypot.example-ALL-OT.yaml                             # a different persona per IP
+```
+
+`add-instance.sh` derives a per-IP config from a base, pins it to the IP, gives
+it a free loopback UI port, lays out an isolated state dir, applies the SELinux
+label, and enables the unit. Each instance `<name>` is independent:
+
+| Per instance | Path / value |
+|---|---|
+| config | `/etc/tarpit-honeypot/instances/<name>.yaml` (pins `listen_addresses: [<ip>]`, unique `ui.bind`) |
+| state | `/var/lib/tarpit-honeypot/<name>/` — own `events.db`, `.deployment-id`, `tls/`, `captures/` |
+| identity | its own `.deployment-id` ⇒ **distinct** banners / JA3-JA4 / device serials per IP |
+| service | `tarpit-honeypot@<name>` (own `SyslogIdentifier`, hardened unit, only its state dir writable) |
+| UI | `127.0.0.1:<ui-port>` (auto from 8089, or `--ui-port`) |
+
+Manage them like any templated systemd service, open the firewall scoped to each
+instance's IP, and remove one without disturbing the rest:
+
+```bash
+systemctl status  tarpit-honeypot@web1
+journalctl -u     tarpit-honeypot@web1 -f
+systemctl reload  tarpit-honeypot@web1                 # SIGHUP: re-read config, no dropped sockets
+systemctl list-units 'tarpit-honeypot@*'               # every instance at a glance
+
+sudo scripts/open-firewall.sh -c /etc/tarpit-honeypot/instances/web1.yaml --ip 192.0.2.10
+
+sudo systemctl disable --now tarpit-honeypot@web1      # stop + remove one instance
+sudo rm /etc/tarpit-honeypot/instances/web1.yaml
+sudo rm -rf /var/lib/tarpit-honeypot/web1              # also deletes its captured events/pcaps
+```
+
+**Which model?** Use **1** for "cover everything, one console" (the default).
+Add **2** to keep specific addresses dark. Use **3** to fabricate hosts on space
+you don't own. Reach for **4** only when per-IP isolation (separate fingerprints,
+retention and blast radius) is worth running N processes — e.g. a hoster giving
+each tenant IP its own decoy.
+
+**Troubleshooting**
+
+- **`bind: address already in use`** — something already holds that port on that
+  address; `sudo ss -tulnp | grep :<port>` shows who. Two sensors can share a
+  port only on *different* IPs (`listen_addresses`); a wildcard default and a
+  pinned instance on the same box collide on shared ports — pick one model per port.
+- **`cannot assign requested address` / a listener never binds** — the IP in
+  `listen_addresses` (or `--listen-ip`) isn't configured on the host. Check
+  `ip addr show`, then add the address (or fix the typo) before starting.
+- **Privileged ports (<1024) fail when run by hand** — binding 22/80/443/… needs
+  `CAP_NET_BIND_SERVICE`; the systemd units grant it (`AmbientCapabilities`), a
+  manual `tarpit-honeypot run …` as the unprivileged service user does not. Start
+  via `systemctl`/`sudo`, or grant the capability.
+- **Two instances fight over the UI port** — each needs a unique `ui.bind`;
+  `add-instance.sh` auto-assigns from 8089 (or pass `--ui-port`). UIs stay on
+  loopback by design — reach them over an SSH tunnel.
+- **Every event shows the same `dst_ip`, or only one IP appears** — you're likely
+  behind a NAT / load-balancer that rewrites the destination, or
+  `listen_addresses` pinned a single IP. For per-IP visibility keep the wildcard
+  bind (model 1) and confirm with `list-events --target`.
+- **Which instance handled an event?** — instance logs are tagged
+  `tarpit-honeypot@<name>` (journald `SyslogIdentifier`) and each has its own
+  `events.db` + UI; the `dst_ip` on every event also names the address it hit.
+- **The firewall is dropping the decoy traffic** — open the config's ports with
+  `scripts/open-firewall.sh -c <config> [--ip <addr>]` (auto-detects firewalld /
+  ufw / iptables; `--ip` scopes the rules to one instance's address).
+- **SELinux / AppArmor denials after adding an instance** — `install.sh` installs
+  the policy and `add-instance.sh` labels the new state dir; if you created a dir
+  by hand, run `restorecon -Rv /var/lib/tarpit-honeypot/<name>` (SELinux) or
+  re-run `install.sh`, then verify with `scripts/selinux-verify.sh`.
 
 ## Operating model
 
