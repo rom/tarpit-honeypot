@@ -1189,6 +1189,9 @@ type colHeader struct {
 type eventsPage struct {
 	Events      []*event.Event
 	Filter      store.Filter
+	SourceStr   string // raw filter inputs, echoed back so '!'/comma round-trip
+	RuleStr     string
+	ProtoStr    string
 	SeverityStr string
 	SinceStr    string
 	QStr        string
@@ -1261,6 +1264,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	page := eventsPage{
 		Events:      evs,
 		Filter:      f,
+		SourceStr:   q.Get("source"),
+		RuleStr:     q.Get("rule"),
+		ProtoStr:    q.Get("proto"),
 		SeverityStr: q.Get("severity"),
 		SinceStr:    q.Get("since"),
 		QStr:        q.Get("q"),
@@ -2112,6 +2118,55 @@ func (s *Server) handleAPIAlerting(w http.ResponseWriter, _ *http.Request) {
 // means "everything in practice" without letting a single request scan unbounded.
 const maxEventsLimit = 50000
 
+// splitFilterTokens parses a filter-field value into include + exclude lists:
+// it comma-separates values and treats a leading '!' as negation (exclude).
+// Blank tokens are skipped. "a,b" includes a or b; "!a" excludes a; "a,!b"
+// includes a but excludes b.
+func splitFilterTokens(v string) (incl, excl []string) {
+	for _, tok := range strings.Split(v, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" || tok == "!" {
+			continue
+		}
+		if strings.HasPrefix(tok, "!") {
+			excl = append(excl, strings.TrimSpace(tok[1:]))
+		} else {
+			incl = append(incl, tok)
+		}
+	}
+	return incl, excl
+}
+
+// parseASN extracts a numeric AS number from a token like "AS13335", "as13335"
+// or "13335"; returns 0 when it isn't a positive integer.
+func parseASN(v string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(v)), "AS"))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+func parseASNs(in []string) []int {
+	var out []int
+	for _, v := range in {
+		if n := parseASN(v); n > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func parsePorts(in []string) []int {
+	var out []int
+	for _, v := range in {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 && n <= 65535 {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
@@ -2143,29 +2198,81 @@ func parseFilter(r *http.Request) store.Filter {
 			f.Since = time.Now().Add(-24 * time.Hour)
 		}
 	}
+	// String dimensions accept comma-separated values and a leading '!' to
+	// negate (exclude). A single positive value keeps the fast single-column
+	// path (and round-trips the existing pivot links / artifact-download
+	// filenames); anything else populates the multi / exclude lists the store
+	// turns into IN / NOT IN clauses.
 	if v := q.Get("source"); v != "" {
-		f.SourceIP = v
+		incl, excl := splitFilterTokens(v)
+		if len(excl) == 0 && len(incl) <= 1 {
+			if len(incl) == 1 {
+				f.SourceIP = incl[0]
+			}
+		} else {
+			f.SourceIPs, f.ExcludeSourceIPs = incl, excl
+		}
 	}
 	if v := q.Get("rule"); v != "" {
-		f.RuleID = v
+		incl, excl := splitFilterTokens(v)
+		if len(excl) == 0 && len(incl) <= 1 {
+			if len(incl) == 1 {
+				f.RuleID = incl[0]
+			}
+		} else {
+			f.RuleIDs, f.ExcludeRuleIDs = incl, excl
+		}
 	}
 	if v := q.Get("proto"); v != "" {
-		f.Proto = v
+		incl, excl := splitFilterTokens(v)
+		if len(excl) == 0 && len(incl) <= 1 {
+			if len(incl) == 1 {
+				f.Proto = incl[0]
+			}
+		} else {
+			f.Protos, f.ExcludeProtos = incl, excl
+		}
 	}
 	if v := q.Get("handler"); v != "" {
-		f.Handler = v
+		incl, excl := splitFilterTokens(v)
+		if len(excl) == 0 && len(incl) <= 1 {
+			if len(incl) == 1 {
+				f.Handler = incl[0]
+			}
+		} else {
+			f.Handlers, f.ExcludeHandlers = append(f.Handlers, incl...), excl
+		}
 	}
 	if v := q.Get("port"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 65535 {
-			f.DstPort = n
+		incl, excl := splitFilterTokens(v)
+		iincl, iexcl := parsePorts(incl), parsePorts(excl)
+		if len(iexcl) == 0 && len(iincl) <= 1 {
+			if len(iincl) == 1 {
+				f.DstPort = iincl[0]
+			}
+		} else {
+			f.DstPorts, f.ExcludeDstPorts = iincl, iexcl
 		}
 	}
 	if v := q.Get("country"); v != "" {
-		f.Country = v
+		incl, excl := splitFilterTokens(v)
+		if len(excl) == 0 && len(incl) <= 1 {
+			if len(incl) == 1 {
+				f.Country = incl[0]
+			}
+		} else {
+			f.Countries, f.ExcludeCountries = incl, excl
+		}
 	}
 	if v := q.Get("asn"); v != "" {
-		if n, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(v), "AS")); err == nil && n > 0 {
-			f.ASN = n
+		incl, excl := splitFilterTokens(v)
+		iincl, iexcl := parseASNs(incl), parseASNs(excl)
+		if len(iexcl) == 0 && len(iincl) <= 1 {
+			if len(iincl) == 1 {
+				f.ASN = iincl[0]
+			}
+		} else {
+			f.ASNs, f.ExcludeASNs = iincl, iexcl
 		}
 	}
 	if v := q.Get("q"); v != "" {
