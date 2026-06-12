@@ -2321,6 +2321,9 @@ var catalog = []Record{
 	{ID: "CVE-2024-49113", Name: "Windows LDAP DoS (LDAPNightmare)", CVSS: 7.5, Service: "ldap",
 		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-190"},
 		Description: "A crafted CLDAP referral response crashes LSASS on an unpatched Windows DC (SafeBreach PoC). Client-side trigger — advertised here for patch-level emulation, not detected inbound."},
+	{ID: "CVE-2023-2953", Name: "OpenLDAP slapd NULL-deref DoS", CVSS: 7.5, Service: "ldap",
+		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"},
+		Description: "A crafted request triggers a NULL pointer dereference in OpenLDAP slapd ber_memalloc_x(), crashing the server (unauthenticated remote DoS). Server-side and malformed-BER-shaped — surfaced via the ldap-malformed-ber anomaly; advertised here for an unpatched-OpenLDAP fingerprint."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2565,6 +2568,7 @@ var cveExtra = map[string]struct {
 	"CVE-2024-3094":  {[]string{"CWE-506"}, "cpe:2.3:a:tukaani:xz:*", 0.10},
 	"CVE-2024-49112": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.30},
 	"CVE-2024-49113": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.40},
+	"CVE-2023-2953":  {[]string{"CWE-476"}, "cpe:2.3:a:openldap:openldap:*", 0.10},
 }
 
 func init() {

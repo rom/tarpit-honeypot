@@ -57,6 +57,7 @@ func TestDeepHandlerRound2Advisory(t *testing.T) {
 		"CVE-2024-3094":  "ssh",
 		"CVE-2024-49112": "ldap",
 		"CVE-2024-49113": "ldap",
+		"CVE-2023-2953":  "ldap", // OpenLDAP slapd NULL-deref DoS
 	}
 	for id, svc := range want {
 		r, ok := Lookup(id)
