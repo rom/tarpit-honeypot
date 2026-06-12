@@ -76,6 +76,15 @@ func (h *nfs) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		}
 	}
 
+	// MOUNT protocol (program 100005): showmount enumeration + mount attempts.
+	// In single-listener honeypot deployments mountd is reached here on 2049, so
+	// name the procedure correctly and flag the recon/mount intent — the generic
+	// nfsProcName above would otherwise mislabel these as NFS data procs.
+	if prog == 100005 {
+		nfsHandleMount(conn, xid, proc, &res)
+		return res, nil
+	}
+
 	switch {
 	case proc == 0:
 		res.Meta["intent"] = "NFS NULL ping — confirming the NFS service is live"
@@ -105,6 +114,53 @@ func (h *nfs) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 		res.BannerSent = "nfs accepted reply"
 	}
 	return res, nil
+}
+
+// nfsHandleMount answers the MOUNT protocol (program 100005). EXPORT/DUMP are
+// the showmount enumeration (`showmount -e` / `-a`); MNT is a mount attempt. We
+// flag the intent, overwrite the NFS-proc mislabel with the real mountd
+// procedure, and reply believably — an empty export list and an access-denied
+// mount — without ever exposing a share.
+func nfsHandleMount(conn net.Conn, xid []byte, proc uint32, res *Result) {
+	res.Meta["nfs_proc"] = "MOUNT/" + mountProcName(proc)
+	switch proc {
+	case 0: // NULL
+		setIfEmpty(res.Meta, "intent", "MOUNT NULL ping — confirming mountd is live")
+		nfsWriteAccepted(conn, xid, nil)
+	case 5, 2, 6: // EXPORT / DUMP / EXPORTALL
+		flagAnomaly(res, "nfs-showmount-enum")
+		res.Meta["intent"] = "showmount export enumeration (MOUNT " + mountProcName(proc) + ") — listing NFS shares before mounting"
+		nfsWriteAccepted(conn, xid, []byte{0, 0, 0, 0}) // exportnode list: no entries follow
+	case 1: // MNT
+		flagAnomaly(res, "nfs-mount-attempt")
+		res.Meta["intent"] = "NFS MOUNT request — attempting to mount an exported share"
+		nfsWriteAccepted(conn, xid, binary.BigEndian.AppendUint32(nil, 13)) // mountstat3 MNT3ERR_ACCES
+	default: // UMNT / UMNTALL / other
+		setIfEmpty(res.Meta, "intent", "MOUNT "+mountProcName(proc)+" request")
+		nfsWriteAccepted(conn, xid, nil)
+	}
+	res.BannerSent = "nfs mountd reply"
+}
+
+// mountProcName names a MOUNT (mountd, program 100005) RPC procedure.
+func mountProcName(proc uint32) string {
+	switch proc {
+	case 0:
+		return "NULL"
+	case 1:
+		return "MNT"
+	case 2:
+		return "DUMP"
+	case 3:
+		return "UMNT"
+	case 4:
+		return "UMNTALL"
+	case 5:
+		return "EXPORT"
+	case 6:
+		return "EXPORTALL"
+	}
+	return "PROC" + itoaU(proc)
 }
 
 // nfsHandleCompound parses an NFSv4 COMPOUND's operation list for intent and

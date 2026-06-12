@@ -2307,6 +2307,20 @@ var catalog = []Record{
 	{ID: "CVE-2016-8706", Name: "memcached SASL-auth integer overflow RCE", CVSS: 9.8, Service: "memcached",
 		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
 		Description: "Integer overflow in memcached process_bin_sasl_auth (binary-protocol SASL authentication) causes a heap overflow and remote code execution (Talos TALOS-2016-0221)."},
+
+	// ---- Deep-handler CVEs, round 2: SSH supply-chain + Windows LDAP.
+	// Advisory-only — these activate client-side or need the attacker's key,
+	// so they drive vulnerable-version / patch-level emulation rather than an
+	// inbound request signature. ----
+	{ID: "CVE-2024-3094", Name: "XZ Utils / liblzma sshd backdoor", CVSS: 10.0, Service: "ssh",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-506"},
+		Description: "Malicious code in xz/liblzma 5.6.0/5.6.1 hooks OpenSSH's liblzma dependency and grants pre-auth RCE to whoever holds the attacker's Ed448 key (supply-chain backdoor). Exploitation needs that private key, so this drives vulnerable-build emulation, not request-signature detection."},
+	{ID: "CVE-2024-49112", Name: "Windows LDAP integer-overflow RCE (LDAPBleed)", CVSS: 9.8, Service: "ldap",
+		Technique: "T1203", Tactic: "execution", CWE: []string{"CWE-190"},
+		Description: "A crafted CLDAP referral response triggers an integer overflow in the Windows LDAP client (the December-2024 'LDAPNightmare' pair). Client-side trigger — advertised here for an unpatched-Windows-DC fingerprint, not detected inbound."},
+	{ID: "CVE-2024-49113", Name: "Windows LDAP DoS (LDAPNightmare)", CVSS: 7.5, Service: "ldap",
+		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-190"},
+		Description: "A crafted CLDAP referral response crashes LSASS on an unpatched Windows DC (SafeBreach PoC). Client-side trigger — advertised here for patch-level emulation, not detected inbound."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2548,6 +2562,9 @@ var cveExtra = map[string]struct {
 	"CVE-2016-8704": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
 	"CVE-2016-8705": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
 	"CVE-2016-8706": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2024-3094":  {[]string{"CWE-506"}, "cpe:2.3:a:tukaani:xz:*", 0.10},
+	"CVE-2024-49112": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.30},
+	"CVE-2024-49113": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.40},
 }
 
 func init() {

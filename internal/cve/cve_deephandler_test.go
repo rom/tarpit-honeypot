@@ -49,6 +49,33 @@ func TestDeepHandlerAdvisoryRecords(t *testing.T) {
 	}
 }
 
+// TestDeepHandlerRound2Advisory covers the SSH supply-chain + Windows LDAP
+// patch-level records: advisory-only (they activate client-side or need the
+// attacker's key), with the right service and ATT&CK tagging.
+func TestDeepHandlerRound2Advisory(t *testing.T) {
+	want := map[string]string{
+		"CVE-2024-3094":  "ssh",
+		"CVE-2024-49112": "ldap",
+		"CVE-2024-49113": "ldap",
+	}
+	for id, svc := range want {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only (no inbound request signature)", id)
+		}
+		if r.Service != svc {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, svc)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
+
 func matched(hits []Record, id string) bool {
 	for _, h := range hits {
 		if h.ID == id {

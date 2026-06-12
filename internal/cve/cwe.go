@@ -55,6 +55,7 @@ var cweNames = map[string]string{
 	"CWE-425":  "Direct Request (Forced Browsing)",
 	"CWE-434":  "Unrestricted Upload of File with Dangerous Type",
 	"CWE-502":  "Deserialization of Untrusted Data",
+	"CWE-506":  "Embedded Malicious Code",
 	"CWE-522":  "Insufficiently Protected Credentials",
 	"CWE-611":  "XML External Entity (XXE)",
 	"CWE-617":  "Reachable Assertion",
