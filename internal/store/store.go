@@ -945,6 +945,55 @@ FROM events WHERE id = ?`, id)
 	return scanRow(row)
 }
 
+// EventNeighbors locate the chronologically adjacent events in a conversation —
+// everything exchanged between the same two peers (src_ip ↔ dst_ip) — for the
+// event detail page's prev/next navigation.
+type EventNeighbors struct {
+	PrevID string // event just before the anchor in (time, id) order, "" if none
+	NextID string // event just after, "" if none
+	Total  int    // events in the conversation
+	Pos    int    // 1-based position of the anchor within the conversation
+}
+
+// ConversationNav finds the previous/next events between ev's two peers
+// (src_ip + dst_ip), ordered by (time, id), plus the conversation size and ev's
+// position in it. A peer with an empty IP yields an empty (Total 0) result.
+func (s *Store) ConversationNav(ctx context.Context, ev *event.Event) (EventNeighbors, error) {
+	var nb EventNeighbors
+	if ev == nil || ev.Source.IP == "" || ev.Dest.IP == "" {
+		return nb, nil
+	}
+	src, dst, t := ev.Source.IP, ev.Dest.IP, ev.Time.UTC().UnixNano()
+
+	// Previous: latest event strictly before the anchor in (time, id) order.
+	err := s.db.QueryRowContext(ctx, `
+SELECT id FROM events
+WHERE src_ip = ? AND dst_ip = ? AND (time < ? OR (time = ? AND id < ?))
+ORDER BY time DESC, id DESC LIMIT 1`, src, dst, t, t, ev.ID).Scan(&nb.PrevID)
+	if err != nil && err != sql.ErrNoRows {
+		return nb, err
+	}
+	// Next: earliest event strictly after the anchor.
+	err = s.db.QueryRowContext(ctx, `
+SELECT id FROM events
+WHERE src_ip = ? AND dst_ip = ? AND (time > ? OR (time = ? AND id > ?))
+ORDER BY time ASC, id ASC LIMIT 1`, src, dst, t, t, ev.ID).Scan(&nb.NextID)
+	if err != nil && err != sql.ErrNoRows {
+		return nb, err
+	}
+	// Total + the anchor's 1-based position (a friendly "n of m" context).
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE src_ip = ? AND dst_ip = ?`, src, dst).Scan(&nb.Total); err != nil {
+		return nb, err
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE src_ip = ? AND dst_ip = ? AND (time < ? OR (time = ? AND id <= ?))`,
+		src, dst, t, t, ev.ID).Scan(&nb.Pos); err != nil {
+		return nb, err
+	}
+	return nb, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

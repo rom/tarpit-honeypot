@@ -1293,6 +1293,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 
 {{ define "event" }}{{ template "head" . }}
 <h1>event {{ .ID }}</h1>
+{{ if gt .Nav.Total 1 }}<p class="note" data-help="Step through everything these two peers exchanged, in time order — each step is one recorded connection/event between this source and destination.">between {{ .Source.IP }} ↔ {{ .Dest.IP }}: {{ if .Nav.PrevID }}<a href="/events/{{ .Nav.PrevID }}">← previous</a>{{ else }}<span class="muted">← previous</span>{{ end }} · exchange {{ .Nav.Pos }} of {{ .Nav.Total }} · {{ if .Nav.NextID }}<a href="/events/{{ .Nav.NextID }}">next →</a>{{ else }}<span class="muted">next →</span>{{ end }}</p>{{ end }}
 <table>
   <tr><th>time</th><td>{{ fmtTime .Time }}</td></tr>
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
@@ -1304,21 +1305,27 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
 </table>
 
+{{ if or .Phase (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
+  {{ if .Phase }}<tr><th>interaction</th><td><span class="tag">{{ .Phase }}</span></td></tr>{{ end }}
+  {{ with index .Meta "intent" }}<tr><th>what happened</th><td>{{ . }}</td></tr>{{ end }}
+  {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
   <tr><th>techniques</th><td>{{ range .MitreTechniques }}{{ $u := attackLinkURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a>{{ end }} {{ end }}</td></tr>
   {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
   {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}{{ $u := defenseURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ defenseName . }} — MITRE D3FEND">{{ . }}</a>{{ else }}<span class="tag" title="{{ defenseName . }}">{{ . }}</span>{{ end }} {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
-<h2>downloads</h2>
+{{ if or .HasPcap (index .Meta "session_cast") .Source.IP }}<h2>downloads</h2>
 <ul>
-  <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
+  {{ if .HasPcap }}<li><a href="/pcap/{{ .ID }}">pcap</a> — per-connection capture (<code>{{ .PcapName }}</code>)</li>{{ end }}
   {{ if index .Meta "session_cast" }}<li><a href="/replay?event={{ .ID }}">▶ replay session</a> · <a href="/session/{{ .ID }}">download cast</a></li>{{ end }}
   {{ if .Source.IP }}<li><a href="/download?source={{ .Source.IP }}&amp;since=720h">all pcaps + sessions from {{ .Source.IP }}</a> (ZIP, last 30d)</li>{{ end }}
-</ul>
+</ul>{{ end }}
 
-{{ if .BannerSent }}<h2>banner sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
-{{ with creds . }}<h2>captured credentials &amp; secrets</h2>
+{{ if .BannerSent }}<h2 data-help="What the honeypot replied to the attacker — the decoy's response, not data the attacker sent.">decoy response sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
+{{ with creds .Event }}<h2>captured credentials &amp; secrets</h2>
 <table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range . }}<tr><td><span class="tag bad">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
@@ -1334,7 +1341,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ with strMap (index .Meta "http_cookies") }}{{ if . }}<h3>cookies <span class="tag bad">captured</span></h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td><code>{{ $v }}</code></td></tr>{{ end }}</table>{{ end }}{{ end }}
 {{ with index .Meta "http_javascript" }}<h3>captured JavaScript <span class="tag bad">not executed</span></h3>{{ range . }}<div class="kv">{{ . }}</div>{{ end }}{{ end }}
 {{ end }}
-{{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
+{{ if .PayloadBase64 }}<h2 data-help="The raw bytes the attacker sent on this connection (the packet payload we received), shown as hex + ASCII and base64.">request payload received ({{ .PayloadLen }} bytes)</h2>
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy to clipboard">⧉ copy</button>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy the base64 to the clipboard">⧉ copy base64</button></details>{{ end }}
 {{ $rest := metaScalar .Meta }}{{ if $rest }}<h2>meta</h2><table>

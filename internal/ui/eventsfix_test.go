@@ -54,7 +54,7 @@ func TestEventDetailDefenseAndCountry(t *testing.T) {
 		Meta: map[string]any{"geo_country": "US"},
 	}
 	var b strings.Builder
-	if err := tmpl.ExecuteTemplate(&b, "event", ev); err != nil {
+	if err := tmpl.ExecuteTemplate(&b, "event", newEventDetail(ev)); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()

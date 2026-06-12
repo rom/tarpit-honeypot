@@ -44,7 +44,7 @@ func TestEventDetailShowsOverride(t *testing.T) {
 		Meta: map[string]any{"default_severity": "high", "severity_override_rule": "cve:*"},
 	}
 	var b strings.Builder
-	if err := tmpl.ExecuteTemplate(&b, "event", ev); err != nil {
+	if err := tmpl.ExecuteTemplate(&b, "event", newEventDetail(ev)); err != nil {
 		t.Fatal(err)
 	}
 	html := b.String()

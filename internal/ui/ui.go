@@ -524,13 +524,23 @@ var httpDetailKeys = map[string]bool{
 	"http_javascript":   true,
 }
 
+// eventMetaPromoted are meta keys the event-detail page renders in its own
+// dedicated sections (interpretation, downloads), so the catch-all meta table
+// drops them to avoid showing the same thing twice.
+var eventMetaPromoted = map[string]bool{
+	"intent":       true, // shown in the interpretation section
+	"anomalies":    true, // shown as anomaly tags
+	"capture_path": true, // internal path; surfaced as the pcap download
+	"session_cast": true, // internal path; surfaced as the replay/cast download
+}
+
 func metaScalar(m map[string]any) map[string]any {
 	if len(m) == 0 {
 		return m
 	}
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		if httpDetailKeys[k] {
+		if httpDetailKeys[k] || eventMetaPromoted[k] {
 			continue
 		}
 		out[k] = v
@@ -1416,6 +1426,91 @@ func isOperationalEvent(rule string) bool {
 	return false
 }
 
+// eventDetail is the event-detail page model: the event itself (embedded, so
+// the template's promoted .Time / .Meta / .BannerSent / … keep working) plus
+// the derived presentation extras — prev/next conversation navigation, the
+// inferred interaction phase, the de-duplicated anomaly list, and whether a
+// downloadable pcap exists for it.
+type eventDetail struct {
+	*event.Event
+	Nav      store.EventNeighbors
+	Phase    string   // inferred interaction kind (auth / discovery / control / …)
+	Anoms    []string // protocol-misuse markers (ev.Anomalies + meta.anomalies)
+	HasPcap  bool
+	PcapName string
+}
+
+// newEventDetail builds the page model's pure (no store / filesystem) parts.
+func newEventDetail(ev *event.Event) eventDetail {
+	return eventDetail{Event: ev, Phase: classifyInteraction(ev), Anoms: eventAnoms(ev)}
+}
+
+// eventAnoms is the union of the event's structured anomaly markers and any in
+// meta ("anomalies"), de-duplicated and order-preserving.
+func eventAnoms(ev *event.Event) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(a string) {
+		if a != "" && !seen[a] {
+			seen[a] = true
+			out = append(out, a)
+		}
+	}
+	for _, a := range ev.Anomalies {
+		add(a)
+	}
+	for _, a := range metaStrings(ev.Meta, "anomalies") {
+		add(a)
+	}
+	return out
+}
+
+// classifyInteraction infers, best-effort, what kind of application-level
+// exchange an event represents — authentication, command/control, service
+// discovery, session establishment, or a plain probe — from its anomalies,
+// the handler's inferred intent, captured credentials, and the decoded
+// protocol verbs. It's a coarse at-a-glance label; meta.intent carries the
+// precise description.
+func classifyInteraction(ev *event.Event) string {
+	var b strings.Builder
+	for _, a := range eventAnoms(ev) {
+		b.WriteString(strings.ToLower(a))
+		b.WriteByte(' ')
+	}
+	for _, k := range []string{"intent", "op", "method", "command", "commands", "apdu_service",
+		"cotp_type", "message_type", "request_line", "ssh_kex_msg", "function"} {
+		if s, _ := ev.Meta[k].(string); s != "" {
+			b.WriteString(strings.ToLower(s))
+			b.WriteByte(' ')
+		}
+	}
+	hay := b.String()
+	has := func(subs ...string) bool {
+		for _, s := range subs {
+			if strings.Contains(hay, s) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case len(extractCreds(ev)) > 0 || has("auth", "login", "credential", "brute", "password", "as-req", "ntlm"):
+		return "Authentication / credential attempt"
+	case has("write", "operate", "control", "start", "stop", "download", "upload", "reset", "reboot",
+		"firmware", "setpoint", "set point", "command", "exec", "program", "logic", "actuat", "force ", "shutdown"):
+		return "Command / control action"
+	case has("discover", "enumerat", "identify", "list", "browse", "getnamelist", "read-device", "read device",
+		"scan", "recon", "sweep", "fingerprint", "version", "probe"):
+		return "Service discovery / enumeration"
+	case has("assoc", "handshake", "connect", "register", "setup", "securechannel", "secure channel",
+		"negoti", "hello", "kex", "session", "cr→cc", "cotp cr"):
+		return "Session establishment"
+	case ev.BannerSent != "" || ev.PayloadBase64 != "":
+		return "Probe / banner grab"
+	}
+	return ""
+}
+
 func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/events/")
 	if id == "" {
@@ -1439,8 +1534,15 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 			ev.MitreDefenses = mitre.DefensesFor(tag.Techniques)
 		}
 	}
+	page := newEventDetail(ev)
+	if nav, nerr := s.store.ConversationNav(ctx, ev); nerr == nil {
+		page.Nav = nav
+	}
+	if _, name, ok := s.resolveEventPcap(ev); ok {
+		page.HasPcap, page.PcapName = true, name
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "event", ev); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "event", page); err != nil {
 		slog.Warn("ui: render event", "err", err)
 	}
 }
