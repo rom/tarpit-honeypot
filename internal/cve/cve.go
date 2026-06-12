@@ -2344,6 +2344,12 @@ var catalog = []Record{
 	{ID: "CVE-2022-31204", Name: "Omron SYSMAC FINS cleartext UM-protection password", CVSS: 6.5, Service: "fins",
 		Technique: "T0859", Tactic: "credential-access", CWE: []string{"CWE-319"},
 		Description: "Omron SYSMAC CS/CJ/CP PLCs transmit the UM-protection password in cleartext inside FINS commands, exposing the credential that gates sensitive engineering operations (OT:ICEFALL)."},
+
+	// ---- TRITON / TRISIS: the safety-instrumented-system attack. The
+	// tristation handler emits this on a reprogramming message. ----
+	{ID: "CVE-2018-8872", Name: "Schneider Triconex Tricon memory write (TRITON/TRISIS)", CVSS: 9.0, Service: "tristation",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-119"},
+		Description: "Triconex Tricon MP 3008 (firmware 10.0-10.4) system calls read/write control-program memory without verification, letting an attacker copy arbitrary data anywhere in memory — the safety-controller code-injection flaw the TRITON/TRISIS malware used to reprogram the SIS over the TriStation protocol (UDP 1502)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2593,6 +2599,7 @@ var cveExtra = map[string]struct {
 	"CVE-2022-31800": {[]string{"CWE-345"}, "cpe:2.3:o:phoenixcontact:axc_1050_firmware:*", 0.03},
 	"CVE-2022-31207": {[]string{"CWE-345"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
 	"CVE-2022-31204": {[]string{"CWE-319"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
+	"CVE-2018-8872":  {[]string{"CWE-119"}, "cpe:2.3:o:schneider-electric:tricon_3008_firmware:*", 0.02},
 }
 
 func init() {

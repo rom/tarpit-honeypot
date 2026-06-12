@@ -105,6 +105,24 @@ func TestICEFALLRecords(t *testing.T) {
 	}
 }
 
+// TestTRITONRecord covers the Triconex/TRITON safety-system CVE: handler-
+// emitted (advisory), correct service, ICS ATT&CK tagged.
+func TestTRITONRecord(t *testing.T) {
+	r, ok := Lookup("CVE-2018-8872")
+	if !ok {
+		t.Fatal("CVE-2018-8872 (TRITON) missing from catalog")
+	}
+	if r.Service != "tristation" {
+		t.Errorf("TRITON service = %q want tristation", r.Service)
+	}
+	if r.Detectable() {
+		t.Errorf("CVE-2018-8872 should be advisory-only (handler-emitted)")
+	}
+	if r.Technique == "" || r.Tactic == "" {
+		t.Errorf("CVE-2018-8872 missing ATT&CK mapping")
+	}
+}
+
 func matched(hits []Record, id string) bool {
 	for _, h := range hits {
 		if h.ID == id {
