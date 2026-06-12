@@ -40,8 +40,9 @@ func TestHandleThemeSetsCookieAndRedirects(t *testing.T) {
 			t.Errorf("theme=%s: Location = %q; want /events", id, got)
 		}
 		sc := w.Header().Get("Set-Cookie")
-		if !strings.Contains(sc, themeCookieName+"="+id) {
-			t.Errorf("theme=%s: Set-Cookie = %q; want %s=%s", id, sc, themeCookieName, id)
+		name := themeCookieName(req)
+		if !strings.Contains(sc, name+"="+id) {
+			t.Errorf("theme=%s: Set-Cookie = %q; want %s=%s", id, sc, name, id)
 		}
 		if !strings.Contains(sc, "SameSite=Lax") {
 			t.Errorf("theme=%s: missing SameSite=Lax: %q", id, sc)
@@ -76,7 +77,7 @@ func TestHandleThemeDefaultClearsCookie(t *testing.T) {
 		t.Fatalf("status = %d; want 303", w.Code)
 	}
 	sc := w.Header().Get("Set-Cookie")
-	if !strings.Contains(sc, themeCookieName+"=;") && !strings.Contains(sc, "Max-Age=0") {
+	if !strings.Contains(sc, themeCookieName(req)+"=;") && !strings.Contains(sc, "Max-Age=0") {
 		t.Errorf("default theme should clear the cookie; got %q", sc)
 	}
 }
@@ -96,14 +97,44 @@ func TestCurrentTheme(t *testing.T) {
 	if got := currentTheme(r); got != "default" {
 		t.Errorf("no cookie -> default; got %q", got)
 	}
-	r.AddCookie(&http.Cookie{Name: themeCookieName, Value: "nord"})
+	r.AddCookie(&http.Cookie{Name: themeCookieName(r), Value: "nord"})
 	if got := currentTheme(r); got != "nord" {
 		t.Errorf("nord cookie -> nord; got %q", got)
 	}
 	r2 := httptest.NewRequest(http.MethodGet, "/", nil)
-	r2.AddCookie(&http.Cookie{Name: themeCookieName, Value: "evil"})
+	r2.AddCookie(&http.Cookie{Name: themeCookieName(r2), Value: "evil"})
 	if got := currentTheme(r2); got != "default" {
 		t.Errorf("unknown cookie -> default; got %q", got)
+	}
+}
+
+// Sibling instances on the same host (different UI ports) must not share a
+// theme/size cookie — the reported "change it in one, it changes in the other"
+// leak. Cookies ignore the port, so we discriminate by baking the port into the
+// cookie name.
+func TestThemeCookieIsPerInstance(t *testing.T) {
+	r88 := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8088/", nil)
+	r89 := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8089/", nil)
+	if n88, n89 := themeCookieName(r88), themeCookieName(r89); n88 == n89 {
+		t.Fatalf("per-instance cookie names collide: %q", n88)
+	} else if n88 != "tarpit_theme_8088" || n89 != "tarpit_theme_8089" {
+		t.Fatalf("unexpected names: %q / %q", n88, n89)
+	}
+	// The browser delivers :8088's cookie to :8089 (it ignores the port); :8089
+	// must still NOT pick up :8088's theme.
+	r89.AddCookie(&http.Cookie{Name: themeCookieName(r88), Value: "nord"})
+	if got := currentTheme(r89); got != "default" {
+		t.Errorf(":8089 read :8088's theme (%q) — cookies still leak", got)
+	}
+	// :8089 reading its own cookie still works.
+	own := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8089/", nil)
+	own.AddCookie(&http.Cookie{Name: themeCookieName(own), Value: "dark"})
+	if got := currentTheme(own); got != "dark" {
+		t.Errorf(":8089 own theme = %q; want dark", got)
+	}
+	// No explicit port collapses to a stable "0" suffix on both sides.
+	if n := themeCookieName(httptest.NewRequest(http.MethodGet, "/", nil)); n != "tarpit_theme_0" {
+		t.Errorf("no-port name = %q; want tarpit_theme_0", n)
 	}
 }
 
@@ -139,8 +170,9 @@ func TestHandleSizeSetsCookieAndRedirects(t *testing.T) {
 			t.Errorf("size=%s: status = %d; want 303", id, w.Code)
 		}
 		sc := w.Header().Get("Set-Cookie")
-		if !strings.Contains(sc, sizeCookieName+"="+id) {
-			t.Errorf("size=%s: Set-Cookie = %q; want %s=%s", id, sc, sizeCookieName, id)
+		name := sizeCookieName(req)
+		if !strings.Contains(sc, name+"="+id) {
+			t.Errorf("size=%s: Set-Cookie = %q; want %s=%s", id, sc, name, id)
 		}
 		if !strings.Contains(sc, "SameSite=Lax") {
 			t.Errorf("size=%s: missing SameSite=Lax: %q", id, sc)
@@ -169,7 +201,7 @@ func TestHandleSizeNormalClearsCookie(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleSize(w, req)
 	sc := w.Header().Get("Set-Cookie")
-	if !strings.Contains(sc, sizeCookieName+"=;") && !strings.Contains(sc, "Max-Age=0") {
+	if !strings.Contains(sc, sizeCookieName(req)+"=;") && !strings.Contains(sc, "Max-Age=0") {
 		t.Errorf("normal size should clear the cookie; got %q", sc)
 	}
 }
@@ -179,12 +211,12 @@ func TestCurrentSize(t *testing.T) {
 	if got := currentSize(r); got != "normal" {
 		t.Errorf("no cookie -> normal; got %q", got)
 	}
-	r.AddCookie(&http.Cookie{Name: sizeCookieName, Value: "large"})
+	r.AddCookie(&http.Cookie{Name: sizeCookieName(r), Value: "large"})
 	if got := currentSize(r); got != "large" {
 		t.Errorf("large cookie -> large; got %q", got)
 	}
 	r2 := httptest.NewRequest(http.MethodGet, "/", nil)
-	r2.AddCookie(&http.Cookie{Name: sizeCookieName, Value: "evil"})
+	r2.AddCookie(&http.Cookie{Name: sizeCookieName(r2), Value: "evil"})
 	if got := currentSize(r2); got != "normal" {
 		t.Errorf("unknown cookie -> normal; got %q", got)
 	}
