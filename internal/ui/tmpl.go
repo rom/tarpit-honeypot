@@ -23,12 +23,13 @@ const tmpls = `
 <script src="/static/theme.js"></script>
 <style>
 /* ---- Theme palettes: defaults (light) live on :root, overrides on :root.theme-* ----
- * theme.js sets the theme class on <html> from the tarpit_theme cookie before
- * the body parses; every color below is referenced via var(--*) so themes
- * cascade into every element — headings, tables, charts, badges, bars. */
+ * theme.js sets the theme class on <html> from the per-instance
+ * tarpit_theme_<port> cookie before the body parses; every color below is
+ * referenced via var(--*) so themes cascade into every element — headings,
+ * tables, charts, badges, bars. */
 :root {
   /* Base font size — overridden by :root.size-* below. Driven by the
-   * tarpit_size cookie via /static/theme.js. rem-based sizes throughout
+   * tarpit_size_<port> cookie via /static/theme.js. rem-based sizes throughout
    * the stylesheet inherit from this so every text element scales. */
   --font-size-base:14px;
   --bg-page:#fafafa; --bg-surface:#fff; --bg-elevated:#f3f3f3; --bg-code:#f0f0f0; --bg-code-block:#f6f8fa;
@@ -1595,14 +1596,14 @@ uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <
 </table>
 {{ if .Themes }}
 <h2>UI theme</h2>
-<p class="note">Pick a theme — applied via a per-browser cookie, persists across reloads. <code>default</code> clears the cookie.</p>
+<p class="note">Pick a theme — applied via a per-browser, per-instance cookie (each UI port keeps its own), persists across reloads. <code>default</code> clears the cookie.</p>
 <div class="theme-picker">
 {{ range .Themes }}<a class="themelink{{ if .Active }} active{{ end }}" href="{{ .Href }}" title="{{ .Desc }}"><span class="swatch" style="background:{{ .Swatch }}"></span>{{ .Label }}</a>{{ end }}
 </div>
 {{ end }}
 {{ if .Sizes }}
 <h2>text size</h2>
-<p class="note">Scale the whole UI's typography. Persists per browser; <code>normal</code> clears the cookie.</p>
+<p class="note">Scale the whole UI's typography. Persists per browser, per instance (each UI port keeps its own); <code>normal</code> clears the cookie.</p>
 <div class="theme-picker">
 {{ range .Sizes }}<a class="themelink{{ if .Active }} active{{ end }}" href="{{ .Href }}" title="{{ .Sample }}">{{ .Label }}</a>{{ end }}
 </div>

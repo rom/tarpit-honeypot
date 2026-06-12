@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net"
 	"net/http"
 	"strings"
 )
@@ -39,10 +40,38 @@ var themeIDs = func() map[string]bool {
 }()
 
 const (
-	themeCookieName = "tarpit_theme"
+	themeCookieBase = "tarpit_theme"
 	themeMaxAge     = 365 * 24 * 60 * 60 // one year
-	sizeCookieName  = "tarpit_size"
+	sizeCookieBase  = "tarpit_size"
 )
+
+// instancePort returns the port this UI is served on, read from the request's
+// Host header — the one thing that distinguishes sibling instances on the same
+// host. Cookies are scoped by host only (RFC 6265 ignores the port), so two
+// instances on 127.0.0.1:8088 and :8089 would otherwise SHARE one theme/size
+// cookie — change it in one and it changes in the other. Baking the port into
+// the cookie NAME keeps each instance's preference separate even though the
+// browser still delivers every sibling's cookie to all of them. Digits only (a
+// cookie name must be an RFC token); "0" when there is no explicit port.
+func instancePort(r *http.Request) string {
+	if r == nil || r.Host == "" {
+		return "0"
+	}
+	if _, port, err := net.SplitHostPort(r.Host); err == nil && port != "" {
+		for _, c := range port {
+			if c < '0' || c > '9' {
+				return "0"
+			}
+		}
+		return port
+	}
+	return "0"
+}
+
+// themeCookieName / sizeCookieName are the per-instance cookie names; the
+// client (static/theme.js) builds the same names from location.port.
+func themeCookieName(r *http.Request) string { return themeCookieBase + "_" + instancePort(r) }
+func sizeCookieName(r *http.Request) string  { return sizeCookieBase + "_" + instancePort(r) }
 
 // Size is one entry in the font-size scale catalog: an id (cookie value and
 // CSS class suffix), a label and a sample px size for the picker. "normal" is
@@ -82,7 +111,7 @@ func (s *Server) handleTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	back := safeBackPath(r.URL.Query().Get("back"))
 	cookie := &http.Cookie{
-		Name:     themeCookieName,
+		Name:     themeCookieName(r),
 		Value:    id,
 		Path:     "/",
 		MaxAge:   themeMaxAge,
@@ -120,7 +149,7 @@ func safeBackPath(s string) string {
 // when absent / unknown. Used by the config-page selector to mark the active
 // link.
 func currentTheme(r *http.Request) string {
-	c, err := r.Cookie(themeCookieName)
+	c, err := r.Cookie(themeCookieName(r))
 	if err != nil || c.Value == "" || !themeIDs[c.Value] {
 		return "default"
 	}
@@ -160,7 +189,7 @@ func (s *Server) handleSize(w http.ResponseWriter, r *http.Request) {
 	}
 	back := safeBackPath(r.URL.Query().Get("back"))
 	cookie := &http.Cookie{
-		Name:     sizeCookieName,
+		Name:     sizeCookieName(r),
 		Value:    id,
 		Path:     "/",
 		MaxAge:   themeMaxAge,
@@ -179,7 +208,7 @@ func (s *Server) handleSize(w http.ResponseWriter, r *http.Request) {
 // currentSize returns the size id from the request's cookie, or "normal" when
 // absent / unknown — used to mark the active link in the picker.
 func currentSize(r *http.Request) string {
-	c, err := r.Cookie(sizeCookieName)
+	c, err := r.Cookie(sizeCookieName(r))
 	if err != nil || c.Value == "" || !sizeIDs[c.Value] {
 		return "normal"
 	}
