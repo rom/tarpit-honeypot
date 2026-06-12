@@ -126,6 +126,17 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		meta["intent"] = "MQTT CONNECT — anonymous broker access / probe"
 	}
 
+	// CVE-2017-7650: Eclipse Mosquitto pattern-based ACLs are bypassed by a
+	// client whose client id or username is/contains an MQTT topic wildcard
+	// ('#' or '+') — the %c/%u substitution then matches topics it shouldn't.
+	// Legitimate client ids/usernames never contain these characters.
+	if strings.ContainsAny(cid, "#+") || strings.ContainsAny(mqUser, "#+") {
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2017-7650")
+		flagAnomaly(&res, "cve:CVE-2017-7650")
+		flagAnomaly(&res, "mqtt-acl-pattern-bypass")
+		meta["intent"] = "MQTT client id/username contains a topic wildcard ('#'/'+') — Mosquitto pattern-ACL bypass (CVE-2017-7650)"
+	}
+
 	// CONNACK, version-aware. v3.1/3.1.1 (level 3/4) carry session_present +
 	// a 1-byte return code; v5 (level 5) adds a properties-length byte. An
 	// unsupported protocol level gets the "unacceptable protocol version" reject

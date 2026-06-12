@@ -2283,6 +2283,30 @@ var catalog = []Record{
 	{ID: "CVE-2018-7225", Name: "LibVNCServer out-of-bounds access", CVSS: 9.8, Service: "vnc", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-125"}, Description: "LibVNCServer rfbProcessClientNormalMessage mishandles a client message length, causing an out-of-bounds read/write."},
 	{ID: "CVE-2022-40259", Name: "AMI MegaRAC Redfish command injection", CVSS: 9.9, Service: "redfish", Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"}, Description: "AMI MegaRAC exposes a Redfish API operation that allows an authenticated low-privilege user to execute arbitrary commands."},
 	{ID: "CVE-2013-4031", Name: "Supermicro IPMI/BMC authentication bypass", CVSS: 9.8, Service: "ipmi", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"}, Description: "Supermicro IPMI/BMC firmware contains an authentication flaw allowing unauthorized administrative access."},
+
+	// ---- Deep-handler CVEs: protocols whose wire format we already parse
+	// but didn't yet recognize the canonical exploit for. Intel AMT carries a
+	// request signature (an empty HTTP Digest `response`); the rest are
+	// detected in-handler from the parsed protocol and catalogued advisory-only. ----
+	{ID: "CVE-2017-5689", Name: "Intel AMT digest-auth bypass", CVSS: 9.8, Service: "intel_amt",
+		Signatures: []string{"response=\"\""},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Intel AMT/ISM/SBT web UI accepts an HTTP Digest auth with an empty `response` value (the firmware compares only the bytes the client sends), granting unauthenticated administrative access (INTEL-SA-00075)."},
+	{ID: "CVE-2012-1675", Name: "Oracle TNS Poison (remote registration)", CVSS: 7.5, Service: "oracle_tns",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-306"},
+		Description: "The Oracle TNS listener accepts unauthenticated remote service registration (COMMAND=SERVICE_REGISTER_NSGR), letting an attacker register a rogue instance and divert/hijack database connections."},
+	{ID: "CVE-2017-7650", Name: "Mosquitto pattern-ACL bypass", CVSS: 8.6, Service: "mqtt",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Eclipse Mosquitto pattern-based ACLs are bypassed by a client whose username or client id is or contains the MQTT wildcard '#' or '+', granting access to topics it should not reach."},
+	{ID: "CVE-2016-8704", Name: "memcached append/prepend integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_append_prepend (binary-protocol APPEND/PREPEND) causes a heap overflow and remote code execution (Talos TALOS-2016-0219)."},
+	{ID: "CVE-2016-8705", Name: "memcached update integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_update (binary-protocol SET/ADD/REPLACE) causes a heap overflow and remote code execution (Talos TALOS-2016-0220)."},
+	{ID: "CVE-2016-8706", Name: "memcached SASL-auth integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_sasl_auth (binary-protocol SASL authentication) causes a heap overflow and remote code execution (Talos TALOS-2016-0221)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2517,6 +2541,13 @@ var cveExtra = map[string]struct {
 	"CVE-2025-53020": {[]string{"CWE-400", "CWE-770"}, "cpe:2.3:a:apache:http_server:*", 0.40},
 	"CVE-2026-49975": {[]string{"CWE-400", "CWE-409", "CWE-770"}, "cpe:2.3:a:ietf:http:2.0", 0.50},
 	"CVE-2024-3596":  {[]string{"CWE-924", "CWE-328"}, "cpe:2.3:a:ietf:radius:*", 0.30},
+	// Deep-handler CVEs (intel_amt / oracle_tns / mqtt / memcached).
+	"CVE-2017-5689": {[]string{"CWE-287"}, "cpe:2.3:o:intel:active_management_technology_firmware:*", 0.94},
+	"CVE-2012-1675": {[]string{"CWE-306"}, "cpe:2.3:a:oracle:database_server:*", 0.15},
+	"CVE-2017-7650": {[]string{"CWE-287"}, "cpe:2.3:a:eclipse:mosquitto:*", 0.05},
+	"CVE-2016-8704": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8705": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8706": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
 }
 
 func init() {
