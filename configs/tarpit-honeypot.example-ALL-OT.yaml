@@ -54,7 +54,8 @@ listeners:
   - { id: dnp3,     proto: tcp, bind: 0.0.0.0:20000, mode: banner, handler: dnp3,            severity: critical, capture: true }
   - { id: ethernetip, proto: tcp, bind: 0.0.0.0:44818, mode: banner, handler: ethernetip,   severity: high,     capture: true } # EtherNet/IP + CIP (Rockwell)
   - { id: opcua,    proto: tcp, bind: 0.0.0.0:4840,  mode: banner, handler: opcua,           severity: high }
-  - { id: iccp,     proto: tcp, bind: 0.0.0.0:3782,  mode: banner, handler: iccp_secure,     severity: critical, capture: true } # Secure ICCP/TASE.2 over TLS
+  - { id: opcda,    proto: tcp, bind: 0.0.0.0:135,   mode: banner, handler: dcerpc,          severity: high,     capture: true } # OPC-DA / OPC Classic over DCOM (MSRPC endpoint mapper, 135) — flags OPCEnum/IOPCServer probes
+  - { id: iccp,     proto: tcp, bind: 0.0.0.0:3782,  mode: banner, handler: iccp_secure,     severity: critical, capture: true } # Secure ICCP/TASE.2 over TLS (plaintext ICCP/TASE.2 rides the mms handler on TCP 102 — see honeynet)
   - { id: melsec,   proto: tcp, bind: 0.0.0.0:1025,  mode: banner, handler: melsec,          severity: critical } # Mitsubishi MELSEC MC (also 5006/5007)
   - { id: ads,      proto: tcp, bind: 0.0.0.0:48898, mode: banner, handler: ads,             severity: high }     # Beckhoff TwinCAT ADS/AMS
   - { id: fins-tcp, proto: tcp, bind: 0.0.0.0:9600,  mode: banner, handler: fins_tcp,        severity: high }     # Omron FINS/TCP

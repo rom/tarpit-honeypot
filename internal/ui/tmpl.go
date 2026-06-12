@@ -619,7 +619,13 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 {{ define "charts" }}{{ template "head" . }}
 <h1 data-help="Charts are rendered client-side by the packaged charts.js. Click a chart to zoom it (Esc or click again to restore); use each chart's hide/show button to curate the page — the choice is remembered in your browser.">analytics — {{ .RangeLabel }}</h1>
 <p>range: <span class="rangesel">{{ range .RangeLinks }}{{ if .Active }}<span class="rsel active">{{ .Label }}</span>{{ else }}<a class="rsel" href="{{ .Href }}">{{ .Label }}</a>{{ end }}{{ end }}</span></p>
-{{ if .Empty }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}
+<form class="chartfilter" method="get" action="/charts" data-help="Build include/exclude patterns to focus the graphs. 'only' keeps just the matching events in every chart; 'exclude' drops them. Add several at once (e.g. exclude two noisy IPs and an ASN) — they combine. Dimensions: ip, asn, country, rule, handler, port, proto.">{{ range .FilterCarry }}<input type="hidden" name="{{ .Name }}" value="{{ .Value }}">{{ end }}
+filter graphs: <select name="mode"><option value="only">only</option><option value="exclude">exclude</option></select>
+<select name="dim">{{ range .FilterDims }}<option value="{{ . }}">{{ . }}</option>{{ end }}</select>
+= <input type="text" name="val" placeholder="1.2.3.4 / 14061 / CN / ssh" size="16">
+<button type="submit">add</button>{{ if .FilterActive }} <a href="{{ .ClearHref }}">clear all</a>{{ end }}</form>
+{{ if .Filters }}<p class="note">graphs limited to: {{ range .Filters }}<span class="tag{{ if eq .Mode "exclude" }} bad{{ end }}">{{ .Mode }} {{ .Dim }}={{ .Val }} <a href="{{ .RemoveHref }}" title="remove this filter">×</a></span> {{ end }}</p>{{ end }}
+{{ if .Empty }}{{ if .FilterActive }}<p class="note">No events match the active filters in this window. <a href="{{ .ClearHref }}">clear filters</a> or widen the range.</p>{{ else }}<p class="note">No data yet — charts populate as the sensor records events. JSON sources at <a href="/api/summary">/api/summary</a> and <a href="/api/topology">/api/topology</a>.</p>{{ end }}{{ end }}
 {{ range .Sections }}<h2>{{ .Heading }}</h2>
 <div class="charts-grid uniform">{{ range .Figs }}{{ template "chartfig" . }}{{ end }}</div>
 {{ end }}
@@ -1245,21 +1251,21 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ define "events" }}{{ template "head" . }}
 <h1>events</h1>
 <form method="get" action="/events">
-  source: <input type="text" name="source" value="{{ .Filter.SourceIP }}" size="15">
-  rule: <input type="text" name="rule" value="{{ .Filter.RuleID }}" size="20">
-  proto: <input type="text" name="proto" value="{{ .Filter.Proto }}" placeholder="tcp" size="5">
+  source: <input type="text" name="source" value="{{ .SourceStr }}" placeholder="ip / !ip / a,b" size="15">
+  rule: <input type="text" name="rule" value="{{ .RuleStr }}" placeholder="rule / !rule / a,b" size="20">
+  proto: <input type="text" name="proto" value="{{ .ProtoStr }}" placeholder="tcp / !udp" size="7">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
-  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="50000" size="6"> <a href="/events?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;proto={{ .Filter.Proto }}&amp;severity={{ .SeverityStr }}&amp;since={{ .SinceStr }}&amp;q={{ .QStr }}&amp;limit=all">all</a>
+  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="50000" size="6"> <a href="/events?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;proto={{ .ProtoStr }}&amp;severity={{ .SeverityStr }}&amp;since={{ .SinceStr }}&amp;q={{ .QStr }}&amp;limit=all">all</a>
   <br>search: <input type="text" name="q" value="{{ .QStr }}" placeholder="full-text: rule / banner / captured meta" size="40">
   <button type="submit">filter</button>
   <a href="/events">reset</a>
 </form>
-<p class="note">Click a column header to sort; click again to reverse.</p>
+<p class="note" data-help="Every box takes several comma-separated values (OR), and a leading ! negates one. So rule=!sniffer:arp_scan lists everything except that rule; source=10.0.0.1,10.0.0.2 lists just those two; proto=!udp hides UDP. Filters across boxes stack (AND).">Each box: comma = OR, leading <code>!</code> = exclude — e.g. <code>rule=!sniffer:arp_scan</code> lists everything except that rule. Stack boxes to combine. Click a column header to sort; click again to reverse.</p>
 <p class="note">Download recorded artifacts for this filter (ZIP):
-  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=all">pcaps + sessions</a> ·
-  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=pcap">pcaps</a> ·
-  <a href="/download?source={{ .Filter.SourceIP }}&amp;rule={{ .Filter.RuleID }}&amp;since={{ .SinceStr }}&amp;what=session">sessions</a>
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=all">pcaps + sessions</a> ·
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=pcap">pcaps</a> ·
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=session">sessions</a>
 </p>
 <table data-rows-server>
   <tr>
@@ -1287,6 +1293,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 
 {{ define "event" }}{{ template "head" . }}
 <h1>event {{ .ID }}</h1>
+{{ if gt .Nav.Total 1 }}<p class="note" data-help="Step through everything these two peers exchanged, in time order — each step is one recorded connection/event between this source and destination.">between {{ .Source.IP }} ↔ {{ .Dest.IP }}: {{ if .Nav.PrevID }}<a href="/events/{{ .Nav.PrevID }}">← previous</a>{{ else }}<span class="muted">← previous</span>{{ end }} · exchange {{ .Nav.Pos }} of {{ .Nav.Total }} · {{ if .Nav.NextID }}<a href="/events/{{ .Nav.NextID }}">next →</a>{{ else }}<span class="muted">next →</span>{{ end }}</p>{{ end }}
 <table>
   <tr><th>time</th><td>{{ fmtTime .Time }}</td></tr>
   <tr><th>sensor</th><td>{{ .Sensor }}</td></tr>
@@ -1298,21 +1305,27 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
 </table>
 
+{{ if or .Phase (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
+  {{ if .Phase }}<tr><th>interaction</th><td><span class="tag">{{ .Phase }}</span></td></tr>{{ end }}
+  {{ with index .Meta "intent" }}<tr><th>what happened</th><td>{{ . }}</td></tr>{{ end }}
+  {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
   <tr><th>techniques</th><td>{{ range .MitreTechniques }}{{ $u := attackLinkURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a>{{ end }} {{ end }}</td></tr>
   {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
   {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}{{ $u := defenseURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ defenseName . }} — MITRE D3FEND">{{ . }}</a>{{ else }}<span class="tag" title="{{ defenseName . }}">{{ . }}</span>{{ end }} {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
-<h2>downloads</h2>
+{{ if or .HasPcap (index .Meta "session_cast") .Source.IP }}<h2>downloads</h2>
 <ul>
-  <li><a href="/pcap/{{ .ID }}">pcap</a> (per-connection capture, if recorded)</li>
+  {{ if .HasPcap }}<li><a href="/pcap/{{ .ID }}">pcap</a> — per-connection capture (<code>{{ .PcapName }}</code>)</li>{{ end }}
   {{ if index .Meta "session_cast" }}<li><a href="/replay?event={{ .ID }}">▶ replay session</a> · <a href="/session/{{ .ID }}">download cast</a></li>{{ end }}
   {{ if .Source.IP }}<li><a href="/download?source={{ .Source.IP }}&amp;since=720h">all pcaps + sessions from {{ .Source.IP }}</a> (ZIP, last 30d)</li>{{ end }}
-</ul>
+</ul>{{ end }}
 
-{{ if .BannerSent }}<h2>banner sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
-{{ with creds . }}<h2>captured credentials &amp; secrets</h2>
+{{ if .BannerSent }}<h2 data-help="What the honeypot replied to the attacker — the decoy's response, not data the attacker sent.">decoy response sent</h2><div class="kv">{{ .BannerSent }}</div>{{ end }}
+{{ with creds .Event }}<h2>captured credentials &amp; secrets</h2>
 <table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range . }}<tr><td><span class="tag bad">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
@@ -1328,7 +1341,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ with strMap (index .Meta "http_cookies") }}{{ if . }}<h3>cookies <span class="tag bad">captured</span></h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td><code>{{ $v }}</code></td></tr>{{ end }}</table>{{ end }}{{ end }}
 {{ with index .Meta "http_javascript" }}<h3>captured JavaScript <span class="tag bad">not executed</span></h3>{{ range . }}<div class="kv">{{ . }}</div>{{ end }}{{ end }}
 {{ end }}
-{{ if .PayloadBase64 }}<h2>payload ({{ .PayloadLen }} bytes)</h2>
+{{ if .PayloadBase64 }}<h2 data-help="The raw bytes the attacker sent on this connection (the packet payload we received), shown as hex + ASCII and base64.">request payload received ({{ .PayloadLen }} bytes)</h2>
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy to clipboard">⧉ copy</button>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy the base64 to the clipboard">⧉ copy base64</button></details>{{ end }}
 {{ $rest := metaScalar .Meta }}{{ if $rest }}<h2>meta</h2><table>

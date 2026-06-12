@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
@@ -16,35 +19,75 @@ import (
 
 // handleCharts renders the analytics page: every chart type the packaged
 // charts.js supports, driven by the same 24h data as the summary dashboard.
+//
+// Operators can narrow every chart with include ("only") / exclude patterns on
+// source IP, ASN, country, rule, handler, port and proto — multiple at once
+// (e.g. exclude two noisy IPs and an ASN). With no filter active it keeps the
+// fast, full-window SQL path; once a filter is set it derives the whole page
+// from the filtered event scan so every chart reflects the same set.
 func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
-	defer cancel()
-	win := summaryRange(r.URL.Query().Get("range"))
-	since := time.Now().Add(-win.dur)
-	sum, err := s.store.Summary(ctx, since)
-	if err != nil {
-		serverError(w, r.URL.Path, err)
+	q := r.URL.Query()
+	// One-shot "add filter" submit (mode + dim + val from the add form): fold it
+	// into the canonical only=/exclude= params and redirect, so the URL stays
+	// bookmarkable and a refresh doesn't re-add the same clause.
+	if strings.TrimSpace(q.Get("val")) != "" {
+		http.Redirect(w, r, chartAddRedirect(q), http.StatusSeeOther)
 		return
 	}
-	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
-	hours, _ := s.store.EventsPerBucket(ctx, since, win.bucket)
-	d := buildDashboard(sum, hours, win.bucket)
-	var evs []*event.Event
-	// NoPayload: the analytics enrichment reads meta-derived dimensions only
-	// (tactics / techniques / geo / ASN / tool / handler / CVE) — never the
-	// payload bytes or the banner — so skip dragging 20k payload blobs + the
-	// per-row banner subquery through, which is pure scan cost here.
-	if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
-		evs = e
-		enrichDashboard(&d, evs)
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	win := summaryRange(q.Get("range"))
+	since := time.Now().Add(-win.dur)
+	only, exclude := parseChartFilters(q)
+	filtered := len(only)+len(exclude) > 0
+
+	var (
+		sum   store.Summary
+		hours []store.HourBucket
+		evs   []*event.Event
+	)
+	if !filtered {
+		// Fast path (unchanged): full-window, index-backed SQL summary + buckets,
+		// plus a 20k scan for the meta-derived charts. NoPayload: the enrichment
+		// reads meta dimensions only (tactics / geo / ASN / tool / handler / CVE),
+		// never the payload bytes or banner, so skip dragging 20k blobs through.
+		var err error
+		if sum, err = s.store.Summary(ctx, since); err != nil {
+			serverError(w, r.URL.Path, err)
+			return
+		}
+		sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
+		hours, _ = s.store.EventsPerBucket(ctx, since, win.bucket)
+		if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
+			evs = e
+		}
+	} else {
+		// Filtered: push the include/exclude into the scan (s.query also drops
+		// hidden IPs), then derive the summary + trend from exactly the events
+		// that survive — so every chart, not just the meta-derived ones, reflects
+		// the same filtered set.
+		f := chartFiltersToStore(only, exclude, store.Filter{Since: since, Limit: maxEventsLimit, NoPayload: true})
+		if e, qerr := s.query(ctx, f); qerr == nil {
+			evs = e
+		}
+		sum = summaryFromEvents(evs, since)
+		hours = bucketsFromEvents(evs, since, win.bucket)
 	}
+
+	d := buildDashboard(sum, hours, win.bucket)
+	enrichDashboard(&d, evs)
 	page := buildAnalytics(d, hours, evs)
 	if fig, rows, ok := coverageGap(s.fullConfig, evs); ok {
 		page.Sections = append(page.Sections, chartSection{Heading: "Coverage gap", Figs: []chartFig{fig}})
 		page.CoverageGap = rows
 	}
 	page.RangeLabel = win.label
-	page.RangeLinks = rangeLinksFor("/charts", win.key)
+	page.RangeLinks = rangeLinksForCharts(win.key, only, exclude)
+	page.Filters = chartFilterChips(win.key, only, exclude)
+	page.FilterActive = filtered
+	page.FilterCarry = chartFilterHidden(win.key, only, exclude)
+	page.FilterDims = chartFilterDims
+	page.ClearHref = chartClearHref(win.key)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "charts", page); err != nil {
 		slog.Warn("ui: render charts", "err", err)
@@ -82,6 +125,295 @@ type chartsPage struct {
 	Empty       bool
 	RangeLabel  string
 	RangeLinks  []rangeLink
+	// Include/exclude filter UI.
+	Filters      []chartChip   // active filter pills (with remove links)
+	FilterActive bool          // any filter set
+	FilterCarry  []chartHidden // hidden inputs so the add form keeps current state
+	FilterDims   []string      // dimensions offered in the add form's <select>
+	ClearHref    string        // "clear all" target (keeps the range)
+}
+
+// --- chart include/exclude filters -----------------------------------------
+
+// chartFilterDims are the dimensions an operator can build an only/exclude
+// pattern on, in the order the add-form <select> offers them. Kept in sync with
+// chartFiltersToStore below.
+var chartFilterDims = []string{"ip", "asn", "country", "rule", "handler", "port", "proto"}
+
+func chartDimOK(d string) bool {
+	for _, x := range chartFilterDims {
+		if x == d {
+			return true
+		}
+	}
+	return false
+}
+
+// chartDimVal is one include/exclude clause: a dimension + the value to match.
+type chartDimVal struct{ Dim, Val string }
+
+// chartChip is one active-filter pill: its mode/dim/value for display and the
+// URL that removes just that clause.
+type chartChip struct {
+	Mode       string // "only" / "exclude"
+	Dim        string
+	Val        string
+	RemoveHref string
+}
+
+// chartHidden is a name/value pair rendered as a hidden <input> so the add form
+// carries the current range + filters forward when a new clause is submitted.
+type chartHidden struct{ Name, Value string }
+
+// parseChartFilters reads the repeated only=/exclude= params (each "dim:value")
+// into ordered, de-duplicated include / exclude lists, keeping only known
+// dimensions with a non-empty value.
+func parseChartFilters(q url.Values) (only, exclude []chartDimVal) {
+	parse := func(key string) []chartDimVal {
+		var out []chartDimVal
+		seen := map[string]bool{}
+		for _, raw := range q[key] {
+			raw = strings.TrimSpace(raw)
+			i := strings.IndexByte(raw, ':')
+			if i <= 0 {
+				continue
+			}
+			dim := strings.ToLower(strings.TrimSpace(raw[:i]))
+			val := strings.TrimSpace(raw[i+1:])
+			if val == "" || !chartDimOK(dim) || seen[dim+":"+val] {
+				continue
+			}
+			seen[dim+":"+val] = true
+			out = append(out, chartDimVal{Dim: dim, Val: val})
+		}
+		return out
+	}
+	return parse("only"), parse("exclude")
+}
+
+// chartFiltersToStore folds the include / exclude clauses onto a base store
+// filter, mapping each chart dimension to its column / meta filter.
+func chartFiltersToStore(only, exclude []chartDimVal, base store.Filter) store.Filter {
+	apply := func(list []chartDimVal, incl bool) {
+		for _, dv := range list {
+			switch dv.Dim {
+			case "ip":
+				if incl {
+					base.SourceIPs = append(base.SourceIPs, dv.Val)
+				} else {
+					base.ExcludeSourceIPs = append(base.ExcludeSourceIPs, dv.Val)
+				}
+			case "rule":
+				if incl {
+					base.RuleIDs = append(base.RuleIDs, dv.Val)
+				} else {
+					base.ExcludeRuleIDs = append(base.ExcludeRuleIDs, dv.Val)
+				}
+			case "handler":
+				if incl {
+					base.Handlers = append(base.Handlers, dv.Val)
+				} else {
+					base.ExcludeHandlers = append(base.ExcludeHandlers, dv.Val)
+				}
+			case "proto":
+				if incl {
+					base.Protos = append(base.Protos, dv.Val)
+				} else {
+					base.ExcludeProtos = append(base.ExcludeProtos, dv.Val)
+				}
+			case "country":
+				cv := strings.ToUpper(dv.Val)
+				if incl {
+					base.Countries = append(base.Countries, cv)
+				} else {
+					base.ExcludeCountries = append(base.ExcludeCountries, cv)
+				}
+			case "asn":
+				if n := parseASN(dv.Val); n > 0 {
+					if incl {
+						base.ASNs = append(base.ASNs, n)
+					} else {
+						base.ExcludeASNs = append(base.ExcludeASNs, n)
+					}
+				}
+			case "port":
+				if n, err := strconv.Atoi(dv.Val); err == nil && n > 0 && n <= 65535 {
+					if incl {
+						base.DstPorts = append(base.DstPorts, n)
+					} else {
+						base.ExcludeDstPorts = append(base.ExcludeDstPorts, n)
+					}
+				}
+			}
+		}
+	}
+	apply(only, true)
+	apply(exclude, false)
+	return base
+}
+
+// chartQuery builds the canonical query (range + every only/exclude clause) for
+// a charts URL — the single source of truth the range chips, the active-filter
+// remove links and the add-form redirect all serialize through.
+func chartQuery(key string, only, exclude []chartDimVal) url.Values {
+	v := url.Values{}
+	if key != "" && key != "24h" {
+		v.Set("range", key)
+	}
+	for _, dv := range only {
+		v.Add("only", dv.Dim+":"+dv.Val)
+	}
+	for _, dv := range exclude {
+		v.Add("exclude", dv.Dim+":"+dv.Val)
+	}
+	return v
+}
+
+func chartsURL(v url.Values) string {
+	if enc := v.Encode(); enc != "" {
+		return "/charts?" + enc
+	}
+	return "/charts"
+}
+
+func rangeLinksForCharts(active string, only, exclude []chartDimVal) []rangeLink {
+	out := []rangeLink{}
+	for _, key := range summaryRanges {
+		out = append(out, rangeLink{Label: key, Href: chartsURL(chartQuery(key, only, exclude)), Active: key == active})
+	}
+	return out
+}
+
+func removeChartFilter(list []chartDimVal, i int) []chartDimVal {
+	out := make([]chartDimVal, 0, len(list)-1)
+	out = append(out, list[:i]...)
+	return append(out, list[i+1:]...)
+}
+
+func chartFilterChips(key string, only, exclude []chartDimVal) []chartChip {
+	var chips []chartChip
+	for i, dv := range only {
+		chips = append(chips, chartChip{Mode: "only", Dim: dv.Dim, Val: dv.Val,
+			RemoveHref: chartsURL(chartQuery(key, removeChartFilter(only, i), exclude))})
+	}
+	for i, dv := range exclude {
+		chips = append(chips, chartChip{Mode: "exclude", Dim: dv.Dim, Val: dv.Val,
+			RemoveHref: chartsURL(chartQuery(key, only, removeChartFilter(exclude, i)))})
+	}
+	return chips
+}
+
+func chartFilterHidden(key string, only, exclude []chartDimVal) []chartHidden {
+	var out []chartHidden
+	if key != "" && key != "24h" {
+		out = append(out, chartHidden{"range", key})
+	}
+	for _, dv := range only {
+		out = append(out, chartHidden{"only", dv.Dim + ":" + dv.Val})
+	}
+	for _, dv := range exclude {
+		out = append(out, chartHidden{"exclude", dv.Dim + ":" + dv.Val})
+	}
+	return out
+}
+
+func chartClearHref(key string) string {
+	v := url.Values{}
+	if key != "" && key != "24h" {
+		v.Set("range", key)
+	}
+	return chartsURL(v)
+}
+
+// chartAddRedirect turns an add-form submit (mode + dim + val, alongside the
+// existing only/exclude params) into the canonical charts URL to redirect to.
+func chartAddRedirect(q url.Values) string {
+	only, exclude := parseChartFilters(q)
+	dim := strings.ToLower(strings.TrimSpace(q.Get("dim")))
+	val := strings.TrimSpace(q.Get("val"))
+	if chartDimOK(dim) && val != "" {
+		dv := chartDimVal{Dim: dim, Val: val}
+		if q.Get("mode") == "exclude" {
+			exclude = append(exclude, dv)
+		} else {
+			only = append(only, dv)
+		}
+	}
+	return chartsURL(chartQuery(q.Get("range"), only, exclude))
+}
+
+// summaryFromEvents rebuilds the store.Summary aggregates from an in-memory
+// event slice — used when chart filters are active, so the severity / rule /
+// source / handler / target / country charts reflect exactly the filtered set,
+// the way the SQL Summary would over the full window.
+func summaryFromEvents(evs []*event.Event, since time.Time) store.Summary {
+	sum := store.Summary{
+		Since: since, BySeverity: map[string]int{}, ByRule: map[string]int{},
+		ByProto: map[string]int{}, ByHandler: map[string]int{}, ByTarget: map[string]int{},
+		ByCountry: map[string]int{},
+	}
+	srcCount := map[string]int{}
+	for _, ev := range evs {
+		sum.Total++
+		sum.BySeverity[ev.Severity.String()]++
+		if ev.RuleID != "" {
+			sum.ByRule[ev.RuleID]++
+		}
+		if ev.Proto != "" {
+			sum.ByProto[ev.Proto]++
+		}
+		if ev.Handler != "" {
+			sum.ByHandler[ev.Handler]++
+		}
+		if ev.Dest.IP != "" {
+			sum.ByTarget[ev.Dest.IP]++
+		}
+		if c, _ := ev.Meta["geo_country"].(string); c != "" {
+			sum.ByCountry[c]++
+		}
+		if ev.Source.IP != "" {
+			srcCount[ev.Source.IP]++
+		}
+	}
+	// Top 10 source IPs, matching the SQL summary's LIMIT 10.
+	srcs := make([]store.SourceCount, 0, len(srcCount))
+	for ip, c := range srcCount {
+		srcs = append(srcs, store.SourceCount{IP: ip, Count: c})
+	}
+	sort.Slice(srcs, func(i, j int) bool {
+		if srcs[i].Count != srcs[j].Count {
+			return srcs[i].Count > srcs[j].Count
+		}
+		return srcs[i].IP < srcs[j].IP
+	})
+	if len(srcs) > 10 {
+		srcs = srcs[:10]
+	}
+	sum.TopSources = srcs
+	return sum
+}
+
+// bucketsFromEvents rebuilds the events-per-bucket trend from an in-memory event
+// slice (zero-filled like store.EventsPerBucket), for the filtered path.
+func bucketsFromEvents(evs []*event.Event, since time.Time, bucket time.Duration) []store.HourBucket {
+	hourNS := int64(bucket)
+	if hourNS <= 0 {
+		hourNS = int64(time.Hour)
+	}
+	startBucket := since.UTC().UnixNano() / hourNS
+	nowBucket := time.Now().UTC().UnixNano() / hourNS
+	if nowBucket < startBucket {
+		nowBucket = startBucket
+	}
+	counts := map[int64]int{}
+	for _, ev := range evs {
+		counts[ev.Time.UTC().UnixNano()/hourNS]++
+	}
+	out := make([]store.HourBucket, 0, nowBucket-startBucket+1)
+	for b := startBucket; b <= nowBucket; b++ {
+		out = append(out, store.HourBucket{Hour: time.Unix(0, b*hourNS).UTC(), Count: counts[b]})
+	}
+	return out
 }
 
 // --- chart JSON shapes (match the schemas documented in charts.js) ---------

@@ -99,7 +99,7 @@ func TestEventDetailHexRenders(t *testing.T) {
 	ev := &event.Event{ID: "x", RuleID: "r", Severity: event.SeverityHigh, Time: time.Now(),
 		PayloadBase64: "QUJD", PayloadLen: 3, Meta: map[string]any{}}
 	var b strings.Builder
-	if err := tmpl.ExecuteTemplate(&b, "event", ev); err != nil {
+	if err := tmpl.ExecuteTemplate(&b, "event", newEventDetail(ev)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "41 42 43") || !strings.Contains(b.String(), "|ABC|") {

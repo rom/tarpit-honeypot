@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rom/tarpit-honeypot/internal/event"
 )
 
 // openNoFollow opens a file read-only, refusing to traverse a symlink at
@@ -66,6 +68,33 @@ func safeJoin(dir, name string) (string, bool) {
 	return p, true
 }
 
+// resolveEventPcap returns the on-disk capture for an event, preferring the
+// capture_path the listener stamped on it, then the "<id>_*.pcap" / "<id>.pcap"
+// lookup. This is the single source of truth shared by the event detail page
+// (to decide whether to show the link) and handlePcap (to serve the file), so
+// the link only ever appears when the file is actually downloadable — no more
+// 404 from a link shown for an event that has no capture, or whose capture was
+// named off a different connection's id. Returns ok=false when none exists.
+func (s *Server) resolveEventPcap(ev *event.Event) (path, name string, ok bool) {
+	if s.dataDir == "" || ev == nil {
+		return "", "", false
+	}
+	capDir := filepath.Join(s.dataDir, "captures")
+	if cp, _ := ev.Meta["capture_path"].(string); cp != "" {
+		if p, jok := safeJoin(capDir, filepath.Base(cp)); jok {
+			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+				return p, filepath.Base(p), true
+			}
+		}
+	}
+	if hexID(ev.ID) {
+		if p := findPcap(capDir, ev.ID); p != "" {
+			return p, filepath.Base(p), true
+		}
+	}
+	return "", "", false
+}
+
 func (s *Server) handlePcap(w http.ResponseWriter, r *http.Request) {
 	if s.dataDir == "" {
 		http.NotFound(w, r)
@@ -76,7 +105,18 @@ func (s *Server) handlePcap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad event id", http.StatusBadRequest)
 		return
 	}
-	p := findPcap(filepath.Join(s.dataDir, "captures"), id)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	// Prefer the capture the event itself points at (capture_path), so a pcap
+	// named off a different connection id still resolves; fall back to the id
+	// prefix glob for events purged from the DB but whose pcap remains on disk.
+	p := ""
+	if ev, err := s.store.Get(ctx, id); err == nil {
+		p, _, _ = s.resolveEventPcap(ev)
+	}
+	if p == "" {
+		p = findPcap(filepath.Join(s.dataDir, "captures"), id)
+	}
 	if p == "" {
 		http.NotFound(w, r)
 		return

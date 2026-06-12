@@ -92,6 +92,7 @@ Handlers are classed by fidelity:
 | `dnp3` | 20000 | DNP3 / IEEE 1815 | Deep | Data-link LINK_STATUS/ACK + application layer (READ, WRITE, SELECT/OPERATE/DIRECT_OPERATE, COLD/WARM_RESTART, STOP_APPL, enable/disable unsolicited) |
 | `ethernetip` | 44818 | EtherNet/IP + CIP (Rockwell) | Deep | RegisterSession, ListIdentity (1756-L73 ControlLogix), SendRRData/SendUnitData CIP (Get/Set/Read_Tag/Write_Tag/Reset/Start/Stop/Forward_Open) |
 | `opcua` | 4840 | OPC-UA TCP | Deep | HEL→ACK (endpoint URL + buffers), OpenSecureChannel SecurityPolicyUri capture (`#None` flagged) |
+| `dcerpc` (OPC-DA) | 135 | OPC-DA / OPC Classic over DCOM (MSRPC) | Deep | DCE/RPC bind + endpoint-mapper parse; flags OPCEnum / IOPCServer interface binds (`ics-opc-da-probe`), advertises believable OPC-DA server ProgIDs, and services IOPCServer GetStatus/AddGroup/Read/Write with OPCSERVERSTATUS stubs |
 | `mms` | 102 | IEC 61850 MMS (ISO-on-TCP) | Deep | COTP CR→CC, ACSE/MMS association (AARE accept), confirmed-service detection (getNameList / identify / read / write); **ICCP/TASE.2** profile detection (TASE.2 version OID + Bilateral_Table / Transfer_Set / VCC objects) with Transfer-Set, Bilateral-Table, and Block-5 Device-control classification |
 | `iccp_secure` | 3782 | Secure ICCP / TASE.2 over TLS (IEC 62351) | Deep | TLS termination (JA3/JA4/JA3S) then the full `mms`/ICCP stack over the encrypted channel |
 | `melsec` | 1025 / 5006 / 5007 | Mitsubishi MELSEC MC (3E) | Deep | Batch/Random read+write, Remote RUN/STOP/PAUSE/Latch-Clear, Remote Reset, Read-CPU-Model (`Q03UDVCPU`) |
@@ -226,6 +227,13 @@ OID `1.3.6.1.4.1.50316.802.1`).
   + Transfer-Set / Bilateral-Table / Block-5 device-control classification.
   Heuristic BER scan, not a full ASN.1 decoder. **Secure ICCP** (`iccp_secure`,
   3782) is the same over TLS.
+- **OPC-DA / OPC Classic** (`dcerpc`, 135) — the DCOM / MSRPC transport behind
+  OPC Classic. Parses the DCE/RPC bind + endpoint-mapper, flags an OPCEnum /
+  IOPCServer interface bind as an OPC-DA discovery probe (`ics-opc-da-probe`),
+  advertises believable OPC-DA server ProgIDs, and returns structurally-valid
+  IOPCServer GetStatus/AddGroup/Read/Write stubs (OPCSERVERSTATUS). OPC-UA
+  (`opcua`, 4840) is the transport-independent successor; both ship in the
+  ALL-OT example.
 - **MELSEC** (`melsec`), **ADS/AMS** (`ads`/`ads_discovery`), **FINS**
   (`fins_tcp`/`fins`), **ROC Plus** (`roc_plus`), **PCOM** (`pcom`), **SECS/GEM**
   (`secs_gem`), **CODESYS V3** (`codesys`), **PCWorx** (`pcworx`), **KNXnet/IP**

@@ -722,8 +722,28 @@ type Filter struct {
 	// An unknown FPKind matches nothing.
 	FPKind  string
 	FPValue string
-	Limit   int
-	Offset  int
+	// --- Negated / multi-value filters --------------------------------------
+	// These power the events-page negation ("everything except rule X") and the
+	// charts include/exclude patterns. Each *include* list is OR-within-itself
+	// and AND-across-dimensions: an event must match at least one value in every
+	// non-empty include list. Each *exclude* list drops an event matching ANY of
+	// its values (exclusion wins over inclusion). They compose with — and apply
+	// on top of — the single-valued fields above.
+	SourceIPs        []string
+	ExcludeSourceIPs []string
+	RuleIDs          []string
+	ExcludeRuleIDs   []string
+	ExcludeHandlers  []string // Handlers (above) is the matching include list
+	Protos           []string
+	ExcludeProtos    []string
+	Countries        []string
+	ExcludeCountries []string
+	DstPorts         []int
+	ExcludeDstPorts  []int
+	ASNs             []int
+	ExcludeASNs      []int
+	Limit            int
+	Offset           int
 	// NoPayload skips the captured payload + banner columns (the per-row banner
 	// subquery and the base64 payload blob). Aggregation scans that only need
 	// the metadata columns (the dashboard enrichment) set this to read far less.
@@ -821,6 +841,74 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 			q += " AND 0=1"
 		}
 	}
+	// Multi-value include / exclude (events negation, charts include/exclude).
+	// The column names are fixed literals; the values are always bound as
+	// parameters, so this stays injection-safe.
+	inStr := func(col string, vals []string) {
+		if len(vals) == 0 {
+			return
+		}
+		q += " AND " + col + " IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	notInStr := func(col string, vals []string) {
+		if len(vals) == 0 {
+			return
+		}
+		q += " AND " + col + " NOT IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	inInt := func(col string, vals []int) {
+		if len(vals) == 0 {
+			return
+		}
+		q += " AND " + col + " IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	notInInt := func(col string, vals []int) {
+		if len(vals) == 0 {
+			return
+		}
+		q += " AND " + col + " NOT IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	inStr("src_ip", f.SourceIPs)
+	notInStr("src_ip", f.ExcludeSourceIPs)
+	inStr("rule_id", f.RuleIDs)
+	notInStr("rule_id", f.ExcludeRuleIDs)
+	notInStr("handler", f.ExcludeHandlers)
+	inStr("proto", f.Protos)
+	notInStr("proto", f.ExcludeProtos)
+	inStr("country", f.Countries)
+	notInStr("country", f.ExcludeCountries)
+	inInt("dst_port", f.DstPorts)
+	notInInt("dst_port", f.ExcludeDstPorts)
+	// ASN is stored as a JSON number; CAST so the comparison is integer. The
+	// exclusion deliberately keeps rows that carry no ASN (json_extract → NULL),
+	// which a bare NOT IN would otherwise drop.
+	if len(f.ASNs) > 0 || len(f.ExcludeASNs) > 0 {
+		asnExpr := "CASE WHEN json_valid(meta_json) THEN CAST(json_extract(meta_json, '$.asn') AS INTEGER) END"
+		if len(f.ASNs) > 0 {
+			q += " AND " + asnExpr + " IN (" + strings.Repeat("?,", len(f.ASNs)-1) + "?)"
+			for _, v := range f.ASNs {
+				args = append(args, v)
+			}
+		}
+		if len(f.ExcludeASNs) > 0 {
+			q += " AND (" + asnExpr + " IS NULL OR " + asnExpr + " NOT IN (" + strings.Repeat("?,", len(f.ExcludeASNs)-1) + "?))"
+			for _, v := range f.ExcludeASNs {
+				args = append(args, v)
+			}
+		}
+	}
 	q += " ORDER BY time DESC"
 	if f.Limit > 0 {
 		q += " LIMIT ?"
@@ -855,6 +943,55 @@ SELECT id, time, sensor, sensor_id, rule_id, severity, src_ip, src_port,
        mitre_techniques, mitre_tactics, mitre_defenses
 FROM events WHERE id = ?`, id)
 	return scanRow(row)
+}
+
+// EventNeighbors locate the chronologically adjacent events in a conversation —
+// everything exchanged between the same two peers (src_ip ↔ dst_ip) — for the
+// event detail page's prev/next navigation.
+type EventNeighbors struct {
+	PrevID string // event just before the anchor in (time, id) order, "" if none
+	NextID string // event just after, "" if none
+	Total  int    // events in the conversation
+	Pos    int    // 1-based position of the anchor within the conversation
+}
+
+// ConversationNav finds the previous/next events between ev's two peers
+// (src_ip + dst_ip), ordered by (time, id), plus the conversation size and ev's
+// position in it. A peer with an empty IP yields an empty (Total 0) result.
+func (s *Store) ConversationNav(ctx context.Context, ev *event.Event) (EventNeighbors, error) {
+	var nb EventNeighbors
+	if ev == nil || ev.Source.IP == "" || ev.Dest.IP == "" {
+		return nb, nil
+	}
+	src, dst, t := ev.Source.IP, ev.Dest.IP, ev.Time.UTC().UnixNano()
+
+	// Previous: latest event strictly before the anchor in (time, id) order.
+	err := s.db.QueryRowContext(ctx, `
+SELECT id FROM events
+WHERE src_ip = ? AND dst_ip = ? AND (time < ? OR (time = ? AND id < ?))
+ORDER BY time DESC, id DESC LIMIT 1`, src, dst, t, t, ev.ID).Scan(&nb.PrevID)
+	if err != nil && err != sql.ErrNoRows {
+		return nb, err
+	}
+	// Next: earliest event strictly after the anchor.
+	err = s.db.QueryRowContext(ctx, `
+SELECT id FROM events
+WHERE src_ip = ? AND dst_ip = ? AND (time > ? OR (time = ? AND id > ?))
+ORDER BY time ASC, id ASC LIMIT 1`, src, dst, t, t, ev.ID).Scan(&nb.NextID)
+	if err != nil && err != sql.ErrNoRows {
+		return nb, err
+	}
+	// Total + the anchor's 1-based position (a friendly "n of m" context).
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE src_ip = ? AND dst_ip = ?`, src, dst).Scan(&nb.Total); err != nil {
+		return nb, err
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE src_ip = ? AND dst_ip = ? AND (time < ? OR (time = ? AND id <= ?))`,
+		src, dst, t, t, ev.ID).Scan(&nb.Pos); err != nil {
+		return nb, err
+	}
+	return nb, nil
 }
 
 type rowScanner interface {
