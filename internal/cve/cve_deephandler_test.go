@@ -77,6 +77,34 @@ func TestDeepHandlerRound2Advisory(t *testing.T) {
 	}
 }
 
+// TestICEFALLRecords covers the OT:ICEFALL ProConOS + Omron FINS records:
+// advisory-only catalog entries (the handlers emit them in-protocol), with the
+// correct service and ICS ATT&CK tagging.
+func TestICEFALLRecords(t *testing.T) {
+	want := map[string]string{
+		"CVE-2022-31801": "proconos",
+		"CVE-2022-31800": "proconos",
+		"CVE-2022-31207": "fins",
+		"CVE-2022-31204": "fins",
+	}
+	for id, svc := range want {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service != svc {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, svc)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only (handler-emitted, no payload signature)", id)
+		}
+	}
+}
+
 func matched(hits []Record, id string) bool {
 	for _, h := range hits {
 		if h.ID == id {

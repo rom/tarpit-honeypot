@@ -2324,6 +2324,26 @@ var catalog = []Record{
 	{ID: "CVE-2023-2953", Name: "OpenLDAP slapd NULL-deref DoS", CVSS: 7.5, Service: "ldap",
 		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"},
 		Description: "A crafted request triggers a NULL pointer dereference in OpenLDAP slapd ber_memalloc_x(), crashing the server (unauthenticated remote DoS). Server-side and malformed-BER-shaped — surfaced via the ldap-malformed-ber anomaly; advertised here for an unpatched-OpenLDAP fingerprint."},
+
+	// ---- OT:ICEFALL (Forescout Vedere Labs, 2022): the insecure-by-design
+	// CVEs that map onto a control protocol we actually emulate. ProConOS and
+	// Omron FINS are unauthenticated logic-download surfaces — the handlers
+	// emit the *download* CVE (…-31801 / …-31207) on the live attempt; the
+	// device-family / cleartext-password variants are advisory fingerprints.
+	// (The Emerson/GE PACSystems ICEFALL CVEs are firmware/Winloader, not the
+	// SRTP protocol ge_srtp emulates, so they are deliberately not bolted on.) ----
+	{ID: "CVE-2022-31801", Name: "Phoenix Contact ProConOS unauthenticated logic download", CVSS: 9.8, Service: "proconos",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "ProConOS / ProConOS eCLR / MULTIPROG do not verify the authenticity of downloaded IEC-61131 logic, letting an unauthenticated remote attacker upload arbitrary control logic and gain full control of the runtime (OT:ICEFALL)."},
+	{ID: "CVE-2022-31800", Name: "Phoenix Contact Classic Line logic upload", CVSS: 9.8, Service: "proconos",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "Phoenix Contact Classic Line controllers (AXC 1050/3050 and OEM variants) accept unauthenticated, unverified logic uploads, allowing remote code execution on the PLC (OT:ICEFALL)."},
+	{ID: "CVE-2022-31207", Name: "Omron SYSMAC FINS unauthenticated logic download", CVSS: 5.9, Service: "fins",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "Omron SYSMAC CS/CJ/CP PLCs download projects and control logic over FINS without cryptographic authentication, letting an attacker manipulate the transmitted object code and execute arbitrary logic on the PLC (OT:ICEFALL)."},
+	{ID: "CVE-2022-31204", Name: "Omron SYSMAC FINS cleartext UM-protection password", CVSS: 6.5, Service: "fins",
+		Technique: "T0859", Tactic: "credential-access", CWE: []string{"CWE-319"},
+		Description: "Omron SYSMAC CS/CJ/CP PLCs transmit the UM-protection password in cleartext inside FINS commands, exposing the credential that gates sensitive engineering operations (OT:ICEFALL)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2569,6 +2589,10 @@ var cveExtra = map[string]struct {
 	"CVE-2024-49112": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.30},
 	"CVE-2024-49113": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.40},
 	"CVE-2023-2953":  {[]string{"CWE-476"}, "cpe:2.3:a:openldap:openldap:*", 0.10},
+	"CVE-2022-31801": {[]string{"CWE-345"}, "cpe:2.3:a:phoenixcontact:proconos:*", 0.03},
+	"CVE-2022-31800": {[]string{"CWE-345"}, "cpe:2.3:o:phoenixcontact:axc_1050_firmware:*", 0.03},
+	"CVE-2022-31207": {[]string{"CWE-345"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
+	"CVE-2022-31204": {[]string{"CWE-319"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
 }
 
 func init() {

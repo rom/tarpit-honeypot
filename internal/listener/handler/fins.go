@@ -55,9 +55,15 @@ func (f *fins) Handle(_ context.Context, payload []byte, src net.Addr, pc net.Pa
 	case mrc == 0x01 && (src_ == 0x01 || src_ == 0x03): // MEMORY_AREA_READ / FILL
 		flagAnomaly(&res, "ics-process-data-access")
 		res.Meta["intent"] = "FINS Memory-Area Read — reading the PLC process image"
-	case mrc == 0x03: // PROGRAM_AREA read/write
+	case mrc == 0x03: // PROGRAM_AREA read/write/clear
 		flagAnomaly(&res, "ics-plc-program-access")
-		res.Meta["intent"] = "FINS Program-Area access — reading/downloading PLC logic"
+		if src_ == 0x07 { // PROGRAM AREA WRITE — unauthenticated logic download (OT:ICEFALL)
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2022-31207")
+			flagAnomaly(&res, "cve:CVE-2022-31207")
+			res.Meta["intent"] = "FINS Program-Area Write — unauthenticated PLC logic download / code execution (OT:ICEFALL CVE-2022-31207)"
+		} else {
+			res.Meta["intent"] = "FINS Program-Area access — reading/downloading PLC logic"
+		}
 	case mrc == 0x04: // RUN (0x01) / STOP (0x02) — operating-mode change
 		flagAnomaly(&res, "ics-plc-mode-change")
 		res.Meta["intent"] = "FINS " + finsCommandName(mrc, src_) + " — changing the PLC operating mode"

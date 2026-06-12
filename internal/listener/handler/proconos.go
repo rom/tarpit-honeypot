@@ -55,7 +55,9 @@ func (p *proconos) Handle(_ context.Context, conn net.Conn, cfg config.Listener)
 			res.Meta["intent"] = "ProConOS STOP — halting PLC logic (denial of control)"
 		case 0x06, 0x07, 0x08: // download / write project (logic)
 			flagAnomaly(&res, "ics-plc-write")
-			res.Meta["intent"] = "ProConOS DOWNLOAD — writing PLC logic to the runtime (unauthenticated)"
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2022-31801")
+			flagAnomaly(&res, "cve:CVE-2022-31801")
+			res.Meta["intent"] = "ProConOS DOWNLOAD — unauthenticated PLC logic upload / RCE (OT:ICEFALL CVE-2022-31801)"
 		}
 	}
 
