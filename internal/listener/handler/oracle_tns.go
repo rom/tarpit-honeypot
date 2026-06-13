@@ -133,6 +133,16 @@ func (o *oracleTNS) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		}
 		res.BannerSent = "oracle TNS listener version data"
 		return res, nil
+	case "service_register", "service_register_nsgr", "service_register_nsgr_v2":
+		// TNS Poison (CVE-2012-1675): an unauthenticated client tries to
+		// register a rogue instance/service with the listener so it can
+		// divert or hijack later connections. We flag it and fall through to
+		// the REFUSE below — a hardened listener (valid-node-checking /
+		// COST) rejects remote registration, and we never register anything.
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2012-1675")
+		flagAnomaly(&res, "cve:CVE-2012-1675")
+		flagAnomaly(&res, "oracle-tns-poison-registration")
+		res.Meta["intent"] = "Oracle TNS remote service registration — TNS Poison (CVE-2012-1675): rogue-instance registration / connection hijack"
 	}
 
 	// Otherwise REFUSE with ORA-12514 (unknown service) — what a real

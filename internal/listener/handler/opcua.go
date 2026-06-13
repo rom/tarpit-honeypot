@@ -108,14 +108,24 @@ func (o *opcua) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	// full crypto handshake, but the OPN carries the SecurityPolicyUri in the
 	// clear — capturing it shows whether the attacker is reaching for an
 	// unauthenticated (#None) endpoint, the classic exposed-OPC-UA misconfig.
-	o.readPostHello(conn, &res)
+	o.readPostHello(conn, endpoint, &res)
 	return res, nil
 }
 
-// readPostHello reads a bounded number of post-Hello messages and, for an
-// OpenSecureChannel (OPN), records the requested SecurityPolicyUri.
-func (o *opcua) readPostHello(conn net.Conn, res *Result) {
-	for i := 0; i < 4; i++ {
+// readPostHello reads a bounded number of post-Hello messages. It answers an
+// OpenSecureChannel (#None) so the channel opens and the client proceeds to its
+// real request, then classifies the service those follow-up MSGs carry
+// (GetEndpoints / Browse recon, Read / Write control). The OPN is answered only
+// when it parses cleanly — otherwise the message is captured and dropped, so a
+// malformed response is never emitted.
+func (o *opcua) readPostHello(conn net.Conn, endpoint string, res *Result) {
+	const channelID, tokenID = 0x1A2B3C4D, 1
+	if endpoint == "" {
+		endpoint = "opc.tcp://localhost:4840/UA"
+	}
+	nodes := newUANodes()
+	respSeq := uint32(1)
+	for i := 0; i < 16; i++ {
 		h := make([]byte, 8)
 		if _, err := io.ReadFull(conn, h); err != nil {
 			return
@@ -132,23 +142,92 @@ func (o *opcua) readPostHello(conn net.Conn, res *Result) {
 		res.Payload = append(res.Payload, h...)
 		res.Payload = append(res.Payload, b...)
 		switch mt {
-		case "OPN": // OpenSecureChannel: SecureChannelId(4) + SecurityPolicyUri
-			if len(b) >= 8 {
-				l := int32(binary.LittleEndian.Uint32(b[4:8]))
-				if l > 0 && 8+int(l) <= len(b) {
-					uri := string(b[8 : 8+int(l)])
-					res.Meta["opcua_security_policy"] = uri
-					flagAnomaly(res, "ics-opcua-open-channel")
-					if strings.HasSuffix(uri, "#None") {
-						flagAnomaly(res, "ics-opcua-insecure-policy")
-						res.Meta["intent"] = "OPC-UA OpenSecureChannel (SecurityPolicy#None) — unauthenticated/cleartext session attempt"
-					} else {
-						setIfEmpty(res.Meta, "intent", "OPC-UA OpenSecureChannel — establishing a secure channel")
+		case "OPN": // OpenSecureChannel
+			policyURI, requestID, requestHandle, ok := uaParseOpnRequest(b)
+			if policyURI != "" {
+				res.Meta["opcua_security_policy"] = policyURI
+				flagAnomaly(res, "ics-opcua-open-channel")
+				if strings.HasSuffix(policyURI, "#None") {
+					flagAnomaly(res, "ics-opcua-insecure-policy")
+					res.Meta["intent"] = "OPC-UA OpenSecureChannel (SecurityPolicy#None) — unauthenticated/cleartext session attempt"
+				} else {
+					setIfEmpty(res.Meta, "intent", "OPC-UA OpenSecureChannel — establishing a secure channel")
+				}
+			}
+			if ok {
+				body := uaOpenChannelResponseBody(requestHandle, channelID, tokenID)
+				if _, err := conn.Write(uaOpnFrame(channelID, respSeq, requestID, policyURI, body)); err != nil {
+					res.Meta["write_err"] = err.Error()
+					return
+				}
+				respSeq++
+				res.BannerSent = "opcua OpenSecureChannel response"
+			}
+		case "MSG": // a service request on the open channel
+			res.Meta["opcua_message"] = true
+			// Classify from the TypeId alone (works even on a minimal frame).
+			sid, sok := uaMsgServiceID(b)
+			if sok {
+				if name := uaServiceName(sid); name != "" {
+					res.Meta["opcua_service"] = name
+					switch sid {
+					case 629:
+						flagAnomaly(res, "ics-process-data-access")
+						res.Meta["intent"] = "OPC-UA Read — reading server node values"
+					case 671:
+						flagAnomaly(res, "ics-plc-write")
+						res.Meta["intent"] = "OPC-UA Write — writing server node values (control manipulation)"
+					case 428, 527:
+						flagAnomaly(res, "ics-field-device-probe")
+						setIfEmpty(res.Meta, "intent", "OPC-UA "+name+" — enumerating the server address space/endpoints")
+					default:
+						setIfEmpty(res.Meta, "intent", "OPC-UA "+name+" — session/service request")
 					}
 				}
 			}
-		case "MSG":
-			res.Meta["opcua_message"] = true
+			// Build + send a service response, but only when the full request
+			// parses — so a written node reads back. On a parse failure the
+			// message is captured and left unanswered (floor = prior behavior).
+			_, requestID, requestHandle, paramsOff, ok := uaParseMsgRequest(b)
+			if !ok {
+				continue
+			}
+			var body []byte
+			switch sid {
+			case 428: // GetEndpoints
+				body = uaGetEndpointsResponse(requestHandle, endpoint)
+			case 461: // CreateSession
+				body = uaCreateSessionResponse(requestHandle, endpoint)
+			case 467: // ActivateSession
+				body = uaActivateSessionResponse(requestHandle)
+			case 527: // Browse
+				body = uaBrowseResponse(requestHandle)
+			case 473: // CloseSession
+				body = uaCloseSessionResponse(requestHandle)
+			case 629: // Read — reflect the overlay
+				var dvs [][]byte
+				for _, k := range uaParseReadNodes(b, paramsOff) {
+					v, found := nodes.get(k)
+					if !found {
+						v = uaSynthVariant(k)
+					}
+					dvs = append(dvs, uaDataValue(v))
+				}
+				body = uaReadResponse(requestHandle, dvs)
+			case 671: // Write — record into the overlay
+				w := uaParseWriteNodes(b, paramsOff)
+				for _, wr := range w {
+					nodes.set(wr.key, wr.variant)
+				}
+				body = uaWriteResponse(requestHandle, len(w))
+			default:
+				continue // unmodeled service — captured, not answered
+			}
+			if _, err := conn.Write(uaMsgFrame(channelID, tokenID, respSeq, requestID, body)); err != nil {
+				res.Meta["write_err"] = err.Error()
+				return
+			}
+			respSeq++
 		case "CLO":
 			return
 		}

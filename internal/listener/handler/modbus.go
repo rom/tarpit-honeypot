@@ -32,6 +32,12 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	var totalPayload []byte
 	const maxPDUs = 16
 
+	// Per-session register/coil overlay so the emulator is coherent across a
+	// multi-PDU session: a value written earlier in the connection is returned
+	// by a later read of the same address (the write-then-read-back check a
+	// careful attacker uses to tell a real PLC from a stateless decoy).
+	mem := newModbusMem()
+
 	for p := 0; p < maxPDUs; p++ {
 		// Read MBAP header (7 bytes through unit_id).
 		hdr := make([]byte, 7)
@@ -74,7 +80,7 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 			"transaction_id": txID,
 			"unit_id":        unitID,
 		}
-		rpdu := m.respondPDU(pduBuf, entry)
+		rpdu := m.respondPDU(pduBuf, entry, mem)
 		pdus = append(pdus, entry)
 
 		// Per-PDU enrichment + intent/anomaly classification: register-reference
@@ -119,10 +125,60 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 	return res, nil
 }
 
+// modbusMem is a per-session register/coil overlay. It makes the emulator
+// coherent across a multi-PDU session: a value written earlier in the
+// connection is returned by a later read of the same address, while unwritten
+// addresses fall back to stable synthetic process data. Bounded so a write
+// sweep across the address space can't grow memory without limit, and
+// per-connection — no shared mutable state between attackers.
+type modbusMem struct {
+	regs  map[uint16]uint16
+	coils map[uint16]bool
+}
+
+const modbusMemCap = 4096
+
+func newModbusMem() *modbusMem {
+	return &modbusMem{regs: make(map[uint16]uint16), coils: make(map[uint16]bool)}
+}
+
+func (s *modbusMem) reg(addr uint16) uint16 {
+	if v, ok := s.regs[addr]; ok {
+		return v
+	}
+	return modbusSynthReg(addr)
+}
+
+func (s *modbusMem) setReg(addr, val uint16) {
+	if _, ok := s.regs[addr]; !ok && len(s.regs) >= modbusMemCap {
+		return // bound memory; over-cap writes simply aren't reflected
+	}
+	s.regs[addr] = val
+}
+
+func (s *modbusMem) coil(addr uint16) bool {
+	if v, ok := s.coils[addr]; ok {
+		return v
+	}
+	return modbusSynthCoil(addr)
+}
+
+func (s *modbusMem) setCoil(addr uint16, on bool) {
+	if _, ok := s.coils[addr]; !ok && len(s.coils) >= modbusMemCap {
+		return
+	}
+	s.coils[addr] = on
+}
+
+// modbusSynthReg / modbusSynthCoil are the believable defaults for an unwritten
+// register / coil, stable per absolute address so repeated reads agree.
+func modbusSynthReg(addr uint16) uint16 { return 1000 + (addr*173)%500 }
+func modbusSynthCoil(addr uint16) bool  { return (addr*97)&0x40 != 0 }
+
 // respondPDU dispatches by function code, fills meta, and returns the
 // reply PDU body. Returns nil if the request was so malformed we
-// don't want to reply at all.
-func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
+// don't want to reply at all. mem is the per-session register/coil overlay.
+func (m *modbus) respondPDU(pdu []byte, meta map[string]any, mem *modbusMem) []byte {
 	if len(pdu) < 1 {
 		return nil
 	}
@@ -134,8 +190,10 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 	case 0x01, 0x02: // Read Coils / Discrete Inputs
 		// Request: starting_addr(2) + quantity(2).
 		quantity := uint16(1)
+		var start uint16
 		if len(pdu) >= 5 {
-			meta["start_addr"] = binary.BigEndian.Uint16(pdu[1:3])
+			start = binary.BigEndian.Uint16(pdu[1:3])
+			meta["start_addr"] = start
 			quantity = binary.BigEndian.Uint16(pdu[3:5])
 			meta["quantity"] = quantity
 		}
@@ -144,33 +202,50 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 		}
 		nBytes := int((quantity + 7) / 8)
 		out := append([]byte{fc, byte(nBytes)}, make([]byte, nBytes)...)
-		// Make a few bits non-zero so the read result looks alive.
-		for i := 0; i < nBytes; i++ {
-			out[2+i] = byte((i + 1) * 17)
+		// Coils (0x01) reflect prior writes this session; discrete inputs
+		// (0x02) are read-only synthetic. Either is stable per absolute
+		// address, so a re-read returns the same bit.
+		for i := uint16(0); i < quantity; i++ {
+			on := modbusSynthCoil(start + i)
+			if fc == 0x01 {
+				on = mem.coil(start + i)
+			}
+			if on {
+				out[2+i/8] |= 1 << (i % 8)
+			}
 		}
 		return out
 	case 0x03, 0x04: // Read Holding / Input Registers
 		quantity := uint16(1)
+		var start uint16
 		if len(pdu) >= 5 {
-			meta["start_addr"] = binary.BigEndian.Uint16(pdu[1:3])
+			start = binary.BigEndian.Uint16(pdu[1:3])
+			meta["start_addr"] = start
 			quantity = binary.BigEndian.Uint16(pdu[3:5])
 			meta["quantity"] = quantity
 		}
 		if quantity == 0 || quantity > 125 {
 			return []byte{fc | 0x80, 0x03}
 		}
-		// Generate a 2-byte * quantity register block with believable
-		// process values (1000 .. 1500 + small sine-ish drift).
+		// Holding registers (0x03) reflect prior writes this session; input
+		// registers (0x04) are read-only synthetic. Keyed by absolute address
+		// so a re-read of the same register is stable.
 		out := append([]byte{fc, byte(quantity * 2)}, make([]byte, quantity*2)...)
 		for i := uint16(0); i < quantity; i++ {
-			val := 1000 + (i*173)%500
+			val := modbusSynthReg(start + i)
+			if fc == 0x03 {
+				val = mem.reg(start + i)
+			}
 			binary.BigEndian.PutUint16(out[2+2*i:4+2*i], val)
 		}
 		return out
 	case 0x05: // Write Single Coil
 		if len(pdu) >= 5 {
-			meta["coil_addr"] = binary.BigEndian.Uint16(pdu[1:3])
-			meta["coil_value"] = binary.BigEndian.Uint16(pdu[3:5])
+			addr := binary.BigEndian.Uint16(pdu[1:3])
+			val := binary.BigEndian.Uint16(pdu[3:5])
+			meta["coil_addr"] = addr
+			meta["coil_value"] = val
+			mem.setCoil(addr, val == 0xFF00) // 0xFF00 = ON, 0x0000 = OFF
 		}
 		// Echo: function + addr + value (5 bytes total).
 		out := make([]byte, len(pdu))
@@ -178,17 +253,25 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 		return out
 	case 0x06: // Write Single Register
 		if len(pdu) >= 5 {
-			meta["reg_addr"] = binary.BigEndian.Uint16(pdu[1:3])
-			meta["reg_value"] = binary.BigEndian.Uint16(pdu[3:5])
+			addr := binary.BigEndian.Uint16(pdu[1:3])
+			val := binary.BigEndian.Uint16(pdu[3:5])
+			meta["reg_addr"] = addr
+			meta["reg_value"] = val
+			mem.setReg(addr, val)
 		}
 		out := make([]byte, len(pdu))
 		copy(out, pdu)
 		return out
 	case 0x0F: // Write Multiple Coils
 		if len(pdu) >= 6 {
-			meta["start_addr"] = binary.BigEndian.Uint16(pdu[1:3])
-			meta["quantity"] = binary.BigEndian.Uint16(pdu[3:5])
+			start := binary.BigEndian.Uint16(pdu[1:3])
+			qty := binary.BigEndian.Uint16(pdu[3:5])
+			meta["start_addr"] = start
+			meta["quantity"] = qty
 			meta["byte_count"] = pdu[5]
+			for i := uint16(0); i < qty && 6+int(i/8) < len(pdu); i++ {
+				mem.setCoil(start+i, pdu[6+i/8]&(1<<(i%8)) != 0)
+			}
 		}
 		if len(pdu) >= 5 {
 			return append([]byte{fc}, pdu[1:5]...) // echo addr + quantity
@@ -196,15 +279,21 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 		return []byte{fc | 0x80, 0x03}
 	case 0x10: // Write Multiple Registers
 		if len(pdu) >= 6 {
-			meta["start_addr"] = binary.BigEndian.Uint16(pdu[1:3])
+			start := binary.BigEndian.Uint16(pdu[1:3])
+			meta["start_addr"] = start
 			meta["quantity"] = binary.BigEndian.Uint16(pdu[3:5])
 			meta["byte_count"] = pdu[5]
-			// Capture the values the attacker tried to write (capped
-			// at 16 registers for log size). Anything outside
-			// "control-loop tuning" range is worth a closer look.
+			// Apply every written register to the session overlay (so a later
+			// read returns it) and capture the first 16 for the log.
 			values := []uint16{}
-			for off := 6; off+1 < len(pdu) && len(values) < 16; off += 2 {
-				values = append(values, binary.BigEndian.Uint16(pdu[off:off+2]))
+			idx := uint16(0)
+			for off := 6; off+1 < len(pdu); off += 2 {
+				v := binary.BigEndian.Uint16(pdu[off : off+2])
+				mem.setReg(start+idx, v)
+				if len(values) < 16 {
+					values = append(values, v)
+				}
+				idx++
 			}
 			meta["written_values"] = values
 		}
@@ -214,26 +303,42 @@ func (m *modbus) respondPDU(pdu []byte, meta map[string]any) []byte {
 		return []byte{fc | 0x80, 0x03}
 	case 0x16: // Mask Write Register
 		if len(pdu) >= 7 {
-			meta["reg_addr"] = binary.BigEndian.Uint16(pdu[1:3])
-			meta["and_mask"] = binary.BigEndian.Uint16(pdu[3:5])
-			meta["or_mask"] = binary.BigEndian.Uint16(pdu[5:7])
+			addr := binary.BigEndian.Uint16(pdu[1:3])
+			andMask := binary.BigEndian.Uint16(pdu[3:5])
+			orMask := binary.BigEndian.Uint16(pdu[5:7])
+			meta["reg_addr"] = addr
+			meta["and_mask"] = andMask
+			meta["or_mask"] = orMask
+			// result = (current AND and_mask) OR (or_mask AND NOT and_mask)
+			mem.setReg(addr, (mem.reg(addr)&andMask)|(orMask&^andMask))
 			out := make([]byte, len(pdu))
 			copy(out, pdu) // echo request
 			return out
 		}
 		return []byte{fc | 0x80, 0x03}
-	case 0x17: // Read/Write Multiple Registers
+	case 0x17: // Read/Write Multiple Registers (writes first, then reads)
 		if len(pdu) >= 10 {
+			readAddr := binary.BigEndian.Uint16(pdu[1:3])
 			readQty := binary.BigEndian.Uint16(pdu[3:5])
+			writeAddr := binary.BigEndian.Uint16(pdu[5:7])
+			writeQty := binary.BigEndian.Uint16(pdu[7:9])
 			meta["read_qty"] = readQty
-			meta["write_addr"] = binary.BigEndian.Uint16(pdu[5:7])
-			meta["write_qty"] = binary.BigEndian.Uint16(pdu[7:9])
+			meta["write_addr"] = writeAddr
+			meta["write_qty"] = writeQty
 			if readQty == 0 || readQty > 125 {
 				return []byte{fc | 0x80, 0x03}
 			}
+			// Apply the write half first (write registers begin at pdu[10]).
+			for i := uint16(0); i < writeQty; i++ {
+				off := 10 + int(2*i)
+				if off+1 >= len(pdu) {
+					break
+				}
+				mem.setReg(writeAddr+i, binary.BigEndian.Uint16(pdu[off:off+2]))
+			}
 			out := append([]byte{fc, byte(readQty * 2)}, make([]byte, readQty*2)...)
 			for i := uint16(0); i < readQty; i++ {
-				binary.BigEndian.PutUint16(out[2+2*i:4+2*i], 1000+(i*173)%500)
+				binary.BigEndian.PutUint16(out[2+2*i:4+2*i], mem.reg(readAddr+i))
 			}
 			return out
 		}

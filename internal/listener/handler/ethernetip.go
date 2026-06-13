@@ -28,107 +28,120 @@ func (e *ethernetip) Name() string { return "ethernetip" }
 // returns one identity entry advertising a fake Rockwell ControlLogix
 // device which is what Shodan-style scanners use to classify the host.
 func (e *ethernetip) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
-	withTimeout(conn, cfg.ReadTimeout)
-	res := Result{}
+	res := Result{Meta: map[string]any{}}
 
-	hdr := make([]byte, 24)
-	if _, err := io.ReadFull(conn, hdr); err != nil {
-		res.Meta = map[string]any{"read_err": err.Error()}
-		return res, nil
-	}
-	cmd := binary.LittleEndian.Uint16(hdr[0:2])
-	dataLen := binary.LittleEndian.Uint16(hdr[2:4])
-	session := binary.LittleEndian.Uint32(hdr[4:8])
-	senderCtx := append([]byte(nil), hdr[12:20]...)
+	// One symbolic-tag overlay shared across the connection's encapsulation
+	// frames (RegisterSession → SendRRData reads/writes → UnRegisterSession all
+	// ride one TCP session), so a tag written earlier reads back later.
+	tags := newCIPTags()
+	const maxFrames = 32
 
-	res.Meta = map[string]any{
-		"command":        commandName(cmd),
-		"command_code":   cmd,
-		"data_length":    dataLen,
-		"session_handle": session,
-	}
+	for f := 0; f < maxFrames; f++ {
+		withTimeout(conn, cfg.ReadTimeout)
+		hdr := make([]byte, 24)
+		if _, err := io.ReadFull(conn, hdr); err != nil {
+			if f == 0 {
+				res.Meta["read_err"] = err.Error()
+			}
+			break
+		}
+		cmd := binary.LittleEndian.Uint16(hdr[0:2])
+		dataLen := binary.LittleEndian.Uint16(hdr[2:4])
+		session := binary.LittleEndian.Uint32(hdr[4:8])
+		senderCtx := append([]byte(nil), hdr[12:20]...)
 
-	var body []byte
-	if dataLen > 0 && dataLen <= 1024 {
-		body = make([]byte, dataLen)
-		if _, err := io.ReadFull(conn, body); err != nil {
-			res.Meta["read_err"] = err.Error()
+		res.Meta["command"] = commandName(cmd)
+		res.Meta["command_code"] = cmd
+		res.Meta["data_length"] = dataLen
+		res.Meta["session_handle"] = session
+
+		var body []byte
+		if dataLen > 0 && dataLen <= 1024 {
+			body = make([]byte, dataLen)
+			if _, err := io.ReadFull(conn, body); err != nil {
+				res.Meta["read_err"] = err.Error()
+				break
+			}
+		}
+		res.Payload = append(res.Payload, hdr...)
+		res.Payload = append(res.Payload, body...)
+
+		// Build response.
+		switch cmd {
+		case 0x0065: // RegisterSession
+			// echo body (protocol_version(2) + options_flags(2)) + assign session
+			out := make([]byte, 24+4)
+			binary.LittleEndian.PutUint16(out[0:2], 0x0065)
+			binary.LittleEndian.PutUint16(out[2:4], 4)
+			binary.LittleEndian.PutUint32(out[4:8], 0xdeadbeef) // session handle we'll honor
+			// status = 0, reserved zeros, sender context echoed
+			copy(out[12:20], senderCtx)
+			// body: protocol version + options
+			binary.LittleEndian.PutUint16(out[24:26], 1)
+			binary.LittleEndian.PutUint16(out[26:28], 0)
+			if _, err := conn.Write(out); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			setIfEmpty(res.Meta, "intent", "EtherNet/IP RegisterSession — opening a CIP session to the controller")
+			res.BannerSent = "ethernetip RegisterSession reply"
+
+		case 0x006F, 0x0070: // SendRRData / SendUnitData — carries the CIP request
+			e.serviceCIP(conn, cmd, body, senderCtx, session, tags, &res)
+
+		case 0x0066: // UnRegisterSession — the client closes the CIP session.
+			setIfEmpty(res.Meta, "intent", "EtherNet/IP UnRegisterSession — closing the CIP session")
 			return res, nil
+
+		case 0x0063: // ListIdentity
+			// Build identity item.
+			// item_count(2) + item_type(2)=0x000C + item_length(2) + identity data
+			productName := []byte("1756-L73/B LOGIX5573")
+			identity := make([]byte, 0, 64)
+			identity = binary.LittleEndian.AppendUint16(identity, 1) // protocol version
+			identity = append(identity, make([]byte, 16)...)         // socket_address (16 bytes, zero)
+			// Real devices put sa_family + port + addr here; zeros are fine.
+			identity = binary.LittleEndian.AppendUint16(identity, 0x0001) // vendor id (Rockwell)
+			identity = binary.LittleEndian.AppendUint16(identity, 0x000E) // device type
+			identity = binary.LittleEndian.AppendUint16(identity, 0x0036) // product code
+			identity = append(identity, 0x14, 0x0B)                       // revision (major/minor)
+			identity = binary.LittleEndian.AppendUint16(identity, 0x0040) // status
+			var serial uint32 = 0xdeadbeef
+			if e.id != nil {
+				serial = e.id.SerialNumber()
+			}
+			identity = binary.LittleEndian.AppendUint32(identity, serial) // serial (per-deployment)
+			identity = append(identity, byte(len(productName)))           // product name length
+			identity = append(identity, productName...)
+			identity = append(identity, 0xFF) // state
+
+			respBody := make([]byte, 0, 8+len(identity))
+			respBody = binary.LittleEndian.AppendUint16(respBody, 1)      // item count
+			respBody = binary.LittleEndian.AppendUint16(respBody, 0x000C) // item type CIP_ITEM_LISTIDENTITY_RESPONSE
+			respBody = binary.LittleEndian.AppendUint16(respBody, uint16(len(identity)))
+			respBody = append(respBody, identity...)
+
+			out := make([]byte, 24+len(respBody))
+			binary.LittleEndian.PutUint16(out[0:2], 0x0063)
+			binary.LittleEndian.PutUint16(out[2:4], uint16(len(respBody)))
+			copy(out[12:20], senderCtx)
+			copy(out[24:], respBody)
+			if _, err := conn.Write(out); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			setIfEmpty(res.Meta, "intent", "EtherNet/IP ListIdentity — fingerprinting the Rockwell/CIP device")
+			res.BannerSent = "ethernetip ListIdentity reply (1756-L73)"
+
+		default:
+			// Unsupported command — return status 0x0001 (invalid/unsupported).
+			out := make([]byte, 24)
+			binary.LittleEndian.PutUint16(out[0:2], cmd)
+			binary.LittleEndian.PutUint32(out[8:12], 0x0001)
+			copy(out[12:20], senderCtx)
+			if _, err := conn.Write(out); err != nil {
+				res.Meta["write_err"] = err.Error()
+			}
+			res.BannerSent = "ethernetip unsupported-command reply"
 		}
-	}
-	res.Payload = append(hdr, body...)
-
-	// Build response.
-	switch cmd {
-	case 0x0065: // RegisterSession
-		// echo body (protocol_version(2) + options_flags(2)) + assign session
-		out := make([]byte, 24+4)
-		binary.LittleEndian.PutUint16(out[0:2], 0x0065)
-		binary.LittleEndian.PutUint16(out[2:4], 4)
-		binary.LittleEndian.PutUint32(out[4:8], 0xdeadbeef) // session handle we'll honor
-		// status = 0, reserved zeros, sender context echoed
-		copy(out[12:20], senderCtx)
-		// body: protocol version + options
-		binary.LittleEndian.PutUint16(out[24:26], 1)
-		binary.LittleEndian.PutUint16(out[26:28], 0)
-		if _, err := conn.Write(out); err != nil {
-			res.Meta["write_err"] = err.Error()
-		}
-		setIfEmpty(res.Meta, "intent", "EtherNet/IP RegisterSession — opening a CIP session to the controller")
-		res.BannerSent = "ethernetip RegisterSession reply"
-
-	case 0x006F, 0x0070: // SendRRData / SendUnitData — carries the CIP request
-		e.serviceCIP(conn, cmd, body, senderCtx, session, &res)
-
-	case 0x0063: // ListIdentity
-		// Build identity item.
-		// item_count(2) + item_type(2)=0x000C + item_length(2) + identity data
-		productName := []byte("1756-L73/B LOGIX5573")
-		identity := make([]byte, 0, 64)
-		identity = binary.LittleEndian.AppendUint16(identity, 1) // protocol version
-		identity = append(identity, make([]byte, 16)...)         // socket_address (16 bytes, zero)
-		// Real devices put sa_family + port + addr here; zeros are fine.
-		identity = binary.LittleEndian.AppendUint16(identity, 0x0001) // vendor id (Rockwell)
-		identity = binary.LittleEndian.AppendUint16(identity, 0x000E) // device type
-		identity = binary.LittleEndian.AppendUint16(identity, 0x0036) // product code
-		identity = append(identity, 0x14, 0x0B)                       // revision (major/minor)
-		identity = binary.LittleEndian.AppendUint16(identity, 0x0040) // status
-		var serial uint32 = 0xdeadbeef
-		if e.id != nil {
-			serial = e.id.SerialNumber()
-		}
-		identity = binary.LittleEndian.AppendUint32(identity, serial) // serial (per-deployment)
-		identity = append(identity, byte(len(productName)))           // product name length
-		identity = append(identity, productName...)
-		identity = append(identity, 0xFF) // state
-
-		respBody := make([]byte, 0, 8+len(identity))
-		respBody = binary.LittleEndian.AppendUint16(respBody, 1)      // item count
-		respBody = binary.LittleEndian.AppendUint16(respBody, 0x000C) // item type CIP_ITEM_LISTIDENTITY_RESPONSE
-		respBody = binary.LittleEndian.AppendUint16(respBody, uint16(len(identity)))
-		respBody = append(respBody, identity...)
-
-		out := make([]byte, 24+len(respBody))
-		binary.LittleEndian.PutUint16(out[0:2], 0x0063)
-		binary.LittleEndian.PutUint16(out[2:4], uint16(len(respBody)))
-		copy(out[12:20], senderCtx)
-		copy(out[24:], respBody)
-		if _, err := conn.Write(out); err != nil {
-			res.Meta["write_err"] = err.Error()
-		}
-		setIfEmpty(res.Meta, "intent", "EtherNet/IP ListIdentity — fingerprinting the Rockwell/CIP device")
-		res.BannerSent = "ethernetip ListIdentity reply (1756-L73)"
-
-	default:
-		// Unsupported command — return status 0x0001 (invalid/unsupported).
-		out := make([]byte, 24)
-		binary.LittleEndian.PutUint16(out[0:2], cmd)
-		binary.LittleEndian.PutUint32(out[8:12], 0x0001)
-		copy(out[12:20], senderCtx)
-		if _, err := conn.Write(out); err != nil {
-			res.Meta["write_err"] = err.Error()
-		}
-		res.BannerSent = "ethernetip unsupported-command reply"
 	}
 	return res, nil
 }
@@ -137,7 +150,7 @@ func (e *ethernetip) Handle(_ context.Context, conn net.Conn, cfg config.Listene
 // command, classifies the CIP service (tag reads = recon, writes =
 // manipulation, Reset/Stop = device restart, Forward_Open = controller
 // session), and answers with a believable CIP success response.
-func (e *ethernetip) serviceCIP(conn net.Conn, cmd uint16, body, senderCtx []byte, session uint32, res *Result) {
+func (e *ethernetip) serviceCIP(conn net.Conn, cmd uint16, body, senderCtx []byte, session uint32, tags *cipTags, res *Result) {
 	setIfEmpty(res.Meta, "intent", "EtherNet/IP CIP request — interacting with the controller")
 	cip := locateCIP(body)
 	if len(cip) < 1 {
@@ -165,11 +178,11 @@ func (e *ethernetip) serviceCIP(conn net.Conn, cmd uint16, body, senderCtx []byt
 		res.Meta["intent"] = "EtherNet/IP CIP " + cipServiceName(service) + " — establishing a CIP connection to the controller"
 	}
 
-	// CIP reply: service|0x80, reserved, general-status 0 (success), addl 0.
-	cipResp := []byte{service | 0x80, 0x00, 0x00, 0x00}
-	if service == 0x0E || service == 0x4C { // return a couple of bytes for reads
-		cipResp = append(cipResp, 0xC4, 0x00, 0x2A, 0x00, 0x00, 0x00) // DINT type + value 42
-	}
+	// CIP reply. Tag services (Read_Tag / Write_Tag, fragmented variants) go
+	// through the per-session tag overlay so a written tag reads back; other
+	// services get a success reply (with a synthetic value for the logical-path
+	// Get_Attribute_Single read).
+	cipResp := cipTagResponse(service, cip, tags, res)
 	e.writeEncap(conn, cmd, session, senderCtx, cipResp, res)
 	res.BannerSent = "ethernetip CIP reply (" + cipServiceName(service) + ")"
 }

@@ -95,6 +95,21 @@ func (a *amqp) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 	}
 	a.parseStartOk(body[:payloadLen], res.Meta)
 
+	// Captured PLAIN credentials. RabbitMQ ships guest/guest, which a correctly
+	// configured broker only honors over loopback — a remote guest/guest login
+	// is the classic exposed-broker grab. Record the attempt and run it through
+	// the default-credential corpus like any other brute-forceable service.
+	if u, _ := res.Meta["auth_user"].(string); u != "" {
+		pw, _ := res.Meta["auth_pass"].(string)
+		flagAnomaly(&res, "amqp-credential-attempt")
+		flagDefaultCred(&res, u, pw)
+		res.Meta["intent"] = "AMQP broker login — RabbitMQ/message-broker credential attempt"
+		if u == "guest" && pw == "guest" {
+			flagAnomaly(&res, "amqp-default-guest-login")
+			res.Meta["intent"] = "AMQP login with RabbitMQ default guest/guest — exposed-broker access attempt"
+		}
+	}
+
 	// Send Connection.Close with reply-code 530 NOT_ALLOWED so the
 	// scanner records "this is RabbitMQ but my credentials are wrong".
 	closeFrame := a.buildClose(530, "NOT_ALLOWED - access to vhost '/' refused")

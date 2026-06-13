@@ -55,6 +55,8 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		messageID, op, opBody, ok := parseLDAPMessage(pkt)
 		if !ok {
 			res.Meta["bad_ldap_message"] = true
+			flagAnomaly(&res, "ldap-malformed-ber")
+			setIfEmpty(res.Meta, "intent", "Malformed LDAP/BER message — protocol fuzzing or a crafted-request slapd DoS attempt")
 			break
 		}
 		ops = append(ops, ldapOpName(op))
@@ -100,6 +102,7 @@ func (l *ldap) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 			res.BannerSent = "ldap BindResponse"
 		case 0x63: // SearchRequest [APPLICATION 3]
 			detectLDAPEnumeration(&res, pkt)
+			detectLDAPInjection(&res, pkt)
 			// A rootDSE base search (empty baseObject) reads the directory's
 			// naming contexts — answer like a real DC with the AD naming-context
 			// attributes derived from the deployment domain, then the done.
@@ -148,6 +151,23 @@ func detectLDAPEnumeration(res *Result, pkt []byte) {
 		if bytes.Contains(low, []byte(attr)) {
 			flagAnomaly(res, "ldap-enumeration")
 			break
+		}
+	}
+}
+
+// detectLDAPInjection flags LDAP filter-injection probing (CWE-90). In a
+// well-formed SearchRequest the filter STRUCTURE (&, |, parentheses) is
+// BER-encoded as tags/lengths, so a literal ASCII filter-breakout sequence
+// only appears when an attacker has stuffed filter metacharacters into an
+// assertion value — the hallmark of an injection probe, and effectively
+// absent from benign traffic.
+func detectLDAPInjection(res *Result, pkt []byte) {
+	low := bytes.ToLower(pkt)
+	for _, sig := range [][]byte{[]byte("*)("), []byte(")(|("), []byte(")(&(")} {
+		if bytes.Contains(low, sig) {
+			flagAnomaly(res, "ldap-injection")
+			res.Meta["intent"] = "LDAP search-filter injection probe — filter metacharacters in an assertion value (CWE-90)"
+			return
 		}
 	}
 }

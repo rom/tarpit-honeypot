@@ -47,7 +47,9 @@ func (t *tristation) Handle(_ context.Context, payload []byte, src net.Addr, pc 
 	// path — flag them as a (would-be) safety-controller manipulation attempt.
 	if mt == 0x05 || mt == 0x0a || mt == 0x0d {
 		flagAnomaly(&res, "ics-safety-controller-manipulation")
-		res.Meta["intent"] = "Triconex " + tristationMsgName(mt) + " — safety-controller reprogramming (TRITON/TRISIS path)"
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2018-8872")
+		flagAnomaly(&res, "cve:CVE-2018-8872")
+		res.Meta["intent"] = "Triconex " + tristationMsgName(mt) + " — safety-controller reprogramming (TRITON/TRISIS, CVE-2018-8872)"
 	}
 	// A minimal, bounded, rate-limited ack so a probe gets a plausible reply.
 	// reply <= request length guarantees no amplification.

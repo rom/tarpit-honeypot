@@ -59,6 +59,9 @@ func (s *s7) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resu
 	res.BannerSent = "tpkt+cotp connection confirm"
 
 	// --- S7comm session: service a bounded number of Job PDUs ---
+	// Per-session variable overlay so a Write Var is reflected by a later
+	// Read Var of the same address (write-then-read-back coherence).
+	mem := newS7Mem()
 	for i := 0; i < 8; i++ {
 		pdu, ok := readTPKT(conn, &res)
 		if !ok {
@@ -69,7 +72,7 @@ func (s *s7) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resu
 			break
 		}
 		s7data := pdu[3:]
-		if !s.serviceS7(conn, s7data, &res) {
+		if !s.serviceS7(conn, s7data, &res, mem) {
 			break
 		}
 	}
@@ -77,8 +80,9 @@ func (s *s7) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Resu
 }
 
 // serviceS7 parses one S7comm PDU, classifies the function, answers it, and
-// reports whether the session should continue.
-func (s *s7) serviceS7(conn net.Conn, b []byte, res *Result) bool {
+// reports whether the session should continue. mem is the per-session
+// variable overlay (Write Var values reflected back on a later Read Var).
+func (s *s7) serviceS7(conn net.Conn, b []byte, res *Result, mem *s7Mem) bool {
 	if len(b) < 10 || b[0] != 0x32 {
 		return false
 	}
@@ -114,7 +118,14 @@ func (s *s7) serviceS7(conn net.Conn, b []byte, res *Result) bool {
 		if len(param) >= 2 {
 			items = int(param[1])
 		}
-		writeTPKTDT(conn, s7AckData(pduRef, []byte{0x04, byte(items)}, s7ReadItems(items)), res)
+		// If every item parses as a recognized S7ANY address, build a stateful
+		// read (reflecting any value written earlier this session); otherwise
+		// fall back to the synthetic reply. Same wire format either way.
+		data := s7ReadItems(items)
+		if parsed, ok := s7ParseItems(param); ok && len(parsed) == items && items > 0 {
+			data = s7ReadItemsStateful(parsed, mem)
+		}
+		writeTPKTDT(conn, s7AckData(pduRef, []byte{0x04, byte(items)}, data), res)
 		return true
 	case 0x05: // Write Var — manipulating the control process.
 		flagAnomaly(res, "ics-plc-write")
@@ -123,6 +134,9 @@ func (s *s7) serviceS7(conn net.Conn, b []byte, res *Result) bool {
 		if len(param) >= 2 {
 			items = int(param[1])
 		}
+		// Record the write into the session overlay so a later Read Var of the
+		// same address returns it (single-item writes only — see s7CaptureWrite).
+		s7CaptureWrite(b, param, items, mem, res)
 		// Acknowledge each item as success (0xFF) so the attacker believes the
 		// write landed, while we record it.
 		data := make([]byte, items)
@@ -202,6 +216,159 @@ func s7Header(rosctr byte, pduRef uint16, param, data []byte) []byte {
 func s7Ack(pduRef uint16, param []byte) []byte { return s7Header(2, pduRef, param, nil) }
 func s7AckData(pduRef uint16, param, data []byte) []byte {
 	return s7Header(3, pduRef, param, data)
+}
+
+// --- S7comm per-session variable overlay --------------------------------
+//
+// s7Mem reflects an S7 Write Var value back on a later Read Var of the same
+// address within a session, so the emulator passes a write-then-read-back
+// coherence check. It is byte-granular, keyed by (area, db, byte-address),
+// per-connection and bounded; anything it can't parse confidently falls back
+// to the synthetic read, so a reply is never malformed.
+type s7Mem struct{ b map[uint64]byte }
+
+const s7MemCap = 8192
+
+func newS7Mem() *s7Mem { return &s7Mem{b: make(map[uint64]byte)} }
+
+func s7Key(area byte, db uint16, byteAddr uint32) uint64 {
+	return uint64(area)<<48 | uint64(db)<<32 | uint64(byteAddr)
+}
+
+func (m *s7Mem) get(area byte, db uint16, byteAddr uint32) (byte, bool) {
+	v, ok := m.b[s7Key(area, db, byteAddr)]
+	return v, ok
+}
+
+func (m *s7Mem) set(area byte, db uint16, byteAddr uint32, v byte) {
+	k := s7Key(area, db, byteAddr)
+	if _, ok := m.b[k]; !ok && len(m.b) >= s7MemCap {
+		return
+	}
+	m.b[k] = v
+}
+
+// s7Item is a parsed S7ANY address spec.
+type s7Item struct {
+	transport byte
+	length    uint16
+	db        uint16
+	area      byte
+	byteAddr  uint32
+}
+
+// s7ParseItems parses the item-address specs in a Read/Write Var parameter
+// (param[0]=function, param[1]=item count, then count × {0x12, specLen, spec}).
+// The bool reports whether every item was a recognized S7ANY spec.
+func s7ParseItems(param []byte) ([]s7Item, bool) {
+	if len(param) < 2 {
+		return nil, false
+	}
+	count := int(param[1])
+	items := make([]s7Item, 0, count)
+	off := 2
+	for k := 0; k < count; k++ {
+		if off+2 > len(param) || param[off] != 0x12 {
+			return items, false
+		}
+		specLen := int(param[off+1])
+		if specLen < 10 || off+2+specLen > len(param) {
+			return items, false
+		}
+		s := param[off+2 : off+2+specLen]
+		if s[0] != 0x10 { // not S7ANY syntax
+			return items, false
+		}
+		items = append(items, s7Item{
+			transport: s[1],
+			length:    binary.BigEndian.Uint16(s[2:4]),
+			db:        binary.BigEndian.Uint16(s[4:6]),
+			area:      s[6],
+			byteAddr:  (uint32(s[7])<<16 | uint32(s[8])<<8 | uint32(s[9])) >> 3,
+		})
+		off += 2 + specLen
+	}
+	return items, len(items) == count
+}
+
+// s7ItemBytes is the byte length an item addresses (count × element size).
+func s7ItemBytes(it s7Item) int {
+	sz := 1
+	switch it.transport {
+	case 0x04, 0x05: // WORD / INT
+		sz = 2
+	case 0x06, 0x07, 0x08: // DWORD / DINT / REAL
+		sz = 4
+	}
+	return int(it.length) * sz
+}
+
+// s7ReadItemsStateful builds Read Var data items, substituting any 2 bytes
+// written earlier this session at an item's address. The wire format matches
+// s7ReadItems exactly (0xFF, transport BYTE, 16-bit length, 2 data bytes per
+// item), so unwritten reads are byte-identical to the synthetic reply.
+func s7ReadItemsStateful(items []s7Item, mem *s7Mem) []byte {
+	var out []byte
+	for i, it := range items {
+		out = append(out, 0xFF, 0x04)
+		out = binary.BigEndian.AppendUint16(out, 16)
+		hi, okHi := mem.get(it.area, it.db, it.byteAddr)
+		lo, okLo := mem.get(it.area, it.db, it.byteAddr+1)
+		if okHi && okLo {
+			out = append(out, hi, lo)
+		} else {
+			out = binary.BigEndian.AppendUint16(out, uint16(1000+i*173%500))
+		}
+	}
+	return out
+}
+
+// s7CaptureWrite stores the value of a single-item S7 Write Var so a later Read
+// Var of the same address reflects it. Multi-item writes (where data-section
+// padding is ambiguous) are acknowledged but not stored, keeping behavior safe.
+func s7CaptureWrite(b, param []byte, items int, mem *s7Mem, res *Result) {
+	parsed, ok := s7ParseItems(param)
+	if !ok || items != 1 || len(parsed) != 1 {
+		return
+	}
+	it := parsed[0]
+	nbytes := s7ItemBytes(it)
+	if nbytes <= 0 || nbytes > 256 {
+		return
+	}
+	// Data section follows the parameter at b[10+parLen:]. A write data item is
+	// return_code(1) + transport(1) + length(2) + data; single item -> data @ +4.
+	parLen := int(binary.BigEndian.Uint16(b[6:8]))
+	dataStart := 10 + parLen
+	if dataStart+4+nbytes > len(b) {
+		return
+	}
+	val := b[dataStart+4 : dataStart+4+nbytes]
+	for j := 0; j < nbytes; j++ {
+		mem.set(it.area, it.db, it.byteAddr+uint32(j), val[j])
+	}
+	res.Meta["s7_write_area"] = s7AreaName(it.area)
+	res.Meta["s7_write_db"] = it.db
+	res.Meta["s7_write_byte"] = it.byteAddr
+}
+
+// s7AreaName names the S7 memory areas an address spec can target.
+func s7AreaName(area byte) string {
+	switch area {
+	case 0x81:
+		return "I"
+	case 0x82:
+		return "Q"
+	case 0x83:
+		return "M"
+	case 0x84:
+		return "DB"
+	case 0x1C:
+		return "C"
+	case 0x1D:
+		return "T"
+	}
+	return "0x" + itoa(int(area))
 }
 
 // s7ReadItems builds n success data items (return code 0xFF, transport size

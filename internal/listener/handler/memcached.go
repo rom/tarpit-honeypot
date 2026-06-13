@@ -3,6 +3,8 @@ package handler
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
+	"io"
 	"net"
 	"strings"
 
@@ -29,6 +31,16 @@ func (m *memcached) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 	}
 
 	br := bufio.NewReader(conn)
+
+	// memcached binary protocol (request magic 0x80). Exposed binary-protocol
+	// probing is the vector for the 2016 Talos integer-overflow RCEs
+	// (CVE-2016-8704/8705/8706); the text protocol below never reaches those
+	// code paths. Detect + capture it separately. TCP-only — never reflects.
+	if bb, _ := br.Peek(1); len(bb) == 1 && bb[0] == 0x80 {
+		memcachedBinary(conn, br, &res)
+		return res, nil
+	}
+
 	var commands []string
 	for i := 0; i < 12; i++ {
 		line, err := br.ReadString('\n')
@@ -87,6 +99,68 @@ func (m *memcached) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 	}
 	res.BannerSent = "memcached text responses (" + ver + ")"
 	return res, nil
+}
+
+// memcachedBinary handles a memcached *binary* protocol request (magic 0x80).
+// It parses the 24-byte request header, classifies the opcode, and — when the
+// declared length fields are overflow-shaped (the malformed lengths the 2016
+// Talos integer overflows require) — flags the matching CVE. It never executes
+// the operation: it captures the bytes and returns a single bounded binary
+// error. The connection is TCP, so this never reflects or amplifies.
+func memcachedBinary(conn net.Conn, br *bufio.Reader, res *Result) {
+	flagAnomaly(res, "memcached-binary-protocol")
+
+	hdr := make([]byte, 24)
+	if _, err := io.ReadFull(br, hdr); err != nil {
+		res.Meta["read_err"] = err.Error()
+		return
+	}
+	res.Payload = append(res.Payload, hdr...)
+	opcode := hdr[1]
+	keyLen := int(binary.BigEndian.Uint16(hdr[2:4]))
+	extLen := int(hdr[4])
+	totalBody := int(binary.BigEndian.Uint32(hdr[8:12]))
+	res.Meta["binary_opcode"] = fmtByte(opcode)
+
+	// Capture whatever of the declared body has already arrived (bounded), so a
+	// bogus huge totalBody can't be used to make us read 4 GiB.
+	if totalBody > 0 {
+		body := make([]byte, 8192)
+		if n, _ := br.Read(body); n > 0 {
+			res.Payload = append(res.Payload, body[:n]...)
+		}
+	}
+
+	// Overflow-shaped header: the body can't even contain its declared
+	// key+extras, or totalBody is implausibly large (memcached's default item
+	// cap is 1 MiB). That is exactly the malformed length the integer overflows
+	// in the process_bin_* handlers require — high-signal, not benign traffic.
+	overflowShaped := extLen+keyLen > totalBody || keyLen > totalBody || totalBody >= 1<<24
+	if overflowShaped {
+		var id, fn string
+		switch opcode {
+		case 0x0e, 0x0f, 0x19, 0x1a: // APPEND / PREPEND (+ quiet variants)
+			id, fn = "CVE-2016-8704", "process_bin_append_prepend"
+		case 0x01, 0x02, 0x03, 0x11, 0x12, 0x13: // SET / ADD / REPLACE (+ quiet)
+			id, fn = "CVE-2016-8705", "process_bin_update"
+		case 0x20, 0x21, 0x22: // SASL list-mechs / auth / step
+			id, fn = "CVE-2016-8706", "process_bin_sasl_auth"
+		}
+		if id != "" {
+			res.CVEHits = appendUnique(res.CVEHits, id)
+			flagAnomaly(res, "cve:"+id)
+			res.Meta["intent"] = "memcached binary-protocol integer overflow (" + fn + ") — heap-overflow RCE attempt (" + id + ")"
+		}
+	}
+
+	// Single bounded binary response: magic 0x81, echo opcode, status 0x0084
+	// ("internal error"). Never executes the op.
+	resp := make([]byte, 24)
+	resp[0] = 0x81
+	resp[1] = opcode
+	binary.BigEndian.PutUint16(resp[6:8], 0x0084)
+	_, _ = conn.Write(resp)
+	res.BannerSent = "memcached binary error"
 }
 
 // memcachedStats renders a believable reply for the "stats" family. Bare

@@ -2283,6 +2283,73 @@ var catalog = []Record{
 	{ID: "CVE-2018-7225", Name: "LibVNCServer out-of-bounds access", CVSS: 9.8, Service: "vnc", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-125"}, Description: "LibVNCServer rfbProcessClientNormalMessage mishandles a client message length, causing an out-of-bounds read/write."},
 	{ID: "CVE-2022-40259", Name: "AMI MegaRAC Redfish command injection", CVSS: 9.9, Service: "redfish", Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"}, Description: "AMI MegaRAC exposes a Redfish API operation that allows an authenticated low-privilege user to execute arbitrary commands."},
 	{ID: "CVE-2013-4031", Name: "Supermicro IPMI/BMC authentication bypass", CVSS: 9.8, Service: "ipmi", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"}, Description: "Supermicro IPMI/BMC firmware contains an authentication flaw allowing unauthorized administrative access."},
+
+	// ---- Deep-handler CVEs: protocols whose wire format we already parse
+	// but didn't yet recognize the canonical exploit for. Intel AMT carries a
+	// request signature (an empty HTTP Digest `response`); the rest are
+	// detected in-handler from the parsed protocol and catalogued advisory-only. ----
+	{ID: "CVE-2017-5689", Name: "Intel AMT digest-auth bypass", CVSS: 9.8, Service: "intel_amt",
+		Signatures: []string{"response=\"\""},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Intel AMT/ISM/SBT web UI accepts an HTTP Digest auth with an empty `response` value (the firmware compares only the bytes the client sends), granting unauthenticated administrative access (INTEL-SA-00075)."},
+	{ID: "CVE-2012-1675", Name: "Oracle TNS Poison (remote registration)", CVSS: 7.5, Service: "oracle_tns",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-306"},
+		Description: "The Oracle TNS listener accepts unauthenticated remote service registration (COMMAND=SERVICE_REGISTER_NSGR), letting an attacker register a rogue instance and divert/hijack database connections."},
+	{ID: "CVE-2017-7650", Name: "Mosquitto pattern-ACL bypass", CVSS: 8.6, Service: "mqtt",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Eclipse Mosquitto pattern-based ACLs are bypassed by a client whose username or client id is or contains the MQTT wildcard '#' or '+', granting access to topics it should not reach."},
+	{ID: "CVE-2016-8704", Name: "memcached append/prepend integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_append_prepend (binary-protocol APPEND/PREPEND) causes a heap overflow and remote code execution (Talos TALOS-2016-0219)."},
+	{ID: "CVE-2016-8705", Name: "memcached update integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_update (binary-protocol SET/ADD/REPLACE) causes a heap overflow and remote code execution (Talos TALOS-2016-0220)."},
+	{ID: "CVE-2016-8706", Name: "memcached SASL-auth integer overflow RCE", CVSS: 9.8, Service: "memcached",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in memcached process_bin_sasl_auth (binary-protocol SASL authentication) causes a heap overflow and remote code execution (Talos TALOS-2016-0221)."},
+
+	// ---- Deep-handler CVEs, round 2: SSH supply-chain + Windows LDAP.
+	// Advisory-only — these activate client-side or need the attacker's key,
+	// so they drive vulnerable-version / patch-level emulation rather than an
+	// inbound request signature. ----
+	{ID: "CVE-2024-3094", Name: "XZ Utils / liblzma sshd backdoor", CVSS: 10.0, Service: "ssh",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-506"},
+		Description: "Malicious code in xz/liblzma 5.6.0/5.6.1 hooks OpenSSH's liblzma dependency and grants pre-auth RCE to whoever holds the attacker's Ed448 key (supply-chain backdoor). Exploitation needs that private key, so this drives vulnerable-build emulation, not request-signature detection."},
+	{ID: "CVE-2024-49112", Name: "Windows LDAP integer-overflow RCE (LDAPBleed)", CVSS: 9.8, Service: "ldap",
+		Technique: "T1203", Tactic: "execution", CWE: []string{"CWE-190"},
+		Description: "A crafted CLDAP referral response triggers an integer overflow in the Windows LDAP client (the December-2024 'LDAPNightmare' pair). Client-side trigger — advertised here for an unpatched-Windows-DC fingerprint, not detected inbound."},
+	{ID: "CVE-2024-49113", Name: "Windows LDAP DoS (LDAPNightmare)", CVSS: 7.5, Service: "ldap",
+		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-190"},
+		Description: "A crafted CLDAP referral response crashes LSASS on an unpatched Windows DC (SafeBreach PoC). Client-side trigger — advertised here for patch-level emulation, not detected inbound."},
+	{ID: "CVE-2023-2953", Name: "OpenLDAP slapd NULL-deref DoS", CVSS: 7.5, Service: "ldap",
+		Technique: "T1499", Tactic: "impact", CWE: []string{"CWE-476"},
+		Description: "A crafted request triggers a NULL pointer dereference in OpenLDAP slapd ber_memalloc_x(), crashing the server (unauthenticated remote DoS). Server-side and malformed-BER-shaped — surfaced via the ldap-malformed-ber anomaly; advertised here for an unpatched-OpenLDAP fingerprint."},
+
+	// ---- OT:ICEFALL (Forescout Vedere Labs, 2022): the insecure-by-design
+	// CVEs that map onto a control protocol we actually emulate. ProConOS and
+	// Omron FINS are unauthenticated logic-download surfaces — the handlers
+	// emit the *download* CVE (…-31801 / …-31207) on the live attempt; the
+	// device-family / cleartext-password variants are advisory fingerprints.
+	// (The Emerson/GE PACSystems ICEFALL CVEs are firmware/Winloader, not the
+	// SRTP protocol ge_srtp emulates, so they are deliberately not bolted on.) ----
+	{ID: "CVE-2022-31801", Name: "Phoenix Contact ProConOS unauthenticated logic download", CVSS: 9.8, Service: "proconos",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "ProConOS / ProConOS eCLR / MULTIPROG do not verify the authenticity of downloaded IEC-61131 logic, letting an unauthenticated remote attacker upload arbitrary control logic and gain full control of the runtime (OT:ICEFALL)."},
+	{ID: "CVE-2022-31800", Name: "Phoenix Contact Classic Line logic upload", CVSS: 9.8, Service: "proconos",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "Phoenix Contact Classic Line controllers (AXC 1050/3050 and OEM variants) accept unauthenticated, unverified logic uploads, allowing remote code execution on the PLC (OT:ICEFALL)."},
+	{ID: "CVE-2022-31207", Name: "Omron SYSMAC FINS unauthenticated logic download", CVSS: 5.9, Service: "fins",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-345"},
+		Description: "Omron SYSMAC CS/CJ/CP PLCs download projects and control logic over FINS without cryptographic authentication, letting an attacker manipulate the transmitted object code and execute arbitrary logic on the PLC (OT:ICEFALL)."},
+	{ID: "CVE-2022-31204", Name: "Omron SYSMAC FINS cleartext UM-protection password", CVSS: 6.5, Service: "fins",
+		Technique: "T0859", Tactic: "credential-access", CWE: []string{"CWE-319"},
+		Description: "Omron SYSMAC CS/CJ/CP PLCs transmit the UM-protection password in cleartext inside FINS commands, exposing the credential that gates sensitive engineering operations (OT:ICEFALL)."},
+
+	// ---- TRITON / TRISIS: the safety-instrumented-system attack. The
+	// tristation handler emits this on a reprogramming message. ----
+	{ID: "CVE-2018-8872", Name: "Schneider Triconex Tricon memory write (TRITON/TRISIS)", CVSS: 9.0, Service: "tristation",
+		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-119"},
+		Description: "Triconex Tricon MP 3008 (firmware 10.0-10.4) system calls read/write control-program memory without verification, letting an attacker copy arbitrary data anywhere in memory — the safety-controller code-injection flaw the TRITON/TRISIS malware used to reprogram the SIS over the TriStation protocol (UDP 1502)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2517,6 +2584,22 @@ var cveExtra = map[string]struct {
 	"CVE-2025-53020": {[]string{"CWE-400", "CWE-770"}, "cpe:2.3:a:apache:http_server:*", 0.40},
 	"CVE-2026-49975": {[]string{"CWE-400", "CWE-409", "CWE-770"}, "cpe:2.3:a:ietf:http:2.0", 0.50},
 	"CVE-2024-3596":  {[]string{"CWE-924", "CWE-328"}, "cpe:2.3:a:ietf:radius:*", 0.30},
+	// Deep-handler CVEs (intel_amt / oracle_tns / mqtt / memcached).
+	"CVE-2017-5689": {[]string{"CWE-287"}, "cpe:2.3:o:intel:active_management_technology_firmware:*", 0.94},
+	"CVE-2012-1675": {[]string{"CWE-306"}, "cpe:2.3:a:oracle:database_server:*", 0.15},
+	"CVE-2017-7650": {[]string{"CWE-287"}, "cpe:2.3:a:eclipse:mosquitto:*", 0.05},
+	"CVE-2016-8704": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8705": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8706": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2024-3094":  {[]string{"CWE-506"}, "cpe:2.3:a:tukaani:xz:*", 0.10},
+	"CVE-2024-49112": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.30},
+	"CVE-2024-49113": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.40},
+	"CVE-2023-2953":  {[]string{"CWE-476"}, "cpe:2.3:a:openldap:openldap:*", 0.10},
+	"CVE-2022-31801": {[]string{"CWE-345"}, "cpe:2.3:a:phoenixcontact:proconos:*", 0.03},
+	"CVE-2022-31800": {[]string{"CWE-345"}, "cpe:2.3:o:phoenixcontact:axc_1050_firmware:*", 0.03},
+	"CVE-2022-31207": {[]string{"CWE-345"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
+	"CVE-2022-31204": {[]string{"CWE-319"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
+	"CVE-2018-8872":  {[]string{"CWE-119"}, "cpe:2.3:o:schneider-electric:tricon_3008_firmware:*", 0.02},
 }
 
 func init() {
