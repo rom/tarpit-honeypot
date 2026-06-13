@@ -742,8 +742,19 @@ type Filter struct {
 	ExcludeDstPorts  []int
 	ASNs             []int
 	ExcludeASNs      []int
-	Limit            int
-	Offset           int
+	// Free-text GeoIP / network dimensions filtered via json_extract over
+	// meta_json (these have no dedicated column): geo_city, geo_country_name,
+	// asn_org. Exact-match IN / NOT IN, powering the events + charts + stats
+	// pivots off the city / country-name / network-org tables. Substring
+	// SEARCH over the same fields is the /search page's Go-side job.
+	Cities              []string
+	ExcludeCities       []string
+	CountryNames        []string
+	ExcludeCountryNames []string
+	ASNOrgs             []string
+	ExcludeASNOrgs      []string
+	Limit               int
+	Offset              int
 	// NoPayload skips the captured payload + banner columns (the per-row banner
 	// subquery and the base64 payload blob). Aggregation scans that only need
 	// the metadata columns (the dashboard enrichment) set this to read far less.
@@ -905,6 +916,37 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		if len(f.ExcludeASNs) > 0 {
 			q += " AND (" + asnExpr + " IS NULL OR " + asnExpr + " NOT IN (" + strings.Repeat("?,", len(f.ExcludeASNs)-1) + "?))"
 			for _, v := range f.ExcludeASNs {
+				args = append(args, v)
+			}
+		}
+	}
+	// Allowlisted free-text meta dimensions (geo city / country name / ASN org)
+	// filtered via json_extract. The paths are fixed literals (never operator
+	// input); the values are always bound as parameters, so this is injection-
+	// safe. Exclusion keeps rows that carry no value (json_extract → NULL),
+	// matching the ASN behaviour above.
+	for _, mf := range []struct {
+		path     string
+		in       []string
+		notIn    []string
+	}{
+		{"$.geo_city", f.Cities, f.ExcludeCities},
+		{"$.geo_country_name", f.CountryNames, f.ExcludeCountryNames},
+		{"$.asn_org", f.ASNOrgs, f.ExcludeASNOrgs},
+	} {
+		if len(mf.in) == 0 && len(mf.notIn) == 0 {
+			continue
+		}
+		expr := "CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '" + mf.path + "') END"
+		if len(mf.in) > 0 {
+			q += " AND " + expr + " IN (" + strings.Repeat("?,", len(mf.in)-1) + "?)"
+			for _, v := range mf.in {
+				args = append(args, v)
+			}
+		}
+		if len(mf.notIn) > 0 {
+			q += " AND (" + expr + " IS NULL OR " + expr + " NOT IN (" + strings.Repeat("?,", len(mf.notIn)-1) + "?))"
+			for _, v := range mf.notIn {
 				args = append(args, v)
 			}
 		}

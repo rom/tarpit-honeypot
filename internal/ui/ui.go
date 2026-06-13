@@ -2377,6 +2377,17 @@ func parseFilter(r *http.Request) store.Filter {
 			f.ASNs, f.ExcludeASNs = iincl, iexcl
 		}
 	}
+	// Free-text GeoIP / network dimensions (comma-separated, '!'-negation): the
+	// city / country-name / network-org pivots off the charts + stats tables.
+	if v := q.Get("geo_city"); v != "" {
+		f.Cities, f.ExcludeCities = splitFilterTokens(v)
+	}
+	if v := q.Get("geo_country_name"); v != "" {
+		f.CountryNames, f.ExcludeCountryNames = splitFilterTokens(v)
+	}
+	if v := q.Get("asn_org"); v != "" {
+		f.ASNOrgs, f.ExcludeASNOrgs = splitFilterTokens(v)
+	}
 	if v := q.Get("q"); v != "" {
 		f.Text = v
 	}

@@ -1176,9 +1176,12 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><td>after (UTC)</td><td><input type="text" name="after" value="{{ .Q.After }}" placeholder="2006-01-02 or …T15:04" size="20"></td>
       <td>before (UTC)</td><td><input type="text" name="before" value="{{ .Q.Before }}" placeholder="2006-01-02T15:04" size="20"></td></tr>
   <tr><td>on (UTC day)</td><td><input type="text" name="on" value="{{ .Q.On }}" placeholder="2006-01-02" size="20"></td>
-      <td>country</td><td><input type="text" name="country" value="{{ .Q.Country }}" size="6"></td></tr>
+      <td>country (code)</td><td><input type="text" name="country" value="{{ .Q.Country }}" placeholder="US" size="6"></td></tr>
   <tr><td>anomaly / technique</td><td><input type="text" name="tag" value="{{ .Q.Tag }}" placeholder="snmp-set / T1110 …" size="18"></td>
       <td>ASN</td><td><input type="text" name="asn" value="{{ .Q.ASN }}" placeholder="AS13335" size="10"></td></tr>
+  <tr><td>country name</td><td><input type="text" name="country_name" value="{{ .Q.CountryName }}" placeholder="United States" size="18"></td>
+      <td>city</td><td><input type="text" name="city" value="{{ .Q.City }}" placeholder="Ashburn" size="16"></td></tr>
+  <tr><td>ASN org</td><td colspan="3"><input type="text" name="asn_org" value="{{ .Q.ASNOrg }}" placeholder="Cloudflare / Google / Amazon …" size="32"></td></tr>
   <tr><td>tool</td><td><input type="text" name="tool" value="{{ .Q.Tool }}" placeholder="nmap / sqlmap / …" size="16"></td>
       <td>fingerprint</td><td><input type="text" name="fp" value="{{ .Q.Fingerprint }}" placeholder="ja3 / ja4 / hassh" size="20"></td></tr>
   <tr><td>source family</td><td colspan="3"><select name="family">

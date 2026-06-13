@@ -76,6 +76,8 @@ type dashboard struct {
 	ASNs      []barRow
 	Tools     []barRow
 	Handlers  []barRow
+	Cities    []barRow // top source cities (geo_city)
+	ASNOrgs   []barRow // top networks by operator name (asn_org)
 	// Attacks ranks the most-seen ATT&CK techniques (the behaviour — the
 	// "how"); CVEs ranks the most-probed vulnerabilities (the specific weakness
 	// — the "what"). They are deliberately two lists: a single technique spans
@@ -129,7 +131,7 @@ func scopeEventLinks(d *dashboard, rangeKey string) {
 	for i := range d.Counters {
 		d.Counters[i].Href = add(d.Counters[i].Href)
 	}
-	for _, rows := range [][]barRow{d.Severity, d.Rules, d.Tactics, d.Countries, d.ASNs, d.Tools, d.Handlers} {
+	for _, rows := range [][]barRow{d.Severity, d.Rules, d.Tactics, d.Countries, d.ASNs, d.Tools, d.Handlers, d.Cities, d.ASNOrgs} {
 		for i := range rows {
 			rows[i].Href = add(rows[i].Href)
 		}
@@ -237,6 +239,7 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	tac, country, asn, tool, handler := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	tech, cve := map[string]int{}, map[string]int{}
 	target := map[string]int{}
+	city, org := map[string]int{}, map[string]int{}
 	for _, ev := range evs {
 		tag := eventTag(ev)
 		for _, t := range tag.Tactics {
@@ -250,6 +253,12 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 		}
 		if c, _ := ev.Meta["geo_country"].(string); c != "" {
 			country[c]++
+		}
+		if c, _ := ev.Meta["geo_city"].(string); c != "" {
+			city[c]++
+		}
+		if o, _ := ev.Meta["asn_org"].(string); o != "" {
+			org[o]++
 		}
 		if a := asnLabel(ev.Meta); a != "" {
 			asn[a]++
@@ -280,6 +289,10 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 			d.ASNs[i].Href = "/events?asn=" + num
 		}
 	}
+	// City + network-operator (asn_org) rollups, each pivoting to the events
+	// list filtered by that meta dimension.
+	d.Cities = topBars(city, 10, "/events?geo_city=")
+	d.ASNOrgs = topBars(org, 10, "/events?asn_org=")
 	d.Tools = topBars(tool, 10, "/events?tool=")
 	// Handlers + target IPs are normally sourced from the SQL summary
 	// (buildDashboard, full-window). Fall back to this sampled count only when a

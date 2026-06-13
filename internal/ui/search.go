@@ -59,6 +59,9 @@ type searchQuery struct {
 	Tag         string // anomaly / ATT&CK technique substring
 	Fingerprint string // ja3 / ja4 / ja4h / ja3s / hassh value
 	ASN         string
+	ASNOrg      string // asn_org (network operator name) — substring match
+	CountryName string // geo_country_name (full name) — substring match
+	City        string // geo_city — substring match
 	Family      string // address family of the source IP: "ipv6" / "ipv4"
 	Text        string
 	HasPayload  bool
@@ -101,6 +104,9 @@ func parseSearchQuery(r *http.Request) searchQuery {
 		Tag:         g("tag"),
 		Fingerprint: g("fp"),
 		ASN:         g("asn"),
+		ASNOrg:      g("asn_org"),
+		CountryName: searchOr(g("country_name"), g("geo_country_name")),
+		City:        searchOr(g("city"), g("geo_city")),
 		Family:      g("family"),
 		Text:        g("q"),
 		HasPayload:  g("has_payload") == "1",
@@ -253,7 +259,16 @@ func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Ev
 				continue
 			}
 		}
+		if q.CountryName != "" && !substrFold(metaString(ev.Meta, "geo_country_name"), q.CountryName) {
+			continue
+		}
+		if q.City != "" && !substrFold(metaString(ev.Meta, "geo_city"), q.City) {
+			continue
+		}
 		if asn > 0 && metaInt(ev.Meta, "asn") != asn {
+			continue
+		}
+		if q.ASNOrg != "" && !substrFold(metaString(ev.Meta, "asn_org"), q.ASNOrg) {
 			continue
 		}
 		if q.Tool != "" && !containsSubstrFold(metaStrings(ev.Meta, "tools"), q.Tool) {
@@ -458,6 +473,33 @@ func containsSubstrFold(xs []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// metaString returns the string value at key, or "" (also handling the rare
+// case where a numeric/enriched field arrived as a non-string).
+func metaString(meta map[string]any, key string) string {
+	switch t := meta[key].(type) {
+	case string:
+		return t
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", t)
+	}
+}
+
+// substrFold reports whether needle occurs in haystack, case-insensitively.
+func substrFold(haystack, needle string) bool {
+	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
+}
+
+// searchOr returns a if non-empty, else b — so the search form accepts both the
+// canonical param (city) and the meta-key alias (geo_city) a pivot link carries.
+func searchOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

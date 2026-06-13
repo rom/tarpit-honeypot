@@ -25,8 +25,39 @@ directory at **2000 rules**.
 
 > **Quick start:** copy [`configs/rules/`](../configs/rules/) into your
 > `rules_dir` — it ships an annotated [`example.yml`](../configs/rules/example.yml)
-> plus five ready-to-run packs (credential access, web exploitation, recon /
-> scanners, OT/ICS control, exfil / C2 — see [§ Shipped rule packs](#shipped-rule-packs)).
+> plus seven ready-to-run packs (credential access, web exploitation, recon /
+> scanners, OT/ICS control, exfil / C2, malware artifacts, appliance / Lua —
+> see [§ Shipped rule packs](#shipped-rule-packs)).
+
+> Not sure whether your idea wants a detection rule, a Lua persona, or a YARA
+> rule? [`scripting.md`](scripting.md) is the map of how the three layers divide
+> the work.
+
+## Syntax at a glance
+
+```yaml
+- id: unique-rule-id            # required, unique across all files
+  title: Human title            # shown in the /rules UI
+  description: optional          # quote it if it contains a colon-space ": "
+  severity: high                # low|medium|high|critical — only ever RAISES
+  tags: [custom:foo, attack.t1190]   # added as anomaly markers (attack.* → chip)
+  match:                        # ── every key ANDs; a list value ORs ──
+    handler: [http, https]      #   field: v          equals (case-insensitive)
+    meta.user_agent|contains: sqlmap   # field|MOD: v  → contains / prefix / suffix
+    meta.http_uri|re: "(?i)\\.\\./"     #   |re   RE2 regex (case-SENSITIVE; (?i) to fold)
+    dest_port|gt: "1024"         #   |gt / |lt   numeric compare
+    anomaly: webapp:cmdi         #   anomaly      one of the event's markers
+    meta.bearer_token|exists: true   # |exists  field present & non-empty
+```
+
+- **Fields:** `handler`, `rule_id`, `proto`, `severity`, `source_ip`,
+  `dest_ip`, `dest_port`, `banner`, `sensor`, `anomaly`, `mitre`, `tactic`,
+  `meta.<dotted.path>` (+ aliases — full table below).
+- **Modifiers:** *(none)*=equals · `contains` · `prefix` · `suffix` · `re`
+  (RE2) · `gt`/`lt` · `exists`. All case-insensitive **except `re`** — RE2, no
+  look-around / backrefs, use `(?i)`.
+- **Semantics:** keys AND, list values OR, exclusion is via tagging + routing
+  (rules only ever *raise* severity — there is no "not" operator).
 
 ## What a match does
 
@@ -227,6 +258,8 @@ actually emit:
 | [`recon-and-scanners.yml`](../configs/rules/recon-and-scanners.yml) | enumeration / tooling | scanner User-Agents, behaviour-based tool fingerprints, unknown-protocol probes, robots/sitemap traps, SNMP default community, UDP amplification probes, a known-bad-JA3 template |
 | [`ot-ics-control.yml`](../configs/rules/ot-ics-control.yml) | OT / ICS control | PLC STOP, program/logic download, Modbus & generic writes, safety-controller (TRITON) manipulation, restart/reset, fieldbus-over-IP recon, enumeration, untrusted-source template |
 | [`exfil-and-c2.yml`](../configs/rules/exfil-and-c2.yml) | exfiltration / C2 | DNS tunneling / DGA / TXT-exfil / long encoded labels, SSRF callback, malware capture, DB cross-collection exfil |
+| [`malware-artifacts.yml`](../configs/rules/malware-artifacts.yml) | captured artifacts | any YARA hit, C2-framework families, xz supply-chain backdoor, packed / archive-wrapped executables, cloud creds in a payload (ties into the YARA engine, [`yara.md`](yara.md)) |
+| [`appliance-and-lua.yml`](../configs/rules/appliance-and-lua.yml) | appliance / persona exploitation | CVE-path hits on the fake appliances, RCE staging, Log4Shell, Cl0p/MOVEit, secret-file harvest — driven by the `lua:` flags the [Lua personas](lua.md) raise |
 
 Several rules (Log4Shell, CVE promotion, OT control) deliberately overlap the
 built-in detectors — they're there to show the pattern and to let you re-tag /

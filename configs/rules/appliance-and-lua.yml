@@ -1,0 +1,51 @@
+# Appliance / Lua-persona exploitation rules (detection-as-code).
+#
+# The `lua` dynamic personas (configs/scripts/*.lua) emit `lua:<flag>` markers
+# when an attacker hits a fake enterprise app / appliance, including specific
+# CVE flags on the exploit paths. These rules promote the exploitation signals
+# regardless of which persona fired them.
+#
+#   ATT&CK: T1190 exploit public-facing app, T1505.003 web shell,
+#   T1552.001 credentials in files.
+
+- id: lua-appliance-cve
+  title: Known-CVE exploit path hit on a fake appliance / app
+  description: >
+    Any Lua persona raised a CVE-specific flag (Flink CVE-2020-17519, Kafka
+    Connect CVE-2023-25194, Laravel Ignition CVE-2021-3129, Crowd
+    CVE-2019-11580, GoCD CVE-2021-43287, MOVEit CVE-2023-34362, …).
+  severity: critical
+  tags: [custom:appliance-cve, attack.t1190]
+  match:
+    anomaly|re: "(?i)lua:.*cve-[0-9]"
+
+- id: lua-rce-staging
+  title: Remote-code-execution staging on a fake appliance
+  description: Jar upload, YARN app submit, Ignition solution, or Crowd plugin upload.
+  severity: critical
+  tags: [custom:rce-staging, attack.t1190]
+  match:
+    anomaly: [lua:flink-jar-upload, lua:hadoop-yarn-app-submit, lua:laravel-cve-2021-3129, lua:crowd-cve-2019-11580]
+
+- id: lua-log4shell-appliance
+  title: Log4Shell JNDI lookup against a decoy appliance
+  severity: critical
+  tags: [custom:log4shell, attack.t1190]
+  match:
+    anomaly|contains: log4shell
+
+- id: lua-cl0p-moveit
+  title: Cl0p MOVEit exploitation (webshell / SQLi)
+  description: MOVEit human2.aspx webshell access or the CVE-2023-34362 SQLi surface.
+  severity: critical
+  tags: [custom:cl0p, attack.t1190]
+  match:
+    anomaly: [lua:moveit-cl0p-webshell, lua:moveit-cve-2023-34362]
+
+- id: lua-secret-file-harvest
+  title: Secret-file harvest on a fake app (.env / config)
+  description: A Laravel /.env (or similar) fetch — APP_KEY / DB / cloud-credential bait.
+  severity: medium
+  tags: [custom:secret-file, attack.t1552.001]
+  match:
+    anomaly: [lua:laravel-env-probe]
