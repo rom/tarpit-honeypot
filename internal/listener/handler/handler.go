@@ -202,6 +202,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return newModbusSecurity(deps)
 	case "neo4j":
 		return &neo4j{}, nil
+	case "rethinkdb":
+		return &rethinkdb{}, nil
 	case "s7":
 		return &s7{}, nil
 	case "s7comm_plus":
