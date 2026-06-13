@@ -19,6 +19,7 @@ var names = map[int]string{
 	1217: "codesys", 1433: "mssql", 1521: "oracle-tns", 1723: "pptp", 1883: "mqtt",
 	1900: "ssdp", 1911: "fox", 1962: "pcworx", 2049: "nfs", 2375: "docker",
 	2376: "docker-tls", 2404: "iec104", 3268: "globalcatalog", 3269: "globalcatalog-ssl",
+	2427: "mgcp", 2727: "mgcp-ca",
 	3306: "mysql", 3389: "rdp", 3671: "knx", 3782: "iccp-secure", 4460: "nts-ke", 4840: "opcua", 5060: "sip",
 	5094: "hartip", 5222: "xmpp", 5353: "mdns", 5355: "llmnr", 5432: "postgres",
 	5450: "osisoft-pi",
@@ -28,7 +29,7 @@ var names = map[int]string{
 	9200: "elasticsearch", 9600: "fins", 10001: "atg", 11211: "memcached",
 	10250: "kubelet", 10255: "kubelet-ro",
 	4712: "c37118", 8193: "focas", 18245: "ge-srtp", 20000: "dnp3",
-	20547: "proconos", 27017: "mongodb", 28015: "rethinkdb", 44818: "ethernet/ip",
+	20547: "proconos", 27017: "mongodb", 28015: "rethinkdb", 34980: "ethercat", 44818: "ethernet/ip",
 	47808: "bacnet", 48898: "ads", 48899: "ads-discovery",
 	7547: "tr069", 5473: "tr069-alt",
 }
