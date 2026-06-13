@@ -41,6 +41,7 @@ var tcpHandlers = map[string]bool{
 	"dns":     true, // DNS over TCP (zone transfers, truncation fallback, tunneling)
 	"mongodb": true, "elasticsearch": true,
 	"neo4j": true, "rethinkdb": true,
+	"kubelet": true, "kubelets": true, // kubelet API (10255 plaintext / 10250 TLS)
 	// implicit-TLS variants (993/995/465/636/8883/990): the plaintext handler
 	// run over a TLS handshake (see handler.tlsWrap).
 	"smtps": true, "imaps": true, "pop3s": true,

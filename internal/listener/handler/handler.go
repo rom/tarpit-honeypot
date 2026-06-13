@@ -204,6 +204,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &neo4j{}, nil
 	case "rethinkdb":
 		return &rethinkdb{}, nil
+	case "kubelet":
+		return &kubelet{}, nil
+	case "kubelets":
+		return newTLSWrap("kubelet", "kubelets", deps)
 	case "s7":
 		return &s7{}, nil
 	case "s7comm_plus":

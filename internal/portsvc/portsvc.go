@@ -26,6 +26,7 @@ var names = map[int]string{
 	7687: "neo4j",
 	6379: "redis", 8080: "http-alt", 8443: "https-alt", 9100: "jetdirect/pjl",
 	9200: "elasticsearch", 9600: "fins", 10001: "atg", 11211: "memcached",
+	10250: "kubelet", 10255: "kubelet-ro",
 	4712: "c37118", 8193: "focas", 18245: "ge-srtp", 20000: "dnp3",
 	20547: "proconos", 27017: "mongodb", 28015: "rethinkdb", 44818: "ethernet/ip",
 	47808: "bacnet", 48898: "ads", 48899: "ads-discovery",
