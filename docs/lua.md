@@ -3,9 +3,14 @@
 `tarpit-honeypot` ships a `lua` protocol handler that lets you define a fake
 service — a "persona" — as a small [Lua](https://www.lua.org/) script instead of
 Go code. A persona reads what an attacker sends, records the interesting parts,
-flags the attack, and writes back a believable response. **200 personas ship in
+flags the attack, and writes back a believable response. **240 personas ship in
 the box** (under [`configs/scripts/`](../configs/scripts/)); you can add your own
 without recompiling.
+
+> New here? [`scripting.md`](scripting.md) is the big-picture map of how Lua,
+> YAML and YARA divide the work in a deployment — read it first if you're not
+> sure whether your idea wants a Lua persona, a `scripted` YAML service, or a
+> detection rule.
 
 ## What Lua is
 
@@ -14,6 +19,58 @@ with [gopher-lua](https://github.com/yuin/gopher-lua) — a pure-Go Lua 5.1 VM �
 so a script runs in-process with no external interpreter and no extra
 dependencies. You do not need to know Lua deeply: a persona is usually 20–60
 lines of straight-line "read a line, match a path, write a response" code.
+
+## Lua in 60 seconds (syntax cheat-sheet)
+
+Enough Lua to write a persona without prior Lua experience:
+
+```lua
+-- comments start with two dashes
+local x = 5                 -- 'local' scopes a variable (always use it)
+local s = "hi" .. "there"   -- '..' concatenates strings; '#s' is length
+local t = {"a", "b", "c"}   -- tables are the only data structure; 1-INDEXED
+t[1]                        --   → "a"   (not t[0]!)
+local m = {name = "db", port = 3306}   -- tables double as maps:  m.name / m["name"]
+
+if x > 3 then  ... elseif x == 0 then ... else ... end
+for i = 1, 10 do ... end                 -- numeric loop, inclusive
+for _, v in ipairs(t) do ... end         -- iterate a list
+while cond do ... break ... end
+local function f(a, b) return a + b end   -- functions
+
+tostring(3306)   tonumber("3306")        -- conversions; nil if not a number
+nil  true  false                          -- 'nil' is absence; only nil/false are falsy
+```
+
+**The one big gotcha: Lua patterns are NOT regular expressions.** `string.match`
+/ `:find` / `:gsub` use Lua's own lightweight pattern syntax. It is *similar* but
+different — no alternation, no `{n,m}`, and the escape char is `%`, not `\`:
+
+| Lua pattern | Meaning | Regex equivalent |
+|---|---|---|
+| `%d %a %s %w` | digit / letter / space / alphanumeric | `\d \a \s \w` |
+| `%u %l %p` | upper / lower / punctuation | `[A-Z] [a-z]` … |
+| `.` | any character | `.` |
+| `%.` `%-` `%(` | a **literal** `.` `-` `(` (escape magic chars with `%`) | `\.` `\-` `\(` |
+| `*` `+` `-` `?` | 0+ (greedy) / 1+ / 0+ (lazy) / optional | `*` `+` `*?` `?` |
+| `^pat` `pat$` | anchor to start / end of subject | `^` `$` |
+| `( )` | a capture (returned by `match`) | capture group |
+| `[%d.]` | a class set (digit or dot) | `[0-9.]` |
+
+There is **no `|` alternation and no `{2,5}`** — write alternatives as separate
+`match` attempts. Common idioms a persona uses:
+
+```lua
+local method, path = reqline:match("^(%u+)%s+(%S+)")   -- "GET /x"  → "GET", "/x"
+local n = header:match("^[Cc]ontent%-[Ll]ength:%s*(%d+)")   -- note %- for the dash
+local clean = line:gsub("[\r\n]", "")                  -- strip CR/LF (returns string, count)
+if path:find("/admin", 1, true) then ... end           -- plain substring (4th arg true = no patterns)
+local user = body:match("username=([^&]+)")            -- capture up to the next '&'
+```
+
+(`:find(needle, 1, true)` does a *plain* substring search — use it whenever the
+needle contains magic characters like `.` or `-` and you don't want pattern
+semantics.)
 
 ## How it works with this tool
 
@@ -177,7 +234,7 @@ end
 
 ## The personas that ship
 
-200 personas ship under [`configs/scripts/`](../configs/scripts/) — run
+240 personas ship under [`configs/scripts/`](../configs/scripts/) — run
 `ls configs/scripts/` for the full list. They span:
 
 - **Web apps / CMS**: phpMyAdmin, Adminer, WordPress, Drupal, Joomla, TYPO3,

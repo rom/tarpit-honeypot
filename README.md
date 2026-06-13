@@ -623,7 +623,9 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 - [`docs/archetypes.md`](docs/archetypes.md) — the full archetype catalog: every device's services/protocols and the CVEs it emulates.
 - [`docs/attribution.md`](docs/attribution.md) — the ATT&CK / D3FEND / CVE / CWE / CPE / EPSS mappings on every event, the scanner-detection layers, and the client classifiers (tool/automation fingerprinting, JA3/JA4/JA3S/HASSH/JA4H).
 - [`docs/ot.md`](docs/ot.md) — the ICS/OT decoy suite in depth: every supported protocol + port, the commands/operations emulated, the attacker-`intent` + ATT&CK-for-ICS mapping, the deception model (reads vs writes), reflection-safety, the role bundles + industrial archetypes, and the limitations.
-- [`docs/lua.md`](docs/lua.md) — writing Lua service personas (API, sandbox limits, recipes, the 230 shipped personas).
+- [`docs/scripting.md`](docs/scripting.md) — how YAML, Lua and YARA make the sensor dynamic without recompiling: what each does, where it plugs in, how they compose, and which to reach for (the umbrella over the three guides below).
+- [`docs/lua.md`](docs/lua.md) — writing Lua service personas (a Lua-language cheat-sheet, the API, sandbox limits, recipes, the 240 shipped personas).
+- [`docs/detection-rules.md`](docs/detection-rules.md) — detection-as-code: Sigma-style YAML rules matched against every event (syntax, fields/modifiers, recipes, the shipped rule packs).
 - [`docs/attack-tools.md`](docs/attack-tools.md) — the scanners / attack tools the sensor fingerprints and how.
 - [`docs/yara.md`](docs/yara.md) — the CGO-free YARA engine that classifies captured artifacts: the built-in rule pack (incl. deep IoT/IIoT/OT/building-automation coverage), the supported subset + modules, per-rule severity, loading your own `.yar` rules, and the `analyze` CLI.
 - [`docs/hardening.md`](docs/hardening.md) — the layered self-confinement model (privilege drop, seccomp, Landlock, AppArmor, SELinux, systemd).

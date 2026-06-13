@@ -205,10 +205,81 @@ It's read-only and is installed to `/usr/local/share/tarpit-honeypot/scripts/`.
 
 ## systemd
 
-The shipped unit (`packaging/systemd/tarpit-honeypot.service`) adds
-`NoNewPrivileges=true`, `ProtectSystem=strict` with an explicit
-`ReadWritePaths`, `ProtectHome`, `PrivateTmp/Devices`,
-`ProtectKernelTunables/Modules`, `RestrictNamespaces`, `LockPersonality`,
-and a `CapabilityBoundingSet` of just `CAP_NET_BIND_SERVICE CAP_NET_RAW`.
-This complements `sensor.sandbox`: systemd confines from outside the
-process at start, the sandbox confines from inside after privilege drop.
+The shipped unit (`packaging/systemd/tarpit-honeypot.service`) is the
+*outside-the-process* half of the defense: systemd asks the kernel to confine
+the service at launch, before a single byte of attacker input is read, while
+`sensor.sandbox` (seccomp + Landlock) confines from *inside* after privilege
+drop. They overlap on purpose — if one layer is unavailable on a given kernel,
+the other still holds. Here is what each block of the unit actually does.
+
+**Identity & lifecycle.**
+
+- `User=honey` / `Group=honeypot` — runs as the unprivileged service account
+  `scripts/install.sh` creates and that owns `/var/lib/tarpit-honeypot`. The
+  sensor also drops to this user itself (`sensor.drop_user`); setting it here
+  too means it never even starts as root.
+- `ExecStart … run -c /etc/tarpit-honeypot/config.yaml` — the daemon.
+- `ExecReload=/bin/kill -HUP $MAINPID` — **`systemctl reload tarpit-honeypot`
+  re-reads the config and the `detection.rules_dir` live**, with no restart and
+  no dropped connections. This is how you ship a new YAML detection rule or
+  tweak a handler without a maintenance window.
+- `Restart=on-failure` + `RestartSec=5s` — crash-restart with a small backoff.
+- `SyslogIdentifier=tarpit-honeypot` — tags stderr so the rsyslog drop-in can
+  route the daemon log (and the CEF event stream) into
+  `/var/log/tarpit-honeypot/` instead of `/var/log/messages`.
+
+**Capabilities (least privilege).**
+
+- `AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW` — grants *exactly* the
+  two capabilities the sensor needs (bind ports < 1024; open AF_PACKET / raw
+  sockets for the L2 responders + ICMP) without ever being root.
+- `CapabilityBoundingSet=…` (the same two) — caps the **ceiling**: even a
+  compromised process can never acquire any other capability (no
+  `CAP_SYS_ADMIN`, `CAP_SYS_MODULE`, etc.).
+- `NoNewPrivileges=true` — no child can gain privileges via setuid/setgid or
+  file capabilities. (This is also why the SELinux domain must be pinned — see
+  below.)
+
+**SELinux domain pinning.** `SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0`
+forces the confined domain because `NoNewPrivileges=yes` blocks the automatic
+`init_t → tarpit_honeypot_t` transition. The leading `-` makes it non-fatal when
+SELinux is off or the module isn't installed, so the unit still starts there.
+
+**Filesystem & kernel confinement.**
+
+- `ProtectSystem=strict` — the **entire filesystem is read-only** to the
+  service, except the paths in `ReadWritePaths=/var/lib/tarpit-honeypot
+  /var/log/tarpit-honeypot`. A parser bug cannot write `/etc`, `/usr`, a cron
+  dir, or an SSH `authorized_keys`.
+- `ProtectHome=true` — `/home`, `/root`, `/run/user` are invisible (empty).
+- `PrivateTmp=true` — a private `/tmp` + `/var/tmp`, unshared with the host
+  (no `/tmp` dropper handoff).
+- `PrivateDevices=true` — a minimal `/dev` (null/zero/random only), no raw disk
+  or other physical devices.
+- `ProtectKernelTunables=true` / `ProtectKernelModules=true` /
+  `ProtectControlGroups=true` — `/proc/sys`, `/sys`, the cgroup tree and module
+  loading are read-only or denied: no kernel tuning, no module insertion.
+- `RestrictNamespaces=true` — cannot create new namespaces (no container /
+  sandbox-escape primitives).
+- `LockPersonality=true` — pins the execution domain (blocks `personality()`
+  ABI-emulation tricks).
+- `RestrictRealtime=true` — no realtime scheduling (can't starve the host).
+- `SystemCallArchitectures=native` — drops non-native syscall ABIs (e.g. the
+  32-bit compat layer), shrinking the kernel attack surface and complementing
+  the in-process seccomp denylist.
+
+Verify the confinement actually applied with `systemd-analyze security
+tarpit-honeypot` (it scores each directive and flags anything missing).
+
+**Companion units.** The package also ships timers that
+`scripts/install.sh` enables: `tarpit-enrichment.timer` (refreshes the
+GeoIP / ASN / threat-intel data the geo/ASN search and dashboards use) and
+`tarpit-cert-renew.timer` (Let's Encrypt renewal for the TLS handlers + web
+UI). Both run their `.service` one-shots on a schedule.
+
+**Multiple instances on one host.** `tarpit-honeypot@.service` is a
+template unit: `systemctl enable --now tarpit-honeypot@dmz` runs a second,
+independently-confined instance reading
+`/etc/tarpit-honeypot/dmz.yaml` (give it its own `data_dir` and bind
+addresses). See [FAQ → running multiple sensors](FAQ.md) for the full
+multi-instance / multi-IP recipe.

@@ -202,10 +202,38 @@ SMTP, MISP, intel pull) dial out — and those go through the `egress` allowlist
 with `egress.enforce` adding an OS-level backstop. A blocked dial is logged as
 `egress:denied`.
 
-**Can I run several instances on one host?**
-Yes — give each its own `sensor.data_dir` and non-overlapping binds (listeners +
-UI). They're independent processes; aggregate them with a fleet `ingest:` node if
-you want one view.
+**Can I run several sensors on one server?**
+Yes, two ways. The lightest is **one sensor, many virtual hosts** — a single
+process serves a whole subnet of distinct decoy machines via the honeynet (see
+[Honeynets & virtual hosts](#honeynets--virtual-hosts)), no extra instances
+needed. When you genuinely want **separate processes** (one per physical NIC /
+security zone, each with its own database, certs and UI), use the shipped
+systemd **template unit**:
+
+```
+sudo scripts/add-instance.sh dmz 203.0.113.10   # provisions instance "dmz"
+systemctl enable --now tarpit-honeypot@dmz
+```
+
+`tarpit-honeypot@<name>` reads `/etc/tarpit-honeypot/instances/<name>.yaml`,
+keeps its state under `/var/lib/tarpit-honeypot/<name>/` (own `events.db`,
+deployment-id, certs, captures), and is sandboxed independently. Give each
+instance its own `data_dir`, a unique `ui.bind` port, and non-overlapping
+listener binds. They're independent processes; aggregate them into one view with
+a fleet `ingest:` node. See [`hardening.md`](hardening.md#systemd) for the unit.
+
+**How do I pick which IP addresses the sensor serves?**
+Three levers, smallest to largest scope:
+
+- **Per listener** — put the address in `bind:` (`bind: 203.0.113.10:22` for one
+  IP; `0.0.0.0:22` or `[::]:22` for all IPv4 / all IPv6+IPv4).
+- **Sensor-wide** — `sensor.listen_addresses: [203.0.113.10, 203.0.113.11]`
+  pins every wildcard listener to just those addresses (this is what the per-IP
+  instance pattern above uses).
+- **Without touching the OS** — claim *unused* IPs with the honeynet
+  `arp_responder`: the sensor answers ARP for free addresses on the VLAN and
+  serves them as virtual hosts, no `ip addr add` (Linux). Each virtual IP can
+  wear a different archetype.
 
 **Does it support IPv6?**
 Yes, with full parity — source IP, capture, correlation, enrichment, risk,
@@ -966,9 +994,20 @@ tarpit-honeypot`.
 Two ways: `handler: scripted` defines a believable TCP service entirely in YAML
 (greeting + match/respond rules, stages, credential capture), and `handler: lua`
 drives a service from a sandboxed Lua script (per-session/per-source state,
-deterministic rng, timers). **200 Lua personas ship in the box** under
+deterministic rng, timers). **240 Lua personas ship in the box** under
 [`configs/scripts/`](../configs/scripts/). See the full guide — API, limits,
-warnings, recipes — in [`docs/lua.md`](lua.md).
+warnings, recipes — in [`docs/lua.md`](lua.md), and the big-picture map of how
+YAML / Lua / YARA fit together in [`docs/scripting.md`](scripting.md).
+
+**How do I add a brand-new fake service the sensor doesn't ship?**
+Pick the lightest tool for the job (full decision guide in
+[`scripting.md`](scripting.md)): a **Lua persona** (`handler: lua` + a script in
+`configs/scripts/`) for anything with logic — 240 ship as templates to copy and
+adapt; a **`scripted` YAML** handler for a simple greeting/response protocol; or,
+for a real wire protocol with deep state, a built-in Go handler (a small,
+test-backed code change). Then add a `listeners:` entry that points at it. Recent
+additions — Hadoop YARN, Apache Flink, Veeam, MOVEit, GoCD, Laravel — were all
+just new Lua personas; `ls configs/scripts/` is the catalog.
 
 **Is the Lua sandbox safe? Can a persona be exploited into running code on the
 sensor?**
@@ -1005,9 +1044,22 @@ dispatch chokepoint, so it drives routing, sinks, and the store; the event is
 marked as a local override so it's never silent.
 
 **Can I add my own CVE signatures or archetypes?**
-The CVE catalog (`internal/cve`) and archetype catalog (`internal/archetype`) are
-in-source tables; adding an entry is a small, test-backed code change. Audit the
-current coverage with `list-cves` / `list-archetypes` / `list-techniques`.
+Yes — both are in-source catalogs, so adding one is a small, test-backed change
+(`go build`), not a workflow recompile:
+
+- **Archetypes** (`internal/archetype`) — **259 ship**. An archetype is one
+  `Profile`: the SSH/HTTP/FTP/Telnet/SMTP banners, SNMP MIB-2 identity, MAC OUI,
+  TLS posture, ICMP TTL, default service map and advertised CVEs that a real box
+  would present. Add an entry to the relevant map and the consistency tests check
+  it; see [`archetypes.md`](archetypes.md).
+- **CVE catalog** (`internal/cve`) — add a record (id, CVSS, service, exploit
+  signature, CWE/CPE/EPSS, ATT&CK technique); the catalog-integrity tests enforce
+  ID sorting, CWE names, and the required fields. See
+  [`attribution.md`](attribution.md).
+
+Audit current coverage with `list-archetypes` / `list-cves` / `list-techniques`.
+To add a *fake service* (rather than an OS identity) you usually need no code at
+all — see "add a brand-new fake service" above and [`scripting.md`](scripting.md).
 
 ## Legal & ethical
 

@@ -14,6 +14,11 @@ rule shape rather than the entire language — see [Supported subset](#supported
 
 > Also rendered in-product under the web UI **docs** tab (`/docs/yara`).
 
+> New here? [`scripting.md`](scripting.md) maps how YARA fits alongside the
+> Lua personas and YAML detection rules — YARA classifies the *files* an
+> attacker drops; a YAML detection rule then decides what to do about the
+> `yara:<rule>` marker it raises.
+
 ## Contents
 
 - [When rules run](#when-rules-run)
@@ -134,6 +139,91 @@ built-ins). The built-ins tag trait/recon/packer rules down to `high`/`medium`
 so they sit at the captured-artifact baseline (High) rather than forcing
 Critical. Two invariants override rule severity: a **known-malware hash match**
 and a **magic-confirmed executable** are always Critical.
+
+## Anatomy of a rule (syntax & key language)
+
+A rule is `rule Name : tags { … }` wrapping up to three sections — `meta`,
+`strings`, `condition`. Only `condition` is required, but most rules use all
+three:
+
+```
+rule Family_Variant : dropper c2 {        // name + optional space-separated tags
+    meta:                                  // free-form key = value annotations
+        description = "what it is"
+        severity    = "high"               // drives how far a match escalates
+    strings:                               // the things to look for, each $-named
+        $a = "Net.WebClient" nocase        // a text string (+ modifiers)
+        $b = { 4D 5A ?? ?? }               // a hex pattern (?? = wildcard byte)
+        $c = /https?:\/\/[a-z]+/ i          // a regex (RE2), with i / s flags
+    condition:                             // a boolean over the strings + modules
+        ($a and $b) or (2 of ($a, $b, $c))
+}
+```
+
+**Strings** (`$`-prefixed) come in three flavours:
+
+- **text** — `$x = "string"` with optional `nocase` (case-insensitive), `wide`
+  (match UTF-16 too), `ascii`, `fullword` (token-bounded).
+- **hex** — `$x = { 4D 5A ?? ?? }` for byte signatures; `??` is a wildcard byte.
+- **regex** — `$x = /pat/` in RE2 (Go's regexp: linear-time, **no backreferences
+  or look-around**), with `i` (case-insensitive) / `s` (dot matches newline).
+
+**Condition** is the boolean that decides a match. The everyday vocabulary:
+
+- string refs `$a`; `and` / `or` / `not`; parentheses; `true` / `false`.
+- **set quantifiers** — `all of them`, `any of them`, `N of ($a, $b)`,
+  `N of them`, with id globs (`$a*`) — the readable way to say "at least N of
+  these". Parenthesize an `of` expression when you combine it with `and`/`or`
+  (`($x and (1 of ($a,$b)))`), as the built-ins do.
+- **comparisons** (`== != < <= > >=`) and arithmetic, usually over `filesize`,
+  the `uintN(offset)` readers, or a module value.
+- **module facts** — `pe.imports("kernel32.dll","VirtualAllocEx")`, `elf.type`,
+  `math.entropy(0, filesize)`, `hash.sha256(0, filesize)` (see [Modules](#module-support)).
+
+The same discipline that keeps false positives down: prefer one very
+distinctive token, or a `2 of` / `and` combination, over a single common word —
+and tag heuristic / recon / packer rules *down* with `severity = "medium"`. The
+most recent built-ins (Mythic, NimPlant, the certutil / bitsadmin LOLBINs,
+TeamTNT, the xz backdoor CVE-2024-3094, ClickFix, SocGholish, AWS / cloud
+service-account keys) are short, low-FP templates worth reading.
+
+### More example shapes
+
+```
+// 1-of-many text tokens (a family with several known strings)
+rule MAL_Example_RAT : rat {
+    strings:
+        $a = "ExampleRAT" nocase
+        $b = "exrat_config"
+        $c = "/gate.php"
+    condition:
+        1 of them
+}
+
+// hex magic + a guard string (low FP — the stub keeps "MZ" from over-matching)
+rule DROP_Embedded_PE : dropper {
+    strings:
+        $mz   = { 4D 5A }                      // "MZ"
+        $stub = "This program cannot be run in DOS mode"
+    condition:
+        $mz and $stub
+}
+
+// regex credential pattern (one strong indicator)
+rule CREDS_Example_Key : credaccess {
+    strings:
+        $k = /EX[0-9A-Z]{16}/                   // a vendor key id shape
+    condition:
+        $k
+}
+
+// module-driven: behavioural import set, format-safe (no FP on ELF)
+rule PE_Injection : injection {
+    condition:
+        pe.imports("kernel32.dll", "VirtualAllocEx") and
+        pe.imports("kernel32.dll", "WriteProcessMemory")
+}
+```
 
 ## Supported rule subset
 
