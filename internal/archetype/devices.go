@@ -141,6 +141,23 @@ var deviceArchetypes = map[string]*Profile{
 			{Port: 22, Handler: "ssh"},
 		},
 	},
+	"openbsd-7-8": {
+		Name: "openbsd-7.8", DisplayName: "OpenBSD 7.8", Family: "bsd",
+		sshBanner:       "SSH-2.0-OpenSSH_10.1",
+		httpServer:      "OpenBSD httpd",
+		ftpBanner:       "220 OpenBSD ftpd ready",
+		telnetBanner:    "\r\nOpenBSD/amd64 (obsd.example.com) (tty00)\r\n\r\nlogin: ",
+		smtpProduct:     "OpenSMTPD",
+		cliPrompt:       "obsd$ ",
+		httpTitle:       "OpenBSD httpd",
+		httpBodyHTML:    "<html><body><pre>It works.</pre></body></html>",
+		snmpSysDescr:    "OpenBSD obsd.example.com 7.8 GENERIC#10 amd64",
+		snmpSysObjectID: ".1.3.6.1.4.1.30155.1.1",
+		snmpSysName:     "obsd78",
+		defaultServices: []DefaultService{
+			{Port: 22, Handler: "ssh"},
+		},
+	},
 	"netbsd-9": {
 		Name: "netbsd-9", DisplayName: "NetBSD 9", Family: "bsd",
 		sshBanner:    "SSH-2.0-OpenSSH_8.0 NetBSD_Secure_Shell-20190418",

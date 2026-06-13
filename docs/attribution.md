@@ -557,7 +557,7 @@ Filtering). The `list-techniques` D3FEND column shows the mapping per rule.
 
 ## 3. CVE / CWE / CPE / EPSS
 
-Package `internal/cve` is a curated, in-source catalog (**381 records**) with
+Package `internal/cve` is a curated, in-source catalog (**678 records**) with
 two jobs: drive vulnerable-banner / fake-patch-level emulation
 (`ForService`) and recognize a live exploit attempt's signature
 (`MatchPayload`). The sensor is never actually exploitable — it advertises
@@ -626,11 +626,13 @@ Ripple20 (Treck) for the OT/IoT device archetypes. These ride the packet
 layer rather than an L7 handler, so they are advisory in the signature
 sense (`—`) but carry full ATT&CK (mostly T1499 endpoint DoS) + CWE/EPSS.
 
-**Full catalog (123 records — 66 live-detectable, 57 advisory-only).** `Det`
-= a `cve:<id>` event fires on a matched exploit signature in a request;
-advisory-only records (`—`) drive vulnerable-version emulation but have no
-high-signal wire signature (ICS / auth-bypass / protocol / TCP-stack CVEs).
-`Product` is the CPE 2.3 vendor:product. EPSS is the ~2026-05 snapshot.
+**Representative slice (123 of the 678 records below).** The full catalog
+runs **361 live-detectable + 317 advisory-only**; `tarpit-honeypot list-cves`
+(add `--json` for CWE/CPE/EPSS, or a service name to scope it) prints every
+record. `Det` = a `cve:<id>` event fires on a matched exploit signature in a
+request; advisory-only records (`—`) drive vulnerable-version emulation but
+have no high-signal wire signature (ICS / auth-bypass / protocol / TCP-stack
+CVEs). `Product` is the CPE 2.3 vendor:product. EPSS is the ~2026-05 snapshot.
 
 | CVE | Name | CVSS | Service | CWE | Product (CPE) | EPSS | ATT&CK | Det |
 |---|---|---|---|---|---|---|---|:-:|
@@ -757,6 +759,37 @@ high-signal wire signature (ICS / auth-bypass / protocol / TCP-stack CVEs).
 | CVE-2024-6387 | regreSSHion | 8.1 | `ssh` | CWE-364 | openbsd:openssh | 0.40 | T1190 | — |
 | CVE-2025-0282 | Ivanti Connect Secure RCE | 9 | `pulse` | CWE-121 | ivanti:connect_secure | 0.85 | T1190 | — |
 | CVE-2025-58428 | Veeder-Root TLS4B ATG command injection | 9.9 | `atg` | CWE-78 | veeder-root:tls4b_firmware | 0.05 | T1190 | — |
+
+**Recently added — handler-emitted detections.** This release wired CVE
+recognition into under-covered protocol handlers (Intel AMT, Oracle TNS,
+memcached, CouchDB, Mosquitto/MQTT, LDAP, SSH, and several ICS stacks). Most
+of these are emitted by the **handler's own parser** via `Result.CVEHits`
+when it recognizes the abuse in protocol-specific logic, rather than by
+generic catalog signature matching — so several show `Det = —` in the
+catalog sense yet still fire a `cve:<id>` event from the handler. The ICS
+entries map to **ATT&CK for ICS** (T0843 program download, T0859 valid
+accounts, etc.) and cover the **ICEFALL** (Phoenix Contact ProConOS,
+Omron FINS) and **TRITON/TRISIS** (Schneider Triconex) campaigns; see
+[`ot.md`](ot.md).
+
+| CVE | Name | CVSS | Service | CWE | Product (CPE) | EPSS | ATT&CK | Det |
+|---|---|---|---|---|---|---|---|:-:|
+| CVE-2012-1675 | Oracle TNS Poison (remote registration) | 7.5 | `oracle_tns` | CWE-306 | oracle:database_server | 0.15 | T1190 | — |
+| CVE-2016-8704 | memcached append/prepend integer overflow RCE | 9.8 | `memcached` | CWE-190 | memcached:memcached | 0.10 | T1190 | — |
+| CVE-2016-8705 | memcached update integer overflow RCE | 9.8 | `memcached` | CWE-190 | memcached:memcached | 0.10 | T1190 | — |
+| CVE-2016-8706 | memcached SASL-auth integer overflow RCE | 9.8 | `memcached` | CWE-190 | memcached:memcached | 0.10 | T1190 | — |
+| CVE-2017-5689 | Intel AMT digest-auth bypass | 9.8 | `intel_amt` | CWE-287 | intel:active_management_technology_firmware | 0.94 | T1190 | yes |
+| CVE-2017-7650 | Mosquitto pattern-ACL bypass | 8.6 | `mqtt` | CWE-287 | eclipse:mosquitto | 0.05 | T1190 | — |
+| CVE-2017-12635 | Apache CouchDB privilege escalation (admin party) | 9.8 | `couchdb` | CWE-863 | apache:couchdb | 0.95 | T1190 | — |
+| CVE-2018-8872 | Schneider Triconex Tricon memory write (TRITON/TRISIS) | 9.0 | `tristation` | CWE-119 | schneider-electric:tricon_3008_firmware | 0.02 | T0843 | — |
+| CVE-2022-31204 | Omron SYSMAC FINS cleartext UM-protection password | 6.5 | `fins` | CWE-319 | omron:sysmac_cj2m_firmware | 0.02 | T0859 | — |
+| CVE-2022-31207 | Omron SYSMAC FINS unauthenticated logic download | 5.9 | `fins` | CWE-345 | omron:sysmac_cj2m_firmware | 0.02 | T0843 | — |
+| CVE-2022-31800 | Phoenix Contact Classic Line logic upload | 9.8 | `proconos` | CWE-345 | phoenixcontact:axc_1050_firmware | 0.03 | T0843 | — |
+| CVE-2022-31801 | Phoenix Contact ProConOS unauthenticated logic download | 9.8 | `proconos` | CWE-345 | phoenixcontact:proconos | 0.03 | T0843 | — |
+| CVE-2023-2953 | OpenLDAP slapd NULL-deref DoS | 7.5 | `ldap` | CWE-476 | openldap:openldap | 0.10 | T1499 | — |
+| CVE-2024-3094 | XZ Utils / liblzma sshd backdoor | 10.0 | `ssh` | CWE-506 | tukaani:xz | 0.10 | T1190 | — |
+| CVE-2024-49112 | Windows LDAP integer-overflow RCE (LDAPBleed) | 9.8 | `ldap` | CWE-190 | microsoft:windows_server | 0.30 | T1203 | — |
+| CVE-2024-49113 | Windows LDAP DoS (LDAPNightmare) | 7.5 | `ldap` | CWE-190 | microsoft:windows_server | 0.40 | T1499 | — |
 
 **On the wire.** When a handler recognizes an exploit signature it emits a
 `cve:<id>` event whose meta carries `cve_name`, `cvss`, `cwe`, `cpe`,

@@ -1,0 +1,81 @@
+# Recon, scanner & tooling detection rules (detection-as-code).
+#
+# Catch enumeration and off-the-shelf offensive tooling. These lean on the
+# sensor's own tool fingerprinting (meta.tools), the web honeytrap markers
+# (robots/sitemap), the auto-handler's unknown-protocol flag, and the UDP
+# amplification-probe marker.
+#
+#   ATT&CK: T1595 active scanning, T1046 network service discovery,
+#   T1592 gather host info, T1498 network DoS (reflection).
+
+- id: recon-scanner-user-agent
+  title: Known vulnerability-scanner User-Agent on the web decoy
+  severity: medium
+  tags: [custom:scanner-ua, attack.t1595]
+  match:
+    handler: [http, https]
+    meta.user_agent|re: "(?i)(nuclei|nikto|sqlmap|masscan|zgrab|nmap|wpscan|gobuster|feroxbuster|dirbuster|httpx|acunetix|nessus|qualys|openvas|netsparker|whatweb|xray)"
+
+- id: recon-attack-tool-fingerprint
+  title: Attack tool identified by behaviour
+  description: >
+    The sensor's tool fingerprinter named a client (meta.tools) from how it
+    spoke the protocol — independent of any spoofable User-Agent.
+  severity: medium
+  tags: [custom:tool-fingerprint, attack.t1595]
+  match:
+    meta.tools|exists: true
+
+- id: recon-unknown-protocol
+  title: Unmodelled protocol probed (auto handler)
+  description: The generic `auto` catch-all captured + fingerprinted an unknown protocol.
+  severity: low
+  tags: [custom:unknown-protocol, attack.t1046]
+  match:
+    anomaly: unknown-protocol
+
+- id: recon-robots-trap
+  title: Bait robots.txt Disallow path fetched
+  description: Only a crawler/attacker that parsed robots.txt would request these.
+  severity: medium
+  tags: [custom:robots-trap, attack.t1595.003]
+  match:
+    anomaly: robots-honeypot-access
+
+- id: recon-sitemap-trap
+  title: Decoy sitemap.xml page fetched
+  severity: low
+  tags: [custom:sitemap-trap, attack.t1595.003]
+  match:
+    anomaly: sitemap-honeypot-access
+
+- id: recon-snmp-default-community
+  title: SNMP default community string used
+  description: A read with the public/private default community on the SNMP decoy.
+  severity: medium
+  tags: [custom:snmp-default-community, attack.t1046]
+  match:
+    handler: snmp
+    meta.community|re: "(?i)^(public|private|cisco|community|admin)$"
+
+- id: recon-udp-amplification-probe
+  title: UDP amplification / reflection probe
+  description: >
+    A request shaped to abuse this service as a DDoS reflector (the handler
+    declined to amplify and flagged it).
+  severity: high
+  tags: [custom:amplification-probe, attack.t1498.002]
+  match:
+    anomaly: amplification-probe
+
+# --- Template: block your own known-bad TLS fingerprints. Replace the JA3
+# hashes below with ones from your threat-intel feed; meta.ja3 is set by the
+# https / quic / dtls / tls_intercept handlers. ---
+- id: recon-known-bad-ja3
+  title: Known-bad TLS JA3 fingerprint (operator list)
+  severity: high
+  tags: [custom:known-bad-ja3, attack.t1595]
+  match:
+    meta.ja3:
+      - "a0e9f5d64349fb13191bc781f81f42e1"   # example: Cobalt Strike default (replace)
+      - "6734f37431670b3ab4292b8f60f29984"   # example: placeholder (replace)

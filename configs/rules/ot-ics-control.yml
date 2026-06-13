@@ -1,0 +1,87 @@
+# OT / ICS control-action detection rules (detection-as-code).
+#
+# In ICS the "attack" is usually an unauthenticated-but-protocol-legal control
+# command (a write, a STOP, a logic download), not an exploit string. The OT
+# handlers stamp a descriptive `meta.intent` and ATT&CK-for-ICS markers on every
+# request; these rules promote the high-consequence ones.
+#
+#   ATT&CK for ICS: T0855 unauthorized command message, T0843 program download,
+#   T0813 denial of control, T0846 remote system discovery, T0831 manipulation
+#   of control. See docs/ot.md §5.
+
+- id: ot-plc-stop
+  title: PLC STOP / halt issued to a controller
+  description: A command that halts the controller — direct loss/denial of control.
+  severity: critical
+  tags: [custom:ics-plc-stop, attack.t0813]
+  match:
+    meta.intent|re: "(?i)(PLC STOP|halting the controller|Remote STOP|STOP_APPL|denial of control)"
+
+- id: ot-program-download
+  title: PLC logic / program download or upload
+  description: Accessing or replacing controller program logic (the TRITON/Stuxnet class).
+  severity: critical
+  tags: [custom:ics-program-download, attack.t0843]
+  match:
+    meta.intent|re: "(?i)(block up/download|logic DOWNLOAD|logic download|program logic|Program-Area download|program download|firmware transfer)"
+
+- id: ot-modbus-write
+  title: Modbus write to coils / registers
+  severity: high
+  tags: [custom:ics-modbus-write, attack.t0855]
+  match:
+    anomaly: [ics-modbus-write, ics-plc-write]
+
+- id: ot-write-control-manipulation
+  title: Write to PLC memory / tags / set-points (control manipulation)
+  description: A value written to process memory on any deep OT handler.
+  severity: high
+  tags: [custom:ics-write, attack.t0831]
+  match:
+    meta.intent|re: "(?i)(Write Var|writing PLC memory|Write_Tag|control manipulation|set-point command|WriteProperty|memory.area (read/)?write|parameter write)"
+
+- id: ot-safety-controller-manipulation
+  title: Safety controller (SIS) manipulation — Triconex / TriStation
+  description: Program-download or control on a safety instrumented system (TRITON/TRISIS).
+  severity: critical
+  tags: [custom:triton, attack.t0843]
+  match:
+    handler: tristation
+    meta.intent|re: "(?i)(program|control|download)"
+
+- id: ot-restart-reset
+  title: Controller cold/warm restart or reset
+  severity: high
+  tags: [custom:ics-restart, attack.t0816]
+  match:
+    meta.intent|re: "(?i)(COLD_RESTART|WARM_RESTART|Remote Reset|ReinitializeDevice|factory-reset|cold/warm restart)"
+
+- id: ot-fieldbus-recon-over-ip
+  title: Fieldbus recon over IP (EtherCAT / PROFINET / fieldbus normally L2-only)
+  description: A master datagram for an L2 fieldbus arriving over IP is anomalous targeted recon.
+  severity: high
+  tags: [custom:ics-fieldbus-recon, attack.t0846]
+  match:
+    meta.intent|re: "(?i)(EtherCAT-over-UDP probe|fieldbus recon over IP)"
+
+- id: ot-enumeration
+  title: ICS device / point enumeration (recon)
+  description: Read-only enumeration of an OT decoy's identity or points.
+  severity: medium
+  tags: [custom:ics-recon, attack.t0846]
+  match:
+    meta.intent|re: "(?i)(fingerprint|enumerat|Who-Is|ListIdentity|SZL read|Read Device Identification|discovering|confirming a live)"
+
+# --- Template: any OT control command from an untrusted segment. The matcher
+# has no "not" operator (and RE2 has no look-ahead), so you can't express
+# "everything except the EWS subnet" in one rule — instead list the source
+# ranges that should NEVER speak control to a PLC (corporate / guest / DMZ /
+# remote-access pools). Replace the prefixes below with yours. ---
+- id: ot-control-from-untrusted-source
+  title: OT control command from an untrusted source range (template)
+  severity: critical
+  tags: [custom:ics-untrusted-source, attack.t0855]
+  match:
+    handler: [modbus, s7, s7comm_plus, dnp3, iec104, ethernetip, opcua, melsec, fins_tcp, codesys, pcworx, proconos]
+    meta.intent|re: "(?i)(write|stop|download|operate|control|restart|reset)"
+    source_ip|prefix: ["10.20.", "192.168.50.", "172.16."]

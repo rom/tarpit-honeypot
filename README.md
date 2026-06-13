@@ -47,19 +47,19 @@ rationale covering the current implementation.
   capture creds, no deep sessions or outbound call-outs), or `mute`
   (receive-only — no outbound bytes at all). Plus `sensor.no_amplifier_replies`
   to suppress NTP mode 6/7 + reflector replies.
-- **147 TCP + 114 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **157 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `cloud_metadata`, `etcd`, `kubernetes_api`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `neo4j`, `rethinkdb`, `couchdb`, `influxdb`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `docker_registry`, `cloud_metadata`, `etcd`, `kubernetes_api`, `kubelet`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`
   - **TCP / CPE + IoT device management**: `tr069` (CWMP / TR-064 connection-request on 7547 — Misfortune Cookie + SetNTPServers RCE), `upnp` (UPnP IGD SOAP control + GENA — UPnProxy / CallStranger / Realtek+Huawei RCE), `tr369` (USP agent over the `v1.usp` WebSocket MTP + raw USP Record protobuf) — each stamps an attacker-`intent`, fingerprints the SOAP/USP shape, serves a believable decoy (RomPager 401 / `rootDesc.xml` / WS 101), and maps the abuse to **CVE/CWE + ATT&CK**
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `osisoft_pi` (OSIsoft/AVEVA PI Data Archive), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium) — the `mms` handler also detects the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer / responder)**: `goose` (IEC 61850 GOOSE substation multicast detection); **PROFINET-DCP** responder (EtherType 0x8892) — answers DCP **Identify** (station enumeration) and flags DCP **Set** (NameOfStation/IP reassignment + factory-reset, `honeynet:profinet_dcp_set`, T0836/T0831)
-  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `profinet`, `tristation`, `bsap`, `ge_egd`, `lontalk`, `wdbrpc`, `isakmp`, `dhcp`, `dns`, `dtls`, `quic`, `netflow`, `sflow`
+  - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `mgcp`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `profinet`, `ethercat`, `tristation`, `bsap`, `ge_egd`, `lontalk`, `wdbrpc`, `isakmp`, `dhcp`, `dns`, `dtls`, `quic`, `netflow`, `sflow`
   - **Small services (TCP + UDP)**: `echo`, `discard`, `daytime`, `qotd`, `chargen`, `time` — RFC 862-868 / 1340. `chargen`/`echo` reply with a single bounded datagram and never amplify (reflection-safe).
   - **DNS resolver** (`dns`, **UDP + TCP**): answers `A`/`AAAA`/`MX`/`TXT`/`NS`/`CNAME` with deterministic-per-deployment fake records; every query runs through tunneling/exfil detection. The TCP variant (RFC 7766, 2-byte length framing) draws out truncation fallback, zone-transfer (`AXFR`/`IXFR`) probes, and DNS-over-TCP tunneling — configure it as a second `proto: tcp` listener on port 53.
   - **ICMP** (L3, Linux AF_PACKET responder): virtual hosts answer echo / timestamp / address-mask requests with the archetype's TTL personality; `internal/icmp` builds the full message family (Dest-Unreachable, Frag-Needed/PMTUD, Time-Exceeded, Redirect, Param-Problem, IPv6 NDP) and `internal/icmp.Anomalies` flags tunneling / oversize / teardrop-overlap evasion.
-- **186 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
+- **259 OS / device archetypes**: set `sensor.archetype: "debian 12"` (or
   `listener.archetype`, or per-honeynet-host `archetype`) and every
   banner-aware handler (SSH / HTTP(S) / FTP / Telnet / SMTP / MySQL),
   SNMP MIB-2 (sysDescr / sysObjectID / ifTable), MAC OUI, CLI prompt,
@@ -590,7 +590,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (144 TCP + 114 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (157 TCP + 118 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -637,9 +637,10 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
-events to your sinks. Current totals: **144 TCP + 114 UDP protocol handlers**,
-**568 CVE detections**, **469 built-in YARA artifact-classification rules**,
-**230 dynamic Lua service scripts**, **250+ OS/device archetypes**, **900+
+events to your sinks. Current totals: **157 TCP + 118 UDP protocol handlers**,
+**678 CVE records** (361 live-detectable + 317 advisory), **469 built-in YARA
+artifact-classification rules**, **230 dynamic Lua service scripts**, **259
+OS/device archetypes**, **900+
 attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor
 (`fleet:*`) correlators**, **18 typed IOC kinds**, and full MITRE ATT&CK +
 **20 D3FEND** countermeasure mapping.
@@ -958,6 +959,9 @@ documents the archetype catalog with their services/protocols and emulated CVEs.
 | BSD | FreeBSD 14 | `freebsd-14` | bsd | 64 | OpenSSH / FreeBSD web console |
 | BSD | OpenBSD 7.5 | `openbsd-7-5` | bsd | 64 | OpenSSH / httpd |
 | BSD | OpenBSD 7.6 | `openbsd-7-6` | bsd | 64 | OpenSSH / httpd |
+| BSD | OpenBSD 7.8 | `openbsd-7-8` | bsd | 64 | OpenSSH 10.1 / httpd / OpenSMTPD |
+| Windows | Windows 2000 | `windows-2000` | windows | 128 | IIS 5.0, TLS 1.0, SMBv1, no SSH (MS08-067 era) |
+| Windows | Windows XP | `windows-xp` | windows | 128 | IIS 5.1, TLS 1.0, SMBv1, no SSH (EternalBlue era) |
 | Windows | Windows 7 | `windows-7` | windows | 128 | legacy SMB/RDP, weak TLS |
 | Windows | Windows 8 | `windows-8` | windows | 128 | legacy posture |
 | Windows | Windows 10 | `windows-10` | windows | 128 | modern client |
