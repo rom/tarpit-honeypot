@@ -40,6 +40,7 @@ var tcpHandlers = map[string]bool{
 	"memcached": true, "pop3": true, "imap": true,
 	"dns":     true, // DNS over TCP (zone transfers, truncation fallback, tunneling)
 	"mongodb": true, "elasticsearch": true,
+	"neo4j": true,
 	// implicit-TLS variants (993/995/465/636/8883/990): the plaintext handler
 	// run over a TLS handshake (see handler.tlsWrap).
 	"smtps": true, "imaps": true, "pop3s": true,
