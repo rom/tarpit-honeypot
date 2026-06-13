@@ -24,6 +24,7 @@ var names = map[int]string{
 	5094: "hartip", 5222: "xmpp", 5353: "mdns", 5355: "llmnr", 5432: "postgres",
 	5450: "osisoft-pi",
 	5683: "coap", 5672: "amqp", 5900: "vnc", 5985: "winrm", 5986: "winrm-tls",
+	5984: "couchdb", 8086: "influxdb", 5000: "docker-registry",
 	7687: "neo4j",
 	6379: "redis", 8080: "http-alt", 8443: "https-alt", 9100: "jetdirect/pjl",
 	9200: "elasticsearch", 9600: "fins", 10001: "atg", 11211: "memcached",

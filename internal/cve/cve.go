@@ -2350,6 +2350,11 @@ var catalog = []Record{
 	{ID: "CVE-2018-8872", Name: "Schneider Triconex Tricon memory write (TRITON/TRISIS)", CVSS: 9.0, Service: "tristation",
 		Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-119"},
 		Description: "Triconex Tricon MP 3008 (firmware 10.0-10.4) system calls read/write control-program memory without verification, letting an attacker copy arbitrary data anywhere in memory — the safety-controller code-injection flaw the TRITON/TRISIS malware used to reprogram the SIS over the TriStation protocol (UDP 1502)."},
+
+	// CouchDB role injection (emitted by the couchdb handler).
+	{ID: "CVE-2017-12635", Name: "Apache CouchDB privilege escalation (admin party)", CVSS: 9.8, Service: "couchdb",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-863"},
+		Description: "A discrepancy between CouchDB's Erlang and JavaScript JSON parsers lets a non-admin PUT a _users document with a duplicate 'roles' key carrying [\"_admin\"], creating an administrator and taking over the database."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2585,12 +2590,12 @@ var cveExtra = map[string]struct {
 	"CVE-2026-49975": {[]string{"CWE-400", "CWE-409", "CWE-770"}, "cpe:2.3:a:ietf:http:2.0", 0.50},
 	"CVE-2024-3596":  {[]string{"CWE-924", "CWE-328"}, "cpe:2.3:a:ietf:radius:*", 0.30},
 	// Deep-handler CVEs (intel_amt / oracle_tns / mqtt / memcached).
-	"CVE-2017-5689": {[]string{"CWE-287"}, "cpe:2.3:o:intel:active_management_technology_firmware:*", 0.94},
-	"CVE-2012-1675": {[]string{"CWE-306"}, "cpe:2.3:a:oracle:database_server:*", 0.15},
-	"CVE-2017-7650": {[]string{"CWE-287"}, "cpe:2.3:a:eclipse:mosquitto:*", 0.05},
-	"CVE-2016-8704": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
-	"CVE-2016-8705": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
-	"CVE-2016-8706": {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2017-5689":  {[]string{"CWE-287"}, "cpe:2.3:o:intel:active_management_technology_firmware:*", 0.94},
+	"CVE-2012-1675":  {[]string{"CWE-306"}, "cpe:2.3:a:oracle:database_server:*", 0.15},
+	"CVE-2017-7650":  {[]string{"CWE-287"}, "cpe:2.3:a:eclipse:mosquitto:*", 0.05},
+	"CVE-2016-8704":  {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8705":  {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
+	"CVE-2016-8706":  {[]string{"CWE-190"}, "cpe:2.3:a:memcached:memcached:*", 0.10},
 	"CVE-2024-3094":  {[]string{"CWE-506"}, "cpe:2.3:a:tukaani:xz:*", 0.10},
 	"CVE-2024-49112": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.30},
 	"CVE-2024-49113": {[]string{"CWE-190"}, "cpe:2.3:o:microsoft:windows_server:*", 0.40},
@@ -2600,6 +2605,7 @@ var cveExtra = map[string]struct {
 	"CVE-2022-31207": {[]string{"CWE-345"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
 	"CVE-2022-31204": {[]string{"CWE-319"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
 	"CVE-2018-8872":  {[]string{"CWE-119"}, "cpe:2.3:o:schneider-electric:tricon_3008_firmware:*", 0.02},
+	"CVE-2017-12635": {[]string{"CWE-863"}, "cpe:2.3:a:apache:couchdb:*", 0.95},
 }
 
 func init() {

@@ -208,6 +208,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &kubelet{}, nil
 	case "kubelets":
 		return newTLSWrap("kubelet", "kubelets", deps)
+	case "couchdb":
+		return &couchdb{}, nil
+	case "influxdb":
+		return &influxdb{}, nil
+	case "docker_registry":
+		return &dockerRegistry{}, nil
 	case "s7":
 		return &s7{}, nil
 	case "s7comm_plus":
