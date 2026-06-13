@@ -106,7 +106,7 @@ Handlers are classed by fidelity:
 | `codesys` | 1217 | CODESYS V3 (WAGO/Beckhoff/Schneider/ABB) | Deep | Component/service classification (CmpUserMgr login, CmpFileTransfer, CmpApp download/online-change, start/stop, CmpDevice) + CVE-2022-31806/31802 |
 | `hartip` | 5094 | HART-IP (field-instrument gateway) | Fingerprint | 8-byte header → response (session-initiate / token-passing) |
 | `pcworx` | 1962 | Phoenix Contact PCWorx (ILC PLC) | Deep | Identification + session classification (run-state / program / write / read / login) + CVE-2016-8367 |
-| `proconos` | 20547 | ProConOS / eCLR soft-PLC runtime (PCWorx/MULTIPROG) | Deep | Opcode classification: START/STOP mode-change, unauthenticated logic DOWNLOAD (ICS-ALERT-13-016 class) |
+| `proconos` | 20547 | ProConOS / eCLR soft-PLC runtime (PCWorx/MULTIPROG) | Deep | Opcode classification: START/STOP mode-change, unauthenticated logic DOWNLOAD (ICS-ALERT-13-016 class) + CVE-2022-31800/31801 (OT:ICEFALL) |
 | `c37118` | 4712 | IEEE C37.118.2 synchrophasor (PMU/PDC) | Deep | Frame parse (DATA/HEADER/CFG/COMMAND), COMMAND classification (turn-on/off transmission, send-CFG-2/HEADER), believable CFG-2 reply |
 | `focas` | 8193 | FANUC FOCAS (CNC / machine tool) | Fingerprint | Request capture → `FANUC Series 30i` sysinfo reply |
 | `osdp` | — | SIA OSDP / IEC 60839-11-5 (access control) over IP | Deep | Command classification (osdp_OUT door-strike, osdp_COMSET channel hijack, osdp_KEYSET/CHLNG secure-channel), osdp_ACK/PDID reply |
@@ -121,10 +121,10 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | Handler | Port | Vendor / standard | Fidelity | Reply | Emulated |
 |---|---|---|---|---|---|
 | `bacnet` | 47808 | BACnet/IP (building automation) | Deep | unicast | Who-Is/Who-Has → I-Am, ReadProperty (point enum), WriteProperty (SimpleACK), DeviceCommunicationControl, ReinitializeDevice, AtomicWriteFile |
-| `fins` | 9600 | Omron FINS/UDP | Deep | rate-limited | CPU/status/cycle/clock read, Memory-Area read/write, RUN/STOP, Program-Area access |
+| `fins` | 9600 | Omron FINS/UDP | Deep | rate-limited | CPU/status/cycle/clock read, Memory-Area read/write, RUN/STOP, Program-Area access; cleartext UM password + logic download flagged CVE-2022-31204/31207 (OT:ICEFALL) |
 | `knx` | 3671 | KNXnet/IP (building automation) | Fingerprint | unicast | SEARCH/DESCRIPTION responses (MDT KNX IP Router); CONNECT refused `0x24` |
 | `profinet` | 34964 | PROFINET-IO (DCE-RPC) | Deep | **capture-only** | CM opnum (Connect/Release/IODRead/IODWrite/IODControl/ReadImplicit) |
-| `tristation` | 1502 | Triconex TriStation/TSAA (SIS) | Fingerprint | bounded ack | msg types; program-download/control flagged safety-controller manipulation (TRITON/TRISIS) |
+| `tristation` | 1502 | Triconex TriStation/TSAA (SIS) | Fingerprint | bounded ack | msg types; program-download/control flagged safety-controller manipulation (TRITON/TRISIS, CVE-2018-8872) |
 | `bsap` | 1234 | Bristol/Emerson BSAP-IP RTU | Fingerprint | bounded ack | addressing/node decode |
 | `ge_egd` | 18246 | GE Ethernet Global Data | Fingerprint | **capture-only** | PDU type + producer id |
 | `lontalk` | 1628 | Echelon LonTalk / LonWorks-IP (CEA-852) | Fingerprint | **capture-only** | data-packet header |
@@ -138,6 +138,7 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `pcom_udp` | 20256 | Unitronics PCOM over UDP | Fingerprint | **capture-only** | PCOM/ASCII + binary command capture |
 | `slmp` | 5007 | Mitsubishi SLMP / MELSEC over UDP | Fingerprint | **capture-only** | SLMP command/sub-command; Write / Remote-RUN-STOP flagged |
 | `powerlink` | 3819 | Ethernet POWERLINK | Fingerprint | **capture-only** | message-type decode (SoC/PReq/PRes/ASnd) |
+| `ethercat` | 34980 | EtherCAT-over-UDP (EtherType 0x88A4) | Deep | bounded ack | command-datagram decode; slave register/PDO **read** = recon, **write** = control manipulation, broadcast (BRD) read = segment enumeration; echoes the frame with the **Working Counter incremented** + read data filled (same size, no amplification). EtherCAT is normally L2-only, so a master datagram over IP is itself anomalous targeted recon → `ethercat-probe` |
 | `ff_hse` | 1089 | FOUNDATION Fieldbus HSE | Fingerprint | **capture-only** | HSE message-header capture |
 | `saia_sbus` | 5050 | Saia Ether-S-Bus PCD controllers | Fingerprint | **capture-only** | S-Bus telegram decode |
 | `opcua_pubsub` | 4840 | OPC-UA PubSub over UDP | Fingerprint | **capture-only** | UADP network-message header (publisher id / dataset) |
@@ -244,7 +245,31 @@ OID `1.3.6.1.4.1.50316.802.1`).
 - **OSDP** (`osdp`) — access-control frame parse; classifies osdp_OUT (door
   strike), osdp_COMSET, osdp_KEYSET/CHLNG/SCRYPT; replies osdp_ACK/PDID.
 - **ProConOS** (`proconos`, 20547) — opcode classification (START/STOP, logic
-  DOWNLOAD); short ack.
+  DOWNLOAD); short ack — now carrying the **ICEFALL** advisory CVEs (see §6).
+
+### Write-then-read-back coherence (engagement depth)
+
+A careful ICS client — and an attacker validating that a controller write
+actually *landed* — writes a value, then reads the same address back and
+checks it changed. A handler that acks every write but always reads back the
+same canned value fails that check and reveals itself as a decoy. The deep
+control handlers now keep a **per-connection overlay** so a value written
+earlier in the session reads back verbatim:
+
+| Handler | Write verb → later read returns it |
+|---|---|
+| `modbus` | Write Single/Multiple Coils & Registers (`0x05`/`0x06`/`0x0F`/`0x10`/`0x16`) → subsequent Read Coils / Read Holding Registers of the same address |
+| `s7` | Write Var → Read Var of the same area/DB/offset |
+| `ethernetip` (CIP) | Write_Tag of a symbolic tag → Read_Tag of that tag (stores the CIP type + value, replayed exactly) |
+| `dnp3` | OPERATE a binary output (CROB) / analog output (AOB) → READ of the matching status group (binary-output-status / analog-output-status) |
+| `opcua` | Write of a node's Value (after CreateSession → ActivateSession) → Read of the same NodeId |
+
+The overlay is **bounded and per-connection** — no cross-session or
+cross-source state, nothing is ever actuated, and an address/object the parser
+doesn't model falls back to the handler's stable synthetic value (never a
+malformed frame). This raises engagement depth without adding amplification or
+shared mutable state. (See `*_state.go` / `opcua_session.go` and the
+`*_stateful_test.go` round-trips.)
 
 ### Fingerprint-grade TCP (Interactive reply, identity-only)
 
@@ -271,7 +296,8 @@ fabricated.
   WriteProperty, DeviceCommunicationControl, ReinitializeDevice,
   AtomicWriteFile), `fins` (UDP), `tristation` (TriStation/TSAA — program-
   download/control flagged safety-controller manipulation, the TRITON/TRISIS
-  vector), `bsap`, `wdbrpc` (WDB memory/context-call + URGENT/11).
+  vector), `bsap`, `wdbrpc` (WDB memory/context-call + URGENT/11), `ethercat`
+  (EtherCAT-over-UDP — WKC-incremented echo, read=recon / write=control).
 - **Capture-only (passive):** `profinet` (DCE-RPC CM opnums), `ge_egd`
   (producer id), `lontalk` (data-packet header), `knx` discovery — record +
   classify, never reply (reflection-safe).
@@ -466,6 +492,25 @@ CVE/CWE attribution still applies where it is observable:
 - Industrial **archetypes** can advertise known-vulnerable firmware/version
   strings when `sensor.vuln_emulation: true`, so a version scanner records an
   unpatched PLC/switch — the service never becomes actually exploitable.
+- **Named-campaign attribution.** Several control actions now carry the CVE of
+  the campaign that abused them, emitted by the handler's own classifier (not a
+  payload signature, so they show `Det = —` in the catalog but still fire a
+  `cve:<id>` from the handler):
+  - **TRITON / TRISIS** — Schneider Triconex SIS memory write (`tristation` →
+    **CVE-2018-8872**, T0843), the safety-controller manipulation vector.
+  - **OT:ICEFALL** — Phoenix Contact ProConOS unauthenticated logic up/download
+    (`proconos` → **CVE-2022-31800 / CVE-2022-31801**) and Omron SYSMAC FINS
+    cleartext UM-protection password + unauthenticated logic download (`fins` →
+    **CVE-2022-31204 / CVE-2022-31207**).
+  - Attributed the same way: **CODESYS V3** (CVE-2022-31806 / 31802), **PCWorx**
+    (CVE-2016-8367), **VxWorks URGENT/11** (`wdbrpc` → CVE-2010-2965 /
+    CVE-2019-12256), and **SIPROTEC EN100 / INDUSTROYER** (`siprotec_en100` →
+    CVE-2015-5374).
+
+  The behaviour marker still fires on its own (a STOP / program-download is
+  flagged regardless), but pinning the advisory hands an analyst the campaign
+  name for free. Full per-CVE detail (CWE/CPE/EPSS/ATT&CK) is in
+  [`attribution.md`](attribution.md) §3.
 
 There are no OT-protocol *exploit* emulations (no buffer-overflow payloads, no
 firmware RCE); the decoys answer protocol-legally and capture intent.

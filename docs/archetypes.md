@@ -1,6 +1,6 @@
 # Archetype catalog
 
-`tarpit-honeypot` ships **186** OS / device *archetypes*. An archetype is a
+`tarpit-honeypot` ships **259** OS / device *archetypes*. An archetype is a
 coherent identity — the banners, SNMP MIB-2 identity, MAC vendor OUI, TLS
 posture, ICMP TTL, default service map, web-UI body, and advertised
 CVEs — that a real instance of a given operating system or device would
@@ -222,6 +222,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | OpenBSD 7.5 | `openbsd-7.5` | bsd | 2 |
 | OpenBSD 7.6 | `openbsd-7.6` | bsd | 1 |
 | OpenBSD 7.7 | `openbsd-7.7` | bsd | 1 |
+| OpenBSD 7.8 | `openbsd-7.8` | bsd | 1 |
 | OpenWrt router | `openwrt` | openwrt | 3 |
 | Opengear console server | `opengear-cm` | opengear | 4 |
 | Oracle Linux 8 | `oracle-linux-8` | rhel | 1 |
@@ -305,6 +306,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Westermo Viper (EN50155 rail switch) | `westermo-viper` | westermo | 4 |
 | Windows 10 | `windows-10` | windows | 5 |
 | Windows 11 | `windows-11` | windows | 5 |
+| Windows 2000 | `windows-2000` | windows | 4 |
 | Windows 7 | `windows-7` | windows | 4 |
 | Windows 8 | `windows-8` | windows | 3 |
 | Windows RDP / RDS host (Server 2008 R2) | `rdp-server` | windows | 5 |
@@ -314,6 +316,7 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 | Windows Server 2016 | `windows-server-2016` | windows | 6 |
 | Windows Server 2019 | `windows-server-2019` | windows | 7 |
 | Windows Server 2022 | `windows-server-2022` | windows | 7 |
+| Windows XP | `windows-xp` | windows | 4 |
 | Xerox VersaLink C405 (MFP) | `xerox-versalink` | printer | 6 |
 | Yealink IP phone | `yealink-phone` | yealink | 3 |
 | Yokogawa CENTUM VP (DCS) | `yokogawa-centum` | yokogawa | 4 |
@@ -648,6 +651,16 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **Services:** :22 `ssh`
 - **CVEs advertised:** —
 
+### OpenBSD 7.8 — `openbsd-7.8`
+
+**Family:** bsd · **TTL:** 64 · **SNMP OID:** `.1.3.6.1.4.1.30155.1.1`
+
+- **SSH:** `SSH-2.0-OpenSSH_10.1`
+- **HTTP Server:** `OpenBSD httpd`
+- **SNMP sysDescr:** OpenBSD obsd.example.com 7.8 GENERIC#10 amd64
+- **Services:** :22 `ssh`
+- **CVEs advertised:** —
+
 ### NetBSD 9 — `netbsd-9`
 
 **Family:** bsd · **TTL:** 64
@@ -728,6 +741,18 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Microsoft-IIS/10.0`
 - **SNMP sysDescr:** Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 22631 Multiprocessor Free)
 - **Services:** :22 `ssh`, :135 `dcerpc`, :445 `smb`, :3389 `rdp`, :5985 `winrm`
+- **CVEs advertised:** —
+
+### Windows 2000 — `windows-2000`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.1`
+
+- **HTTP Server:** `Microsoft-IIS/5.0` · **cmd prompt:** `C:\WINNT\system32>`
+- **HTTP body:** classic IIS 5.0 "Under Construction" welcome page (`httpTitle` = `Under Construction`)
+- **SNMP sysDescr:** Hardware: x86 Family 6 Model 8 Stepping 6 AT/AT COMPATIBLE - Software: Windows 2000 Version 5.0 (Build 2195 Uniprocessor Free)
+- **TLS posture:** SChannel caps at **TLS 1.0** with weak (SSL 3.0-era) ciphers
+- **Services:** :135 `dcerpc`, :139 `raw`, :445 `smb`, :3389 `rdp`
+- **Quirks:** `windows-no-ssh`, `smbv1` (pre-OpenSSH; SMBv1-only stack)
 - **CVEs advertised:** —
 
 ### Windows 7 — `windows-7`
@@ -829,6 +854,18 @@ The full catalog (every archetype, complete and current) is below; `tarpit-honey
 - **HTTP Server:** `Microsoft-IIS/10.0`
 - **SNMP sysDescr:** Hardware: Intel64 Family 6 - Software: Windows Version 10.0 (Build 20348 Multiprocessor Free)
 - **Services:** :22 `ssh`, :135 `dcerpc`, :445 `smb`, :389 `ldap`, :88 `kerberos`, :3389 `rdp`, :5985 `winrm`
+- **CVEs advertised:** —
+
+### Windows XP — `windows-xp`
+
+**Family:** windows · **TTL:** 128 · **SNMP OID:** `.1.3.6.1.4.1.311.1.1.3.1.1`
+
+- **HTTP Server:** `Microsoft-IIS/5.1` · **cmd prompt:** `C:\Documents and Settings\Administrator>`
+- **HTTP body:** classic IIS 5.1 "Under Construction" welcome page (`httpTitle` = `Under Construction`)
+- **SNMP sysDescr:** Hardware: x86 Family 15 Model 2 Stepping 9 AT/AT COMPATIBLE - Software: Windows 2000 Version 5.1 (Build 2600 Uniprocessor Free) — XP's SNMP agent famously reports itself as "Windows 2000 Version 5.1"
+- **TLS posture:** SChannel defaults to **TLS 1.0** with weak (SSL 3.0-era) ciphers
+- **Services:** :135 `dcerpc`, :139 `raw`, :445 `smb`, :3389 `rdp`
+- **Quirks:** `windows-no-ssh`, `smbv1` (pre-OpenSSH; SMBv1-only stack — the MS08-067 / EternalBlue era)
 - **CVEs advertised:** —
 
 

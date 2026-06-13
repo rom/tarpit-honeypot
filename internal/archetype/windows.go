@@ -18,6 +18,49 @@ import "crypto/tls"
 //     ssh banner (sshBanner left empty), modern (Win10 1809+/Server
 //     2019+) ships OpenSSH-for-Windows.
 var windowsArchetypes = map[string]*Profile{
+	"windows-2000": {
+		Name: "windows-2000", DisplayName: "Windows 2000", Family: "windows",
+		httpServer:      "Microsoft-IIS/5.0",
+		smtpProduct:     "Microsoft ESMTP MAIL Service",
+		cliPrompt:       "C:\\WINNT\\system32>",
+		httpTitle:       "Under Construction",
+		httpBodyHTML:    iis5WelcomeHTML,
+		snmpSysDescr:    "Hardware: x86 Family 6 Model 8 Stepping 6 AT/AT COMPATIBLE - Software: Windows 2000 Version 5.0 (Build 2195 Uniprocessor Free)",
+		snmpSysObjectID: ".1.3.6.1.4.1.311.1.1.3.1.1",
+		snmpSysName:     "WIN2K-SERVER",
+		icmpTTL:         128,
+		// Windows 2000 SChannel tops out at TLS 1.0 (SSL 3.0 era ciphers).
+		tls: TLSPosture{MaxVersion: tls.VersionTLS10, WeakCiphers: true},
+		defaultServices: []DefaultService{
+			{Port: 135, Handler: "dcerpc", Note: "RPC endpoint mapper"},
+			{Port: 139, Handler: "raw", Note: "NetBIOS session"},
+			{Port: 445, Handler: "smb"},
+			{Port: 3389, Handler: "rdp", Note: "Terminal Services"},
+		},
+		quirks: []string{"windows-no-ssh", "smbv1"},
+	},
+	"windows-xp": {
+		Name: "windows-xp", DisplayName: "Windows XP", Family: "windows",
+		httpServer:   "Microsoft-IIS/5.1",
+		smtpProduct:  "Microsoft ESMTP MAIL Service",
+		cliPrompt:    "C:\\Documents and Settings\\Administrator>",
+		httpTitle:    "Under Construction",
+		httpBodyHTML: iis5WelcomeHTML,
+		// XP's SNMP agent famously reports itself as "Windows 2000 Version 5.1".
+		snmpSysDescr:    "Hardware: x86 Family 15 Model 2 Stepping 9 AT/AT COMPATIBLE - Software: Windows 2000 Version 5.1 (Build 2600 Uniprocessor Free)",
+		snmpSysObjectID: ".1.3.6.1.4.1.311.1.1.3.1.1",
+		snmpSysName:     "WINXP-CLIENT",
+		icmpTTL:         128,
+		// Windows XP SChannel defaults to SSL 3.0 / TLS 1.0.
+		tls: TLSPosture{MaxVersion: tls.VersionTLS10, WeakCiphers: true},
+		defaultServices: []DefaultService{
+			{Port: 135, Handler: "dcerpc", Note: "RPC endpoint mapper"},
+			{Port: 139, Handler: "raw", Note: "NetBIOS session"},
+			{Port: 445, Handler: "smb"},
+			{Port: 3389, Handler: "rdp", Note: "Remote Desktop"},
+		},
+		quirks: []string{"windows-no-ssh", "smbv1"},
+	},
 	"windows-7": {
 		Name: "windows-7", DisplayName: "Windows 7", Family: "windows",
 		macOUI:          [3]byte{}, // hardware-dependent; no pinned OUI
@@ -220,6 +263,19 @@ var windowsArchetypes = map[string]*Profile{
 		},
 	},
 }
+
+// iis5WelcomeHTML is the classic IIS 5.0 / 5.1 (Windows 2000 / XP) default
+// page — the "Under Construction" placeholder shown when a site has no
+// default document. Its wording is a strong fingerprint of that IIS era.
+const iis5WelcomeHTML = `<html><head><title>Under Construction</title>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252"></head>
+<body bgcolor="#FFFFFF"><table cellpadding="0" cellspacing="0" border="0"><tr>
+<td width="200" valign="top"><img src="pagerror.gif" width="200" height="84" alt=""></td>
+<td width="500" valign="top"><h1>Under Construction</h1>
+<p>The site you are trying to view does not currently have a default page. It may be in the process of being upgraded and configured.</p>
+<p>Please try this site again later. If you still experience the problem, try contacting the Web site administrator.</p>
+<p>If you are the Web site administrator and feel you have received this message in error, please see "Enabling and Disabling Dynamic Content" in IIS Help.</p>
+</td></tr></table></body></html>`
 
 // The IIS default-page HTML is version-distinctive: IIS 7/8 ship the
 // blue "IIS7"/"IIS8" splash with the welcome.png reference; IIS 10

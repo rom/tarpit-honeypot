@@ -94,6 +94,10 @@ func GetUDP(name string, deps Deps) (UDPHandler, error) {
 		return &radius{}, nil
 	case "sip":
 		return &sipUDP{}, nil
+	case "mgcp":
+		return &mgcp{lim: newUDPReflectLimiter()}, nil
+	case "ethercat":
+		return &ethercat{lim: newUDPReflectLimiter()}, nil
 	case "ssdp":
 		return &ssdp{lim: newUDPReflectLimiter()}, nil
 	case "cldap":

@@ -1,0 +1,66 @@
+# Exfiltration & command-and-control detection rules (detection-as-code).
+#
+# Catch data egress and C2 behaviour the sensor already classifies: DNS
+# tunneling / DGA / TXT-exfil (every query runs through tunneling detection),
+# the SSRF canary's server-side fetch + callback, captured malware/droppers,
+# and database cross-collection exfil.
+#
+#   ATT&CK: T1048 exfil over alt protocol, T1071.004 DNS C2, T1568.002 DGA,
+#   T1105 ingress tool transfer, T1567 exfil over web service.
+
+- id: exfil-dns-tunneling
+  title: DNS tunneling detected
+  description: Query stream shaped like a covert DNS tunnel (high-volume encoded labels).
+  severity: high
+  tags: [custom:dns-tunnel, attack.t1071.004]
+  match:
+    handler: [dns, dns_tcp]
+    anomaly|prefix: ["dns-tunnel", "dns-cname-tunnel"]
+
+- id: exfil-dns-txt
+  title: DNS TXT-record exfiltration
+  severity: high
+  tags: [custom:dns-txt-exfil, attack.t1048]
+  match:
+    anomaly: dns-txt-exfil
+
+- id: exfil-dns-dga
+  title: DGA-style domain queried
+  description: A query for an algorithmically-generated domain (malware C2 rendezvous).
+  severity: medium
+  tags: [custom:dns-dga, attack.t1568.002]
+  match:
+    anomaly: [dns-dga, dns-dga-suspected]
+
+- id: exfil-dns-long-encoded-label
+  title: Long high-entropy DNS label (encoded data)
+  severity: medium
+  tags: [custom:dns-encoded-label, attack.t1048]
+  match:
+    anomaly: dns-long-encoded-label
+
+- id: c2-ssrf-callback
+  title: SSRF canary fetched / called back
+  description: >
+    The server-side-request canary was made to fetch an attacker URL — proof of
+    a working SSRF and an outbound C2/exfil channel.
+  severity: high
+  tags: [custom:ssrf, attack.t1190]
+  match:
+    anomaly: [ssrf-callback, ssrf-server-side-fetch]
+
+- id: exfil-malware-capture
+  title: Malware / dropper payload captured
+  description: The payload engine classified captured bytes as an executable / dropper.
+  severity: high
+  tags: [custom:malware-capture, attack.t1105]
+  match:
+    anomaly|contains: malware
+
+- id: exfil-db-cross-collection
+  title: Database cross-collection exfil / overwrite ($out / $merge)
+  description: A MongoDB aggregation that writes one collection out of another.
+  severity: high
+  tags: [custom:db-exfil, attack.t1567]
+  match:
+    meta.intent|re: "(?i)(\\$out|\\$merge|cross-collection exfil)"

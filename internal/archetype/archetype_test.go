@@ -280,6 +280,8 @@ func TestAllShipArchetypes(t *testing.T) {
 		"FreeBSD 11",
 		"OpenBSD 7.4",
 		"OpenBSD 7.7",
+		// 2.22 additions: OpenBSD 7.8 + legacy Windows.
+		"OpenBSD 7.8", "Windows 2000", "Windows XP",
 		"NetBSD 9",
 		"NetBSD 10",
 		"CentOS Stream 9",
