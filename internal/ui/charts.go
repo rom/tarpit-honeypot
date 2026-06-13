@@ -138,7 +138,7 @@ type chartsPage struct {
 // chartFilterDims are the dimensions an operator can build an only/exclude
 // pattern on, in the order the add-form <select> offers them. Kept in sync with
 // chartFiltersToStore below.
-var chartFilterDims = []string{"ip", "asn", "country", "rule", "handler", "port", "proto"}
+var chartFilterDims = []string{"ip", "asn", "asn_org", "country", "country_name", "city", "rule", "handler", "port", "proto"}
 
 func chartDimOK(d string) bool {
 	for _, x := range chartFilterDims {
@@ -243,6 +243,24 @@ func chartFiltersToStore(only, exclude []chartDimVal, base store.Filter) store.F
 					} else {
 						base.ExcludeDstPorts = append(base.ExcludeDstPorts, n)
 					}
+				}
+			case "city":
+				if incl {
+					base.Cities = append(base.Cities, dv.Val)
+				} else {
+					base.ExcludeCities = append(base.ExcludeCities, dv.Val)
+				}
+			case "country_name":
+				if incl {
+					base.CountryNames = append(base.CountryNames, dv.Val)
+				} else {
+					base.ExcludeCountryNames = append(base.ExcludeCountryNames, dv.Val)
+				}
+			case "asn_org":
+				if incl {
+					base.ASNOrgs = append(base.ASNOrgs, dv.Val)
+				} else {
+					base.ExcludeASNOrgs = append(base.ExcludeASNOrgs, dv.Val)
 				}
 			}
 		}

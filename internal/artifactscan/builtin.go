@@ -5511,6 +5511,141 @@ rule WEBSHELL_ASP_Classic : webshell {
     condition:
         (1 of ($a, $b, $c)) or ($d and ($e or $f))
 }
+
+rule TOOL_Mythic_Agent : c2 apt {
+    meta:
+        description = "Mythic C2 agent (Apollo / Poseidon / Medusa)"
+        severity = "high"
+    strings:
+        $a = "callback_uuid"
+        $b = "AESPSK"
+        $c = "post_response"
+        $d = "apfell" nocase
+        $e = "mythic" nocase
+    condition:
+        ($a and $b) or ($c and $b) or (3 of them)
+}
+
+rule LOLBIN_Certutil_Download : dropper {
+    meta:
+        description = "certutil.exe abused to download or decode a payload (LOLBIN)"
+    strings:
+        $c = "certutil" nocase
+        $url = "-urlcache" nocase
+        $f = "-f http" nocase
+        $dec = "-decode" nocase
+        $hex = "-decodehex" nocase
+        $verify = "-verifyctl" nocase
+    condition:
+        $c and (1 of ($url, $f, $dec, $hex, $verify))
+}
+
+rule LOLBIN_Bitsadmin_Transfer : dropper {
+    meta:
+        description = "bitsadmin / Start-BitsTransfer used to fetch a payload (LOLBIN)"
+    strings:
+        $b = "bitsadmin" nocase
+        $t = "/transfer" nocase
+        $d = "/download" nocase
+        $ps = "Start-BitsTransfer" nocase
+        $http = "http" nocase
+    condition:
+        ($b and (1 of ($t, $d)) and $http) or ($ps and $http)
+}
+
+rule LINUX_TeamTNT : coinminer botnet {
+    meta:
+        description = "TeamTNT Linux cloud cryptojacking / credential-stealer tooling"
+        severity = "high"
+    strings:
+        $a = "TeamTNT" nocase
+        $b = "Hildegard" nocase
+        $c = "tntrecht"
+        $d = "punk.py"
+        $e = "cmd.tnt"
+    condition:
+        1 of ($a, $b, $c, $d, $e)
+}
+
+rule MAL_XZ_Backdoor : apt {
+    meta:
+        description = "XZ Utils / liblzma supply-chain backdoor build artifacts (CVE-2024-3094)"
+        severity = "high"
+    strings:
+        $f1 = "bad-3-corrupt_lzma2.xz"
+        $f2 = "good-large_compressed.lzma"
+        $lz = "liblzma"
+        $cpu = "_get_cpuid"
+    condition:
+        ($f1 and $f2) or ($lz and $cpu and (1 of ($f1, $f2)))
+}
+
+rule HTML_ClickFix_Lure : dropper {
+    meta:
+        description = "ClickFix / fake-CAPTCHA social engineering (paste-to-Run-dialog) page"
+        severity = "high"
+    strings:
+        $h1 = "Verify you are human" nocase
+        $h2 = "I am not a robot" nocase
+        $h3 = "Verification steps" nocase
+        $run = "Windows + R" nocase
+        $run2 = "Win+R" nocase
+        $clip = "navigator.clipboard.writeText" nocase
+        $ps = "powershell" nocase
+        $mshta = "mshta" nocase
+    condition:
+        ($clip and (1 of ($ps, $mshta))) or ((1 of ($h1, $h2, $h3)) and (1 of ($run, $run2)))
+}
+
+rule JS_SocGholish_FakeUpdate : dropper {
+    meta:
+        description = "SocGholish fake browser-update JavaScript loader"
+    strings:
+        $a = "NDSW"
+        $b = "NDSX"
+        $c = "Chrome.Update" nocase
+        $d = "Update.js" nocase
+        $e = "browser update" nocase
+    condition:
+        ($a and $b) or ($c and (1 of ($d, $e)))
+}
+
+rule TOOL_Nimplant : c2 {
+    meta:
+        description = "NimPlant lightweight C2 implant"
+    strings:
+        $a = "NimPlant" nocase
+        $b = "cmd_guid"
+        $c = "X-Identifier"
+    condition:
+        $a or ($b and $c)
+}
+
+rule CREDS_AWS_AccessKey : credaccess stealer {
+    meta:
+        description = "AWS access key id (often beside its secret) in a captured payload"
+    strings:
+        $id = /\b(AKIA|ASIA|AGPA|AIDA|AROA|ANPA|AIPA)[0-9A-Z]{16}\b/
+        $ctx1 = "aws_secret_access_key" nocase
+        $ctx2 = "aws_access_key_id" nocase
+        $ctx3 = "amazonaws.com" nocase
+    condition:
+        $id or ((1 of ($ctx1, $ctx2)) and $ctx3)
+}
+
+rule CREDS_Cloud_ServiceAccount : credaccess stealer {
+    meta:
+        description = "GCP / Azure service-account key material in a captured payload"
+    strings:
+        $gcp1 = "\"type\": \"service_account\""
+        $gcp2 = "private_key_id"
+        $gcp3 = ".iam.gserviceaccount.com"
+        $key = "-----BEGIN PRIVATE KEY-----"
+        $az = "client_secret" nocase
+        $az2 = "login.microsoftonline.com" nocase
+    condition:
+        ($gcp1 and $gcp2) or ($gcp3 and $key) or ($az and $az2)
+}
 `
 
 // builtinRules is parsed once at init. A parse failure of the built-in source
