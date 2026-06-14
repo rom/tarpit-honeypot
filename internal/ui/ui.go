@@ -1199,6 +1199,8 @@ type colHeader struct {
 type eventsPage struct {
 	Events      []*event.Event
 	Filter      store.Filter
+	Regex       bool   // regex mode (re=1) — echoes the checkbox + round-trips in links
+	Error       string // user-facing message (e.g. a malformed regex), shown above the form
 	SourceStr   string // raw filter inputs, echoed back so '!'/comma round-trip
 	RuleStr     string
 	ProtoStr    string
@@ -1227,12 +1229,21 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if tool != "" || tactic != "" || flag != "" || scanner != "" || cloud != "" {
 		f.Limit = searchScanMax
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	evs, err := s.query(ctx, f)
-	if err != nil {
-		serverError(w, r.URL.Path, err)
-		return
+	// A malformed regex (regex mode) is operator input, not a server fault — show
+	// it in the form instead of 500-ing inside the SQL REGEXP UDF, and skip the
+	// query so the page renders the message with no results. The post-filters
+	// below are all no-ops on the empty slice.
+	var evs []*event.Event
+	pageErr := filterRegexError(f)
+	if pageErr == "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		rows, err := s.query(ctx, f)
+		if err != nil {
+			serverError(w, r.URL.Path, err)
+			return
+		}
+		evs = rows
 	}
 	evs = filterByMeta(evs, tool, tactic, "")
 	if flag != "" {
@@ -1274,6 +1285,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	page := eventsPage{
 		Events:      evs,
 		Filter:      f,
+		Regex:       f.Regex,
+		Error:       pageErr,
 		SourceStr:   q.Get("source"),
 		RuleStr:     q.Get("rule"),
 		ProtoStr:    q.Get("proto"),
@@ -1349,7 +1362,7 @@ func sortEvents(evs []*event.Event, key, order string) {
 // columns: time, severity, source, rule, handler.
 func buildSortHeaders(path string, q url.Values, sortKey, order string) map[string]colHeader {
 	carry := url.Values{}
-	for _, k := range []string{"source", "rule", "proto", "since", "limit", "severity", "q"} {
+	for _, k := range []string{"source", "rule", "proto", "since", "limit", "severity", "q", "re"} {
 		if v := q.Get(k); v != "" {
 			carry.Set(k, v)
 		}
@@ -1549,6 +1562,10 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIEvents(w http.ResponseWriter, r *http.Request) {
 	f := parseFilter(r)
+	if msg := filterRegexError(f); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	evs, err := s.query(ctx, f)
@@ -2239,6 +2256,42 @@ func splitFilterTokens(v string) (incl, excl []string) {
 	return incl, excl
 }
 
+// filterRegexError validates the regex-mode filter patterns exactly as the
+// store compiles them ("(?i)"+token), returning a user-facing message for the
+// first malformed pattern so the events page can show it in-place instead of
+// the SQL REGEXP UDF erroring the whole query into a 500. A non-regex (or
+// empty) filter returns "".
+func filterRegexError(f store.Filter) string {
+	if !f.Regex {
+		return ""
+	}
+	for _, g := range []struct {
+		label string
+		vals  []string
+	}{
+		{"source", f.SourceIPs}, {"source", f.ExcludeSourceIPs},
+		{"rule", f.RuleIDs}, {"rule", f.ExcludeRuleIDs},
+		{"proto", f.Protos}, {"proto", f.ExcludeProtos},
+		{"handler", f.Handlers}, {"handler", f.ExcludeHandlers},
+		{"country", f.Countries}, {"country", f.ExcludeCountries},
+		{"city", f.Cities}, {"city", f.ExcludeCities},
+		{"country name", f.CountryNames}, {"country name", f.ExcludeCountryNames},
+		{"ASN org", f.ASNOrgs}, {"ASN org", f.ExcludeASNOrgs},
+	} {
+		for _, v := range g.vals {
+			if _, err := compileSearch(v); err != nil {
+				return g.label + " pattern — " + err.Error()
+			}
+		}
+	}
+	if f.Text != "" {
+		if _, err := compileSearch(f.Text); err != nil {
+			return "search pattern — " + err.Error()
+		}
+	}
+	return ""
+}
+
 // parseASN extracts a numeric AS number from a token like "AS13335", "as13335"
 // or "13335"; returns 0 when it isn't a positive integer.
 func parseASN(v string) int {
@@ -2272,6 +2325,14 @@ func parsePorts(in []string) []int {
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
+	// Regex mode (the /events filter bar's optional toggle, re=1): each comma /
+	// '!'-token in the text dimensions is matched as a case-insensitive RE2
+	// pattern instead of exactly. Routed through the multi-value include/exclude
+	// lists below so the store's REGEXP path applies — the single-value fast
+	// fields stay exact, so the pivot links / artifact-download filters the UI
+	// generates (which never set re) keep their precise semantics.
+	regex := q.Get("re") == "1"
+	f.Regex = regex
 	// Absolute window (from a clicked trend bar): from/to as RFC3339. These
 	// take precedence over the relative `since` default.
 	abs := false
@@ -2307,7 +2368,7 @@ func parseFilter(r *http.Request) store.Filter {
 	// turns into IN / NOT IN clauses.
 	if v := q.Get("source"); v != "" {
 		incl, excl := splitFilterTokens(v)
-		if len(excl) == 0 && len(incl) <= 1 {
+		if !regex && len(excl) == 0 && len(incl) <= 1 {
 			if len(incl) == 1 {
 				f.SourceIP = incl[0]
 			}
@@ -2317,7 +2378,7 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("rule"); v != "" {
 		incl, excl := splitFilterTokens(v)
-		if len(excl) == 0 && len(incl) <= 1 {
+		if !regex && len(excl) == 0 && len(incl) <= 1 {
 			if len(incl) == 1 {
 				f.RuleID = incl[0]
 			}
@@ -2327,7 +2388,7 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("proto"); v != "" {
 		incl, excl := splitFilterTokens(v)
-		if len(excl) == 0 && len(incl) <= 1 {
+		if !regex && len(excl) == 0 && len(incl) <= 1 {
 			if len(incl) == 1 {
 				f.Proto = incl[0]
 			}
@@ -2337,7 +2398,7 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("handler"); v != "" {
 		incl, excl := splitFilterTokens(v)
-		if len(excl) == 0 && len(incl) <= 1 {
+		if !regex && len(excl) == 0 && len(incl) <= 1 {
 			if len(incl) == 1 {
 				f.Handler = incl[0]
 			}
@@ -2358,7 +2419,7 @@ func parseFilter(r *http.Request) store.Filter {
 	}
 	if v := q.Get("country"); v != "" {
 		incl, excl := splitFilterTokens(v)
-		if len(excl) == 0 && len(incl) <= 1 {
+		if !regex && len(excl) == 0 && len(incl) <= 1 {
 			if len(incl) == 1 {
 				f.Country = incl[0]
 			}

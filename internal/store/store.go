@@ -753,8 +753,16 @@ type Filter struct {
 	ExcludeCountryNames []string
 	ASNOrgs             []string
 	ExcludeASNOrgs      []string
-	Limit               int
-	Offset              int
+	// Regex switches the text-dimension matching from exact (= / IN / NOT IN) to
+	// case-insensitive RE2 patterns (col REGEXP ?), applied per value to the
+	// include/exclude lists above — src_ip, dst_ip, rule_id, proto, handler,
+	// country, the geo_city / geo_country_name / asn_org meta dimensions, and the
+	// free-text search (Text). Numeric dimensions (ports, ASN) are unaffected.
+	// Drives the /events filter bar's optional regex mode; off by default so the
+	// exact-match pivots/links the UI generates keep their precise semantics.
+	Regex  bool
+	Limit  int
+	Offset int
 	// NoPayload skips the captured payload + banner columns (the per-row banner
 	// subquery and the base64 payload blob). Aggregation scans that only need
 	// the metadata columns (the dashboard enrichment) set this to read far less.
@@ -800,12 +808,6 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		q += " AND handler = ?"
 		args = append(args, f.Handler)
 	}
-	if len(f.Handlers) > 0 {
-		q += " AND handler IN (" + strings.Repeat("?,", len(f.Handlers)-1) + "?)"
-		for _, h := range f.Handlers {
-			args = append(args, h)
-		}
-	}
 	if f.DstPort > 0 {
 		q += " AND dst_port = ?"
 		args = append(args, f.DstPort)
@@ -833,12 +835,29 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		// makes it explicit and independent of the SQLite case_sensitive_like
 		// pragma. (Payload bytes are base64 in the DB, so payload-content search
 		// is done Go-side by the search page over the decoded bytes.)
-		like := "%" + strings.ToLower(f.Text) + "%"
-		q += " AND (LOWER(rule_id) LIKE ? OR LOWER(" + bannerSelect + ") LIKE ? OR LOWER(meta_json) LIKE ?" +
-			" OR LOWER(src_ip) LIKE ? OR LOWER(dst_ip) LIKE ? OR LOWER(handler) LIKE ?" +
-			" OR LOWER(proto) LIKE ? OR LOWER(sensor) LIKE ? OR LOWER(anomalies) LIKE ?" +
-			" OR LOWER(mitre_techniques) LIKE ? OR LOWER(mitre_tactics) LIKE ?)"
-		args = append(args, like, like, like, like, like, like, like, like, like, like, like)
+		//
+		// In regex mode the same columns are matched against the RE2 pattern
+		// instead, so the /events search box behaves like the advanced-search
+		// full-text field.
+		if f.Regex {
+			textCols := []string{"rule_id", bannerSelect, "meta_json", "src_ip", "dst_ip",
+				"handler", "proto", "sensor", "anomalies", "mitre_techniques", "mitre_tactics"}
+			parts := make([]string, len(textCols))
+			for i, c := range textCols {
+				parts[i] = c + " REGEXP ?"
+			}
+			q += " AND (" + strings.Join(parts, " OR ") + ")"
+			for range textCols {
+				args = append(args, "(?i)"+f.Text)
+			}
+		} else {
+			like := "%" + strings.ToLower(f.Text) + "%"
+			q += " AND (LOWER(rule_id) LIKE ? OR LOWER(" + bannerSelect + ") LIKE ? OR LOWER(meta_json) LIKE ?" +
+				" OR LOWER(src_ip) LIKE ? OR LOWER(dst_ip) LIKE ? OR LOWER(handler) LIKE ?" +
+				" OR LOWER(proto) LIKE ? OR LOWER(sensor) LIKE ? OR LOWER(anomalies) LIKE ?" +
+				" OR LOWER(mitre_techniques) LIKE ? OR LOWER(mitre_tactics) LIKE ?)"
+			args = append(args, like, like, like, like, like, like, like, like, like, like, like)
+		}
 	}
 	if f.FPValue != "" {
 		// The path is taken from the fixed allowlist map (never user input);
@@ -855,8 +874,18 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	// Multi-value include / exclude (events negation, charts include/exclude).
 	// The column names are fixed literals; the values are always bound as
 	// parameters, so this stays injection-safe.
+	// In regex mode the include/exclude lists match each value as a
+	// case-insensitive RE2 pattern (col REGEXP ?) instead of exact IN / NOT IN;
+	// the patterns are bound as params, so this stays injection-safe.
 	inStr := func(col string, vals []string) {
 		if len(vals) == 0 {
+			return
+		}
+		if f.Regex {
+			q += " AND (" + regexpOr(col, len(vals)) + ")"
+			for _, v := range vals {
+				args = append(args, "(?i)"+v)
+			}
 			return
 		}
 		q += " AND " + col + " IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
@@ -866,6 +895,13 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	}
 	notInStr := func(col string, vals []string) {
 		if len(vals) == 0 {
+			return
+		}
+		if f.Regex {
+			q += " AND NOT (" + regexpOr(col, len(vals)) + ")"
+			for _, v := range vals {
+				args = append(args, "(?i)"+v)
+			}
 			return
 		}
 		q += " AND " + col + " NOT IN (" + strings.Repeat("?,", len(vals)-1) + "?)"
@@ -895,6 +931,7 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	notInStr("src_ip", f.ExcludeSourceIPs)
 	inStr("rule_id", f.RuleIDs)
 	notInStr("rule_id", f.ExcludeRuleIDs)
+	inStr("handler", f.Handlers)
 	notInStr("handler", f.ExcludeHandlers)
 	inStr("proto", f.Protos)
 	notInStr("proto", f.ExcludeProtos)
@@ -926,9 +963,9 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	// safe. Exclusion keeps rows that carry no value (json_extract → NULL),
 	// matching the ASN behaviour above.
 	for _, mf := range []struct {
-		path     string
-		in       []string
-		notIn    []string
+		path  string
+		in    []string
+		notIn []string
 	}{
 		{"$.geo_city", f.Cities, f.ExcludeCities},
 		{"$.geo_country_name", f.CountryNames, f.ExcludeCountryNames},
@@ -939,15 +976,29 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 		}
 		expr := "CASE WHEN json_valid(meta_json) THEN json_extract(meta_json, '" + mf.path + "') END"
 		if len(mf.in) > 0 {
-			q += " AND " + expr + " IN (" + strings.Repeat("?,", len(mf.in)-1) + "?)"
-			for _, v := range mf.in {
-				args = append(args, v)
+			if f.Regex {
+				q += " AND (" + regexpOr(expr, len(mf.in)) + ")"
+				for _, v := range mf.in {
+					args = append(args, "(?i)"+v)
+				}
+			} else {
+				q += " AND " + expr + " IN (" + strings.Repeat("?,", len(mf.in)-1) + "?)"
+				for _, v := range mf.in {
+					args = append(args, v)
+				}
 			}
 		}
 		if len(mf.notIn) > 0 {
-			q += " AND (" + expr + " IS NULL OR " + expr + " NOT IN (" + strings.Repeat("?,", len(mf.notIn)-1) + "?))"
-			for _, v := range mf.notIn {
-				args = append(args, v)
+			if f.Regex {
+				q += " AND (" + expr + " IS NULL OR NOT (" + regexpOr(expr, len(mf.notIn)) + "))"
+				for _, v := range mf.notIn {
+					args = append(args, "(?i)"+v)
+				}
+			} else {
+				q += " AND (" + expr + " IS NULL OR " + expr + " NOT IN (" + strings.Repeat("?,", len(mf.notIn)-1) + "?))"
+				for _, v := range mf.notIn {
+					args = append(args, v)
+				}
 			}
 		}
 	}
