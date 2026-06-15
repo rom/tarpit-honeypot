@@ -1238,12 +1238,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if pageErr == "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		rows, err := s.query(ctx, f)
+		var err error
+		evs, err = s.query(ctx, f)
 		if err != nil {
 			serverError(w, r.URL.Path, err)
 			return
 		}
-		evs = rows
 	}
 	evs = filterByMeta(evs, tool, tactic, "")
 	if flag != "" {
@@ -2322,6 +2322,26 @@ func parsePorts(in []string) []int {
 	return out
 }
 
+// routeStrDim splits a comma / '!'-tokenized filter value into either the exact
+// single-value fast path (one positive token, no exclusions, non-regex mode) or
+// the multi-value include/exclude lists. In regex mode every value goes to the
+// lists so the store's REGEXP path applies. Callers assign the three returns to
+// a dimension's (single, includes, excludes) fields; an empty input returns
+// all-zero, a no-op assignment.
+func routeStrDim(regex bool, raw string) (single string, incl, excl []string) {
+	if raw == "" {
+		return "", nil, nil
+	}
+	i, e := splitFilterTokens(raw)
+	if !regex && len(e) == 0 && len(i) <= 1 {
+		if len(i) == 1 {
+			single = i[0]
+		}
+		return single, nil, nil
+	}
+	return "", i, e
+}
+
 func parseFilter(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Limit: 100}
@@ -2364,48 +2384,12 @@ func parseFilter(r *http.Request) store.Filter {
 	// String dimensions accept comma-separated values and a leading '!' to
 	// negate (exclude). A single positive value keeps the fast single-column
 	// path (and round-trips the existing pivot links / artifact-download
-	// filenames); anything else populates the multi / exclude lists the store
-	// turns into IN / NOT IN clauses.
-	if v := q.Get("source"); v != "" {
-		incl, excl := splitFilterTokens(v)
-		if !regex && len(excl) == 0 && len(incl) <= 1 {
-			if len(incl) == 1 {
-				f.SourceIP = incl[0]
-			}
-		} else {
-			f.SourceIPs, f.ExcludeSourceIPs = incl, excl
-		}
-	}
-	if v := q.Get("rule"); v != "" {
-		incl, excl := splitFilterTokens(v)
-		if !regex && len(excl) == 0 && len(incl) <= 1 {
-			if len(incl) == 1 {
-				f.RuleID = incl[0]
-			}
-		} else {
-			f.RuleIDs, f.ExcludeRuleIDs = incl, excl
-		}
-	}
-	if v := q.Get("proto"); v != "" {
-		incl, excl := splitFilterTokens(v)
-		if !regex && len(excl) == 0 && len(incl) <= 1 {
-			if len(incl) == 1 {
-				f.Proto = incl[0]
-			}
-		} else {
-			f.Protos, f.ExcludeProtos = incl, excl
-		}
-	}
-	if v := q.Get("handler"); v != "" {
-		incl, excl := splitFilterTokens(v)
-		if !regex && len(excl) == 0 && len(incl) <= 1 {
-			if len(incl) == 1 {
-				f.Handler = incl[0]
-			}
-		} else {
-			f.Handlers, f.ExcludeHandlers = append(f.Handlers, incl...), excl
-		}
-	}
+	// filenames); regex mode, multiple values or any exclusion populate the
+	// multi / exclude lists the store turns into REGEXP / IN / NOT IN clauses.
+	f.SourceIP, f.SourceIPs, f.ExcludeSourceIPs = routeStrDim(regex, q.Get("source"))
+	f.RuleID, f.RuleIDs, f.ExcludeRuleIDs = routeStrDim(regex, q.Get("rule"))
+	f.Proto, f.Protos, f.ExcludeProtos = routeStrDim(regex, q.Get("proto"))
+	f.Handler, f.Handlers, f.ExcludeHandlers = routeStrDim(regex, q.Get("handler"))
 	if v := q.Get("port"); v != "" {
 		incl, excl := splitFilterTokens(v)
 		iincl, iexcl := parsePorts(incl), parsePorts(excl)
@@ -2417,16 +2401,7 @@ func parseFilter(r *http.Request) store.Filter {
 			f.DstPorts, f.ExcludeDstPorts = iincl, iexcl
 		}
 	}
-	if v := q.Get("country"); v != "" {
-		incl, excl := splitFilterTokens(v)
-		if !regex && len(excl) == 0 && len(incl) <= 1 {
-			if len(incl) == 1 {
-				f.Country = incl[0]
-			}
-		} else {
-			f.Countries, f.ExcludeCountries = incl, excl
-		}
-	}
+	f.Country, f.Countries, f.ExcludeCountries = routeStrDim(regex, q.Get("country"))
 	if v := q.Get("asn"); v != "" {
 		incl, excl := splitFilterTokens(v)
 		iincl, iexcl := parseASNs(incl), parseASNs(excl)
