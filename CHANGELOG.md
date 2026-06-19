@@ -10,6 +10,22 @@ documented in `docs/`).
 
 ### Added
 
+- **Regex search in the events filter bar (opt-in).** The `/events` filter boxes
+  (source IP, rule, proto, handler, country, the geo / ASN-org meta dimensions,
+  and the full-text search) gain a **regex** checkbox: when ticked, each value is
+  matched as a case-insensitive RE2 pattern instead of an exact value, so an
+  operator can filter on a partial / pattern value (`source=^10\.0\.`,
+  `rule=ssh|telnet`) directly in the listing. The `comma = OR` and leading-`!` =
+  exclude per-token syntax is preserved (each token is its own pattern), and the
+  mode round-trips through column sorts, the "all" link and the artifact-download
+  links. It is **off by default**, so every exact-match pivot / link the UI
+  generates keeps its precise semantics. Matching runs in the store via a
+  registered SQLite `REGEXP` implementation (compiled patterns are cached per
+  process); a malformed pattern is reported inline in the form (and as a `400` on
+  the events JSON API / artifact download) rather than erroring the query. This
+  complements the advanced `/search` page, whose IP / rule / handler / full-text
+  fields are already regexes.
+
 - **Configurable BGP Autonomous System (`sensor.bgp_as`).** The `bgp` decoy can
   now present a believable router identity: when `sensor.bgp_as` is set, it
   answers a peer's OPEN with its own OPEN advertising that AS (My Autonomous

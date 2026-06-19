@@ -1254,22 +1254,24 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 
 {{ define "events" }}{{ template "head" . }}
 <h1>events</h1>
+{{ if .Error }}<p class="note err-banner">⚠ {{ .Error }}</p>{{ end }}
 <form method="get" action="/events">
-  source: <input type="text" name="source" value="{{ .SourceStr }}" placeholder="ip / !ip / a,b" size="15">
-  rule: <input type="text" name="rule" value="{{ .RuleStr }}" placeholder="rule / !rule / a,b" size="20">
+  source: <input type="text" name="source" value="{{ .SourceStr }}" placeholder="{{ if .Regex }}regex: ^10\.0\.{{ else }}ip / !ip / a,b{{ end }}" size="15">
+  rule: <input type="text" name="rule" value="{{ .RuleStr }}" placeholder="{{ if .Regex }}regex: ssh|telnet{{ else }}rule / !rule / a,b{{ end }}" size="20">
   proto: <input type="text" name="proto" value="{{ .ProtoStr }}" placeholder="tcp / !udp" size="7">
   severity: <input type="text" name="severity" value="{{ .SeverityStr }}" placeholder="low" size="8">
   since: <input type="text" name="since" value="{{ .SinceStr }}" placeholder="24h" size="6">
-  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="50000" size="6"> <a href="/events?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;proto={{ .ProtoStr }}&amp;severity={{ .SeverityStr }}&amp;since={{ .SinceStr }}&amp;q={{ .QStr }}&amp;limit=all">all</a>
-  <br>search: <input type="text" name="q" value="{{ .QStr }}" placeholder="full-text: rule / banner / captured meta" size="40">
+  limit: <input type="number" name="limit" value="{{ .Filter.Limit }}" min="1" max="50000" size="6"> <a href="/events?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;proto={{ .ProtoStr }}&amp;severity={{ .SeverityStr }}&amp;since={{ .SinceStr }}&amp;q={{ .QStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;limit=all">all</a>
+  <br>search: <input type="text" name="q" value="{{ .QStr }}" placeholder="{{ if .Regex }}regex over rule / banner / captured meta{{ else }}full-text: rule / banner / captured meta{{ end }}" size="40">
+  <label title="match every filter box (source, rule, proto, search, …) as a case-insensitive regular expression; comma = OR and leading ! = exclude still apply per pattern"><input type="checkbox" name="re" value="1" {{ if .Regex }}checked{{ end }}> regex</label>
   <button type="submit">filter</button>
   <a href="/events">reset</a>
 </form>
-<p class="note" data-help="Every box takes several comma-separated values (OR), and a leading ! negates one. So rule=!sniffer:arp_scan lists everything except that rule; source=10.0.0.1,10.0.0.2 lists just those two; proto=!udp hides UDP. Filters across boxes stack (AND).">Each box: comma = OR, leading <code>!</code> = exclude — e.g. <code>rule=!sniffer:arp_scan</code> lists everything except that rule. Stack boxes to combine. Click a column header to sort; click again to reverse.</p>
+<p class="note" data-help="Every box takes several comma-separated values (OR), and a leading ! negates one. So rule=!sniffer:arp_scan lists everything except that rule; source=10.0.0.1,10.0.0.2 lists just those two; proto=!udp hides UDP. Filters across boxes stack (AND). Tick regex to match each value as a case-insensitive regular expression instead of an exact value — comma = OR and ! = exclude still apply per pattern.">Each box: comma = OR, leading <code>!</code> = exclude — e.g. <code>rule=!sniffer:arp_scan</code> lists everything except that rule. Tick <strong>regex</strong> to match every box as a case-insensitive regular expression (<code>source=^10\.0\.</code>, <code>rule=ssh|telnet</code>); comma = OR and <code>!</code> = exclude still apply per pattern. Stack boxes to combine. Click a column header to sort; click again to reverse.</p>
 <p class="note">Download recorded artifacts for this filter (ZIP):
-  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=all">pcaps + sessions</a> ·
-  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=pcap">pcaps</a> ·
-  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}&amp;what=session">sessions</a>
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;what=all">pcaps + sessions</a> ·
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;what=pcap">pcaps</a> ·
+  <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;what=session">sessions</a>
 </p>
 <table data-rows-server>
   <tr>

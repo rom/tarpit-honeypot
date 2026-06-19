@@ -121,15 +121,6 @@ listeners:
   - { id: c1222,         proto: udp, bind: 0.0.0.0:1153,  mode: banner, handler: c1222,         severity: high,     read_bytes: 1500 } # ANSI C12.22 smart-meter / AMI
   - { id: siprotec-en100, proto: udp, bind: 0.0.0.0:50000, mode: banner, handler: siprotec_en100, severity: critical, read_bytes: 1500 } # Siemens SIPROTEC EN100 (CVE-2015-5374 relay-DoS)
 
-# L2 substation detection: passively flag IEC 61850 GOOSE multicast (spoof /
-# replay / storm / simulation) and answer PROFINET-DCP Identify/Set. Requires
-# the sensor to sit on the OT segment (CAP_NET_RAW); harmless if eth0 is absent.
-sniffer:
-  enabled: true
-  interface: eth0
-  severity: high
-  arp_scan: { distinct_ips: 16, window: 30s }
-
 # The three TCP-102 protocols can't all bind 102 on one IP, so expose
 # S7comm-Plus (S7-1200/1500) and IEC-61850 MMS on their own virtual IPs. The
 # top-level :102 listener (s7) binds the socket; the honeynet overrides the

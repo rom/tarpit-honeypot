@@ -187,6 +187,10 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	wantSession := what == "all" || what == "session"
 
 	f := parseFilter(r)
+	if msg := filterRegexError(f); msg != "" {
+		http.Error(w, "bad filter regex: "+msg, http.StatusBadRequest)
+		return
+	}
 	f.Limit = 2000 // bulk export cap
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
