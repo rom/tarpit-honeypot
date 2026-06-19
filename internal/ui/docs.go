@@ -33,6 +33,7 @@ var docCatalog = []docLink{
 	{"threat-intel-exports", "Threat-intel exports", "STIX 2.1 / TAXII 2.1 / MISP, the downward intel feed, and the CEF/LEEF/OCSF SIEM sinks."},
 	{"hardening", "Hardening", "Running the sensor safely: sandbox, egress allowlist, drop-privileges, and safe exposure."},
 	{"internals", "Internals", "The architecture and how the subsystems fit together."},
+	{"database-backend", "Database backend", "The storage architecture: embedded SQLite at the edge, the EventStore seam, and the optional PostgreSQL backend for fleet aggregators."},
 	{"archetypes", "OS / device archetypes", "The host personalities the sensor can present."},
 	{"attribution", "ATT&CK / D3FEND / CVE", "How interactions map to ATT&CK, D3FEND, and the CVE/CWE/CPE/EPSS catalog."},
 	{"ot", "ICS / OT decoys", "The industrial-protocol decoy suite: supported protocols, emulated commands, attacker-intent + ATT&CK-for-ICS mapping, the deception model, and limitations."},

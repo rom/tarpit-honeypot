@@ -62,7 +62,7 @@ type Sample struct {
 
 type Server struct {
 	cfg           config.UI
-	store         *store.Store
+	store         store.EventStore
 	refresh       int // auto-refresh seconds for live views (0 = off)
 	authToken     string
 	srv           *http.Server
@@ -201,11 +201,15 @@ type DeviceActions interface {
 // reachable when cfg.AllowDeviceActions is true AND an auth token is set.
 func (s *Server) SetDeviceActions(a DeviceActions) { s.deviceActions = a }
 
-func New(cfg config.UI, st *store.Store) (*Server, error) {
+func New(cfg config.UI, st store.EventStore) (*Server, error) {
 	if !cfg.Enabled {
 		return nil, errors.New("ui: not enabled")
 	}
-	if st == nil {
+	// st is an interface now: a caller that didn't open a store (needsStore=false)
+	// passes a nil *store.Store, which arrives as a non-nil interface wrapping a
+	// nil pointer. Reject both the untyped-nil and that typed-nil case so the
+	// "store is required" guard behaves exactly as it did with the concrete type.
+	if st == nil || st == (*store.Store)(nil) {
 		return nil, errors.New("ui: store is required")
 	}
 	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(), hidden: newIPMatcher(cfg.HiddenIPs), startTime: time.Now()}
