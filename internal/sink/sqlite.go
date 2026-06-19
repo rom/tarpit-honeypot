@@ -18,9 +18,14 @@ const (
 	sqliteHardCap  = 8192 // synchronous fallback above this, to bound memory
 )
 
-// sqliteSink wraps a store.Store as a Sink. It does not own the store —
+// sqliteSink wraps a store.EventStore as a Sink. It does not own the store —
 // the sensor opens the store once and reuses it for both this sink and
 // the read-only UI / list-events path so we don't hold two writers.
+//
+// It is typed on the store.EventStore interface rather than the concrete
+// SQLite *store.Store so the same buffered write path serves a future
+// client-server backend unchanged (see docs/database-backend.md); the embedded
+// SQLite store is the only implementation today.
 //
 // Writes are batched: each Send buffers the event and a background flusher
 // commits them in one transaction (the throughput path for a busy aggregator).
@@ -28,7 +33,7 @@ const (
 // then calls Close (which flushes) before closing the store.
 type sqliteSink struct {
 	id string
-	s  *store.Store
+	s  store.EventStore
 
 	mu  sync.Mutex
 	buf []*event.Event
@@ -41,7 +46,7 @@ type sqliteSink struct {
 
 // NewSQLite is constructed by the sensor (which owns the store handle)
 // rather than by Build, because the store needs to be shared.
-func NewSQLite(id string, s *store.Store) Sink {
+func NewSQLite(id string, s store.EventStore) Sink {
 	q := &sqliteSink{
 		id: id, s: s,
 		flush: make(chan struct{}, 1),

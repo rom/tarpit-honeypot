@@ -193,7 +193,7 @@ func searchWindow(q searchQuery) (since, until time.Time, err error) {
 	return since, until, nil
 }
 
-func runSearch(ctx context.Context, st *store.Store, q searchQuery) ([]*event.Event, bool, error) {
+func runSearch(ctx context.Context, st store.EventStore, q searchQuery) ([]*event.Event, bool, error) {
 	since, until, err := searchWindow(q)
 	if err != nil {
 		return nil, false, err
