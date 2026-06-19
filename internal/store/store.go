@@ -684,6 +684,26 @@ DELETE FROM events WHERE id IN (
 	}
 }
 
+// PruneBefore deletes events older than cutoff (by event time) and IOCs not
+// seen since cutoff (by last_seen — the same age basis), returning the rows
+// removed from each. It is the engine-neutral retention primitive the retention
+// runner calls; the size-cap prune in maybePrune is a separate SQLite-file
+// concern.
+func (s *Store) PruneBefore(ctx context.Context, cutoff time.Time) (events, iocs int64, err error) {
+	cut := cutoff.UTC().UnixNano()
+	res, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE time < ?`, cut)
+	if err != nil {
+		return 0, 0, fmt.Errorf("store: prune events: %w", err)
+	}
+	events, _ = res.RowsAffected()
+	res, err = s.db.ExecContext(ctx, `DELETE FROM iocs WHERE last_seen < ?`, cut)
+	if err != nil {
+		return events, 0, fmt.Errorf("store: prune iocs: %w", err)
+	}
+	iocs, _ = res.RowsAffected()
+	return events, iocs, nil
+}
+
 // Filter narrows what Query returns. Zero values mean "no constraint".
 type Filter struct {
 	Since    time.Time
@@ -926,9 +946,9 @@ func (s *Store) Query(ctx context.Context, f Filter) ([]*event.Event, error) {
 	// safe. Exclusion keeps rows that carry no value (json_extract → NULL),
 	// matching the ASN behaviour above.
 	for _, mf := range []struct {
-		path     string
-		in       []string
-		notIn    []string
+		path  string
+		in    []string
+		notIn []string
 	}{
 		{"$.geo_city", f.Cities, f.ExcludeCities},
 		{"$.geo_country_name", f.CountryNames, f.ExcludeCountryNames},

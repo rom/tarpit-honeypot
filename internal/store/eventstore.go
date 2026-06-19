@@ -54,6 +54,13 @@ type EventStore interface {
 	QueryIOCs(ctx context.Context, f IOCFilter) ([]IOCRow, error)
 	IOCSummary(ctx context.Context, since time.Time) (map[string]int, error)
 
+	// PruneBefore drops events (by event time) and IOCs (by last_seen) older
+	// than cutoff, returning the rows removed from each. This is the
+	// engine-neutral retention primitive the retention runner calls regardless
+	// of backend — unlike the SQLite-only DB()/Path() it does not leak the
+	// engine, so it belongs on the contract.
+	PruneBefore(ctx context.Context, cutoff time.Time) (events, iocs int64, err error)
+
 	// Lifecycle.
 	Close() error
 }

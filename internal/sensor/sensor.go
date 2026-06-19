@@ -52,6 +52,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/store/pgstore"
 	"github.com/rom/tarpit-honeypot/internal/tokentrack"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
 	"github.com/rom/tarpit-honeypot/internal/trust"
@@ -73,7 +74,7 @@ type Sensor struct {
 	sinks       []sink.Sink
 	router      *router.Router
 	correlator  *correlate.Correlator
-	store       *store.Store
+	store       store.EventStore
 	captureMgr  *capture.Manager
 	identity    *identity.Identity
 	jitter      *jitter.Jitterer
@@ -224,13 +225,9 @@ func New(cfg *config.Config) (*Sensor, error) {
 	// config.Validate, so Lookup returning nil here means empty).
 	arch := archetype.Lookup(cfg.Sensor.Archetype)
 
-	var st *store.Store
-	if needsStore(cfg) {
-		s, err := store.Open(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB)
-		if err != nil {
-			return nil, err
-		}
-		st = s
+	st, err := openEventStore(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	var capMgr *capture.Manager
@@ -1688,10 +1685,38 @@ func needsStore(cfg *config.Config) bool {
 	return false
 }
 
+// openEventStore opens the configured persistence backend and returns it behind
+// the engine-neutral store.EventStore. The default is the embedded SQLite index
+// under data_dir, opened only when something actually needs it (a sqlite channel
+// or the UI). "postgres" is the opt-in client-server backend for a fleet
+// aggregator/hub (docs/database-backend.md); its DSN comes from the environment,
+// never the config file. A nil EventStore means no store is needed.
+func openEventStore(cfg *config.Config) (store.EventStore, error) {
+	switch cfg.Sensor.Store.Backend {
+	case "", "sqlite":
+		if !needsStore(cfg) {
+			return nil, nil
+		}
+		return store.Open(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB)
+	case "postgres":
+		dsnEnv := cfg.Sensor.Store.DSNEnv
+		if dsnEnv == "" {
+			dsnEnv = "TARPIT_PG_DSN"
+		}
+		dsn := os.Getenv(dsnEnv)
+		if dsn == "" {
+			return nil, fmt.Errorf("sensor.store.backend is %q but %s is empty in the environment", "postgres", dsnEnv)
+		}
+		return pgstore.Open(dsn)
+	default:
+		return nil, fmt.Errorf("sensor.store.backend %q must be \"sqlite\" or \"postgres\"", cfg.Sensor.Store.Backend)
+	}
+}
+
 func (s *Sensor) Name() string                      { return s.name }
 func (s *Sensor) Router() *router.Router            { return s.curRouter() }
 func (s *Sensor) Correlator() *correlate.Correlator { return s.curCorrelator() }
-func (s *Sensor) Store() *store.Store               { return s.store }
+func (s *Sensor) Store() store.EventStore           { return s.store }
 func (s *Sensor) Config() *config.Config            { return s.curConfig() }
 
 // DetectRuleStats snapshots the loaded operator detection rules + their match
@@ -2581,7 +2606,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 			CapturesDir: filepath.Join(s.cfg.Sensor.DataDir, "captures"),
 		}
 		if s.store != nil {
-			r.DB = s.store.DB()
+			r.Store = s.store
 		}
 		wg.Add(1)
 		go func() {

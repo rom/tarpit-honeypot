@@ -686,11 +686,16 @@ type Sensor struct {
 	// Per-listener archetype overrides this; per-host honeynet
 	// archetype overrides both. Empty = fall back to the v1.0
 	// deployment-id-keyed variant pool.
-	Archetype string    `yaml:"archetype"`
-	Disk      Disk      `yaml:"disk"`
-	Jitter    Jitter    `yaml:"jitter"`
-	Shutdown  Shutdown  `yaml:"shutdown"`
-	TLSRotate TLSRotate `yaml:"tls_rotate"`
+	Archetype string `yaml:"archetype"`
+	Disk      Disk   `yaml:"disk"`
+	// Store selects the event-persistence backend. Default (empty / "sqlite")
+	// is the embedded SQLite index under data_dir — the right choice for a leaf
+	// sensor. "postgres" is the opt-in client-server backend for a fleet
+	// aggregator/hub; see docs/database-backend.md.
+	Store     StoreConfig `yaml:"store"`
+	Jitter    Jitter      `yaml:"jitter"`
+	Shutdown  Shutdown    `yaml:"shutdown"`
+	TLSRotate TLSRotate   `yaml:"tls_rotate"`
 	// ReplyPolicy is the deployment-wide outbound-reply policy applied to every
 	// service. One of: "full" (default — full bidirectional / interactive),
 	// "non-ot" (full except OT-class handlers are muted), "fingerprint" (reply
@@ -997,6 +1002,18 @@ type Shutdown struct {
 // handler certificate. 0 = never rotate (the v0.8 behavior).
 type TLSRotate struct {
 	Days int `yaml:"days"`
+}
+
+// StoreConfig selects and parameterises the event-persistence backend.
+type StoreConfig struct {
+	// Backend is "" / "sqlite" (default, embedded) or "postgres" (opt-in,
+	// client-server, for fleet aggregators).
+	Backend string `yaml:"backend"`
+	// DSNEnv is the environment variable holding the PostgreSQL connection
+	// string (a DSN or postgres:// URL). Read from the environment, never the
+	// config file, mirroring how ingest tokens are handled. Defaults to
+	// TARPIT_PG_DSN when backend is "postgres" and this is empty.
+	DSNEnv string `yaml:"dsn_env"`
 }
 
 type Disk struct {
