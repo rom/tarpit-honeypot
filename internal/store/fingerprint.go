@@ -37,6 +37,16 @@ func FingerprintKindKnown(kind string) bool {
 // fingerprintPath returns the JSON path for an allowlisted kind, or "".
 func fingerprintPath(kind string) string { return fingerprintKinds[kind] }
 
+// FingerprintKindOrder returns the allowlisted fingerprint kinds in listing
+// order. The meta JSON key for each kind is the kind itself (e.g. "ja3"), so an
+// alternate backend reads the same value out of meta with that key. Exported so
+// other store implementations share one source of truth for the kind set.
+func FingerprintKindOrder() []string {
+	out := make([]string, len(fingerprintKindOrder))
+	copy(out, fingerprintKindOrder)
+	return out
+}
+
 // FingerprintRow is one entry in the fingerprint index: a single fingerprint
 // value of a given kind with cheap cross-cutting counts.
 type FingerprintRow struct {

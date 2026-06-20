@@ -1,17 +1,25 @@
 // Package retention prunes durable state older than a configured age.
 // Runs as a single background goroutine spawned by the sensor, ticking
-// every hour. Touches the JSONL events directory, the SQLite events
-// table, and the captures directory.
+// every hour. Touches the JSONL events directory, the event store
+// (SQLite or PostgreSQL, via the engine-neutral Pruner), and the
+// captures directory.
 package retention
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 )
+
+// Pruner is the slice of the event store retention needs: drop events and IOCs
+// older than a cutoff, reporting the rows removed. Both the embedded SQLite
+// store and the PostgreSQL backend satisfy it (store.EventStore.PruneBefore),
+// so retention is engine-agnostic.
+type Pruner interface {
+	PruneBefore(ctx context.Context, cutoff time.Time) (events, iocs int64, err error)
+}
 
 // Runner holds the configured age cap + pointers to the on-disk locations
 // we manage. Any nil/empty field is skipped.
@@ -19,7 +27,7 @@ type Runner struct {
 	Days        int
 	JSONLogDir  string
 	CapturesDir string
-	DB          *sql.DB
+	Store       Pruner
 }
 
 // Run starts the periodic prune. Returns when ctx is cancelled.
@@ -46,8 +54,13 @@ func (r *Runner) tick(ctx context.Context) {
 	cutoff := time.Now().Add(-time.Duration(r.Days) * 24 * time.Hour)
 	jsonlogPruned := pruneDir(r.JSONLogDir, cutoff)
 	capturePruned := pruneDir(r.CapturesDir, cutoff)
-	dbPruned := pruneDB(ctx, r.DB, cutoff)
-	iocPruned := pruneIOCs(ctx, r.DB, cutoff)
+	var dbPruned, iocPruned int64
+	if r.Store != nil {
+		var err error
+		if dbPruned, iocPruned, err = r.Store.PruneBefore(ctx, cutoff); err != nil {
+			slog.Warn("retention: store prune", "err", err)
+		}
+	}
 	if jsonlogPruned > 0 || capturePruned > 0 || dbPruned > 0 || iocPruned > 0 {
 		slog.Info("retention prune",
 			"jsonlog_files", jsonlogPruned,
@@ -89,36 +102,4 @@ func pruneDir(dir string, cutoff time.Time) int {
 		}
 	}
 	return removed
-}
-
-// pruneDB deletes events older than cutoff. Returns the number of rows
-// removed. SQLite is the only schema we know about today; callers pass
-// the raw *sql.DB so we don't have to import store and create a cycle.
-func pruneDB(ctx context.Context, db *sql.DB, cutoff time.Time) int64 {
-	if db == nil {
-		return 0
-	}
-	res, err := db.ExecContext(ctx, `DELETE FROM events WHERE time < ?`, cutoff.UTC().UnixNano())
-	if err != nil {
-		slog.Warn("retention: db delete", "err", err)
-		return 0
-	}
-	n, _ := res.RowsAffected()
-	return n
-}
-
-// pruneIOCs drops indicators not seen since the cutoff (an IOC kept fresh by
-// continued sightings survives; one stale for the whole retention window is
-// dropped). Keyed on last_seen, the same age basis as the event prune.
-func pruneIOCs(ctx context.Context, db *sql.DB, cutoff time.Time) int64 {
-	if db == nil {
-		return 0
-	}
-	res, err := db.ExecContext(ctx, `DELETE FROM iocs WHERE last_seen < ?`, cutoff.UTC().UnixNano())
-	if err != nil {
-		slog.Warn("retention: ioc delete", "err", err)
-		return 0
-	}
-	n, _ := res.RowsAffected()
-	return n
 }

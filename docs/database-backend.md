@@ -173,6 +173,15 @@ The `Filter` → `WHERE`/`GROUP BY` query *shapes* are unchanged, so each
 `EventStore` method is a dialect port, not a redesign. `inet` and `jsonb`
 are strict upgrades the edge SQLite cannot match.
 
+> **v1 implementation note.** The shipped `pgstore` (§6) uses this schema
+> with two deliberate simplifications for a behaviour-identical first cut:
+> event time is `bigint` nanoseconds and IPs are `text` (matching the
+> SQLite store exactly, so the engine-neutral `Filter`/`event` types are
+> reused unchanged), and the table is **not** partitioned yet. It already
+> uses `jsonb` for `meta` (with a GIN index) — the part the meta filters
+> need. `timestamptz`/`inet`/partitioning are the optimisation path in §6
+> "Remaining".
+
 ### 4.2 Retention by partition drop
 
 Wire `internal/retention` so that, on a partitioned backend, it `DROP`s
@@ -217,28 +226,47 @@ two seams a second backend must plug into:
   field, and `runSearch(ctx, store.EventStore, …)`
   (`internal/ui/ui.go`, `internal/ui/search.go`).
 
-This was a behavior-preserving refactor: the sensor still constructs and
-owns the concrete `*store.Store`, all tests pass, and the binary is
-unchanged. Engine-specific methods deliberately stay **off** the
-interface (on the concrete `*Store`): `DB()` (`*sql.DB` for the retention
-runner), `Path()` (the file the `prune-db`/`rotate-db`/metrics CLIs stat),
-and `EnsureIndexes`/`MissingIndexes` (SQLite index health).
+### Done — the PostgreSQL backend
 
-### Remaining — to land the PostgreSQL backend
+- **`pgstore.Store` implements `store.EventStore`**
+  (`internal/store/pgstore/pgstore.go`) via `database/sql` + the pure-Go
+  pgx stdlib driver (CGO-free), with a compile-time
+  `var _ store.EventStore = (*Store)(nil)`. Every `Filter` dimension,
+  `Summary`/`SourceAggregates`/`EventsPerBucket`/`Fingerprints`, the IOC
+  upsert, and `PruneBefore` are ported to the Postgres dialect. It is
+  round-trip tested against PostgreSQL 16 (`pgstore_test.go`, which skips
+  unless `TARPIT_PG_TEST_DSN` points at a disposable database).
+- **`PruneBefore` is now on the contract.** Retention is engine-neutral:
+  `retention.Runner` holds a `Pruner` (satisfied by both backends) instead
+  of a raw `*sql.DB`, and both stores implement
+  `PruneBefore(ctx, cutoff)`.
+- **Backend selection.** `sensor.store.backend` / `dsn_env` config (§5)
+  drives `openEventStore` in the sensor; the default stays SQLite, and a
+  `postgres` backend reads its DSN from the environment.
+- **Engine-specific paths stay off the contract.** `EnsureIndexes`/
+  `MissingIndexes` (SQLite index self-heal in `alerts.go`) and `Path()`
+  (the `metrics` DB-size gauge) are reached through optional type
+  assertions; the file-only `prune-db`/`rotate-db` CLIs remain SQLite
+  admin tools that open their own `*store.Store`.
+- **Persistence channel follows the backend.** A `type: sqlite` channel
+  wraps whatever `EventStore` is configured, so an aggregator with
+  `backend: postgres` persists forwarded events to Postgres through the
+  same batched sink.
 
-1. **`pgStore` implementing `store.EventStore`** (pgx pool, the §4.1
-   schema, `Filter` ported to Postgres dialect with JSONB/`inet`).
-2. **Backend selection** — `config` plumbing (§5) and a constructor that
-   returns `EventStore` by backend; default SQLite.
-3. **Abstract the engine-specific paths** so they are not SQLite-only:
-   replace the retention runner's raw `DB() *sql.DB` `DELETE` with a
-   neutral `PruneBefore(ctx, cutoff)` (partition drop on Postgres); gate
-   the `prune-db`/`rotate-db`/`metrics` file-size CLIs on the SQLite
-   backend (they operate on a file).
-4. **Versioned migrations** — see §7.1.
-5. **CI against both backends** — run the `internal/store` suite over
-   SQLite and a throwaway Postgres (testcontainers) so the two dialects
-   cannot drift.
+### Remaining
+
+1. **Versioned migrations** — layer goose/golang-migrate over today's
+   idempotent `IF NOT EXISTS` DDL (see §7.1).
+2. **Native time partitioning + retention by partition drop** — today
+   `PruneBefore` deletes by time; partitioning (§4.2) makes expiry a
+   `DROP TABLE`.
+3. **Richer column types** — `timestamptz`/`inet` (the §4.1 sketch); v1
+   uses `bigint` nanoseconds + `text` IPs to match the SQLite store
+   exactly (see §4.1 note).
+4. **ClickHouse backend** for very high sustained volume (§3).
+5. **CI + deployment** — wire `TARPIT_PG_TEST_DSN` into CI so both
+   dialects run every build; ship the docker-compose / managed-PG recipe
+   (§7.4).
 
 ---
 

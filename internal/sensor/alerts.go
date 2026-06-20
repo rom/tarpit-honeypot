@@ -68,9 +68,17 @@ func (s *Sensor) runHealthMonitor(ctx context.Context) {
 			// index (one may have failed to build during a full-disk window)
 			// and flag persistent gaps — a missing index is why aggregate pages
 			// full-scan and time out on a large store.
-			if s.store != nil && ticks%30 == 1 {
-				s.store.EnsureIndexes()
-				if miss := s.store.MissingIndexes(); len(miss) > 0 {
+			// Index self-heal is a SQLite-specific concern (the embedded store's
+			// secondary indexes can fail to build during a full-disk window). It is
+			// exposed only on that backend, so reach it through an optional
+			// interface; the PostgreSQL backend manages indexes in its schema and
+			// does not implement it.
+			if ih, ok := s.store.(interface {
+				EnsureIndexes() int
+				MissingIndexes() []string
+			}); ok && ticks%30 == 1 {
+				ih.EnsureIndexes()
+				if miss := ih.MissingIndexes(); len(miss) > 0 {
 					slog.Warn("store: secondary indexes missing (pages may full-scan)", "missing", miss)
 					s.emitOpEvent("sensor:health", event.SeverityMedium, map[string]any{
 						"check": "db_indexes", "missing": miss,

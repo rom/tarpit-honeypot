@@ -77,9 +77,11 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 				},
 			)
 		}
-		// SQLite store size.
-		if st := s.Store(); st != nil {
-			if info, err := os.Stat(filepath.Clean(st.Path())); err == nil {
+		// SQLite store size — a file-backed metric, so it is exposed only by the
+		// SQLite store (via the optional Path() method); the PostgreSQL backend has
+		// no local file to stat.
+		if fp, ok := s.Store().(interface{ Path() string }); ok {
+			if info, err := os.Stat(filepath.Clean(fp.Path())); err == nil {
 				out.Samples = append(out.Samples, ui.Sample{
 					Name:  "tarpit_store_db_bytes",
 					Help:  "On-disk size of the SQLite events.db",
