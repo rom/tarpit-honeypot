@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
@@ -29,6 +30,9 @@ import (
 // Store is the PostgreSQL-backed event store.
 type Store struct {
 	db *sql.DB
+	// partTick gates the lazy partition top-up on the write path (see
+	// maybeEnsurePartitions).
+	partTick atomic.Uint64
 }
 
 // Compile-time guarantee that this backend satisfies the same contract as the
@@ -54,11 +58,15 @@ func Open(dsn string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("pgstore: ping %s: %w", redactDSN(dsn), err)
 	}
-	if err := ensureSchema(ctx, db); err != nil {
+	// Apply embedded migrations (creates the partitioned schema on a fresh DB),
+	// then provision the current + adjacent monthly partitions.
+	if err := migrate(ctx, dsn); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	st := &Store{db: db}
+	st.ensurePartitions(ctx, time.Now())
+	return st, nil
 }
 
 // redactDSN strips anything after the first credential-bearing token so a
@@ -74,71 +82,6 @@ func redactDSN(dsn string) string {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
-
-// --- schema -----------------------------------------------------------------
-
-// ddl is applied statement-by-statement at Open. Each is idempotent
-// (IF NOT EXISTS), so this doubles as a first-cut migration; a real deployment
-// layers versioned migrations on top (see docs/database-backend.md §7.1).
-// Event time is BIGINT nanoseconds to match the SQLite store; meta and the
-// other semi-structured columns are jsonb so the meta filters hit the GIN index
-// instead of scanning.
-var ddl = []string{
-	`CREATE TABLE IF NOT EXISTS events (
-  id text PRIMARY KEY,
-  time bigint NOT NULL,
-  sensor text NOT NULL DEFAULT '',
-  sensor_id text NOT NULL DEFAULT '',
-  rule_id text NOT NULL DEFAULT '',
-  severity int NOT NULL DEFAULT 0,
-  src_ip text NOT NULL DEFAULT '',
-  src_port int NOT NULL DEFAULT 0,
-  dst_ip text NOT NULL DEFAULT '',
-  dst_port int NOT NULL DEFAULT 0,
-  proto text NOT NULL DEFAULT '',
-  handler text NOT NULL DEFAULT '',
-  banner_sent text NOT NULL DEFAULT '',
-  payload_b64 text NOT NULL DEFAULT '',
-  payload_len int NOT NULL DEFAULT 0,
-  meta jsonb,
-  anomalies jsonb,
-  mitre_techniques jsonb,
-  mitre_tactics jsonb,
-  mitre_defenses jsonb,
-  country text NOT NULL DEFAULT ''
-)`,
-	`CREATE TABLE IF NOT EXISTS iocs (
-  type text NOT NULL,
-  value text NOT NULL,
-  first_seen bigint NOT NULL,
-  last_seen bigint NOT NULL,
-  count bigint NOT NULL,
-  severity int,
-  last_rule text,
-  last_sensor text,
-  last_source text,
-  PRIMARY KEY (type, value)
-)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_src_ip_time ON events(src_ip, time DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_rule_id_time ON events(rule_id, time)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_handler_time ON events(handler, time DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_dst_ip_time ON events(dst_ip, time DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_country_time ON events(country, time DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_severity_time ON events(severity, time)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_meta_gin ON events USING gin (meta)`,
-	`CREATE INDEX IF NOT EXISTS idx_iocs_last_seen ON iocs(last_seen DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_iocs_type ON iocs(type)`,
-}
-
-func ensureSchema(ctx context.Context, db *sql.DB) error {
-	for _, stmt := range ddl {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("pgstore: schema: %w", err)
-		}
-	}
-	return nil
-}
 
 // --- argList: $N placeholder builder ---------------------------------------
 
@@ -160,8 +103,8 @@ INSERT INTO events
  meta, anomalies, mitre_techniques, mitre_tactics, mitre_defenses, country)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
         $16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20::jsonb,$21)
-ON CONFLICT (id) DO UPDATE SET
-  time=excluded.time, sensor=excluded.sensor, sensor_id=excluded.sensor_id,
+ON CONFLICT (id, time) DO UPDATE SET
+  sensor=excluded.sensor, sensor_id=excluded.sensor_id,
   rule_id=excluded.rule_id, severity=excluded.severity,
   src_ip=excluded.src_ip, src_port=excluded.src_port,
   dst_ip=excluded.dst_ip, dst_port=excluded.dst_port,
@@ -211,6 +154,7 @@ func (s *Store) Insert(ctx context.Context, ev *event.Event) error {
 	if _, err := s.db.ExecContext(ctx, insertSQL, eventArgs(ev)...); err != nil {
 		return fmt.Errorf("pgstore insert: %w", err)
 	}
+	s.maybeEnsurePartitions(ctx)
 	return nil
 }
 
@@ -238,16 +182,29 @@ func (s *Store) InsertBatch(ctx context.Context, evs []*event.Event) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("pgstore batch: commit: %w", err)
 	}
+	s.maybeEnsurePartitions(ctx)
 	return nil
 }
 
+// PruneBefore enforces retention by first dropping whole monthly partitions
+// older than the cutoff (instant, no row scan), then DELETE-ing any stragglers
+// in the partial boundary month and the DEFAULT partition so the cut is exact.
+// The events count combines the dropped partitions' row estimate with the exact
+// boundary-delete count (dropped rows can't be counted precisely without
+// scanning a table that is about to vanish).
 func (s *Store) PruneBefore(ctx context.Context, cutoff time.Time) (events, iocs int64, err error) {
 	cut := cutoff.UTC().UnixNano()
+	dropped, err := s.dropOldPartitions(ctx, cut)
+	if err != nil {
+		return 0, 0, err
+	}
+	events = dropped
 	res, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE time < $1`, cut)
 	if err != nil {
-		return 0, 0, fmt.Errorf("pgstore: prune events: %w", err)
+		return events, 0, fmt.Errorf("pgstore: prune events: %w", err)
 	}
-	events, _ = res.RowsAffected()
+	n, _ := res.RowsAffected()
+	events += n
 	res, err = s.db.ExecContext(ctx, `DELETE FROM iocs WHERE last_seen < $1`, cut)
 	if err != nil {
 		return events, 0, fmt.Errorf("pgstore: prune iocs: %w", err)

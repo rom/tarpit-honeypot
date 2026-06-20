@@ -135,3 +135,59 @@ func checkCount(t *testing.T, st *Store, f store.Filter, want int) {
 		t.Errorf("filter %+v matched %d; want %d", f, len(evs), want)
 	}
 }
+
+// TestPgPartitionRetention checks that an event lands in its month's partition
+// and that PruneBefore drops the whole partition once it is older than the cut.
+func TestPgPartitionRetention(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	old := now.AddDate(0, -3, 0) // three months ago
+
+	// Provision the old + current months so each event lands in a dedicated
+	// partition rather than DEFAULT.
+	st.ensurePartitions(ctx, old)
+	st.ensurePartitions(ctx, now)
+
+	oldEv := &event.Event{ID: "old", Time: old, Sensor: "s", RuleID: "r", Severity: event.SeverityHigh,
+		Source: event.Endpoint{IP: "1.1.1.1"}, Proto: "tcp", Handler: "ssh"}
+	newEv := &event.Event{ID: "new", Time: now, Sensor: "s", RuleID: "r", Severity: event.SeverityHigh,
+		Source: event.Endpoint{IP: "2.2.2.2"}, Proto: "tcp", Handler: "ssh"}
+	if err := st.InsertBatch(ctx, []*event.Event{oldEv, newEv}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	_, _, oldName := monthBounds(old)
+	if !hasPartition(t, st, oldName) {
+		t.Fatalf("expected partition %s to exist after insert", oldName)
+	}
+
+	// Retain one month: the three-month-old partition is fully expired and must
+	// be dropped; the current month survives.
+	if _, _, err := st.PruneBefore(ctx, now.AddDate(0, -1, 0)); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if hasPartition(t, st, oldName) {
+		t.Errorf("partition %s should have been dropped", oldName)
+	}
+	evs, err := st.Query(ctx, store.Filter{Since: now.AddDate(-1, 0, 0)})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(evs) != 1 || evs[0].ID != "new" {
+		t.Errorf("after prune survivors = %v; want [new]", ids(evs))
+	}
+}
+
+func hasPartition(t *testing.T, st *Store, name string) bool {
+	t.Helper()
+	var n int
+	if err := st.db.QueryRowContext(context.Background(), `
+SELECT COUNT(*) FROM pg_inherits i
+JOIN pg_class c ON c.oid = i.inhrelid
+JOIN pg_class p ON p.oid = i.inhparent
+WHERE p.relname = 'events' AND c.relname = $1`, name).Scan(&n); err != nil {
+		t.Fatalf("hasPartition: %v", err)
+	}
+	return n > 0
+}

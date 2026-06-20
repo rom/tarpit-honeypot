@@ -174,20 +174,27 @@ The `Filter` → `WHERE`/`GROUP BY` query *shapes* are unchanged, so each
 are strict upgrades the edge SQLite cannot match.
 
 > **v1 implementation note.** The shipped `pgstore` (§6) uses this schema
-> with two deliberate simplifications for a behaviour-identical first cut:
-> event time is `bigint` nanoseconds and IPs are `text` (matching the
-> SQLite store exactly, so the engine-neutral `Filter`/`event` types are
-> reused unchanged), and the table is **not** partitioned yet. It already
-> uses `jsonb` for `meta` (with a GIN index) — the part the meta filters
-> need. `timestamptz`/`inet`/partitioning are the optimisation path in §6
-> "Remaining".
+> as the baseline migration (`migrations/0001_init.sql`), with `events`
+> **RANGE-partitioned monthly on `time`** and a DEFAULT partition. Two
+> deliberate simplifications keep it a behaviour-identical first cut: event
+> time is `bigint` nanoseconds and IPs are `text` (matching the SQLite
+> store exactly, so the engine-neutral `Filter`/`event` types are reused
+> unchanged). `meta` is already `jsonb` (with a GIN index). Because the
+> partition key must be in every unique constraint, the primary key is
+> `(id, time)`; `id` is unique in practice, so event-id dedup is preserved.
+> `timestamptz`/`inet` are the remaining optimisation path in §6.
 
 ### 4.2 Retention by partition drop
 
-Wire `internal/retention` so that, on a partitioned backend, it `DROP`s
-expired partitions and pre-`CREATE`s upcoming ones (a tiny scheduler, or
-`pg_partman`). Retention stops being a row-by-row delete and a
-performance event.
+Implemented in `internal/store/pgstore/partitions.go`. The runtime keeps
+the current + adjacent monthly partitions provisioned (at `Open` and lazily
+on the write path); the DEFAULT partition guarantees an insert never fails
+for want of a partition. `PruneBefore` then enforces retention by
+**dropping whole monthly partitions older than the cutoff** (instant, no
+row scan or vacuum), followed by a small boundary `DELETE` over the partial
+current month + DEFAULT partition so the cut stays *exact* rather than
+rounded to a whole month. `internal/retention` calls this through the same
+engine-neutral `PruneBefore` it uses for SQLite.
 
 ---
 
@@ -252,19 +259,24 @@ two seams a second backend must plug into:
   wraps whatever `EventStore` is configured, so an aggregator with
   `backend: postgres` persists forwarded events to Postgres through the
   same batched sink.
+- **Versioned, embedded migrations** (`migrate.go`, `migrations/*.sql`).
+  An embedded, ordered SQL migration runner tracked in `schema_migrations`,
+  guarded by a `pg_advisory_lock` so two aggregators can't race, applying
+  each pending file in its own transaction. Runs at every `Open`;
+  already-applied versions are skipped (§7.1).
+- **Time partitioning + retention by partition drop** (`partitions.go`).
+  `events` is monthly RANGE-partitioned with a DEFAULT catch-all; the
+  runtime provisions the active window and `PruneBefore` drops expired
+  partitions plus a boundary delete (§4.2). Verified against PostgreSQL 16
+  (`TestPgPartitionRetention`).
 
 ### Remaining
 
-1. **Versioned migrations** — layer goose/golang-migrate over today's
-   idempotent `IF NOT EXISTS` DDL (see §7.1).
-2. **Native time partitioning + retention by partition drop** — today
-   `PruneBefore` deletes by time; partitioning (§4.2) makes expiry a
-   `DROP TABLE`.
-3. **Richer column types** — `timestamptz`/`inet` (the §4.1 sketch); v1
+1. **Richer column types** — `timestamptz`/`inet` (the §4.1 sketch); v1
    uses `bigint` nanoseconds + `text` IPs to match the SQLite store
    exactly (see §4.1 note).
-4. **ClickHouse backend** for very high sustained volume (§3).
-5. **CI + deployment** — wire `TARPIT_PG_TEST_DSN` into CI so both
+2. **ClickHouse backend** for very high sustained volume (§3).
+3. **CI + deployment** — wire `TARPIT_PG_TEST_DSN` into CI so both
    dialects run every build; ship the docker-compose / managed-PG recipe
    (§7.4).
 
@@ -277,16 +289,24 @@ operational debt. The guardrails:
 
 ### 7.1 Versioned, embedded migrations
 
-Retire the hand-rolled `migrate()` (`ALTER TABLE … ADD COLUMN` guarded by
-`hasColumn()` in `internal/store/store.go`) for the server backend. Use
-ordered SQL files embedded with `embed.FS` and applied by **goose** or
-**golang-migrate**, tracked in a `schema_migrations` table. Migrations
-become reviewable, ordered, and idempotent — and still ship *inside* the
-binary, so there is no external migration step to forget.
+Implemented for the Postgres backend (`internal/store/pgstore/migrate.go`
++ `migrations/*.sql`). Rather than the SQLite store's hand-rolled
+`migrate()` (`ALTER TABLE … ADD COLUMN` guarded by `hasColumn()`), the
+server backend uses ordered SQL files embedded with `embed.FS`, tracked in
+a `schema_migrations` table, applied in version order each in its own
+transaction. Migrations are reviewable, ordered, and idempotent, and ship
+*inside* the binary — no external migration step to forget. A
+`pg_advisory_lock` serialises migrators so two aggregators starting at once
+can't race; multi-statement files apply through a dedicated simple-protocol
+connection. A self-contained runner (rather than goose/golang-migrate)
+keeps the dependency footprint in line with the project's single-binary
+ethos.
 
 ### 7.2 Retention by partition drop, not DELETE
 
-See §4.2. No row-by-row deletes, no bloat, no `VACUUM` pressure.
+Implemented — see §4.2. Whole expired monthly partitions are dropped
+(no row-by-row delete, no bloat, no `VACUUM` storm); only the partial
+boundary month is deleted, to keep the cut exact.
 
 ### 7.3 Postgres stays optional
 
