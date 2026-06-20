@@ -7,9 +7,12 @@
 // It talks to Postgres through database/sql + the pure-Go pgx stdlib driver, so
 // the binary stays CGO-free. The query shapes mirror internal/store/store.go;
 // the dialect differences are: $N placeholders (not ?), jsonb meta with ->>
-// operators (not SQLite json_extract), and ILIKE for case-insensitive search.
-// Event time is stored as int64 UnixNano exactly as the SQLite store does, so
-// the engine-neutral Filter/Summary/event types are reused unchanged.
+// operators (not SQLite json_extract), ILIKE for case-insensitive search, and a
+// native timestamptz time column (the SQLite store uses int64 UnixNano). IP
+// columns stay text — not inet — so crafted/edge source identifiers (e.g. IPv6
+// link-local with a zone like fe80::1%eth0) round-trip with full fidelity, which
+// is the point of a honeypot. The engine-neutral Filter/Summary/event types are
+// reused unchanged.
 package pgstore
 
 import (
@@ -119,7 +122,7 @@ ON CONFLICT (id, time) DO UPDATE SET
 func eventArgs(ev *event.Event) []any {
 	country, _ := ev.Meta["geo_country"].(string)
 	return []any{
-		ev.ID, ev.Time.UTC().UnixNano(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
+		ev.ID, ev.Time.UTC(), ev.Sensor, ev.SensorID, ev.RuleID, int(ev.Severity),
 		ev.Source.IP, ev.Source.Port, ev.Dest.IP, ev.Dest.Port,
 		ev.Proto, ev.Handler, ev.BannerSent, ev.PayloadBase64, ev.PayloadLen,
 		jsonOrNil(ev.Meta), jsonOrNil(ev.Anomalies),
@@ -193,7 +196,7 @@ func (s *Store) InsertBatch(ctx context.Context, evs []*event.Event) error {
 // boundary-delete count (dropped rows can't be counted precisely without
 // scanning a table that is about to vanish).
 func (s *Store) PruneBefore(ctx context.Context, cutoff time.Time) (events, iocs int64, err error) {
-	cut := cutoff.UTC().UnixNano()
+	cut := cutoff.UTC()
 	dropped, err := s.dropOldPartitions(ctx, cut)
 	if err != nil {
 		return 0, 0, err
@@ -232,10 +235,10 @@ func (s *Store) Query(ctx context.Context, f store.Filter) ([]*event.Event, erro
 	q := "SELECT " + fmt.Sprintf(selectCols, bannerCol, payloadCol) + " FROM events WHERE 1=1"
 
 	if !f.Since.IsZero() {
-		q += " AND time >= " + a.next(f.Since.UTC().UnixNano())
+		q += " AND time >= " + a.next(f.Since.UTC())
 	}
 	if !f.Until.IsZero() {
-		q += " AND time <= " + a.next(f.Until.UTC().UnixNano())
+		q += " AND time <= " + a.next(f.Until.UTC())
 	}
 	if f.SourceIP != "" {
 		q += " AND src_ip = " + a.next(f.SourceIP)
@@ -404,7 +407,7 @@ func (s *Store) ConversationNav(ctx context.Context, ev *event.Event) (store.Eve
 	if ev == nil || ev.Source.IP == "" || ev.Dest.IP == "" {
 		return nb, nil
 	}
-	src, dst, t := ev.Source.IP, ev.Dest.IP, ev.Time.UTC().UnixNano()
+	src, dst, t := ev.Source.IP, ev.Dest.IP, ev.Time.UTC()
 	err := s.db.QueryRowContext(ctx, `
 SELECT id FROM events
 WHERE src_ip = $1 AND dst_ip = $2 AND (time < $3 OR (time = $3 AND id < $4))
@@ -440,10 +443,10 @@ func scanRow(r rowScanner) (*event.Event, error) {
 		id, sensor, ruleID, srcIP, dstIP, proto, handler, banner, payloadB64, metaJSON string
 		sensorID, anomaliesJSON                                                        sql.NullString
 		techJSON, tacJSON, defJSON                                                     sql.NullString
-		timeNS                                                                         int64
+		ts                                                                             time.Time
 		sev, srcPort, dstPort, payloadLen                                              int
 	)
-	if err := r.Scan(&id, &timeNS, &sensor, &sensorID, &ruleID, &sev,
+	if err := r.Scan(&id, &ts, &sensor, &sensorID, &ruleID, &sev,
 		&srcIP, &srcPort, &dstIP, &dstPort,
 		&proto, &handler, &banner, &payloadB64, &payloadLen, &metaJSON, &anomaliesJSON,
 		&techJSON, &tacJSON, &defJSON); err != nil {
@@ -451,7 +454,7 @@ func scanRow(r rowScanner) (*event.Event, error) {
 	}
 	ev := &event.Event{
 		ID:            id,
-		Time:          time.Unix(0, timeNS).UTC(),
+		Time:          ts.UTC(),
 		Sensor:        sensor,
 		SensorID:      sensorID.String,
 		RuleID:        ruleID,
@@ -485,25 +488,25 @@ func scanRow(r rowScanner) (*event.Event, error) {
 // --- aggregates -------------------------------------------------------------
 
 func (s *Store) Heartbeat(ctx context.Context) (count int64, latest time.Time, err error) {
-	var ns sql.NullInt64
-	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(time) FROM events`).Scan(&count, &ns); err != nil {
+	var nt sql.NullTime
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(time) FROM events`).Scan(&count, &nt); err != nil {
 		return 0, time.Time{}, err
 	}
-	if ns.Valid {
-		latest = time.Unix(0, ns.Int64).UTC()
+	if nt.Valid {
+		latest = nt.Time.UTC()
 	}
 	return count, latest, nil
 }
 
 func (s *Store) OldestEventTime(ctx context.Context) (time.Time, error) {
-	var ns sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT MIN(time) FROM events`).Scan(&ns); err != nil {
+	var nt sql.NullTime
+	if err := s.db.QueryRowContext(ctx, `SELECT MIN(time) FROM events`).Scan(&nt); err != nil {
 		return time.Time{}, err
 	}
-	if !ns.Valid || ns.Int64 == 0 {
+	if !nt.Valid {
 		return time.Time{}, nil
 	}
-	return time.Unix(0, ns.Int64).UTC(), nil
+	return nt.Time.UTC(), nil
 }
 
 func (s *Store) SourceAggregates(ctx context.Context, since time.Time, limit int) ([]store.SourceAggregate, error) {
@@ -517,7 +520,7 @@ FROM events
 WHERE time >= $1 AND src_ip <> ''
 GROUP BY src_ip
 ORDER BY w DESC, c DESC
-LIMIT $2`, since.UTC().UnixNano(), limit)
+LIMIT $2`, since.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -526,14 +529,14 @@ LIMIT $2`, since.UTC().UnixNano(), limit)
 	for rows.Next() {
 		var (
 			a      store.SourceAggregate
-			mn, mx int64
+			mn, mx time.Time
 			ms     int
 		)
 		if err := rows.Scan(&a.IP, &a.Count, &mn, &mx, &ms, &a.DistinctRules, &a.Weight); err != nil {
 			return nil, err
 		}
-		a.FirstSeen = time.Unix(0, mn).UTC()
-		a.LastSeen = time.Unix(0, mx).UTC()
+		a.FirstSeen = mn.UTC()
+		a.LastSeen = mx.UTC()
 		a.MaxSeverity = event.Severity(ms)
 		out = append(out, a)
 	}
@@ -545,16 +548,19 @@ func (s *Store) EventsPerHour(ctx context.Context, since time.Time) ([]store.Hou
 }
 
 func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket time.Duration) ([]store.HourBucket, error) {
-	hourNS := int64(bucket / time.Nanosecond)
-	if hourNS <= 0 {
-		hourNS = int64(time.Hour)
+	bucketSec := int64(bucket / time.Second)
+	if bucketSec <= 0 {
+		bucketSec = int64(time.Hour / time.Second)
 	}
-	startBucket := since.UTC().UnixNano() / hourNS
-	nowBucket := time.Now().UTC().UnixNano() / hourNS
+	startBucket := since.UTC().Unix() / bucketSec
+	nowBucket := time.Now().UTC().Unix() / bucketSec
 	counts := map[int64]int{}
+	// Bucket on the timestamp's epoch seconds: floor(epoch/bucketSec) is the
+	// bucket index, reconstructed to a time in Go (mirrors the SQLite store,
+	// which divides UnixNano).
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT time/$1::bigint, COUNT(*) FROM events WHERE time >= $2 GROUP BY time/$1::bigint`,
-		hourNS, since.UTC().UnixNano())
+		`SELECT floor(extract(epoch FROM time)/$1)::bigint AS b, COUNT(*) FROM events WHERE time >= $2 GROUP BY b`,
+		bucketSec, since.UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -573,21 +579,21 @@ func (s *Store) EventsPerBucket(ctx context.Context, since time.Time, bucket tim
 	}
 	out := make([]store.HourBucket, 0, nowBucket-startBucket+1)
 	for b := startBucket; b <= nowBucket; b++ {
-		out = append(out, store.HourBucket{Hour: time.Unix(0, b*hourNS).UTC(), Count: counts[b]})
+		out = append(out, store.HourBucket{Hour: time.Unix(b*bucketSec, 0).UTC(), Count: counts[b]})
 	}
 	return out, nil
 }
 
 func (s *Store) Summary(ctx context.Context, since time.Time) (store.Summary, error) {
 	sum := store.Summary{Since: since, BySeverity: map[string]int{}, ByRule: map[string]int{}, ByProto: map[string]int{}}
-	sinceNS := since.UTC().UnixNano()
+	sinceTS := since.UTC()
 
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE time >= $1`, sinceNS).Scan(&sum.Total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE time >= $1`, sinceTS).Scan(&sum.Total); err != nil {
 		return sum, err
 	}
 	// severity is an integer column, so it is scanned as int (not via scanCounts,
 	// which reads string keys) and mapped to its label.
-	sevRows, err := s.db.QueryContext(ctx, `SELECT severity, COUNT(*) FROM events WHERE time >= $1 GROUP BY severity`, sinceNS)
+	sevRows, err := s.db.QueryContext(ctx, `SELECT severity, COUNT(*) FROM events WHERE time >= $1 GROUP BY severity`, sinceTS)
 	if err != nil {
 		return sum, err
 	}
@@ -603,15 +609,15 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (store.Summary, er
 	if err := sevRows.Err(); err != nil {
 		return sum, err
 	}
-	if err := scanCounts(ctx, s.db, `SELECT rule_id, COUNT(*) c FROM events WHERE time >= $1 GROUP BY rule_id ORDER BY c DESC LIMIT 20`, sinceNS,
+	if err := scanCounts(ctx, s.db, `SELECT rule_id, COUNT(*) c FROM events WHERE time >= $1 GROUP BY rule_id ORDER BY c DESC LIMIT 20`, sinceTS,
 		func(k string, c int) { sum.ByRule[k] = c }); err != nil {
 		return sum, err
 	}
-	if err := scanCounts(ctx, s.db, `SELECT proto, COUNT(*) FROM events WHERE time >= $1 AND proto <> '' GROUP BY proto`, sinceNS,
+	if err := scanCounts(ctx, s.db, `SELECT proto, COUNT(*) FROM events WHERE time >= $1 AND proto <> '' GROUP BY proto`, sinceTS,
 		func(k string, c int) { sum.ByProto[k] = c }); err != nil {
 		return sum, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT src_ip, COUNT(*) c FROM events WHERE time >= $1 AND src_ip <> '' GROUP BY src_ip ORDER BY c DESC LIMIT 10`, sinceNS)
+	rows, err := s.db.QueryContext(ctx, `SELECT src_ip, COUNT(*) c FROM events WHERE time >= $1 AND src_ip <> '' GROUP BY src_ip ORDER BY c DESC LIMIT 10`, sinceTS)
 	if err != nil {
 		return sum, err
 	}
@@ -629,20 +635,20 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (store.Summary, er
 		return sum, err
 	}
 
-	if sum.ByHandler, err = s.groupCount(ctx, "handler", sinceNS, 50); err != nil {
+	if sum.ByHandler, err = s.groupCount(ctx, "handler", sinceTS, 50); err != nil {
 		return sum, err
 	}
-	if sum.ByTarget, err = s.groupCount(ctx, "dst_ip", sinceNS, 50); err != nil {
+	if sum.ByTarget, err = s.groupCount(ctx, "dst_ip", sinceTS, 50); err != nil {
 		return sum, err
 	}
-	if sum.ByCountry, err = s.groupCount(ctx, "country", sinceNS, 30); err != nil {
+	if sum.ByCountry, err = s.groupCount(ctx, "country", sinceTS, 30); err != nil {
 		return sum, err
 	}
 	return sum, nil
 }
 
-func scanCounts(ctx context.Context, db *sql.DB, q string, sinceNS int64, fn func(k string, c int)) error {
-	rows, err := db.QueryContext(ctx, q, sinceNS)
+func scanCounts(ctx context.Context, db *sql.DB, q string, since time.Time, fn func(k string, c int)) error {
+	rows, err := db.QueryContext(ctx, q, since)
 	if err != nil {
 		return err
 	}
@@ -658,11 +664,11 @@ func scanCounts(ctx context.Context, db *sql.DB, q string, sinceNS int64, fn fun
 	return rows.Err()
 }
 
-func (s *Store) groupCount(ctx context.Context, col string, sinceNS int64, limit int) (map[string]int, error) {
+func (s *Store) groupCount(ctx context.Context, col string, since time.Time, limit int) (map[string]int, error) {
 	out := map[string]int{}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+col+`, COUNT(*) c FROM events WHERE time >= $1 AND `+col+` <> '' GROUP BY `+col+` ORDER BY c DESC LIMIT $2`,
-		sinceNS, limit)
+		since, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -679,7 +685,6 @@ func (s *Store) groupCount(ctx context.Context, col string, sinceNS int64, limit
 }
 
 func (s *Store) Fingerprints(ctx context.Context, since time.Time, limit int) ([]store.FingerprintRow, error) {
-	sinceNS := since.UTC().UnixNano()
 	var selects []string
 	for _, kind := range store.FingerprintKindOrder() {
 		// kind is from the store allowlist, so it is a safe meta-key literal.
@@ -694,7 +699,7 @@ GROUP BY `+val)
 	}
 	q := "SELECT kind, val, c, ips, sensors, firstns, lastns FROM (" +
 		strings.Join(selects, " UNION ALL ") + ") sub ORDER BY c DESC, lastns DESC"
-	args := []any{sinceNS}
+	args := []any{since.UTC()}
 	if limit > 0 {
 		q += " LIMIT $2"
 		args = append(args, limit)
@@ -707,14 +712,14 @@ GROUP BY `+val)
 	var out []store.FingerprintRow
 	for rows.Next() {
 		var (
-			r               store.FingerprintRow
-			firstNS, lastNS int64
+			r             store.FingerprintRow
+			firstT, lastT time.Time
 		)
-		if err := rows.Scan(&r.Kind, &r.Value, &r.Count, &r.IPs, &r.Sensors, &firstNS, &lastNS); err != nil {
+		if err := rows.Scan(&r.Kind, &r.Value, &r.Count, &r.IPs, &r.Sensors, &firstT, &lastT); err != nil {
 			return nil, err
 		}
-		r.FirstSeen = time.Unix(0, firstNS).UTC()
-		r.LastSeen = time.Unix(0, lastNS).UTC()
+		r.FirstSeen = firstT.UTC()
+		r.LastSeen = lastT.UTC()
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -723,7 +728,6 @@ GROUP BY `+val)
 // --- IOCs -------------------------------------------------------------------
 
 func (s *Store) UpsertIOC(ctx context.Context, typ, value, ruleID, sensor, source string, sev event.Severity, t time.Time) (bool, error) {
-	ns := t.UTC().UnixNano()
 	var count int64
 	err := s.db.QueryRowContext(ctx, `
 INSERT INTO iocs (type, value, first_seen, last_seen, count, severity, last_rule, last_sensor, last_source)
@@ -736,7 +740,7 @@ ON CONFLICT (type, value) DO UPDATE SET
   last_sensor = excluded.last_sensor,
   last_source = excluded.last_source
 RETURNING count`,
-		typ, value, ns, int(sev), ruleID, sensor, source).Scan(&count)
+		typ, value, t.UTC(), int(sev), ruleID, sensor, source).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -751,7 +755,7 @@ func (s *Store) QueryIOCs(ctx context.Context, f store.IOCFilter) ([]store.IOCRo
 		q += " AND type = " + a.next(f.Type)
 	}
 	if !f.Since.IsZero() {
-		q += " AND last_seen >= " + a.next(f.Since.UTC().UnixNano())
+		q += " AND last_seen >= " + a.next(f.Since.UTC())
 	}
 	if f.Text != "" {
 		q += " AND value ILIKE " + a.next("%"+f.Text+"%")
@@ -769,15 +773,16 @@ func (s *Store) QueryIOCs(ctx context.Context, f store.IOCFilter) ([]store.IOCRo
 	for rows.Next() {
 		var (
 			r                                store.IOCRow
-			first, last, count               int64
+			first, last                      time.Time
+			count                            int64
 			sev                              sql.NullInt64
 			lastRule, lastSensor, lastSource sql.NullString
 		)
 		if err := rows.Scan(&r.Type, &r.Value, &first, &last, &count, &sev, &lastRule, &lastSensor, &lastSource); err != nil {
 			return nil, err
 		}
-		r.FirstSeen = time.Unix(0, first).UTC()
-		r.LastSeen = time.Unix(0, last).UTC()
+		r.FirstSeen = first.UTC()
+		r.LastSeen = last.UTC()
 		r.Count = int(count)
 		r.Severity = event.Severity(sev.Int64)
 		r.LastRule = lastRule.String
@@ -793,7 +798,7 @@ func (s *Store) IOCSummary(ctx context.Context, since time.Time) (map[string]int
 	var args []any
 	if !since.IsZero() {
 		q += " WHERE last_seen >= $1"
-		args = append(args, since.UTC().UnixNano())
+		args = append(args, since.UTC())
 	}
 	q += " GROUP BY type"
 	rows, err := s.db.QueryContext(ctx, q, args...)

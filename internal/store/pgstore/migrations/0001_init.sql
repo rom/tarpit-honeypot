@@ -1,6 +1,6 @@
 -- 0001_init: baseline schema for the PostgreSQL event store.
 --
--- events is RANGE-partitioned on time (UnixNano) so retention can DROP whole
+-- events is RANGE-partitioned on time (timestamptz) so retention can DROP whole
 -- old partitions instead of deleting rows (see internal/store/pgstore/
 -- partitions.go and docs/database-backend.md §4.2). The partition key must be
 -- part of every unique constraint, so the primary key is (id, time); id is
@@ -13,7 +13,7 @@
 
 CREATE TABLE IF NOT EXISTS events (
   id text NOT NULL,
-  time bigint NOT NULL,
+  time timestamptz NOT NULL,
   sensor text NOT NULL DEFAULT '',
   sensor_id text NOT NULL DEFAULT '',
   rule_id text NOT NULL DEFAULT '',
@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS events_default PARTITION OF events DEFAULT;
 CREATE TABLE IF NOT EXISTS iocs (
   type text NOT NULL,
   value text NOT NULL,
-  first_seen bigint NOT NULL,
-  last_seen bigint NOT NULL,
+  first_seen timestamptz NOT NULL,
+  last_seen timestamptz NOT NULL,
   count bigint NOT NULL,
   severity int,
   last_rule text,

@@ -150,8 +150,8 @@ CREATE TABLE events (
     sensor_id   text,
     rule_id     text NOT NULL,
     severity    smallint NOT NULL,
-    src_ip      inet,                     -- real inet type → CIDR/network queries
-    dst_ip      inet,
+    src_ip      text,                     -- text, not inet: keep capture fidelity (see note)
+    dst_ip      text,
     src_port    int, dst_port int,
     proto       text, handler text, country text,
     banner_id   bigint,
@@ -170,19 +170,23 @@ CREATE INDEX ON events (handler, time DESC);
 ```
 
 The `Filter` → `WHERE`/`GROUP BY` query *shapes* are unchanged, so each
-`EventStore` method is a dialect port, not a redesign. `inet` and `jsonb`
-are strict upgrades the edge SQLite cannot match.
+`EventStore` method is a dialect port, not a redesign. `timestamptz` and
+`jsonb` (GIN-indexed) are upgrades the edge SQLite cannot match.
 
-> **v1 implementation note.** The shipped `pgstore` (§6) uses this schema
-> as the baseline migration (`migrations/0001_init.sql`), with `events`
-> **RANGE-partitioned monthly on `time`** and a DEFAULT partition. Two
-> deliberate simplifications keep it a behaviour-identical first cut: event
-> time is `bigint` nanoseconds and IPs are `text` (matching the SQLite
-> store exactly, so the engine-neutral `Filter`/`event` types are reused
-> unchanged). `meta` is already `jsonb` (with a GIN index). Because the
+> **Implementation note.** The shipped `pgstore` (§6) uses this schema as
+> the baseline migration (`migrations/0001_init.sql`), with `events`
+> **RANGE-partitioned monthly on `time`** and a DEFAULT partition. `time`
+> is `timestamptz` (microsecond precision) and `meta`/the other
+> semi-structured columns are `jsonb` with a GIN index. Because the
 > partition key must be in every unique constraint, the primary key is
 > `(id, time)`; `id` is unique in practice, so event-id dedup is preserved.
-> `timestamptz`/`inet` are the remaining optimisation path in §6.
+>
+> **IPs stay `text`, not `inet`, by design.** A honeypot must round-trip
+> exactly what it observed, including crafted or edge source identifiers a
+> strict `inet` column would reject — IPv6 link-local with a zone
+> (`fe80::1%eth0`), or malformed values from the sniffer/honeynet paths.
+> Storing those as `inet` would force them to NULL and lose capture
+> fidelity, so `src_ip`/`dst_ip` remain `text` (as in the SQLite store).
 
 ### 4.2 Retention by partition drop
 
@@ -277,13 +281,21 @@ two seams a second backend must plug into:
   docker-compose (Postgres + the aggregator) with a ready aggregator
   config; swap the bundled `postgres` service for a managed DSN to use
   RDS / Cloud SQL / Supabase / Neon (§7.4).
+- **Native `timestamptz` time column.** `events.time` and the IOC
+  timestamps are `timestamptz` (the SQLite store keeps int64 UnixNano), so
+  date functions and BI tools work directly; partition bounds are
+  timestamps. IPs deliberately stay `text` for capture fidelity (§4.1).
+
+### Decided against
+
+- **`inet` IP columns.** Evaluated and declined: a strict `inet` column
+  would reject crafted/edge source identifiers a honeypot must capture
+  (IPv6 zone IDs, malformed values), so `src_ip`/`dst_ip` stay `text`
+  (§4.1).
 
 ### Remaining
 
-1. **Richer column types** — `timestamptz`/`inet` (the §4.1 sketch); v1
-   uses `bigint` nanoseconds + `text` IPs to match the SQLite store
-   exactly (see §4.1 note).
-2. **ClickHouse backend** for very high sustained volume (§3).
+1. **ClickHouse backend** for very high sustained volume (§3).
 
 ---
 

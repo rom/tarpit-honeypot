@@ -9,28 +9,32 @@ import (
 	"time"
 )
 
-// Monthly RANGE partitions on events.time. Retention drops whole partitions
-// older than the cutoff (instant, no row-by-row delete or vacuum), and a
-// boundary DELETE in PruneBefore trims the partial current month + the DEFAULT
-// partition so retention stays exact rather than rounded to a whole month.
+// Monthly RANGE partitions on events.time (timestamptz). Retention drops whole
+// partitions older than the cutoff (instant, no row-by-row delete or vacuum),
+// and a boundary DELETE in PruneBefore trims the partial current month + the
+// DEFAULT partition so retention stays exact rather than rounded to a month.
 
 // partEnsurePeriod gates the lazy partition top-up on the write path: every this
 // many batches a long-running aggregator re-ensures the current/adjacent months
 // exist, so future inserts land in a dedicated partition rather than DEFAULT.
 const partEnsurePeriod = 2048
 
+// partTimeLayout formats a month boundary as a timestamptz literal for the
+// partition bound clause.
+const partTimeLayout = "2006-01-02 15:04:05-07"
+
 // partNameRE matches a monthly partition name (events_YYYY_MM) so retention only
 // ever drops partitions this package created — never the DEFAULT partition or
 // anything else inheriting from events.
 var partNameRE = regexp.MustCompile(`^events_(\d{4})_(\d{2})$`)
 
-// monthBounds returns the [start, nextMonth) bounds (UnixNano) and the partition
-// name for the month containing t.
-func monthBounds(t time.Time) (loNano, hiNano int64, name string) {
+// monthBounds returns the [start, nextMonth) bounds and the partition name for
+// the month containing t.
+func monthBounds(t time.Time) (lo, hi time.Time, name string) {
 	y, m, _ := t.UTC().Date()
-	lo := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
-	hi := lo.AddDate(0, 1, 0)
-	return lo.UnixNano(), hi.UnixNano(), fmt.Sprintf("events_%04d_%02d", y, int(m))
+	lo = time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+	hi = lo.AddDate(0, 1, 0)
+	return lo, hi, fmt.Sprintf("events_%04d_%02d", y, int(m))
 }
 
 // ensurePartitions creates the monthly partitions around ref (previous, current,
@@ -42,8 +46,8 @@ func (s *Store) ensurePartitions(ctx context.Context, ref time.Time) {
 	for _, off := range []int{-1, 0, 1} {
 		lo, hi, name := monthBounds(ref.AddDate(0, off, 0))
 		stmt := fmt.Sprintf(
-			`CREATE TABLE IF NOT EXISTS %s PARTITION OF events FOR VALUES FROM (%d) TO (%d)`,
-			name, lo, hi)
+			`CREATE TABLE IF NOT EXISTS %s PARTITION OF events FOR VALUES FROM ('%s') TO ('%s')`,
+			name, lo.Format(partTimeLayout), hi.Format(partTimeLayout))
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			slog.Debug("pgstore: ensure partition (leaving rows in DEFAULT)", "name", name, "err", err)
 		}
@@ -63,7 +67,7 @@ func (s *Store) maybeEnsurePartitions(ctx context.Context) {
 // than cutoff, returning the estimated rows removed (from pg_class.reltuples —
 // exact counts would mean scanning a table we're about to drop). The DEFAULT
 // partition and any non-monthly child are left for the caller's boundary DELETE.
-func (s *Store) dropOldPartitions(ctx context.Context, cutoffNano int64) (int64, error) {
+func (s *Store) dropOldPartitions(ctx context.Context, cutoff time.Time) (int64, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT c.relname
 FROM pg_inherits i
@@ -95,10 +99,10 @@ WHERE p.relname = 'events'`)
 		}
 		year, _ := strconv.Atoi(m[1])
 		month, _ := strconv.Atoi(m[2])
-		// A partition is safe to drop only when its whole range is older than the
-		// cutoff, i.e. the start of the following month is still <= cutoff.
-		upper := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0).UnixNano()
-		if upper > cutoffNano {
+		// Safe to drop only when the whole range is older than the cutoff, i.e.
+		// the start of the following month is still <= cutoff.
+		upper := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+		if upper.After(cutoff) {
 			continue
 		}
 		var est int64
