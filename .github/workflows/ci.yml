@@ -12,6 +12,24 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    # Postgres service so the pgstore backend is exercised for real every build
+    # (the tests skip when TARPIT_PG_TEST_DSN is unset). Use a throwaway DB.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tarpit
+          POSTGRES_PASSWORD: tarpit
+          POSTGRES_DB: tarpit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tarpit -d tarpit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TARPIT_PG_TEST_DSN: postgres://tarpit:tarpit@localhost:5432/tarpit_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

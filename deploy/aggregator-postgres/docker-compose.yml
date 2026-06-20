@@ -1,0 +1,49 @@
+# PostgreSQL-backed tarpit-honeypot fleet aggregator.
+#
+#   cp .env.example .env && edit .env   # set POSTGRES_PASSWORD + TARPIT_INGEST_TOKEN
+#   docker compose up -d --build
+#
+# Leaf sensors then forward to this host's port 8470 with their TARPIT_FWD_TOKEN
+# set to the TARPIT_INGEST_TOKEN below. The dashboards are on 127.0.0.1:8080.
+name: tarpit-aggregator
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tarpit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tarpit
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarpit -d tarpit"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  aggregator:
+    build:
+      context: ../..
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The schema is created/migrated automatically on first start.
+      TARPIT_PG_DSN: postgres://tarpit:${POSTGRES_PASSWORD}@postgres:5432/tarpit?sslmode=disable
+      TARPIT_INGEST_TOKEN: ${TARPIT_INGEST_TOKEN:?set TARPIT_INGEST_TOKEN in .env}
+    ports:
+      - "8470:8470"            # ingest — leaf sensors forward here
+      # Dashboards are off by default (see ui: in aggregator.yaml). After
+      # enabling them with TLS + an auth token, publish the port:
+      # - "127.0.0.1:8080:8080"
+    volumes:
+      - ./aggregator.yaml:/etc/tarpit-honeypot/config.yaml:ro
+      - aggdata:/var/lib/tarpit-honeypot
+    command: ["run", "-c", "/etc/tarpit-honeypot/config.yaml"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  aggdata:

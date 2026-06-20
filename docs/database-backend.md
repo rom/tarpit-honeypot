@@ -269,6 +269,14 @@ two seams a second backend must plug into:
   runtime provisions the active window and `PruneBefore` drops expired
   partitions plus a boundary delete (§4.2). Verified against PostgreSQL 16
   (`TestPgPartitionRetention`).
+- **CI runs both dialects.** The `build-test` job runs a `postgres:16`
+  service and sets `TARPIT_PG_TEST_DSN`, so the pgstore round-trip +
+  partition tests execute against a real server on every build (`.github/
+  workflows/ci.yml`).
+- **Deployment recipe.** `deploy/aggregator-postgres/` ships a
+  docker-compose (Postgres + the aggregator) with a ready aggregator
+  config; swap the bundled `postgres` service for a managed DSN to use
+  RDS / Cloud SQL / Supabase / Neon (§7.4).
 
 ### Remaining
 
@@ -276,9 +284,6 @@ two seams a second backend must plug into:
    uses `bigint` nanoseconds + `text` IPs to match the SQLite store
    exactly (see §4.1 note).
 2. **ClickHouse backend** for very high sustained volume (§3).
-3. **CI + deployment** — wire `TARPIT_PG_TEST_DSN` into CI so both
-   dialects run every build; ship the docker-compose / managed-PG recipe
-   (§7.4).
 
 ---
 
@@ -318,9 +323,11 @@ by one DSN. The promise "clone, `make`, run a single binary" must survive
 
 The lowest-maintenance path is a managed instance (RDS / Cloud SQL /
 Supabase / Neon): backups, PITR, patching, and failover are someone
-else's job. For self-hosters, ship a `docker-compose.yml` (Postgres + the
-aggregator) and document `pg_dump` / `pg_basebackup`. Either way, bless
-**one** path rather than leaving it to the reader.
+else's job. For self-hosters, `deploy/aggregator-postgres/` ships a
+docker-compose (Postgres + the aggregator) with a ready config and
+`pg_dump` instructions; its README also shows how to drop the bundled
+`postgres` service and point `TARPIT_PG_DSN` at a managed instance. Either
+way, one blessed path rather than leaving it to the reader.
 
 ### 7.5 Reuse existing observability
 

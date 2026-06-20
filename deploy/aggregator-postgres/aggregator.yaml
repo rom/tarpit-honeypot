@@ -1,0 +1,63 @@
+# Fleet aggregator backed by PostgreSQL — for the docker-compose recipe in this
+# directory. Accepts forwarded events from leaf sensors (ingest:), runs the
+# cross-sensor correlator, and persists everything to PostgreSQL instead of the
+# embedded SQLite file (sensor.store.backend: postgres).
+#
+# Secrets come from the environment (compose passes them in), never this file:
+#   TARPIT_PG_DSN        - PostgreSQL connection string (set by compose)
+#   TARPIT_INGEST_TOKEN  - bearer token each leaf presents when forwarding
+#
+#   tarpit-honeypot validate-config -c aggregator.yaml
+
+sensor:
+  name: agg-postgres
+  data_dir: /var/lib/tarpit-honeypot
+  # Use the PostgreSQL backend for the event store. The DSN is read from the
+  # environment variable named here, never from this file.
+  store:
+    backend: postgres
+    dsn_env: TARPIT_PG_DSN
+  disk:
+    # Retention is enforced by dropping whole expired monthly partitions on
+    # Postgres (plus a boundary delete), so this can be generous.
+    retention_days: 90
+
+# Aggregator endpoint: accept forwarded event batches from leaf sensors.
+ingest:
+  enabled: true
+  bind: 0.0.0.0:8470
+  token_env: TARPIT_INGEST_TOKEN
+  trust:
+    enabled: true
+    quarantine_below: 0.3
+    rate_per_sec: 500
+
+# Cross-sensor correlation + downward intel feed (both default on with ingest).
+fleet:
+  enabled: true
+  serve_intel: true
+
+# De-duplicated IOC store + ioc:* events.
+ioc:
+  enabled: true
+
+# Dashboards. Disabled by default: a non-loopback bind (required to reach it
+# through container port-mapping) must have TLS + an auth token, and the scratch
+# image ships no shell to tunnel into. To enable, front it with a TLS reverse
+# proxy and set:
+#   ui:
+#     enabled: true
+#     bind: 0.0.0.0:8080
+#     tls_cert: /var/lib/tarpit-honeypot/ui.crt   # mount real cert+key
+#     tls_key:  /var/lib/tarpit-honeypot/ui.key
+#     auth_token_env: TARPIT_UI_TOKEN
+# then publish 8080 in docker-compose.yml. See docs/hardening.md.
+ui:
+  enabled: false
+
+# The "sqlite" persistence channel writes to whichever backend
+# sensor.store.backend selects — here, PostgreSQL.
+channels:
+  - { id: db, type: sqlite }
+routes:
+  - { match: {}, channels: [db] }
