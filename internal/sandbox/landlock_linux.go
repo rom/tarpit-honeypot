@@ -36,7 +36,10 @@ func applyLandlock(cfg Config) error {
 	}
 	fsAccess := handledAccessFS(abi)
 
-	attr := unix.LandlockRulesetAttr{Access_fs: fsAccess}
+	// golang.org/x/sys renamed this field Access_fs -> Handled_access_fs (and
+	// added the newer net/scoped fields) to match the kernel's
+	// landlock_ruleset_attr; we only constrain filesystem access here.
+	attr := unix.LandlockRulesetAttr{Handled_access_fs: fsAccess}
 	rulesetFD, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET,
 		uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
 	if errno != 0 {
