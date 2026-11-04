@@ -31,6 +31,121 @@ documented in `docs/`).
 
 ### Added
 
+- **Fast-path L3/L4 DoS-resistance gate (`internal/fastpath`), with an
+  eBPF/XDP design + scaffold.** A per-source token-bucket admission shaper
+  consulted at `Accept()` — before a connection can spend a handler goroutine,
+  buffers or an event-bus slot — sheds a source over its budget (closes
+  immediately + emits low-severity `fastpath:shed`, non-blocking so a flood
+  can't wedge the accept loop), with a hard O(1) drop-set (wire to the risk
+  blocker / blocklist) and an LRU-bounded source table. Enabled per TCP listener
+  with `max_source_pps` (0 = off); complements the global `max_concurrent` cap.
+  The package also ships the **in-kernel eBPF/XDP tier as a build-tagged
+  scaffold** (`-tags tarpit_xdp`, Linux): the Go interface (`AttachXDP` /
+  `Available` / `Close`), the BPF map/counter contract and the architecture are
+  defined, but — stated plainly — the compiled XDP object + loader are not
+  bundled and the kernel program is not CI-validated (it needs a privileged
+  kernel + NIC); the default build always uses the userspace shaper, and an
+  opt-in build without the artifacts gets a clear error + fallback. Documented
+  in `docs/xdp-fastpath.md`.
+- **Deeper interactive-shell engagement: planted loot + IOC harvesting.** The
+  fake SSH/Telnet shell (`internal/shell`) now seeds believable, secret-bearing
+  **honeytoken loot** into the fake filesystem — `/root/.aws/credentials`,
+  `/root/.env`, `/var/www/html/wp-config.php`, `/root/backup.sql`,
+  `/root/notes.txt`, `/root/.ssh/id_rsa`, `/home/admin/.bash_history` — served
+  by `cat`/`head`/`tail` and listed by `ls` (with new `/root/.aws`, `/var/www`,
+  `/opt/app` directories), so an attacker who lands a shell keeps digging. Every
+  loot read is flagged `shell-loot-accessed` (credential files also keep
+  `shell-creds-file-access`); the values are non-routable example hosts and
+  placeholder secrets that execute/grant nothing and can be registered with the
+  canary system to trip on reuse. The shell also **harvests http(s):// URLs**
+  from the attacker's commands (`wget`/`curl` ingress-tool-transfer,
+  pipe-to-shell, exfil targets) into `meta.harvested_urls`, which the sensor's
+  existing IOC pipeline ingests — so download / C2 hosts land in the IOC store /
+  STIX / MISP automatically.
+- **Attack-replay generator in the test harness (`attack` category).** A new
+  `tarpit-testharness` category that replays one representative, exploit-shaped
+  probe per matching endpoint handler (Log4Shell, LLM prompt-injection /
+  jailbreak, MCP tool-exec, Jupyter kernel spawn, MinIO credential disclosure,
+  ClickHouse file-read, Consul check-script RCE, Danfoss code-of-the-day) and
+  confirms — via the verify API — that the honeypot raised the expected
+  `cve:…` / handler anomaly. Doubles as a detection self-test (regression
+  coverage for the handlers' flags) and a demo driver that lights up the
+  dashboard with realistic activity. Benign on the wire; skips cleanly without
+  `verify.url`. Documented in `docs/testharness.md`.
+- **Statistical baselines + multi-stage kill-chain detection (`internal/baseline`).**
+  A dependency-free detector (always on) that complements the signature +
+  pattern `correlate:*` correlators: `baseline:new-asn` / `baseline:new-port` /
+  `baseline:new-country` fire the first time (after a warmup learning period) a
+  source ASN, destination port or source country is seen; `baseline:volume-spike`
+  fires when a per-minute event bucket exceeds the rolling EWMA mean + k·stddev
+  above a floor; and `killchain:multistage` emits one consolidated campaign
+  alert when a single source progresses through ≥N distinct ATT&CK tactics
+  within a window (deduped per window). Wired into the sensor's event pipeline
+  after enrichment (so ASN/country are present); emitted events dispatch + risk-
+  score like the other derived events. Documented in `docs/detection-rules.md`.
+- **CISA KEV sync + runtime coverage gap-scan (`internal/kevsync`, `kev-gap`).**
+  A new package pulls the CISA Known Exploited Vulnerabilities catalog and keeps
+  it as a live, queryable overlay on the sensor's compile-time CVE catalog: it
+  can mark a `cve:<id>` event as actively-exploited (date added + ransomware
+  flag) and compute, at runtime, which KEV-listed CVEs the sensor does not yet
+  model. The background `Puller` refreshes a thread-safe `Store` on an interval
+  (default 6h) through the egress-governed HTTP client, retaining the last good
+  snapshot across a failed refresh (mirrors the `feeds` puller). New `kev-gap`
+  CLI command runs the gap-scan against the live feed or a local `--file`
+  (`--covered` lists what's already modeled; `--json` for tooling) and prints
+  the actively-exploited CVEs worth adding next, newest-first. Documented in
+  `docs/threat-intel-exports.md` §10, including the egress-allowlist
+  requirement (`www.cisa.gov`).
+- **Refrigeration / BMS controller + EV-charging (OCPP) emulation.** Extends the
+  Danfoss AK-SM refrigeration work to the other controller families that end up
+  internet-exposed: `dixell` (Emerson/Copeland Dixell XWEB supermarket
+  refrigeration supervisor), `carel` (CAREL pCOWeb / boss), `trane` (Trane
+  Tracer SC BAS) and `resideo` (Resideo/Honeywell) — each fingerprints the
+  product, captures the login (flagging the **vendor default credentials**), and
+  flags setpoint/defrost/parameter writes and embedded-web-server path
+  traversal. New `ocpp` handler models an EV-charging **OCPP-J** endpoint (OCPP
+  1.6 / 2.0.1 over WebSocket): it completes the upgrade, captures the
+  charge-point id + subprotocol, and classifies the CALL actions — remote
+  start/stop, config/charging-profile change, firmware push, `Reset`, and local
+  auth-list tamper. Markers: `bms-web-probe`, `<vendor>-probe`,
+  `<vendor>-login-attempt`, `bms-default-cred`, `refrigeration-setpoint-write`,
+  `bms-web-traversal`, `ocpp-connect`, `ocpp-message`, `ocpp-remote-transaction`,
+  `ocpp-config-change`, `ocpp-firmware-update`, `ocpp-reset`,
+  `ocpp-authlist-tamper`.
+- **Cloud-native / DevOps exposed-service decoys.** Six new HTTP handlers model
+  control planes that are RCE / data-theft footholds (and favourite
+  cryptojacking entry points) when left on the internet, each fingerprinting the
+  service and flagging the hands-on-keyboard step: `jupyter` (Jupyter
+  Notebook/Lab 8888 — token-less access, terminal/kernel spawn RCE), `selenium`
+  (Selenium Grid 4444 — node RCE via `goog:chromeOptions` binary/args override),
+  `consul` (Consul 8500 — catalog/KV enumeration, health-check-script RCE on
+  register), `nomad` (Nomad 4646 — `raw_exec`/`exec` job-submission RCE),
+  `minio` (MinIO S3 9000 — bucket enumeration + the unauthenticated
+  `/minio/bootstrap/v1/verify` env/credential disclosure, **CVE-2023-28432**),
+  and `clickhouse` (ClickHouse HTTP 8123 — SQL over HTTP, `file()/url()/remote()`
+  file-read/SSRF, `system.*` reads). CVE-2023-28432 added to the catalog.
+- **AI/LLM + MCP attack-surface honeypots with a prompt-injection / jailbreak
+  classifier.** Three new handlers model the fast-growing exposed-inference
+  attack surface: `ollama` (Ollama REST API, 11434), `llm_openai`
+  (OpenAI-compatible API served by vLLM / LM Studio / LocalAI /
+  text-generation-webui) and `mcp` (a Model Context Protocol server honeypot
+  speaking JSON-RPC 2.0 over Streamable-HTTP). They answer just enough of each
+  API to make a scanner record a live, loaded model / tool server, capture the
+  attacker's prompt or `tools/call` arguments, and flag the abuse-worthy
+  actions — model enumeration, model pull/push (compute/bandwidth abuse),
+  unauthenticated inference, API-key probing, MCP tool enumeration and tool
+  invocation (exec / file-read / SSRF), and resource path-traversal. A shared
+  classifier (`classifyLLMAbuse`) tags **prompt-injection, jailbreak,
+  system-prompt-leak, data-exfiltration and tool/plugin abuse**, each mapped to
+  a **MITRE ATLAS** technique (AML.T0051 / T0054 / T0057 / T0053), and is reused
+  by the MCP handler on tool arguments. Nothing is ever inferred and no tool is
+  ever run — recognition and capture only. Markers: `llm-ollama-probe`,
+  `llm-openai-probe`, `llm-model-enumeration`, `llm-model-pull`,
+  `llm-unauth-inference`, `llm-api-key-probe`, `llm-prompt-injection`,
+  `llm-jailbreak`, `llm-system-prompt-leak`, `llm-data-exfil`, `llm-tool-abuse`,
+  `mcp-probe`, `mcp-tools-enumeration`, `mcp-resource-enumeration`,
+  `mcp-resource-read`, `mcp-path-traversal`, `mcp-tool-call`, `mcp-tool-exec`,
+  `mcp-tool-file-read`, `mcp-tool-fetch`, `mcp-auth-probe`.
 - **Danfoss AK-SM 8xxA refrigeration-controller handler + 2025/2026 vulnerability
   coverage.** New `danfoss_aksm` TCP handler (+ TLS variant `danfoss_aksms`)
   emulating the Danfoss **AK-SM 8xxA "StoreView"** supermarket-refrigeration

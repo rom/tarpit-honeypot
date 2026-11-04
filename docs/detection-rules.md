@@ -265,6 +265,23 @@ Several rules (Log4Shell, CVE promotion, OT control) deliberately overlap the
 built-in detectors — they're there to show the pattern and to let you re-tag /
 re-prioritize built-in hits for *your* routing. Delete or tune freely.
 
+### Statistical baselines + multi-stage kill-chain (built-in)
+
+Alongside the signature + pattern correlators (`correlate:*`), the sensor runs a
+dependency-free **statistical baseline** detector (`internal/baseline`, always
+on) that emits:
+
+| Rule id | Fires when |
+|---|---|
+| `baseline:new-asn` / `baseline:new-port` / `baseline:new-country` | the first time (after a warmup learning period, default 1h) a source ASN, destination port or source country is seen — a never-before-observed entity |
+| `baseline:volume-spike` | a per-minute event bucket exceeds the rolling EWMA mean + k·stddev (default k=4), above a floor — a traffic surge against the learned baseline |
+| `killchain:multistage` | one source progresses through ≥N distinct ATT&CK **tactics** (default 3) within a window (default 30m) — a single consolidated "campaign" alert carrying the observed stages, deduped so it fires once per window |
+
+These are behavioural/statistical, so they carry no CVE and complement (don't
+replace) the `correlate:*` detectors. Match them in rules like any other
+`rule_id` (e.g. `rule: killchain:multistage` → page; `rule: baseline:new-country`
+→ enrich-and-watch).
+
 ## Operating notes
 
 - **Validate before deploy.** `tarpit-honeypot validate-config -c your.yaml`

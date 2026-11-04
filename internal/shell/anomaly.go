@@ -103,6 +103,18 @@ func scanAnomalies(line string) []string {
 		strings.Contains(low, "/.kube/config") || strings.Contains(low, "/.netrc") {
 		add("shell-creds-file-access")
 	}
+	// Planted-loot access (T1552 / credential-access): a read of one of the
+	// seeded honeytoken files is high-signal — nothing benign reads them.
+	for _, lp := range []string{"/.aws/credentials", "/.env", "wp-config.php", "backup.sql",
+		"/root/notes.txt", "/.ssh/id_rsa", "/home/admin/.bash_history"} {
+		if strings.Contains(low, lp) && (strings.HasPrefix(low, "cat ") || strings.HasPrefix(low, "head ") ||
+			strings.HasPrefix(low, "tail ") || strings.HasPrefix(low, "less ") || strings.HasPrefix(low, "more ") ||
+			strings.HasPrefix(low, "grep ") || strings.Contains(low, "scp ") || strings.Contains(low, "curl ") ||
+			strings.Contains(low, "nc ")) {
+			add("shell-loot-accessed")
+			break
+		}
+	}
 
 	// Privilege escalation.
 	if strings.Contains(low, "chmod") && (strings.Contains(low, "+s") || strings.Contains(low, "4755") || strings.Contains(low, "4777")) {
@@ -293,4 +305,56 @@ func blobLooksEncoded(s string) bool {
 		}
 	}
 	return false
+}
+
+// harvestURLs extracts http(s):// URLs from a command line (wget/curl ingress
+// tool transfer, pipe-to-shell, exfil targets) so the caller can surface them
+// as IOCs. Bounded, dependency-free; trims common trailing shell punctuation.
+func harvestURLs(line string) []string {
+	var out []string
+	low := line
+	for {
+		i := indexScheme(low)
+		if i < 0 {
+			break
+		}
+		rest := low[i:]
+		// URL ends at the first whitespace, quote, or shell metacharacter.
+		end := len(rest)
+		for j := 0; j < len(rest); j++ {
+			c := rest[j]
+			if c == ' ' || c == '\t' || c == '"' || c == '\'' || c == '`' ||
+				c == '|' || c == ';' || c == '>' || c == '<' || c == ')' || c == '(' {
+				end = j
+				break
+			}
+		}
+		u := strings.TrimRight(rest[:end], ".,)]}'\"")
+		if len(u) > len("https://") {
+			out = append(out, u)
+			if len(out) >= 16 {
+				break
+			}
+		}
+		low = rest[end:]
+	}
+	return out
+}
+
+// indexScheme returns the index of the next "http://" or "https://" (case-
+// insensitive) in s, or -1.
+func indexScheme(s string) int {
+	ls := strings.ToLower(s)
+	h := strings.Index(ls, "http://")
+	hs := strings.Index(ls, "https://")
+	switch {
+	case h < 0:
+		return hs
+	case hs < 0:
+		return h
+	case h < hs:
+		return h
+	default:
+		return hs
+	}
 }

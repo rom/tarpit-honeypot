@@ -317,25 +317,38 @@ func lsResponse(argv []string) string {
 			break
 		}
 	}
+	var base string
 	switch dir {
 	case "/":
-		return "bin   dev  home  lib32   media  opt   root  sbin  sys  usr\r\nboot  etc  lib   lib64   mnt    proc  run   srv   tmp  var\r\n"
+		base = "bin   dev  home  lib32   media  opt   root  sbin  sys  usr\r\nboot  etc  lib   lib64   mnt    proc  run   srv   tmp  var\r\n"
 	case "/etc":
-		return "apt        crontab        hostname  motd     passwd   resolv.conf  shadow  ssh    sudoers\r\nbash.bashrc fstab          hosts     network  profile  rsyslog.conf systemd timezone\r\n"
+		base = "apt        crontab        hostname  motd     passwd   resolv.conf  shadow  ssh    sudoers\r\nbash.bashrc fstab          hosts     network  profile  rsyslog.conf systemd timezone\r\n"
 	case "/root", "/root/", "~":
-		return ".bash_history  .bashrc  .profile  .ssh  install.sh  notes.txt\r\n"
+		base = ".aws  .bash_history  .bashrc  .profile  .ssh  backup.sql  install.sh  notes.txt\r\n"
+	case "/root/.aws":
+		base = "config  credentials\r\n"
 	case "/root/.ssh":
-		return "authorized_keys  config  id_rsa  id_rsa.pub  known_hosts\r\n"
+		base = "authorized_keys  config  id_rsa  id_rsa.pub  known_hosts\r\n"
 	case "/var/log":
-		return "alternatives.log  apt   auth.log  btmp  dpkg.log  faillog  journal  lastlog  syslog  wtmp\r\n"
+		base = "alternatives.log  apt   auth.log  btmp  dpkg.log  faillog  journal  lastlog  syslog  wtmp\r\n"
+	case "/var/www", "/var/www/":
+		base = "html\r\n"
+	case "/var/www/html":
+		base = "index.php  wp-admin  wp-config.php  wp-content  wp-includes\r\n"
+	case "/opt", "/opt/":
+		base = "app\r\n"
+	case "/opt/app":
+		base = "config.yaml  current  releases  shared\r\n"
 	case "/home", "/home/":
-		return "admin\r\n"
+		base = "admin\r\n"
 	case "/home/admin":
-		return ".bashrc  .profile  .ssh  Desktop  Documents  Downloads\r\n"
+		base = ".bash_history  .bashrc  .profile  .ssh  Desktop  Documents  Downloads\r\n"
 	case "/tmp":
-		return ""
+		base = ""
+	default:
+		base = ".  ..\r\n"
 	}
-	return ".  ..\r\n"
+	return base
 }
 
 // dynCat handles `cat <path>` (and `head`/`tail`/`more`/`less`).
@@ -352,6 +365,12 @@ func dynCat(passwd, issue, host string) func([]string) string {
 			return ""
 		}
 		path := argv[len(argv)-1]
+		// Planted loot (fake AWS creds, .env, wp-config, backup.sql, …) —
+		// believable secret-bearing files that keep the attacker engaged; the
+		// read itself is flagged upstream (shell-loot-accessed).
+		if c, ok := lootCat(path); ok {
+			return c
+		}
 		switch path {
 		case "/etc/passwd":
 			return passwd

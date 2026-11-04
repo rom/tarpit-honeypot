@@ -45,6 +45,22 @@ func jaCatalog() []jaDoc {
 // handlerDescriptions are concise notes for the most common handlers; any
 // handler not listed falls back to a generic line in handlerDocs.
 var handlerDescriptions = map[string]string{
+	"danfoss_aksm":    "Danfoss AK-SM 8xxA StoreView refrigeration manager (xml.cgi) — recognizes the Team82 CVEs + debug/engineering-interface access (detection only).",
+	"danfoss_aksms":   "Danfoss AK-SM StoreView over TLS (443) — the danfoss_aksm surface behind a real TLS handshake.",
+	"ollama":          "Ollama LLM runtime (11434) — captures model enumeration, model-pull abuse, and unauthenticated inference prompts; classifies prompt-injection/jailbreak (MITRE ATLAS).",
+	"llm_openai":      "OpenAI-compatible inference API (vLLM/LM Studio/LocalAI) — captures /v1 model enumeration, API-key probing, and prompt-injection/jailbreak payloads (MITRE ATLAS).",
+	"mcp":             "Model Context Protocol server honeypot (JSON-RPC) — answers initialize/tools/list, captures tools/call args, flags tool-exec/file-read/SSRF + prompt-injection (MITRE ATLAS).",
+	"jupyter":         "Jupyter Notebook/Lab (8888) — flags token-less access and terminal/kernel spawn (RCE on an exposed notebook).",
+	"selenium":        "Selenium Grid/standalone (4444) — flags grid probes and chromeOptions binary/args node-RCE (cryptojacking vector).",
+	"consul":          "HashiCorp Consul HTTP API (8500) — catalog/KV enumeration + health-check-script RCE on an exposed agent.",
+	"nomad":           "HashiCorp Nomad HTTP API (4646) — agent/job enumeration + raw_exec job-submission RCE on exposed clients.",
+	"minio":           "MinIO S3 (9000) — bucket enumeration + CVE-2023-28432 unauthenticated env/credential disclosure.",
+	"clickhouse":      "ClickHouse HTTP interface (8123) — SQL over HTTP, flags file()/url()/remote() file-read/SSRF and system.* reads.",
+	"dixell":          "Emerson/Copeland Dixell XWEB supermarket-refrigeration supervisor — fingerprint, default-cred capture, setpoint/defrost write + traversal flags.",
+	"carel":           "CAREL pCOWeb / boss building-controller web — fingerprint, default-cred capture, parameter-write + traversal flags.",
+	"trane":           "Trane Tracer SC / Concierge BAS supervisor — fingerprint, default-cred capture, setpoint/schedule-write flags.",
+	"resideo":         "Resideo/Honeywell building-controller web — fingerprint, default-cred capture, actuation + traversal flags.",
+	"ocpp":            "EV-charging OCPP-J endpoint (WebSocket) — completes the upgrade, captures charge-point id + subprotocol, classifies remote start/stop, config change, firmware update and reset.",
 	"ssh":             "OpenSSH-flavored SSH server (banner, KEX, HASSH, captured auth attempts).",
 	"ssh_interactive": "Interactive fake shell over SSH — records the attacker's command session.",
 	"http":            "HTTP server; detects (never executes) the web-attack families and CVE signatures.",

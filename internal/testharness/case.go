@@ -28,6 +28,7 @@ const (
 	CatMisimpl     Category = "misimpl"     // send wrong framing; is it detected
 	CatScan        Category = "scan"        // port scans / host & ping sweeps
 	CatFingerprint Category = "fingerprint" // trigger tool/scanner detection
+	CatAttack      Category = "attack"      // replay representative exploit-shaped probes; confirm detection
 	CatReliability Category = "reliability" // soak / liveness / resource checks
 	CatResilience  Category = "resilience"  // abuse/overload: the sensor must not be the victim
 	CatContainment Category = "containment" // do-no-harm: no egress / relay / traversal leak
@@ -36,7 +37,7 @@ const (
 
 // AllCategories is the canonical category order (for listing + reports).
 func AllCategories() []Category {
-	return []Category{CatUnit, CatEmulate, CatMisimpl, CatFuzzDumb, CatFuzzSmart, CatScan, CatFingerprint, CatReliability, CatResilience, CatContainment, CatIntegrity}
+	return []Category{CatUnit, CatEmulate, CatMisimpl, CatFuzzDumb, CatFuzzSmart, CatScan, CatFingerprint, CatAttack, CatReliability, CatResilience, CatContainment, CatIntegrity}
 }
 
 // Status is the outcome of one case execution attempt.

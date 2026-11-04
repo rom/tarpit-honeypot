@@ -14,6 +14,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/fastpath"
 	"github.com/rom/tarpit-honeypot/internal/honeynet"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/safe"
@@ -35,6 +36,10 @@ type tcpListener struct {
 	// sema is non-nil when the listener has a max_concurrent cap.
 	// We acquire one slot per accepted connection and release on exit.
 	sema chan struct{}
+
+	// shaper is non-nil when the listener has a per-source rate cap
+	// (max_source_pps): the fast-path DoS gate consulted at accept.
+	shaper *fastpath.Shaper
 
 	// binds is the set of host:port addresses to listen on. Empty = [cfg.Bind].
 	// More than one when the same logical listener serves several server IPs.
@@ -68,6 +73,9 @@ func newTCP(l config.Listener, sensorName string, deps handler.Deps, capMgr *cap
 	}
 	if l.MaxConcurrent > 0 {
 		t.sema = make(chan struct{}, l.MaxConcurrent)
+	}
+	if l.MaxSourcePPS > 0 {
+		t.shaper = fastpath.NewShaper(fastpath.Config{PerSourcePPS: l.MaxSourcePPS})
 	}
 	return t, nil
 }
@@ -130,6 +138,13 @@ func (t *tcpListener) acceptLoop(ctx context.Context, ln net.Listener, bus chan<
 			slog.Warn("accept error", "id", t.cfg.ID, "err", err)
 			continue
 		}
+		// Fast-path DoS gate: shed a source over its per-source connection
+		// budget before it can spend a handler goroutine. Done inline (no
+		// goroutine) so a flood can't spawn unbounded blocked goroutines.
+		if t.shaper != nil && !t.shaper.Admit(splitAddr(conn.RemoteAddr()).IP) {
+			t.emitShed(ctx, conn, bus)
+			continue
+		}
 		if t.sema != nil {
 			select {
 			case t.sema <- struct{}{}:
@@ -157,6 +172,34 @@ func (t *tcpListener) acceptLoop(ctx context.Context, ln net.Listener, bus chan<
 // emitAcceptCap records that we refused a connection because the per-listener
 // max_concurrent cap was hit. We emit at low severity — the operator likely
 // already has a port_scan or brute_force aggregate for the source.
+// emitShed records that the fast-path DoS gate shed a connection because its
+// source exceeded the per-source rate budget. Low-severity + non-blocking,
+// like emitAcceptCap, so a flood can't wedge the accept loop.
+func (t *tcpListener) emitShed(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
+	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
+	_ = conn.Close()
+	ev := &event.Event{
+		ID:       event.NewID(),
+		Time:     time.Now().UTC(),
+		Sensor:   t.sensorName,
+		RuleID:   "fastpath:shed",
+		Severity: event.SeverityLow,
+		Source:   src,
+		Dest:     dst,
+		Proto:    "tcp",
+		Handler:  t.cfg.Handler,
+		Meta: map[string]any{
+			"reason":         "source_rate_exceeded",
+			"max_source_pps": t.cfg.MaxSourcePPS,
+		},
+	}
+	select {
+	case bus <- ev:
+	case <-ctx.Done():
+	default:
+	}
+}
+
 func (t *tcpListener) emitAcceptCap(ctx context.Context, conn net.Conn, bus chan<- *event.Event) {
 	src, dst := splitAddr(conn.RemoteAddr()), splitAddr(conn.LocalAddr())
 	_ = conn.Close()

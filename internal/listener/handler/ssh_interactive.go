@@ -393,6 +393,10 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 	if len(captured.Commands) > 0 {
 		res.Meta["shell_commands"] = captured.Commands
 	}
+	if len(captured.HarvestedURLs) > 0 {
+		// Surfaced for the sensor's IOC pipeline (download / C2 hosts).
+		res.Meta["harvested_urls"] = captured.HarvestedURLs
+	}
 	for _, a := range captured.Anomalies {
 		flagAnomaly(res, a)
 	}

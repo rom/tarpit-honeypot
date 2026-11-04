@@ -33,6 +33,8 @@ var names = map[int]string{
 	20547: "proconos", 27017: "mongodb", 28015: "rethinkdb", 34980: "ethercat", 44818: "ethernet/ip",
 	47808: "bacnet", 48898: "ads", 48899: "ads-discovery",
 	7547: "tr069", 5473: "tr069-alt",
+	11434: "ollama", 1234: "lm-studio", 4646: "nomad", 8500: "consul",
+	8888: "jupyter", 4444: "selenium", 8123: "clickhouse", 9000: "minio",
 }
 
 // Name returns the service name for a port, or "" when unknown.
