@@ -45,6 +45,11 @@ func jaCatalog() []jaDoc {
 // handlerDescriptions are concise notes for the most common handlers; any
 // handler not listed falls back to a generic line in handlerDocs.
 var handlerDescriptions = map[string]string{
+	"danfoss_aksm":    "Danfoss AK-SM 8xxA StoreView refrigeration manager (xml.cgi) — recognizes the Team82 CVEs + debug/engineering-interface access (detection only).",
+	"danfoss_aksms":   "Danfoss AK-SM StoreView over TLS (443) — the danfoss_aksm surface behind a real TLS handshake.",
+	"ollama":          "Ollama LLM runtime (11434) — captures model enumeration, model-pull abuse, and unauthenticated inference prompts; classifies prompt-injection/jailbreak (MITRE ATLAS).",
+	"llm_openai":      "OpenAI-compatible inference API (vLLM/LM Studio/LocalAI) — captures /v1 model enumeration, API-key probing, and prompt-injection/jailbreak payloads (MITRE ATLAS).",
+	"mcp":             "Model Context Protocol server honeypot (JSON-RPC) — answers initialize/tools/list, captures tools/call args, flags tool-exec/file-read/SSRF + prompt-injection (MITRE ATLAS).",
 	"ssh":             "OpenSSH-flavored SSH server (banner, KEX, HASSH, captured auth attempts).",
 	"ssh_interactive": "Interactive fake shell over SSH — records the attacker's command session.",
 	"http":            "HTTP server; detects (never executes) the web-attack families and CVE signatures.",

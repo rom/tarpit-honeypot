@@ -31,6 +31,28 @@ documented in `docs/`).
 
 ### Added
 
+- **AI/LLM + MCP attack-surface honeypots with a prompt-injection / jailbreak
+  classifier.** Three new handlers model the fast-growing exposed-inference
+  attack surface: `ollama` (Ollama REST API, 11434), `llm_openai`
+  (OpenAI-compatible API served by vLLM / LM Studio / LocalAI /
+  text-generation-webui) and `mcp` (a Model Context Protocol server honeypot
+  speaking JSON-RPC 2.0 over Streamable-HTTP). They answer just enough of each
+  API to make a scanner record a live, loaded model / tool server, capture the
+  attacker's prompt or `tools/call` arguments, and flag the abuse-worthy
+  actions — model enumeration, model pull/push (compute/bandwidth abuse),
+  unauthenticated inference, API-key probing, MCP tool enumeration and tool
+  invocation (exec / file-read / SSRF), and resource path-traversal. A shared
+  classifier (`classifyLLMAbuse`) tags **prompt-injection, jailbreak,
+  system-prompt-leak, data-exfiltration and tool/plugin abuse**, each mapped to
+  a **MITRE ATLAS** technique (AML.T0051 / T0054 / T0057 / T0053), and is reused
+  by the MCP handler on tool arguments. Nothing is ever inferred and no tool is
+  ever run — recognition and capture only. Markers: `llm-ollama-probe`,
+  `llm-openai-probe`, `llm-model-enumeration`, `llm-model-pull`,
+  `llm-unauth-inference`, `llm-api-key-probe`, `llm-prompt-injection`,
+  `llm-jailbreak`, `llm-system-prompt-leak`, `llm-data-exfil`, `llm-tool-abuse`,
+  `mcp-probe`, `mcp-tools-enumeration`, `mcp-resource-enumeration`,
+  `mcp-resource-read`, `mcp-path-traversal`, `mcp-tool-call`, `mcp-tool-exec`,
+  `mcp-tool-file-read`, `mcp-tool-fetch`, `mcp-auth-probe`.
 - **Danfoss AK-SM 8xxA refrigeration-controller handler + 2025/2026 vulnerability
   coverage.** New `danfoss_aksm` TCP handler (+ TLS variant `danfoss_aksms`)
   emulating the Danfoss **AK-SM 8xxA "StoreView"** supermarket-refrigeration

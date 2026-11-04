@@ -473,6 +473,12 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &danfoss{id: deps.Identity, vuln: deps.VulnEmulation}, nil
 	case "danfoss_aksms":
 		return newTLSWrap("danfoss_aksm", "danfoss_aksms", deps)
+	case "ollama":
+		return &llmAPI{kind: "ollama"}, nil
+	case "llm_openai":
+		return &llmAPI{kind: "llm_openai"}, nil
+	case "mcp":
+		return &mcp{}, nil
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":

@@ -72,6 +72,8 @@ var tcpHandlers = map[string]bool{
 	// Danfoss AK-SM 8xxA "StoreView" refrigeration system-manager web interface
 	// (xml.cgi); danfoss_aksms is the TLS-fronted (443) variant.
 	"danfoss_aksm": true, "danfoss_aksms": true,
+	// AI/LLM inference-server + MCP honeypots.
+	"ollama": true, "llm_openai": true, "mcp": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,
