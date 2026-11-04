@@ -104,16 +104,12 @@ func scanAnomalies(line string) []string {
 		add("shell-creds-file-access")
 	}
 	// Planted-loot access (T1552 / credential-access): a read of one of the
-	// seeded honeytoken files is high-signal — nothing benign reads them.
-	for _, lp := range []string{"/.aws/credentials", "/.env", "wp-config.php", "backup.sql",
-		"/root/notes.txt", "/.ssh/id_rsa", "/home/admin/.bash_history"} {
-		if strings.Contains(low, lp) && (strings.HasPrefix(low, "cat ") || strings.HasPrefix(low, "head ") ||
-			strings.HasPrefix(low, "tail ") || strings.HasPrefix(low, "less ") || strings.HasPrefix(low, "more ") ||
-			strings.HasPrefix(low, "grep ") || strings.Contains(low, "scp ") || strings.Contains(low, "curl ") ||
-			strings.Contains(low, "nc ")) {
-			add("shell-loot-accessed")
-			break
-		}
+	// seeded honeytoken files is high-signal — nothing benign reads them. The
+	// read-command + loot-path test is shared with the Run loop's canary-token
+	// recording via lootReadLine, so the anomaly marker and the served-token
+	// signal can never drift apart.
+	if lootReadLine(low) {
+		add("shell-loot-accessed")
 	}
 
 	// Privilege escalation.

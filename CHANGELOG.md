@@ -31,6 +31,22 @@ documented in `docs/`).
 
 ### Added
 
+- **Shell loot → live canary tokens (honey-credential reuse, end to end).** The
+  planted shell loot (fake `/root/.aws/credentials`, `.env`, `wp-config.php`,
+  `backup.sql`, `notes.txt`, `.bash_history`) now weaves a **per-deployment
+  canary** into every secret value via a `{{TOK}}` sentinel, derived from the
+  deployment identity (`identity.CanaryToken()`, set once at startup with
+  `shell.SetLootToken`). When an attacker reads one of those files the shell
+  records the token as *served* (`Captured.ServedLootTokens`), the SSH/Telnet
+  handler surfaces it as `meta["loot_token"]`, and the sensor's existing
+  honey-credential tracker ingests it (`servedTokenKeys`). If the attacker later
+  replays that captured secret against any login-bearing service, it fires the
+  critical `canary:token_used` finding — turning a read of a fake file into live
+  proof of compromise, attributable to the exact sensor that minted it. The
+  `shell-loot-accessed` anomaly and the token-served signal now share one matcher
+  (`lootReadLine`) so they can never drift apart. The token is 16 hex chars —
+  unique across a fleet but deliberately *not* secret-shaped, and the loot values
+  remain broken decoys (so they match nothing a credential scanner flags).
 - **Native SIEM / chat sinks.** New channel types `slack`, `teams`,
   `elasticsearch` (/`opensearch`) and `splunk_hec`, all POSTing over the
   egress-governed client with secrets from env vars: Slack/Teams send a

@@ -492,7 +492,15 @@ into egress-filtered networks.
 **How are these different from honeytokens?**
 A canary is bait *you* place and watch. A **honeytoken** is a per-deployment-unique
 secret the fake web app *serves* (a DB password, an `AKIA…` AWS key) — register it
-in your SIEM and alert if it ever shows up in real auth logs.
+in your SIEM and alert if it ever shows up in real auth logs. You don't have to
+register it by hand, though: the honeypot closes that loop itself. Every synthetic
+secret it hands out — fake web-app credentials, and the **shell loot** an attacker
+reads after landing a shell (the planted `/root/.aws/credentials`, `.env`,
+`wp-config.php`, `backup.sql`, `.bash_history`, each carrying a per-deployment
+canary) — is recorded as *served*, and if that exact secret is later replayed
+against any login-bearing handler it fires the critical `canary:token_used`
+finding, attributable to the sensor that minted it. So a read of a fake file
+becomes live proof of compromise with no SIEM rule to maintain.
 
 **How do I detect SSRF / XXE / webhook abuse?**
 Use the `ssrf_canary` handler with a token from `gen-token --type=ssrf`, which

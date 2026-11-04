@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func TestCanaryToken(t *testing.T) {
+	a := New("deployment-A").CanaryToken()
+	b := New("deployment-B").CanaryToken()
+	// Deterministic per seed.
+	if a != New("deployment-A").CanaryToken() {
+		t.Error("CanaryToken not deterministic for the same seed")
+	}
+	// Unique per deployment.
+	if a == b {
+		t.Errorf("CanaryToken collision across seeds: %q", a)
+	}
+	// 16 lowercase hex chars (8 bytes) — unique, but not secret-shaped.
+	if len(a) != 16 {
+		t.Errorf("CanaryToken len = %d; want 16 (%q)", len(a), a)
+	}
+	for _, c := range a {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("CanaryToken has non-hex char %q in %q", c, a)
+		}
+	}
+}
+
 func TestLoadPersistsAndReuses(t *testing.T) {
 	dir := t.TempDir()
 	a, err := Load(dir, "")

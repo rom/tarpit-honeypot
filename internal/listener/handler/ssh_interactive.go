@@ -397,6 +397,13 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 		// Surfaced for the sensor's IOC pipeline (download / C2 hosts).
 		res.Meta["harvested_urls"] = captured.HarvestedURLs
 	}
+	if len(captured.ServedLootTokens) > 0 {
+		// The per-deployment canary woven into loot the attacker read. The
+		// sensor records it (servedTokenKeys) so a later replay of the secret
+		// fires a critical canary:token_used. Per-deployment, so all entries are
+		// the same value — surface one.
+		res.Meta["loot_token"] = captured.ServedLootTokens[0]
+	}
 	for _, a := range captured.Anomalies {
 		flagAnomaly(res, a)
 	}

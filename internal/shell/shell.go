@@ -54,6 +54,12 @@ type Captured struct {
 	// the handler as meta so the sensor's IOC pipeline ingests the download /
 	// C2 hosts.
 	HarvestedURLs []string
+	// ServedLootTokens are the per-deployment canary token values woven into any
+	// planted loot credential file the attacker read this session. Surfaced to
+	// the handler as meta["loot_token"] so the sensor records them in the
+	// honey-credential reuse tracker: a later replay of the captured secret
+	// against any login-bearing service then fires a critical canary:token_used.
+	ServedLootTokens []string
 }
 
 // Run drives the engagement. Returns when the attacker types exit/quit,
@@ -96,6 +102,12 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 		}
 		for _, u := range harvestURLs(line) {
 			cap.HarvestedURLs = appendUnique(cap.HarvestedURLs, u)
+		}
+		// A read of a planted loot credential file served the per-deployment
+		// canary — record it so the handler can surface it and the sensor can
+		// track replays of the "stolen" secret.
+		if lootReadLine(strings.ToLower(line)) {
+			cap.ServedLootTokens = appendUnique(cap.ServedLootTokens, currentLootToken())
 		}
 
 		argv := splitArgv(line)

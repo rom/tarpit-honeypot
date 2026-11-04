@@ -52,6 +52,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
+	"github.com/rom/tarpit-honeypot/internal/shell"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -624,6 +625,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 		iocEmit:       iocEmit,
 		listeners:     map[string]*listenerHandle{},
 	}
+	// Weave this deployment's canary into the planted shell loot so every
+	// sensor's fake credentials are unique and attributable; a read of a loot
+	// file then records the token as served (servedTokenKeys includes
+	// "loot_token") and a later replay fires canary:token_used.
+	shell.SetLootToken(id.CanaryToken())
 	// A refused outbound connection is a high-severity finding: it means a
 	// handler (or a tampered config) tried to make the sensor connect somewhere
 	// off the allowlist — an SSRF / relay / exfil attempt.
@@ -1381,7 +1387,7 @@ func (s *Sensor) fetchHarvestedURLs(urls []string) []payload.Artifact {
 
 // servedTokenKeys are event-meta keys whose value is a synthetic credential
 // the sensor HANDED OUT (so it should be remembered as a trackable token).
-var servedTokenKeys = []string{"honeytoken", "bearer_token", "vault_token"}
+var servedTokenKeys = []string{"honeytoken", "bearer_token", "vault_token", "loot_token"}
 
 // capturedCredKeys are event-meta keys whose value is a credential the attacker
 // SUPPLIED (so it should be checked against previously-served tokens).
