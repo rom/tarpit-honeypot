@@ -31,6 +31,19 @@ documented in `docs/`).
 
 ### Added
 
+- **Grafana dashboard + expanded Prometheus metrics.** `/metrics` now exposes
+  lifetime event counters — `tarpit_events_total`,
+  `tarpit_events_by_severity_total{severity}` and
+  `tarpit_events_by_kind_total{kind}` (the rule-id prefix:
+  listener/cve/canary/correlate/…) — recorded at the single bus-loop dispatch
+  choke point, plus per-rule detection hits
+  (`tarpit_detect_rule_hits_total{rule,severity}`) and live gauges for
+  `tarpit_listeners_active`, `tarpit_honey_tokens_tracked`,
+  `tarpit_kev_catalog_entries` and `tarpit_kev_last_update_timestamp_seconds`.
+  A ready-to-import Grafana dashboard (`examples/observability/grafana-dashboard.json`,
+  severity-coloured event-rate / rule-kind / top-rules / canary-CVE / sink-health
+  / infra panels) and a sample Prometheus scrape config ship in
+  `examples/observability/`.
 - **Healthcare / medical-device protocol decoys (HL7 MLLP + DICOM).** Two new
   TCP handlers for the protocols every hospital network exposes — almost always
   unauthenticated on the wire and a documented attacker target. `hl7` (2575)

@@ -2335,7 +2335,47 @@ tarpit_honeynet_hosts 8
 # HELP tarpit_store_db_bytes On-disk size of the SQLite events.db
 # TYPE tarpit_store_db_bytes gauge
 tarpit_store_db_bytes 32768
+
+# HELP tarpit_events_total Total events dispatched since start
+# TYPE tarpit_events_total counter
+tarpit_events_total 18423
+
+# HELP tarpit_events_by_severity_total Events dispatched since start, partitioned by severity
+# TYPE tarpit_events_by_severity_total counter
+tarpit_events_by_severity_total{severity="critical"} 12
+tarpit_events_by_severity_total{severity="high"} 844
+tarpit_events_by_severity_total{severity="medium"} 5110
+
+# HELP tarpit_events_by_kind_total Events dispatched since start, partitioned by rule-id kind (listener/cve/canary/correlate/…)
+# TYPE tarpit_events_by_kind_total counter
+tarpit_events_by_kind_total{kind="listener"} 17001
+tarpit_events_by_kind_total{kind="cve"} 212
+tarpit_events_by_kind_total{kind="canary"} 3
+
+# HELP tarpit_detect_rule_hits_total Operator detection-rule matches since start
+# TYPE tarpit_detect_rule_hits_total counter
+tarpit_detect_rule_hits_total{rule="ssh-bruteforce",severity="high"} 97
+
+# HELP tarpit_listeners_active Number of currently-bound listeners
+# TYPE tarpit_listeners_active gauge
+tarpit_listeners_active 42
+
+# HELP tarpit_honey_tokens_tracked Distinct synthetic credentials the reuse tracker is remembering
+# TYPE tarpit_honey_tokens_tracked gauge
+tarpit_honey_tokens_tracked 7
+
+# HELP tarpit_kev_catalog_entries CISA KEV catalog entries loaded in the live overlay
+# TYPE tarpit_kev_catalog_entries gauge
+tarpit_kev_catalog_entries 1218
 ```
+
+(Plus `tarpit_sniffer_frames_total{proto}`, `tarpit_disk_used_percent`,
+`tarpit_uptime_seconds`, `tarpit_build_info` and `tarpit_panic_recoveries_total`.)
+
+A ready-to-import **Grafana dashboard** and a sample **Prometheus scrape config**
+ship in [`examples/observability/`](examples/observability/) — event-rate-by-
+severity, rule-kind breakdown, top detection rules, canary/CVE signal, sink
+health and sensor infrastructure panels.
 
 Sample Prometheus scrape:
 

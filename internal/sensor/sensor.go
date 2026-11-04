@@ -131,6 +131,67 @@ type Sensor struct {
 
 	listenersMu sync.Mutex
 	listeners   map[string]*listenerHandle
+
+	// metrics holds lifetime event counters (by severity + rule kind) for the
+	// Prometheus endpoint. Written only from the single bus-loop goroutine via
+	// dispatch; read concurrently by the /metrics handler (hence the lock).
+	metrics *sensorMetrics
+}
+
+// sensorMetrics accumulates lifetime event counts for the Prometheus endpoint.
+type sensorMetrics struct {
+	mu         sync.Mutex
+	total      uint64
+	bySeverity map[string]uint64
+	byKind     map[string]uint64 // rule-id prefix: listener / cve / canary / correlate / …
+}
+
+func newSensorMetrics() *sensorMetrics {
+	return &sensorMetrics{bySeverity: map[string]uint64{}, byKind: map[string]uint64{}}
+}
+
+// record counts one dispatched event. ruleKind is the low-cardinality prefix of
+// the rule id (everything before the first ':'), which keeps the metric series
+// bounded even though rule ids themselves are not.
+func (m *sensorMetrics) record(ev *event.Event) {
+	if m == nil || ev == nil {
+		return
+	}
+	m.mu.Lock()
+	m.total++
+	m.bySeverity[ev.Severity.String()]++
+	m.byKind[ruleKind(ev.RuleID)]++
+	m.mu.Unlock()
+}
+
+// snapshot returns copies of the counters safe to read off the bus goroutine.
+func (m *sensorMetrics) snapshot() (total uint64, bySeverity, byKind map[string]uint64) {
+	if m == nil {
+		return 0, nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bySeverity = make(map[string]uint64, len(m.bySeverity))
+	for k, v := range m.bySeverity {
+		bySeverity[k] = v
+	}
+	byKind = make(map[string]uint64, len(m.byKind))
+	for k, v := range m.byKind {
+		byKind[k] = v
+	}
+	return m.total, bySeverity, byKind
+}
+
+// ruleKind returns the prefix of a rule id before the first ':' (e.g.
+// "cve:CVE-2021-44228" → "cve"), or "other" when there is no prefix.
+func ruleKind(ruleID string) string {
+	if i := strings.IndexByte(ruleID, ':'); i > 0 {
+		return ruleID[:i]
+	}
+	if ruleID == "" {
+		return "other"
+	}
+	return ruleID
 }
 
 // curRouter / curCorrelator / curConfig / curSinks return the current
@@ -624,6 +685,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		trust:         trustScorer,
 		iocEmit:       iocEmit,
 		listeners:     map[string]*listenerHandle{},
+		metrics:       newSensorMetrics(),
 	}
 	// Weave this deployment's canary into the planted shell loot so every
 	// sensor's fake credentials are unique and attributable; a read of a loot
@@ -748,6 +810,7 @@ func (s *Sensor) dispatch(rt *router.Router, ev *event.Event) {
 	if ev.SensorID == "" {
 		ev.SensorID = s.identity.Seed()
 	}
+	s.metrics.record(ev)
 	rt.Dispatch(ev)
 	if s.forward != nil {
 		s.forward.Send(ev)
@@ -1802,6 +1865,39 @@ func (s *Sensor) DetectRuleStats() []detect.RuleStat { return s.curDetect().Stat
 // dashboard + /metrics.
 func (s *Sensor) DiskUsedPercent() (int, bool) {
 	return diskUsedPercent(s.curConfig().Sensor.DataDir)
+}
+
+// EventCounts snapshots lifetime dispatched-event counters for /metrics: the
+// grand total plus per-severity and per-rule-kind breakdowns.
+func (s *Sensor) EventCounts() (total uint64, bySeverity, byKind map[string]uint64) {
+	return s.metrics.snapshot()
+}
+
+// ListenerCount returns the number of currently-bound listeners.
+func (s *Sensor) ListenerCount() int {
+	s.listenersMu.Lock()
+	defer s.listenersMu.Unlock()
+	return len(s.listeners)
+}
+
+// HoneyTokensTracked returns how many distinct synthetic credentials the
+// honey-credential reuse tracker is currently remembering.
+func (s *Sensor) HoneyTokensTracked() int {
+	if s.tokenTrack == nil {
+		return 0
+	}
+	return s.tokenTrack.Len()
+}
+
+// KEVStats reports the live CISA-KEV overlay state for /metrics: whether the
+// feed is active, how many catalog entries are loaded, and when it last
+// refreshed (zero time when never).
+func (s *Sensor) KEVStats() (active bool, entries int, updated time.Time) {
+	st := s.kevStore.Load()
+	if st == nil {
+		return false, 0, time.Time{}
+	}
+	return true, st.Count(), st.UpdatedAt()
 }
 
 // effIface returns sectionIface if set, else the sensor's first configured
