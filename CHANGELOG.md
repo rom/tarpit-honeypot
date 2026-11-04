@@ -31,6 +31,19 @@ documented in `docs/`).
 
 ### Added
 
+- **CISA KEV feed wired into the live sensor (`kev:` config block).** The
+  `internal/kevsync` overlay is now driven by the sensor, not just the `kev-gap`
+  CLI: with `kev.enabled`, the sensor pulls the KEV catalog on an interval
+  (default 6h) through the egress-governed client and **stamps every `cve:<id>`
+  event whose id is KEV-listed** with `kev=true`, `kev_date_added` and
+  `kev_known_ransomware`, lifting its severity to at least High. The puller runs
+  under a cancelable context and is **reload-aware** — a SIGHUP reload restarts
+  it against the new `url`/`poll`/`enabled` (the `Store` is retained so the last
+  snapshot survives), an auto-updating freshness source. The overlay is read
+  lock-free on the hot event path. The feed host (`www.cisa.gov`) must be in
+  `egress.allow` under `egress.enforce`; see `docs/threat-intel-exports.md` §10.
+- **14 KEV actively-exploited edge CVEs** added to the catalog from the gap-scan
+  (Ivanti/PAN-OS/Citrix/Cisco/Fortinet/SonicWall), closing the current gap.
 - **Fast-path L3/L4 DoS-resistance gate (`internal/fastpath`), with an
   eBPF/XDP design + scaffold.** A per-source token-bucket admission shaper
   consulted at `Accept()` — before a connection can spend a handler goroutine,

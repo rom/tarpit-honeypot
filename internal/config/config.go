@@ -57,6 +57,9 @@ type Config struct {
 	// FireHOL / Spamhaus / plain IP lists) and tags matching sources
 	// external_intel + threat_intel_hit. See internal/feeds.
 	ThreatFeeds ThreatFeeds `yaml:"threat_feeds"`
+	// KEV syncs the CISA Known Exploited Vulnerabilities catalog and stamps
+	// matching cve:<id> events as actively-exploited. See internal/kevsync.
+	KEV KEV `yaml:"kev"`
 	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
 	MISP MISPConfig `yaml:"misp"`
 	// IOC turns the indicators every event carries (IPs, fingerprints, hashes,
@@ -257,6 +260,18 @@ type ThreatFeeds struct {
 	Enabled bool          `yaml:"enabled"`
 	Poll    time.Duration `yaml:"poll"` // refresh interval (default 1h)
 	Feeds   []ThreatFeed  `yaml:"feeds"`
+}
+
+// KEV configures the CISA Known Exploited Vulnerabilities sync. When enabled
+// the sensor pulls the KEV catalog (through the egress-governed client — the
+// feed host must be in egress.allow) on an interval and stamps every cve:<id>
+// event whose id is KEV-listed with kev=true + kev_date_added +
+// kev_known_ransomware, and lifts its severity to at least High.
+type KEV struct {
+	Enabled bool          `yaml:"enabled"`
+	URL     string        `yaml:"url"`    // empty = the CISA KEV JSON feed
+	Poll    time.Duration `yaml:"poll"`   // refresh interval (default 6h)
+	Header  string        `yaml:"header"` // optional "Name: value" request header
 }
 
 // ThreatFeed is one external reputation source.

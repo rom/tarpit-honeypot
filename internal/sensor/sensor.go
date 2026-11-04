@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -38,6 +39,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/intel"
 	"github.com/rom/tarpit-honeypot/internal/ioc"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/kevsync"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/misp"
@@ -70,23 +72,29 @@ type listenerHandle struct {
 }
 
 type Sensor struct {
-	cfg         *config.Config
-	name        string
-	sinks       []sink.Sink
-	router      *router.Router
-	correlator  *correlate.Correlator
-	store       store.EventStore
-	captureMgr  *capture.Manager
-	identity    *identity.Identity
-	jitter      *jitter.Jitterer
-	archetype   *archetype.Profile
-	honeynet    *honeynet.Topology
-	enrich      *enrich.Enricher
-	detectEng   *detect.Engine // operator detection-rule engine (guarded by stateMu)
-	devices     *devices.Registry
-	scanTrack   *scananalysis.Tracker
-	fuzzTrack   *fuzzdos.Tracker
-	baseline    *baseline.Detector  // statistical baselines + multi-stage kill-chain (always on)
+	cfg        *config.Config
+	name       string
+	sinks      []sink.Sink
+	router     *router.Router
+	correlator *correlate.Correlator
+	store      store.EventStore
+	captureMgr *capture.Manager
+	identity   *identity.Identity
+	jitter     *jitter.Jitterer
+	archetype  *archetype.Profile
+	honeynet   *honeynet.Topology
+	enrich     *enrich.Enricher
+	detectEng  *detect.Engine // operator detection-rule engine (guarded by stateMu)
+	devices    *devices.Registry
+	scanTrack  *scananalysis.Tracker
+	fuzzTrack  *fuzzdos.Tracker
+	baseline   *baseline.Detector // statistical baselines + multi-stage kill-chain (always on)
+	// kevStore holds the live CISA KEV overlay (nil when the feed is disabled);
+	// read lock-free on the hot event path. kevCancel stops the puller so a
+	// config reload can restart it (re-parented on s.rootCtx).
+	kevStore    atomic.Pointer[kevsync.Store]
+	kevMu       sync.Mutex
+	kevCancel   context.CancelFunc
 	sniffer     sniffer.Sniffer     // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	tokenTrack  *tokentrack.Tracker // honey-credential reuse detector (always on)
 	payloads    *payload.Store
@@ -811,6 +819,63 @@ func (s *Sensor) Blocker() *blocklist.Blocker { return s.blocker }
 
 // Risk returns the per-source risk scorer (nil when disabled).
 func (s *Sensor) Risk() *risk.Scorer { return s.risk }
+
+// startKEVSync (re)starts the CISA KEV sync for the given config, parented to
+// parent so it stops on shutdown. It is idempotent and reload-safe: any
+// running puller is cancelled first, the Store is retained across restarts so
+// the last snapshot survives a reload, and a disabled config just clears the
+// overlay. The egress-governed client means the feed host must be allowlisted.
+func (s *Sensor) startKEVSync(parent context.Context, cfg config.KEV) {
+	s.kevMu.Lock()
+	defer s.kevMu.Unlock()
+	if s.kevCancel != nil {
+		s.kevCancel()
+		s.kevCancel = nil
+	}
+	if !cfg.Enabled || parent == nil {
+		s.kevStore.Store(nil)
+		return
+	}
+	store := s.kevStore.Load()
+	if store == nil {
+		store = kevsync.NewStore()
+		s.kevStore.Store(store)
+	}
+	ctx, cancel := context.WithCancel(parent)
+	s.kevCancel = cancel
+	p := kevsync.NewPuller(cfg.URL, cfg.Header, cfg.Poll, egress.HTTPClient(20*time.Second), store)
+	p.SetErrorHandler(func(err error) { slog.Warn("kev sync: refresh failed", "err", err) })
+	go p.Run(ctx)
+	slog.Info("CISA KEV sync enabled", "poll", cfg.Poll)
+}
+
+// stampKEV marks a cve:<id> event whose CVE is on the CISA KEV catalog as
+// actively-exploited: kev=true (+ date added, ransomware flag) and severity
+// lifted to at least High. No-op when the feed is disabled. Called on the hot
+// event path, so the Store lookup is lock-free (atomic pointer).
+func (s *Sensor) stampKEV(ev *event.Event) {
+	st := s.kevStore.Load()
+	if st == nil || ev == nil || !strings.HasPrefix(ev.RuleID, "cve:") {
+		return
+	}
+	e, ok := st.Lookup(ev.RuleID[len("cve:"):])
+	if !ok {
+		return
+	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["kev"] = true
+	if e.DateAdded != "" {
+		ev.Meta["kev_date_added"] = e.DateAdded
+	}
+	if e.KnownRansomware {
+		ev.Meta["kev_known_ransomware"] = true
+	}
+	if ev.Severity < event.SeverityHigh {
+		ev.Severity = event.SeverityHigh
+	}
+}
 
 // scoreRisk folds a dispatched event into the per-source risk scorer and,
 // when the source escalates into a higher level, dispatches a risk:<level>
@@ -2043,6 +2108,12 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 		_ = sk.Close()
 	}
 
+	// Restart the CISA KEV sync against the reloaded config (idempotent; the
+	// Store is retained so the last snapshot survives the reload). This makes
+	// the feed an auto-updating source that picks up url/poll/enabled changes
+	// on SIGHUP without a restart.
+	s.startKEVSync(s.rootCtx, newCfg.KEV)
+
 	// Emit a synthetic reload event so the operator's downstream pipeline
 	// can correlate config changes with detection-signal changes.
 	s.emitReloadEvent(diff)
@@ -2177,6 +2248,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go func() { defer wg.Done(); s.mispPusher.Run(ctx) }()
 	}
 
+	// CISA KEV sync: refresh the known-exploited overlay on an interval
+	// (manages its own goroutine so a config reload can restart it, re-parented
+	// on s.rootCtx which is set just above).
+	s.startKEVSync(ctx, s.curConfig().KEV)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2223,6 +2299,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.SensorID = s.identity.Seed()
 				}
 				en.Decorate(ev)
+				// Stamp CISA KEV status on cve:<id> events (actively-exploited
+				// → kev=true + severity lift). No-op when the feed is disabled.
+				s.stampKEV(ev)
 				// ATT&CK-tag the event before correlation so the
 				// storyline correlator can build its tactic chain from
 				// the same techniques every downstream sees. D3FEND
