@@ -77,6 +77,9 @@ var tcpHandlers = map[string]bool{
 	// Cloud-native / DevOps exposed-service decoys.
 	"jupyter": true, "selenium": true, "consul": true,
 	"nomad": true, "minio": true, "clickhouse": true,
+	// Refrigeration / BMS web controllers + EV-charging OCPP.
+	"dixell": true, "carel": true, "trane": true, "resideo": true,
+	"ocpp": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,

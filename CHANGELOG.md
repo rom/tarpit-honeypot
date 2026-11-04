@@ -31,6 +31,22 @@ documented in `docs/`).
 
 ### Added
 
+- **Refrigeration / BMS controller + EV-charging (OCPP) emulation.** Extends the
+  Danfoss AK-SM refrigeration work to the other controller families that end up
+  internet-exposed: `dixell` (Emerson/Copeland Dixell XWEB supermarket
+  refrigeration supervisor), `carel` (CAREL pCOWeb / boss), `trane` (Trane
+  Tracer SC BAS) and `resideo` (Resideo/Honeywell) — each fingerprints the
+  product, captures the login (flagging the **vendor default credentials**), and
+  flags setpoint/defrost/parameter writes and embedded-web-server path
+  traversal. New `ocpp` handler models an EV-charging **OCPP-J** endpoint (OCPP
+  1.6 / 2.0.1 over WebSocket): it completes the upgrade, captures the
+  charge-point id + subprotocol, and classifies the CALL actions — remote
+  start/stop, config/charging-profile change, firmware push, `Reset`, and local
+  auth-list tamper. Markers: `bms-web-probe`, `<vendor>-probe`,
+  `<vendor>-login-attempt`, `bms-default-cred`, `refrigeration-setpoint-write`,
+  `bms-web-traversal`, `ocpp-connect`, `ocpp-message`, `ocpp-remote-transaction`,
+  `ocpp-config-change`, `ocpp-firmware-update`, `ocpp-reset`,
+  `ocpp-authlist-tamper`.
 - **Cloud-native / DevOps exposed-service decoys.** Six new HTTP handlers model
   control planes that are RCE / data-theft footholds (and favourite
   cryptojacking entry points) when left on the internet, each fingerprinting the

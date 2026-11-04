@@ -481,6 +481,10 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &mcp{}, nil
 	case "jupyter", "selenium", "consul", "nomad", "minio", "clickhouse":
 		return &cloudsvc{kind: name}, nil
+	case "dixell", "carel", "trane", "resideo":
+		return &bmsWeb{kind: name}, nil
+	case "ocpp":
+		return &ocppH{}, nil
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":
