@@ -49,6 +49,11 @@ const IdleTimeout = 60 * time.Second
 type Captured struct {
 	Commands  []string // every line the attacker typed, truncated at MaxBytesPerCommand
 	Anomalies []string // markers like "shell-reverse-shell", "shell-shadow-read"
+	// HarvestedURLs are http(s) URLs seen in the attacker's commands (wget /
+	// curl ingress-tool-transfer, pipe-to-shell, exfil targets). Surfaced to
+	// the handler as meta so the sensor's IOC pipeline ingests the download /
+	// C2 hosts.
+	HarvestedURLs []string
 }
 
 // Run drives the engagement. Returns when the attacker types exit/quit,
@@ -88,6 +93,9 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 		// when our table doesn't recognize the exact command form.
 		for _, a := range scanAnomalies(line) {
 			cap.Anomalies = appendUnique(cap.Anomalies, a)
+		}
+		for _, u := range harvestURLs(line) {
+			cap.HarvestedURLs = appendUnique(cap.HarvestedURLs, u)
 		}
 
 		argv := splitArgv(line)

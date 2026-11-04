@@ -162,6 +162,9 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		if len(captured.Commands) > 0 {
 			res.Meta["shell_commands"] = captured.Commands
 		}
+		if len(captured.HarvestedURLs) > 0 {
+			res.Meta["harvested_urls"] = captured.HarvestedURLs
+		}
 		for _, a := range captured.Anomalies {
 			flagAnomaly(&res, a)
 		}
