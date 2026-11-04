@@ -31,6 +31,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Native SIEM / chat sinks.** New channel types `slack`, `teams`,
+  `elasticsearch` (/`opensearch`) and `splunk_hec`, all POSTing over the
+  egress-governed client with secrets from env vars: Slack/Teams send a
+  one-line severity summary to an incoming webhook; Elasticsearch indexes the
+  formatted document (`<url>/<index>/_doc/<event-id>`, idempotent, `ApiKey`
+  auth); Splunk HEC wraps the formatted event in the HEC envelope
+  (`sourcetype: tarpit:event`, `Splunk <token>` auth). They honor the existing
+  `format:` (json/cef/leef/ocsf — those formatters already shipped). Config +
+  `Dests` egress + validation wired; added `channel.index`. Documented in
+  `docs/INTEGRATIONS.md`.
 - **CISA KEV feed wired into the live sensor (`kev:` config block).** The
   `internal/kevsync` overlay is now driven by the sensor, not just the `kev-gap`
   CLI: with `kev.enabled`, the sensor pulls the KEV catalog on an interval

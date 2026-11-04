@@ -2268,11 +2268,15 @@ type Channel struct {
 	MinSeverity     string `yaml:"min_severity"`
 	RateLimitPerMin int    `yaml:"rate_limit_per_min"`
 
-	// webhook
+	// webhook / slack / teams / elasticsearch / splunk_hec
 	URL           string        `yaml:"url"`
 	URLEnv        string        `yaml:"url_env"` // read URL from this env var (keeps secrets/webhook tokens out of YAML)
 	HMACSecretEnv string        `yaml:"hmac_secret_env"`
 	Timeout       time.Duration `yaml:"timeout"`
+	// Index is the Elasticsearch/OpenSearch index a document is written to
+	// (elasticsearch sink; default "tarpit-events"). The Splunk-HEC and
+	// Elasticsearch sinks read their bearer/API-key/HEC token from AuthTokenEnv.
+	Index string `yaml:"index"`
 
 	// smtp + snmptrap share Host/Port
 	Host        string   `yaml:"host"`

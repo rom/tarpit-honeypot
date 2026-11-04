@@ -1418,6 +1418,21 @@ func (c *Config) Validate() error {
 			if ch.QoS < 0 || ch.QoS > 2 {
 				return fmt.Errorf("channel %s: mqtt qos must be 0|1|2", ch.ID)
 			}
+		case "slack", "teams":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: %s needs url (or url_env) — the incoming-webhook URL", ch.ID, ch.Type)
+			}
+		case "elasticsearch", "opensearch":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: %s needs url (or url_env) — the cluster base URL", ch.ID, ch.Type)
+			}
+		case "splunk_hec":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: splunk_hec needs url (or url_env) — the HEC endpoint", ch.ID)
+			}
+			if ch.AuthTokenEnv == "" {
+				return fmt.Errorf("channel %s: splunk_hec needs auth_token_env (the HEC token)", ch.ID)
+			}
 		default:
 			return fmt.Errorf("channel %s: unknown type %q", ch.ID, ch.Type)
 		}

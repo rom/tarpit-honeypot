@@ -45,6 +45,14 @@ func Build(ch config.Channel, dataDir string, jsonMB int) (Sink, error) {
 		return newSNMPTrap(ch)
 	case "mqtt":
 		return newMQTT(ch, f)
+	case "slack":
+		return newChat(ch, "slack")
+	case "teams":
+		return newChat(ch, "teams")
+	case "elasticsearch", "opensearch":
+		return newElasticsearch(ch, f)
+	case "splunk_hec":
+		return newSplunkHEC(ch, f)
 	}
 	return nil, fmt.Errorf("sink %s: unknown type %q", ch.ID, ch.Type)
 }
@@ -56,7 +64,7 @@ func Dests(ch config.Channel) []string {
 	switch ch.Type {
 	case "webhook", "mqtt":
 		return urlDests(ch.URL)
-	case "discord":
+	case "discord", "slack", "teams", "elasticsearch", "opensearch", "splunk_hec":
 		u := ch.URL
 		if u == "" && ch.URLEnv != "" {
 			u = os.Getenv(ch.URLEnv)
