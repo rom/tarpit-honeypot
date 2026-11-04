@@ -40,6 +40,12 @@ type Store struct {
 	// pruneTick gates the cap check so we don't os.Stat the DB file on every
 	// single insert — only every prunePeriod writes.
 	pruneTick atomic.Uint64
+
+	// bgCancel stops the background country-backfill goroutine and bgDone is
+	// closed once it has fully returned; Close cancels then waits, so no
+	// background write can race the DB close (or, in tests, a TempDir cleanup).
+	bgCancel context.CancelFunc
+	bgDone   chan struct{}
 }
 
 // rowQueryer is satisfied by both *sql.DB and *sql.Tx, so banner interning can
@@ -322,7 +328,13 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	// off the startup path (chunked, best-effort). New rows already get it at
 	// insert; this converges the index + rollup over history without blocking
 	// Open or holding a long write lock against the sink.
-	go st.backfillCountry(context.Background())
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	st.bgCancel = bgCancel
+	st.bgDone = make(chan struct{})
+	go func() {
+		defer close(st.bgDone)
+		st.backfillCountry(bgCtx)
+	}()
 	return st, nil
 }
 
@@ -526,7 +538,17 @@ func hasColumn(db *sql.DB, table, col string) (bool, error) {
 	return false, rows.Err()
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	// Stop the background country-backfill and wait for it to return before
+	// closing the DB, so no in-flight write recreates a WAL/-shm file after
+	// close (which otherwise races a test's TempDir cleanup → "directory not
+	// empty", and in production leaves orphan -wal/-shm behind).
+	if s.bgCancel != nil {
+		s.bgCancel()
+		<-s.bgDone
+	}
+	return s.db.Close()
+}
 
 func (s *Store) Path() string { return s.path }
 
