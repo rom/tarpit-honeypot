@@ -31,6 +31,37 @@ documented in `docs/`).
 
 ### Added
 
+- **Fast-path L3/L4 DoS-resistance gate (`internal/fastpath`), with an
+  eBPF/XDP design + scaffold.** A per-source token-bucket admission shaper
+  consulted at `Accept()` — before a connection can spend a handler goroutine,
+  buffers or an event-bus slot — sheds a source over its budget (closes
+  immediately + emits low-severity `fastpath:shed`, non-blocking so a flood
+  can't wedge the accept loop), with a hard O(1) drop-set (wire to the risk
+  blocker / blocklist) and an LRU-bounded source table. Enabled per TCP listener
+  with `max_source_pps` (0 = off); complements the global `max_concurrent` cap.
+  The package also ships the **in-kernel eBPF/XDP tier as a build-tagged
+  scaffold** (`-tags tarpit_xdp`, Linux): the Go interface (`AttachXDP` /
+  `Available` / `Close`), the BPF map/counter contract and the architecture are
+  defined, but — stated plainly — the compiled XDP object + loader are not
+  bundled and the kernel program is not CI-validated (it needs a privileged
+  kernel + NIC); the default build always uses the userspace shaper, and an
+  opt-in build without the artifacts gets a clear error + fallback. Documented
+  in `docs/xdp-fastpath.md`.
+- **Deeper interactive-shell engagement: planted loot + IOC harvesting.** The
+  fake SSH/Telnet shell (`internal/shell`) now seeds believable, secret-bearing
+  **honeytoken loot** into the fake filesystem — `/root/.aws/credentials`,
+  `/root/.env`, `/var/www/html/wp-config.php`, `/root/backup.sql`,
+  `/root/notes.txt`, `/root/.ssh/id_rsa`, `/home/admin/.bash_history` — served
+  by `cat`/`head`/`tail` and listed by `ls` (with new `/root/.aws`, `/var/www`,
+  `/opt/app` directories), so an attacker who lands a shell keeps digging. Every
+  loot read is flagged `shell-loot-accessed` (credential files also keep
+  `shell-creds-file-access`); the values are non-routable example hosts and
+  placeholder secrets that execute/grant nothing and can be registered with the
+  canary system to trip on reuse. The shell also **harvests http(s):// URLs**
+  from the attacker's commands (`wget`/`curl` ingress-tool-transfer,
+  pipe-to-shell, exfil targets) into `meta.harvested_urls`, which the sensor's
+  existing IOC pipeline ingests — so download / C2 hosts land in the IOC store /
+  STIX / MISP automatically.
 - **Attack-replay generator in the test harness (`attack` category).** A new
   `tarpit-testharness` category that replays one representative, exploit-shaped
   probe per matching endpoint handler (Log4Shell, LLM prompt-injection /

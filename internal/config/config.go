@@ -1036,6 +1036,11 @@ type Listener struct {
 	ReadTimeout   time.Duration `yaml:"read_timeout"`
 	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
 	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	// MaxSourcePPS enables the fast-path DoS gate: the sustained new-connection
+	// rate allowed per source IP (token bucket, burst = max(pps,20)). A source
+	// over budget is shed at accept before spending a handler goroutine
+	// (fastpath:shed). 0 = disabled (TCP only). See docs/xdp-fastpath.md.
+	MaxSourcePPS float64 `yaml:"max_source_pps"`
 	// UDPSession enables the connection-oriented UDP path: datagrams are
 	// demultiplexed per source into multi-datagram sessions and handed to a
 	// handler that implements handler.UDPSessionHandler (QUIC/DTLS/TFTP-style
