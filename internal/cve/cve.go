@@ -2355,6 +2355,117 @@ var catalog = []Record{
 	{ID: "CVE-2017-12635", Name: "Apache CouchDB privilege escalation (admin party)", CVSS: 9.8, Service: "couchdb",
 		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-863"},
 		Description: "A discrepancy between CouchDB's Erlang and JavaScript JSON parsers lets a non-admin PUT a _users document with a duplicate 'roles' key carrying [\"_admin\"], creating an administrator and taking over the database."},
+
+	// ---- PHP2Shell (October 2026): the paired critical PHP-engine RCEs, plus
+	// the follow-on session-upload-progress flaw PHP disclosed two days later.
+	// All three are engine memory/state bugs, not a request-string injection, so
+	// the signatures below key only on the *documented, benign-named* request
+	// artifacts a defender watches for (the session.upload_progress field name,
+	// an upload filename carrying a PHP-serialized-object fragment). Detection
+	// only — the honeypot advertises an unpatched PHP build and records the
+	// probe; it never reproduces the memory-corruption trigger. The vulnweb
+	// handler adds request-shape heuristics (oversized / deeply-nested bodies).
+	{ID: "CVE-2026-109618", Name: "PHP2Shell OOM-cleanup RCE", CVSS: 9.2, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787", "CWE-908"},
+		Description: "PHP out-of-memory handling leaves half-initialized request state that later cleanup treats as valid, giving an unauthenticated attacker code execution as the web-worker account. Affects PHP 5.4 through 8.5.11; fixed in 8.5.12 / 8.4.27 / 8.3.36 / 8.2.35. Advisory/version-fingerprint only — the OOM trigger is not reproduced; the vulnweb handler flags the memory-exhaustion request shape."},
+	{ID: "CVE-2026-109619", Name: "PHP2Shell stale-state RCE", CVSS: 9.2, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-416", "CWE-908"},
+		Description: "Stale worker-wide request state reused by a later request on the same PHP worker (a use-after-free pattern) yields unauthenticated RCE. Reached via the session.upload_progress upload path; mitigated by session.upload_progress.enabled=0. Fixed in PHP 8.5.12 / 8.4.27 / 8.3.36 / 8.2.35. The vulnweb handler flags the documented session-upload-progress request artifact — recognition only, never execution."},
+	{ID: "CVE-2026-115560", Name: "PHP session-upload-progress RCE", CVSS: 8.1, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-502"},
+		Description: "A session-handler flaw (php_binary/php_serialize serialize handler + session.upload_progress enabled) lets a crafted upload-progress session value be deserialized into attacker-controlled state. PHP rated it unlikely and deferred the fix to the next regular release; mitigate with session.upload_progress.enabled=0. Shares the session.upload_progress surface with CVE-2026-109619; advisory/fingerprint only."},
+
+	// ---- WordPress core upgrade-window RCE (CVE-2026-119977). A TOCTOU race in
+	// the full-package core upgrade exposes predictable, web-reachable staging
+	// paths (the staged wp-admin/setup-config.php installer under
+	// wp-content/upgrade) for a short window during an update. The vulnweb
+	// handler recognizes a probe for the staged installer path. ----
+	{ID: "CVE-2026-119977", Name: "WordPress core upgrade-race RCE", CVSS: 8.1, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-367"},
+		Description: "Time-of-check/time-of-use race in the WordPress core full-package upgrade: predictable, web-accessible staging paths (the staged setup-config.php installer under wp-content/upgrade) let an unauthenticated attacker run code during the brief window a core update is in progress. Affects WordPress 4.7 through 7.1.3; fixed in 7.1.4. The vulnweb handler recognizes a probe for the staged installer path."},
+
+	// ---- Node2Shell / Brotli2Shell (CVE-2026-111497): an out-of-bounds write in
+	// Google Brotli's decoder (c/dec/decode.c), reachable wherever a server
+	// decompresses attacker-controlled Brotli — Node.js 22/24/26, .NET 8, etc.
+	// Advisory/fingerprint only: the trigger is a crafted compressed stream, not
+	// a signatureable request string, so this drives unpatched-version emulation
+	// on a Brotli-decoding web server. ----
+	{ID: "CVE-2026-111497", Name: "Brotli decoder out-of-bounds write (Node2Shell)", CVSS: 8.1, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"},
+		Description: "Out-of-bounds write in Google Brotli's decoder (libbrotli 1.0.3-1.2.0) corrupts adjacent memory from a crafted Brotli stream, enabling DoS or RCE in any application that decompresses attacker-controlled Brotli (Node.js 22/24/26, .NET 8). Fixed in Node.js 26.12.1 / 24.22.1 / 22.23.4. Advisory/version-fingerprint only."},
+
+	// ---- GitLab CI/CD regex-compiler RCE (CVE-2026-97229). A crafted regular
+	// expression in a CI/CD configuration triggers an integer overflow in the
+	// regex compiler, enabling RCE. No clean generic inbound string, so advisory/
+	// fingerprint only (drives an unpatched-GitLab web persona). ----
+	{ID: "CVE-2026-97229", Name: "GitLab CI/CD regex-compiler integer overflow RCE", CVSS: 10.0, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-190"},
+		Description: "Integer overflow in GitLab CE/EE's CI/CD regular-expression compiler lets a crafted regex in a CI/CD configuration achieve remote code execution. Affects 19.2<19.2.8, 19.3<19.3.5, 19.4<19.4.2. Advisory/version-fingerprint only."},
+
+	// ---- Fragnesia (CVE-2026-46300): a local Linux-kernel XFRM (ESP-in-TCP)
+	// out-of-bounds write that lets a low-privileged local user overwrite the
+	// page cache of read-only files to gain root. Not network-reachable, so it
+	// is bound to the Linux-host (ssh) fingerprint as advisory-only and is
+	// additionally recognized by the interactive-shell local-exploit detector
+	// when an attacker runs the exploit after a foothold. ----
+	{ID: "CVE-2026-46300", Name: "Fragnesia Linux kernel XFRM local privesc", CVSS: 7.8, Service: "ssh",
+		Technique: "T1068", Tactic: "privilege-escalation", CWE: []string{"CWE-787"},
+		Description: "Out-of-bounds write in the Linux kernel XFRM ESP-in-TCP path lets a low-privileged local user write into the page cache of read-only files (overwriting privileged binaries) to escalate to root. Chained behind a web RCE such as PHP2Shell to reach root. Local privesc — advisory/kernel-fingerprint only; the ssh_interactive/telnet shell flags an exploit run as shell-local-exploit."},
+
+	// ---- Danfoss refrigeration / drive controllers ----
+	// The AK-SM 8xxA "StoreView" refrigeration system manager (danfoss_aksm
+	// handler) exposes an nginx-fronted xml.cgi web interface. The three 2025
+	// CVEs (Claroty Team82, DSA-2025-03-01 / DSA-2025-08-01) are recognized by
+	// that handler from the request shape; catalogued advisory-only here (the
+	// handler sets the CVEHit). The code-of-the-day algorithm and the real
+	// bypass attribute names were redacted by the researchers and are NOT
+	// reproduced — the handler detects the documented request *shape* only.
+	{ID: "CVE-2025-41450", Name: "Danfoss AK-SM 8xxA code-of-the-day auth bypass", CVSS: 8.2, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287", "CWE-305"},
+		Description: "A hidden date-derived 'code-of-the-day' password accepted by the AK-SM 8xxA xml.cgi?action=getauth handler when specific request attributes are set, yielding a full admin session without valid credentials. Affects AK-SM 8xxA < R4.2; fixed in R4.2. Detection only — the honeypot recognizes the documented getauth bypass shape, never the redacted algorithm."},
+	{ID: "CVE-2025-41451", Name: "Danfoss AK-SM 8xxA alarm-to-mail command injection", CVSS: 8.7, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-77", "CWE-78"},
+		Description: "The AK-SM 8xxA alarm-to-mail/SMTP configuration save formats the e-mail authentication password (config item 0x1be1) into an OS shell command unsanitized; shell metacharacters in that field execute as the web-service user (post-auth). Affects AK-SM 8xxA < R4.3.1; fixed in R4.3.1. Detection only."},
+	{ID: "CVE-2025-41452", Name: "Danfoss AK-SM 8xxA nginx config injection / DoS", CVSS: 6.8, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "impact", CWE: []string{"CWE-15", "CWE-20"},
+		Description: "The AK-SM 8xxA action=load_nginx_headers upload replaces headers.conf (included by the internet-facing nginx) and reloads it; injected directives go live on the management interface and hitting an injected route crashes sm_app (repeatable DoS). Affects AK-SM 8xxA < R4.3.1; fixed in R4.3.1. Detection only."},
+	// AK-SM 800A (previous generation), DSA-2023-08-01, Synacktiv.
+	{ID: "CVE-2023-25913", Name: "Danfoss AK-SM 800A authentication bypass (info exposure)", CVSS: 7.5, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "AK-SM 800A < 3.3 authentication bypass that exposes internal device details to an unauthenticated client (DSA-2023-08-01)."},
+	{ID: "CVE-2023-25914", Name: "Danfoss AK-SM 800A XML-interface path traversal", CVSS: 7.5, Service: "danfoss_aksm",
+		Signatures: []string{"/xml.cgi?../", "xml.cgi?action=../"},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-22"},
+		Description: "AK-SM 800A < 3.3 path traversal through the XML (xml.cgi) interface permits reading files outside the web root (DSA-2023-08-01)."},
+	{ID: "CVE-2023-25915", Name: "Danfoss AK-SM 800A remote command execution", CVSS: 9.8, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-77"},
+		Description: "AK-SM 800A < 3.3 allows an attacker to execute arbitrary OS commands remotely (DSA-2023-08-01). Detection/fingerprint only."},
+	// AK-EM 100 energy manager (end-of-life), DSA-2023-05-01.
+	{ID: "CVE-2023-22583", Name: "Danfoss AK-EM 100 SQL injection", CVSS: 9.8, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-89"},
+		Description: "SQL injection in the AK-EM 100 refrigeration energy-management web application (DSA-2023-05-01; product end-of-life, no fix — migrate to AK-SM 800A/Alsense)."},
+	{ID: "CVE-2023-22584", Name: "Danfoss AK-EM 100 cleartext credential storage", CVSS: 7.5, Service: "danfoss_aksm",
+		Technique: "T1552", Tactic: "credential-access", CWE: []string{"CWE-312"},
+		Description: "AK-EM 100 stores credentials in cleartext, exposing them to disclosure (DSA-2023-05-01)."},
+	{ID: "CVE-2023-22585", Name: "Danfoss AK-EM 100 reflected XSS", CVSS: 6.1, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-79"},
+		Description: "Reflected cross-site scripting in the AK-EM 100 web interface (DSA-2023-05-01)."},
+	{ID: "CVE-2023-22586", Name: "Danfoss AK-EM 100 local file inclusion", CVSS: 7.5, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-98"},
+		Description: "Local file inclusion in the AK-EM 100 web application (DSA-2023-05-01)."},
+	{ID: "CVE-2023-25911", Name: "Danfoss AK-EM 100 OS command injection", CVSS: 9.8, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"},
+		Description: "OS command injection in the AK-EM 100 web application permits remote code execution (DSA-2023-05-01)."},
+	{ID: "CVE-2023-25912", Name: "Danfoss AK-EM 100 unauthorized report disclosure", CVSS: 5.3, Service: "danfoss_aksm",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-306"},
+		Description: "The AK-EM 100 discloses web reports to unauthorized clients (DSA-2023-05-01)."},
+	// Danfoss iC7 drives — debug/engineering interfaces with improper access
+	// control by default (DSA-2026-08-01). Service-interface / software-update
+	// surface, not an HTTP request string, so advisory-only; the danfoss_aksm
+	// handler flags access to debug/engineering/service endpoints generically.
+	{ID: "CVE-2026-15203", Name: "Danfoss iC7 debug/engineering interface improper access control", CVSS: 8.4, Service: "danfoss_aksm",
+		Technique: "T0702", Tactic: "initial-access", CWE: []string{"CWE-284", "CWE-1242"},
+		Description: "Danfoss iC7 drives (iC7-Automation SP < 2025.3.3, iC7-Marine < 2025.8.19, iC7-Hybrid < 2025.10.300845) expose debug and engineering interfaces with improper access control by default, letting an attacker read internal values and write unsigned applications, EEPROM data and firmware through the service/software-update interfaces (DSA-2026-08-01). Advisory/fingerprint only."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2606,6 +2717,28 @@ var cveExtra = map[string]struct {
 	"CVE-2022-31204": {[]string{"CWE-319"}, "cpe:2.3:o:omron:sysmac_cj2m_firmware:*", 0.02},
 	"CVE-2018-8872":  {[]string{"CWE-119"}, "cpe:2.3:o:schneider-electric:tricon_3008_firmware:*", 0.02},
 	"CVE-2017-12635": {[]string{"CWE-863"}, "cpe:2.3:a:apache:couchdb:*", 0.95},
+	// PHP2Shell + other 2026 web/engine CVEs.
+	"CVE-2026-109618": {[]string{"CWE-787", "CWE-908"}, "cpe:2.3:a:php:php:*", 0.90},
+	"CVE-2026-109619": {[]string{"CWE-416", "CWE-908"}, "cpe:2.3:a:php:php:*", 0.90},
+	"CVE-2026-115560": {[]string{"CWE-502"}, "cpe:2.3:a:php:php:*", 0.30},
+	"CVE-2026-119977": {[]string{"CWE-367"}, "cpe:2.3:a:wordpress:wordpress:*", 0.90},
+	"CVE-2026-111497": {[]string{"CWE-787"}, "cpe:2.3:a:google:brotli:*", 0.60},
+	"CVE-2026-97229":  {[]string{"CWE-190"}, "cpe:2.3:a:gitlab:gitlab:*", 0.85},
+	"CVE-2026-46300":  {[]string{"CWE-787"}, "cpe:2.3:o:linux:linux_kernel:*", 0.10},
+	// Danfoss refrigeration / drive controllers.
+	"CVE-2025-41450": {[]string{"CWE-287", "CWE-305"}, "cpe:2.3:o:danfoss:ak-sm_8xxa_firmware:*", 0.10},
+	"CVE-2025-41451": {[]string{"CWE-77", "CWE-78"}, "cpe:2.3:o:danfoss:ak-sm_8xxa_firmware:*", 0.08},
+	"CVE-2025-41452": {[]string{"CWE-15", "CWE-20"}, "cpe:2.3:o:danfoss:ak-sm_8xxa_firmware:*", 0.05},
+	"CVE-2023-25913": {[]string{"CWE-287"}, "cpe:2.3:o:danfoss:ak-sm_800a_firmware:*", 0.05},
+	"CVE-2023-25914": {[]string{"CWE-22"}, "cpe:2.3:o:danfoss:ak-sm_800a_firmware:*", 0.05},
+	"CVE-2023-25915": {[]string{"CWE-77"}, "cpe:2.3:o:danfoss:ak-sm_800a_firmware:*", 0.05},
+	"CVE-2023-22583": {[]string{"CWE-89"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.04},
+	"CVE-2023-22584": {[]string{"CWE-312"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.02},
+	"CVE-2023-22585": {[]string{"CWE-79"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.02},
+	"CVE-2023-22586": {[]string{"CWE-98"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.03},
+	"CVE-2023-25911": {[]string{"CWE-78"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.04},
+	"CVE-2023-25912": {[]string{"CWE-306"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.02},
+	"CVE-2026-15203": {[]string{"CWE-284", "CWE-1242"}, "cpe:2.3:o:danfoss:ic7_firmware:*", 0.05},
 }
 
 func init() {

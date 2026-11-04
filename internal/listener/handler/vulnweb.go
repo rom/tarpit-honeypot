@@ -207,6 +207,119 @@ func phpParamAttacks(rawQuery, body string) []string {
 	return out
 }
 
+// php2shellDetect recognizes the PHP2Shell (CVE-2026-109618 / CVE-2026-109619 /
+// CVE-2026-115560) request artifacts a defender watches for, over the request
+// target + body. These are PHP-engine memory/state bugs with no injection
+// string, so the honeypot keys only on the documented, benign-named surface —
+// the session.upload_progress field name, a PHP-serialized-object fragment in
+// an upload, and a memory-amplification (deeply-nested) parameter shape. It
+// never reproduces the memory-corruption trigger: recognition + CVE tagging
+// only.
+func php2shellDetect(target, body string, res *Result) {
+	low := strings.ToLower(target + "\n" + body)
+
+	// session.upload_progress abuse surface (CVE-2026-109619, and the related
+	// deferred-fix CVE-2026-115560). No benign client sends a form field named
+	// PHP_SESSION_UPLOAD_PROGRESS, so this is high-signal on its own.
+	if strings.Contains(low, "php_session_upload_progress") {
+		flagAnomaly(res, "webapp:php2shell-session-upload-progress")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-109619")
+		flagAnomaly(res, "cve:CVE-2026-109619")
+		res.Meta["php2shell_surface"] = "session.upload_progress"
+
+		// A PHP-serialized-object / <?php fragment carried alongside the
+		// upload-progress value is the session-decode (CVE-2026-115560) tell.
+		if strings.Contains(low, "|o:") || strings.Contains(low, "<?php") || phpSerializedObject(low) {
+			flagAnomaly(res, "webapp:php2shell-session-deserialize")
+			res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-115560")
+			flagAnomaly(res, "cve:CVE-2026-115560")
+		}
+		res.Meta["intent"] = "PHP2Shell session.upload_progress abuse (CVE-2026-109619 / CVE-2026-115560)"
+	}
+
+	// Memory-exhaustion / OOM-cleanup trigger shape (CVE-2026-109618): a
+	// deeply-nested array parameter is the classic memory-amplification shape
+	// used to force the out-of-memory path. Require several nesting levels so
+	// an ordinary `a[0][1]` form field does not trip it.
+	if deeplyNestedParam(target, 6) || deeplyNestedParam(body, 6) {
+		flagAnomaly(res, "webapp:php2shell-oom-trigger")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-109618")
+		flagAnomaly(res, "cve:CVE-2026-109618")
+		setIfEmpty(res.Meta, "intent", "PHP2Shell out-of-memory cleanup trigger shape (CVE-2026-109618)")
+	}
+}
+
+// phpSerializedObject reports whether s looks like it carries a PHP-serialized
+// object or array (`o:<n>:"` / `a:<n>:{`), the shape a session-decode exploit
+// smuggles. Minimal substring heuristic, not a full parse.
+func phpSerializedObject(s string) bool {
+	for _, p := range []string{"o:", "a:"} {
+		i := 0
+		for {
+			j := strings.Index(s[i:], p)
+			if j < 0 {
+				break
+			}
+			k := i + j + len(p)
+			// require digits then ':' then '"' or '{'
+			d := 0
+			for k < len(s) && s[k] >= '0' && s[k] <= '9' {
+				k++
+				d++
+			}
+			if d > 0 && k < len(s) && s[k] == ':' && k+1 < len(s) && (s[k+1] == '"' || s[k+1] == '{') {
+				return true
+			}
+			i = i + j + len(p)
+		}
+	}
+	return false
+}
+
+// deeplyNestedParam reports whether s contains a single parameter name with at
+// least minDepth consecutive `[...]` index groups — a memory-amplification
+// shape (e.g. `x[0][0][0][0][0][0]=`). Counts the longest run of adjacent `][`
+// transitions so ordinary shallow array params do not match.
+func deeplyNestedParam(s string, minDepth int) bool {
+	depth, best := 0, 0
+	open := false
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			if !open {
+				open = true
+				depth++
+				if depth > best {
+					best = depth
+				}
+			}
+		case ']':
+			open = false
+		case '&', '=', '\n', ' ':
+			depth = 0
+			open = false
+		}
+	}
+	return best >= minDepth
+}
+
+// wordpressUpgradeRaceDetect recognizes a probe for the WordPress core
+// upgrade-race staged installer (CVE-2026-119977): the predictable staged
+// setup-config.php installer path under wp-content/upgrade, or the installer
+// invoked out-of-band with a step parameter. Detection only.
+func wordpressUpgradeRaceDetect(path, rawQuery string, res *Result) {
+	low := strings.ToLower(path + "?" + rawQuery)
+	staged := strings.Contains(low, "wp-content/upgrade") &&
+		(strings.Contains(low, "setup-config.php") || strings.Contains(low, ".maintenance"))
+	installer := strings.Contains(low, "/wp-admin/setup-config.php") && strings.Contains(low, "step=")
+	if staged || installer {
+		flagAnomaly(res, "webapp:wordpress-core-upgrade-rce")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2026-119977")
+		flagAnomaly(res, "cve:CVE-2026-119977")
+		setIfEmpty(res.Meta, "intent", "WordPress core upgrade-race staged-installer probe (CVE-2026-119977)")
+	}
+}
+
 // magicHashParam reports whether any query-parameter value is a PHP "magic
 // hash" (0e followed by only digits — compares == 0 under loose typing).
 func magicHashParam(rawQuery string) bool {
@@ -361,6 +474,14 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 			flagAnomaly(res, "cve:CVE-2018-20062")
 		}
 	}
+
+	// PHP2Shell (CVE-2026-109618 / -109619 / -115560) request-shape detection
+	// and the WordPress core upgrade-race staged-installer probe
+	// (CVE-2026-119977). Both are engine/upgrade bugs with no injection string,
+	// so these recognize the documented, benign-named request artifacts only —
+	// nothing is executed.
+	php2shellDetect(target, string(body), res)
+	wordpressUpgradeRaceDetect(path, rawQuery, res)
 
 	brand := resolveBrand(brandCfg, id)
 	app := brand.Name

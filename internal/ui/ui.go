@@ -92,6 +92,25 @@ type Server struct {
 	// cover a transient slow scan instead of showing the busy page.
 	aggMu    sync.Mutex
 	aggCache map[string]aggEntry
+
+	// winCache is a short-TTL, single-flight cache of full-window lean event
+	// snapshots keyed by (window, limit), shared by every graph/list page that
+	// scans a trailing window and rolls it up in Go (/charts, /correlation,
+	// /campaign, /map, /timeline, /tunnels, /attack, /credentials,
+	// /interactions, /captures). Those pages all auto-refresh and an operator
+	// flips between them over the same window, so without this each refresh of
+	// each open page re-ran an independent ~20k-row scan — the refresh-storm
+	// that saturated the read pool and blew these pages' deadlines. winFlight
+	// deduplicates concurrent cold scans for the same key.
+	winMu     sync.Mutex
+	winCache  map[string]winEntry
+	winFlight map[string]chan struct{}
+}
+
+// winEntry is one cached full-window lean event snapshot + when it was produced.
+type winEntry struct {
+	evs []*event.Event
+	at  time.Time
 }
 
 // aggEntry is one cached SourceAggregates rollup + when it was produced.
@@ -982,6 +1001,13 @@ const dashTTL = 20 * time.Second
 // aggCacheTTL bounds how long a cached /profiles list rollup is reused.
 const aggCacheTTL = 5 * time.Second
 
+// windowEventsTTL bounds how long a cached full-window lean event snapshot is
+// reused across the graph/list aggregation pages. Kept short so the views stay
+// near-live, but long enough that a refresh-storm (many open auto-refreshing
+// tabs, an operator flipping between pages over the same window) collapses into
+// one scan per (window,limit) instead of one per page per refresh.
+const windowEventsTTL = 3 * time.Second
+
 // cachedSourceAggregates wraps store.SourceAggregates with a short-TTL cache
 // keyed by (window, limit). Concurrent auto-refreshes of /profiles within the
 // TTL share one whole-window GROUP BY instead of each re-scanning the events
@@ -1020,6 +1046,94 @@ func (s *Server) cachedSourceAggregates(ctx context.Context, window time.Duratio
 	s.aggCache[key] = aggEntry{aggs: aggs, at: time.Now()}
 	s.aggMu.Unlock()
 	return aggs, nil
+}
+
+// windowEvents returns a cached, read-only snapshot of the newest <=limit
+// events in the trailing window, with the presentation hide-list already
+// applied and payload/banner omitted (NoPayload) — the graph/list pages roll up
+// event meta, never the raw bytes. Concurrent callers for the same
+// (window,limit) share a single scan via winFlight; within windowEventsTTL the
+// snapshot is reused outright, so N auto-refreshing pages over the same window
+// cost one scan, not N.
+//
+// The returned slice MUST be treated as immutable: it is shared across
+// concurrent readers and across the TTL. Every current caller only reads events
+// and copies the slice before sorting (append([]*event.Event(nil), …)), so this
+// holds; keep it that way.
+func (s *Server) windowEvents(ctx context.Context, window time.Duration, limit int) ([]*event.Event, error) {
+	key := "win|" + window.String() + "|" + strconv.Itoa(limit)
+	return s.cachedEvents(ctx, key, func(ctx context.Context) ([]*event.Event, error) {
+		return s.query(ctx, store.Filter{Since: time.Now().Add(-window), Limit: limit, NoPayload: true})
+	})
+}
+
+// cachedEvents is the single-flight, short-TTL event-snapshot cache behind
+// windowEvents and the per-category service-page scan. For a given key it
+// returns the cached snapshot when fresh; otherwise exactly one caller runs
+// build() while the rest wait on the in-flight channel and then re-read the
+// cache. On a build error a still-cached (stale) snapshot is served if present,
+// so a transient slow/locked scan degrades to slightly-stale data rather than
+// an error page. The returned slice is shared and MUST be treated as immutable
+// by callers (they copy before sorting).
+func (s *Server) cachedEvents(ctx context.Context, key string, build func(context.Context) ([]*event.Event, error)) ([]*event.Event, error) {
+	for {
+		s.winMu.Lock()
+		if ent, ok := s.winCache[key]; ok && time.Since(ent.at) < windowEventsTTL {
+			s.winMu.Unlock()
+			return ent.evs, nil
+		}
+		if ch, inflight := s.winFlight[key]; inflight {
+			// Another goroutine is already scanning this key — wait for it and
+			// re-read the cache rather than launching a duplicate scan.
+			s.winMu.Unlock()
+			select {
+			case <-ch:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		// We own the scan for this key.
+		if s.winCache == nil {
+			s.winCache = map[string]winEntry{}
+		}
+		if s.winFlight == nil {
+			s.winFlight = map[string]chan struct{}{}
+		}
+		stale, hasStale := s.winCache[key]
+		ch := make(chan struct{})
+		s.winFlight[key] = ch
+		s.winMu.Unlock()
+
+		evs, err := build(ctx)
+
+		s.winMu.Lock()
+		if err == nil {
+			// Bound the map before growing: keys are (scope,window,limit) tuples
+			// — a handful in practice — but ?range= is arbitrary, so drop expired
+			// entries first.
+			if len(s.winCache) > 64 {
+				now := time.Now()
+				for k, e := range s.winCache {
+					if now.Sub(e.at) >= windowEventsTTL {
+						delete(s.winCache, k)
+					}
+				}
+			}
+			s.winCache[key] = winEntry{evs: evs, at: time.Now()}
+		}
+		delete(s.winFlight, key)
+		close(ch)
+		s.winMu.Unlock()
+
+		if err != nil {
+			if hasStale { // serve the last good snapshot through a transient slow/locked scan
+				return stale.evs, nil
+			}
+			return nil, err
+		}
+		return evs, nil
+	}
 }
 
 // cachedIndexDashboard returns the dashboard for a window, computing it off the

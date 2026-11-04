@@ -10,7 +10,6 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 	"github.com/rom/tarpit-honeypot/internal/mitre"
-	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // ATT&CK mapping view. The store doesn't persist the per-event technique
@@ -230,7 +229,7 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/attack")
 	since := time.Now().Add(-dur)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.windowEvents(ctx, dur, attackScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -335,7 +334,7 @@ func (s *Server) handleAttackTechnique(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -350,7 +349,7 @@ func (s *Server) handleAPIAttack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -369,8 +368,7 @@ func (s *Server) handleNavigator(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	since := time.Now().Add(-attackWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: attackScanMax})
+	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

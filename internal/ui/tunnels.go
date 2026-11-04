@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
-	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // tunnelKindToken maps a friendly tunnel kind to a substring that is guaranteed
@@ -165,7 +164,7 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/tunnels")
 	since := time.Now().Add(-dur)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: tunnelScanMax})
+	evs, err := s.windowEvents(ctx, dur, tunnelScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

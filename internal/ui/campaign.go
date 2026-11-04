@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
-	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // encodeB64JSON marshals v and base64-encodes it for embedding in a chart
@@ -436,7 +435,7 @@ func (s *Server) handleCampaign(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-campaignWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: campaignScanMax})
+	evs, err := s.windowEvents(ctx, campaignWindow, campaignScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -455,7 +454,7 @@ func (s *Server) handleAPICampaign(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-campaignWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: campaignScanMax})
+	evs, err := s.windowEvents(ctx, campaignWindow, campaignScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

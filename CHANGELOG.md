@@ -8,8 +8,69 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Web UI: shared, single-flight snapshot cache for the graph/list pages.** The
+  aggregation views (`/charts`, `/correlation`, `/campaign`, `/map`,
+  `/timeline`, `/tunnels`, `/attack` + its technique/navigator/API variants,
+  `/credentials`, `/interactions`, `/captures`, and the per-category service
+  pages) previously each ran an **independent full-window event scan on every
+  request** — up to 20k–50k rows, with a JSON unmarshal of the meta / anomalies /
+  ATT&CK columns per row — and all of them auto-refresh. With several tabs open
+  (or an operator flipping between pages over the same window) that became a
+  refresh-storm of redundant scans that saturated the SQLite read pool and blew
+  the pages' 6–10s deadlines, surfacing as the "taking longer than usual" page,
+  timeouts or hangs. These scans now go through a short-TTL (3s), single-flight
+  snapshot cache (`windowEvents` / `cachedEvents`), so N concurrent/refreshing
+  pages over the same window share **one** lean (`NoPayload`) scan instead of one
+  each; a transient slow/locked scan degrades to a slightly-stale snapshot rather
+  than an error. The six payload-including scans were also switched to the lean
+  `NoPayload` path (none of these pages read raw payload bytes), dropping the
+  payload column and the per-row banner subquery from each. This mirrors the
+  existing dashboard (`/`) and `/profiles` caches.
+
 ### Added
 
+- **Danfoss AK-SM 8xxA refrigeration-controller handler + 2025/2026 vulnerability
+  coverage.** New `danfoss_aksm` TCP handler (+ TLS variant `danfoss_aksms`)
+  emulating the Danfoss **AK-SM 8xxA "StoreView"** supermarket-refrigeration
+  system manager (the controller family behind the October 2026 French
+  supermarket "FROMAGEGATE" incident). It fingerprints the device (StoreView
+  banner, `Server: nginx`, firmware version), captures the `xml.cgi?action=getauth`
+  login, and **recognizes — detection only, nothing is executed** — the Claroty
+  Team82 / Danfoss-advisory flaws: the date-derived **code-of-the-day
+  authentication bypass** (CVE-2025-41450, DSA-2025-03-01 — the redacted
+  algorithm is *not* reproduced; only the documented request *shape* is matched),
+  the **alarm-to-mail OS command injection** through SMTP config item `0x1be1`
+  (CVE-2025-41451, DSA-2025-08-01), the **nginx `headers.conf` config injection /
+  `sm_app` crash DoS** via `action=load_nginx_headers` (CVE-2025-41452,
+  DSA-2025-08-01), the AK-SM 800A `xml.cgi` **path traversal** (CVE-2023-25914,
+  DSA-2023-08-01), and **debug/engineering-interface access** (Danfoss iC7
+  CVE-2026-15203, DSA-2026-08-01). New anomaly markers: `danfoss-aksm-access`,
+  `danfoss-aksm-login-attempt`, `danfoss-aksm-auth-bypass`,
+  `danfoss-aksm-cmd-injection`, `danfoss-aksm-nginx-config-injection`,
+  `danfoss-aksm-nginx-directive-injected`, `danfoss-aksm-xml-traversal`,
+  `danfoss-engineering-interface-access`.
+- **PHP2Shell + 2026 web-engine CVE detection in the fake web application.** The
+  `webapp` handler now recognizes the **PHP2Shell** request artifacts
+  (CVE-2026-109618 / CVE-2026-109619 / CVE-2026-115560): the
+  `PHP_SESSION_UPLOAD_PROGRESS` session-upload-progress field name
+  (`webapp:php2shell-session-upload-progress`), a PHP-serialized-object fragment
+  smuggled alongside it (`webapp:php2shell-session-deserialize`), and a
+  deeply-nested array (memory-amplification / OOM) parameter shape
+  (`webapp:php2shell-oom-trigger`) — recognition of the documented, benign-named
+  surface only, never the memory-corruption trigger. It also flags the
+  **WordPress core upgrade-race** staged-installer probe (CVE-2026-119977,
+  `webapp:wordpress-core-upgrade-rce`).
+- **CVE catalog additions.** PHP2Shell (CVE-2026-109618/109619, CVE-2026-115560),
+  WordPress core upgrade-race (CVE-2026-119977), the Brotli "Node2Shell" decoder
+  out-of-bounds write (CVE-2026-111497), the GitLab CI/CD regex-compiler RCE
+  (CVE-2026-97229), the **Fragnesia** Linux-kernel XFRM local privesc
+  (CVE-2026-46300 — also flagged as `shell-local-exploit` when run in the
+  interactive shell), and the full Danfoss refrigeration/drive cohort
+  (CVE-2025-41450/41451/41452, CVE-2023-25913/25914/25915 AK-SM 800A,
+  CVE-2023-22583/22584/22585/22586 + CVE-2023-25911/25912 AK-EM 100,
+  CVE-2026-15203 iC7), each with CWE/CPE/EPSS enrichment and an ATT&CK mapping.
 - **Regex search in the events filter bar (opt-in).** The `/events` filter boxes
   (source IP, rule, proto, handler, country, the geo / ASN-org meta dimensions,
   and the full-text search) gain a **regex** checkbox: when ticked, each value is

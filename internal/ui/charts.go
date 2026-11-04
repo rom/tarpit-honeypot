@@ -58,7 +58,7 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 		}
 		sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
 		hours, _ = s.store.EventsPerBucket(ctx, since, win.bucket)
-		if e, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
+		if e, qerr := s.windowEvents(ctx, win.dur, 20000); qerr == nil {
 			evs = e
 		}
 	} else {

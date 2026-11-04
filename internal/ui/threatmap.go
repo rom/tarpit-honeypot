@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
-	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // Threat map / geo dashboard. A single live operations screen: a GeoIP attack
@@ -152,7 +151,7 @@ func (s *Server) handleThreatMap(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/map")
 	since := time.Now().Add(-dur)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: mapScanMax})
+	evs, err := s.windowEvents(ctx, dur, mapScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -169,7 +168,7 @@ func (s *Server) handleAPIThreatMap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-mapWindow)
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: mapScanMax})
+	evs, err := s.windowEvents(ctx, mapWindow, mapScanMax)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
