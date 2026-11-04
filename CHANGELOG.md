@@ -31,6 +31,24 @@ documented in `docs/`).
 
 ### Added
 
+- **Healthcare / medical-device protocol decoys (HL7 MLLP + DICOM).** Two new
+  TCP handlers for the protocols every hospital network exposes — almost always
+  unauthenticated on the wire and a documented attacker target. `hl7` (2575)
+  speaks HL7 v2 over MLLP: it strips the `<VT>…<FS><CR>` framing, parses the MSH
+  header (message type, control id, sending app/version), answers a believable
+  `MSA|AA` ACK echoing the trigger event, and flags patient-data queries
+  (`hl7-patient-query`, PHI access), master-file updates (`hl7-master-file-update`,
+  remote config tamper), order messages and injection/oversized frames. `dicom`
+  (104 / 11112) speaks the DICOM Upper Layer: it parses the A-ASSOCIATE-RQ
+  (called/calling AE titles), accepts with a structurally-valid A-ASSOCIATE-AC
+  echoing the offered presentation context + transfer syntax, then captures the
+  first DIMSE operation — `dicom-cfind` (query), `dicom-cget`/`dicom-cmove`
+  (image retrieval / exfil), `dicom-cstore` (unsolicited push), `dicom-cecho` —
+  and flags AE-title scanning (empty / tool-default calling AE). Both are
+  detection/emulation only: no PHI is real, every ACK/association grants nothing,
+  no request is executed. TLS variants (`hl7s`, `dicoms` on 2762) ship too;
+  ports added to `portsvc`; all markers mapped to enterprise ATT&CK in
+  `internal/mitre`; documented in `docs/INTEGRATIONS.md`.
 - **Shell loot → live canary tokens (honey-credential reuse, end to end).** The
   planted shell loot (fake `/root/.aws/credentials`, `.env`, `wp-config.php`,
   `backup.sql`, `notes.txt`, `.bash_history`) now weaves a **per-deployment

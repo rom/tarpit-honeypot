@@ -366,6 +366,15 @@ Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-ver
 | `fins` | 9600 (UDP) | Omron CPU-data-read response |
 | `melsec` | 1025 (TCP) | Mitsubishi 3E frame CPU read |
 
+**Healthcare / medical devices:**
+
+| Handler | Default port | What |
+|---|---|---|
+| `hl7` | 2575 | HL7 v2 over MLLP: parses the MSH header, answers `MSA\|AA` ACK; flags `hl7-patient-query` (PHI access), `hl7-master-file-update`, `hl7-order-message`, `hl7-injection`, `hl7-oversized` |
+| `hl7s` | — | HL7 over TLS (MLLP wrapped in TLS) |
+| `dicom` | 104 / 11112 | DICOM Upper Layer: parses A-ASSOCIATE-RQ (AE titles), accepts with A-ASSOCIATE-AC, captures the DIMSE op; flags `dicom-ae-scan`, `dicom-cfind`, `dicom-cget`, `dicom-cmove`, `dicom-cstore`, `dicom-cecho` |
+| `dicoms` | 2762 | DICOM-TLS (secure DICOM Upper Layer) |
+
 **Network services / discovery / poisoning:**
 
 | Handler | Default port | What |

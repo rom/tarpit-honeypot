@@ -47,7 +47,7 @@ rationale covering the current implementation.
   capture creds, no deep sessions or outbound call-outs), or `mute`
   (receive-only — no outbound bytes at all). Plus `sensor.no_amplifier_replies`
   to suppress NTP mode 6/7 + reflector replies.
-- **180 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **184 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `neo4j`, `rethinkdb`, `couchdb`, `influxdb`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `docker_registry`, `cloud_metadata`, `etcd`, `kubernetes_api`, `kubelet`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `danfoss_aksm` / `danfoss_aksms` (Danfoss AK-SM 8xxA "StoreView" refrigeration system manager — recognizes the Claroty Team82 `xml.cgi` CVEs, detection only)
@@ -57,6 +57,7 @@ rationale covering the current implementation.
   - **TCP / cloud-native + DevOps**: `jupyter` (Jupyter Notebook/Lab 8888 — token-less access + terminal/kernel RCE), `selenium` (Selenium Grid 4444 — node RCE / chromeOptions binary override), `consul` (HashiCorp Consul 8500 — KV enum + health-check-script RCE), `nomad` (HashiCorp Nomad 4646 — raw_exec job RCE), `minio` (MinIO S3 9000 — bucket enum + CVE-2023-28432 creds disclosure), `clickhouse` (ClickHouse HTTP 8123 — SQL over HTTP, file()/url() read/SSRF) — each fingerprints the exposed control plane and flags the hands-on-keyboard RCE / data-theft step
   - **TCP / CPE + IoT device management**: `tr069` (CWMP / TR-064 connection-request on 7547 — Misfortune Cookie + SetNTPServers RCE), `upnp` (UPnP IGD SOAP control + GENA — UPnProxy / CallStranger / Realtek+Huawei RCE), `tr369` (USP agent over the `v1.usp` WebSocket MTP + raw USP Record protobuf) — each stamps an attacker-`intent`, fingerprints the SOAP/USP shape, serves a believable decoy (RomPager 401 / `rootDesc.xml` / WS 101), and maps the abuse to **CVE/CWE + ATT&CK**
   - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `osisoft_pi` (OSIsoft/AVEVA PI Data Archive), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium) — the `mms` handler also detects the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
+  - **TCP / healthcare**: `hl7` (HL7 v2 over MLLP, 2575), `dicom` (PACS imaging / DICOM Upper Layer, 104/11112) — parse the clinical message / association, answer believably, and flag patient-data queries, image retrieval/exfil and injection (enterprise ATT&CK); TLS variants `hl7s`/`dicoms`. Detection only — no PHI is real
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer / responder)**: `goose` (IEC 61850 GOOSE substation multicast detection); **PROFINET-DCP** responder (EtherType 0x8892) — answers DCP **Identify** (station enumeration) and flags DCP **Set** (NameOfStation/IP reassignment + factory-reset, `honeynet:profinet_dcp_set`, T0836/T0831)
   - **UDP**: `raw`, `auto`, `snmp`, `ntp`, `bacnet`, `tftp`, `ipmi`, `syslog_udp`, `radius`, `sip`, `mgcp`, `ssdp`, `cldap`, `llmnr`, `nbns`, `mdns`, `netbios_dgram`, `fins`, `coap`, `knx`, `profinet`, `ethercat`, `tristation`, `bsap`, `ge_egd`, `lontalk`, `wdbrpc`, `isakmp`, `dhcp`, `dns`, `dtls`, `quic`, `netflow`, `sflow`
@@ -594,7 +595,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (180 TCP + 118 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (184 TCP + 118 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -643,7 +644,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
-events to your sinks. Current totals: **180 TCP + 118 UDP protocol handlers**,
+events to your sinks. Current totals: **184 TCP + 118 UDP protocol handlers**,
 **678 CVE records** (361 live-detectable + 317 advisory), **469 built-in YARA
 artifact-classification rules**, **230 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
@@ -1189,6 +1190,13 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | `atg` | 10001 | Veeder-Root TLS-350 Automatic Tank Gauge (the "internet-exposed gas pump" target; nmap atg-info). Answers `^A`+`I20100/I20200/I20300` with a believable per-deployment tank report; flags `ics-atg-command`. Report-only. | — | ✓ |
 | `fox` | 1911 | Niagara / Tridium Fox (building automation; Shodan's `fox` probe). Emits a per-deployment "fox hello" advertising station name / host id / app+VM+OS versions / brand. | — | ✓ |
 | `pjl` | 9100 | HP JetDirect raw-print port speaking PJL — the channel PRET drives. Interactive loop: answers `@PJL INFO ID/STATUS/CONFIG/VARIABLES/FILESYS/MEMORY/PAGECOUNT/...` believably and **decoys the read-style filesystem ops** (FSDIRLIST/FSUPLOAD/FSQUERY return a fake directory tree + file contents so PRET keeps walking). Captures jobs/commands + a PJL password and flags panel defacement, filesystem access + the destructive `FSINIT` format, path traversal, config/password writes + credential reads, service-mode + firmware-upgrade + language-switch, NVRAM/DM commands, embedded **PostScript** abuse (exitserver, file ops, `set*params`), and **ZPL** (Zebra) / PCL jobs (`printer-zpl-job`/`printer-zpl-config`/`printer-pcl-job`). Nothing prints or touches a real FS. | ✓ | — |
+
+#### Healthcare / medical devices
+
+| Handler | Port | What it does | arch | id |
+|---|---|---|:-:|:-:|
+| `hl7` | 2575 | **HL7 v2 over MLLP** — the clinical-messaging lingua franca (EHR ↔ lab ↔ radiology ↔ billing), almost always unauthenticated on the wire. Strips the `<VT>…<FS><CR>` framing, parses the MSH header (`hl7_message_type`, `hl7_control_id`, sending app/version), answers a believable `MSA\|AA` ACK echoing the trigger event. Flags patient-data queries (`hl7-patient-query`, PHI access — T1213), master-file updates (`hl7-master-file-update`, T1565), order messages (`hl7-order-message`), injection (`hl7-injection`, T1190) and oversized frames. Detection only — no PHI is real and the ACK grants nothing. | — | ✓ |
+| `dicom` | 104 / 11112 | **DICOM Upper Layer** (PACS / medical imaging; a mass-exposed Shodan target). Parses the A-ASSOCIATE-RQ called/calling **AE titles**, accepts with a structurally-valid A-ASSOCIATE-AC (echoing the offered presentation context + transfer syntax) so a real client/scanner proceeds, then captures the first **DIMSE** operation: `dicom-cfind` (query — T1213), `dicom-cget`/`dicom-cmove` (image retrieval/exfil — T1213/T1048), `dicom-cstore` (unsolicited push — T1565), `dicom-cecho`. Empty / tool-default calling AE flagged `dicom-ae-scan` (PACS discovery). TLS variant `dicoms` (2762). | — | — |
 
 ### UDP
 

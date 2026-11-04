@@ -80,6 +80,9 @@ var tcpHandlers = map[string]bool{
 	// Refrigeration / BMS web controllers + EV-charging OCPP.
 	"dixell": true, "carel": true, "trane": true, "resideo": true,
 	"ocpp": true,
+	// Healthcare / medical-device protocols: HL7 v2 over MLLP (2575) and DICOM
+	// (PACS imaging, 104/11112), plus their TLS variants.
+	"hl7": true, "dicom": true, "hl7s": true, "dicoms": true,
 	// TLS-fronted variants of the AI/LLM/MCP + cloud-native decoys.
 	"ollamas": true, "llm_openais": true, "mcps": true,
 	"jupyters": true, "minios": true, "clickhouses": true, "consuls": true,
