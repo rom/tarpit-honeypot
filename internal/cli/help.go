@@ -342,6 +342,28 @@ EXAMPLES
     tarpit-honeypot list-archeservices adserver
 `,
 
+	"kev-gap": `kev-gap — cross-check the catalog against the CISA KEV feed
+
+SYNOPSIS
+    tarpit-honeypot kev-gap [--url <feed>] [--file <path>] [--header "Name: v"]
+                            [--covered] [--json] [--timeout 30s]
+
+DESCRIPTION
+    Pull the CISA Known Exploited Vulnerabilities (KEV) catalog — live from
+    the feed, or from a local --file — and print the actively-exploited CVEs
+    the sensor's compile-time catalog does NOT yet model (the coverage gap),
+    newest-first. --covered lists the KEV CVEs already modeled instead.
+
+    The live fetch needs the feed host reachable from this host; if egress
+    blocks it, download the KEV JSON elsewhere and pass it with --file. The
+    sensor can also keep this synced in the background (internal/kevsync).
+
+EXAMPLES
+    tarpit-honeypot kev-gap
+    tarpit-honeypot kev-gap --file known_exploited_vulnerabilities.json
+    tarpit-honeypot kev-gap --covered --json
+`,
+
 	"list-cves": `list-cves — print the CVE catalog
 
 SYNOPSIS

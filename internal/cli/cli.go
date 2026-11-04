@@ -42,6 +42,7 @@ func Dispatch(args []string) error {
 		{"list-handlers", "print the protocol handlers valid in a listener", cmdListHandlers},
 		{"list-archeservices", "print the service roles (webserver, adserver, …)", cmdListArcheservices},
 		{"list-cves", "print the CVE catalog (emulation + exploit detection)", cmdListCVEs},
+		{"kev-gap", "cross-check the catalog against the CISA KEV feed (--file | --url | --covered)", cmdKEVGap},
 		{"list-techniques", "print the MITRE ATT&CK / D3FEND coverage map", cmdListTechniques},
 		{"export-navigator", "write a MITRE ATT&CK Navigator layer (static or --observed)", cmdExportNavigator},
 		{"list-fleet-rules", "print the cross-sensor (fleet:*) detector catalog", cmdListFleetRules},

@@ -31,6 +31,19 @@ documented in `docs/`).
 
 ### Added
 
+- **CISA KEV sync + runtime coverage gap-scan (`internal/kevsync`, `kev-gap`).**
+  A new package pulls the CISA Known Exploited Vulnerabilities catalog and keeps
+  it as a live, queryable overlay on the sensor's compile-time CVE catalog: it
+  can mark a `cve:<id>` event as actively-exploited (date added + ransomware
+  flag) and compute, at runtime, which KEV-listed CVEs the sensor does not yet
+  model. The background `Puller` refreshes a thread-safe `Store` on an interval
+  (default 6h) through the egress-governed HTTP client, retaining the last good
+  snapshot across a failed refresh (mirrors the `feeds` puller). New `kev-gap`
+  CLI command runs the gap-scan against the live feed or a local `--file`
+  (`--covered` lists what's already modeled; `--json` for tooling) and prints
+  the actively-exploited CVEs worth adding next, newest-first. Documented in
+  `docs/threat-intel-exports.md` §10, including the egress-allowlist
+  requirement (`www.cisa.gov`).
 - **Refrigeration / BMS controller + EV-charging (OCPP) emulation.** Extends the
   Danfoss AK-SM refrigeration work to the other controller families that end up
   internet-exposed: `dixell` (Emerson/Copeland Dixell XWEB supermarket

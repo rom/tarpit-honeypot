@@ -209,3 +209,36 @@ the curated IOC bundle via STIX/TAXII/MISP (blocking/enrichment).
 | Push IOCs to MISP | `misp:` block |
 | Publish a daily blocklist / bundle | `export-iocs` in cron |
 | Stream tagged events to a SIEM | `channels:` with `format: cef\|leef\|ocsf` |
+
+---
+
+## 10. CISA KEV coverage sync + gap-scan
+
+The sensor's CVE catalog (`internal/cve`, `list-cves`) is curated and stable;
+the CISA **Known Exploited Vulnerabilities (KEV)** catalog moves daily. The
+`internal/kevsync` package keeps a live KEV overlay so the sensor can mark a
+`cve:<id>` event as actively-exploited (with the date added and whether it is
+used by ransomware), and so you can see, at runtime, which KEV-listed CVEs the
+sensor does not yet model.
+
+**Run the gap-scan**
+
+```
+tarpit-honeypot kev-gap                         # live: pull the KEV feed, print the gaps
+tarpit-honeypot kev-gap --covered               # the KEV CVEs already modeled
+tarpit-honeypot kev-gap --file kev.json --json  # offline, machine-readable
+```
+
+The gap report lists the actively-exploited CVEs worth adding next, newest-first,
+with the ransomware flag and affected vendor/product.
+
+**Network:** the live fetch pulls `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`.
+That host must be reachable from the sensor — add it to `sensor.egress.allow`
+when running `egress.enforce`. If egress blocks it, download the KEV JSON on
+another host and pass it with `--file`.
+
+**Background auto-sync:** `kevsync.NewPuller(url, header, interval, client, store)`
+refreshes a `kevsync.Store` on an interval (default 6h) through the
+egress-governed HTTP client, retaining the last good snapshot across a failed
+refresh — the same pattern as the external-reputation `feeds` puller. Wire the
+`Store` into the event-enrichment path to stamp KEV status on `cve:<id>` events.
