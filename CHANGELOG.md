@@ -31,6 +31,16 @@ documented in `docs/`).
 
 ### Added
 
+- **Attack-replay generator in the test harness (`attack` category).** A new
+  `tarpit-testharness` category that replays one representative, exploit-shaped
+  probe per matching endpoint handler (Log4Shell, LLM prompt-injection /
+  jailbreak, MCP tool-exec, Jupyter kernel spawn, MinIO credential disclosure,
+  ClickHouse file-read, Consul check-script RCE, Danfoss code-of-the-day) and
+  confirms — via the verify API — that the honeypot raised the expected
+  `cve:…` / handler anomaly. Doubles as a detection self-test (regression
+  coverage for the handlers' flags) and a demo driver that lights up the
+  dashboard with realistic activity. Benign on the wire; skips cleanly without
+  `verify.url`. Documented in `docs/testharness.md`.
 - **Statistical baselines + multi-stage kill-chain detection (`internal/baseline`).**
   A dependency-free detector (always on) that complements the signature +
   pattern `correlate:*` correlators: `baseline:new-asn` / `baseline:new-port` /
