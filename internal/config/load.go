@@ -80,6 +80,9 @@ var tcpHandlers = map[string]bool{
 	// Refrigeration / BMS web controllers + EV-charging OCPP.
 	"dixell": true, "carel": true, "trane": true, "resideo": true,
 	"ocpp": true,
+	// TLS-fronted variants of the AI/LLM/MCP + cloud-native decoys.
+	"ollamas": true, "llm_openais": true, "mcps": true,
+	"jupyters": true, "minios": true, "clickhouses": true, "consuls": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,

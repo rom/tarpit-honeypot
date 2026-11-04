@@ -44,6 +44,11 @@ documented in `docs/`).
   `egress.allow` under `egress.enforce`; see `docs/threat-intel-exports.md` §10.
 - **14 KEV actively-exploited edge CVEs** added to the catalog from the gap-scan
   (Ivanti/PAN-OS/Citrix/Cisco/Fortinet/SonicWall), closing the current gap.
+- **TLS-fronted variants of the new handlers**: `ollamas`, `llm_openais`,
+  `mcps`, `jupyters`, `minios`, `clickhouses`, `consuls` (joining
+  `danfoss_aksms`) — the AI/LLM, MCP and cloud-native decoys behind a real TLS
+  handshake (JA3/JA4/JA3S captured) via the existing `tls_intercept` wrap, for
+  the common case where these control planes are served over HTTPS.
 - **Fast-path L3/L4 DoS-resistance gate (`internal/fastpath`), with an
   eBPF/XDP design + scaffold.** A per-source token-bucket admission shaper
   consulted at `Accept()` — before a connection can spend a handler goroutine,

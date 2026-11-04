@@ -485,6 +485,21 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &bmsWeb{kind: name}, nil
 	case "ocpp":
 		return &ocppH{}, nil
+	// TLS-fronted variants of the new HTTP-ish handlers (decrypt → inner).
+	case "ollamas":
+		return newTLSWrap("ollama", "ollamas", deps)
+	case "llm_openais":
+		return newTLSWrap("llm_openai", "llm_openais", deps)
+	case "mcps":
+		return newTLSWrap("mcp", "mcps", deps)
+	case "jupyters":
+		return newTLSWrap("jupyter", "jupyters", deps)
+	case "minios":
+		return newTLSWrap("minio", "minios", deps)
+	case "clickhouses":
+		return newTLSWrap("clickhouse", "clickhouses", deps)
+	case "consuls":
+		return newTLSWrap("consul", "consuls", deps)
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":
