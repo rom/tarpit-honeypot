@@ -512,6 +512,28 @@ CVE/CWE attribution still applies where it is observable:
   name for free. Full per-CVE detail (CWE/CPE/EPSS/ATT&CK) is in
   [`attribution.md`](attribution.md) §3.
 
+- **Refrigeration / cold-chain (`danfoss_aksm`).** The Danfoss **AK-SM 8xxA
+  "StoreView"** supermarket-refrigeration system manager is an HTTP/`xml.cgi`
+  web interface rather than a binary control protocol, so it lives alongside the
+  remote-access/management personas (not the control-protocol table above) — but
+  it is squarely OT: the controller family behind the October 2026 French
+  supermarket "FROMAGEGATE" incident, where attackers forced defrost cycles and
+  spoiled food in hundreds of stores. The handler fingerprints the device and
+  **recognizes — detection only** — the Claroty Team82 / Danfoss-advisory flaws:
+  the date-derived **code-of-the-day authentication bypass** (CVE-2025-41450,
+  DSA-2025-03-01), the **alarm-to-mail OS command injection** via SMTP config
+  item `0x1be1` (CVE-2025-41451, DSA-2025-08-01), the **nginx `headers.conf`
+  config injection / `sm_app` crash DoS** via `action=load_nginx_headers`
+  (CVE-2025-41452, DSA-2025-08-01), the AK-SM 800A `xml.cgi` **path traversal**
+  (CVE-2023-25914, DSA-2023-08-01), and **debug/engineering-interface access**
+  (Danfoss iC7 CVE-2026-15203, DSA-2026-08-01 — "debug and engineering
+  interfaces with improper access control by default"). The redacted
+  code-of-the-day algorithm is **not** reproduced; the handler matches only the
+  documented request *shape* (extra auth attributes / a short date-derived
+  numeric code) and never grants a real session or executes anything. See the
+  `danfoss_aksm` row in the [README handler table](../README.md) for the full
+  marker list.
+
 There are no OT-protocol *exploit* emulations (no buffer-overflow payloads, no
 firmware RCE); the decoys answer protocol-legally and capture intent.
 

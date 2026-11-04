@@ -217,10 +217,13 @@ func scanAnomalies(line string) []string {
 		add("shell-cloud-cred-theft")
 	}
 
-	// Kernel / local privesc exploit binaries (T1068).
+	// Kernel / local privesc exploit binaries (T1068). "fragnesia" is the
+	// CVE-2026-46300 Linux-kernel XFRM privesc commonly chained behind a web
+	// RCE such as PHP2Shell to reach root.
 	if strings.Contains(low, "dirtypipe") || strings.Contains(low, "dirtycow") ||
 		strings.Contains(low, "pwnkit") || strings.Contains(low, "/tmp/exploit") ||
-		strings.Contains(low, "linpeas") || strings.Contains(low, "linenum") {
+		strings.Contains(low, "linpeas") || strings.Contains(low, "linenum") ||
+		strings.Contains(low, "fragnesia") {
 		add("shell-local-exploit")
 	}
 

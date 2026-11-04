@@ -69,6 +69,9 @@ var tcpHandlers = map[string]bool{
 	"intel_amt": true, "ilo": true, "idrac": true, "esxi": true,
 	"fortinet": true, "pulse": true, "citrix_gateway": true,
 	"horizon": true, "moxa_mgmt": true,
+	// Danfoss AK-SM 8xxA "StoreView" refrigeration system-manager web interface
+	// (xml.cgi); danfoss_aksms is the TLS-fronted (443) variant.
+	"danfoss_aksm": true, "danfoss_aksms": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,

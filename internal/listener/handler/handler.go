@@ -469,6 +469,10 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "intel_amt", "ilo", "idrac", "esxi", "fortinet",
 		"pulse", "citrix_gateway", "horizon", "moxa_mgmt":
 		return &mgmtWeb{kind: name}, nil
+	case "danfoss_aksm":
+		return &danfoss{id: deps.Identity, vuln: deps.VulnEmulation}, nil
+	case "danfoss_aksms":
+		return newTLSWrap("danfoss_aksm", "danfoss_aksms", deps)
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":
