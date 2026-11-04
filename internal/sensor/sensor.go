@@ -16,6 +16,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/artifactscan"
+	"github.com/rom/tarpit-honeypot/internal/baseline"
 	"github.com/rom/tarpit-honeypot/internal/blocklist"
 	"github.com/rom/tarpit-honeypot/internal/canary"
 	"github.com/rom/tarpit-honeypot/internal/capture"
@@ -85,6 +86,7 @@ type Sensor struct {
 	devices     *devices.Registry
 	scanTrack   *scananalysis.Tracker
 	fuzzTrack   *fuzzdos.Tracker
+	baseline    *baseline.Detector  // statistical baselines + multi-stage kill-chain (always on)
 	sniffer     sniffer.Sniffer     // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	tokenTrack  *tokentrack.Tracker // honey-credential reuse detector (always on)
 	payloads    *payload.Store
@@ -595,6 +597,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 		deviceSev:     devSev,
 		scanTrack:     scananalysis.NewTracker(5 * time.Minute),
 		fuzzTrack:     fuzzdos.NewTracker(60 * time.Second),
+		baseline:      baseline.New(baseline.Config{}),
 		payloads:      payloadStore,
 		artScanner:    artScanner,
 		urlFetcher:    urlFetcher,
@@ -2293,6 +2296,17 @@ func (s *Sensor) Run(ctx context.Context) error {
 					}
 					s.dispatch(rt, out)
 					s.scoreRisk(rt, out)
+				}
+				// Statistical baselines + multi-stage kill-chain. Runs after
+				// enrichment so the ASN / country tags are present; its derived
+				// events (baseline:* / killchain:*) are dispatched + scored but
+				// never fed back in.
+				if s.baseline != nil {
+					for _, be := range s.baseline.Observe(ev) {
+						en.Decorate(be)
+						s.dispatch(rt, be)
+						s.scoreRisk(rt, be)
+					}
 				}
 				// Fleet correlation: cross-sensor patterns (one source /
 				// ASN / fingerprint touching several sensors) over the

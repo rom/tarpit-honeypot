@@ -31,6 +31,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Statistical baselines + multi-stage kill-chain detection (`internal/baseline`).**
+  A dependency-free detector (always on) that complements the signature +
+  pattern `correlate:*` correlators: `baseline:new-asn` / `baseline:new-port` /
+  `baseline:new-country` fire the first time (after a warmup learning period) a
+  source ASN, destination port or source country is seen; `baseline:volume-spike`
+  fires when a per-minute event bucket exceeds the rolling EWMA mean + k·stddev
+  above a floor; and `killchain:multistage` emits one consolidated campaign
+  alert when a single source progresses through ≥N distinct ATT&CK tactics
+  within a window (deduped per window). Wired into the sensor's event pipeline
+  after enrichment (so ASN/country are present); emitted events dispatch + risk-
+  score like the other derived events. Documented in `docs/detection-rules.md`.
 - **CISA KEV sync + runtime coverage gap-scan (`internal/kevsync`, `kev-gap`).**
   A new package pulls the CISA Known Exploited Vulnerabilities catalog and keeps
   it as a live, queryable overlay on the sensor's compile-time CVE catalog: it
