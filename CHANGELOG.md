@@ -8,6 +8,27 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Web UI: shared, single-flight snapshot cache for the graph/list pages.** The
+  aggregation views (`/charts`, `/correlation`, `/campaign`, `/map`,
+  `/timeline`, `/tunnels`, `/attack` + its technique/navigator/API variants,
+  `/credentials`, `/interactions`, `/captures`, and the per-category service
+  pages) previously each ran an **independent full-window event scan on every
+  request** — up to 20k–50k rows, with a JSON unmarshal of the meta / anomalies /
+  ATT&CK columns per row — and all of them auto-refresh. With several tabs open
+  (or an operator flipping between pages over the same window) that became a
+  refresh-storm of redundant scans that saturated the SQLite read pool and blew
+  the pages' 6–10s deadlines, surfacing as the "taking longer than usual" page,
+  timeouts or hangs. These scans now go through a short-TTL (3s), single-flight
+  snapshot cache (`windowEvents` / `cachedEvents`), so N concurrent/refreshing
+  pages over the same window share **one** lean (`NoPayload`) scan instead of one
+  each; a transient slow/locked scan degrades to a slightly-stale snapshot rather
+  than an error. The six payload-including scans were also switched to the lean
+  `NoPayload` path (none of these pages read raw payload bytes), dropping the
+  payload column and the per-row banner subquery from each. This mirrors the
+  existing dashboard (`/`) and `/profiles` caches.
+
 ### Added
 
 - **Danfoss AK-SM 8xxA refrigeration-controller handler + 2025/2026 vulnerability

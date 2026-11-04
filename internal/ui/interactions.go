@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
-	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
 // Interactions view: everything the decoys captured of an attacker's actual
@@ -45,14 +44,15 @@ func (s *Server) handleInteractions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
-	since := time.Now().Add(-win.dur)
-	if win.dur == 0 {
-		since = time.Now().Add(-interactionsWindow)
+	dur := win.dur
+	if dur == 0 {
+		dur = interactionsWindow
 	}
 	// Meta-only scan (commands live in meta, never the payload blob), capped at
 	// 20k newest so the per-event decode stays within the page's time budget at
-	// high event volume.
-	evs, err := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true})
+	// high event volume. Shared, cached full-window snapshot (windowEvents) so
+	// concurrent auto-refreshes don't each re-scan.
+	evs, err := s.windowEvents(ctx, dur, 20000)
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

@@ -307,23 +307,34 @@ func (s *Server) servicePageEvents(r *http.Request, kind string) ([]*event.Event
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 	win := summaryRange(r.URL.Query().Get("range"))
-	since := time.Now().Add(-win.dur)
 	// Push the category filter into SQL (handler IN (…), served by
 	// idx_events_handler_time) and drop the payload blob + banner subquery
 	// (NoPayload) — these pages aggregate over meta, never the raw bytes. This
 	// reads only the matching handlers' metadata rows instead of pulling 50k
 	// full rows across every service and filtering them down Go-side, which is
 	// what made these pages time out once the table grew past ~100k events.
-	evs, err := s.query(ctx, store.Filter{
-		Since:     since,
-		Handlers:  categoryHandlers(kind),
-		Limit:     50000,
-		NoPayload: true,
+	//
+	// Cached per (kind, window) with single-flight (cachedEvents): the three
+	// service pages for a category and their auto-refreshes share one scan
+	// instead of each re-running it.
+	dur := win.dur
+	key := "svc|" + kind + "|" + dur.String()
+	evs, err := s.cachedEvents(ctx, key, func(ctx context.Context) ([]*event.Event, error) {
+		e, err := s.query(ctx, store.Filter{
+			Since:     time.Now().Add(-dur),
+			Handlers:  categoryHandlers(kind),
+			Limit:     50000,
+			NoPayload: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return filterByCategory(e, kind), nil
 	})
 	if err != nil {
 		return nil, win, err
 	}
-	return filterByCategory(evs, kind), win, nil
+	return evs, win, nil
 }
 
 // ============================ DNS page =====================================
