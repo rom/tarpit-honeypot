@@ -2466,6 +2466,13 @@ var catalog = []Record{
 	{ID: "CVE-2026-15203", Name: "Danfoss iC7 debug/engineering interface improper access control", CVSS: 8.4, Service: "danfoss_aksm",
 		Technique: "T0702", Tactic: "initial-access", CWE: []string{"CWE-284", "CWE-1242"},
 		Description: "Danfoss iC7 drives (iC7-Automation SP < 2025.3.3, iC7-Marine < 2025.8.19, iC7-Hybrid < 2025.10.300845) expose debug and engineering interfaces with improper access control by default, letting an attacker read internal values and write unsigned applications, EEPROM data and firmware through the service/software-update interfaces (DSA-2026-08-01). Advisory/fingerprint only."},
+
+	// Cloud-native / DevOps: MinIO bootstrap env-creds disclosure (emitted by
+	// the minio handler on a /minio/bootstrap/v1/verify probe).
+	{ID: "CVE-2023-28432", Name: "MinIO cluster env/credential disclosure", CVSS: 7.5, Service: "minio",
+		Signatures: []string{"/minio/bootstrap/v1/verify"},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-200"},
+		Description: "In cluster-deploy mode MinIO returns all environment variables — including MINIO_SECRET_KEY and MINIO_ROOT_PASSWORD — to an unauthenticated POST /minio/bootstrap/v1/verify, disclosing the admin credentials."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2739,6 +2746,7 @@ var cveExtra = map[string]struct {
 	"CVE-2023-25911": {[]string{"CWE-78"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.04},
 	"CVE-2023-25912": {[]string{"CWE-306"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.02},
 	"CVE-2026-15203": {[]string{"CWE-284", "CWE-1242"}, "cpe:2.3:o:danfoss:ic7_firmware:*", 0.05},
+	"CVE-2023-28432": {[]string{"CWE-200"}, "cpe:2.3:a:minio:minio:*", 0.94},
 }
 
 func init() {

@@ -479,6 +479,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &llmAPI{kind: "llm_openai"}, nil
 	case "mcp":
 		return &mcp{}, nil
+	case "jupyter", "selenium", "consul", "nomad", "minio", "clickhouse":
+		return &cloudsvc{kind: name}, nil
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":

@@ -74,6 +74,9 @@ var tcpHandlers = map[string]bool{
 	"danfoss_aksm": true, "danfoss_aksms": true,
 	// AI/LLM inference-server + MCP honeypots.
 	"ollama": true, "llm_openai": true, "mcp": true,
+	// Cloud-native / DevOps exposed-service decoys.
+	"jupyter": true, "selenium": true, "consul": true,
+	"nomad": true, "minio": true, "clickhouse": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,

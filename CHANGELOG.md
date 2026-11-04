@@ -31,6 +31,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Cloud-native / DevOps exposed-service decoys.** Six new HTTP handlers model
+  control planes that are RCE / data-theft footholds (and favourite
+  cryptojacking entry points) when left on the internet, each fingerprinting the
+  service and flagging the hands-on-keyboard step: `jupyter` (Jupyter
+  Notebook/Lab 8888 — token-less access, terminal/kernel spawn RCE), `selenium`
+  (Selenium Grid 4444 — node RCE via `goog:chromeOptions` binary/args override),
+  `consul` (Consul 8500 — catalog/KV enumeration, health-check-script RCE on
+  register), `nomad` (Nomad 4646 — `raw_exec`/`exec` job-submission RCE),
+  `minio` (MinIO S3 9000 — bucket enumeration + the unauthenticated
+  `/minio/bootstrap/v1/verify` env/credential disclosure, **CVE-2023-28432**),
+  and `clickhouse` (ClickHouse HTTP 8123 — SQL over HTTP, `file()/url()/remote()`
+  file-read/SSRF, `system.*` reads). CVE-2023-28432 added to the catalog.
 - **AI/LLM + MCP attack-surface honeypots with a prompt-injection / jailbreak
   classifier.** Three new handlers model the fast-growing exposed-inference
   attack surface: `ollama` (Ollama REST API, 11434), `llm_openai`
