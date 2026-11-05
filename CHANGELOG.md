@@ -23,6 +23,18 @@ documented in `docs/`).
 
 ### Changed
 
+- **Listeners now default to a bounded `max_concurrent` instead of unlimited.**
+  A TCP listener's accept semaphore was created only when `max_concurrent` was
+  explicitly set, so the shipped default (unset → `0` → "unlimited") let a
+  connection flood spawn unbounded handler goroutines / file descriptors — a
+  self-DoS / OOM lever. Unset now applies a safe built-in ceiling of **1024
+  simultaneous connections per listener** (over it, new connections are closed
+  immediately with the existing low-severity `accept_cap` event). Operators who
+  genuinely want no cap set a **negative** value (e.g. `max_concurrent: -1`);
+  explicit positive values are unchanged, and tarpit listeners remain governed
+  by their own lower `max_total` (default 256). UDP is unaffected (its
+  concurrency is bounded by the UDP session path). **Action:** if you relied on
+  unlimited accepts, set `max_concurrent: -1` on those listeners.
 - **Fleet correlation's idle-state sweep and the dedup filter's expiry sweep are
   now throttled, not run on every event.** Both were O(N)-over-all-tracked-keys
   scans fired per event once their tables were warm — ruinous at a fleet

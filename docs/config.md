@@ -191,7 +191,7 @@ listeners:
     read_bytes: 1024
     read_timeout: 5s
     capture: false                      # write per-event pcap of bidirectional bytes
-    max_concurrent: 0                   # 0 = unlimited; otherwise SYN-flood guard
+    max_concurrent: 0                   # TCP accept cap; 0 = safe default (1024), negative = unlimited
     udp_session: false                  # UDP only: per-source multi-datagram sessions
                                         # (handler: quic reassembles multi-packet
                                         # ClientHellos + does QUIC Retry address validation)

@@ -1048,17 +1048,24 @@ type Disk struct {
 }
 
 type Listener struct {
-	ID            string        `yaml:"id"`
-	Proto         string        `yaml:"proto"`   // tcp | udp
-	Bind          string        `yaml:"bind"`    // host:port
-	Mode          string        `yaml:"mode"`    // drop | banner | tarpit
-	Handler       string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
-	Banner        string        `yaml:"banner"`
-	Severity      string        `yaml:"severity"`
-	ReadBytes     int           `yaml:"read_bytes"`
-	ReadTimeout   time.Duration `yaml:"read_timeout"`
-	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
-	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	ID          string        `yaml:"id"`
+	Proto       string        `yaml:"proto"`   // tcp | udp
+	Bind        string        `yaml:"bind"`    // host:port
+	Mode        string        `yaml:"mode"`    // drop | banner | tarpit
+	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
+	Banner      string        `yaml:"banner"`
+	Severity    string        `yaml:"severity"`
+	ReadBytes   int           `yaml:"read_bytes"`
+	ReadTimeout time.Duration `yaml:"read_timeout"`
+	Capture     bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
+	// MaxConcurrent is the per-listener cap on simultaneously-handled TCP
+	// connections (a semaphore across all the listener's binds): over it, new
+	// connections are closed immediately with a low-severity accept_cap event.
+	// Unset (0) applies a safe built-in default (defaultListenerMaxConcurrent) so
+	// a connection flood can't exhaust goroutines/fds; a negative value opts out
+	// (truly unlimited). TCP only — UDP concurrency is bounded by the UDP session
+	// path.
+	MaxConcurrent int `yaml:"max_concurrent"`
 	// MaxSourcePPS enables the fast-path DoS gate: the sustained new-connection
 	// rate allowed per source IP (token bucket, burst = max(pps,20)). A source
 	// over budget is shed at accept before spending a handler goroutine
