@@ -492,7 +492,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 			if st == nil {
 				return nil, fmt.Errorf("channel %s: sqlite sink configured but store missing", ch.ID)
 			}
-			s = sink.NewSQLite(ch.ID, st)
+			s = sink.NewSQLite(ch.ID, st, sqliteTuning(cfg.Tuning))
 		} else {
 			s, err = sink.Build(ch, cfg.Sensor.DataDir, cfg.Sensor.Disk.JSONLogMB)
 		}
@@ -1810,6 +1810,12 @@ func needsCapture(cfg *config.Config) bool {
 	return false
 }
 
+// sqliteTuning maps the operator's config.Tuning onto the SQLite sink's
+// batch-parameter overrides (zero fields fall back to the sink defaults).
+func sqliteTuning(t config.Tuning) sink.SQLiteTuning {
+	return sink.SQLiteTuning{Batch: t.SinkBatch, Flush: t.SinkFlush, HardCap: t.SinkHardCap}
+}
+
 func needsStore(cfg *config.Config) bool {
 	if cfg.UI.Enabled {
 		return true
@@ -1834,7 +1840,7 @@ func openEventStore(cfg *config.Config) (store.EventStore, error) {
 		if !needsStore(cfg) {
 			return nil, nil
 		}
-		return store.Open(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB)
+		return store.OpenTuned(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB, cfg.Tuning.StoreMaxOpenConns)
 	case "postgres":
 		dsnEnv := cfg.Sensor.Store.DSNEnv
 		if dsnEnv == "" {
@@ -2111,7 +2117,7 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 			if s.store == nil {
 				return fmt.Errorf("reload: sqlite channel needs store; restart required")
 			}
-			sk = sink.NewSQLite(ch.ID, s.store)
+			sk = sink.NewSQLite(ch.ID, s.store, sqliteTuning(newCfg.Tuning))
 		} else {
 			sk, err = sink.Build(ch, newCfg.Sensor.DataDir, newCfg.Sensor.Disk.JSONLogMB)
 		}

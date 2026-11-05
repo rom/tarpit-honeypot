@@ -73,6 +73,12 @@ type Config struct {
 	Devices           Devices            `yaml:"devices"`
 	Risk              RiskScoring        `yaml:"risk"`
 	Interaction       Interaction        `yaml:"interaction"`
+	// Tuning exposes the performance knobs that are otherwise compile-time
+	// constants — the SQLite connection pool, the write-batch buffer, and the
+	// web-UI snapshot caches — so an operator can raise them as load grows. Every
+	// field is optional; a zero value keeps the built-in default, so an absent
+	// `tuning:` block changes nothing. See tuning.go.
+	Tuning Tuning `yaml:"tuning"`
 
 	// archeservicesExpanded guards expandArcheservices so it runs once even
 	// if applyDefaults is invoked more than once on the same Config.

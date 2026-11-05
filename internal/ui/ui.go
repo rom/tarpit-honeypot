@@ -80,6 +80,13 @@ type Server struct {
 	hidden        *ipMatcher // presentation-layer source-IP hide list (ui.hidden_ips)
 	startTime     time.Time  // process start, for the config page uptime
 
+	// Snapshot-cache TTLs + enrichment scan cap (defaulted in New, overridable
+	// via SetTuning / config.Tuning). See the default* constants above.
+	dashTTL         time.Duration
+	aggCacheTTL     time.Duration
+	windowEventsTTL time.Duration
+	scanLimit       int
+
 	// dashCache holds the off-request dashboard build per time-range window
 	// (stale-while-revalidate), so "/" stays fast regardless of event count.
 	dashMu     sync.Mutex
@@ -236,7 +243,12 @@ func New(cfg config.UI, st store.EventStore) (*Server, error) {
 	if st == nil || st == (*store.Store)(nil) {
 		return nil, errors.New("ui: store is required")
 	}
-	s := &Server{cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(), hidden: newIPMatcher(cfg.HiddenIPs), startTime: time.Now()}
+	s := &Server{
+		cfg: cfg, store: st, refresh: cfg.UIRefreshInterval(),
+		hidden: newIPMatcher(cfg.HiddenIPs), startTime: time.Now(),
+		dashTTL: defaultDashTTL, aggCacheTTL: defaultAggCacheTTL,
+		windowEventsTTL: defaultWindowEventsTTL, scanLimit: defaultUIScanLimit,
+	}
 	if cfg.AuthTokenEnv != "" {
 		s.authToken = os.Getenv(cfg.AuthTokenEnv)
 		if s.authToken == "" {
@@ -252,6 +264,24 @@ func New(cfg config.UI, st store.EventStore) (*Server, error) {
 	}
 	s.tmpl = t
 	return s, nil
+}
+
+// SetTuning applies the operator's performance overrides to the snapshot-cache
+// TTLs and the enrichment scan cap. Each zero field keeps the current default,
+// so passing an empty config.Tuning is a no-op. Call once, before Start.
+func (s *Server) SetTuning(t config.Tuning) {
+	if t.UIDashboardTTL > 0 {
+		s.dashTTL = t.UIDashboardTTL
+	}
+	if t.UIAggCacheTTL > 0 {
+		s.aggCacheTTL = t.UIAggCacheTTL
+	}
+	if t.UIWindowCacheTTL > 0 {
+		s.windowEventsTTL = t.UIWindowCacheTTL
+	}
+	if t.UIScanLimit > 0 {
+		s.scanLimit = t.UIScanLimit
+	}
 }
 
 // tmplFuncs is the single source of truth for the template function map, used by
@@ -998,20 +1028,26 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dashTTL is how long a cached dashboard build is served before a background
-// refresh is triggered. The dashboard is a whole-window rollup, so a few
-// seconds of staleness is fine and keeps page loads instant at any scale.
-const dashTTL = 20 * time.Second
-
-// aggCacheTTL bounds how long a cached /profiles list rollup is reused.
-const aggCacheTTL = 5 * time.Second
-
-// windowEventsTTL bounds how long a cached full-window lean event snapshot is
-// reused across the graph/list aggregation pages. Kept short so the views stay
-// near-live, but long enough that a refresh-storm (many open auto-refreshing
-// tabs, an operator flipping between pages over the same window) collapses into
-// one scan per (window,limit) instead of one per page per refresh.
-const windowEventsTTL = 3 * time.Second
+// The snapshot-cache TTLs and the enrichment scan cap are served per-Server
+// (defaulted here, overridable via SetTuning / config.Tuning) rather than as
+// package constants, so an operator can trade freshness for DB load as the
+// event volume grows.
+//
+//   - dashTTL: how long a cached dashboard build is served before a background
+//     refresh. The dashboard is a whole-window rollup, so a few seconds of
+//     staleness is fine and keeps page loads instant at any scale.
+//   - aggCacheTTL: how long a cached /profiles list rollup is reused.
+//   - windowEventsTTL: how long a cached full-window lean event snapshot is
+//     reused across the graph/list pages; short so views stay near-live, but
+//     long enough that a refresh-storm collapses into one scan per (window,limit).
+//   - scanLimit: the row cap on the per-event enrichment scan behind the
+//     dashboard/charts tactic/geo/ASN/tool rollups.
+const (
+	defaultDashTTL         = 20 * time.Second
+	defaultAggCacheTTL     = 5 * time.Second
+	defaultWindowEventsTTL = 3 * time.Second
+	defaultUIScanLimit     = 20000
+)
 
 // cachedSourceAggregates wraps store.SourceAggregates with a short-TTL cache
 // keyed by (window, limit). Concurrent auto-refreshes of /profiles within the
@@ -1024,7 +1060,7 @@ func (s *Server) cachedSourceAggregates(ctx context.Context, window time.Duratio
 	s.aggMu.Lock()
 	ent, ok := s.aggCache[key]
 	s.aggMu.Unlock()
-	if ok && time.Since(ent.at) < aggCacheTTL {
+	if ok && time.Since(ent.at) < s.aggCacheTTL {
 		return ent.aggs, nil
 	}
 	aggs, err := s.store.SourceAggregates(ctx, time.Now().Add(-window), limit)
@@ -1043,7 +1079,7 @@ func (s *Server) cachedSourceAggregates(ctx context.Context, window time.Duratio
 	if len(s.aggCache) > 32 {
 		now := time.Now()
 		for k, e := range s.aggCache {
-			if now.Sub(e.at) >= aggCacheTTL {
+			if now.Sub(e.at) >= s.aggCacheTTL {
 				delete(s.aggCache, k)
 			}
 		}
@@ -1083,7 +1119,7 @@ func (s *Server) windowEvents(ctx context.Context, window time.Duration, limit i
 func (s *Server) cachedEvents(ctx context.Context, key string, build func(context.Context) ([]*event.Event, error)) ([]*event.Event, error) {
 	for {
 		s.winMu.Lock()
-		if ent, ok := s.winCache[key]; ok && time.Since(ent.at) < windowEventsTTL {
+		if ent, ok := s.winCache[key]; ok && time.Since(ent.at) < s.windowEventsTTL {
 			s.winMu.Unlock()
 			return ent.evs, nil
 		}
@@ -1120,7 +1156,7 @@ func (s *Server) cachedEvents(ctx context.Context, key string, build func(contex
 			if len(s.winCache) > 64 {
 				now := time.Now()
 				for k, e := range s.winCache {
-					if now.Sub(e.at) >= windowEventsTTL {
+					if now.Sub(e.at) >= s.windowEventsTTL {
 						delete(s.winCache, k)
 					}
 				}
@@ -1150,7 +1186,7 @@ func (s *Server) cachedIndexDashboard(win sumWindow) dashboard {
 	s.dashMu.Lock()
 	ent, ok := s.dashCache[win.key]
 	s.dashMu.Unlock()
-	if ok && time.Since(ent.at) < dashTTL {
+	if ok && time.Since(ent.at) < s.dashTTL {
 		// A cached quick (summary-only) build still needs its enrichment pass —
 		// nudge it in the background while serving the data we already have.
 		if ent.quick {
@@ -1315,7 +1351,7 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich 
 	// blobs + per-row banner subquery through for 20k rows.
 	var attackSvc []chSlice
 	if enrich {
-		if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: 20000, NoPayload: true}); qerr == nil {
+		if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: s.scanLimit, NoPayload: true}); qerr == nil {
 			enrichDashboard(&d, evs)
 			if s.cfg.ServiceActivityEnabled() {
 				markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
@@ -2113,7 +2149,7 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	if len(nets) > 0 {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
-		if evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: 20000, NoPayload: true}); err == nil {
+		if evs, err := s.query(ctx, store.Filter{Since: time.Now().Add(-24 * time.Hour), Limit: s.scanLimit, NoPayload: true}); err == nil {
 			page.Active = overlayActivity(nets, aggregateHostActivity(evs))
 		}
 	}

@@ -960,6 +960,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Performance tuning knobs: reject negative / incoherent overrides.
+	if err := c.Tuning.validate(); err != nil {
+		return err
+	}
+
 	// Severity overrides: rule non-empty, severity parseable. Compiling here
 	// surfaces a typo at load/validate time rather than first dispatch.
 	if _, err := CompileSeverityOverrides(c.SeverityOverrides); err != nil {

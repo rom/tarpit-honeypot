@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`tuning:` config block — the internal caches / buffers are now adjustable.**
+  Performance values that were compile-time constants are exposed so an operator
+  can raise them as load grows: the SQLite connection pool
+  (`store_max_open_conns`), the event-sink write-batch buffer (`sink_batch` /
+  `sink_flush` / `sink_hard_cap`), and the web-UI snapshot caches
+  (`ui_dashboard_ttl` / `ui_agg_cache_ttl` / `ui_window_cache_ttl`) plus the
+  dashboard enrichment scan cap (`ui_scan_limit`). Every field is optional and
+  `0` means "use the built-in default", so an absent block changes nothing;
+  negative or incoherent values (e.g. `sink_hard_cap < sink_batch`) are rejected
+  at validate time. Documented in `docs/config.md`.
+
 ### Changed
 
 - **Reverse-DNS enrichment is now asynchronous / non-blocking.** On a cache miss

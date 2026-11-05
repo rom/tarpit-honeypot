@@ -162,6 +162,7 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 			wg.Wait()
 			return err
 		}
+		srv.SetTuning(cfg.Tuning)
 		srv.SetStatsProvider(buildStatsProvider(s))
 		if cfg.Detection.RulesDir != "" {
 			srv.SetRulesProvider(func() []ui.DetectRuleStat {
