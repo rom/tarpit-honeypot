@@ -2427,3 +2427,16 @@ Files of interest if you're debugging:
 - systemd journal (`journalctl -u tarpit-honeypot -f`) — structured `slog`
   output covering listener startup, sink errors, rate-limit drops,
   reload events, and capture failures.
+
+## License
+
+tarpit-honeypot is **commercial, proprietary software** — Copyright © 2026
+**sysctl AB**, all rights reserved. It is licensed, not sold, and may only be
+used under a separate written commercial license agreement with sysctl AB. No
+rights are granted absent such an agreement. See [`LICENSE`](LICENSE) for the
+full terms.
+
+Commercial licensing inquiries: **sysctl AB** — https://www.sysctl.se/
+
+Third-party components distributed with or used by the software remain subject
+to their own respective licenses.

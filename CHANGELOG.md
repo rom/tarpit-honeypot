@@ -8,6 +8,15 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **License changed from Apache-2.0 to a commercial, proprietary license held by
+  sysctl AB** (Copyright © 2026 sysctl AB, all rights reserved). The software is
+  now licensed, not sold, and may be used only under a separate written
+  commercial license agreement with sysctl AB — see `LICENSE`. The RPM spec
+  `License` field is updated to `Proprietary` and a License section was added to
+  the README. Third-party components keep their own licenses.
+
 ## [1.0.1] - 2026-11-05
 
 ### Fixed
