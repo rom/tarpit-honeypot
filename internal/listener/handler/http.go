@@ -974,11 +974,14 @@ func extractJavaScript(payload string) []string {
 		return nil
 	}
 	var out []string
-	// <script ...>BODY</script>
+	// <script ...>BODY</script>. Search the original bytes case-insensitively
+	// (asciiIndexFold) rather than keeping a parallel strings.ToLower copy:
+	// ToLower is not length-preserving (e.g. 'Ⱥ' U+023A → 'ⱥ' U+2C65 grows 2→3
+	// bytes), so a lowercased copy desyncs from payload and an index taken from
+	// it can mis-slice or panic a payload[i:] slice.
 	rest := payload
-	restLow := low
 	for len(out) < 5 {
-		open := strings.Index(restLow, "<script")
+		open := asciiIndexFold(rest, "<script")
 		if open < 0 {
 			break
 		}
@@ -987,12 +990,18 @@ func extractJavaScript(payload string) []string {
 			break
 		}
 		bodyStart := open + gt + 1
-		end := strings.Index(restLow[bodyStart:], "</script")
+		end := asciiIndexFold(rest[bodyStart:], "</script")
 		var snippet string
 		if end < 0 {
 			snippet = rest[open:]
 		} else {
-			snippet = rest[open : bodyStart+end+len("</script>")]
+			// Include the closing tag, clamped so a truncated "</script" with no
+			// trailing '>' can't overrun.
+			sliceEnd := bodyStart + end + len("</script>")
+			if sliceEnd > len(rest) {
+				sliceEnd = len(rest)
+			}
+			snippet = rest[open:sliceEnd]
 		}
 		out = append(out, safe.SanitizeForLog(clipStr(strings.TrimSpace(snippet), 2048)))
 		if end < 0 {
@@ -1003,12 +1012,11 @@ func extractJavaScript(payload string) []string {
 			break
 		}
 		rest = rest[adv:]
-		restLow = restLow[adv:]
 	}
 	// Inline handlers / javascript: URIs (only if no <script> blocks captured).
 	if len(out) == 0 {
 		for _, marker := range []string{"javascript:", "onerror=", "onload="} {
-			if idx := strings.Index(low, marker); idx >= 0 {
+			if idx := asciiIndexFold(payload, marker); idx >= 0 {
 				snippet := payload[idx:]
 				out = append(out, safe.SanitizeForLog(clipStr(strings.TrimSpace(snippet), 512)))
 			}

@@ -393,11 +393,45 @@ func firstToken(s string) string {
 	return s
 }
 
+// asciiFold lower-cases an ASCII letter byte; any other byte is unchanged.
+func asciiFold(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + ('a' - 'A')
+	}
+	return c
+}
+
+// asciiIndexFold returns the byte offset of the first ASCII-case-insensitive
+// occurrence of sub in s, or -1. It replaces indexing a strings.ToUpper(s)
+// copy: ToUpper is not length-preserving for every rune (e.g. 'ȿ' U+023F → 'Ȿ'
+// U+2C7E grows 2→3 bytes), so an offset taken from the folded copy can land
+// past the end of s and panic a later s[i:] slice. The offset this returns is
+// always a valid index into s, so s[i+len(sub):] can never overrun. sub must be
+// ASCII (the PJL keywords are); non-ASCII bytes in s compare exactly.
+func asciiIndexFold(s, sub string) int {
+	n := len(sub)
+	if n == 0 {
+		return 0
+	}
+	for i := 0; i+n <= len(s); i++ {
+		ok := true
+		for j := 0; j < n; j++ {
+			if asciiFold(s[i+j]) != asciiFold(sub[j]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return i
+		}
+	}
+	return -1
+}
+
 // pjlNameArg extracts the value of NAME="..." (or NAME=...) from a PJL
 // line, preserving original case. "" when absent.
 func pjlNameArg(line string) string {
-	up := strings.ToUpper(line)
-	i := strings.Index(up, "NAME=")
+	i := asciiIndexFold(line, "NAME=")
 	if i < 0 {
 		return ""
 	}
@@ -414,8 +448,7 @@ func pjlNameArg(line string) string {
 
 // pjlValueOf returns the value after KEY= on a PJL line (original case).
 func pjlValueOf(line, key string) string {
-	up := strings.ToUpper(line)
-	i := strings.Index(up, strings.ToUpper(key)+"=")
+	i := asciiIndexFold(line, key+"=")
 	if i < 0 {
 		return ""
 	}
@@ -437,8 +470,7 @@ func pjlPathTraversal(line string) bool {
 
 // pjlPasswordValue extracts the value after PASSWORD= (original case).
 func pjlPasswordValue(line string) string {
-	up := strings.ToUpper(line)
-	i := strings.Index(up, "PASSWORD")
+	i := asciiIndexFold(line, "PASSWORD")
 	if i < 0 {
 		return ""
 	}

@@ -290,14 +290,16 @@ func danfossFormField(s, key string) string {
 // danfossXMLField does a minimal <tag>value</tag> extraction (no full XML
 // parse), case-insensitive on the tag name.
 func danfossXMLField(body, tag string) string {
-	low := strings.ToLower(body)
-	open := "<" + strings.ToLower(tag) + ">"
-	i := strings.Index(low, open)
+	// Case-insensitive search over the original bytes (asciiIndexFold), not an
+	// index into a strings.ToLower copy: ToLower is not length-preserving, so an
+	// index from a lowercased copy can mis-slice or panic a body[i:] slice.
+	open := "<" + tag + ">"
+	i := asciiIndexFold(body, open)
 	if i < 0 {
 		return ""
 	}
 	start := i + len(open)
-	j := strings.Index(low[start:], "</"+strings.ToLower(tag)+">")
+	j := asciiIndexFold(body[start:], "</"+tag+">")
 	if j < 0 {
 		return ""
 	}

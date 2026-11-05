@@ -35,12 +35,14 @@ func hasPrefixFold(s, prefix string) bool {
 // namespace prefix on the tag is ignored). "" if not found. Bounded, naive —
 // just enough to surface a probe's declared SOAP/XML fields, never to parse.
 func xmlTagValue(body, tag string) string {
-	low := strings.ToLower(body)
+	// Case-insensitive search over the original bytes (asciiIndexFold): ToLower
+	// is not length-preserving, so indexing a lowercased copy and slicing body
+	// can mis-slice or panic.
 	tl := strings.ToLower(tag)
 	// match ":tag>" or "<tag>" / "<tag " allowing a namespace prefix.
 	open := -1
 	for _, pat := range []string{"<" + tl + ">", "<" + tl + " ", ":" + tl + ">", ":" + tl + " "} {
-		if i := strings.Index(low, pat); i >= 0 {
+		if i := asciiIndexFold(body, pat); i >= 0 {
 			if g := strings.IndexByte(body[i:], '>'); g >= 0 {
 				open = i + g + 1
 				break
@@ -50,7 +52,7 @@ func xmlTagValue(body, tag string) string {
 	if open < 0 || open >= len(body) {
 		return ""
 	}
-	end := strings.Index(low[open:], "</")
+	end := asciiIndexFold(body[open:], "</")
 	if end < 0 {
 		return strings.TrimSpace(body[open:])
 	}
