@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-05
+
 ### Fixed
 
 - **Summary page rendered an empty "headers only" shell for every time window
