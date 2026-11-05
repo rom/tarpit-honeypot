@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -111,19 +112,66 @@ func (e *Enricher) SetExternalIntel(ips map[string]string) {
 	e.extMu.Unlock()
 }
 
-// threatSet is one loaded reputation list: exact IPs plus CIDR prefixes.
+// threatSet is one loaded reputation list: exact IPs plus a CIDR set.
 type threatSet struct {
 	label string
 	ips   map[string]struct{}
-	cidrs []netip.Prefix
+	cidrs cidrSet
 }
 
 func (ts *threatSet) match(addr netip.Addr) bool {
 	if _, ok := ts.ips[addr.String()]; ok {
 		return true
 	}
-	for _, p := range ts.cidrs {
-		if p.Contains(addr) {
+	return ts.cidrs.contains(addr)
+}
+
+// cidrSet answers "does addr fall in any stored prefix?" in O(distinct prefix
+// lengths) instead of O(number of prefixes): prefixes are bucketed by mask
+// length, each bucket a map of network-address -> {}. A reputation/cloud feed
+// with thousands of prefixes but a handful of common lengths (/24, /20, /16, …)
+// is then matched with a handful of map lookups per event rather than a linear
+// scan over every prefix on the single-threaded bus loop. Built once at load
+// (newCIDRSet); read-only afterward, so lookups need no lock. Family-strict,
+// exactly like netip.Prefix.Contains (a v4 query never matches a v6 prefix).
+type cidrSet struct {
+	byLen map[int]map[netip.Addr]struct{}
+	lens  []int // distinct prefix lengths present, longest first
+}
+
+func newCIDRSet(prefixes []netip.Prefix) cidrSet {
+	var c cidrSet
+	for _, p := range prefixes {
+		if !p.IsValid() {
+			continue
+		}
+		p = p.Masked()
+		l := p.Bits()
+		if c.byLen == nil {
+			c.byLen = map[int]map[netip.Addr]struct{}{}
+		}
+		m := c.byLen[l]
+		if m == nil {
+			m = map[netip.Addr]struct{}{}
+			c.byLen[l] = m
+			c.lens = append(c.lens, l)
+		}
+		m[p.Addr()] = struct{}{}
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(c.lens)))
+	return c
+}
+
+func (c cidrSet) contains(addr netip.Addr) bool {
+	if c.byLen == nil || !addr.IsValid() {
+		return false
+	}
+	bits := addr.BitLen()
+	for _, l := range c.lens {
+		if l > bits {
+			continue // a prefix longer than this address family can't match
+		}
+		if _, ok := c.byLen[l][netip.PrefixFrom(addr, l).Masked().Addr()]; ok {
 			return true
 		}
 	}
@@ -177,7 +225,7 @@ func New(cfg Config) (*Enricher, error) {
 			slog.Warn("enrich: threat list unavailable; skipping", "label", label, "path", tl.File, "err", err)
 			continue
 		}
-		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: cidrs})
+		e.threat = append(e.threat, threatSet{label: label, ips: ips, cidrs: newCIDRSet(cidrs)})
 		slog.Info("enrich: threat list loaded", "label", label, "path", tl.File, "entries", n)
 	}
 	for _, cr := range cfg.CloudRanges {
@@ -189,7 +237,7 @@ func New(cfg Config) (*Enricher, error) {
 			slog.Warn("enrich: cloud range list unavailable; skipping", "provider", cr.Provider, "path", cr.File, "err", err)
 			continue
 		}
-		e.cloud = append(e.cloud, threatSet{label: cr.Provider, ips: ips, cidrs: cidrs})
+		e.cloud = append(e.cloud, threatSet{label: cr.Provider, ips: ips, cidrs: newCIDRSet(cidrs)})
 		slog.Info("enrich: cloud range list loaded", "provider", cr.Provider, "path", cr.File, "entries", n)
 	}
 	if cfg.TorExitFile != "" {
@@ -510,16 +558,33 @@ func classifyNet(addr netip.Addr, asnOrg any) string {
 	return ""
 }
 
+// rdnsMaxInFlight caps concurrent reverse-DNS resolutions. Each resolve is a
+// short-lived goroutine (bounded by the per-lookup timeout), so a config reload
+// that drops the cache leaks nothing — in-flight resolves just finish and exit.
+const rdnsMaxInFlight = 8
+
 // rdnsCache is a tiny LRU + per-IP timeout wrapper around net.LookupAddr.
-// Synchronous on first lookup (with timeout) so events get decorated on
-// the same pass; subsequent events for the same IP hit the cache.
+//
+// Lookups are NON-BLOCKING: a cache hit returns the cached name immediately; a
+// miss returns "" at once and kicks off an asynchronous resolution (at most
+// rdnsMaxInFlight in flight, one per IP), so the single-threaded sensor bus loop
+// never stalls on a DNS round-trip — the defining honeypot workload is a flood
+// of distinct source IPs, i.e. nearly all misses. A later event for the same IP
+// picks up the resolved (or negatively-cached) name. Results, including "no
+// name", are cached for 15 minutes so a failing IP isn't re-queried per event.
 type rdnsCache struct {
 	timeout time.Duration
 	size    int
+	sem     chan struct{} // bounds concurrent in-flight resolutions
 
-	mu  sync.Mutex
-	m   map[string]rdnsEntry
-	lru []string // most-recently used at end; front gets evicted
+	mu      sync.Mutex
+	m       map[string]rdnsEntry
+	lru     []string            // most-recently used at end; front gets evicted
+	pending map[string]struct{} // IPs with a resolve goroutine in flight
+
+	// lookupAddr performs the PTR query; a seam so tests can resolve without
+	// real DNS. Defaults to the Go resolver.
+	lookupAddr func(ctx context.Context, ip string) ([]string, error)
 }
 
 type rdnsEntry struct {
@@ -529,42 +594,65 @@ type rdnsEntry struct {
 
 func newRDNSCache(size int, timeout time.Duration) *rdnsCache {
 	return &rdnsCache{
-		timeout: timeout,
-		size:    size,
-		m:       map[string]rdnsEntry{},
+		timeout:    timeout,
+		size:       size,
+		sem:        make(chan struct{}, rdnsMaxInFlight),
+		m:          map[string]rdnsEntry{},
+		pending:    map[string]struct{}{},
+		lookupAddr: (&net.Resolver{PreferGo: true}).LookupAddr,
 	}
 }
 
 func (c *rdnsCache) lookup(ip string) string {
 	now := time.Now()
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if e, ok := c.m[ip]; ok && e.expiresAt.After(now) {
-		c.mu.Unlock()
-		return e.name
+		return e.name // hit (name may be "" = resolved, no PTR)
 	}
-	c.mu.Unlock()
+	// Miss: never block the caller. Trigger one async resolve per IP, subject to
+	// the in-flight cap; otherwise skip and let a later sighting retry.
+	if _, inflight := c.pending[ip]; !inflight {
+		select {
+		case c.sem <- struct{}{}:
+			c.pending[ip] = struct{}{}
+			go c.resolve(ip)
+		default:
+			// at the concurrency cap — drop; a later event for this IP retries.
+		}
+	}
+	return ""
+}
 
-	// Perform the DNS lookup with our timeout.
+// resolve performs the blocking PTR lookup off the bus loop and caches the
+// result (positive or negative). Runs in its own goroutine; releases its
+// in-flight slot on return.
+func (c *rdnsCache) resolve(ip string) {
+	defer func() {
+		c.mu.Lock()
+		delete(c.pending, ip)
+		c.mu.Unlock()
+		<-c.sem
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 	var name string
-	r := net.Resolver{PreferGo: true}
-	names, err := r.LookupAddr(ctx, ip)
-	if err == nil && len(names) > 0 {
-		name = names[0]
-		if l := len(name); l > 0 && name[l-1] == '.' {
-			name = name[:l-1]
-		}
+	if names, err := c.lookupAddr(ctx, ip); err == nil && len(names) > 0 {
+		name = strings.TrimSuffix(names[0], ".")
 	}
+	c.store(ip, name)
+}
 
+func (c *rdnsCache) store(ip, name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.m[ip] = rdnsEntry{name: name, expiresAt: now.Add(15 * time.Minute)}
-	c.lru = append(c.lru, ip)
-	if len(c.lru) > c.size {
-		oldest := c.lru[0]
-		c.lru = c.lru[1:]
-		delete(c.m, oldest)
+	if _, ok := c.m[ip]; !ok {
+		c.lru = append(c.lru, ip)
+		if len(c.lru) > c.size {
+			oldest := c.lru[0]
+			c.lru = c.lru[1:]
+			delete(c.m, oldest)
+		}
 	}
-	return name
+	c.m[ip] = rdnsEntry{name: name, expiresAt: time.Now().Add(15 * time.Minute)}
 }

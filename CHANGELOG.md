@@ -8,6 +8,24 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Reverse-DNS enrichment is now asynchronous / non-blocking.** On a cache miss
+  the per-event rDNS lookup previously did a blocking `LookupAddr` (up to the
+  configured timeout) *inside the single-threaded sensor bus loop* — and a
+  honeypot's workload is a flood of distinct source IPs, i.e. nearly all misses,
+  so the whole pipeline serialized behind one DNS round-trip per new IP. Misses
+  now return immediately and resolve off the bus loop (≤8 concurrent, one per IP,
+  negatively cached), with the name landing on a later event for that IP. The
+  bus loop never blocks on DNS.
+- **Threat-intel / cloud-range CIDR matching is O(distinct prefix-lengths),
+  not O(prefixes).** `internal/enrich` matched every event's source IP against
+  reputation/cloud lists with a linear scan over every CIDR prefix — thousands
+  of prefixes × every event on the bus loop. Prefixes are now bucketed by mask
+  length into a `cidrSet` (network-addr maps), so a lookup is a handful of map
+  probes regardless of list size, with identical (family-strict) semantics to
+  the previous `netip.Prefix.Contains` scan.
+
 ### Fixed
 
 - **Unbounded-input DoS hardening (code audit).** Six handlers accepted

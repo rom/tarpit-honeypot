@@ -932,9 +932,11 @@ type GeoIP struct {
 	ASNDB  string `yaml:"asn_db"`
 }
 
-// RDNS enables synchronous reverse-DNS enrichment of source IPs with an
-// LRU cache. The lookup is bounded by Timeout so a stalled resolver
-// doesn't back up the bus.
+// RDNS enables reverse-DNS enrichment of source IPs with an LRU cache. Lookups
+// are asynchronous and non-blocking: a cache miss returns immediately and the
+// PTR lookup (bounded by Timeout) runs off the bus loop, so a stalled resolver
+// or a flood of new IPs can't back up event processing; the name lands on a
+// later event for the same IP.
 type RDNS struct {
 	Enabled   bool          `yaml:"enabled"`
 	Timeout   time.Duration `yaml:"timeout"`
