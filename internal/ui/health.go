@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/store"
+	"github.com/rom/tarpit-honeypot/internal/version"
 )
 
 // Sensor health dashboard. Sources: the stats provider (uptime, DB size,
@@ -21,6 +22,7 @@ type healthView struct {
 	Available   bool // stats provider wired?
 	Version     string
 	Commit      string
+	BuildDate   string // release / build date (version.BuildDate)
 	Uptime      string
 	GoVersion   string
 	GOMAXPROCS  int
@@ -64,6 +66,9 @@ func buildHealthView(m *Metrics, sum store.Summary) healthView {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	v := healthView{
+		Version:     version.Version,
+		Commit:      version.Commit,
+		BuildDate:   version.BuildDate,
 		GoVersion:   runtime.Version(),
 		GOMAXPROCS:  runtime.GOMAXPROCS(0),
 		NumCPU:      runtime.NumCPU(),

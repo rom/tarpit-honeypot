@@ -37,6 +37,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
+	"github.com/rom/tarpit-honeypot/internal/version"
 )
 
 // StatsProvider lets the UI publish Prometheus-format metrics without
@@ -119,10 +120,14 @@ type aggEntry struct {
 	at   time.Time
 }
 
-// dashEntry is one cached dashboard build + when it was produced.
+// dashEntry is one cached dashboard build + when it was produced. quick marks a
+// cheap SQL-summary-only build (no per-event enrichment scan yet): it carries
+// the real counters/severity/rules/sources/trend so the page is never empty,
+// and it is flagged so a background pass upgrades it to the enriched build.
 type dashEntry struct {
-	d  dashboard
-	at time.Time
+	d     dashboard
+	at    time.Time
+	quick bool
 }
 
 // SetConfigPaths wires the config file path(s) so the /config page can list
@@ -1146,25 +1151,43 @@ func (s *Server) cachedIndexDashboard(win sumWindow) dashboard {
 	ent, ok := s.dashCache[win.key]
 	s.dashMu.Unlock()
 	if ok && time.Since(ent.at) < dashTTL {
+		// A cached quick (summary-only) build still needs its enrichment pass —
+		// nudge it in the background while serving the data we already have.
+		if ent.quick {
+			s.refreshIndexDashboardAsync(win)
+		}
 		return ent.d
 	}
 	if ok {
 		s.refreshIndexDashboardAsync(win)
 		return ent.d // serve stale while it refreshes
 	}
-	// Cold: never block the request on a full-window aggregation. Kick the full
-	// build in the background and serve a "quick" view now — just the indexed
-	// summary, no full-row enrichment scan — under a short budget. If even that
-	// can't complete (DB locked under heavy write load), serve a minimal shell.
-	// Either way the page renders; it can never 500.
-	s.refreshIndexDashboardAsync(win)
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	// Cold miss: build the cheap, indexed quick view (SQL summary + trend only —
+	// no 20k-row enrichment scan) synchronously, cache it, and kick the
+	// enrichment upgrade in the background. Doing the quick build *before* the
+	// heavy scan (rather than racing it) keeps it from losing the DB to its own
+	// enrichment pass under write load — the failure that otherwise collapses the
+	// page to the near-empty shell. The quick view already carries the real
+	// counters / severity / rules / sources / handlers / countries / trend, so
+	// the page shows live data immediately; only the enrichment-only charts
+	// (tactics / ASN / tools) fill on the next refresh. A generous internal
+	// budget (above the DB busy_timeout) rides out a transient lock; only if even
+	// this cheap build errors do we serve the minimal shell. The page never 500s.
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	d, err := s.buildIndexDashboard(ctx, win, false)
 	if err != nil {
+		s.refreshIndexDashboardAsync(win) // try to populate the cache for next time
 		return s.minimalDashboard(win)
 	}
 	d.Notice = "Summary is still building over a large dataset — enrichment charts will appear on the next refresh."
+	s.dashMu.Lock()
+	if s.dashCache == nil {
+		s.dashCache = map[string]dashEntry{}
+	}
+	s.dashCache[win.key] = dashEntry{d: d, at: time.Now(), quick: true}
+	s.dashMu.Unlock()
+	s.refreshIndexDashboardAsync(win)
 	return d
 }
 
@@ -1754,6 +1777,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Sizes:      sizePickerLinks(currentSize(r), "/config"),
 		Deployment: s.deploymentInfo(),
 		Uptime:     fmtDuration(time.Since(s.startTime)),
+		Version:    version.Version,
+		Commit:     version.Commit,
+		BuildDate:  version.BuildDate,
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -1907,6 +1933,9 @@ type configPage struct {
 	Uptime        string         // sensor running time, e.g. "2d 3h 12m"
 	OldestEvent   string         // RFC3339 timestamp of the earliest event in the DB
 	RetentionSpan string         // how far back that is, e.g. "29d 4h"
+	Version       string         // software version (version.Version)
+	Commit        string         // build commit (version.Commit)
+	BuildDate     string         // release / build date (version.BuildDate)
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,

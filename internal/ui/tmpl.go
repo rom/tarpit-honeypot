@@ -1217,7 +1217,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 
 <h2>process</h2>
 <table>
-{{ if .Version }}<tr><th>build</th><td>{{ .Version }}{{ if .Commit }} ({{ .Commit }}){{ end }}</td></tr>{{ end }}
+{{ if .Version }}<tr><th>version</th><td>v{{ .Version }}{{ if .BuildDate }} · <span class="meta">released {{ .BuildDate }}</span>{{ end }}{{ if .Commit }} · <span class="meta">{{ .Commit }}</span>{{ end }}</td></tr>{{ end }}
 <tr><th>uptime</th><td>{{ if .Uptime }}{{ .Uptime }}{{ else }}n/a{{ end }}</td></tr>
 <tr><th>runtime</th><td>{{ .GoVersion }} · GOMAXPROCS {{ .GOMAXPROCS }} · {{ .NumCPU }} CPU(s)</td></tr>
 <tr><th>goroutines</th><td>{{ .Goroutines }}</td></tr>
@@ -1583,6 +1583,7 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
 
 <h2>this deployment</h2>
 <p class="depl">
+{{ if .Version }}software: <b>tarpit-honeypot v{{ .Version }}</b>{{ if .BuildDate }} · released {{ .BuildDate }}{{ end }}{{ if .Commit }} · <span class="meta">{{ .Commit }}</span>{{ end }}<br>{{ end }}
 {{ .Deployment.Listeners }} listener(s) · {{ .Deployment.Networks }} honeynet network(s) · {{ .Deployment.Hosts }} virtual host(s)<br>
 device tracking: {{ if .Deployment.DevicesOn }}on{{ else }}off{{ end }} · ui bind: <code>{{ .Deployment.UIBind }}</code><br>
 uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <b>{{ .OldestEvent }}</b> ({{ .RetentionSpan }} ago){{ else }} · database empty{{ end }}

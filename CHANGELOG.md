@@ -8,6 +8,27 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Summary page rendered an empty "headers only" shell for every time window
+  except whichever one happened to be cached.** On a cold cache miss the handler
+  kicked the heavy per-event enrichment scan and then raced a 6s synchronous
+  "quick" build against it; under write load (or a busy SQLite) the quick build
+  lost and the page fell through to the near-empty `minimalDashboard`, while a
+  window that had been built once (e.g. `7d`) was served stale indefinitely and
+  looked fine. The cold path now builds the cheap, indexed SQL summary
+  (counters / severity / rules / sources / handlers / countries / trend) **first
+  and on its own**, caches it immediately (flagged so a background pass upgrades
+  it to the enriched charts), and only then kicks the enrichment scan — so every
+  window shows live data on the first load. The budget was raised from 6s to 12s
+  to ride out a transient lock, and `minimalDashboard` is now a true last resort
+  reached only when even the summary query fails.
+
+## [1.0.0] - 2026-11-05
+
+First tagged release. The sensor now reports its version + release date on the
+`/config` and `/health` pages and via `tarpit_build_info{version,commit,date}`.
+
 ### Changed
 
 - **Web UI: shared, single-flight snapshot cache for the graph/list pages.** The
