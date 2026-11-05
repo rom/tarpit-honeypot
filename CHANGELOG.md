@@ -8,8 +8,24 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Per-package test-coverage gate (70% floor).** New `scripts/check-coverage.sh`
+  + a `coverage` CI job enforce a 70% statement-coverage floor on every package.
+  Two auditable escape hatches keep it enforceable today: `EXCLUDE` (the command
+  `main`s and the PostgreSQL backend, which can't be unit-tested in CI) and a
+  pinned `GRANDFATHER` list of packages currently below the floor — the gate
+  passes now, **blocks any regression**, enforces the full floor on everything
+  already ≥70%, and is a tracked debt list to burn down (documented in
+  `docs/coverage.md`). As a down payment, `internal/safe` was raised 67% → 86%
+  by covering the central `SanitizeMetaStrings` meta-sanitizer (previously 0%).
+
 ### Changed
 
+- **Removed dead code** flagged by `golang.org/x/tools/cmd/deadcode`:
+  `artifactscan.Engine.HashCount` and `shell.lootIn` / `shell.isLootPath` (the
+  `ls` loot listing is served from a static table in `responses.go`, so these
+  were superseded and never called).
 - **Go toolchain bumped to 1.26.9** (go.mod `go` directive + `golang:1.26.9-alpine`
   Docker base) to clear the CI `govulncheck` failure — the standard-library
   vulnerabilities it flagged are fixed in the patched toolchain. CI's
