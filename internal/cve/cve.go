@@ -735,7 +735,17 @@ var catalog = []Record{
 	{
 		ID: "CVE-2016-6210", Name: "OpenSSH user enumeration (timing)", CVSS: 5.3, Service: "ssh",
 		Technique: "T1087", Tactic: "discovery",
-		Description: "OpenSSH sshd reveals valid usernames via auth-response timing (bcrypt for valid vs fast reject for invalid).",
+		Description: "OpenSSH sshd reveals valid usernames via auth-response timing (bcrypt for valid vs fast reject for invalid). The probe sends an oversized password so the hash path dominates the response time.",
+	},
+	{
+		ID: "CVE-2019-5021", Name: "Alpine Linux root blank password", CVSS: 9.8, Service: "ssh",
+		Technique: "T1078.001", Tactic: "initial-access",
+		Description: "Alpine Linux Docker images 3.3–3.9 ship /etc/shadow with the root account enabled and a blank password, permitting unauthenticated root login where sshd allows password auth.",
+	},
+	{
+		ID: "SSHHOLE-2026", Name: "*sshole OpenSSH musl locked-account password bypass", CVSS: 9.1, Service: "ssh",
+		Technique: "T1078", Tactic: "initial-access",
+		Description: "OpenSSH on musl libc (Alpine/OpenWrt/Buildroot/Yocto) without PAM accepts any 257–1024 byte password for accounts whose shadow entry is '*' (locked/key-only): musl crypt() returns '*' on failure, which matches the locked-account marker, so the comparison succeeds.",
 	},
 	{
 		ID: "CVE-2016-10009", Name: "OpenSSH ssh-agent PKCS#11 RCE", CVSS: 7.5, Service: "ssh",
@@ -2552,6 +2562,8 @@ var cveExtra = map[string]struct {
 	"CVE-2016-0777":  {[]string{"CWE-200"}, "cpe:2.3:a:openbsd:openssh:*", 0.10},
 	"CVE-2016-0778":  {[]string{"CWE-787"}, "cpe:2.3:a:openbsd:openssh:*", 0.05},
 	"CVE-2016-6210":  {[]string{"CWE-203"}, "cpe:2.3:a:openbsd:openssh:*", 0.40},
+	"CVE-2019-5021":  {[]string{"CWE-1392"}, "cpe:2.3:o:alpinelinux:alpine_linux:*", 0.30},
+	"SSHHOLE-2026":   {[]string{"CWE-305"}, "cpe:2.3:a:musl-libc:musl:*", 0.20},
 	"CVE-2016-10009": {[]string{"CWE-426"}, "cpe:2.3:a:openbsd:openssh:*", 0.10},
 	"CVE-2015-5600":  {[]string{"CWE-287"}, "cpe:2.3:a:openbsd:openssh:*", 0.30},
 	"CVE-2010-4478":  {[]string{"CWE-287"}, "cpe:2.3:a:openbsd:openssh:*", 0.05},

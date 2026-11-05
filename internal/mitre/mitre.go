@@ -952,6 +952,13 @@ var anomalyTags = map[string]Tag{
 	"ssh-direct-tcpip":        {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
 	"ssh-remote-forward":      {Techniques: []string{"T1572"}, Tactics: []string{"command-and-control"}},
 	"ssh-env-shellshock":      {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	// SSH password auth-bypass / enumeration: oversized (>256) password, the
+	// *sshole musl locked-account bypass, Alpine blank-root (CVE-2019-5021), and
+	// the CVE-2016-6210 giant-password username-enumeration timing probe.
+	"ssh-oversized-password": {Techniques: []string{"T1110"}, Tactics: []string{"credential-access"}},
+	"ssh-sshole-attempt":     {Techniques: []string{"T1078"}, Tactics: []string{"initial-access"}},
+	"ssh-alpine-blank-root":  {Techniques: []string{"T1078.001"}, Tactics: []string{"initial-access"}},
+	"ssh-user-enum-timing":   {Techniques: []string{"T1087"}, Tactics: []string{"discovery"}},
 	// FTP second-pass: traversal, ProFTPD IAC overflow, anon login, SITE exec.
 	"ftp-path-traversal":      {Techniques: []string{"T1083"}, Tactics: []string{"discovery"}},
 	"ftp-telnet-iac-overflow": {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
