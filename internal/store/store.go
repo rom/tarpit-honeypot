@@ -1252,6 +1252,81 @@ LIMIT ?`, since.UTC().UnixNano(), limit)
 	return out, rows.Err()
 }
 
+// AggregateSourceIPs returns per-source rollups for exactly the given source
+// IPs (those with no stored events are simply absent from the result). It backs
+// the check-iocs command: report how each indicator IP hit the historical event
+// store. Queries are chunked to stay under SQLite's bound-parameter limit, and
+// the src_ip index makes each lookup cheap. since bounds the window (pass the
+// zero time for all history).
+func (s *Store) AggregateSourceIPs(ctx context.Context, ips []string, since time.Time) (map[string]SourceAggregate, error) {
+	out := map[string]SourceAggregate{}
+	sinceNS := since.UTC().UnixNano()
+	const chunk = 500
+	for start := 0; start < len(ips); start += chunk {
+		end := start + chunk
+		if end > len(ips) {
+			end = len(ips)
+		}
+		part := ips[start:end]
+		args := make([]any, 0, len(part)+1)
+		args = append(args, sinceNS)
+		ph := make([]string, len(part))
+		for i, ip := range part {
+			ph[i] = "?"
+			args = append(args, ip)
+		}
+		rows, err := s.db.QueryContext(ctx, `
+SELECT src_ip, COUNT(*), MIN(time), MAX(time), MAX(severity), COUNT(DISTINCT rule_id), SUM(severity*severity)
+FROM events WHERE time >= ? AND src_ip IN (`+strings.Join(ph, ",")+`)
+GROUP BY src_ip`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var (
+				a      SourceAggregate
+				mn, mx int64
+				ms     int
+			)
+			if err := rows.Scan(&a.IP, &a.Count, &mn, &mx, &ms, &a.DistinctRules, &a.Weight); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			a.FirstSeen = time.Unix(0, mn).UTC()
+			a.LastSeen = time.Unix(0, mx).UTC()
+			a.MaxSeverity = event.Severity(ms)
+			out[a.IP] = a
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// DistinctSourceIPs returns every distinct non-empty source IP in the store
+// (optionally bounded by since; zero time = all history). The check-iocs command
+// uses it to match CIDR indicators, which SQLite cannot test in SQL — the caller
+// checks membership in Go. Bounded by the number of distinct attackers seen.
+func (s *Store) DistinctSourceIPs(ctx context.Context, since time.Time) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT src_ip FROM events WHERE time >= ? AND src_ip <> ''`, since.UTC().UnixNano())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return nil, err
+		}
+		out = append(out, ip)
+	}
+	return out, rows.Err()
+}
+
 // HourBucket is one hour of the events-over-time histogram.
 type HourBucket struct {
 	Hour  time.Time `json:"hour"`

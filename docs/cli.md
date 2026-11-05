@@ -21,6 +21,7 @@ tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot list-fleet-rules [--json]
 tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
+tarpit-honeypot check-iocs     -c <config> --file <path> [--since D] [--format text|json] [--fail-on-hit]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot jarm           [--timeout D] [--sni NAME] <host:port>
 tarpit-honeypot init           [-o file]
@@ -526,6 +527,45 @@ indicators); the live `/api/iocs` endpoint and the **iocs** UI tab expose the
 broader per-sensor IOC store. See [`docs/ioc.md`](ioc.md) for the two layers and
 [`docs/threat-intel-exports.md`](threat-intel-exports.md) for the STIX/TAXII/MISP
 field mappings.
+
+---
+
+## `check-iocs`
+
+Retro-hunt: read a file of indicators (attacker source IPs and/or CIDR ranges)
+and report which of them appear in the local event store's historical data —
+"has this honeypot ever seen any of these hosts?". Indicators match against each
+event's **source IP** (the attacker). The inverse of `export-iocs`: that emits
+this sensor's indicators, this checks someone else's feed against your history.
+
+```
+tarpit-honeypot check-iocs -c cfg.yaml --file threatfeed.txt
+tarpit-honeypot check-iocs -c cfg.yaml --file bad-cidrs.txt --since 2160h --format json
+tarpit-honeypot export-iocs -c cfg.yaml --format json > mine.json && \
+    tarpit-honeypot check-iocs -c cfg.yaml --file mine.json --fail-on-hit
+```
+
+The `--file` format is auto-detected and may be any of:
+
+- one IP or CIDR per line (blank lines and `#` / `//` comments ignored);
+- several **comma-separated** IPs/CIDRs per line;
+- **CIDR** ranges (`10.0.0.0/8`, `2001:db8::/32`) alongside bare IPs;
+- **JSON** — an array of strings, an array of objects with a `value`/`ip` field
+  (so `export-iocs --format json` round-trips), or an object wrapping an
+  `iocs`/`indicators`/`ips`/`values`/`addresses` array.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
+| `--file <path>` | — (required) | The IOC file to check. |
+| `--since <dur>` | `0` (all history) | Only match events newer than this (e.g. `720h`). |
+| `--format text\|json` | `text` | Human table, or JSON with per-hit rollups. |
+| `--fail-on-hit` | `false` | Exit non-zero (`2`) when any indicator matched — for cron / CI blocklist sweeps. |
+
+Each hit reports the matched source IP (and the CIDR it fell in, when matched
+through a range), the event count, first/last seen, max severity, distinct
+rules, and a threat score (∑ severity²), ranked most-threatening first. Drill
+into any hit with `list-events --source <ip>`.
 
 ---
 

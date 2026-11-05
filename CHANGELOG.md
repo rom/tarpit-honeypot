@@ -8,6 +8,21 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`check-iocs` CLI command — retro-hunt an indicator file against stored
+  events.** Reads a file of attacker source IPs and/or CIDR ranges and reports
+  which appear in the local event store's historical data (matched against each
+  event's source IP), ranked by threat score with event count / first+last seen
+  / max severity / distinct rules per hit. The `--file` is auto-detected: one
+  IP/CIDR per line, several comma-separated per line, CIDR ranges, or JSON (an
+  array of strings, an array of objects with a `value`/`ip` field so
+  `export-iocs --format json` round-trips, or an object wrapping an
+  `iocs`/`indicators`/`ips`/… array). Flags: `--since` (default all history),
+  `--format text|json`, `--fail-on-hit` (exit 2 on any match, for cron/CI
+  sweeps). Backed by two new indexed store helpers (`AggregateSourceIPs`,
+  `DistinctSourceIPs`). Documented in `docs/cli.md`.
+
 ### Changed
 
 - **License changed from Apache-2.0 to a commercial, proprietary license held by
