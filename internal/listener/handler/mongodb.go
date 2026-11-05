@@ -29,6 +29,9 @@ const (
 	opReply = 1
 	opQuery = 2004
 	opMsg   = 2013
+	// mongoMaxMsg caps the declared OP message length we'll allocate a body for.
+	// Far above any real fingerprinting request, far below an OOM lever.
+	mongoMaxMsg = 64 * 1024
 )
 
 func (m *mongodb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Result, error) {
@@ -45,7 +48,11 @@ func (m *mongodb) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 	reqID := int32(binary.LittleEndian.Uint32(hdr[4:8]))
 	opCode := int32(binary.LittleEndian.Uint32(hdr[12:16]))
 	res.Meta["mongo_opcode"] = int(opCode)
-	if msgLen < 16 || msgLen > 48*1024*1024 {
+	// Cap the declared length hard: the 4-byte header lets a client claim tens
+	// of MB, and allocating body before reading it would let a 16-byte packet
+	// commit that memory (amplification → OOM). A fingerprinting honeypot never
+	// needs more than a small request, so reject anything larger as malformed.
+	if msgLen < 16 || msgLen > mongoMaxMsg {
 		res.Meta["mongo_bad_length"] = msgLen
 		return res, nil
 	}

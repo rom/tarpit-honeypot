@@ -105,3 +105,43 @@ func ruleIDs(evs []*event.Event) []string {
 	}
 	return out
 }
+
+// TestKillChainEviction verifies the per-source kill-chain table is bounded:
+// idle sources (seen before the window) are swept, so a high-cardinality flood
+// of distinct IPs can't grow d.chain without limit.
+func TestKillChainEviction(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	d := New(Config{
+		Warmup: 0, KillChainStages: 3, KillChainWindow: time.Minute, MaxSources: 100,
+		now: func() time.Time { return now },
+	})
+	// 500 distinct sources, each a single-tactic event, spread over 10 minutes
+	// (>> the 1m window). Without eviction d.chain would hold all 500.
+	for i := 0; i < 500; i++ {
+		now = now.Add(2 * time.Second)
+		d.Observe(ev("10.1."+itoa(i/256)+"."+itoa(i%256), 22, nil, "discovery"))
+	}
+	d.mu.Lock()
+	n := len(d.chain)
+	d.mu.Unlock()
+	if n > 100 {
+		t.Errorf("chain table grew to %d; want <= MaxSources (100) after idle sweep", n)
+	}
+	if n == 0 {
+		t.Error("chain table is empty; sweep should keep recent entries")
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [3]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}

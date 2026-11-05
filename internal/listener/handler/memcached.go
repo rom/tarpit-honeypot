@@ -43,7 +43,7 @@ func (m *memcached) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 
 	var commands []string
 	for i := 0; i < 12; i++ {
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			if i == 0 {
 				res.Meta["read_err"] = err.Error()
@@ -72,7 +72,7 @@ func (m *memcached) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 			_, _ = conn.Write([]byte("END\r\n"))
 		case "set", "add", "replace", "append", "prepend", "cas":
 			flagAnomaly(&res, "memcached-write-attempt")
-			_, _ = br.ReadString('\n') // consume the (bounded) data line
+			_, _ = readLineCapped(br, maxLineBytes) // consume the data line (capped)
 			_, _ = conn.Write([]byte("STORED\r\n"))
 		case "incr", "decr":
 			// A real server returns the new value, or NOT_FOUND for a

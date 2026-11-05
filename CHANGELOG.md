@@ -8,6 +8,28 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Unbounded-input DoS hardening (code audit).** Six handlers accepted
+  attacker-controlled input without a size cap and could be driven to large
+  allocations / unbounded buffering within the read deadline:
+  - `mongodb` allocated the body (up to 48 MB) from a 16-byte header's declared
+    length *before* reading it — a ~3,000,000:1 amplification → OOM lever. The
+    cap is now 64 KiB (`mongoMaxMsg`); oversized lengths are flagged malformed.
+  - `redis`, `memcached`, `syslog` (newline branch) and `rsync` read protocol
+    lines with bare `bufio.ReadString('\n')` (no cap) — an unterminated byte
+    stream grew one buffer until the deadline. They now use the existing
+    `readLineCapped` (8 KiB), matching the other line handlers.
+  - `rethinkdb` read NUL-delimited messages with uncapped `ReadBytes(0x00)` and
+    a per-iteration deadline refresh; it now uses a new bounded `readDelimCapped`.
+  A wider sweep (60+ binary length-prefix parsers, the SNMP ASN.1/DNS/LLMNR
+  decoders, the fleet ingest path, the SQL builders, the fetchers) confirmed
+  those are already correctly bounded.
+- **Baseline kill-chain memory leak.** `internal/baseline`'s per-source
+  kill-chain map was never evicted — unbounded growth under high source-IP
+  cardinality (the honeypot's normal workload). It now has a throttled idle
+  sweep plus a tunable `MaxSources` cap (default 50000) with emergency eviction.
+
 ### Added
 
 - **Per-package test-coverage gate (70% floor).** New `scripts/check-coverage.sh`

@@ -53,7 +53,7 @@ func (s *syslogTCP) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 			}
 			msgs = append(msgs, string(buf))
 		} else {
-			line, err := br.ReadString('\n')
+			line, err := readLineCapped(br, maxLineBytes)
 			if err != nil && line == "" {
 				break
 			}
