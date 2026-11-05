@@ -1,6 +1,6 @@
 BIN          := tarpit-honeypot
 PKG          := github.com/rom/tarpit-honeypot
-VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 1.0.0)
+VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 1.0.1)
 COMMIT       ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE   ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS      := -s -w \

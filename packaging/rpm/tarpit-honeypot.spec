@@ -13,7 +13,7 @@ Version:        %{version}
 Release:        1%{?dist}
 Summary:        Low-to-medium interaction deception sensor
 
-License:        ASL 2.0
+License:        Proprietary
 URL:            https://github.com/rom/tarpit-honeypot
 BuildArch:      x86_64
 
