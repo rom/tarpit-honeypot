@@ -23,6 +23,19 @@ documented in `docs/`).
 
 ### Changed
 
+- **Correlator per-detector state tables now have a hard memory cap.** Each of
+  the ~50 correlation detectors keeps a per-key table (keyed by source IP, or by
+  credential / CVE / fingerprint / canary token for the cross-source ones). Idle
+  keys were evicted on each detector's window, but that sweep is throttled to
+  once every 5 minutes and only removes *idle* entries — so a flood of distinct
+  live keys (e.g. spoofed source IPs) could grow all ~50 tables without bound
+  between sweeps. A new `correlate.max_sources` ceiling (default 50,000, keyed
+  off an O(1) per-event counter so the sweep is forced once that many events
+  have been seen) sheds live entries in arbitrary order when a table reaches the
+  cap, bounding each table at roughly the cap regardless of the time throttle.
+  Under normal load nothing changes; under a spoofing storm some correlation
+  accuracy is traded for memory safety. Mirrors the kill-chain cap already on the
+  statistical baseline detector.
 - **The summary dashboard's cross-cutting charts are now SQL `GROUP BY`
   rollups, not a 20k-row Go scan.** The tactic / technique / CVE / geo-city /
   ASN / network-operator / tool / attacks-by-service / service-board charts were

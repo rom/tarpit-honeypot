@@ -1318,6 +1318,11 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Correlator per-detector-table hard cap (0 = built-in default).
+	if c.Correlate.MaxSources < 0 {
+		return fmt.Errorf("correlate.max_sources must be >= 0 (got %d)", c.Correlate.MaxSources)
+	}
+
 	// Correlator severities.
 	if c.Correlate.PortScan.Enabled {
 		if _, err := event.ParseSeverity(c.Correlate.PortScan.Severity); err != nil {

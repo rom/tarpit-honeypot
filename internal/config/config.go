@@ -1730,6 +1730,15 @@ type Correlate struct {
 	SpamRelay           CorrSpamRelay           `yaml:"spam_relay"`
 	DNSTunnel           CorrDNSTunnel           `yaml:"dns_tunnel"`
 	ReconToExploit      CorrReconToExploit      `yaml:"recon_to_exploit"`
+
+	// MaxSources caps the per-key state each correlator detector tracks (keyed
+	// by source IP, or by credential / CVE / fingerprint / token for the
+	// cross-source detectors). Idle entries are evicted on a window; this is the
+	// hard ceiling that bounds memory when a distinct-key flood (e.g. spoofed
+	// source IPs) grows the tables faster than idle eviction reclaims them —
+	// over the cap, live entries are shed in arbitrary order. 0 → built-in
+	// default (50000).
+	MaxSources int `yaml:"max_sources"`
 }
 
 // CorrDNSTunnel fires when one source produces several DNS tunneling / DGA /

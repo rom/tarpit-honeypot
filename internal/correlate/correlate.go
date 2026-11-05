@@ -130,7 +130,16 @@ type Correlator struct {
 	pbxCtrl     map[string]*countState     // key: source IP (PBX admin-action count)
 	emitted     map[string]time.Time       // dedup of aggregate emission
 	lastGC      time.Time                  // last idle-state sweep
+
+	maxSources    int // hard per-detector-table cap (emergency memory guard)
+	eventsSinceGC int // events observed since the last sweep; forces a sweep at maxSources
 }
+
+// defaultCorrMaxSources is the built-in per-detector-table ceiling applied when
+// config.Correlate.MaxSources is unset. ~50k distinct keys × the handful of
+// enabled detectors is a few MB of state — generous for a real honeypot, while
+// still bounding memory under a spoofed-source flood.
+const defaultCorrMaxSources = 50000
 
 // countState tracks a per-source count within a window (control commands,
 // connection volume). byteState tracks cumulative bytes within a window.
@@ -254,6 +263,10 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		voipEnum:    map[string]*setState{},
 		pbxCtrl:     map[string]*countState{},
 		emitted:     map[string]time.Time{},
+	}
+	c.maxSources = cfg.MaxSources
+	if c.maxSources <= 0 {
+		c.maxSources = defaultCorrMaxSources
 	}
 	if cfg.PortScan.Enabled {
 		s, err := event.ParseSeverity(cfg.PortScan.Severity)
@@ -395,6 +408,7 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	c.eventsSinceGC++
 	c.gc(now)
 
 	// ICMP sweep is checked first because ICMP events carry no dest
@@ -1291,10 +1305,16 @@ const corrGCInterval = 5 * time.Minute
 // distinct/spoofed source IPs over a long-running sensor. Called with
 // c.mu held.
 func (c *Correlator) gc(now time.Time) {
-	if !c.lastGC.IsZero() && now.Sub(c.lastGC) < corrGCInterval {
+	// Normally sweep at most once per interval. But a distinct-key flood can add
+	// far more live entries than idle eviction reclaims between sweeps, so force
+	// one once we've observed maxSources events since the last — bounding every
+	// table at roughly maxSources regardless of the time throttle.
+	forced := c.eventsSinceGC >= c.maxSources
+	if !forced && !c.lastGC.IsZero() && now.Sub(c.lastGC) < corrGCInterval {
 		return
 	}
 	c.lastGC = now
+	c.eventsSinceGC = 0
 	for ip, st := range c.scan {
 		if now.Sub(st.since) > effWindow(c.cfg.PortScan.Window, 30*time.Second) {
 			delete(c.scan, ip)
@@ -1479,6 +1499,90 @@ func (c *Correlator) gc(now time.Time) {
 		if now.Sub(t) > 24*time.Hour {
 			delete(c.emitted, key)
 		}
+	}
+	// Emergency hard cap: after idle eviction, any table still at/over maxSources
+	// is holding that many *live* (in-window) keys — a distinct-key flood. Shed
+	// arbitrary entries down to 3/4 of the cap so memory stays bounded; the cost
+	// is some correlation accuracy for the flood's own keys, the right trade-off
+	// for a honeypot under a spoofed-source storm.
+	c.shedOverCap()
+}
+
+// shedOverCap enforces the per-table hard ceiling across every correlator
+// detector map. Called from gc under c.mu.
+func (c *Correlator) shedOverCap() {
+	m := c.maxSources
+	shedMap(c.scan, m)
+	shedMap(c.brute, m)
+	shedMap(c.slow, m)
+	shedMap(c.sweep, m)
+	shedMap(c.spray, m)
+	shedMap(c.reuse, m)
+	shedMap(c.pathEnum, m)
+	shedMap(c.dnsEnum, m)
+	shedMap(c.beacon, m)
+	shedMap(c.story, m)
+	shedMap(c.hostSweep, m)
+	shedMap(c.crossTarget, m)
+	shedMap(c.svcSweep, m)
+	shedMap(c.uaRot, m)
+	shedMap(c.exploit, m)
+	shedMap(c.ics, m)
+	shedMap(c.canary, m)
+	shedMap(c.fpReuse, m)
+	shedMap(c.protoViol, m)
+	shedMap(c.exfil, m)
+	shedMap(c.flood, m)
+	shedMap(c.lateral, m)
+	shedMap(c.otRecon, m)
+	shedMap(c.dataAcc, m)
+	shedMap(c.malware, m)
+	shedMap(c.webshell, m)
+	shedMap(c.tiBurst, m)
+	shedMap(c.geoVel, m)
+	shedMap(c.amp, m)
+	shedMap(c.defCred, m)
+	shedMap(c.cveCamp, m)
+	shedMap(c.destruct, m)
+	shedMap(c.cloudCred, m)
+	shedMap(c.ssrfCb, m)
+	shedMap(c.mitmCap, m)
+	shedMap(c.fpRot, m)
+	shedMap(c.ctrTake, m)
+	shedMap(c.webProbe, m)
+	shedMap(c.sshKey, m)
+	shedMap(c.spamRelay, m)
+	shedMap(c.dnsTunnel, m)
+	shedMap(c.reconExp, m)
+	shedMap(c.honeytoken, m)
+	shedMap(c.toolRot, m)
+	shedMap(c.plcProg, m)
+	shedMap(c.modeChg, m)
+	shedMap(c.otKill, m)
+	shedMap(c.remoteTool, m)
+	shedMap(c.oobMgmt, m)
+	shedMap(c.remoteExec, m)
+	shedMap(c.tollFraud, m)
+	shedMap(c.voipEnum, m)
+	shedMap(c.pbxCtrl, m)
+	// emitted (emission dedup) is keyed per source+detector and only ages out at
+	// 24h, so it balloons fastest under a flood — cap it on the same ceiling.
+	shedMap(c.emitted, m)
+}
+
+// shedMap drops arbitrary entries from m, down to 3/4 of max, but only once m
+// has reached max. The 3/4 target leaves headroom so a table riding at the cap
+// doesn't shed on every sweep.
+func shedMap[K comparable, V any](m map[K]V, max int) {
+	if max <= 0 || len(m) < max {
+		return
+	}
+	target := max * 3 / 4
+	for k := range m {
+		if len(m) <= target {
+			return
+		}
+		delete(m, k)
 	}
 }
 

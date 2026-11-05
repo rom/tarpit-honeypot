@@ -570,8 +570,10 @@ correlate:
     distinct_sources: 3
     window: 1h
     severity: high
+  max_sources: 50000          # per-detector hard cap on tracked keys (0 = default 50000)
 ```
 
+- **max_sources**: the hard ceiling on the per-key state *each* detector tracks (keyed by source IP, or by credential / CVE / fingerprint / token for the cross-source detectors). Idle keys are evicted on each detector's window; this bounds memory when a distinct-key flood (e.g. spoofed source IPs) grows the tables faster than idle eviction reclaims them — once a table reaches the cap, live entries are shed in arbitrary order (some correlation accuracy is lost for the flood's own keys, which is the right trade-off under a spoofing storm). `0` uses the built-in default of 50000.
 - **port_scan**: same source touched N distinct ports within window → `correlate:port_scan` with the port list in meta.
 - **brute_force**: N attempts in window. Captures deduped credential pairs (`auth_user/auth_pass`, `bind_dn/bind_pw`, etc.) from contributing events.
 - **slow_scan**: long-window scan detector; per-port state ages individually so a 1-port-per-hour scan accumulates.
