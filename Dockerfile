@@ -14,7 +14,7 @@
 # --user 0 OR a host capability grant; the systemd path is usually cleaner
 # for production. For dev, remap to high ports in the config.
 
-FROM golang:1.26.9-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
 RUN apk add --no-cache make git

@@ -159,11 +159,13 @@ documented in `docs/`).
   `artifactscan.Engine.HashCount` and `shell.lootIn` / `shell.isLootPath` (the
   `ls` loot listing is served from a static table in `responses.go`, so these
   were superseded and never called).
-- **Go toolchain bumped to 1.26.9** (go.mod `go` directive + `golang:1.26.9-alpine`
+- **Go toolchain bumped to 1.26.10** (go.mod `go` directive + `golang:1.26.10-alpine`
   Docker base) to clear the CI `govulncheck` failure — the standard-library
-  vulnerabilities it flagged are fixed in the patched toolchain. CI's
-  `govulncheck` job installs Go from `go-version-file: go.mod`, so the directive
-  is what determines the stdlib it builds against.
+  vulnerabilities it flagged are fixed in the patched toolchain, most recently
+  GO-2026-6809 (`crypto/x509` intermediate-certificate distrust, reached via the
+  TLS-intercept handler's handshake). CI's `govulncheck` job installs Go from
+  `go-version-file: go.mod`, so the directive is what determines the stdlib it
+  builds against.
 
 ### Added
 
