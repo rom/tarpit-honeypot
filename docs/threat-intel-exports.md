@@ -237,8 +237,27 @@ That host must be reachable from the sensor — add it to `sensor.egress.allow`
 when running `egress.enforce`. If egress blocks it, download the KEV JSON on
 another host and pass it with `--file`.
 
-**Background auto-sync:** `kevsync.NewPuller(url, header, interval, client, store)`
-refreshes a `kevsync.Store` on an interval (default 6h) through the
-egress-governed HTTP client, retaining the last good snapshot across a failed
-refresh — the same pattern as the external-reputation `feeds` puller. Wire the
-`Store` into the event-enrichment path to stamp KEV status on `cve:<id>` events.
+**Background auto-sync (built in).** Enable the `kev:` block and the sensor
+keeps a live KEV overlay and stamps every `cve:<id>` event whose id is
+KEV-listed with `kev=true` + `kev_date_added` + `kev_known_ransomware`, lifting
+its severity to at least High:
+
+```yaml
+kev:
+  enabled: true
+  # url:    https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json  # default
+  poll:   6h
+  # header: "Authorization: Bearer <token>"   # optional, for a mirror
+sensor:
+  egress:
+    allow:
+      - www.cisa.gov          # required when egress.enforce is on
+```
+
+The puller refreshes on `poll` through the egress-governed client, retains the
+last good snapshot across a failed refresh, and is **reload-aware**: a SIGHUP
+config reload restarts it against the new `url`/`poll`/`enabled` without a
+process restart. Route on the stamp in rules (`meta.kev = true` → page;
+`meta.kev_known_ransomware = true` → page critical). The underlying
+`kevsync.Store` / `Puller` are also usable directly, and `kev-gap` runs the
+one-shot coverage scan.

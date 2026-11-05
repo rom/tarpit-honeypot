@@ -485,6 +485,31 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &bmsWeb{kind: name}, nil
 	case "ocpp":
 		return &ocppH{}, nil
+	case "hl7":
+		return &hl7{id: deps.Identity}, nil
+	case "dicom":
+		return &dicom{}, nil
+	case "hl7s":
+		// HL7 over TLS (some interface engines wrap MLLP in TLS).
+		return newTLSWrap("hl7", "hl7s", deps)
+	case "dicoms":
+		// DICOM-TLS (secure DICOM Upper Layer, typically TCP 2762).
+		return newTLSWrap("dicom", "dicoms", deps)
+	// TLS-fronted variants of the new HTTP-ish handlers (decrypt → inner).
+	case "ollamas":
+		return newTLSWrap("ollama", "ollamas", deps)
+	case "llm_openais":
+		return newTLSWrap("llm_openai", "llm_openais", deps)
+	case "mcps":
+		return newTLSWrap("mcp", "mcps", deps)
+	case "jupyters":
+		return newTLSWrap("jupyter", "jupyters", deps)
+	case "minios":
+		return newTLSWrap("minio", "minios", deps)
+	case "clickhouses":
+		return newTLSWrap("clickhouse", "clickhouses", deps)
+	case "consuls":
+		return newTLSWrap("consul", "consuls", deps)
 	case "echo":
 		return &echoTCP{}, nil
 	case "discard":

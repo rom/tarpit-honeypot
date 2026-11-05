@@ -254,6 +254,40 @@ func TestObserveTokensDetectsReuse(t *testing.T) {
 	}
 }
 
+func TestObserveTokensDetectsLootReuse(t *testing.T) {
+	s := &Sensor{name: "t", tokenTrack: tokentrack.New(0)}
+	t0 := time.Now().UTC()
+
+	// 1) Attacker A reads planted shell loot — the deployment canary is served
+	//    (surfaced by the SSH/Telnet handler as meta["loot_token"]).
+	served := &event.Event{
+		Time: t0, RuleID: "listener:ssh:session", Handler: "ssh",
+		Source: event.Endpoint{IP: "203.0.113.11"},
+		Meta:   map[string]any{"loot_token": "deadbeefcafe0001"},
+	}
+	if tu := s.observeTokens(served); tu != nil {
+		t.Fatalf("serving the loot canary should not itself fire token_used: %+v", tu)
+	}
+
+	// 2) Later, attacker B logs in elsewhere using that exact canary — the fake
+	//    secret we planted is being replayed: proof of compromise.
+	reused := &event.Event{
+		Time: t0.Add(30 * time.Minute), RuleID: "listener:http:login", Handler: "http",
+		Source: event.Endpoint{IP: "198.51.100.9"},
+		Meta:   map[string]any{"http_login_pass": "deadbeefcafe0001"},
+	}
+	tu := s.observeTokens(reused)
+	if tu == nil {
+		t.Fatal("replay of a served loot canary should fire canary:token_used")
+	}
+	if tu.RuleID != "canary:token_used" || tu.Severity != event.SeverityCritical {
+		t.Errorf("wrong finding: rule=%s sev=%v", tu.RuleID, tu.Severity)
+	}
+	if tu.Meta["minted_handler"] != "ssh" {
+		t.Errorf("mint context lost: %+v", tu.Meta)
+	}
+}
+
 func TestObserveTokensIgnoresSameConnectionEcho(t *testing.T) {
 	s := &Sensor{name: "t", tokenTrack: tokentrack.New(0)}
 	t0 := time.Now().UTC()

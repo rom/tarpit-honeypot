@@ -31,6 +31,81 @@ documented in `docs/`).
 
 ### Added
 
+- **Grafana dashboard + expanded Prometheus metrics.** `/metrics` now exposes
+  lifetime event counters — `tarpit_events_total`,
+  `tarpit_events_by_severity_total{severity}` and
+  `tarpit_events_by_kind_total{kind}` (the rule-id prefix:
+  listener/cve/canary/correlate/…) — recorded at the single bus-loop dispatch
+  choke point, plus per-rule detection hits
+  (`tarpit_detect_rule_hits_total{rule,severity}`) and live gauges for
+  `tarpit_listeners_active`, `tarpit_honey_tokens_tracked`,
+  `tarpit_kev_catalog_entries` and `tarpit_kev_last_update_timestamp_seconds`.
+  A ready-to-import Grafana dashboard (`examples/observability/grafana-dashboard.json`,
+  severity-coloured event-rate / rule-kind / top-rules / canary-CVE / sink-health
+  / infra panels) and a sample Prometheus scrape config ship in
+  `examples/observability/`.
+- **Healthcare / medical-device protocol decoys (HL7 MLLP + DICOM).** Two new
+  TCP handlers for the protocols every hospital network exposes — almost always
+  unauthenticated on the wire and a documented attacker target. `hl7` (2575)
+  speaks HL7 v2 over MLLP: it strips the `<VT>…<FS><CR>` framing, parses the MSH
+  header (message type, control id, sending app/version), answers a believable
+  `MSA|AA` ACK echoing the trigger event, and flags patient-data queries
+  (`hl7-patient-query`, PHI access), master-file updates (`hl7-master-file-update`,
+  remote config tamper), order messages and injection/oversized frames. `dicom`
+  (104 / 11112) speaks the DICOM Upper Layer: it parses the A-ASSOCIATE-RQ
+  (called/calling AE titles), accepts with a structurally-valid A-ASSOCIATE-AC
+  echoing the offered presentation context + transfer syntax, then captures the
+  first DIMSE operation — `dicom-cfind` (query), `dicom-cget`/`dicom-cmove`
+  (image retrieval / exfil), `dicom-cstore` (unsolicited push), `dicom-cecho` —
+  and flags AE-title scanning (empty / tool-default calling AE). Both are
+  detection/emulation only: no PHI is real, every ACK/association grants nothing,
+  no request is executed. TLS variants (`hl7s`, `dicoms` on 2762) ship too;
+  ports added to `portsvc`; all markers mapped to enterprise ATT&CK in
+  `internal/mitre`; documented in `docs/INTEGRATIONS.md`.
+- **Shell loot → live canary tokens (honey-credential reuse, end to end).** The
+  planted shell loot (fake `/root/.aws/credentials`, `.env`, `wp-config.php`,
+  `backup.sql`, `notes.txt`, `.bash_history`) now weaves a **per-deployment
+  canary** into every secret value via a `{{TOK}}` sentinel, derived from the
+  deployment identity (`identity.CanaryToken()`, set once at startup with
+  `shell.SetLootToken`). When an attacker reads one of those files the shell
+  records the token as *served* (`Captured.ServedLootTokens`), the SSH/Telnet
+  handler surfaces it as `meta["loot_token"]`, and the sensor's existing
+  honey-credential tracker ingests it (`servedTokenKeys`). If the attacker later
+  replays that captured secret against any login-bearing service, it fires the
+  critical `canary:token_used` finding — turning a read of a fake file into live
+  proof of compromise, attributable to the exact sensor that minted it. The
+  `shell-loot-accessed` anomaly and the token-served signal now share one matcher
+  (`lootReadLine`) so they can never drift apart. The token is 16 hex chars —
+  unique across a fleet but deliberately *not* secret-shaped, and the loot values
+  remain broken decoys (so they match nothing a credential scanner flags).
+- **Native SIEM / chat sinks.** New channel types `slack`, `teams`,
+  `elasticsearch` (/`opensearch`) and `splunk_hec`, all POSTing over the
+  egress-governed client with secrets from env vars: Slack/Teams send a
+  one-line severity summary to an incoming webhook; Elasticsearch indexes the
+  formatted document (`<url>/<index>/_doc/<event-id>`, idempotent, `ApiKey`
+  auth); Splunk HEC wraps the formatted event in the HEC envelope
+  (`sourcetype: tarpit:event`, `Splunk <token>` auth). They honor the existing
+  `format:` (json/cef/leef/ocsf — those formatters already shipped). Config +
+  `Dests` egress + validation wired; added `channel.index`. Documented in
+  `docs/INTEGRATIONS.md`.
+- **CISA KEV feed wired into the live sensor (`kev:` config block).** The
+  `internal/kevsync` overlay is now driven by the sensor, not just the `kev-gap`
+  CLI: with `kev.enabled`, the sensor pulls the KEV catalog on an interval
+  (default 6h) through the egress-governed client and **stamps every `cve:<id>`
+  event whose id is KEV-listed** with `kev=true`, `kev_date_added` and
+  `kev_known_ransomware`, lifting its severity to at least High. The puller runs
+  under a cancelable context and is **reload-aware** — a SIGHUP reload restarts
+  it against the new `url`/`poll`/`enabled` (the `Store` is retained so the last
+  snapshot survives), an auto-updating freshness source. The overlay is read
+  lock-free on the hot event path. The feed host (`www.cisa.gov`) must be in
+  `egress.allow` under `egress.enforce`; see `docs/threat-intel-exports.md` §10.
+- **14 KEV actively-exploited edge CVEs** added to the catalog from the gap-scan
+  (Ivanti/PAN-OS/Citrix/Cisco/Fortinet/SonicWall), closing the current gap.
+- **TLS-fronted variants of the new handlers**: `ollamas`, `llm_openais`,
+  `mcps`, `jupyters`, `minios`, `clickhouses`, `consuls` (joining
+  `danfoss_aksms`) — the AI/LLM, MCP and cloud-native decoys behind a real TLS
+  handshake (JA3/JA4/JA3S captured) via the existing `tls_intercept` wrap, for
+  the common case where these control planes are served over HTTPS.
 - **Fast-path L3/L4 DoS-resistance gate (`internal/fastpath`), with an
   eBPF/XDP design + scaffold.** A per-source token-bucket admission shaper
   consulted at `Accept()` — before a connection can spend a handler goroutine,

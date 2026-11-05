@@ -136,7 +136,8 @@ func TestTLSHandlerNamesRegistered(t *testing.T) {
 		names[n] = true
 	}
 	deps := Deps{DataDir: t.TempDir()}
-	for _, n := range []string{"smtps", "imaps", "pop3s", "ldaps", "mqtts", "ftps"} {
+	for _, n := range []string{"smtps", "imaps", "pop3s", "ldaps", "mqtts", "ftps",
+		"ollamas", "llm_openais", "mcps", "jupyters", "minios", "clickhouses", "consuls", "danfoss_aksms"} {
 		if !names[n] {
 			t.Errorf("config does not accept tcp handler %q", n)
 		}

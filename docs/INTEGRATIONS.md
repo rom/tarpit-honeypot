@@ -68,9 +68,38 @@ channels:
 
 The OCSF formatter emits Network Activity records (`class_uid=4001`) with the metadata.product struct identifying the sensor. AWS Security Lake's S3 ingest expects newline-delimited JSON; pair this webhook with a stream processor (Lambda / Kinesis Firehose) that batches and writes to S3.
 
+### Native SIEM / chat sinks (Slack · Teams · Elasticsearch · Splunk HEC)
+
+First-class sink types that POST over the egress-governed client (the host must
+be in `egress.allow` when `egress.enforce` is on). Secrets come from env vars.
+
+```yaml
+channels:
+  - id: slack
+    type: slack            # or teams
+    url_env: SLACK_WEBHOOK_URL     # the incoming-webhook URL
+  - id: es
+    type: elasticsearch    # or opensearch
+    url: https://es.internal:9200
+    index: tarpit-events           # default tarpit-events; one _doc per event (id = event id)
+    auth_token_env: ES_API_KEY     # sent as "Authorization: ApiKey <token>"
+    format: ocsf                   # json (default) | cef | leef | ocsf
+  - id: splunk
+    type: splunk_hec
+    url: https://splunk.internal:8088/services/collector/event
+    auth_token_env: SPLUNK_HEC_TOKEN
+    format: json
+```
+
+Slack/Teams post a one-line severity summary; Elasticsearch indexes the
+formatted document (id = event id, so re-delivery is idempotent); Splunk HEC
+wraps the formatted event in the HEC envelope (`sourcetype: tarpit:event`).
+
 ### Elastic / OpenSearch (JSON via webhook)
 
-Elastic's ingest API or Logstash HTTP input both accept the default JSON. Use a Logstash filter to map `meta.geo_country` etc. into ECS fields:
+(Prefer the native `elasticsearch` sink above.) Elastic's ingest API or
+Logstash HTTP input both accept the default JSON. Use a Logstash filter to map
+`meta.geo_country` etc. into ECS fields:
 
 ```ruby
 # logstash.conf snippet
@@ -336,6 +365,15 @@ Pair these with a printer archetype (`hp-printer`, `brother-printer`, `xerox-ver
 | `bacnet` | 47808 (UDP) | Who-Is → I-Am |
 | `fins` | 9600 (UDP) | Omron CPU-data-read response |
 | `melsec` | 1025 (TCP) | Mitsubishi 3E frame CPU read |
+
+**Healthcare / medical devices:**
+
+| Handler | Default port | What |
+|---|---|---|
+| `hl7` | 2575 | HL7 v2 over MLLP: parses the MSH header, answers `MSA\|AA` ACK; flags `hl7-patient-query` (PHI access), `hl7-master-file-update`, `hl7-order-message`, `hl7-injection`, `hl7-oversized` |
+| `hl7s` | — | HL7 over TLS (MLLP wrapped in TLS) |
+| `dicom` | 104 / 11112 | DICOM Upper Layer: parses A-ASSOCIATE-RQ (AE titles), accepts with A-ASSOCIATE-AC, captures the DIMSE op; flags `dicom-ae-scan`, `dicom-cfind`, `dicom-cget`, `dicom-cmove`, `dicom-cstore`, `dicom-cecho` |
+| `dicoms` | 2762 | DICOM-TLS (secure DICOM Upper Layer) |
 
 **Network services / discovery / poisoning:**
 

@@ -1,0 +1,27 @@
+# Prometheus scrape config for a tarpit-honeypot sensor.
+#
+# The sensor exposes /metrics (Prometheus text-format v0.0.4) from the web UI
+# when `ui.enabled: true`. Auth model matches the rest of the UI: a bearer
+# token when `ui.auth_token_env` is set, loopback-only otherwise. Scrape over
+# the same TLS/bearer settings you serve the UI with.
+#
+# Drop this under scrape_configs: in your prometheus.yml.
+
+scrape_configs:
+  - job_name: tarpit-honeypot
+    scrape_interval: 30s
+    metrics_path: /metrics
+    # Remove authorization/scheme if the UI is loopback-only and unauthenticated.
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/secrets/tarpit-ui-token
+    static_configs:
+      - targets: ['sensor.example.internal:8088']
+        labels:
+          deployment: edge-dmz-01
+    # Honeypots are often reached over a self-signed UI cert; pin or relax as
+    # appropriate for your environment.
+    tls_config:
+      insecure_skip_verify: false
+      # ca_file: /etc/secrets/tarpit-ui-ca.pem

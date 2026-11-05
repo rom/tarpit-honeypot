@@ -148,6 +148,18 @@ func (i *Identity) Derive(label string) *Identity {
 	return &Identity{seed: i.seed + "/" + label, hash: mix, domain: i.domain}
 }
 
+// CanaryToken returns a short, deployment-unique, opaque token that is woven
+// into the planted shell loot credentials (via shell.SetLootToken). Deriving it
+// from the deployment seed makes every sensor's loot unique and attributable,
+// yet it is not a real secret and grants nothing — 16 hex chars is enough to be
+// unique across a fleet without resembling a production key. When an attacker
+// reads a loot file the token is recorded as served; a later replay of the
+// captured secret against any login-bearing service fires canary:token_used.
+func (i *Identity) CanaryToken() string {
+	mix := sha256.Sum256(append([]byte("loot-canary"), i.hash[:]...))
+	return hex.EncodeToString(mix[:8])
+}
+
 // deterministicRand returns a *math/rand.Rand seeded with sha256(seed||label),
 // so two calls with the same label produce the same numbers but different
 // deployments diverge from byte 1.

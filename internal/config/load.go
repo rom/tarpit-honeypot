@@ -80,6 +80,12 @@ var tcpHandlers = map[string]bool{
 	// Refrigeration / BMS web controllers + EV-charging OCPP.
 	"dixell": true, "carel": true, "trane": true, "resideo": true,
 	"ocpp": true,
+	// Healthcare / medical-device protocols: HL7 v2 over MLLP (2575) and DICOM
+	// (PACS imaging, 104/11112), plus their TLS variants.
+	"hl7": true, "dicom": true, "hl7s": true, "dicoms": true,
+	// TLS-fronted variants of the AI/LLM/MCP + cloud-native decoys.
+	"ollamas": true, "llm_openais": true, "mcps": true,
+	"jupyters": true, "minios": true, "clickhouses": true, "consuls": true,
 	"echo": true, "discard": true, "daytime": true,
 	"qotd": true, "chargen": true, "time": true,
 	"lua": true, "scripted": true, "auto": true,
@@ -1414,6 +1420,21 @@ func (c *Config) Validate() error {
 			}
 			if ch.QoS < 0 || ch.QoS > 2 {
 				return fmt.Errorf("channel %s: mqtt qos must be 0|1|2", ch.ID)
+			}
+		case "slack", "teams":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: %s needs url (or url_env) — the incoming-webhook URL", ch.ID, ch.Type)
+			}
+		case "elasticsearch", "opensearch":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: %s needs url (or url_env) — the cluster base URL", ch.ID, ch.Type)
+			}
+		case "splunk_hec":
+			if ch.URL == "" && ch.URLEnv == "" {
+				return fmt.Errorf("channel %s: splunk_hec needs url (or url_env) — the HEC endpoint", ch.ID)
+			}
+			if ch.AuthTokenEnv == "" {
+				return fmt.Errorf("channel %s: splunk_hec needs auth_token_env (the HEC token)", ch.ID)
 			}
 		default:
 			return fmt.Errorf("channel %s: unknown type %q", ch.ID, ch.Type)

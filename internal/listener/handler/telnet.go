@@ -165,6 +165,11 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		if len(captured.HarvestedURLs) > 0 {
 			res.Meta["harvested_urls"] = captured.HarvestedURLs
 		}
+		if len(captured.ServedLootTokens) > 0 {
+			// Per-deployment canary woven into loot the attacker read; the sensor
+			// records it so a later replay fires canary:token_used.
+			res.Meta["loot_token"] = captured.ServedLootTokens[0]
+		}
 		for _, a := range captured.Anomalies {
 			flagAnomaly(&res, a)
 		}

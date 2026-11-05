@@ -2473,6 +2473,55 @@ var catalog = []Record{
 		Signatures: []string{"/minio/bootstrap/v1/verify"},
 		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-200"},
 		Description: "In cluster-deploy mode MinIO returns all environment variables — including MINIO_SECRET_KEY and MINIO_ROOT_PASSWORD — to an unauthenticated POST /minio/bootstrap/v1/verify, disclosing the admin credentials."},
+
+	// ---- 2025 H2 – 2026 actively-exploited edge/VPN/firewall CVEs (CISA KEV).
+	// Added from the kev-gap cross-reference; advisory/version-fingerprint only
+	// (2026 records carry no request signature by design — see the year test),
+	// so they drive unpatched-appliance emulation and are promoted to a live
+	// cve:<id> event by the shared appliance-persona HTTP CVE corpus where a
+	// signature exists on the plaintext path. ----
+	{ID: "CVE-2026-104935", Name: "Ivanti Connect Secure auth bypass → command execution", CVSS: 9.8, Service: "pulse",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287", "CWE-77"},
+		Description: "Ivanti Connect Secure authentication bypass that lets a remote, unauthenticated attacker run arbitrary commands on the appliance (2026 ICS chain, CISA KEV, actively exploited)."},
+	{ID: "CVE-2026-0257", Name: "Palo Alto PAN-OS GlobalProtect auth bypass", CVSS: 9.1, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Authentication bypass in the PAN-OS GlobalProtect portal/gateway (CISA KEV, actively exploited in 2026)."},
+	{ID: "CVE-2026-0322", Name: "Palo Alto PAN-OS management code injection", CVSS: 8.8, Service: "http",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-94"},
+		Description: "Code injection in the PAN-OS management interface (limited exploitation reported in 2026)."},
+	{ID: "CVE-2026-19490", Name: "Citrix NetScaler Gateway auth bypass", CVSS: 9.3, Service: "citrix_gateway",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Authentication bypass in Citrix NetScaler Gateway / ADC (CISA KEV, actively exploited in 2026)."},
+	{ID: "CVE-2026-88771", Name: "Citrix NetScaler memory disclosure", CVSS: 8.6, Service: "citrix_gateway",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-200"},
+		Description: "Citrix NetScaler flaw disclosed after in-the-wild attacks were already underway (2026)."},
+	{ID: "CVE-2026-88772", Name: "Citrix NetScaler flaw (exploited)", CVSS: 8.6, Service: "citrix_gateway",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"},
+		Description: "Citrix NetScaler flaw disclosed after in-the-wild attacks were already underway (2026)."},
+	{ID: "CVE-2026-76418", Name: "Cisco Secure Firewall ASA/FTD SSL-VPN DoS", CVSS: 8.6, Service: "cisco",
+		Technique: "T1190", Tactic: "impact", CWE: []string{"CWE-400"},
+		Description: "An unauthenticated remote attacker triggers an unexpected reload of Cisco Secure Firewall ASA/FTD via the SSL VPN, causing a denial of service (CISA KEV, actively exploited in 2026)."},
+	{ID: "CVE-2026-20349", Name: "Cisco Secure Firewall ASA/FTD heap vulnerability", CVSS: 8.6, Service: "cisco",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"},
+		Description: "Heap-handling vulnerability in Cisco Secure Firewall ASA/FTD (CISA KEV, 2026)."},
+	{ID: "CVE-2026-20079", Name: "Cisco Firewall Management Center flaw", CVSS: 8.6, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		Description: "Cisco Secure Firewall Management Center vulnerability added to CISA KEV alongside the Citrix/Fortinet edge flaws (2026)."},
+	{ID: "CVE-2026-76519", Name: "Cisco Secure Email Gateway flaw", CVSS: 8.6, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"},
+		Description: "Cisco Secure Email Gateway vulnerability added to CISA KEV in October 2026."},
+	{ID: "CVE-2025-25249", Name: "Fortinet heap-based buffer overflow", CVSS: 8.1, Service: "fortinet",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787", "CWE-122"},
+		Description: "Heap-based buffer overflow affecting multiple Fortinet products (added to CISA KEV in 2026)."},
+	{ID: "CVE-2026-39808", Name: "Fortinet FortiSandbox OS command injection", CVSS: 9.8, Service: "fortinet",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"},
+		Description: "OS command injection in Fortinet FortiSandbox allowing remote code execution (2026, high exploitation activity)."},
+	{ID: "CVE-2026-15410", Name: "SonicWall SMA1000 management code injection", CVSS: 7.2, Service: "http",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-94"},
+		Description: "Code injection in the SonicWall SMA1000 management console (added to CISA KEV in 2026)."},
+	{ID: "CVE-2026-15409", Name: "SonicWall SMA1000 SSRF", CVSS: 7.2, Service: "http",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-918"},
+		Description: "Server-side request forgery in the SonicWall SMA1000 management console (added to CISA KEV in 2026)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
@@ -2747,6 +2796,21 @@ var cveExtra = map[string]struct {
 	"CVE-2023-25912": {[]string{"CWE-306"}, "cpe:2.3:a:danfoss:ak-em_100:*", 0.02},
 	"CVE-2026-15203": {[]string{"CWE-284", "CWE-1242"}, "cpe:2.3:o:danfoss:ic7_firmware:*", 0.05},
 	"CVE-2023-28432": {[]string{"CWE-200"}, "cpe:2.3:a:minio:minio:*", 0.94},
+	// 2025 H2 – 2026 KEV edge/VPN/firewall additions (kev-gap).
+	"CVE-2026-104935": {[]string{"CWE-287", "CWE-77"}, "cpe:2.3:a:ivanti:connect_secure:*", 0.95},
+	"CVE-2026-0257":   {[]string{"CWE-287"}, "cpe:2.3:o:paloaltonetworks:pan-os:*", 0.90},
+	"CVE-2026-0322":   {[]string{"CWE-94"}, "cpe:2.3:o:paloaltonetworks:pan-os:*", 0.50},
+	"CVE-2026-19490":  {[]string{"CWE-287"}, "cpe:2.3:a:citrix:netscaler_gateway:*", 0.94},
+	"CVE-2026-88771":  {[]string{"CWE-200"}, "cpe:2.3:a:citrix:netscaler_application_delivery_controller:*", 0.80},
+	"CVE-2026-88772":  {[]string{"CWE-787"}, "cpe:2.3:a:citrix:netscaler_application_delivery_controller:*", 0.80},
+	"CVE-2026-76418":  {[]string{"CWE-400"}, "cpe:2.3:o:cisco:adaptive_security_appliance:*", 0.85},
+	"CVE-2026-20349":  {[]string{"CWE-787"}, "cpe:2.3:o:cisco:adaptive_security_appliance:*", 0.70},
+	"CVE-2026-20079":  {[]string{"CWE-287"}, "cpe:2.3:a:cisco:firewall_management_center:*", 0.60},
+	"CVE-2026-76519":  {[]string{"CWE-94"}, "cpe:2.3:a:cisco:secure_email_gateway:*", 0.60},
+	"CVE-2025-25249":  {[]string{"CWE-787", "CWE-122"}, "cpe:2.3:o:fortinet:fortios:*", 0.80},
+	"CVE-2026-39808":  {[]string{"CWE-78"}, "cpe:2.3:a:fortinet:fortisandbox:*", 0.90},
+	"CVE-2026-15410":  {[]string{"CWE-94"}, "cpe:2.3:o:sonicwall:sma1000_firmware:*", 0.70},
+	"CVE-2026-15409":  {[]string{"CWE-918"}, "cpe:2.3:o:sonicwall:sma1000_firmware:*", 0.60},
 }
 
 func init() {

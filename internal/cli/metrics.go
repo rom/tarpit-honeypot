@@ -30,6 +30,17 @@ var sensorStarted = time.Now()
 //	  honeynets.
 //	tarpit_store_db_bytes                      - on-disk size of the
 //	  SQLite events.db (0 if no store configured).
+//	tarpit_events_total                        - lifetime dispatched events.
+//	tarpit_events_by_severity_total{severity}  - lifetime events by severity.
+//	tarpit_events_by_kind_total{kind}          - lifetime events by rule-id
+//	  prefix (listener/cve/canary/correlate/…).
+//	tarpit_detect_rule_hits_total{rule,severity} - operator detection-rule hits.
+//	tarpit_listeners_active                    - currently-bound listeners.
+//	tarpit_honey_tokens_tracked                - synthetic creds the reuse
+//	  tracker is holding.
+//	tarpit_kev_catalog_entries                 - CISA-KEV entries in the live
+//	  overlay (plus tarpit_kev_last_update_timestamp_seconds); absent when the
+//	  feed is disabled.
 func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 	return func() ui.Metrics {
 		out := ui.Metrics{}
@@ -59,6 +70,77 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 					Value:  float64(st.Retried),
 				},
 			)
+		}
+		// Lifetime event counters: grand total + per-severity + per-rule-kind.
+		// These are the primary Grafana detection panels (event rate, severity
+		// mix, what kinds of findings fire).
+		total, bySev, byKind := s.EventCounts()
+		out.Samples = append(out.Samples, ui.Sample{
+			Name:  "tarpit_events_total",
+			Help:  "Total events dispatched since start",
+			Type:  "counter",
+			Value: float64(total),
+		})
+		for sev, n := range bySev {
+			out.Samples = append(out.Samples, ui.Sample{
+				Name:   "tarpit_events_by_severity_total",
+				Help:   "Events dispatched since start, partitioned by severity",
+				Type:   "counter",
+				Labels: map[string]string{"severity": sev},
+				Value:  float64(n),
+			})
+		}
+		for kind, n := range byKind {
+			out.Samples = append(out.Samples, ui.Sample{
+				Name:   "tarpit_events_by_kind_total",
+				Help:   "Events dispatched since start, partitioned by rule-id kind (listener/cve/canary/correlate/…)",
+				Type:   "counter",
+				Labels: map[string]string{"kind": kind},
+				Value:  float64(n),
+			})
+		}
+		// Operator detection-rule hit counts (one series per loaded rule).
+		for _, rs := range s.DetectRuleStats() {
+			out.Samples = append(out.Samples, ui.Sample{
+				Name:   "tarpit_detect_rule_hits_total",
+				Help:   "Operator detection-rule matches since start",
+				Type:   "counter",
+				Labels: map[string]string{"rule": rs.ID, "severity": rs.Severity},
+				Value:  float64(rs.Hits),
+			})
+		}
+		// Live listener + honey-credential + KEV gauges.
+		out.Samples = append(out.Samples,
+			ui.Sample{
+				Name:  "tarpit_listeners_active",
+				Help:  "Number of currently-bound listeners",
+				Type:  "gauge",
+				Value: float64(s.ListenerCount()),
+			},
+			ui.Sample{
+				Name:  "tarpit_honey_tokens_tracked",
+				Help:  "Distinct synthetic credentials the reuse tracker is remembering",
+				Type:  "gauge",
+				Value: float64(s.HoneyTokensTracked()),
+			},
+		)
+		if active, entries, updated := s.KEVStats(); active {
+			out.Samples = append(out.Samples,
+				ui.Sample{
+					Name:  "tarpit_kev_catalog_entries",
+					Help:  "CISA KEV catalog entries loaded in the live overlay",
+					Type:  "gauge",
+					Value: float64(entries),
+				},
+			)
+			if !updated.IsZero() {
+				out.Samples = append(out.Samples, ui.Sample{
+					Name:  "tarpit_kev_last_update_timestamp_seconds",
+					Help:  "Unix time of the last successful KEV catalog refresh",
+					Type:  "gauge",
+					Value: float64(updated.Unix()),
+				})
+			}
 		}
 		// Honeynet topology counts.
 		if topo := s.Honeynet(); topo != nil {

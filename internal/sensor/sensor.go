@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -38,6 +39,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/intel"
 	"github.com/rom/tarpit-honeypot/internal/ioc"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
+	"github.com/rom/tarpit-honeypot/internal/kevsync"
 	"github.com/rom/tarpit-honeypot/internal/listener"
 	"github.com/rom/tarpit-honeypot/internal/listener/handler"
 	"github.com/rom/tarpit-honeypot/internal/misp"
@@ -50,6 +52,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
+	"github.com/rom/tarpit-honeypot/internal/shell"
 	"github.com/rom/tarpit-honeypot/internal/sink"
 	"github.com/rom/tarpit-honeypot/internal/sniffer"
 	"github.com/rom/tarpit-honeypot/internal/store"
@@ -70,23 +73,29 @@ type listenerHandle struct {
 }
 
 type Sensor struct {
-	cfg         *config.Config
-	name        string
-	sinks       []sink.Sink
-	router      *router.Router
-	correlator  *correlate.Correlator
-	store       store.EventStore
-	captureMgr  *capture.Manager
-	identity    *identity.Identity
-	jitter      *jitter.Jitterer
-	archetype   *archetype.Profile
-	honeynet    *honeynet.Topology
-	enrich      *enrich.Enricher
-	detectEng   *detect.Engine // operator detection-rule engine (guarded by stateMu)
-	devices     *devices.Registry
-	scanTrack   *scananalysis.Tracker
-	fuzzTrack   *fuzzdos.Tracker
-	baseline    *baseline.Detector  // statistical baselines + multi-stage kill-chain (always on)
+	cfg        *config.Config
+	name       string
+	sinks      []sink.Sink
+	router     *router.Router
+	correlator *correlate.Correlator
+	store      store.EventStore
+	captureMgr *capture.Manager
+	identity   *identity.Identity
+	jitter     *jitter.Jitterer
+	archetype  *archetype.Profile
+	honeynet   *honeynet.Topology
+	enrich     *enrich.Enricher
+	detectEng  *detect.Engine // operator detection-rule engine (guarded by stateMu)
+	devices    *devices.Registry
+	scanTrack  *scananalysis.Tracker
+	fuzzTrack  *fuzzdos.Tracker
+	baseline   *baseline.Detector // statistical baselines + multi-stage kill-chain (always on)
+	// kevStore holds the live CISA KEV overlay (nil when the feed is disabled);
+	// read lock-free on the hot event path. kevCancel stops the puller so a
+	// config reload can restart it (re-parented on s.rootCtx).
+	kevStore    atomic.Pointer[kevsync.Store]
+	kevMu       sync.Mutex
+	kevCancel   context.CancelFunc
 	sniffer     sniffer.Sniffer     // set in Run when the AF_PACKET sniffer starts (guarded by stateMu)
 	tokenTrack  *tokentrack.Tracker // honey-credential reuse detector (always on)
 	payloads    *payload.Store
@@ -122,6 +131,67 @@ type Sensor struct {
 
 	listenersMu sync.Mutex
 	listeners   map[string]*listenerHandle
+
+	// metrics holds lifetime event counters (by severity + rule kind) for the
+	// Prometheus endpoint. Written only from the single bus-loop goroutine via
+	// dispatch; read concurrently by the /metrics handler (hence the lock).
+	metrics *sensorMetrics
+}
+
+// sensorMetrics accumulates lifetime event counts for the Prometheus endpoint.
+type sensorMetrics struct {
+	mu         sync.Mutex
+	total      uint64
+	bySeverity map[string]uint64
+	byKind     map[string]uint64 // rule-id prefix: listener / cve / canary / correlate / …
+}
+
+func newSensorMetrics() *sensorMetrics {
+	return &sensorMetrics{bySeverity: map[string]uint64{}, byKind: map[string]uint64{}}
+}
+
+// record counts one dispatched event. ruleKind is the low-cardinality prefix of
+// the rule id (everything before the first ':'), which keeps the metric series
+// bounded even though rule ids themselves are not.
+func (m *sensorMetrics) record(ev *event.Event) {
+	if m == nil || ev == nil {
+		return
+	}
+	m.mu.Lock()
+	m.total++
+	m.bySeverity[ev.Severity.String()]++
+	m.byKind[ruleKind(ev.RuleID)]++
+	m.mu.Unlock()
+}
+
+// snapshot returns copies of the counters safe to read off the bus goroutine.
+func (m *sensorMetrics) snapshot() (total uint64, bySeverity, byKind map[string]uint64) {
+	if m == nil {
+		return 0, nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bySeverity = make(map[string]uint64, len(m.bySeverity))
+	for k, v := range m.bySeverity {
+		bySeverity[k] = v
+	}
+	byKind = make(map[string]uint64, len(m.byKind))
+	for k, v := range m.byKind {
+		byKind[k] = v
+	}
+	return m.total, bySeverity, byKind
+}
+
+// ruleKind returns the prefix of a rule id before the first ':' (e.g.
+// "cve:CVE-2021-44228" → "cve"), or "other" when there is no prefix.
+func ruleKind(ruleID string) string {
+	if i := strings.IndexByte(ruleID, ':'); i > 0 {
+		return ruleID[:i]
+	}
+	if ruleID == "" {
+		return "other"
+	}
+	return ruleID
 }
 
 // curRouter / curCorrelator / curConfig / curSinks return the current
@@ -615,7 +685,13 @@ func New(cfg *config.Config) (*Sensor, error) {
 		trust:         trustScorer,
 		iocEmit:       iocEmit,
 		listeners:     map[string]*listenerHandle{},
+		metrics:       newSensorMetrics(),
 	}
+	// Weave this deployment's canary into the planted shell loot so every
+	// sensor's fake credentials are unique and attributable; a read of a loot
+	// file then records the token as served (servedTokenKeys includes
+	// "loot_token") and a later replay fires canary:token_used.
+	shell.SetLootToken(id.CanaryToken())
 	// A refused outbound connection is a high-severity finding: it means a
 	// handler (or a tampered config) tried to make the sensor connect somewhere
 	// off the allowlist — an SSRF / relay / exfil attempt.
@@ -734,6 +810,7 @@ func (s *Sensor) dispatch(rt *router.Router, ev *event.Event) {
 	if ev.SensorID == "" {
 		ev.SensorID = s.identity.Seed()
 	}
+	s.metrics.record(ev)
 	rt.Dispatch(ev)
 	if s.forward != nil {
 		s.forward.Send(ev)
@@ -811,6 +888,63 @@ func (s *Sensor) Blocker() *blocklist.Blocker { return s.blocker }
 
 // Risk returns the per-source risk scorer (nil when disabled).
 func (s *Sensor) Risk() *risk.Scorer { return s.risk }
+
+// startKEVSync (re)starts the CISA KEV sync for the given config, parented to
+// parent so it stops on shutdown. It is idempotent and reload-safe: any
+// running puller is cancelled first, the Store is retained across restarts so
+// the last snapshot survives a reload, and a disabled config just clears the
+// overlay. The egress-governed client means the feed host must be allowlisted.
+func (s *Sensor) startKEVSync(parent context.Context, cfg config.KEV) {
+	s.kevMu.Lock()
+	defer s.kevMu.Unlock()
+	if s.kevCancel != nil {
+		s.kevCancel()
+		s.kevCancel = nil
+	}
+	if !cfg.Enabled || parent == nil {
+		s.kevStore.Store(nil)
+		return
+	}
+	store := s.kevStore.Load()
+	if store == nil {
+		store = kevsync.NewStore()
+		s.kevStore.Store(store)
+	}
+	ctx, cancel := context.WithCancel(parent)
+	s.kevCancel = cancel
+	p := kevsync.NewPuller(cfg.URL, cfg.Header, cfg.Poll, egress.HTTPClient(20*time.Second), store)
+	p.SetErrorHandler(func(err error) { slog.Warn("kev sync: refresh failed", "err", err) })
+	go p.Run(ctx)
+	slog.Info("CISA KEV sync enabled", "poll", cfg.Poll)
+}
+
+// stampKEV marks a cve:<id> event whose CVE is on the CISA KEV catalog as
+// actively-exploited: kev=true (+ date added, ransomware flag) and severity
+// lifted to at least High. No-op when the feed is disabled. Called on the hot
+// event path, so the Store lookup is lock-free (atomic pointer).
+func (s *Sensor) stampKEV(ev *event.Event) {
+	st := s.kevStore.Load()
+	if st == nil || ev == nil || !strings.HasPrefix(ev.RuleID, "cve:") {
+		return
+	}
+	e, ok := st.Lookup(ev.RuleID[len("cve:"):])
+	if !ok {
+		return
+	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	ev.Meta["kev"] = true
+	if e.DateAdded != "" {
+		ev.Meta["kev_date_added"] = e.DateAdded
+	}
+	if e.KnownRansomware {
+		ev.Meta["kev_known_ransomware"] = true
+	}
+	if ev.Severity < event.SeverityHigh {
+		ev.Severity = event.SeverityHigh
+	}
+}
 
 // scoreRisk folds a dispatched event into the per-source risk scorer and,
 // when the source escalates into a higher level, dispatches a risk:<level>
@@ -1316,7 +1450,7 @@ func (s *Sensor) fetchHarvestedURLs(urls []string) []payload.Artifact {
 
 // servedTokenKeys are event-meta keys whose value is a synthetic credential
 // the sensor HANDED OUT (so it should be remembered as a trackable token).
-var servedTokenKeys = []string{"honeytoken", "bearer_token", "vault_token"}
+var servedTokenKeys = []string{"honeytoken", "bearer_token", "vault_token", "loot_token"}
 
 // capturedCredKeys are event-meta keys whose value is a credential the attacker
 // SUPPLIED (so it should be checked against previously-served tokens).
@@ -1733,6 +1867,39 @@ func (s *Sensor) DiskUsedPercent() (int, bool) {
 	return diskUsedPercent(s.curConfig().Sensor.DataDir)
 }
 
+// EventCounts snapshots lifetime dispatched-event counters for /metrics: the
+// grand total plus per-severity and per-rule-kind breakdowns.
+func (s *Sensor) EventCounts() (total uint64, bySeverity, byKind map[string]uint64) {
+	return s.metrics.snapshot()
+}
+
+// ListenerCount returns the number of currently-bound listeners.
+func (s *Sensor) ListenerCount() int {
+	s.listenersMu.Lock()
+	defer s.listenersMu.Unlock()
+	return len(s.listeners)
+}
+
+// HoneyTokensTracked returns how many distinct synthetic credentials the
+// honey-credential reuse tracker is currently remembering.
+func (s *Sensor) HoneyTokensTracked() int {
+	if s.tokenTrack == nil {
+		return 0
+	}
+	return s.tokenTrack.Len()
+}
+
+// KEVStats reports the live CISA-KEV overlay state for /metrics: whether the
+// feed is active, how many catalog entries are loaded, and when it last
+// refreshed (zero time when never).
+func (s *Sensor) KEVStats() (active bool, entries int, updated time.Time) {
+	st := s.kevStore.Load()
+	if st == nil {
+		return false, 0, time.Time{}
+	}
+	return true, st.Count(), st.UpdatedAt()
+}
+
 // effIface returns sectionIface if set, else the sensor's first configured
 // interface, else "" — the AF_PACKET default-interface fallback.
 func (s *Sensor) effIface(sectionIface string) string {
@@ -2043,6 +2210,12 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 		_ = sk.Close()
 	}
 
+	// Restart the CISA KEV sync against the reloaded config (idempotent; the
+	// Store is retained so the last snapshot survives the reload). This makes
+	// the feed an auto-updating source that picks up url/poll/enabled changes
+	// on SIGHUP without a restart.
+	s.startKEVSync(s.rootCtx, newCfg.KEV)
+
 	// Emit a synthetic reload event so the operator's downstream pipeline
 	// can correlate config changes with detection-signal changes.
 	s.emitReloadEvent(diff)
@@ -2177,6 +2350,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go func() { defer wg.Done(); s.mispPusher.Run(ctx) }()
 	}
 
+	// CISA KEV sync: refresh the known-exploited overlay on an interval
+	// (manages its own goroutine so a config reload can restart it, re-parented
+	// on s.rootCtx which is set just above).
+	s.startKEVSync(ctx, s.curConfig().KEV)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2223,6 +2401,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 					ev.SensorID = s.identity.Seed()
 				}
 				en.Decorate(ev)
+				// Stamp CISA KEV status on cve:<id> events (actively-exploited
+				// → kev=true + severity lift). No-op when the feed is disabled.
+				s.stampKEV(ev)
 				// ATT&CK-tag the event before correlation so the
 				// storyline correlator can build its tactic chain from
 				// the same techniques every downstream sees. D3FEND

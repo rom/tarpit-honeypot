@@ -1068,6 +1068,28 @@ var anomalyTags = map[string]Tag{
 	"wdbrpc-mem-access":      {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
 	"wdbrpc-rce":             {Techniques: []string{"T0866", "T0843"}, Tactics: []string{"lateral-movement"}},
 	"wdbrpc-urgent11":        {Techniques: []string{"T0866"}, Tactics: []string{"lateral-movement"}},
+	// Healthcare / medical-device protocols (medical.go): HL7 v2 over MLLP and
+	// DICOM (PACS imaging). Enterprise ATT&CK — these ride IP networks, not the
+	// plant floor. Queries/retrievals are PHI collection/exfil; master-file and
+	// C-STORE pushes are data manipulation; injection is exploit of a public-
+	// facing interface engine.
+	"hl7-probe":              {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"hl7-malformed":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"hl7-oversized":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"hl7-patient-query":      {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"hl7-order-message":      {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	"hl7-master-file-update": {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
+	"hl7-injection":          {Techniques: []string{"T1190"}, Tactics: []string{"initial-access"}},
+	"dicom-probe":            {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-associate":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-ae-scan":          {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-nonstandard-pdu":  {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-malformed":        {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-cecho":            {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	"dicom-cfind":            {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"dicom-cget":             {Techniques: []string{"T1213"}, Tactics: []string{"collection"}},
+	"dicom-cmove":            {Techniques: []string{"T1048"}, Tactics: []string{"exfiltration"}},
+	"dicom-cstore":           {Techniques: []string{"T1565"}, Tactics: []string{"impact"}},
 	// Round-five remote-access / OOB-management decoys (remoteoob.go).
 	"rexec-attempt":    {Techniques: []string{"T1021"}, Tactics: []string{"lateral-movement"}},
 	"rexec-command":    {Techniques: []string{"T1059", "T1021"}, Tactics: []string{"execution", "lateral-movement"}},
