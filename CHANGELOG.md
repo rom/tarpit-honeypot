@@ -23,6 +23,14 @@ documented in `docs/`).
 
 ### Changed
 
+- **The fuzzing/DoS classifier no longer scans every payload for entropy up
+  front.** `fuzzdos.ClassifyPayload` eagerly computed Shannon entropy and the
+  printable ratio — a full pass over the payload each — on every event, though
+  both are only consulted on the text-protocol branches and only surfaced (as
+  `payload_entropy` meta) for a payload that actually is fuzzing. They are now
+  computed lazily, so the common benign fall-through and every binary-protocol
+  payload skip those passes. Output is unchanged: a fuzzing verdict still carries
+  its real entropy (a focused test locks this).
 - **Listeners now default to a bounded `max_concurrent` instead of unlimited.**
   A TCP listener's accept semaphore was created only when `max_concurrent` was
   explicitly set, so the shipped default (unset → `0` → "unlimited") let a

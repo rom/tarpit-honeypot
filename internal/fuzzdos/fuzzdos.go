@@ -82,13 +82,26 @@ func ClassifyPayload(payload []byte, handler string) Verdict {
 	if len(payload) == 0 {
 		return v
 	}
-	v.Entropy = shannon(payload)
-	v.Printable = printableRatio(payload)
+	// Entropy and the printable ratio are each a full pass over the payload, but
+	// they're only consulted on the text-protocol branches below and only
+	// surfaced (entropy, in the caller's meta) for a payload that IS fuzzing. So
+	// compute them lazily: the common benign fall-through and every
+	// binary-protocol payload that isn't an early-return technique skip both
+	// passes entirely. entropy() memoizes into v.Entropy so each fuzzing return
+	// path still carries the real value the caller reports.
+	entropyDone := false
+	entropy := func() float64 {
+		if !entropyDone {
+			v.Entropy, entropyDone = shannon(payload), true
+		}
+		return v.Entropy
+	}
 	text := textProtocols[handler]
 
 	// Buffer-overflow filler: a long run of a single non-null byte
 	// ("AAAA…", 0x90 NOP sleds, …). Applies to any protocol.
 	if bv, run := longestRun(payload); run >= bufOverflowRun && bv != 0 {
+		entropy()
 		v.Fuzzing, v.Technique = true, "buffer-overflow"
 		v.Detail = fmt.Sprintf("run=%d byte=0x%02x", run, bv)
 		return v
@@ -96,6 +109,7 @@ func ClassifyPayload(payload []byte, handler string) Verdict {
 	// Null flood: a payload that is mostly NUL bytes.
 	if v.Size >= minClassifySize {
 		if nulls := bytes.Count(payload, []byte{0}); float64(nulls)/float64(v.Size) >= nullFloodRatio {
+			entropy()
 			v.Fuzzing, v.Technique = true, "null-flood"
 			v.Detail = fmt.Sprintf("nulls=%d/%d", nulls, v.Size)
 			return v
@@ -107,6 +121,7 @@ func ClassifyPayload(payload []byte, handler string) Verdict {
 		limit = oversizeText
 	}
 	if v.Size > limit {
+		entropy()
 		v.Fuzzing, v.Technique = true, "oversize"
 		v.Detail = fmt.Sprintf("size=%d>%d", v.Size, limit)
 		return v
@@ -115,14 +130,16 @@ func ClassifyPayload(payload []byte, handler string) Verdict {
 	// protocols are high-entropy / low-printable by nature).
 	if text && v.Size >= minClassifySize {
 		if fmtSpecifierCount(payload) >= fmtSpecifiers {
+			entropy()
 			v.Fuzzing, v.Technique = true, "format-string"
 			return v
 		}
-		if v.Entropy >= highEntropyText {
+		if entropy() >= highEntropyText {
 			v.Fuzzing, v.Technique = true, "high-entropy"
 			v.Detail = fmt.Sprintf("entropy=%.2f", v.Entropy)
 			return v
 		}
+		v.Printable = printableRatio(payload)
 		if v.Printable < binaryGarbage {
 			v.Fuzzing, v.Technique = true, "binary-garbage"
 			v.Detail = fmt.Sprintf("printable=%.2f", v.Printable)
