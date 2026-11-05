@@ -8,6 +8,14 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Go toolchain bumped to 1.26.9** (go.mod `go` directive + `golang:1.26.9-alpine`
+  Docker base) to clear the CI `govulncheck` failure — the standard-library
+  vulnerabilities it flagged are fixed in the patched toolchain. CI's
+  `govulncheck` job installs Go from `go-version-file: go.mod`, so the directive
+  is what determines the stdlib it builds against.
+
 ### Added
 
 - **SSH password auth-bypass / enumeration detection + emulation.** The
