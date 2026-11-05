@@ -23,6 +23,19 @@ documented in `docs/`).
 
 ### Changed
 
+- **Fleet correlation's idle-state sweep and the dedup filter's expiry sweep are
+  now throttled, not run on every event.** Both were O(N)-over-all-tracked-keys
+  scans fired per event once their tables were warm — ruinous at a fleet
+  aggregator's ingest rate (the fleet prune walks ~25 maps) and on any busy
+  sensor (the router dedup swept the whole table on every event once it passed
+  4096 entries). The fleet sweep now runs at most once per a window-derived
+  interval (Window/16, clamped to 1–30 s); the dedup sweep at most once per its
+  window. Neither throttle changes behaviour: an idle fleet actor affects no
+  detector until its key is seen again (and is still evicted within one interval
+  of going idle), and the dedup decision is made by an authoritative per-key
+  window check, so a not-yet-swept expired entry never causes a false dedup. The
+  dedup table's hard cap (65536 keys) is now checked on every call rather than
+  only inside the sweep, so memory stays bounded between throttled sweeps.
 - **Correlator per-detector state tables now have a hard memory cap.** Each of
   the ~50 correlation detectors keeps a per-key table (keyed by source IP, or by
   credential / CVE / fingerprint / canary token for the cross-source ones). Idle
