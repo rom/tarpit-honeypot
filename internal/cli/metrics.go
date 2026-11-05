@@ -200,9 +200,9 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 		out.Samples = append(out.Samples,
 			ui.Sample{
 				Name:   "tarpit_build_info",
-				Help:   "Build info (always 1; labels carry version/commit)",
+				Help:   "Build info (always 1; labels carry version/commit/date)",
 				Type:   "gauge",
-				Labels: map[string]string{"version": version.Version, "commit": version.Commit},
+				Labels: map[string]string{"version": version.Version, "commit": version.Commit, "date": version.BuildDate},
 				Value:  1,
 			},
 			ui.Sample{

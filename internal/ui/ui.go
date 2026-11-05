@@ -37,6 +37,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 	"github.com/rom/tarpit-honeypot/internal/store"
 	"github.com/rom/tarpit-honeypot/internal/toolfp"
+	"github.com/rom/tarpit-honeypot/internal/version"
 )
 
 // StatsProvider lets the UI publish Prometheus-format metrics without
@@ -1754,6 +1755,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Sizes:      sizePickerLinks(currentSize(r), "/config"),
 		Deployment: s.deploymentInfo(),
 		Uptime:     fmtDuration(time.Since(s.startTime)),
+		Version:    version.Version,
+		Commit:     version.Commit,
+		BuildDate:  version.BuildDate,
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -1907,6 +1911,9 @@ type configPage struct {
 	Uptime        string         // sensor running time, e.g. "2d 3h 12m"
 	OldestEvent   string         // RFC3339 timestamp of the earliest event in the DB
 	RetentionSpan string         // how far back that is, e.g. "29d 4h"
+	Version       string         // software version (version.Version)
+	Commit        string         // build commit (version.Commit)
+	BuildDate     string         // release / build date (version.BuildDate)
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,

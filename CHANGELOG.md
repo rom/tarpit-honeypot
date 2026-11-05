@@ -8,6 +8,11 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-05
+
+First tagged release. The sensor now reports its version + release date on the
+`/config` and `/health` pages and via `tarpit_build_info{version,commit,date}`.
+
 ### Changed
 
 - **Web UI: shared, single-flight snapshot cache for the graph/list pages.** The
