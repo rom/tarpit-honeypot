@@ -10,6 +10,53 @@ documented in `docs/`).
 
 ### Changed
 
+- **Go toolchain bumped to 1.26.9** (go.mod `go` directive + `golang:1.26.9-alpine`
+  Docker base) to clear the CI `govulncheck` failure — the standard-library
+  vulnerabilities it flagged are fixed in the patched toolchain. CI's
+  `govulncheck` job installs Go from `go-version-file: go.mod`, so the directive
+  is what determines the stdlib it builds against.
+
+### Added
+
+- **SSH password auth-bypass / enumeration detection + emulation.** The
+  interactive SSH handler now inspects every captured password attempt and
+  flags four high-signal SSH vulnerabilities:
+  - **`>256`-byte password → critical.** Any login with a password longer than
+    256 bytes raises `ssh-oversized-password` and a critical CVE hit — nothing
+    benign sends a 256+ byte SSH password.
+  - **`*sshole`** (sshhole.com, Nov 2026): OpenSSH on musl libc (Alpine/OpenWrt
+    without PAM) accepts any 257–1024 byte password for a `*`-locked account.
+    A password in that window is flagged `ssh-sshole-attempt` + the critical
+    `SSHHOLE-2026` catalog record; with vuln emulation on, the honeypot *accepts*
+    it and traps the attacker in the (fake) shell.
+  - **CVE-2019-5021** (Alpine Docker blank root password): a blank password to a
+    privileged/locked account → `ssh-alpine-blank-root` + `cve:CVE-2019-5021`
+    (critical); accepted as a trap under vuln emulation.
+  - **CVE-2016-6210** (OpenSSH <7.3 username-enumeration timing): a giant
+    (≥2048-byte) password — the classic probe that forces the slow hash path —
+    → `ssh-user-enum-timing` + `cve:CVE-2016-6210`.
+
+  Detection is always on; vuln emulation only controls whether the bypass
+  "succeeds" (the shell runs nothing real, so no access is ever granted). New
+  catalog records `CVE-2019-5021` and `SSHHOLE-2026` (and enrichment); all four
+  markers mapped to enterprise ATT&CK.
+- **`check-iocs` CLI command — retro-hunt an indicator file against stored
+  events.** Reads a file of attacker source IPs and/or CIDR ranges and reports
+  which appear in the local event store's historical data (matched against each
+  event's source IP), ranked by threat score with event count / first+last seen
+  / max severity / distinct rules per hit. The `--file` is auto-detected: one
+  IP/CIDR per line, several comma-separated per line, CIDR ranges, or JSON (an
+  array of strings, an array of objects with a `value`/`ip` field so
+  `export-iocs --format json` round-trips, or an object wrapping an
+  `iocs`/`indicators`/`ips`/… array). Flags: `--match src|dst|any` (match the
+  attacker source IP, the destination/honeypot IP that was hit, or either — a
+  hit reports which field carried it), `--since` (default all history),
+  `--format text|json`, `--fail-on-hit` (exit 2 on any match, for cron/CI
+  sweeps). Backed by two new indexed, column-parameterized store helpers
+  (`AggregateIPs`, `DistinctIPs`). Documented in `docs/cli.md`.
+
+### Changed
+
 - **License changed from Apache-2.0 to a commercial, proprietary license held by
   sysctl AB** (Copyright © 2026 sysctl AB, all rights reserved). The software is
   now licensed, not sold, and may be used only under a separate written

@@ -48,6 +48,7 @@ func Dispatch(args []string) error {
 		{"list-fleet-rules", "print the cross-sensor (fleet:*) detector catalog", cmdListFleetRules},
 		{"list-unavailable-capabilities", "print disabled / infeasible high-interaction features", cmdListUnavailableCapabilities},
 		{"export-iocs", "export fleet IOCs from the store (stix | csv | txt | json)", cmdExportIOCs},
+		{"check-iocs", "check a file of IP/CIDR indicators against historical events (--file)", cmdCheckIOCs},
 		{"export-creds", "export captured credentials (--kind filter; json|xml|yaml|csv|txt)", cmdExportCreds},
 		{"identify", "fingerprint a UA / path / ssh-id / ja3 / payload offline", cmdIdentify},
 		{"analyze", "static-analyze a captured artifact offline (format / entropy / IOCs / YARA)", cmdAnalyze},

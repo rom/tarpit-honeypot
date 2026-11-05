@@ -176,6 +176,7 @@ func Get(name string, deps Deps) (Handler, error) {
 			arch: deps.Archetype,
 			dir:  filepath.Join(deps.DataDir, "tls"),
 			rec:  deps.SessionRec,
+			vuln: deps.VulnEmulation,
 		}, nil
 	case "http":
 		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil

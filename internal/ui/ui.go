@@ -1177,6 +1177,10 @@ func (s *Server) cachedIndexDashboard(win sumWindow) dashboard {
 	defer cancel()
 	d, err := s.buildIndexDashboard(ctx, win, false)
 	if err != nil {
+		// Surface the real cause (DB busy/locked, deadline, a bad system clock
+		// skewing the window, …) — otherwise the page just silently shows the
+		// empty shell and the operator has nothing to go on.
+		slog.Warn("ui: summary quick-build failed, serving minimal shell", "range", win.key, "err", err)
 		s.refreshIndexDashboardAsync(win) // try to populate the cache for next time
 		return s.minimalDashboard(win)
 	}
@@ -1192,13 +1196,16 @@ func (s *Server) cachedIndexDashboard(win sumWindow) dashboard {
 }
 
 // minimalDashboard is the always-renderable shell (range selector + the static
-// port board, no DB) used when even the quick summary can't complete in time.
+// port board, no DB) used when even the quick summary can't complete. Sum.Since
+// is stamped with the real window start so the header shows the selected range
+// (not the Go zero time, which rendered as a confusing "since 0001-01-01").
 func (s *Server) minimalDashboard(win sumWindow) dashboard {
 	return dashboard{
 		RangeLabel: win.label,
 		RangeLinks: summaryRangeLinks(win.key),
 		Canvas:     buildConfigCanvas(s.fullConfig),
-		Notice:     "The dataset is large and the summary is still building — reload in a few seconds.",
+		Sum:        store.Summary{Since: time.Now().Add(-win.dur)},
+		Notice:     "The summary could not be built from the event store (it may be busy or locked) — reload in a few seconds; check the sensor log if this persists.",
 	}
 }
 
@@ -1256,9 +1263,14 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich 
 		return dashboard{}, err
 	}
 	sum.TopSources = s.visibleSourceCounts(sum.TopSources) // presentation hide list
+	// The trend histogram is a secondary chart — don't let a slow/failed bucket
+	// scan drop the whole page to the empty shell. The summary (counters /
+	// severity / rules / sources) already succeeded above; render it with an
+	// empty trend if EventsPerBucket errors.
 	hours, err := s.store.EventsPerBucket(ctx, since, win.bucket)
 	if err != nil {
-		return dashboard{}, err
+		slog.Warn("ui: summary trend scan failed; rendering without it", "range", win.key, "err", err)
+		hours = nil
 	}
 	d := buildDashboard(sum, hours, win.bucket)
 	d.RangeLabel = win.label

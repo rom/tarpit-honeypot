@@ -56,6 +56,12 @@ type sshInteractive struct {
 	arch *archetype.Profile
 	dir  string
 	rec  *sessionrec.Store
+	// vuln enables vulnerability *emulation*: when set, the handler accepts the
+	// SSH auth-bypass signatures (Alpine blank-root CVE-2019-5021, the *sshole
+	// 257–1024 byte musl password bypass) on the first matching attempt so the
+	// attacker is trapped in the (fake) shell. Detection of these signatures is
+	// always on regardless; vuln only controls whether the trap "succeeds".
+	vuln bool
 
 	hostKeyOnce sync.Once
 	hostKey     xssh.Signer
@@ -105,9 +111,20 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 				"method":   "password",
 				"user":     safe.SanitizeForLog(c.User()),
 				"password": safe.SanitizeForLog(string(pass)),
+				"pass_len": len(pass),
 				"client":   safe.SanitizeForLog(string(c.ClientVersion())),
 			})
 			clientID = string(c.ClientVersion())
+			// Vulnerability trap: with vuln emulation on, present as exploitable
+			// to the SSH auth-bypass signatures so the attacker is trapped in the
+			// fake shell. The *sshole bypass accepts any 257–1024 byte password on
+			// a locked account; Alpine CVE-2019-5021 accepts a blank password for
+			// a privileged account. The shell runs nothing real — this grants no
+			// actual access, it just makes the honeypot look vulnerable.
+			if s.vuln && sshBypassAccept(c.User(), len(pass)) {
+				acceptedUser = c.User()
+				return &xssh.Permissions{}, nil
+			}
 			if len(authAttempts) >= acceptAuthAfter {
 				acceptedUser = c.User()
 				return &xssh.Permissions{}, nil
@@ -169,6 +186,11 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 		}
 		flagSSHRoaming(&res, clientID)
 	}
+	// SSH auth-bypass / enumeration signatures (always on, even when the
+	// handshake ultimately failed): oversized (>256) passwords, the *sshole
+	// musl bypass, Alpine blank-root CVE-2019-5021, and CVE-2016-6210 giant-
+	// password user enumeration.
+	scanSSHAuthThreats(&res, authAttempts)
 	authMu.Unlock()
 	if err != nil {
 		// Failed handshake / auth — capture is already in meta.

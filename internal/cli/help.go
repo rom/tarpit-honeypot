@@ -342,6 +342,41 @@ EXAMPLES
     tarpit-honeypot list-archeservices adserver
 `,
 
+	"check-iocs": `check-iocs — retro-hunt IP/CIDR indicators against stored events
+
+SYNOPSIS
+    tarpit-honeypot check-iocs --file <path> [-c <config>] [--format text|json]
+                               [--match src|dst|any] [--since <dur>] [--fail-on-hit]
+
+DESCRIPTION
+    Read a file of indicators (attacker source IPs and/or CIDR ranges) and
+    report which of them appear in the local sqlite event store's historical
+    data — "has this honeypot ever seen any of these hosts?". By default
+    indicators are matched against each event's SOURCE IP (the attacker);
+    --match dst matches the DESTINATION IP (the honeypot server IP that was
+    hit) and --match any matches either (a hit reports which field carried it:
+    src, dst, or src+dst). For every hit it
+    prints the event count, first/last seen, max severity, distinct rules and
+    the threat score, ranked most-threatening first.
+
+    The --file is auto-detected and may be any of:
+      - one IP or CIDR per line (blank lines and # / // comments ignored);
+      - several comma-separated IPs/CIDRs per line;
+      - JSON: an array of strings, an array of objects with a value/ip field
+        (so ` + "`export-iocs --format json`" + ` round-trips), or an object with an
+        iocs / indicators / ips / values / addresses array.
+
+    --since limits the match to recent events (e.g. 720h); the default scans
+    all history. --fail-on-hit exits non-zero (2) when anything matched, for
+    use in cron / CI blocklist sweeps.
+
+EXAMPLES
+    tarpit-honeypot check-iocs --file threatfeed.txt
+    tarpit-honeypot check-iocs --file bad-cidrs.txt --since 2160h --format json
+    tarpit-honeypot export-iocs --format json > mine.json && \
+        tarpit-honeypot check-iocs --file mine.json --fail-on-hit
+`,
+
 	"kev-gap": `kev-gap — cross-check the catalog against the CISA KEV feed
 
 SYNOPSIS

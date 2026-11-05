@@ -33,10 +33,15 @@ func TestDocsReferenceCatalogs(t *testing.T) {
 	if len(cves) < 20 {
 		t.Errorf("cve docs too small: %d", len(cves))
 	}
-	// Every documented CVE should carry an id + a CVSS.
+	// Every documented catalog entry carries a canonical (uppercase) id: a CVE,
+	// or — for a disclosed vuln with no assigned CVE — an advisory id such as
+	// "SSHHOLE-2026".
 	for _, c := range cves {
-		if !strings.HasPrefix(c.ID, "CVE-") {
-			t.Errorf("bad cve id %q", c.ID)
+		if c.ID == "" || c.ID != strings.ToUpper(c.ID) {
+			t.Errorf("bad catalog id %q", c.ID)
+		}
+		if !strings.HasPrefix(c.ID, "CVE-") && !strings.ContainsAny(c.ID, "0123456789") {
+			t.Errorf("non-CVE catalog id %q should still carry a year/number", c.ID)
 		}
 	}
 }
