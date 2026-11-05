@@ -786,6 +786,48 @@ RETURNING count`,
 	return count == 1, nil
 }
 
+// UpsertIOCs records a batch of indicator sightings in one transaction,
+// returning per-row (in order) whether each was first-seen. See the store.Store
+// version; this is the PostgreSQL backend.
+func (s *Store) UpsertIOCs(ctx context.Context, batch []store.IOCUpsert) ([]bool, error) {
+	if len(batch) == 0 {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // no-op once committed
+	stmt, err := tx.PrepareContext(ctx, `
+INSERT INTO iocs (type, value, first_seen, last_seen, count, severity, last_rule, last_sensor, last_source)
+VALUES ($1, $2, $3, $3, 1, $4, $5, $6, $7)
+ON CONFLICT (type, value) DO UPDATE SET
+  last_seen   = excluded.last_seen,
+  count       = iocs.count + 1,
+  severity    = GREATEST(iocs.severity, excluded.severity),
+  last_rule   = excluded.last_rule,
+  last_sensor = excluded.last_sensor,
+  last_source = excluded.last_source
+RETURNING count`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = stmt.Close() }()
+	out := make([]bool, len(batch))
+	for i, u := range batch {
+		ns := u.Time.UTC().UnixNano()
+		var count int64
+		if err := stmt.QueryRowContext(ctx, u.Type, u.Value, ns, int(u.Severity), u.RuleID, u.Sensor, u.Source).Scan(&count); err != nil {
+			return nil, err
+		}
+		out[i] = count == 1
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Store) QueryIOCs(ctx context.Context, f store.IOCFilter) ([]store.IOCRow, error) {
 	var a argList
 	q := `SELECT type, value, first_seen, last_seen, count, severity, last_rule, last_sensor, last_source

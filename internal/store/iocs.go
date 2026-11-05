@@ -29,6 +29,13 @@ type IOCFilter struct {
 	Limit int
 }
 
+// IOCUpsert is one indicator sighting for the batched UpsertIOCs path.
+type IOCUpsert struct {
+	Type, Value, RuleID, Sensor, Source string
+	Severity                            event.Severity
+	Time                                time.Time
+}
+
 // UpsertIOC records one indicator sighting and reports whether it was the first
 // time this (type, value) was seen. The source/rule/sensor/severity reflect the
 // triggering event; count and last_seen advance on every sighting.
@@ -51,6 +58,52 @@ RETURNING count`,
 		return false, err
 	}
 	return count == 1, nil
+}
+
+// UpsertIOCs records a batch of indicator sightings in ONE transaction and
+// returns, per row in order, whether that sighting was the first. Batching
+// collapses what were N single-row INSERT…ON CONFLICT writes — each otherwise
+// competing with the async event sink for SQLite's single writer lock — into one
+// lock acquisition + commit, so the sensor's IOC writer no longer contends per
+// indicator. A duplicate (type,value) within the same batch resolves correctly:
+// the first row reports first-seen, later ones don't. Empty batch is a no-op.
+func (s *Store) UpsertIOCs(ctx context.Context, batch []IOCUpsert) ([]bool, error) {
+	if len(batch) == 0 {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // no-op once committed
+	stmt, err := tx.PrepareContext(ctx, `
+INSERT INTO iocs (type, value, first_seen, last_seen, count, severity, last_rule, last_sensor, last_source)
+VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+ON CONFLICT(type, value) DO UPDATE SET
+  last_seen   = excluded.last_seen,
+  count       = count + 1,
+  severity    = MAX(severity, excluded.severity),
+  last_rule   = excluded.last_rule,
+  last_sensor = excluded.last_sensor,
+  last_source = excluded.last_source
+RETURNING count`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = stmt.Close() }()
+	out := make([]bool, len(batch))
+	for i, u := range batch {
+		ns := u.Time.UTC().UnixNano()
+		var count int
+		if err := stmt.QueryRowContext(ctx, u.Type, u.Value, ns, ns, int(u.Severity), u.RuleID, u.Sensor, u.Source).Scan(&count); err != nil {
+			return nil, err
+		}
+		out[i] = count == 1
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // QueryIOCs returns indicators matching the filter, newest sighting first.

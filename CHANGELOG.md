@@ -38,6 +38,20 @@ documented in `docs/`).
   length into a `cidrSet` (network-addr maps), so a lookup is a handful of map
   probes regardless of list size, with identical (family-strict) semantics to
   the previous `netip.Prefix.Contains` scan.
+- **IOC-store writes are now batched off the bus loop.** Every event's
+  indicators were upserted one row at a time with a synchronous
+  `INSERT…ON CONFLICT` *on the bus loop*, each write competing with the async
+  event sink for SQLite's single writer lock — so under a scan flood indicator
+  writes serialized the whole pipeline. The bus loop now only extracts
+  indicators (cheap, in-memory) and hands them to a dedicated IOC writer over a
+  bounded queue; the writer coalesces them into one batched transaction per
+  flush (≤256 sightings or every 250 ms) via the new `store.UpsertIOCs`, and
+  emits the `ioc:<type>` first-sighting events itself. The hand-off is
+  non-blocking: if the queue saturates, jobs are dropped (the IOC store is
+  best-effort) and counted on the new `tarpit_ioc_writes_dropped_total` metric,
+  so a slow or locked store can never stall event processing. First-sighting
+  semantics and store contents are unchanged, including correct de-duplication
+  of a repeated indicator within a single batch.
 
 ### Fixed
 

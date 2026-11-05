@@ -206,6 +206,7 @@ A minimal Grafana dashboard JSON for the metrics above is not bundled in-tree �
 
 - `rate(tarpit_sink_dropped_total[5m])` per channel — alert on > 0
 - `rate(tarpit_panic_recoveries_total[5m])` — alert on > 0
+- `rate(tarpit_ioc_writes_dropped_total[5m])` — alert on > 0 (IOC writer saturated; raise `tuning.store_max_open_conns` or the sink batch)
 - `tarpit_honeynet_hosts` — gauge
 - `tarpit_store_db_bytes` — gauge (warn at 80% of disk cap)
 

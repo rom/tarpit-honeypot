@@ -51,6 +51,10 @@ type EventStore interface {
 	// Indicators of compromise — the IOC tracker upserts sightings; the UI and
 	// the export CLIs read them back.
 	UpsertIOC(ctx context.Context, typ, value, ruleID, sensor, source string, sev event.Severity, t time.Time) (bool, error)
+	// UpsertIOCs is the batched form (one transaction), used by the sensor's
+	// off-bus-loop IOC writer so per-event indicator writes don't serialize
+	// against the event sink on the single writer lock.
+	UpsertIOCs(ctx context.Context, batch []IOCUpsert) ([]bool, error)
 	QueryIOCs(ctx context.Context, f IOCFilter) ([]IOCRow, error)
 	IOCSummary(ctx context.Context, since time.Time) (map[string]int, error)
 
