@@ -1252,13 +1252,21 @@ LIMIT ?`, since.UTC().UnixNano(), limit)
 	return out, rows.Err()
 }
 
-// AggregateSourceIPs returns per-source rollups for exactly the given source
-// IPs (those with no stored events are simply absent from the result). It backs
-// the check-iocs command: report how each indicator IP hit the historical event
-// store. Queries are chunked to stay under SQLite's bound-parameter limit, and
-// the src_ip index makes each lookup cheap. since bounds the window (pass the
-// zero time for all history).
-func (s *Store) AggregateSourceIPs(ctx context.Context, ips []string, since time.Time) (map[string]SourceAggregate, error) {
+// validIPCol guards the trusted column literal that AggregateIPs / DistinctIPs
+// interpolate into SQL. Callers pass a fixed name; this is defense in depth so a
+// future caller can never turn these into an injection sink.
+func validIPCol(col string) bool { return col == "src_ip" || col == "dst_ip" }
+
+// AggregateIPs returns per-IP rollups for exactly the given IPs, matched against
+// the chosen event column (col is "src_ip" — the attacker — or "dst_ip" — the
+// honeypot server IP that was hit). IPs with no stored events are simply absent.
+// It backs the check-iocs command: report how each indicator hit the historical
+// event store. Queries are chunked to stay under SQLite's bound-parameter limit,
+// and both columns are indexed. since bounds the window (zero time = all history).
+func (s *Store) AggregateIPs(ctx context.Context, ips []string, col string, since time.Time) (map[string]SourceAggregate, error) {
+	if !validIPCol(col) {
+		return nil, fmt.Errorf("AggregateIPs: invalid column %q", col)
+	}
 	out := map[string]SourceAggregate{}
 	sinceNS := since.UTC().UnixNano()
 	const chunk = 500
@@ -1276,9 +1284,9 @@ func (s *Store) AggregateSourceIPs(ctx context.Context, ips []string, since time
 			args = append(args, ip)
 		}
 		rows, err := s.db.QueryContext(ctx, `
-SELECT src_ip, COUNT(*), MIN(time), MAX(time), MAX(severity), COUNT(DISTINCT rule_id), SUM(severity*severity)
-FROM events WHERE time >= ? AND src_ip IN (`+strings.Join(ph, ",")+`)
-GROUP BY src_ip`, args...)
+SELECT `+col+`, COUNT(*), MIN(time), MAX(time), MAX(severity), COUNT(DISTINCT rule_id), SUM(severity*severity)
+FROM events WHERE time >= ? AND `+col+` IN (`+strings.Join(ph, ",")+`)
+GROUP BY `+col, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -1305,13 +1313,16 @@ GROUP BY src_ip`, args...)
 	return out, nil
 }
 
-// DistinctSourceIPs returns every distinct non-empty source IP in the store
-// (optionally bounded by since; zero time = all history). The check-iocs command
-// uses it to match CIDR indicators, which SQLite cannot test in SQL — the caller
-// checks membership in Go. Bounded by the number of distinct attackers seen.
-func (s *Store) DistinctSourceIPs(ctx context.Context, since time.Time) ([]string, error) {
+// DistinctIPs returns every distinct non-empty value of the chosen column
+// (col "src_ip" or "dst_ip"), optionally bounded by since (zero time = all
+// history). The check-iocs command uses it to match CIDR indicators, which
+// SQLite cannot test in SQL — the caller checks membership in Go.
+func (s *Store) DistinctIPs(ctx context.Context, col string, since time.Time) ([]string, error) {
+	if !validIPCol(col) {
+		return nil, fmt.Errorf("DistinctIPs: invalid column %q", col)
+	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT DISTINCT src_ip FROM events WHERE time >= ? AND src_ip <> ''`, since.UTC().UnixNano())
+		`SELECT DISTINCT `+col+` FROM events WHERE time >= ? AND `+col+` <> ''`, since.UTC().UnixNano())
 	if err != nil {
 		return nil, err
 	}

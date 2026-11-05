@@ -346,13 +346,16 @@ EXAMPLES
 
 SYNOPSIS
     tarpit-honeypot check-iocs --file <path> [-c <config>] [--format text|json]
-                               [--since <dur>] [--fail-on-hit]
+                               [--match src|dst|any] [--since <dur>] [--fail-on-hit]
 
 DESCRIPTION
     Read a file of indicators (attacker source IPs and/or CIDR ranges) and
     report which of them appear in the local sqlite event store's historical
-    data — "has this honeypot ever seen any of these hosts?". Indicators are
-    matched against each event's SOURCE IP (the attacker). For every hit it
+    data — "has this honeypot ever seen any of these hosts?". By default
+    indicators are matched against each event's SOURCE IP (the attacker);
+    --match dst matches the DESTINATION IP (the honeypot server IP that was
+    hit) and --match any matches either (a hit reports which field carried it:
+    src, dst, or src+dst). For every hit it
     prints the event count, first/last seen, max severity, distinct rules and
     the threat score, ranked most-threatening first.
 

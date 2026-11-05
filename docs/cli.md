@@ -21,7 +21,7 @@ tarpit-honeypot list-cves      [--service <handler>] [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
 tarpit-honeypot list-fleet-rules [--json]
 tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
-tarpit-honeypot check-iocs     -c <config> --file <path> [--since D] [--format text|json] [--fail-on-hit]
+tarpit-honeypot check-iocs     -c <config> --file <path> [--match src|dst|any] [--since D] [--format text|json] [--fail-on-hit]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot jarm           [--timeout D] [--sni NAME] <host:port>
 tarpit-honeypot init           [-o file]
@@ -534,8 +534,9 @@ field mappings.
 
 Retro-hunt: read a file of indicators (attacker source IPs and/or CIDR ranges)
 and report which of them appear in the local event store's historical data —
-"has this honeypot ever seen any of these hosts?". Indicators match against each
-event's **source IP** (the attacker). The inverse of `export-iocs`: that emits
+"has this honeypot ever seen any of these hosts?". By default indicators match
+each event's **source IP** (the attacker); `--match dst` matches the destination
+IP and `--match any` matches either. The inverse of `export-iocs`: that emits
 this sensor's indicators, this checks someone else's feed against your history.
 
 ```
@@ -558,6 +559,7 @@ The `--file` format is auto-detected and may be any of:
 |---|---|---|
 | `-c <config>` | `/etc/tarpit-honeypot/config.yaml` | Config (for the `data_dir` holding `events.db`). |
 | `--file <path>` | — (required) | The IOC file to check. |
+| `--match src\|dst\|any` | `src` | Which event field to match: `src` (attacker), `dst` (honeypot server IP that was hit), or `any` (either). |
 | `--since <dur>` | `0` (all history) | Only match events newer than this (e.g. `720h`). |
 | `--format text\|json` | `text` | Human table, or JSON with per-hit rollups. |
 | `--fail-on-hit` | `false` | Exit non-zero (`2`) when any indicator matched — for cron / CI blocklist sweeps. |

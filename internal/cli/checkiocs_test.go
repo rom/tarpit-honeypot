@@ -104,7 +104,7 @@ func TestMatchIOCsAgainstStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hits, err := matchIOCs(ctx, st, ips, cidrs, time.Time{})
+	hits, err := matchIOCs(ctx, st, ips, cidrs, []string{"src_ip"}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,27 +155,96 @@ func TestCheckIOCsCommandEndToEnd(t *testing.T) {
 	var res struct {
 		HitCount int `json:"hit_count"`
 		Hits     []struct {
-			SourceIP string `json:"source_ip"`
-			Events   int    `json:"events"`
+			IP        string `json:"ip"`
+			MatchedIn string `json:"matched_in"`
+			Events    int    `json:"events"`
 		} `json:"hits"`
 	}
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("output not JSON: %v\n%s", err, out)
 	}
-	if res.HitCount != 1 || len(res.Hits) != 1 || res.Hits[0].SourceIP != "203.0.113.9" || res.Hits[0].Events != 1 {
+	if res.HitCount != 1 || len(res.Hits) != 1 || res.Hits[0].IP != "203.0.113.9" ||
+		res.Hits[0].Events != 1 || res.Hits[0].MatchedIn != "src" {
 		t.Errorf("unexpected result: %+v", res)
 	}
 }
 
-func TestAggregateSourceIPsEmpty(t *testing.T) {
+func TestMatchIOCsMatchFields(t *testing.T) {
 	st, err := store.Open(t.TempDir(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	// No events + no IPs → empty map, no error.
-	m, err := st.AggregateSourceIPs(context.Background(), nil, time.Time{})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	seed := func(id, src, dst string) {
+		if e := st.Insert(ctx, &event.Event{
+			ID: id, Time: now, Sensor: "s", RuleID: "listener:ssh", Severity: event.SeverityHigh,
+			Handler: "ssh", Source: event.Endpoint{IP: src}, Dest: event.Endpoint{IP: dst, Port: 22}, Proto: "tcp",
+		}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// 1.1.1.1 only ever a source; 2.2.2.2 only ever a destination (e.g. an
+	// egress/outbound event target); 3.3.3.3 appears as both.
+	seed("e1", "1.1.1.1", "10.0.0.1")
+	seed("e2", "9.9.9.9", "2.2.2.2")
+	seed("e3", "3.3.3.3", "10.0.0.1")
+	seed("e4", "9.9.9.9", "3.3.3.3")
+
+	ips := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
+	run := func(cols []string) map[string]iocHit {
+		hits, err := matchIOCs(ctx, st, ips, nil, cols, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]iocHit{}
+		for _, h := range hits {
+			m[h.Agg.IP] = h
+		}
+		return m
+	}
+
+	// src: only 1.1.1.1 and 3.3.3.3 (as source).
+	src := run([]string{"src_ip"})
+	if len(src) != 2 || src["1.1.1.1"].Fields != "src" || src["3.3.3.3"].Fields != "src" {
+		t.Errorf("match=src wrong: %+v", src)
+	}
+	if _, ok := src["2.2.2.2"]; ok {
+		t.Error("match=src should not match a destination-only IP")
+	}
+
+	// dst: only 2.2.2.2 and 3.3.3.3 (as destination).
+	dst := run([]string{"dst_ip"})
+	if len(dst) != 2 || dst["2.2.2.2"].Fields != "dst" || dst["3.3.3.3"].Fields != "dst" {
+		t.Errorf("match=dst wrong: %+v", dst)
+	}
+
+	// any: all three; 3.3.3.3 matched in both fields with merged count (2).
+	any := run([]string{"src_ip", "dst_ip"})
+	if len(any) != 3 {
+		t.Fatalf("match=any should match all three: %+v", any)
+	}
+	if any["3.3.3.3"].Fields != "src+dst" || any["3.3.3.3"].Agg.Count != 2 {
+		t.Errorf("match=any 3.3.3.3 should be src+dst with 2 events: %+v", any["3.3.3.3"])
+	}
+	if any["1.1.1.1"].Fields != "src" || any["2.2.2.2"].Fields != "dst" {
+		t.Errorf("match=any field attribution wrong: %+v", any)
+	}
+}
+
+func TestAggregateIPsEmpty(t *testing.T) {
+	st, err := store.Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	// No events + no IPs → empty map, no error. Invalid column → error.
+	m, err := st.AggregateIPs(context.Background(), nil, "src_ip", time.Time{})
 	if err != nil || len(m) != 0 {
-		t.Fatalf("AggregateSourceIPs(nil) = %v, %v; want empty, nil", m, err)
+		t.Fatalf("AggregateIPs(nil) = %v, %v; want empty, nil", m, err)
+	}
+	if _, err := st.AggregateIPs(context.Background(), []string{"1.2.3.4"}, "meta_json", time.Time{}); err == nil {
+		t.Error("AggregateIPs with a non-ip column should error")
 	}
 }

@@ -18,10 +18,12 @@ documented in `docs/`).
   IP/CIDR per line, several comma-separated per line, CIDR ranges, or JSON (an
   array of strings, an array of objects with a `value`/`ip` field so
   `export-iocs --format json` round-trips, or an object wrapping an
-  `iocs`/`indicators`/`ips`/… array). Flags: `--since` (default all history),
+  `iocs`/`indicators`/`ips`/… array). Flags: `--match src|dst|any` (match the
+  attacker source IP, the destination/honeypot IP that was hit, or either — a
+  hit reports which field carried it), `--since` (default all history),
   `--format text|json`, `--fail-on-hit` (exit 2 on any match, for cron/CI
-  sweeps). Backed by two new indexed store helpers (`AggregateSourceIPs`,
-  `DistinctSourceIPs`). Documented in `docs/cli.md`.
+  sweeps). Backed by two new indexed, column-parameterized store helpers
+  (`AggregateIPs`, `DistinctIPs`). Documented in `docs/cli.md`.
 
 ### Changed
 

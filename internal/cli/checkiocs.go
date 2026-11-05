@@ -34,6 +34,7 @@ func cmdCheckIOCs(args []string) error {
 	file := fs.String("file", "", "path to the IOC file to check (IPs / CIDRs, one or comma-separated per line, or JSON)")
 	format := fs.String("format", "text", "output format: text | json")
 	since := fs.Duration("since", 0, "only match events newer than this (e.g. 720h); default 0 = all history")
+	match := fs.String("match", "src", "event field to match indicators against: src (attacker) | dst (honeypot IP hit) | any")
 	failOnHit := fs.Bool("fail-on-hit", false, "exit non-zero (2) when at least one indicator matched")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -45,6 +46,17 @@ func cmdCheckIOCs(args []string) error {
 	case "text", "json":
 	default:
 		return fmt.Errorf("--format must be text or json (got %q)", *format)
+	}
+	var cols []string
+	switch *match {
+	case "src":
+		cols = []string{"src_ip"}
+	case "dst":
+		cols = []string{"dst_ip"}
+	case "any":
+		cols = []string{"src_ip", "dst_ip"}
+	default:
+		return fmt.Errorf("--match must be src, dst, or any (got %q)", *match)
 	}
 
 	ips, cidrs, bad, err := parseIOCFile(*file)
@@ -77,7 +89,7 @@ func cmdCheckIOCs(args []string) error {
 		sinceTime = time.Now().Add(-*since)
 	}
 
-	hits, err := matchIOCs(ctx, st, ips, cidrs, sinceTime)
+	hits, err := matchIOCs(ctx, st, ips, cidrs, cols, sinceTime)
 	if err != nil {
 		return err
 	}
@@ -90,11 +102,11 @@ func cmdCheckIOCs(args []string) error {
 	})
 
 	if *format == "json" {
-		if err := writeCheckIOCsJSON(*file, len(ips), len(cidrs), bad, sinceTime, hits); err != nil {
+		if err := writeCheckIOCsJSON(*file, *match, len(ips), len(cidrs), bad, sinceTime, hits); err != nil {
 			return err
 		}
 	} else {
-		printCheckIOCsText(*file, dbPath, len(ips), len(cidrs), bad, sinceTime, hits)
+		printCheckIOCsText(*file, dbPath, *match, len(ips), len(cidrs), bad, sinceTime, hits)
 	}
 
 	if *failOnHit && len(hits) > 0 {
@@ -104,74 +116,160 @@ func cmdCheckIOCs(args []string) error {
 	return nil
 }
 
-// iocHit is one source IP that matched an indicator and was seen in the store.
+// iocHit is one IP that matched an indicator and was seen in the store.
 type iocHit struct {
 	Indicator string                // the exact IP, or the CIDR string that contained the match
 	ViaCIDR   bool                  // true when matched through a CIDR rather than an exact IP
-	Agg       store.SourceAggregate // per-source rollup from the event store
+	Fields    string                // which event field(s) carried it: "src", "dst", or "src+dst"
+	Agg       store.SourceAggregate // rollup from the event store (merged across fields)
 }
 
-// matchIOCs resolves exact-IP and CIDR indicators against the store's source
-// IPs. Exact IPs are looked up directly (indexed IN query); CIDRs are matched by
-// enumerating the store's distinct source IPs and testing membership in Go
-// (SQLite can't do CIDR), then aggregating the matched subset. Each source IP is
-// reported once, preferring an exact-IP attribution over a CIDR one.
-func matchIOCs(ctx context.Context, st *store.Store, ips []string, cidrs []*net.IPNet, since time.Time) ([]iocHit, error) {
-	var hits []iocHit
-	matched := map[string]bool{}
+// fieldName maps a store column to the short field label used in output.
+func fieldName(col string) string {
+	if col == "dst_ip" {
+		return "dst"
+	}
+	return "src"
+}
 
-	// Exact IPs.
-	if len(ips) > 0 {
-		aggs, err := st.AggregateSourceIPs(ctx, ips, since)
-		if err != nil {
-			return nil, err
-		}
-		for _, ip := range ips {
-			if a, ok := aggs[ip]; ok {
-				hits = append(hits, iocHit{Indicator: ip, Agg: a})
-				matched[ip] = true
+// matchIOCs resolves exact-IP and CIDR indicators against the given event
+// columns (cols is ["src_ip"], ["dst_ip"], or both for --match any). Exact IPs
+// are looked up directly (indexed IN query); CIDRs are matched by enumerating
+// the store's distinct values of each column and testing membership in Go
+// (SQLite can't do CIDR), then aggregating the matched subset. Each IP is
+// reported once — its rollup merged across the matched fields, an exact-IP
+// attribution preferred over a CIDR one — and never aggregated twice for the
+// same (IP, column).
+func matchIOCs(ctx context.Context, st *store.Store, ips []string, cidrs []*net.IPNet, cols []string, since time.Time) ([]iocHit, error) {
+	type acc struct {
+		agg       store.SourceAggregate
+		fields    map[string]bool
+		viaCIDR   bool
+		indicator string
+	}
+	accs := map[string]*acc{}
+	order := []string{} // first-seen order, for stable output before the final sort
+	add := func(ip string, a store.SourceAggregate, field string, viaCIDR bool, indicator string) {
+		cur := accs[ip]
+		if cur == nil {
+			cur = &acc{agg: a, fields: map[string]bool{}, viaCIDR: viaCIDR, indicator: indicator}
+			accs[ip] = cur
+			order = append(order, ip)
+		} else {
+			cur.agg = mergeAgg(cur.agg, a)
+			if cur.viaCIDR && !viaCIDR { // exact attribution wins over a CIDR one
+				cur.viaCIDR, cur.indicator = false, indicator
 			}
 		}
+		cur.fields[field] = true
 	}
 
-	// CIDR ranges: enumerate distinct source IPs once, test membership in Go.
-	if len(cidrs) > 0 {
-		distinct, err := st.DistinctSourceIPs(ctx, since)
-		if err != nil {
-			return nil, err
-		}
-		inCIDR := map[string]string{} // store src_ip -> matching CIDR string
-		var toAgg []string
-		for _, raw := range distinct {
-			if matched[raw] {
-				continue // already attributed to an exact IP
-			}
-			ip := net.ParseIP(raw)
-			if ip == nil {
-				continue
-			}
-			for _, n := range cidrs {
-				if n.Contains(ip) {
-					inCIDR[raw] = n.String()
-					toAgg = append(toAgg, raw)
-					break
-				}
-			}
-		}
-		if len(toAgg) > 0 {
-			aggs, err := st.AggregateSourceIPs(ctx, toAgg, since)
+	// Exact IPs, per column.
+	if len(ips) > 0 {
+		for _, col := range cols {
+			aggs, err := st.AggregateIPs(ctx, ips, col, since)
 			if err != nil {
 				return nil, err
 			}
-			for _, raw := range toAgg {
-				if a, ok := aggs[raw]; ok {
-					hits = append(hits, iocHit{Indicator: inCIDR[raw], ViaCIDR: true, Agg: a})
-					matched[raw] = true
+			for _, ip := range ips {
+				if a, ok := aggs[ip]; ok {
+					add(ip, a, fieldName(col), false, ip)
 				}
 			}
 		}
 	}
+
+	// CIDR ranges: enumerate distinct values of each column, test membership in
+	// Go. Skip IPs already matched exactly so no (IP, column) is aggregated twice.
+	if len(cidrs) > 0 {
+		exact := map[string]bool{}
+		for ip := range accs {
+			exact[ip] = true
+		}
+		inCIDR := map[string]string{}
+		seen := map[string]bool{}
+		var cand []string
+		for _, col := range cols {
+			distinct, err := st.DistinctIPs(ctx, col, since)
+			if err != nil {
+				return nil, err
+			}
+			for _, raw := range distinct {
+				if exact[raw] || seen[raw] {
+					continue
+				}
+				ip := net.ParseIP(raw)
+				if ip == nil {
+					continue
+				}
+				for _, n := range cidrs {
+					if n.Contains(ip) {
+						inCIDR[raw] = n.String()
+						cand = append(cand, raw)
+						seen[raw] = true
+						break
+					}
+				}
+			}
+		}
+		if len(cand) > 0 {
+			for _, col := range cols {
+				aggs, err := st.AggregateIPs(ctx, cand, col, since)
+				if err != nil {
+					return nil, err
+				}
+				for _, raw := range cand {
+					if a, ok := aggs[raw]; ok {
+						add(raw, a, fieldName(col), true, inCIDR[raw])
+					}
+				}
+			}
+		}
+	}
+
+	hits := make([]iocHit, 0, len(order))
+	for _, ip := range order {
+		c := accs[ip]
+		hits = append(hits, iocHit{Indicator: c.indicator, ViaCIDR: c.viaCIDR, Fields: joinFields(c.fields), Agg: c.agg})
+	}
 	return hits, nil
+}
+
+// mergeAgg combines two rollups for the same IP seen in different columns. Count
+// and Weight sum; the time span widens; severity takes the max. DistinctRules is
+// an approximation (the larger of the two) since the two column-scoped rule sets
+// can overlap and aren't re-counted here.
+func mergeAgg(a, b store.SourceAggregate) store.SourceAggregate {
+	out := a
+	if out.IP == "" {
+		out.IP = b.IP
+	}
+	out.Count += b.Count
+	out.Weight += b.Weight
+	if !b.FirstSeen.IsZero() && (out.FirstSeen.IsZero() || b.FirstSeen.Before(out.FirstSeen)) {
+		out.FirstSeen = b.FirstSeen
+	}
+	if b.LastSeen.After(out.LastSeen) {
+		out.LastSeen = b.LastSeen
+	}
+	if b.MaxSeverity > out.MaxSeverity {
+		out.MaxSeverity = b.MaxSeverity
+	}
+	if b.DistinctRules > out.DistinctRules {
+		out.DistinctRules = b.DistinctRules
+	}
+	return out
+}
+
+// joinFields renders the matched-field set as "src", "dst", or "src+dst".
+func joinFields(set map[string]bool) string {
+	var parts []string
+	for _, f := range []string{"src", "dst"} {
+		if set[f] {
+			parts = append(parts, f)
+		}
+	}
+	return strings.Join(parts, "+")
 }
 
 // parseIOCFile reads an IOC file and returns the distinct exact IPs (canonical
@@ -278,13 +376,13 @@ func iocTokensFromObjs(objs []map[string]any) []string {
 	return out
 }
 
-func printCheckIOCsText(file, dbPath string, nIPs, nCIDRs int, bad []string, since time.Time, hits []iocHit) {
+func printCheckIOCsText(file, dbPath, match string, nIPs, nCIDRs int, bad []string, since time.Time, hits []iocHit) {
 	window := "all history"
 	if !since.IsZero() {
 		window = "since " + since.UTC().Format(time.RFC3339)
 	}
-	fmt.Printf("IOC check: %d IP(s) + %d CIDR(s) from %s against %s (%s)\n",
-		nIPs, nCIDRs, file, dbPath, window)
+	fmt.Printf("IOC check: %d IP(s) + %d CIDR(s) from %s against %s (match=%s, %s)\n",
+		nIPs, nCIDRs, file, dbPath, match, window)
 	if len(bad) > 0 {
 		fmt.Printf("  skipped %d unparseable indicator(s): %s\n", len(bad), strings.Join(clipList(bad, 10), ", "))
 	}
@@ -296,24 +394,25 @@ func printCheckIOCsText(file, dbPath string, nIPs, nCIDRs int, bad []string, sin
 	for _, h := range hits {
 		totalEvents += h.Agg.Count
 	}
-	fmt.Printf("\nHITS: %d source IP(s) matched, %d event(s) total\n\n", len(hits), totalEvents)
+	fmt.Printf("\nHITS: %d IP(s) matched, %d event(s) total\n\n", len(hits), totalEvents)
 	for _, h := range hits {
 		via := ""
 		if h.ViaCIDR {
 			via = "  (in " + h.Indicator + ")"
 		}
-		fmt.Printf("  %-39s %6d events  first %s  last %s  max=%s  rules=%d  score=%d%s\n",
-			h.Agg.IP, h.Agg.Count,
+		fmt.Printf("  %-39s [%-7s] %6d events  first %s  last %s  max=%s  rules=%d  score=%d%s\n",
+			h.Agg.IP, h.Fields, h.Agg.Count,
 			h.Agg.FirstSeen.Format("2006-01-02"), h.Agg.LastSeen.Format("2006-01-02"),
 			h.Agg.MaxSeverity, h.Agg.DistinctRules, h.Agg.Weight, via)
 	}
 	fmt.Printf("\nTip: drill into any hit with `tarpit-honeypot list-events --source <ip>`.\n")
 }
 
-func writeCheckIOCsJSON(file string, nIPs, nCIDRs int, bad []string, since time.Time, hits []iocHit) error {
+func writeCheckIOCsJSON(file, match string, nIPs, nCIDRs int, bad []string, since time.Time, hits []iocHit) error {
 	type hitJSON struct {
 		Indicator     string `json:"indicator"`
-		SourceIP      string `json:"source_ip"`
+		IP            string `json:"ip"`
+		MatchedIn     string `json:"matched_in"` // src | dst | src+dst
 		ViaCIDR       bool   `json:"via_cidr"`
 		Events        int    `json:"events"`
 		FirstSeen     string `json:"first_seen"`
@@ -324,19 +423,20 @@ func writeCheckIOCsJSON(file string, nIPs, nCIDRs int, bad []string, since time.
 	}
 	out := struct {
 		File         string    `json:"file"`
+		Match        string    `json:"match"`
 		CheckedIPs   int       `json:"checked_ips"`
 		CheckedCIDRs int       `json:"checked_cidrs"`
 		Unparseable  []string  `json:"unparseable,omitempty"`
 		Since        string    `json:"since,omitempty"`
 		HitCount     int       `json:"hit_count"`
 		Hits         []hitJSON `json:"hits"`
-	}{File: file, CheckedIPs: nIPs, CheckedCIDRs: nCIDRs, Unparseable: bad, HitCount: len(hits)}
+	}{File: file, Match: match, CheckedIPs: nIPs, CheckedCIDRs: nCIDRs, Unparseable: bad, HitCount: len(hits)}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
 	}
 	for _, h := range hits {
 		out.Hits = append(out.Hits, hitJSON{
-			Indicator: h.Indicator, SourceIP: h.Agg.IP, ViaCIDR: h.ViaCIDR,
+			Indicator: h.Indicator, IP: h.Agg.IP, MatchedIn: h.Fields, ViaCIDR: h.ViaCIDR,
 			Events:    h.Agg.Count,
 			FirstSeen: h.Agg.FirstSeen.Format(time.RFC3339), LastSeen: h.Agg.LastSeen.Format(time.RFC3339),
 			MaxSeverity: h.Agg.MaxSeverity.String(), DistinctRules: h.Agg.DistinctRules, ThreatScore: h.Agg.Weight,
