@@ -32,8 +32,11 @@ type Tuning struct {
 	UIAggCacheTTL    time.Duration `yaml:"ui_agg_cache_ttl"`
 	UIWindowCacheTTL time.Duration `yaml:"ui_window_cache_ttl"`
 
-	// UIScanLimit caps the per-event row scan the dashboard / charts enrichment
-	// pulls for the tactic / geo / ASN / tool rollups. Default 20000.
+	// UIScanLimit caps the dashboard's enrichment rollup. The summary now
+	// aggregates the tactic / geo / ASN / tool charts with SQL GROUP BY passes
+	// (store.DashboardFacets) instead of pulling raw event rows, so this bounds
+	// the number of distinct attack *signatures* returned (count-ordered); the
+	// /charts gallery still uses it as its per-event scan cap. Default 20000.
 	UIScanLimit int `yaml:"ui_scan_limit"`
 }
 

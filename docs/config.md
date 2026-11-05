@@ -1512,12 +1512,12 @@ tuning:
   ui_dashboard_ttl: 20s          # "/" dashboard snapshot cache TTL (default 20s)
   ui_agg_cache_ttl: 5s           # /profiles rollup cache TTL (default 5s)
   ui_window_cache_ttl: 3s        # shared window-event scan cache TTL (default 3s)
-  ui_scan_limit: 20000           # row cap on the dashboard/charts enrichment scan (default 20000)
+  ui_scan_limit: 20000           # cap on the dashboard attack-signature rollup / charts scan (default 20000)
 ```
 
 - **`store_max_open_conns`** sizes the WAL read pool (`SetMaxOpenConns`/`SetMaxIdleConns`). More concurrent UI/aggregation readers → raise it; the single writer still serializes via WAL.
 - **`sink_batch` / `sink_flush` / `sink_hard_cap`** control the async SQLite write path. Bigger batches/flush intervals amortize commits under high event rates; `sink_hard_cap` must be ≥ `sink_batch`.
-- **`ui_*_ttl`** trade UI freshness for DB load: longer TTLs mean fewer whole-window scans but staler pages. **`ui_scan_limit`** bounds the per-refresh enrichment scan — lower it to cap work on a huge store (at some loss of long-window chart accuracy).
+- **`ui_*_ttl`** trade UI freshness for DB load: longer TTLs mean fewer whole-window scans but staler pages. **`ui_scan_limit`** bounds the dashboard's enrichment rollup. The summary's tactic / geo / ASN / tool charts are computed with SQL `GROUP BY` passes (full-window accurate, not sampled), so this caps the number of distinct attack *signatures* the rollup returns rather than a raw row scan; the `/charts` gallery still uses it as a per-event scan cap. Lower it only to bound work on a pathologically high-signature store.
 
 Negative values, and a `sink_hard_cap` below `sink_batch`, are rejected at load/validate time. All `tuning:` changes take effect on process (re)start.
 

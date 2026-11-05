@@ -872,7 +872,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 
 <h2>top tools / scanners</h2>
 {{ if .Tools }}{{ template "bars" .Tools }}{{ else }}<p class="note">none identified</p>{{ end }}
-{{ if .Scanned }}<p class="note">tactic / geo / ASN / tool / handler charts from a scan of {{ .Scanned }} recent events.</p>{{ end }}
+{{ if .Scanned }}<p class="note">tactic / geo / ASN / tool charts aggregated over all {{ .Scanned }} events in this window.</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "attack" }}{{ template "head" . }}

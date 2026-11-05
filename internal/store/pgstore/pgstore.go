@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -759,6 +760,160 @@ GROUP BY `+val)
 		r.FirstSeen = time.Unix(0, firstNS).UTC()
 		r.LastSeen = time.Unix(0, lastNS).UTC()
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DashboardFacets runs the summary page's cross-cutting GROUP BY passes (see the
+// SQLite store.DashboardFacets). jsonb/`->>` dialect: meta scalars via `->>`,
+// the tools array via jsonb_array_elements_text (guarded on jsonb_typeof so a
+// non-array never raises), and the attack signatures grouped as jsonb then
+// returned as ::text for the shared ParseJSONStrings.
+func (s *Store) DashboardFacets(ctx context.Context, since time.Time, limit int) (store.DashboardFacets, error) {
+	if limit <= 0 {
+		limit = 20000
+	}
+	sinceNS := since.UTC().UnixNano()
+	f := store.DashboardFacets{
+		Cities:  map[string]int{},
+		ASNOrgs: map[string]int{},
+		Tools:   map[string]int{},
+		Ports:   map[int]int{},
+	}
+
+	attackRows, err := s.db.QueryContext(ctx, `
+SELECT rule_id, handler, proto, severity,
+       anomalies::text, (meta->'anomalies')::text, (meta->'emulated_vuln_cves')::text,
+       COUNT(*) c
+FROM events
+WHERE time >= $1
+GROUP BY rule_id, handler, proto, severity, anomalies, meta->'anomalies', meta->'emulated_vuln_cves'
+ORDER BY c DESC
+LIMIT $2`, sinceNS, limit)
+	if err != nil {
+		return f, err
+	}
+	for attackRows.Next() {
+		var (
+			a                       store.AttackFacet
+			anomJSON, metaAnom, cve sql.NullString
+		)
+		if err := attackRows.Scan(&a.RuleID, &a.Handler, &a.Proto, &a.Severity,
+			&anomJSON, &metaAnom, &cve, &a.Count); err != nil {
+			attackRows.Close()
+			return f, err
+		}
+		a.Anomalies = store.ParseJSONStrings(anomJSON.String)
+		a.MetaAnomalies = store.ParseJSONStrings(metaAnom.String)
+		a.EmulatedCVEs = store.ParseJSONStrings(cve.String)
+		f.Attacks = append(f.Attacks, a)
+	}
+	attackRows.Close()
+	if err := attackRows.Err(); err != nil {
+		return f, err
+	}
+
+	if f.Cities, err = s.metaScalarCounts(ctx, "geo_city", sinceNS, store.FacetTopN); err != nil {
+		return f, err
+	}
+	if f.ASNOrgs, err = s.metaScalarCounts(ctx, "asn_org", sinceNS, store.FacetTopN); err != nil {
+		return f, err
+	}
+
+	asnRows, err := s.db.QueryContext(ctx, `
+SELECT meta->>'asn' num, meta->>'asn_org' org, COUNT(*) c
+FROM events
+WHERE time >= $1 AND ((meta->>'asn') IS NOT NULL OR (meta->>'asn_org') IS NOT NULL)
+GROUP BY num, org
+ORDER BY c DESC
+LIMIT $2`, sinceNS, store.FacetTopN)
+	if err != nil {
+		return f, err
+	}
+	for asnRows.Next() {
+		var num, org sql.NullString
+		var c int
+		if err := asnRows.Scan(&num, &org, &c); err != nil {
+			asnRows.Close()
+			return f, err
+		}
+		n, _ := strconv.Atoi(num.String)
+		if n == 0 && org.String == "" {
+			continue
+		}
+		f.ASNs = append(f.ASNs, store.ASNFacet{Num: n, Org: org.String, Count: c})
+	}
+	asnRows.Close()
+	if err := asnRows.Err(); err != nil {
+		return f, err
+	}
+
+	toolRows, err := s.db.QueryContext(ctx, `
+SELECT value, COUNT(*) c FROM (
+  SELECT jsonb_array_elements_text(meta->'tools') AS value
+  FROM events WHERE time >= $1 AND jsonb_typeof(meta->'tools') = 'array'
+) sub
+WHERE value <> ''
+GROUP BY value ORDER BY c DESC LIMIT $2`, sinceNS, store.FacetTopN)
+	if err != nil {
+		return f, err
+	}
+	for toolRows.Next() {
+		var k string
+		var c int
+		if err := toolRows.Scan(&k, &c); err != nil {
+			toolRows.Close()
+			return f, err
+		}
+		f.Tools[k] = c
+	}
+	toolRows.Close()
+	if err := toolRows.Err(); err != nil {
+		return f, err
+	}
+
+	portRows, err := s.db.QueryContext(ctx, `
+SELECT dst_port, COUNT(*) FROM events
+WHERE time >= $1 AND dst_port > 0
+GROUP BY dst_port ORDER BY 2 DESC LIMIT 1000`, sinceNS)
+	if err != nil {
+		return f, err
+	}
+	for portRows.Next() {
+		var port, c int
+		if err := portRows.Scan(&port, &c); err != nil {
+			portRows.Close()
+			return f, err
+		}
+		f.Ports[port] = c
+	}
+	portRows.Close()
+	if err := portRows.Err(); err != nil {
+		return f, err
+	}
+
+	return f, nil
+}
+
+// metaScalarCounts is a GROUP BY over a single meta scalar (`meta->>key`),
+// top-n by count. key is a fixed caller literal, never user input.
+func (s *Store) metaScalarCounts(ctx context.Context, key string, sinceNS int64, n int) (map[string]int, error) {
+	out := map[string]int{}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT meta->>'`+key+`' v, COUNT(*) c FROM events
+WHERE time >= $1 AND (meta->>'`+key+`') IS NOT NULL AND (meta->>'`+key+`') <> ''
+GROUP BY v ORDER BY c DESC LIMIT $2`, sinceNS, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		var c int
+		if err := rows.Scan(&k, &c); err != nil {
+			return nil, err
+		}
+		out[k] = c
 	}
 	return out, rows.Err()
 }

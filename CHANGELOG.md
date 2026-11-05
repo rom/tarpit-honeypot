@@ -23,6 +23,26 @@ documented in `docs/`).
 
 ### Changed
 
+- **The summary dashboard's cross-cutting charts are now SQL `GROUP BY`
+  rollups, not a 20k-row Go scan.** The tactic / technique / CVE / geo-city /
+  ASN / network-operator / tool / attacks-by-service / service-board charts were
+  built by pulling up to `ui_scan_limit` (default 20,000) recent event rows —
+  `meta_json` included — into Go and counting them in a loop on every refresh.
+  That read dominated the summary build as the table grew, and it only ever
+  *sampled* the newest N, so a long window was never fully accurate. The counting
+  now happens in the engine: the single-valued / array meta dimensions
+  (city / ASN / operator / tool / port) are aggregated and top-N-trimmed in SQL,
+  and the dimensions that need Go logic (ATT&CK augmentation, the multi-source
+  CVE extraction, the attack predicate) are returned as a *grouped* set — one row
+  per distinct event signature with its count — so the UI applies the exact same
+  helpers once per signature instead of once per event. Honeypot traffic is
+  highly repetitive in those fields, so the grouped set is orders of magnitude
+  smaller than the event count while the charts become **full-window accurate**
+  (no more "scan of N recent events"). Output is identical to the old path, locked
+  by a golden test that runs both over the same data (`internal/store`'s new
+  `DashboardFacets`, implemented for the SQLite and Postgres backends; the
+  `/charts` gallery is unchanged). `ui_scan_limit` now caps the attack-signature
+  set rather than a raw row scan.
 - **Reverse-DNS enrichment is now asynchronous / non-blocking.** On a cache miss
   the per-event rDNS lookup previously did a blocking `LookupAddr` (up to the
   configured timeout) *inside the single-threaded sensor bus loop* — and a

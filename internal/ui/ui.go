@@ -1345,18 +1345,21 @@ func (s *Server) buildIndexDashboard(ctx context.Context, win sumWindow, enrich 
 			}
 		}
 	}
-	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler)
-	// from a bounded scan of the window. Skipped for the cold quick-view; the
-	// scan reads metadata only (NoPayload) so it doesn't drag the big payload
-	// blobs + per-row banner subquery through for 20k rows.
+	// Enrich with per-event dimensions (tactics / geo / ASN / tool / handler).
+	// Skipped for the cold quick-view. These used to come from a bounded scan of
+	// up to scanLimit recent rows counted Go-side; they are now SQL GROUP BY
+	// rollups (full-window accurate, orders of magnitude less data moved — see
+	// store.DashboardFacets). scanLimit still caps the attack-signature set.
 	var attackSvc []chSlice
 	if enrich {
-		if evs, qerr := s.query(ctx, store.Filter{Since: since, Limit: s.scanLimit, NoPayload: true}); qerr == nil {
-			enrichDashboard(&d, evs)
+		if facets, ferr := s.store.DashboardFacets(ctx, since, s.scanLimit); ferr == nil {
+			attackSvc = enrichDashboardFacets(&d, facets)
+			d.Scanned = sum.Total
 			if s.cfg.ServiceActivityEnabled() {
-				markCanvasActivity(&d.Canvas, evs) // tint service cards that saw access/attempts
+				markCanvasActivityPorts(&d.Canvas, facets.Ports) // tint service cards that saw access/attempts
 			}
-			attackSvc = attacksByService(evs)
+		} else {
+			slog.Warn("ui: dashboard facet rollup failed; enrichment charts omitted", "range", win.key, "err", ferr)
 		}
 	}
 	// Carry the active window into every /events pivot link so the listing
