@@ -47,10 +47,18 @@ type EventStore interface {
 	Heartbeat(ctx context.Context) (count int64, latest time.Time, err error)
 	OldestEventTime(ctx context.Context) (time.Time, error)
 	Fingerprints(ctx context.Context, since time.Time, limit int) ([]FingerprintRow, error)
+	// DashboardFacets returns the summary page's cross-cutting GROUP BY rollups
+	// (ATT&CK/CVE/attacks-by-service signatures plus geo/ASN/operator/tool/port
+	// counts) so the UI no longer samples tens of thousands of event rows Go-side.
+	DashboardFacets(ctx context.Context, since time.Time, limit int) (DashboardFacets, error)
 
 	// Indicators of compromise — the IOC tracker upserts sightings; the UI and
 	// the export CLIs read them back.
 	UpsertIOC(ctx context.Context, typ, value, ruleID, sensor, source string, sev event.Severity, t time.Time) (bool, error)
+	// UpsertIOCs is the batched form (one transaction), used by the sensor's
+	// off-bus-loop IOC writer so per-event indicator writes don't serialize
+	// against the event sink on the single writer lock.
+	UpsertIOCs(ctx context.Context, batch []IOCUpsert) ([]bool, error)
 	QueryIOCs(ctx context.Context, f IOCFilter) ([]IOCRow, error)
 	IOCSummary(ctx context.Context, since time.Time) (map[string]int, error)
 

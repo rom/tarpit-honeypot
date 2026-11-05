@@ -46,11 +46,14 @@ func (r *rethinkdb) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 	br := bufio.NewReader(conn)
 	for i := 0; i < 4; i++ {
 		withTimeout(conn, cfg.ReadTimeout)
-		raw, err := br.ReadBytes(0x00)
-		if err != nil {
+		raw, err := readDelimCapped(br, 0x00, maxLineBytes)
+		if err != nil && len(raw) == 0 {
 			break
 		}
-		msg := raw[:len(raw)-1] // drop the trailing NUL
+		msg := raw
+		if len(msg) > 0 && msg[len(msg)-1] == 0x00 {
+			msg = msg[:len(msg)-1] // drop the trailing NUL when present
+		}
 		if len(msg) == 0 {
 			continue
 		}

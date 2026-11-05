@@ -232,10 +232,12 @@ two seams a second backend must plug into:
   (`internal/store/pgstore/pgstore.go`) via `database/sql` + the pure-Go
   pgx stdlib driver (CGO-free), with a compile-time
   `var _ store.EventStore = (*Store)(nil)`. Every `Filter` dimension,
-  `Summary`/`SourceAggregates`/`EventsPerBucket`/`Fingerprints`, the IOC
-  upsert, and `PruneBefore` are ported to the Postgres dialect. It is
-  round-trip tested against PostgreSQL 16 (`pgstore_test.go`, which skips
-  unless `TARPIT_PG_TEST_DSN` points at a disposable database).
+  `Summary`/`SourceAggregates`/`EventsPerBucket`/`Fingerprints`/`DashboardFacets`,
+  the IOC upsert, and `PruneBefore` are ported to the Postgres dialect
+  (`DashboardFacets` using `jsonb`/`->>` + `jsonb_array_elements_text` in place
+  of SQLite's `json_extract`/`json_each`). It is round-trip tested against
+  PostgreSQL 16 (`pgstore_test.go`, which skips unless `TARPIT_PG_TEST_DSN`
+  points at a disposable database).
 - **`PruneBefore` is now on the contract.** Retention is engine-neutral:
   `retention.Runner` holds a `Pruner` (satisfied by both backends) instead
   of a raw `*sql.DB`, and both stores implement

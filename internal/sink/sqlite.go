@@ -10,13 +10,29 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
-// sqlite sink batching parameters: flush when the buffer reaches sqliteMaxBatch
-// or sqliteMaxAge elapses, whichever comes first.
-const (
-	sqliteMaxBatch = 256
-	sqliteMaxAge   = 500 * time.Millisecond
-	sqliteHardCap  = 8192 // synchronous fallback above this, to bound memory
-)
+// SQLiteTuning overrides the sink's write-batching parameters: flush when the
+// buffer reaches Batch events or Flush elapses (whichever first), and go
+// synchronous above HardCap to bound memory. A zero field uses its default
+// (256 / 500ms / 8192) — so the sensor can pass config.Tuning straight through
+// and an unset tuning block changes nothing.
+type SQLiteTuning struct {
+	Batch   int
+	Flush   time.Duration
+	HardCap int
+}
+
+func (t SQLiteTuning) withDefaults() SQLiteTuning {
+	if t.Batch <= 0 {
+		t.Batch = 256
+	}
+	if t.Flush <= 0 {
+		t.Flush = 500 * time.Millisecond
+	}
+	if t.HardCap <= 0 {
+		t.HardCap = 8192
+	}
+	return t
+}
 
 // sqliteSink wraps a store.EventStore as a Sink. It does not own the store —
 // the sensor opens the store once and reuses it for both this sink and
@@ -35,6 +51,10 @@ type sqliteSink struct {
 	id string
 	s  store.EventStore
 
+	maxBatch int
+	maxAge   time.Duration
+	hardCap  int
+
 	mu  sync.Mutex
 	buf []*event.Event
 
@@ -45,13 +65,18 @@ type sqliteSink struct {
 }
 
 // NewSQLite is constructed by the sensor (which owns the store handle)
-// rather than by Build, because the store needs to be shared.
-func NewSQLite(id string, s store.EventStore) Sink {
+// rather than by Build, because the store needs to be shared. tune overrides
+// the batch parameters (zero fields = defaults).
+func NewSQLite(id string, s store.EventStore, tune SQLiteTuning) Sink {
+	tune = tune.withDefaults()
 	q := &sqliteSink{
 		id: id, s: s,
-		flush: make(chan struct{}, 1),
-		quit:  make(chan struct{}),
-		done:  make(chan struct{}),
+		maxBatch: tune.Batch,
+		maxAge:   tune.Flush,
+		hardCap:  tune.HardCap,
+		flush:    make(chan struct{}, 1),
+		quit:     make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 	go q.loop()
 	return q
@@ -68,9 +93,9 @@ func (q *sqliteSink) Send(ctx context.Context, ev *event.Event) error {
 	n := len(q.buf)
 	q.mu.Unlock()
 	switch {
-	case n >= sqliteHardCap:
+	case n >= q.hardCap:
 		q.flushNow()
-	case n >= sqliteMaxBatch:
+	case n >= q.maxBatch:
 		select {
 		case q.flush <- struct{}{}:
 		default:
@@ -81,7 +106,7 @@ func (q *sqliteSink) Send(ctx context.Context, ev *event.Event) error {
 
 func (q *sqliteSink) loop() {
 	defer close(q.done)
-	t := time.NewTicker(sqliteMaxAge)
+	t := time.NewTicker(q.maxAge)
 	defer t.Stop()
 	for {
 		select {

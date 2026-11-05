@@ -114,6 +114,8 @@ type Sensor struct {
 	feedsPuller *feeds.Puller     // external threat-intel feed ingestion (nil when disabled)
 	mispPusher  *misp.Pusher      // push fleet IOCs to a MISP instance (nil when disabled)
 	iocEmit     map[string]bool   // indicator types whose first-sight emits an ioc:<type> event (nil = IOC off)
+	iocQueue    chan iocJob       // off-bus-loop IOC-write queue (nil when IOC off)
+	iocDropped  atomic.Uint64     // IOC jobs dropped because the queue was full
 
 	honeytokenOnce  sync.Once       // builds honeytokenAccts on first use
 	honeytokenAccts map[string]bool // honeytoken login names from web security.txt contacts
@@ -492,7 +494,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 			if st == nil {
 				return nil, fmt.Errorf("channel %s: sqlite sink configured but store missing", ch.ID)
 			}
-			s = sink.NewSQLite(ch.ID, st)
+			s = sink.NewSQLite(ch.ID, st, sqliteTuning(cfg.Tuning))
 		} else {
 			s, err = sink.Build(ch, cfg.Sensor.DataDir, cfg.Sensor.Disk.JSONLogMB)
 		}
@@ -687,6 +689,11 @@ func New(cfg *config.Config) (*Sensor, error) {
 		listeners:     map[string]*listenerHandle{},
 		metrics:       newSensorMetrics(),
 	}
+	// The IOC writer runs only when IOC tracking is enabled; its queue decouples
+	// the per-event indicator writes from the bus loop (see runIOCWriter).
+	if iocEmit != nil {
+		s.iocQueue = make(chan iocJob, iocQueueSize)
+	}
 	// Weave this deployment's canary into the planted shell loot so every
 	// sensor's fake credentials are unique and attributable; a read of a loot
 	// file then records the token as served (servedTokenKeys includes
@@ -817,28 +824,139 @@ func (s *Sensor) dispatch(rt *router.Router, ev *event.Event) {
 	}
 }
 
-// observeIOCs records each indicator the event carries in the de-duplicated IOC
-// store and returns ioc:<type> events for the first sighting of an emit-type
-// indicator (dispatched + forwarded by the caller).
-func (s *Sensor) observeIOCs(en *enrich.Enricher, ev *event.Event) []*event.Event {
-	if s.iocEmit == nil || s.store == nil {
-		return nil
+// IOC-writer sizing. The queue decouples the bus loop from the DB; jobs are
+// flushed in one batched transaction at iocBatchMax or iocFlushInterval.
+const (
+	iocQueueSize     = 4096
+	iocBatchMax      = 256
+	iocFlushInterval = 250 * time.Millisecond
+)
+
+// iocJob is one event's indicators plus the snapshot of the fields the IOC
+// store + the first-sighting event need — copied at enqueue time so the writer
+// never touches the (concurrently-dispatched) source event.
+type iocJob struct {
+	inds     []ioc.Indicator
+	ruleID   string
+	sensorID string
+	source   event.Endpoint
+	proto    string
+	sev      event.Severity
+	t        time.Time
+}
+
+// enqueueIOCs extracts an event's indicators on the bus loop (cheap, in-memory)
+// and hands the DB work to the IOC writer. Non-blocking: if the queue is full
+// under load the job is dropped (the IOC store is best-effort) and counted, so
+// a slow/locked store can never stall event processing.
+func (s *Sensor) enqueueIOCs(ev *event.Event) {
+	if s.iocQueue == nil {
+		return
+	}
+	inds := ioc.Extract(ev)
+	if len(inds) == 0 {
+		return
 	}
 	t := ev.Time
 	if t.IsZero() {
 		t = timeNow()
 	}
-	var out []*event.Event
-	for _, ind := range ioc.Extract(ev) {
-		isNew, err := s.store.UpsertIOC(context.Background(), ind.Type, ind.Value, ev.RuleID, ev.SensorID, ev.Source.IP, ev.Severity, t)
-		if err != nil || !isNew || !s.iocEmit[ind.Type] {
+	job := iocJob{
+		inds: inds, ruleID: ev.RuleID, sensorID: ev.SensorID,
+		source: ev.Source, proto: ev.Proto, sev: ev.Severity, t: t,
+	}
+	select {
+	case s.iocQueue <- job:
+	default:
+		s.iocDropped.Add(1)
+	}
+}
+
+// runIOCWriter drains the IOC queue off the bus loop, batching upserts into one
+// transaction per flush (at iocBatchMax or iocFlushInterval) so per-event
+// indicator writes no longer serialize against the event sink on SQLite's
+// single writer lock. On iocDone (closed after the bus loop stops enqueuing) it
+// drains whatever remains, flushes, and exits.
+func (s *Sensor) runIOCWriter(iocDone <-chan struct{}) {
+	batch := make([]iocJob, 0, iocBatchMax)
+	ticker := time.NewTicker(iocFlushInterval)
+	defer ticker.Stop()
+	flush := func() {
+		if len(batch) > 0 {
+			s.flushIOCJobs(batch)
+			batch = batch[:0]
+		}
+	}
+	for {
+		select {
+		case <-iocDone:
+			for {
+				select {
+				case j := <-s.iocQueue:
+					batch = append(batch, j)
+					if len(batch) >= iocBatchMax {
+						flush()
+					}
+				default:
+					flush()
+					return
+				}
+			}
+		case j := <-s.iocQueue:
+			batch = append(batch, j)
+			if len(batch) >= iocBatchMax {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
+}
+
+// flushIOCJobs upserts a batch of indicator sightings in one transaction and
+// dispatches an ioc:<type> event for each emit-type indicator seen for the
+// first time. Runs on the IOC-writer goroutine; dispatch/scoreRisk are safe off
+// the bus loop (the router dedup, risk scorer, forward group and metrics are all
+// lock/channel-guarded).
+func (s *Sensor) flushIOCJobs(jobs []iocJob) {
+	if s.store == nil || len(jobs) == 0 {
+		return
+	}
+	type ref struct{ job, ind int }
+	batch := make([]store.IOCUpsert, 0, len(jobs))
+	refs := make([]ref, 0, len(jobs))
+	for ji, j := range jobs {
+		for ii, ind := range j.inds {
+			batch = append(batch, store.IOCUpsert{
+				Type: ind.Type, Value: ind.Value, RuleID: j.ruleID,
+				Sensor: j.sensorID, Source: j.source.IP, Severity: j.sev, Time: j.t,
+			})
+			refs = append(refs, ref{ji, ii})
+		}
+	}
+	isNew, err := s.store.UpsertIOCs(context.Background(), batch)
+	if err != nil {
+		slog.Debug("ioc batch upsert failed", "indicators", len(batch), "err", err)
+		return
+	}
+	rt := s.curRouter()
+	en := s.curEnricher()
+	for k, nw := range isNew {
+		if !nw {
 			continue
 		}
-		ie := s.iocEvent(ind, ev)
-		en.Decorate(ie)
-		out = append(out, ie)
+		j := jobs[refs[k].job]
+		ind := j.inds[refs[k].ind]
+		if !s.iocEmit[ind.Type] {
+			continue
+		}
+		ie := s.iocEvent(ind, &event.Event{Source: j.source, Proto: j.proto, RuleID: j.ruleID})
+		if en != nil {
+			en.Decorate(ie)
+		}
+		s.dispatch(rt, ie)
+		s.scoreRisk(rt, ie)
 	}
-	return out
 }
 
 // iocEvent builds the ioc:<type> first-sighting event.
@@ -1810,6 +1928,12 @@ func needsCapture(cfg *config.Config) bool {
 	return false
 }
 
+// sqliteTuning maps the operator's config.Tuning onto the SQLite sink's
+// batch-parameter overrides (zero fields fall back to the sink defaults).
+func sqliteTuning(t config.Tuning) sink.SQLiteTuning {
+	return sink.SQLiteTuning{Batch: t.SinkBatch, Flush: t.SinkFlush, HardCap: t.SinkHardCap}
+}
+
 func needsStore(cfg *config.Config) bool {
 	if cfg.UI.Enabled {
 		return true
@@ -1834,7 +1958,7 @@ func openEventStore(cfg *config.Config) (store.EventStore, error) {
 		if !needsStore(cfg) {
 			return nil, nil
 		}
-		return store.Open(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB)
+		return store.OpenTuned(cfg.Sensor.DataDir, cfg.Sensor.Disk.SQLiteMB, cfg.Tuning.StoreMaxOpenConns)
 	case "postgres":
 		dsnEnv := cfg.Sensor.Store.DSNEnv
 		if dsnEnv == "" {
@@ -1888,6 +2012,11 @@ func (s *Sensor) HoneyTokensTracked() int {
 	}
 	return s.tokenTrack.Len()
 }
+
+// IOCWritesDropped returns how many IOC-write jobs the bus loop has dropped
+// because the off-loop writer's queue was full — a saturation signal for
+// /metrics. Steady growth means the IOC store can't keep up with event volume.
+func (s *Sensor) IOCWritesDropped() uint64 { return s.iocDropped.Load() }
 
 // KEVStats reports the live CISA-KEV overlay state for /metrics: whether the
 // feed is active, how many catalog entries are loaded, and when it last
@@ -2111,7 +2240,7 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 			if s.store == nil {
 				return fmt.Errorf("reload: sqlite channel needs store; restart required")
 			}
-			sk = sink.NewSQLite(ch.ID, s.store)
+			sk = sink.NewSQLite(ch.ID, s.store, sqliteTuning(newCfg.Tuning))
 		} else {
 			sk, err = sink.Build(ch, newCfg.Sensor.DataDir, newCfg.Sensor.Disk.JSONLogMB)
 		}
@@ -2355,9 +2484,22 @@ func (s *Sensor) Run(ctx context.Context) error {
 	// on s.rootCtx which is set just above).
 	s.startKEVSync(ctx, s.curConfig().KEV)
 
+	// IOC writer: drains the off-bus-loop IOC queue and batches upserts so
+	// per-event indicator writes don't serialize against the event sink on
+	// SQLite's single writer lock. iocDone is closed when the bus loop stops
+	// enqueuing (below), letting the writer drain the queue before it exits.
+	iocDone := make(chan struct{})
+	if s.iocQueue != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.runIOCWriter(iocDone) }()
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// Once the bus loop returns (shutdown drain complete) no more IOC
+		// jobs are enqueued, so release the writer to flush and exit.
+		defer close(iocDone)
 		// Bus loop runs under a panic guard: a malformed handler result
 		// or a correlator bug shouldn't take down event flow for the
 		// whole sensor. The guard logs + emits a high-severity panic
@@ -2505,14 +2647,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 						s.scoreRisk(rt, fe)
 					}
 				}
-				// IOC tracking: record every indicator the event carries in
-				// the de-duplicated IOC store, and emit an ioc:<type> event
-				// (stored + forwarded) the first time a high-value indicator
-				// is seen.
-				for _, ie := range s.observeIOCs(en, ev) {
-					s.dispatch(rt, ie)
-					s.scoreRisk(rt, ie)
-				}
+				// IOC tracking: extract this event's indicators on the bus
+				// loop (cheap, in-memory) and hand the de-duplicated store
+				// writes to the off-loop IOC writer, which batches them and
+				// emits the ioc:<type> first-sighting events. Non-blocking, so
+				// a slow/locked store can never stall event processing.
+				s.enqueueIOCs(ev)
 			}()
 		}
 	}()

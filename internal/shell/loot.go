@@ -84,29 +84,6 @@ func lootCat(path string) (string, bool) {
 	return strings.ReplaceAll(c, "{{TOK}}", currentLootToken()), true
 }
 
-// lootIn returns the base filenames of loot seeded directly in dir (no trailing
-// slash), so `ls <dir>` shows them alongside the static listing.
-func lootIn(dir string) []string {
-	dir = strings.TrimSuffix(dir, "/")
-	if dir == "" {
-		dir = "/"
-	}
-	var out []string
-	for p := range lootFiles {
-		i := strings.LastIndexByte(p, '/')
-		if p[:i] == dir || (dir == "/" && i == 0) {
-			out = append(out, p[i+1:])
-		}
-	}
-	return out
-}
-
-// isLootPath reports whether path is a planted loot file.
-func isLootPath(path string) bool {
-	_, ok := lootFiles[path]
-	return ok
-}
-
 // lootReadLine reports whether a (lower-cased) command line reads a planted
 // credential loot file — the signal that the per-deployment canary was served.
 // Shared by the anomaly scanner (shell-loot-accessed) and the Run loop (token

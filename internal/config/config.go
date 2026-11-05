@@ -73,6 +73,12 @@ type Config struct {
 	Devices           Devices            `yaml:"devices"`
 	Risk              RiskScoring        `yaml:"risk"`
 	Interaction       Interaction        `yaml:"interaction"`
+	// Tuning exposes the performance knobs that are otherwise compile-time
+	// constants — the SQLite connection pool, the write-batch buffer, and the
+	// web-UI snapshot caches — so an operator can raise them as load grows. Every
+	// field is optional; a zero value keeps the built-in default, so an absent
+	// `tuning:` block changes nothing. See tuning.go.
+	Tuning Tuning `yaml:"tuning"`
 
 	// archeservicesExpanded guards expandArcheservices so it runs once even
 	// if applyDefaults is invoked more than once on the same Config.
@@ -932,9 +938,11 @@ type GeoIP struct {
 	ASNDB  string `yaml:"asn_db"`
 }
 
-// RDNS enables synchronous reverse-DNS enrichment of source IPs with an
-// LRU cache. The lookup is bounded by Timeout so a stalled resolver
-// doesn't back up the bus.
+// RDNS enables reverse-DNS enrichment of source IPs with an LRU cache. Lookups
+// are asynchronous and non-blocking: a cache miss returns immediately and the
+// PTR lookup (bounded by Timeout) runs off the bus loop, so a stalled resolver
+// or a flood of new IPs can't back up event processing; the name lands on a
+// later event for the same IP.
 type RDNS struct {
 	Enabled   bool          `yaml:"enabled"`
 	Timeout   time.Duration `yaml:"timeout"`
@@ -1040,17 +1048,24 @@ type Disk struct {
 }
 
 type Listener struct {
-	ID            string        `yaml:"id"`
-	Proto         string        `yaml:"proto"`   // tcp | udp
-	Bind          string        `yaml:"bind"`    // host:port
-	Mode          string        `yaml:"mode"`    // drop | banner | tarpit
-	Handler       string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
-	Banner        string        `yaml:"banner"`
-	Severity      string        `yaml:"severity"`
-	ReadBytes     int           `yaml:"read_bytes"`
-	ReadTimeout   time.Duration `yaml:"read_timeout"`
-	Capture       bool          `yaml:"capture"`        // record bidirectional bytes to <data_dir>/captures/<id>.pcap
-	MaxConcurrent int           `yaml:"max_concurrent"` // per-listener accept cap; 0 = unlimited (TCP only)
+	ID          string        `yaml:"id"`
+	Proto       string        `yaml:"proto"`   // tcp | udp
+	Bind        string        `yaml:"bind"`    // host:port
+	Mode        string        `yaml:"mode"`    // drop | banner | tarpit
+	Handler     string        `yaml:"handler"` // raw | ssh | http | https | telnet | ftp | modbus | s7 | iec104 | mqtt
+	Banner      string        `yaml:"banner"`
+	Severity    string        `yaml:"severity"`
+	ReadBytes   int           `yaml:"read_bytes"`
+	ReadTimeout time.Duration `yaml:"read_timeout"`
+	Capture     bool          `yaml:"capture"` // record bidirectional bytes to <data_dir>/captures/<id>.pcap
+	// MaxConcurrent is the per-listener cap on simultaneously-handled TCP
+	// connections (a semaphore across all the listener's binds): over it, new
+	// connections are closed immediately with a low-severity accept_cap event.
+	// Unset (0) applies a safe built-in default (defaultListenerMaxConcurrent) so
+	// a connection flood can't exhaust goroutines/fds; a negative value opts out
+	// (truly unlimited). TCP only — UDP concurrency is bounded by the UDP session
+	// path.
+	MaxConcurrent int `yaml:"max_concurrent"`
 	// MaxSourcePPS enables the fast-path DoS gate: the sustained new-connection
 	// rate allowed per source IP (token bucket, burst = max(pps,20)). A source
 	// over budget is shed at accept before spending a handler goroutine
@@ -1722,6 +1737,15 @@ type Correlate struct {
 	SpamRelay           CorrSpamRelay           `yaml:"spam_relay"`
 	DNSTunnel           CorrDNSTunnel           `yaml:"dns_tunnel"`
 	ReconToExploit      CorrReconToExploit      `yaml:"recon_to_exploit"`
+
+	// MaxSources caps the per-key state each correlator detector tracks (keyed
+	// by source IP, or by credential / CVE / fingerprint / token for the
+	// cross-source detectors). Idle entries are evicted on a window; this is the
+	// hard ceiling that bounds memory when a distinct-key flood (e.g. spoofed
+	// source IPs) grows the tables faster than idle eviction reclaims them —
+	// over the cap, live entries are shed in arbitrary order. 0 → built-in
+	// default (50000).
+	MaxSources int `yaml:"max_sources"`
 }
 
 // CorrDNSTunnel fires when one source produces several DNS tunneling / DGA /

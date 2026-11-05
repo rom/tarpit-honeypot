@@ -30,7 +30,7 @@ func (rsyncH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	res.BannerSent = "@RSYNCD: 31.0"
 
 	br := bufio.NewReader(conn)
-	line, _ := br.ReadString('\n')
+	line, _ := readLineCapped(br, maxLineBytes)
 	line = strings.TrimRight(line, "\r\n")
 	res.Payload = append([]byte(nil), []byte(line)...)
 	res.Meta["rsync_request"] = line
@@ -38,7 +38,7 @@ func (rsyncH) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Res
 	// The client first sends its own "@RSYNCD: <ver>" line; read the
 	// following module request (best-effort).
 	if strings.HasPrefix(line, "@RSYNCD:") {
-		mod, _ := br.ReadString('\n')
+		mod, _ := readLineCapped(br, maxLineBytes)
 		mod = strings.TrimRight(mod, "\r\n")
 		res.Payload = append(res.Payload, []byte("\n"+mod)...)
 		line = mod

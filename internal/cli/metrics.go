@@ -123,6 +123,12 @@ func buildStatsProvider(s *sensor.Sensor) ui.StatsProvider {
 				Type:  "gauge",
 				Value: float64(s.HoneyTokensTracked()),
 			},
+			ui.Sample{
+				Name:  "tarpit_ioc_writes_dropped_total",
+				Help:  "IOC-write jobs dropped because the off-loop writer queue was full",
+				Type:  "counter",
+				Value: float64(s.IOCWritesDropped()),
+			},
 		)
 		if active, entries, updated := s.KEVStats(); active {
 			out.Samples = append(out.Samples,

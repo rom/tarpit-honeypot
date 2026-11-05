@@ -37,6 +37,7 @@ type Config struct {
 	SpikeWarmup     int            // buckets observed before spikes can fire (default 10)
 	KillChainStages int            // distinct tactics to trigger the kill-chain (default 3)
 	KillChainWindow time.Duration  // kill-chain observation window (default 30m)
+	MaxSources      int            // cap on tracked per-source kill-chain states (default 50000)
 	Severity        event.Severity // severity for emitted events (default High)
 	now             func() time.Time
 }
@@ -62,6 +63,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.KillChainWindow <= 0 {
 		c.KillChainWindow = 30 * time.Minute
+	}
+	if c.MaxSources <= 0 {
+		c.MaxSources = 50000
 	}
 	if c.Severity == 0 {
 		c.Severity = event.SeverityHigh
@@ -94,7 +98,8 @@ type Detector struct {
 	vVar      float64
 	vBuckets  int
 	// kill-chain per source.
-	chain map[string]*chainState
+	chain     map[string]*chainState
+	lastSweep time.Time // throttles sweepChains (eviction of idle kill-chain state)
 }
 
 // New builds a Detector. A zero Config uses the defaults.
@@ -214,6 +219,7 @@ func (d *Detector) observeKillChain(ev *event.Event, now time.Time) *event.Event
 	if ip == "" || len(ev.MitreTactics) == 0 {
 		return nil
 	}
+	d.sweepChains(now)
 	st := d.chain[ip]
 	if st == nil || now.Sub(st.since) > d.cfg.KillChainWindow {
 		st = &chainState{tactics: map[string]struct{}{}, since: now}
@@ -241,6 +247,35 @@ func (d *Detector) observeKillChain(ev *event.Event, now time.Time) *event.Event
 		"intent":        "multi-stage kill chain from a single source — consolidated campaign alert",
 		"severity_note": "statistical/sequence correlation",
 	})
+}
+
+// sweepChains bounds the per-source kill-chain table. A source idle longer than
+// the window keeps no useful state (its next event starts a fresh chain), so
+// evicting idle entries caps memory under high source-IP cardinality — the
+// workload a honeypot actually sees. Throttled to once per window on the common
+// path; forced (with an arbitrary-order emergency shed) when a distinct-source
+// flood keeps the live set at the cap faster than the throttle fires. Called
+// under d.mu.
+func (d *Detector) sweepChains(now time.Time) {
+	over := len(d.chain) >= d.cfg.MaxSources
+	if !over && now.Sub(d.lastSweep) < d.cfg.KillChainWindow {
+		return
+	}
+	d.lastSweep = now
+	for ip, st := range d.chain {
+		if now.Sub(st.since) > d.cfg.KillChainWindow {
+			delete(d.chain, ip)
+		}
+	}
+	if len(d.chain) >= d.cfg.MaxSources {
+		target := d.cfg.MaxSources * 3 / 4
+		for ip := range d.chain {
+			if len(d.chain) <= target {
+				break
+			}
+			delete(d.chain, ip)
+		}
+	}
 }
 
 // mk builds a derived event in the correlate shape.

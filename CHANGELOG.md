@@ -8,8 +8,157 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`tuning:` config block — the internal caches / buffers are now adjustable.**
+  Performance values that were compile-time constants are exposed so an operator
+  can raise them as load grows: the SQLite connection pool
+  (`store_max_open_conns`), the event-sink write-batch buffer (`sink_batch` /
+  `sink_flush` / `sink_hard_cap`), and the web-UI snapshot caches
+  (`ui_dashboard_ttl` / `ui_agg_cache_ttl` / `ui_window_cache_ttl`) plus the
+  dashboard enrichment scan cap (`ui_scan_limit`). Every field is optional and
+  `0` means "use the built-in default", so an absent block changes nothing;
+  negative or incoherent values (e.g. `sink_hard_cap < sink_batch`) are rejected
+  at validate time. Documented in `docs/config.md`.
+
 ### Changed
 
+- **The fuzzing/DoS classifier no longer scans every payload for entropy up
+  front.** `fuzzdos.ClassifyPayload` eagerly computed Shannon entropy and the
+  printable ratio — a full pass over the payload each — on every event, though
+  both are only consulted on the text-protocol branches and only surfaced (as
+  `payload_entropy` meta) for a payload that actually is fuzzing. They are now
+  computed lazily, so the common benign fall-through and every binary-protocol
+  payload skip those passes. Output is unchanged: a fuzzing verdict still carries
+  its real entropy (a focused test locks this).
+- **Listeners now default to a bounded `max_concurrent` instead of unlimited.**
+  A TCP listener's accept semaphore was created only when `max_concurrent` was
+  explicitly set, so the shipped default (unset → `0` → "unlimited") let a
+  connection flood spawn unbounded handler goroutines / file descriptors — a
+  self-DoS / OOM lever. Unset now applies a safe built-in ceiling of **1024
+  simultaneous connections per listener** (over it, new connections are closed
+  immediately with the existing low-severity `accept_cap` event). Operators who
+  genuinely want no cap set a **negative** value (e.g. `max_concurrent: -1`);
+  explicit positive values are unchanged, and tarpit listeners remain governed
+  by their own lower `max_total` (default 256). UDP is unaffected (its
+  concurrency is bounded by the UDP session path). **Action:** if you relied on
+  unlimited accepts, set `max_concurrent: -1` on those listeners.
+- **Fleet correlation's idle-state sweep and the dedup filter's expiry sweep are
+  now throttled, not run on every event.** Both were O(N)-over-all-tracked-keys
+  scans fired per event once their tables were warm — ruinous at a fleet
+  aggregator's ingest rate (the fleet prune walks ~25 maps) and on any busy
+  sensor (the router dedup swept the whole table on every event once it passed
+  4096 entries). The fleet sweep now runs at most once per a window-derived
+  interval (Window/16, clamped to 1–30 s); the dedup sweep at most once per its
+  window. Neither throttle changes behaviour: an idle fleet actor affects no
+  detector until its key is seen again (and is still evicted within one interval
+  of going idle), and the dedup decision is made by an authoritative per-key
+  window check, so a not-yet-swept expired entry never causes a false dedup. The
+  dedup table's hard cap (65536 keys) is now checked on every call rather than
+  only inside the sweep, so memory stays bounded between throttled sweeps.
+- **Correlator per-detector state tables now have a hard memory cap.** Each of
+  the ~50 correlation detectors keeps a per-key table (keyed by source IP, or by
+  credential / CVE / fingerprint / canary token for the cross-source ones). Idle
+  keys were evicted on each detector's window, but that sweep is throttled to
+  once every 5 minutes and only removes *idle* entries — so a flood of distinct
+  live keys (e.g. spoofed source IPs) could grow all ~50 tables without bound
+  between sweeps. A new `correlate.max_sources` ceiling (default 50,000, keyed
+  off an O(1) per-event counter so the sweep is forced once that many events
+  have been seen) sheds live entries in arbitrary order when a table reaches the
+  cap, bounding each table at roughly the cap regardless of the time throttle.
+  Under normal load nothing changes; under a spoofing storm some correlation
+  accuracy is traded for memory safety. Mirrors the kill-chain cap already on the
+  statistical baseline detector.
+- **The summary dashboard's cross-cutting charts are now SQL `GROUP BY`
+  rollups, not a 20k-row Go scan.** The tactic / technique / CVE / geo-city /
+  ASN / network-operator / tool / attacks-by-service / service-board charts were
+  built by pulling up to `ui_scan_limit` (default 20,000) recent event rows —
+  `meta_json` included — into Go and counting them in a loop on every refresh.
+  That read dominated the summary build as the table grew, and it only ever
+  *sampled* the newest N, so a long window was never fully accurate. The counting
+  now happens in the engine: the single-valued / array meta dimensions
+  (city / ASN / operator / tool / port) are aggregated and top-N-trimmed in SQL,
+  and the dimensions that need Go logic (ATT&CK augmentation, the multi-source
+  CVE extraction, the attack predicate) are returned as a *grouped* set — one row
+  per distinct event signature with its count — so the UI applies the exact same
+  helpers once per signature instead of once per event. Honeypot traffic is
+  highly repetitive in those fields, so the grouped set is orders of magnitude
+  smaller than the event count while the charts become **full-window accurate**
+  (no more "scan of N recent events"). Output is identical to the old path, locked
+  by a golden test that runs both over the same data (`internal/store`'s new
+  `DashboardFacets`, implemented for the SQLite and Postgres backends; the
+  `/charts` gallery is unchanged). `ui_scan_limit` now caps the attack-signature
+  set rather than a raw row scan.
+- **Reverse-DNS enrichment is now asynchronous / non-blocking.** On a cache miss
+  the per-event rDNS lookup previously did a blocking `LookupAddr` (up to the
+  configured timeout) *inside the single-threaded sensor bus loop* — and a
+  honeypot's workload is a flood of distinct source IPs, i.e. nearly all misses,
+  so the whole pipeline serialized behind one DNS round-trip per new IP. Misses
+  now return immediately and resolve off the bus loop (≤8 concurrent, one per IP,
+  negatively cached), with the name landing on a later event for that IP. The
+  bus loop never blocks on DNS.
+- **Threat-intel / cloud-range CIDR matching is O(distinct prefix-lengths),
+  not O(prefixes).** `internal/enrich` matched every event's source IP against
+  reputation/cloud lists with a linear scan over every CIDR prefix — thousands
+  of prefixes × every event on the bus loop. Prefixes are now bucketed by mask
+  length into a `cidrSet` (network-addr maps), so a lookup is a handful of map
+  probes regardless of list size, with identical (family-strict) semantics to
+  the previous `netip.Prefix.Contains` scan.
+- **IOC-store writes are now batched off the bus loop.** Every event's
+  indicators were upserted one row at a time with a synchronous
+  `INSERT…ON CONFLICT` *on the bus loop*, each write competing with the async
+  event sink for SQLite's single writer lock — so under a scan flood indicator
+  writes serialized the whole pipeline. The bus loop now only extracts
+  indicators (cheap, in-memory) and hands them to a dedicated IOC writer over a
+  bounded queue; the writer coalesces them into one batched transaction per
+  flush (≤256 sightings or every 250 ms) via the new `store.UpsertIOCs`, and
+  emits the `ioc:<type>` first-sighting events itself. The hand-off is
+  non-blocking: if the queue saturates, jobs are dropped (the IOC store is
+  best-effort) and counted on the new `tarpit_ioc_writes_dropped_total` metric,
+  so a slow or locked store can never stall event processing. First-sighting
+  semantics and store contents are unchanged, including correct de-duplication
+  of a repeated indicator within a single batch.
+
+### Fixed
+
+- **Unbounded-input DoS hardening (code audit).** Six handlers accepted
+  attacker-controlled input without a size cap and could be driven to large
+  allocations / unbounded buffering within the read deadline:
+  - `mongodb` allocated the body (up to 48 MB) from a 16-byte header's declared
+    length *before* reading it — a ~3,000,000:1 amplification → OOM lever. The
+    cap is now 64 KiB (`mongoMaxMsg`); oversized lengths are flagged malformed.
+  - `redis`, `memcached`, `syslog` (newline branch) and `rsync` read protocol
+    lines with bare `bufio.ReadString('\n')` (no cap) — an unterminated byte
+    stream grew one buffer until the deadline. They now use the existing
+    `readLineCapped` (8 KiB), matching the other line handlers.
+  - `rethinkdb` read NUL-delimited messages with uncapped `ReadBytes(0x00)` and
+    a per-iteration deadline refresh; it now uses a new bounded `readDelimCapped`.
+  A wider sweep (60+ binary length-prefix parsers, the SNMP ASN.1/DNS/LLMNR
+  decoders, the fleet ingest path, the SQL builders, the fetchers) confirmed
+  those are already correctly bounded.
+- **Baseline kill-chain memory leak.** `internal/baseline`'s per-source
+  kill-chain map was never evicted — unbounded growth under high source-IP
+  cardinality (the honeypot's normal workload). It now has a throttled idle
+  sweep plus a tunable `MaxSources` cap (default 50000) with emergency eviction.
+
+### Added
+
+- **Per-package test-coverage gate (70% floor).** New `scripts/check-coverage.sh`
+  + a `coverage` CI job enforce a 70% statement-coverage floor on every package.
+  Two auditable escape hatches keep it enforceable today: `EXCLUDE` (the command
+  `main`s and the PostgreSQL backend, which can't be unit-tested in CI) and a
+  pinned `GRANDFATHER` list of packages currently below the floor — the gate
+  passes now, **blocks any regression**, enforces the full floor on everything
+  already ≥70%, and is a tracked debt list to burn down (documented in
+  `docs/coverage.md`). As a down payment, `internal/safe` was raised 67% → 86%
+  by covering the central `SanitizeMetaStrings` meta-sanitizer (previously 0%).
+
+### Changed
+
+- **Removed dead code** flagged by `golang.org/x/tools/cmd/deadcode`:
+  `artifactscan.Engine.HashCount` and `shell.lootIn` / `shell.isLootPath` (the
+  `ls` loot listing is served from a static table in `responses.go`, so these
+  were superseded and never called).
 - **Go toolchain bumped to 1.26.9** (go.mod `go` directive + `golang:1.26.9-alpine`
   Docker base) to clear the CI `govulncheck` failure — the standard-library
   vulnerabilities it flagged are fixed in the patched toolchain. CI's

@@ -263,7 +263,16 @@ func (s *Store) EnsureIndexes() int { return ensureIndexes(s.db) }
 // Open creates (if necessary) and opens the events database under dataDir.
 // capMB is the soft cap on database size; when exceeded, the oldest events
 // are pruned during the next Insert.
+// Open opens (creating if needed) the SQLite event store with the default
+// connection-pool size. Equivalent to OpenTuned(dataDir, capMB, 0).
 func Open(dataDir string, capMB int) (*Store, error) {
+	return OpenTuned(dataDir, capMB, 0)
+}
+
+// OpenTuned is Open with an explicit connection-pool size. maxOpenConns <= 0
+// uses the default (12). The sensor passes config.Tuning.StoreMaxOpenConns so an
+// operator can widen the read pool on a busy, many-reader deployment.
+func OpenTuned(dataDir string, capMB, maxOpenConns int) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("store: mkdir %s: %w", dataDir, err)
 	}
@@ -289,8 +298,11 @@ func Open(dataDir string, capMB int) (*Store, error) {
 	// concurrent views from blocking each other; the single writer (the sink)
 	// still serializes via WAL + busy_timeout. Idle conns are kept warm so a
 	// refresh storm doesn't pay reconnect cost.
-	db.SetMaxOpenConns(12)
-	db.SetMaxIdleConns(12)
+	if maxOpenConns <= 0 {
+		maxOpenConns = 12
+	}
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxOpenConns)
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	// sql.Open is lazy — this is the first statement that actually opens the
 	// file, so a CANTOPEN (error 14) surfaces here. openError names the path

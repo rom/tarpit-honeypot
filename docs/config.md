@@ -191,7 +191,7 @@ listeners:
     read_bytes: 1024
     read_timeout: 5s
     capture: false                      # write per-event pcap of bidirectional bytes
-    max_concurrent: 0                   # 0 = unlimited; otherwise SYN-flood guard
+    max_concurrent: 0                   # TCP accept cap; 0 = safe default (1024), negative = unlimited
     udp_session: false                  # UDP only: per-source multi-datagram sessions
                                         # (handler: quic reassembles multi-packet
                                         # ClientHellos + does QUIC Retry address validation)
@@ -570,8 +570,10 @@ correlate:
     distinct_sources: 3
     window: 1h
     severity: high
+  max_sources: 50000          # per-detector hard cap on tracked keys (0 = default 50000)
 ```
 
+- **max_sources**: the hard ceiling on the per-key state *each* detector tracks (keyed by source IP, or by credential / CVE / fingerprint / token for the cross-source detectors). Idle keys are evicted on each detector's window; this bounds memory when a distinct-key flood (e.g. spoofed source IPs) grows the tables faster than idle eviction reclaims them — once a table reaches the cap, live entries are shed in arbitrary order (some correlation accuracy is lost for the flood's own keys, which is the right trade-off under a spoofing storm). `0` uses the built-in default of 50000.
 - **port_scan**: same source touched N distinct ports within window → `correlate:port_scan` with the port list in meta.
 - **brute_force**: N attempts in window. Captures deduped credential pairs (`auth_user/auth_pass`, `bind_dn/bind_pw`, etc.) from contributing events.
 - **slow_scan**: long-window scan detector; per-port state ages individually so a 1-port-per-hour scan accumulates.
@@ -1496,6 +1498,30 @@ interaction:
 - **`browser_traps`** — locked to `off`. JavaScript / canvas / beacon traps can't execute without driving a real browser.
 
 **CLI.** `--interaction-mode low|medium_experimental` overrides `interaction.mode` for `run` / `validate-config` / `show-config` (it flows through the normal pre-validation override path, so the guardrail still applies). `tarpit-honeypot list-unavailable-capabilities` prints the exact disabled / locked / infeasible feature matrix for the active config (`--json` for machine output) — so an operator never assumes a capability that the deployment can't produce.
+
+---
+
+## `tuning:` — performance knobs
+
+Values that are otherwise compile-time constants — the SQLite connection pool, the event-sink write-batch buffer, and the web-UI snapshot caches — so you can trade freshness / memory for throughput as event volume grows. **Every field is optional and `0` means "use the built-in default"**, so an absent `tuning:` block (or any unset field) leaves behaviour exactly as before.
+
+```yaml
+tuning:
+  store_max_open_conns: 12       # SQLite read-pool size (default 12); raise on a busy, many-reader sensor
+  sink_batch: 256                # event-sink: flush at this many buffered events (default 256)
+  sink_flush: 500ms              # event-sink: ...or after this long, whichever first (default 500ms)
+  sink_hard_cap: 8192            # event-sink: go synchronous above this to bound memory (default 8192)
+  ui_dashboard_ttl: 20s          # "/" dashboard snapshot cache TTL (default 20s)
+  ui_agg_cache_ttl: 5s           # /profiles rollup cache TTL (default 5s)
+  ui_window_cache_ttl: 3s        # shared window-event scan cache TTL (default 3s)
+  ui_scan_limit: 20000           # cap on the dashboard attack-signature rollup / charts scan (default 20000)
+```
+
+- **`store_max_open_conns`** sizes the WAL read pool (`SetMaxOpenConns`/`SetMaxIdleConns`). More concurrent UI/aggregation readers → raise it; the single writer still serializes via WAL.
+- **`sink_batch` / `sink_flush` / `sink_hard_cap`** control the async SQLite write path. Bigger batches/flush intervals amortize commits under high event rates; `sink_hard_cap` must be ≥ `sink_batch`.
+- **`ui_*_ttl`** trade UI freshness for DB load: longer TTLs mean fewer whole-window scans but staler pages. **`ui_scan_limit`** bounds the dashboard's enrichment rollup. The summary's tactic / geo / ASN / tool charts are computed with SQL `GROUP BY` passes (full-window accurate, not sampled), so this caps the number of distinct attack *signatures* the rollup returns rather than a raw row scan; the `/charts` gallery still uses it as a per-event scan cap. Lower it only to bound work on a pathologically high-signature store.
+
+Negative values, and a `sink_hard_cap` below `sink_batch`, are rejected at load/validate time. All `tuning:` changes take effect on process (re)start.
 
 ---
 

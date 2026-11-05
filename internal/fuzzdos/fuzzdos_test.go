@@ -55,6 +55,23 @@ func TestClassifyPayloadTechniques(t *testing.T) {
 	}
 }
 
+// Entropy is computed lazily, but a fuzzing verdict must still carry the real
+// value because the sensor reports it as payload_entropy meta. (The all-same
+// buffer-overflow case legitimately has entropy 0 and is excluded.)
+func TestClassifyPayloadEntropyPopulatedForFuzzing(t *testing.T) {
+	hi := make([]byte, 512)
+	for i := range hi {
+		hi[i] = byte(i)
+	}
+	v := ClassifyPayload(hi, "http")
+	if v.Technique != "high-entropy" {
+		t.Fatalf("technique = %q; want high-entropy", v.Technique)
+	}
+	if v.Entropy < highEntropyText {
+		t.Errorf("high-entropy verdict carries Entropy %.2f; want >= %.2f (lazy compute did not populate it)", v.Entropy, highEntropyText)
+	}
+}
+
 func fuzzObs(ip string, port int, tm time.Time, tech string) Observation {
 	return Observation{SourceIP: ip, DestPort: port, Time: tm, Fuzz: Verdict{Fuzzing: true, Technique: tech}}
 }

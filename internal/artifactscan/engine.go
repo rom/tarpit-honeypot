@@ -62,14 +62,6 @@ func (e *Engine) LoadHashes(path string) (int, error) {
 	return added, sc.Err()
 }
 
-// HashCount returns the number of loaded known-malware hashes.
-func (e *Engine) HashCount() int {
-	if e == nil {
-		return 0
-	}
-	return len(e.hashes)
-}
-
 // lookupHash reports whether sha256 is a known-malware hash, and its family.
 func (e *Engine) lookupHash(sha256 string) (string, bool) {
 	if e == nil || len(e.hashes) == 0 {

@@ -181,6 +181,15 @@ func LoadDefaultsOnly(path string) (*Config, error) {
 	return &c, nil
 }
 
+// defaultListenerMaxConcurrent is the per-TCP-listener simultaneous-connection
+// ceiling applied when max_concurrent is unset. Generous for real attacker
+// interaction (a scan or brute-force rarely needs this many simultaneous
+// sockets to one port) while bounding goroutine/fd use so a connection flood
+// can't exhaust the process. Operators tune it per listener (lower for
+// CPU-heavy engagements like ssh_interactive) or set a negative value to opt
+// out entirely.
+const defaultListenerMaxConcurrent = 1024
+
 func (c *Config) applyDefaults() {
 	// Expand archeservice role bundles into listeners first, so the
 	// generated listeners pick up the per-listener defaults below.
@@ -245,6 +254,13 @@ func (c *Config) applyDefaults() {
 		}
 		if l.ReadTimeout == 0 {
 			l.ReadTimeout = 5 * time.Second
+		}
+		// Per-listener concurrency cap (TCP only). Unset → a safe default so a
+		// connection flood can't spawn unbounded handler goroutines / fds; a
+		// negative value is the explicit "unlimited" opt-out (left as-is, and the
+		// TCP listener creates no semaphore for it). UDP has no accept semaphore.
+		if l.MaxConcurrent == 0 && l.Proto != "udp" {
+			l.MaxConcurrent = defaultListenerMaxConcurrent
 		}
 		if l.Mode == "tarpit" {
 			t := &l.Tarpit
@@ -960,6 +976,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Performance tuning knobs: reject negative / incoherent overrides.
+	if err := c.Tuning.validate(); err != nil {
+		return err
+	}
+
 	// Severity overrides: rule non-empty, severity parseable. Compiling here
 	// surfaces a typo at load/validate time rather than first dispatch.
 	if _, err := CompileSeverityOverrides(c.SeverityOverrides); err != nil {
@@ -1311,6 +1332,11 @@ func (c *Config) Validate() error {
 		if !looksLikeMAC(a) {
 			return fmt.Errorf("devices.allow[%d]: %q is not an IP, CIDR, or MAC", i, a)
 		}
+	}
+
+	// Correlator per-detector-table hard cap (0 = built-in default).
+	if c.Correlate.MaxSources < 0 {
+		return fmt.Errorf("correlate.max_sources must be >= 0 (got %d)", c.Correlate.MaxSources)
 	}
 
 	// Correlator severities.

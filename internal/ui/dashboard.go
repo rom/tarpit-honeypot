@@ -373,6 +373,94 @@ func markCanvasActivity(cv *configCanvas, evs []*event.Event) {
 	}
 }
 
+// enrichDashboardFacets fills the same cross-cutting charts as enrichDashboard,
+// but from SQL-aggregated facets instead of a sampled per-event scan. The
+// logic-bearing dimensions (ATT&CK tactics/techniques, CVEs, attack
+// classification) are computed by running the *same* helpers (eventTag /
+// eventCVEs / isAttackEvent) once per distinct event signature, scaled by that
+// signature's count — so the output matches the scan path exactly while reading
+// orders of magnitude fewer rows. Countries / handlers / target IPs stay sourced
+// from the SQL summary (set in buildDashboard). Returns the attacks-by-service
+// slices for the donut chart. See store.DashboardFacets.
+func enrichDashboardFacets(d *dashboard, f store.DashboardFacets) []chSlice {
+	tac, tech, cve := map[string]int{}, map[string]int{}, map[string]int{}
+	svc := map[string]int{}
+	for _, a := range f.Attacks {
+		// ATT&CK tactics/techniques: base rule/handler lookup augmented with the
+		// event's anomaly markers — identical to eventTag over a real event.
+		tag := mitre.Augment(mitre.Lookup(a.RuleID, a.Handler), a.MetaAnomalies)
+		for _, t := range tag.Tactics {
+			tac[t] += a.Count
+		}
+		for _, t := range tag.Techniques {
+			tech[t] += a.Count
+		}
+		// CVE + attack-classification reuse the exact event helpers via a minimal
+		// reconstructed event carrying only the fields they read.
+		ev := &event.Event{
+			RuleID:    a.RuleID,
+			Handler:   a.Handler,
+			Proto:     a.Proto,
+			Severity:  event.Severity(a.Severity),
+			Anomalies: a.Anomalies,
+			Meta:      map[string]any{"anomalies": a.MetaAnomalies, "emulated_vuln_cves": a.EmulatedCVEs},
+		}
+		for _, c := range eventCVEs(ev) {
+			cve[c] += a.Count
+		}
+		if isAttackEvent(ev) {
+			s := a.Handler
+			if s == "" {
+				s = a.Proto
+			}
+			if s != "" {
+				svc[s] += a.Count
+			}
+		}
+	}
+	d.Tactics = topBars(tac, 14, "/events?tactic=")
+	d.Attacks = topBars(tech, 12, "/attack/technique?id=")
+	for i := range d.Attacks {
+		if nm := techShortName(d.Attacks[i].Label); nm != "" {
+			d.Attacks[i].Label = d.Attacks[i].Label + " · " + nm
+		}
+	}
+	d.CVEs = topBars(cve, 12, "/search?q=")
+
+	// ASN: format the display label + numeric pivot exactly as the per-event
+	// asnLabel did, from the grouped (number, operator) facets.
+	asn := map[string]int{}
+	for _, a := range f.ASNs {
+		if label := asnLabel(map[string]any{"asn": a.Num, "asn_org": a.Org}); label != "" {
+			asn[label] += a.Count
+		}
+	}
+	d.ASNs = topBars(asn, 10, "")
+	for i := range d.ASNs {
+		if num := asnNumber(d.ASNs[i].Label); num != "" {
+			d.ASNs[i].Href = "/events?asn=" + num
+		}
+	}
+	d.Cities = topBars(f.Cities, 10, "/events?geo_city=")
+	d.ASNOrgs = topBars(f.ASNOrgs, 10, "/events?asn_org=")
+	d.Tools = topBars(f.Tools, 10, "/events?tool=")
+	return slicesFromMap(svc)
+}
+
+// markCanvasActivityPorts is markCanvasActivity fed by a SQL per-port count map
+// (store.DashboardFacets.Ports) rather than a per-event scan.
+func markCanvasActivityPorts(cv *configCanvas, ports map[int]int) {
+	if len(cv.Listeners) == 0 {
+		return
+	}
+	for i := range cv.Listeners {
+		if n := ports[cv.Listeners[i].Port]; n > 0 {
+			cv.Listeners[i].Hit = true
+			cv.Listeners[i].Hits = n
+		}
+	}
+}
+
 // eventCVEs returns the CVE IDs an event recorded — from a "cve:"-prefixed
 // rule, "cve:" anomaly markers, or the emulated-vuln meta — normalized to
 // upper case and de-duplicated.

@@ -584,3 +584,23 @@ func readLineCapped(br *bufio.Reader, max int) (string, error) {
 	}
 	return string(buf), nil
 }
+
+// readDelimCapped is the bounded analogue of bufio.Reader.ReadBytes(delim): it
+// reads up to max bytes or until delim (inclusive), whichever comes first, so an
+// unterminated stream can't grow an unbounded buffer before the read deadline
+// fires. When the cap is hit the returned slice does NOT end in delim, so
+// callers that strip a trailing delimiter must check for it first.
+func readDelimCapped(br *bufio.Reader, delim byte, max int) ([]byte, error) {
+	buf := make([]byte, 0, 128)
+	for len(buf) < max {
+		c, err := br.ReadByte()
+		if err != nil {
+			return buf, err
+		}
+		buf = append(buf, c)
+		if c == delim {
+			break
+		}
+	}
+	return buf, nil
+}

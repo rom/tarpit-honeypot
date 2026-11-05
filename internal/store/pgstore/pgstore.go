@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -763,6 +764,160 @@ GROUP BY `+val)
 	return out, rows.Err()
 }
 
+// DashboardFacets runs the summary page's cross-cutting GROUP BY passes (see the
+// SQLite store.DashboardFacets). jsonb/`->>` dialect: meta scalars via `->>`,
+// the tools array via jsonb_array_elements_text (guarded on jsonb_typeof so a
+// non-array never raises), and the attack signatures grouped as jsonb then
+// returned as ::text for the shared ParseJSONStrings.
+func (s *Store) DashboardFacets(ctx context.Context, since time.Time, limit int) (store.DashboardFacets, error) {
+	if limit <= 0 {
+		limit = 20000
+	}
+	sinceNS := since.UTC().UnixNano()
+	f := store.DashboardFacets{
+		Cities:  map[string]int{},
+		ASNOrgs: map[string]int{},
+		Tools:   map[string]int{},
+		Ports:   map[int]int{},
+	}
+
+	attackRows, err := s.db.QueryContext(ctx, `
+SELECT rule_id, handler, proto, severity,
+       anomalies::text, (meta->'anomalies')::text, (meta->'emulated_vuln_cves')::text,
+       COUNT(*) c
+FROM events
+WHERE time >= $1
+GROUP BY rule_id, handler, proto, severity, anomalies, meta->'anomalies', meta->'emulated_vuln_cves'
+ORDER BY c DESC
+LIMIT $2`, sinceNS, limit)
+	if err != nil {
+		return f, err
+	}
+	for attackRows.Next() {
+		var (
+			a                       store.AttackFacet
+			anomJSON, metaAnom, cve sql.NullString
+		)
+		if err := attackRows.Scan(&a.RuleID, &a.Handler, &a.Proto, &a.Severity,
+			&anomJSON, &metaAnom, &cve, &a.Count); err != nil {
+			attackRows.Close()
+			return f, err
+		}
+		a.Anomalies = store.ParseJSONStrings(anomJSON.String)
+		a.MetaAnomalies = store.ParseJSONStrings(metaAnom.String)
+		a.EmulatedCVEs = store.ParseJSONStrings(cve.String)
+		f.Attacks = append(f.Attacks, a)
+	}
+	attackRows.Close()
+	if err := attackRows.Err(); err != nil {
+		return f, err
+	}
+
+	if f.Cities, err = s.metaScalarCounts(ctx, "geo_city", sinceNS, store.FacetTopN); err != nil {
+		return f, err
+	}
+	if f.ASNOrgs, err = s.metaScalarCounts(ctx, "asn_org", sinceNS, store.FacetTopN); err != nil {
+		return f, err
+	}
+
+	asnRows, err := s.db.QueryContext(ctx, `
+SELECT meta->>'asn' num, meta->>'asn_org' org, COUNT(*) c
+FROM events
+WHERE time >= $1 AND ((meta->>'asn') IS NOT NULL OR (meta->>'asn_org') IS NOT NULL)
+GROUP BY num, org
+ORDER BY c DESC
+LIMIT $2`, sinceNS, store.FacetTopN)
+	if err != nil {
+		return f, err
+	}
+	for asnRows.Next() {
+		var num, org sql.NullString
+		var c int
+		if err := asnRows.Scan(&num, &org, &c); err != nil {
+			asnRows.Close()
+			return f, err
+		}
+		n, _ := strconv.Atoi(num.String)
+		if n == 0 && org.String == "" {
+			continue
+		}
+		f.ASNs = append(f.ASNs, store.ASNFacet{Num: n, Org: org.String, Count: c})
+	}
+	asnRows.Close()
+	if err := asnRows.Err(); err != nil {
+		return f, err
+	}
+
+	toolRows, err := s.db.QueryContext(ctx, `
+SELECT value, COUNT(*) c FROM (
+  SELECT jsonb_array_elements_text(meta->'tools') AS value
+  FROM events WHERE time >= $1 AND jsonb_typeof(meta->'tools') = 'array'
+) sub
+WHERE value <> ''
+GROUP BY value ORDER BY c DESC LIMIT $2`, sinceNS, store.FacetTopN)
+	if err != nil {
+		return f, err
+	}
+	for toolRows.Next() {
+		var k string
+		var c int
+		if err := toolRows.Scan(&k, &c); err != nil {
+			toolRows.Close()
+			return f, err
+		}
+		f.Tools[k] = c
+	}
+	toolRows.Close()
+	if err := toolRows.Err(); err != nil {
+		return f, err
+	}
+
+	portRows, err := s.db.QueryContext(ctx, `
+SELECT dst_port, COUNT(*) FROM events
+WHERE time >= $1 AND dst_port > 0
+GROUP BY dst_port ORDER BY 2 DESC LIMIT 1000`, sinceNS)
+	if err != nil {
+		return f, err
+	}
+	for portRows.Next() {
+		var port, c int
+		if err := portRows.Scan(&port, &c); err != nil {
+			portRows.Close()
+			return f, err
+		}
+		f.Ports[port] = c
+	}
+	portRows.Close()
+	if err := portRows.Err(); err != nil {
+		return f, err
+	}
+
+	return f, nil
+}
+
+// metaScalarCounts is a GROUP BY over a single meta scalar (`meta->>key`),
+// top-n by count. key is a fixed caller literal, never user input.
+func (s *Store) metaScalarCounts(ctx context.Context, key string, sinceNS int64, n int) (map[string]int, error) {
+	out := map[string]int{}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT meta->>'`+key+`' v, COUNT(*) c FROM events
+WHERE time >= $1 AND (meta->>'`+key+`') IS NOT NULL AND (meta->>'`+key+`') <> ''
+GROUP BY v ORDER BY c DESC LIMIT $2`, sinceNS, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		var c int
+		if err := rows.Scan(&k, &c); err != nil {
+			return nil, err
+		}
+		out[k] = c
+	}
+	return out, rows.Err()
+}
+
 // --- IOCs -------------------------------------------------------------------
 
 func (s *Store) UpsertIOC(ctx context.Context, typ, value, ruleID, sensor, source string, sev event.Severity, t time.Time) (bool, error) {
@@ -784,6 +939,48 @@ RETURNING count`,
 		return false, err
 	}
 	return count == 1, nil
+}
+
+// UpsertIOCs records a batch of indicator sightings in one transaction,
+// returning per-row (in order) whether each was first-seen. See the store.Store
+// version; this is the PostgreSQL backend.
+func (s *Store) UpsertIOCs(ctx context.Context, batch []store.IOCUpsert) ([]bool, error) {
+	if len(batch) == 0 {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // no-op once committed
+	stmt, err := tx.PrepareContext(ctx, `
+INSERT INTO iocs (type, value, first_seen, last_seen, count, severity, last_rule, last_sensor, last_source)
+VALUES ($1, $2, $3, $3, 1, $4, $5, $6, $7)
+ON CONFLICT (type, value) DO UPDATE SET
+  last_seen   = excluded.last_seen,
+  count       = iocs.count + 1,
+  severity    = GREATEST(iocs.severity, excluded.severity),
+  last_rule   = excluded.last_rule,
+  last_sensor = excluded.last_sensor,
+  last_source = excluded.last_source
+RETURNING count`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = stmt.Close() }()
+	out := make([]bool, len(batch))
+	for i, u := range batch {
+		ns := u.Time.UTC().UnixNano()
+		var count int64
+		if err := stmt.QueryRowContext(ctx, u.Type, u.Value, ns, int(u.Severity), u.RuleID, u.Sensor, u.Source).Scan(&count); err != nil {
+			return nil, err
+		}
+		out[i] = count == 1
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *Store) QueryIOCs(ctx context.Context, f store.IOCFilter) ([]store.IOCRow, error) {

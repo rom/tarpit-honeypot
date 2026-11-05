@@ -386,6 +386,9 @@ type Correlator struct {
 
 	lastBurstFire time.Time // synchronized-burst cooldown
 
+	lastPrune     time.Time     // throttles the O(N) idle-state sweep
+	pruneInterval time.Duration // min gap between sweeps (derived from Window)
+
 	now func() time.Time // overridable in tests
 }
 
@@ -432,7 +435,26 @@ func New(cfg Config) *Correlator {
 	for _, p := range cfg.PortCampaignExclude {
 		c.portExclude[p] = true
 	}
+	c.pruneInterval = fleetPruneInterval(cfg.Window)
 	return c
+}
+
+// fleetPruneInterval derives how often the idle-state sweep may run from the
+// correlation window: a small fraction of it, clamped to a sane range. Sweeping
+// on every event is O(N over all tracked keys) per event — ruinous at a fleet
+// aggregator's ingest rate — while the sweep only reclaims memory (an idle
+// actor affects no detector until its key is seen again). Throttling to a
+// fraction of the window keeps the boundary slop (an actor lingering up to one
+// interval past the window) well under the window itself.
+func fleetPruneInterval(window time.Duration) time.Duration {
+	iv := window / 16
+	if iv < time.Second {
+		iv = time.Second
+	}
+	if iv > 30*time.Second {
+		iv = 30 * time.Second
+	}
+	return iv
 }
 
 // Observe folds one event into the fleet view and returns any fleet:* detection
@@ -531,6 +553,13 @@ func touch(m map[string]*actor, key, sid, src string, now time.Time) *actor {
 // thresholds are "within a window" and memory stays bounded. The novelty
 // memory (seenASN/seenFP) uses the longer FirstSeenHorizon instead.
 func (c *Correlator) pruneLocked(now time.Time) {
+	// Throttle: the sweep is O(total tracked keys) and only reclaims memory, so
+	// running it on every ingested event is wasteful at fleet scale. Sweep at
+	// most once per interval; the first call (zero lastPrune) always runs.
+	if !c.lastPrune.IsZero() && now.Sub(c.lastPrune) < c.pruneInterval {
+		return
+	}
+	c.lastPrune = now
 	cutoff := now.Add(-c.cfg.Window)
 	for _, m := range []map[string]*actor{
 		c.sources, c.asns, c.fps, c.payloads, c.creds, c.cves, c.subnets,

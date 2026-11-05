@@ -355,14 +355,15 @@ func readRESPCommand(br *bufio.Reader) ([]string, error) {
 		return nil, err
 	}
 	if first[0] != '*' {
-		// Inline command
-		line, err := br.ReadString('\n')
+		// Inline command — cap the line so an unterminated flood can't grow an
+		// unbounded buffer within the read deadline.
+		line, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			return nil, err
 		}
 		return strings.Fields(strings.TrimRight(line, "\r\n")), nil
 	}
-	header, err := br.ReadString('\n')
+	header, err := readLineCapped(br, maxLineBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +373,7 @@ func readRESPCommand(br *bufio.Reader) ([]string, error) {
 	}
 	out := make([]string, 0, n)
 	for i := 0; i < n; i++ {
-		dollar, err := br.ReadString('\n')
+		dollar, err := readLineCapped(br, maxLineBytes)
 		if err != nil {
 			return nil, err
 		}
