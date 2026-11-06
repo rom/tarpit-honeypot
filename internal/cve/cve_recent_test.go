@@ -157,3 +157,42 @@ func TestThirdWaveAdvisories(t *testing.T) {
 		}
 	}
 }
+
+// TestKEVWaveAdditions locks in the real CISA-KEV / in-the-wild CVEs added to
+// broaden coverage of the recent exploitation wave across relevant protocols.
+func TestKEVWaveAdditions(t *testing.T) {
+	// ScadaBR (SCADA/HMI web UI) is detectable via its exploit endpoint.
+	hits := MatchPayload("http", "POST /ScadaBR/view_edit.shtm HTTP/1.1\r\n\r\n")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2021-26828" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ScadaBR CVE-2021-26828 not matched on view_edit.shtm; got %+v", hits)
+	}
+
+	// Advisory-only edge/OT records: present, correctly serviced, ATT&CK-tagged.
+	adv := map[string]string{
+		"CVE-2024-53704": "https",     // SonicWall SSLVPN auth bypass
+		"CVE-2025-0111":  "http",      // PAN-OS authenticated file read
+		"CVE-2024-9140":  "moxa_mgmt", // Moxa router OS command injection
+	}
+	for id, svc := range adv {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service != svc {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, svc)
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only", id)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}

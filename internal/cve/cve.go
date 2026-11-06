@@ -2532,6 +2532,28 @@ var catalog = []Record{
 	{ID: "CVE-2026-15409", Name: "SonicWall SMA1000 SSRF", CVSS: 7.2, Service: "http",
 		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-918"},
 		Description: "Server-side request forgery in the SonicWall SMA1000 management console (added to CISA KEV in 2026)."},
+
+	// ---- Real, CISA-KEV / in-the-wild CVEs in relevant protocols, added to
+	// broaden coverage of the recent exploitation wave. These are verified
+	// public records (not the dated-2026 appliance personas above); live
+	// recency beyond them comes from the CISA KEV feed + `kev-gap`. ----
+	{ID: "CVE-2021-26828", Name: "OpenPLC ScadaBR arbitrary file upload RCE", CVSS: 8.8, Service: "http",
+		Signatures: []string{"view_edit.shtm"},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-434"},
+		CPE: "cpe:2.3:a:scadabr:scadabr:*:*:*:*:*:*:*:*", EPSS: 0.80,
+		Description: "OpenPLC ScadaBR (SCADA/HMI web UI) lets an authenticated user upload and execute a JSP via view_edit.shtm → RCE (CISA KEV, actively exploited)."},
+	{ID: "CVE-2024-53704", Name: "SonicWall SonicOS SSLVPN authentication bypass", CVSS: 9.8, Service: "https",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"},
+		CPE: "cpe:2.3:o:sonicwall:sonicos:*:*:*:*:*:*:*:*", EPSS: 0.94,
+		Description: "SonicWall SonicOS SSL-VPN improper authentication lets a remote attacker hijack an active session (CISA KEV 2025-02-18; used by Akira ransomware affiliates for initial access)."},
+	{ID: "CVE-2025-0111", Name: "Palo Alto PAN-OS authenticated file read", CVSS: 6.5, Service: "http",
+		Technique: "T1083", Tactic: "discovery", CWE: []string{"CWE-73"},
+		CPE: "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*", EPSS: 0.90,
+		Description: "PAN-OS management web interface authenticated file read of files accessible to the 'nobody' user; chained in the wild with the CVE-2025-0108 auth bypass (and CVE-2024-9474) for config theft (CISA KEV)."},
+	{ID: "CVE-2024-9140", Name: "Moxa cellular/secure router OS command injection", CVSS: 9.3, Service: "moxa_mgmt",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"},
+		CPE: "cpe:2.3:o:moxa:edr-8010_firmware:*:*:*:*:*:*:*:*", EPSS: 0.40,
+		Description: "Moxa cellular routers, secure routers and network-security appliances allow OS command injection via special characters, enabling unauthorized execution/privilege escalation (Moxa PSIRT MPSA-241155)."},
 }
 
 // init normalizes every catalog signature to lowercase once, so
