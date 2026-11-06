@@ -128,6 +128,17 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Data race between sensor startup and a config reload (`-race`-found).**
+  `Sensor.Run` read the live config (`s.cfg`) and `s.rootCtx` directly, unlocked,
+  all through startup — building listeners, canaries, the DNS/sniffer/honeynet
+  responders, the device/correlator-save/retention runners — while `Reload`
+  hot-swaps `s.cfg` under `stateMu` (and `Run` records `rootCtx` that `Reload`
+  reads to re-parent the new router). A SIGHUP reload landing during boot raced
+  those reads. `Run` now snapshots the config once under the lock and drives all
+  of startup from the snapshot; `rootCtx` is guarded by `stateMu` too (written
+  once under the write lock, read via a new `curRootCtx` accessor), and `Reload`
+  reads the old config through the lock. A new `TestRunReloadRaceFree` drives a
+  live `Run` against a tight reload loop under `-race`.
 - **Panic on malformed PJL/XML/JS input (fuzz-found).** A set of protocol
   parsers (`pjlNameArg` / `pjlValueOf` / `pjlPasswordValue`, `danfossXMLField`,
   `xmlTagValue`, `extractJavaScript`) indexed a `strings.ToUpper`/`ToLower` copy
