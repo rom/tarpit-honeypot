@@ -53,6 +53,8 @@ var tcpHandlers = map[string]bool{
 	// BACnet Secure Connect (WebSocket+TLS BMS data link); bacnet_scs is the
 	// TLS-fronted real-world form, bacnet_sc the plaintext WS capture surface.
 	"bacnet_sc": true, "bacnet_scs": true,
+	// Classic internet + messaging + OT-metering services.
+	"irc": true, "finger": true, "stomp": true, "mbus": true,
 	"kubernetes_api": true, "vault": true,
 	"jdwp": true, "rmi": true, "git": true, "svn": true, "nbd": true, "roc_plus": true, "crimson": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "nfs": true, "pptp": true,

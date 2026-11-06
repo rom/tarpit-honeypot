@@ -2554,6 +2554,22 @@ var catalog = []Record{
 		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"},
 		CPE: "cpe:2.3:o:moxa:edr-8010_firmware:*:*:*:*:*:*:*:*", EPSS: 0.40,
 		Description: "Moxa cellular routers, secure routers and network-security appliances allow OS command injection via special characters, enabling unauthorized execution/privilege escalation (Moxa PSIRT MPSA-241155)."},
+
+	// ---- Classic / backdoor CVEs tied to the newly-added and existing
+	// handlers — famous, high-signal honeypot-recognition targets. ----
+	{ID: "CVE-2010-2075", Name: "UnrealIRCd 3.2.8.1 backdoor", CVSS: 10.0, Service: "irc",
+		Signatures: []string{"ab;"},
+		Technique:  "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"},
+		CPE: "cpe:2.3:a:unrealircd:unrealircd:3.2.8.1:*:*:*:*:*:*:*", EPSS: 0.80,
+		Description: "A trojaned UnrealIRCd 3.2.8.1 release runs any command sent after an 'AB;' prefix as a shell command on the IRC server (remote code execution)."},
+	{ID: "CVE-2007-2447", Name: "Samba usermap script command execution", CVSS: 9.0, Service: "smb",
+		Technique: "T1190", Tactic: "execution", CWE: []string{"CWE-78"},
+		CPE: "cpe:2.3:a:samba:samba:*:*:*:*:*:*:*:*", EPSS: 0.90,
+		Description: "Samba 3.0.x with a 'username map script' smb.conf option passes an unsanitized username containing shell metacharacters to /bin/sh — remote root command execution (Metasploit usermap_script)."},
+	{ID: "CVE-2020-1938", Name: "Apache Tomcat AJP Ghostcat file read/include", CVSS: 9.8, Service: "ajp13",
+		Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-22"},
+		CPE: "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*", EPSS: 0.95,
+		Description: "The Tomcat AJP connector trusts attacker-controlled request attributes (javax.servlet.include.*) so a remote client reads or includes files under the web root (WEB-INF), chaining to RCE when uploads are possible — 'Ghostcat'."},
 }
 
 // init normalizes every catalog signature to lowercase once, so

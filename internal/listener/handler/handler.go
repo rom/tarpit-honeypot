@@ -323,6 +323,14 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &bacnetSC{}, nil
 	case "bacnet_scs":
 		return newTLSWrap("bacnet_sc", "bacnet_scs", deps)
+	case "irc":
+		return &ircH{}, nil
+	case "finger":
+		return &fingerH{}, nil
+	case "stomp":
+		return &stompH{}, nil
+	case "mbus":
+		return &mbusH{}, nil
 	case "ftps":
 		return newTLSWrap("ftp", "ftps", deps)
 	case "mysql":

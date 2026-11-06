@@ -196,3 +196,37 @@ func TestKEVWaveAdditions(t *testing.T) {
 		}
 	}
 }
+
+// TestClassicBackdoorCVEs locks in the famous backdoor/RCE records tied to the
+// new and existing handlers (ATT&CK-tagged; the UnrealIRCd one is detectable).
+func TestClassicBackdoorCVEs(t *testing.T) {
+	// UnrealIRCd backdoor is detectable via the "AB;" trigger on the irc service.
+	hits := MatchPayload("irc", "AB;/bin/sh -c id")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2010-2075" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("UnrealIRCd backdoor CVE-2010-2075 not matched on irc; got %+v", hits)
+	}
+	svc := map[string]string{
+		"CVE-2010-2075": "irc",
+		"CVE-2007-2447": "smb",
+		"CVE-2020-1938": "ajp13",
+	}
+	for id, want := range svc {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service != want {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, want)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
