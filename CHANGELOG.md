@@ -30,6 +30,15 @@ documented in `docs/`).
   integration test that serves a real connection end-to-end and shuts down
   cleanly, full coverage of the TUN-decoy builders, and unit tests for the pure
   helpers), so its pin rose from 31 to 64. See `docs/coverage.md` for the list.
+- **Six packages promoted off the coverage grandfather list to the full 80%
+  floor.** `internal/format` (78.6→98.1), `internal/misp` (75.3→97.4),
+  `internal/feeds` (79.2→94.8), `internal/egress` (76.8→88.1), `internal/p0f`
+  (78.3→87.0) and `internal/store` (78.2→80.7) gained focused unit tests for
+  their previously-untested code — the SIEM formatters' name/escape/severity
+  helpers, the MISP and feeds pusher `Run`/post paths, the egress default-policy
+  and resolve helpers, p0f's signature rendering, and the store's path-diagnosis
+  + batch-insert + IOC-query helpers — and their grandfather pins were removed so
+  the gate now holds each to the full floor.
 - **The fuzzing/DoS classifier no longer scans every payload for entropy up
   front.** `fuzzdos.ClassifyPayload` eagerly computed Shannon entropy and the
   printable ratio — a full pass over the payload each — on every event, though

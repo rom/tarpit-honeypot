@@ -59,13 +59,7 @@ declare -A GRANDFATHER=(
   ["internal/fakefiles"]=70
   ["internal/shell"]=71
   ["internal/ui"]=71
-  ["internal/misp"]=74
-  ["internal/egress"]=75
   ["internal/listener/handler"]=75
-  ["internal/format"]=77
-  ["internal/p0f"]=77
-  ["internal/store"]=77
-  ["internal/feeds"]=78
 )
 
 # 1. Obtain per-package coverage.
