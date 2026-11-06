@@ -58,12 +58,66 @@ func TestDecorateRecognitionLabels(t *testing.T) {
 	}
 	want := []string{
 		"anonymized", "as64500", "class:spoofed", "cloud:aws", "conn:hosting",
-		"geo-risk", "geo:RU", "novel-asn", "scanner:censys", "spoofed-ptr",
-		"target:web-cms", "threat:medium", "tor",
+		"geo-risk", "geo:RU", "meta:deceptive-origin", "novel-asn", "scanner:censys",
+		"spoofed-ptr", "target:web-cms", "threat:medium", "tor",
 	}
 	sort.Strings(want)
 	if !reflect.DeepEqual(labels, want) {
 		t.Errorf("labels =\n  %v\nwant\n  %v", labels, want)
+	}
+}
+
+func TestMetaSignals(t *testing.T) {
+	has := func(labels []string, want string) bool {
+		for _, l := range labels {
+			if l == want {
+				return true
+			}
+		}
+		return false
+	}
+	cases := []struct {
+		name string
+		meta map[string]any
+		want []string // meta:* labels expected
+		not  []string // meta:* labels that must NOT appear
+	}{
+		{"deceptive-asn-geo", map[string]any{"asn_geo_mismatch": true},
+			[]string{"meta:deceptive-origin"}, nil},
+		{"deceptive-residential-on-hosting",
+			map[string]any{"conn_type": "residential", "net_class": "hosting"},
+			[]string{"meta:deceptive-origin"}, nil},
+		{"corroborated-two-feeds",
+			map[string]any{"threat_confidence": "high", "asn_reputation": []string{"spamhaus-asn-drop"}},
+			[]string{"meta:corroborated-threat"}, nil},
+		{"single-signal-not-corroborated",
+			map[string]any{"threat_confidence": "high"},
+			nil, []string{"meta:corroborated-threat"}},
+		{"ot-recon-from-tor",
+			map[string]any{"targeting": "ics-ot", "anonymized": true},
+			[]string{"meta:targeted-recon", "meta:ot-recon"}, nil},
+		{"db-recon-from-cloud",
+			map[string]any{"targeting": "database", "cloud_provider": "aws"},
+			[]string{"meta:targeted-recon"}, []string{"meta:ot-recon"}},
+		{"ot-target-residential-no-recon",
+			map[string]any{"targeting": "ics-ot", "conn_type": "residential"},
+			nil, []string{"meta:targeted-recon", "meta:ot-recon"}},
+		{"credential-foothold",
+			map[string]any{"cred_class": "breach", "targeting": "remote-access"},
+			[]string{"meta:credential-foothold"}, nil},
+	}
+	for _, c := range cases {
+		got := metaSignals(&event.Event{RuleID: "listener:x", Meta: c.meta})
+		for _, w := range c.want {
+			if !has(got, w) {
+				t.Errorf("%s: missing %q in %v", c.name, w, got)
+			}
+		}
+		for _, n := range c.not {
+			if has(got, n) {
+				t.Errorf("%s: unexpected %q in %v", c.name, n, got)
+			}
+		}
 	}
 }
 

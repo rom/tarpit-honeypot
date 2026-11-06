@@ -136,6 +136,78 @@ func sourceLabels(ev *event.Event) []string {
 	if cls := metaString(m, "source_class"); cls != "" {
 		add("class:" + cls)
 	}
+	// Composite "meta:" signals: cross-relate ≥2 independent enrichment signals
+	// into higher-order triage labels that no single signal expresses.
+	for _, s := range metaSignals(ev) {
+		add(s)
+	}
 	sort.Strings(out)
+	return out
+}
+
+// metaSignals cross-relates the per-event enrichment signals into composite
+// "meta:*" labels — each requires two or more independent corroborating
+// signals, so it carries more triage weight than any single label. These are
+// the meta-level extractions: deliberate-deception, multi-feed corroboration,
+// and hidden/rented-infra probing of high-value targets.
+func metaSignals(ev *event.Event) []string {
+	m := ev.Meta
+	var out []string
+
+	hidden := boolMeta(m, "anonymized") || boolMeta(m, "tor_exit") ||
+		metaString(m, "anonymizer") != ""
+	rented := metaString(m, "cloud_provider") != "" ||
+		metaString(m, "net_class") == "hosting" ||
+		metaString(m, "conn_type") == "hosting"
+
+	// Deliberate misrepresentation of origin (spoofed crawler PTR, ASN↔geo
+	// mismatch, or a residential PTR on a hosting net-class).
+	if boolMeta(m, "spoofed_ptr") || boolMeta(m, "asn_geo_mismatch") ||
+		(metaString(m, "conn_type") == "residential" && metaString(m, "net_class") == "hosting") {
+		out = append(out, "meta:deceptive-origin")
+	}
+
+	// Multiple independent reputation signals agree this source is bad.
+	corr := 0
+	if metaString(m, "threat_confidence") == "high" {
+		corr++
+	}
+	if boolMeta(m, "threat_intel_hit") || hasAny(m, "threat_intel") {
+		corr++
+	}
+	if hasAny(m, "asn_reputation") {
+		corr++
+	}
+	if boolMeta(m, "domain_bad") {
+		corr++
+	}
+	if boolMeta(m, "spoofed_ptr") {
+		corr++
+	}
+	if corr >= 2 {
+		out = append(out, "meta:corroborated-threat")
+	}
+
+	// High-value target probed from hidden or rented infrastructure — the OT /
+	// database / remote-access recon pattern defenders most want surfaced.
+	switch metaString(m, "targeting") {
+	case "ics-ot", "database", "remote-access":
+		if hidden || rented {
+			out = append(out, "meta:targeted-recon")
+			if metaString(m, "targeting") == "ics-ot" {
+				out = append(out, "meta:ot-recon")
+			}
+		}
+	}
+
+	// A captured weak/default/breached login paired with a remote-access or
+	// cloud/devops target: a credential-stuffing / spray foothold attempt.
+	switch metaString(m, "cred_class") {
+	case "default", "weak", "breach":
+		switch metaString(m, "targeting") {
+		case "remote-access", "cloud-devops":
+			out = append(out, "meta:credential-foothold")
+		}
+	}
 	return out
 }

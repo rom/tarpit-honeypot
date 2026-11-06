@@ -98,5 +98,10 @@ func recognitionLabelCatalog() []CoverageLabel {
 		{"", "scanner:<tool>", "Known internet-scanning infrastructure, or a self-identified scanner from the client fingerprint."},
 		{"", "cloud:<provider> / hosting", "Authoritative cloud-provider range, or datacenter/hosting net-class (rented infra, not residential)."},
 		{"", "bogon", "Spoofed / reserved (bogon) source address."},
+		{"⚑", "meta:deceptive-origin", "Composite: the source misrepresents where it is from (spoofed crawler PTR, ASN↔geo mismatch, or a residential PTR on a hosting net)."},
+		{"⚑", "meta:corroborated-threat", "Composite: two or more independent reputation signals (threat confidence, blocklist, ASN-DROP, bad domain, spoofed PTR) agree."},
+		{"⚑", "meta:targeted-recon", "Composite: a high-value target (ICS/OT, database, remote-access) probed from hidden (Tor/VPN/proxy) or rented (cloud/hosting) infrastructure."},
+		{"⚑", "meta:ot-recon", "Composite: an ICS/OT target probed from hidden/rented infrastructure."},
+		{"⚑", "meta:credential-foothold", "Composite: a weak/default/breached captured login against a remote-access or cloud/devops target."},
 	}
 }

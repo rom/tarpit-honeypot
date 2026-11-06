@@ -2408,7 +2408,14 @@ plus a compact, sorted `labels[]` tag set carried to **every sink** (so SIEMs
 filter on the same tokens the UI shows). In the web UI those labels render as
 **emoji glyph badges** (🛡 confidence, 🎭 spoofed-PTR, 🕵 anonymizer, ☠ ASN-DROP,
 🏴 geo-risk, 🔑 credential class, 🧬 DGA, …) on the events table, event detail,
-and attacker profile. Config knobs: `sensor.geoip.risk_countries`,
+and attacker profile. The rollup also emits **composite `meta:*` labels**
+(⚑ badges) that cross-relate two or more signals into higher-order triage
+classes no single tag expresses: `meta:deceptive-origin` (spoofed crawler PTR /
+ASN↔geo mismatch / residential-PTR-on-hosting), `meta:corroborated-threat` (≥2
+independent reputation signals agree), `meta:targeted-recon` + `meta:ot-recon`
+(ICS/OT, database or remote-access targets probed from hidden/rented infra), and
+`meta:credential-foothold` (a weak/default/breached login against
+remote-access / cloud-devops). Config knobs: `sensor.geoip.risk_countries`,
 `sensor.anonymizer_ranges`, `sensor.asn_reputation`, `sensor.cred_intel`,
 `sensor.domain_intel`, `sensor.asn_info`; `scripts/fetch-enrichment.sh` ships
 the no-auth feeds (VPN/proxy, ASN-DROP, breached-passwords), and the enrichment

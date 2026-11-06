@@ -51,6 +51,15 @@ documented in `docs/`).
   `install-enrichment.sh` / `list-paths` learn the `kev.file` destination so the
   catalog rides along in a normal enrichment bundle. Documented in
   `docs/usage.md` §2c and the README's **CISA KEV overlay**.
+- **Composite `meta:*` recognition labels (cross-relation / meta-level
+  analysis).** The recognition rollup now emits higher-order labels that
+  cross-relate two or more independent enrichment signals — `meta:deceptive-origin`
+  (spoofed crawler PTR / ASN↔geo mismatch / residential-PTR-on-hosting),
+  `meta:corroborated-threat` (≥2 reputation signals agree), `meta:targeted-recon`
+  + `meta:ot-recon` (ICS/OT, database or remote-access targets probed from hidden
+  or rented infra), and `meta:credential-foothold` (weak/default/breached login
+  against remote-access / cloud-devops). Carried on `labels[]` to every sink and
+  rendered as ⚑ glyph badges in the web UI; documented on `/coverage`.
 - **`/coverage` web infopage — the active decoy surface at a glance.** A live
   capability snapshot: headline counters (handlers, CVE catalog split into
   live-detectable vs advisory, KEV overlay, detection rules, ATT&CK techniques,
