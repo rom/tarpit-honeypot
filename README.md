@@ -651,7 +651,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
 events to your sinks. Current totals: **190 TCP + 118 UDP protocol handlers**,
-**722 CVE records** (365 live-detectable + 357 advisory), **469 built-in YARA
+**743 CVE records** (366 live-detectable + 377 advisory), **469 built-in YARA
 artifact-classification rules**, **230 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
 attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor

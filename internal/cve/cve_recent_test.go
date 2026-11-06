@@ -230,3 +230,35 @@ func TestClassicBackdoorCVEs(t *testing.T) {
 		}
 	}
 }
+
+// TestCoverageGapCVEs locks in the widely-exploited records added to fill
+// protocol-coverage gaps (ATT&CK-tagged; ownCloud graphapi is detectable).
+func TestCoverageGapCVEs(t *testing.T) {
+	// ownCloud graphapi env-disclosure is detectable via its GetPhpInfo path.
+	hits := MatchPayload("http", "GET /apps/graphapi/vendor/microsoft/microsoft-graph/tests/GetPhpInfo.php HTTP/1.1\r\n\r\n")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2023-49103" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ownCloud CVE-2023-49103 not matched; got %+v", hits)
+	}
+	for _, id := range []string{
+		"CVE-2022-41082", "CVE-2024-1708", "CVE-2023-33246", "CVE-2023-28771",
+		"CVE-2024-23113", "CVE-2023-2868", "CVE-2023-34048", "CVE-2024-37085",
+		"CVE-2023-28461", "CVE-2021-1675", "CVE-2024-27316", "CVE-2022-24706",
+		"CVE-2021-44521", "CVE-2020-10148", "CVE-2023-25690", "CVE-2023-42115",
+		"CVE-2023-43770", "CVE-2022-41352", "CVE-2024-4323", "CVE-2021-44077",
+	} {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service == "" || r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing Service/ATT&CK", id)
+		}
+	}
+}
