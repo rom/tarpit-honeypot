@@ -90,15 +90,17 @@ func (m *mqtt) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (Re
 		meta["client_id"] = cid
 		idx = idx2
 	}
-	// Skip Will Topic + Will Message if Will flag set.
+	// Will Topic + Will Message (captured, not skipped): a Sparkplug B edge
+	// node registers its Will as spBv1.0/<group>/NDEATH/<node>, so the LWT
+	// topic alone identifies an IIoT node at CONNECT time.
 	willFlag := flags&0x04 != 0
 	if willFlag {
-		_, idx2, ok = readMQTTString(body, idx)
-		if ok {
+		if willTopic, idx2, ok := readMQTTString(body, idx); ok {
 			idx = idx2
+			meta["will_topic"] = willTopic
+			sparkplugRecognize(willTopic, &res, meta)
 		}
-		_, idx2, ok = readMQTTString(body, idx)
-		if ok {
+		if _, idx2, ok := readMQTTString(body, idx); ok {
 			idx = idx2
 		}
 	}
@@ -216,6 +218,7 @@ func mqttSession(conn net.Conn, br *bufio.Reader, res *Result, meta map[string]a
 					flagAnomaly(res, "mqtt-wildcard-subscribe")
 					meta["intent"] = "MQTT wildcard subscribe (" + topic + ") — harvesting all broker topics / data exfiltration"
 				}
+				sparkplugRecognize(topic, res, meta)
 			}
 			// SUBACK: type 0x90, remlen = 2 (pktID) + 1 granted QoS per topic.
 			n := len(subTopics)
@@ -239,6 +242,7 @@ func mqttSession(conn net.Conn, br *bufio.Reader, res *Result, meta map[string]a
 			topic, ni, ok := readMQTTString(body, 0)
 			if ok {
 				pubTopics = append(pubTopics, topic)
+				sparkplugRecognize(topic, res, meta)
 				if qos > 0 && ni+2 <= len(body) {
 					pktID := body[ni : ni+2]
 					_, _ = conn.Write(append([]byte{0x40, 0x02}, pktID...)) // PUBACK
@@ -255,6 +259,55 @@ func mqttSession(conn net.Conn, br *bufio.Reader, res *Result, meta map[string]a
 			return
 		}
 	}
+}
+
+// sparkplugRecognize detects the Eclipse Sparkplug B payload convention
+// (namespace "spBv1.0") on an MQTT topic and records the parsed topic
+// structure plus OT-relevant anomaly markers. Sparkplug runs IIoT edge
+// nodes / PLC gateways over MQTT; the canonical topic is
+// spBv1.0/<group_id>/<message_type>/<edge_node_id>[/<device_id>], with the
+// special primary-host form spBv1.0/STATE/<host_id>. NCMD/DCMD are
+// write/control commands to an edge node or device — the OT manipulation
+// signal defenders most want surfaced. Returns true when the namespace
+// matched. No-op on empty/non-Sparkplug topics, so it is cheap to call on
+// every topic a scanner touches.
+func sparkplugRecognize(topic string, res *Result, meta map[string]any) bool {
+	parts := strings.Split(topic, "/")
+	if len(parts) < 2 || !strings.EqualFold(parts[0], "spBv1.0") {
+		return false
+	}
+	flagAnomaly(res, "mqtt-sparkplug")
+	meta["sparkplug"] = true
+	// Primary-host STATE birth/death: spBv1.0/STATE/<sparkplug_host_id>.
+	if strings.EqualFold(parts[1], "STATE") {
+		meta["sparkplug_msg_type"] = "STATE"
+		if len(parts) >= 3 {
+			meta["sparkplug_host_id"] = parts[2]
+		}
+		return true
+	}
+	meta["sparkplug_group"] = parts[1]
+	if len(parts) < 3 {
+		return true // namespace seen but topic is malformed/truncated
+	}
+	msgType := strings.ToUpper(parts[2])
+	meta["sparkplug_msg_type"] = msgType
+	if len(parts) >= 4 {
+		meta["sparkplug_edge_node"] = parts[3]
+	}
+	if len(parts) >= 5 {
+		meta["sparkplug_device"] = parts[4]
+	}
+	switch msgType {
+	case "NCMD", "DCMD":
+		// A command written to an edge node / device: OT control manipulation.
+		flagAnomaly(res, "ics-sparkplug-command")
+		flagAnomaly(res, "ics-plc-write")
+		meta["intent"] = "Sparkplug B " + msgType + " — write/control command to an IIoT edge node/device (" + topic + ")"
+	case "NBIRTH", "DBIRTH":
+		flagAnomaly(res, "ics-sparkplug-birth")
+	}
+	return true
 }
 
 func readVarint(br *bufio.Reader) (int, error) {
