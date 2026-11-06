@@ -10,6 +10,23 @@ documented in `docs/`).
 
 ### Added
 
+- **BACnet Secure Connect (BACnet/SC) handler** (`bacnet_sc` / TLS-fronted
+  `bacnet_scs`). The WebSocket+TLS data link from ASHRAE 135-2020 Annex AB that
+  is replacing legacy BACnet/IP in building automation. Completes the WebSocket
+  handshake, recognizes the `hub.bsc.bacnet.org` / `dc.bsc.bacnet.org`
+  subprotocol and the BVLC-SC framing, parses the Connect-Request (node VMAC +
+  device UUID) and replies Connect-Accept, answers Heartbeat-Requests, and flags
+  `ics-bacnet-sc-connect` (T0846) + `ics-plc-write` on an encapsulated
+  WriteProperty.
+- **MQTT Sparkplug B (IIoT) payload recognition** on the existing `mqtt`
+  handler. Parses the `spBv1.0/` namespace on Will / SUBSCRIBE / PUBLISH topics
+  into group / message-type / edge-node / device, and flags NCMD/DCMD edge-node
+  commands as OT control writes (`ics-sparkplug-command` + `ics-plc-write`).
+- **Named OT-malware behavior-recognition rule pack**
+  (`configs/rules/ot-malware.yml`): TTP-level recognition of FrostyGoop,
+  Industroyer/Industroyer2, TRITON/TRISIS, PIPEDREAM/INCONTROLLER, Stuxnet, and
+  Havex/Dragonfly from the OT handlers' anomaly markers (hedged "behavior
+  consistent with …" — a honeypot recognizes the pattern, not the binary).
 - **A big enrichment / recognition expansion (source-IP decoration).** New event
   meta, all additive and hot-reloadable:
   - **Derived, no new data:** `src_net` (/24,/48 subnet aggregation key),
