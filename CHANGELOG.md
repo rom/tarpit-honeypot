@@ -10,6 +10,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Four new protocol handlers.** `irc` (6667 — botnet C2 rendezvous: captures
+  NICK/USER/PASS + channel joins and recognizes the **UnrealIRCd 3.2.8.1
+  backdoor**, CVE-2010-2075, via the `AB;` trigger), `finger` (79 — account
+  enumeration, incl. the `user@host` forwarding/relay vector), `stomp` (61613 —
+  ActiveMQ/RabbitMQ message broker: CONNECT credential capture + destination
+  enumeration), and `mbus` (M-Bus / EN 13757 utility sub-metering over a TCP
+  gateway: SND_NKE/REQ_UD2/SND_UD recognition with ATT&CK-for-ICS markers and a
+  believable RSP_UD meter record). → **190 TCP + 118 UDP handlers**.
+- **More CVEs + ATT&CK labels.** Famous backdoor/RCE records tied to the new and
+  existing handlers: `CVE-2010-2075` (UnrealIRCd backdoor — detectable),
+  `CVE-2007-2447` (Samba `username map script` RCE), and `CVE-2020-1938`
+  (Apache Tomcat AJP **Ghostcat**), each ATT&CK-tagged (T1190) with CWE/CPE/EPSS.
 - **BACnet Secure Connect (BACnet/SC) handler** (`bacnet_sc` / TLS-fronted
   `bacnet_scs`). The WebSocket+TLS data link from ASHRAE 135-2020 Annex AB that
   is replacing legacy BACnet/IP in building automation. Completes the WebSocket
