@@ -333,16 +333,22 @@ rationale covering the current implementation.
   the **devices** web-UI tab, or `/api/devices`; optional UI delete /
   whitelist actions (see below).
 - **Event enrichment**: every event's source IP is decorated with
-  **GeoIP city + ASN** (MaxMind GeoLite2), **reverse DNS**, **threat-intel**
-  list membership (FireHOL / blocklist.de / custom), a **Tor-exit** flag, a
-  **net-class** tag (bogon / hosting), and — for L2-learned hosts —
-  **MAC-vendor** (IEEE OUI) lookup. All enrichment inputs are best-effort
-  (a missing file warns and is skipped, so the sensor always starts) and
-  **hot-reloaded on `SIGHUP`**. Two helper scripts ship the data:
-  `scripts/fetch-enrichment.sh` downloads + packages every database (GeoIP,
-  Tor exits, threat lists, OUI) on an internet-connected box, and
-  `scripts/install-enrichment.sh` places them at the sensor's configured
-  paths (discovered via `list-paths`) and signals the live re-read — a
+  **GeoIP city + ASN** (MaxMind GeoLite2), **reverse DNS** (with **forward-
+  confirmation** of PTRs that claim to be a crawler, flagging **spoofed
+  Googlebot/Bingbot** PTRs), **threat-intel** list membership (FireHOL /
+  blocklist.de / IPsum / Emerging Threats / CINS / DShield / custom) rolled up
+  into a **cross-feed confidence score** (`threat_confidence` low/medium/high),
+  a **cloud-provider** tag, a **Tor-exit** flag, a **known-scanner**
+  attribution, a **net-class** tag (bogon / hosting), JA3/JA4/HASSH **client
+  attribution**, and — for L2-learned hosts — **MAC-vendor** (IEEE OUI) lookup.
+  All enrichment inputs are best-effort (a missing file warns and is skipped, so
+  the sensor always starts) and **hot-reloaded on `SIGHUP`**. Two helper scripts
+  ship the data: `scripts/fetch-enrichment.sh` downloads + packages every
+  database (GeoIP, Tor exits, threat lists, cloud ranges, fingerprints, OUI) on
+  an internet-connected box — most feeds need no credentials; the abuse.ch
+  feeds need a free `ABUSE_CH_AUTH_KEY` (see [Enrichment](#enrichment)) — and
+  `scripts/install-enrichment.sh` places them at the sensor's configured paths
+  (discovered via `list-paths`) and signals the live re-read — a
   cron/systemd-friendly fetch→transfer→install workflow.
 - **LLDP / CDP active responder** (Linux AF_PACKET): each honeynet host
   advertises itself in `lldpctl` / Cisco `show cdp neighbors` output
@@ -1894,6 +1900,11 @@ Coverage includes:
   outbound-only, min-severity gate, severity-match routing.
 - `store`: insert/query round-trip with all filters, Get, Summary
   breakdown.
+- `enrich`: threat-list / cloud-range / Tor / fingerprint tagging, the async
+  non-blocking rDNS cache, the cross-feed **reputation confidence** count
+  (`threat_intel_count` / `threat_confidence`), and **forward-confirmed reverse
+  DNS** — a verified vs. spoofed crawler PTR, driven through injected resolver
+  seams so no real DNS is touched.
 - `capture`: pcap header bytes + record count + total-directory rotation.
 - `handlers`: SSH banner echo, HTTP request capture + URL canary hit/miss,
   Modbus read-holding-registers + exception path, MQTT CONNECT with creds,
@@ -2294,13 +2305,55 @@ Enrichment keys added to event meta:
 
 | Key | From | Example |
 |---|---|---|
-| `geo_country` | city db | `RU` |
-| `geo_country_name` | city db | `Russia` |
-| `geo_city` | city db | `Moscow` |
-| `geo_lat`, `geo_lon` | city db | `55.7522, 37.6156` |
-| `asn` | asn db | `13335` |
-| `asn_org` | asn db | `Cloudflare, Inc.` |
-| `rdns` | resolver | `host.example.adsl.com` |
+| `geo_country` / `geo_country_name` / `geo_city` | GeoIP city db | `RU` / `Russia` / `Moscow` |
+| `geo_lat`, `geo_lon` | GeoIP city db | `55.7522, 37.6156` |
+| `asn` / `asn_org` | GeoIP ASN db | `13335` / `Cloudflare, Inc.` |
+| `rdns` | resolver (PTR) | `host.example.adsl.com` |
+| `rdns_verified` | FCrDNS (v1.1) | `true` / `false` |
+| `verified_crawler` / `spoofed_crawler` | FCrDNS (v1.1) | `googlebot` |
+| `spoofed_ptr` | FCrDNS (v1.1) | `true` |
+| `mac_vendor` | IEEE OUI | `Cisco Systems, Inc` |
+| `threat_intel` / `threat_intel_hit` | reputation lists | `[ipsum, cins-army]` / `true` |
+| `threat_intel_count` / `threat_confidence` | cross-feed corroboration (v1.1) | `3` / `high` |
+| `tor_exit` | Tor exit list | `true` |
+| `cloud_provider` | cloud IP ranges | `aws` |
+| `known_scanner` | ASN / rDNS | `censys` |
+| `net_class` | built-in | `hosting` / `bogon` |
+| `<kind>_client` (ja3 / ja4 / ja4h / hassh) | fingerprint db | `Cobalt Strike` |
+| `external_intel` / `fleet_intel` | feeds puller / fleet overlay | `greynoise` / `[ip:botnet]` |
+
+### Reputation confidence (v1.1)
+
+`threat_intel_count` is the number of **independent** reputation signals that
+flagged the source — each operator threat-list that matched, the external-feed
+overlay, and the downward fleet overlay — and `threat_confidence` buckets it
+(1 → `low`, 2 → `medium`, ≥3 → `high`). Several feeds agreeing is a far stronger
+signal than any single list, so detection rules, dashboards, and triage can
+prioritize cross-corroborated sources. `scripts/fetch-enrichment.sh` ships
+several independent **no-auth** feeds for exactly this reason — IPsum (itself an
+aggregate of ~30 public blocklists), Emerging Threats compromised-ips, the CINS
+Army list, and the SANS ISC DShield block list — alongside the originals
+(blocklist.de, Feodo Tracker, Spamhaus DROP, FireHOL level 1).
+
+### Forward-confirmed reverse DNS / spoofed-crawler detection (v1.1)
+
+When `rdns.enabled` is set and a source's PTR record claims a well-known
+crawler / cloud operator (`*.googlebot.com`, `*.search.msn.com`,
+`*.crawl.baidu.com`, `*.yandex.*`, `*.applebot.apple.com`, …), the sensor
+forward-resolves that name and checks it maps back to the source IP
+(forward-confirmed reverse DNS). A claim that confirms is tagged
+`rdns_verified=true` + `verified_crawler=<operator>`; one that does **not** is
+`spoofed_ptr=true` + `spoofed_crawler=<operator>` + `rdns_verified=false` — a
+high-signal evasion marker, since attackers routinely set fake PTRs posing as
+Googlebot/Bingbot to dodge rate limits and blocks. Only crawler-claiming PTRs
+are forward-confirmed, so the extra DNS cost is negligible.
+
+> **abuse.ch feeds need a free key.** Since **2025-06-30** every abuse.ch export
+> (ThreatFox, MalwareBazaar, URLhaus) requires an account **Auth-Key** —
+> unauthenticated downloads return HTTP 401. Create one free at
+> <https://auth.abuse.ch/> and `export ABUSE_CH_AUTH_KEY=…` before running
+> `fetch-enrichment.sh`; without it those three feeds are **skipped** (not
+> failed), and every other feed still downloads.
 
 ## Prometheus metrics
 

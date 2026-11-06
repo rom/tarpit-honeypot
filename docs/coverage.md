@@ -60,14 +60,14 @@ targets. The closest wins are the packages already in the high-70s.
 | `internal/fakefiles` | 70 | synthetic filesystem content |
 | `internal/shell` | 71 | emulated-shell loot |
 | `internal/ui` | 71 | web UI handlers — integration-heavy |
-| `internal/misp` | 74 | MISP IOC push |
-| `internal/egress` | 75 | egress allowlist |
 | `internal/listener/handler` | 75 | protocol handlers — integration-heavy |
-| `internal/format` | 77 | SIEM/export formatters |
-| `internal/p0f` | 77 | passive OS fingerprinting |
-| `internal/store` | 77 | SQLite event store |
-| `internal/feeds` | 78 | external threat-feed ingestion |
 
-The high-70s packages (`feeds`, `store`, `p0f`, `format`, `listener/handler`,
-`egress`, `misp`) are the recommended first targets — a handful of tests each
-promotes them off the list.
+Recently promoted to the full 80% floor (removed from `GRANDFATHER`):
+`internal/format` (98.1%), `internal/misp` (97.4%), `internal/feeds` (94.8%),
+`internal/egress` (88.1%), `internal/p0f` (87.0%), `internal/store` (80.7%).
+
+Of what remains, `internal/listener/handler` is the closest near-floor target;
+the pure-Go logic packages (`identity`, `cli`, `config`, `event`, `archetype`,
+`artifactscan`, `detect`, `shell`) are the best next wins, while the
+root/hardware/live-infra packages (`privdrop`, `sniffer`, `tunnet`, `sandbox`,
+`listener`) are hardest and lower priority.

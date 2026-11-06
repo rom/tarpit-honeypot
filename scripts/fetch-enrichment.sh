@@ -4,8 +4,13 @@
 # consume into a local directory, so they can be transferred to an air-gapped
 # or restricted-egress sensor and loaded from disk:
 #   * Tor exit list, IP-reputation feeds, GeoIP/ASN, IEEE MAC-vendor OUI
+#   * extra no-auth reputation feeds: IPsum (aggregate), Emerging Threats
+#     compromised-ips, CINS Army, SANS ISC DShield — the more lists an IP is on,
+#     the higher the sensor's threat_confidence for it
 #   * cloud-provider IP ranges (AWS / GCP / Cloudflare / DigitalOcean)
 #   * abuse.ch malware hashes (ThreatFox + MalwareBazaar, with family) + URLhaus
+#     — these REQUIRE a free ABUSE_CH_AUTH_KEY since 2025-06-30 (see below);
+#     without one they are skipped, not failed
 #   * FoxIO JA4DB (fingerprint -> client/tool attribution; needs jq)
 #
 # It can run two ways:
@@ -37,6 +42,9 @@
 #   ABUSE_CH_AUTH_KEY    optional abuse.ch Auth-Key; sent as the Auth-Key header
 #                        for the ThreatFox / MalwareBazaar exports (some now
 #                        require it). Get one free at https://auth.abuse.ch/.
+#   THREATFOX_URL /      optional overrides for the abuse.ch export URLs, in
+#   MALWAREBAZAAR_URL /  case abuse.ch relocates them (e.g. to a *-api.abuse.ch
+#   URLHAUS_URL          host). The Auth-Key header is sent to whatever URL.
 #   JA4DB_URL            override the JA4+ fingerprint DB source (default: the
 #                        FoxIO ja4plus-mapping.csv on GitHub). CSV or JSON
 #                        (ja4db.com export) is auto-detected; JSON needs jq.
@@ -65,7 +73,7 @@ while [ $# -gt 0 ]; do
 	--bin) BIN="$2"; shift 2 ;;
 	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
 	-q | --quiet) QUIET=1; shift ;;
-	-h | --help) sed -n '2,40p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,55p' "$0"; exit 0 ;;
 	-*) echo "unknown option: $1" >&2; exit 2 ;;
 	*) OUT="$1"; shift ;;
 	esac
@@ -107,15 +115,26 @@ fi
 
 ok=0
 fail=0
+skip=0
 
-# fetch <label> <url> <dest> [--gz]
+# skip_feed <label> <reason> — record a source we deliberately did NOT fetch
+# (e.g. one that now needs an API key we weren't given). Not counted as a
+# failure, so the summary and the script's exit status stay clean for the
+# expected "no key configured" case.
+skip_feed() {
+	printf '  %-22s skipped (%s)\n' "$1" "$2"
+	skip=$((skip + 1))
+}
+
+# fetch <label> <url> <dest> [--gz] [header]
 # Downloads to a temp file, optionally gunzips, and moves into place only on
-# success so a failed/partial feed never overwrites a good copy.
+# success so a failed/partial feed never overwrites a good copy. The optional
+# 5th arg is a single request header (e.g. "Auth-Key: ...").
 fetch() {
-	local label="$1" url="$2" dest="$3" gz="${4:-}"
+	local label="$1" url="$2" dest="$3" gz="${4:-}" hdr="${5:-}"
 	local tmp="$dest.tmp.$$"
 	printf '  %-22s ' "$label"
-	if ! _dl "$tmp" "$url" 2>/dev/null; then
+	if ! _dl "$tmp" "$url" "$hdr" 2>/dev/null; then
 		echo "FAILED (download)"
 		rm -f "$tmp"
 		fail=$((fail + 1))
@@ -286,6 +305,28 @@ fetch_abuse_csv() {
 	ok=$((ok + 1)); return 0
 }
 
+# fetch_dshield — SANS ISC recommended block list. Its native format is
+# "startIP<TAB>endIP<TAB>netmask ...", so convert each row to a start/netmask
+# CIDR that the enricher's IP-list loader consumes like any other reputation
+# list. No auth required.
+fetch_dshield() {
+	local url="https://feeds.dshield.org/block.txt" dest="$THREAT_DIR/dshield.txt"
+	local tmp="$dest.tmp.$$" sz
+	printf '  %-22s ' "dshield"
+	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
+		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
+	fi
+	awk -F'\t' '!/^#/ && NF>=3 && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $1"/"$3 }' \
+		"$tmp" | sort -u >"$tmp.x" 2>/dev/null || true
+	mv "$tmp.x" "$tmp"
+	if [ ! -s "$tmp" ]; then echo "FAILED (no cidrs)"; rm -f "$tmp"; fail=$((fail + 1)); return 1; fi
+	mv "$tmp" "$dest"
+	sz=$(wc -l <"$dest" | tr -d ' ')
+	echo "ok (${sz} prefixes)"
+	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  dshield  $url  ${sz} prefixes  $dest" >>"$MANIFEST"
+	ok=$((ok + 1)); return 0
+}
+
 # fetch_ja4db — download a FoxIO JA4+ database and emit normalized
 # "fingerprint,label" files per kind (ja4 + ja4h, which the enricher consumes).
 #
@@ -359,6 +400,16 @@ fetch "abuse-ch-feodo" "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
 fetch "spamhaus-drop"  "https://www.spamhaus.org/drop/drop.txt"                  "$THREAT_DIR/spamhaus-drop.txt"  || true
 fetch "firehol-level1" "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset" "$THREAT_DIR/firehol-level1.txt" || true
 
+# Additional no-auth reputation feeds. These all land as ordinary threat_intel
+# lists; the more independent lists an IP appears on, the higher the sensor's
+# threat_confidence (threat_intel_count) for it. IPsum in particular is an
+# aggregate of ~30 public blocklists, so it corroborates well with the others.
+say "[reputation-extra]  (aggregated / no-auth feeds)"
+fetch "ipsum"          "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt" "$THREAT_DIR/ipsum.txt"          || true
+fetch "et-compromised" "https://rules.emergingthreats.net/blockrules/compromised-ips.txt"  "$THREAT_DIR/et-compromised.txt" || true
+fetch "cins-army"      "https://cinsscore.com/list/ci-badguys.txt"                          "$THREAT_DIR/cins-army.txt"      || true
+fetch_dshield || true
+
 say "[cloud-ranges]"
 fetch_cloud "aws"        "https://ip-ranges.amazonaws.com/ip-ranges.json"   "ip_prefix"   || true
 fetch_cloud "aws-v6"     "https://ip-ranges.amazonaws.com/ip-ranges.json"   "ipv6_prefix" || true
@@ -372,13 +423,27 @@ for p in aws gcp; do
 		cat "$CLOUD_DIR/$p-v6.txt" >>"$CLOUD_DIR/$p.txt" && rm -f "$CLOUD_DIR/$p-v6.txt"
 done
 
-say "[malware-hashes]  (abuse.ch — recent feeds; family attribution)"
-fetch_abuse_csv "threatfox"     "https://threatfox.abuse.ch/export/csv/recent/" "$MAL_DIR/threatfox.txt"     || true
-fetch_abuse_csv "malwarebazaar" "https://bazaar.abuse.ch/export/csv/recent/"    "$MAL_DIR/malwarebazaar.txt" || true
-# Combine into one known-malware hash set.
+# abuse.ch feeds (ThreatFox / MalwareBazaar / URLhaus). Since 2025-06-30 EVERY
+# abuse.ch export requires a (free) account Auth-Key: unauthenticated requests
+# are rejected with HTTP 401, which is exactly why these report
+# "FAILED (download)" when no key is set. We send the key as the Auth-Key header
+# (and fix URLhaus, which previously sent none); without a key we SKIP them —
+# that is expected, not a failure. Get a free key at https://auth.abuse.ch/ and
+# export ABUSE_CH_AUTH_KEY=... before running. The export URLs are overridable
+# (THREATFOX_URL / MALWAREBAZAAR_URL / URLHAUS_URL) in case abuse.ch moves them.
+say "[malware-hashes]  (abuse.ch — needs ABUSE_CH_AUTH_KEY since 2025-06-30)"
+if [ -n "$ABUSE_KEY" ]; then
+	fetch_abuse_csv "threatfox"     "${THREATFOX_URL:-https://threatfox.abuse.ch/export/csv/recent/}"     "$MAL_DIR/threatfox.txt"     || true
+	fetch_abuse_csv "malwarebazaar" "${MALWAREBAZAAR_URL:-https://bazaar.abuse.ch/export/csv/recent/}"    "$MAL_DIR/malwarebazaar.txt" || true
+	# URLhaus malicious URLs (reference / future host matching) — also key-gated.
+	fetch "urlhaus-urls" "${URLHAUS_URL:-https://urlhaus.abuse.ch/downloads/text_recent/}" "$MAL_DIR/urlhaus-urls.txt" "" "Auth-Key: $ABUSE_KEY" || true
+else
+	skip_feed "threatfox"     "set ABUSE_CH_AUTH_KEY (free: https://auth.abuse.ch/)"
+	skip_feed "malwarebazaar" "set ABUSE_CH_AUTH_KEY (free: https://auth.abuse.ch/)"
+	skip_feed "urlhaus-urls"  "set ABUSE_CH_AUTH_KEY (free: https://auth.abuse.ch/)"
+fi
+# Combine whatever hash feeds succeeded into one known-malware hash set.
 cat "$MAL_DIR/threatfox.txt" "$MAL_DIR/malwarebazaar.txt" 2>/dev/null | sort -u >"$MAL_DIR/known-hashes.txt" || true
-# URLhaus malicious URLs (reference / future host matching).
-fetch "urlhaus-urls" "https://urlhaus.abuse.ch/downloads/text_recent/" "$MAL_DIR/urlhaus-urls.txt" || true
 
 say "[fingerprints]  (FoxIO JA4+ mapping — client/tool attribution)"
 fetch_ja4db || true
@@ -423,6 +488,12 @@ sensor:
       - { label: abuse-ch-feodo, file: /etc/tarpit-honeypot/enrichment/threat/abuse-ch-feodo.txt }
       - { label: spamhaus-drop,  file: /etc/tarpit-honeypot/enrichment/threat/spamhaus-drop.txt }
       - { label: firehol-level1, file: /etc/tarpit-honeypot/enrichment/threat/firehol-level1.txt }
+      # Aggregated / no-auth feeds (added v1.1). The more of these an IP appears
+      # on, the higher its threat_confidence (threat_intel_count on the event).
+      - { label: ipsum,          file: /etc/tarpit-honeypot/enrichment/threat/ipsum.txt }
+      - { label: et-compromised, file: /etc/tarpit-honeypot/enrichment/threat/et-compromised.txt }
+      - { label: cins-army,      file: /etc/tarpit-honeypot/enrichment/threat/cins-army.txt }
+      - { label: dshield,        file: /etc/tarpit-honeypot/enrichment/threat/dshield.txt }
   # Authoritative cloud-provider tagging (cloud_provider on events).
   cloud_ranges:
     enabled: true
@@ -462,17 +533,33 @@ fi
 ARCHIVE=""
 if [ "${NO_ARCHIVE:-}" != "1" ]; then
 	ARCHIVE="${OUT%/}.tar.gz"
-	if tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null; then
+	# Capture tar's own message (instead of discarding it) so a failure is
+	# actionable. tar rc=1 is "files differ / changed while reading" — the
+	# archive is still valid, so keep it with a warning; rc>=2 is fatal, so
+	# drop the partial file and point at the bundle dir for a direct rsync. The
+	# bundle is large (the GeoIP City DB alone is ~130 MB), so a full disk /
+	# tmpfs is the usual cause of a fatal failure here.
+	set +e
+	tar_err="$(tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>&1)"; rc=$?
+	set -e
+	if [ "$rc" -eq 0 ]; then
+		[ -n "$SHA" ] && $SHA "$ARCHIVE" >"$ARCHIVE.sha256" || true
+	elif [ "$rc" -eq 1 ] && [ -s "$ARCHIVE" ]; then
+		echo "warning: archive created with tar warnings (rc=1)${tar_err:+: $tar_err}" >&2
 		[ -n "$SHA" ] && $SHA "$ARCHIVE" >"$ARCHIVE.sha256" || true
 	else
-		echo "warning: failed to create archive $ARCHIVE" >&2
+		echo "warning: failed to create archive $ARCHIVE (tar rc=$rc)${tar_err:+: $tar_err}" >&2
+		echo "         The bundle dir is complete; transfer it directly instead:" >&2
+		echo "           rsync -a '$OUT/' sensor:/tmp/$(basename "${OUT%/}")/" >&2
+		rm -f "$ARCHIVE"
 		ARCHIVE=""
 	fi
 fi
 
 # ---- summary ---------------------------------------------------------------
 say
-say "Done: $ok ok, $fail failed."
+say "Done: $ok ok, $fail failed, $skip skipped."
+[ "$skip" -gt 0 ] && say "  (skipped feeds need an API key — e.g. abuse.ch: set ABUSE_CH_AUTH_KEY, free at https://auth.abuse.ch/)"
 say "  bundle dir : $OUT"
 say "  manifest   : $MANIFEST"
 say "  checksums  : $OUT/SHA256SUMS"

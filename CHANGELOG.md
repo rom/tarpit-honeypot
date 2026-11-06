@@ -8,8 +8,34 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-06
+
 ### Added
 
+- **Two new source-IP enrichment types, from data the sensor already collects.**
+  - **Cross-feed reputation confidence.** Every event whose source is flagged by
+    the reputation machinery now carries `threat_intel_count` — the number of
+    *independent* signals that agree (each matched operator threat-list, the
+    external-feed overlay, the fleet overlay) — and `threat_confidence`
+    (`low`/`medium`/`high`). Several feeds agreeing is a far stronger signal than
+    any one list, so triage, dashboards, and detection rules can prioritize
+    corroborated sources. No new config; it is derived whenever a reputation hit
+    exists.
+  - **Forward-confirmed reverse DNS (FCrDNS) / spoofed-crawler detection.** When
+    `rdns.enabled` is set and a source's PTR claims a well-known crawler/cloud
+    operator (`*.googlebot.com`, `*.search.msn.com`, `*.crawl.baidu.com`,
+    `*.yandex.*`, `*.applebot.apple.com`, …), the resolver now forward-confirms
+    it maps back to the source IP. Confirmed → `rdns_verified=true` +
+    `verified_crawler`; failed → `spoofed_ptr=true` + `spoofed_crawler` +
+    `rdns_verified=false` (attackers set fake Googlebot/Bingbot PTRs to dodge
+    blocks). Only crawler-claiming PTRs are forward-confirmed, reusing the
+    existing bounded async rDNS path, so the extra DNS cost is negligible.
+- **Four additional no-auth reputation feeds in `fetch-enrichment.sh`:** IPsum
+  (an aggregate of ~30 public blocklists), Emerging Threats compromised-ips, the
+  CINS Army list, and the SANS ISC DShield block list (its start/end/netmask
+  rows converted to CIDRs). They load as ordinary `threat_intel` lists and feed
+  the new confidence score; `suggested-config.yaml` lists them. The label-driven
+  installer needs no change to pick up new lists.
 - **`tuning:` config block — the internal caches / buffers are now adjustable.**
   Performance values that were compile-time constants are exposed so an operator
   can raise them as load grows: the SQLite connection pool
@@ -30,6 +56,15 @@ documented in `docs/`).
   integration test that serves a real connection end-to-end and shuts down
   cleanly, full coverage of the TUN-decoy builders, and unit tests for the pure
   helpers), so its pin rose from 31 to 64. See `docs/coverage.md` for the list.
+- **Six packages promoted off the coverage grandfather list to the full 80%
+  floor.** `internal/format` (78.6→98.1), `internal/misp` (75.3→97.4),
+  `internal/feeds` (79.2→94.8), `internal/egress` (76.8→88.1), `internal/p0f`
+  (78.3→87.0) and `internal/store` (78.2→80.7) gained focused unit tests for
+  their previously-untested code — the SIEM formatters' name/escape/severity
+  helpers, the MISP and feeds pusher `Run`/post paths, the egress default-policy
+  and resolve helpers, p0f's signature rendering, and the store's path-diagnosis
+  + batch-insert + IOC-query helpers — and their grandfather pins were removed so
+  the gate now holds each to the full floor.
 - **The fuzzing/DoS classifier no longer scans every payload for entropy up
   front.** `fuzzdos.ClassifyPayload` eagerly computed Shannon entropy and the
   printable ratio — a full pass over the payload each — on every event, though
@@ -128,6 +163,29 @@ documented in `docs/`).
 
 ### Fixed
 
+- **`fetch-enrichment.sh`: abuse.ch feeds failed to download.** Since 2025-06-30
+  every abuse.ch export (ThreatFox, MalwareBazaar, URLhaus) requires a free
+  account **Auth-Key**; unauthenticated requests get HTTP 401, which surfaced as
+  `FAILED (download)`. The script now sends `ABUSE_CH_AUTH_KEY` as the `Auth-Key`
+  header to all three (URLhaus previously sent no header at all, so it failed
+  even *with* a key), and — when no key is set — reports them as **skipped**
+  rather than failed, keeping the summary and exit status clean. The export URLs
+  are overridable (`THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL`). The
+  `.tar.gz` bundle step now prints tar's actual error and the direct-rsync
+  fallback instead of a bare "failed to create archive", keeps the archive on a
+  non-fatal `tar` warning (rc=1), and only discards it on a real failure (rc≥2,
+  usually a full disk — the GeoIP City DB alone is ~130 MB).
+- **Data race between sensor startup and a config reload (`-race`-found).**
+  `Sensor.Run` read the live config (`s.cfg`) and `s.rootCtx` directly, unlocked,
+  all through startup — building listeners, canaries, the DNS/sniffer/honeynet
+  responders, the device/correlator-save/retention runners — while `Reload`
+  hot-swaps `s.cfg` under `stateMu` (and `Run` records `rootCtx` that `Reload`
+  reads to re-parent the new router). A SIGHUP reload landing during boot raced
+  those reads. `Run` now snapshots the config once under the lock and drives all
+  of startup from the snapshot; `rootCtx` is guarded by `stateMu` too (written
+  once under the write lock, read via a new `curRootCtx` accessor), and `Reload`
+  reads the old config through the lock. A new `TestRunReloadRaceFree` drives a
+  live `Run` against a tight reload loop under `-race`.
 - **Panic on malformed PJL/XML/JS input (fuzz-found).** A set of protocol
   parsers (`pjlNameArg` / `pjlValueOf` / `pjlPasswordValue`, `danfossXMLField`,
   `xmlTagValue`, `extractJavaScript`) indexed a `strings.ToUpper`/`ToLower` copy

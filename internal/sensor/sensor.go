@@ -124,11 +124,14 @@ type Sensor struct {
 	ingestMaxHops int           // drop forwarded events that traversed more nodes than this
 	trust         *trust.Scorer // per-sensor trust scoring + admission (nil when disabled)
 
-	rootCtx context.Context // parent ctx for listener-specific child contexts
+	rootCtx context.Context // parent ctx for listener-specific child contexts (guarded by stateMu)
 
-	// stateMu guards the four fields that Reload() hot-swaps (cfg, router,
+	// stateMu guards the hot-swappable state that Reload() replaces (cfg, router,
 	// correlator, sinks) against concurrent reads from the bus loop, the
-	// periodic save ticker, shutdown, and the public accessors.
+	// periodic save ticker, shutdown, and the public accessors. It also guards
+	// rootCtx, which Run() writes once at startup and Reload()/startListener()
+	// read from their own goroutine (a SIGHUP reload can land while Run is still
+	// booting), so all access goes through stateMu.
 	stateMu sync.RWMutex
 
 	listenersMu sync.Mutex
@@ -215,6 +218,15 @@ func (s *Sensor) curConfig() *config.Config {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
 	return s.cfg
+}
+
+// curRootCtx returns the parent context set by Run, under the read lock. Run
+// writes rootCtx once at startup; Reload and startListener read it from their
+// own goroutine, so the access is synchronized through stateMu.
+func (s *Sensor) curRootCtx() context.Context {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.rootCtx
 }
 
 func (s *Sensor) curSinks() []sink.Sink {
@@ -1324,8 +1336,11 @@ var honeytokenUserKeys = []string{
 func (s *Sensor) honeytokenAccounts() map[string]bool {
 	s.honeytokenOnce.Do(func() {
 		set := map[string]bool{}
-		if s.cfg != nil {
-			for _, l := range s.cfg.Listeners {
+		// Read the config through stateMu (curConfig) — this runs on the bus-loop
+		// goroutine on the first event and must not race a concurrent Reload's
+		// guarded write of s.cfg.
+		if cfg := s.curConfig(); cfg != nil {
+			for _, l := range cfg.Listeners {
 				if (l.Handler != "http" && l.Handler != "https") || !l.WebDeception.On() {
 					continue
 				}
@@ -2138,10 +2153,11 @@ func ifaceIPs(names []string) []string {
 // startListener builds and launches a single listener. It uses the sensor's
 // rootCtx (set in Run) as the parent so global shutdown still cascades.
 func (s *Sensor) startListener(l config.Listener) error {
-	if s.rootCtx == nil {
+	rootCtx := s.curRootCtx()
+	if rootCtx == nil {
 		return fmt.Errorf("startListener called before Run()")
 	}
-	ctx, cancel := context.WithCancel(s.rootCtx)
+	ctx, cancel := context.WithCancel(rootCtx)
 	cfg := s.curConfig()
 	// Resolve the concrete bind set: a wildcard bind stays wildcard (reachable
 	// on every host IP) unless sensor.listen_addresses / interfaces pin it to
@@ -2211,7 +2227,13 @@ func (s *Sensor) stopListener(id string) {
 //   - listeners modified in newCfg (anything other than the id is equivalent
 //     to "removed then added"): stopped, then a new instance is started.
 func (s *Sensor) Reload(newCfg *config.Config) error {
-	diff := config.DiffConfigs(s.cfg, newCfg)
+	// Snapshot the running config through stateMu rather than reading the field
+	// directly: s.cfg is guarded by stateMu (we hot-swap it under the write lock
+	// below). SIGHUP reloads are serial, so this never races another Reload in
+	// production, but the snapshot keeps the "s.cfg only via stateMu" invariant
+	// clean and makes the whole function operate on one consistent old config.
+	oldCfg := s.curConfig()
+	diff := config.DiffConfigs(oldCfg, newCfg)
 
 	// Egress allowlist is additive on reload: permit any newly-configured
 	// channel's destination so a reloaded sink isn't refused. (Removed
@@ -2288,7 +2310,7 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	// by the adds.
 	listenerDiffs := diff.RestartNeeded
 	oldIDs := map[string]config.Listener{}
-	for _, l := range s.cfg.Listeners {
+	for _, l := range oldCfg.Listeners {
 		oldIDs[l.ID] = l
 	}
 	newIDs := map[string]config.Listener{}
@@ -2333,7 +2355,8 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	s.stateMu.Unlock()
 
 	// Start the new router and tear down the old one outside the lock.
-	newRouter.Start(s.rootCtx)
+	rootCtx := s.curRootCtx()
+	newRouter.Start(rootCtx)
 	oldRouter.Stop()
 	for _, sk := range oldSinks {
 		_ = sk.Close()
@@ -2343,7 +2366,7 @@ func (s *Sensor) Reload(newCfg *config.Config) error {
 	// Store is retained so the last snapshot survives the reload). This makes
 	// the feed an auto-updating source that picks up url/poll/enabled changes
 	// on SIGHUP without a restart.
-	s.startKEVSync(s.rootCtx, newCfg.KEV)
+	s.startKEVSync(rootCtx, newCfg.KEV)
 
 	// Emit a synthetic reload event so the operator's downstream pipeline
 	// can correlate config changes with detection-signal changes.
@@ -2444,7 +2467,17 @@ func (s *Sensor) emitReloadEvent(diff config.Diff) {
 // Run starts the bus consumer, listeners, canaries, dnscanary, and sniffer.
 // Blocks until ctx is cancelled.
 func (s *Sensor) Run(ctx context.Context) error {
+	s.stateMu.Lock()
 	s.rootCtx = ctx
+	s.stateMu.Unlock()
+	// Snapshot the config once under stateMu and drive all of startup from the
+	// snapshot. s.cfg is guarded by stateMu (Reload() hot-swaps it under the
+	// write lock), so reading the field directly here races a SIGHUP reload that
+	// lands mid-boot. The snapshot also gives startup a single consistent view:
+	// every listener/canary/sniffer/honeynet decision below is made against the
+	// same config, and a reload that arrives during boot applies its own diff
+	// through Reload() rather than tearing our reads.
+	cfg := s.curConfig()
 	var wg sync.WaitGroup
 	// busDone signals the bus loop to drain + exit. We never close(s.bus)
 	// because it has many concurrent senders (handlers, sniffer, op events) and
@@ -2659,7 +2692,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	_ = safego.PanicCount // keep import alive when sensor body has no other safego use yet
 
 	slog.Info("sensor identity", "deployment_id", s.identity.Seed(), "jitter", s.jitter.Enabled())
-	for _, l := range s.cfg.Listeners {
+	for _, l := range cfg.Listeners {
 		if err := s.startListener(l); err != nil {
 			return err
 		}
@@ -2667,18 +2700,18 @@ func (s *Sensor) Run(ctx context.Context) error {
 
 	// Sensor lifecycle + health/digest operational events.
 	s.emitOpEvent("sensor:started", event.SeverityMedium, map[string]any{
-		"listeners": len(s.cfg.Listeners), "channels": len(s.curConfig().Channels),
-		"honeynets": len(s.cfg.Honeynets), "version": version.Version,
+		"listeners": len(cfg.Listeners), "channels": len(cfg.Channels),
+		"honeynets": len(cfg.Honeynets), "version": version.Version,
 	})
 	wg.Add(1)
 	go func() { defer wg.Done(); s.runHealthMonitor(ctx) }()
-	if s.cfg.Sensor.Alerts.DigestInterval > 0 && s.store != nil {
+	if cfg.Sensor.Alerts.DigestInterval > 0 && s.store != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); s.runDigest(ctx) }()
 	}
 
-	if len(s.cfg.Canaries) > 0 {
-		w := canary.New(s.cfg.Canaries, s.name)
+	if len(cfg.Canaries) > 0 {
+		w := canary.New(cfg.Canaries, s.name)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -2689,8 +2722,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}()
 	}
 
-	if s.cfg.DNS.Enabled && (len(s.cfg.DNSCanaries) > 0 || s.cfg.DNS.AmplifierDetection.Enabled || !s.honeynet.Empty()) {
-		srv, err := dnscanary.New(s.cfg.DNS.Bind, s.name, s.cfg.DNSCanaries, s.cfg.DNS.AmplifierDetection)
+	if cfg.DNS.Enabled && (len(cfg.DNSCanaries) > 0 || cfg.DNS.AmplifierDetection.Enabled || !s.honeynet.Empty()) {
+		srv, err := dnscanary.New(cfg.DNS.Bind, s.name, cfg.DNSCanaries, cfg.DNS.AmplifierDetection)
 		if err != nil {
 			return err
 		}
@@ -2711,8 +2744,8 @@ func (s *Sensor) Run(ctx context.Context) error {
 		}()
 	}
 
-	if s.cfg.Sniffer.Enabled {
-		snCfg := s.cfg.Sniffer
+	if cfg.Sniffer.Enabled {
+		snCfg := cfg.Sniffer
 		snCfg.Interface = s.effIface(snCfg.Interface)
 		sn, err := sniffer.New(snCfg, s.name)
 		if err != nil {
@@ -2732,7 +2765,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 
 	// One ARP responder per honeynet (each can pin to its own interface).
-	for _, hn := range s.cfg.Honeynets {
+	for _, hn := range cfg.Honeynets {
 		if hn.ARP.Enabled {
 			ifaceName := s.effIface(hn.ARP.Interface)
 			netID := hn.ID
@@ -2907,14 +2940,14 @@ func (s *Sensor) Run(ctx context.Context) error {
 				}
 			}
 		}()
-		slog.Info("device tracking up", "learn", s.cfg.Devices.Learn, "allow_entries", len(s.cfg.Devices.Allow))
+		slog.Info("device tracking up", "learn", cfg.Devices.Learn, "allow_entries", len(cfg.Devices.Allow))
 	}
 
 	// Correlator state periodic save — windowed detector state to disk
 	// every 60s so an unclean shutdown doesn't lose much (slow-scan in
 	// particular spans 24h).
-	if s.cfg.Sensor.DataDir != "" {
-		statePath := correlate.StatePath(s.cfg.Sensor.DataDir)
+	if cfg.Sensor.DataDir != "" {
+		statePath := correlate.StatePath(cfg.Sensor.DataDir)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -2934,11 +2967,11 @@ func (s *Sensor) Run(ctx context.Context) error {
 	}
 
 	// Retention runner — only if configured.
-	if s.cfg.Sensor.Disk.RetentionDays > 0 {
+	if cfg.Sensor.Disk.RetentionDays > 0 {
 		r := &retention.Runner{
-			Days:        s.cfg.Sensor.Disk.RetentionDays,
-			JSONLogDir:  filepath.Join(s.cfg.Sensor.DataDir, "events"),
-			CapturesDir: filepath.Join(s.cfg.Sensor.DataDir, "captures"),
+			Days:        cfg.Sensor.Disk.RetentionDays,
+			JSONLogDir:  filepath.Join(cfg.Sensor.DataDir, "events"),
+			CapturesDir: filepath.Join(cfg.Sensor.DataDir, "captures"),
 		}
 		if s.store != nil {
 			r.Store = s.store
@@ -2948,7 +2981,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 			defer wg.Done()
 			r.Run(ctx)
 		}()
-		slog.Info("retention runner up", "days", s.cfg.Sensor.Disk.RetentionDays)
+		slog.Info("retention runner up", "days", cfg.Sensor.Disk.RetentionDays)
 	}
 
 	<-ctx.Done()

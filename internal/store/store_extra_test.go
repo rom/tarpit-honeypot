@@ -54,6 +54,101 @@ func TestUpsertIOCsBatch(t *testing.T) {
 	}
 }
 
+// QueryIOCs filter branches (since / text / limit) and IOCSummary per-type
+// counts, including the since-filtered path.
+func TestQueryIOCsFiltersAndSummary(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	base := time.Unix(1_700_000_000, 0).UTC()
+	_, err = s.UpsertIOCs(ctx, []IOCUpsert{
+		{Type: "ip", Value: "1.2.3.4", RuleID: "r", Sensor: "s", Source: "1.2.3.4", Severity: event.SeverityHigh, Time: base},
+		{Type: "ip", Value: "5.6.7.8", RuleID: "r", Sensor: "s", Source: "5.6.7.8", Severity: event.SeverityLow, Time: base.Add(time.Hour)},
+		{Type: "domain", Value: "evil.example", RuleID: "r", Sensor: "s", Source: "1.2.3.4", Severity: event.SeverityMedium, Time: base.Add(2 * time.Hour)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Text filter: substring match on value (case-insensitive).
+	if rows, err := s.QueryIOCs(ctx, IOCFilter{Text: "EVIL"}); err != nil || len(rows) != 1 || rows[0].Value != "evil.example" {
+		t.Errorf("text filter rows = %v (err %v); want just evil.example", rows, err)
+	}
+	// Since filter + limit: only the two later IOCs, capped at 1.
+	rows, err := s.QueryIOCs(ctx, IOCFilter{Since: base.Add(30 * time.Minute), Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("since+limit rows = %d; want 1", len(rows))
+	}
+
+	// Summary across all time: ip=2, domain=1.
+	sum, err := s.IOCSummary(ctx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum["ip"] != 2 || sum["domain"] != 1 {
+		t.Errorf("IOCSummary = %v; want ip:2 domain:1", sum)
+	}
+	// Summary with a since cutoff (base+30m) drops the earliest ip sighting
+	// (at base) but keeps the later ip (base+1h) and the domain (base+2h).
+	if sum2, err := s.IOCSummary(ctx, base.Add(30*time.Minute)); err != nil || sum2["ip"] != 1 || sum2["domain"] != 1 {
+		t.Errorf("since-filtered IOCSummary = %v (err %v); want ip:1 domain:1", sum2, err)
+	}
+}
+
+// Path accessor + the batched insert path (including the empty-batch no-op and
+// banner interning on the shared tx).
+func TestStorePathAndInsertBatch(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	if s.Path() == "" {
+		t.Error("Path() returned empty")
+	}
+	if err := s.InsertBatch(ctx, nil); err != nil {
+		t.Fatalf("empty InsertBatch should be a no-op, got %v", err)
+	}
+
+	base := time.Unix(1_700_000_000, 0).UTC()
+	batch := []*event.Event{
+		{ID: "b1", Time: base, Sensor: "s", RuleID: "listener:x", Severity: event.SeverityLow, Source: event.Endpoint{IP: "1.1.1.1"}, BannerSent: "SSH-2.0-OpenSSH"},
+		{ID: "b2", Time: base.Add(time.Second), Sensor: "s", RuleID: "listener:y", Severity: event.SeverityHigh, Source: event.Endpoint{IP: "2.2.2.2"}},
+	}
+	if err := s.InsertBatch(ctx, batch); err != nil {
+		t.Fatalf("InsertBatch: %v", err)
+	}
+	if c, _, _ := s.Heartbeat(ctx); c != 2 {
+		t.Errorf("post-batch event count = %d; want 2", c)
+	}
+}
+
+// Empty-store branches: Heartbeat and OldestEventTime must report zero values
+// (not an error) when the events table is empty — the NULL MIN/MAX path.
+func TestStoreEmptyHeartbeatAndOldest(t *testing.T) {
+	s, err := Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	if oldest, err := s.OldestEventTime(ctx); err != nil || !oldest.IsZero() {
+		t.Errorf("empty OldestEventTime = (%v, %v); want zero time, nil", oldest, err)
+	}
+	if count, latest, err := s.Heartbeat(ctx); err != nil || count != 0 || !latest.IsZero() {
+		t.Errorf("empty Heartbeat = (%d, %v, %v); want 0, zero, nil", count, latest, err)
+	}
+}
+
 // AggregateIPs / DistinctIPs (check-iocs support) + the Heartbeat / oldest /
 // PruneBefore retention primitives.
 func TestStoreAggregatesAndRetention(t *testing.T) {
