@@ -250,8 +250,11 @@ The more independent lists an IP appears on, the higher its
 block listing every feed is written to `enrichment-data/suggested-config.yaml`.
 
 **abuse.ch needs a free key (since 2025-06-30).** Every abuse.ch export now
-requires an account **Auth-Key**; unauthenticated requests get HTTP 401, which is
-why ThreatFox / MalwareBazaar / URLhaus report `FAILED (download)` with no key.
+requires an account **Auth-Key**. The 2025 migration also retired the old export
+URLs (HTTP 410) for a v2 API that carries the key **in the URL path**
+(`https://<svc>-api.abuse.ch/v2/files/exports/<KEY>/recent.csv`, `<svc>` =
+`threatfox`/`mb`/`urlhaus`) — `fetch-enrichment.sh` builds those automatically.
+Without a key, ThreatFox / MalwareBazaar / URLhaus report `FAILED (download)`.
 Create one free at <https://auth.abuse.ch/>, then:
 
 ```bash
@@ -958,5 +961,5 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `validate-config` rejects `format: cef` on `sqlite` channel | structured-row sinks can't take text formats | Use the format on `stdout`/`jsonlog`/`webhook`/`smtp`/`syslog` instead. |
 | `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (99 entries). |
 | `ssh_interactive` engagements piling up | crypto/ssh handshakes are CPU-heavier than banner-grab | Set `max_concurrent: 16` (or lower) on the listener to cap parallel sessions. |
-| `fetch-enrichment.sh`: `threatfox` / `malwarebazaar` / `urlhaus-urls` → `FAILED (download)` | abuse.ch requires an account Auth-Key for all exports since 2025-06-30 (unauthenticated = HTTP 401) | Get a free key at <https://auth.abuse.ch/>, then `export ABUSE_CH_AUTH_KEY=…` before running. Without a key these now report `skipped` (not failed) and every other feed still downloads. |
+| `fetch-enrichment.sh`: `threatfox` / `malwarebazaar` / `urlhaus-urls` → `FAILED (download)` **even with a key set** | the 2025 abuse.ch migration retired the old export URLs (HTTP 410) and moved to a v2 API with the key **in the URL path**, not a header | Update to v1.1.2+ (the script now builds `https://<svc>-api.abuse.ch/v2/files/exports/<KEY>/recent.csv`). If abuse.ch changed a filename, override the full URL via `THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL` (include your key). With no key they report `skipped`, not failed. |
 | `fetch-enrichment.sh`: `warning: failed to create archive … (tar rc=2 …)` | not enough free space for the single-file bundle (the GeoIP City DB alone is ~130 MB) | Non-fatal — the `enrichment-data/` directory is complete; transfer it directly with the printed `rsync` line, or free space / pass `SKIP_GEOIP=1`. `tar rc=1` (files changed while reading) keeps the archive with a warning. |

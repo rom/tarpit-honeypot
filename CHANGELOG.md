@@ -8,6 +8,23 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **abuse.ch feeds failed even with a valid Auth-Key.** The v1.1 fix sent the
+  key as an `Auth-Key` *header* to abuse.ch's *old* export URLs, but the 2025
+  migration **retired those URLs** (they return HTTP 410) and moved bulk exports
+  to a new per-service API domain with the key **in the URL path**:
+  `https://<svc>-api.abuse.ch/v2/files/exports/<AUTH-KEY>/recent.csv` (`<svc>` =
+  `threatfox` / `mb` / `urlhaus`) — a header 404s on these export files (it's
+  only for the JSON `/api/` query endpoints). `fetch-enrichment.sh` now builds
+  the keyed v2 URLs and sends no header, so a valid key actually downloads. Each
+  URL stays overridable via `THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL`
+  (include your key in the override).
+- **`fetch-enrichment.sh` no longer emits a scary "failed to create archive"
+  when `tar` is absent** — it detects the missing `tar` up front and skips the
+  (convenience-only) `.tar.gz` bundle with a one-line note plus the direct-rsync
+  command, instead of running `tar` and reporting its `command not found`.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

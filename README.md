@@ -2353,8 +2353,10 @@ Googlebot/Bingbot to dodge rate limits and blocks. Only crawler-claiming PTRs
 are forward-confirmed, so the extra DNS cost is negligible.
 
 > **abuse.ch feeds need a free key.** Since **2025-06-30** every abuse.ch export
-> (ThreatFox, MalwareBazaar, URLhaus) requires an account **Auth-Key** —
-> unauthenticated downloads return HTTP 401. Create one free at
+> (ThreatFox, MalwareBazaar, URLhaus) requires an account **Auth-Key**. The 2025
+> migration retired the old export URLs (HTTP 410) in favour of a v2 API that
+> takes the key **in the URL path** (`https://<svc>-api.abuse.ch/v2/files/exports/<KEY>/recent.csv`);
+> `fetch-enrichment.sh` builds those for you. Create a key free at
 > <https://auth.abuse.ch/>, then give it to `fetch-enrichment.sh` either via the
 > `ABUSE_CH_AUTH_KEY` env var or in the sensor config (read with `-c`):
 > ```yaml

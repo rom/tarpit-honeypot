@@ -40,8 +40,11 @@
 #                        otherwise the no-key DB-IP "lite" .mmdb files are used
 #                        (same MaxMind-DB format, readable by the sensor).
 #   ABUSE_CH_AUTH_KEY    abuse.ch Auth-Key, REQUIRED since 2025-06-30 for the
-#                        ThreatFox / MalwareBazaar / URLhaus exports (401 and
-#                        "FAILED (download)" without it). Get one free at
+#                        ThreatFox / MalwareBazaar / URLhaus exports. The 2025
+#                        migration retired the old export URLs (HTTP 410) and
+#                        puts the key IN THE PATH of the v2 export API:
+#                          https://<svc>-api.abuse.ch/v2/files/exports/<KEY>/recent.csv
+#                        (<svc> = threatfox | mb | urlhaus). Get one free at
 #                        https://auth.abuse.ch/. Alternatively set it in the
 #                        sensor config (-c) under sensor.enrichment:
 #                          abuse_ch_auth_key: "KEY"        # inline, or
@@ -49,9 +52,10 @@
 #                        The env var wins, then the inline key, then the named
 #                        env var. Without any of them these three feeds are
 #                        skipped (not failed).
-#   THREATFOX_URL /      optional overrides for the abuse.ch export URLs, in
-#   MALWAREBAZAAR_URL /  case abuse.ch relocates them (e.g. to a *-api.abuse.ch
-#   URLHAUS_URL          host). The Auth-Key header is sent to whatever URL.
+#   THREATFOX_URL /      optional FULL-URL overrides for the three abuse.ch
+#   MALWAREBAZAAR_URL /  exports, in case abuse.ch changes a path or filename.
+#   URLHAUS_URL          Include your key in the override (the key is in the
+#                        path now, not a header).
 #   JA4DB_URL            override the JA4+ fingerprint DB source (default: the
 #                        FoxIO ja4plus-mapping.csv on GitHub). CSV or JSON
 #                        (ja4db.com export) is auto-detected; JSON needs jq.
@@ -80,7 +84,7 @@ while [ $# -gt 0 ]; do
 	--bin) BIN="$2"; shift 2 ;;
 	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
 	-q | --quiet) QUIET=1; shift ;;
-	-h | --help) sed -n '2,62p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,66p' "$0"; exit 0 ;;
 	-*) echo "unknown option: $1" >&2; exit 2 ;;
 	*) OUT="$1"; shift ;;
 	esac
@@ -288,14 +292,15 @@ fetch_cloud() {
 # MalwareBazaar) and emit "sha256[,family]" lines. Extraction is separator-
 # agnostic (the CSVs vary between ',' and ', '): grep the sha256 hashes, and
 # pair each with a malware family on the same line when one is present (the
-# abuse.ch "platform.name" convention, e.g. win.agent_tesla). An optional
-# ABUSE_CH_AUTH_KEY env var is sent as the Auth-Key header (some exports now
-# require it).
+# abuse.ch "platform.name" convention, e.g. win.agent_tesla). The abuse.ch
+# Auth-Key goes in the URL PATH for the v2 export files (an Auth-Key *header*
+# 404s on these — the header is only for the JSON /api/ query endpoints), so no
+# header is sent here; the caller builds the keyed URL.
 fetch_abuse_csv() {
 	local label="$1" url="$2" dest="$3"
 	local tmp="$dest.tmp.$$" sz
 	printf '  %-22s ' "$label"
-	if ! _dl "$tmp" "$url" "${ABUSE_KEY:+Auth-Key: $ABUSE_KEY}" 2>/dev/null || [ ! -s "$tmp" ]; then
+	if ! _dl "$tmp" "$url" 2>/dev/null || [ ! -s "$tmp" ]; then
 		echo "FAILED (download)"; rm -f "$tmp"; fail=$((fail + 1)); return 1
 	fi
 	# Per line: extract the sha256 + a same-line family token (best effort).
@@ -449,20 +454,24 @@ for p in aws gcp; do
 		cat "$CLOUD_DIR/$p-v6.txt" >>"$CLOUD_DIR/$p.txt" && rm -f "$CLOUD_DIR/$p-v6.txt"
 done
 
-# abuse.ch feeds (ThreatFox / MalwareBazaar / URLhaus). Since 2025-06-30 EVERY
-# abuse.ch export requires a (free) account Auth-Key: unauthenticated requests
-# are rejected with HTTP 401, which is exactly why these report
-# "FAILED (download)" when no key is set. We send the key as the Auth-Key header
-# (and fix URLhaus, which previously sent none); without a key we SKIP them —
-# that is expected, not a failure. Get a free key at https://auth.abuse.ch/ and
-# export ABUSE_CH_AUTH_KEY=... before running. The export URLs are overridable
-# (THREATFOX_URL / MALWAREBAZAAR_URL / URLHAUS_URL) in case abuse.ch moves them.
-say "[malware-hashes]  (abuse.ch — needs ABUSE_CH_AUTH_KEY since 2025-06-30)"
+# abuse.ch feeds (ThreatFox / MalwareBazaar / URLhaus). The 2025 migration
+# RETIRED the old keyless export URLs (they now return HTTP 410 Gone) and moved
+# bulk exports to a per-service API domain with the Auth-Key IN THE URL PATH:
+#   https://<service>-api.abuse.ch/v2/files/exports/<AUTH-KEY>/<file>
+# where <service> is threatfox | urlhaus | mb (MalwareBazaar). An Auth-Key
+# *header* 404s on these export files (that header is only for the JSON /api/
+# query endpoints), so the key must be in the path. A valid key against the old
+# URLs still fails — that was the pre-v1.1.2 bug. Without a key we SKIP these
+# (expected, not a failure). Get a free key at https://auth.abuse.ch/ and export
+# ABUSE_CH_AUTH_KEY=... (or set it in the config, -c). Each full URL is
+# overridable via THREATFOX_URL / MALWAREBAZAAR_URL / URLHAUS_URL in case
+# abuse.ch changes a path or filename — include your key in the override.
+say "[malware-hashes]  (abuse.ch v2 export API — needs ABUSE_CH_AUTH_KEY since 2025-06-30)"
 if [ -n "$ABUSE_KEY" ]; then
-	fetch_abuse_csv "threatfox"     "${THREATFOX_URL:-https://threatfox.abuse.ch/export/csv/recent/}"     "$MAL_DIR/threatfox.txt"     || true
-	fetch_abuse_csv "malwarebazaar" "${MALWAREBAZAAR_URL:-https://bazaar.abuse.ch/export/csv/recent/}"    "$MAL_DIR/malwarebazaar.txt" || true
-	# URLhaus malicious URLs (reference / future host matching) — also key-gated.
-	fetch "urlhaus-urls" "${URLHAUS_URL:-https://urlhaus.abuse.ch/downloads/text_recent/}" "$MAL_DIR/urlhaus-urls.txt" "" "Auth-Key: $ABUSE_KEY" || true
+	fetch_abuse_csv "threatfox"     "${THREATFOX_URL:-https://threatfox-api.abuse.ch/v2/files/exports/$ABUSE_KEY/recent.csv}" "$MAL_DIR/threatfox.txt"     || true
+	fetch_abuse_csv "malwarebazaar" "${MALWAREBAZAAR_URL:-https://mb-api.abuse.ch/v2/files/exports/$ABUSE_KEY/recent.csv}"    "$MAL_DIR/malwarebazaar.txt" || true
+	# URLhaus recent export (reference / future host matching) — key in path, no header.
+	fetch "urlhaus-urls" "${URLHAUS_URL:-https://urlhaus-api.abuse.ch/v2/files/exports/$ABUSE_KEY/recent.csv}" "$MAL_DIR/urlhaus-urls.txt" || true
 else
 	skip_feed "threatfox"     "set ABUSE_CH_AUTH_KEY (free: https://auth.abuse.ch/)"
 	skip_feed "malwarebazaar" "set ABUSE_CH_AUTH_KEY (free: https://auth.abuse.ch/)"
@@ -564,7 +573,12 @@ if [ -n "$SHA" ]; then
 fi
 
 ARCHIVE=""
-if [ "${NO_ARCHIVE:-}" != "1" ]; then
+if [ "${NO_ARCHIVE:-}" != "1" ] && ! command -v tar >/dev/null 2>&1; then
+	# No tar on this box: skip the single-file bundle cleanly (it's only a
+	# transfer convenience) rather than emit a scary "failed to create archive".
+	echo "note: tar not found — skipping the .tar.gz bundle. Transfer the dir directly:" >&2
+	echo "  rsync -a '$OUT/' sensor:/tmp/$(basename "${OUT%/}")/" >&2
+elif [ "${NO_ARCHIVE:-}" != "1" ]; then
 	ARCHIVE="${OUT%/}.tar.gz"
 	# Capture tar's own message (instead of discarding it) so a failure is
 	# actionable. tar rc=1 is "files differ / changed while reading" — the
