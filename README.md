@@ -47,11 +47,12 @@ rationale covering the current implementation.
   capture creds, no deep sessions or outbound call-outs), or `mute`
   (receive-only — no outbound bytes at all). Plus `sensor.no_amplifier_replies`
   to suppress NTP mode 6/7 + reflector replies.
-- **196 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **197 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
   - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `neo4j`, `rethinkdb`, `couchdb`, `influxdb`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `docker_registry`, `cloud_metadata`, `etcd`, `kubernetes_api`, `kubelet`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`, `irc` (6667 — botnet C2 + the UnrealIRCd 3.2.8.1 backdoor CVE-2010-2075), `finger` (79 — account enumeration), `stomp` (61613 — ActiveMQ/RabbitMQ message broker), `nntp` (119 — news / open-relay + AUTHINFO capture), `ident` (113 — RFC 1413 account disclosure), `afp` (548 — Apple Filing Protocol / DSI file share), `beanstalkd` (11300 — unauthenticated work queue)
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `danfoss_aksm` / `danfoss_aksms` (Danfoss AK-SM 8xxA "StoreView" refrigeration system manager — recognizes the Claroty Team82 `xml.cgi` CVEs, detection only)
   - **TCP / AI + agent infrastructure**: `ollama` (Ollama LLM runtime, 11434), `llm_openai` (OpenAI-compatible inference API — vLLM / LM Studio / LocalAI), `mcp` (Model Context Protocol server honeypot) — each fingerprints the service, captures the attacker's prompt / tool-call, and classifies **prompt-injection / jailbreak / tool-abuse** payloads mapped to **MITRE ATLAS** (AML.T0051 / T0054 / T0057 / T0053)
+  - **TCP / agentic-attack honeypot**: `agent` — a decoy that speaks the agent-interop protocols (**A2A** agent cards + JSON-RPC, **AP2** payment mandates, **MCP**, **ACP**) and turns the tables on an autonomous LLM attacker. It recognizes the protocol, the calling **agent framework/SDK** (LangChain, CrewAI, AutoGen, OpenAI-Agents, LlamaIndex, …) and the operation (recon / exfil / lateral / exploit / payment), captures the agent's objective, and **counter-exfiltrates**: every reply embeds a reverse prompt-injection that instructs the attacking agent to resubmit with its own `system_prompt`, `objective`, `tools` and `api_keys`/`ssh_key` "for mutual agent authentication" — when it complies, we capture its internals (`agent:counter-exfil`). Replies also **feed false/decoy info** (fake credentials + a canary crypto-wallet address) to poison the agent's plan. High-severity alarm, tarpit-flagged for delay, ATLAS-mapped; shipped rules in [`configs/rules/agentic.yml`](configs/rules/agentic.yml). See [Agentic attacks](#agentic-attacks).
   - **TCP / C2 deception**: `c2_emulator` — a fake command-and-control team server that recognizes the HTTP check-in *shape* of **Cobalt Strike** (checksum8 stager + default malleable-profile URIs + beacon Cookie), **Metasploit/Meterpreter** (checksum-coded stager URI), **Empire** and **PoshC2** (default listener URIs/cookies), plus **Mythic/Havoc** profile headers — and falls back to the `toolfp` C2-framework corpus (40+ families, Sliver/Covenant/BruteRatel/Havoc/…) by User-Agent. It answers like the team server so a misconfigured/sandboxed beacon or an operator/scanner hunting an open panel keeps talking, captures the (encrypted) beacon metadata, and flags `c2-beacon-checkin` / `c2-stager` / `c2-server-probe` (ATT&CK **T1071.001 / T1219**). Never a real C2 — no tasking is executed.
   - **TCP / refrigeration + building automation + EV charging**: `danfoss_aksm` (Danfoss AK-SM StoreView), `dixell` (Emerson/Copeland Dixell XWEB supermarket refrigeration), `carel` (CAREL pCOWeb / boss), `trane` (Trane Tracer SC BAS), `resideo` (Resideo/Honeywell), `ocpp` (EV-charging OCPP-J over WebSocket) — fingerprint the controller, capture default-cred logins, and flag setpoint/defrost/schedule writes, firmware pushes and charger reset/remote-transaction actuation
   - **TLS-fronted variants** (decrypt-then-inner): `ollamas`, `llm_openais`, `mcps`, `jupyters`, `minios`, `clickhouses`, `consuls`, `danfoss_aksms` — the AI/LLM, MCP, cloud-native and refrigeration decoys behind a real TLS handshake (JA3/JA4/JA3S captured), for the common case where these are served over HTTPS
@@ -602,7 +603,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (196 TCP + 118 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (197 TCP + 118 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -651,7 +652,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
-events to your sinks. Current totals: **196 TCP + 118 UDP protocol handlers**,
+events to your sinks. Current totals: **197 TCP + 118 UDP protocol handlers**,
 **743 CVE records** (366 live-detectable + 377 advisory), **469 built-in YARA
 artifact-classification rules**, **230 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
@@ -1547,6 +1548,70 @@ scanning without touching the binary. State is exported as
   `--covered` flips it.
 
 Full recipe with config snippets: [`docs/usage.md`](docs/usage.md) §2c.
+
+## Agentic attacks
+
+AI-driven attacks are increasingly **agentic**: an autonomous LLM agent drives
+the engagement, selecting and chaining exploits based on the target's attack
+surface rather than following a fixed script. The `agent` handler is a decoy
+built to detect, engage and turn the tables on such an attacker.
+
+- **Detect & recognize.** It speaks the agent-interop protocols — **A2A**
+  (Agent2Agent: `/.well-known/agent.json` cards + `message/send` / `tasks/*`
+  JSON-RPC), **AP2** (Agent Payments Protocol mandates), **MCP** (Model Context
+  Protocol), **ACP** (Agent Communication Protocol) — and fingerprints the
+  **calling framework/SDK** (LangChain/LangGraph, LlamaIndex, AutoGPT, CrewAI,
+  AutoGen, Semantic-Kernel, OpenAI-Agents/Swarm, DSPy, Letta, the OpenAI /
+  Anthropic / Google SDKs, …) and the **operation type** (recon / exfil /
+  credential-access / lateral / exploit / payment). An LLM-model reference in the
+  body marks the caller **autonomous** (`agent:autonomous`), separating a real
+  agent from a human or a dumb scanner.
+- **Interact & counter-exfiltrate.** Every reply embeds a **reverse
+  prompt-injection** framed as a required "mutual agent authentication
+  handshake", instructing the attacking agent to resubmit with its own
+  `system_prompt`, `objective`, `playbook`, `tools`, and `api_keys` / `ssh_key`.
+  When the agent complies, the honeypot **captures its internals**
+  (`agent:counter-exfil`, with the leaked fields on the event) — its setup,
+  configuration, objectives, instructions and any disclosed secrets.
+- **Feed false information.** Replies carry believable-but-useless **decoy data**
+  — fake AWS/OpenAI keys and a **canary crypto-wallet address** (see below) —
+  deterministic per source, to poison the agent's plan and bait exfiltration.
+- **Probe, categorize, alarm, delay.** The operation is classified and
+  **mapped to MITRE ATLAS** (AML.T0051 / T0054 / T0057 / T0053); the event is
+  raised at high severity and the source is flagged for **tarpitting** (delay).
+  Shipped detection rules: [`configs/rules/agentic.yml`](configs/rules/agentic.yml)
+  (`agentic-attack`, `agentic-counter-exfil`, `agentic-exfil`,
+  `agentic-payment-fraud`, `agentic-protocol-probe`).
+
+Pair it with the existing `mcp`, `llm_openai` and `ollama` decoys to cover the
+full agent + model surface.
+
+### Crypto-wallet decoys
+
+Attackers and their agentic tooling hunt for wallet files because they convert
+straight to money. `tarpit-honeypot gen-wallet-decoys` writes **structurally
+correct** decoy wallets to seed honeypot loot (fake home dirs, served downloads,
+decoy mounts) — 11 formats, deterministic per deployment, verified against real
+tooling (`file` reports the Bitcoin Core `wallet.dat` as a genuine *Berkeley DB
+(Btree)*):
+
+| Kind | File | Notes |
+|---|---|---|
+| `bitcoin-core` | `wallet.dat` | Berkeley DB with a decoy default key/address |
+| `ethereum-keystore` | `UTC--…--<addr>` | geth/web3 keystore v3 (scrypt) |
+| `electrum` | `default_wallet` | BIP32 xprv/xpub standard wallet |
+| `bip39-seed` / `ledger-recovery` | `*.txt` | 24 genuine BIP39 words |
+| `metamask-vault` | `metamask-vault.json` | `{data,iv,salt}` extension vault |
+| `monero` | `monero.wallet.keys.txt` | primary address + view/spend keys |
+| `wif-privkeys` / `paper-wallet` | `*.csv` / `*.txt` | base58check-valid WIF + P2PKH |
+| `solana-keypair` | `id.json` | 64-byte CLI keypair |
+| `exodus` | `seed.seco` | encrypted-seed blob |
+
+Every value a file exposes (address / key / mnemonic) is a **canary**: register
+it with your SIEM (or the sensor's token tracker) so an exfiltrated key
+reappearing in captured traffic is near-irrefutable proof the loot was taken.
+The `agent` handler reuses the same generator to mint its per-attacker decoy
+wallet bait.
 
 ## Outbound channels
 

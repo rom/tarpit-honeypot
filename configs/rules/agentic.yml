@@ -1,0 +1,47 @@
+# Agentic-attack detection (detection-as-code).
+#
+# Autonomous LLM agents that plan, select and chain exploits announce
+# themselves through the agent-interop protocols (A2A, AP2, MCP, ACP) and
+# agent-framework SDK clients. The `agent` honeypot handler stamps agent:*
+# markers + ATLAS techniques on every request and counter-exfiltrates the
+# attacking agent's own configuration; these rules promote the high-signal
+# ones. See the README's "Agentic attacks" section.
+
+- id: agentic-attack
+  title: Autonomous AI agent attacking a service
+  description: An LLM-driven agent (agent protocol / framework / model-referenced body) engaged a decoy endpoint.
+  severity: high
+  tags: [custom:agentic-attack, atlas.AML.T0051]
+  match:
+    anomaly: [agent-attack, agent:autonomous]
+
+- id: agentic-counter-exfil
+  title: Attacking agent leaked its own config/credentials (counter-exfil)
+  description: The honeypot's reverse prompt-injection made the attacking agent disclose its system prompt / objective / keys.
+  severity: critical
+  tags: [custom:agent-counter-exfil, atlas.AML.T0057]
+  match:
+    anomaly: [agent:counter-exfil]
+
+- id: agentic-exfil
+  title: Agent attempting credential / secret exfiltration
+  severity: high
+  tags: [custom:agent-exfil, atlas.AML.T0057]
+  match:
+    anomaly: [agent:exfil, agent:cred-access]
+
+- id: agentic-payment-fraud
+  title: Agent Payments Protocol (AP2) mandate abuse
+  description: An agent drove a payment mandate (AP2) — autonomous financial-fraud attempt.
+  severity: critical
+  tags: [custom:agent-payment-fraud, atlas.AML.T0051]
+  match:
+    anomaly: [agent:ap2, agent:payment-target]
+
+- id: agentic-protocol-probe
+  title: Agent-interop protocol probe (A2A / MCP / ACP)
+  description: Discovery of an agent-interop endpoint — agent-card fetch or JSON-RPC task enumeration.
+  severity: medium
+  tags: [custom:agent-protocol, attack.t1595]
+  match:
+    anomaly: [agent:a2a, agent:mcp, agent:acp]

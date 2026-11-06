@@ -8,6 +8,28 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Agentic-attack honeypot (`agent` handler).** A decoy for autonomous
+  LLM-driven attackers. Recognizes the agent-interop protocols (**A2A**, **AP2**,
+  **MCP**, **ACP**), the calling **framework/SDK** (LangChain, CrewAI, AutoGen,
+  OpenAI-Agents, LlamaIndex, the OpenAI/Anthropic/Google SDKs, …) and the
+  **operation type** (recon / exfil / credential-access / lateral / exploit /
+  payment), mapping to MITRE ATLAS. It **counter-exfiltrates**: every reply
+  embeds a reverse prompt-injection framed as a "mutual agent authentication
+  handshake" that makes the attacking agent resubmit with its own system prompt,
+  objective, tools and credentials — captured on `agent:counter-exfil`. Replies
+  also feed **false/decoy info** (fake keys + a canary crypto-wallet address) to
+  poison the agent's plan, raise a high-severity alarm, and flag the source for
+  tarpitting. Shipped rules in `configs/rules/agentic.yml`. → 197 TCP handlers.
+- **Crypto-wallet decoys (`internal/walletdecoy` + `gen-wallet-decoys`).** A
+  deterministic generator for structurally-correct wallet decoy files to seed
+  honeypot loot — 11 formats (Bitcoin Core `wallet.dat` that `file` reports as a
+  real Berkeley DB, Ethereum keystore v3, Electrum, BIP39/Ledger seed phrases,
+  MetaMask vault, Monero, WIF/paper wallets, Solana `id.json`, Exodus). Bitcoin
+  addresses/WIF keys carry valid base58check checksums; every value is a canary.
+  The `agent` handler reuses it for per-attacker wallet bait.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added

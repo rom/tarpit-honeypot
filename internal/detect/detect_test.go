@@ -208,3 +208,23 @@ func TestOTMalwareRulesFire(t *testing.T) {
 		t.Error("a Modbus read wrongly matched the FrostyGoop rule")
 	}
 }
+
+// The agentic-attack pack fires on the agent:* markers from the agent handler.
+func TestAgenticRulesFire(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("load: %v", errs)
+	}
+	fires := func(handler string, anoms []string, wantID string) {
+		t.Helper()
+		ev := &event.Event{Handler: handler, Severity: event.SeverityLow, Anomalies: anoms}
+		if m := eng.Apply(ev); !has(m, wantID) {
+			t.Errorf("handler=%s anomalies=%v: matched %v; want %q", handler, anoms, m, wantID)
+		}
+	}
+	fires("agent", []string{"agent-attack", "agent:autonomous"}, "agentic-attack")
+	fires("agent", []string{"agent:counter-exfil"}, "agentic-counter-exfil")
+	fires("agent", []string{"agent:exfil", "agent:cred-access"}, "agentic-exfil")
+	fires("agent", []string{"agent:ap2", "agent:payment-target"}, "agentic-payment-fraud")
+	fires("agent", []string{"agent:a2a"}, "agentic-protocol-probe")
+}
