@@ -1823,6 +1823,7 @@ type Correlate struct {
 	TollFraud           CorrTollFraud           `yaml:"toll_fraud"`
 	VoIPEnum            CorrVoIPEnum            `yaml:"voip_enum"`
 	PBXControl          CorrPBXControl          `yaml:"pbx_control"`
+	AgenticEscalation   CorrAgenticEscalation   `yaml:"agentic_escalation"`
 	TLSMITMCapture      CorrTLSMITMCapture      `yaml:"tls_mitm_capture"`
 	FingerprintRotation CorrFingerprintRotation `yaml:"fingerprint_rotation"`
 	ContainerTakeover   CorrContainerTakeover   `yaml:"container_takeover"`
@@ -1951,6 +1952,17 @@ type CorrPBXControl struct {
 	Events   int           `yaml:"events"`
 	Window   time.Duration `yaml:"window"`
 	Severity string        `yaml:"severity"`
+}
+
+// CorrAgenticEscalation fires when one source trips several DISTINCT agentic
+// provocation markers (agent:* bait/provoke/counter-exfil/injection-confirmed)
+// within a window — an autonomous LLM agent being strung up the provocateur's
+// bait ladder across its multi-turn engagement (see docs/AGENTIC.md).
+type CorrAgenticEscalation struct {
+	Enabled         bool          `yaml:"enabled"`
+	DistinctSignals int           `yaml:"distinct_signals"`
+	Window          time.Duration `yaml:"window"`
+	Severity        string        `yaml:"severity"`
 }
 
 // CorrRemoteToolSweep fires when one source probes several DISTINCT third-party
