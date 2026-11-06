@@ -81,6 +81,74 @@ var generators = map[string]genFunc{
 	"paper-wallet":      genPaperWallet,
 	"ledger-recovery":   genLedgerRecovery,
 	"exodus":            genExodus,
+	"litecoin":          genLitecoin,
+	"dogecoin":          genDogecoin,
+	"dash":              genDash,
+	"zcash":             genZcash,
+	"tron":              genTron,
+	"cardano":           genCardano,
+	"trezor-backup":     genTrezorBackup,
+}
+
+// altP2PKH builds a base58check P2PKH-style address with a given version byte
+// (Litecoin 0x30→L, Dogecoin 0x1e→D, Dash 0x4c→X, Zcash t 0x1cb8→t1, Tron
+// 0x41→T) — valid-format, decoy key bytes.
+func altP2PKH(seed, label string, version ...byte) string {
+	return base58Check(append(append([]byte(nil), version...), derive(seed, label+":h160", 20)...))
+}
+
+func genLitecoin(seed string) Wallet {
+	addr := altP2PKH(seed, "ltc", 0x30)
+	body := "# Litecoin Core wallet dump\naddress " + addr + "\nprivkey " + wifKey(seed, "ltc") + "\n"
+	return Wallet{"litecoin", "litecoin_wallet.txt", "text/plain", []byte(body), addr, "Litecoin address + WIF"}
+}
+
+func genDogecoin(seed string) Wallet {
+	addr := altP2PKH(seed, "doge", 0x1e)
+	body := "# Dogecoin wallet dump\naddress " + addr + "\nprivkey " + wifKey(seed, "doge") + "\n"
+	return Wallet{"dogecoin", "dogecoin_wallet.txt", "text/plain", []byte(body), addr, "Dogecoin address + WIF"}
+}
+
+func genDash(seed string) Wallet {
+	addr := altP2PKH(seed, "dash", 0x4c)
+	body := "# Dash wallet dump\naddress " + addr + "\nprivkey " + wifKey(seed, "dash") + "\n"
+	return Wallet{"dash", "dash_wallet.txt", "text/plain", []byte(body), addr, "Dash address + WIF"}
+}
+
+func genZcash(seed string) Wallet {
+	taddr := altP2PKH(seed, "zec", 0x1c, 0xb8) // t-addr (2-byte version → "t1")
+	body := "# Zcash wallet\nt_address: " + taddr + "\nz_address: zs1" + base58Pad(seed, "zec:z", 75) +
+		"\nspending_key: secret-extended-key-main1" + base58Pad(seed, "zec:sk", 60) + "\n"
+	return Wallet{"zcash", "zcash_wallet.txt", "text/plain", []byte(body), taddr, "Zcash t-addr + z-addr + spending key"}
+}
+
+func genTron(seed string) Wallet {
+	addr := altP2PKH(seed, "trx", 0x41) // Tron mainnet → "T"
+	body := "# TRON wallet\naddress: " + addr + "\nprivate_key: " + deriveHex(seed, "trx:pk", 32) + "\n"
+	return Wallet{"tron", "tron_wallet.txt", "text/plain", []byte(body), addr, "TRON address + private key"}
+}
+
+func genCardano(seed string) Wallet {
+	// Shelley bech32 address shape: addr1 + ~98 bech32 chars (decoy, shape-only).
+	const bech = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+	raw := derive(seed, "ada:addr", 60)
+	var b strings.Builder
+	b.WriteString("addr1")
+	for _, by := range raw {
+		b.WriteByte(bech[int(by)%len(bech)])
+	}
+	addr := b.String()
+	if len(addr) > 103 {
+		addr = addr[:103]
+	}
+	body := "{\n  \"address\": \"" + addr + "\",\n  \"payment_signing_key\": \"" + deriveHex(seed, "ada:sk", 32) + "\"\n}\n"
+	return Wallet{"cardano", "cardano_wallet.json", "application/json", []byte(body), addr, "Cardano (Shelley) address + signing key"}
+}
+
+func genTrezorBackup(seed string) Wallet {
+	words := mnemonic(seed, "trezor", 24)
+	body := "TREZOR Recovery Seed (Model T)\n" + strings.Join(words, " ") + "\nSLIP39: no\n"
+	return Wallet{"trezor-backup", "trezor_backup.txt", "text/plain", []byte(body), strings.Join(words, " "), "Trezor 24-word recovery seed"}
 }
 
 // ---- deterministic byte derivation -----------------------------------------

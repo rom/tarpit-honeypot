@@ -169,3 +169,60 @@ func TestMoneroShape(t *testing.T) {
 		t.Errorf("monero address shape wrong: %q (len %d)", w.Canary, len(w.Canary))
 	}
 }
+
+// TestAltcoinAddressesValid checks the base58check altcoin addresses carry a
+// valid checksum and the expected human-readable prefix for their network.
+func TestAltcoinAddressesValid(t *testing.T) {
+	cases := []struct {
+		kind, prefix string
+	}{
+		{"litecoin", "L"},
+		{"dogecoin", "D"},
+		{"dash", "X"},
+		{"zcash", "t1"},
+		{"tron", "T"},
+	}
+	for _, c := range cases {
+		w, err := Generate(c.kind, testSeed)
+		if err != nil {
+			t.Errorf("%s: %v", c.kind, err)
+			continue
+		}
+		if !strings.HasPrefix(w.Canary, c.prefix) {
+			t.Errorf("%s: canary %q lacks prefix %q", c.kind, w.Canary, c.prefix)
+		}
+		if !validBase58Check(w.Canary) {
+			t.Errorf("%s: canary %q not valid base58check", c.kind, w.Canary)
+		}
+	}
+}
+
+// TestCardanoShape checks the Shelley bech32 address shape.
+func TestCardanoShape(t *testing.T) {
+	w, _ := Generate("cardano", testSeed)
+	if !strings.HasPrefix(w.Canary, "addr1") {
+		t.Errorf("cardano address %q lacks addr1 prefix", w.Canary)
+	}
+	var v any
+	if err := json.Unmarshal(w.Content, &v); err != nil {
+		t.Errorf("cardano wallet not valid JSON: %v", err)
+	}
+}
+
+// TestTrezorBackupVocab checks the Trezor backup is a 24-word BIP39 seed.
+func TestTrezorBackupVocab(t *testing.T) {
+	vocab := map[string]bool{}
+	for _, w := range bip39Words {
+		vocab[w] = true
+	}
+	w, _ := Generate("trezor-backup", testSeed)
+	words := strings.Fields(w.Canary)
+	if len(words) != 24 {
+		t.Fatalf("trezor backup has %d words, want 24", len(words))
+	}
+	for _, wd := range words {
+		if !vocab[wd] {
+			t.Errorf("trezor word %q not in BIP39 vocabulary", wd)
+		}
+	}
+}

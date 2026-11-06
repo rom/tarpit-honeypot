@@ -35,6 +35,7 @@ func Dispatch(args []string) error {
 		{"list-events", "tail / query events from the local JSON log or sqlite", cmdListEvents},
 		{"gen-token", "print an unguessable canary token (dns | url | hex | ssrf | doc)", cmdGenToken},
 		{"gen-wallet-decoys", "write believable crypto-wallet decoy files (bitcoin/eth/monero/...)", cmdGenWalletDecoys},
+		{"gen-lures", "write believable credential/secret decoy files (aws/ssh/.env/kubeconfig/...)", cmdGenLures},
 		{"export-pcap", "copy one event's per-connection pcap out of the captures dir", cmdExportPcap},
 		{"list-honeynets", "print the configured artificial networks + hosts + services", cmdListHoneynets},
 		{"list-devices", "print the learned-device inventory (devices.json)", cmdListDevices},
