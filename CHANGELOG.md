@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-06
+
 ### Added
 
 - **Agentic-attack honeypot (`agent` handler) — an *agent provocateur*.** A
