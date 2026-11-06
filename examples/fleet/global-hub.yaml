@@ -35,6 +35,17 @@ fleet:
 ioc:
   enabled: true
 
+# Stamp KEV-listed CVEs across the whole estate: pull the CISA Known Exploited
+# Vulnerabilities catalog on `poll` and mark every cve:<id> event whose CVE is
+# KEV-listed with kev=true + kev_date_added + kev_known_ransomware, lifting it to
+# at least High. The feed host (www.cisa.gov) rides the egress-governed client —
+# add it to egress.allow if you enable egress.enforce here. `file:` is the
+# offline / air-gapped path (scripts/fetch-kev.sh installs it).
+kev:
+  enabled: true
+  poll: 6h
+  # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
+
 # Push the global IOCs to MISP (egress-allowlisted; add it to egress.allow if you
 # enable egress.enforce here).
 misp:

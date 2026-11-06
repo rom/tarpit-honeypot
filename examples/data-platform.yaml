@@ -49,6 +49,19 @@ listeners:
   - { id: minio,    proto: tcp, bind: 0.0.0.0:9000,  mode: banner, handler: lua, script: configs/scripts/minio.lua,    severity: high,     capture: true }
   - { id: rabbitmq, proto: tcp, bind: 0.0.0.0:15672, mode: banner, handler: lua, script: configs/scripts/rabbitmq.lua, severity: high,     capture: true }
 
+  # --- AI / LLM tier (exposed inference servers + agent tooling) --------------
+  - { id: ollama,     proto: tcp, bind: 0.0.0.0:11434, mode: banner, handler: ollama,     severity: high,     capture: true } # Ollama inference-server decoy
+  - { id: llm-openai, proto: tcp, bind: 0.0.0.0:8081,  mode: banner, handler: llm_openai, severity: high,     capture: true } # OpenAI-style /v1 LLM API decoy
+  - { id: mcp,        proto: tcp, bind: 0.0.0.0:8000,  mode: banner, handler: mcp,        severity: high,     capture: true } # Model Context Protocol server decoy
+  - { id: agent,      proto: tcp, bind: 0.0.0.0:8080,  mode: banner, handler: agent,      severity: critical, capture: true } # Agentic provocateur (A2A/AP2/MCP/ACP + counter-exfil)
+
+  # --- Decoy loot seeding -----------------------------------------------------
+  # Seed believable loot where this stack already serves files (the minio object
+  # store + the nfsserver / secretstore archeservices above). Generate with:
+  #   tarpit-honeypot gen-wallet-decoys    --out <loot_dir>   # fake crypto wallets
+  #   tarpit-honeypot gen-lures            --out <loot_dir>   # fake aws/ssh/.env/kubeconfig secrets
+  #   tarpit-honeypot gen-agent-breadcrumb --out <loot_dir>   # breadcrumbs that lure crawling agents to the agent decoy
+
 url_canaries:
   - { id: vault-unseal-keys, path: /v1/secret/data/unseal, severity: critical }
 

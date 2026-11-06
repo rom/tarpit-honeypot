@@ -44,6 +44,7 @@ listeners:
   - { id: smb,        proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,              severity: critical, capture: true }
   - { id: ftp,        proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp_files,        severity: high,     capture: true }
   - { id: winrm,      proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,            severity: high }
+  - { id: pi,         proto: tcp, bind: 0.0.0.0:5450, mode: banner, handler: osisoft_pi,       severity: high,     capture: true } # OSIsoft / AVEVA PI Data Archive (the replicated/forward historian IT may read)
 
 honeynets:
   - id: ot-dmz

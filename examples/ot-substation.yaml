@@ -45,6 +45,9 @@ listeners:
   - { id: opcua-bait,  proto: tcp, bind: 0.0.0.0:4840, mode: banner, handler: opcua,   severity: critical, capture: true }
   - { id: bacnet-bait, proto: udp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet, severity: critical }
   - { id: snmp-bait,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,    severity: high }
+  # Control-center peering + station historian (data concentration layer).
+  - { id: iccp-bait,   proto: tcp, bind: 0.0.0.0:3782, mode: banner, handler: iccp_secure, severity: critical, capture: true } # Secure ICCP / TASE.2 (inter-control-center)
+  - { id: pi-bait,     proto: tcp, bind: 0.0.0.0:5450, mode: banner, handler: osisoft_pi,  severity: high,     capture: true } # OSIsoft / AVEVA PI Data Archive
   # Engineering-workstation surface — anyone reaching this from the OT
   # cell shouldn't exist.
   - { id: rdp-bait,    proto: tcp, bind: 0.0.0.0:3389, mode: banner, handler: rdp,     severity: critical, capture: true }
