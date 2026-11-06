@@ -62,6 +62,16 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 			add("enrichment", "cloud_ranges:"+l.Provider, l.File, false)
 		}
 	}
+	if c.Sensor.Anonymizer.Enabled {
+		for _, l := range c.Sensor.Anonymizer.Lists {
+			add("enrichment", "anonymizer_ranges:"+l.Kind, l.File, false)
+		}
+	}
+	if c.Sensor.ASNReputation.Enabled {
+		for _, l := range c.Sensor.ASNReputation.Lists {
+			add("enrichment", "asn_reputation:"+l.Label, l.File, false)
+		}
+	}
 	if c.Sensor.FingerprintDB.Enabled {
 		for _, s := range c.Sensor.FingerprintDB.Sources {
 			add("enrichment", "fingerprint_db:"+s.Kind, s.File, false)

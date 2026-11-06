@@ -768,6 +768,10 @@ type Sensor struct {
 	NetClass    NetClass    `yaml:"net_class"`
 	// CloudRanges tags sources inside published cloud-provider IP ranges.
 	CloudRanges CloudRanges `yaml:"cloud_ranges"`
+	// Anonymizer tags sources inside VPN / open-proxy / relay IP ranges.
+	Anonymizer AnonymizerRanges `yaml:"anonymizer_ranges"`
+	// ASNReputation tags sources whose ASN is on a reputation list (ASN-DROP).
+	ASNReputation ASNReputation `yaml:"asn_reputation"`
 	// FingerprintDB maps JA3/JA4/HASSH fingerprints to client/tool names.
 	FingerprintDB FingerprintDB `yaml:"fingerprint_db"`
 	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
@@ -999,6 +1003,34 @@ type CloudRanges struct {
 type CloudRangeEntry struct {
 	Provider string `yaml:"provider"`
 	File     string `yaml:"file"`
+}
+
+// AnonymizerRanges tags source IPs inside VPN / open-proxy / relay IP ranges
+// (anonymizer=<kind> → anonymized=true on the event). Each list is one CIDR or
+// IP per line, tagged with a kind. fetch-enrichment.sh ships a default set.
+type AnonymizerRanges struct {
+	Enabled bool              `yaml:"enabled"`
+	Lists   []AnonymizerEntry `yaml:"lists"`
+}
+
+// AnonymizerEntry is one labeled anonymizer range file.
+type AnonymizerEntry struct {
+	Kind string `yaml:"kind"` // vpn | proxy | relay | tor
+	File string `yaml:"file"`
+}
+
+// ASNReputation tags source IPs whose ASN appears on a reputation list (e.g.
+// Spamhaus ASN-DROP — bulletproof / hijacked ASNs) with asn_reputation. Each
+// list is a file of AS numbers (ASN-DROP JSON-lines, or bare "AS<n>"/"<n>").
+type ASNReputation struct {
+	Enabled bool          `yaml:"enabled"`
+	Lists   []ASNRepEntry `yaml:"lists"`
+}
+
+// ASNRepEntry is one labeled ASN-reputation file.
+type ASNRepEntry struct {
+	Label string `yaml:"label"`
+	File  string `yaml:"file"`
 }
 
 // FingerprintDB maps network fingerprints (JA3 / JA4 / JA4H / HASSH) to the

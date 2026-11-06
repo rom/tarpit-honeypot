@@ -114,6 +114,8 @@ say() { [ "$QUIET" = 1 ] || echo "$@"; }
 THREAT_DIR="$OUT/threat"
 GEO_DIR="$OUT/geoip"
 CLOUD_DIR="$OUT/cloud"
+ANON_DIR="$OUT/anon"
+ASN_DIR="$OUT/asn"
 FP_DIR="$OUT/fingerprints"
 MAL_DIR="$OUT/malware"
 MANIFEST="$OUT/MANIFEST.txt"
@@ -413,7 +415,7 @@ fetch_ja4db() {
 	ok=$((ok + 1)); return 0
 }
 
-mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR" "$CLOUD_DIR" "$FP_DIR" "$MAL_DIR"
+mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR" "$CLOUD_DIR" "$ANON_DIR" "$ASN_DIR" "$FP_DIR" "$MAL_DIR"
 : >"$MANIFEST"
 echo "tarpit-honeypot enrichment fetch — $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$MANIFEST"
 
@@ -453,6 +455,18 @@ for p in aws gcp; do
 	[ -f "$CLOUD_DIR/$p.txt" ] && [ -f "$CLOUD_DIR/$p-v6.txt" ] && \
 		cat "$CLOUD_DIR/$p-v6.txt" >>"$CLOUD_DIR/$p.txt" && rm -f "$CLOUD_DIR/$p-v6.txt"
 done
+
+# Anonymizer ranges (VPN / open-proxy). A source inside one is tagged
+# anonymizer=<kind> → anonymized=true. CIDR/IP-per-line lists (comments ok);
+# the enricher's IP-list loader consumes them directly. No auth.
+say "[anonymizer]  (VPN / proxy ranges — no-auth)"
+fetch "vpn"   "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt"               "$ANON_DIR/vpn.txt"   || true
+fetch "proxy" "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_proxies.netset" "$ANON_DIR/proxy.txt" || true
+
+# ASN reputation: Spamhaus ASN-DROP (bulletproof / hijacked ASNs). JSON-lines;
+# the enricher's ASN-list loader extracts the AS numbers. No auth.
+say "[asn-reputation]  (Spamhaus ASN-DROP — no-auth)"
+fetch "spamhaus-asndrop" "https://www.spamhaus.org/drop/asndrop.json" "$ASN_DIR/spamhaus-asndrop.txt" || true
 
 # abuse.ch feeds (ThreatFox / MalwareBazaar / URLhaus). The 2025 migration
 # RETIRED the old keyless export URLs (they now return HTTP 410 Gone) and moved
@@ -518,6 +532,8 @@ sensor:
   geoip:
     city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb
     asn_db:  /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb
+    # High-risk geographies -> geo_risk=true (ISO 3166-1 alpha-2; your choice).
+    # risk_countries: [RU, KP, IR]
   tor:
     enabled: true
     exit_file: /etc/tarpit-honeypot/enrichment/tor-exits.txt
@@ -544,6 +560,17 @@ sensor:
       - { provider: gcp,          file: /etc/tarpit-honeypot/enrichment/cloud/gcp.txt }
       - { provider: cloudflare,   file: /etc/tarpit-honeypot/enrichment/cloud/cloudflare.txt }
       - { provider: digitalocean, file: /etc/tarpit-honeypot/enrichment/cloud/digitalocean.txt }
+  # VPN / open-proxy ranges -> anonymizer=<kind> (and anonymized=true).
+  anonymizer_ranges:
+    enabled: true
+    lists:
+      - { kind: vpn,   file: /etc/tarpit-honeypot/enrichment/anon/vpn.txt }
+      - { kind: proxy, file: /etc/tarpit-honeypot/enrichment/anon/proxy.txt }
+  # ASN reputation (Spamhaus ASN-DROP) -> asn_reputation on events.
+  asn_reputation:
+    enabled: true
+    lists:
+      - { label: spamhaus-asndrop, file: /etc/tarpit-honeypot/enrichment/asn/spamhaus-asndrop.txt }
   # JA3/JA4/HASSH -> client/tool attribution (<kind>_client on events).
   fingerprint_db:
     enabled: true

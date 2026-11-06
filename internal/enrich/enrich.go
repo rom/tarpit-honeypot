@@ -18,7 +18,9 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +59,19 @@ type Config struct {
 	// RiskCountries is an operator list of ISO country codes (e.g. "RU","KP")
 	// considered high-risk; a source geolocated to one is tagged geo_risk=true.
 	RiskCountries []string
+	// AnonymizerRanges are labeled VPN / open-proxy / relay IP-range files
+	// (one CIDR or IP per line), each tagged with a kind (vpn / proxy / relay).
+	// A source inside one is tagged anonymizer=<kind> (and so anonymized=true).
+	AnonymizerRanges []CloudRangeList
+	// ASNLists are labeled ASN-reputation files (e.g. Spamhaus ASN-DROP). A
+	// source whose ASN is listed is tagged asn_reputation with the labels.
+	ASNLists []ASNList
+}
+
+// ASNList is one labeled ASN-reputation file (a list of AS numbers).
+type ASNList struct {
+	Label string
+	File  string
 }
 
 // ThreatList is one labeled IP/CIDR reputation list.
@@ -77,6 +92,8 @@ type Enricher struct {
 	rdns     *rdnsCache
 	threat   []threatSet
 	cloud    []threatSet // cloud-provider ranges (label = provider name)
+	anon     []threatSet // anonymizer ranges (label = vpn/proxy/relay)
+	asnLists []asnSet    // ASN-reputation sets (label = feed name)
 	fpdb     fpDB        // fingerprint -> client/tool attribution
 	torExit  map[string]struct{}
 	netClass bool
@@ -256,6 +273,34 @@ func New(cfg Config) (*Enricher, error) {
 		e.cloud = append(e.cloud, threatSet{label: cr.Provider, ips: ips, cidrs: newCIDRSet(cidrs)})
 		slog.Info("enrich: cloud range list loaded", "provider", cr.Provider, "path", cr.File, "entries", n)
 	}
+	for _, ar := range cfg.AnonymizerRanges {
+		if ar.File == "" || ar.Provider == "" {
+			continue
+		}
+		ips, cidrs, n, err := loadIPList(ar.File)
+		if err != nil {
+			slog.Warn("enrich: anonymizer range list unavailable; skipping", "kind", ar.Provider, "path", ar.File, "err", err)
+			continue
+		}
+		e.anon = append(e.anon, threatSet{label: ar.Provider, ips: ips, cidrs: newCIDRSet(cidrs)})
+		slog.Info("enrich: anonymizer range list loaded", "kind", ar.Provider, "path", ar.File, "entries", n)
+	}
+	for _, al := range cfg.ASNLists {
+		if al.File == "" {
+			continue
+		}
+		label := al.Label
+		if label == "" {
+			label = "asn-reputation"
+		}
+		asns, n, err := loadASNList(al.File)
+		if err != nil {
+			slog.Warn("enrich: ASN reputation list unavailable; skipping", "label", label, "path", al.File, "err", err)
+			continue
+		}
+		e.asnLists = append(e.asnLists, asnSet{label: label, asns: asns})
+		slog.Info("enrich: ASN reputation list loaded", "label", label, "path", al.File, "entries", n)
+	}
 	if cfg.TorExitFile != "" {
 		if ips, _, n, err := loadIPList(cfg.TorExitFile); err != nil {
 			slog.Warn("enrich: tor exit list unavailable; tor tagging off", "path", cfg.TorExitFile, "err", err)
@@ -350,6 +395,58 @@ func loadIPList(path string) (ips map[string]struct{}, cidrs []netip.Prefix, n i
 		return nil, nil, 0, serr
 	}
 	return ips, cidrs, n, nil
+}
+
+// asnSet is one loaded ASN-reputation feed: a set of AS numbers under a label.
+type asnSet struct {
+	label string
+	asns  map[uint32]struct{}
+}
+
+var asnJSONRe = regexp.MustCompile(`"asn"\s*:\s*(\d+)`)
+var asnBareRe = regexp.MustCompile(`^(?:AS)?(\d+)\b`)
+
+// extractASN pulls an AS number from one line of an ASN list, tolerating the
+// Spamhaus ASN-DROP JSON-lines shape ({"asn":64500,...}), a bare "AS64500" or
+// "64500", and trailing columns/comments. Returns 0 when none is found.
+func extractASN(line string) uint32 {
+	if m := asnJSONRe.FindStringSubmatch(line); m != nil {
+		if n, err := strconv.ParseUint(m[1], 10, 32); err == nil {
+			return uint32(n)
+		}
+	}
+	if m := asnBareRe.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(line))); m != nil {
+		if n, err := strconv.ParseUint(m[1], 10, 32); err == nil {
+			return uint32(n)
+		}
+	}
+	return 0
+}
+
+// loadASNList reads a file of AS numbers (one per line, '#' comments and blank
+// lines ignored; JSON-lines or bare "AS<n>"/"<n>" accepted) into a set.
+func loadASNList(path string) (map[uint32]struct{}, int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = f.Close() }()
+	out := map[uint32]struct{}{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if n := extractASN(line); n != 0 {
+			out[n] = struct{}{}
+		}
+	}
+	if serr := sc.Err(); serr != nil {
+		return nil, 0, serr
+	}
+	return out, len(out), nil
 }
 
 func (e *Enricher) Close() error {
@@ -490,6 +587,28 @@ func (e *Enricher) Decorate(ev *event.Event) {
 		if e.cloud[i].match(addr) {
 			ev.Meta["cloud_provider"] = e.cloud[i].label
 			break
+		}
+	}
+	// Anonymizer ranges (VPN / open-proxy / relay). First match wins; feeds the
+	// anonymized rollup in decorateAttributes.
+	for i := range e.anon {
+		if e.anon[i].match(addr) {
+			ev.Meta["anonymizer"] = e.anon[i].label
+			break
+		}
+	}
+	// ASN reputation (e.g. Spamhaus ASN-DROP bulletproof/hijacked ASNs).
+	if len(e.asnLists) > 0 {
+		if asn, ok := ev.Meta["asn"].(uint32); ok && asn != 0 {
+			var reps []string
+			for i := range e.asnLists {
+				if _, bad := e.asnLists[i].asns[asn]; bad {
+					reps = append(reps, e.asnLists[i].label)
+				}
+			}
+			if len(reps) > 0 {
+				ev.Meta["asn_reputation"] = reps
+			}
 		}
 	}
 	if e.netClass {

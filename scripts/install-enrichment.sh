@@ -128,6 +128,8 @@ bundle_src() { # key -> canonical bundle path (empty if not an enrichment input)
 	geoip.asn_db) echo "$BUNDLE/geoip/asn.mmdb" ;;
 	threat_intel:*) echo "$BUNDLE/threat/${1#threat_intel:}.txt" ;;
 	cloud_ranges:*) echo "$BUNDLE/cloud/${1#cloud_ranges:}.txt" ;;
+	anonymizer_ranges:*) echo "$BUNDLE/anon/${1#anonymizer_ranges:}.txt" ;;
+	asn_reputation:*) echo "$BUNDLE/asn/${1#asn_reputation:}.txt" ;;
 	fingerprint_db:*) echo "$BUNDLE/fingerprints/${1#fingerprint_db:}.txt" ;;
 	payloads.malware_hashes) echo "$BUNDLE/malware/known-hashes.txt" ;;
 	sniffer.p0f_db) echo "$BUNDLE/p0f.fp" ;;

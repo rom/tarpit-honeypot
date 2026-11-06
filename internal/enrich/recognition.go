@@ -45,10 +45,16 @@ func sourceClass(ev *event.Event) string {
 		return "hosting"
 	case metaString(m, "conn_type") == "residential":
 		return "residential"
-	case boolMeta(m, "threat_intel_hit"):
+	case boolMeta(m, "threat_intel_hit"), hasAny(m, "asn_reputation"):
 		return "suspect"
 	}
 	return ""
+}
+
+// hasAny reports whether meta key k holds a non-empty []string.
+func hasAny(m map[string]any, k string) bool {
+	v, ok := m[k].([]string)
+	return ok && len(v) > 0
 }
 
 // sourceLabels builds the compact, deterministic (sorted) tag set carried to
@@ -76,6 +82,11 @@ func sourceLabels(ev *event.Event) []string {
 	}
 	if a := metaString(m, "anonymizer"); a != "" {
 		add("anon:" + a)
+	}
+	if reps, ok := m["asn_reputation"].([]string); ok {
+		for _, r := range reps {
+			add("asnrep:" + r)
+		}
 	}
 	if cp := metaString(m, "cloud_provider"); cp != "" {
 		add("cloud:" + cp)

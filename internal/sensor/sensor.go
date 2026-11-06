@@ -1816,6 +1816,8 @@ func enrichConfigFor(cfg *config.Config) enrich.Config {
 		CloudRanges:        cloudRangesFromConfig(cfg.Sensor.CloudRanges),
 		FingerprintSources: fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
 		RiskCountries:      cfg.Sensor.GeoIP.RiskCountries,
+		AnonymizerRanges:   anonymizerRangesFromConfig(cfg.Sensor.Anonymizer),
+		ASNLists:           asnListsFromConfig(cfg.Sensor.ASNReputation),
 	}
 }
 
@@ -1841,6 +1843,32 @@ func cloudRangesFromConfig(cr config.CloudRanges) []enrich.CloudRangeList {
 	out := make([]enrich.CloudRangeList, 0, len(cr.Lists))
 	for _, l := range cr.Lists {
 		out = append(out, enrich.CloudRangeList{Provider: l.Provider, File: l.File})
+	}
+	return out
+}
+
+// anonymizerRangesFromConfig maps the config anonymizer-range lists to the
+// enrich package's input (reusing CloudRangeList; Provider = the kind).
+func anonymizerRangesFromConfig(a config.AnonymizerRanges) []enrich.CloudRangeList {
+	if !a.Enabled || len(a.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.CloudRangeList, 0, len(a.Lists))
+	for _, l := range a.Lists {
+		out = append(out, enrich.CloudRangeList{Provider: l.Kind, File: l.File})
+	}
+	return out
+}
+
+// asnListsFromConfig maps the config ASN-reputation lists to the enrich
+// package's input. Returns nil when disabled.
+func asnListsFromConfig(a config.ASNReputation) []enrich.ASNList {
+	if !a.Enabled || len(a.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.ASNList, 0, len(a.Lists))
+	for _, l := range a.Lists {
+		out = append(out, enrich.ASNList{Label: l.Label, File: l.File})
 	}
 	return out
 }
