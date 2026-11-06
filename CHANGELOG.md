@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-06
+
 ### Added
 
 - **Enrichment now feeds the per-source risk scorer.** Two v1.1 enrichment
