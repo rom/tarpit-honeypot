@@ -445,6 +445,48 @@ func sourceBadges(meta map[string]any) template.HTML {
 	if nc, _ := meta["net_class"].(string); nc == "bogon" {
 		add("warn", "bogon", "spoofed / reserved (bogon) source address", "/events?flag=bogon")
 	}
+	// Recognition signals (v1.2) with emoji glyphs for at-a-glance scanning.
+	// Rendered as spans (no href) since they have no dedicated events filter yet.
+	if tc, _ := meta["threat_confidence"].(string); tc != "" {
+		cls := "warn"
+		if tc == "high" {
+			cls = "bad"
+		}
+		add(cls, "🛡 "+tc+"-conf", "cross-feed threat confidence: "+tc+" (threat_intel_count)", "")
+	}
+	if sp, _ := meta["spoofed_ptr"].(bool); sp {
+		title := "spoofed reverse-DNS: PTR claims a crawler but fails forward-confirmation"
+		if sc, _ := meta["spoofed_crawler"].(string); sc != "" {
+			title = "spoofed " + sc + " PTR (fails forward-confirmation)"
+		}
+		add("bad", "🎭 spoofed-ptr", title, "")
+	}
+	if an, _ := meta["anonymizer"].(string); an != "" {
+		add("warn", "🕵 "+an, "anonymizer network ("+an+")", "")
+	} else if a, _ := meta["anonymized"].(bool); a {
+		add("warn", "🕵 anon", "anonymizer (Tor / VPN / proxy)", "")
+	}
+	if reps := metaStrings(meta, "asn_reputation"); len(reps) > 0 {
+		add("bad", "☠ asn-drop", "ASN on reputation list: "+strings.Join(reps, ", "), "")
+	}
+	if gr, _ := meta["geo_risk"].(bool); gr {
+		add("warn", "🏴 geo-risk", "source geolocated to a high-risk country", "")
+	}
+	switch cc, _ := meta["cred_class"].(string); cc {
+	case "default", "breach":
+		add("bad", "🔑 "+cc, "captured credential class: "+cc, "")
+	case "weak":
+		add("warn", "🔑 weak", "captured credential class: weak", "")
+	}
+	if d, _ := meta["dns_dga"].(bool); d {
+		add("bad", "🧬 dga", "algorithmically-generated-looking domain", "")
+	}
+	if d, _ := meta["domain_bad"].(bool); d {
+		add("bad", "🌐 bad-domain", "known-malicious queried domain", "")
+	}
+	if m, _ := meta["asn_geo_mismatch"].(bool); m {
+		add("warn", "🧭 asn/geo", "ASN registered country differs from the GeoIP country", "")
+	}
 	return template.HTML(b.String())
 }
 
