@@ -41,7 +41,8 @@ NoNewPrivileges=true
 SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
 
 # Hardening. Only this instance's own state dir is writable (plus the shared log
-# dir); the config tree stays read-only.
+# dir); the config tree stays read-only. Kept in sync with the main unit and
+# scripts/install.sh (enforced by packaging/systemd/unit_hardening_test.go).
 ProtectSystem=strict
 ReadWritePaths=/var/lib/tarpit-honeypot/%i /var/log/tarpit-honeypot
 ReadOnlyPaths=/etc/tarpit-honeypot
@@ -50,10 +51,17 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
 RestrictNamespaces=true
-LockPersonality=true
+RestrictSUIDSGID=true
 RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET AF_NETLINK
+MemoryDenyWriteExecute=true
+LockPersonality=true
 SystemCallArchitectures=native
 
 [Install]

@@ -244,6 +244,39 @@ func TestProfileClickableLabels(t *testing.T) {
 	}
 }
 
+// TestProfileASNLinkScopesToASN asserts the profile's "AS" label links to all
+// events in that ASN (/events?asn=<n>), not just the one profile IP — so an
+// analyst clicking it sees every source in the autonomous system.
+func TestProfileASNLinkScopesToASN(t *testing.T) {
+	st, err := store.Open(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_ = st.Insert(ctx, &event.Event{
+		ID: "asn1", Time: time.Now().UTC(), Sensor: "s", RuleID: "r", Severity: event.SeverityHigh,
+		Source: event.Endpoint{IP: "9.9.9.9"}, Handler: "http", Dest: event.Endpoint{Port: 80},
+		Meta: map[string]any{"asn": 64500, "asn_org": "Evil Hosting LLC"},
+	})
+	srv, err := New(config.UI{Enabled: true, Bind: "127.0.0.1:0"}, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	srv.handleProfile(w, httptest.NewRequest("GET", "/profiles/9.9.9.9", nil))
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if !strings.Contains(body, `href="/events?asn=64500"`) {
+		t.Errorf("AS label should link to /events?asn=64500 (all IPs in the AS): %q", body)
+	}
+	if strings.Contains(body, `href="/events?source=9.9.9.9&amp;asn=`) {
+		t.Errorf("AS label still scopes to a single IP (source= + asn=): %q", body)
+	}
+}
+
 // TestProfileNewSectionsRender renders the profile template for a rich actor
 // and asserts the new dossier sections show: the aggregated intent, the
 // consolidated attacks/misuse catalog, the per-protocol summary, the requested

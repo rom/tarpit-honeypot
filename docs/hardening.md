@@ -8,7 +8,7 @@ your platform supports.
 
 | Layer | Where | Enforced by | Platform |
 |---|---|---|---|
-| Privilege drop | `sensor.drop_user` / `drop_group` | the sensor (`setresuid`) | Linux + macOS |
+| Privilege drop | `sensor.drop_user` / `drop_group` | the sensor (`setuid`/`setgid`, all-threads) | Linux + macOS |
 | seccomp syscall filter | `sensor.sandbox.seccomp` | kernel (in-process) | Linux |
 | Landlock FS restriction | `sensor.sandbox.landlock` | kernel (in-process) | Linux 5.13+ |
 | AppArmor profile | `packaging/apparmor/` | host LSM | Linux (AppArmor) |
@@ -31,9 +31,22 @@ layer for manual / custom setups.
 
 ## Privilege drop
 
-Bind privileged ports + open AF_PACKET sockets with
-`CAP_NET_BIND_SERVICE` + `CAP_NET_RAW`, then drop to an unprivileged
-user. The sensor refuses to keep running as uid 0.
+Run the sensor with `CAP_NET_BIND_SERVICE` + `CAP_NET_RAW` available as
+**ambient** (systemd `AmbientCapabilities=`) or **file** capabilities
+(`setcap cap_net_bind_service,cap_net_raw+ep`). On start the sensor performs its
+privileged setup (egress/nftables install), then **drops** to
+`sensor.drop_user`/`drop_group` via an all-threads `setgid`/`setgroups`/`setuid`
+(it refuses to drop *to* uid 0), and only then binds its listeners — the
+privileged-port binds and raw-socket opens succeed after the drop **because**
+those two capabilities are retained in the ambient/file set across `setuid`. If
+you start as plain root with neither ambient nor file capabilities, the
+post-drop low-port binds will fail; use the systemd unit (which sets
+`AmbientCapabilities`) or `setcap` on the binary.
+
+If the sensor is started as root with **no** `sensor.drop_user` configured it
+does not silently stay root unnoticed: it logs a loud warning at startup urging
+you to configure a drop user. (It does not hard-exit, so a deliberate
+root-plus-external-confinement deployment still runs.)
 
 ```yaml
 sensor:
@@ -104,7 +117,15 @@ endpoints). Two layers cooperate:
 - **OS-level backstop** (`egress.enforce`): an nftables `OUTPUT` chain scoped to
   the sensor's UID (`meta skuid`) drops anything outside the allowlist, so even
   a library that bypasses the in-process guard can't pivot. Requires Linux,
-  `nft`, and `CAP_NET_ADMIN` at install (before privilege drop).
+  `nft`, and `CAP_NET_ADMIN` at install (before privilege drop). **The shipped
+  systemd unit grants only `CAP_NET_BIND_SERVICE` + `CAP_NET_RAW`, not
+  `CAP_NET_ADMIN`** — so if you enable `egress.enforce` (or the active-response
+  `blocklist`) under the default unit, the nftables install fails and the sensor
+  logs a loud warning that OS-level enforcement is **inactive** (the in-process
+  allowlist still applies). To get the backstop, add `CAP_NET_ADMIN` to the
+  unit's `AmbientCapabilities=` and `CapabilityBoundingSet=` (or run the sensor
+  somewhere it has that capability). The active-response `blocklist` has the same
+  requirement.
 
 Sharp edges worth knowing:
 

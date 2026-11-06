@@ -8,6 +8,66 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-06
+
+### Added
+
+- **`docs/AGENTIC.md`** — an in-depth reference for the agentic-attack defense:
+  detection signals, confidence scoring, multi-turn correlation, the
+  extract/provoke/disrupt bait ladder, prompt analysis, counter-exfiltration,
+  the agent provocateur, decoys/lures/tokens, breadcrumbs, and the shipped
+  rules. Rendered in-product under the web UI **docs** tab.
+- **More canary token types in `gen-token`** — inspired by the canarytokens.org
+  token zoo: `log4shell` (JNDI), `aws` (fake key pair), `css` (web-bug), `mcp`
+  (MCP server-config token — an agent that loads it connects to the canary),
+  `wireguard` (`wg0.conf` with a canary Endpoint), and `folder` (Windows
+  `desktop.ini` UNC token). All embed the same callback identity as `dns`/`url`/
+  `ssrf`/`doc`.
+
+### Changed
+
+- **CVE detection: stop the `/.env` single-CVE domination.** A bare `GET /.env`
+  is reconnaissance — the single most mass-scanned path on the internet — so it
+  no longer fires as a high-severity `cve:CVE-2017-16894` exploit (which drowned
+  every other CVE in the logs). The `.env` probe is still recorded as recon by
+  the `web-sensitive-file-probe` rule; CVE-2017-16894 is now advisory-only.
+- **CVE detection: broader exploit coverage.** Added high-signal request
+  signatures to previously advisory-only HTTP records so they fire as real
+  exploit attempts: ConnectWise ScreenConnect (CVE-2024-1708), ManageEngine
+  ServiceDesk Plus (CVE-2021-44077), Array Networks AG (CVE-2023-28461),
+  Fluent Bit (CVE-2024-4323), Apache Camel (CVE-2025-27636), MCP Inspector
+  (CVE-2025-49596), SharePoint ToolShell (CVE-2025-53771), SolarWinds Orion
+  (CVE-2020-10148).
+
+### Fixed
+
+- **Web UI: clicking an "AS" label now shows events for the whole ASN**, not
+  just the one profile IP (the link dropped its `source=<ip>` scope; it now
+  links to `/events?asn=<n>` like the dashboard's ASN bars).
+- **Hardening: packaged systemd units matched to the install.sh profile.** The
+  checked-in `packaging/systemd/*.service` units (shipped in the `.deb`) had
+  drifted weaker than the unit `scripts/install.sh` generates. Back-ported the
+  missing directives — `RestrictAddressFamilies`, `ProtectProc=invisible`,
+  `ProtectKernelLogs`, `ProtectClock`, `ProtectHostname`, `RestrictSUIDSGID`,
+  `MemoryDenyWriteExecute`, `ReadOnlyPaths=/etc/tarpit-honeypot` — and added a
+  CI guard (`packaging/systemd/unit_hardening_test.go`) so they can't drift again.
+- **Hardening: in-process sandbox enabled in the shipped example config.** The
+  primary `configs/tarpit-honeypot.example.yaml` now enables
+  `sensor.sandbox.seccomp` + `landlock` (they degrade gracefully on unsupported
+  kernels), and the sensor logs a loud startup warning on Linux when the sandbox
+  is off.
+- **Hardening: loud (not silent) warnings for inactive enforcement.**
+  `egress.enforce` / `blocklist` now warn unmistakably that OS-level enforcement
+  is INACTIVE (and name `CAP_NET_ADMIN`) when the nftables install fails under
+  the default unit; running as uid 0 with no `drop_user` warns at startup.
+- **Hardening: docs corrected** (`docs/hardening.md`) — the privilege-drop
+  order is drop-then-bind relying on ambient/file caps (not "bind then drop"),
+  the mechanism is `setuid`/`setgid` (not `setresuid`), uid-0 is warned (not
+  hard-refused), and the `egress.enforce` CAP_NET_ADMIN requirement is documented.
+- **Hardening: privilege-drop enforcement test** added
+  (`internal/privdrop/privdrop_enforce_linux_test.go`, root-gated subprocess)
+  asserting the uid/gid actually change and root cannot be regained.
+
 ## [1.3.0] - 2026-11-06
 
 ### Added

@@ -730,7 +730,7 @@ tarpit-honeypot show-config    -c <config>
 tarpit-honeypot reset-db       -c <config>     # wipe the SQLite event index (keeps config)
 tarpit-honeypot rotate-db      -c <config> [--out file.gz] [--reset --yes]  # archive (gzip) events.db, optionally start fresh
 tarpit-honeypot prune-db       -c <config> (--keep-days N | --keep-rows N | --max-mb N) [--yes]  # drop oldest events to free space
-tarpit-honeypot gen-token      --type=dns|url|hex [--label LBL] [--bits N] [--domain D]
+tarpit-honeypot gen-token      --type=dns|url|ssrf|hex|doc|log4shell|aws|css|mcp|wireguard|folder [--label LBL] [--bits N] [--domain D] [-o FILE]
 tarpit-honeypot gen-wallet-decoys [--dir D] [--seed S] [--kind K|all] [--list]  # structurally-correct crypto-wallet decoys (18 formats)
 tarpit-honeypot gen-lures      [--dir D] [--seed S] [--kind K|all] [--list]     # credential/secret decoy files (14 formats)
 tarpit-honeypot gen-agent-breadcrumb [--dir D] [--url U]   # breadcrumb files that lure crawling agents to the agent honeypot
@@ -794,14 +794,34 @@ them so operators see what will be restarted.
 as env-var names (`auth_token_env: TARPIT_UI_TOKEN`) rather than
 expanded values, so the output is safe to paste in tickets.
 
-`gen-token` prints unguessable canary tokens shaped for the three
-common bait surfaces:
+`gen-token` prints (or writes) unguessable canary tokens shaped for many
+bait surfaces — inspired by the [canarytokens.org](https://canarytokens.org)
+token zoo. Every type embeds the same callback identity (a token under your
+canary domain), so a hit on the `dns` / `url_canary` / `ssrf_canary` listener
+attributes straight back to where you planted it:
+
+| Type | Shape | Trips when… |
+|---|---|---|
+| `dns` | `<tok>.<domain>` | the name is resolved |
+| `url` | `/__canary__/<tok>` | the path is fetched (`url_canary`) |
+| `ssrf` | `http://<domain>/ssrf/<tok>` | planted in an SSRF param / webhook / XXE is fetched |
+| `doc` | decoy `.docx` (external relationship) | opened in Word → outbound fetch |
+| `log4shell` | `${jndi:ldap://<tok>.<domain>:1389/…}` | a vulnerable logger expands it (DNS/LDAP) |
+| `aws` | fake `AKIA…` key + secret | the key is used (CloudTrail / SIEM watchlist) |
+| `css` | CSS web-bug `background:url(…)` | a cloned page/email renders |
+| `mcp` | `mcp.json` server config | an AI agent loads it and connects |
+| `wireguard` | `wg0.conf` with a canary `Endpoint` | a client connects (DNS lookup) |
+| `folder` | Windows `desktop.ini` (UNC `IconResource`) | the folder is browsed (SMB/DNS) |
+| `hex` | raw hex string | generic secret you watchlist |
+
 ```
 $ tarpit-honeypot gen-token --type=dns --label=prod
 6c50957e8e94f661-prod.canary.example.com
 
-$ tarpit-honeypot gen-token --type=url --bits=128
-/__canary__/8ed2a49c8ef9639a1234567890abcdef
+$ tarpit-honeypot gen-token --type=log4shell --domain=cdb.example.com
+${jndi:ldap://49e9fe46…-prod.cdb.example.com:1389/49e9fe46…}
+
+$ tarpit-honeypot gen-token --type=mcp -o ~/.config/mcp.json   # agent-bait MCP config
 ```
 
 `run` responds to `SIGHUP` by reloading the config. Channels, routes,
@@ -1726,6 +1746,10 @@ listeners:
 
 Pair the `agent` handler with the existing `mcp`, `llm_openai` and `ollama`
 decoys to cover the full agent + model surface.
+
+**Full reference:** [`docs/AGENTIC.md`](docs/AGENTIC.md) — the detailed walkthrough of
+agentic detection, the agent provocateur, prompt analysis, the bait ladder,
+confidence scoring, multi-turn correlation, and the decoy/lure/token integration.
 
 ### Crypto-wallet decoys
 

@@ -35,6 +35,20 @@ sensor:
   # privileged ports working. Leave blank when running unprivileged anyway.
   drop_user: ""
   drop_group: ""
+  # In-process self-confinement (Linux). Enabled here because a honeypot is a
+  # prime pivot target; both layers degrade gracefully (log a warning and keep
+  # running) on kernels/platforms that don't support them, so leaving them on is
+  # safe. They complement — not replace — the systemd unit / AppArmor / SELinux.
+  sandbox:
+    # seccomp: BPF syscall DENYLIST — blocks execve/ptrace/module-load/mount/
+    # kexec/bpf/etc. (applied to every thread via TSYNC). Stops a handler bug
+    # from spawning a shell or loading a kernel module.
+    seccomp: true
+    # landlock: make the filesystem read-only except data_dir (+ write_paths).
+    landlock: true
+    # Extra paths beyond "/" (read) and data_dir (write); usually unnecessary.
+    read_paths: []
+    write_paths: []
   # Randomized response delay on every handler reply. Defeats
   # microsecond-identical-latency scanner fingerprints.
   jitter:

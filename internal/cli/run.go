@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -91,7 +92,15 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 			err := egress.InstallFirewall(ictx, fc)
 			icancel()
 			if err != nil {
-				slog.Warn("egress firewall not installed (in-process guard still active)", "err", err)
+				// Loud, actionable warning: the operator explicitly asked to
+				// ENFORCE egress, but the OS-level backstop could not be installed
+				// (most often because the process lacks CAP_NET_ADMIN — the shipped
+				// systemd unit grants only CAP_NET_BIND_SERVICE + CAP_NET_RAW). Only
+				// the in-process allowlist remains; the hard backstop is INACTIVE.
+				slog.Warn("egress.enforce is set but the OS-level egress firewall could NOT be installed — "+
+					"OS-level enforcement is INACTIVE (only the in-process guard applies); "+
+					"grant CAP_NET_ADMIN (or run the nft backstop out-of-process) to enable it",
+					"err", err)
 			} else {
 				slog.Info("egress firewall installed", "uid", uid, "allowlist", len(fc.Entries))
 				defer func() {
@@ -130,6 +139,14 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 	if err := privdrop.Drop(cfg.Sensor.DropUser, cfg.Sensor.DropGroup); err != nil {
 		return err
 	}
+	// Posture warning: a honeypot is a prime pivot target, so running it as root
+	// with no privilege drop configured is a real risk. We do not hard-refuse
+	// (some operators deliberately run as root behind other confinement), but we
+	// make it loud and actionable rather than silent.
+	if os.Geteuid() == 0 && cfg.Sensor.DropUser == "" {
+		slog.Warn("running as root (uid 0) with no sensor.drop_user configured — " +
+			"set sensor.drop_user/drop_group (e.g. honey:honeypot) so the sensor drops privileges after binding")
+	}
 
 	// Self-confine after privileged setup + privilege drop: seccomp
 	// denies shell-spawn / module-load / debug syscalls, Landlock makes
@@ -144,6 +161,11 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 		}, slog.Default()); err != nil {
 			slog.Warn("sandbox: confinement incomplete", "err", err)
 		}
+	} else if runtime.GOOS == "linux" {
+		// Neither in-process confinement layer is on. Nudge the operator to
+		// enable them (they gracefully degrade on unsupported kernels).
+		slog.Warn("in-process sandbox is OFF on Linux — enable sensor.sandbox.seccomp " +
+			"and sensor.sandbox.landlock for defense-in-depth (they degrade gracefully if unsupported)")
 	}
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
