@@ -179,3 +179,32 @@ func TestEnrichmentRulesFire(t *testing.T) {
 		}
 	}
 }
+
+// The named OT-malware pack recognizes family TTPs from the OT handlers'
+// anomaly markers (handler + anomaly, so it fires on protocol-legal control
+// actions, not an exploit string).
+func TestOTMalwareRulesFire(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("load: %v", errs)
+	}
+	fires := func(handler string, anoms []string, meta map[string]any, wantID string) {
+		t.Helper()
+		ev := &event.Event{Handler: handler, Severity: event.SeverityLow, Anomalies: anoms, Meta: meta}
+		if m := eng.Apply(ev); !has(m, wantID) {
+			t.Errorf("handler=%s anomalies=%v: matched %v; want %q", handler, anoms, m, wantID)
+		}
+	}
+	fires("modbus", []string{"ics-plc-write"}, nil, "ot-malware-frostygoop")
+	fires("iec104", []string{"ics-iec104-command"}, nil, "ot-malware-industroyer")
+	fires("tristation", []string{"ics-safety-controller-manipulation"}, nil, "ot-malware-triton")
+	fires("codesys", []string{"ics-plc-program-access"}, nil, "ot-malware-pipedream")
+	fires("s7", []string{"ics-plc-mode-change"}, nil, "ot-malware-stuxnet")
+	fires("opcua", []string{"ics-opcua-open-channel"}, nil, "ot-malware-havex")
+
+	// A plain Modbus read (no write marker) must NOT trip FrostyGoop.
+	ev := &event.Event{Handler: "modbus", Anomalies: []string{"ics-process-data-access"}}
+	if has(eng.Apply(ev), "ot-malware-frostygoop") {
+		t.Error("a Modbus read wrongly matched the FrostyGoop rule")
+	}
+}
