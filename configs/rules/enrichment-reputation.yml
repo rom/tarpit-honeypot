@@ -1,0 +1,111 @@
+# Enrichment & reputation detection rules (detection-as-code).
+#
+# These fire on the source-IP enrichment the sensor stamps on every event
+# (internal/enrich): the recognition labels, reputation signals, and derived
+# attributes. They need the matching enrichment configured (GeoIP/ASN, rDNS,
+# reputation / anonymizer / ASN-reputation feeds, cred_intel, domain_intel) —
+# an unset dimension simply never matches. Severities only ever RAISE.
+#
+#   ATT&CK: T1036 masquerading, T1090 proxy, T1583 acquire infrastructure,
+#   T1568.002 DGA, T1071 app-layer C2, T1078 valid accounts, T1110 brute force.
+
+- id: enrich-spoofed-crawler-ptr
+  title: Spoofed crawler reverse-DNS (forward-confirmation failed)
+  description: >
+    The source's PTR claims a well-known crawler (Googlebot/Bingbot/…) but the
+    forward lookup doesn't map back to it — a deliberate attempt to pose as a
+    trusted bot and dodge filtering.
+  severity: high
+  tags: [custom:spoofed-ptr, attack.t1036]
+  match:
+    meta.spoofed_ptr: true
+
+- id: enrich-high-threat-confidence
+  title: Source corroborated by multiple reputation feeds
+  description: >
+    threat_confidence=high means three or more independent reputation signals
+    (operator lists + external feed + fleet overlay) agree on this source.
+  severity: high
+  tags: [custom:threat-confidence-high, attack.t1595]
+  match:
+    meta.threat_confidence: high
+
+- id: enrich-anonymized-source
+  title: Anonymized source (Tor / VPN / open proxy)
+  description: The source sits in a Tor-exit, VPN, or open-proxy range.
+  severity: medium
+  tags: [custom:anonymized, attack.t1090]
+  match:
+    meta.anonymized: true
+
+- id: enrich-bulletproof-asn
+  title: Source ASN on a reputation list (ASN-DROP)
+  description: >
+    The source's autonomous system is listed as bulletproof / hijacked
+    (e.g. Spamhaus ASN-DROP) — infrastructure acquired for abuse.
+  severity: medium
+  tags: [custom:asn-reputation, attack.t1583]
+  match:
+    meta.asn_reputation|exists: true
+
+- id: enrich-asn-geo-mismatch
+  title: ASN registered country differs from GeoIP country
+  description: Possible leased / hijacked / anycast space (asn_geo_mismatch).
+  severity: medium
+  tags: [custom:asn-geo-mismatch, attack.t1583]
+  match:
+    meta.asn_geo_mismatch: true
+
+- id: enrich-high-risk-geo
+  title: Source in a high-risk country
+  description: geo_risk is set from sensor.geoip.risk_countries. Informational.
+  severity: low
+  tags: [custom:geo-risk]
+  match:
+    meta.geo_risk: true
+
+- id: enrich-default-or-breached-credentials
+  title: Default or breach-listed credential used
+  description: >
+    The captured login used a trivial/default password or one on the operator's
+    breached-password list (cred_class).
+  severity: high
+  tags: [custom:weak-credential, attack.t1078]
+  match:
+    meta.cred_class: [default, breach]
+
+- id: enrich-dga-domain
+  title: DGA-looking domain queried
+  description: A queried/observed domain scored as algorithmically generated.
+  severity: medium
+  tags: [custom:dns-dga, attack.t1568.002]
+  match:
+    meta.dns_dga: true
+
+- id: enrich-malicious-domain
+  title: Known-malicious domain queried
+  description: A queried domain (or a subdomain) is on the operator blocklist.
+  severity: high
+  tags: [custom:domain-bad, attack.t1071]
+  match:
+    meta.domain_bad: true
+
+# --- Combination rules: a single recognition label is useful, but two
+# independent high-signal labels on one event is a much stronger verdict. ---
+
+- id: enrich-spoofing-and-blacklisted
+  title: Spoofed-crawler PTR from a blacklisted source
+  description: A source that forges a crawler PTR AND is on a threat-intel list.
+  severity: critical
+  tags: [custom:spoofing-blacklisted, attack.t1036]
+  match:
+    meta.spoofed_ptr: true
+    meta.threat_intel_hit: true
+
+- id: enrich-anonymized-high-confidence
+  title: Anonymized source with high cross-feed threat confidence
+  severity: critical
+  tags: [custom:anon-high-confidence, attack.t1090]
+  match:
+    meta.anonymized: true
+    meta.threat_confidence: high

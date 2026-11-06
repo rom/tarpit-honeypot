@@ -33,6 +33,14 @@ documented in `docs/`).
   proxies, Spamhaus ASN-DROP, SecLists breached-passwords); the domain blocklist
   and ASN-info file are operator-supplied (no clean no-auth default). See the
   README's **Enrichment** section for the full key list.
+- **A shipped detection-rule pack for the new enrichment labels**
+  (`configs/rules/enrichment-reputation.yml`, 11 rules): spoofed-crawler PTR,
+  high cross-feed `threat_confidence`, anonymizer (Tor/VPN/proxy), ASN-DROP /
+  bulletproof ASN, ASN↔geo mismatch, high-risk geo, default/breached
+  credentials, DGA + known-malicious domains, and two corroborated combos
+  (spoofing-and-blacklisted, anonymized-and-high-confidence) that reach
+  critical. A new test loads every shipped pack and asserts the enrichment rules
+  fire. Documented in `docs/detection-rules.md`.
 
 ### Fixed
 
