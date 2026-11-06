@@ -41,6 +41,23 @@ documented in `docs/`).
   (spoofing-and-blacklisted, anonymized-and-high-confidence) that reach
   critical. A new test loads every shipped pack and asserts the enrichment rules
   fire. Documented in `docs/detection-rules.md`.
+- **Offline / air-gapped CISA KEV injects.** New top-level `kev.file` loads the
+  KEV catalog from a local JSON file instead of fetching over the network: set
+  it alone for a pure-offline sensor (no HTTP poller starts) or alongside
+  `kev.url` to also refresh live; reloaded on `SIGHUP`. `scripts/fetch-kev.sh`
+  downloads the catalog into an enrichment-bundle layout (portable curl/wget,
+  optional `--ics` jq filter for ICS/OT entries, `--install` to resolve
+  `kev.file` via `list-paths` and reload in one shot), and
+  `install-enrichment.sh` / `list-paths` learn the `kev.file` destination so the
+  catalog rides along in a normal enrichment bundle. Documented in
+  `docs/usage.md` §2c and the README's **CISA KEV overlay**.
+- **More real, in-the-wild CVEs in relevant protocols.** Verified CISA-KEV
+  records broadening the recent exploitation wave: `CVE-2021-26828` (OpenPLC
+  ScadaBR file-upload RCE — SCADA/HMI, detectable via `view_edit.shtm`),
+  `CVE-2024-53704` (SonicWall SonicOS SSLVPN auth bypass, Akira), `CVE-2025-0111`
+  (PAN-OS authenticated file read, chained with the modeled CVE-2025-0108), and
+  `CVE-2024-9140` (Moxa cellular/secure-router OS command injection). Recency
+  beyond the compile-time catalog comes from the live KEV overlay + `kev-gap`.
 
 ### Fixed
 
