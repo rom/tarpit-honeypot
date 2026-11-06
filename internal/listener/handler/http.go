@@ -100,18 +100,23 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			continue // body bytes — not headers
 		}
 		lower := strings.ToLower(line)
-		k := strings.IndexByte(lower, ':')
+		// Colon offset in the ORIGINAL line, not in `lower`: strings.ToLower is
+		// not length-preserving (e.g. a growing rune before the colon), so an
+		// offset taken from the lowercased copy can point past the end of line
+		// and panic the line[k+1:] slice below.
+		k := strings.IndexByte(line, ':')
 		if k <= 0 {
 			// A non-empty header line with no name:value colon is malformed
 			// (header smuggling / a non-HTTP client).
 			malformedHeader = true
 			continue
 		}
-		headerKeys = append(headerKeys, lower[:k])
+		key := strings.ToLower(line[:k])
+		headerKeys = append(headerKeys, key)
 		// Capture every header (name -> value) for the detail page, bounded so
 		// a hostile client can't blow up memory with thousands of headers.
 		if len(allHeaders) < 64 {
-			name := strings.TrimSpace(lower[:k])
+			name := strings.TrimSpace(key)
 			if _, dup := allHeaders[name]; !dup {
 				allHeaders[name] = safe.SanitizeForLog(clipStr(strings.TrimSpace(line[k+1:]), 1024))
 			}
