@@ -135,6 +135,7 @@ bundle_src() { # key -> canonical bundle path (empty if not an enrichment input)
 	cred_intel.passwords_file) echo "$BUNDLE/creds/top-passwords.txt" ;;
 	domain_intel.blocklist_file) echo "$BUNDLE/domains/blocklist.txt" ;;
 	asn_info.file) echo "$BUNDLE/asn/asn-info.csv" ;;
+	kev.file) echo "$BUNDLE/kev/known_exploited_vulnerabilities.json" ;;
 	sniffer.p0f_db) echo "$BUNDLE/p0f.fp" ;;
 	*) echo "" ;;
 	esac

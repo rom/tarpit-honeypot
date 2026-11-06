@@ -278,6 +278,11 @@ type KEV struct {
 	URL     string        `yaml:"url"`    // empty = the CISA KEV JSON feed
 	Poll    time.Duration `yaml:"poll"`   // refresh interval (default 6h)
 	Header  string        `yaml:"header"` // optional "Name: value" request header
+	// File is a local CISA-KEV-format JSON file to load instead of fetching over
+	// the network — the offline / air-gapped path (scripts/fetch-kev.sh installs
+	// it). When set and URL is empty, the sensor loads the file and starts no
+	// HTTP poller; set URL too to also refresh live. Reloaded on SIGHUP.
+	File string `yaml:"file"`
 }
 
 // ThreatFeed is one external reputation source.

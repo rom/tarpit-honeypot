@@ -1040,6 +1040,21 @@ func (s *Sensor) startKEVSync(parent context.Context, cfg config.KEV) {
 		store = kevsync.NewStore()
 		s.kevStore.Store(store)
 	}
+	// Offline / air-gapped: load a local KEV JSON file (installed by
+	// scripts/fetch-kev.sh). Reloaded on each call (SIGHUP picks up a new file).
+	if cfg.File != "" {
+		if n, ver, err := store.LoadFile(cfg.File); err != nil {
+			slog.Warn("kev sync: local file load failed", "path", cfg.File, "err", err)
+		} else {
+			slog.Info("CISA KEV loaded from file", "path", cfg.File, "entries", n, "version", ver)
+		}
+	}
+	// Start the live HTTP poller unless this is a pure-offline setup (a file is
+	// configured and no explicit URL). Otherwise poll (URL set, or the default
+	// feed when no file is given).
+	if cfg.File != "" && cfg.URL == "" {
+		return
+	}
 	ctx, cancel := context.WithCancel(parent)
 	s.kevCancel = cancel
 	p := kevsync.NewPuller(cfg.URL, cfg.Header, cfg.Poll, egress.HTTPClient(20*time.Second), store)

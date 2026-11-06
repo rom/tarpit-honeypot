@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -120,5 +122,27 @@ func TestFetchErrorKeepsLastGood(t *testing.T) {
 	}
 	if store.Count() != 3 {
 		t.Errorf("store should retain last good snapshot, got %d", store.Count())
+	}
+}
+
+func TestLoadFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "kev.json")
+	if err := os.WriteFile(p, []byte(sampleKEV), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore()
+	n, ver, err := s.LoadFile(p)
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if n == 0 || s.Count() != n {
+		t.Errorf("loaded %d entries; store has %d", n, s.Count())
+	}
+	if ver == "" {
+		t.Error("catalog version not parsed")
+	}
+	if _, _, err := NewStore().LoadFile(filepath.Join(dir, "nope.json")); err == nil {
+		t.Error("LoadFile of a missing file should error")
 	}
 }

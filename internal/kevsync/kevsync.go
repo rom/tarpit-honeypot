@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -99,6 +100,27 @@ func (s *Store) Replace(entries []Entry, version string) {
 	s.updated = time.Now()
 	s.version = version
 	s.mu.Unlock()
+}
+
+// LoadFile replaces the store from a local CISA-KEV-format JSON file — the
+// offline / air-gapped path (scripts/fetch-kev.sh transfers the file; the
+// sensor loads it instead of fetching over the network). Returns the entry
+// count and catalog version.
+func (s *Store) LoadFile(path string) (int, string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, "", err
+	}
+	entries, err := Parse(b)
+	if err != nil {
+		return 0, "", err
+	}
+	var vf struct {
+		CatalogVersion string `json:"catalogVersion"`
+	}
+	_ = json.Unmarshal(b, &vf)
+	s.Replace(entries, vf.CatalogVersion)
+	return len(entries), vf.CatalogVersion, nil
 }
 
 // Lookup returns the KEV entry for a CVE id (case-insensitive), if present.

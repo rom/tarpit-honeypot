@@ -90,6 +90,9 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 		add("enrichment", "asn_info.file", c.Sensor.ASNInfo.File, false)
 	}
 	add("enrichment", "sniffer.p0f_db", c.Sniffer.P0fDB, false)
+	if c.KEV.File != "" {
+		add("enrichment", "kev.file", c.KEV.File, false)
+	}
 
 	// Databases (read-only inputs + the local event store).
 	add("database", "geoip.city_db", c.Sensor.GeoIP.CityDB, false)
