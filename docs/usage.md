@@ -204,6 +204,64 @@ change, no rebuild.
    [`config.md`](config.md#severity_overrides--operator-pinned-per-rule-severity)
    for matching precedence and recipes.
 
+## 2b. Enrichment feeds (fetch, install, reload)
+
+The sensor decorates every event's source IP with GeoIP/ASN, reverse DNS,
+threat-intel list membership, cloud-provider and Tor tags, JA3/JA4/HASSH client
+attribution, and MAC-vendor lookups (see the README's **Enrichment** section for
+the full key list). All inputs are operator-supplied files loaded best-effort and
+**hot-reloaded on `SIGHUP`**, so you can declare the paths up front and populate
+them later. Two scripts manage the data.
+
+1. **Fetch** the databases on any internet-connected box (not necessarily the
+   sensor):
+
+   ```bash
+   scripts/fetch-enrichment.sh ./enrichment-data
+   ```
+
+   This pulls the Tor exit list, GeoIP city/ASN (no-key DB-IP lite, or MaxMind
+   GeoLite2 when `MAXMIND_LICENSE_KEY` is set), the IEEE OUI table, cloud-provider
+   ranges, the FoxIO JA4 database, p0f signatures, and the reputation feeds. Most
+   feeds need **no credentials**. The **abuse.ch** feeds (ThreatFox, MalwareBazaar,
+   URLhaus) are the exception — see the note below.
+
+2. **Transfer + install** on the sensor (or run step 1 with `--install` on a
+   sensor that has internet access to do it in one shot):
+
+   ```bash
+   rsync -a ./enrichment-data/ sensor:/tmp/enrichment-data/
+   ssh sensor 'sudo scripts/install-enrichment.sh /tmp/enrichment-data \
+       -c /etc/tarpit-honeypot/config.yaml'   # places files + sends SIGHUP
+   ```
+
+   The installer reads the sensor's configured paths (`tarpit-honeypot list-paths`)
+   and maps each `threat_intel: { label: X }` to `threat/X.txt` in the bundle, so
+   **adding a new reputation list needs no installer change** — add the `label`/`file`
+   pair to your config and drop the file in the bundle. `scripts/update-enrichment.sh`
+   wraps fetch→install for a cron / systemd timer.
+
+**No-auth reputation feeds (v1.1).** `fetch-enrichment.sh` now also ships
+**IPsum** (an aggregate of ~30 public blocklists), **Emerging Threats**
+compromised-ips, the **CINS Army** list, and the **SANS ISC DShield** block list.
+The more independent lists an IP appears on, the higher its
+`threat_confidence` (`low`/`medium`/`high`) and `threat_intel_count` on the event
+— use those for triage and detection rules. A suggested `threat_intel.lists:`
+block listing every feed is written to `enrichment-data/suggested-config.yaml`.
+
+**abuse.ch needs a free key (since 2025-06-30).** Every abuse.ch export now
+requires an account **Auth-Key**; unauthenticated requests get HTTP 401, which is
+why ThreatFox / MalwareBazaar / URLhaus report `FAILED (download)` with no key.
+Create one free at <https://auth.abuse.ch/>, then:
+
+```bash
+export ABUSE_CH_AUTH_KEY=xxxxxxxx
+scripts/fetch-enrichment.sh ./enrichment-data
+```
+
+Without the key those three feeds are **skipped** (reported as `skipped`, not
+`failed`, and the script still exits 0); every other feed downloads as normal.
+
 ## 3. Honeynets
 
 A *honeynet* is a configured artificial network with virtual hosts. One sensor can present as many distinct virtual machines, each with its own deterministic identity (SSH banner version, MAC, MySQL build string, SMB challenge, etc.).
@@ -886,3 +944,5 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `validate-config` rejects `format: cef` on `sqlite` channel | structured-row sinks can't take text formats | Use the format on `stdout`/`jsonlog`/`webhook`/`smtp`/`syslog` instead. |
 | `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (99 entries). |
 | `ssh_interactive` engagements piling up | crypto/ssh handshakes are CPU-heavier than banner-grab | Set `max_concurrent: 16` (or lower) on the listener to cap parallel sessions. |
+| `fetch-enrichment.sh`: `threatfox` / `malwarebazaar` / `urlhaus-urls` → `FAILED (download)` | abuse.ch requires an account Auth-Key for all exports since 2025-06-30 (unauthenticated = HTTP 401) | Get a free key at <https://auth.abuse.ch/>, then `export ABUSE_CH_AUTH_KEY=…` before running. Without a key these now report `skipped` (not failed) and every other feed still downloads. |
+| `fetch-enrichment.sh`: `warning: failed to create archive … (tar rc=2 …)` | not enough free space for the single-file bundle (the GeoIP City DB alone is ~130 MB) | Non-fatal — the `enrichment-data/` directory is complete; transfer it directly with the printed `rsync` line, or free space / pass `SKIP_GEOIP=1`. `tar rc=1` (files changed while reading) keeps the archive with a warning. |

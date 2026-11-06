@@ -8,8 +8,34 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-06
+
 ### Added
 
+- **Two new source-IP enrichment types, from data the sensor already collects.**
+  - **Cross-feed reputation confidence.** Every event whose source is flagged by
+    the reputation machinery now carries `threat_intel_count` — the number of
+    *independent* signals that agree (each matched operator threat-list, the
+    external-feed overlay, the fleet overlay) — and `threat_confidence`
+    (`low`/`medium`/`high`). Several feeds agreeing is a far stronger signal than
+    any one list, so triage, dashboards, and detection rules can prioritize
+    corroborated sources. No new config; it is derived whenever a reputation hit
+    exists.
+  - **Forward-confirmed reverse DNS (FCrDNS) / spoofed-crawler detection.** When
+    `rdns.enabled` is set and a source's PTR claims a well-known crawler/cloud
+    operator (`*.googlebot.com`, `*.search.msn.com`, `*.crawl.baidu.com`,
+    `*.yandex.*`, `*.applebot.apple.com`, …), the resolver now forward-confirms
+    it maps back to the source IP. Confirmed → `rdns_verified=true` +
+    `verified_crawler`; failed → `spoofed_ptr=true` + `spoofed_crawler` +
+    `rdns_verified=false` (attackers set fake Googlebot/Bingbot PTRs to dodge
+    blocks). Only crawler-claiming PTRs are forward-confirmed, reusing the
+    existing bounded async rDNS path, so the extra DNS cost is negligible.
+- **Four additional no-auth reputation feeds in `fetch-enrichment.sh`:** IPsum
+  (an aggregate of ~30 public blocklists), Emerging Threats compromised-ips, the
+  CINS Army list, and the SANS ISC DShield block list (its start/end/netmask
+  rows converted to CIDRs). They load as ordinary `threat_intel` lists and feed
+  the new confidence score; `suggested-config.yaml` lists them. The label-driven
+  installer needs no change to pick up new lists.
 - **`tuning:` config block — the internal caches / buffers are now adjustable.**
   Performance values that were compile-time constants are exposed so an operator
   can raise them as load grows: the SQLite connection pool
@@ -137,6 +163,18 @@ documented in `docs/`).
 
 ### Fixed
 
+- **`fetch-enrichment.sh`: abuse.ch feeds failed to download.** Since 2025-06-30
+  every abuse.ch export (ThreatFox, MalwareBazaar, URLhaus) requires a free
+  account **Auth-Key**; unauthenticated requests get HTTP 401, which surfaced as
+  `FAILED (download)`. The script now sends `ABUSE_CH_AUTH_KEY` as the `Auth-Key`
+  header to all three (URLhaus previously sent no header at all, so it failed
+  even *with* a key), and — when no key is set — reports them as **skipped**
+  rather than failed, keeping the summary and exit status clean. The export URLs
+  are overridable (`THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL`). The
+  `.tar.gz` bundle step now prints tar's actual error and the direct-rsync
+  fallback instead of a bare "failed to create archive", keeps the archive on a
+  non-fatal `tar` warning (rc=1), and only discards it on a real failure (rc≥2,
+  usually a full disk — the GeoIP City DB alone is ~130 MB).
 - **Data race between sensor startup and a config reload (`-race`-found).**
   `Sensor.Run` read the live config (`s.cfg`) and `s.rootCtx` directly, unlocked,
   all through startup — building listeners, canaries, the DNS/sniffer/honeynet
