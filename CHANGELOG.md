@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **Fake C2 team-server emulation (`c2_emulator`).** A decoy command-and-control
+  HTTP listener that recognizes the beacon/stager check-in *shape* of several
+  red-team frameworks and answers like the real team server so a misconfigured
+  or sandboxed implant — or an operator/scanner hunting an open panel — keeps
+  talking and is captured: **Cobalt Strike** (checksum8 stager + default
+  malleable-profile URIs + beacon Cookie), **Metasploit/Meterpreter** (checksum-
+  coded stager URI), **Empire** / **PoshC2** (default listener URIs/cookies), and
+  **Mythic/Havoc** profile headers, with a User-Agent fallback against the
+  `toolfp` C2 corpus (40+ families). Flags `c2-beacon-checkin` / `c2-stager` /
+  `c2-server-probe` (ATT&CK T1071.001 / T1219 / T1105 / T1595), captures the
+  encrypted beacon metadata, and never runs tasking.
 - **Four new protocol handlers.** `irc` (6667 — botnet C2 rendezvous: captures
   NICK/USER/PASS + channel joins and recognizes the **UnrealIRCd 3.2.8.1
   backdoor**, CVE-2010-2075, via the `AB;` trigger), `finger` (79 — account
