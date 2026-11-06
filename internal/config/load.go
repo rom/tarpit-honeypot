@@ -56,7 +56,9 @@ var tcpHandlers = map[string]bool{
 	// Classic internet + messaging + OT-metering services.
 	"irc": true, "finger": true, "stomp": true, "mbus": true,
 	// Fake C2 team-server emulator (recognizes beacon/stager check-ins).
-	"c2_emulator":    true,
+	"c2_emulator": true,
+	// Classic news/ident + metering + file-share + work-queue services.
+	"nntp": true, "ident": true, "dlms": true, "afp": true, "beanstalkd": true,
 	"kubernetes_api": true, "vault": true,
 	"jdwp": true, "rmi": true, "git": true, "svn": true, "nbd": true, "roc_plus": true, "crimson": true, "zookeeper": true, "kafka": true,
 	"cassandra": true, "nats": true, "rpcbind": true, "nfs": true, "pptp": true,

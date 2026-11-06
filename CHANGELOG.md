@@ -8,8 +8,17 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
 ### Added
 
+- **Web UI polish + new-signal surfacing.** The console gets a proper rounded
+  **nav bar**, **zebra-striped tables** with **sticky headers** and row hover,
+  and an underlined-heading rule — all theme-token-driven so they hold across
+  every theme (verified light + dark). The events table / attacker profiles now
+  render a **📡 `c2_framework`** badge for a recognized C2 beacon check-in and a
+  **💥 `backscatter_kind`** badge for a DDoS-backscatter reply, both documented
+  in the `/coverage` recognition-label catalog.
 - **DDoS backscatter detection.** When one of our addresses is spoofed as the
   *source* of a flood, the victims and routers send their replies to us. The
   passive sniffer now flags `sniffer:ddos_backscatter` (ATT&CK T1498) when many
@@ -30,6 +39,12 @@ documented in `docs/`).
   `toolfp` C2 corpus (40+ families). Flags `c2-beacon-checkin` / `c2-stager` /
   `c2-server-probe` (ATT&CK T1071.001 / T1219 / T1105 / T1595), captures the
   encrypted beacon metadata, and never runs tasking.
+- **Five more protocol handlers** (→ **196 TCP + 118 UDP**): `nntp` (119 — news
+  server, open-relay POST + AUTHINFO credential capture), `ident` (113, RFC 1413
+  — connection-owner account disclosure), `dlms` (DLMS/COSEM / IEC 62056 smart
+  metering over the TCP wrapper — AARQ→AARE association, ICS field-device
+  markers), `afp` (548 — Apple Filing Protocol over DSI, GetStatus fingerprint),
+  and `beanstalkd` (11300 — unauthenticated work queue, tube/job enumeration).
 - **Four new protocol handlers.** `irc` (6667 — botnet C2 rendezvous: captures
   NICK/USER/PASS + channel joins and recognizes the **UnrealIRCd 3.2.8.1
   backdoor**, CVE-2010-2075, via the `AB;` trigger), `finger` (79 — account

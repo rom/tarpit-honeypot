@@ -333,6 +333,16 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &stompH{}, nil
 	case "mbus":
 		return &mbusH{}, nil
+	case "nntp":
+		return &nntpH{}, nil
+	case "ident":
+		return &identH{}, nil
+	case "dlms":
+		return &dlmsH{}, nil
+	case "afp":
+		return &afpH{}, nil
+	case "beanstalkd":
+		return &beanstalkdH{}, nil
 	case "ftps":
 		return newTLSWrap("ftp", "ftps", deps)
 	case "mysql":

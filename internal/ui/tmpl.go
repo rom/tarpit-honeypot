@@ -316,14 +316,21 @@ body { font: 1rem/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; marg
 .brand { margin: 0 0 .8rem; }
 .brand-link { display: inline-block; line-height: 0; }
 .brand-logo { display: block; height: 32px; width: auto; }
-h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+h1 { font-size: 1.3rem; margin: 0 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border-medium); }
 h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--heading-h2); }
-nav { margin-bottom: 1rem; }
-nav a { margin-right: 1rem; color: var(--link); }
+nav { margin: 0 0 1rem; padding: .4rem .55rem; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; line-height: 2; }
+nav a { margin-right: .2rem; padding: .12rem .45rem; border-radius: 5px; color: var(--link); text-decoration: none; }
+nav a:hover { background: var(--link-hover-bg); text-decoration: none; }
 a { color: var(--link); }
+a:hover { text-decoration: underline; }
 table { border-collapse: collapse; width: 100%; background: var(--bg-surface); }
 th, td { padding: .35rem .55rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
-th { font-weight: 600; background: var(--bg-elevated); color: var(--text); }
+th { font-weight: 600; background: var(--bg-elevated); color: var(--text); border-bottom: 1px solid var(--border-strong); position: sticky; top: 0; z-index: 1; }
+/* Zebra striping + row hover for readability (not on the transparent bar/chart
+ * tables). Applied to the row so per-cell severity backgrounds still paint on
+ * top. */
+table:not(.chart) tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, var(--bg-surface)); }
+table:not(.chart) tbody tr:hover { background: var(--link-hover-bg); }
 td.sev-low { color: var(--sev-low); }
 td.sev-medium { color: var(--sev-medium); }
 td.sev-high { color: var(--sev-high); font-weight: 600; }
