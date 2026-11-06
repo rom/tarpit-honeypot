@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
 ### Added
 
 - **Web UI polish + new-signal surfacing.** The console gets a proper rounded
