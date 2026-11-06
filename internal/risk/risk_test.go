@@ -68,3 +68,32 @@ func TestObserveEmptyIgnored(t *testing.T) {
 		t.Fatal("empty source produced a crossing")
 	}
 }
+
+// ObserveWithBonus adds the caller-supplied enrichment weight on top of the
+// rule/severity weight, so a source carrying high-signal reputation escalates
+// faster. A negative bonus is clamped to zero.
+func TestObserveWithBonus(t *testing.T) {
+	now := time.Now()
+	s := New(Config{Enabled: true}) // default thresholds: elevated 30 / high 75
+
+	// A single low-severity event alone (weight 1) stays well below "elevated".
+	if lvl, _, crossed := s.Observe("1.2.3.4", "listener:x", 1, now); crossed || lvl != "" {
+		t.Fatalf("low event crossed unexpectedly: lvl=%q crossed=%v", lvl, crossed)
+	}
+	// The same event from a spoofing, high-confidence source (bonus 42) clears
+	// "elevated" on its own.
+	lvl, score, crossed := s.ObserveWithBonus("5.6.7.8", "listener:x", 1, 42, now)
+	if !crossed || lvl != "elevated" {
+		t.Fatalf("bonus event should cross to elevated: lvl=%q score=%v crossed=%v", lvl, score, crossed)
+	}
+	if score < 30 {
+		t.Errorf("score with bonus = %v; want >= 30 (elevated)", score)
+	}
+
+	// A negative bonus is clamped to 0 — enrichment never lowers risk below the
+	// base rule/severity weight.
+	s2 := New(Config{Enabled: true})
+	if _, sc, _ := s2.ObserveWithBonus("9.9.9.9", "listener:x", 1, -100, now); sc < 1 {
+		t.Errorf("negative bonus should clamp to 0, leaving base weight; got %v", sc)
+	}
+}

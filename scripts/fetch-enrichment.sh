@@ -39,9 +39,16 @@
 #   MAXMIND_LICENSE_KEY  if set, GeoLite2 City+ASN are fetched from MaxMind;
 #                        otherwise the no-key DB-IP "lite" .mmdb files are used
 #                        (same MaxMind-DB format, readable by the sensor).
-#   ABUSE_CH_AUTH_KEY    optional abuse.ch Auth-Key; sent as the Auth-Key header
-#                        for the ThreatFox / MalwareBazaar exports (some now
-#                        require it). Get one free at https://auth.abuse.ch/.
+#   ABUSE_CH_AUTH_KEY    abuse.ch Auth-Key, REQUIRED since 2025-06-30 for the
+#                        ThreatFox / MalwareBazaar / URLhaus exports (401 and
+#                        "FAILED (download)" without it). Get one free at
+#                        https://auth.abuse.ch/. Alternatively set it in the
+#                        sensor config (-c) under sensor.enrichment:
+#                          abuse_ch_auth_key: "KEY"        # inline, or
+#                          abuse_ch_auth_key_env: VAR_NAME # name of an env var
+#                        The env var wins, then the inline key, then the named
+#                        env var. Without any of them these three feeds are
+#                        skipped (not failed).
 #   THREATFOX_URL /      optional overrides for the abuse.ch export URLs, in
 #   MALWAREBAZAAR_URL /  case abuse.ch relocates them (e.g. to a *-api.abuse.ch
 #   URLHAUS_URL          host). The Auth-Key header is sent to whatever URL.
@@ -73,13 +80,32 @@ while [ $# -gt 0 ]; do
 	--bin) BIN="$2"; shift 2 ;;
 	--reload-cmd) RELOAD_CMD="$2"; shift 2 ;;
 	-q | --quiet) QUIET=1; shift ;;
-	-h | --help) sed -n '2,55p' "$0"; exit 0 ;;
+	-h | --help) sed -n '2,62p' "$0"; exit 0 ;;
 	-*) echo "unknown option: $1" >&2; exit 2 ;;
 	*) OUT="$1"; shift ;;
 	esac
 done
 OUT="${OUT:-./enrichment-data}"
-ABUSE_KEY="${ABUSE_CH_AUTH_KEY:-}" # optional abuse.ch Auth-Key for ThreatFox/MalwareBazaar
+
+# resolve_abuse_key <config> — the abuse.ch Auth-Key, resolved in order from:
+#   1. the ABUSE_CH_AUTH_KEY environment variable,
+#   2. an inline `sensor.enrichment.abuse_ch_auth_key` in the sensor config, or
+#   3. the env var named by `sensor.enrichment.abuse_ch_auth_key_env`.
+# So the key can live in the config file (passed with -c, default
+# /etc/tarpit-honeypot/config.yaml) instead of an env var — convenient for the
+# single-box `--install` run where the config is already present. Always
+# succeeds (prints nothing when no key is configured).
+resolve_abuse_key() {
+	if [ -n "${ABUSE_CH_AUTH_KEY:-}" ]; then printf '%s' "$ABUSE_CH_AUTH_KEY"; return 0; fi
+	local cfg="$1" v name
+	[ -f "$cfg" ] || return 0
+	v="$(sed -nE 's/^[[:space:]]*abuse_ch_auth_key:[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/p' "$cfg" | head -n1 || true)"
+	if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+	name="$(sed -nE 's/^[[:space:]]*abuse_ch_auth_key_env:[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/p' "$cfg" | head -n1 || true)"
+	[ -n "$name" ] && printf '%s' "${!name:-}"
+	return 0
+}
+ABUSE_KEY="$(resolve_abuse_key "$CONFIG")" # abuse.ch Auth-Key: env var, else sensor config (-c)
 say() { [ "$QUIET" = 1 ] || echo "$@"; }
 THREAT_DIR="$OUT/threat"
 GEO_DIR="$OUT/geoip"
@@ -473,6 +499,13 @@ SNIPPET="$OUT/suggested-config.yaml"
 cat >"$SNIPPET" <<'YAML'
 sensor:
   oui_file: /etc/tarpit-honeypot/enrichment/oui.csv
+  # abuse.ch Auth-Key for the ThreatFox / MalwareBazaar / URLhaus exports
+  # (free at https://auth.abuse.ch/). fetch-enrichment.sh reads it from here
+  # when the ABUSE_CH_AUTH_KEY env var isn't set. Prefer abuse_ch_auth_key_env
+  # (a plaintext key in config is a secret at rest).
+  enrichment:
+    # abuse_ch_auth_key: "YOUR-ABUSE-CH-KEY"
+    abuse_ch_auth_key_env: ABUSE_CH_AUTH_KEY
   geoip:
     city_db: /etc/tarpit-honeypot/enrichment/geoip/city.mmdb
     asn_db:  /etc/tarpit-honeypot/enrichment/geoip/asn.mmdb

@@ -109,8 +109,21 @@ func levelName(l int) string {
 // level name + score when the source crosses UP into a higher level (so a
 // caller emits one alert per escalation), else ("", score, false).
 func (s *Scorer) Observe(srcIP, ruleID string, sevRank int, now time.Time) (level string, score float64, crossed bool) {
+	return s.ObserveWithBonus(srcIP, ruleID, sevRank, 0, now)
+}
+
+// ObserveWithBonus is Observe plus an extra per-event weight (points) the
+// caller derives from source enrichment — e.g. a spoofed-crawler PTR or a high
+// cross-feed threat-confidence. The bonus is added on top of the rule/severity
+// weight for this event, so a source carrying high-signal reputation accrues
+// risk faster; it then decays with the score like any other contribution. A
+// negative bonus is clamped to zero (enrichment only ever raises risk).
+func (s *Scorer) ObserveWithBonus(srcIP, ruleID string, sevRank int, bonus float64, now time.Time) (level string, score float64, crossed bool) {
 	if srcIP == "" {
 		return "", 0, false
+	}
+	if bonus < 0 {
+		bonus = 0
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -124,7 +137,7 @@ func (s *Scorer) Observe(srcIP, ruleID string, sevRank int, now time.Time) (leve
 		st = &srcScore{firstSeen: now, lastUpdate: now, rules: map[string]int{}}
 		s.src[srcIP] = st
 	}
-	st.score = decay(st.score, now.Sub(st.lastUpdate), s.cfg.HalfLife) + weight(ruleID, sevRank)
+	st.score = decay(st.score, now.Sub(st.lastUpdate), s.cfg.HalfLife) + weight(ruleID, sevRank) + bonus
 	st.lastUpdate = now
 	st.lastSeen = now
 	st.events++

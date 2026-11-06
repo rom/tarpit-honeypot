@@ -1367,7 +1367,11 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   severity/category-weighted points (CVE / malware / storyline weigh
   heaviest); the score halves over `half_life` of silence so quiet sources
   cool off. Meta carries `score` + `trigger_rule`; the top scorers surface
-  in the web UI's `/risk` view. Fires once per escalation.
+  in the web UI's `/risk` view. Fires once per escalation. **Enrichment also
+  feeds the score** (v1.1): a **spoofed-crawler PTR** (`spoofed_ptr`, +20) and
+  the cross-feed **`threat_confidence`** (low/medium/high → +3/+10/+22) add
+  weight per event, so a crawler-spoofing or multi-feed-corroborated source
+  escalates — and, with `risk.block`, gets dropped — sooner.
   - **Active-response backstop** (`risk.block`, opt-in): when a source crosses
     a configured level the sensor drops it at the host firewall (nftables) for
     a bounded TTL, then lets the kernel expire it — the honeypot analogue of
@@ -2351,9 +2355,17 @@ are forward-confirmed, so the extra DNS cost is negligible.
 > **abuse.ch feeds need a free key.** Since **2025-06-30** every abuse.ch export
 > (ThreatFox, MalwareBazaar, URLhaus) requires an account **Auth-Key** —
 > unauthenticated downloads return HTTP 401. Create one free at
-> <https://auth.abuse.ch/> and `export ABUSE_CH_AUTH_KEY=…` before running
-> `fetch-enrichment.sh`; without it those three feeds are **skipped** (not
-> failed), and every other feed still downloads.
+> <https://auth.abuse.ch/>, then give it to `fetch-enrichment.sh` either via the
+> `ABUSE_CH_AUTH_KEY` env var or in the sensor config (read with `-c`):
+> ```yaml
+> sensor:
+>   enrichment:
+>     abuse_ch_auth_key_env: ABUSE_CH_AUTH_KEY   # name of an env var holding it
+>     # abuse_ch_auth_key: "KEY"                 # …or inline (plaintext secret)
+> ```
+> The env var wins, then the inline key, then the named env var. Without any of
+> them those three feeds are **skipped** (not failed), and every other feed
+> still downloads.
 
 ## Prometheus metrics
 

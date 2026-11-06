@@ -262,6 +262,20 @@ scripts/fetch-enrichment.sh ./enrichment-data
 Without the key those three feeds are **skipped** (reported as `skipped`, not
 `failed`, and the script still exits 0); every other feed downloads as normal.
 
+Instead of the env var you can keep the key in the sensor config (read with
+`-c`, default `/etc/tarpit-honeypot/config.yaml`) — handy for the single-box
+`--install` run:
+
+```yaml
+sensor:
+  enrichment:
+    abuse_ch_auth_key_env: ABUSE_CH_AUTH_KEY   # name of an env var holding it
+    # abuse_ch_auth_key: "KEY"                 # …or inline (plaintext secret at rest)
+```
+
+The key is resolved in order: `ABUSE_CH_AUTH_KEY` env var → inline
+`abuse_ch_auth_key` → the env var named by `abuse_ch_auth_key_env`.
+
 ## 3. Honeynets
 
 A *honeynet* is a configured artificial network with virtual hosts. One sensor can present as many distinct virtual machines, each with its own deterministic identity (SSH banner version, MAC, MySQL build string, SMB challenge, etc.).

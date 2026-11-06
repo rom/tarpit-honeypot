@@ -8,6 +8,29 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-06
+
+### Added
+
+- **Enrichment now feeds the per-source risk scorer.** Two v1.1 enrichment
+  signals add weight to a source's decaying risk score, on top of the existing
+  rule/severity weight: a **spoofed-crawler PTR** (`spoofed_ptr`, +20 — a
+  deliberate evasion marker) and the cross-feed **`threat_confidence`**
+  (low/medium/high → +3/+10/+22, scaling with how many independent reputation
+  feeds corroborate the source). So a known-bad or crawler-spoofing source
+  escalates to `risk:elevated`/`high` faster (and, if blocking is enabled, is
+  dropped sooner). The bonus decays with the score like any other contribution
+  and is 0 for clean/un-enriched sources, so existing scores are unchanged.
+  Implemented as a new `risk.Scorer.ObserveWithBonus`; `Observe` is unchanged.
+- **The abuse.ch Auth-Key can now be set in the sensor config.** New
+  `sensor.enrichment.abuse_ch_auth_key` (inline) and
+  `sensor.enrichment.abuse_ch_auth_key_env` (name of an env var holding it, like
+  MISP's `key_env`). `scripts/fetch-enrichment.sh` resolves the key in order:
+  the `ABUSE_CH_AUTH_KEY` env var, then the inline config value, then the named
+  env var — so a single-box `fetch-enrichment.sh --install -c <config>` run no
+  longer needs the env var exported. The sensor doesn't consume the key at
+  runtime; it lives in the config as one source of truth for the fetch tooling.
+
 ## [1.1.0] - 2026-11-06
 
 ### Added

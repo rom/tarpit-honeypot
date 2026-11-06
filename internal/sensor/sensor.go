@@ -1076,6 +1076,44 @@ func (s *Sensor) stampKEV(ev *event.Event) {
 	}
 }
 
+// Per-event risk bonuses derived from the enricher's high-signal source tags.
+// A spoofed-crawler PTR (FCrDNS failure) is a deliberate evasion marker; the
+// cross-feed threat_confidence scales with how many independent reputation
+// feeds corroborate the source. These are added on top of the rule/severity
+// weight so a known-bad or spoofing source escalates faster (they decay with
+// the score like everything else). Tuned against the default thresholds
+// (elevated 30 / high 75 / critical 150): a medium event from a high-confidence
+// spoofing source clears "elevated" on its own.
+const (
+	riskBonusSpoofedPTR     = 20.0
+	riskBonusThreatConfLow  = 3.0
+	riskBonusThreatConfMed  = 10.0
+	riskBonusThreatConfHigh = 22.0
+)
+
+// enrichmentRiskBonus derives the extra per-event risk weight from the
+// enrichment meta set by internal/enrich.Decorate: a spoofed-crawler PTR and
+// the cross-feed threat_confidence (low/medium/high). Returns 0 when neither is
+// present, so an un-enriched or clean source scores exactly as before.
+func enrichmentRiskBonus(meta map[string]any) float64 {
+	if len(meta) == 0 {
+		return 0
+	}
+	var bonus float64
+	if v, _ := meta["spoofed_ptr"].(bool); v {
+		bonus += riskBonusSpoofedPTR
+	}
+	switch v, _ := meta["threat_confidence"].(string); v {
+	case "high":
+		bonus += riskBonusThreatConfHigh
+	case "medium":
+		bonus += riskBonusThreatConfMed
+	case "low":
+		bonus += riskBonusThreatConfLow
+	}
+	return bonus
+}
+
 // scoreRisk folds a dispatched event into the per-source risk scorer and,
 // when the source escalates into a higher level, dispatches a risk:<level>
 // alert. risk:* events are not re-scored (no feedback loop).
@@ -1083,7 +1121,8 @@ func (s *Sensor) scoreRisk(rt *router.Router, ev *event.Event) {
 	if s.risk == nil || ev == nil || ev.Source.IP == "" || strings.HasPrefix(ev.RuleID, "risk:") {
 		return
 	}
-	if level, score, crossed := s.risk.Observe(ev.Source.IP, ev.RuleID, int(ev.Severity), timeNow()); crossed {
+	bonus := enrichmentRiskBonus(ev.Meta)
+	if level, score, crossed := s.risk.ObserveWithBonus(ev.Source.IP, ev.RuleID, int(ev.Severity), bonus, timeNow()); crossed {
 		rt.Dispatch(s.riskEvent(ev, level, score))
 		// Active response: when blocking is enabled and the source crossed into
 		// (or above) the configured level, drop it at the host firewall for the
