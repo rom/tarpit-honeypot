@@ -587,7 +587,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if hasPage "coverage" }}{{ if pageEnabled "coverage" }} · <a href="/coverage">coverage</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if hasPage "coverage" }}{{ if pageEnabled "coverage" }} · <a href="/coverage">coverage</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a> · <a href="/asns">networks</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -1613,6 +1613,36 @@ client completes a TLS ClientHello or sends an SSH banner to a listener.</p>
   <td>{{ fmtTime .LastSeen }}</td>
 </tr>{{ end }}
 </table>
+{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "asns" }}{{ template "head" . }}
+<h1>networks — attacking hosts by AS</h1>
+<p class="note">Autonomous systems seen in the last {{ .Window }}, ranked by the
+number of <b>distinct attacking hosts</b> (source IPs) originating from each AS —
+so the networks sending you the most attackers rise to the top.
+<b>{{ .TotalAttackers }}</b> distinct hosts across <b>{{ .TotalASNs }}</b> ASes
+({{ .TotalEvents }} events). Click an AS to see every event from that whole
+autonomous system. JSON at <a href="/api/asns">/api/asns</a>.</p>
+{{ if not .Rows }}<p class="note">No AS-attributed events yet. ASN enrichment
+needs the MaxMind GeoLite2-ASN database loaded (sensor.asn_db) and public source
+IPs — private / loopback sources are not geolocated.</p>
+{{ else }}
+<table>
+<tr><th>#</th><th>AS</th><th>organization</th><th>attacking hosts</th><th>events</th><th>countries</th><th>max severity</th><th>last seen</th><th>sample hosts</th></tr>
+{{ range $r := .Rows }}<tr>
+  <td>{{ $r.Rank }}</td>
+  <td><a class="tag" href="{{ $r.Href }}" title="all events from AS{{ $r.ASN }}">AS{{ $r.ASN }}</a></td>
+  <td>{{ $r.Org }}</td>
+  <td><b>{{ $r.Attackers }}</b></td>
+  <td>{{ $r.Events }}</td>
+  <td>{{ range $r.Countries }}{{ . }} {{ end }}</td>
+  <td><span class="tag{{ if or (eq $r.MaxSev "critical") (eq $r.MaxSev "high") }} bad{{ else if eq $r.MaxSev "medium" }} warn{{ end }}">{{ $r.MaxSev }}</span></td>
+  <td>{{ fmtTime $r.LastSeen }}</td>
+  <td>{{ range $r.SampleIPs }}<a href="/profiles/{{ . }}">{{ . }}</a> {{ end }}</td>
+</tr>{{ end }}
+</table>
+{{ if .Truncated }}<p class="note">Showing the top {{ len .Rows }} ASes by attacker count; more exist. Narrow the window or use <a href="/api/asns">/api/asns</a> for the full set.</p>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
