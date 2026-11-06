@@ -249,6 +249,18 @@ The more independent lists an IP appears on, the higher its
 — use those for triage and detection rules. A suggested `threat_intel.lists:`
 block listing every feed is written to `enrichment-data/suggested-config.yaml`.
 
+**More feeds + recognition (v1.2).** `fetch-enrichment.sh` additionally ships
+**VPN/proxy ranges** (→ `anonymizer`/`anonymized`), **Spamhaus ASN-DROP**
+(→ `asn_reputation`), and a **breached-password list** (→ `cred_class`), and the
+enricher derives subnet keys, connection type, `actor_id`, `targeting`,
+`geo_risk`, novelty flags, DGA/bad-domain tags, and a `source_class` + `labels[]`
+recognition rollup (rendered as emoji glyph badges in the web UI). The matching
+config blocks — `sensor.anonymizer_ranges`, `sensor.asn_reputation`,
+`sensor.cred_intel`, `sensor.domain_intel`, `sensor.asn_info`,
+`sensor.geoip.risk_countries` — are all written to the suggested config; the
+domain blocklist and ASN-info file are operator-supplied. See the README's
+**Enrichment** section for the full attribute list.
+
 **abuse.ch needs a free key (since 2025-06-30).** Every abuse.ch export now
 requires an account **Auth-Key**. The 2025 migration also retired the old export
 URLs (HTTP 410) for a v2 API that carries the key **in the URL path**

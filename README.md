@@ -2325,6 +2325,20 @@ Enrichment keys added to event meta:
 | `net_class` | built-in | `hosting` / `bogon` |
 | `<kind>_client` (ja3 / ja4 / ja4h / hassh) | fingerprint db | `Cobalt Strike` |
 | `external_intel` / `fleet_intel` | feeds puller / fleet overlay | `greynoise` / `[ip:botnet]` |
+| `src_net` | derived (v1.2) | `203.0.113.0/24` (/48 for IPv6) |
+| `conn_type` | rDNS heuristic (v1.2) | `residential` / `hosting` |
+| `anonymized` / `anonymizer` | Tor + VPN/proxy ranges (v1.2) | `true` / `vpn` |
+| `asn_reputation` | ASN-DROP etc. (v1.2) | `[spamhaus-asndrop]` |
+| `geo_risk` | risk_countries (v1.2) | `true` |
+| `src_local_hour` | GeoIP timezone (v1.2) | `3` |
+| `novel_asn` / `novel_subnet` / `novel_fingerprint` | session novelty (v1.2) | `true` |
+| `actor_id` | fingerprint/UA (v1.2) | `ja4:t13d…` |
+| `targeting` | rule/handler (v1.2) | `web-cms` / `ics-ot` |
+| `cred_class` | credential intel (v1.2) | `default` / `breach` / `weak` |
+| `dns_dga` / `domain_bad` | domain intel (v1.2) | `true` |
+| `asn_country` / `asn_type` / `asn_geo_mismatch` | ASN info (v1.2) | `RU` / `hosting` / `true` |
+| `source_class` | recognition rollup (v1.2) | `malicious` / `anonymizer` / `residential` |
+| `labels` | recognition rollup (v1.2) | `[geo:RU, tor, scanner:censys, threat:high]` |
 
 ### Reputation confidence (v1.1)
 
@@ -2351,6 +2365,27 @@ forward-resolves that name and checks it maps back to the source IP
 high-signal evasion marker, since attackers routinely set fake PTRs posing as
 Googlebot/Bingbot to dodge rate limits and blocks. Only crawler-claiming PTRs
 are forward-confirmed, so the extra DNS cost is negligible.
+
+### Derived attributes & the recognition layer (v1.2)
+
+Beyond the per-field tags above, the enricher adds **derived attributes** (no
+new data: `src_net` subnet key, `conn_type`, `src_local_hour`, `actor_id`,
+`targeting`, and session `novel_*` flags), **feed-backed reputation** (VPN/proxy
+`anonymizer` ranges, `asn_reputation` from Spamhaus ASN-DROP, `cred_class` for
+captured logins, `dns_dga` + `domain_bad` for queried domains, and
+`asn_country`/`asn_type`/`asn_geo_mismatch` from an ASN-info file), and a
+**recognition rollup**: a single `source_class` headline
+(`malicious`/`spoofed`/`scanner`/`anonymizer`/`hosting`/`residential`/`suspect`)
+plus a compact, sorted `labels[]` tag set carried to **every sink** (so SIEMs
+filter on the same tokens the UI shows). In the web UI those labels render as
+**emoji glyph badges** (🛡 confidence, 🎭 spoofed-PTR, 🕵 anonymizer, ☠ ASN-DROP,
+🏴 geo-risk, 🔑 credential class, 🧬 DGA, …) on the events table, event detail,
+and attacker profile. Config knobs: `sensor.geoip.risk_countries`,
+`sensor.anonymizer_ranges`, `sensor.asn_reputation`, `sensor.cred_intel`,
+`sensor.domain_intel`, `sensor.asn_info`; `scripts/fetch-enrichment.sh` ships
+the no-auth feeds (VPN/proxy, ASN-DROP, breached-passwords), and the enrichment
+signals also feed the risk score (spoofed-PTR and high `threat_confidence` add
+weight).
 
 > **abuse.ch feeds need a free key.** Since **2025-06-30** every abuse.ch export
 > (ThreatFox, MalwareBazaar, URLhaus) requires an account **Auth-Key**. The 2025

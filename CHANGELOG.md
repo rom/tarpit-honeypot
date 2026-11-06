@@ -8,6 +8,32 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **A big enrichment / recognition expansion (source-IP decoration).** New event
+  meta, all additive and hot-reloadable:
+  - **Derived, no new data:** `src_net` (/24,/48 subnet aggregation key),
+    `conn_type` (residential vs hosting from the PTR), `src_local_hour` (event
+    hour in the source's GeoIP timezone), `actor_id` (strongest fingerprint,
+    else a UA hash — groups a tool across rotating IPs), `targeting`
+    (web-cms / mail / ics-ot / iot-edge / database / remote-access /
+    cloud-devops), `geo_risk` (`sensor.geoip.risk_countries`), and
+    `novel_asn` / `novel_subnet` / `novel_fingerprint` (first-sight flags).
+  - **Feed-backed:** `anonymizer` / `anonymized` (VPN/open-proxy ranges,
+    `sensor.anonymizer_ranges`), `asn_reputation` (Spamhaus ASN-DROP etc.,
+    `sensor.asn_reputation`), `cred_class` (default/weak/breach/unique for a
+    captured login, `sensor.cred_intel`), `dns_dga` + `domain_bad`
+    (`sensor.domain_intel`), and `asn_country` / `asn_type` / `asn_geo_mismatch`
+    (`sensor.asn_info`).
+  - **Recognition rollup:** `source_class` (one headline label) and a compact,
+    sorted `labels[]` tag set carried to every sink; the web UI renders the
+    labels as **emoji glyph badges** on the events table, event detail, and
+    attacker profile.
+  `scripts/fetch-enrichment.sh` ships the no-auth feeds (X4BNet VPN + firehol
+  proxies, Spamhaus ASN-DROP, SecLists breached-passwords); the domain blocklist
+  and ASN-info file are operator-supplied (no clean no-auth default). See the
+  README's **Enrichment** section for the full key list.
+
 ### Fixed
 
 - **abuse.ch feeds failed even with a valid Auth-Key.** The v1.1 fix sent the
