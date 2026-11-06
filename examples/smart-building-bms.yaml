@@ -31,6 +31,11 @@ listeners:
   - { id: lontalk, proto: udp, bind: 0.0.0.0:1628,  mode: banner, handler: lontalk, severity: high, capture: true }
   - { id: cbus,    proto: udp, bind: 0.0.0.0:20023, mode: banner, handler: cbus,    severity: high, capture: true }
 
+  # --- Secure + IP building protocols (newer BMS data links) ------------------
+  - { id: bacnet-sc, proto: tcp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet_sc, severity: high, capture: true } # BACnet Secure Connect (WS+TLS; TLS-fronted variant: handler bacnet_scs). Sits beside BACnet/IP udp:47808.
+  - { id: fox,       proto: tcp, bind: 0.0.0.0:1911,  mode: banner, handler: fox,       severity: high, capture: true } # Niagara / Tridium Fox (BAS supervisor)
+  - { id: mbus,      proto: tcp, bind: 0.0.0.0:10001, mode: banner, handler: mbus,      severity: high, capture: true } # M-Bus meter gateway (building sub-metering)
+
   # --- AV / room-automation controllers --------------------------------------
   - { id: crestron, proto: udp, bind: 0.0.0.0:41794, mode: banner, handler: crestron,    severity: medium, capture: true }
   - { id: amx,      proto: udp, bind: 0.0.0.0:1319,  mode: banner, handler: amx_netlinx, severity: medium, capture: true }

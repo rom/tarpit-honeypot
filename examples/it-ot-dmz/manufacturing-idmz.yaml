@@ -63,6 +63,8 @@ listeners:
   - { id: mssql,  proto: tcp, bind: 0.0.0.0:1433, mode: banner, handler: mssql,            severity: critical, capture: true }
   - { id: opcua,  proto: tcp, bind: 0.0.0.0:4840, mode: banner, handler: opcua,            severity: critical, capture: true }
   - { id: mqtt,   proto: tcp, bind: 0.0.0.0:1883, mode: banner, handler: mqtt,             severity: high,     capture: true }
+  - { id: pi,        proto: tcp, bind: 0.0.0.0:5450,  mode: banner, handler: osisoft_pi, severity: high,     capture: true } # OSIsoft / AVEVA PI Data Archive (IT-readable historian replica)
+  - { id: bacnet-sc, proto: tcp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet_sc,  severity: high,     capture: true } # BACnet Secure Connect (WS+TLS; TLS-fronted variant: handler bacnet_scs)
   - { id: ntp,    proto: udp, bind: 0.0.0.0:123,  mode: banner, handler: ntp,              severity: low }
   - { id: dns,    proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,              severity: medium }
   - { id: snmp,   proto: udp, bind: 0.0.0.0:161,  mode: banner, handler: snmp,             severity: low }

@@ -45,6 +45,7 @@ listeners:
   - { id: dcerpc,   proto: tcp, bind: 0.0.0.0:135,  mode: banner, handler: dcerpc,   severity: high }
   - { id: winrm,    proto: tcp, bind: 0.0.0.0:5985, mode: banner, handler: winrm,    severity: high }
   - { id: ftp,      proto: tcp, bind: 0.0.0.0:21,   mode: banner, handler: ftp,      severity: high }
+  - { id: pi,       proto: tcp, bind: 0.0.0.0:5450, mode: banner, handler: osisoft_pi, severity: high,   capture: true } # OSIsoft / AVEVA PI Data Archive (plant historian)
   - { id: dns,      proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,      severity: medium }
 
 honeynets:
