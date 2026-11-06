@@ -197,6 +197,8 @@ var exactRules = map[string]Tag{
 	"correlate:toll_fraud":  {Techniques: []string{"T1657"}, Tactics: []string{"impact"}},
 	"correlate:voip_enum":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
 	"correlate:pbx_control": {Techniques: []string{"T1059"}, Tactics: []string{"execution"}},
+
+	"correlate:agentic_escalation": {Techniques: []string{"T1190", "AML.T0051"}, Tactics: []string{"initial-access"}},
 	// Harvested malware / shellcode / dropper = ingress tool transfer
 	// (+ obfuscated payload when base64-wrapped).
 	"malware:capture": {Techniques: []string{"T1105", "T1027"}, Tactics: []string{"command-and-control", "defense-evasion"}},
@@ -1459,7 +1461,7 @@ var d3fend = map[string][]string{
 	"T1595": {"D3-NTA", "D3-DNR", "D3-CAA"},         // active scanning
 	"T1592": {"D3-NTA", "D3-DNR"},                   // gather victim host information
 	"T1046": {"D3-NTA", "D3-DNR", "D3-CAA"},         // network service discovery
-	"T1018": {"D3-DNR"},                             // remote system discovery
+	"T1018": {"D3-DNR", "D3-NTA", "D3-DE"},          // remote system discovery
 	"T1083": {"D3-DF", "D3-DO"},                     // file & directory discovery
 	"T1190": {"D3-NTA", "D3-ITF", "D3-DE"},          // exploit public-facing app
 	"T1210": {"D3-NTA", "D3-ITF", "D3-DE"},          // exploit remote services
@@ -1470,12 +1472,12 @@ var d3fend = map[string][]string{
 	"T1071": {"D3-NTA", "D3-DNSTA"},                 // application-layer C2
 	"T1105": {"D3-NTA", "D3-ITF", "D3-DA"},          // ingress tool transfer
 	"T1027": {"D3-DA", "D3-FH"},                     // obfuscated files / information
-	"T1557": {"D3-NTA"},                             // adversary-in-the-middle
+	"T1557": {"D3-NTA", "D3-DE", "D3-NI"},           // adversary-in-the-middle
 	"T1558": {"D3-MFA", "D3-DUC"},                   // steal/forge Kerberos tickets
 	"T1550": {"D3-MFA", "D3-NTA", "D3-DE"},          // use alternate authentication material
 	"T1556": {"D3-MFA", "D3-DE"},                    // modify authentication process
 	"T1649": {"D3-MFA", "D3-DE"},                    // steal or forge authentication certificates
-	"T1498": {"D3-ITF"},                             // network denial of service
+	"T1498": {"D3-ITF", "D3-NTA", "D3-DNR"},         // network denial of service
 	"T1499": {"D3-ITF", "D3-NTA"},                   // endpoint denial of service (LAND / sockstress / SACK-panic class)
 	"T1489": {"D3-ITF", "D3-NTA"},                   // service stop (chrony cmdmon SHUTDOWN)
 	"T1187": {"D3-NTA", "D3-ITF"},                   // forced authentication (PetitPotam / xp_dirtree UNC coercion)
@@ -1490,13 +1492,13 @@ var d3fend = map[string][]string{
 	"T1530": {"D3-NTA", "D3-DA"},                    // data from cloud/remote storage (MongoDB clone)
 	"T1657": {"D3-NTA", "D3-ITF"},                   // financial theft (VoIP toll fraud)
 	"T1135": {"D3-DNR", "D3-DO"},                    // network share discovery
-	"T1087": {"D3-DUC"},                             // account discovery
-	"T1114": {"D3-NTA"},                             // email collection
+	"T1087": {"D3-DUC", "D3-DE"},                    // account discovery
+	"T1114": {"D3-NTA", "D3-DO", "D3-DE"},           // email collection
 	"T1610": {"D3-NTA", "D3-ITF"},                   // deploy container
 	"T0814": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: denial of service
 	"T0888": {"D3-NTA", "D3-DNR"},                   // ICS: remote system info discovery
 	"T0846": {"D3-NTA", "D3-DNR"},                   // ICS: remote system discovery (PROFINET-DCP)
-	"T0830": {"D3-NTA"},                             // ICS: adversary-in-the-middle
+	"T0830": {"D3-NTA", "D3-NI", "D3-DE"},           // ICS: adversary-in-the-middle
 	"T0836": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: modify parameter
 	"T0831": {"D3-NTA", "D3-DE"},                    // ICS: manipulation of control
 	"T0843": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: program download
@@ -1510,14 +1512,14 @@ var d3fend = map[string][]string{
 	"T0866": {"D3-NTA", "D3-ITF", "D3-DE"},          // ICS: exploitation of remote services
 	"T0859": {"D3-MFA", "D3-NTA", "D3-DE"},          // ICS: valid accounts / key install
 	"T1059": {"D3-NTA", "D3-DA"},                    // command & scripting interpreter
-	"T1056": {"D3-NTA"},                             // input capture (keylogging via X11)
+	"T1056": {"D3-NTA", "D3-DE"},                    // input capture (keylogging via X11)
 	"T1219": {"D3-NTA", "D3-OTF", "D3-RTSD"},        // remote access software
 	"T1133": {"D3-MFA", "D3-NTA", "D3-RTSD"},        // external remote services
 	"T1565": {"D3-NTA", "D3-DE"},                    // data manipulation (SNMP SET write)
 	"T1590": {"D3-DNSTA", "D3-DNR"},                 // gather victim network info (DNS AXFR)
 	"T1602": {"D3-NTA", "D3-DE"},                    // data from configuration repository (TFTP)
 	"T1485": {"D3-NTA", "D3-DE"},                    // data destruction (PJL FSINIT format)
-	"T1491": {"D3-NTA"},                             // defacement (printer panel message)
+	"T1491": {"D3-NTA", "D3-DO", "D3-DE"},           // defacement (printer panel message)
 	"T1098": {"D3-MFA", "D3-DUC"},                   // account manipulation (printer password set)
 	"T1552": {"D3-DUC", "D3-NTA"},                   // unsecured credentials (printer password read)
 	"T1005": {"D3-DO", "D3-NTA"},                    // data from local system (PostScript file read)
@@ -1563,6 +1565,13 @@ var d3fend = map[string][]string{
 	"T1195": {"D3-FH", "D3-FA"},           // supply-chain compromise
 	"T1609": {"D3-NTA", "D3-EAL"},         // container administration command
 	"T1611": {"D3-PH", "D3-NTA"},          // escape to host (container escape)
+
+	// --- MITRE ATLAS (AI/ML) — the agentic / LLM-abuse surface. Keyed on the
+	// "AML" family base (technique ids strip at the first dot, so AML.T0051 /
+	// AML.T0054 / AML.T0057 / AML.T0053 all resolve here): decoy environment +
+	// inbound/outbound traffic filtering + network-traffic analysis are the
+	// countermeasures a deception sensor contributes against agentic attacks.
+	"AML": {"D3-DE", "D3-ITF", "D3-NTA", "D3-DUC"},
 }
 
 // d3fendNames maps each D3FEND countermeasure id used in the d3fend map to

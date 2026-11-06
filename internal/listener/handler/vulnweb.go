@@ -142,6 +142,14 @@ var webAttackClasses = []webAttackClass{
 		"' or '1'='1' or '", "count(//", "string-length(", "substring(name(",
 		"' or position()=", "']|//*['", "extractvalue(//",
 	}},
+	{"nosqli", []string{
+		"{\"$ne\":", "{\"$gt\":", "{\"$where\":", "[$ne]=", "[$gt]=", "[$regex]=",
+		"%7b%22%24ne%22", "$where:", "'; return ", "||'1'=='1", "[$nin]=",
+	}},
+	{"graphql-introspection", []string{
+		"__schema{", "introspectionquery", "{__typename", "\"query\":\"query introspection",
+		"\"operationname\":\"introspectionquery\"",
+	}},
 }
 
 // phpCGIArgInjection reports whether a query string looks like php-cgi command-

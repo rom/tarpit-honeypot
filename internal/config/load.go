@@ -944,6 +944,17 @@ func (c *Config) applyDefaults() {
 			c.Correlate.PBXControl.Severity = "high"
 		}
 	}
+	if c.Correlate.AgenticEscalation.Enabled {
+		if c.Correlate.AgenticEscalation.DistinctSignals == 0 {
+			c.Correlate.AgenticEscalation.DistinctSignals = 3
+		}
+		if c.Correlate.AgenticEscalation.Window == 0 {
+			c.Correlate.AgenticEscalation.Window = 30 * time.Minute
+		}
+		if c.Correlate.AgenticEscalation.Severity == "" {
+			c.Correlate.AgenticEscalation.Severity = "critical"
+		}
+	}
 	for i := range c.Channels {
 		ch := &c.Channels[i]
 		if ch.MinSeverity == "" {
