@@ -2,16 +2,16 @@
 #
 # check-coverage.sh — per-package Go test-coverage gate.
 #
-# Enforces a FLOOR of 70% statement coverage on every package, with two
+# Enforces a FLOOR of 80% statement coverage on every package, with two
 # escape hatches, both explicit and auditable:
 #
 #   EXCLUDE      packages with nothing meaningful to unit-test in CI (the
 #                command mains, the PostgreSQL backend that needs a live DB).
-#   GRANDFATHER  packages that are below the floor TODAY. Each is pinned to its
-#                current level so the gate (a) passes now, (b) blocks any
-#                regression below that level, and (c) is a visible debt list to
-#                burn down to 70%. Raise a package's tests past 70%, then delete
-#                its line here — the gate then holds it to the full floor.
+#   GRANDFATHER  packages that are below the floor TODAY. Each is pinned a little
+#                under its current level so the gate (a) passes now, (b) blocks
+#                any regression below that level, and (c) is a visible debt list
+#                to burn down to 80%. Raise a package's tests past 80%, then
+#                delete its line here — the gate then holds it to the full floor.
 #
 # Usage:  scripts/check-coverage.sh            # runs the suite with -cover
 #         COVER_OUT=cover.txt scripts/check-coverage.sh   # reuse a saved run
@@ -21,7 +21,7 @@
 # run itself failed.
 set -euo pipefail
 
-FLOOR="${FLOOR:-70}"
+FLOOR="${FLOOR:-80}"
 MODULE="github.com/rom/tarpit-honeypot"
 
 # Packages not subject to the gate, each with the reason it can't be unit-tested
@@ -32,16 +32,16 @@ declare -A EXCLUDE=(
   ["internal/store/pgstore"]="PostgreSQL backend; needs a live database to test"
 )
 
-# Known debt: packages below the floor today, pinned to their current level.
-# Burn these down to >=70 and remove the line. DO NOT raise a number to make a
-# regression pass — fix the tests instead.
+# Known debt: packages below the 80% floor today, each pinned a little under its
+# current coverage (headroom for run-to-run variance in the integration-driven
+# packages). Burn these down to >=80 and remove the line. DO NOT raise a number
+# to make a regression pass — fix the tests instead.
 declare -A GRANDFATHER=(
   ["internal/privdrop"]=3
   ["internal/canary"]=4
   ["internal/tunnet"]=17
   ["internal/sandbox"]=29
   ["internal/retention"]=29
-  ["internal/sensor"]=31
   ["internal/listener"]=32
   ["internal/honeynet"]=32
   ["internal/sink"]=33
@@ -51,8 +51,21 @@ declare -A GRANDFATHER=(
   ["internal/config"]=44
   ["internal/dnscanary"]=49
   ["internal/intel"]=63
-  ["internal/artifactscan"]=68
+  ["internal/sensor"]=64
   ["internal/archetype"]=68
+  ["internal/artifactscan"]=68
+  ["internal/detect"]=69
+  ["internal/event"]=70
+  ["internal/fakefiles"]=70
+  ["internal/shell"]=71
+  ["internal/ui"]=71
+  ["internal/misp"]=74
+  ["internal/egress"]=75
+  ["internal/listener/handler"]=75
+  ["internal/format"]=77
+  ["internal/p0f"]=77
+  ["internal/store"]=77
+  ["internal/feeds"]=78
 )
 
 # 1. Obtain per-package coverage.

@@ -20,15 +20,13 @@ func highlightYAML(yamlStr, q string, linesOnly bool) (template.HTML, int) {
 	if q == "" {
 		return template.HTML(html.EscapeString(yamlStr)), 0
 	}
-	needle := strings.ToLower(q)
 	qlen := len(q)
 	matches := 0
 	var b strings.Builder
 	b.Grow(len(yamlStr) + 64)
 	lines := strings.Split(yamlStr, "\n")
 	for i, line := range lines {
-		lower := strings.ToLower(line)
-		idx := strings.Index(lower, needle)
+		idx := foldIndex(line, q)
 		if idx < 0 {
 			if !linesOnly {
 				b.WriteString(html.EscapeString(line))
@@ -51,7 +49,7 @@ func highlightYAML(yamlStr, q string, linesOnly bool) (template.HTML, int) {
 			if cursor >= len(line) {
 				break
 			}
-			rel := strings.Index(strings.ToLower(line[cursor:]), needle)
+			rel := foldIndex(line[cursor:], q)
 			if rel < 0 {
 				break
 			}
@@ -66,4 +64,37 @@ func highlightYAML(yamlStr, q string, linesOnly bool) (template.HTML, int) {
 		}
 	}
 	return template.HTML(b.String()), matches
+}
+
+// foldIndex is a case-insensitive strings.Index whose returned offset is valid
+// in the ORIGINAL s. It searches the raw bytes rather than indexing a
+// strings.ToLower copy, because ToLower is not length-preserving (e.g.
+// 'Ⱥ' U+023A → 'ⱥ' U+2C65 grows 2→3 bytes): an offset taken from a lowercased
+// copy can mis-align or run past the end of s and panic a later s[i:j] slice.
+// sub is matched ASCII-case-insensitively (the YAML query); a match is exactly
+// len(sub) bytes of s, so callers can slice s[idx:idx+len(sub)] safely.
+func foldIndex(s, sub string) int {
+	n := len(sub)
+	if n == 0 {
+		return 0
+	}
+	lower := func(c byte) byte {
+		if c >= 'A' && c <= 'Z' {
+			return c + ('a' - 'A')
+		}
+		return c
+	}
+	for i := 0; i+n <= len(s); i++ {
+		ok := true
+		for j := 0; j < n; j++ {
+			if lower(s[i+j]) != lower(sub[j]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return i
+		}
+	}
+	return -1
 }

@@ -126,7 +126,10 @@ func (s *sipUDP) Handle(_ context.Context, payload []byte, src net.Addr, pc net.
 // sipAuthUser extracts the username from a SIP Digest Authorization header
 // (username="alice"); "" if not present.
 func sipAuthUser(auth string) string {
-	i := strings.Index(strings.ToLower(auth), "username=")
+	// Length-preserving case-insensitive search (asciiIndexFold): indexing a
+	// strings.ToLower copy and slicing the original auth can panic, because
+	// ToLower is not length-preserving.
+	i := asciiIndexFold(auth, "username=")
 	if i < 0 {
 		return ""
 	}

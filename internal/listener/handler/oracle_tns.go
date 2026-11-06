@@ -213,7 +213,11 @@ func extractTNSDescriptor(body []byte) string {
 // tnsField pulls "(KEY=value)" out of a connect descriptor.
 func tnsField(desc, key string) string {
 	marker := "(" + key + "="
-	i := strings.Index(strings.ToUpper(desc), marker)
+	// Case-insensitive search over the original bytes (asciiIndexFold), not an
+	// index into a strings.ToUpper copy: ToUpper is not length-preserving, so an
+	// index from the folded copy can point past the end of desc and panic the
+	// desc[i+len(marker):] slice.
+	i := asciiIndexFold(desc, marker)
 	if i < 0 {
 		return ""
 	}
