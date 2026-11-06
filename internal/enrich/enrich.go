@@ -383,8 +383,26 @@ func (e *Enricher) Decorate(ev *event.Event) {
 		}
 	}
 	if e.rdns != nil {
-		if name := e.rdns.lookup(ev.Source.IP); name != "" {
+		if name, verified := e.rdns.lookupFull(ev.Source.IP); name != "" {
 			ev.Meta["rdns"] = name
+			// Forward-confirmed reverse DNS: a PTR that claims a well-known
+			// crawler/cloud operator (googlebot.com, search.msn.com, …) is
+			// confirmed by a forward lookup. A claim that doesn't confirm is a
+			// spoofed PTR — a high-signal evasion marker (posing as Googlebot to
+			// dodge blocks), surfaced as spoofed_ptr / spoofed_crawler.
+			switch verified {
+			case 1:
+				ev.Meta["rdns_verified"] = true
+				if c := crawlerClaim(name); c != "" {
+					ev.Meta["verified_crawler"] = c
+				}
+			case -1:
+				ev.Meta["rdns_verified"] = false
+				ev.Meta["spoofed_ptr"] = true
+				if c := crawlerClaim(name); c != "" {
+					ev.Meta["spoofed_crawler"] = c
+				}
+			}
 		}
 	}
 	// Known network-scanner infrastructure (Censys / Shodan / BinaryEdge /
@@ -427,6 +445,46 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	e.decorateFingerprints(ev)
 	e.decorateFleetIntel(ev)
 	e.decorateExternalIntel(ev)
+	// Runs last: it reads the reputation meta the steps above set.
+	decorateReputationConfidence(ev)
+}
+
+// decorateReputationConfidence counts how many INDEPENDENT reputation signals
+// flagged the source — operator threat-lists (each matched label), the external
+// feed overlay, and the downward fleet overlay (each reason) — and records
+// threat_intel_count plus a coarse threat_confidence (low/medium/high).
+//
+// Several independent feeds agreeing is a far stronger signal than any single
+// list (the premise of aggregated feeds like IPsum), so this gives the operator
+// and the risk scorer a corroboration score to prioritize on. Research scanners
+// and Tor exits are deliberately NOT counted — they're context, not a verdict
+// of maliciousness.
+func decorateReputationConfidence(ev *event.Event) {
+	if ev == nil || len(ev.Meta) == 0 {
+		return
+	}
+	n := 0
+	if hits, ok := ev.Meta["threat_intel"].([]string); ok {
+		n += len(hits)
+	}
+	if reasons, ok := ev.Meta["fleet_intel"].([]string); ok {
+		n += len(reasons)
+	}
+	if _, ok := ev.Meta["external_intel"]; ok {
+		n++
+	}
+	if n == 0 {
+		return
+	}
+	ev.Meta["threat_intel_count"] = n
+	switch {
+	case n >= 3:
+		ev.Meta["threat_confidence"] = "high"
+	case n == 2:
+		ev.Meta["threat_confidence"] = "medium"
+	default:
+		ev.Meta["threat_confidence"] = "low"
+	}
 }
 
 // decorateExternalIntel tags an event whose source IP appears in an external
@@ -585,11 +643,19 @@ type rdnsCache struct {
 	// lookupAddr performs the PTR query; a seam so tests can resolve without
 	// real DNS. Defaults to the Go resolver.
 	lookupAddr func(ctx context.Context, ip string) ([]string, error)
+	// lookupHost forward-resolves a hostname to IPs for FCrDNS crawler
+	// verification; a seam so tests resolve without real DNS. Defaults to the
+	// Go resolver.
+	lookupHost func(ctx context.Context, host string) ([]string, error)
 }
 
 type rdnsEntry struct {
 	name      string
 	expiresAt time.Time
+	// verified records forward-confirmed reverse DNS for PTR names that claim a
+	// well-known crawler/cloud operator: 0 = not applicable (no crawler claim),
+	// 1 = forward-confirmed, -1 = claim failed confirmation (spoofed PTR).
+	verified int8
 }
 
 func newRDNSCache(size int, timeout time.Duration) *rdnsCache {
@@ -600,15 +666,27 @@ func newRDNSCache(size int, timeout time.Duration) *rdnsCache {
 		m:          map[string]rdnsEntry{},
 		pending:    map[string]struct{}{},
 		lookupAddr: (&net.Resolver{PreferGo: true}).LookupAddr,
+		lookupHost: (&net.Resolver{PreferGo: true}).LookupHost,
 	}
 }
 
+// lookup returns the cached PTR name (or "" on a miss / no PTR), kicking off an
+// async resolve on a miss. It is the name-only convenience wrapper over
+// lookupFull.
 func (c *rdnsCache) lookup(ip string) string {
+	name, _ := c.lookupFull(ip)
+	return name
+}
+
+// lookupFull returns the cached PTR name and its FCrDNS verdict (see
+// rdnsEntry.verified). A miss returns ("", 0) immediately and triggers an async
+// resolve; a later sighting of the same IP picks up the resolved name/verdict.
+func (c *rdnsCache) lookupFull(ip string) (string, int8) {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.m[ip]; ok && e.expiresAt.After(now) {
-		return e.name // hit (name may be "" = resolved, no PTR)
+		return e.name, e.verified // hit (name may be "" = resolved, no PTR)
 	}
 	// Miss: never block the caller. Trigger one async resolve per IP, subject to
 	// the in-flight cap; otherwise skip and let a later sighting retry.
@@ -621,12 +699,13 @@ func (c *rdnsCache) lookup(ip string) string {
 			// at the concurrency cap — drop; a later event for this IP retries.
 		}
 	}
-	return ""
+	return "", 0
 }
 
 // resolve performs the blocking PTR lookup off the bus loop and caches the
-// result (positive or negative). Runs in its own goroutine; releases its
-// in-flight slot on return.
+// result (positive or negative). When the PTR claims a well-known crawler/cloud
+// operator it is forward-confirmed (FCrDNS) so a spoofed PTR can be flagged.
+// Runs in its own goroutine; releases its in-flight slot on return.
 func (c *rdnsCache) resolve(ip string) {
 	defer func() {
 		c.mu.Lock()
@@ -637,13 +716,38 @@ func (c *rdnsCache) resolve(ip string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 	var name string
+	var verified int8
 	if names, err := c.lookupAddr(ctx, ip); err == nil && len(names) > 0 {
 		name = strings.TrimSuffix(names[0], ".")
+		if crawlerClaim(name) != "" {
+			verified = c.confirmForward(ctx, ip, name)
+		}
 	}
-	c.store(ip, name)
+	c.store(ip, name, verified)
 }
 
-func (c *rdnsCache) store(ip, name string) {
+// confirmForward implements forward-confirmed reverse DNS: it forward-resolves
+// the PTR name and returns 1 when the result contains the original IP, or -1
+// when it does not (a PTR that claims a crawler but can't be confirmed — a
+// spoofed record). Only called for crawler-claiming PTR names.
+func (c *rdnsCache) confirmForward(ctx context.Context, ip, name string) int8 {
+	want, err := netip.ParseAddr(ip)
+	if err != nil {
+		return 0
+	}
+	hosts, err := c.lookupHost(ctx, name)
+	if err != nil || len(hosts) == 0 {
+		return -1 // claims a crawler but has no (resolvable) forward record
+	}
+	for _, h := range hosts {
+		if a, e := netip.ParseAddr(strings.TrimSpace(h)); e == nil && a == want {
+			return 1
+		}
+	}
+	return -1
+}
+
+func (c *rdnsCache) store(ip, name string, verified int8) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.m[ip]; !ok {
@@ -654,5 +758,36 @@ func (c *rdnsCache) store(ip, name string) {
 			delete(c.m, oldest)
 		}
 	}
-	c.m[ip] = rdnsEntry{name: name, expiresAt: time.Now().Add(15 * time.Minute)}
+	c.m[ip] = rdnsEntry{name: name, verified: verified, expiresAt: time.Now().Add(15 * time.Minute)}
+}
+
+// crawlerClaims maps a well-known crawler/cloud PTR suffix to the operator it
+// implies. Attackers routinely set a fake PTR such as "crawl-x.googlebot.com"
+// to masquerade as a trusted crawler and dodge rate limits / blocks; the
+// FCrDNS check (confirmForward) catches the ones that don't forward-confirm.
+var crawlerClaims = []struct{ suffix, name string }{
+	{".googlebot.com", "googlebot"},
+	{".google.com", "google"},
+	{".search.msn.com", "bingbot"},
+	{".crawl.baidu.com", "baidu"},
+	{".crawl.baidu.jp", "baidu"},
+	{".yandex.com", "yandex"},
+	{".yandex.ru", "yandex"},
+	{".yandex.net", "yandex"},
+	{".crawl.yahoo.net", "yahoo"},
+	{".applebot.apple.com", "applebot"},
+	{".ahrefs.com", "ahrefs"},
+	{".semrush.com", "semrush"},
+}
+
+// crawlerClaim returns the crawler/cloud operator a PTR name claims to belong
+// to (by DNS suffix), or "" when it claims none.
+func crawlerClaim(ptr string) string {
+	p := strings.ToLower(strings.TrimSuffix(ptr, "."))
+	for _, c := range crawlerClaims {
+		if strings.HasSuffix(p, c.suffix) {
+			return c.name
+		}
+	}
+	return ""
 }
