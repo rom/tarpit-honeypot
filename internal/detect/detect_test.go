@@ -127,3 +127,84 @@ func TestEngineStatsHitCounts(t *testing.T) {
 		t.Errorf("stat metadata not populated: %+v", stats[0])
 	}
 }
+
+// The shipped configs/rules/ packs all compile cleanly (this is what an
+// operator copies into their rules_dir, and what validate-config loads).
+func TestShippedRulesCompile(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("shipped rules failed to load: %v", errs)
+	}
+	if eng.Count() == 0 {
+		t.Fatal("shipped rules dir loaded zero rules")
+	}
+}
+
+// The enrichment-reputation pack fires on the v1.2 enrichment labels.
+func TestEnrichmentRulesFire(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("load: %v", errs)
+	}
+	fires := func(meta map[string]any, wantID string, wantSev event.Severity) {
+		t.Helper()
+		ev := &event.Event{Handler: "http", Severity: event.SeverityLow, Meta: meta}
+		m := eng.Apply(ev)
+		if !has(m, wantID) {
+			t.Errorf("meta %v: matched %v; want %q among them", meta, m, wantID)
+		}
+		if wantSev != 0 && ev.Severity < wantSev {
+			t.Errorf("meta %v: severity %v; want >= %v", meta, ev.Severity, wantSev)
+		}
+	}
+	fires(map[string]any{"spoofed_ptr": true}, "enrich-spoofed-crawler-ptr", event.SeverityHigh)
+	fires(map[string]any{"threat_confidence": "high"}, "enrich-high-threat-confidence", event.SeverityHigh)
+	fires(map[string]any{"anonymized": true}, "enrich-anonymized-source", event.SeverityMedium)
+	fires(map[string]any{"asn_reputation": []string{"spamhaus-asndrop"}}, "enrich-bulletproof-asn", event.SeverityMedium)
+	fires(map[string]any{"asn_geo_mismatch": true}, "enrich-asn-geo-mismatch", event.SeverityMedium)
+	fires(map[string]any{"geo_risk": true}, "enrich-high-risk-geo", 0)
+	fires(map[string]any{"cred_class": "default"}, "enrich-default-or-breached-credentials", event.SeverityHigh)
+	fires(map[string]any{"cred_class": "breach"}, "enrich-default-or-breached-credentials", event.SeverityHigh)
+	fires(map[string]any{"dns_dga": true}, "enrich-dga-domain", event.SeverityMedium)
+	fires(map[string]any{"domain_bad": true}, "enrich-malicious-domain", event.SeverityHigh)
+	// Combination rules reach critical.
+	fires(map[string]any{"spoofed_ptr": true, "threat_intel_hit": true}, "enrich-spoofing-and-blacklisted", event.SeverityCritical)
+	fires(map[string]any{"anonymized": true, "threat_confidence": "high"}, "enrich-anonymized-high-confidence", event.SeverityCritical)
+
+	// A benign event trips none of the enrichment rules.
+	benign := &event.Event{Handler: "http", Severity: event.SeverityLow, Meta: map[string]any{"geo_country": "US"}}
+	for _, id := range eng.Apply(benign) {
+		if len(id) >= 7 && id[:7] == "enrich-" {
+			t.Errorf("benign event matched enrichment rule %q", id)
+		}
+	}
+}
+
+// The named OT-malware pack recognizes family TTPs from the OT handlers'
+// anomaly markers (handler + anomaly, so it fires on protocol-legal control
+// actions, not an exploit string).
+func TestOTMalwareRulesFire(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("load: %v", errs)
+	}
+	fires := func(handler string, anoms []string, meta map[string]any, wantID string) {
+		t.Helper()
+		ev := &event.Event{Handler: handler, Severity: event.SeverityLow, Anomalies: anoms, Meta: meta}
+		if m := eng.Apply(ev); !has(m, wantID) {
+			t.Errorf("handler=%s anomalies=%v: matched %v; want %q", handler, anoms, m, wantID)
+		}
+	}
+	fires("modbus", []string{"ics-plc-write"}, nil, "ot-malware-frostygoop")
+	fires("iec104", []string{"ics-iec104-command"}, nil, "ot-malware-industroyer")
+	fires("tristation", []string{"ics-safety-controller-manipulation"}, nil, "ot-malware-triton")
+	fires("codesys", []string{"ics-plc-program-access"}, nil, "ot-malware-pipedream")
+	fires("s7", []string{"ics-plc-mode-change"}, nil, "ot-malware-stuxnet")
+	fires("opcua", []string{"ics-opcua-open-channel"}, nil, "ot-malware-havex")
+
+	// A plain Modbus read (no write marker) must NOT trip FrostyGoop.
+	ev := &event.Event{Handler: "modbus", Anomalies: []string{"ics-process-data-access"}}
+	if has(eng.Apply(ev), "ot-malware-frostygoop") {
+		t.Error("a Modbus read wrongly matched the FrostyGoop rule")
+	}
+}

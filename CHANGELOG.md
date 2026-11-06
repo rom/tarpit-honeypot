@@ -10,6 +10,55 @@ documented in `docs/`).
 
 ### Added
 
+- **DDoS backscatter detection.** When one of our addresses is spoofed as the
+  *source* of a flood, the victims and routers send their replies to us. The
+  passive sniffer now flags `sniffer:ddos_backscatter` (ATT&CK T1498) when many
+  **distinct** sources send unsolicited reply-shaped packets in the window —
+  TCP SYN-ACK / RST and ICMP dest-unreachable / time-exceeded (IPv4 + IPv6).
+  The distinct-source diversity is what distinguishes backscatter from our own
+  single-source replies. On honeynets the userspace TCP stack emits
+  `honeynet:ddos_backscatter` for an unsolicited SYN-ACK to a virtual host
+  (it never initiates), recorded but never RST-ed so we don't feed the victim.
+- **Fake C2 team-server emulation (`c2_emulator`).** A decoy command-and-control
+  HTTP listener that recognizes the beacon/stager check-in *shape* of several
+  red-team frameworks and answers like the real team server so a misconfigured
+  or sandboxed implant — or an operator/scanner hunting an open panel — keeps
+  talking and is captured: **Cobalt Strike** (checksum8 stager + default
+  malleable-profile URIs + beacon Cookie), **Metasploit/Meterpreter** (checksum-
+  coded stager URI), **Empire** / **PoshC2** (default listener URIs/cookies), and
+  **Mythic/Havoc** profile headers, with a User-Agent fallback against the
+  `toolfp` C2 corpus (40+ families). Flags `c2-beacon-checkin` / `c2-stager` /
+  `c2-server-probe` (ATT&CK T1071.001 / T1219 / T1105 / T1595), captures the
+  encrypted beacon metadata, and never runs tasking.
+- **Four new protocol handlers.** `irc` (6667 — botnet C2 rendezvous: captures
+  NICK/USER/PASS + channel joins and recognizes the **UnrealIRCd 3.2.8.1
+  backdoor**, CVE-2010-2075, via the `AB;` trigger), `finger` (79 — account
+  enumeration, incl. the `user@host` forwarding/relay vector), `stomp` (61613 —
+  ActiveMQ/RabbitMQ message broker: CONNECT credential capture + destination
+  enumeration), and `mbus` (M-Bus / EN 13757 utility sub-metering over a TCP
+  gateway: SND_NKE/REQ_UD2/SND_UD recognition with ATT&CK-for-ICS markers and a
+  believable RSP_UD meter record). → **190 TCP + 118 UDP handlers**.
+- **More CVEs + ATT&CK labels.** Famous backdoor/RCE records tied to the new and
+  existing handlers: `CVE-2010-2075` (UnrealIRCd backdoor — detectable),
+  `CVE-2007-2447` (Samba `username map script` RCE), and `CVE-2020-1938`
+  (Apache Tomcat AJP **Ghostcat**), each ATT&CK-tagged (T1190) with CWE/CPE/EPSS.
+- **BACnet Secure Connect (BACnet/SC) handler** (`bacnet_sc` / TLS-fronted
+  `bacnet_scs`). The WebSocket+TLS data link from ASHRAE 135-2020 Annex AB that
+  is replacing legacy BACnet/IP in building automation. Completes the WebSocket
+  handshake, recognizes the `hub.bsc.bacnet.org` / `dc.bsc.bacnet.org`
+  subprotocol and the BVLC-SC framing, parses the Connect-Request (node VMAC +
+  device UUID) and replies Connect-Accept, answers Heartbeat-Requests, and flags
+  `ics-bacnet-sc-connect` (T0846) + `ics-plc-write` on an encapsulated
+  WriteProperty.
+- **MQTT Sparkplug B (IIoT) payload recognition** on the existing `mqtt`
+  handler. Parses the `spBv1.0/` namespace on Will / SUBSCRIBE / PUBLISH topics
+  into group / message-type / edge-node / device, and flags NCMD/DCMD edge-node
+  commands as OT control writes (`ics-sparkplug-command` + `ics-plc-write`).
+- **Named OT-malware behavior-recognition rule pack**
+  (`configs/rules/ot-malware.yml`): TTP-level recognition of FrostyGoop,
+  Industroyer/Industroyer2, TRITON/TRISIS, PIPEDREAM/INCONTROLLER, Stuxnet, and
+  Havex/Dragonfly from the OT handlers' anomaly markers (hedged "behavior
+  consistent with …" — a honeypot recognizes the pattern, not the binary).
 - **A big enrichment / recognition expansion (source-IP decoration).** New event
   meta, all additive and hot-reloadable:
   - **Derived, no new data:** `src_net` (/24,/48 subnet aggregation key),
@@ -33,6 +82,50 @@ documented in `docs/`).
   proxies, Spamhaus ASN-DROP, SecLists breached-passwords); the domain blocklist
   and ASN-info file are operator-supplied (no clean no-auth default). See the
   README's **Enrichment** section for the full key list.
+- **A shipped detection-rule pack for the new enrichment labels**
+  (`configs/rules/enrichment-reputation.yml`, 11 rules): spoofed-crawler PTR,
+  high cross-feed `threat_confidence`, anonymizer (Tor/VPN/proxy), ASN-DROP /
+  bulletproof ASN, ASN↔geo mismatch, high-risk geo, default/breached
+  credentials, DGA + known-malicious domains, and two corroborated combos
+  (spoofing-and-blacklisted, anonymized-and-high-confidence) that reach
+  critical. A new test loads every shipped pack and asserts the enrichment rules
+  fire. Documented in `docs/detection-rules.md`.
+- **Offline / air-gapped CISA KEV injects.** New top-level `kev.file` loads the
+  KEV catalog from a local JSON file instead of fetching over the network: set
+  it alone for a pure-offline sensor (no HTTP poller starts) or alongside
+  `kev.url` to also refresh live; reloaded on `SIGHUP`. `scripts/fetch-kev.sh`
+  downloads the catalog into an enrichment-bundle layout (portable curl/wget,
+  optional `--ics` jq filter for ICS/OT entries, `--install` to resolve
+  `kev.file` via `list-paths` and reload in one shot), and
+  `install-enrichment.sh` / `list-paths` learn the `kev.file` destination so the
+  catalog rides along in a normal enrichment bundle. Documented in
+  `docs/usage.md` §2c and the README's **CISA KEV overlay**.
+- **Composite `meta:*` recognition labels (cross-relation / meta-level
+  analysis).** The recognition rollup now emits higher-order labels that
+  cross-relate two or more independent enrichment signals — `meta:deceptive-origin`
+  (spoofed crawler PTR / ASN↔geo mismatch / residential-PTR-on-hosting),
+  `meta:corroborated-threat` (≥2 reputation signals agree), `meta:targeted-recon`
+  + `meta:ot-recon` (ICS/OT, database or remote-access targets probed from hidden
+  or rented infra), and `meta:credential-foothold` (weak/default/breached login
+  against remote-access / cloud-devops). Carried on `labels[]` to every sink and
+  rendered as ⚑ glyph badges in the web UI; documented on `/coverage`.
+- **`/coverage` web infopage — the active decoy surface at a glance.** A live
+  capability snapshot: headline counters (handlers, CVE catalog split into
+  live-detectable vs advisory, KEV overlay, detection rules, ATT&CK techniques,
+  archetypes), the CISA KEV overlay status (incl. how many modeled CVEs are
+  KEV-listed right now), an **emulated-services × exploit-recognition** table
+  (per-service detectable/advisory + live KEV counts + highest-severity
+  example), and the recognition/enrichment **label catalog** (glyph badges +
+  meaning). Follows the `/rules` provider pattern so the `ui` package stays
+  decoupled from `internal/cve`/`internal/detect`; operator-toggleable via
+  `ui.pages`. Documented in `docs/webui.md`.
+- **More real, in-the-wild CVEs in relevant protocols.** Verified CISA-KEV
+  records broadening the recent exploitation wave: `CVE-2021-26828` (OpenPLC
+  ScadaBR file-upload RCE — SCADA/HMI, detectable via `view_edit.shtm`),
+  `CVE-2024-53704` (SonicWall SonicOS SSLVPN auth bypass, Akira), `CVE-2025-0111`
+  (PAN-OS authenticated file read, chained with the modeled CVE-2025-0108), and
+  `CVE-2024-9140` (Moxa cellular/secure-router OS command injection). Recency
+  beyond the compile-time catalog comes from the live KEV overlay + `kev-gap`.
 
 ### Fixed
 

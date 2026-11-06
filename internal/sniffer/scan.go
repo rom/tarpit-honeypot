@@ -570,6 +570,130 @@ func (r *rateLimiter) allow(key string, now time.Time) bool {
 	return true
 }
 
+// --- DDoS backscatter ------------------------------------------------------
+//
+// When an attacker spoofs one of our addresses as the *source* of a flood, the
+// victims and the routers in between send their replies to us: unsolicited
+// TCP SYN-ACKs (the victim answering a SYN it thinks we sent), RSTs, and ICMP
+// error messages. A server never legitimately receives a SYN-ACK, and our own
+// outbound replies all carry a single source address — so the tell-tale of
+// backscatter is *many distinct remote sources* sending reply-shaped packets
+// in a short window. That diversity, not any single packet, is what we flag.
+
+// backscatterKind labels an unsolicited reply-shaped packet.
+type backscatterKind string
+
+const (
+	bsSynAck      backscatterKind = "tcp-syn-ack"
+	bsRst         backscatterKind = "tcp-rst"
+	bsICMPUnreach backscatterKind = "icmp-unreachable"
+	bsICMPTimeEx  backscatterKind = "icmp-ttl-exceeded"
+)
+
+// backscatterTCP returns the backscatter kind for a TCP flag byte, or "".
+// SYN+ACK (a server never receives this unsolicited) and RST/RST+ACK are the
+// reply shapes; a bare SYN or ACK is ordinary scan/connection traffic and is
+// left to classifyTCP.
+func backscatterTCP(flags byte) backscatterKind {
+	f := flags & 0x3f
+	switch {
+	case f == flagSYN|flagACK:
+		return bsSynAck
+	case f&flagRST != 0 && f&flagSYN == 0:
+		return bsRst
+	}
+	return ""
+}
+
+// backscatterICMP maps an ICMP(v6) type byte to a backscatter kind, or "".
+func backscatterICMP(icmpType byte, v6 bool) backscatterKind {
+	if v6 {
+		switch icmpType {
+		case 1: // ICMPv6 destination unreachable
+			return bsICMPUnreach
+		case 3: // ICMPv6 time exceeded
+			return bsICMPTimeEx
+		}
+		return ""
+	}
+	switch icmpType {
+	case 3: // ICMPv4 destination unreachable
+		return bsICMPUnreach
+	case 11: // ICMPv4 time exceeded
+		return bsICMPTimeEx
+	}
+	return ""
+}
+
+// backscatterTracker counts distinct source IPs per backscatter kind in a
+// sliding window and fires once per (kind) per window at the threshold. It is
+// the same dedup discipline as scanTracker, but keyed by distinct *sources*
+// (the diversity that distinguishes a spoofed-source DDoS from our own
+// single-source replies) rather than distinct ports.
+type backscatterTracker struct {
+	window time.Duration
+	thresh int
+
+	mu sync.Mutex
+	st map[backscatterKind]*bsState
+}
+
+type bsState struct {
+	since     time.Time
+	sources   map[string]struct{}
+	lastFired time.Time
+}
+
+func newBackscatterTracker(window time.Duration, thresh int) *backscatterTracker {
+	if window <= 0 {
+		window = 30 * time.Second
+	}
+	if thresh <= 0 {
+		thresh = 16
+	}
+	return &backscatterTracker{window: window, thresh: thresh, st: map[backscatterKind]*bsState{}}
+}
+
+const backscatterMaxSources = 65536 // bound the per-kind source set
+
+// observe records one reply packet and reports (distinctSources, fire). fire is
+// true once per kind per window, when the distinct-source count first reaches
+// the threshold.
+func (t *backscatterTracker) observe(kind backscatterKind, src string, now time.Time) (int, bool) {
+	if kind == "" {
+		return 0, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	st := t.st[kind]
+	if st == nil || now.Sub(st.since) > t.window {
+		st = &bsState{since: now, sources: map[string]struct{}{}}
+		t.st[kind] = st
+	}
+	if len(st.sources) < backscatterMaxSources {
+		st.sources[src] = struct{}{}
+	}
+	n := len(st.sources)
+	if n < t.thresh {
+		return n, false
+	}
+	if !st.lastFired.IsZero() && now.Sub(st.lastFired) < t.window {
+		return n, false
+	}
+	st.lastFired = now
+	return n, true
+}
+
+func (t *backscatterTracker) gc(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k, st := range t.st {
+		if now.Sub(st.since) > t.window && now.Sub(st.lastFired) > t.window {
+			delete(t.st, k)
+		}
+	}
+}
+
 // gooseInfo is the fingerprint extracted from one IEC 61850 GOOSE frame.
 type gooseInfo struct {
 	srcMAC    string

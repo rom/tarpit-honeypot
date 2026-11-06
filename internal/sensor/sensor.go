@@ -1040,6 +1040,21 @@ func (s *Sensor) startKEVSync(parent context.Context, cfg config.KEV) {
 		store = kevsync.NewStore()
 		s.kevStore.Store(store)
 	}
+	// Offline / air-gapped: load a local KEV JSON file (installed by
+	// scripts/fetch-kev.sh). Reloaded on each call (SIGHUP picks up a new file).
+	if cfg.File != "" {
+		if n, ver, err := store.LoadFile(cfg.File); err != nil {
+			slog.Warn("kev sync: local file load failed", "path", cfg.File, "err", err)
+		} else {
+			slog.Info("CISA KEV loaded from file", "path", cfg.File, "entries", n, "version", ver)
+		}
+	}
+	// Start the live HTTP poller unless this is a pure-offline setup (a file is
+	// configured and no explicit URL). Otherwise poll (URL set, or the default
+	// feed when no file is given).
+	if cfg.File != "" && cfg.URL == "" {
+		return
+	}
 	ctx, cancel := context.WithCancel(parent)
 	s.kevCancel = cancel
 	p := kevsync.NewPuller(cfg.URL, cfg.Header, cfg.Poll, egress.HTTPClient(20*time.Second), store)
@@ -2124,6 +2139,24 @@ func (s *Sensor) KEVStats() (active bool, entries int, updated time.Time) {
 		return false, 0, time.Time{}
 	}
 	return true, st.Count(), st.UpdatedAt()
+}
+
+// KEVModeled counts how many of the given CVE ids are present in the live KEV
+// overlay — i.e. modeled CVEs that are actively exploited right now. Returns 0
+// when the overlay is disabled. Callers (e.g. the /coverage page) pass the
+// compile-time catalog's ids so the sensor need not import internal/cve.
+func (s *Sensor) KEVModeled(ids []string) int {
+	st := s.kevStore.Load()
+	if st == nil {
+		return 0
+	}
+	n := 0
+	for _, id := range ids {
+		if st.Contains(id) {
+			n++
+		}
+	}
+	return n
 }
 
 // effIface returns sectionIface if set, else the sensor's first configured

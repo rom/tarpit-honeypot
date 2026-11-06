@@ -74,6 +74,7 @@ type Server struct {
 	hosts         HostsProvider
 	hostsSummary  HostsSummaryProvider
 	rules         RulesProvider
+	coverage      CoverageProvider
 	deviceActions DeviceActions
 	dataDir       string
 	configPaths   []string   // config file path(s), for the /config "files in use" panel
@@ -487,7 +488,37 @@ func sourceBadges(meta map[string]any) template.HTML {
 	if m, _ := meta["asn_geo_mismatch"].(bool); m {
 		add("warn", "🧭 asn/geo", "ASN registered country differs from the GeoIP country", "")
 	}
+	// Composite "meta:*" recognition signals (computed once in internal/enrich
+	// and carried on labels[]): cross-relations of ≥2 signals, rendered with a
+	// pennant so a corroborated/deceptive/targeted source stands out.
+	if labels := metaStrings(meta, "labels"); len(labels) > 0 {
+		for _, l := range labels {
+			name, ok := strings.CutPrefix(l, "meta:")
+			if !ok {
+				continue
+			}
+			add("bad", "⚑ "+name, metaSignalTitle(name), "")
+		}
+	}
 	return template.HTML(b.String())
+}
+
+// metaSignalTitle gives the hover text for a composite meta:* recognition
+// label; falls back to the raw name for any future signal.
+func metaSignalTitle(name string) string {
+	switch name {
+	case "deceptive-origin":
+		return "deceptive origin: spoofed crawler PTR, ASN↔geo mismatch, or residential PTR on a hosting net"
+	case "corroborated-threat":
+		return "corroborated threat: two or more independent reputation signals agree"
+	case "targeted-recon":
+		return "high-value target (ICS/OT, database, or remote-access) probed from hidden/rented infrastructure"
+	case "ot-recon":
+		return "ICS/OT target probed from hidden/rented infrastructure"
+	case "credential-foothold":
+		return "weak/default/breached login against a remote-access or cloud/devops target"
+	}
+	return "composite recognition signal: " + name
 }
 
 // handlerLink renders a protocol-handler name as a link to the events list
@@ -794,6 +825,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	s.pageRoute(mux, "/web", "web", s.handleWeb)
 	s.pageRoute(mux, "/databases", "databases", s.handleDatabases)
 	s.pageRoute(mux, "/rules", "rules", s.handleRules)
+	s.pageRoute(mux, "/coverage", "coverage", s.handleCoverage)
 	s.pageRoute(mux, "/remote", "remote", s.handleRemote)
 	s.pageRoute(mux, "/mail", "mail", s.handleMail)
 	s.pageRoute(mux, "/ntp", "ntp", s.handleNTPPage)

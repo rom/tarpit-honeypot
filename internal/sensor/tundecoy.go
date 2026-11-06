@@ -183,6 +183,15 @@ func (s *Sensor) tcpDecoyEmitter(netID string) func(tcpstack.Event) {
 				sev = event.SeverityHigh
 				meta["cve"] = "CVE-1999-0016"
 			}
+		case tcpstack.EventBackscatter:
+			rule = "honeynet:ddos_backscatter"
+			sev = event.SeverityMedium
+			anomalies = ev.Markers
+			meta["anomalies"] = ev.Markers
+			meta["backscatter_kind"] = "tcp-syn-ack"
+			meta["intent"] = "DDoS backscatter to a honeynet virtual IP — an unsolicited SYN-ACK means this address was spoofed as a flood source"
+			payloadLen = len(ev.Raw)
+			payloadB64 = base64.StdEncoding.EncodeToString(ev.Raw)
 		default:
 			return
 		}

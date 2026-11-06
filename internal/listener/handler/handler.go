@@ -319,6 +319,20 @@ func Get(name string, deps Deps) (Handler, error) {
 		return newTLSWrap("ldap", "ldaps", deps)
 	case "mqtts":
 		return newTLSWrap("mqtt", "mqtts", deps)
+	case "bacnet_sc":
+		return &bacnetSC{}, nil
+	case "bacnet_scs":
+		return newTLSWrap("bacnet_sc", "bacnet_scs", deps)
+	case "c2_emulator":
+		return &c2Emulator{}, nil
+	case "irc":
+		return &ircH{}, nil
+	case "finger":
+		return &fingerH{}, nil
+	case "stomp":
+		return &stompH{}, nil
+	case "mbus":
+		return &mbusH{}, nil
 	case "ftps":
 		return newTLSWrap("ftp", "ftps", deps)
 	case "mysql":

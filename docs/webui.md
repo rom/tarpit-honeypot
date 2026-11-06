@@ -379,6 +379,19 @@ table + by-service / top-command charts + per-session command transcripts.
 The summary's service board additionally **tints each service card** (with its
 event count) when that service saw any access or attempt in the window.
 
+### coverage (`/coverage`)
+A live **capability snapshot** — what the sensor actively recognizes and
+emulates, independent of traffic: headline counters (tcp+udp handlers, the CVE
+catalog split into live-detectable vs advisory, the CISA KEV overlay, loaded
+detection rules, ATT&CK techniques, OS/device archetypes); the **KEV overlay**
+status (active / entries / last-update, and how many modeled CVEs are KEV-listed
+right now); **emulated services × exploit recognition** (per-service
+detectable/advisory counts, live KEV count, and the highest-severity example,
+each linking to its events); and the **recognition / enrichment label catalog**
+(the glyph badges and what each means). Use it to audit the decoy surface and to
+see at a glance which active-threat CVEs are covered. Operator-toggleable
+(`ui.pages`); hidden when the capability provider isn't wired.
+
 ### health (`/health`)
 Sensor health: uptime, disk usage vs caps, listener/collector status, queue
 drops.

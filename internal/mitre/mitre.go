@@ -105,6 +105,10 @@ var exactRules = map[string]Tag{
 	"sniffer:tcp_maimon_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:udp_scan":        {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:ip_fragmented":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// DDoS backscatter: unsolicited SYN-ACK/RST/ICMP-error replies arriving
+	// from many sources because our address was spoofed as a flood source.
+	"sniffer:ddos_backscatter":  {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
+	"honeynet:ddos_backscatter": {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
 	// Tunnelling / overlay encapsulation observed on the segment (GRE,
 	// IP-in-IP, VXLAN, GENEVE, L2TP, Teredo, …) = protocol tunnelling /
 	// non-application-layer C2 transport.
@@ -248,6 +252,8 @@ var exactRules = map[string]Tag{
 // vulnerability-scanner-target services (http, smb, rdp) map to
 // T1190 (exploit public-facing application).
 var handlerTags = map[string]Tag{
+	// Fake C2 team-server emulator — application-layer command-and-control.
+	"c2_emulator": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
 	// Auth / credential surface.
 	"ssh":             {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
 	"ssh_interactive": {Techniques: []string{"T1110.001", "T1078"}, Tactics: []string{"credential-access", "initial-access"}},
@@ -413,6 +419,11 @@ var anomalyTags = map[string]Tag{
 	"c2-framework": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
 	// Cobalt Strike default checksum8 beacon-staging URI.
 	"cobaltstrike-stager": {Techniques: []string{"T1105", "T1071.001"}, Tactics: []string{"command-and-control"}},
+	// Fake C2 team-server emulator: a recognized beacon check-in / stager
+	// pull, or a probe of the C2 listener endpoint.
+	"c2-beacon-checkin": {Techniques: []string{"T1071.001", "T1219"}, Tactics: []string{"command-and-control"}},
+	"c2-stager":         {Techniques: []string{"T1105", "T1071.001"}, Tactics: []string{"command-and-control"}},
+	"c2-server-probe":   {Techniques: []string{"T1595.002"}, Tactics: []string{"reconnaissance"}},
 	// Siemens SIPROTEC EN100 DoS packet (CVE-2015-5374) + CLDAP Netlogon
 	// buffer-overflow (CVE-2026-41089) — both crash the target service.
 	"siprotec-en100-dos":      {Techniques: []string{"T1499"}, Tactics: []string{"impact"}},

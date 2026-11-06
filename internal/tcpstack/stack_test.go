@@ -250,3 +250,22 @@ func TestDefaultStackRstOnly(t *testing.T) {
 		t.Errorf("flags = %#x; want RST|ACK", rst.Flags)
 	}
 }
+
+func TestBackscatterSynAckRecorded(t *testing.T) {
+	st := testStack(80)
+	// An unsolicited SYN-ACK (the stack never sent a SYN) = DDoS backscatter:
+	// record it, send nothing (no RST that would feed the victim more traffic).
+	res := st.OnPacket(clientPkt(tClient, tHost, 40000, 80, 1000, 1, SYN|ACK, nil, nil))
+	if len(res.Out) != 0 {
+		t.Errorf("backscatter SYN-ACK produced %d packets; want 0 (must not RST)", len(res.Out))
+	}
+	if len(res.Events) != 1 || res.Events[0].Kind != EventBackscatter {
+		t.Fatalf("backscatter event = %+v", res.Events)
+	}
+	if !has(res.Events[0].Markers, "tcp-backscatter-synack") {
+		t.Errorf("missing tcp-backscatter-synack marker: %+v", res.Events[0].Markers)
+	}
+	if st.Stats().Flows != 0 {
+		t.Errorf("backscatter must not create a flow")
+	}
+}

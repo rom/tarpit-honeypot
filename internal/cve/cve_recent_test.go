@@ -157,3 +157,108 @@ func TestThirdWaveAdvisories(t *testing.T) {
 		}
 	}
 }
+
+// TestKEVWaveAdditions locks in the real CISA-KEV / in-the-wild CVEs added to
+// broaden coverage of the recent exploitation wave across relevant protocols.
+func TestKEVWaveAdditions(t *testing.T) {
+	// ScadaBR (SCADA/HMI web UI) is detectable via its exploit endpoint.
+	hits := MatchPayload("http", "POST /ScadaBR/view_edit.shtm HTTP/1.1\r\n\r\n")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2021-26828" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ScadaBR CVE-2021-26828 not matched on view_edit.shtm; got %+v", hits)
+	}
+
+	// Advisory-only edge/OT records: present, correctly serviced, ATT&CK-tagged.
+	adv := map[string]string{
+		"CVE-2024-53704": "https",     // SonicWall SSLVPN auth bypass
+		"CVE-2025-0111":  "http",      // PAN-OS authenticated file read
+		"CVE-2024-9140":  "moxa_mgmt", // Moxa router OS command injection
+	}
+	for id, svc := range adv {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service != svc {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, svc)
+		}
+		if r.Detectable() {
+			t.Errorf("%s should be advisory-only", id)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
+
+// TestClassicBackdoorCVEs locks in the famous backdoor/RCE records tied to the
+// new and existing handlers (ATT&CK-tagged; the UnrealIRCd one is detectable).
+func TestClassicBackdoorCVEs(t *testing.T) {
+	// UnrealIRCd backdoor is detectable via the "AB;" trigger on the irc service.
+	hits := MatchPayload("irc", "AB;/bin/sh -c id")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2010-2075" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("UnrealIRCd backdoor CVE-2010-2075 not matched on irc; got %+v", hits)
+	}
+	svc := map[string]string{
+		"CVE-2010-2075": "irc",
+		"CVE-2007-2447": "smb",
+		"CVE-2020-1938": "ajp13",
+	}
+	for id, want := range svc {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service != want {
+			t.Errorf("%s: Service=%q want %q", id, r.Service, want)
+		}
+		if r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing ATT&CK mapping", id)
+		}
+	}
+}
+
+// TestCoverageGapCVEs locks in the widely-exploited records added to fill
+// protocol-coverage gaps (ATT&CK-tagged; ownCloud graphapi is detectable).
+func TestCoverageGapCVEs(t *testing.T) {
+	// ownCloud graphapi env-disclosure is detectable via its GetPhpInfo path.
+	hits := MatchPayload("http", "GET /apps/graphapi/vendor/microsoft/microsoft-graph/tests/GetPhpInfo.php HTTP/1.1\r\n\r\n")
+	found := false
+	for _, h := range hits {
+		if h.ID == "CVE-2023-49103" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ownCloud CVE-2023-49103 not matched; got %+v", hits)
+	}
+	for _, id := range []string{
+		"CVE-2022-41082", "CVE-2024-1708", "CVE-2023-33246", "CVE-2023-28771",
+		"CVE-2024-23113", "CVE-2023-2868", "CVE-2023-34048", "CVE-2024-37085",
+		"CVE-2023-28461", "CVE-2021-1675", "CVE-2024-27316", "CVE-2022-24706",
+		"CVE-2021-44521", "CVE-2020-10148", "CVE-2023-25690", "CVE-2023-42115",
+		"CVE-2023-43770", "CVE-2022-41352", "CVE-2024-4323", "CVE-2021-44077",
+	} {
+		r, ok := Lookup(id)
+		if !ok {
+			t.Errorf("%s missing from catalog", id)
+			continue
+		}
+		if r.Service == "" || r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s missing Service/ATT&CK", id)
+		}
+	}
+}

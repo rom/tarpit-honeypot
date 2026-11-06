@@ -47,16 +47,17 @@ rationale covering the current implementation.
   capture creds, no deep sessions or outbound call-outs), or `mute`
   (receive-only — no outbound bytes at all). Plus `sensor.no_amplifier_replies`
   to suppress NTP mode 6/7 + reflector replies.
-- **184 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
+- **190 TCP + 118 UDP protocol handlers** (plus L2 GOOSE detection, an L2 PROFINET-DCP responder, and an ICMP responder), including scriptable `lua` and declarative `scripted` handlers for custom services and a generic `auto` catch-all for unmodelled protocols. Run `tarpit-honeypot list-handlers` for the authoritative list, or see [Protocol handlers in detail](#protocol-handlers-in-detail) for what each one captures and replies with.
   - **Generic**: `raw`, `auto` (catch-all: captures + fingerprints any unmodelled protocol, flags `unknown-protocol`), `tls_intercept` (TLS-terminating MITM front: decrypt → inner handler, or decrypt-and-forward to a real backend through the egress allowlist)
-  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `neo4j`, `rethinkdb`, `couchdb`, `influxdb`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `docker_registry`, `cloud_metadata`, `etcd`, `kubernetes_api`, `kubelet`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`
+  - **TCP / IT**: `ssh`, `ssh_interactive`, `http`, `https`, `telnet`, `ftp`, `ftp_files`, `smb`, `vnc`, `smtp_recv`, `rdp`, `winrm`, `dcerpc`, `ldap`, `kerberos`, `postgres`, `mysql`, `mssql`, `oracle_tns`, `redis`, `memcached`, `mongodb`, `elasticsearch`, `neo4j`, `rethinkdb`, `couchdb`, `influxdb`, `pop3`, `imap`, `syslog_tcp`, `rtsp`, `dockerapi`, `docker_registry`, `cloud_metadata`, `etcd`, `kubernetes_api`, `kubelet`, `vault`, `websocket`, `grpc`, `ssrf_canary`, `xmpp`, `amqp`, `ibmmq`, `ipp`, `rsync`, `gopher`, `socks`, `bgp`, `rpcbind`, `nfs`, `pptp`, `irc` (6667 — botnet C2 + the UnrealIRCd 3.2.8.1 backdoor CVE-2010-2075), `finger` (79 — account enumeration), `stomp` (61613 — ActiveMQ/RabbitMQ message broker)
   - **TCP / remote-access + mgmt**: `teamviewer`, `anydesk`, `openvpn`, `citrix_ica`, `vmware_authd`, `x11`, `rlogin`, `nx`, `redfish`, `intel_amt`, `ilo`, `idrac`, `esxi`, `fortinet`, `pulse`, `citrix_gateway`, `horizon`, `moxa_mgmt`, `danfoss_aksm` / `danfoss_aksms` (Danfoss AK-SM 8xxA "StoreView" refrigeration system manager — recognizes the Claroty Team82 `xml.cgi` CVEs, detection only)
   - **TCP / AI + agent infrastructure**: `ollama` (Ollama LLM runtime, 11434), `llm_openai` (OpenAI-compatible inference API — vLLM / LM Studio / LocalAI), `mcp` (Model Context Protocol server honeypot) — each fingerprints the service, captures the attacker's prompt / tool-call, and classifies **prompt-injection / jailbreak / tool-abuse** payloads mapped to **MITRE ATLAS** (AML.T0051 / T0054 / T0057 / T0053)
+  - **TCP / C2 deception**: `c2_emulator` — a fake command-and-control team server that recognizes the HTTP check-in *shape* of **Cobalt Strike** (checksum8 stager + default malleable-profile URIs + beacon Cookie), **Metasploit/Meterpreter** (checksum-coded stager URI), **Empire** and **PoshC2** (default listener URIs/cookies), plus **Mythic/Havoc** profile headers — and falls back to the `toolfp` C2-framework corpus (40+ families, Sliver/Covenant/BruteRatel/Havoc/…) by User-Agent. It answers like the team server so a misconfigured/sandboxed beacon or an operator/scanner hunting an open panel keeps talking, captures the (encrypted) beacon metadata, and flags `c2-beacon-checkin` / `c2-stager` / `c2-server-probe` (ATT&CK **T1071.001 / T1219**). Never a real C2 — no tasking is executed.
   - **TCP / refrigeration + building automation + EV charging**: `danfoss_aksm` (Danfoss AK-SM StoreView), `dixell` (Emerson/Copeland Dixell XWEB supermarket refrigeration), `carel` (CAREL pCOWeb / boss), `trane` (Trane Tracer SC BAS), `resideo` (Resideo/Honeywell), `ocpp` (EV-charging OCPP-J over WebSocket) — fingerprint the controller, capture default-cred logins, and flag setpoint/defrost/schedule writes, firmware pushes and charger reset/remote-transaction actuation
   - **TLS-fronted variants** (decrypt-then-inner): `ollamas`, `llm_openais`, `mcps`, `jupyters`, `minios`, `clickhouses`, `consuls`, `danfoss_aksms` — the AI/LLM, MCP, cloud-native and refrigeration decoys behind a real TLS handshake (JA3/JA4/JA3S captured), for the common case where these are served over HTTPS
   - **TCP / cloud-native + DevOps**: `jupyter` (Jupyter Notebook/Lab 8888 — token-less access + terminal/kernel RCE), `selenium` (Selenium Grid 4444 — node RCE / chromeOptions binary override), `consul` (HashiCorp Consul 8500 — KV enum + health-check-script RCE), `nomad` (HashiCorp Nomad 4646 — raw_exec job RCE), `minio` (MinIO S3 9000 — bucket enum + CVE-2023-28432 creds disclosure), `clickhouse` (ClickHouse HTTP 8123 — SQL over HTTP, file()/url() read/SSRF) — each fingerprints the exposed control plane and flags the hands-on-keyboard RCE / data-theft step
   - **TCP / CPE + IoT device management**: `tr069` (CWMP / TR-064 connection-request on 7547 — Misfortune Cookie + SetNTPServers RCE), `upnp` (UPnP IGD SOAP control + GENA — UPnProxy / CallStranger / Realtek+Huawei RCE), `tr369` (USP agent over the `v1.usp` WebSocket MTP + raw USP Record protobuf) — each stamps an attacker-`intent`, fingerprints the SOAP/USP shape, serves a believable decoy (RomPager 401 / `rootDesc.xml` / WS 101), and maps the abuse to **CVE/CWE + ATT&CK**
-  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `osisoft_pi` (OSIsoft/AVEVA PI Data Archive), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium) — the `mms` handler also detects the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
+  - **TCP / ICS**: `modbus`, `s7`, `s7comm_plus`, `iec104`, `mqtt`, `opcua`, `ethernetip` (CIP), `dnp3`, `melsec` (Mitsubishi), `ads` (Beckhoff TwinCAT), `mms` (IEC 61850), `fins_tcp` (Omron), `roc_plus` (Emerson), `pcom` (Unitronics), `secs_gem` (SEMI), `crimson` (Red Lion), `ge_srtp`, `codesys`, `hartip`, `pcworx`, `proconos` (ProConOS/eCLR runtime), `c37118` (IEEE C37.118 synchrophasor/PMU), `focas` (FANUC CNC), `osdp` (access control), `iccp_secure` (Secure ICCP/TASE.2 over TLS), `osisoft_pi` (OSIsoft/AVEVA PI Data Archive), `atg` (Veeder-Root TLS-350), `fox` (Niagara/Tridium), `bacnet_sc`/`bacnet_scs` (BACnet Secure Connect, WebSocket+TLS), `mbus` (M-Bus / EN 13757 utility sub-metering over a TCP gateway) — the `mqtt` handler also recognizes the **Sparkplug B** IIoT payload convention, and `mms` the **ICCP/TASE.2** profile. Every ICS handler stamps an attacker-`intent` summary and maps recon/control commands to **ATT&CK for ICS** (see [docs/ot.md](docs/ot.md))
   - **TCP / healthcare**: `hl7` (HL7 v2 over MLLP, 2575), `dicom` (PACS imaging / DICOM Upper Layer, 104/11112) — parse the clinical message / association, answer believably, and flag patient-data queries, image retrieval/exfil and injection (enterprise ATT&CK); TLS variants `hl7s`/`dicoms`. Detection only — no PHI is real
   - **TCP / printers + MFD**: `pjl` (HP JetDirect 9100), `ipp` (CUPS 631), `lpd` (LPD 515)
   - **L2 (sniffer / responder)**: `goose` (IEC 61850 GOOSE substation multicast detection); **PROFINET-DCP** responder (EtherType 0x8892) — answers DCP **Identify** (station enumeration) and flags DCP **Set** (NameOfStation/IP reassignment + factory-reset, `honeynet:profinet_dcp_set`, T0836/T0831)
@@ -374,7 +375,7 @@ rationale covering the current implementation.
   `log4shell` → T1190/T1059, `modbus-write-attempt` → ICS T0836/T0831,
   `default-credential-attempt` → T1078.001, …), so a generic handler hit
   still carries precise attribution. CVE exploit-attempt events
-  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (~40
+  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (700+
   entries: Log4Shell, Spring4Shell, ProxyShell, WebLogic, Telerik,
   Confluence, MOVEit, Citrix/Pulse/Ivanti/Fortinet/PAN-OS, Apache
   41773/42013, Cisco IOS-XE 20198, PHP-CGI 4577, TeamCity, GPON/D-Link/
@@ -601,7 +602,7 @@ workaround on the other platforms. Static binaries ship for
 
 | Subsystem | Linux | macOS | Windows | Notes |
 |---|---|---|---|---|
-| All TCP/UDP protocol handlers (184 TCP + 118 UDP) | yes | yes | yes | pure Go |
+| All TCP/UDP protocol handlers (190 TCP + 118 UDP) | yes | yes | yes | pure Go |
 | Archetypes, ATT&CK/D3FEND, storyline, anomaly | yes | yes | yes | pure Go |
 | In-sensor correlators + scan/fuzz/DoS analysis | yes | yes | yes | pure Go |
 | Enrichment (GeoIP/ASN/rDNS/threat-intel/Tor/MAC) | yes | yes | yes | pure Go |
@@ -650,8 +651,8 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
-events to your sinks. Current totals: **184 TCP + 118 UDP protocol handlers**,
-**678 CVE records** (361 live-detectable + 317 advisory), **469 built-in YARA
+events to your sinks. Current totals: **190 TCP + 118 UDP protocol handlers**,
+**743 CVE records** (366 live-detectable + 377 advisory), **469 built-in YARA
 artifact-classification rules**, **230 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
 attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor
@@ -1213,6 +1214,7 @@ command map, the ATT&CK technique table, and the configuration/limitations.
 | `snmp` | 161 | gosnmp-backed SNMPv1/v2c decoder over a **walkable** MIB — real `snmpwalk` / `snmpbulkwalk` traverse it (proper lexicographic GetNext + GetBulk). Captures `version`, `community`, requested OIDs. Answers the system group, `ifNumber` + full `ifTable`, the ip group, and the **`ipNetToMediaTable` (ARP table) synthesized from the honeynet topology** so a walk enumerates the artificial L2/L3 inventory. `snmp.mib_profile` (minimal / host / network / full) selects the exposed subtrees; `snmp.walk_rate_per_min` + `snmp.walk_tarpit` rate-limit / tarpit mass walkers (flagging `snmp-walk-rate-exceeded`). SetRequest is captured + flagged (`snmp-set-attempt`), never applied. Unknown OIDs return Null; SNMPv3 rejected. | ✓ | — |
 | `ntp` | 123 | NTPv4 mode 3 → mode 4 server reply with echoed origin timestamp + plausible reference / receive / transmit timestamps. **Mode 7 (private / monlist) deliberately silent** — refusing to be an amplifier. | — | — |
 | `bacnet` | 47808 | BVLC + NPDU + APDU parser (building automation). Who-Is/Who-Has → I-Am (`bacnet-device-discovery`, T0846); confirmed **ReadProperty** flagged as point enumeration (T0801); **WriteProperty** SimpleACK'd + flagged (T0836/T0831); **DeviceCommunicationControl** (T0814), **ReinitializeDevice** (T0816), **AtomicWriteFile** (T0836/T0831). | — | — |
+| `bacnet_sc` / `bacnet_scs` | 47808 | **BACnet Secure Connect** (ASHRAE 135-2020 Annex AB) — the WebSocket+TLS data link replacing legacy BACnet/IP. Completes the WS handshake, recognizes the `hub.bsc.bacnet.org` / `dc.bsc.bacnet.org` subprotocol and the **BVLC-SC** framing, parses the **Connect-Request** (node VMAC + device UUID) and replies Connect-Accept, answers Heartbeat-Requests, and flags `ics-bacnet-sc-connect` (T0846) + `ics-plc-write` on an encapsulated WriteProperty. `bacnet_scs` is the TLS-fronted real-world form. | ✓ (`bacnet_scs`) | — |
 | `tftp` | 69 | RFC 1350 RRQ/WRQ parser. Captures **filename**, **transfer mode**, and **RFC 2347 options** (blksize, tsize, timeout). Always replies ERROR opcode 5 code 2 (Access violation) — never serves files. | — | — |
 | `ipmi` | 623 | RMCP ASF Presence Ping → Pong reply with IPMI 1.5 + 2.0 supported-entity flag (the classic "is this a BMC" probe). RMCP+ session-open captured but not answered (no real keying material to fake). | — | — |
 | `syslog_udp` | 514 | RFC 3164/5424 datagram parser. Decodes PRI into facility + severity, captures the rest as `message`. | — | — |
@@ -1448,7 +1450,10 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `cve:<id>` — a known-CVE exploit signature appeared in a request
   (e.g. `cve:CVE-2021-44228`). CVSS-scaled severity (>=9.0 → critical);
   meta carries `cve_name`, `cvss`, `description`. Detection only — the
-  service is never actually exploitable.
+  service is never actually exploitable. When the **CISA KEV overlay** is
+  enabled and the id is KEV-listed, the event also carries `kev=true`,
+  `kev_date_added`, and `kev_known_ransomware`, and its severity is lifted
+  to **at least High** (see **CISA KEV overlay** below).
 - `malware:capture` — a binary / script / shellcode / base64 dropper was
   harvested from captured bytes. Meta: `artifacts` (kind:sha256), markers;
   the artifact is persisted to `<data_dir>/payloads/`. Tagged T1105+T1027.
@@ -1496,6 +1501,17 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   payload (ptunnel / icmpsh / Loki). Tagged `T1095` / `T1572`.
 - `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+): a
   root-bridge / topology-manipulation tell. Tagged `T1557`.
+- `sniffer:ddos_backscatter` — **DDoS backscatter**: unsolicited reply packets
+  (TCP **SYN-ACK**, **RST**, ICMP **dest-unreachable** / **time-exceeded**)
+  arriving from **many distinct sources** in the window — the tell-tale that one
+  of our addresses is being spoofed as the *source* of a flood and we're
+  receiving the victims'/routers' replies. Meta: `backscatter_kind`,
+  `distinct_sources`. Tagged `T1498`. (The distinct-source diversity is the
+  signal — our own single-source replies never trip it.)
+- `honeynet:ddos_backscatter` — the same, on a honeynet virtual IP: the
+  userspace TCP stack never initiates, so an inbound **SYN-ACK** to a virtual
+  host is unsolicited backscatter aimed at that spoofed address (recorded, never
+  RST-ed so we don't feed the victim). Tagged `T1498`.
 - `honeynet:tcp_connect` / `tcp_request` / `tcp_malformed` / `tcp_land` —
   the honeynet **userspace TCP stack** (`internal/tcpstack`) over a routed
   TUN: a completed handshake to a virtual host's open port, a captured
@@ -1506,6 +1522,31 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `honeynet:profinet_dcp_identify` — a PROFINET-DCP Identify reached a
   virtual industrial host (ICS recon). Tagged `T0846`.
 - `listener:*:tarpit_start|tarpit_end|tarpit_drop` — tarpit lifecycle.
+
+### CISA KEV overlay — actively-exploited marking & air-gapped injects
+
+The compile-time CVE catalog says *which* exploit a probe maps to; the **CISA
+Known Exploited Vulnerabilities (KEV)** overlay says whether that CVE is being
+**exploited in the wild right now**. With `kev.enabled`, the sensor keeps the
+KEV catalog in memory and, whenever a `cve:<id>` event's id is KEV-listed,
+stamps it `kev=true` + `kev_date_added` + `kev_known_ransomware` and lifts its
+severity to **at least High** — so active-threat probing separates from routine
+scanning without touching the binary. State is exported as
+`tarpit_kev_catalog_entries` and `tarpit_kev_last_update_timestamp_seconds`.
+
+- **Live** — set `kev.enabled: true` and let it refresh on `kev.poll` (default
+  6h); the feed host must be in `egress.allow`.
+- **Offline / air-gapped** — run `scripts/fetch-kev.sh` on an internet-connected
+  box (`--ics` keeps only ICS/OT entries), transfer the JSON, point `kev.file`
+  at it, and `SIGHUP`. A pure-offline sensor (`file` set, `url` empty) starts no
+  poller; set both to also refresh live. `fetch-kev.sh --install` does the
+  resolve-path + reload in one shot on a connected sensor, and
+  `install-enrichment.sh` drops the catalog in from an enrichment bundle.
+- **Gap triage** — `tarpit-honeypot kev-gap` prints the actively-exploited CVEs
+  the catalog does **not** yet model (the shortlist worth adding next);
+  `--covered` flips it.
+
+Full recipe with config snippets: [`docs/usage.md`](docs/usage.md) §2c.
 
 ## Outbound channels
 
@@ -2380,7 +2421,14 @@ plus a compact, sorted `labels[]` tag set carried to **every sink** (so SIEMs
 filter on the same tokens the UI shows). In the web UI those labels render as
 **emoji glyph badges** (🛡 confidence, 🎭 spoofed-PTR, 🕵 anonymizer, ☠ ASN-DROP,
 🏴 geo-risk, 🔑 credential class, 🧬 DGA, …) on the events table, event detail,
-and attacker profile. Config knobs: `sensor.geoip.risk_countries`,
+and attacker profile. The rollup also emits **composite `meta:*` labels**
+(⚑ badges) that cross-relate two or more signals into higher-order triage
+classes no single tag expresses: `meta:deceptive-origin` (spoofed crawler PTR /
+ASN↔geo mismatch / residential-PTR-on-hosting), `meta:corroborated-threat` (≥2
+independent reputation signals agree), `meta:targeted-recon` + `meta:ot-recon`
+(ICS/OT, database or remote-access targets probed from hidden/rented infra), and
+`meta:credential-foothold` (a weak/default/breached login against
+remote-access / cloud-devops). Config knobs: `sensor.geoip.risk_countries`,
 `sensor.anonymizer_ranges`, `sensor.asn_reputation`, `sensor.cred_intel`,
 `sensor.domain_intel`, `sensor.asn_info`; `scripts/fetch-enrichment.sh` ships
 the no-auth feeds (VPN/proxy, ASN-DROP, breached-passwords), and the enrichment

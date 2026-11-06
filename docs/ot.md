@@ -121,6 +121,9 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | Handler | Port | Vendor / standard | Fidelity | Reply | Emulated |
 |---|---|---|---|---|---|
 | `bacnet` | 47808 | BACnet/IP (building automation) | Deep | unicast | Who-Is/Who-Has → I-Am, ReadProperty (point enum), WriteProperty (SimpleACK), DeviceCommunicationControl, ReinitializeDevice, AtomicWriteFile |
+| `bacnet_sc` / `bacnet_scs` | 47808 (WS+TLS) | BACnet Secure Connect (ASHRAE 135-2020 Annex AB) | Deep | WS binary | WebSocket upgrade + `hub.bsc.bacnet.org` / `dc.bsc.bacnet.org` subprotocol; BVLC-SC framing; Connect-Request (node VMAC + device UUID) → Connect-Accept; Heartbeat-Request → Heartbeat-ACK; encapsulated WriteProperty flagged. `bacnet_scs` = TLS-fronted |
+| `mqtt` (Sparkplug B) | 1883 / 8883 | Eclipse Sparkplug B (IIoT over MQTT) | Deep | CONNACK/SUBACK | `spBv1.0/` namespace on Will/SUBSCRIBE/PUBLISH topics parsed into group/msg-type/edge-node/device; NCMD/DCMD (edge-node/device commands) flagged as control writes |
+| `mbus` | 10001 (gateway) | M-Bus / Meter-Bus (EN 13757-2/3) | Deep | ACK / RSP_UD | link-layer framing (short/long frames); SND_NKE (init) → ACK, REQ_UD2 (meter read) → fabricated RSP_UD record, SND_UD (config write) flagged; utility sub-metering (heat/water/gas/electricity) |
 | `fins` | 9600 | Omron FINS/UDP | Deep | rate-limited | CPU/status/cycle/clock read, Memory-Area read/write, RUN/STOP, Program-Area access; cleartext UM password + logic download flagged CVE-2022-31204/31207 (OT:ICEFALL) |
 | `knx` | 3671 | KNXnet/IP (building automation) | Fingerprint | unicast | SEARCH/DESCRIPTION responses (MDT KNX IP Router); CONNECT refused `0x24` |
 | `profinet` | 34964 | PROFINET-IO (DCE-RPC) | Deep | **capture-only** | CM opnum (Connect/Release/IODRead/IODWrite/IODControl/ReadImplicit) |
@@ -332,6 +335,9 @@ anomaly raised (see §5 for the ATT&CK technique it maps to).
 | FINS | CPU-data / status / cycle-time read | `ics-field-device-probe` |
 | BACnet | ReadProperty | `bacnet-property-read` |
 | BACnet | Who-Is / Who-Has | `bacnet-device-discovery` |
+| BACnet/SC | Connect-Request (node join) | `ics-bacnet-sc-connect` / `ics-field-device-probe` |
+| BACnet/SC | Advertisement-Solicitation | `ics-bacnet-sc-discovery` |
+| Sparkplug B | NBIRTH / DBIRTH | `ics-sparkplug-birth` |
 | PROFINET-IO | IODRead / ReadImplicit | `ics-process-data-access` |
 | PROFINET-DCP | Identify | `honeynet:profinet_dcp_identify` |
 | ROC Plus | parameter read | *(intent: config/measurement theft)* |
@@ -364,6 +370,8 @@ anomaly raised (see §5 for the ATT&CK technique it maps to).
 | FINS | RUN / STOP | `ics-plc-mode-change` (`fins-run-mode-change` over TCP) |
 | FINS | Program-Area download | `ics-plc-program-access` / `fins-program-download` |
 | BACnet | WriteProperty | `bacnet-write-attempt` |
+| BACnet/SC | encapsulated WriteProperty | `ics-plc-write` |
+| Sparkplug B | NCMD / DCMD (edge-node/device command) | `ics-sparkplug-command` / `ics-plc-write` |
 | BACnet | DeviceCommunicationControl | `bacnet-device-comm-control` |
 | BACnet | ReinitializeDevice | `bacnet-reinitialize-device` |
 | BACnet | AtomicWriteFile | `bacnet-file-write-attempt` |
