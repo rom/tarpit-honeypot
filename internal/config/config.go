@@ -941,6 +941,10 @@ func (p Payloads) UploadCapBytes() int {
 type GeoIP struct {
 	CityDB string `yaml:"city_db"`
 	ASNDB  string `yaml:"asn_db"`
+	// RiskCountries is an operator list of ISO 3166-1 alpha-2 codes (e.g.
+	// ["RU","KP","IR"]) considered high-risk; a source geolocated to one is
+	// tagged geo_risk=true on its events. Enrichment only.
+	RiskCountries []string `yaml:"risk_countries"`
 }
 
 // RDNS enables reverse-DNS enrichment of source IPs with an LRU cache. Lookups

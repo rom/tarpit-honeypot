@@ -54,6 +54,9 @@ type Config struct {
 	// HASSH corpora), one per kind. A recognized fingerprint tags the event
 	// <kind>_client with the named application / library / malware.
 	FingerprintSources []FingerprintSource
+	// RiskCountries is an operator list of ISO country codes (e.g. "RU","KP")
+	// considered high-risk; a source geolocated to one is tagged geo_risk=true.
+	RiskCountries []string
 }
 
 // ThreatList is one labeled IP/CIDR reputation list.
@@ -77,6 +80,19 @@ type Enricher struct {
 	fpdb     fpDB        // fingerprint -> client/tool attribution
 	torExit  map[string]struct{}
 	netClass bool
+
+	// riskCountries is the set of high-risk ISO country codes (geo_risk tag).
+	riskCountries map[string]struct{}
+
+	// Session-novelty sets: the first time (within this process's lifetime) a
+	// source's ASN / subnet / fingerprint is seen, the event is tagged
+	// novel_*=true. Bus-loop-only, but guarded by seenMu for safety and so a
+	// future concurrent caller can't race; cleared when a set exceeds seenCap
+	// (a bounded safety valve — novelty briefly resets, which is acceptable).
+	seenMu  sync.Mutex
+	seenASN map[string]struct{}
+	seenNet map[string]struct{}
+	seenFP  map[string]struct{}
 
 	// fleet intel is the downward-fed overlay (set by intel.Puller, read by
 	// Decorate): value->reason maps for source IPs, ASNs, and "<kind>:<value>"
@@ -259,7 +275,42 @@ func New(cfg Config) (*Enricher, error) {
 		}
 	}
 	e.netClass = cfg.NetClass
+	if len(cfg.RiskCountries) > 0 {
+		e.riskCountries = make(map[string]struct{}, len(cfg.RiskCountries))
+		for _, c := range cfg.RiskCountries {
+			if c = strings.ToUpper(strings.TrimSpace(c)); c != "" {
+				e.riskCountries[c] = struct{}{}
+			}
+		}
+	}
+	e.seenASN = map[string]struct{}{}
+	e.seenNet = map[string]struct{}{}
+	e.seenFP = map[string]struct{}{}
 	return e, nil
+}
+
+// seenCap bounds each novelty set; on overflow the set is cleared (a bounded
+// safety valve — novelty briefly resets rather than growing without limit).
+const seenCap = 200000
+
+// firstSight reports whether key was newly added to set (true = never seen
+// before this process lifetime), clearing the set if it exceeds seenCap.
+func (e *Enricher) firstSight(set map[string]struct{}, key string) bool {
+	if key == "" {
+		return false
+	}
+	e.seenMu.Lock()
+	defer e.seenMu.Unlock()
+	if _, ok := set[key]; ok {
+		return false
+	}
+	if len(set) >= seenCap {
+		for k := range set {
+			delete(set, k)
+		}
+	}
+	set[key] = struct{}{}
+	return true
 }
 
 // loadIPList reads a file of one IP or CIDR per line (blank lines and
@@ -350,11 +401,15 @@ func (e *Enricher) Decorate(ev *event.Event) {
 			Location struct {
 				Latitude  float64 `maxminddb:"latitude"`
 				Longitude float64 `maxminddb:"longitude"`
+				TimeZone  string  `maxminddb:"time_zone"`
 			} `maxminddb:"location"`
 		}
 		if err := e.cityDB.Lookup(net.ParseIP(ev.Source.IP), &rec); err == nil {
 			if rec.Country.ISOCode != "" {
 				ev.Meta["geo_country"] = rec.Country.ISOCode
+			}
+			if rec.Location.TimeZone != "" {
+				ev.Meta["geo_timezone"] = rec.Location.TimeZone
 			}
 			if n := rec.Country.Names["en"]; n != "" {
 				ev.Meta["geo_country_name"] = n
@@ -447,6 +502,11 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	e.decorateExternalIntel(ev)
 	// Runs last: it reads the reputation meta the steps above set.
 	decorateReputationConfidence(ev)
+	// Derived attributes (subnet key, conn-type, novelty, geo-risk, local time,
+	// actor id, targeting) and the recognition rollup (source_class + labels)
+	// read everything set above, so they run after it.
+	e.decorateAttributes(ev, addr)
+	decorateRecognition(ev)
 }
 
 // decorateReputationConfidence counts how many INDEPENDENT reputation signals

@@ -1815,6 +1815,7 @@ func enrichConfigFor(cfg *config.Config) enrich.Config {
 		NetClass:           cfg.Sensor.NetClass.Enabled,
 		CloudRanges:        cloudRangesFromConfig(cfg.Sensor.CloudRanges),
 		FingerprintSources: fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
+		RiskCountries:      cfg.Sensor.GeoIP.RiskCountries,
 	}
 }
 
