@@ -488,6 +488,16 @@ func sourceBadges(meta map[string]any) template.HTML {
 	if m, _ := meta["asn_geo_mismatch"].(bool); m {
 		add("warn", "🧭 asn/geo", "ASN registered country differs from the GeoIP country", "")
 	}
+	// Fake-C2 check-in: the c2_emulator recognized a beacon/stager for a named
+	// framework.
+	if fw, _ := meta["c2_framework"].(string); fw != "" {
+		add("bad", "📡 c2:"+fw, "command-and-control check-in recognized as "+fw, "")
+	}
+	// DDoS backscatter: an unsolicited reply arriving because our address was
+	// spoofed as the source of a flood.
+	if bk, _ := meta["backscatter_kind"].(string); bk != "" {
+		add("warn", "💥 backscatter", "DDoS backscatter reply ("+bk+") — our address is likely spoofed as a flood source", "")
+	}
 	// Composite "meta:*" recognition signals (computed once in internal/enrich
 	// and carried on labels[]): cross-relations of ≥2 signals, rendered with a
 	// pennant so a corroborated/deceptive/targeted source stands out.
