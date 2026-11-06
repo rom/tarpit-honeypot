@@ -160,14 +160,7 @@ enrich:
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- s.Run(ctx) }()
-	defer func() {
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Error("Run did not return after cancel")
-		}
-	}()
+	defer cancel() // leak guard for early-return paths
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	ok := false
@@ -209,11 +202,19 @@ enrich:
 		t.Error("Store() should be non-nil with a sqlite channel")
 	}
 
-	// A hot reload of an unchanged-but-reparsed config must succeed.
-	if err := s.Reload(loadCfgYAML(t, dir, body)); err != nil {
-		t.Errorf("Reload: %v", err)
+	// Clean shutdown. (Reload is covered by reload_race_test.go; calling it here
+	// isn't safe either way — concurrent with a live Run it races Run's
+	// unlocked startup s.cfg reads, and after shutdown it double-stops the
+	// router. ReloadEnrichment, by contrast, is fully stateMu-guarded and
+	// touches no router, so it's safe to exercise after the sensor stops.)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return within 10s of context cancel")
 	}
-	// SIGHUP-style enrichment DB reload.
+
+	// SIGHUP-style enrichment DB reload (safe on a stopped sensor).
 	if err := s.ReloadEnrichment(); err != nil {
 		t.Errorf("ReloadEnrichment: %v", err)
 	}
