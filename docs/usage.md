@@ -149,7 +149,7 @@ network needed) so you can discover what the sensor can impersonate and
 detect, and tune detections:
 
 ```bash
-./bin/tarpit-honeypot list-archetypes                 # all 162 device personas
+./bin/tarpit-honeypot list-archetypes                 # all 259 device personas
 ./bin/tarpit-honeypot list-archetypes xerox-versalink # one archetype's full fingerprint
 ./bin/tarpit-honeypot list-handlers --proto tcp       # handlers valid on a listener
 ./bin/tarpit-honeypot list-cves --service ipp         # emulated/detected CVEs by service
@@ -673,7 +673,7 @@ honeynets:
 | Appliances | pfSense, FortiGate, Synology, QNAP, Hikvision/Axis cameras, MikroTik, Ubiquiti, Asterisk PBX |
 
 This is an abbreviated view — see [`archetypes.md`](archetypes.md) for the
-**complete 99-archetype catalog** with each device's services/protocols and
+**complete 259-archetype catalog** with each device's services/protocols and
 emulated CVEs, or run `tarpit-honeypot list-archetypes`.
 
 **Each archetype carries:** SSH / HTTP / FTP / Telnet / SMTP / MySQL
@@ -1063,7 +1063,7 @@ honeypot exposed via service mesh), the sensor is fully featured.
 | `tunnet: TUN/utun adapter not implemented on darwin` | running on macOS | macOS supports utun but no native backend yet; use `ifconfig alias` per virtual host. |
 | Prometheus `/metrics` returns 503 | UI started before sensor finished construction | wait a second after startup; the sensor lazily registers stats once it's fully up. |
 | `validate-config` rejects `format: cef` on `sqlite` channel | structured-row sinks can't take text formats | Use the format on `stdout`/`jsonlog`/`webhook`/`smtp`/`syslog` instead. |
-| `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (99 entries). |
+| `sensor.archetype "..." is not a known archetype` | typo / unsupported name | Run `tarpit-honeypot help archetypes` to see the full list (259 entries). |
 | `ssh_interactive` engagements piling up | crypto/ssh handshakes are CPU-heavier than banner-grab | Set `max_concurrent: 16` (or lower) on the listener to cap parallel sessions. |
 | `fetch-enrichment.sh`: `threatfox` / `malwarebazaar` / `urlhaus-urls` → `FAILED (download)` **even with a key set** | the 2025 abuse.ch migration retired the old export URLs (HTTP 410) and moved to a v2 API with the key **in the URL path**, not a header | Update to v1.1.2+ (the script now builds `https://<svc>-api.abuse.ch/v2/files/exports/<KEY>/recent.csv`). If abuse.ch changed a filename, override the full URL via `THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL` (include your key). With no key they report `skipped`, not failed. |
 | `fetch-enrichment.sh`: `warning: failed to create archive … (tar rc=2 …)` | not enough free space for the single-file bundle (the GeoIP City DB alone is ~130 MB) | Non-fatal — the `enrichment-data/` directory is complete; transfer it directly with the printed `rsync` line, or free space / pass `SKIP_GEOIP=1`. `tar rc=1` (files changed while reading) keeps the archive with a warning. |

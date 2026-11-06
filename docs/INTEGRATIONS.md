@@ -333,6 +333,16 @@ By family, with the most common port. All are configurable to any port via `bind
 | `mssql` | 1433 | TDS pre-login + login capture |
 | `oracle_tns` | 1521 | TNS connect packet parse |
 
+**AI / LLM / agentic honeypots** (see [`AGENTIC.md`](AGENTIC.md)):
+
+| Handler | Default port | What |
+|---|---|---|
+| `agent` | 8080 | agent-provocateur for autonomous LLM attackers — recognizes A2A/AP2/MCP/ACP, Web Bot Auth, AI-crawler UAs and frameworks; scores a confidence band; runs a multi-turn extract/provoke/disrupt bait ladder; counter-exfiltrates the agent's own config/keys; feeds decoy lures + a canary wallet; flags `agent:*` (`agentic-*` rules) |
+| `ollama` | 11434 | Ollama API decoy; flags prompt-injection / jailbreak / model-abuse |
+| `mcp` | 8000 | Model Context Protocol server decoy; flags tool-exec abuse + discovery |
+| `llm_openai` | 8081 | OpenAI-style chat/completions API decoy; captures prompts, flags abuse |
+| `c2_emulator` | any | fake C2 server emulation (beacon/task endpoints) for implant-style callers |
+
 **Printers / multi-function devices:**
 
 | Handler | Default port | What |
@@ -520,7 +530,7 @@ spec:
   hostNetwork: true
   containers:
     - name: tarpit-honeypot
-      image: tarpit-honeypot:1.5
+      image: tarpit-honeypot:1.4.0
       args: ["run", "-c", "/etc/tarpit-honeypot/config.yaml"]
       volumeMounts:
         - { name: config, mountPath: /etc/tarpit-honeypot }
@@ -598,7 +608,7 @@ Set `sensor.deployment_id` explicitly per site so every virtual host's MAC / SSH
 
 ## 5. Threat-intel pull (not built in)
 
-The sensor does NOT subscribe to external threat-intel feeds (STIX / MISP / TAXII). Recommended pattern:
+The sensor does NOT subscribe to external STIX / MISP / TAXII feeds. (Two exceptions ship built in: the CISA **KEV** auto-sync `kev:` block — see [`threat-intel-exports.md`](threat-intel-exports.md) §10 — which pulls the Known Exploited Vulnerabilities catalog to mark actively-exploited CVEs; and `intel_feed:`, which subscribes a sensor to a parent aggregator's downward IOC feed.) For arbitrary external IP/indicator feeds the recommended pattern is:
 
 1. Run a sidecar that pulls feed data and writes IP lists to a file.
 2. Use `--set allowlist[N]=<cidr>` overrides or a `conf.d/` fragment to rotate the allowlist in based on the file.
@@ -618,7 +628,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.25' }
+        with: { go-version: '1.26' }
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
       - run: go tool cover -func=coverage.out | tail -1

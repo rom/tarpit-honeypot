@@ -112,6 +112,8 @@ Handlers are classed by fidelity:
 | `osdp` | — | SIA OSDP / IEC 60839-11-5 (access control) over IP | Deep | Command classification (osdp_OUT door-strike, osdp_COMSET channel hijack, osdp_KEYSET/CHLNG secure-channel), osdp_ACK/PDID reply |
 | `atg` | 10001 | Veeder-Root TLS-350 tank gauge | Fingerprint | `^A I20100/I20200/I20300` → per-deployment tank report |
 | `fox` | 1911 | Niagara / Tridium Fox (BAS) | Fingerprint | per-deployment "fox hello" (station/host/versions) |
+| `mbus` | 10001 (gateway) | M-Bus / Meter-Bus (EN 13757-2/3) over a TCP gateway | Deep | link-layer framing (short/long frames); SND_NKE (init) → ACK, REQ_UD2 (meter read) → fabricated RSP_UD record, SND_UD (config write) flagged; utility sub-metering (heat/water/gas/electricity) |
+| `dlms` | 4059 | DLMS/COSEM — IEC 62056 smart metering over the TCP wrapper | Deep | AARQ association (with/without auth) → AARE, GET/SET/ACTION APDU classification (meter read vs config write vs disconnect), cleartext LLS password flagged |
 
 ### UDP
 
@@ -123,7 +125,6 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | `bacnet` | 47808 | BACnet/IP (building automation) | Deep | unicast | Who-Is/Who-Has → I-Am, ReadProperty (point enum), WriteProperty (SimpleACK), DeviceCommunicationControl, ReinitializeDevice, AtomicWriteFile |
 | `bacnet_sc` / `bacnet_scs` | 47808 (WS+TLS) | BACnet Secure Connect (ASHRAE 135-2020 Annex AB) | Deep | WS binary | WebSocket upgrade + `hub.bsc.bacnet.org` / `dc.bsc.bacnet.org` subprotocol; BVLC-SC framing; Connect-Request (node VMAC + device UUID) → Connect-Accept; Heartbeat-Request → Heartbeat-ACK; encapsulated WriteProperty flagged. `bacnet_scs` = TLS-fronted |
 | `mqtt` (Sparkplug B) | 1883 / 8883 | Eclipse Sparkplug B (IIoT over MQTT) | Deep | CONNACK/SUBACK | `spBv1.0/` namespace on Will/SUBSCRIBE/PUBLISH topics parsed into group/msg-type/edge-node/device; NCMD/DCMD (edge-node/device commands) flagged as control writes |
-| `mbus` | 10001 (gateway) | M-Bus / Meter-Bus (EN 13757-2/3) | Deep | ACK / RSP_UD | link-layer framing (short/long frames); SND_NKE (init) → ACK, REQ_UD2 (meter read) → fabricated RSP_UD record, SND_UD (config write) flagged; utility sub-metering (heat/water/gas/electricity) |
 | `fins` | 9600 | Omron FINS/UDP | Deep | rate-limited | CPU/status/cycle/clock read, Memory-Area read/write, RUN/STOP, Program-Area access; cleartext UM password + logic download flagged CVE-2022-31204/31207 (OT:ICEFALL) |
 | `knx` | 3671 | KNXnet/IP (building automation) | Fingerprint | unicast | SEARCH/DESCRIPTION responses (MDT KNX IP Router); CONNECT refused `0x24` |
 | `profinet` | 34964 | PROFINET-IO (DCE-RPC) | Deep | **capture-only** | CM opnum (Connect/Release/IODRead/IODWrite/IODControl/ReadImplicit) |

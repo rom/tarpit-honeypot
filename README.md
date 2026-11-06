@@ -653,8 +653,8 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
 events to your sinks. Current totals: **197 TCP + 118 UDP protocol handlers**,
-**743 CVE records** (366 live-detectable + 377 advisory), **469 built-in YARA
-artifact-classification rules**, **230 dynamic Lua service scripts**, **259
+**743 CVE records** (373 live-detectable + 370 advisory), **469 built-in YARA
+artifact-classification rules**, **240 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
 attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor
 (`fleet:*`) correlators**, **18 typed IOC kinds**, and full MITRE ATT&CK +
@@ -850,7 +850,7 @@ Global identity + behavior. All optional; sane defaults apply.
 | Field | Purpose |
 |---|---|
 | `name`, `data_dir` | Sensor name stamped on events; root for all durable state. |
-| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 162; see [`docs/archetypes.md`](docs/archetypes.md). |
+| `archetype` | OS/device persona pinning every banner-aware handler, SNMP MIB-2, MAC OUI, CLI prompt, **TLS posture**, **ICMP TTL**, FTP `FEAT` set, and SMTP `EHLO` extensions to a stock install (e.g. `"debian 12"`, `"Windows Server 2019"`, `"Siemens SCALANCE S615"`, `"fortigate"`). Overridable per `listener` and per honeynet host. `help archetypes` lists all 259; see [`docs/archetypes.md`](docs/archetypes.md). |
 | `deployment_id` | Stable seed deriving every "fixed" string the sensor emits (SSH/HTTP/MySQL versions, SMB challenge, VNC challenge, …) so two sensors look distinct. Auto-generated + persisted on first run. See [Counter-fingerprinting](#counter-fingerprinting). |
 | `jitter` | `{enabled, min_ms, max_ms}` per-reply latency jitter to defeat timing fingerprints. |
 | `tls_rotate.days` | Regenerate the self-signed HTTPS cert after N days (0 = never). |

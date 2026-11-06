@@ -18,8 +18,6 @@ sniffer:       { ... }     # AF_PACKET ARP + TCP scan detector (linux only)
 correlate:     { ... }     # port-scan / brute-force / slow-scan
 detection:     { rules_dir: /etc/tarpit-honeypot/rules }  # operator YAML rules
 honeynets:     [ ... ]     # artificial networks of virtual hosts
-dedup:         { ... }     # event dedup window
-allowlist:     [ ... ]     # source IPs that bypass outbound alerts
 channels:          [ ... ] # output sinks (stdout, syslog, webhook, sns, ...)
 routes:            [ ... ] # severity / honeynet / rule predicates -> channels
 severity_overrides:[ ... ] # operator re-map of reported severity per rule_id
@@ -71,8 +69,13 @@ sensor:
   archetype: ""               # see "archetypes" section / `help archetypes`
   interfaces: []              # network interface(s) to use; e.g. [eth0]
   listen_addresses: []        # pin wildcard listeners to these IPs; [] = all IPs
-  drop_user: ""               # Linux: setresuid/setresgid target after bind
-  drop_group: ""
+  drop_user: ""               # Linux/macOS: all-threads setuid/setgid drop target
+  drop_group: ""              #   (CAP_NET_BIND_SERVICE/CAP_NET_RAW retained via ambient caps)
+  sandbox:                    # Linux in-process self-confinement (degrades gracefully)
+    seccomp: true             # BPF syscall denylist (exec/ptrace/module-load/mount/...)
+    landlock: true            # read-only FS except data_dir (+ write_paths)
+    read_paths: []            # extra read-allowed roots (default ["/"])
+    write_paths: []           # extra writable paths beyond data_dir
   disk:
     json_log_mb: 500
     sqlite_mb: 500
@@ -686,7 +689,7 @@ honeynets:
           - { port: 22,  handler: ssh }
           - { port: 80,  handler: http }
           - { port: 443, handler: https }
-      - ip: fd00::20             # IPv6 hosts are supported (in v1.5+)
+      - ip: fd00::20             # IPv6 hosts are supported
         hostname: dc-01
         os: windows
         services:

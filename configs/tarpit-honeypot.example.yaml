@@ -26,7 +26,7 @@ sensor:
   # of this distribution, so a scanner can't catch the sensor by spotting
   # version-vs-distro mismatches.
   #
-  # `tarpit-honeypot help archetypes` lists the 15 valid names.
+  # `tarpit-honeypot help archetypes` lists the 259 valid names.
   # Per-listener and per-honeynet-host overrides take precedence.
   # Blank = fall back to the deployment-id-keyed variant pool.
   archetype: ""                              # e.g. "debian 12", "ubuntu 24.04 lts"

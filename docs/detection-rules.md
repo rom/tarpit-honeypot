@@ -25,8 +25,9 @@ directory at **2000 rules**.
 
 > **Quick start:** copy [`configs/rules/`](../configs/rules/) into your
 > `rules_dir` — it ships an annotated [`example.yml`](../configs/rules/example.yml)
-> plus seven ready-to-run packs (credential access, web exploitation, recon /
-> scanners, OT/ICS control, exfil / C2, malware artifacts, appliance / Lua —
+> plus ten ready-to-run packs (credential access, web exploitation, recon /
+> scanners, OT/ICS control, exfil / C2, malware artifacts, appliance / Lua,
+> enrichment / reputation, OT-malware, agentic / AI-agent attacks —
 > see [§ Shipped rule packs](#shipped-rule-packs)).
 
 > Not sure whether your idea wants a detection rule, a Lua persona, or a YARA
@@ -185,7 +186,7 @@ rules both readable and durable across protocol versions.
 
 ## Recipes
 
-A few worked patterns; the [shipped packs](#shipped-rule-packs) contain ~40 more.
+A few worked patterns; the [shipped packs](#shipped-rule-packs) contain ~70 more.
 
 **Log4Shell JNDI string in any captured header**
 
@@ -247,7 +248,7 @@ use a tag + downstream routing rather than expecting the rule to lower it):
 ## Shipped rule packs
 
 [`configs/rules/`](../configs/rules/) ships an annotated starter
-[`example.yml`](../configs/rules/example.yml) plus nine curated packs (~55 rules)
+[`example.yml`](../configs/rules/example.yml) plus ten curated packs (76 rules)
 you can deploy as-is or fork. Each is grounded in the markers the handlers
 actually emit:
 
@@ -262,6 +263,7 @@ actually emit:
 | [`appliance-and-lua.yml`](../configs/rules/appliance-and-lua.yml) | appliance / persona exploitation | CVE-path hits on the fake appliances, RCE staging, Log4Shell, Cl0p/MOVEit, secret-file harvest — driven by the `lua:` flags the [Lua personas](lua.md) raise |
 | [`enrichment-reputation.yml`](../configs/rules/enrichment-reputation.yml) | enrichment / reputation | spoofed-crawler PTR, high cross-feed `threat_confidence`, anonymizer (Tor/VPN/proxy), ASN-DROP / bulletproof ASN, ASN↔geo mismatch, high-risk geo, default/breached credentials, DGA + known-malicious domains, plus corroborated combos that reach critical — keys on the [enrichment labels](../README.md#enrichment) |
 | [`ot-malware.yml`](../configs/rules/ot-malware.yml) | named OT-malware behavior | TTP-level recognition of FrostyGoop (Modbus register writes), Industroyer/Industroyer2 (IEC-104 control), TRITON/TRISIS (Triconex SIS), PIPEDREAM/INCONTROLLER (multi-protocol PLC manipulation), Stuxnet (S7 logic), and Havex/Dragonfly (OPC enumeration) — hedged "behavior consistent with …", built on the OT handlers' anomaly markers |
+| [`agentic.yml`](../configs/rules/agentic.yml) | agentic / AI-agent attacks | autonomous-agent attack, counter-exfil of the agent's own config/keys, secret exfil, AP2 payment-mandate fraud, A2A/MCP/ACP protocol probes, injection-confirmed (HoneyPrompt), provoked-disclosure, Web Bot Auth, AI lure-surface fetch — keys on the `agent:*` markers the [`agent` handler](AGENTIC.md) raises (MITRE ATLAS tags) |
 
 Several rules (Log4Shell, CVE promotion, OT control) deliberately overlap the
 built-in detectors — they're there to show the pattern and to let you re-tag /
