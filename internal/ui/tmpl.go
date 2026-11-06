@@ -1478,6 +1478,18 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 
 {{ if .Tools }}<h2>tools / scanners</h2><div>{{ range .Tools }}<a class="tag bad" href="/events?source={{ $.IP }}&amp;tool={{ . }}" title="this source's events attributed to this tool">{{ . }}</a> {{ end }}</div>{{ end }}
 
+{{ if .AgentBand }}<h2 data-help="Autonomous-agent assessment from the agent provocateur (see docs/AGENTIC.md): the behavioral confidence band, the agent-interop protocols / frameworks / AI-crawler it presented, any Web Bot Auth signer identity, the internal fields it disclosed when goaded (counter-exfil / provoked), MITRE ATLAS techniques, and whether it followed the injected HoneyPrompt (injection-confirmed).">autonomous-agent assessment</h2>
+{{ if .AgentInjectionConfirmed }}<div class="depl"><b class="tag bad">injection-confirmed</b> <span class="note">this source followed the honeypot's injected verify-URL / enrolment bait — proof it is an injection-susceptible autonomous agent</span></div>{{ end }}
+<table>
+<tr><th>confidence band</th><td><span class="tag {{ if eq .AgentBand "ai-agent" }}bad{{ else }}warn{{ end }}">{{ .AgentBand }}{{ if .AgentConfidence }} ({{ .AgentConfidence }}){{ end }}</span></td></tr>
+{{ if .AgentProtocols }}<tr><th>agent protocols</th><td>{{ range .AgentProtocols }}<a class="tag" href="/search?source={{ $.IP }}&amp;tag=agent:{{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+{{ if .AgentFrameworks }}<tr><th>frameworks / SDKs</th><td>{{ range .AgentFrameworks }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+{{ if .AICrawlers }}<tr><th>AI crawler</th><td>{{ range .AICrawlers }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+{{ if .WebBotAuthSigner }}<tr><th>Web Bot Auth signer</th><td><a class="tag" href="/search?source={{ $.IP }}&amp;tag=agent:web-bot-auth">{{ .WebBotAuthSigner }}</a></td></tr>{{ end }}
+{{ if .AgentRevealed }}<tr><th>disclosed (counter-exfil / provoked)</th><td>{{ range .AgentRevealed }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+{{ if .ATLASTechniques }}<tr><th>MITRE ATLAS</th><td>{{ range .ATLASTechniques }}<span class="tag warn">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+
 {{ if .Fingerprints }}<h2>fingerprints</h2><table>
 {{ range $k, $v := .Fingerprints }}<tr><th>{{ $k }}</th><td><a href="/fingerprints/{{ $k }}/{{ $v }}">{{ $v }}</a>{{ with index $.FingerprintClients $k }} <span class="tag" title="offline fingerprint-DB attribution">{{ . }}</span>{{ end }}</td></tr>{{ end }}
 </table>
