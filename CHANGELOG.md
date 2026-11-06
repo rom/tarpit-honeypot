@@ -51,6 +51,16 @@ documented in `docs/`).
   `install-enrichment.sh` / `list-paths` learn the `kev.file` destination so the
   catalog rides along in a normal enrichment bundle. Documented in
   `docs/usage.md` §2c and the README's **CISA KEV overlay**.
+- **`/coverage` web infopage — the active decoy surface at a glance.** A live
+  capability snapshot: headline counters (handlers, CVE catalog split into
+  live-detectable vs advisory, KEV overlay, detection rules, ATT&CK techniques,
+  archetypes), the CISA KEV overlay status (incl. how many modeled CVEs are
+  KEV-listed right now), an **emulated-services × exploit-recognition** table
+  (per-service detectable/advisory + live KEV counts + highest-severity
+  example), and the recognition/enrichment **label catalog** (glyph badges +
+  meaning). Follows the `/rules` provider pattern so the `ui` package stays
+  decoupled from `internal/cve`/`internal/detect`; operator-toggleable via
+  `ui.pages`. Documented in `docs/webui.md`.
 - **More real, in-the-wild CVEs in relevant protocols.** Verified CISA-KEV
   records broadening the recent exploitation wave: `CVE-2021-26828` (OpenPLC
   ScadaBR file-upload RCE — SCADA/HMI, detectable via `view_edit.shtm`),
