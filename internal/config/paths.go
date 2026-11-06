@@ -62,6 +62,16 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 			add("enrichment", "cloud_ranges:"+l.Provider, l.File, false)
 		}
 	}
+	if c.Sensor.Anonymizer.Enabled {
+		for _, l := range c.Sensor.Anonymizer.Lists {
+			add("enrichment", "anonymizer_ranges:"+l.Kind, l.File, false)
+		}
+	}
+	if c.Sensor.ASNReputation.Enabled {
+		for _, l := range c.Sensor.ASNReputation.Lists {
+			add("enrichment", "asn_reputation:"+l.Label, l.File, false)
+		}
+	}
 	if c.Sensor.FingerprintDB.Enabled {
 		for _, s := range c.Sensor.FingerprintDB.Sources {
 			add("enrichment", "fingerprint_db:"+s.Kind, s.File, false)
@@ -69,6 +79,15 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 	}
 	if c.Sensor.Payloads.Analyze {
 		add("enrichment", "payloads.malware_hashes", c.Sensor.Payloads.MalwareHashes, false)
+	}
+	if c.Sensor.CredIntel.Enabled {
+		add("enrichment", "cred_intel.passwords_file", c.Sensor.CredIntel.PasswordsFile, false)
+	}
+	if c.Sensor.DomainIntel.Enabled {
+		add("enrichment", "domain_intel.blocklist_file", c.Sensor.DomainIntel.BlocklistFile, false)
+	}
+	if c.Sensor.ASNInfo.Enabled {
+		add("enrichment", "asn_info.file", c.Sensor.ASNInfo.File, false)
 	}
 	add("enrichment", "sniffer.p0f_db", c.Sniffer.P0fDB, false)
 

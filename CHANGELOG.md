@@ -8,6 +8,49 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **A big enrichment / recognition expansion (source-IP decoration).** New event
+  meta, all additive and hot-reloadable:
+  - **Derived, no new data:** `src_net` (/24,/48 subnet aggregation key),
+    `conn_type` (residential vs hosting from the PTR), `src_local_hour` (event
+    hour in the source's GeoIP timezone), `actor_id` (strongest fingerprint,
+    else a UA hash — groups a tool across rotating IPs), `targeting`
+    (web-cms / mail / ics-ot / iot-edge / database / remote-access /
+    cloud-devops), `geo_risk` (`sensor.geoip.risk_countries`), and
+    `novel_asn` / `novel_subnet` / `novel_fingerprint` (first-sight flags).
+  - **Feed-backed:** `anonymizer` / `anonymized` (VPN/open-proxy ranges,
+    `sensor.anonymizer_ranges`), `asn_reputation` (Spamhaus ASN-DROP etc.,
+    `sensor.asn_reputation`), `cred_class` (default/weak/breach/unique for a
+    captured login, `sensor.cred_intel`), `dns_dga` + `domain_bad`
+    (`sensor.domain_intel`), and `asn_country` / `asn_type` / `asn_geo_mismatch`
+    (`sensor.asn_info`).
+  - **Recognition rollup:** `source_class` (one headline label) and a compact,
+    sorted `labels[]` tag set carried to every sink; the web UI renders the
+    labels as **emoji glyph badges** on the events table, event detail, and
+    attacker profile.
+  `scripts/fetch-enrichment.sh` ships the no-auth feeds (X4BNet VPN + firehol
+  proxies, Spamhaus ASN-DROP, SecLists breached-passwords); the domain blocklist
+  and ASN-info file are operator-supplied (no clean no-auth default). See the
+  README's **Enrichment** section for the full key list.
+
+### Fixed
+
+- **abuse.ch feeds failed even with a valid Auth-Key.** The v1.1 fix sent the
+  key as an `Auth-Key` *header* to abuse.ch's *old* export URLs, but the 2025
+  migration **retired those URLs** (they return HTTP 410) and moved bulk exports
+  to a new per-service API domain with the key **in the URL path**:
+  `https://<svc>-api.abuse.ch/v2/files/exports/<AUTH-KEY>/recent.csv` (`<svc>` =
+  `threatfox` / `mb` / `urlhaus`) — a header 404s on these export files (it's
+  only for the JSON `/api/` query endpoints). `fetch-enrichment.sh` now builds
+  the keyed v2 URLs and sends no header, so a valid key actually downloads. Each
+  URL stays overridable via `THREATFOX_URL` / `MALWAREBAZAAR_URL` / `URLHAUS_URL`
+  (include your key in the override).
+- **`fetch-enrichment.sh` no longer emits a scary "failed to create archive"
+  when `tar` is absent** — it detects the missing `tar` up front and skips the
+  (convenience-only) `.tar.gz` bundle with a one-line note plus the direct-rsync
+  command, instead of running `tar` and reporting its `command not found`.
+
 ## [1.1.1] - 2026-11-06
 
 ### Added

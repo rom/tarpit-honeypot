@@ -1805,16 +1805,24 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 // by New and ReloadEnrichment so a SIGHUP re-reads the same set of files.
 func enrichConfigFor(cfg *config.Config) enrich.Config {
 	return enrich.Config{
-		CityDB:             cfg.Sensor.GeoIP.CityDB,
-		ASNDB:              cfg.Sensor.GeoIP.ASNDB,
-		RDNSEnabled:        cfg.Sensor.RDNS.Enabled,
-		RDNSTimeout:        cfg.Sensor.RDNS.Timeout,
-		RDNSCache:          cfg.Sensor.RDNS.CacheSize,
-		ThreatLists:        threatListsFromConfig(cfg.Sensor.ThreatIntel),
-		TorExitFile:        torExitFile(cfg.Sensor.Tor),
-		NetClass:           cfg.Sensor.NetClass.Enabled,
-		CloudRanges:        cloudRangesFromConfig(cfg.Sensor.CloudRanges),
-		FingerprintSources: fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
+		CityDB:               cfg.Sensor.GeoIP.CityDB,
+		ASNDB:                cfg.Sensor.GeoIP.ASNDB,
+		RDNSEnabled:          cfg.Sensor.RDNS.Enabled,
+		RDNSTimeout:          cfg.Sensor.RDNS.Timeout,
+		RDNSCache:            cfg.Sensor.RDNS.CacheSize,
+		ThreatLists:          threatListsFromConfig(cfg.Sensor.ThreatIntel),
+		TorExitFile:          torExitFile(cfg.Sensor.Tor),
+		NetClass:             cfg.Sensor.NetClass.Enabled,
+		CloudRanges:          cloudRangesFromConfig(cfg.Sensor.CloudRanges),
+		FingerprintSources:   fingerprintSourcesFromConfig(cfg.Sensor.FingerprintDB),
+		RiskCountries:        cfg.Sensor.GeoIP.RiskCountries,
+		AnonymizerRanges:     anonymizerRangesFromConfig(cfg.Sensor.Anonymizer),
+		ASNLists:             asnListsFromConfig(cfg.Sensor.ASNReputation),
+		CredIntel:            cfg.Sensor.CredIntel.Enabled,
+		BreachedPasswordFile: enabledFile(cfg.Sensor.CredIntel.Enabled, cfg.Sensor.CredIntel.PasswordsFile),
+		DomainIntel:          cfg.Sensor.DomainIntel.Enabled,
+		BadDomainsFile:       enabledFile(cfg.Sensor.DomainIntel.Enabled, cfg.Sensor.DomainIntel.BlocklistFile),
+		ASNInfoFile:          enabledFile(cfg.Sensor.ASNInfo.Enabled, cfg.Sensor.ASNInfo.File),
 	}
 }
 
@@ -1840,6 +1848,41 @@ func cloudRangesFromConfig(cr config.CloudRanges) []enrich.CloudRangeList {
 	out := make([]enrich.CloudRangeList, 0, len(cr.Lists))
 	for _, l := range cr.Lists {
 		out = append(out, enrich.CloudRangeList{Provider: l.Provider, File: l.File})
+	}
+	return out
+}
+
+// enabledFile returns path when on, else "" — so a disabled enrichment feed
+// contributes no file to the enricher input.
+func enabledFile(on bool, path string) string {
+	if on {
+		return path
+	}
+	return ""
+}
+
+// anonymizerRangesFromConfig maps the config anonymizer-range lists to the
+// enrich package's input (reusing CloudRangeList; Provider = the kind).
+func anonymizerRangesFromConfig(a config.AnonymizerRanges) []enrich.CloudRangeList {
+	if !a.Enabled || len(a.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.CloudRangeList, 0, len(a.Lists))
+	for _, l := range a.Lists {
+		out = append(out, enrich.CloudRangeList{Provider: l.Kind, File: l.File})
+	}
+	return out
+}
+
+// asnListsFromConfig maps the config ASN-reputation lists to the enrich
+// package's input. Returns nil when disabled.
+func asnListsFromConfig(a config.ASNReputation) []enrich.ASNList {
+	if !a.Enabled || len(a.Lists) == 0 {
+		return nil
+	}
+	out := make([]enrich.ASNList, 0, len(a.Lists))
+	for _, l := range a.Lists {
+		out = append(out, enrich.ASNList{Label: l.Label, File: l.File})
 	}
 	return out
 }

@@ -768,6 +768,16 @@ type Sensor struct {
 	NetClass    NetClass    `yaml:"net_class"`
 	// CloudRanges tags sources inside published cloud-provider IP ranges.
 	CloudRanges CloudRanges `yaml:"cloud_ranges"`
+	// Anonymizer tags sources inside VPN / open-proxy / relay IP ranges.
+	Anonymizer AnonymizerRanges `yaml:"anonymizer_ranges"`
+	// ASNReputation tags sources whose ASN is on a reputation list (ASN-DROP).
+	ASNReputation ASNReputation `yaml:"asn_reputation"`
+	// CredIntel classifies captured login credentials (cred_class).
+	CredIntel CredIntel `yaml:"cred_intel"`
+	// DomainIntel flags DGA-looking and known-malicious queried domains.
+	DomainIntel DomainIntel `yaml:"domain_intel"`
+	// ASNInfo tags asn_country / asn_type and asn_geo_mismatch.
+	ASNInfo ASNInfo `yaml:"asn_info"`
 	// FingerprintDB maps JA3/JA4/HASSH fingerprints to client/tool names.
 	FingerprintDB FingerprintDB `yaml:"fingerprint_db"`
 	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
@@ -941,6 +951,10 @@ func (p Payloads) UploadCapBytes() int {
 type GeoIP struct {
 	CityDB string `yaml:"city_db"`
 	ASNDB  string `yaml:"asn_db"`
+	// RiskCountries is an operator list of ISO 3166-1 alpha-2 codes (e.g.
+	// ["RU","KP","IR"]) considered high-risk; a source geolocated to one is
+	// tagged geo_risk=true on its events. Enrichment only.
+	RiskCountries []string `yaml:"risk_countries"`
 }
 
 // RDNS enables reverse-DNS enrichment of source IPs with an LRU cache. Lookups
@@ -995,6 +1009,58 @@ type CloudRanges struct {
 type CloudRangeEntry struct {
 	Provider string `yaml:"provider"`
 	File     string `yaml:"file"`
+}
+
+// AnonymizerRanges tags source IPs inside VPN / open-proxy / relay IP ranges
+// (anonymizer=<kind> → anonymized=true on the event). Each list is one CIDR or
+// IP per line, tagged with a kind. fetch-enrichment.sh ships a default set.
+type AnonymizerRanges struct {
+	Enabled bool              `yaml:"enabled"`
+	Lists   []AnonymizerEntry `yaml:"lists"`
+}
+
+// AnonymizerEntry is one labeled anonymizer range file.
+type AnonymizerEntry struct {
+	Kind string `yaml:"kind"` // vpn | proxy | relay | tor
+	File string `yaml:"file"`
+}
+
+// ASNReputation tags source IPs whose ASN appears on a reputation list (e.g.
+// Spamhaus ASN-DROP — bulletproof / hijacked ASNs) with asn_reputation. Each
+// list is a file of AS numbers (ASN-DROP JSON-lines, or bare "AS<n>"/"<n>").
+type ASNReputation struct {
+	Enabled bool          `yaml:"enabled"`
+	Lists   []ASNRepEntry `yaml:"lists"`
+}
+
+// ASNRepEntry is one labeled ASN-reputation file.
+type ASNRepEntry struct {
+	Label string `yaml:"label"`
+	File  string `yaml:"file"`
+}
+
+// CredIntel classifies captured login credentials into cred_class
+// (default/weak/breach/unique). The default/weak/unique tiers need no data;
+// PasswordsFile (one breached/common password per line) enables the "breach"
+// tier. Enrichment only — the secret itself is never stored or echoed.
+type CredIntel struct {
+	Enabled       bool   `yaml:"enabled"`
+	PasswordsFile string `yaml:"passwords_file"`
+}
+
+// DomainIntel enables DNS/domain enrichment: the dns_dga heuristic (no data)
+// and, with BlocklistFile (one malicious domain per line), the domain_bad tag.
+type DomainIntel struct {
+	Enabled       bool   `yaml:"enabled"`
+	BlocklistFile string `yaml:"blocklist_file"`
+}
+
+// ASNInfo tags asn_country / asn_type and flags asn_geo_mismatch from an
+// operator "ASN,country[,category]" file (no bundled default — supply it from
+// iptoasn.com, an IPinfo/MaxMind export, etc.).
+type ASNInfo struct {
+	Enabled bool   `yaml:"enabled"`
+	File    string `yaml:"file"`
 }
 
 // FingerprintDB maps network fingerprints (JA3 / JA4 / JA4H / HASSH) to the

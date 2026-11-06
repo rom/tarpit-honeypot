@@ -154,3 +154,32 @@ func TestSourceBadges(t *testing.T) {
 		t.Errorf("external_intel label not escaped: %q", h)
 	}
 }
+
+// The v1.2 recognition signals render as emoji glyph badges.
+func TestSourceBadgesRecognition(t *testing.T) {
+	cases := []struct {
+		meta map[string]any
+		want string
+	}{
+		{map[string]any{"threat_confidence": "high"}, "high-conf"},
+		{map[string]any{"spoofed_ptr": true, "spoofed_crawler": "googlebot"}, "spoofed-ptr"},
+		{map[string]any{"anonymizer": "vpn"}, "🕵 vpn"},
+		{map[string]any{"anonymized": true}, "🕵 anon"},
+		{map[string]any{"asn_reputation": []any{"spamhaus-asndrop"}}, "asn-drop"},
+		{map[string]any{"geo_risk": true}, "geo-risk"},
+		{map[string]any{"cred_class": "default"}, "🔑 default"},
+		{map[string]any{"cred_class": "weak"}, "🔑 weak"},
+		{map[string]any{"dns_dga": true}, "🧬 dga"},
+		{map[string]any{"domain_bad": true}, "bad-domain"},
+		{map[string]any{"asn_geo_mismatch": true}, "asn/geo"},
+	}
+	for _, c := range cases {
+		if h := string(sourceBadges(c.meta)); !strings.Contains(h, c.want) {
+			t.Errorf("sourceBadges(%v) missing %q: %q", c.meta, c.want, h)
+		}
+	}
+	// A benign cred_class ("unique") produces no credential badge.
+	if h := string(sourceBadges(map[string]any{"cred_class": "unique"})); strings.Contains(h, "🔑") {
+		t.Errorf("unique cred_class should not badge: %q", h)
+	}
+}
