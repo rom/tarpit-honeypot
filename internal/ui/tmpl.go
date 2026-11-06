@@ -580,7 +580,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if hasPage "coverage" }}{{ if pageEnabled "coverage" }} · <a href="/coverage">coverage</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -743,6 +743,47 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 </table>
 <p class="note">Match counts are since the sensor (re)started. Click a rule id to find the events it tagged (<code>detect:&lt;id&gt;</code>).</p>
 {{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "coverage" }}{{ template "head" . }}
+<h1 data-help="What this sensor actively recognizes and emulates, live from the compile-time catalogs and the running KEV / detection state: protocol handlers, the CVE catalog (detectable exploit signatures vs advisory version/banner emulation), the CISA KEV overlay, loaded detection rules, ATT&amp;CK coverage, OS/device archetypes, and the enrichment / recognition labels stamped on sources.">detection &amp; emulation coverage</h1>
+<p class="note">Everything the honeypot can <em>recognize</em> and <em>emulate</em> — the active decoy surface. The honeypot is never actually exploitable; it advertises vulnerable versions and recognizes the follow-up exploit attempt.</p>
+<div class="counters">
+  <span class="counter c-total"><b>{{ .Counts.TCPHandlers }}+{{ .Counts.UDPHandlers }}</b><span>tcp+udp handlers</span></span>
+  <a class="counter c-udp" href="/search?has_cve=1"><b>{{ .Counts.CVETotal }}</b><span>CVE records</span></a>
+  <span class="counter"><b>{{ .Counts.CVEDetectable }}</b><span>live-detectable</span></span>
+  <span class="counter"><b>{{ .Counts.CVEAdvisory }}</b><span>advisory</span></span>
+  {{ if .Counts.KEVActive }}<span class="counter c-bad"><b>{{ .Counts.KEVEntries }}</b><span>KEV overlay</span></span>{{ end }}
+  {{ if gt .Counts.RulesLoaded 0 }}<a class="counter" href="/rules"><b>{{ .Counts.RulesLoaded }}</b><span>detection rules</span></a>{{ end }}
+  <a class="counter" href="/attack"><b>{{ .Counts.Techniques }}</b><span>ATT&amp;CK techniques</span></a>
+  <span class="counter"><b>{{ .Counts.Archetypes }}</b><span>OS/device archetypes</span></span>
+</div>
+
+<h2 data-help="The CISA Known Exploited Vulnerabilities overlay marks cve:&lt;id&gt; events whose CVE is being exploited in the wild (kev=true + date-added + ransomware flag) and lifts their severity to at least High.">CISA KEV overlay</h2>
+{{ if .Counts.KEVActive }}<p><span class="tag good">active</span> {{ .Counts.KEVEntries }} catalog entries{{ if gt .Counts.KEVModeled 0 }} · <strong>{{ .Counts.KEVModeled }}</strong> of our modeled CVEs are KEV-listed right now{{ end }}{{ if not .Counts.KEVUpdated.IsZero }} · updated {{ .Counts.KEVUpdated.Format "2006-01-02 15:04 MST" }}{{ end }}</p>
+{{ else }}<p class="note">KEV overlay <span class="tag">off</span> — enable <code>kev.enabled</code> (live or via a transferred <code>kev.file</code>) to mark actively-exploited CVEs. See <a href="/docs/usage">usage</a> §2c.</p>{{ end }}
+
+<h2 data-help="Each emulated service and the CVE recognition the catalog gives it: live-detectable records carry an exploit signature matched on every request; advisory records drive vulnerable-version/banner emulation and KEV marking. KEV = how many of this service's CVEs are KEV-listed right now.">emulated services &amp; exploit recognition <span class="meta">({{ len .Services }})</span></h2>
+<table data-filter><tr><th>service</th><th>detectable</th><th>advisory</th><th>KEV</th><th>highest-severity example</th></tr>
+{{ range .Services }}<tr>
+  <td>{{ handlerLink .Service }}</td>
+  <td>{{ .Detectable }}</td>
+  <td>{{ .Advisory }}</td>
+  <td>{{ if gt .KEV 0 }}<span class="tag bad">{{ .KEV }}</span>{{ else }}—{{ end }}</td>
+  <td>{{ if .TopCVE }}<a href="/search?q={{ .TopCVE }}"><code>{{ .TopCVE }}</code></a> <span class="meta">{{ .TopName }} (CVSS {{ printf "%.1f" .TopCVSS }})</span>{{ else }}—{{ end }}</td>
+</tr>{{ end }}
+</table>
+<p class="note">Click a CVE to find its events, or a service to see its traffic. Full catalog offline: <code>tarpit-honeypot list-cves</code>; gaps vs. live KEV: <code>tarpit-honeypot kev-gap</code>.</p>
+
+<h2 data-help="Enrichment / recognition labels the sensor stamps on a source IP, rendered as badges on the events table and attacker profiles. These summarize who the source is, independent of which decoy they hit.">recognition &amp; enrichment labels <span class="meta">({{ len .Labels }})</span></h2>
+<table data-filter><tr><th>badge</th><th>label</th><th>meaning</th></tr>
+{{ range .Labels }}<tr>
+  <td>{{ if .Glyph }}<span class="tag">{{ .Glyph }}</span>{{ else }}<span class="meta">(text)</span>{{ end }}</td>
+  <td><code>{{ .Label }}</code></td>
+  <td>{{ .Desc }}</td>
+</tr>{{ end }}
+</table>
+<p class="note">See the README's <strong>Enrichment</strong> section for the full attribute list and how each is sourced.</p>
 {{ template "foot" . }}{{ end }}
 
 {{ define "service" }}{{ template "head" . }}

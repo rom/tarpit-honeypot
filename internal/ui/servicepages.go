@@ -103,6 +103,9 @@ func (s *Server) hasServicePage(kind string) bool {
 	if kind == "rules" {
 		return s.rules != nil
 	}
+	if kind == "coverage" {
+		return s.coverage != nil
+	}
 	if s.fullConfig == nil {
 		return false
 	}

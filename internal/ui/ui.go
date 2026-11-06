@@ -74,6 +74,7 @@ type Server struct {
 	hosts         HostsProvider
 	hostsSummary  HostsSummaryProvider
 	rules         RulesProvider
+	coverage      CoverageProvider
 	deviceActions DeviceActions
 	dataDir       string
 	configPaths   []string   // config file path(s), for the /config "files in use" panel
@@ -794,6 +795,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	s.pageRoute(mux, "/web", "web", s.handleWeb)
 	s.pageRoute(mux, "/databases", "databases", s.handleDatabases)
 	s.pageRoute(mux, "/rules", "rules", s.handleRules)
+	s.pageRoute(mux, "/coverage", "coverage", s.handleCoverage)
 	s.pageRoute(mux, "/remote", "remote", s.handleRemote)
 	s.pageRoute(mux, "/mail", "mail", s.handleMail)
 	s.pageRoute(mux, "/ntp", "ntp", s.handleNTPPage)

@@ -16,9 +16,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/cve"
 	"github.com/rom/tarpit-honeypot/internal/egress"
 	"github.com/rom/tarpit-honeypot/internal/ingest"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 	"github.com/rom/tarpit-honeypot/internal/privdrop"
 	"github.com/rom/tarpit-honeypot/internal/sandbox"
 	"github.com/rom/tarpit-honeypot/internal/sensor"
@@ -177,6 +180,7 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 				return out
 			})
 		}
+		srv.SetCoverageProvider(buildCoverageProvider(s))
 		srv.SetConfig(cfg)
 		srv.SetConfigPaths(f.paths())
 		srv.SetTopology(s.Honeynet())
@@ -333,6 +337,101 @@ func labeledCounts(m map[string]int) []ui.LabeledCount {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+// buildCoverageProvider assembles the /coverage capability snapshot from the
+// compile-time catalogs (internal/cve, internal/config, internal/mitre,
+// internal/archetype) and the running sensor's KEV + detection state, so the
+// web UI can enumerate what the sensor actively recognizes and emulates
+// without importing those catalogs itself.
+func buildCoverageProvider(s *sensor.Sensor) ui.CoverageProvider {
+	return func() ui.CoverageView {
+		var v ui.CoverageView
+
+		// Protocol handlers (the config whitelist = the live decoy surface).
+		v.Counts.TCPHandlers = len(config.TCPHandlerNames())
+		v.Counts.UDPHandlers = len(config.UDPHandlerNames())
+
+		// CVE catalog, grouped by the service (handler) it applies to.
+		all := cve.All()
+		v.Counts.CVETotal = len(all)
+		type agg struct {
+			det, adv       int
+			ids            []string
+			topID, topName string
+			topCVSS        float64
+		}
+		byService := map[string]*agg{}
+		for _, r := range all {
+			if r.Detectable() {
+				v.Counts.CVEDetectable++
+			} else {
+				v.Counts.CVEAdvisory++
+			}
+			a := byService[r.Service]
+			if a == nil {
+				a = &agg{}
+				byService[r.Service] = a
+			}
+			if r.Detectable() {
+				a.det++
+			} else {
+				a.adv++
+			}
+			a.ids = append(a.ids, r.ID)
+			if r.CVSS > a.topCVSS {
+				a.topCVSS, a.topID, a.topName = r.CVSS, r.ID, r.Name
+			}
+		}
+		for svc, a := range byService {
+			v.Services = append(v.Services, ui.CoverageServiceRow{
+				Service: svc, Detectable: a.det, Advisory: a.adv,
+				KEV:    s.KEVModeled(a.ids),
+				TopCVE: a.topID, TopName: a.topName, TopCVSS: a.topCVSS,
+			})
+		}
+		sort.Slice(v.Services, func(i, j int) bool {
+			ti := v.Services[i].Detectable + v.Services[i].Advisory
+			tj := v.Services[j].Detectable + v.Services[j].Advisory
+			if ti != tj {
+				return ti > tj
+			}
+			return v.Services[i].Service < v.Services[j].Service
+		})
+
+		// Live KEV overlay.
+		active, entries, updated := s.KEVStats()
+		v.Counts.KEVActive, v.Counts.KEVEntries, v.Counts.KEVUpdated = active, entries, updated
+		if active {
+			ids := make([]string, len(all))
+			for i, r := range all {
+				ids[i] = r.ID
+			}
+			v.Counts.KEVModeled = s.KEVModeled(ids)
+		}
+
+		// Loaded operator detection rules.
+		rs := s.DetectRuleStats()
+		v.Counts.RulesLoaded = len(rs)
+		for _, r := range rs {
+			v.Counts.RulesHits += r.Hits
+		}
+
+		// ATT&CK coverage: distinct techniques across every mapping + tactics.
+		techSet := map[string]struct{}{}
+		for _, e := range mitre.Coverage() {
+			for _, t := range e.Techniques {
+				techSet[t] = struct{}{}
+			}
+		}
+		v.Counts.Techniques = len(techSet)
+		v.Counts.Tactics = len(mitre.Tactics())
+
+		// OS/device archetypes.
+		v.Counts.Archetypes = len(archetype.Names())
+
+		return v
+	}
 }
 
 // egressUID resolves the uid the sensor will run as (drop_user, else current),

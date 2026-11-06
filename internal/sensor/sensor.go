@@ -2141,6 +2141,24 @@ func (s *Sensor) KEVStats() (active bool, entries int, updated time.Time) {
 	return true, st.Count(), st.UpdatedAt()
 }
 
+// KEVModeled counts how many of the given CVE ids are present in the live KEV
+// overlay — i.e. modeled CVEs that are actively exploited right now. Returns 0
+// when the overlay is disabled. Callers (e.g. the /coverage page) pass the
+// compile-time catalog's ids so the sensor need not import internal/cve.
+func (s *Sensor) KEVModeled(ids []string) int {
+	st := s.kevStore.Load()
+	if st == nil {
+		return 0
+	}
+	n := 0
+	for _, id := range ids {
+		if st.Contains(id) {
+			n++
+		}
+	}
+	return n
+}
+
 // effIface returns sectionIface if set, else the sensor's first configured
 // interface, else "" — the AF_PACKET default-interface fallback.
 func (s *Sensor) effIface(sectionIface string) string {
