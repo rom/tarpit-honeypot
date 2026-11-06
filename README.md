@@ -1738,10 +1738,12 @@ strategies drag the engagement out. Shipped detection rules live in
 
 ```yaml
 listeners:
-  - { bind: "0.0.0.0", port: 8080, proto: tcp, handler: agent }   # agent provocateur
+  # Each listener needs an `id`, and the port goes INSIDE `bind` ("host:port");
+  # there is no separate `port:` field. Use "[::]:<port>" for dual-stack v4+v6.
+  - { id: agent,  bind: "0.0.0.0:8080",  proto: tcp, handler: agent }   # agent provocateur
   # pair with the model/tool decoys for full coverage:
-  - { bind: "0.0.0.0", port: 11434, proto: tcp, handler: ollama }
-  - { bind: "0.0.0.0", port: 8000,  proto: tcp, handler: mcp }
+  - { id: ollama, bind: "0.0.0.0:11434", proto: tcp, handler: ollama }
+  - { id: mcp,    bind: "0.0.0.0:8000",  proto: tcp, handler: mcp }
 ```
 
 Pair the `agent` handler with the existing `mcp`, `llm_openai` and `ollama`
