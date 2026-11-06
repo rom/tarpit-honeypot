@@ -86,7 +86,7 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   coverage:
-    # Per-package statement-coverage floor (70%), with a pinned grandfather list
+    # Per-package statement-coverage floor (80%), with a pinned grandfather list
     # of packages still below it (tracked debt). See scripts/check-coverage.sh
     # and docs/coverage.md.
     runs-on: ubuntu-latest

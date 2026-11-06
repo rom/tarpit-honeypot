@@ -23,6 +23,13 @@ documented in `docs/`).
 
 ### Changed
 
+- **Test-coverage floor raised from 70% to 80%.** The per-package gate
+  (`scripts/check-coverage.sh`) now enforces 80%; packages still below it stay on
+  the grandfather list, each pinned a little under its current level as tracked
+  debt. `internal/sensor` was burned down from ~33% to ~66% (a new lifecycle
+  integration test that serves a real connection end-to-end and shuts down
+  cleanly, full coverage of the TUN-decoy builders, and unit tests for the pure
+  helpers), so its pin rose from 31 to 64. See `docs/coverage.md` for the list.
 - **The fuzzing/DoS classifier no longer scans every payload for entropy up
   front.** `fuzzdos.ClassifyPayload` eagerly computed Shannon entropy and the
   printable ratio — a full pass over the payload each — on every event, though
@@ -121,6 +128,16 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Panic on malformed PJL/XML/JS input (fuzz-found).** A set of protocol
+  parsers (`pjlNameArg` / `pjlValueOf` / `pjlPasswordValue`, `danfossXMLField`,
+  `xmlTagValue`, `extractJavaScript`) indexed a `strings.ToUpper`/`ToLower` copy
+  of the input and then sliced the *original* — but Unicode case-folding isn't
+  length-preserving (e.g. `ȿ` U+023F → `Ȿ` U+2C7E grows 2→3 bytes), so an index
+  from the folded copy could point past the end of the original and panic a
+  slice. CI's fuzz-smoke job caught it in the PJL printer handler. All now search
+  the original bytes case-insensitively via a length-preserving `asciiIndexFold`
+  helper (plus a clamp on a pre-existing off-by-one in the `</script>` slice).
+  Detection/emulation only — removes a crash (self-DoS) on hostile input.
 - **Unbounded-input DoS hardening (code audit).** Six handlers accepted
   attacker-controlled input without a size cap and could be driven to large
   allocations / unbounded buffering within the read deadline:
