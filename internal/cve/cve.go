@@ -1582,7 +1582,8 @@ var catalog = []Record{
 		ID: "CVE-2010-1871", Name: "JBoss Seam framework EL injection RCE", CVSS: 7.5, Service: "http",
 		Signatures: []string{"actionoutcome="},
 		Technique:  "T1190", Tactic: "initial-access",
-		CWE:         []string{"CWE-94"},
+		CWE: []string{"CWE-94"},
+		CPE: "cpe:2.3:a:redhat:jboss_seam:*:*:*:*:*:*:*:*", EPSS: 0.80,
 		Description: "JBoss Seam evaluates the actionOutcome parameter as JBoss EL, allowing arbitrary method invocation → RCE.",
 	},
 
@@ -1642,7 +1643,8 @@ var catalog = []Record{
 		ID: "CVE-2014-3704", Name: "Drupalgeddon SQL injection", CVSS: 9.8, Service: "http",
 		Signatures: []string{"name[0;", "name[0%20;"},
 		Technique:  "T1190", Tactic: "initial-access",
-		CWE:         []string{"CWE-89"},
+		CWE: []string{"CWE-89"},
+		CPE: "cpe:2.3:a:drupal:drupal:*:*:*:*:*:*:*:*", EPSS: 0.97,
 		Description: "Drupal 7 core database API array-key SQL injection in the login form → auth bypass / RCE.",
 	},
 	{
@@ -1693,7 +1695,8 @@ var catalog = []Record{
 		ID: "CVE-2015-1635", Name: "Microsoft HTTP.sys remote code execution (MS15-034)", CVSS: 10.0, Service: "http",
 		Signatures: []string{"bytes=0-18446744073709551615"},
 		Technique:  "T1499", Tactic: "impact",
-		CWE:         []string{"CWE-190"},
+		CWE: []string{"CWE-190"},
+		CPE: "cpe:2.3:o:microsoft:windows:*:*:*:*:*:*:*:*", EPSS: 0.94,
 		Description: "HTTP.sys integer overflow parsing a crafted Range header → BSOD / potential RCE.",
 	},
 	{
@@ -1811,14 +1814,16 @@ var catalog = []Record{
 		ID: "CVE-2011-2523", Name: "vsftpd 2.3.4 backdoor", CVSS: 9.8, Service: "ftp",
 		Signatures: []string{":)"},
 		Technique:  "T1190", Tactic: "initial-access",
-		CWE:         []string{"CWE-78"},
+		CWE: []string{"CWE-78"},
+		CPE: "cpe:2.3:a:vsftpd_project:vsftpd:2.3.4:*:*:*:*:*:*:*", EPSS: 0.90,
 		Description: "Backdoored vsftpd 2.3.4: a username containing the ':)' smiley opens a root shell on TCP 6200.",
 	},
 	{
 		ID: "CVE-2000-0573", Name: "wu-ftpd SITE EXEC format-string RCE", CVSS: 10.0, Service: "ftp",
 		Signatures: []string{"site exec"},
 		Technique:  "T1190", Tactic: "initial-access",
-		CWE:         []string{"CWE-134"},
+		CWE: []string{"CWE-134"},
+		CPE: "cpe:2.3:a:washington_university:wu-ftpd:*:*:*:*:*:*:*:*", EPSS: 0.30,
 		Description: "wu-ftpd SITE EXEC passes user input as a format string → remote root code execution.",
 	},
 	{
@@ -1834,8 +1839,8 @@ var catalog = []Record{
 	// All Service "http" (also matches https). High-signal path / header /
 	// body signatures; detection only.
 	// ===================================================================
-	{ID: "CVE-2010-5326", Name: "SAP NetWeaver Invoker Servlet auth bypass RCE", CVSS: 10.0, Service: "http", Signatures: []string{"/ctc/servlet/com.sap.ctc.util"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, Description: "SAP NetWeaver Invoker Servlet allows unauthenticated invocation of ConfigServlet → command execution."},
-	{ID: "CVE-2014-6287", Name: "Rejetto HTTP File Server (HFS) RCE", CVSS: 9.8, Service: "http", Signatures: []string{"{.exec|", "%00{.exec"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, Description: "Rejetto HFS findMacroMarker null-byte macro injection → remote command execution."},
+	{ID: "CVE-2010-5326", Name: "SAP NetWeaver Invoker Servlet auth bypass RCE", CVSS: 10.0, Service: "http", Signatures: []string{"/ctc/servlet/com.sap.ctc.util"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, CPE: "cpe:2.3:a:sap:netweaver_application_server:*:*:*:*:*:*:*:*", EPSS: 0.70, Description: "SAP NetWeaver Invoker Servlet allows unauthenticated invocation of ConfigServlet → command execution."},
+	{ID: "CVE-2014-6287", Name: "Rejetto HTTP File Server (HFS) RCE", CVSS: 9.8, Service: "http", Signatures: []string{"{.exec|", "%00{.exec"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, CPE: "cpe:2.3:a:rejetto:http_file_server:*:*:*:*:*:*:*:*", EPSS: 0.96, Description: "Rejetto HFS findMacroMarker null-byte macro injection → remote command execution."},
 	{ID: "CVE-2015-7501", Name: "Apache Commons Collections deserialization RCE", CVSS: 9.8, Service: "http", Signatures: []string{"invokertransformer", "instantiatetransformer"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-502"}, Description: "Java deserialization of a Commons-Collections InvokerTransformer gadget chain → RCE (JBoss/Jenkins/WebLogic)."},
 	{ID: "CVE-2016-3081", Name: "Apache Struts2 Dynamic Method Invocation OGNL RCE", CVSS: 9.8, Service: "http", Signatures: []string{"#_memberaccess", "method:#_member"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-94"}, Description: "Struts2 S2-032: DMI lets an attacker run OGNL via the method: prefix → RCE."},
 	{ID: "CVE-2016-4977", Name: "Spring Security OAuth SpEL injection RCE", CVSS: 8.8, Service: "http", Signatures: []string{"response_type=${", "response_type=%24%7b"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-917"}, Description: "Spring Security OAuth whitelabel approval page evaluates the response_type parameter as SpEL → RCE."},
@@ -1925,7 +1930,7 @@ var catalog = []Record{
 	// --- Routers / IoT / cameras (Mirai-class mass-exploited endpoints) ---
 	{ID: "CVE-2018-10562", Name: "Dasan/Zhone GPON router command injection", CVSS: 9.8, Service: "http", Signatures: []string{"/gponform/diag_form", "dest_host="}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "GPON home routers run shell commands from the diag_Form dest_host field → RCE (massive botnet target)."},
 	{ID: "CVE-2017-17215", Name: "Huawei HG532 router command injection", CVSS: 8.8, Service: "http", Signatures: []string{"/ctrlt/deviceupgrade_1"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "Huawei HG532 UPnP DeviceUpgrade injects shell commands via NewStatusURL → RCE (Mirai/Satori)."},
-	{ID: "CVE-2014-8361", Name: "Realtek SDK miniigd UPnP command injection", CVSS: 9.8, Service: "http", Signatures: []string{"picsdesc.xml", "newinternalclient"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "Realtek SDK miniigd SOAP NewInternalClient command injection → RCE (countless OEM routers)."},
+	{ID: "CVE-2014-8361", Name: "Realtek SDK miniigd UPnP command injection", CVSS: 9.8, Service: "http", Signatures: []string{"picsdesc.xml", "newinternalclient"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, CPE: "cpe:2.3:o:realtek:realtek_sdk:*:*:*:*:*:*:*:*", EPSS: 0.95, Description: "Realtek SDK miniigd SOAP NewInternalClient command injection → RCE (countless OEM routers)."},
 	{ID: "CVE-2016-6277", Name: "Netgear R7000/R6400 command injection", CVSS: 8.1, Service: "http", Signatures: []string{"/cgi-bin/;"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "Netgear routers execute a command appended after /cgi-bin/; → unauthenticated RCE."},
 	{ID: "CVE-2017-5521", Name: "Netgear password-recovery disclosure", CVSS: 8.1, Service: "http", Signatures: []string{"passwordrecovered.cgi"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-200"}, Description: "Netgear routers disclose the admin password via passwordrecovered.cgi without authentication."},
 	{ID: "CVE-2015-2051", Name: "D-Link HNAP SOAPAction command injection", CVSS: 9.8, Service: "http", Signatures: []string{"getdevicesettings"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "D-Link DIR routers inject shell commands via the HNAP GetDeviceSettings SOAPAction header → RCE."},
@@ -1942,7 +1947,7 @@ var catalog = []Record{
 	// CVE-2014-8361 + Huawei HG532 CVE-2017-17215 above are also UPnP SOAP RCE,
 	// matched via the http service the upnp handler additionally scans.) ----
 	{ID: "CVE-2016-10372", Name: "Eir D1000 / TR-064 SetNTPServers RCE (CWMP 7547)", CVSS: 9.8, Service: "tr069", Signatures: []string{"setntpservers", "newntpserver1"}, Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-78"}, Description: "Eir D1000 / Zyxel CPEs run shell commands from the TR-064 SetNTPServers NewNTPServer1 parameter, reachable on the TR-069 port 7547 → RCE (the Nov-2016 Deutsche Telekom / Mirai outage)."},
-	{ID: "CVE-2014-9222", Name: "Misfortune Cookie (RomPager)", CVSS: 9.8, Service: "tr069", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, Description: "AllegroSoft RomPager <4.34 — the embedded HTTP server fronting TR-069 on millions of CPEs — lets a crafted Cookie header corrupt heap state and act as any session → device takeover."},
+	{ID: "CVE-2014-9222", Name: "Misfortune Cookie (RomPager)", CVSS: 9.8, Service: "tr069", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-787"}, CPE: "cpe:2.3:a:allegrosoft:rompager:*:*:*:*:*:*:*:*", EPSS: 0.75, Description: "AllegroSoft RomPager <4.34 — the embedded HTTP server fronting TR-069 on millions of CPEs — lets a crafted Cookie header corrupt heap state and act as any session → device takeover."},
 	{ID: "CVE-2020-12695", Name: "CallStranger (UPnP SUBSCRIBE)", CVSS: 7.5, Service: "upnp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-918"}, Description: "UPnP devices honor a SUBSCRIBE Callback header pointing at an arbitrary host, giving an attacker SSRF, data exfiltration past DLP, and a reflected/amplified DDoS source."},
 	{ID: "CVE-2012-5958", Name: "libupnp SSDP stack overflow (Unplug. Don't Play.)", CVSS: 10.0, Service: "ssdp", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-120"}, Description: "The Portable SDK for UPnP (libupnp) unique_service_name() stack buffer overflow in SSDP parsing → RCE across tens of millions of devices."},
 	// ---- Enterprise / SP network gear (advertised as decoys on the matching
@@ -2276,7 +2281,7 @@ var catalog = []Record{
 	// Siemens 2019-10929 and Moxa 2016-9361 are already catalogued elsewhere.)
 	{ID: "CVE-2000-0917", Name: "LPRng format-string RCE", CVSS: 10.0, Service: "lpd", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-134"}, Description: "LPRng use_syslog format-string vulnerability allows remote code execution via crafted LPD control data."},
 	{ID: "CVE-2017-2741", Name: "HP LaserJet PJL path traversal / file access", CVSS: 7.5, Service: "pjl", Technique: "T1005", Tactic: "collection", CWE: []string{"CWE-22"}, Description: "HP printers expose the PJL filesystem (FSDOWNLOAD/FSUPLOAD), allowing remote read/write outside the intended directory."},
-	{ID: "CVE-2013-4786", Name: "IPMI 2.0 RAKP password-hash disclosure", CVSS: 7.5, Service: "ipmi", Technique: "T1190", Tactic: "credential-access", CWE: []string{"CWE-200"}, Description: "The IPMI 2.0 RAKP protocol returns a salted password hash for any username to an unauthenticated client (offline-crackable)."},
+	{ID: "CVE-2013-4786", Name: "IPMI 2.0 RAKP password-hash disclosure", CVSS: 7.5, Service: "ipmi", Technique: "T1190", Tactic: "credential-access", CWE: []string{"CWE-200"}, CPE: "cpe:2.3:a:intel:ipmi:*:*:*:*:*:*:*:*", EPSS: 0.65, Description: "The IPMI 2.0 RAKP protocol returns a salted password hash for any username to an unauthenticated client (offline-crackable)."},
 	{ID: "CVE-2006-2369", Name: "RealVNC 4.1.1 authentication bypass", CVSS: 7.5, Service: "vnc", Technique: "T1190", Tactic: "initial-access", CWE: []string{"CWE-287"}, Description: "RealVNC 4.1.1 lets a client choose the 'None' security type even when the server requires a password — full auth bypass."},
 	{ID: "CVE-2019-15681", Name: "LibVNCServer memory disclosure", CVSS: 7.5, Service: "vnc", Technique: "T1190", Tactic: "collection", CWE: []string{"CWE-200"}, Description: "LibVNCServer leaks server memory to a connecting client through an uninitialized-data read."},
 	{ID: "CVE-2020-6998", Name: "Rockwell Logix stack overflow RCE", CVSS: 10.0, Service: "ethernetip", Technique: "T0843", Tactic: "execution", CWE: []string{"CWE-787"}, Description: "Allen-Bradley CompactLogix/ControlLogix CIP handling stack overflow allows remote code execution / PLC compromise."},
@@ -2684,6 +2689,17 @@ var cveExtra = map[string]struct {
 	CPE  string
 	EPSS float64
 }{
+	// Backfill for records that previously carried no CWE/CPE/EPSS at all.
+	"CVE-2024-51378": {[]string{"CWE-78", "CWE-287"}, "cpe:2.3:a:cyberpanel:cyberpanel:*", 0.94},
+	"CVE-2024-57727": {[]string{"CWE-22"}, "cpe:2.3:a:simple-help:simplehelp:*", 0.90},
+	"CVE-2024-32113": {[]string{"CWE-22"}, "cpe:2.3:a:apache:ofbiz:*", 0.90},
+	"CVE-2024-38475": {[]string{"CWE-22"}, "cpe:2.3:a:apache:http_server:*", 0.80},
+	"CVE-2024-5806":  {[]string{"CWE-287"}, "cpe:2.3:a:progress:moveit_transfer:*", 0.90},
+	"CVE-2024-20439": {[]string{"CWE-798"}, "cpe:2.3:a:cisco:smart_licensing_utility:*", 0.80},
+	"CVE-2024-11680": {[]string{"CWE-287"}, "cpe:2.3:a:projectsend:projectsend:*", 0.94},
+	"CVE-2025-49144": {[]string{"CWE-427"}, "cpe:2.3:a:notepad-plus-plus:notepad_plus_plus:*", 0.10},
+	"CVE-2024-50623": {[]string{"CWE-434"}, "cpe:2.3:a:cleo:harmony:*", 0.90},
+	"CVE-2024-12356": {[]string{"CWE-78"}, "cpe:2.3:a:beyondtrust:privileged_remote_access:*", 0.90},
 	"CVE-2014-6271":  {[]string{"CWE-78"}, "cpe:2.3:a:gnu:bash:*", 0.94},
 	"CVE-2017-0144":  {[]string{"CWE-20", "CWE-787"}, "cpe:2.3:o:microsoft:windows:*", 0.94},
 	"CVE-2017-10271": {[]string{"CWE-502"}, "cpe:2.3:a:oracle:weblogic_server:*", 0.97},

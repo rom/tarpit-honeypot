@@ -31,6 +31,10 @@ listeners:
   - { id: sel-web,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: lua, script: configs/scripts/sel-relay-web.lua, severity: high, capture: true }
   - { id: hist-web,  proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: lua, script: configs/scripts/historian-web.lua, severity: high, capture: true }
   - { id: solar-web, proto: tcp, bind: 0.0.0.0:8081, mode: banner, handler: lua, script: configs/scripts/solar-web.lua,     severity: medium, capture: true }
+  # --- Control-center + historian + metering surfaces -------------------------
+  - { id: iccp, proto: tcp, bind: 0.0.0.0:3782, mode: banner, handler: iccp_secure, severity: critical, capture: true } # Secure ICCP / TASE.2 (inter-control-center data exchange)
+  - { id: pi,   proto: tcp, bind: 0.0.0.0:5450, mode: banner, handler: osisoft_pi,  severity: high,     capture: true } # OSIsoft / AVEVA PI Data Archive (historian)
+  - { id: dlms, proto: tcp, bind: 0.0.0.0:4059, mode: banner, handler: dlms,        severity: high,     capture: true } # DLMS/COSEM smart-metering (AMI head-end)
 
 honeynets:
   - id: substation

@@ -183,6 +183,8 @@ listeners:
     read_bytes: 256
     read_timeout: 5s
 
+  # Sparkplug B (NBIRTH/DBIRTH/NDATA + protobuf payloads) is auto-recognized
+  # inside the mqtt handler — no separate listener is needed.
   - id: mqtt-bait
     proto: tcp
     bind: 0.0.0.0:1883
@@ -685,6 +687,95 @@ listeners:
     read_bytes: 2048
     read_timeout: 5s
 
+  # ------------------------------------------------------------------------
+  # AI / agentic-attack decoys (commented reference — uncomment to enable).
+  # The agentic honeypot recognizes A2A / AP2 / MCP / ACP agent traffic and
+  # feeds counter-exfil breadcrumbs; the LLM / Ollama / MCP decoys emulate the
+  # exposed inference + tool servers that agent frameworks probe for. Ports
+  # below are canonical — if one clashes with an active listener above (MCP's
+  # 8000 collides with http-bait here), rebind it before enabling both.
+  # ------------------------------------------------------------------------
+  # - id: agent-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:8080         # agentic provocateur (A2A/AP2/MCP/ACP)
+  #   mode: banner
+  #   handler: agent
+  #   severity: high
+  #   read_timeout: 30s
+  # - id: ollama-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:11434        # Ollama inference-server decoy
+  #   mode: banner
+  #   handler: ollama
+  #   severity: medium
+  # - id: llm-openai-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:8081         # OpenAI-style /v1 LLM API decoy
+  #   mode: banner
+  #   handler: llm_openai
+  #   severity: medium
+  # - id: mcp-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:8000         # Model Context Protocol server decoy (rebind: clashes with http-bait)
+  #   mode: banner
+  #   handler: mcp
+  #   severity: medium
+  # - id: c2-emulator-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:8088         # fake C2 team-server (beacon/stager recognition; canonical 8080/80)
+  #   mode: banner
+  #   handler: c2_emulator
+  #   severity: high
+
+  # ------------------------------------------------------------------------
+  # Additional OT / ICS protocols (commented reference — uncomment to enable).
+  # ------------------------------------------------------------------------
+  # - id: bacnet-sc-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:47808        # BACnet Secure Connect (WS+TLS BMS data link)
+  #   mode: banner
+  #   handler: bacnet_sc         # TLS-fronted real-world variant: handler: bacnet_scs
+  #   severity: critical
+  # - id: mbus-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:10001        # M-Bus meter gateway
+  #   mode: banner
+  #   handler: mbus
+  #   severity: high
+  # - id: dlms-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:4059         # DLMS/COSEM smart-metering
+  #   mode: banner
+  #   handler: dlms
+  #   severity: high
+  # - id: osisoft-pi-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:5450         # OSIsoft PI historian
+  #   mode: banner
+  #   handler: osisoft_pi
+  #   severity: high
+  # - id: fox-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:1911         # Niagara / Tridium Fox (BMS)
+  #   mode: banner
+  #   handler: fox
+  #   severity: high
+  # - id: iccp-secure-bait
+  #   proto: tcp
+  #   bind: 0.0.0.0:3782         # Secure ICCP / TASE.2 (inter-control-center)
+  #   mode: banner
+  #   handler: iccp_secure
+  #   severity: critical
+
+  # ------------------------------------------------------------------------
+  # Decoy loot / lures / breadcrumbs. There is no YAML for these — generate the
+  # files, then let the ftp_files + http (webapp) listeners above serve them:
+  #   tarpit-honeypot gen-wallet-decoys    --out <loot_dir>   # fake crypto wallets
+  #   tarpit-honeypot gen-lures            --out <loot_dir>   # fake aws/ssh/.env/kubeconfig lures
+  #   tarpit-honeypot gen-agent-breadcrumb --out <loot_dir>   # lure crawling agents to the agent decoy
+  # Point the ftp_files served tree / the webapp download root at <loot_dir>.
+  # ------------------------------------------------------------------------
+
 canaries:
   - id: shared-creds
     path: ./var/canary/passwords.xlsx
@@ -849,6 +940,19 @@ honeynets:
           - { port: 4840, handler: opcua }
           - { port: 3389, handler: rdp }
 
+# Declarative operator detection-rule engine: point it at a directory of
+# Sigma-style YAML rules (internal/detect) matched against every event. The
+# repo ships a starter pack under configs/rules/ (agentic, exfil-and-c2,
+# ot-ics-control, web-exploit, credential-access, …). The path is
+# deployment-specific, so it's commented here; `validate-config` loads and
+# checks the rules when it's set.
+# detection:
+#   rules_dir: /etc/tarpit-honeypot/rules    # e.g. the shipped configs/rules/
+
+# Fleet / multi-sensor topology (forward, ingest, fleet correlation, intel feed)
+# lives in its own reference set: see examples/fleet/ (leaf-sensor.yaml →
+# site-aggregator.yaml → global-hub.yaml) for the forward:/ingest:/fleet: blocks.
+
 correlate:
   port_scan:
     enabled: true
@@ -911,6 +1015,19 @@ correlate:
     max_jitter_pct: 20
     window: 1h
     severity: high
+
+# CISA Known Exploited Vulnerabilities (KEV) auto-sync. When enabled the sensor
+# pulls the KEV catalog on `poll` and stamps every cve:<id> event whose CVE is
+# KEV-listed with kev=true + kev_date_added + kev_known_ransomware, lifting its
+# severity to at least High. The feed host (www.cisa.gov) is fetched through the
+# egress-governed client, so add it to egress.allow when egress is enabled. Use
+# `file:` for the offline / air-gapped path (scripts/fetch-kev.sh installs it).
+# kev:
+#   enabled: true
+#   # url: ""                  # empty = the authoritative CISA KEV JSON feed
+#   poll: 6h
+#   # header: "Name: value"    # optional request header (e.g. a proxy token)
+#   # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
 
 # Interaction depth + experimental-feature guardrails. low (default) means
 # every emitted capture is something this emulator can actually produce;

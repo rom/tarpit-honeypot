@@ -277,6 +277,47 @@ func TestProfileASNLinkScopesToASN(t *testing.T) {
 	}
 }
 
+// TestBuildProfileAgentSignals asserts the autonomous-agent dossier surfaces the
+// agent handler's per-event markers and classifies the actor as an AI agent.
+func TestBuildProfileAgentSignals(t *testing.T) {
+	ev := &event.Event{
+		ID: "ag1", Time: time.Now().UTC(), Sensor: "s", RuleID: "agentic-attack", Severity: event.SeverityHigh,
+		Source: event.Endpoint{IP: "7.7.7.7"}, Handler: "agent", Dest: event.Endpoint{Port: 8080},
+		Anomalies: []string{"agent:a2a", "agent:autonomous", "agent:counter-exfil"},
+		Meta: map[string]any{
+			"agent_protocol": "a2a", "agent_band": "ai-agent", "agent_confidence": 0.9,
+			"agent_frameworks":          []any{"langchain"},
+			"agent_ai_crawler":          "gptbot",
+			"atlas_techniques":          []any{"AML.T0051"},
+			"agent_revealed":            []any{"system_prompt", "api_keys"},
+			"agent_signature_agent":     "https://keys.example/dir",
+			"agent_injection_confirmed": true,
+		},
+	}
+	p := buildProfile("7.7.7.7", []*event.Event{ev})
+	if p.AgentBand != "ai-agent" {
+		t.Errorf("AgentBand=%q want ai-agent", p.AgentBand)
+	}
+	if p.AgentConfidence != 90 {
+		t.Errorf("AgentConfidence=%d want 90", p.AgentConfidence)
+	}
+	if !p.AgentInjectionConfirmed {
+		t.Error("AgentInjectionConfirmed should be true")
+	}
+	if !hasStr(p.AgentProtocols, "a2a") || !hasStr(p.AgentFrameworks, "langchain") ||
+		!hasStr(p.AICrawlers, "gptbot") || !hasStr(p.ATLASTechniques, "AML.T0051") ||
+		!hasStr(p.AgentRevealed, "system_prompt") {
+		t.Errorf("agent signal sets not populated: %+v", p)
+	}
+	if p.WebBotAuthSigner != "https://keys.example/dir" {
+		t.Errorf("WebBotAuthSigner=%q", p.WebBotAuthSigner)
+	}
+	p.synthesize()
+	if p.Classification != "autonomous AI agent" {
+		t.Errorf("Classification=%q want 'autonomous AI agent'", p.Classification)
+	}
+}
+
 // TestProfileNewSectionsRender renders the profile template for a rich actor
 // and asserts the new dossier sections show: the aggregated intent, the
 // consolidated attacks/misuse catalog, the per-protocol summary, the requested

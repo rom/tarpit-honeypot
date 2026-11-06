@@ -473,6 +473,63 @@ listeners:
     mode: banner
     handler: xmpp
     severity: medium
+  # Additional OT / ICS protocols (sequential ports; canonical real-world port
+  # noted per listener, as elsewhere in this estate-wide config).
+  - id: tcp-bacnet-sc
+    proto: tcp
+    bind: 0.0.0.0:10071          # BACnet Secure Connect — canonical 47808 (TLS variant: handler bacnet_scs)
+    mode: banner
+    handler: bacnet_sc
+    severity: high
+  - id: tcp-mbus
+    proto: tcp
+    bind: 0.0.0.0:10072          # M-Bus meter gateway — canonical 10001
+    mode: banner
+    handler: mbus
+    severity: medium
+  - id: tcp-dlms
+    proto: tcp
+    bind: 0.0.0.0:10073          # DLMS/COSEM smart-metering — canonical 4059
+    mode: banner
+    handler: dlms
+    severity: medium
+  - id: tcp-osisoft-pi
+    proto: tcp
+    bind: 0.0.0.0:10074          # OSIsoft / AVEVA PI historian — canonical 5450
+    mode: banner
+    handler: osisoft_pi
+    severity: high
+  - id: tcp-iccp-secure
+    proto: tcp
+    bind: 0.0.0.0:10075          # Secure ICCP / TASE.2 — canonical 3782
+    mode: banner
+    handler: iccp_secure
+    severity: high
+  # AI / LLM tier: exposed inference + agent-tooling decoys (canonical ports).
+  - id: tcp-ollama
+    proto: tcp
+    bind: 0.0.0.0:10076          # Ollama inference-server decoy — canonical 11434
+    mode: banner
+    handler: ollama
+    severity: medium
+  - id: tcp-llm-openai
+    proto: tcp
+    bind: 0.0.0.0:10077          # OpenAI-style /v1 LLM API decoy — canonical 8081
+    mode: banner
+    handler: llm_openai
+    severity: medium
+  - id: tcp-mcp
+    proto: tcp
+    bind: 0.0.0.0:10078          # Model Context Protocol server decoy — canonical 8000
+    mode: banner
+    handler: mcp
+    severity: medium
+  - id: tcp-agent
+    proto: tcp
+    bind: 0.0.0.0:10079          # Agentic provocateur (A2A/AP2/MCP/ACP) — canonical 8080
+    mode: banner
+    handler: agent
+    severity: high
   - id: udp-bacnet
     proto: udp
     bind: 0.0.0.0:12000
@@ -705,6 +762,18 @@ correlate:
   dns_enumeration: { enabled: true }
   beacon: { enabled: true }
   storyline: { enabled: true }
+
+# CISA Known Exploited Vulnerabilities (KEV) auto-sync. When enabled the sensor
+# pulls the KEV catalog on `poll` and stamps every cve:<id> event whose CVE is
+# KEV-listed with kev=true + kev_date_added + kev_known_ransomware, lifting its
+# severity to at least High. The feed host (www.cisa.gov) is fetched through the
+# egress-governed client — add it to egress.allow if you enable egress here. Use
+# `file:` for the offline / air-gapped path (scripts/fetch-kev.sh installs it).
+kev:
+  enabled: false
+  # url: ""                    # empty = the authoritative CISA KEV JSON feed
+  poll: 6h
+  # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
 
 # Low-interaction by default across the estate.
 interaction:

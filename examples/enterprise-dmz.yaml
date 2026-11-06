@@ -55,6 +55,7 @@ listeners:
   - { id: http,   proto: tcp, bind: 0.0.0.0:80,   mode: banner, handler: http,  webapp: true, severity: high, capture: true }
   - { id: https,  proto: tcp, bind: 0.0.0.0:443,  mode: banner, handler: https, webapp: true, severity: high, capture: true }
   - { id: https-alt, proto: tcp, bind: 0.0.0.0:8443, mode: banner, handler: https, severity: high, capture: true }
+  - { id: c2-web, proto: tcp, bind: 0.0.0.0:8080, mode: banner, handler: c2_emulator, severity: critical, capture: true } # fake C2 team-server on a web port — recognizes beacon / stager HTTP check-ins
   - { id: openvpn, proto: tcp, bind: 0.0.0.0:1194, mode: banner, handler: openvpn,    severity: high }
   - { id: dns,    proto: udp, bind: 0.0.0.0:53,   mode: banner, handler: dns,         severity: medium }
 
@@ -121,6 +122,18 @@ correlate:
   # Enrichment-driven (need the sensor.geoip / threat_intel / tor blocks above).
   threat_intel_burst: { enabled: true, events: 4, window: 10m, severity: high }
   geo_velocity:       { enabled: true, distinct_countries: 2, window: 1h, severity: high }
+
+# CISA Known Exploited Vulnerabilities (KEV) auto-sync. When enabled the sensor
+# pulls the KEV catalog on `poll` and stamps every cve:<id> event whose CVE is
+# KEV-listed (kev=true + kev_date_added + kev_known_ransomware), lifting its
+# severity to at least High — high-signal on an internet-facing DMZ. The feed
+# host (www.cisa.gov) rides the egress-governed client; add it to egress.allow
+# if you enable egress. `file:` is the offline path (scripts/fetch-kev.sh).
+kev:
+  enabled: false
+  # url: ""                    # empty = the authoritative CISA KEV JSON feed
+  poll: 6h
+  # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
 
 interaction:
   mode: low

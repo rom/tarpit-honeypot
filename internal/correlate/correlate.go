@@ -72,6 +72,7 @@ type Correlator struct {
 	tollFraudSev   event.Severity
 	voipEnumSev    event.Severity
 	pbxCtrlSev     event.Severity
+	agenticEscSev  event.Severity
 
 	mu       sync.Mutex
 	scan     map[string]*scanState      // key: source IP
@@ -128,6 +129,7 @@ type Correlator struct {
 	tollFraud   map[string]*countState     // key: source IP (call-placement count)
 	voipEnum    map[string]*setState       // key: source IP (distinct VoIP protocols)
 	pbxCtrl     map[string]*countState     // key: source IP (PBX admin-action count)
+	agenticEsc  map[string]*setState       // key: source IP (distinct agent:* provocation markers)
 	emitted     map[string]time.Time       // dedup of aggregate emission
 	lastGC      time.Time                  // last idle-state sweep
 
@@ -262,6 +264,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		tollFraud:   map[string]*countState{},
 		voipEnum:    map[string]*setState{},
 		pbxCtrl:     map[string]*countState{},
+		agenticEsc:  map[string]*setState{},
 		emitted:     map[string]time.Time{},
 	}
 	c.maxSources = cfg.MaxSources
@@ -380,6 +383,7 @@ func New(cfg config.Correlate) (*Correlator, error) {
 		{cfg.TollFraud.Enabled, cfg.TollFraud.Severity, &c.tollFraudSev},
 		{cfg.VoIPEnum.Enabled, cfg.VoIPEnum.Severity, &c.voipEnumSev},
 		{cfg.PBXControl.Enabled, cfg.PBXControl.Severity, &c.pbxCtrlSev},
+		{cfg.AgenticEscalation.Enabled, cfg.AgenticEscalation.Severity, &c.agenticEscSev},
 	} {
 		if !sp.on {
 			continue
@@ -583,6 +587,11 @@ func (c *Correlator) Observe(ev *event.Event) []*event.Event {
 	}
 	if c.cfg.PBXControl.Enabled {
 		if extra := c.checkPBXControl(ev, now); extra != nil {
+			out = append(out, extra)
+		}
+	}
+	if c.cfg.AgenticEscalation.Enabled {
+		if extra := c.checkAgenticEscalation(ev, now); extra != nil {
 			out = append(out, extra)
 		}
 	}
@@ -1485,6 +1494,7 @@ func (c *Correlator) gc(now time.Time) {
 		}
 	}
 	gcSet(c.voipEnum, now, effWindow(c.cfg.VoIPEnum.Window, 5*time.Minute))
+	gcSet(c.agenticEsc, now, effWindow(c.cfg.AgenticEscalation.Window, 30*time.Minute))
 	for k, st := range c.tollFraud {
 		if now.Sub(st.since) > effWindow(c.cfg.TollFraud.Window, 5*time.Minute) {
 			delete(c.tollFraud, k)
@@ -1565,6 +1575,7 @@ func (c *Correlator) shedOverCap() {
 	shedMap(c.tollFraud, m)
 	shedMap(c.voipEnum, m)
 	shedMap(c.pbxCtrl, m)
+	shedMap(c.agenticEsc, m)
 	// emitted (emission dedup) is keyed per source+detector and only ages out at
 	// 24h, so it balloons fastest under a flood — cap it on the same ceiling.
 	shedMap(c.emitted, m)

@@ -86,6 +86,14 @@ listeners:
   - { id: canaryhist, proto: tcp, bind: 0.0.0.0:9990, mode: banner, handler: canary_historian, severity: high }   # Canary Labs Historian
   - { id: aspen,    proto: tcp, bind: 0.0.0.0:10014, mode: banner, handler: aspen_ip21,      severity: high }     # AspenTech InfoPlus.21
 
+  # ============= TCP / secure BAS + metering + IIoT messaging ===============
+  - { id: bacnet-sc, proto: tcp, bind: 0.0.0.0:47808, mode: banner, handler: bacnet_sc,  severity: critical, capture: true } # BACnet Secure Connect (WS+TLS BMS data link; TLS-fronted variant: handler bacnet_scs). Coexists with BACnet/IP udp:47808.
+  - { id: mbus,      proto: tcp, bind: 0.0.0.0:10003, mode: banner, handler: mbus,       severity: high }     # M-Bus meter gateway (canonical 10001 is held by atg here)
+  - { id: dlms,      proto: tcp, bind: 0.0.0.0:4059,  mode: banner, handler: dlms,       severity: high }     # DLMS/COSEM smart-metering
+  # MQTT broker decoy. Sparkplug B (NBIRTH/DBIRTH/NDATA + protobuf payloads) is
+  # auto-recognized inside the mqtt handler — no separate listener is needed.
+  - { id: mqtt,      proto: tcp, bind: 0.0.0.0:1883,  mode: banner, handler: mqtt,       severity: high }     # MQTT / Sparkplug B (IIoT pub-sub)
+
   # ============================ UDP / ICS + BAS =============================
   # UDP handlers are reflection-safe (rate-limited / capture-only). read_bytes
   # is raised so full discovery/datagram payloads are captured.

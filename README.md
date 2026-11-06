@@ -656,7 +656,7 @@ events to your sinks. Current totals: **197 TCP + 118 UDP protocol handlers**,
 **743 CVE records** (373 live-detectable + 370 advisory), **469 built-in YARA
 artifact-classification rules**, **240 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
-attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor
+attack-tool/scanner fingerprints**, **31 single-sensor + 27 cross-sensor
 (`fleet:*`) correlators**, **18 typed IOC kinds**, and full MITRE ATT&CK +
 **20 D3FEND** countermeasure mapping.
 

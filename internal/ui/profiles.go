@@ -157,6 +157,20 @@ type Profile struct {
 	// used (versions + negotiated facts), not just the TLS/SSH/HTTP/QUIC transport
 	// stack summarized in Proto.
 	Protocols []ProtocolUse `json:"protocols,omitempty"`
+	// Agentic autonomous-agent intelligence, surfaced from the `agent` handler's
+	// per-event markers (see docs/AGENTIC.md). AgentBand is the behavioral
+	// confidence band (human / automated / ai-assisted / ai-agent); AgentConfidence
+	// is that score as 0-100. The rest describe what the agent was and what it
+	// disclosed when goaded (counter-exfil / provoked / injection-confirmed).
+	AgentBand               string   `json:"agent_band,omitempty"`
+	AgentConfidence         int      `json:"agent_confidence,omitempty"`
+	AgentProtocols          []string `json:"agent_protocols,omitempty"`  // a2a / ap2 / mcp / acp
+	AgentFrameworks         []string `json:"agent_frameworks,omitempty"` // langchain / crewai / ...
+	AICrawlers              []string `json:"ai_crawlers,omitempty"`      // gptbot / claudebot / ...
+	WebBotAuthSigner        string   `json:"web_bot_auth_signer,omitempty"`
+	AgentRevealed           []string `json:"agent_revealed,omitempty"`   // internal fields it disclosed
+	ATLASTechniques         []string `json:"atlas_techniques,omitempty"` // MITRE ATLAS AML.T*
+	AgentInjectionConfirmed bool     `json:"agent_injection_confirmed,omitempty"`
 	// MisuseAnomalies are this source's anomalies excluding the webapp:* web-attack
 	// classes (surfaced separately): the protocol misuse / manipulation markers
 	// shown in the consolidated attack catalog.
@@ -353,6 +367,14 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	attackClassSet := map[string]struct{}{}
 	probedFileSet := map[string]struct{}{}
 	playbookSet := map[string]struct{}{}
+	// Agentic (autonomous-agent) signal accumulators.
+	agentProtoSet := map[string]struct{}{}
+	agentFwSet := map[string]struct{}{}
+	aiCrawlerSet := map[string]struct{}{}
+	agentRevealedSet := map[string]struct{}{}
+	atlasSet := map[string]struct{}{}
+	var agentBand, webBotAuthSigner string
+	var agentConfBest float64
 	var maxSev event.Severity
 
 	rep := map[string]any{}
@@ -462,6 +484,34 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 		}
 		for _, a := range ev.Anomalies {
 			anomSet[a] = struct{}{}
+		}
+		// Agentic autonomous-agent signals (from the `agent` handler).
+		if proto, _ := ev.Meta["agent_protocol"].(string); proto != "" {
+			agentProtoSet[proto] = struct{}{}
+		}
+		for _, f := range metaStrings(ev.Meta, "agent_frameworks") {
+			agentFwSet[f] = struct{}{}
+		}
+		if cr, _ := ev.Meta["agent_ai_crawler"].(string); cr != "" {
+			aiCrawlerSet[cr] = struct{}{}
+		}
+		if sig, _ := ev.Meta["agent_signature_agent"].(string); sig != "" && webBotAuthSigner == "" {
+			webBotAuthSigner = sig
+		}
+		for _, tech := range metaStrings(ev.Meta, "atlas_techniques") {
+			atlasSet[tech] = struct{}{}
+		}
+		for _, rv := range metaStrings(ev.Meta, "agent_revealed") {
+			agentRevealedSet[rv] = struct{}{}
+		}
+		if c, ok := metaFloat(ev.Meta, "agent_confidence"); ok && c > agentConfBest {
+			agentConfBest = c
+		}
+		if band, _ := ev.Meta["agent_band"].(string); band != "" && agentBandRank(band) > agentBandRank(agentBand) {
+			agentBand = band
+		}
+		if ic, _ := ev.Meta["agent_injection_confirmed"].(bool); ic {
+			p.AgentInjectionConfirmed = true
 		}
 		for _, m := range ev.MitreTechniques {
 			mitreSet[m] = struct{}{}
@@ -690,6 +740,14 @@ func buildProfile(ip string, evs []*event.Event) Profile {
 	p.AttackClasses = sortedSet(attackClassSet)
 	p.ProbedFiles = sortedSet(probedFileSet)
 	p.Playbooks = sortedSet(playbookSet)
+	p.AgentProtocols = sortedSet(agentProtoSet)
+	p.AgentFrameworks = sortedSet(agentFwSet)
+	p.AICrawlers = sortedSet(aiCrawlerSet)
+	p.AgentRevealed = sortedSet(agentRevealedSet)
+	p.ATLASTechniques = sortedSet(atlasSet)
+	p.AgentBand = agentBand
+	p.AgentConfidence = int(agentConfBest*100 + 0.5)
+	p.WebBotAuthSigner = webBotAuthSigner
 	p.Ports = sortedInts(portSet)
 	for r, c := range ruleCount {
 		p.Rules = append(p.Rules, countItem{Name: r, Count: c})
@@ -801,6 +859,8 @@ func (p *Profile) synthesize() {
 	switch {
 	case p.TokenReuse:
 		p.Classification = "confirmed compromise — honeytoken reuse"
+	case p.AgentBand == "ai-agent" || p.AgentInjectionConfirmed:
+		p.Classification = "autonomous AI agent"
 	case anyTool(toolfp.IsC2) || has(p.Anomalies, "c2-framework"):
 		p.Classification = "C2 / red-team framework"
 	case len(p.Artifacts) > 0 || has(p.Anomalies, "malware-capture"):
@@ -1281,6 +1341,24 @@ func threatLevel(score int) string {
 		return "elevated"
 	default:
 		return "low"
+	}
+}
+
+// agentBandRank orders the agent-confidence bands so the dossier keeps the
+// highest band seen across a source's events (human < automated < ai-assisted
+// < ai-agent). An unknown/empty band ranks below all of them.
+func agentBandRank(band string) int {
+	switch band {
+	case "ai-agent":
+		return 4
+	case "ai-assisted":
+		return 3
+	case "automated":
+		return 2
+	case "human":
+		return 1
+	default:
+		return 0
 	}
 }
 

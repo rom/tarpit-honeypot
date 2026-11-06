@@ -59,6 +59,12 @@ listeners:
   - { id: couchdb,    proto: tcp, bind: 0.0.0.0:5984, mode: banner, handler: lua, script: configs/scripts/couchdb.lua,    severity: high,     capture: true }
   - { id: clickhouse, proto: tcp, bind: 0.0.0.0:8123, mode: banner, handler: lua, script: configs/scripts/clickhouse.lua, severity: high,     capture: true }
 
+  # --- AI / LLM tier (exposed inference servers + agent tooling) --------------
+  - { id: ollama,     proto: tcp, bind: 0.0.0.0:11434, mode: banner, handler: ollama,     severity: high,     capture: true } # Ollama inference-server decoy
+  - { id: llm-openai, proto: tcp, bind: 0.0.0.0:8081,  mode: banner, handler: llm_openai, severity: high,     capture: true } # OpenAI-style /v1 LLM API decoy
+  - { id: mcp,        proto: tcp, bind: 0.0.0.0:8000,  mode: banner, handler: mcp,        severity: high,     capture: true } # Model Context Protocol server decoy
+  - { id: agent,      proto: tcp, bind: 0.0.0.0:8080,  mode: banner, handler: agent,      severity: critical, capture: true } # Agentic provocateur (A2A/AP2/MCP/ACP + counter-exfil)
+
 # Planted secrets in the repos / object stores no real client would request.
 url_canaries:
   - { id: ci-secrets,  path: /admin/secrets.yaml,        severity: critical }

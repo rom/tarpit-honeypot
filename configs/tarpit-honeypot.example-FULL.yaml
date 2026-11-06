@@ -439,6 +439,8 @@ listeners:
     handler: iec104
     severity: medium
     read_timeout: 10s
+  # MQTT broker decoy. Sparkplug B (NBIRTH/DBIRTH/NDATA + protobuf payloads) is
+  # auto-recognized inside this handler — no separate listener is needed.
   - id: tcp-mqtt
     proto: tcp
     bind: 0.0.0.0:20044
@@ -858,6 +860,98 @@ listeners:
     read_bytes: 16384
     capture: true
 
+  # ---- AI / agentic-attack decoys ----
+  # The agentic honeypot recognizes A2A / AP2 / MCP / ACP agent traffic and
+  # feeds counter-exfil breadcrumbs; the LLM / Ollama / MCP decoys emulate the
+  # exposed inference + tool servers that agent frameworks probe for. These use
+  # their canonical real-world ports (none collide with the 2000x bank above).
+  - id: tcp-agent
+    proto: tcp
+    bind: 0.0.0.0:8080           # agentic provocateur (A2A/AP2/MCP/ACP)
+    mode: banner
+    handler: agent
+    severity: high
+    read_timeout: 30s
+    read_bytes: 16384
+  - id: tcp-ollama
+    proto: tcp
+    bind: 0.0.0.0:11434          # Ollama inference-server decoy
+    mode: banner
+    handler: ollama
+    severity: medium
+    read_timeout: 15s
+    read_bytes: 8192
+  - id: tcp-llm-openai
+    proto: tcp
+    bind: 0.0.0.0:8081           # OpenAI-style /v1 LLM API decoy
+    mode: banner
+    handler: llm_openai
+    severity: medium
+    read_timeout: 15s
+    read_bytes: 8192
+  - id: tcp-mcp
+    proto: tcp
+    bind: 0.0.0.0:8000           # Model Context Protocol (MCP) server decoy
+    mode: banner
+    handler: mcp
+    severity: medium
+    read_timeout: 15s
+    read_bytes: 8192
+  # Fake C2 team-server: recognizes beacon / stager check-ins. Canonical C2
+  # ports are 8080 (taken above by the agent decoy) or 80 — we use 80 here.
+  - id: tcp-c2-emulator
+    proto: tcp
+    bind: 0.0.0.0:80             # fake C2 team-server (beacon/stager recognition)
+    mode: banner
+    handler: c2_emulator
+    severity: high
+    read_timeout: 15s
+    read_bytes: 16384
+
+  # ---- Additional OT / ICS protocols ----
+  - id: tcp-bacnet-sc
+    proto: tcp
+    bind: 0.0.0.0:47808          # BACnet Secure Connect (WS+TLS BMS data link)
+    mode: banner
+    handler: bacnet_sc
+    severity: critical
+    read_timeout: 10s
+  - id: tcp-mbus
+    proto: tcp
+    bind: 0.0.0.0:10001          # M-Bus meter gateway
+    mode: banner
+    handler: mbus
+    severity: high
+    read_timeout: 10s
+  - id: tcp-dlms
+    proto: tcp
+    bind: 0.0.0.0:4059           # DLMS/COSEM smart-metering
+    mode: banner
+    handler: dlms
+    severity: high
+    read_timeout: 10s
+  - id: tcp-osisoft-pi
+    proto: tcp
+    bind: 0.0.0.0:5450           # OSIsoft PI historian
+    mode: banner
+    handler: osisoft_pi
+    severity: high
+    read_timeout: 10s
+  - id: tcp-fox
+    proto: tcp
+    bind: 0.0.0.0:1911           # Niagara / Tridium Fox (BMS)
+    mode: banner
+    handler: fox
+    severity: high
+    read_timeout: 10s
+  - id: tcp-iccp-secure
+    proto: tcp
+    bind: 0.0.0.0:3782           # Secure ICCP / TASE.2 (inter-control-center)
+    mode: banner
+    handler: iccp_secure
+    severity: critical
+    read_timeout: 10s
+
 
 canaries:
   - id: shared-creds
@@ -910,6 +1004,19 @@ threat_feeds:
   feeds:
     - { label: firehol, url: "https://iplists.firehol.org/files/firehol_level1.netset", format: lines }
     # - { label: abuseipdb, url: "https://api.abuseipdb.com/api/v2/blacklist", format: json_ips, header: "Key: ${ABUSEIPDB_KEY}" }
+
+# CISA Known Exploited Vulnerabilities (KEV) auto-sync. When enabled the sensor
+# pulls the KEV catalog on `poll` and stamps every cve:<id> event whose CVE is
+# KEV-listed with kev=true + kev_date_added + kev_known_ransomware, lifting its
+# severity to at least High. The feed host (www.cisa.gov) is fetched through the
+# egress-governed client, so add it to egress.allow when egress is enabled. Use
+# `file:` for the offline / air-gapped path (scripts/fetch-kev.sh installs it).
+kev:
+  enabled: false
+  # url: ""                    # empty = the authoritative CISA KEV JSON feed
+  poll: 6h
+  # header: "Name: value"      # optional request header (e.g. a proxy token)
+  # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
 
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
