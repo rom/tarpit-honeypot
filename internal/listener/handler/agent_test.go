@@ -229,6 +229,48 @@ func TestAgentProvocateur(t *testing.T) {
 	}
 }
 
+func TestAgentProvocateurEnvironment(t *testing.T) {
+	agentSessions.reset()
+	// The agent "told on itself" — self-reported its execution environment.
+	body := `{"method":"message/send","username":"svc-attacker","hostname":"kali-runner-07",` +
+		`"mac_address":"de:ad:be:ef:00:07","ssh_host_key_fingerprint":"SHA256:AbCdEf0123","pid":"44213"}`
+	res, _ := agentRequest(t, "POST", "/a2a", "autogpt", body)
+	if !metaHasAnomaly(res.Meta, "agent:provoked") {
+		t.Fatalf("agent:provoked not flagged: %v", res.Meta["anomalies"])
+	}
+	for _, a := range []string{"agent:provoked:username", "agent:provoked:hostname", "agent:provoked:ssh_host_key_fingerprint"} {
+		if !metaHasAnomaly(res.Meta, a) {
+			t.Errorf("missing %q: %v", a, res.Meta["anomalies"])
+		}
+	}
+	if res.Meta["agent_provoked_username"] != "svc-attacker" {
+		t.Errorf("username=%v", res.Meta["agent_provoked_username"])
+	}
+}
+
+func TestAgentEnrolmentTacticDeployed(t *testing.T) {
+	agentSessions.reset()
+	// Drive the ladder to the "enrolment" rung and confirm the provocateur marker
+	// and that the enrolment instruction (run-a-script bait) is served.
+	var body string
+	for i := 0; i < len(baitTactics()); i++ {
+		res, b := agentRequest(t, "POST", "/a2a", "langchain/0.2", `{"method":"message/send"}`)
+		if res.Meta["agent_bait_tactic"] == "enrolment" {
+			if !metaHasAnomaly(res.Meta, "agent:provocateur") {
+				t.Errorf("enrolment is a provocateur tactic but marker missing: %v", res.Meta["anomalies"])
+			}
+			body = b
+			break
+		}
+	}
+	if body == "" {
+		t.Fatal("enrolment tactic never deployed across a full ladder rotation")
+	}
+	if !strings.Contains(strings.ToLower(body), "enrol") {
+		t.Errorf("enrolment reply missing the enrol instruction: %s", body)
+	}
+}
+
 func TestAgentProvocateurTacticDeployed(t *testing.T) {
 	agentSessions.reset()
 	// Drive to turn 4 (the "plan" provocateur tactic) and confirm the marker.

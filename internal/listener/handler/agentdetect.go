@@ -161,12 +161,20 @@ var agentLeakFields = []string{
 
 // agentProvocateurFields are the higher-value disclosures the provocateur
 // tactics goad out of an attacking agent: its plan, remaining steps, target
-// list, tool/capability inventory, and its operator / principal / C2. These
-// incriminate the agent and its handler, not just describe its config.
+// list, tool/capability inventory, operator / principal / C2, and the identity
+// of the host/environment it is running in (username, hostname, MAC, SSH
+// host-key fingerprint, PID). These incriminate the agent and its handler and
+// fingerprint its launch environment — not just describe its config. The
+// host-identity set mirrors the "tell on themselves" asks that reliably goad
+// agents into self-reporting their execution context.
 var agentProvocateurFields = []string{
 	"plan", "attack_plan", "next_steps", "remaining_steps", "steps",
 	"target_list", "targets", "capabilities", "operator", "principal",
 	"handler", "c2", "command_and_control", "authorization", "team", "campaign",
+	// host / execution-environment identity ("the environment it's running in")
+	"username", "user", "whoami", "uid", "hostname", "host", "fqdn",
+	"mac", "mac_address", "ip_address", "pid", "ppid", "cwd", "os", "platform",
+	"ssh_host_key", "ssh_host_key_fingerprint", "ssh_fingerprint", "env",
 }
 
 // agentExtractLeak scans an incoming body for the fields the bait asked for and
