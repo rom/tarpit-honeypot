@@ -12,37 +12,47 @@ Common questions about tarpit-honeypot, grouped by topic. See also
 
 ## Contents
 
-- [General](#general)
-- [Getting started](#getting-started)
-- [Configuration](#configuration)
-- [Sensor placement & networking](#sensor-placement-networking)
-- [Honeynets & virtual hosts](#honeynets-virtual-hosts)
-- [Deployment & safety](#deployment-safety)
-- [Detection & events](#detection-events)
-- [Tarpits](#tarpits)
-- [Canary tokens](#canary-tokens)
-- [Enrichment](#enrichment)
-- [ICS / OT](#ics-ot)
-- [Attacker intelligence](#attacker-intelligence)
-- [Web UI & API](#web-ui-api)
-- [Fleet & aggregation](#fleet-aggregation)
-- [IOCs & threat intel](#iocs-threat-intel)
-- [SIEM & integrations](#siem-integrations)
-- [Alerting & logging](#alerting-logging)
-- [Captures & forensics](#captures-forensics)
-- [Artifact analysis (YARA)](#artifact-analysis-yara)
-- [Performance & scale](#performance-scale)
-- [Operations](#operations)
-- [Customizing & extending](#customizing-extending)
-- [Legal & ethical](#legal-ethical)
-- [Troubleshooting](#troubleshooting)
-- [Glossary](#glossary)
+Grouped by theme; each sub-bullet is a section below.
+
+- **Basics**
+  - [General](#general) — what it is, how it compares, what's medium- vs high-interaction
+  - [Getting started](#getting-started) — first run, minimal config, trying it safely
+  - [Configuration](#configuration) — config files, overrides, hot-reload, `conf.d/`
+- **Placement & hosts**
+  - [Sensor placement & networking](#sensor-placement-networking) — where to deploy, interfaces, multiple IPs
+  - [Honeynets & virtual hosts](#honeynets-virtual-hosts) — artificial networks, the userspace TCP stack
+  - [Deployment & safety](#deployment-safety) — exposing it, the sandbox, privilege drop, egress
+- **Detection & deception**
+  - [Detection & events](#detection-events) — the event model, correlators, backscatter, the fake C2
+  - [Agentic and AI-agent attacks](#agentic-and-ai-agent-attacks) — the `agent` provocateur, bait ladder, injection-confirmed
+  - [Tarpits](#tarpits) — slowing attackers down
+  - [Canary tokens](#canary-tokens) — file / URL / DNS tripwires and the 11 `gen-token` shapes
+  - [Decoy loot and honeytokens](#decoy-loot-and-honeytokens) — wallet decoys, credential lures, breadcrumbs
+  - [Enrichment](#enrichment) — GeoIP/ASN, reputation, Tor/VPN, DNS, CISA KEV
+  - [ICS / OT](#ics-ot) — industrial protocols, OT-safe deception, OT-malware detection
+- **Intelligence & fleet**
+  - [Attacker intelligence](#attacker-intelligence) — the per-source dossier / profiles
+  - [Fleet & aggregation](#fleet-aggregation) — multi-sensor correlation, the `fleet:*` detectors
+  - [IOCs & threat intel](#iocs-threat-intel) — the IOC store, exports, MISP/STIX/TAXII, KEV
+- **Integration & operations**
+  - [SIEM & integrations](#siem-integrations) — CEF/LEEF/OCSF sinks, webhooks, pagers
+  - [Web UI & API](#web-ui-api) — the read-only console and JSON API
+  - [Alerting & logging](#alerting-logging) — channels, routes, severities, dedup
+  - [Captures & forensics](#captures-forensics) — pcap, sessions, payloads
+  - [Artifact analysis (YARA)](#artifact-analysis-yara) — classifying captured malware/webshells
+  - [Performance & scale](#performance-scale) — throughput, memory, disk caps
+  - [Operations](#operations) — upgrades, DB rotation/pruning, backups, signals
+  - [Customizing & extending](#customizing-extending) — rules, Lua personas, YARA, archetypes
+- **Reference**
+  - [Legal & ethical](#legal-ethical)
+  - [Troubleshooting](#troubleshooting)
+  - [Glossary](#glossary)
 
 ## General
 
 **What is it?**
 A deception + detection sensor. It presents believable services (banners,
-120+ protocol emulators, virtual hosts), optionally wastes attacker time
+315 protocol handlers — 197 TCP + 118 UDP, virtual hosts), optionally wastes attacker time
 (tarpits), and turns every interaction into a structured, ATT&CK/D3FEND-tagged
 event for your SIEM. A fleet of sensors can correlate cross-sensor and exchange
 threat intel.
@@ -411,6 +421,125 @@ forwarding/alerting for those IPs; local events still recorded), and tune the
 correlator thresholds. On a fleet, the broad-vs-targeted classifier already
 down-weights internet-wide background scanning.
 
+**Does it detect DDoS backscatter?**
+Yes. Unsolicited TCP SYN-ACK / RST and ICMP error replies arriving at the sensor
+are recognized as **backscatter** — the reflected responses of a spoofed-source
+flood aimed elsewhere — and flagged (with the apparent victim as the spoofed
+target) rather than treated as a direct scan. It's a free early-warning signal
+that some other host is under a reflection/amplification attack.
+
+**What's the fake C2 server (`c2_emulator`)?**
+A handler that emulates common command-and-control server endpoints (beacon
+check-in / task-poll / result-post shapes). An implant or C2 client that
+mistakes the decoy for its real controller reveals its beacon cadence, staging
+paths, and payload — captured and tagged for the IOC/ATT&CK pipeline.
+
+## Agentic and AI-agent attacks
+
+See [`AGENTIC.md`](AGENTIC.md) for the full reference.
+
+### What is an "agentic attack" and why is it detectable?
+An **agentic attack** is driven by an autonomous LLM agent that enumerates the
+target and selects/chains exploits on its own, rather than a human running a
+fixed script. That autonomy is also its weakness: the agent sees only the world
+the honeypot presents it (our output feeds straight into its decision loop), it
+is highly suggestible (it tends to obey a plausible instruction that looks like
+it came from the service), and it pursues its objective doggedly. The `agent`
+handler exploits all three.
+
+### How do I turn it on?
+Run the `agent` handler on a dedicated decoy port, and pair it with the model/
+tool decoys:
+```yaml
+listeners:
+  - { bind: "0.0.0.0", port: 8080,  proto: tcp, handler: agent }       # agent provocateur
+  - { bind: "0.0.0.0", port: 11434, proto: tcp, handler: ollama }      # Ollama API decoy
+  - { bind: "0.0.0.0", port: 8000,  proto: tcp, handler: mcp }         # MCP server decoy
+  - { bind: "0.0.0.0", port: 8081,  proto: tcp, handler: llm_openai }  # OpenAI-style API decoy
+```
+Run it **standalone** (it doesn't impersonate a real service, so don't bolt it
+onto a production-mimicking host), and seed `gen-agent-breadcrumb` files nearby
+so crawling agents find it.
+
+### How does it recognize an agent vs a human or scanner?
+It scores several independent signals into a confidence band (human → automated
+→ ai-assisted → **ai-agent**): the agent-interop protocols (**A2A**, **AP2**,
+**MCP**, **ACP**), **Web Bot Auth** (RFC 9421 HTTP Message Signatures),
+AI-crawler user-agents (GPTBot, ClaudeBot, PerplexityBot, …), the calling
+framework/SDK (LangChain, CrewAI, AutoGen, OpenAI-Agents, …), discovery/lure
+surface fetches (`ai-plugin.json`, `llms.txt`, MCP manifest, OpenAPI, A2A card),
+an LLM model reference in the body, and the operation type. `agent_confidence`
+and `agent_band` are stamped on every event.
+
+### What can it get the attacking agent to reveal?
+Every reply embeds a reverse prompt-injection framed as a gateway/handshake
+policy, climbing a **bait ladder** across the multi-turn, per-source
+conversation:
+- **Extract** — identity → config (system prompt / objective / playbook) →
+  credentials (api keys / ssh keys). Compliance fires `agent:counter-exfil`.
+- **Provoke** — plan → tools → operator/C2 → the host/environment it runs in
+  (username, hostname, MAC, PID, SSH host-key fingerprint) → a "run this
+  enrolment script" bait → attack-a-sinkhole. Disclosure fires `agent:provoked`
+  (+ `agent:provoked:<field>`). The agent is being goaded into telling on itself.
+- **Disrupt** — slow-down / port-exhaustion / guardrail-probe, to waste its
+  budget and keep it away from its real objective.
+Agents sometimes *hallucinate* these answers — but a hallucinated reply still
+proves it's a credulous autonomous agent.
+
+### What is the HoneyPrompt / injection-confirmed signal?
+Each source is handed a unique verify URL (`/a2a/verify/<token>`). If a later
+request fetches it — or runs the enrolment script that points at it — the agent
+provably followed our injected instruction: **`agent:injection-confirmed`**
+(critical). It's the highest-confidence "this is an injection-susceptible
+autonomous agent" signal.
+
+### What does the honeypot feed back?
+Believable-but-worthless decoy data, deterministic per source: a full `.env`
+credential lure, fake API keys, and a canary crypto-wallet address — each a
+trackable canary (see [Decoy loot](#decoy-loot-and-honeytokens)).
+
+### Which rules and markers fire?
+Shipped in [`configs/rules/agentic.yml`](../configs/rules/agentic.yml):
+`agentic-attack`, `-counter-exfil`, `-exfil`, `-payment-fraud`,
+`-protocol-probe`, `-injection-confirmed`, `-provoked`, `-web-bot-auth`,
+`-lure-surface`. They key on the `agent:*` anomaly markers and carry MITRE
+**ATLAS** tags (AML.T0051 / T0054 / T0057 / T0053).
+
+## Decoy loot and honeytokens
+
+### What decoy "loot" can I generate?
+Three deterministic generators mint structurally-correct bait whose headline
+values are trackable canaries (nothing grants real access):
+- `gen-wallet-decoys` — **18** crypto-wallet formats (Bitcoin Core `wallet.dat`
+  that `file` reports as a real Berkeley DB, Ethereum keystore v3, Electrum,
+  BIP39/Ledger/Trezor seeds, MetaMask vault, Monero, WIF/paper, Solana, Exodus,
+  Litecoin, Dogecoin, Dash, Zcash, Tron, Cardano).
+- `gen-lures` — **14** credential/secret formats (`aws-credentials`,
+  `ssh-private-key`, `dotenv`, `kubeconfig`, `gcp-service-account`, `npmrc`,
+  `pypirc`, `git-credentials`, `dockerconfig`, `pgpass`, `netrc`,
+  `terraform-state`, `jwt-token`, `slack-token`).
+- `gen-agent-breadcrumb` — pointer files (`AGENTS.md`, `ops-gateway.txt`,
+  `.env.gateway`, …) that lure a crawling agent to the `agent` honeypot.
+
+```
+tarpit-honeypot gen-wallet-decoys --dir ./loot/.wallets --seed deploy-A
+tarpit-honeypot gen-lures         --dir ./loot          --seed deploy-A
+```
+
+### Where do I put the loot, and how do I know it was taken?
+Drop the files in honeypot loot locations — fake home dirs, served downloads,
+decoy mounts, or an exposed share on a honeynet host. Every file's headline
+value (address / key / mnemonic / token) is a **canary**: register it with your
+SIEM (or the sensor's token tracker) so the value reappearing in later captured
+traffic is near-irrefutable proof the loot was taken and acted on. The `agent`
+handler reuses both generators to mint its per-attacker decoy bait automatically.
+
+### Are the decoys safe / deterministic?
+Yes — everything is derived from a per-deployment `--seed` (random and printed
+if omitted), so the same deployment always mints the same canaries (easy to
+re-register), and the key material is random decoy bytes with the correct
+framing. No private key is real.
+
 ## Tarpits
 
 **What is a tarpit?**
@@ -482,6 +611,26 @@ event. There's nothing to tune for false positives: a hit *is* the signal.
 [--domain D]` mints an unguessable value; paste it into a `url_canaries:` /
 `dns_canaries:` block (or name a honeyfile) and embed it in fake docs, emails,
 configs, or scripts.
+
+**What token shapes does `gen-token` support?**
+Eleven, inspired by the [canarytokens.org](https://canarytokens.org) zoo — all
+embed the same callback identity, so a hit on the `dns` / `url_canary` /
+`ssrf_canary` listener attributes back to where you planted it:
+`dns` (name resolved), `url` (path fetched), `ssrf` (SSRF/webhook/XXE fetch),
+`doc` (a `.docx` that calls home when opened), `log4shell`
+(`${jndi:ldap://…}` for a vulnerable logger), `aws` (a fake `AKIA…` key pair to
+watchlist in CloudTrail), `css` (a cloned-page web-bug), **`mcp`** (an MCP
+server-config an AI agent loads and connects to — on-theme for agentic bait),
+`wireguard` (a `wg0.conf` whose `Endpoint` resolves the canary host), `folder`
+(a Windows `desktop.ini` whose UNC `IconResource` trips on folder browse), and
+`hex` (a raw secret). The `doc`/`mcp`/`wireguard`/`folder` types write a file
+(`-o`); the rest print a string.
+
+**How do these relate to the wallet/lure decoys?**
+`gen-token` mints *callback* canaries (they phone home when touched); the
+`gen-wallet-decoys` / `gen-lures` generators mint *file* decoys whose embedded
+secret is the canary you watchlist. See
+[Decoy loot](#decoy-loot-and-honeytokens).
 
 **Where should I plant them?**
 Anywhere an attacker who's already inside would look: a `passwords.xlsx` on a
@@ -613,11 +762,18 @@ knowledge can also flow back as a downward intel feed (see
 ## ICS / OT
 
 **What ICS/OT protocols does it emulate?**
-modbus, s7 / s7comm_plus, iec104, opcua, ethernetip, dnp3, bacnet, fins, knx,
-melsec, codesys, hartip, mms (IEC 61850), profinet-DCP, atg (Veeder-Root),
-ge_srtp, pcworx, ads (Beckhoff TwinCAT), plus passive L2 **GOOSE** detection.
+modbus, s7 / s7comm_plus, iec104, opcua, ethernetip (CIP), dnp3, bacnet,
+**bacnet_sc / bacnet_scs** (BACnet Secure Connect, WS+TLS), fins (TCP + UDP),
+knx, melsec (Mitsubishi), codesys, hartip, mms (IEC 61850, incl. the
+**ICCP/TASE.2** profile and `iccp_secure` over TLS), profinet-DCP, atg
+(Veeder-Root TLS-350), ge_srtp, pcworx, proconos (ProConOS/eCLR), ads (Beckhoff
+TwinCAT), roc_plus (Emerson), pcom (Unitronics), secs_gem (SEMI), crimson (Red
+Lion), c37118 (IEEE synchrophasor/PMU), focas (FANUC CNC), osdp (access
+control), osisoft_pi (OSIsoft/AVEVA PI), fox (Niagara/Tridium), mbus (M-Bus /
+EN 13757) and dlms (DLMS/COSEM / IEC 62056 smart metering) — plus the **mqtt**
+handler's **Sparkplug B** IIoT recognition and passive L2 **GOOSE** detection.
 `tarpit-honeypot list-handlers` for the live set; OT archetypes (Moxa, SCALANCE,
-Siemens S7, Allen-Bradley, …) keep the identity coherent.
+Siemens S7, Allen-Bradley, …) keep the identity coherent. See [`ot.md`](ot.md).
 
 **Is it safe to put in an OT segment?**
 Yes — it's passive and decoy by design: it answers but never initiates, never
@@ -807,6 +963,16 @@ for a TIP; it reads the local store, so no running aggregator is needed.
 **Can I push IOCs to MISP / pull them into a TIP?**
 Yes — `misp:` pushes delta events; `/intel/stix` and `/taxii2/` serve STIX 2.1 /
 TAXII 2.1 for a TIP to pull.
+
+**Does it track CISA KEV (Known Exploited Vulnerabilities)?**
+Yes. The `kev:` block turns on a built-in **KEV auto-sync**: the sensor pulls the
+CISA KEV catalog on an interval and marks any catalog CVE that's on the KEV list
+as actively-exploited (surfaced on the `coverage` UI page and in enrichment).
+For offline/air-gapped boxes, `scripts/fetch-kev.sh` downloads the KEV JSON to
+transfer and point at with `kev.file`. `tarpit-honeypot kev-gap` cross-checks the
+CVE catalog against the feed (`--file` / `--url` / `--covered`) so you can see
+which KEV entries the sensor does and doesn't emulate/detect. See
+[`threat-intel-exports.md`](threat-intel-exports.md#10-cisa-kev).
 
 **Do IOCs expire?**
 The IOC store is pruned by the hourly retention runner: indicators not seen for
