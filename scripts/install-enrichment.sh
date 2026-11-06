@@ -132,6 +132,9 @@ bundle_src() { # key -> canonical bundle path (empty if not an enrichment input)
 	asn_reputation:*) echo "$BUNDLE/asn/${1#asn_reputation:}.txt" ;;
 	fingerprint_db:*) echo "$BUNDLE/fingerprints/${1#fingerprint_db:}.txt" ;;
 	payloads.malware_hashes) echo "$BUNDLE/malware/known-hashes.txt" ;;
+	cred_intel.passwords_file) echo "$BUNDLE/creds/top-passwords.txt" ;;
+	domain_intel.blocklist_file) echo "$BUNDLE/domains/blocklist.txt" ;;
+	asn_info.file) echo "$BUNDLE/asn/asn-info.csv" ;;
 	sniffer.p0f_db) echo "$BUNDLE/p0f.fp" ;;
 	*) echo "" ;;
 	esac

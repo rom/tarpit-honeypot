@@ -116,6 +116,7 @@ GEO_DIR="$OUT/geoip"
 CLOUD_DIR="$OUT/cloud"
 ANON_DIR="$OUT/anon"
 ASN_DIR="$OUT/asn"
+CREDS_DIR="$OUT/creds"
 FP_DIR="$OUT/fingerprints"
 MAL_DIR="$OUT/malware"
 MANIFEST="$OUT/MANIFEST.txt"
@@ -415,7 +416,7 @@ fetch_ja4db() {
 	ok=$((ok + 1)); return 0
 }
 
-mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR" "$CLOUD_DIR" "$ANON_DIR" "$ASN_DIR" "$FP_DIR" "$MAL_DIR"
+mkdir -p "$OUT" "$THREAT_DIR" "$GEO_DIR" "$CLOUD_DIR" "$ANON_DIR" "$ASN_DIR" "$CREDS_DIR" "$FP_DIR" "$MAL_DIR"
 : >"$MANIFEST"
 echo "tarpit-honeypot enrichment fetch — $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$MANIFEST"
 
@@ -467,6 +468,14 @@ fetch "proxy" "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master
 # the enricher's ASN-list loader extracts the AS numbers. No auth.
 say "[asn-reputation]  (Spamhaus ASN-DROP — no-auth)"
 fetch "spamhaus-asndrop" "https://www.spamhaus.org/drop/asndrop.json" "$ASN_DIR/spamhaus-asndrop.txt" || true
+
+# Breached/common passwords for the cred_class "breach" tier (SecLists top-100k,
+# no-auth). The default/weak/unique tiers need no file. Domain blocklist
+# (domain_intel) and ASN-info (asn_info) have no clean no-auth default and are
+# operator-supplied — drop them at domains/blocklist.txt and asn/asn-info.csv in
+# this bundle if you have them.
+say "[creds]  (breached-password list — no-auth)"
+fetch "top-passwords" "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-100000.txt" "$CREDS_DIR/top-passwords.txt" || true
 
 # abuse.ch feeds (ThreatFox / MalwareBazaar / URLhaus). The 2025 migration
 # RETIRED the old keyless export URLs (they now return HTTP 410 Gone) and moved
@@ -571,6 +580,20 @@ sensor:
     enabled: true
     lists:
       - { label: spamhaus-asndrop, file: /etc/tarpit-honeypot/enrichment/asn/spamhaus-asndrop.txt }
+  # Credential classification -> cred_class (default/weak/breach/unique).
+  cred_intel:
+    enabled: true
+    passwords_file: /etc/tarpit-honeypot/enrichment/creds/top-passwords.txt
+  # DGA-looking + known-malicious queried domains -> dns_dga / domain_bad.
+  # The DGA heuristic needs no data; blocklist_file is operator-supplied.
+  domain_intel:
+    enabled: true
+    # blocklist_file: /etc/tarpit-honeypot/enrichment/domains/blocklist.txt
+  # ASN registered-country / category + asn_geo_mismatch. Operator-supplied
+  # "ASN,country[,category]" file (e.g. reshaped from iptoasn.com).
+  # asn_info:
+  #   enabled: true
+  #   file: /etc/tarpit-honeypot/enrichment/asn/asn-info.csv
   # JA3/JA4/HASSH -> client/tool attribution (<kind>_client on events).
   fingerprint_db:
     enabled: true

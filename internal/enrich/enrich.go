@@ -66,6 +66,21 @@ type Config struct {
 	// ASNLists are labeled ASN-reputation files (e.g. Spamhaus ASN-DROP). A
 	// source whose ASN is listed is tagged asn_reputation with the labels.
 	ASNLists []ASNList
+	// CredIntel enables credential classification (cred_class). The
+	// default/weak/unique tiers need no data; BreachedPasswordFile adds "breach".
+	CredIntel bool
+	// BreachedPasswordFile is an optional list of breached/common passwords
+	// (one per line) for the cred_class "breach" tier.
+	BreachedPasswordFile string
+	// DomainIntel enables DNS/domain enrichment: the dns_dga heuristic (no data)
+	// and, with BadDomainsFile, the domain_bad tag.
+	DomainIntel bool
+	// BadDomainsFile is an optional malicious-domain blocklist (one domain per
+	// line); a queried domain on it (or a subdomain of it) is tagged domain_bad.
+	BadDomainsFile string
+	// ASNInfoFile is an optional "ASN,country[,category]" file powering
+	// asn_country / asn_type and the asn_geo_mismatch flag.
+	ASNInfoFile string
 }
 
 // ASNList is one labeled ASN-reputation file (a list of AS numbers).
@@ -100,6 +115,13 @@ type Enricher struct {
 
 	// riskCountries is the set of high-risk ISO country codes (geo_risk tag).
 	riskCountries map[string]struct{}
+
+	// Optional feed-backed sets (nil/off when not configured).
+	credIntel   bool                  // cred_class on
+	breachedPw  map[string]struct{}   // cred_class "breach" tier
+	domainIntel bool                  // dns_dga + domain_bad on
+	badDomains  map[string]struct{}   // malicious-domain blocklist
+	asnInfo     map[uint32]asnInfoRec // ASN -> country/category
 
 	// Session-novelty sets: the first time (within this process's lifetime) a
 	// source's ASN / subnet / fingerprint is seen, the event is tagged
@@ -301,6 +323,32 @@ func New(cfg Config) (*Enricher, error) {
 		e.asnLists = append(e.asnLists, asnSet{label: label, asns: asns})
 		slog.Info("enrich: ASN reputation list loaded", "label", label, "path", al.File, "entries", n)
 	}
+	e.credIntel = cfg.CredIntel
+	e.domainIntel = cfg.DomainIntel
+	if cfg.BreachedPasswordFile != "" {
+		if set, n, err := loadStringSet(cfg.BreachedPasswordFile, true); err != nil {
+			slog.Warn("enrich: breached-password list unavailable; skipping", "path", cfg.BreachedPasswordFile, "err", err)
+		} else {
+			e.breachedPw = set
+			slog.Info("enrich: breached-password list loaded", "path", cfg.BreachedPasswordFile, "entries", n)
+		}
+	}
+	if cfg.BadDomainsFile != "" {
+		if set, n, err := loadStringSet(cfg.BadDomainsFile, true); err != nil {
+			slog.Warn("enrich: domain blocklist unavailable; skipping", "path", cfg.BadDomainsFile, "err", err)
+		} else {
+			e.badDomains = set
+			slog.Info("enrich: domain blocklist loaded", "path", cfg.BadDomainsFile, "entries", n)
+		}
+	}
+	if cfg.ASNInfoFile != "" {
+		if m, n, err := loadASNInfo(cfg.ASNInfoFile); err != nil {
+			slog.Warn("enrich: ASN info file unavailable; skipping", "path", cfg.ASNInfoFile, "err", err)
+		} else {
+			e.asnInfo = m
+			slog.Info("enrich: ASN info file loaded", "path", cfg.ASNInfoFile, "entries", n)
+		}
+	}
 	if cfg.TorExitFile != "" {
 		if ips, _, n, err := loadIPList(cfg.TorExitFile); err != nil {
 			slog.Warn("enrich: tor exit list unavailable; tor tagging off", "path", cfg.TorExitFile, "err", err)
@@ -442,6 +490,33 @@ func loadASNList(path string) (map[uint32]struct{}, int, error) {
 		if n := extractASN(line); n != 0 {
 			out[n] = struct{}{}
 		}
+	}
+	if serr := sc.Err(); serr != nil {
+		return nil, 0, serr
+	}
+	return out, len(out), nil
+}
+
+// loadStringSet reads a file of one token per line (blank lines and '#'
+// comments ignored) into a set, optionally lower-casing each line.
+func loadStringSet(path string, lower bool) (map[string]struct{}, int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = f.Close() }()
+	out := map[string]struct{}{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if lower {
+			line = strings.ToLower(line)
+		}
+		out[line] = struct{}{}
 	}
 	if serr := sc.Err(); serr != nil {
 		return nil, 0, serr
@@ -621,6 +696,14 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	e.decorateExternalIntel(ev)
 	// Runs last: it reads the reputation meta the steps above set.
 	decorateReputationConfidence(ev)
+	// Credential class, DNS/domain intel, and ASN info (operator-fed, optional).
+	if e.credIntel {
+		e.decorateCreds(ev)
+	}
+	if e.domainIntel {
+		e.decorateDomains(ev)
+	}
+	e.decorateASNInfo(ev)
 	// Derived attributes (subnet key, conn-type, novelty, geo-risk, local time,
 	// actor id, targeting) and the recognition rollup (source_class + labels)
 	// read everything set above, so they run after it.

@@ -112,6 +112,21 @@ func sourceLabels(ev *event.Event) []string {
 	if t := metaString(m, "targeting"); t != "" {
 		add("target:" + t)
 	}
+	if cc := metaString(m, "cred_class"); cc != "" {
+		add("cred:" + cc)
+	}
+	if boolMeta(m, "dns_dga") {
+		add("dns-dga")
+	}
+	if boolMeta(m, "domain_bad") {
+		add("domain-bad")
+	}
+	if boolMeta(m, "asn_geo_mismatch") {
+		add("asn-geo-mismatch")
+	}
+	if at := metaString(m, "asn_type"); at != "" {
+		add("asntype:" + at)
+	}
 	if boolMeta(m, "novel_asn") {
 		add("novel-asn")
 	}

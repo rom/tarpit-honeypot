@@ -772,6 +772,12 @@ type Sensor struct {
 	Anonymizer AnonymizerRanges `yaml:"anonymizer_ranges"`
 	// ASNReputation tags sources whose ASN is on a reputation list (ASN-DROP).
 	ASNReputation ASNReputation `yaml:"asn_reputation"`
+	// CredIntel classifies captured login credentials (cred_class).
+	CredIntel CredIntel `yaml:"cred_intel"`
+	// DomainIntel flags DGA-looking and known-malicious queried domains.
+	DomainIntel DomainIntel `yaml:"domain_intel"`
+	// ASNInfo tags asn_country / asn_type and asn_geo_mismatch.
+	ASNInfo ASNInfo `yaml:"asn_info"`
 	// FingerprintDB maps JA3/JA4/HASSH fingerprints to client/tool names.
 	FingerprintDB FingerprintDB `yaml:"fingerprint_db"`
 	// OUIFile is the path to a MAC-vendor (OUI) database — the IEEE oui.csv
@@ -1031,6 +1037,30 @@ type ASNReputation struct {
 type ASNRepEntry struct {
 	Label string `yaml:"label"`
 	File  string `yaml:"file"`
+}
+
+// CredIntel classifies captured login credentials into cred_class
+// (default/weak/breach/unique). The default/weak/unique tiers need no data;
+// PasswordsFile (one breached/common password per line) enables the "breach"
+// tier. Enrichment only — the secret itself is never stored or echoed.
+type CredIntel struct {
+	Enabled       bool   `yaml:"enabled"`
+	PasswordsFile string `yaml:"passwords_file"`
+}
+
+// DomainIntel enables DNS/domain enrichment: the dns_dga heuristic (no data)
+// and, with BlocklistFile (one malicious domain per line), the domain_bad tag.
+type DomainIntel struct {
+	Enabled       bool   `yaml:"enabled"`
+	BlocklistFile string `yaml:"blocklist_file"`
+}
+
+// ASNInfo tags asn_country / asn_type and flags asn_geo_mismatch from an
+// operator "ASN,country[,category]" file (no bundled default — supply it from
+// iptoasn.com, an IPinfo/MaxMind export, etc.).
+type ASNInfo struct {
+	Enabled bool   `yaml:"enabled"`
+	File    string `yaml:"file"`
 }
 
 // FingerprintDB maps network fingerprints (JA3 / JA4 / JA4H / HASSH) to the

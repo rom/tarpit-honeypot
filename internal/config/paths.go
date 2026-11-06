@@ -80,6 +80,15 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 	if c.Sensor.Payloads.Analyze {
 		add("enrichment", "payloads.malware_hashes", c.Sensor.Payloads.MalwareHashes, false)
 	}
+	if c.Sensor.CredIntel.Enabled {
+		add("enrichment", "cred_intel.passwords_file", c.Sensor.CredIntel.PasswordsFile, false)
+	}
+	if c.Sensor.DomainIntel.Enabled {
+		add("enrichment", "domain_intel.blocklist_file", c.Sensor.DomainIntel.BlocklistFile, false)
+	}
+	if c.Sensor.ASNInfo.Enabled {
+		add("enrichment", "asn_info.file", c.Sensor.ASNInfo.File, false)
+	}
 	add("enrichment", "sniffer.p0f_db", c.Sniffer.P0fDB, false)
 
 	// Databases (read-only inputs + the local event store).
