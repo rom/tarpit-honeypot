@@ -152,6 +152,9 @@ var cweNames = map[string]string{
 	"CWE-305":  "Authentication Bypass by Primary Weakness",
 	"CWE-908":  "Use of Uninitialized Resource",
 	"CWE-1242": "Inclusion of Undocumented Features or Chicken Bits",
+	"CWE-1021": "Improper Restriction of Rendered UI Layers or Frames (Clickjacking)",
+	"CWE-1104": "Use of Unmaintained Third Party Components",
+	"CWE-1236": "Improper Neutralization of Formula Elements in a CSV File",
 }
 
 // CWEName returns the human-readable name for a CWE id ("CWE-89" ->
