@@ -374,7 +374,7 @@ rationale covering the current implementation.
   `log4shell` → T1190/T1059, `modbus-write-attempt` → ICS T0836/T0831,
   `default-credential-attempt` → T1078.001, …), so a generic handler hit
   still carries precise attribution. CVE exploit-attempt events
-  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (~40
+  (`cve:<id>`) inherit the technique from the `internal/cve` catalog (700+
   entries: Log4Shell, Spring4Shell, ProxyShell, WebLogic, Telerik,
   Confluence, MOVEit, Citrix/Pulse/Ivanti/Fortinet/PAN-OS, Apache
   41773/42013, Cisco IOS-XE 20198, PHP-CGI 4577, TeamCity, GPON/D-Link/
@@ -651,7 +651,7 @@ In-tree (see [`docs/README.md`](docs/README.md) for the index):
 **tarpit-honeypot is production-ready** — a single, statically linked, CGO-free
 Go binary that stands up a deception + detection estate and forwards structured
 events to your sinks. Current totals: **184 TCP + 118 UDP protocol handlers**,
-**678 CVE records** (361 live-detectable + 317 advisory), **469 built-in YARA
+**719 CVE records** (364 live-detectable + 355 advisory), **469 built-in YARA
 artifact-classification rules**, **230 dynamic Lua service scripts**, **259
 OS/device archetypes**, **900+
 attack-tool/scanner fingerprints**, **30 single-sensor + 27 cross-sensor
@@ -1448,7 +1448,10 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `cve:<id>` — a known-CVE exploit signature appeared in a request
   (e.g. `cve:CVE-2021-44228`). CVSS-scaled severity (>=9.0 → critical);
   meta carries `cve_name`, `cvss`, `description`. Detection only — the
-  service is never actually exploitable.
+  service is never actually exploitable. When the **CISA KEV overlay** is
+  enabled and the id is KEV-listed, the event also carries `kev=true`,
+  `kev_date_added`, and `kev_known_ransomware`, and its severity is lifted
+  to **at least High** (see **CISA KEV overlay** below).
 - `malware:capture` — a binary / script / shellcode / base64 dropper was
   harvested from captured bytes. Meta: `artifacts` (kind:sha256), markers;
   the artifact is persisted to `<data_dir>/payloads/`. Tagged T1105+T1027.
@@ -1506,6 +1509,31 @@ Beyond per-listener events, the sensor fires aggregate / token events:
 - `honeynet:profinet_dcp_identify` — a PROFINET-DCP Identify reached a
   virtual industrial host (ICS recon). Tagged `T0846`.
 - `listener:*:tarpit_start|tarpit_end|tarpit_drop` — tarpit lifecycle.
+
+### CISA KEV overlay — actively-exploited marking & air-gapped injects
+
+The compile-time CVE catalog says *which* exploit a probe maps to; the **CISA
+Known Exploited Vulnerabilities (KEV)** overlay says whether that CVE is being
+**exploited in the wild right now**. With `kev.enabled`, the sensor keeps the
+KEV catalog in memory and, whenever a `cve:<id>` event's id is KEV-listed,
+stamps it `kev=true` + `kev_date_added` + `kev_known_ransomware` and lifts its
+severity to **at least High** — so active-threat probing separates from routine
+scanning without touching the binary. State is exported as
+`tarpit_kev_catalog_entries` and `tarpit_kev_last_update_timestamp_seconds`.
+
+- **Live** — set `kev.enabled: true` and let it refresh on `kev.poll` (default
+  6h); the feed host must be in `egress.allow`.
+- **Offline / air-gapped** — run `scripts/fetch-kev.sh` on an internet-connected
+  box (`--ics` keeps only ICS/OT entries), transfer the JSON, point `kev.file`
+  at it, and `SIGHUP`. A pure-offline sensor (`file` set, `url` empty) starts no
+  poller; set both to also refresh live. `fetch-kev.sh --install` does the
+  resolve-path + reload in one shot on a connected sensor, and
+  `install-enrichment.sh` drops the catalog in from an enrichment bundle.
+- **Gap triage** — `tarpit-honeypot kev-gap` prints the actively-exploited CVEs
+  the catalog does **not** yet model (the shortlist worth adding next);
+  `--covered` flips it.
+
+Full recipe with config snippets: [`docs/usage.md`](docs/usage.md) §2c.
 
 ## Outbound channels
 

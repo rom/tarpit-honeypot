@@ -291,6 +291,98 @@ sensor:
 The key is resolved in order: `ABUSE_CH_AUTH_KEY` env var → inline
 `abuse_ch_auth_key` → the env var named by `abuse_ch_auth_key_env`.
 
+## 2c. CISA KEV catalog (integration & air-gapped injects)
+
+The sensor can overlay the **CISA Known Exploited Vulnerabilities (KEV)**
+catalog on top of its compile-time CVE catalog. When a handler emits a
+`cve:<id>` event and that CVE is KEV-listed, the sensor stamps the event with
+`kev=true`, `kev_date_added`, and `kev_known_ransomware`, and lifts its severity
+to **at least High** — so "someone is probing a vuln that is *actively being
+exploited in the wild right now*" stands out from background scanning. The
+overlay is also what keeps recognition current between releases: new KEV entries
+light up the moment the catalog refreshes, without rebuilding the binary. Two
+gauges expose its state to Prometheus: `tarpit_kev_catalog_entries` and
+`tarpit_kev_last_update_timestamp_seconds`.
+
+### Live sync (online sensor)
+
+Point the sensor at the feed and let it refresh on an interval. The feed host
+must be reachable — add it to `egress.allow` if egress is locked down:
+
+```yaml
+kev:
+  enabled: true
+  # url:    ""         # empty = the CISA KEV JSON feed (default)
+  poll:   6h           # refresh interval (default 6h)
+  # header: "Name: v"  # optional request header (e.g. a mirror's auth)
+```
+
+The catalog reloads on `SIGHUP` as well, so a config change takes effect without
+a restart.
+
+### Offline / air-gapped injects
+
+When the sensor can't reach `cisa.gov`, fetch the catalog on an
+internet-connected box, transfer the JSON, and point the sensor at it with
+`kev.file`. `scripts/fetch-kev.sh` does the download and lays the file out in an
+enrichment-bundle structure:
+
+1. **Fetch** (anywhere with internet). The file lands at
+   `<dir>/kev/known_exploited_vulnerabilities.json`:
+
+   ```bash
+   scripts/fetch-kev.sh ./kev-data
+   # optional: keep only ICS/OT/SCADA-relevant entries (needs jq)
+   scripts/fetch-kev.sh --ics ./kev-data
+   ```
+
+2. **Transfer + load** on the sensor. Set `kev.file` and send `SIGHUP`:
+
+   ```yaml
+   kev:
+     enabled: true
+     file: /etc/tarpit-honeypot/enrichment/kev/known_exploited_vulnerabilities.json
+     # url: ""   # leave empty for a pure-offline sensor (no HTTP poller starts)
+   ```
+
+   ```bash
+   scp ./kev-data/kev/known_exploited_vulnerabilities.json \
+       sensor:/etc/tarpit-honeypot/enrichment/kev/
+   ssh sensor 'kill -HUP $(pidof tarpit-honeypot)'
+   ```
+
+   Set **only `file`** (no `url`) for a pure-offline sensor: it loads the file at
+   start and on each `SIGHUP` and starts **no** HTTP poller. Set **both** to load
+   the file immediately *and* refresh live once connectivity exists.
+
+`fetch-kev.sh` also installs on a connected sensor in one shot, resolving the
+configured `kev.file` from the running sensor (via `list-paths`) and sending the
+reload signal itself:
+
+```bash
+sudo scripts/fetch-kev.sh --install -c /etc/tarpit-honeypot/config.yaml
+```
+
+Because the KEV catalog follows the same `kev/known_exploited_vulnerabilities.json`
+bundle layout, `scripts/install-enrichment.sh` drops it into place alongside the
+other enrichment inputs when it is present in a bundle — so a single
+fetch→install cron run can refresh reputation feeds *and* the KEV overlay.
+
+### Triage: what the catalog doesn't model yet
+
+`kev-gap` cross-checks the compile-time CVE catalog against KEV and prints the
+actively-exploited CVEs the sensor does **not** yet recognize (newest-first) —
+the shortlist of handlers/signatures worth adding next:
+
+```bash
+# live feed
+tarpit-honeypot kev-gap
+# from a transferred file (air-gapped)
+tarpit-honeypot kev-gap --file ./kev-data/kev/known_exploited_vulnerabilities.json
+# flip it: KEV CVEs already modeled
+tarpit-honeypot kev-gap --covered --json
+```
+
 ## 3. Honeynets
 
 A *honeynet* is a configured artificial network with virtual hosts. One sensor can present as many distinct virtual machines, each with its own deterministic identity (SSH banner version, MAC, MySQL build string, SMB challenge, etc.).
