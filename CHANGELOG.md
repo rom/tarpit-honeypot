@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-06
+
 ### Added
 
 - **`docs/AGENTIC.md`** — an in-depth reference for the agentic-attack defense:
