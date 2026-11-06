@@ -34,19 +34,33 @@ NoNewPrivileges=true
 # installed, so the service still starts there.
 SELinuxContext=-system_u:system_r:tarpit_honeypot_t:s0
 
-# Hardening.
+# Hardening (complements the in-process seccomp + Landlock). Keep this in sync
+# with the unit scripts/install.sh generates (scripts/install.sh) — the CI
+# check in packaging/systemd/unit_hardening_test.go enforces that the key
+# directives below are present in every shipped unit.
 ProtectSystem=strict
 ReadWritePaths=/var/lib/tarpit-honeypot /var/log/tarpit-honeypot
+ReadOnlyPaths=/etc/tarpit-honeypot
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
 RestrictNamespaces=true
-LockPersonality=true
+RestrictSUIDSGID=true
 RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET AF_NETLINK
+MemoryDenyWriteExecute=true
+LockPersonality=true
 SystemCallArchitectures=native
+# NB: no SystemCallFilter allowlist — the sensor's in-process seccomp DENYLIST
+# (sensor.sandbox.seccomp) blocks the dangerous syscalls precisely, without an
+# allowlist that could block the in-process Landlock syscalls.
 
 [Install]
 WantedBy=multi-user.target
