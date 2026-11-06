@@ -18,7 +18,7 @@ attribution, the fleet view, and the IOC view.
 
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
 map · captures · credentials · interactions · dns · web · databases · remote · mail · ntp ·
-fleet · iocs · tunnels · profiles · fingerprints ·
+fleet · iocs · tunnels · profiles · networks · fingerprints ·
 devices · topology · charts · statistics · coverage · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
@@ -280,6 +280,17 @@ source reached more than one of the host's server IPs the profile adds a
 **cross-target timeline**: the targets in first-seen order with timing-offset
 bars, the ports + services hit per target, hit counts, and a ⚠ list of ports hit
 on more than one target (a scripted same-service sweep across the fleet).
+
+### networks (`/asns`)
+Attacking hosts **grouped by autonomous system**, so you can see which networks
+your attackers come from. Each row is one AS, ranked by the number of
+**distinct attacking hosts** (source IPs) it originated over the window, with
+the operator name, total events, countries, worst severity seen, last-seen time,
+and a few sample hosts (linking to their profiles). Clicking an AS opens the
+events list filtered to that whole autonomous system (`/events?asn=<n>`), not
+just one IP. ASN attribution requires the MaxMind GeoLite2-ASN database
+(`sensor.asn_db`); private/loopback sources are not geolocated and don't appear.
+JSON at `/api/asns`.
 
 ### fingerprints (`/fingerprints`)
 JA3 / JA4 / JA4H / JA3S / HASSH reputation — pivot from a client TLS/SSH stack to
