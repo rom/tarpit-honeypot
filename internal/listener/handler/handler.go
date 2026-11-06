@@ -325,6 +325,8 @@ func Get(name string, deps Deps) (Handler, error) {
 		return newTLSWrap("bacnet_sc", "bacnet_scs", deps)
 	case "c2_emulator":
 		return &c2Emulator{}, nil
+	case "agent":
+		return &agentH{}, nil
 	case "irc":
 		return &ircH{}, nil
 	case "finger":

@@ -498,6 +498,15 @@ func sourceBadges(meta map[string]any) template.HTML {
 	if bk, _ := meta["backscatter_kind"].(string); bk != "" {
 		add("warn", "💥 backscatter", "DDoS backscatter reply ("+bk+") — our address is likely spoofed as a flood source", "")
 	}
+	// Agentic attack: an autonomous LLM agent engaged the agent honeypot.
+	if ap, _ := meta["agent_protocol"].(string); ap != "" {
+		add("bad", "🤖 agent:"+ap, "autonomous AI agent attack over "+strings.ToUpper(ap), "")
+	}
+	if _, ok := meta["agent_leak_system_prompt"]; ok {
+		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own system prompt / credentials to our bait", "")
+	} else if _, ok := meta["agent_leak_api_key"]; ok {
+		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own credentials to our bait", "")
+	}
 	// Composite "meta:*" recognition signals (computed once in internal/enrich
 	// and carried on labels[]): cross-relations of ≥2 signals, rendered with a
 	// pennant so a corroborated/deceptive/targeted source stands out.

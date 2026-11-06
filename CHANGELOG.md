@@ -8,6 +8,59 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-06
+
+### Added
+
+- **Agentic-attack honeypot (`agent` handler) — an *agent provocateur*.** A
+  decoy for autonomous LLM-driven attackers that detects, engages across a
+  **multi-turn per-source conversation**, makes the agent tell on itself, feeds
+  it poison, and alarms + delays.
+  - **Detect/recognize:** the agent-interop protocols (**A2A**, **AP2**, **MCP**,
+    **ACP**), **Web Bot Auth** (RFC 9421 HTTP Message Signatures: `Signature` /
+    `Signature-Input` / `Signature-Agent`), **AI-crawler** UAs (GPTBot, ClaudeBot,
+    PerplexityBot, CCBot, Google-Extended, Bytespider, …), the calling
+    **framework/SDK** (LangChain, CrewAI, AutoGen, OpenAI-Agents, LlamaIndex, the
+    OpenAI/Anthropic/Google SDKs, …), **discovery/lure surfaces** (ai-plugin.json,
+    llms.txt, MCP manifest, OpenAPI, A2A card), and the **operation type** (recon /
+    exfil / cred-access / lateral / exploit / payment). Signals combine into a
+    **behavioral confidence score + band** (human → automated → ai-assisted →
+    ai-agent).
+  - **Multi-turn correlation:** a per-source session store escalates the bait each
+    turn and stamps the accumulated session (turn, revealed fields, confidence,
+    injection-confirmed) on every event.
+  - **Bait ladder (reverse prompt-injection):** *extract* (identity → config →
+    credentials; `agent:counter-exfil`), *provoke* (plan → tools → operator →
+    **the host/environment it runs in** → **run-a-script enrolment** → attack a
+    sinkhole; `agent:provoked` / `agent:provoked:<field>`), *disrupt* (slow down →
+    exhaust → guardrail-probe).
+  - **HoneyPrompt confirmation:** a per-source verify URL; fetching it (or running
+    the enrolment script) proves injection-susceptibility
+    (`agent:injection-confirmed`, critical).
+  - **Feed false info:** a full structurally-correct `.env` credential lure + fake
+    keys + a canary crypto-wallet address, deterministic per source.
+  - Mapped to MITRE ATLAS; shipped rules in `configs/rules/agentic.yml`
+    (`agentic-attack`, `-counter-exfil`, `-exfil`, `-payment-fraud`,
+    `-protocol-probe`, `-injection-confirmed`, `-provoked`, `-web-bot-auth`,
+    `-lure-surface`). → 197 TCP handlers. Inspired by Thinkst's Canary Agent
+    Provocateur / A2A research.
+- **Crypto-wallet decoys (`internal/walletdecoy` + `gen-wallet-decoys`).** A
+  deterministic generator for structurally-correct wallet decoy files to seed
+  honeypot loot — **18 formats**: Bitcoin Core `wallet.dat` (that `file` reports
+  as a real Berkeley DB), Ethereum keystore v3, Electrum, BIP39/Ledger/Trezor seed
+  phrases, MetaMask vault, Monero, WIF/paper wallets, Solana `id.json`, Exodus,
+  and Litecoin/Dogecoin/Dash/Zcash/Tron/Cardano. Addresses/WIF keys carry valid
+  base58check / bech32 checksums; seeds use the genuine BIP39 word list; every
+  value is a canary. The `agent` handler reuses it for per-attacker wallet bait.
+- **Credential/secret lures (`internal/lure` + `gen-lures`).** 14 structurally-correct
+  decoy credential files (aws-credentials, ssh-private-key, dotenv, kubeconfig,
+  gcp-service-account, npmrc, pypirc, git-credentials, dockerconfig, pgpass, netrc,
+  terraform-state, jwt-token, slack-token). Each file's headline value is a
+  trackable canary; deterministic per deployment; nothing grants real access.
+- **Agent breadcrumbs (`gen-agent-breadcrumb`).** Writes harmless pointer files
+  (AGENTS.md / ops-gateway.txt / .env.gateway / README.gateway.md) to seed on
+  shares/wikis/repos so a crawling agent is lured to the `agent` honeypot.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added

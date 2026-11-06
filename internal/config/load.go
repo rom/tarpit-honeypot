@@ -57,6 +57,8 @@ var tcpHandlers = map[string]bool{
 	"irc": true, "finger": true, "stomp": true, "mbus": true,
 	// Fake C2 team-server emulator (recognizes beacon/stager check-ins).
 	"c2_emulator": true,
+	// Agentic-attack honeypot (A2A/AP2/MCP/ACP recognition + counter-exfil).
+	"agent": true,
 	// Classic news/ident + metering + file-share + work-queue services.
 	"nntp": true, "ident": true, "dlms": true, "afp": true, "beanstalkd": true,
 	"kubernetes_api": true, "vault": true,
