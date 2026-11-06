@@ -35,6 +35,9 @@ const (
 	EventRequest EventKind = "request"
 	// EventMalformed is an illegal / corrupt packet (see Markers).
 	EventMalformed EventKind = "malformed"
+	// EventBackscatter is an unsolicited reply packet (a SYN-ACK this stack
+	// never asked for) — DDoS backscatter aimed at a spoofed virtual IP.
+	EventBackscatter EventKind = "backscatter"
 )
 
 // Event is a stack-level notification, deliberately decoupled from
@@ -175,6 +178,20 @@ func (s *Stack) OnPacket(pkt []byte) Result {
 	}
 	var r Result
 	open := s.open(seg.DstIP, seg.DstPort)
+
+	// An unsolicited SYN-ACK is DDoS backscatter: this stack never initiates a
+	// connection, so a SYN-ACK means a virtual IP was spoofed as the source of
+	// a flood and we are the victim's reply target. Record it and drop — never
+	// RST it, which would send the victim yet more traffic.
+	if seg.Flags&SYN != 0 && seg.Flags&ACK != 0 && seg.Flags&(RST|FIN) == 0 {
+		r.Events = append(r.Events, Event{
+			Kind: EventBackscatter, Markers: []string{"tcp-backscatter-synack"},
+			SrcIP: seg.SrcIP, DstIP: seg.DstIP,
+			SrcPort: seg.SrcPort, DstPort: seg.DstPort,
+			Raw: append([]byte(nil), pkt...),
+		})
+		return r
+	}
 
 	if markers := Classify(seg); len(markers) > 0 {
 		atomic.AddUint64(&s.cMalformed, 1)

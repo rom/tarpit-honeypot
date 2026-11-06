@@ -1501,6 +1501,17 @@ Beyond per-listener events, the sensor fires aggregate / token events:
   payload (ptunnel / icmpsh / Loki). Tagged `T1095` / `T1572`.
 - `sniffer:stp_bpdu` — spanning-tree BPDUs (STP/RSTP/MSTP/PVST+): a
   root-bridge / topology-manipulation tell. Tagged `T1557`.
+- `sniffer:ddos_backscatter` — **DDoS backscatter**: unsolicited reply packets
+  (TCP **SYN-ACK**, **RST**, ICMP **dest-unreachable** / **time-exceeded**)
+  arriving from **many distinct sources** in the window — the tell-tale that one
+  of our addresses is being spoofed as the *source* of a flood and we're
+  receiving the victims'/routers' replies. Meta: `backscatter_kind`,
+  `distinct_sources`. Tagged `T1498`. (The distinct-source diversity is the
+  signal — our own single-source replies never trip it.)
+- `honeynet:ddos_backscatter` — the same, on a honeynet virtual IP: the
+  userspace TCP stack never initiates, so an inbound **SYN-ACK** to a virtual
+  host is unsolicited backscatter aimed at that spoofed address (recorded, never
+  RST-ed so we don't feed the victim). Tagged `T1498`.
 - `honeynet:tcp_connect` / `tcp_request` / `tcp_malformed` / `tcp_land` —
   the honeynet **userspace TCP stack** (`internal/tcpstack`) over a routed
   TUN: a completed handshake to a virtual host's open port, a captured

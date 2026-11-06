@@ -29,11 +29,12 @@ type linuxSniffer struct {
 	mu    sync.Mutex
 	state map[string]*scanState // key: source MAC string
 
-	tcp    *scanTracker  // nil unless TCPScan enabled
-	frag   *rateLimiter  // nil unless TCPScan enabled
-	encap  *rateLimiter  // nil unless TCPScan enabled (encapsulation + STP dedup)
-	goose  *rateLimiter  // nil unless GOOSE enabled
-	gooseT *gooseTracker // nil unless GOOSE enabled (stateful attack analysis)
+	tcp    *scanTracker        // nil unless TCPScan enabled
+	bs     *backscatterTracker // nil unless TCPScan enabled — DDoS backscatter
+	frag   *rateLimiter        // nil unless TCPScan enabled
+	encap  *rateLimiter        // nil unless TCPScan enabled (encapsulation + STP dedup)
+	goose  *rateLimiter        // nil unless GOOSE enabled
+	gooseT *gooseTracker       // nil unless GOOSE enabled (stateful attack analysis)
 
 	p0fDB *p0f.DB // passive OS fingerprint DB (embedded curated set + optional p0f.fp)
 
@@ -117,6 +118,7 @@ func newImpl(cfg config.Sniffer, sensorName string) (Sniffer, error) {
 	}
 	if cfg.TCPScan.Enabled {
 		s.tcp = newScanTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts, cfg.TCPScan.StealthPorts)
+		s.bs = newBackscatterTracker(cfg.TCPScan.Window, cfg.TCPScan.DistinctPorts)
 		s.frag = newRateLimiter(cfg.TCPScan.Window)
 		s.encap = newRateLimiter(cfg.TCPScan.Window)
 	}
@@ -357,6 +359,9 @@ func (s *linuxSniffer) runIPCapture(ctx context.Context, bus chan<- *event.Event
 				return
 			case now := <-t.C:
 				s.tcp.gc(now)
+				if s.bs != nil {
+					s.bs.gc(now)
+				}
 			}
 		}
 	}()
@@ -467,7 +472,14 @@ func (s *linuxSniffer) handleIP6Frame(ctx context.Context, frame []byte, bus cha
 	}
 
 	switch info.nextHdr {
-	case 58: // ICMPv6 — echo-based covert tunnel
+	case 58: // ICMPv6
+		if len(info.payload) > 0 {
+			if bk := backscatterICMP(info.payload[0], true); bk != "" {
+				s.emitBackscatter(ctx, bus, bk, info.srcIP, "icmp6", now, info.hopLimit)
+				return
+			}
+		}
+		// Otherwise, an echo-based covert tunnel.
 		dataLen, tunnel := icmpv6EchoTunnel(info.payload)
 		if !tunnel {
 			return
@@ -482,6 +494,9 @@ func (s *linuxSniffer) handleIP6Frame(ctx context.Context, frame []byte, bus cha
 		port, flags, ok := parseTCP(info.payload)
 		if !ok {
 			return
+		}
+		if bk := backscatterTCP(flags); bk != "" {
+			s.emitBackscatter(ctx, bus, bk, info.srcIP, "tcp6", now, info.hopLimit)
 		}
 		kind := classifyTCP(flags)
 		if kind == scanNone {
@@ -528,6 +543,28 @@ func (s *linuxSniffer) handleIP6Frame(ctx context.Context, frame []byte, bus cha
 // the IPv6 analogue of the IPv4 TTL, with the same initial-value buckets).
 func addHopGuess(ev *event.Event, hop byte) { addTTLGuess(ev, hop) }
 
+// emitBackscatter observes one unsolicited reply packet and, when enough
+// distinct sources have sent that reply kind in the window, emits a single
+// sniffer:ddos_backscatter event — our address space is likely being used as a
+// spoofed source in a DDoS, and we are receiving the victims'/routers' replies.
+func (s *linuxSniffer) emitBackscatter(ctx context.Context, bus chan<- *event.Event, kind backscatterKind, srcIP, proto string, now time.Time, ttlOrHop byte) {
+	if s.bs == nil {
+		return
+	}
+	n, fire := s.bs.observe(kind, srcIP, now)
+	if !fire {
+		return
+	}
+	ev := s.newIPEvent("sniffer:ddos_backscatter", event.SeverityMedium, srcIP, proto)
+	ev.Meta["backscatter_kind"] = string(kind)
+	ev.Meta["distinct_sources"] = n
+	ev.Meta["window_s"] = int(s.cfg.TCPScan.Window.Seconds())
+	ev.Meta["intent"] = "DDoS backscatter — many distinct sources sent unsolicited " + string(kind) +
+		" replies; our address space is likely spoofed as the source of a flood"
+	addTTLGuess(ev, ttlOrHop)
+	send(ctx, bus, ev)
+}
+
 // handleIPFrame classifies one captured IPv4 frame and emits a scan event
 // when a per-source threshold trips.
 func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan<- *event.Event) {
@@ -565,7 +602,16 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 	}
 
 	switch info.proto {
-	case 1: // ICMP — echo-based covert tunnel (ptunnel / icmpsh / Loki)
+	case 1: // ICMP
+		// ICMP error replies (dest-unreachable / time-exceeded) arriving from
+		// many sources are DDoS backscatter.
+		if len(info.payload) > 0 {
+			if bk := backscatterICMP(info.payload[0], false); bk != "" {
+				s.emitBackscatter(ctx, bus, bk, info.srcIP, "icmp", now, info.ttl)
+				return
+			}
+		}
+		// Otherwise, an echo-based covert tunnel (ptunnel / icmpsh / Loki).
 		dataLen, tunnel := icmpEchoTunnel(info.payload)
 		if !tunnel {
 			return
@@ -580,6 +626,10 @@ func (s *linuxSniffer) handleIPFrame(ctx context.Context, frame []byte, bus chan
 		port, flags, ok := parseTCP(info.payload)
 		if !ok {
 			return
+		}
+		// Unsolicited SYN-ACK / RST from many sources = DDoS backscatter.
+		if bk := backscatterTCP(flags); bk != "" {
+			s.emitBackscatter(ctx, bus, bk, info.srcIP, "tcp", now, info.ttl)
 		}
 		kind := classifyTCP(flags)
 		if kind == scanNone {

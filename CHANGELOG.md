@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Added
 
+- **DDoS backscatter detection.** When one of our addresses is spoofed as the
+  *source* of a flood, the victims and routers send their replies to us. The
+  passive sniffer now flags `sniffer:ddos_backscatter` (ATT&CK T1498) when many
+  **distinct** sources send unsolicited reply-shaped packets in the window —
+  TCP SYN-ACK / RST and ICMP dest-unreachable / time-exceeded (IPv4 + IPv6).
+  The distinct-source diversity is what distinguishes backscatter from our own
+  single-source replies. On honeynets the userspace TCP stack emits
+  `honeynet:ddos_backscatter` for an unsolicited SYN-ACK to a virtual host
+  (it never initiates), recorded but never RST-ed so we don't feed the victim.
 - **Fake C2 team-server emulation (`c2_emulator`).** A decoy command-and-control
   HTTP listener that recognizes the beacon/stager check-in *shape* of several
   red-team frameworks and answers like the real team server so a misconfigured

@@ -105,6 +105,10 @@ var exactRules = map[string]Tag{
 	"sniffer:tcp_maimon_scan": {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:udp_scan":        {Techniques: []string{"T1046", "T1595.001"}, Tactics: []string{"discovery", "reconnaissance"}},
 	"sniffer:ip_fragmented":   {Techniques: []string{"T1046"}, Tactics: []string{"discovery"}},
+	// DDoS backscatter: unsolicited SYN-ACK/RST/ICMP-error replies arriving
+	// from many sources because our address was spoofed as a flood source.
+	"sniffer:ddos_backscatter":  {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
+	"honeynet:ddos_backscatter": {Techniques: []string{"T1498"}, Tactics: []string{"impact"}},
 	// Tunnelling / overlay encapsulation observed on the segment (GRE,
 	// IP-in-IP, VXLAN, GENEVE, L2TP, Teredo, …) = protocol tunnelling /
 	// non-application-layer C2 transport.
