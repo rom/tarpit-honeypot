@@ -775,6 +775,11 @@ type Sensor struct {
 	// to vendors. Unset = a small built-in table. Fetch the full DB with
 	// scripts/fetch-enrichment.sh.
 	OUIFile string `yaml:"oui_file"`
+	// Enrichment holds settings for the offline enrichment-fetch tooling
+	// (scripts/fetch-enrichment.sh), kept here so the sensor config is the
+	// single source of truth. The sensor itself does not consume these at
+	// runtime.
+	Enrichment EnrichmentCfg `yaml:"enrichment"`
 	// VulnEmulation, when true, makes banner-aware handlers advertise a
 	// known-vulnerable version / patch-level for their service (so a
 	// version scanner records an unpatched box) and recognize the
@@ -1006,6 +1011,24 @@ type FingerprintDB struct {
 type FingerprintDBSource struct {
 	Kind string `yaml:"kind"` // ja3 | ja4 | ja4h | ja3s | hassh | hassh_server
 	File string `yaml:"file"`
+}
+
+// EnrichmentCfg holds credentials/settings for the offline enrichment-fetch
+// tooling (scripts/fetch-enrichment.sh). The sensor does not use these at
+// runtime; they live in the config so a single-box `fetch-enrichment.sh
+// --install -c <config>` run has one source of truth instead of an env var.
+type EnrichmentCfg struct {
+	// AbuseCHAuthKey is the abuse.ch account Auth-Key. Since 2025-06-30 every
+	// abuse.ch export (ThreatFox / MalwareBazaar / URLhaus) requires one — get a
+	// free key at https://auth.abuse.ch/. fetch-enrichment.sh reads it from here
+	// when the ABUSE_CH_AUTH_KEY env var is unset. This is a plaintext secret in
+	// the config file; prefer AbuseCHAuthKeyEnv (or the env var) if the file
+	// isn't already access-restricted.
+	AbuseCHAuthKey string `yaml:"abuse_ch_auth_key"`
+	// AbuseCHAuthKeyEnv names an environment variable that holds the key instead
+	// of storing it inline — the same indirection MISP uses via key_env. Used
+	// when the inline key is empty.
+	AbuseCHAuthKeyEnv string `yaml:"abuse_ch_auth_key_env"`
 }
 
 // Jitter randomizes the latency of handler replies. min=max=0 disables.
