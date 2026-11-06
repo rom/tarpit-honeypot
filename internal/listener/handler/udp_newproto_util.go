@@ -18,9 +18,13 @@ func captureUDP(payload []byte, anomaly string) Result {
 	return res
 }
 
-// indexFold is a case-insensitive strings.Index.
+// indexFold is a case-insensitive strings.Index that returns an offset valid in
+// the ORIGINAL s. It uses asciiIndexFold rather than indexing a strings.ToLower
+// copy: ToLower is not length-preserving, so a copy's offset can point past the
+// end of s and panic a caller that slices s[idx:]. (Presence-only callers using
+// `>= 0` were already safe; the slicing callers now are too.)
 func indexFold(s, sub string) int {
-	return strings.Index(strings.ToLower(s), strings.ToLower(sub))
+	return asciiIndexFold(s, sub)
 }
 
 // hasPrefixFold is a case-insensitive strings.HasPrefix.

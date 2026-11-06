@@ -61,3 +61,29 @@ func TestXMLJSExtractorsNoPanicOnGrowingRunes(t *testing.T) {
 		t.Error("extractJavaScript returned nothing for a <script> body")
 	}
 }
+
+// Oracle TNS, SIP auth and the indexFold helper shared the same ToUpper/ToLower
+// copy-index bug (fuzz found the TNS one). Growing-rune inputs panicked before
+// the asciiIndexFold fix.
+func TestTNSAndSIPFoldNoPanic(t *testing.T) {
+	grow := "ȿ" // U+023F → U+2C7E grows 2→3 bytes under ToUpper
+	for _, in := range []string{grow + "(sid=", grow + "(service_name=orcl)", "(SID=" + grow} {
+		_ = tnsField(in, "SID")
+		_ = tnsField(in, "SERVICE_NAME")
+	}
+	for _, in := range []string{grow + "username=", "USERNAME=" + grow, grow + `username="bob"`} {
+		_ = sipAuthUser(in)
+	}
+	_ = indexFold(grow+"method", "method") // slicing callers rely on a valid offset
+
+	// Extraction still correct.
+	if got := tnsField("(CONNECT_DATA=(SID=orcl))", "SID"); got != "orcl" {
+		t.Errorf("tnsField SID = %q; want orcl", got)
+	}
+	if got := sipAuthUser(`Digest username="alice", realm="x"`); got != "alice" {
+		t.Errorf("sipAuthUser = %q; want alice", got)
+	}
+	if indexFold("abcDEFghi", "def") != 3 {
+		t.Errorf("indexFold case-insensitive offset wrong")
+	}
+}
