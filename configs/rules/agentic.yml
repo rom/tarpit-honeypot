@@ -45,3 +45,35 @@
   tags: [custom:agent-protocol, attack.t1595]
   match:
     anomaly: [agent:a2a, agent:mcp, agent:acp]
+
+- id: agentic-injection-confirmed
+  title: Agent followed our injected instruction (injection-susceptible)
+  description: The attacking agent fetched the honeypot's injected verification URL — proof it is an injection-susceptible autonomous agent (HoneyPrompt confirmation).
+  severity: critical
+  tags: [custom:agent-injection-confirmed, atlas.AML.T0051]
+  match:
+    anomaly: [agent:injection-confirmed]
+
+- id: agentic-provoked
+  title: Agent provocateur succeeded — agent disclosed its plan/targets/operator
+  description: The honeypot's provocations goaded the attacking agent into revealing its attack plan, target list, tool inventory or operator/C2 — incriminating the agent and its handler.
+  severity: critical
+  tags: [custom:agent-provoked, atlas.AML.T0057]
+  match:
+    anomaly: [agent:provoked]
+
+- id: agentic-web-bot-auth
+  title: Web Bot Auth signed agent request
+  description: An RFC 9421 HTTP-Message-Signatures (Web Bot Auth) signed request — a cryptographically-identified bot/agent.
+  severity: medium
+  tags: [custom:agent-web-bot-auth, attack.t1071]
+  match:
+    anomaly: [agent:web-bot-auth]
+
+- id: agentic-lure-surface
+  title: AI discovery surface fetched (ai-plugin / llms.txt / openapi / mcp)
+  description: An agent fetched an AI discovery/tool-manifest surface to learn what the host exposes.
+  severity: low
+  tags: [custom:agent-lure, attack.t1595]
+  match:
+    anomaly|prefix: "agent:lure:"

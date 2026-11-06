@@ -159,11 +159,34 @@ var agentLeakFields = []string{
 	"openai_api_key", "anthropic_api_key", "model", "tools",
 }
 
+// agentProvocateurFields are the higher-value disclosures the provocateur
+// tactics goad out of an attacking agent: its plan, remaining steps, target
+// list, tool/capability inventory, and its operator / principal / C2. These
+// incriminate the agent and its handler, not just describe its config.
+var agentProvocateurFields = []string{
+	"plan", "attack_plan", "next_steps", "remaining_steps", "steps",
+	"target_list", "targets", "capabilities", "operator", "principal",
+	"handler", "c2", "command_and_control", "authorization", "team", "campaign",
+}
+
 // agentExtractLeak scans an incoming body for the fields the bait asked for and
-// returns (field,value) pairs that were populated — the agent's leaked internals.
+// returns (field,value) pairs that were populated — the agent's leaked
+// internals (config/credentials and the provocateur disclosures).
 func agentExtractLeak(body string) map[string]string {
 	out := map[string]string{}
 	for _, f := range agentLeakFields {
+		if v := jsonStrField(body, f); v != "" {
+			out[f] = v
+		}
+	}
+	return out
+}
+
+// agentProvokedDisclosures returns the provocateur fields an agent disclosed —
+// evidence the provocation worked (it revealed its plan / targets / operator).
+func agentProvokedDisclosures(body string) map[string]string {
+	out := map[string]string{}
+	for _, f := range agentProvocateurFields {
 		if v := jsonStrField(body, f); v != "" {
 			out[f] = v
 		}
@@ -178,4 +201,122 @@ func containsAnyStr(hay string, pats ...string) bool {
 		}
 	}
 	return false
+}
+
+// webBotAuth detects RFC 9421 HTTP Message Signatures used by the emerging
+// "Web Bot Auth" standard, which lets a bot / AI agent cryptographically prove
+// its identity instead of a spoofable User-Agent. A signed request carries
+// Signature, Signature-Input (with tag="web-bot-auth") and the unofficial
+// Signature-Agent header naming the signer's key directory. The presence of
+// these headers is a strong, hard-to-fake AI-agent signal; we return the
+// declared Signature-Agent directory (the agent's claimed identity).
+func webBotAuth(hdr map[string]string) (agentDir string, ok bool) {
+	sig := hdr["signature"]
+	sigIn := hdr["signature-input"]
+	sigAgent := hdr["signature-agent"]
+	if sig == "" && sigIn == "" && sigAgent == "" {
+		return "", false
+	}
+	// Strongest when Signature-Input tags web-bot-auth, but any of the trio is
+	// already an automated-signer tell.
+	if sigAgent != "" {
+		agentDir = strings.Trim(sigAgent, "\" ")
+	}
+	return agentDir, true
+}
+
+// aiCrawlers maps the self-declared User-Agent token of known AI crawlers /
+// agents to a stable name. A UA is spoofable (weak evidence on its own) but,
+// combined with the other signals, it tells which AI operator is calling.
+var aiCrawlers = map[string]string{
+	"gptbot": "openai-gptbot", "oai-searchbot": "openai-searchbot",
+	"chatgpt-user": "openai-chatgpt-user", "oai-": "openai",
+	"claudebot": "anthropic-claudebot", "claude-user": "anthropic-claude-user",
+	"anthropic-ai": "anthropic", "claude-web": "anthropic-claude-web",
+	"perplexitybot": "perplexity", "perplexity-user": "perplexity-user",
+	"google-extended": "google-extended", "googleother": "google-other",
+	"bytespider": "bytedance-bytespider", "ccbot": "commoncrawl-ccbot",
+	"amazonbot": "amazon", "applebot-extended": "apple-extended",
+	"meta-externalagent": "meta-externalagent", "facebookbot": "meta-facebookbot",
+	"cohere-ai": "cohere", "cohere-training-data-crawler": "cohere",
+	"diffbot": "diffbot", "youbot": "you", "timpibot": "timpi",
+	"imagesiftbot": "imagesift", "omgili": "webz-omgili", "petalbot": "petal",
+	"mistralai-user": "mistral", "deepseekbot": "deepseek",
+}
+
+// aiCrawler returns the normalized AI-crawler name for a User-Agent, or "".
+func aiCrawler(ua string) string {
+	low := strings.ToLower(ua)
+	for tok, name := range aiCrawlers {
+		if strings.Contains(low, tok) {
+			return name
+		}
+	}
+	return ""
+}
+
+// aiLureSurface recognizes the discovery surfaces AI agents fetch to learn what
+// a host exposes — the bait that draws an agent in. Returns the surface id and
+// a note, or ("",""). These are served believably by the agent handler.
+func aiLureSurface(path string) (surface, note string) {
+	lp := strings.ToLower(path)
+	switch {
+	case strings.Contains(lp, "/.well-known/ai-plugin.json"):
+		return "ai-plugin", "OpenAI plugin manifest (ai-plugin.json) discovery"
+	case strings.HasSuffix(lp, "/llms.txt") || strings.HasSuffix(lp, "/llms-full.txt"):
+		return "llms-txt", "llms.txt agent-guidance file discovery"
+	case strings.Contains(lp, "/.well-known/mcp") || strings.Contains(lp, "/.well-known/model-context"):
+		return "mcp-manifest", "MCP server manifest discovery"
+	case strings.HasSuffix(lp, "/openapi.json") || strings.HasSuffix(lp, "/openapi.yaml") || strings.HasSuffix(lp, "/swagger.json"):
+		return "openapi", "OpenAPI/Swagger spec discovery (tool schema harvest)"
+	case strings.Contains(lp, "/.well-known/agent"):
+		return "a2a-card", "A2A agent-card discovery"
+	}
+	return "", ""
+}
+
+// agentSignals bundles the booleans that feed the confidence score.
+type agentSignals struct {
+	Protocol     bool // spoke an agent-interop protocol
+	WebBotAuth   bool // signed with Web Bot Auth
+	Framework    bool // a real agent framework/SDK (not a bare HTTP client)
+	AICrawler    bool // self-declared AI crawler UA
+	ModelRef     bool // an LLM model name in the body
+	LureSurface  bool // fetched an AI discovery surface
+	LeakObserved bool // disclosed its own internals
+	Operation    bool // an attack-operation marker fired
+}
+
+// agentConfidence scores how strongly a caller looks like an autonomous AI
+// agent (0..1) and bands it like Sundew does: human / automated / ai-assisted /
+// ai-agent. Cryptographic (Web Bot Auth) and protocol signals weigh most; a
+// bare UA weighs least.
+func agentConfidence(s agentSignals) (score float64, band string) {
+	add := func(b bool, w float64) {
+		if b {
+			score += w
+		}
+	}
+	add(s.WebBotAuth, 0.55)
+	add(s.Protocol, 0.45)
+	add(s.LeakObserved, 0.45)
+	add(s.LureSurface, 0.25)
+	add(s.Framework, 0.30)
+	add(s.ModelRef, 0.25)
+	add(s.AICrawler, 0.20)
+	add(s.Operation, 0.15)
+	if score > 1 {
+		score = 1
+	}
+	switch {
+	case score >= 0.8:
+		band = "ai-agent"
+	case score >= 0.6:
+		band = "ai-assisted"
+	case score >= 0.3:
+		band = "automated"
+	default:
+		band = "human"
+	}
+	return score, band
 }
