@@ -19,7 +19,7 @@ attribution, the fleet view, and the IOC view.
 `summary · events · search · timeline · att&ck · correlation · campaigns ·
 map · captures · credentials · interactions · dns · web · databases · remote · mail · ntp ·
 fleet · iocs · tunnels · profiles · fingerprints ·
-devices · topology · charts · statistics · health · alerting · errors · config · docs`
+devices · topology · charts · statistics · coverage · health · alerting · errors · config · docs`
 
 Every page auto-refreshes (meta-refresh; interval `ui.refresh_seconds`) so the
 console stays live during an attack without JavaScript. With JavaScript on, the

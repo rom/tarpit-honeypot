@@ -190,7 +190,8 @@ exploits:
 **Coordination** — different sources acting together
 `fleet:subnet-coordinated` (one /24, many IPs) ·
 `fleet:credential-spray-fleet` (one user, many passwords) ·
-`fleet:asn-org-campaign` (one provider, many ASNs)
+`fleet:asn-org-campaign` (one provider, many ASNs) ·
+`fleet:port-campaign` (many sources focused on one destination port)
 
 **Temporal** — sequence / timing only visible across the fleet
 `fleet:scan-trajectory` (address-ordered walk, predicts next target) ·
@@ -210,7 +211,8 @@ exploits:
 `fleet:tool-campaign` (an identified tool sweeping the fleet) ·
 `fleet:user-agent-shared` (an HTTP scanner family) ·
 `fleet:threat-intel-surge` (flagged infra converging) ·
-`fleet:tactic-convergence` (one ATT&CK technique surging)
+`fleet:tactic-convergence` (one ATT&CK technique surging) ·
+`fleet:outlier-sensor` (one sensor's high-severity volume far above its peers)
 
 Plus two operational events: `fleet:rollup` (the upward summary) and
 `fleet:sensor-untrusted` (a child stream that looks fabricated).

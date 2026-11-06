@@ -4,12 +4,16 @@ The binary is a single static executable. Invoke it as `tarpit-honeypot <subcomm
 
 ```
 tarpit-honeypot run            -c <config> [--dry-run] [common flags]
+tarpit-honeypot collector      -c <config> [common flags]
 tarpit-honeypot validate-config -c <config> [--diff <other.yaml>]
 tarpit-honeypot show-config    -c <config>
 tarpit-honeypot test-alert     -c <config> [--severity high] [--note "..."]
 tarpit-honeypot list-events    -c <config> [--since 24h] [--source <ip>] [--target <ip>] [--handler <name>] [--port N] [--rule <id>] [--fleet] [--limit N]
 tarpit-honeypot replay         -c <config> (--event <id> | --handler <name> [--file f|-]) [--udp] [--vuln]
-tarpit-honeypot gen-token      --type=dns|url|hex|ssrf [--label LBL] [--bits N] [--domain D]
+tarpit-honeypot gen-token      --type=dns|url|ssrf|hex|doc|log4shell|aws|css|mcp|wireguard|folder [--label LBL] [--bits N] [--domain D] [-o file]
+tarpit-honeypot gen-wallet-decoys [--dir D] [--seed S] [--kind K|all] [--list]
+tarpit-honeypot gen-lures      [--dir D] [--seed S] [--kind K|all] [--list]
+tarpit-honeypot gen-agent-breadcrumb [--dir D] [--url U]
 tarpit-honeypot export-pcap    -c <config> --event <id> [-o file|-]
 tarpit-honeypot list-honeynets -c <config>
 tarpit-honeypot list-devices   -c <config> [--json] [--stats|--conflicts|--rogues|--class C|--vendor S|--search Q|--stale D|--active D]
@@ -17,13 +21,22 @@ tarpit-honeypot list-paths     -c <config> [--format table|json|tsv] [--category
 tarpit-honeypot list-archetypes [--json] [<name>]
 tarpit-honeypot list-handlers  [--proto tcp|udp]
 tarpit-honeypot list-archeservices [<role>]
-tarpit-honeypot list-cves      [--service <handler>] [--json]
+tarpit-honeypot list-cves      [--service <handler>] [--json] [--cwe]
+tarpit-honeypot kev-gap        (--file <kev.json> | --url <u> | --covered) [--json]
 tarpit-honeypot list-techniques [--kind rule|handler|anomaly] [--json]
+tarpit-honeypot export-navigator -c <config> [--observed] [-o file]
 tarpit-honeypot list-fleet-rules [--json]
+tarpit-honeypot list-unavailable-capabilities -c <config>
 tarpit-honeypot export-iocs    -c <config> [--since 168h] [--format stix|csv|txt|json]
+tarpit-honeypot export-creds   -c <config> [--kind K] [--format json|xml|yaml|csv|txt]
 tarpit-honeypot check-iocs     -c <config> --file <path> [--match src|dst|any] [--since D] [--format text|json] [--fail-on-hit]
 tarpit-honeypot identify       [--ua S] [--path S] [--ssh S] [--ja3 S] [--payload S] [--handler H]
 tarpit-honeypot jarm           [--timeout D] [--sni NAME] <host:port>
+tarpit-honeypot analyze        <file> [--format json] [--yara]
+tarpit-honeypot generate-decoys <target...> --yes [--ports P] [--archetype A] [-o file]
+tarpit-honeypot reset-db       -c <config> [--yes]
+tarpit-honeypot rotate-db      -c <config> [--out file.gz] [--reset --yes]
+tarpit-honeypot prune-db       -c <config> (--keep-days N | --keep-rows N | --max-mb N) [--yes]
 tarpit-honeypot init           [-o file]
 tarpit-honeypot completion     bash | zsh | fish
 tarpit-honeypot help           [subcommand | topic]
@@ -95,18 +108,26 @@ The sensor brings up, in order: SQLite store (+ retention pruner, which also pru
 
 ### Privileged setup
 
-Privileged setup happens **before** `drop_user`/`drop_group` takes effect:
+Order of operations at startup:
 
-1. Bind low-numbered listener ports (needs `CAP_NET_BIND_SERVICE` post-drop)
-2. Open data_dir (root-writable in most deployments)
-3. Open ARP / ICMP / LLDP responder sockets (needs `CAP_NET_RAW` post-drop)
-4. Open TUN device (needs `CAP_NET_ADMIN` post-drop)
+1. Install the OS-level egress firewall / active-response blocklist (nftables) — done **while privileged**, since `nft` needs `CAP_NET_ADMIN`, and before the seccomp sandbox blocks `exec`.
+2. **Drop** to `drop_user`/`drop_group` (all-threads `setgid`/`setgroups`/`setuid`; refuses to drop *to* uid 0).
+3. Apply the in-process sandbox (seccomp + Landlock).
+4. Bind listener ports, open ARP / ICMP / LLDP sockets and the TUN device, open data_dir.
 
-The systemd unit pre-grants the necessary `AmbientCapabilities` so the drop is safe.
+The low-numbered port binds and raw/TUN socket opens in step 4 succeed **after** the drop because `CAP_NET_BIND_SERVICE` + `CAP_NET_RAW` (and `CAP_NET_ADMIN` for `--tun`) are retained across the `setuid` in the process's **ambient** (or file) capability set. The systemd unit pre-grants those via `AmbientCapabilities=`; starting as plain root with neither ambient nor file caps makes the post-drop binds fail (see [`hardening.md`](hardening.md)).
 
 On **macOS**, the AF_PACKET/TUN steps are no-ops (Linux-only — see [`docs/usage.md` §14](usage.md#14-platform-support)). Privileged port binding works as on any BSD-derived system: bind as root, then `setuid` to the configured `drop_user` (uses `syscall.Setuid`, which on darwin also drops the saved-uid so a later `setuid(0)` regain attempt fails). launchd's `<SoftResourceLimits>` and `<UserName>` keys can replace `AmbientCapabilities`.
 
 ---
+
+## `collector`
+
+Run as a **fleet collector**: the ingest + correlation half of the sensor with no honeypot listeners. Accepts forwarded events on the `ingest:` endpoint, runs the cross-sensor `fleet:*` correlator, serves the downward intel feed, and writes to the aggregator store — but binds no decoy ports itself. Same config/flags as `run`; the config simply has `ingest:` enabled and (typically) no `listeners:`. See [`fleet.md`](fleet.md).
+
+```
+tarpit-honeypot collector -c /etc/tarpit-honeypot/aggregator.yaml
+```
 
 ## `validate-config`
 
@@ -232,7 +253,7 @@ The trailing parenthesized id is the event id — feed it to `export-pcap`.
 
 ## `gen-token`
 
-Generate an unguessable canary token. Five shapes for the common bait surfaces; default 64 bits of entropy.
+Generate an unguessable canary token. Eleven shapes for the common bait surfaces (inspired by the canarytokens.org token zoo); default 64 bits of entropy.
 
 ```
 tarpit-honeypot gen-token --type=dns --label=prod-cdb --domain=canary.example.com
@@ -253,7 +274,7 @@ tarpit-honeypot gen-token --type=doc --domain=oob.canary.example.com --label=q4-
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--type` | `dns` | `dns` / `url` / `hex` / `ssrf` / `doc`. |
+| `--type` | `dns` | `dns` / `url` / `ssrf` / `hex` / `doc` / `log4shell` / `aws` / `css` / `mcp` / `wireguard` / `folder`. |
 | `--label` | "" | Optional human-readable suffix (DNS-safe chars only). |
 | `--bits` | `64` | Multiple of 8 between 32 and 256. |
 | `--domain` | `canary.example.com` | For `--type=dns` / `ssrf` / `doc`, the base domain. |
@@ -264,6 +285,43 @@ Paste a `dns`/`url` token into a `dns_canaries:` or `url_canaries:` block and th
 A `--type=doc` token is a **decoy Word document** (`.docx`): a real, valid Office Open XML file whose `settings.xml` carries an *external* `attachedTemplate` relationship pointing at the callback URL. Word resolves that relationship on open, issuing an outbound GET the `ssrf_canary` (or any HTTP) listener records — so dropping the file on a share named like real sensitive data turns "someone opened the honeydoc" into an alert with the opener's IP and headers. The visible document text is innocuous bait; the beacon is in the relationship, not the content.
 
 ---
+
+## `gen-wallet-decoys`
+
+Write believable, structurally-correct **crypto-wallet decoy files** (18 formats: `bitcoin-core` `wallet.dat` that `file` reports as a real Berkeley DB, `ethereum-keystore`, `electrum`, `bip39-seed`/`ledger-recovery`/`trezor-backup`, `metamask-vault`, `monero`, `wif-privkeys`/`paper-wallet`, `solana-keypair`, `exodus`, `litecoin`, `dogecoin`, `dash`, `zcash`, `tron`, `cardano`) to seed honeypot loot. Deterministic in `--seed` (random + printed if omitted); every exposed address/key/mnemonic is a trackable canary. Nothing grants real access.
+
+```
+tarpit-honeypot gen-wallet-decoys --dir ./loot/.wallets --seed deploy-A
+tarpit-honeypot gen-wallet-decoys --list
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--dir` | `./wallet-decoys` | output directory |
+| `--seed` | random | deterministic seed (stable decoys per deployment) |
+| `--kind` | `all` | one wallet kind, or `all` |
+| `--list` | — | list the supported kinds and exit |
+
+## `gen-lures`
+
+Write believable **credential/secret decoy files** (14 formats: `aws-credentials`, `ssh-private-key`, `dotenv`, `kubeconfig`, `gcp-service-account`, `npmrc`, `pypirc`, `git-credentials`, `dockerconfig`, `pgpass`, `netrc`, `terraform-state`, `jwt-token`, `slack-token`) for honeypot loot — the files attackers and agentic tooling grep for. Same `--dir`/`--seed`/`--kind`/`--list` flags as `gen-wallet-decoys`; each file's headline value is a trackable canary.
+
+```
+tarpit-honeypot gen-lures --dir ./loot --seed deploy-A
+```
+
+## `gen-agent-breadcrumb`
+
+Write harmless **breadcrumb files** (`AGENTS.md`, `ops-gateway.txt`, `.env.gateway`, `README.gateway.md`) that describe an "ops gateway" and point a crawling autonomous agent at the [`agent`](AGENTIC.md) honeypot, so it reveals itself when it connects.
+
+```
+tarpit-honeypot gen-agent-breadcrumb --url http://10.0.0.9:8080/ --dir ./breadcrumbs
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--dir` | `./agent-breadcrumbs` | output directory |
+| `--url` | `http://ops-gateway.internal:8080/` | the agent-honeypot gateway URL the breadcrumbs point at |
 
 ## `export-pcap`
 
@@ -459,6 +517,15 @@ tarpit-honeypot list-cves --json
 
 ---
 
+## `kev-gap`
+
+Cross-check the built-in CVE catalog against the **CISA Known Exploited Vulnerabilities (KEV)** catalog and report which KEV entries the sensor does/doesn't cover. Offline-friendly: feed a downloaded KEV JSON with `--file` (see `scripts/fetch-kev.sh`), or pull it live with `--url`. `--covered` lists the catalog CVEs that are on the KEV list. Complements the live `kev:` auto-sync (see [`threat-intel-exports.md`](threat-intel-exports.md) §10).
+
+```
+tarpit-honeypot kev-gap --file known_exploited_vulnerabilities.json
+tarpit-honeypot kev-gap --covered --json
+```
+
 ## `list-techniques`
 
 Print the sensor's static MITRE ATT&CK coverage: every rule / handler /
@@ -481,6 +548,14 @@ tarpit-honeypot list-techniques --defenses    # D3FEND id -> name legend
 
 ---
 
+## `export-navigator`
+
+Write a **MITRE ATT&CK Navigator** layer (JSON) of the sensor's technique coverage, for import at [mitre-attack.github.io/attack-navigator](https://mitre-attack.github.io/attack-navigator/). Default is the static catalog coverage; `--observed` colours only the techniques actually seen in the event store.
+
+```
+tarpit-honeypot export-navigator -c cfg.yaml --observed -o layer.json
+```
+
 ## `list-fleet-rules`
 
 Print the cross-sensor (`fleet:*`) detector catalog: every rule the aggregator's
@@ -502,6 +577,14 @@ novelty, identity/infrastructure, …). Fleet detection only fires on an
 **aggregator** — a node with `ingest:` receiving events from several sensors.
 
 ---
+
+## `list-unavailable-capabilities`
+
+Print the high-interaction / capture features that are **disabled or infeasible** on this platform + config (e.g. a feature gated by `interaction.mode`, or a Linux-only capture path on macOS), with the reason for each. Use it to understand why a given deception depth isn't active.
+
+```
+tarpit-honeypot list-unavailable-capabilities -c cfg.yaml
+```
 
 ## `export-iocs`
 
@@ -596,6 +679,14 @@ tarpit-honeypot export-creds -c cfg.yaml --since 24h --format txt
 
 ---
 
+## `reset-db`
+
+**Destructively empty** the local event store, device inventory and captures, keeping the config and deployment identity. Requires `--yes` to proceed (it is irreversible). Use it to clear test data before going live.
+
+```
+tarpit-honeypot reset-db -c cfg.yaml --yes
+```
+
 ## `rotate-db`
 
 Write a compressed, point-in-time copy of the event database to an archive, then
@@ -678,6 +769,14 @@ tarpit-honeypot identify --payload '${jndi:ldap://x/a}' --handler http
 | `--handler <h>` | `http` | Service context for `--payload` CVE matching. |
 
 ---
+
+## `analyze`
+
+Statically analyze a captured artifact **offline** (a dropped payload, webshell, or shellcode pulled from the captures dir): reports the detected format, entropy, embedded IOCs, and YARA matches from the built-in rule pack. No network, no sensor state.
+
+```
+tarpit-honeypot analyze /var/lib/tarpit-honeypot/captures/<id>.bin --yara
+```
 
 ## `jarm`
 
@@ -815,7 +914,7 @@ Print version + build commit + build date. Used by ops tooling to confirm the bi
 
 ```
 tarpit-honeypot version
-# tarpit-honeypot 2.2.0 (commit a1b2c3d, built 2026-06-01T18:30:00Z)
+# tarpit-honeypot 1.4.0 (commit a1b2c3d, built 2026-06-01T18:30:00Z)
 
 tarpit-honeypot --version
 tarpit-honeypot -V

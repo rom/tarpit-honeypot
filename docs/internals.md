@@ -297,7 +297,7 @@ and the store runs WAL mode; bound it with `disk.retention_days` /
 | Enrichment | `enrich` (+ `devices` OUI) |
 | Detection | `correlate`, `scananalysis`, `fuzzdos`, `payload`, `devices`, `cve`, `risk`, `mitre`, `toolfp`, `fingerprint` (JA3/JA4 + JA3S/JA4S server TLS, JA4T client-TCP-from-SYN, JARM, JA4H, HASSH) |
 | Fleet / aggregation | `forward`, `ingest`, `fleet`, `intel`, `trust`, `ioc`, `misp` |
-| Identity / deception | `identity`, `archetype`, `archeservice`, `shell`, `luaengine`, `fakefiles`, `sessionrec` |
+| Identity / deception | `identity`, `archetype`, `archeservice`, `shell`, `luaengine`, `fakefiles`, `sessionrec`, `walletdecoy`, `lure` |
 | Output | `router`, `sink`, `store`, `format`, `ui` (incl. `/docs` Markdown renderer + embedded `docs` package) |
 | Safety / lifecycle | `safe`, `safego`, `sandbox`, `privdrop`, `retention`, `config` |
 

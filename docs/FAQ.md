@@ -117,7 +117,7 @@ An archetype pins every fingerprint a handler emits — SSH/HTTP/FTP banners, SN
 identity, MAC OUI, TLS posture, ICMP TTL, CLI prompt, advertised CVEs — to one
 coherent device (e.g. `debian 12`, `active-directory`, a Moxa switch). Without it
 a scanner can catch an internal inconsistency (a TLS-1.3 box claiming Windows
-2008). `tarpit-honeypot list-archetypes` lists all 162; set `sensor.archetype`,
+2008). `tarpit-honeypot list-archetypes` lists all 259; set `sensor.archetype`,
 `listener.archetype`, or a per-honeynet-host `archetype`.
 
 **How do I pick which ports/services to expose?**
@@ -375,7 +375,7 @@ have their own per-`(source, rule)` window so one hammering source doesn't flood
 channel. The local store still records the full picture.
 
 **What CVEs does it know about?**
-A curated catalog of 100+ entries (run `tarpit-honeypot list-cves`), each with
+A curated catalog of 743 entries (run `tarpit-honeypot list-cves`), each with
 CVSS, CWE, CPE, EPSS, and the ATT&CK technique. Vuln-emulation (advertise an
 unpatched version + recognize the matching exploit) is per-listener
 (`sensor.vuln_emulation`); exploit-attempt detection (`cve:<id>` events) runs
@@ -478,7 +478,7 @@ event. There's nothing to tune for false positives: a hit *is* the signal.
   name, so even a *resolution attempt* trips it.
 
 **How do I create the tokens?**
-`tarpit-honeypot gen-token --type=dns|url|hex [--label LBL] [--bits N]
+`tarpit-honeypot gen-token --type=dns|url|ssrf|hex|doc|log4shell|aws|css|mcp|wireguard|folder [--label LBL] [--bits N]
 [--domain D]` mints an unguessable value; paste it into a `url_canaries:` /
 `dns_canaries:` block (or name a honeyfile) and embed it in fake docs, emails,
 configs, or scripts.
@@ -1030,7 +1030,7 @@ attacker input.
 **Which scanners / attack tools does the sensor recognize, and how?**
 It fingerprints the tool from the User-Agent, the request path, the SSH client
 banner, and JA3/JA4/HASSH — tagging the event `tool:<name>`, a confidence, and a
-category (`vuln-scanner` / `c2-framework` / `headless-browser`). 300+ signatures
+category (`vuln-scanner` / `c2-framework` / `headless-browser`). 900+ signatures
 ship (nmap, sqlmap, Nuclei, sn1per, xray, Cobalt Strike, …) plus IP-level
 attribution of research scanners (Censys/Shodan/…). See
 [`docs/attack-tools.md`](attack-tools.md).

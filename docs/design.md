@@ -150,8 +150,8 @@ What makes the sensor *look real*:
 
 What turns interaction into signal:
 
-- **96 protocol handlers** (78 TCP + 26 UDP registrations; IT, remote-access
-  / OOB-management personas, ICS/OT, discovery/UDP, a resolving DNS
+- **315 protocol handlers** (197 TCP + 118 UDP registrations; IT, remote-access
+  / OOB-management personas, ICS/OT, discovery/UDP, AI/LLM/agentic decoys, a resolving DNS
   server, RFC small services, the scriptable `lua` + declarative `scripted`
   handlers, and a generic `auto` catch-all). Each captures the
   application-layer exchange (credentials, requested objects, fingerprints)
@@ -257,8 +257,8 @@ Per listener `mode`:
 - **Local sinks** always receive: `stdout`, `jsonlog` (rotated), `sqlite`.
 - **Outbound channels** (allowlist + dedup + rate-limit + min-severity
   gated, bounded retry queue with backoff): `webhook` (HMAC-SHA256),
-  `smtp` (STARTTLS), `syslog` (RFC 5424), `twilio`, `sns` (hand-rolled
-  Sigv4), `snmptrap`, `mqtt`.
+  `slack`, `discord`, `smtp` (STARTTLS), `syslog` (RFC 5424), `twilio`,
+  `sns` (hand-rolled Sigv4), `snmptrap`, `mqtt`.
 - **Routing**: severity-match expressions + meta match (`honeynet`,
   `honeynet_os`, `rule_id`).
 - **Defensive output handling** (`internal/safe`): every attacker-supplied
@@ -331,10 +331,15 @@ walkthrough is [`examples/EXAMPLES.md`](../examples/EXAMPLES.md).
 
 ## 11. CLI & signals
 
-`run`, `validate-config`, `show-config`, `test-alert`, `list-events`,
-`export-pcap`, `list-honeynets`, `list-devices`, `gen-token`, `init`,
-`completion`, `help`, `version`. Signals: `SIGHUP` reload, `SIGTERM`
-graceful drain (`shutdown.drain_timeout`). See [`cli.md`](cli.md).
+`run`, `collector`, `validate-config`, `show-config`, `test-alert`,
+`list-events`, `export-pcap`, `list-honeynets`, `list-devices`, `list-paths`,
+`list-archetypes`, `list-handlers`, `list-archeservices`, `list-cves`,
+`kev-gap`, `list-techniques`, `export-navigator`, `list-fleet-rules`,
+`list-unavailable-capabilities`, `gen-token`, `gen-wallet-decoys`, `gen-lures`,
+`gen-agent-breadcrumb`, `export-iocs`, `export-creds`, `check-iocs`, `identify`,
+`analyze`, `jarm`, `replay`, `generate-decoys`, `reset-db`, `rotate-db`,
+`prune-db`, `init`, `completion`, `help`, `version`. Signals: `SIGHUP` reload,
+`SIGTERM` graceful drain (`shutdown.drain_timeout`). See [`cli.md`](cli.md).
 
 ## 12. Platforms & builds
 

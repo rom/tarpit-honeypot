@@ -36,15 +36,17 @@ syslog / MQTT consumers all see the same `mitre_techniques` +
 | CVE | the exploit's `Technique`/`Tactic` from the CVE catalog | `cve:CVE-2021-44228` → T1190 |
 | Prefix fallback | `uri-*`, `ics-*`, `printer-*`, `tool:*`, `automation-client`, `canary:*` | `printer-*` → T1083 / discovery |
 
-There are **392 static mappings** (69 exact rules + 98 handler tags + 225
+There are **814 static mappings** (115 exact rules + 114 handler tags + 585
 anomaly tags), plus the prefix fallbacks below. ICS detections use the ATT&CK
 for ICS matrix (T0814 / T0830 / T0831 / T0836 / T0846 / T0888 / …) alongside
 the Enterprise matrix so a SIEM expecting one ID space stays consistent.
 
-The complete catalog follows (generated from `list-techniques --json`; the
-`Augment` step *unions* the anomaly rows into the rule/handler base).
+A representative slice follows (the `Augment` step *unions* the anomaly rows
+into the rule/handler base). For the authoritative, always-current set run
+`tarpit-honeypot list-techniques --json` — it is the source of truth and
+includes families added since this snapshot (e.g. the `agent:*` agentic markers).
 
-### 1a. Exact rule IDs (69) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
+### 1a. Exact rule IDs (115 total; sample) — `correlate:*`, `sniffer:*`, `honeynet:*`, `device:*`, `dnscanary:*`, `malware:capture`, …
 
 | rule_id | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -120,7 +122,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `sniffer:tcp_xmas_scan` | T1046, T1595.001 | discovery, reconnaissance |
 | `sniffer:udp_scan` | T1046, T1595.001 | discovery, reconnaissance |
 
-### 1b. Handler tags (98) — applied to every `listener:*` event by its handler
+### 1b. Handler tags (114 total; sample) — applied to every `listener:*` event by its handler
 
 | handler | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -230,7 +232,7 @@ The complete catalog follows (generated from `list-techniques --json`; the
 | `x11` | T1021, T1056.001 | lateral-movement, collection |
 | `xmpp` | T1071.001 | command-and-control |
 
-### 1c. Anomaly tags (225) — fine-grained markers `Augment` unions onto the base
+### 1c. Anomaly tags (585 total; sample) — fine-grained markers `Augment` unions onto the base
 
 | anomaly marker | ATT&CK technique(s) | Tactic(s) |
 |---|---|---|
@@ -557,7 +559,7 @@ Filtering). The `list-techniques` D3FEND column shows the mapping per rule.
 
 ## 3. CVE / CWE / CPE / EPSS
 
-Package `internal/cve` is a curated, in-source catalog (**678 records**) with
+Package `internal/cve` is a curated, in-source catalog (**743 records**) with
 two jobs: drive vulnerable-banner / fake-patch-level emulation
 (`ForService`) and recognize a live exploit attempt's signature
 (`MatchPayload`). The sensor is never actually exploitable — it advertises
@@ -591,29 +593,29 @@ correlation. **EPSS** is a relative exploit-likelihood prioritization hint.
 `internal/cve.CWEName` maps every referenced CWE id to its title — the CWE
 analogue of `mitre.Describe` for ATT&CK techniques — so events, the CLI and
 the docs render "CWE-89 — SQL Injection" rather than a bare id. The catalog's
-records span **45 CWE classes**; `tarpit-honeypot list-cves --cwe`
+records span **88 CWE classes**; `tarpit-honeypot list-cves --cwe`
 (`--cwe --json` for tooling) prints the full set with per-class CVE counts. The
 most common:
 
 | CWE | Weakness class | CVEs |
 |---|---|---|
-| CWE-20 | Improper Input Validation | 16 |
-| CWE-22 | Path Traversal | 14 |
-| CWE-787 | Out-of-bounds Write | 13 |
-| CWE-94 | Code Injection | 12 |
-| CWE-502 | Deserialization of Untrusted Data | 9 |
-| CWE-400 | Uncontrolled Resource Consumption | 8 |
-| CWE-78 | OS Command Injection | 8 |
-| CWE-287 | Improper Authentication | 7 |
-| CWE-288 | Authentication Bypass (Alternate Path) | 6 |
-| CWE-306 | Missing Authentication for Critical Function | 5 |
-| CWE-434 | Unrestricted Upload of Dangerous File | 4 |
-| CWE-918 | Server-Side Request Forgery (SSRF) | 4 |
-| CWE-1336 | Server-Side Template Injection (SSTI) | 3 |
-| CWE-200 | Exposure of Sensitive Information | 3 |
-| CWE-269 | Improper Privilege Management | 3 |
+| CWE-78 | OS Command Injection | 110 |
+| CWE-94 | Code Injection | 87 |
+| CWE-22 | Path Traversal | 60 |
+| CWE-287 | Improper Authentication | 56 |
+| CWE-787 | Out-of-bounds Write | 49 |
+| CWE-502 | Deserialization of Untrusted Data | 46 |
+| CWE-20 | Improper Input Validation | 28 |
+| CWE-400 | Uncontrolled Resource Consumption | 28 |
+| CWE-306 | Missing Authentication for Critical Function | 24 |
+| CWE-918 | Server-Side Request Forgery (SSRF) | 21 |
+| CWE-89 | SQL Injection | 20 |
+| CWE-200 | Exposure of Sensitive Information | 19 |
+| CWE-434 | Unrestricted Upload of File with Dangerous Type | 16 |
+| CWE-288 | Authentication Bypass Using an Alternate Path or Channel | 11 |
+| CWE-190 | Integer Overflow or Wraparound | 9 |
 
-(15 of 45 shown — run `list-cves --cwe` for the complete catalog.)
+(15 of 88 shown — run `list-cves --cwe` for the complete catalog.)
 
 **TCP/IP-stack class (`Service: "tcp"`).** Alongside the application-layer
 CVEs, the catalog carries the classic TCP/IP-stack attacks the honeynet's
@@ -626,8 +628,8 @@ Ripple20 (Treck) for the OT/IoT device archetypes. These ride the packet
 layer rather than an L7 handler, so they are advisory in the signature
 sense (`—`) but carry full ATT&CK (mostly T1499 endpoint DoS) + CWE/EPSS.
 
-**Representative slice (123 of the 678 records below).** The full catalog
-runs **361 live-detectable + 317 advisory-only**; `tarpit-honeypot list-cves`
+**Representative slice (123 of the 743 records below).** The full catalog
+runs **373 live-detectable + 370 advisory-only**; `tarpit-honeypot list-cves`
 (add `--json` for CWE/CPE/EPSS, or a service name to scope it) prints every
 record. `Det` = a `cve:<id>` event fires on a matched exploit signature in a
 request; advisory-only records (`—`) drive vulnerable-version emulation but
@@ -822,7 +824,7 @@ spoofs its User-Agent is still caught by behaviour (4b/4d).
 Cheap, already-captured signals (no extra round-trips) classify the tool:
 
 - **User-Agent / request-path signatures** (HTTP) and **SSH client-id
-  signatures** map to a tool name; **JA3** hashes map to a TLS stack. 300+
+  signatures** map to a tool name; **JA3** hashes map to a TLS stack. 900+
   signatures ship. A reader-friendly catalog is in [`attack-tools.md`](attack-tools.md).
 - Categories covered: **recon engines** (nmap NSE, masscan, zgrab, zmap,
   shodan, censys, binaryedge, leakix, shadowserver, the ProjectDiscovery

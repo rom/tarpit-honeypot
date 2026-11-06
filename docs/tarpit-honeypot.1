@@ -1,6 +1,6 @@
 .\" Manpage for tarpit-honeypot.
 .\" Render: man ./docs/tarpit-honeypot.1   Install: cp to /usr/share/man/man1/
-.TH TARPIT-HONEYPOT 1 "2026-06-09" "tarpit-honeypot 2.21.0" "User Commands"
+.TH TARPIT-HONEYPOT 1 "2026-11-06" "tarpit-honeypot 1.4.0" "User Commands"
 .SH NAME
 tarpit-honeypot \- CGO-free deception + detection honeypot sensor
 .SH SYNOPSIS
@@ -135,7 +135,7 @@ nothing executed) and print the recomputed anomalies / CVE hits / meta.
 .TP
 .B gen-token
 Print or write an unguessable canary token
-.RB ( --type " " dns | url | hex | ssrf | doc ).
+.RB ( --type " " dns | url | ssrf | hex | doc | log4shell | aws | css | mcp | wireguard | folder ).
 The
 .B ssrf
 type emits a callback URL to plant in an SSRF parameter, webhook field, or
@@ -240,6 +240,63 @@ Long-form help for a subcommand or topic
 .TP
 .B version
 Print version info.
+.TP
+.B collector
+Run as a fleet collector (ingest + correlate only, no honeypot listeners).
+.TP
+.B gen-wallet-decoys
+Write believable, structurally-correct crypto-wallet decoy files (18 formats:
+bitcoin-core, ethereum-keystore, monero, solana-keypair, litecoin, cardano, ...)
+to seed honeypot loot; every value is a trackable canary
+.RB ( --dir ", " --seed ", " --kind ", " --list ).
+.TP
+.B gen-lures
+Write believable credential/secret decoy files (14 formats: aws-credentials,
+ssh-private-key, dotenv, kubeconfig, gcp-service-account, ...) for honeypot loot
+.RB ( --dir ", " --seed ", " --kind ", " --list ).
+.TP
+.B gen-agent-breadcrumb
+Write breadcrumb files (AGENTS.md, ops-gateway.txt, .env.gateway, ...) that lure
+a crawling autonomous agent to the
+.B agent
+honeypot
+.RB ( --dir ", " --url ).
+.TP
+.B kev-gap
+Cross-check the CVE catalog against the CISA KEV feed
+.RB ( --file ", " --url ", " --covered ).
+.TP
+.B list-archeservices
+Print the service roles (webserver, adserver, ...) used in archetypes.
+.TP
+.B list-paths
+Print all config / enrichment / database / state file paths
+.RB ( --format ", " --category ).
+.TP
+.B list-unavailable-capabilities
+Print disabled / platform-infeasible high-interaction features.
+.TP
+.B export-creds
+Export captured credentials
+.RB ( --kind ", " json | xml | yaml | csv | txt ).
+.TP
+.B check-iocs
+Check a file of IP/CIDR indicators against historical events
+.RB ( --file ).
+.TP
+.B analyze
+Statically analyze a captured artifact offline (format / entropy / IOCs / YARA).
+.TP
+.B reset-db
+Empty the local event store / device inventory / captures.
+.TP
+.B rotate-db
+Archive (gzip) the event database, optionally starting fresh
+.RB ( --out ", " --reset ).
+.TP
+.B prune-db
+Delete the oldest events to free space
+.RB ( --keep-days ", " --keep-rows ", " --max-mb ).
 .SH FILES
 .TP
 .I /etc/tarpit-honeypot/config.yaml
