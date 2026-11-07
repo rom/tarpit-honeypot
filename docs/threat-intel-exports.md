@@ -18,11 +18,12 @@ For the fleet/aggregation side, see [`fleet.md`](fleet.md).
 | `/intel` | JSON feed | HTTPS GET (bearer) | fleet findings | down (to child sensors) |
 | `/intel/stix` | STIX 2.1 bundle | HTTPS GET (bearer) | fleet findings | pull (to a TIP/SIEM) |
 | `/taxii2/…` | TAXII 2.1 | HTTPS GET (bearer) | fleet findings | pull (TAXII clients) |
+| `taxii:` | STIX 2.1 / TAXII 2.1 | HTTPS GET (bearer) | this node's findings | pull (standalone sensor) |
 | `misp:` | MISP events | HTTPS POST (key) | fleet findings | push (to MISP) |
 | `export-iocs` | STIX/CSV/txt/JSON | stdout | stored fleet findings | offline |
 | `channels:` sinks | CEF/LEEF/OCSF/JSON | syslog/webhook/MQTT/… | every event | push (to a SIEM) |
 
-The first four + `export-iocs` carry **indicators**; the `channels:` sinks carry
+The first five + `export-iocs` carry **indicators**; the `channels:` sinks carry
 **events** (each ATT&CK/D3FEND-tagged), which a SIEM turns into detections.
 
 ---
@@ -119,13 +120,42 @@ curl -H "Authorization: Bearer $TOKEN" https://agg:8470/taxii2/
 curl -H "Authorization: Bearer $TOKEN" https://agg:8470/taxii2/api/collections/fleet-iocs/objects/
 ```
 
+### Standalone TAXII server (`taxii:`)
+
+The routes above are mounted on the **aggregator ingest endpoint** — only a node
+that accepts child-sensor batches serves them. To let a **single, standalone**
+honeypot be polled by a TIP/SIEM (no fleet of child sensors, no ingest listener),
+enable the dedicated `taxii:` server — it serves the same STIX 2.1 / TAXII 2.1
+read API on its own authenticated bind:
+
+```yaml
+taxii:
+  enabled: true
+  bind: 0.0.0.0:8471            # default 127.0.0.1:8471
+  token_env: TARPIT_TAXII_TOKEN # required bearer token (empty token 401s every route)
+  tls_cert: /etc/tarpit/taxii.crt  # optional — serve STIX/TAXII over https
+  tls_key:  /etc/tarpit/taxii.key
+```
+
+```
+curl -H "Authorization: Bearer $TOKEN" http://node:8471/taxii2/api/collections/fleet-iocs/objects/
+```
+
+The IOC source is the node's own observed indicators (derived from its `fleet:*`
+findings), so enabling `taxii:` **auto-activates single-node fleet correlation**
+when `fleet.enabled` is unset — no separate `fleet:` stanza needed. It is
+independent of `fleet.serve_intel` and of the `ingest:` endpoint. Serve it behind
+TLS (or a reverse proxy) when exposing it off the host.
+
 ---
 
 ## 5. MISP push (`misp:`)
 
 Push the fleet's indicators to a MISP instance as periodic **delta** events
 (only indicators not pushed before), so a TIP operator gets fresh IOCs without
-duplicate events.
+duplicate events. Works on a **standalone** sensor too: enabling `misp:`
+auto-activates single-node fleet correlation (its IOC source) the same way
+`taxii:` does, and does **not** require `fleet.serve_intel`.
 
 ```yaml
 misp:
@@ -205,7 +235,8 @@ the curated IOC bundle via STIX/TAXII/MISP (blocking/enrichment).
 | I want to… | Use |
 |------------|-----|
 | Improve every sensor with fleet knowledge | `fleet.serve_intel` + `intel_feed:` |
-| Pull IOCs into a TIP (STIX/TAXII) | `GET /intel/stix` · `/taxii2/…` |
+| Pull IOCs into a TIP (STIX/TAXII), fleet aggregator | `GET /intel/stix` · `/taxii2/…` |
+| Pull IOCs from a standalone sensor (STIX/TAXII) | `taxii:` block (own bind) |
 | Push IOCs to MISP | `misp:` block |
 | Publish a daily blocklist / bundle | `export-iocs` in cron |
 | Stream tagged events to a SIEM | `channels:` with `format: cef\|leef\|ocsf` |

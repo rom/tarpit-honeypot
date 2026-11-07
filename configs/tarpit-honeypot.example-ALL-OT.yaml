@@ -1,13 +1,28 @@
-# tarpit-honeypot — ALL-OT example: every supported OT/ICS protocol enabled.
+# tarpit-honeypot — ALL-OT/BMS/IoT example: every OT/ICS protocol the sensor
+# speaks, PLUS building automation (BMS), consumer/edge IoT, IIoT and medical
+# (IoMT) device decoys — one flat-listener deployment covering the whole
+# cyber-physical attack surface.
 #
-# A single, flat-listener deployment that turns on a decoy for EVERY OT/ICS
-# protocol the sensor speaks (the authoritative set documented in docs/ot.md
-# §2). Point it at an OT segment (or a /32 in your process network) and any
-# byte that touches an industrial port becomes a high-signal event — every
-# handler captures the request, classifies the command where the protocol
-# carries one, answers just enough to look real, and stamps an attacker-intent
-# + ATT&CK-for-ICS marker. Nothing is ever actually controlled (no process
-# image, no I/O); UDP handlers are reflection-safe.
+# Point it at an OT/converged segment (or a /32 in your process network) and any
+# byte that touches an industrial, building-automation or IoT port becomes a
+# high-signal event — every handler captures the request, classifies the command
+# where the protocol carries one, answers just enough to look real, and stamps an
+# attacker-intent + ATT&CK-for-ICS marker. Nothing is ever actually controlled
+# (no process image, no I/O); UDP handlers are reflection-safe.
+#
+# Coverage (authoritative sets: OT in docs/ot.md §2; the rest are the sensor's
+# registered device handlers):
+#   • OT / ICS .... Modbus, S7, DNP3, IEC-104, EtherNet/IP, OPC-UA, EtherCAT,
+#                   CODESYS, PROFINET, HART-IP, synchrophasor, safety (Triconex)…
+#   • BMS / BAS ... BACnet (+/SC/TLS), KNX, LonTalk, Fox/Niagara, C-Bus, Crestron,
+#                   AMX, Vantage, Loxone, PJLink; refrigeration/HVAC web panels
+#                   (Danfoss AK-SM, Dixell XWEB, Carel, Trane Tracer SC, Resideo)
+#   • IoT ......... CoAP, MQTT-SN, LwM2M, Matter, SSDP/UPnP/WS-Discovery, Tuya,
+#                   TP-Link Kasa, Xiaomi miIO, Yeelight, WiZ, Hikvision/Dahua
+#                   discovery, Ubiquiti, Aruba PAPI, MikroTik MNDP, sACN/Art-Net
+#   • IIoT ........ MQTT/Sparkplug B, OPC-UA PubSub, DDS/RTPS, historians
+#                   (OSIsoft PI, Proficy, Canary, AspenTech), TR-069/TR-369, OCPP
+#   • IoMT ........ HL7 v2 (MLLP), DICOM (PACS)
 #
 #   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-ALL-OT.yaml
 #   sudo tarpit-honeypot run        -c configs/tarpit-honeypot.example-ALL-OT.yaml
@@ -93,6 +108,7 @@ listeners:
   # MQTT broker decoy. Sparkplug B (NBIRTH/DBIRTH/NDATA + protobuf payloads) is
   # auto-recognized inside the mqtt handler — no separate listener is needed.
   - { id: mqtt,      proto: tcp, bind: 0.0.0.0:1883,  mode: banner, handler: mqtt,       severity: high }     # MQTT / Sparkplug B (IIoT pub-sub)
+  - { id: mqtts,     proto: tcp, bind: 0.0.0.0:8883,  mode: banner, handler: mqtts,      severity: high, capture: true } # MQTT over TLS (IIoT pub-sub, encrypted)
 
   # ============================ UDP / ICS + BAS =============================
   # UDP handlers are reflection-safe (rate-limited / capture-only). read_bytes
@@ -107,6 +123,7 @@ listeners:
   - { id: lontalk,  proto: udp, bind: 0.0.0.0:1628,  mode: banner, handler: lontalk,   severity: medium,   read_bytes: 1500 } # Echelon LonTalk / LonWorks-IP
   - { id: wdbrpc,   proto: udp, bind: 0.0.0.0:17185, mode: banner, handler: wdbrpc,    severity: high,     read_bytes: 1500 } # VxWorks WDB agent (URGENT/11)
   - { id: ads-disc, proto: udp, bind: 0.0.0.0:48899, mode: banner, handler: ads_discovery, severity: high, read_bytes: 1500 } # Beckhoff TwinCAT AMS/UDP discovery
+  - { id: ethercat, proto: udp, bind: 0.0.0.0:34980, mode: banner, handler: ethercat,      severity: high, read_bytes: 1500 } # EtherCAT Automation Protocol (EAP)
 
   # ====================== UDP / IIoT transport variants =====================
   # UDP carriers of the control/process protocols above + IIoT pub-sub buses.
@@ -128,6 +145,60 @@ listeners:
   - { id: synchrophasor, proto: udp, bind: 0.0.0.0:4713,  mode: banner, handler: synchrophasor, severity: high,     read_bytes: 1500 } # IEEE C37.118 synchrophasor / PMU stream
   - { id: c1222,         proto: udp, bind: 0.0.0.0:1153,  mode: banner, handler: c1222,         severity: high,     read_bytes: 1500 } # ANSI C12.22 smart-meter / AMI
   - { id: siprotec-en100, proto: udp, bind: 0.0.0.0:50000, mode: banner, handler: siprotec_en100, severity: critical, read_bytes: 1500 } # Siemens SIPROTEC EN100 (CVE-2015-5374 relay-DoS)
+
+  # =============== BMS / building automation — web controllers =============
+  # HTTP(S) building/refrigeration/HVAC panels (handler bmsweb personas +
+  # Danfoss AK-SM). In the real world each is a separate device on :80/:443 — on
+  # one flat IP they're spread across ports; give each its own virtual IP via the
+  # honeynet pattern (below) for true-to-life :80 exposure.
+  - { id: danfoss,   proto: tcp, bind: 0.0.0.0:80,    mode: banner, handler: danfoss_aksm,  severity: high, capture: true } # Danfoss AK-SM 800A StoreView (refrigeration, HTTP; ~2.7k internet-exposed)
+  - { id: danfoss-s, proto: tcp, bind: 0.0.0.0:443,   mode: banner, handler: danfoss_aksms, severity: high, capture: true } # Danfoss AK-SM StoreView over TLS
+  - { id: dixell,    proto: tcp, bind: 0.0.0.0:8080,  mode: banner, handler: dixell,        severity: high, capture: true } # Emerson/Copeland Dixell XWEB500 (refrigeration)
+  - { id: carel,     proto: tcp, bind: 0.0.0.0:8081,  mode: banner, handler: carel,         severity: high, capture: true } # Carel pCOWeb / boss (HVAC/refrigeration)
+  - { id: trane,     proto: tcp, bind: 0.0.0.0:8082,  mode: banner, handler: trane,         severity: high, capture: true } # Trane Tracer SC+ / Concierge (BAS supervisor)
+  - { id: resideo,   proto: tcp, bind: 0.0.0.0:8083,  mode: banner, handler: resideo,       severity: high, capture: true } # Resideo / Honeywell building controller
+  - { id: bacnet-scs, proto: tcp, bind: 0.0.0.0:48808, mode: banner, handler: bacnet_scs,   severity: high, capture: true } # BACnet/SC over TLS (wss hub; port is site-configured, often 443)
+
+  # =============== BMS / building automation — discovery (UDP) =============
+  - { id: cbus,      proto: udp, bind: 0.0.0.0:20023, mode: banner, handler: cbus,          severity: medium, read_bytes: 1500 } # Clipsal C-Bus lighting / building automation
+  - { id: crestron,  proto: udp, bind: 0.0.0.0:41794, mode: banner, handler: crestron,      severity: medium, read_bytes: 1500 } # Crestron control-system discovery
+  - { id: amx,       proto: udp, bind: 0.0.0.0:1319,  mode: banner, handler: amx_netlinx,   severity: medium, read_bytes: 1500 } # AMX NetLinx AV/room control
+  - { id: vantage,   proto: udp, bind: 0.0.0.0:3001,  mode: banner, handler: vantage,       severity: medium, read_bytes: 1500 } # Vantage InFusion lighting/building controller
+  - { id: loxone,    proto: udp, bind: 0.0.0.0:7700,  mode: banner, handler: loxone,        severity: medium, read_bytes: 1500 } # Loxone Miniserver (smart building)
+  - { id: pjlink,    proto: udp, bind: 0.0.0.0:4352,  mode: banner, handler: pjlink,        severity: low,    read_bytes: 1500 } # PJLink projector / AV control (SRCH)
+
+  # ====================== IoT — consumer / edge devices ====================
+  # Mostly UDP discovery/control for smart-home, cameras, routers and lighting.
+  # All capture-only / reflection-safe.
+  - { id: coap,      proto: udp, bind: 0.0.0.0:5683,  mode: banner, handler: coap,          severity: medium, read_bytes: 1500 } # CoAP (RFC 7252) — IoT REST transport
+  - { id: mqtt-sn,   proto: udp, bind: 0.0.0.0:1884,  mode: banner, handler: mqtt_sn,       severity: medium, read_bytes: 1500 } # MQTT-SN (sensor networks)
+  - { id: lwm2m,     proto: udp, bind: 0.0.0.0:5684,  mode: banner, handler: lwm2m,         severity: medium, read_bytes: 1500 } # OMA LwM2M device management (over CoAP/DTLS)
+  - { id: matter,    proto: udp, bind: 0.0.0.0:5540,  mode: banner, handler: matter,        severity: low,    read_bytes: 1500 } # Matter / CHIP (smart home)
+  - { id: ssdp,      proto: udp, bind: 0.0.0.0:1900,  mode: banner, handler: ssdp,          severity: medium, read_bytes: 1500 } # SSDP (UPnP discovery; reflection vector)
+  - { id: wsd,       proto: udp, bind: 0.0.0.0:3702,  mode: banner, handler: wsdiscovery,   severity: medium, read_bytes: 1500 } # WS-Discovery (ONVIF cameras / printers)
+  - { id: tuya,      proto: udp, bind: 0.0.0.0:6667,  mode: banner, handler: tuya,          severity: low,    read_bytes: 1500 } # Tuya smart-home LAN protocol
+  - { id: kasa,      proto: udp, bind: 0.0.0.0:9999,  mode: banner, handler: tplink_kasa,   severity: low,    read_bytes: 1500 } # TP-Link Kasa smart-plug/bulb (autokey-XOR)
+  - { id: miio,      proto: udp, bind: 0.0.0.0:54321, mode: banner, handler: miio,          severity: low,    read_bytes: 1500 } # Xiaomi mihome / miIO
+  - { id: yeelight,  proto: udp, bind: 0.0.0.0:1982,  mode: banner, handler: yeelight,      severity: low,    read_bytes: 1500 } # Yeelight LAN control
+  - { id: wiz,       proto: udp, bind: 0.0.0.0:38899, mode: banner, handler: wiz,           severity: low,    read_bytes: 1500 } # WiZ smart-light UDP JSON
+  - { id: hikvision, proto: udp, bind: 0.0.0.0:37020, mode: banner, handler: hikvision_sadp, severity: high,  read_bytes: 1500 } # Hikvision SADP camera discovery
+  - { id: dahua,     proto: udp, bind: 0.0.0.0:37810, mode: banner, handler: dahua_disc,    severity: high,   read_bytes: 1500 } # Dahua camera discovery
+  - { id: ubiquiti,  proto: udp, bind: 0.0.0.0:10001, mode: banner, handler: ubiquiti,      severity: high,   read_bytes: 1500 } # Ubiquiti UBNT discovery (reflection vector)
+  - { id: aruba-papi, proto: udp, bind: 0.0.0.0:8211, mode: banner, handler: aruba_papi,    severity: high,   read_bytes: 1500 } # Aruba PAPI AP/controller control-plane
+  - { id: mndp,      proto: udp, bind: 0.0.0.0:5678,  mode: banner, handler: mndp,          severity: medium, read_bytes: 1500 } # MikroTik Neighbor Discovery
+  - { id: sacn,      proto: udp, bind: 0.0.0.0:5568,  mode: banner, handler: sacn,          severity: low,    read_bytes: 1500 } # sACN / E1.31 stage & architectural lighting
+  - { id: artnet,    proto: udp, bind: 0.0.0.0:6454,  mode: banner, handler: artnet,        severity: low,    read_bytes: 1500 } # Art-Net DMX lighting control
+  - { id: upnp,      proto: tcp, bind: 0.0.0.0:2869,  mode: banner, handler: upnp,          severity: medium } # UPnP device description / SOAP control
+  - { id: adb,       proto: tcp, bind: 0.0.0.0:5555,  mode: banner, handler: adb,           severity: high, capture: true } # Android Debug Bridge (rooted IoT / TV boxes — worm target)
+
+  # ====================== IIoT — managed devices + EVSE =====================
+  - { id: tr069,     proto: tcp, bind: 0.0.0.0:7547,  mode: banner, handler: tr069,         severity: high,   capture: true } # TR-069 CWMP CPE management (ACS surface)
+  - { id: tr369,     proto: tcp, bind: 0.0.0.0:7548,  mode: banner, handler: tr369,         severity: high,   capture: true } # TR-369 USP (TR-069 successor, WebSocket)
+  - { id: ocpp,      proto: tcp, bind: 0.0.0.0:8180,  mode: banner, handler: ocpp,          severity: high,   capture: true } # OCPP-J EV-charger ↔ central-system (WebSocket)
+
+  # ====================== IoMT — medical / clinical =========================
+  - { id: hl7,       proto: tcp, bind: 0.0.0.0:2575,  mode: banner, handler: hl7,           severity: high,   capture: true } # HL7 v2 over MLLP (clinical messaging)
+  - { id: dicom,     proto: tcp, bind: 0.0.0.0:11112, mode: banner, handler: dicom,         severity: high,   capture: true } # DICOM upper-layer (PACS / medical imaging)
 
 # The three TCP-102 protocols can't all bind 102 on one IP, so expose
 # S7comm-Plus (S7-1200/1500) and IEC-61850 MMS on their own virtual IPs. The

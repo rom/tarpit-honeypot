@@ -291,6 +291,46 @@ func runWithConfig(cfg *config.Config, f commonFlags, dryRun bool) error {
 		}()
 	}
 
+	// Standalone STIX 2.1 / TAXII 2.1 IOC server: serve this node's observed
+	// indicators to a TIP/SIEM on its own authenticated bind, independent of the
+	// aggregator ingest endpoint. The IOC source is the live intel store (fed by
+	// this node's fleet:* findings); enabling taxii auto-activates single-node
+	// fleet correlation (see config.applyDefaults), so the store is present.
+	if cfg.TAXII.Enabled {
+		token := os.Getenv(cfg.TAXII.TokenEnv)
+		if token == "" {
+			cancel()
+			wg.Wait()
+			return fmt.Errorf("taxii: env %s is empty", cfg.TAXII.TokenEnv)
+		}
+		if s.IntelStore() == nil {
+			slog.Warn("taxii enabled but no intel store active; serving an empty collection (enable fleet correlation)")
+		}
+		tsrv := &http.Server{Addr: cfg.TAXII.Bind, Handler: stix.Handler(s.IOCs, token)}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-rootCtx.Done()
+			sctx, sc := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = tsrv.Shutdown(sctx)
+			sc()
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slog.Info("taxii/stix server up", "bind", cfg.TAXII.Bind, "tls", cfg.TAXII.TLSCert != "", "paths", "/intel/stix /taxii2/")
+			var err error
+			if cfg.TAXII.TLSCert != "" {
+				err = tsrv.ListenAndServeTLS(cfg.TAXII.TLSCert, cfg.TAXII.TLSKey)
+			} else {
+				err = tsrv.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("taxii server stopped", "err", err)
+			}
+		}()
+	}
+
 	hupCh := make(chan os.Signal, 1)
 	signal.Notify(hupCh, syscall.SIGHUP)
 	wg.Add(1)

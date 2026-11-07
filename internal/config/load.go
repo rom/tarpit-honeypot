@@ -983,6 +983,20 @@ func (c *Config) applyDefaults() {
 			c.Risk.Block.Table = "tarpit_blocklist"
 		}
 	}
+
+	// Standalone STIX/TAXII IOC server defaults.
+	if c.TAXII.Enabled && c.TAXII.Bind == "" {
+		c.TAXII.Bind = "127.0.0.1:8471"
+	}
+	// IOC exports (TAXII server / MISP push) derive their indicators from this
+	// node's own fleet:* findings, which only the fleet correlator produces.
+	// So enabling either auto-turns-on single-node fleet correlation when the
+	// operator hasn't set fleet.enabled explicitly — making "just enable taxii"
+	// (or misp) work on a standalone sensor without a separate fleet stanza.
+	if (c.TAXII.Enabled || c.MISP.Enabled) && c.Fleet.Enabled == nil {
+		on := true
+		c.Fleet.Enabled = &on
+	}
 }
 
 func (c *Config) Validate() error {
@@ -1055,6 +1069,21 @@ func (c *Config) Validate() error {
 		}
 		if (c.Ingest.TLSCert == "") != (c.Ingest.TLSKey == "") {
 			return fmt.Errorf("ingest: tls_cert and tls_key must be set together")
+		}
+	}
+
+	// TAXII (standalone STIX/TAXII 2.1 IOC server): bind + token required when
+	// enabled. An empty token would 401 every route (useless), so it is
+	// mandatory — a clear error beats a silently-locked server.
+	if c.TAXII.Enabled {
+		if c.TAXII.Bind == "" {
+			return fmt.Errorf("taxii: bind is required when enabled")
+		}
+		if c.TAXII.TokenEnv == "" {
+			return fmt.Errorf("taxii: token_env is required when enabled (the STIX/TAXII API is bearer-gated)")
+		}
+		if (c.TAXII.TLSCert == "") != (c.TAXII.TLSKey == "") {
+			return fmt.Errorf("taxii: tls_cert and tls_key must be set together")
 		}
 	}
 

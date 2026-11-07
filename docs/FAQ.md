@@ -452,10 +452,12 @@ Run the `agent` handler on a dedicated decoy port, and pair it with the model/
 tool decoys:
 ```yaml
 listeners:
-  - { bind: "0.0.0.0", port: 8080,  proto: tcp, handler: agent }       # agent provocateur
-  - { bind: "0.0.0.0", port: 11434, proto: tcp, handler: ollama }      # Ollama API decoy
-  - { bind: "0.0.0.0", port: 8000,  proto: tcp, handler: mcp }         # MCP server decoy
-  - { bind: "0.0.0.0", port: 8081,  proto: tcp, handler: llm_openai }  # OpenAI-style API decoy
+  # Each listener needs an `id`, and the port goes INSIDE `bind` ("host:port") —
+  # there is no separate `port:` field. Use "[::]:<port>" for dual-stack v4+v6.
+  - { id: agent,      bind: "0.0.0.0:8080",  proto: tcp, handler: agent }       # agent provocateur
+  - { id: ollama,     bind: "0.0.0.0:11434", proto: tcp, handler: ollama }      # Ollama API decoy
+  - { id: mcp,        bind: "0.0.0.0:8000",  proto: tcp, handler: mcp }         # MCP server decoy
+  - { id: llm-openai, bind: "0.0.0.0:8081",  proto: tcp, handler: llm_openai }  # OpenAI-style API decoy
 ```
 Run it **standalone** (it doesn't impersonate a real service, so don't bolt it
 onto a production-mimicking host), and seed `gen-agent-breadcrumb` files nearby

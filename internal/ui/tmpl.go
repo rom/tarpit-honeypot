@@ -688,7 +688,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 </table>{{ else }}<p class="note">No attacks, misuses, or vulnerabilities triggered in this window.</p>{{ end }}{{ end }}
 
 {{ define "intenttable" }}{{ if . }}<h2 data-help="The per-event &quot;intent&quot; the handler inferred — what the attacker is actually trying to do, summarized from the protocol + flagged anomalies.">Attacker intent</h2>
-<table data-filter><tr><th>intent</th><th>events</th></tr>{{ range . }}<tr><td><span class="tag bad">{{ .Label }}</span></td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}{{ end }}
+<table data-filter><tr><th>intent</th><th>events</th></tr>{{ range . }}<tr><td>{{ intentLink .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}{{ end }}
 
 {{ define "dns" }}{{ template "head" . }}
 <h1 data-help="DNS resolver decoy analytics: query volume over time, the query types/opcodes used, the top query names + registrable domains, what the sensor answered, and the tunnelling / amplification / zone-transfer / DGA abuse it detected.">DNS analytics — {{ .RangeLabel }}</h1>
@@ -709,7 +709,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <table><tr><th>source</th><th>queries</th></tr>{{ range .Attackers }}<tr><td><a href="{{ .Href }}">{{ .Label }}</a>{{ ipv6Tag .Label }}</td><td>{{ .Count }}</td></tr>{{ end }}</table>{{ end }}
 {{ if .Queries }}<h2>Query log <span class="meta">({{ len .Queries }})</span></h2>
 <table data-filter><tr><th>time (utc)</th><th>source</th><th>query</th><th>type</th><th>intent</th><th>reply</th><th>labels</th></tr>
-{{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+{{ range .Queries }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><code>{{ .Name }}</code></td><td>{{ if .Type }}<span class="tag">{{ .Type }}</span>{{ end }}</td><td>{{ if .Intent }}{{ intentLink .Intent }}{{ end }}</td><td>{{ .Reply }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
@@ -809,7 +809,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ template "attacktable" .Attacks }}
 {{ if .Log }}<h2>Activity log <span class="meta">({{ len .Log }})</span></h2>
 <table data-filter><tr><th>time</th><th>source</th><th>service</th><th>detail</th><th>intent</th><th>anomalies</th></tr>
-{{ range .Log }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Service }}</span></td><td><code>{{ .Detail }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
+{{ range .Log }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Service }}</span></td><td><code>{{ .Detail }}</code></td><td>{{ if .Intent }}{{ intentLink .Intent }}{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -834,7 +834,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <table data-filter><tr><th>url</th></tr>{{ range .URLList }}<tr><td><a href="/search?q={{ . }}"><code>{{ . }}</code></a></td></tr>{{ end }}</table>{{ end }}
 {{ if .Requests }}<h2>Request log <span class="meta">({{ len .Requests }})</span></h2>
 <table data-filter><tr><th>time</th><th>source</th><th>method</th><th>url</th><th>status</th><th>intent</th><th>anomalies</th></tr>
-{{ range .Requests }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Method }}<span class="tag">{{ .Method }}</span>{{ end }}</td><td><code>{{ .URI }}</code></td><td>{{ .Status }}</td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
+{{ range .Requests }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Method }}<span class="tag">{{ .Method }}</span>{{ end }}</td><td><code>{{ .URI }}</code></td><td>{{ .Status }}</td><td>{{ if .Intent }}{{ intentLink .Intent }}{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -854,7 +854,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ template "attacktable" .Attacks }}
 {{ if .Events }}<h2>Activity log <span class="meta">({{ len .Events }})</span></h2>
 <table data-filter><tr><th>time</th><th>source</th><th>engine</th><th>command / db</th><th>intent</th><th>anomalies</th></tr>
-{{ range .Events }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Engine }}</span></td><td><code>{{ .Command }}</code></td><td>{{ if .Intent }}<span class="tag bad">{{ .Intent }}</span>{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
+{{ range .Events }}<tr><td style="white-space:nowrap">{{ .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td><span class="tag">{{ .Engine }}</span></td><td><code>{{ .Command }}</code></td><td>{{ if .Intent }}{{ intentLink .Intent }}{{ end }}</td><td>{{ range .Anoms }}<a class="tag warn" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}</table>{{ end }}
 {{ end }}
 {{ template "foot" . }}{{ end }}
 
@@ -1438,7 +1438,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <h1>attacker profile — {{ .IP }}{{ ipv6Tag .IP }} {{ sourceBadges .Reputation }}</h1>
 {{ if .Classification }}<div class="depl"><b>assessment:</b> <span class="threat-{{ .ThreatLevel }}">{{ .Classification }}</span></div>
 <p class="note">{{ .Summary }}</p>{{ end }}
-{{ if .Intents }}<div class="depl" data-help="What this source was doing, aggregated across every one of its events — the per-event 'intent' label set by the handler or derived at the listener."><b>intent:</b> {{ range .Intents }}<span class="tag warn">{{ . }}</span> {{ end }}</div>{{ end }}
+{{ if .Intents }}<div class="depl" data-help="What this source was doing, aggregated across every one of its events — the per-event 'intent' label set by the handler or derived at the listener."><b>intent:</b> {{ range .Intents }}{{ intentLink . }} {{ end }}</div>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
 {{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<span class="tag bad">{{ . }}</span> {{ end }}<span class="note">recognized attack patterns from the storyline correlator</span></div>{{ end }}
 <div class="depl">

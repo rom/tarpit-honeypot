@@ -461,7 +461,7 @@ func New(cfg *config.Config) (*Sensor, error) {
 	// this node's own fleet:* findings, served on the ingest endpoint (run.go
 	// mounts it at /intel). Only meaningful where fleet correlation runs.
 	var intelStore *intel.Store
-	if fleetCorr != nil && cfg.Fleet.ServingIntel() {
+	if fleetCorr != nil && (cfg.Fleet.ServingIntel() || cfg.MISP.Enabled || cfg.TAXII.Enabled) {
 		intelStore = intel.NewStore(cfg.Fleet.IntelTTL, cfg.Fleet.IntelMax)
 	}
 
@@ -1184,6 +1184,17 @@ func (s *Sensor) riskEvent(src *event.Event, level string, score float64) *event
 // IntelStore returns the downward fleet-intel store (nil when this node isn't
 // serving a feed). run.go mounts its handler on the ingest endpoint.
 func (s *Sensor) IntelStore() *intel.Store { return s.intelStore }
+
+// IOCs returns the node's current observed indicators (derived from its
+// fleet:* findings via the intel store), or nil when no intel store is active.
+// It is the IOC source for the standalone STIX/TAXII server and matches
+// stix.Source / misp's source signature.
+func (s *Sensor) IOCs() []intel.IOC {
+	if s.intelStore == nil {
+		return nil
+	}
+	return s.intelStore.IOCs()
+}
 
 // Honeynet returns the configured topology, or an empty topology if none.
 // Used by the list-honeynets subcommand and the DNS canary listener.

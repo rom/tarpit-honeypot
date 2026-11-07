@@ -548,6 +548,9 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	// MAC-vendor enrichment runs regardless of source IP — DHCP/ARP events
 	// often carry a MAC with a zeroed or private source address.
 	decorateMAC(ev)
+	// Fingerprint → tool attribution (ja3/ja4/ja4h/hassh) is client-crypto
+	// based, so like the MAC vendor it runs independent of the source IP class.
+	decorateFingerprintTools(ev)
 	if ev.Source.IP == "" {
 		return
 	}

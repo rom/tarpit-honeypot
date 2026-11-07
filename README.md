@@ -1738,10 +1738,12 @@ strategies drag the engagement out. Shipped detection rules live in
 
 ```yaml
 listeners:
-  - { bind: "0.0.0.0", port: 8080, proto: tcp, handler: agent }   # agent provocateur
+  # Each listener needs an `id`, and the port goes INSIDE `bind` ("host:port");
+  # there is no separate `port:` field. Use "[::]:<port>" for dual-stack v4+v6.
+  - { id: agent,  bind: "0.0.0.0:8080",  proto: tcp, handler: agent }   # agent provocateur
   # pair with the model/tool decoys for full coverage:
-  - { bind: "0.0.0.0", port: 11434, proto: tcp, handler: ollama }
-  - { bind: "0.0.0.0", port: 8000,  proto: tcp, handler: mcp }
+  - { id: ollama, bind: "0.0.0.0:11434", proto: tcp, handler: ollama }
+  - { id: mcp,    bind: "0.0.0.0:8000",  proto: tcp, handler: mcp }
 ```
 
 Pair the `agent` handler with the existing `mcp`, `llm_openai` and `ollama`
@@ -2251,7 +2253,7 @@ server. OpenSSH does this by default; some scanners don't.
 cryptographic fingerprints above, the HTTP/HTTPS **and SSH** handlers
 classify the *tool* behind a connection:
 
-- `meta.tools` (HTTP) — names matched from **530+ User-Agent + request-path
+- `meta.tools` (HTTP) — names matched from **830+ User-Agent + request-path
   signatures** across: port scanners (nmap, masscan, zmap, zgrab, l9explore);
   internet-wide recon engines (Shodan, Censys, BinaryEdge, LeakIX,
   Onyphe, Shadowserver, Stretchoid, ProjectDiscovery, fofa, ZoomEye, Netlas, …);
@@ -2275,9 +2277,25 @@ classify the *tool* behind a connection:
   phpseclib, WinSCP, … (OpenSSH excluded as legitimate-default noise).
 - `meta.automation` — a browser-vs-script verdict from header shape
   (missing `Accept`/`Accept-Language`, scripted ordering, etc.).
-- A JA3 hash can also map to a known scanner via `IdentifyTLS`.
-- Surfaced as `tool:<name>` and `automation-client` anomalies so a SIEM
-  can separate hand-driven probes from mass scanners.
+- **Network-fingerprint → tool attribution, live.** The enricher maps the
+  handshake fingerprints every event already carries to a tool/stack on the
+  wire, not just in the offline `identify` CLI: `IdentifyTLS` (JA3),
+  `IdentifyJA4` (JA4/JA4H) and `IdentifyHASSH` (SSH crypto) resolve against
+  operator-extensible signature maps, and any hit is merged into `meta.tools`
+  and marked `meta.fp_tool` (so a SOC can tell forge-resistant handshake
+  attribution from a self-declared User-Agent).
+- **JA4 automation heuristic (no corpus needed).** `JA4Automation` reads the
+  deterministic, human-readable JA4_a segment (protocol·version·SNI·cipher/ext
+  counts·ALPN). A ClientHello that offers **no ALPN** (and often no SNI / a
+  minimal cipher list) is a non-browser TLS stack — set as `meta.tls_automation`.
+- **Spoofed User-Agent detection.** A request whose UA *claims* a browser but
+  whose TLS handshake is non-browser (per the heuristic above) is a forged UA —
+  the handshake is far harder to fake than the UA string. Flagged as
+  `meta.spoofed_ua` + the `spoofed-user-agent` anomaly.
+- Surfaced as `tool:<name>`, `automation-client` and `spoofed-user-agent`
+  anomalies, and as clickable `spoofed-UA` / `tls-auto` / `scanner:*` badges in
+  the web UI, so a SIEM (or an operator) can separate hand-driven probes, mass
+  scanners, and UA-forging tools.
 
 ## Honeynets
 

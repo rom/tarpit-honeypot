@@ -363,6 +363,7 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool,
 		// source — blacklist / known-threat / Tor / known-scanner / intel — from
 		// the enrichment meta, so every listed IP carries its reputation inline.
 		"sourceBadges": sourceBadges,
+		"intentLink":   intentLink,
 		// countryFlag maps a 2-letter ISO country code to its emoji flag (US → 🇺🇸).
 		"countryFlag": countryFlag,
 		// handlerLink / protoTag turn a handler name / transport label into a
@@ -453,7 +454,7 @@ func sourceBadges(meta map[string]any) template.HTML {
 		if tc == "high" {
 			cls = "bad"
 		}
-		add(cls, "🛡 "+tc+"-conf", "cross-feed threat confidence: "+tc+" (threat_intel_count)", "")
+		add(cls, "🛡 "+tc+"-conf", "cross-feed threat confidence: "+tc+" (threat_intel_count)", "/events?flag=threat-conf")
 	}
 	if sp, _ := meta["spoofed_ptr"].(bool); sp {
 		title := "spoofed reverse-DNS: PTR claims a crawler but fails forward-confirmation"
@@ -491,32 +492,41 @@ func sourceBadges(meta map[string]any) template.HTML {
 	// Fake-C2 check-in: the c2_emulator recognized a beacon/stager for a named
 	// framework.
 	if fw, _ := meta["c2_framework"].(string); fw != "" {
-		add("bad", "📡 c2:"+fw, "command-and-control check-in recognized as "+fw, "")
+		add("bad", "📡 c2:"+fw, "command-and-control check-in recognized as "+fw, "/events?c2="+url.QueryEscape(fw))
 	}
 	// DDoS backscatter: an unsolicited reply arriving because our address was
 	// spoofed as the source of a flood.
 	if bk, _ := meta["backscatter_kind"].(string); bk != "" {
-		add("warn", "💥 backscatter", "DDoS backscatter reply ("+bk+") — our address is likely spoofed as a flood source", "")
+		add("warn", "💥 backscatter", "DDoS backscatter reply ("+bk+") — our address is likely spoofed as a flood source", "/events?flag=backscatter")
 	}
 	// Agentic attack: an autonomous LLM agent engaged the agent honeypot.
 	if ap, _ := meta["agent_protocol"].(string); ap != "" {
-		add("bad", "🤖 agent:"+ap, "autonomous AI agent attack over "+strings.ToUpper(ap), "")
+		add("bad", "🤖 agent:"+ap, "autonomous AI agent attack over "+strings.ToUpper(ap), "/events?agent="+url.QueryEscape(ap))
 	}
 	if _, ok := meta["agent_leak_system_prompt"]; ok {
-		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own system prompt / credentials to our bait", "")
+		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own system prompt / credentials to our bait", "/events?flag=counter-exfil")
 	} else if _, ok := meta["agent_leak_api_key"]; ok {
-		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own credentials to our bait", "")
+		add("bad", "🪤 counter-exfil", "the attacking agent leaked its own credentials to our bait", "/events?flag=counter-exfil")
+	}
+	// Network-fingerprint attribution (ja3/ja4/hassh): a forged User-Agent
+	// (browser UA on a non-browser TLS handshake) and non-browser TLS clients —
+	// forge-resistant signals the handshake gives up regardless of the UA.
+	if sp, _ := meta["spoofed_ua"].(bool); sp {
+		add("bad", "🎭 spoofed-UA", "browser User-Agent on a non-browser TLS handshake — the TLS fingerprint contradicts the claimed browser", "/events?flag=spoofed-ua")
+	} else if ta, _ := meta["tls_automation"].(string); ta != "" {
+		add("warn", "🤖 tls-auto", "non-browser TLS client (by JA4): "+ta, "/events?flag=tls-automation")
 	}
 	// Composite "meta:*" recognition signals (computed once in internal/enrich
 	// and carried on labels[]): cross-relations of ≥2 signals, rendered with a
-	// pennant so a corroborated/deceptive/targeted source stands out.
+	// pennant so a corroborated/deceptive/targeted source stands out. Each links
+	// to every event the same composite signal fired on.
 	if labels := metaStrings(meta, "labels"); len(labels) > 0 {
 		for _, l := range labels {
 			name, ok := strings.CutPrefix(l, "meta:")
 			if !ok {
 				continue
 			}
-			add("bad", "⚑ "+name, metaSignalTitle(name), "")
+			add("bad", "⚑ "+name, metaSignalTitle(name), "/events?label="+url.QueryEscape(name))
 		}
 	}
 	return template.HTML(b.String())
@@ -538,6 +548,20 @@ func metaSignalTitle(name string) string {
 		return "weak/default/breached login against a remote-access or cloud/devops target"
 	}
 	return "composite recognition signal: " + name
+}
+
+// intentLink renders an attacker-intent string as a badge that links to the
+// events list filtered to that exact intent — so clicking an intent category
+// ("DNS amplification — staging a DRDoS reflector", "ot-recon", …) lists every
+// source that triggered it. Empty intent renders nothing.
+func intentLink(s string) template.HTML {
+	v := strings.TrimSpace(s)
+	if v == "" {
+		return ""
+	}
+	esc := template.HTMLEscapeString(v)
+	return template.HTML(`<a class="tag bad" href="/events?intent=` + url.QueryEscape(v) +
+		`" title="show every source with this intent">` + esc + `</a>`)
 }
 
 // handlerLink renders a protocol-handler name as a link to the events list
@@ -636,8 +660,53 @@ func eventHasFlag(ev *event.Event, flag string) bool {
 			return true
 		}
 		return scannerTool(m) != ""
+	case "backscatter":
+		s, _ := m["backscatter_kind"].(string)
+		return s != ""
+	case "counter-exfil":
+		if _, ok := m["agent_leak_system_prompt"]; ok {
+			return true
+		}
+		_, ok := m["agent_leak_api_key"]
+		return ok
+	case "threat-conf":
+		s, _ := m["threat_confidence"].(string)
+		return s != ""
+	case "spoofed-ua":
+		sp, _ := m["spoofed_ua"].(bool)
+		return sp
+	case "tls-automation":
+		s, _ := m["tls_automation"].(string)
+		return s != ""
+	case "fp-tool":
+		b, _ := m["fp_tool"].(bool)
+		return b
 	}
 	return false
+}
+
+// eventHasLabel reports whether an event carries the composite "meta:<name>"
+// recognition label behind the ⚑ badge — so clicking it lists every event the
+// same corroborated/deceptive/targeted-recon signal fired on.
+func eventHasLabel(ev *event.Event, name string) bool {
+	name = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(name)), "meta:")
+	if name == "" {
+		return false
+	}
+	for _, l := range metaStrings(ev.Meta, "labels") {
+		if strings.EqualFold(strings.TrimPrefix(l, "meta:"), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// eventHasIntent reports whether an event's attacker-intent string matches
+// (case-insensitively) — the mirror of the clickable intent badge, so an
+// operator can pivot from one intent to every source that triggered it.
+func eventHasIntent(ev *event.Event, intent string) bool {
+	intent = strings.TrimSpace(intent)
+	return intent != "" && strings.EqualFold(metaString(ev.Meta, "intent"), intent)
 }
 
 // eventHasScanner reports whether an event is attributed to the named scanner —
@@ -1512,8 +1581,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// and country are real meta-column filters handled in the store.)
 	tool, tactic, flag, scanner := q.Get("tool"), q.Get("tactic"), q.Get("flag"), q.Get("scanner")
 	cloud := q.Get("cloud")
+	// Category pivots behind clickable badges: attacker-intent, the composite
+	// meta:* recognition labels, c2 framework, and agent protocol. Like the
+	// others these are meta/computed (no SQL column), so post-filtered below.
+	intent, label, c2, agent := q.Get("intent"), q.Get("label"), q.Get("c2"), q.Get("agent")
 	displayLimit := f.Limit
-	if tool != "" || tactic != "" || flag != "" || scanner != "" || cloud != "" {
+	if tool != "" || tactic != "" || flag != "" || scanner != "" || cloud != "" ||
+		intent != "" || label != "" || c2 != "" || agent != "" {
 		f.Limit = searchScanMax
 	}
 	// A malformed regex (regex mode) is operator input, not a server fault — show
@@ -1559,6 +1633,42 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		kept := evs[:0]
 		for _, ev := range evs {
 			if cp, _ := ev.Meta["cloud_provider"].(string); strings.EqualFold(cp, cloud) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if intent != "" {
+		kept := evs[:0]
+		for _, ev := range evs {
+			if eventHasIntent(ev, intent) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if label != "" {
+		kept := evs[:0]
+		for _, ev := range evs {
+			if eventHasLabel(ev, label) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if c2 != "" {
+		kept := evs[:0]
+		for _, ev := range evs {
+			if fw, _ := ev.Meta["c2_framework"].(string); strings.EqualFold(fw, c2) {
+				kept = append(kept, ev)
+			}
+		}
+		evs = kept
+	}
+	if agent != "" {
+		kept := evs[:0]
+		for _, ev := range evs {
+			if ap, _ := ev.Meta["agent_protocol"].(string); strings.EqualFold(ap, agent) {
 				kept = append(kept, ev)
 			}
 		}

@@ -365,11 +365,13 @@ strategies drag the engagement out.
 
 ```yaml
 listeners:
-  - { bind: "0.0.0.0", port: 8080, proto: tcp, handler: agent }    # agent provocateur
+  # Each listener needs an `id`, and the port goes INSIDE `bind` as "host:port"
+  # (there is no separate `port:` field). Use "[::]:<port>" for dual-stack.
+  - { id: agent,      bind: "0.0.0.0:8080",  proto: tcp, handler: agent }       # agent provocateur
   # pair with the model/tool decoys for full agent + model surface coverage:
-  - { bind: "0.0.0.0", port: 11434, proto: tcp, handler: ollama }
-  - { bind: "0.0.0.0", port: 8000,  proto: tcp, handler: mcp }
-  - { bind: "0.0.0.0", port: 8081,  proto: tcp, handler: llm_openai }
+  - { id: ollama,     bind: "0.0.0.0:11434", proto: tcp, handler: ollama }
+  - { id: mcp,        bind: "0.0.0.0:8000",  proto: tcp, handler: mcp }
+  - { id: llm-openai, bind: "0.0.0.0:8081",  proto: tcp, handler: llm_openai }
 ```
 
 Seed breadcrumbs (§8) on nearby shares/wikis/repos, register every decoy/lure/

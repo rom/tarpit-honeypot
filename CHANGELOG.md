@@ -8,6 +8,37 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Standalone STIX 2.1 / TAXII 2.1 server (`taxii:`)** — a single honeypot can
+  now be polled for the IOCs it observes without running the full fleet-
+  aggregator ingest endpoint. Serves the same read-only TAXII `fleet-iocs`
+  collection on its own authenticated bind (default `127.0.0.1:8471`, optional
+  TLS). Enabling `taxii:` (or `misp:`) auto-activates single-node fleet
+  correlation (the IOC source), so neither requires a separate `fleet:`/`ingest:`
+  stanza. MISP push works standalone the same way (no `fleet.serve_intel` needed).
+  See `docs/threat-intel-exports.md` §4–5.
+- **Network-fingerprint → tool attribution, live.** The enricher maps the
+  JA3/JA4/JA4H/HASSH fingerprints every event carries to a tool/stack on the
+  wire (previously only the offline `identify` CLI did this): `IdentifyTLS`,
+  `IdentifyJA4` and `IdentifyHASSH` against operator-extensible signature maps,
+  merged into `meta.tools` and marked `meta.fp_tool`.
+- **JA4 automation heuristic + spoofed-User-Agent detection.** `JA4Automation`
+  flags a non-browser TLS ClientHello (no ALPN / no SNI / minimal cipher list)
+  from the deterministic JA4_a segment with no corpus; a browser UA on such a
+  handshake is reported as `meta.spoofed_ua` + a `spoofed-user-agent` anomaly.
+- **Clickable category labels in the web UI.** Attacker-intent badges, the
+  composite `meta:*` recognition labels (ot-recon / targeted-recon / …), and the
+  c2 / agent / backscatter / counter-exfil / threat-confidence / spoofed-UA /
+  tls-automation glyph badges are now links that pivot `/events` to every source
+  sharing that category (`?intent=`, `?label=`, `?c2=`, `?agent=`, `?flag=…`).
+- **`example-ALL-OT.yaml` broadened to ALL-OT/BMS/IoT/IIoT/IoMT** — adds EtherCAT
+  plus dedicated building-automation (C-Bus, Crestron, AMX, Vantage, Loxone,
+  PJLink, BACnet/SC-TLS, Dixell/Carel/Trane/Resideo/Danfoss web panels), IoT
+  (CoAP, MQTT-SN/MQTTS, LwM2M, Matter, SSDP/UPnP/WS-Discovery, Tuya, Kasa, miIO,
+  Yeelight, WiZ, Hikvision/Dahua, Ubiquiti, Aruba PAPI, MNDP, sACN/Art-Net, ADB),
+  IIoT (TR-069/TR-369, OCPP) and IoMT (HL7, DICOM) decoys — 99 listeners.
+
 ## [1.4.0] - 2026-11-06
 
 ### Added
