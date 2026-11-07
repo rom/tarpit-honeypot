@@ -239,6 +239,13 @@ func serveHTTP(conn net.Conn, cfg config.Listener, canaries []config.URLCanary, 
 			res.Meta["http_login_pass"] = safe.SanitizeForLog(clipStr(pw, 256))
 			flagAnomaly(&res, "http-login-attempt")
 		}
+		// Surface a bounded, sanitized snippet of the POST body as its own meta
+		// field so the event-detail "captured content" section shows exactly what
+		// was submitted (webshell uploads, injected payloads, API requests) —
+		// the full bytes remain in the raw payload + are scanned for secrets.
+		if snip := safe.SanitizeForLog(clipStr(string(body), 4096)); snip != "" {
+			res.Meta["http_body"] = snip
+		}
 	}
 	// JavaScript carried in the request (stored-XSS / SSTI / template-injection
 	// payloads) — capture the snippets and flag, never execute.
