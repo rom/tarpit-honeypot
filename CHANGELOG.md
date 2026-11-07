@@ -17,6 +17,16 @@ documented in `docs/`).
   intents, interpretations (interaction phase), severities, ATT&CK tactics +
   techniques, D3FEND countermeasures, tools and protocol anomalies seen on it,
   and every attacker IP (split IPv4 / IPv6, with reverse DNS + peak severity).
+- **New detection-rule pack: `configs/rules/harvested-secrets.yml`.** Fourteen
+  tunable, severity-raising detection-as-code rules that turn this cycle's new
+  high-signal markers into first-class detections with ATT&CK tags: the
+  attacker's own leaked secrets (`secret:*` → operator-secret-leak, plus
+  dedicated private-key / cloud-key / DB-URI rules), completed Redis
+  webshell/cron/SSH-key drop chains, SMTP phishing + malware-attachment content,
+  RDP username harvesting, oversized-SSH-password / *sshole probes, a
+  decoy-login-accepted rule (the deception worked), and cleartext-credential
+  capture. Validated by the existing bundled-pack compile test + a new
+  behavioural test.
 - **90 more exploit-detectable CVEs (`internal/cve/cve_batch2026.go`).** A new
   batch of widely-exploited / CISA-KEV / mass-scanner CVEs, each with a canonical
   high-signal exploit signature (distinctive URL path or payload substring) wired
