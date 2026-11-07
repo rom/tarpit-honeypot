@@ -401,9 +401,33 @@ func mibGetVarbind(mib []mibEntry, name string) g.SnmpPDU {
 		return g.SnmpPDU{Name: name, Type: g.Null}
 	}
 	if e, found := mibGet(mib, oid); found {
-		return g.SnmpPDU{Name: name, Type: e.typ, Value: e.val}
+		return g.SnmpPDU{Name: name, Type: e.typ, Value: liveMibValue(e)}
 	}
 	return g.SnmpPDU{Name: name, Type: g.Null}
+}
+
+// snmpBaselineUptime makes the decoy present as an established, long-running box
+// rather than one that just rebooted.
+const snmpBaselineUptime = 86 * time.Hour // ~3.6 days
+
+// snmpBootTime is the decoy's apparent boot instant (baseline before process
+// start), so sysUpTime advances during the sensor's run instead of reporting a
+// frozen value — a frozen uptime across repeated polls is a honeypot tell.
+var snmpBootTime = time.Now().Add(-snmpBaselineUptime)
+
+// uptime OIDs whose value must advance, not stay frozen in the cached MIB.
+var snmpUptimeOIDs = map[string]bool{
+	"1.3.6.1.2.1.1.3.0":    true, // sysUpTime
+	"1.3.6.1.2.1.25.1.1.0": true, // hrSystemUptime
+}
+
+// liveMibValue returns the response value for a cached MIB entry, substituting a
+// live, advancing tick count for the uptime OIDs (TimeTicks = 1/100 s).
+func liveMibValue(e mibEntry) any {
+	if snmpUptimeOIDs[e.name()] {
+		return uint32(time.Since(snmpBootTime) / (10 * time.Millisecond))
+	}
+	return e.val
 }
 
 // mibNextVarbind answers a GetNext for one OID. Past the end of the MIB it
@@ -414,7 +438,7 @@ func mibNextVarbind(mib []mibEntry, name string) g.SnmpPDU {
 		return g.SnmpPDU{Name: name, Type: g.Null}
 	}
 	if e, found := mibNext(mib, oid); found {
-		return g.SnmpPDU{Name: "." + e.name(), Type: e.typ, Value: e.val}
+		return g.SnmpPDU{Name: "." + e.name(), Type: e.typ, Value: liveMibValue(e)}
 	}
 	return g.SnmpPDU{Name: name, Type: g.Null}
 }

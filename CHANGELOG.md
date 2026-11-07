@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
+  `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
+  reports the same uptime on every poll is a honeypot tell. They now advance from
+  a stable multi-day boot baseline (overridden live at response time for GET /
+  GETNEXT / GETBULK), so the decoy reads as an established, long-running box. (The
+  rest of the SNMP MIB — full system group, ifTable, ARP table, host resources —
+  and the NTP `ntpq -c rv` system-variable output were already realistic.)
 - **`credential_list` — operator-pinned accepted credentials.** A new per-listener
   `credential_list: ["root:hunter2", "admin:*", "svc"]` is honored in addition to
   `accept_creds`, so you can pin exactly which weak credentials log an attacker

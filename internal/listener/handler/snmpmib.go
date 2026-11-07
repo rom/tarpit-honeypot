@@ -126,11 +126,14 @@ func buildSNMPMIB(arch *archetype.Profile, hosts []HoneynetHost, profile string)
 	// system group — every profile.
 	add("1.3.6.1.2.1.1.1.0", g.OctetString, []byte(arch.SNMPSysDescr()))
 	add("1.3.6.1.2.1.1.2.0", g.ObjectIdentifier, arch.SNMPSysObjectID())
-	add("1.3.6.1.2.1.1.3.0", g.TimeTicks, uint32(360000)) // 1h uptime
+	add("1.3.6.1.2.1.1.3.0", g.TimeTicks, uint32(360000)) // sysUpTime (overridden live at response time; see liveMibValue)
 	add("1.3.6.1.2.1.1.4.0", g.OctetString, []byte(arch.SNMPSysContact()))
 	add("1.3.6.1.2.1.1.5.0", g.OctetString, []byte(arch.SNMPSysName()))
 	add("1.3.6.1.2.1.1.6.0", g.OctetString, []byte(arch.SNMPSysLocation()))
 	add("1.3.6.1.2.1.1.7.0", g.Integer, 72)
+	// hrSystemUptime (HOST-RESOURCES-MIB) — a very commonly-polled scalar; also
+	// advances live, so the box never reports a frozen uptime (a honeypot tell).
+	add("1.3.6.1.2.1.25.1.1.0", g.TimeTicks, uint32(360000))
 
 	if profile == mibMinimal {
 		sortMIB(e)
