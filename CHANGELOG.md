@@ -30,6 +30,15 @@ documented in `docs/`).
 
 ### Added
 
+- **Stateful Redis decoy — full drop-chain capture.** The Redis handler now keeps
+  a small bounded per-connection keyspace: a value `SET` is returned by a later
+  `GET` (so attack tooling keeps going instead of bailing on an empty reply), and
+  the famous redis-rogue-server drop chain is captured end to end — `CONFIG SET
+  dir`/`dbfilename` are remembered (`redis_config_dir` / `redis_config_dbfilename`
+  meta), the `SET` body is captured as the staged payload (`redis_set_payload` —
+  the actual webshell / SSH key / cron line), and a following `SAVE`/`BGSAVE`
+  reports the exact target path (`redis_drop_path`) with a
+  `redis-drop-chain-complete` marker + intent.
 - **Configurable shell logins (`accept_creds` for the interactive shells).** The
   `accept_creds: none|defaults|any` listener policy — previously honoured only by
   `ftp_files`/`vnc` — now also drives `ssh_interactive` and `telnet`. With
