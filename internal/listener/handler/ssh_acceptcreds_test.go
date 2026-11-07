@@ -75,6 +75,35 @@ func TestSSHAcceptCredsDefaultsRejectsUnknownFirstTry(t *testing.T) {
 	}
 }
 
+// A credential_list entry is accepted on the first attempt even when
+// accept_creds is none (the operator pins exactly which creds "work").
+func TestSSHAcceptCredListFirstTry(t *testing.T) {
+	client, server := loopbackPair(t)
+	h := &sshInteractive{dir: t.TempDir(), acceptCredList: []string{"root:hunter2"}}
+
+	resC := make(chan Result, 1)
+	go func() {
+		res, _ := h.Handle(context.Background(), server, config.Listener{Handler: "ssh_interactive"})
+		resC <- res
+	}()
+
+	c, _, _, err := xssh.NewClientConn(client, "host:22", passwordClientConfig("root", "hunter2"))
+	if err != nil {
+		t.Fatalf("credential_list root:hunter2 should be accepted on the first try, got: %v", err)
+	}
+	_ = c.Close()
+	_ = client.Close()
+
+	select {
+	case res := <-resC:
+		if res.Meta["accepted_user"] != "root" {
+			t.Errorf("accepted_user = %v; want root", res.Meta["accepted_user"])
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server handler did not return")
+	}
+}
+
 // accept_creds=any accepts an arbitrary credential on the first attempt.
 func TestSSHAcceptCredsAnyFirstTry(t *testing.T) {
 	client, server := loopbackPair(t)

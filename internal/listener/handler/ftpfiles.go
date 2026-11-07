@@ -36,11 +36,12 @@ import (
 // anomaly. A login with a known default credential raises
 // `default-credential-attempt`.
 type ftpFiles struct {
-	id          *identity.Identity
-	arch        *archetype.Profile
-	acceptCreds string
-	tlsMgr      *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
-	maxUpload   int          // per-upload capture cap in bytes (0 = default)
+	id             *identity.Identity
+	arch           *archetype.Profile
+	acceptCreds    string
+	acceptCredList []string     // operator accept-list ("user:pass", "*" wildcards)
+	tlsMgr         *certManager // explicit FTPS (AUTH TLS / AUTH SSL); nil = plaintext only
+	maxUpload      int          // per-upload capture cap in bytes (0 = default)
 }
 
 func (f *ftpFiles) Name() string { return "ftp_files" }
@@ -129,7 +130,7 @@ func (f *ftpFiles) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			}
 			// Anonymous always allowed; otherwise apply accept policy.
 			anon := strings.EqualFold(user, "anonymous") || strings.EqualFold(user, "ftp")
-			if anon || creds.Accepts(f.acceptCreds, user, arg) {
+			if anon || creds.AcceptsWith(f.acceptCreds, f.acceptCredList, user, arg) {
 				authed = true
 				_, _ = conn.Write([]byte("230 Login successful.\r\n"))
 			} else {

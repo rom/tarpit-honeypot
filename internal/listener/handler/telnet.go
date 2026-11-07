@@ -21,12 +21,13 @@ import (
 )
 
 type telnet struct {
-	jit         *jitter.Jitterer
-	arch        *archetype.Profile
-	id          *identity.Identity
-	rec         *sessionrec.Store
-	dataDir     string // sensor data dir root (for the persistent shell overlay)
-	acceptCreds string // "" / none / defaults / any — which first-try logins succeed
+	jit            *jitter.Jitterer
+	arch           *archetype.Profile
+	id             *identity.Identity
+	rec            *sessionrec.Store
+	dataDir        string   // sensor data dir root (for the persistent shell overlay)
+	acceptCreds    string   // "" / none / defaults / any — which first-try logins succeed
+	acceptCredList []string // operator accept-list ("user:pass", "*" wildcards)
 }
 
 func (t *telnet) Name() string { return "telnet" }
@@ -131,7 +132,7 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	// credentials. Otherwise the first attempt "fails" (most scanners give up
 	// after one; the few that retry get a second prompt and are accepted then),
 	// matching real /bin/login behavior.
-	firstTryOK := creds.Accepts(t.acceptCreds, user, pass)
+	firstTryOK := creds.AcceptsWith(t.acceptCreds, t.acceptCredList, user, pass)
 	if firstTryOK {
 		res.Meta["accepted_user"] = safe.SanitizeForLog(user)
 		res.Meta["accept_policy"] = t.acceptCreds

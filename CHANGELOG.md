@@ -8,6 +8,25 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **`credential_list` — operator-pinned accepted credentials.** A new per-listener
+  `credential_list: ["root:hunter2", "admin:*", "svc"]` is honored in addition to
+  `accept_creds`, so you can pin exactly which weak credentials log an attacker
+  into the `ssh_interactive` / `telnet` / `ftp_files` decoys (beyond the built-in
+  default corpus). Each entry is `user:pass`; `*` matches anything in either
+  field, and a bare `user` matches any password for that user.
+
+### Fixed
+
+- **Docs + example configs: `ssh` vs `ssh_interactive` credential capture.**
+  Clarified (and corrected a misleading line) that the plain `ssh` handler closes
+  right after KEXINIT, *before* the auth phase, so it captures **no** passwords
+  and cannot detect password attacks (brute force, the `>256`-byte
+  oversized-password / *sshole signature, CVE-2019-5021, CVE-2016-6210) — only
+  `ssh_interactive` can. The exposed-server example configs now use
+  `ssh_interactive` on port 22.
+
 ### Changed
 
 - **Redesigned the correlation + campaign graphs.** The old views drew a circular

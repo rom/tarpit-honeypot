@@ -368,7 +368,7 @@ ATT&CK: `T1557` (adversary-in-the-middle) + `T1040` (network sniffing).
 TCP-only; validated at config load (`forward_to` must be `host:port`;
 `inner_handler` must be a real TCP handler and not `tls_intercept` itself).
 
-**Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for the interactive handlers `ssh_interactive`, `telnet`, `ftp_files` and `vnc` — `defaults` makes known weak creds "just work" on the first attempt so the decoy behaves like a real box with a weak password, `any` accepts anything immediately for maximum engagement, and `none` keeps the capture-first behavior where the SSH/telnet shells still grant access via their attempt-count fallback); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity); `https.vhosts` (SNI-based virtual hosting — each `server_name`, matched exactly or as a `*.domain` wildcard, presents its own cert with its own `cn`/`org`/`ou`/`key_type`, and the matched name is recorded in the `tls_vhost` event field). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
+**Per-listener extras:** `accept_creds: none|defaults|any` (credential-accept policy for the interactive handlers `ssh_interactive`, `telnet`, `ftp_files` and `vnc` — `defaults` makes known weak creds "just work" on the first attempt so the decoy behaves like a real box with a weak password, `any` accepts anything immediately for maximum engagement, and `none` keeps the capture-first behavior where the SSH/telnet shells still grant access via their attempt-count fallback); `credential_list: ["root:hunter2", "admin:*", "svc"]` (an explicit operator accept-list, honored in addition to `accept_creds`, so you can pin exactly which weak credentials log an attacker in — each entry is `user:pass`, a `*` in either field matches anything, and a bare `user` matches any password for that user; applies to `ssh_interactive` / `telnet` / `ftp_files`); `archetype:` (overrides `sensor.archetype`); `https.cn` / `https.org` / `https.ou` / `https.key_type: ecdsa|rsa` (per-service TLS cert identity); `https.vhosts` (SNI-based virtual hosting — each `server_name`, matched exactly or as a `*.domain` wildcard, presents its own cert with its own `cn`/`org`/`ou`/`key_type`, and the matched name is recorded in the `tls_vhost` event field). See [`docs/usage.md`](usage.md) for the archetype + engagement details.
 
 Validation rejects a TCP-only handler on a UDP listener and vice versa. See [`docs/INTEGRATIONS.md`](INTEGRATIONS.md#protocol-handler-catalog) for per-handler defaults and behavior.
 
@@ -378,8 +378,16 @@ runs the full `golang.org/x/crypto/ssh` server with a persistent
 ed25519 host key (under `<data_dir>/tls/ssh_host_ed25519_key`),
 captures every password + public-key attempt, accepts the third
 credential, and drops into the archetype's shell on the session
-channel. Use `ssh_interactive` when post-auth TTP capture matters;
-use the lighter `ssh` when only credentials and fingerprints do.
+channel. **Only `ssh_interactive` ever sees a password** — the plain `ssh`
+handler closes right after the KEXINIT exchange, before the SSH auth phase,
+so it captures *no* credentials and cannot detect password-based attacks
+(credential brute force, the `>256`-byte oversized-password / *sshole
+musl-bypass signature `ssh-sshole-attempt`, the Alpine blank-root
+CVE-2019-5021 trap, or CVE-2016-6210 user-enum). Use `ssh_interactive` on
+your primary port 22 whenever credential capture or any of those SSH
+auth-attack detections matter; reserve the lighter `ssh` for secondary
+ports where you only want the banner + HASSH fingerprint. (Oversized-password
+attempts are a niche scanner behaviour even so, so expect them rarely.)
 
 ## `archeservices:` — service-role bundles
 

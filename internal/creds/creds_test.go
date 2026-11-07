@@ -77,6 +77,37 @@ func TestAcceptsPolicies(t *testing.T) {
 	}
 }
 
+func TestAcceptsCustomList(t *testing.T) {
+	list := []string{"root:hunter2", "admin:*", "svc", "*:letmein"}
+	cases := []struct {
+		user, pass string
+		want       bool
+	}{
+		{"root", "hunter2", true},    // exact
+		{"root", "wrong", false},     // exact pass mismatch
+		{"ROOT", "hunter2", true},    // case-insensitive user
+		{"admin", "anything", true},  // admin:* — any pass
+		{"svc", "whatever", true},    // bare user — any pass
+		{"anybody", "letmein", true}, // *:letmein — any user
+		{"nobody", "nopw", false},    // no match
+	}
+	for _, c := range cases {
+		if got := AcceptsCustom(list, c.user, c.pass); got != c.want {
+			t.Errorf("AcceptsCustom(%q,%q) = %v; want %v", c.user, c.pass, got, c.want)
+		}
+	}
+	// AcceptsWith combines policy OR custom list.
+	if !AcceptsWith("none", list, "root", "hunter2") {
+		t.Errorf("AcceptsWith should accept a custom-list cred even with policy none")
+	}
+	if !AcceptsWith("defaults", nil, "admin", "admin") {
+		t.Errorf("AcceptsWith should still honor the policy with no custom list")
+	}
+	if AcceptsWith("none", nil, "x", "y") {
+		t.Errorf("AcceptsWith(none, nil) should reject")
+	}
+}
+
 func TestNoEmptyEntries(t *testing.T) {
 	for _, c := range All() {
 		if c.User == "" && c.Pass == "" {

@@ -1204,6 +1204,15 @@ type Listener struct {
 	//   "any"      -> accept anything immediately (max engagement)
 	AcceptCreds string `yaml:"accept_creds"`
 
+	// AcceptCredList is an operator-supplied list of credentials that the same
+	// credential-capturing handlers accept on the first attempt, in addition to
+	// whatever AcceptCreds allows. Each entry is "user:pass"; a "*" in either
+	// field matches anything, and an entry with no ":" matches any password for
+	// that user. This pins exactly which weak creds "work" (e.g. ["root:hunter2",
+	// "admin:*"]) beyond the built-in default corpus, so the decoy behaves like a
+	// real box with those credentials.
+	AcceptCredList []string `yaml:"credential_list"`
+
 	// VulnEmulation overrides sensor.vuln_emulation for this listener.
 	// nil = inherit the sensor default; true/false force it on/off.
 	VulnEmulation *bool `yaml:"vuln_emulation"`

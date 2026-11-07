@@ -87,7 +87,7 @@ listeners:
 
   # A real web box almost always has SSH — present it for a believable
   # surface (credential capture only; never accepts a login).
-  - { id: ssh, proto: tcp, bind: 0.0.0.0:22, mode: banner, handler: ssh, severity: high }
+  - { id: ssh, proto: tcp, bind: 0.0.0.0:22, mode: banner, handler: ssh_interactive, severity: high }
 
 # Planted "secret" URLs no legitimate visitor could know. A request for any
 # of these is, by itself, a near-certain compromise signal (critical).
