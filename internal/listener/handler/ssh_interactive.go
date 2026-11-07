@@ -21,6 +21,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/creds"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
@@ -57,6 +58,11 @@ type sshInteractive struct {
 	dir     string // TLS/host-key dir (<data_dir>/tls)
 	dataDir string // sensor data dir root (for the persistent shell overlay)
 	rec     *sessionrec.Store
+	// acceptCreds is the credential accept-policy ("" / none / defaults / any).
+	// When a login matches the policy it succeeds on the FIRST attempt (the
+	// decoy behaves like a real box with those creds) instead of waiting for the
+	// acceptAuthAfter attempt-count fallback.
+	acceptCreds string
 	// vuln enables vulnerability *emulation*: when set, the handler accepts the
 	// SSH auth-bypass signatures (Alpine blank-root CVE-2019-5021, the *sshole
 	// 257–1024 byte musl password bypass) on the first matching attempt so the
@@ -124,6 +130,15 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 			// actual access, it just makes the honeypot look vulnerable.
 			if s.vuln && sshBypassAccept(c.User(), len(pass)) {
 				acceptedUser = c.User()
+				return &xssh.Permissions{}, nil
+			}
+			// Configurable accept-policy: when the deployment pins which creds
+			// "work" (accept_creds: defaults|any), a matching login succeeds on
+			// the first try, so the decoy behaves like a real box with those
+			// (weak) credentials rather than mysteriously failing a few times.
+			if creds.Accepts(s.acceptCreds, c.User(), string(pass)) {
+				acceptedUser = c.User()
+				res.Meta["accept_policy"] = s.acceptCreds
 				return &xssh.Permissions{}, nil
 			}
 			if len(authAttempts) >= acceptAuthAfter {

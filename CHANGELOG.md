@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Added
 
+- **Configurable shell logins (`accept_creds` for the interactive shells).** The
+  `accept_creds: none|defaults|any` listener policy — previously honoured only by
+  `ftp_files`/`vnc` — now also drives `ssh_interactive` and `telnet`. With
+  `defaults` a known weak credential (`root:root`, `admin:admin`, …) is accepted
+  on the **first** attempt, so the decoy behaves like a real box with that weak
+  password; `any` accepts anything immediately (max engagement); `none` (default)
+  keeps the capture-first behaviour (SSH accepts on the 3rd try, telnet on the
+  2nd). The accepted login + policy are recorded in `accepted_user` /
+  `accept_policy` meta.
 - **Attacker-secret harvesting (`internal/secretscan`).** A new detector library
   reaps the *attacker's own* credentials and secrets out of everything they send
   the honeypot — request headers + bodies, interactive-shell input and captured

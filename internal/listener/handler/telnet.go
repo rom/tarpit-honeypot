@@ -12,6 +12,7 @@ import (
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
 	"github.com/rom/tarpit-honeypot/internal/config"
+	"github.com/rom/tarpit-honeypot/internal/creds"
 	"github.com/rom/tarpit-honeypot/internal/identity"
 	"github.com/rom/tarpit-honeypot/internal/jitter"
 	"github.com/rom/tarpit-honeypot/internal/safe"
@@ -20,11 +21,12 @@ import (
 )
 
 type telnet struct {
-	jit     *jitter.Jitterer
-	arch    *archetype.Profile
-	id      *identity.Identity
-	rec     *sessionrec.Store
-	dataDir string // sensor data dir root (for the persistent shell overlay)
+	jit         *jitter.Jitterer
+	arch        *archetype.Profile
+	id          *identity.Identity
+	rec         *sessionrec.Store
+	dataDir     string // sensor data dir root (for the persistent shell overlay)
+	acceptCreds string // "" / none / defaults / any — which first-try logins succeed
 }
 
 func (t *telnet) Name() string { return "telnet" }
@@ -123,28 +125,38 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 		flagAnomaly(&res, "telnet-credential-non-printable")
 	}
 
-	// First attempt always "fails" — most scanners give up after one,
-	// the few that retry get a second login prompt and a second
-	// failure. Real /bin/login behavior.
-	_, _ = conn.Write([]byte("\r\nLogin incorrect\r\n"))
+	// Configurable accept-policy: when the deployment pins which creds "work"
+	// (accept_creds: defaults|any) and the FIRST attempt matches, the login
+	// succeeds immediately — the decoy behaves like a real box with those (weak)
+	// credentials. Otherwise the first attempt "fails" (most scanners give up
+	// after one; the few that retry get a second prompt and are accepted then),
+	// matching real /bin/login behavior.
+	firstTryOK := creds.Accepts(t.acceptCreds, user, pass)
+	if firstTryOK {
+		res.Meta["accepted_user"] = safe.SanitizeForLog(user)
+		res.Meta["accept_policy"] = t.acceptCreds
+	} else {
+		_, _ = conn.Write([]byte("\r\nLogin incorrect\r\n"))
+	}
 
-	// CLI shell engagement: post-fake-login we accept the second
-	// attempt and drop into the archetype's shell. This is where the
-	// post-login TTP capture happens — every command the attacker
-	// types lands in res.Meta["shell_commands"] and any anomaly
+	// CLI shell engagement: post-fake-login we drop into the archetype's shell.
+	// This is where the post-login TTP capture happens — every command the
+	// attacker types lands in res.Meta["shell_commands"] and any anomaly
 	// markers (reverse shell, persistence, recon) bubble up into
 	// res.Meta["anomalies"] which the listener promotes to a
 	// first-class event field.
 	if t.arch != nil && t.arch.CLIPrompt() != "" {
-		// Second login banner.
-		if t.arch.LoginPrompt() != "" {
-			_, _ = conn.Write([]byte(expandLoginEscapes(t.arch.LoginPrompt(), t.arch, t.id)))
-		} else {
-			_, _ = conn.Write([]byte("\r\nlogin: "))
+		if !firstTryOK {
+			// Second login banner + prompt (the accepted retry).
+			if t.arch.LoginPrompt() != "" {
+				_, _ = conn.Write([]byte(expandLoginEscapes(t.arch.LoginPrompt(), t.arch, t.id)))
+			} else {
+				_, _ = conn.Write([]byte("\r\nlogin: "))
+			}
+			_, _ = readBoundedLineFromReader(br, cap)
+			_, _ = conn.Write([]byte("Password: "))
+			_, _ = readBoundedLineFromReader(br, cap)
 		}
-		_, _ = readBoundedLineFromReader(br, cap)
-		_, _ = conn.Write([]byte("Password: "))
-		_, _ = readBoundedLineFromReader(br, cap)
 		// "Welcome" line — the kind every distro / device shows.
 		_, _ = conn.Write([]byte("\r\nLast login: Mon May 19 13:01:22 from 10.0.0.5\r\n"))
 
