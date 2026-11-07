@@ -69,8 +69,18 @@ type Captured struct {
 // arch may be nil — in that case we use a plain "$ " prompt and the
 // POSIX default response set.
 func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile) Captured {
+	return RunWithFS(ctx, r, w, arch, nil)
+}
+
+// RunWithFS is Run with an optional persistent per-attacker overlay filesystem.
+// When fs is non-nil, filesystem-mutating + navigation commands (cd/pwd/mkdir/
+// touch/rm/echo>/wget/curl/chmod/mv/cp) act on the overlay and persist across
+// sessions, cat/ls reflect the overlay, and the prompt tracks the cwd — while
+// everything the overlay doesn't own still falls through to the canned table.
+// fs is mutated in place; the caller persists it after Run returns.
+func RunWithFS(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile, fs *FS) Captured {
 	cap := Captured{}
-	prompt := promptFor(arch)
+	basePrompt := promptFor(arch)
 	responses := responseTable(arch)
 	fold := foldCommands(arch)
 
@@ -79,6 +89,10 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 	defer deadline.Stop()
 
 	for i := 0; i < MaxCommands; i++ {
+		prompt := basePrompt
+		if fs != nil {
+			prompt = fs.prompt(basePrompt)
+		}
 		if _, err := io.WriteString(w, prompt); err != nil {
 			return cap
 		}
@@ -124,27 +138,59 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, arch *archetype.Profile)
 			return cap
 		}
 
+		// Overlay filesystem: mutations + overlay-aware cat/ls take precedence
+		// over the canned table, so the shell has persistent, per-attacker state.
+		if fs != nil {
+			if cmd == "ls" || cmd == "dir" {
+				resp := fs.AugmentLs(argv, lookupResponse(responses, cmd, argv))
+				if _, err := io.WriteString(w, resp); err != nil {
+					return cap
+				}
+				if rearmIdle(ctx, deadline) {
+					return cap
+				}
+				continue
+			}
+			if out, ok := fs.Apply(cmd, argv, line); ok {
+				if _, err := io.WriteString(w, out); err != nil {
+					return cap
+				}
+				if rearmIdle(ctx, deadline) {
+					return cap
+				}
+				continue
+			}
+		}
+
 		resp := lookupResponse(responses, cmd, argv)
 		if _, err := io.WriteString(w, resp); err != nil {
 			return cap
 		}
 
-		// Re-arm the idle timer. We check ctx between iterations.
-		if !deadline.Stop() {
-			select {
-			case <-deadline.C:
-			default:
-			}
-		}
-		deadline.Reset(IdleTimeout)
-		select {
-		case <-ctx.Done():
+		if rearmIdle(ctx, deadline) {
 			return cap
-		default:
 		}
 	}
 	_, _ = io.WriteString(w, "\r\nConnection to host closed.\r\n")
 	return cap
+}
+
+// rearmIdle resets the idle timer and reports whether the context is done
+// (so the caller should stop the session).
+func rearmIdle(ctx context.Context, deadline *time.Timer) bool {
+	if !deadline.Stop() {
+		select {
+		case <-deadline.C:
+		default:
+		}
+	}
+	deadline.Reset(IdleTimeout)
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 // OneShot evaluates a single command line against the archetype's canned

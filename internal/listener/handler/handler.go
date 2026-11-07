@@ -171,12 +171,13 @@ func Get(name string, deps Deps) (Handler, error) {
 		return &ssh{id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation, kexExt: deps.SSHKexExtended}, nil
 	case "ssh_interactive":
 		return &sshInteractive{
-			id:   deps.Identity,
-			jit:  deps.Jitter,
-			arch: deps.Archetype,
-			dir:  filepath.Join(deps.DataDir, "tls"),
-			rec:  deps.SessionRec,
-			vuln: deps.VulnEmulation,
+			id:      deps.Identity,
+			jit:     deps.Jitter,
+			arch:    deps.Archetype,
+			dir:     filepath.Join(deps.DataDir, "tls"),
+			dataDir: deps.DataDir,
+			rec:     deps.SessionRec,
+			vuln:    deps.VulnEmulation,
 		}, nil
 	case "http":
 		return &httpH{urlCanaries: deps.URLCanaries, id: deps.Identity, jit: deps.Jitter, arch: deps.Archetype, vuln: deps.VulnEmulation}, nil
@@ -192,7 +193,7 @@ func Get(name string, deps Deps) (Handler, error) {
 		h.vuln = deps.VulnEmulation
 		return h, nil
 	case "telnet":
-		return &telnet{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, rec: deps.SessionRec}, nil
+		return &telnet{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, rec: deps.SessionRec, dataDir: deps.DataDir}, nil
 	case "ftp":
 		return &ftp{jit: deps.Jitter, arch: deps.Archetype, id: deps.Identity, tlsMgr: maybeCertMgr(deps), maxUpload: deps.MaxUploadBytes}, nil
 	case "ftp_files":

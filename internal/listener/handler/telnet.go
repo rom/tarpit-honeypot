@@ -20,10 +20,11 @@ import (
 )
 
 type telnet struct {
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
-	id   *identity.Identity
-	rec  *sessionrec.Store
+	jit     *jitter.Jitterer
+	arch    *archetype.Profile
+	id      *identity.Identity
+	rec     *sessionrec.Store
+	dataDir string // sensor data dir root (for the persistent shell overlay)
 }
 
 func (t *telnet) Name() string { return "telnet" }
@@ -158,7 +159,17 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 				res.Meta["session_cast"] = name
 			}
 		}
-		captured := shell.Run(ctx, inR, outW, t.arch)
+		peer := hostFromAddr(conn.RemoteAddr())
+		vfs := shell.LoadFS(t.dataDir, peer, "/root")
+		captured := shell.RunWithFS(ctx, inR, outW, t.arch, vfs)
+		_ = shell.SaveFS(t.dataDir, peer, vfs)
+		if n := len(vfs.Nodes); n > 0 {
+			res.Meta["shell_fs_files"] = n
+		}
+		if len(vfs.Downloads) > 0 {
+			res.Meta["shell_downloads"] = vfs.Downloads
+			flagAnomaly(&res, "shell-payload-download")
+		}
 		if len(captured.Commands) > 0 {
 			res.Meta["shell_commands"] = captured.Commands
 		}
