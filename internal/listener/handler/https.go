@@ -163,6 +163,9 @@ func (h *https) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) 
 	if ja4x != "" {
 		res.Meta["ja4x"] = ja4x
 	}
+	// JA4X of a presented CLIENT certificate (mTLS) — attacker-controlled and
+	// forge-resistant, distinct from our own cert's ja4x above.
+	addClientCertJA4X(res.Meta, state)
 	if matchedSNI != "" {
 		res.Meta["tls_vhost"] = matchedSNI
 	}

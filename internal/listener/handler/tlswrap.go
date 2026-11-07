@@ -71,11 +71,18 @@ func (w *tlsWrap) Handle(ctx context.Context, conn net.Conn, cfg config.Listener
 	if state.ServerName != "" {
 		res.Meta["sni"] = state.ServerName
 	}
-	ja3sRaw, ja3sHash := "", ""
+	ja3sRaw, ja3sHash, ja4s := "", "", ""
 	if sh := capConn.serverHello(); sh != nil {
 		ja3sRaw, ja3sHash = fingerprint.JA3S(sh)
+		ja4s = fingerprint.JA4S(sh)
 	}
 	addFP(res.Meta, ja3Hash, ja3Raw, ja4, ja3sHash, ja3sRaw)
+	if ja4s != "" {
+		res.Meta["ja4s"] = ja4s
+	}
+	// JA4X of a presented CLIENT certificate (mTLS) — an attacker-controlled,
+	// forge-resistant identity fingerprint (OT mTLS, some scanners).
+	addClientCertJA4X(res.Meta, state)
 	return res, herr
 }
 
@@ -91,5 +98,15 @@ func addFP(meta map[string]any, ja3, ja3Raw, ja4, ja3s, ja3sRaw string) {
 	if ja3s != "" {
 		meta["ja3s"] = ja3s
 		meta["ja3s_raw"] = ja3sRaw
+	}
+}
+
+// addClientCertJA4X stamps ja4x_client from the first peer (client) certificate
+// of an mTLS connection, when one was presented.
+func addClientCertJA4X(meta map[string]any, state tls.ConnectionState) {
+	if len(state.PeerCertificates) > 0 {
+		if x := fingerprint.JA4X(state.PeerCertificates[0]); x != "" {
+			meta["ja4x_client"] = x
+		}
 	}
 }

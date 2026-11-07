@@ -89,10 +89,20 @@ func deriveHost(p *archetype.Profile) hostState {
 	upDur := time.Duration(upDays)*24*time.Hour + time.Duration(r.next(24))*time.Hour + time.Duration(r.next(60))*time.Minute
 	load := fmt.Sprintf("%.2f, %.2f, %.2f", float64(r.next(70))/100, float64(r.next(45))/100, float64(r.next(25))/100)
 
+	// Boot is a STABLE absolute instant (a fixed epoch minus the seeded uptime),
+	// not now-relative — so `uptime` genuinely advances between reconnects
+	// instead of reporting the same value forever (which is a fingerprinting
+	// tell). The attacker's own "last login" stays now-relative (a fresh login).
+	bootEpoch := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	boot := bootEpoch.Add(-upDur)
+	if !boot.Before(now) {
+		boot = now.Add(-upDur) // safety: keep boot in the past if the clock is early
+	}
+
 	return hostState{
 		host: host, user: user, from: from, ip: ip, gw: gw,
 		mac:     deriveMAC(p, &r),
-		boot:    now.Add(-upDur),
+		boot:    boot,
 		load:    load,
 		loginAt: now.Add(-time.Duration(r.next(600)+5) * time.Minute),
 	}

@@ -106,6 +106,7 @@ func recognitionLabelCatalog() []CoverageLabel {
 		{"⚑", "meta:corroborated-threat", "Composite: two or more independent reputation signals (threat confidence, blocklist, ASN-DROP, bad domain, spoofed PTR) agree."},
 		{"⚑", "meta:targeted-recon", "Composite: a high-value target (ICS/OT, database, remote-access, healthcare) probed with a recon/hostile-origin signal (hidden/rented infra, scanner/automation, reputation hit, or novel ASN)."},
 		{"⚑", "meta:ot", "Any operational-technology target — ICS/SCADA, building automation (BAS/BMS), or medical device (medtech). The unified OT umbrella, stamped from the handler regardless of source IP."},
+		{"⚑", "meta:ai", "Any AI/LLM/agent target — the agentic honeypot surface (autonomous-agent interop, LLM inference, MCP tool servers). Stamped from the handler or the agent-detection markers, regardless of source IP."},
 		{"⚑", "meta:ot-recon", "Composite: an ICS/OT target probed with a recon/hostile-origin signal."},
 		{"⚑", "meta:medtech-recon", "Composite: a medical/clinical target (HL7/DICOM/FHIR/ASTM/POCT1) probed with a recon/hostile-origin signal."},
 		{"⚑", "meta:credential-foothold", "Composite: a weak/default/breached captured login against a remote-access or cloud/devops target."},

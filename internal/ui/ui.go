@@ -544,6 +544,8 @@ func metaSignalTitle(name string) string {
 		return "high-value target (ICS/OT, database, or remote-access) probed from hidden/rented infrastructure"
 	case "ot":
 		return "operational-technology target: ICS/SCADA, building automation (BAS/BMS), or medical device"
+	case "ai":
+		return "AI target: an autonomous-agent, LLM-inference, or MCP decoy was engaged (agentic attack surface)"
 	case "ot-recon":
 		return "ICS/OT target probed with a recon/hostile-origin signal (hidden/rented infra, scanner/automation, reputation hit, or novel ASN)"
 	case "medtech-recon":

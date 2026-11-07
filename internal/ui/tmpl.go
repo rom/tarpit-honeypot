@@ -434,6 +434,9 @@ a.proto:hover { filter: brightness(1.1); }
 .ctag { display: inline-block; background: var(--ctag-bg); border: 1px solid var(--ctag-border); border-radius: 3px; padding: 0 .3rem; margin: .1rem .2rem 0 0; font-size: 0.714rem; color: var(--ctag-text); }
 .ctag.tls { background: var(--ctag-tls-bg); border-color: var(--ctag-tls-border); color: var(--ctag-tls-fg); }
 .ctag.cap { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-fg); }
+.ctag.cat-ot { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-fg); text-transform: uppercase; letter-spacing: .03em; }
+.ctag.cat-ai { background: var(--accent-bg, var(--ctag-tls-bg)); border-color: var(--accent-border, var(--ctag-tls-border)); color: var(--accent-fg, var(--ctag-tls-fg)); text-transform: uppercase; letter-spacing: .03em; }
+.ctag.cat-remote { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-fg); text-transform: uppercase; letter-spacing: .03em; }
 .coll-group { margin: .35rem 0; }
 .coll-cat { display: inline-block; width: 9rem; color: var(--text-muted); font-size: 0.857rem; vertical-align: top; }
 .coll { display: inline-block; border-radius: 10px; padding: .05rem .5rem; margin: .12rem .2rem; font-size: 0.857rem; border: 1px solid var(--border-strong); background: var(--bg-elevated); color: var(--text-faint); }
@@ -873,7 +876,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <div class="canvas-grid">
   {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}{{ if $.RangeQuery }}&amp;range={{ $.RangeQuery }}{{ end }}" title="{{ if .Hit }}{{ .Hits }} event(s) hit{{ else }}events that hit{{ end }} port {{ .Port }}">{{ end }}
   <div class="pcard mode-{{ .Mode }}{{ if .Hit }} hit{{ end }}">
-    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span>{{ if .Hit }}<span class="pcard-hits" title="access/attempts in this window">{{ .Hits }}</span>{{ end }}</div>
+    <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span>{{ if .Category }}<span class="ctag cat-{{ .Category }}" title="{{ .Category }} protocol">{{ .Category }}</span>{{ end }}{{ if .Hit }}<span class="pcard-hits" title="access/attempts in this window">{{ .Hits }}</span>{{ end }}</div>
     <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
     <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>
     <div>{{ if .TLS }}<span class="ctag tls">tls</span>{{ end }}{{ if .Capture }}<span class="ctag cap">pcap</span>{{ end }}</div>

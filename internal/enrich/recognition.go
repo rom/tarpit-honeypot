@@ -193,6 +193,10 @@ func metaSignals(ev *event.Event) []string {
 	if boolMeta(m, "ot") {
 		out = append(out, "meta:ot")
 	}
+	// Unified AI umbrella: any event that engaged an AI/LLM/agent decoy.
+	if boolMeta(m, "ai") {
+		out = append(out, "meta:ai")
+	}
 
 	// High-value target probed with any recon/hostile-origin signal — the OT /
 	// database / remote-access recon pattern defenders most want surfaced. The

@@ -146,8 +146,289 @@ func (fs *FS) Apply(cmd string, argv []string, line string) (string, bool) {
 		return fs.cat(argv)
 	case "mv", "cp":
 		return fs.moveCopy(cmd, argv)
+	case "head", "tail":
+		return fs.headTail(cmd, argv)
+	case "wc":
+		return fs.wc(argv)
+	case "grep", "egrep", "fgrep":
+		return fs.grep(argv)
+	case "find":
+		return fs.find(argv)
+	case "stat":
+		return fs.statCmd(argv)
+	case "file":
+		return fs.fileCmd(argv)
 	}
 	return "", false
+}
+
+// overlayFile returns the overlay node for a user path when it exists and is a
+// regular file (not a dir, not a tombstone). ok=false means "not in the overlay"
+// → the caller falls through to the canned table.
+func (fs *FS) overlayFile(arg string) (*FSNode, bool) {
+	n := fs.Nodes[fs.resolve(arg)]
+	if n == nil || n.Dir {
+		return nil, false
+	}
+	return n, true
+}
+
+func (fs *FS) headTail(cmd string, argv []string) (string, bool) {
+	n := 10
+	var files []string
+	for i := 1; i < len(argv); i++ {
+		a := argv[i]
+		switch {
+		case a == "-n" && i+1 < len(argv):
+			if v, err := atoiSafe(argv[i+1]); err == nil {
+				n = v
+			}
+			i++
+		case strings.HasPrefix(a, "-n"):
+			if v, err := atoiSafe(a[2:]); err == nil {
+				n = v
+			}
+		case strings.HasPrefix(a, "-"):
+			// ignore other flags
+		default:
+			files = append(files, a)
+		}
+	}
+	if len(files) == 0 {
+		return "", false
+	}
+	node, ok := fs.overlayFile(files[0])
+	if !ok {
+		return "", false
+	}
+	lines := strings.Split(strings.TrimRight(node.Content, "\n"), "\n")
+	if cmd == "head" {
+		if n < len(lines) {
+			lines = lines[:n]
+		}
+	} else {
+		if n < len(lines) {
+			lines = lines[len(lines)-n:]
+		}
+	}
+	return strings.Join(lines, "\r\n") + "\r\n", true
+}
+
+func (fs *FS) wc(argv []string) (string, bool) {
+	files := fileArgs(argv[1:])
+	flags := ""
+	for _, a := range argv[1:] {
+		if strings.HasPrefix(a, "-") {
+			flags += a
+		}
+	}
+	if len(files) == 0 {
+		return "", false
+	}
+	node, ok := fs.overlayFile(files[0])
+	if !ok {
+		return "", false
+	}
+	content := node.Content
+	nl := strings.Count(content, "\n")
+	words := len(strings.Fields(content))
+	bytes := len(content)
+	switch {
+	case strings.Contains(flags, "l"):
+		return intToStr(nl) + " " + files[0] + "\r\n", true
+	case strings.Contains(flags, "w"):
+		return intToStr(words) + " " + files[0] + "\r\n", true
+	case strings.Contains(flags, "c"):
+		return intToStr(bytes) + " " + files[0] + "\r\n", true
+	}
+	return intToStr(nl) + " " + intToStr(words) + " " + intToStr(bytes) + " " + files[0] + "\r\n", true
+}
+
+func (fs *FS) grep(argv []string) (string, bool) {
+	ic := false
+	var rest []string
+	for _, a := range argv[1:] {
+		switch {
+		case a == "-i" || strings.HasPrefix(a, "-i"):
+			ic = true
+		case strings.HasPrefix(a, "-"):
+			// ignore -r/-n/-v/etc for simplicity
+		default:
+			rest = append(rest, a)
+		}
+	}
+	if len(rest) < 2 {
+		return "", false // need a pattern + at least one file
+	}
+	pat := rest[0]
+	files := rest[1:]
+	needle := pat
+	if ic {
+		needle = strings.ToLower(pat)
+	}
+	var b strings.Builder
+	owned := false
+	for _, f := range files {
+		node, ok := fs.overlayFile(f)
+		if !ok {
+			return "", false // a non-overlay file → let the canned table answer
+		}
+		owned = true
+		for _, line := range strings.Split(strings.TrimRight(node.Content, "\n"), "\n") {
+			hay := line
+			if ic {
+				hay = strings.ToLower(line)
+			}
+			if strings.Contains(hay, needle) {
+				if len(files) > 1 {
+					b.WriteString(f + ":")
+				}
+				b.WriteString(line + "\r\n")
+			}
+		}
+	}
+	return b.String(), owned
+}
+
+// find lists overlay paths under a directory (optionally filtered by -name glob
+// prefix/suffix). It covers only the attacker-created tree; a find over the
+// canned base falls through.
+func (fs *FS) find(argv []string) (string, bool) {
+	root := fs.Cwd
+	namePat := ""
+	for i := 1; i < len(argv); i++ {
+		a := argv[i]
+		switch {
+		case a == "-name" && i+1 < len(argv):
+			namePat = strings.Trim(argv[i+1], "'\"")
+			i++
+		case strings.HasPrefix(a, "-"):
+			// ignore -type/-maxdepth/etc
+		case root == fs.Cwd:
+			root = fs.resolve(a)
+		}
+	}
+	var hits []string
+	for p := range fs.Nodes {
+		if p != root && !strings.HasPrefix(p, root+"/") {
+			continue
+		}
+		if namePat != "" && !globMatch(namePat, path.Base(p)) {
+			continue
+		}
+		hits = append(hits, p)
+	}
+	if len(hits) == 0 {
+		// Nothing of the attacker's under here — let the canned table answer so
+		// a find over the base image still looks real.
+		return "", false
+	}
+	sortStrings(hits)
+	return strings.Join(hits, "\r\n") + "\r\n", true
+}
+
+func (fs *FS) statCmd(argv []string) (string, bool) {
+	files := fileArgs(argv[1:])
+	if len(files) == 0 {
+		return "", false
+	}
+	p := fs.resolve(files[0])
+	n := fs.Nodes[p]
+	if n == nil {
+		return "", false
+	}
+	kind := "regular file"
+	if n.Dir {
+		kind = "directory"
+	}
+	size := n.Size
+	if size == 0 {
+		size = int64(len(n.Content))
+	}
+	mt := n.Mtime
+	if mt.IsZero() {
+		mt = time.Now().UTC()
+	}
+	return "  File: " + files[0] + "\r\n  Size: " + intToStr64(size) +
+		"\tBlocks: 8\tIO Block: 4096   " + kind + "\r\n" +
+		"Modify: " + mt.Format("2006-01-02 15:04:05.000000000 -0700") + "\r\n", true
+}
+
+func (fs *FS) fileCmd(argv []string) (string, bool) {
+	files := fileArgs(argv[1:])
+	if len(files) == 0 {
+		return "", false
+	}
+	n, ok := fs.overlayFile(files[0])
+	if !ok {
+		return "", false
+	}
+	desc := "ASCII text"
+	if n.Src != "" || strings.HasPrefix(n.Content, "\x7fELF") {
+		desc = "ELF 64-bit LSB executable, x86-64, dynamically linked, stripped"
+	} else if strings.HasPrefix(strings.TrimSpace(n.Content), "#!") {
+		desc = "a shell script, ASCII text executable"
+	}
+	return files[0] + ": " + desc + "\r\n", true
+}
+
+// globMatch handles the common `*.ext`, `prefix*`, and exact cases for find -name.
+func globMatch(pat, name string) bool {
+	switch {
+	case pat == "*" || pat == name:
+		return true
+	case strings.HasPrefix(pat, "*") && strings.HasSuffix(pat, "*") && len(pat) > 2:
+		return strings.Contains(name, pat[1:len(pat)-1])
+	case strings.HasPrefix(pat, "*"):
+		return strings.HasSuffix(name, pat[1:])
+	case strings.HasSuffix(pat, "*"):
+		return strings.HasPrefix(name, pat[:len(pat)-1])
+	}
+	return false
+}
+
+func atoiSafe(s string) (int, error) {
+	n := 0
+	if s == "" {
+		return 0, errEmpty
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, errEmpty
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
+}
+
+var errEmpty = &strErr{"not a number"}
+
+type strErr struct{ s string }
+
+func (e *strErr) Error() string { return e.s }
+
+func intToStr(n int) string { return intToStr64(int64(n)) }
+
+func intToStr64(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }
 
 // echo implements `echo ... [> | >>] file`; without redirection it just prints.
