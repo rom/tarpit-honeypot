@@ -17,6 +17,19 @@ documented in `docs/`).
   intents, interpretations (interaction phase), severities, ATT&CK tactics +
   techniques, D3FEND countermeasures, tools and protocol anomalies seen on it,
   and every attacker IP (split IPv4 / IPv6, with reverse DNS + peak severity).
+- **90 more exploit-detectable CVEs (`internal/cve/cve_batch2026.go`).** A new
+  batch of widely-exploited / CISA-KEV / mass-scanner CVEs, each with a canonical
+  high-signal exploit signature (distinctive URL path or payload substring) wired
+  into `MatchPayload` + ATT&CK tagging — VPN/firewall appliances (PAN-OS, Ivanti,
+  Citrix, Fortinet, F5), Exchange/SharePoint, dev tooling (TeamCity, Jenkins,
+  GitLab), Java frameworks (OFBiz, GeoServer, WebLogic, Struts2), Mirai-class
+  IoT/router/DVR/camera cgi paths, file-transfer (MOVEit, Cleo, Zimbra), and
+  recent AI-infra (Ollama, MLflow, Ray). The catalog already held 742; this is
+  net-new after de-duplication. (I deliberately stopped at the accurate,
+  substring-detectable set rather than padding to an arbitrary count — binary-
+  protocol and local-privesc CVEs that can't be reliably matched from network
+  payloads were left advisory-only to keep the false-positive rate near zero;
+  the live CISA-KEV auto-sync feed continues to advertise more.)
 - **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
   `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
   reports the same uptime on every poll is a honeypot tell. They now advance from
