@@ -62,6 +62,11 @@ type Config struct {
 	KEV KEV `yaml:"kev"`
 	// MISP pushes the fleet's observed IOCs to a MISP instance. See internal/misp.
 	MISP MISPConfig `yaml:"misp"`
+	// TAXII serves this node's observed IOCs over a standalone, read-only STIX
+	// 2.1 / TAXII 2.1 API on its own bind — so a TIP/SIEM can poll a single
+	// honeypot for indicators without the node running the full fleet-aggregator
+	// ingest endpoint. See internal/stix.
+	TAXII TAXIIConfig `yaml:"taxii"`
 	// IOC turns the indicators every event carries (IPs, fingerprints, hashes,
 	// URLs, domains, CVEs, credentials, …) into a de-duplicated IOC store and
 	// emits ioc:<type> events for the high-value first sightings. See internal/ioc.
@@ -319,6 +324,20 @@ type MISPConfig struct {
 	EventInfo    string        `yaml:"event_info"`   // MISP event title
 	Distribution string        `yaml:"distribution"` // MISP distribution level (default "0")
 	ThreatLevel  string        `yaml:"threat_level"` // threat_level_id (default "2")
+}
+
+// TAXIIConfig serves the node's observed IOCs over a standalone, read-only STIX
+// 2.1 / TAXII 2.1 API (internal/stix) on its own authenticated bind. It is
+// independent of the fleet-aggregator ingest endpoint: a single honeypot can be
+// polled by a TIP/SIEM. The IOC source is the live intel store (the node's
+// fleet:* findings), so enabling it (like misp:) auto-enables fleet correlation
+// when fleet.enabled is unset. Bearer-gated — an empty token locks every route.
+type TAXIIConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Bind     string `yaml:"bind"`      // host:port to serve on (default 127.0.0.1:8471)
+	TokenEnv string `yaml:"token_env"` // required bearer token (from this env var)
+	TLSCert  string `yaml:"tls_cert"`  // optional TLS (serve STIX/TAXII over https)
+	TLSKey   string `yaml:"tls_key"`
 }
 
 // On reports whether the fleet correlator should run. It defaults on for any

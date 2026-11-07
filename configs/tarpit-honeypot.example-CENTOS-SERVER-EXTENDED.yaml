@@ -359,3 +359,25 @@ channels:
 
 routes:
   - { match: {}, channels: [stdout, sqlite, syslog] }
+
+# Threat-intel exports — share the IOCs THIS standalone sensor observes.
+# Enabling either auto-activates single-node fleet correlation (the IOC source),
+# so no separate fleet:/ingest: stanza is needed. See docs/threat-intel-exports.md.
+#
+# Standalone STIX 2.1 / TAXII 2.1 server a TIP/SIEM can poll (bearer-gated):
+#   export TARPIT_TAXII_TOKEN=... ; curl -H "Authorization: Bearer $TARPIT_TAXII_TOKEN" \
+#     http://127.0.0.1:8471/taxii2/api/collections/fleet-iocs/objects/
+taxii:
+  enabled: false                 # flip on to serve STIX/TAXII
+  bind: 127.0.0.1:8471
+  token_env: TARPIT_TAXII_TOKEN   # required; export the token in the unit's env
+  # tls_cert: /etc/tarpit-honeypot/taxii.crt   # serve over https when exposed off-host
+  # tls_key:  /etc/tarpit-honeypot/taxii.key
+
+# Push observed IOCs to a MISP instance as periodic delta events:
+misp:
+  enabled: false
+  url: https://misp.corp
+  key_env: TARPIT_MISP_KEY
+  interval: 5m
+  event_info: "tarpit honeypot IOCs"
