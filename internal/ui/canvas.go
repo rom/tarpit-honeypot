@@ -7,11 +7,38 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rom/tarpit-honeypot/internal/aiclass"
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/fleet"
 	"github.com/rom/tarpit-honeypot/internal/ioc"
+	"github.com/rom/tarpit-honeypot/internal/otclass"
 	"github.com/rom/tarpit-honeypot/internal/portsvc"
 )
+
+// remoteAccessHandlers are the interactive remote-access / remote-admin
+// protocols — the "someone is trying to log in and drive the box" surface.
+var remoteAccessHandlers = map[string]bool{
+	"ssh": true, "ssh_interactive": true, "telnet": true, "rdp": true, "rdp_udp": true,
+	"vnc": true, "winrm": true, "teamviewer": true, "anydesk": true, "rlogin": true,
+	"rsh": true, "rexec": true, "x11": true, "xdmcp": true, "citrix_ica": true,
+	"pcanywhere": true, "pcanywhere_stat": true, "dameware": true, "radmin": true,
+	"vmware_authd": true, "pcoip": true, "spice": true, "nx": true,
+}
+
+// svcCategory is the coarse domain badge for a handler on the summary board:
+// "ot" (ICS/BAS/medtech), "ai" (agent/LLM/MCP), "remote" (remote access), or "".
+// OT and AI take precedence over remote (none currently overlap).
+func svcCategory(handler string) string {
+	switch {
+	case otclass.IsOT(handler):
+		return "ot"
+	case aiclass.IsAI(handler):
+		return "ai"
+	case remoteAccessHandlers[handler]:
+		return "remote"
+	}
+	return ""
+}
 
 // configCanvas is the "what is this sensor actually running" board for the
 // /config page: every listener (port + service + mode) and every background
@@ -47,6 +74,9 @@ type portCard struct {
 	Capture   bool   `json:"capture"`
 	TLS       bool   `json:"tls"`
 	Severity  string `json:"severity,omitempty"`
+	// Category is a coarse domain badge for the board: "ot" (ICS/BAS/medtech),
+	// "ai" (agent/LLM/MCP), "remote" (remote-access), or "" (none).
+	Category string `json:"category,omitempty"`
 	// Hit / Hits are set on the summary board only (markCanvasActivity): Hit is
 	// true when this service saw at least one access/attempt in the window, and
 	// Hits is the event count. The template tints a hit card so an operator can
@@ -89,6 +119,7 @@ func buildConfigCanvas(c *config.Config) configCanvas {
 		if pc.Service == "" {
 			pc.Service = l.Handler
 		}
+		pc.Category = svcCategory(l.Handler)
 		pc.TLS = isTLSListener(l)
 		cv.Listeners = append(cv.Listeners, pc)
 		if pc.Proto == "udp" {

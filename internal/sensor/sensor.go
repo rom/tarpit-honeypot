@@ -1534,6 +1534,17 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 					ev.Anomalies = appendUniqueStr(ev.Anomalies, "malware-family:"+rep.Family)
 				}
 			}
+			// Behavioural dropper-family attribution (Mirai/XorDDoS/coinminer/…)
+			// and peeled obfuscation — both high-signal even without a hash match.
+			if rep.DropperFamily != "" {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "dropper:"+rep.DropperFamily)
+				if worst < event.SeverityHigh {
+					worst = event.SeverityHigh
+				}
+			}
+			if len(rep.Deobfuscated) > 0 {
+				ev.Anomalies = appendUniqueStr(ev.Anomalies, "payload-obfuscated")
+			}
 		}
 	}
 	if len(descs) == 0 {
@@ -1609,6 +1620,22 @@ func artifactReportMeta(rep artifactscan.Report) map[string]any {
 			names = append(names, mm.Rule)
 		}
 		m["yara"] = names
+	}
+	if rep.DropperFamily != "" {
+		m["dropper_family"] = rep.DropperFamily
+		if len(rep.DropperMarkers) > 0 {
+			m["dropper_markers"] = rep.DropperMarkers
+		}
+	}
+	if len(rep.Deobfuscated) > 0 {
+		methods := make([]string, 0, len(rep.Deobfuscated))
+		for _, l := range rep.Deobfuscated {
+			methods = append(methods, l.Method)
+		}
+		m["deobfuscated"] = methods
+		if !rep.DeobfuscatedIOCs.Empty() {
+			m["deobfuscated_iocs"] = rep.DeobfuscatedIOCs
+		}
 	}
 	return m
 }

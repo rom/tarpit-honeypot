@@ -554,6 +554,9 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	// OT classification (ICS/BAS/medtech) is handler-based and must run for
 	// RFC1918 sources too — OT segments are private — so it precedes the IP gate.
 	decorateOTClass(ev)
+	// AI/LLM/agent classification, likewise IP-independent (agents hit from
+	// anywhere, incl. cloud egress the GeoIP path would skip).
+	decorateAIClass(ev)
 	if ev.Source.IP == "" {
 		return
 	}

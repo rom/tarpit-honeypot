@@ -47,6 +47,15 @@ type Report struct {
 	// the attributed malware family when the set carried one.
 	KnownMalware bool   `json:"known_malware,omitempty"`
 	Family       string `json:"family,omitempty"`
+	// DropperFamily is the commodity-malware family attributed from behavioural
+	// string signatures (Mirai/XorDDoS/coinminer/…), with the markers that hit.
+	DropperFamily  string   `json:"dropper_family,omitempty"`
+	DropperMarkers []string `json:"dropper_markers,omitempty"`
+	// Deobfuscated holds the layers peeled from an obfuscated payload (base64/
+	// gzip/zlib/hex/XOR); DeobfuscatedIOCs are the IOCs recovered from the inner
+	// layer — the stage-2 URLs/commands the wrapping hid.
+	Deobfuscated     []DeobfLayer `json:"deobfuscated,omitempty"`
+	DeobfuscatedIOCs IOCs         `json:"deobfuscated_iocs,omitempty"`
 	// ArchiveExecutable is set when the artifact is an archive (zip/jar/apk)
 	// that contains an executable member — a classic malware-in-a-zip drop.
 	ArchiveExecutable     bool   `json:"archive_executable,omitempty"`
@@ -90,7 +99,32 @@ func AnalyzeWith(data []byte, eng *Engine) Report {
 
 	r.Strings = extractStrings(data, minStringLen, maxStrings)
 	r.IOCs = extractIOCs(r.Strings, maxIOCsPerKind)
+
+	// Recursive deobfuscation: peel base64/gzip/zlib/hex/XOR wrapping and pull
+	// the stage-2 IOCs out of the revealed inner layer.
+	if layers, final := Deobfuscate(data); len(layers) > 0 {
+		r.Deobfuscated = layers
+		innerStrings := extractStrings(final, minStringLen, maxStrings)
+		r.DeobfuscatedIOCs = extractIOCs(innerStrings, maxIOCsPerKind)
+		// Classify the dropper over the revealed payload (more telling than the
+		// wrapper); fall back to the raw bytes.
+		if fam, mk := ClassifyDropper(final); fam != "" {
+			r.DropperFamily, r.DropperMarkers = fam, mk
+		}
+	}
+	if r.DropperFamily == "" {
+		if fam, mk := ClassifyDropper(data); fam != "" {
+			r.DropperFamily, r.DropperMarkers = fam, mk
+		}
+	}
+
 	r.Suspicious = suspiciousTraits(r)
+	if r.DropperFamily != "" {
+		r.Suspicious = append(r.Suspicious, "dropper family: "+r.DropperFamily)
+	}
+	if len(r.Deobfuscated) > 0 {
+		r.Suspicious = append(r.Suspicious, "obfuscation peeled: "+deobfMethods(r.Deobfuscated))
+	}
 	if r.ArchiveExecutable {
 		r.Suspicious = append(r.Suspicious, "archive contains executable: "+r.ArchiveExecutableName)
 	}
