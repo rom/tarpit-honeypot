@@ -158,6 +158,39 @@ UDP handlers are **reflection-safe** (see §1). "Capture-only" = never replies;
 | GOOSE detection + attack analysis | IEC 61850 GOOSE (`0x88B8`) | sniffer (detect) | benign multicast → `sniffer:goose`; **stateful per-`gocbRef` analysis** flags **spoofing** (2nd publisher → `sniffer:goose_spoof`), **replay** (`stNum` regression → `sniffer:goose_replay`), **storm** (state-change flood → `sniffer:goose_storm`), **simulation** (simulate/`test` bit → `sniffer:goose_simulation`) → T0856/T0831/T0814 |
 | PROFINET-DCP responder | PROFINET (`0x8892`) | L2 responder (Linux, CAP_NET_RAW) | answers DCP **Identify** per virtual station (cell enumeration); detects DCP **Set** — NameOfStation/IP reassignment or Control/factory-reset — raises `honeynet:profinet_dcp_set` and ACKs the Set as if it applied |
 
+### Building automation (BAS/BMS) additions
+
+Beyond BACnet (+/SC/TLS), KNX, LonTalk, Fox, C-Bus, Crestron, AMX, Vantage,
+Loxone, PJLink, M-Bus, DLMS and OSDP, three more building-automation decoys:
+
+| Handler | Port | Protocol | Emulated |
+|---|---|---|---|
+| `niagara_platform` | TCP 3011 | Tridium Niagara platform daemon | answers the Fox-style platform hello (JACE/Supervisor identity); the Niagara *application* protocol stays on `fox` (1911). Platform reach = station-install/backup/cert surface (CVE-2012-4701 chain) |
+| `obix` | TCP (HTTP) | oBIX building web-services | serves an oBIX lobby; flags `PUT`/`POST` point writes as control attempts and watch/history enumeration |
+| `enocean` | TCP | EnOcean ESP3 serial-over-IP gateway | parses the ESP3 frame, classifies packet type; COMMON_COMMAND / remote-management = device-config writes |
+
+### Medical / medtech (not strictly ICS, grouped under the OT umbrella)
+
+| Handler | Port | Protocol | Emulated |
+|---|---|---|---|
+| `hl7` / `hl7s` | TCP 2575 | HL7 v2 over MLLP (+TLS) | believable `MSA\|AA` ACK; flags PHI queries, master-file tamper, injection |
+| `dicom` / `dicoms` | TCP 104/11112 | DICOM upper layer (PACS) | association accept; flags C-FIND/C-MOVE image access |
+| `astm` | TCP | ASTM E1381/1394 (LIS ↔ lab analyzer) | ENQ/ACK line protocol; classifies H/P/O/R records; patient/result = PHI; flags injected fields |
+| `poct1` | TCP | POCT1-A (point-of-care ↔ data manager) | XML HELLO/ACK/OBS; observation/patient = PHI |
+| `fhir` / `fhirs` | TCP (HTTP/S) | HL7 FHIR REST API | CapabilityStatement; flags Patient/clinical reads (PHI) and POST/PUT/DELETE record tampering |
+
+### The unified `OT` label
+
+Every event that reaches an ICS/SCADA, building-automation or medtech handler is
+stamped `meta.ot = true`, `meta.ot_class` (`ics` | `bas` | `medtech`) and the
+`meta:ot` umbrella label — classified by handler in `internal/otclass`, the
+single source of truth. This runs *before* GeoIP/reputation enrichment (which
+skips private sources), so OT probes from RFC1918 OT segments are marked too.
+Pivot the whole OT surface in the web UI with `/events?label=ot`. The ICS/OT
+recon composite `meta:ot-recon` (and `meta:medtech-recon` for clinical targets)
+now fires for the full handler set on any recon/hostile-origin signal — hidden or
+rented infra, a scanner/automation fingerprint, a reputation hit, or a novel ASN.
+
 ---
 
 ## 2a. Per-protocol implementation detail

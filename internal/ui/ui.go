@@ -542,8 +542,12 @@ func metaSignalTitle(name string) string {
 		return "corroborated threat: two or more independent reputation signals agree"
 	case "targeted-recon":
 		return "high-value target (ICS/OT, database, or remote-access) probed from hidden/rented infrastructure"
+	case "ot":
+		return "operational-technology target: ICS/SCADA, building automation (BAS/BMS), or medical device"
 	case "ot-recon":
-		return "ICS/OT target probed from hidden/rented infrastructure"
+		return "ICS/OT target probed with a recon/hostile-origin signal (hidden/rented infra, scanner/automation, reputation hit, or novel ASN)"
+	case "medtech-recon":
+		return "medical/clinical target (HL7/DICOM/FHIR/ASTM/POCT1) probed with a recon/hostile-origin signal"
 	case "credential-foothold":
 		return "weak/default/breached login against a remote-access or cloud/devops target"
 	}

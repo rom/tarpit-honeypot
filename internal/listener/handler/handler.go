@@ -522,6 +522,22 @@ func Get(name string, deps Deps) (Handler, error) {
 	case "dicoms":
 		// DICOM-TLS (secure DICOM Upper Layer, typically TCP 2762).
 		return newTLSWrap("dicom", "dicoms", deps)
+	case "astm":
+		return &astm{}, nil
+	case "poct1":
+		return &poct1{}, nil
+	case "fhir":
+		return &fhir{}, nil
+	case "fhirs":
+		// FHIR over TLS (production FHIR servers mandate HTTPS).
+		return newTLSWrap("fhir", "fhirs", deps)
+	// Building-automation / BMS protocols (bas.go).
+	case "niagara_platform":
+		return &niagaraPlatform{}, nil
+	case "obix":
+		return &obix{}, nil
+	case "enocean":
+		return &enocean{}, nil
 	// TLS-fronted variants of the new HTTP-ish handlers (decrypt → inner).
 	case "ollamas":
 		return newTLSWrap("ollama", "ollamas", deps)

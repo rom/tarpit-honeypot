@@ -92,8 +92,13 @@ var tcpHandlers = map[string]bool{
 	"dixell": true, "carel": true, "trane": true, "resideo": true,
 	"ocpp": true,
 	// Healthcare / medical-device protocols: HL7 v2 over MLLP (2575) and DICOM
-	// (PACS imaging, 104/11112), plus their TLS variants.
+	// (PACS imaging, 104/11112), plus their TLS variants; FHIR REST, ASTM lab
+	// instruments, and POCT1-A point-of-care.
 	"hl7": true, "dicom": true, "hl7s": true, "dicoms": true,
+	"astm": true, "poct1": true, "fhir": true, "fhirs": true,
+	// Building-automation / BMS additions (bas.go): Tridium Niagara platform
+	// daemon, oBIX building web-services, EnOcean ESP3 serial-over-IP gateway.
+	"niagara_platform": true, "obix": true, "enocean": true,
 	// TLS-fronted variants of the AI/LLM/MCP + cloud-native decoys.
 	"ollamas": true, "llm_openais": true, "mcps": true,
 	"jupyters": true, "minios": true, "clickhouses": true, "consuls": true,

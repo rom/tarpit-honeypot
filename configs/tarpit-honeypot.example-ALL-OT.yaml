@@ -14,15 +14,17 @@
 # registered device handlers):
 #   • OT / ICS .... Modbus, S7, DNP3, IEC-104, EtherNet/IP, OPC-UA, EtherCAT,
 #                   CODESYS, PROFINET, HART-IP, synchrophasor, safety (Triconex)…
-#   • BMS / BAS ... BACnet (+/SC/TLS), KNX, LonTalk, Fox/Niagara, C-Bus, Crestron,
-#                   AMX, Vantage, Loxone, PJLink; refrigeration/HVAC web panels
-#                   (Danfoss AK-SM, Dixell XWEB, Carel, Trane Tracer SC, Resideo)
+#   • BMS / BAS ... BACnet (+/SC/TLS), KNX, LonTalk, Fox + Niagara platform,
+#                   oBIX, EnOcean, C-Bus, Crestron, AMX, Vantage, Loxone, PJLink;
+#                   refrigeration/HVAC web panels (Danfoss AK-SM, Dixell XWEB,
+#                   Carel, Trane Tracer SC, Resideo)
 #   • IoT ......... CoAP, MQTT-SN, LwM2M, Matter, SSDP/UPnP/WS-Discovery, Tuya,
 #                   TP-Link Kasa, Xiaomi miIO, Yeelight, WiZ, Hikvision/Dahua
 #                   discovery, Ubiquiti, Aruba PAPI, MikroTik MNDP, sACN/Art-Net
 #   • IIoT ........ MQTT/Sparkplug B, OPC-UA PubSub, DDS/RTPS, historians
 #                   (OSIsoft PI, Proficy, Canary, AspenTech), TR-069/TR-369, OCPP
-#   • IoMT ........ HL7 v2 (MLLP), DICOM (PACS)
+#   • IoMT ........ HL7 v2 (MLLP), DICOM (PACS), HL7 FHIR (+TLS), ASTM (LIS),
+#                   POCT1-A (point-of-care)
 #
 #   tarpit-honeypot validate-config -c configs/tarpit-honeypot.example-ALL-OT.yaml
 #   sudo tarpit-honeypot run        -c configs/tarpit-honeypot.example-ALL-OT.yaml
@@ -158,6 +160,9 @@ listeners:
   - { id: trane,     proto: tcp, bind: 0.0.0.0:8082,  mode: banner, handler: trane,         severity: high, capture: true } # Trane Tracer SC+ / Concierge (BAS supervisor)
   - { id: resideo,   proto: tcp, bind: 0.0.0.0:8083,  mode: banner, handler: resideo,       severity: high, capture: true } # Resideo / Honeywell building controller
   - { id: bacnet-scs, proto: tcp, bind: 0.0.0.0:48808, mode: banner, handler: bacnet_scs,   severity: high, capture: true } # BACnet/SC over TLS (wss hub; port is site-configured, often 443)
+  - { id: niagara,    proto: tcp, bind: 0.0.0.0:3011,  mode: banner, handler: niagara_platform, severity: high, capture: true } # Tridium Niagara platform daemon (JACE/Supervisor; Fox app proto is on 1911)
+  - { id: obix,       proto: tcp, bind: 0.0.0.0:8084,  mode: banner, handler: obix,         severity: high, capture: true } # oBIX building web-services (RESTful XML over the whole BAS model)
+  - { id: enocean,    proto: tcp, bind: 0.0.0.0:10025, mode: banner, handler: enocean,      severity: medium, capture: true } # EnOcean ESP3 serial-over-IP gateway (wireless building sensors)
 
   # =============== BMS / building automation — discovery (UDP) =============
   - { id: cbus,      proto: udp, bind: 0.0.0.0:20023, mode: banner, handler: cbus,          severity: medium, read_bytes: 1500 } # Clipsal C-Bus lighting / building automation
@@ -199,6 +204,10 @@ listeners:
   # ====================== IoMT — medical / clinical =========================
   - { id: hl7,       proto: tcp, bind: 0.0.0.0:2575,  mode: banner, handler: hl7,           severity: high,   capture: true } # HL7 v2 over MLLP (clinical messaging)
   - { id: dicom,     proto: tcp, bind: 0.0.0.0:11112, mode: banner, handler: dicom,         severity: high,   capture: true } # DICOM upper-layer (PACS / medical imaging)
+  - { id: astm,      proto: tcp, bind: 0.0.0.0:12000, mode: banner, handler: astm,          severity: high,   capture: true } # ASTM E1381/1394 lab-instrument ↔ LIS (clinical result records / PHI)
+  - { id: poct1,     proto: tcp, bind: 0.0.0.0:13000, mode: banner, handler: poct1,         severity: high,   capture: true } # POCT1-A point-of-care testing (bedside device ↔ data manager / PHI)
+  - { id: fhir,      proto: tcp, bind: 0.0.0.0:8089,  mode: banner, handler: fhir,          severity: high,   capture: true } # HL7 FHIR REST API (modern EHR/clinical data)
+  - { id: fhirs,     proto: tcp, bind: 0.0.0.0:8443,  mode: banner, handler: fhirs,         severity: high,   capture: true } # HL7 FHIR over TLS (production FHIR mandates HTTPS)
 
 # The three TCP-102 protocols can't all bind 102 on one IP, so expose
 # S7comm-Plus (S7-1200/1500) and IEC-61850 MMS on their own virtual IPs. The

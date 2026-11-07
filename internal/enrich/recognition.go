@@ -188,14 +188,34 @@ func metaSignals(ev *event.Event) []string {
 		out = append(out, "meta:corroborated-threat")
 	}
 
-	// High-value target probed from hidden or rented infrastructure — the OT /
-	// database / remote-access recon pattern defenders most want surfaced.
+	// Unified OT umbrella: any event that reached an ICS/BAS/medtech handler
+	// (set by decorateOTClass, handler-based + IP-independent) carries meta:ot.
+	if boolMeta(m, "ot") {
+		out = append(out, "meta:ot")
+	}
+
+	// High-value target probed with any recon/hostile-origin signal — the OT /
+	// database / remote-access recon pattern defenders most want surfaced. The
+	// context is deliberately broad (not just hidden/rented infra): a scanner or
+	// automation fingerprint, a reputation hit, or a never-seen-before ASN
+	// touching an OT/DB/remote-access target is already reconnaissance worth the
+	// label. A plain residential/direct touch with no such signal is not.
+	scannerish := metaString(m, "known_scanner") != "" || hasAny(m, "tools") ||
+		boolMeta(m, "fp_tool") || metaString(m, "tls_automation") != ""
+	suspicious := boolMeta(m, "threat_intel_hit") || hasAny(m, "threat_intel") ||
+		metaString(m, "threat_confidence") == "high" || hasAny(m, "asn_reputation") ||
+		boolMeta(m, "domain_bad")
+	novel := boolMeta(m, "novel_asn")
+	reconCtx := hidden || rented || scannerish || suspicious || novel
 	switch metaString(m, "targeting") {
-	case "ics-ot", "database", "remote-access":
-		if hidden || rented {
+	case "ics-ot", "database", "remote-access", "healthcare":
+		if reconCtx {
 			out = append(out, "meta:targeted-recon")
-			if metaString(m, "targeting") == "ics-ot" {
+			switch metaString(m, "targeting") {
+			case "ics-ot":
 				out = append(out, "meta:ot-recon")
+			case "healthcare":
+				out = append(out, "meta:medtech-recon")
 			}
 		}
 	}
