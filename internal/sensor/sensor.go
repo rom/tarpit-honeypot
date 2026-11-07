@@ -51,6 +51,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/safe"
 	"github.com/rom/tarpit-honeypot/internal/safego"
 	"github.com/rom/tarpit-honeypot/internal/scananalysis"
+	"github.com/rom/tarpit-honeypot/internal/secretscan"
 	"github.com/rom/tarpit-honeypot/internal/sessionrec"
 	"github.com/rom/tarpit-honeypot/internal/shell"
 	"github.com/rom/tarpit-honeypot/internal/sink"
@@ -1579,6 +1580,98 @@ func (s *Sensor) observePayload(ev *event.Event, data []byte) *event.Event {
 	}
 }
 
+// observeSecrets harvests the ATTACKER'S OWN secrets from what they send the
+// honeypot — API keys, bearer/OAuth tokens, JWTs, session cookies, private
+// keys, certificates and DB connection strings embedded in request headers,
+// bodies, shell input and captured payloads. These are high-value intelligence
+// (they attribute the operator and expose their infrastructure), so a find is
+// stamped as a secret:<kind> anomaly, folded into ev.Meta["secrets"] for the
+// credential store / export-creds, and escalates the event to >= High.
+// Detection only — nothing captured is ever used.
+func (s *Sensor) observeSecrets(ev *event.Event, data []byte) {
+	if ev == nil || ev.RuleID == "malware:capture" {
+		return
+	}
+	// Build one bounded text buffer from every attacker-controlled source: the
+	// raw connection payload (covers HTTP/1.x headers+body, FTP, SMTP, Redis,
+	// git, …), interactive-shell input (lives in meta, not the payload), and a
+	// curated allowlist of decoded text meta fields that a binary/compressed
+	// payload hides (HTTP/2 HPACK headers, parsed form bodies, syslog messages).
+	var sb strings.Builder
+	write := func(s string) {
+		if s == "" || sb.Len() >= secretScanBudget {
+			return
+		}
+		sb.WriteString(s)
+		sb.WriteByte('\n')
+	}
+	if len(data) > 0 {
+		write(string(data))
+	}
+	for _, cmd := range shellCommandText(ev) {
+		write(cmd)
+	}
+	for _, k := range secretMetaKeys {
+		if v, ok := ev.Meta[k].(string); ok {
+			write(v)
+		}
+	}
+	if sb.Len() == 0 {
+		return
+	}
+	found := secretscan.Scan(sb.String())
+	if len(found) == 0 {
+		return
+	}
+	if ev.Meta == nil {
+		ev.Meta = map[string]any{}
+	}
+	rows := make([]map[string]any, 0, len(found))
+	escalate := false
+	for _, sec := range found {
+		ev.Anomalies = appendUniqueStr(ev.Anomalies, "secret:"+sec.Kind)
+		row := map[string]any{"kind": sec.Kind, "value": sec.Value}
+		if sec.Hint != "" {
+			row["hint"] = sec.Hint
+		}
+		rows = append(rows, row)
+		if !lowSignalSecret[sec.Kind] {
+			escalate = true
+		}
+	}
+	ev.Meta["secrets"] = rows
+	ev.Meta["secret_kinds"] = secretscan.Kinds(found)
+	// A leaked live credential from the attacker's own toolchain — a vendor API
+	// key, OAuth/bearer token, JWT, private key, certificate or DB URI — is
+	// high-signal operator intelligence, so escalate to >= High. The generic
+	// password=/session-cookie shapes also show up on routine login noise, so
+	// they're recorded but don't by themselves inflate severity.
+	if escalate && ev.Severity < event.SeverityHigh {
+		ev.Severity = event.SeverityHigh
+	}
+}
+
+// lowSignalSecret kinds are recorded but don't on their own escalate an event's
+// severity — they fire on ordinary login/cookie traffic, not just an operator's
+// leaked toolchain credentials.
+var lowSignalSecret = map[string]bool{
+	"secret-assignment": true,
+	"session-cookie":    true,
+}
+
+// secretScanBudget caps the combined attacker-text buffer observeSecrets feeds
+// to the scanner (the scanner also bounds internally, but capping here avoids
+// building a huge string for a flood of shell lines).
+const secretScanBudget = 1 << 20
+
+// secretMetaKeys are decoded text meta fields that commonly carry attacker
+// secrets and are NOT recoverable from the raw payload (HPACK-compressed HTTP/2
+// headers, already-parsed form bodies, syslog message text).
+var secretMetaKeys = []string{
+	"authorization", "cookie", "body", "request_line", "user_agent",
+	"form_pass", "form_user", "exec_command", "post_body",
+}
+
 // artifactReportMeta flattens a static-analysis report into a compact,
 // event-safe meta map (omitting the raw string dump to keep events small —
 // the full report is available offline via `tarpit-honeypot analyze`).
@@ -2773,6 +2866,12 @@ func (s *Sensor) Run(ctx context.Context) error {
 					s.dispatch(rt, mw)
 					s.scoreRisk(rt, mw)
 				}
+				// Secret harvesting: reap the attacker's OWN credentials
+				// (API keys, tokens, JWTs, cookies, private keys, DB URIs)
+				// leaked into headers / bodies / shell input / payloads.
+				// Enriches ev in place (secret:<kind> anomalies + secrets
+				// meta + >= High severity) before correlation sees it.
+				s.observeSecrets(ev, payloadBytes)
 				// Honeytoken accounts: flag, in place, a login attempt that
 				// uses one of the security.txt contact names (cross-protocol:
 				// web / ftp / imap / pop3 / smtp), so scraping security.txt and

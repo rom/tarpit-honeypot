@@ -8,8 +8,92 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Redesigned the correlation + campaign graphs.** The old views drew a circular
+  / column hairball of every entity — unreadable. Both now share one legible
+  **bipartite "shared-infrastructure" graph**: source IPs on the left, and on the
+  right only the entities two or more of them have IN COMMON (a TLS/SSH
+  fingerprint, reused SSH pubkey, identical credential, C2/ingress domain or
+  malware artifact), so every edge is correlation evidence rather than noise. A
+  barycentre ordering keeps the crossings down; left nodes are coloured by peak
+  severity, right nodes by kind and sized by how many IPs share them.
+  - **Correlation** now also surfaces **correlated clusters**: connected
+    components of IPs joined by shared infrastructure (union-find), each
+    summarised with its members and the pivots that bind them — "these N IPs are
+    one operator" stated outright. Broad/spoofable pivots (ASN, User-Agent,
+    generic tool name) are excluded from linking so unrelated hosts aren't merged.
+  - **Campaign** replaces the abstract tactic→tactic sankey with a **kill-chain
+    funnel** (how many distinct sources reached each ATT&CK stage, recon→impact —
+    where attackers get stuck) and gives every campaign a compact **kill-chain
+    rail** showing the canonical stages with the ones it reached lit.
+
 ### Added
 
+- **Richer event-detail page.** The structured content handlers capture no
+  longer dumps as raw `map[...]` / `[...]` blobs in the generic meta table — the
+  event-detail page now has dedicated, readable sections: **attacker commands &
+  queries** (shell input, SQL/Redis/Mongo commands, in order), **harvested
+  secrets** (kind + shape-preserving redaction + decoded hint), and **captured
+  content** (staged payload bodies, SMTP message bodies, deobfuscated droppers).
+- **Attacker intent surfaced across the UI.** The main `/events` list gained an
+  **intent column** (each a clickable `/events?intent=` filter), and the summary
+  dashboard gained a **"top attacker intents"** analysis panel — a full-window
+  SQL rollup of the handlers' plain-language read of what attackers were trying
+  to do (the *why*, alongside the existing *how* = ATT&CK and *what* = CVEs).
+  Backed by a new `intent` facet in `DashboardFacets` (SQLite + Postgres).
+- **Believable MySQL + Postgres recon responses.** The MySQL decoy now answers
+  common recon queries (`@@version`, `user()`, `SHOW DATABASES`, `SELECT 1`, …)
+  with a real result set, correctly honouring the client's
+  `CLIENT_DEPRECATE_EOF` capability (EOF packets vs. OK terminator). The Postgres
+  decoy, which replied "SELECT 0" to every query — an obvious tell — now answers
+  common reconnaissance queries
+  (`version()`, `current_user`, `current_database()`, `SHOW data_directory`,
+  `SELECT 1`, …) with a real single-row result (RowDescription + DataRow +
+  CommandComplete), so an attacker's tooling keeps going and reveals more
+  post-auth TTPs; exploit queries still get the empty result + their existing
+  classification.
+- **SMTP message mining.** A captured DATA body is now parsed for its
+  `Subject` / `From` headers (surfaced as `mail_subject` / `mail_header_from`
+  meta) and classified: a base64 attachment → `smtp-attachment` (malware
+  delivery), a credential-lure link → `smtp-phishing-content`, other links →
+  spam/lure — each with a matching intent.
+- **Stateful Redis decoy — full drop-chain capture.** The Redis handler now keeps
+  a small bounded per-connection keyspace: a value `SET` is returned by a later
+  `GET` (so attack tooling keeps going instead of bailing on an empty reply), and
+  the famous redis-rogue-server drop chain is captured end to end — `CONFIG SET
+  dir`/`dbfilename` are remembered (`redis_config_dir` / `redis_config_dbfilename`
+  meta), the `SET` body is captured as the staged payload (`redis_set_payload` —
+  the actual webshell / SSH key / cron line), and a following `SAVE`/`BGSAVE`
+  reports the exact target path (`redis_drop_path`) with a
+  `redis-drop-chain-complete` marker + intent.
+- **Configurable shell logins (`accept_creds` for the interactive shells).** The
+  `accept_creds: none|defaults|any` listener policy — previously honoured only by
+  `ftp_files`/`vnc` — now also drives `ssh_interactive` and `telnet`. With
+  `defaults` a known weak credential (`root:root`, `admin:admin`, …) is accepted
+  on the **first** attempt, so the decoy behaves like a real box with that weak
+  password; `any` accepts anything immediately (max engagement); `none` (default)
+  keeps the capture-first behaviour (SSH accepts on the 3rd try, telnet on the
+  2nd). The accepted login + policy are recorded in `accepted_user` /
+  `accept_policy` meta.
+- **Attacker-secret harvesting (`internal/secretscan`).** A new detector library
+  reaps the *attacker's own* credentials and secrets out of everything they send
+  the honeypot — request headers + bodies, interactive-shell input and captured
+  payloads. ~25 ordered detectors cover vendor API keys & tokens (AWS, GitHub,
+  GitLab, Slack, Google, Stripe, Anthropic, OpenAI, npm, PyPI, HuggingFace,
+  SendGrid, Twilio, Telegram), transport-carried credentials (Basic — decoded to
+  `user:pass` — Bearer/OAuth, JWTs, `X-API-Key`, session cookies), full PEM
+  **private keys** & **certificates**, DB connection URIs with embedded creds, and
+  a generic `secret=` catch-all. Wired into the sensor: a find stamps a
+  `secret:<kind>` anomaly, folds the value into `ev.Meta["secrets"]` (so it lands
+  on the captures page and in `export-creds`), and escalates high-value finds
+  (keys/tokens/JWTs/private-keys/DB-URIs) to **≥ High** — routine `password=` /
+  cookie shapes are recorded but don't inflate severity. Detection only; nothing
+  captured is ever used.
+- **RDP `mstshash` → username.** The RDP handler now strips the `mstshash=`
+  prefix from the connection cookie and stamps the bare `username` in meta, so the
+  targeted account flows into the credential store / `export-creds` /
+  cred-reuse correlation (previously it was only recorded as the raw `cookie`).
 - **Live summary board cues + polish.** On the summary screen each service card
   now carries stable `data-svc`/`data-hits` hooks; on a live refresh the JS diffs
   each counter against the previous snapshot (per page, in `sessionStorage`) and:

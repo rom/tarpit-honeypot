@@ -37,7 +37,7 @@ func TestDashboardFacets(t *testing.T) {
 	ins("b", "listener:ssh", "ssh", "tcp", event.SeverityHigh, 22, nil,
 		map[string]any{"geo_city": "Oslo", "asn": 13335, "asn_org": "CF", "tools": []string{"nmap", "hydra"}})
 	ins("c", "cve:CVE-2021-44228", "http", "tcp", event.SeverityCritical, 8080, []string{"cve:CVE-2021-44228"},
-		map[string]any{"geo_city": "Berlin", "asn": 3320, "asn_org": "DTAG", "tools": []string{"nmap"}, "anomalies": []string{"cve:CVE-2021-44228"}, "emulated_vuln_cves": []string{"CVE-2017-0144"}})
+		map[string]any{"geo_city": "Berlin", "asn": 3320, "asn_org": "DTAG", "tools": []string{"nmap"}, "anomalies": []string{"cve:CVE-2021-44228"}, "emulated_vuln_cves": []string{"CVE-2017-0144"}, "intent": "Log4Shell JNDI injection"})
 	ins("d", "listener:raw", "", "tcp", event.SeverityLow, 9999, nil, nil) // empty meta ('' json)
 
 	f, err := s.DashboardFacets(ctx, now.Add(-time.Hour), 0)
@@ -85,6 +85,9 @@ func TestDashboardFacets(t *testing.T) {
 	}
 	if f.Tools["nmap"] != 3 || f.Tools["hydra"] != 2 {
 		t.Errorf("tools = %v; want nmap:3 hydra:2", f.Tools)
+	}
+	if f.Intents["Log4Shell JNDI injection"] != 1 {
+		t.Errorf("intents = %v; want Log4Shell JNDI injection:1", f.Intents)
 	}
 	// ASN facets: AS13335 (count 2) and AS3320 (count 1); the asn:0 event (d) has
 	// no asn so it is excluded.

@@ -717,6 +717,14 @@ Export the credentials the sensor captured — the same set the web UI's
 including public keys, tokens, API keys, SNMP communities, cookies, Kerberos
 pre-auth tickets, honeytokens) — reconstructed from the event store.
 
+This also includes the **attacker's own secrets** harvested by
+`internal/secretscan` from whatever they send the honeypot (request headers +
+bodies, interactive-shell input, captured payloads): vendor API keys & tokens
+(AWS/GitHub/GitLab/Slack/Google/Stripe/Anthropic/OpenAI/…), Bearer/OAuth tokens,
+JWTs, session cookies, PEM private keys & certificates, and DB connection URIs
+with embedded credentials. Each is surfaced under its own `--kind`
+(e.g. `github-token`, `jwt`, `private-key`, `db-uri`, `bearer-token`).
+
 ```
 tarpit-honeypot export-creds -c cfg.yaml                                # all, JSON
 tarpit-honeypot export-creds -c cfg.yaml --kind password --format csv

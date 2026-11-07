@@ -151,12 +151,13 @@ func TestSummaryShowsAttacksAndVulns(t *testing.T) {
 	d.RangeLinks = summaryRangeLinks("24h")
 	d.Attacks = []barRow{{Label: "T1190 · Exploit Public-Facing App", Count: 4, Pct: 100, Href: "/attack/technique?id=T1190"}}
 	d.CVEs = []barRow{{Label: "CVE-2021-44228", Count: 3, Pct: 100, Href: "/search?q=CVE-2021-44228"}}
+	d.Intents = []barRow{{Label: "Log4Shell JNDI injection", Count: 3, Pct: 100, Href: "/events?intent=Log4Shell+JNDI+injection"}}
 	var b strings.Builder
 	if err := tmpl.ExecuteTemplate(&b, "index", d); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
-	for _, want := range []string{"top attacks", "top vulnerabilities", "/attack/technique?id=T1190", "/search?q=CVE-2021-44228", "CVE-2021-44228"} {
+	for _, want := range []string{"top attacks", "top vulnerabilities", "top attacker intents", "Log4Shell JNDI injection", "/attack/technique?id=T1190", "/search?q=CVE-2021-44228", "CVE-2021-44228"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("summary missing %q", want)
 		}

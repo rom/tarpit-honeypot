@@ -1194,10 +1194,14 @@ type Listener struct {
 	// mix of OS-shaped traps on different ports.
 	Archetype string `yaml:"archetype"`
 	// AcceptCreds controls which login attempts a credential-capturing
-	// handler (ftp_files, ...) treats as a success:
-	//   ""/"none"  -> never accept (pure capture; default)
-	//   "defaults" -> accept any known vendor-default credential
-	//   "any"      -> accept anything (max engagement)
+	// handler (ssh_interactive, telnet, ftp_files, vnc) treats as a success
+	// on the FIRST attempt, so the decoy behaves like a real box with those
+	// (weak) credentials:
+	//   ""/"none"  -> never accept early (pure capture; the ssh_interactive /
+	//                 telnet shells still grant access via their attempt-count
+	//                 fallback, so engagement is unchanged; default)
+	//   "defaults" -> accept any known vendor-default credential immediately
+	//   "any"      -> accept anything immediately (max engagement)
 	AcceptCreds string `yaml:"accept_creds"`
 
 	// VulnEmulation overrides sensor.vuln_emulation for this listener.

@@ -16,6 +16,52 @@ type redis struct{ id *identity.Identity }
 
 func (r *redis) Name() string { return "redis" }
 
+// redisSession is the small, bounded per-connection state that lets the decoy
+// behave like a real keyspace: SET stores a value that a later GET returns, and
+// CONFIG SET dir/dbfilename are remembered so a SAVE in the webshell/cron drop
+// chain can be reported with the exact target path and the payload body. This
+// keeps an attacker engaged through the whole chain (so we capture the actual
+// webshell/SSH-key/cron content) instead of them bailing on an empty GET.
+type redisSession struct {
+	kv     map[string]string // stored keys (bounded)
+	dir    string            // last CONFIG SET dir
+	dbfile string            // last CONFIG SET dbfilename
+}
+
+const (
+	redisMaxKeys   = 64
+	redisMaxValLen = 64 << 10 // 64 KiB — big enough for a webshell/keyfile payload
+)
+
+func newRedisSession() *redisSession { return &redisSession{kv: map[string]string{}} }
+
+// store records a SET, bounded in both key count and value size.
+func (s *redisSession) store(key, val string) {
+	if len(val) > redisMaxValLen {
+		val = val[:redisMaxValLen]
+	}
+	if _, ok := s.kv[key]; !ok && len(s.kv) >= redisMaxKeys {
+		return
+	}
+	s.kv[key] = val
+}
+
+// dropPath is the filesystem path a SAVE would write to given the configured
+// dir + dbfilename (the webshell/cron/SSH-key target), or "".
+func (s *redisSession) dropPath() string {
+	if s.dir == "" && s.dbfile == "" {
+		return ""
+	}
+	d, f := s.dir, s.dbfile
+	if f == "" {
+		f = "dump.rdb"
+	}
+	if d == "" {
+		return f
+	}
+	return strings.TrimRight(d, "/") + "/" + f
+}
+
 // Redis RESP protocol (port 6379). Clients open with either:
 //   - inline command:  "AUTH foo\r\n" / "PING\r\n"
 //   - multi-bulk array: "*N\r\n$len\r\nVAL\r\n..."
@@ -39,6 +85,7 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 	br := bufio.NewReader(conn)
 	var commands []string
 	authSeen := false
+	sess := newRedisSession()
 	for i := 0; i < 12; i++ {
 		cmd, err := readRESPCommand(br)
 		if err != nil {
@@ -62,7 +109,7 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		// Argument-level + sequence-level classification (Lua escape CVEs,
 		// CONFIG SET targets, MIGRATE exfil, DEBUG, bulk dump, missing AUTH).
 		redisClassifyExtra(&res, cmd, &authSeen)
-		if r.dispatch(conn, &res, cmd, ver) {
+		if r.dispatch(conn, &res, cmd, ver, sess) {
 			res.Meta["commands"] = commands
 			return res, nil
 		}
@@ -77,7 +124,7 @@ func (r *redis) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 // dispatch writes the reply for one parsed command and reports whether the
 // connection should close (QUIT). It mirrors enough of a real, unprotected
 // Redis that recon commands return plausible data instead of errors.
-func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (done bool) {
+func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string, sess *redisSession) (done bool) {
 	verb := strings.ToUpper(cmd[0])
 	sub := ""
 	if len(cmd) >= 2 {
@@ -118,6 +165,18 @@ func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (
 			}
 			writeRESPArray(conn, redisConfigGet(pat, ver))
 		case "SET", "REWRITE", "RESETSTAT":
+			// Remember the webshell/cron/SSH-key drop target so a later SAVE can
+			// be reported with the exact path (and surface it as meta).
+			if sub == "SET" && len(cmd) >= 4 {
+				switch strings.ToLower(cmd[2]) {
+				case "dir":
+					sess.dir = cmd[3]
+					res.Meta["redis_config_dir"] = clipStr(cmd[3], 512)
+				case "dbfilename":
+					sess.dbfile = cmd[3]
+					res.Meta["redis_config_dbfilename"] = clipStr(cmd[3], 256)
+				}
+			}
 			_, _ = conn.Write([]byte("+OK\r\n"))
 		default:
 			_, _ = conn.Write([]byte("-ERR Unknown CONFIG subcommand\r\n"))
@@ -163,8 +222,42 @@ func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (
 	case "TTL", "PTTL":
 		_, _ = conn.Write([]byte(":-2\r\n"))
 	case "GET", "GETDEL":
+		// Return the value a prior SET stored (so the box behaves like a real
+		// keyspace and the attacker keeps going) — else nil.
+		if len(cmd) >= 2 {
+			if v, ok := sess.kv[cmd[1]]; ok {
+				writeRESPBulk(conn, v)
+				if verb == "GETDEL" {
+					delete(sess.kv, cmd[1])
+				}
+				break
+			}
+		}
 		_, _ = conn.Write([]byte("$-1\r\n"))
-	case "EXISTS", "DEL", "UNLINK", "STRLEN", "LLEN", "SCARD", "HLEN":
+	case "EXISTS":
+		n := 0
+		for _, k := range cmd[1:] {
+			if _, ok := sess.kv[k]; ok {
+				n++
+			}
+		}
+		_, _ = conn.Write([]byte(":" + strconv.Itoa(n) + "\r\n"))
+	case "STRLEN":
+		if len(cmd) >= 2 {
+			_, _ = conn.Write([]byte(":" + strconv.Itoa(len(sess.kv[cmd[1]])) + "\r\n"))
+		} else {
+			_, _ = conn.Write([]byte(":0\r\n"))
+		}
+	case "DEL", "UNLINK":
+		n := 0
+		for _, k := range cmd[1:] {
+			if _, ok := sess.kv[k]; ok {
+				delete(sess.kv, k)
+				n++
+			}
+		}
+		_, _ = conn.Write([]byte(":" + strconv.Itoa(n) + "\r\n"))
+	case "LLEN", "SCARD", "HLEN":
 		_, _ = conn.Write([]byte(":0\r\n"))
 	case "KEYS", "HGETALL", "SMEMBERS", "LRANGE", "ACL":
 		if verb == "ACL" && sub == "WHOAMI" {
@@ -177,11 +270,28 @@ func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (
 	case "SCAN":
 		// cursor 0 (iteration complete) + empty key list.
 		_, _ = conn.Write([]byte("*2\r\n$1\r\n0\r\n*0\r\n"))
-	case "SET", "SETEX", "HSET", "LPUSH", "RPUSH", "SADD", "EXPIRE":
+	case "SET":
+		// Store the value (so GET returns it) and capture it as the payload the
+		// attacker is staging — the actual webshell / cron line / SSH key body,
+		// which is far higher-value intel than just the fact a SET happened.
+		if len(cmd) >= 3 {
+			sess.store(cmd[1], cmd[2])
+			redisCaptureSetPayload(res, sess, cmd[2])
+		}
+		_, _ = conn.Write([]byte("+OK\r\n"))
+	case "SETEX", "HSET", "LPUSH", "RPUSH", "SADD", "EXPIRE":
 		_, _ = conn.Write([]byte("+OK\r\n"))
 	case "SLAVEOF", "REPLICAOF":
 		_, _ = conn.Write([]byte("+OK\r\n"))
 	case "SAVE", "BGSAVE", "BGREWRITEAOF":
+		// Completing the drop chain: if a dir/dbfilename was configured, report
+		// the exact target path so the operator sees where a real server would
+		// have written the payload.
+		if p := sess.dropPath(); p != "" {
+			res.Meta["redis_drop_path"] = clipStr(p, 600)
+			flagAnomaly(res, "redis-drop-chain-complete")
+			setIfEmpty(res.Meta, "intent", "Redis persistence drop chain completed — "+verb+" to "+p)
+		}
 		_, _ = conn.Write([]byte("+OK\r\n"))
 	case "MODULE":
 		if sub == "LIST" {
@@ -198,6 +308,34 @@ func (r *redis) dispatch(conn net.Conn, res *Result, cmd []string, ver string) (
 		_, _ = conn.Write([]byte(fmt.Sprintf("-ERR unknown command '%s'\r\n", cmd[0])))
 	}
 	return false
+}
+
+// redisCaptureSetPayload records the body of a SET when it looks like staged
+// drop content (a webshell, cron line, SSH key, dropper) or when a drop target
+// has already been configured this session — the actual payload is the intel.
+func redisCaptureSetPayload(res *Result, sess *redisSession, val string) {
+	l := strings.ToLower(val)
+	looksPayload := strings.Contains(l, "<?php") || strings.Contains(l, "<%") ||
+		strings.Contains(l, "ssh-rsa") || strings.Contains(l, "ssh-ed25519") ||
+		strings.Contains(l, "bash -i") || strings.Contains(l, "/dev/tcp/") ||
+		strings.Contains(l, "curl ") || strings.Contains(l, "wget ") ||
+		strings.Contains(l, "* * * * *") || strings.Contains(l, "system(") ||
+		strings.Contains(l, "exec(")
+	if !looksPayload && sess.dir == "" && sess.dbfile == "" {
+		return
+	}
+	res.Meta["redis_set_payload"] = clipStr(val, 4096)
+	flagAnomaly(res, "redis-payload-staged")
+	switch {
+	case strings.Contains(l, "<?php") || strings.Contains(l, "<%"):
+		setIfEmpty(res.Meta, "intent", "Redis staged a webshell payload via SET")
+	case strings.Contains(l, "ssh-rsa") || strings.Contains(l, "ssh-ed25519"):
+		setIfEmpty(res.Meta, "intent", "Redis staged an SSH authorized_keys payload via SET")
+	case strings.Contains(l, "* * * * *"):
+		setIfEmpty(res.Meta, "intent", "Redis staged a cron-job payload via SET")
+	default:
+		setIfEmpty(res.Meta, "intent", "Redis staged a drop payload via SET")
+	}
 }
 
 // writeRESPBulk writes a RESP bulk string ($<len>\r\n<data>\r\n).

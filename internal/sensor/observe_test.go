@@ -188,6 +188,68 @@ func TestObservePayloadBenignNoEvent(t *testing.T) {
 	}
 }
 
+// observeSecrets reaps the attacker's OWN secrets from the request payload:
+// an Authorization: Bearer token and an AWS key embedded in an HTTP request are
+// stamped as secret:<kind> anomalies, folded into the secrets meta, and the
+// event is escalated to >= High.
+func TestObserveSecretsFromPayload(t *testing.T) {
+	s := &Sensor{name: "t"}
+	ev := &event.Event{ID: "s1", RuleID: "listener:http", Handler: "http", Source: event.Endpoint{IP: "1.2.3.4"}, Severity: event.SeverityLow}
+	req := []byte("POST /api HTTP/1.1\r\nHost: x\r\n" +
+		"Authorization: Bearer abcdef0123456789ghij\r\n\r\n" +
+		"aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n")
+	s.observeSecrets(ev, req)
+
+	if !hasAnomaly(ev, "secret:bearer-token") {
+		t.Errorf("bearer-token not flagged: %v", ev.Anomalies)
+	}
+	if !hasAnomaly(ev, "secret:aws-secret-key") {
+		t.Errorf("aws-secret-key not flagged: %v", ev.Anomalies)
+	}
+	if ev.Severity < event.SeverityHigh {
+		t.Errorf("severity not escalated: %v", ev.Severity)
+	}
+	if ev.Meta["secrets"] == nil {
+		t.Error("secrets meta missing")
+	}
+}
+
+// Secrets typed into the interactive shell (stored in meta, not the payload)
+// are harvested too.
+func TestObserveSecretsFromShellCommands(t *testing.T) {
+	s := &Sensor{name: "t"}
+	ev := &event.Event{ID: "s2", RuleID: "listener:ssh", Handler: "ssh_interactive",
+		Source: event.Endpoint{IP: "1.2.3.4"},
+		Meta:   map[string]any{"shell_commands": []string{"export GH=ghp_1234567890abcdefghijklmnopqrstuvwxyz"}}}
+	s.observeSecrets(ev, nil)
+	if !hasAnomaly(ev, "secret:github-token") {
+		t.Errorf("github-token from shell not flagged: %v", ev.Anomalies)
+	}
+}
+
+func TestObserveSecretsBenignNoop(t *testing.T) {
+	s := &Sensor{name: "t"}
+	ev := &event.Event{ID: "s3", RuleID: "listener:http", Severity: event.SeverityLow, Source: event.Endpoint{IP: "1.2.3.4"}}
+	s.observeSecrets(ev, []byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"))
+	if len(ev.Anomalies) != 0 || ev.Severity != event.SeverityLow {
+		t.Errorf("benign request should not stamp secrets: anoms=%v sev=%v", ev.Anomalies, ev.Severity)
+	}
+}
+
+// A low-signal generic password= (routine login noise) is recorded as a secret
+// but must NOT by itself escalate the event severity.
+func TestObserveSecretsLowSignalNoEscalation(t *testing.T) {
+	s := &Sensor{name: "t"}
+	ev := &event.Event{ID: "s4", RuleID: "listener:http", Severity: event.SeverityMedium, Source: event.Endpoint{IP: "1.2.3.4"}}
+	s.observeSecrets(ev, []byte("POST /login HTTP/1.1\r\n\r\nusername=root&password=letmein123"))
+	if !hasAnomaly(ev, "secret:secret-assignment") {
+		t.Errorf("generic assignment not recorded: %v", ev.Anomalies)
+	}
+	if ev.Severity != event.SeverityMedium {
+		t.Errorf("low-signal secret should not escalate severity; got %v", ev.Severity)
+	}
+}
+
 // observeScan emits a scananalysis:profile once a source crosses the
 // connection threshold.
 func TestObserveScanEmitsProfile(t *testing.T) {

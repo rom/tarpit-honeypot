@@ -214,10 +214,16 @@ func (p *postgres) querySession(conn net.Conn, res *Result) {
 				queries = append(queries, q)
 			}
 			classifyPostgresQuery(res, q)
-			// CommandComplete ("SELECT 0") + ReadyForQuery.
-			cc := append([]byte{'C', 0, 0, 0, 0}, append([]byte("SELECT 0"), 0)...)
-			binary.BigEndian.PutUint32(cc[1:5], uint32(len(cc)-1))
-			_, _ = conn.Write(cc)
+			// Answer common recon queries with a believable single row (so the
+			// attacker's tooling keeps going and reveals more TTPs); everything
+			// else gets the empty "SELECT 0". Nothing is executed.
+			if col, val, ok := pgReconAnswer(q, p.pgVersion()); ok {
+				_, _ = conn.Write(pgSimpleResult(col, val))
+			} else {
+				cc := append([]byte{'C', 0, 0, 0, 0}, append([]byte("SELECT 0"), 0)...)
+				binary.BigEndian.PutUint32(cc[1:5], uint32(len(cc)-1))
+				_, _ = conn.Write(cc)
+			}
 			_, _ = conn.Write([]byte{'Z', 0, 0, 0, 5, 'I'})
 		case 'X': // Terminate
 			return
@@ -225,6 +231,67 @@ func (p *postgres) querySession(conn net.Conn, res *Result) {
 			_, _ = conn.Write([]byte{'Z', 0, 0, 0, 5, 'I'})
 		}
 	}
+}
+
+// pgVersion returns the PostgreSQL version string this decoy presents (kept in
+// sync with the handshake's server_version ParameterStatus).
+func (p *postgres) pgVersion() string { return "14.11" }
+
+// pgSimpleResult builds a one-column, one-row query result: RowDescription ('T')
+// + DataRow ('D') + CommandComplete ('C' "SELECT 1"). Postgres always frames
+// results this way (no capability negotiation), so it's safe for any client.
+func pgSimpleResult(col, val string) []byte {
+	// RowDescription: 1 field. Fields: name\0, tableOID(4), colno(2), typeOID(4)
+	// = 25 (text), typlen(2) = -1, typmod(4) = -1, format(2) = 0 (text).
+	fld := append([]byte(col), 0)
+	fld = append(fld, 0, 0, 0, 0) // table OID
+	fld = append(fld, 0, 0)       // column attr number
+	fld = append(fld, 0, 0, 0, 25)
+	fld = append(fld, 0xff, 0xff)             // typlen -1
+	fld = append(fld, 0xff, 0xff, 0xff, 0xff) // typmod -1
+	fld = append(fld, 0, 0)                   // format text
+	t := []byte{'T', 0, 0, 0, 0, 0, 1}        // msg + len placeholder + fieldCount(2)=1
+	t = append(t, fld...)
+	binary.BigEndian.PutUint32(t[1:5], uint32(len(t)-1))
+
+	// DataRow: 1 column, value as text.
+	d := []byte{'D', 0, 0, 0, 0, 0, 1} // msg + len placeholder + colCount(2)=1
+	vlen := make([]byte, 4)
+	binary.BigEndian.PutUint32(vlen, uint32(len(val)))
+	d = append(d, vlen...)
+	d = append(d, []byte(val)...)
+	binary.BigEndian.PutUint32(d[1:5], uint32(len(d)-1))
+
+	cc := append([]byte{'C', 0, 0, 0, 0}, append([]byte("SELECT 1"), 0)...)
+	binary.BigEndian.PutUint32(cc[1:5], uint32(len(cc)-1))
+
+	return append(append(t, d...), cc...)
+}
+
+// pgReconAnswer maps a recognised reconnaissance query to a believable
+// (column, value) pair. ok is false for anything else (answered empty).
+func pgReconAnswer(q, ver string) (col, val string, ok bool) {
+	l := strings.ToLower(strings.TrimSpace(q))
+	switch {
+	case strings.Contains(l, "version()"):
+		return "version", "PostgreSQL " + ver + " on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit", true
+	case strings.Contains(l, "current_database()"):
+		return "current_database", "postgres", true
+	case strings.Contains(l, "current_user") || strings.Contains(l, "current_role") ||
+		l == "select user" || strings.HasPrefix(l, "select user;") || strings.Contains(l, "select user "):
+		return "current_user", "postgres", true
+	case strings.Contains(l, "session_user"):
+		return "session_user", "postgres", true
+	case strings.Contains(l, "data_directory"):
+		return "data_directory", "/var/lib/postgresql/14/main", true
+	case strings.Contains(l, "inet_server_addr"):
+		return "inet_server_addr", "127.0.0.1", true
+	case strings.Contains(l, "current_schema"):
+		return "current_schema", "public", true
+	case l == "select 1" || l == "select 1;" || l == "select 1 as col":
+		return "?column?", "1", true
+	}
+	return "", "", false
 }
 
 // pgParamStatus builds a ParameterStatus ('S') message.

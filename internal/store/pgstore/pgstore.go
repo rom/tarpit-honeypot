@@ -819,6 +819,9 @@ LIMIT $2`, sinceNS, limit)
 	if f.ASNOrgs, err = s.metaScalarCounts(ctx, "asn_org", sinceNS, store.FacetTopN); err != nil {
 		return f, err
 	}
+	if f.Intents, err = s.metaScalarCounts(ctx, "intent", sinceNS, store.FacetTopN); err != nil {
+		return f, err
+	}
 
 	asnRows, err := s.db.QueryContext(ctx, `
 SELECT meta->>'asn' num, meta->>'asn_org' org, COUNT(*) c

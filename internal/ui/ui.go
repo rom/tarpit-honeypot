@@ -320,6 +320,13 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool,
 		// creds extracts captured credentials/secrets from an event's meta so
 		// the event-detail (per-protocol) view can highlight them.
 		"creds": extractCreds,
+		// eventCommands / eventBodies / eventSecrets gather the structured
+		// attacker content (typed commands + queries, staged payload/message
+		// bodies, harvested secrets) for the event-detail page so it renders as
+		// readable sections instead of ugly map/array blobs in the meta table.
+		"eventCommands": eventCommands,
+		"eventBodies":   eventBodies,
+		"eventSecrets":  eventSecrets,
 		"attackLinkURL": func(id string) string {
 			if !attackLinks {
 				return ""
@@ -757,6 +764,26 @@ var eventMetaPromoted = map[string]bool{
 	"anomalies":    true, // shown as anomaly tags
 	"capture_path": true, // internal path; surfaced as the pcap download
 	"session_cast": true, // internal path; surfaced as the replay/cast download
+	// Structured content rendered in its own dedicated event-detail section
+	// (eventCommands / eventBodies / eventSecrets + creds) — excluded here so
+	// it isn't also dumped as a map[...] / [...] blob in the generic meta table.
+	"shell_commands":    true,
+	"exec_command":      true,
+	"sql_queries":       true,
+	"pg_queries":        true,
+	"mssql_queries":     true,
+	"commands":          true,
+	"mongo_ops":         true,
+	"ldap_queries":      true,
+	"redis_set_payload": true,
+	"message_head":      true,
+	"bdat_chunk":        true,
+	"deobfuscated":      true,
+	"http_body":         true,
+	"post_body":         true,
+	"secrets":           true,
+	"secret_kinds":      true,
+	"auth_attempts":     true, // rendered via creds
 }
 
 func metaScalar(m map[string]any) map[string]any {

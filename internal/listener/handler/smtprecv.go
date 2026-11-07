@@ -131,6 +131,10 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 			head, ended := readDATAUntilDot(br, 4096)
 			res.Meta["message_head"] = head
+			// Mine the message for headers + content intent (subject/from,
+			// phishing links, malware attachments) — far richer intel than the
+			// raw head blob alone.
+			smtpClassifyMessage(&res, head)
 			// Capture the (possibly in-TLS-tunnel) message content into the
 			// payload too, so the full transferred plaintext — not just the
 			// command verbs — is recorded and searchable.
@@ -189,6 +193,40 @@ func (s *smtpRecv) Handle(ctx context.Context, conn net.Conn, cfg config.Listene
 		res.Meta["rcpt_to"] = rcpt
 	}
 	return res, nil
+}
+
+// smtpClassifyMessage extracts the Subject / From headers from a captured DATA
+// head and classifies the content: phishing links, a malware attachment
+// (base64 MIME part), or bulk-spam shape. Detection only — nothing is delivered.
+func smtpClassifyMessage(res *Result, head string) {
+	for _, line := range strings.Split(head, "\n") {
+		line = strings.TrimRight(line, "\r")
+		low := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(low, "subject:"):
+			res.Meta["mail_subject"] = safe.SanitizeForLog(clipStr(strings.TrimSpace(line[len("subject:"):]), 300))
+		case strings.HasPrefix(low, "from:"):
+			res.Meta["mail_header_from"] = safe.SanitizeForLog(clipStr(strings.TrimSpace(line[len("from:"):]), 300))
+		case line == "" || low == "\r":
+			// end of headers — stop scanning header fields
+		}
+	}
+	l := strings.ToLower(head)
+	switch {
+	case strings.Contains(l, "content-transfer-encoding: base64") &&
+		(strings.Contains(l, "application/") || strings.Contains(l, "name=") || strings.Contains(l, "filename=")):
+		flagAnomaly(res, "smtp-attachment")
+		setIfEmpty(res.Meta, "intent", "SMTP message with a (base64) attachment — malware delivery attempt")
+	case strings.Contains(l, "http://") || strings.Contains(l, "https://"):
+		flagAnomaly(res, "smtp-message-link")
+		if strings.Contains(l, "verify") || strings.Contains(l, "password") || strings.Contains(l, "account") ||
+			strings.Contains(l, "login") || strings.Contains(l, "invoice") || strings.Contains(l, "urgent") {
+			flagAnomaly(res, "smtp-phishing-content")
+			setIfEmpty(res.Meta, "intent", "SMTP phishing content — credential-lure link in message body")
+		} else {
+			setIfEmpty(res.Meta, "intent", "SMTP message carrying a link (spam / lure)")
+		}
+	}
 }
 
 // isExternalAddr reports whether an SMTP path (<user@domain>) names a
