@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
+  event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
+  dedicated per-handler view: attempt / attack / successful-engagement counts,
+  first & last attempt and first & last *attack* times, the full set of attacker
+  intents, interpretations (interaction phase), severities, ATT&CK tactics +
+  techniques, D3FEND countermeasures, tools and protocol anomalies seen on it,
+  and every attacker IP (split IPv4 / IPv6, with reverse DNS + peak severity).
 - **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
   `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
   reports the same uptime on every poll is a honeypot tell. They now advance from

@@ -1082,6 +1082,44 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ else }}<p class="note">none (the ssh_interactive / telnet shells record sessions when an attacker logs in)</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
+{{ define "handlerview" }}{{ template "head" . }}
+<h1>handler — <code>{{ .Handler }}</code> <span class="meta">{{ .RangeLabel }}</span></h1>
+{{ template "rangesel" .RangeLinks }}
+<p class="note">Everything seen on the <code>{{ .Handler }}</code> decoy in this window. <a href="/events?handler={{ .Handler }}">list all events →</a></p>
+<div class="counters">
+  <span class="counter"><b>{{ .Attempts }}</b><span>attempts</span></span>
+  <a class="counter" href="/events?handler={{ .Handler }}"><b>{{ .Attacks }}</b><span>attacks</span></a>
+  <span class="counter {{ if .Successful }}sev-bg-high{{ end }}"><b>{{ .Successful }}</b><span>successful</span></span>
+  <span class="counter"><b>{{ .Sources }}</b><span>attacker IPs</span></span>
+</div>
+<table>
+  <tr><th>first attempt</th><td>{{ if .FirstAttempt.IsZero }}—{{ else }}{{ fmtTime .FirstAttempt }}{{ end }}</td>
+      <th>last attempt</th><td>{{ if .LastAttempt.IsZero }}—{{ else }}{{ fmtTime .LastAttempt }}{{ end }}</td></tr>
+  <tr><th>first attack</th><td>{{ if .HasAttack }}{{ fmtTime .FirstAttack }}{{ else }}—{{ end }}</td>
+      <th>last attack</th><td>{{ if .HasAttack }}{{ fmtTime .LastAttack }}{{ else }}—{{ end }}</td></tr>
+</table>
+<div class="cols2">
+  {{ if .Intents }}<div><h3>attacker intents</h3>{{ template "bars" .Intents }}</div>{{ end }}
+  {{ if .Interpretations }}<div><h3>interpretations <span class="meta">(interaction phase)</span></h3>{{ template "bars" .Interpretations }}</div>{{ end }}
+  {{ if .Severities }}<div><h3>severity</h3>{{ template "bars" .Severities }}</div>{{ end }}
+  {{ if .Techniques }}<div><h3>ATT&amp;CK techniques</h3>{{ template "bars" .Techniques }}</div>{{ end }}
+</div>
+<table>
+  {{ if .Tactics }}<tr><th>tactics</th><td>{{ range .Tactics }}<a class="tag" href="/events?handler={{ $.Handler }}&amp;tactic={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+  {{ if .Defenses }}<tr><th>D3FEND</th><td>{{ range .Defenses }}{{ $u := defenseURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ defenseName . }} — MITRE D3FEND">{{ . }}</a>{{ else }}<span class="tag" title="{{ defenseName . }}">{{ . }}</span>{{ end }} {{ end }}</td></tr>{{ end }}
+  {{ if .Tools }}<tr><th>tools</th><td>{{ range .Tools }}<a class="tag warn" href="/events?scanner={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+  {{ if .Anomalies }}<tr><th>protocol anomalies</th><td>{{ range .Anomalies }}<a class="tag bad" href="/search?tag={{ . }}">{{ . }}</a> {{ end }}</td></tr>{{ end }}
+</table>
+<h2>attackers <span class="meta">({{ .Sources }})</span></h2>
+{{ if .IPv4 }}<h3>IPv4</h3><table data-filter><tr><th>source</th><th>rDNS</th><th>events</th><th>peak sev</th></tr>
+{{ range .IPv4 }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a></td><td>{{ if .RDNS }}<code>{{ .RDNS }}</code>{{ else }}<span class="meta">—</span>{{ end }}</td><td>{{ .Count }}</td><td class="sev-{{ .Sev }}">{{ .Sev }}</td></tr>{{ end }}
+</table>{{ end }}
+{{ if .IPv6 }}<h3>IPv6</h3><table data-filter><tr><th>source</th><th>rDNS</th><th>events</th><th>peak sev</th></tr>
+{{ range .IPv6 }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td><td>{{ if .RDNS }}<code>{{ .RDNS }}</code>{{ else }}<span class="meta">—</span>{{ end }}</td><td>{{ .Count }}</td><td class="sev-{{ .Sev }}">{{ .Sev }}</td></tr>{{ end }}
+</table>{{ end }}
+{{ if and (not .IPv4) (not .IPv6) }}<p class="note">no events on this handler in the window.</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
 {{ define "correlation" }}{{ template "head" . }}
 <h1>correlation — {{ .RangeLabel }}</h1>
 {{ template "rangesel" .RangeLinks }}

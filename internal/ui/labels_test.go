@@ -12,7 +12,7 @@ import (
 // handlerLink / protoTag turn a handler / transport into a clickable pivot.
 func TestHandlerLinkAndProtoTag(t *testing.T) {
 	h := string(handlerLink("ftp_files"))
-	if !strings.Contains(h, `href="/events?handler=ftp_files"`) || !strings.Contains(h, ">ftp_files<") {
+	if !strings.Contains(h, `href="/handler?name=ftp_files"`) || !strings.Contains(h, ">ftp_files<") {
 		t.Errorf("handlerLink wrong: %q", h)
 	}
 	if got := string(handlerLink("")); got != "—" {
