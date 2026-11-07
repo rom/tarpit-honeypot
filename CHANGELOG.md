@@ -43,6 +43,14 @@ documented in `docs/`).
 
 ### Changed
 
+- **Flicker-free live refresh via DOM diffing.** The auto-refresh already swapped
+  only `#pgcontent` (no full navigation), but it replaced the whole content's
+  `innerHTML` on every tick — repainting everything and destroying + rebuilding
+  each chart SVG (the visible "blink"). It now **diffs** the new content into the
+  live DOM node-by-node, so unchanged tables, rows and already-rendered charts
+  keep their exact nodes (no repaint), only changed text/attributes are rewritten,
+  a new table row touches just that row, and the field the operator is editing is
+  never clobbered. Verified headlessly (node identity preserved, chart SVG kept).
 - **Redesigned the correlation + campaign graphs.** The old views drew a circular
   / column hairball of every entity — unreadable. Both now share one legible
   **bipartite "shared-infrastructure" graph**: source IPs on the left, and on the
