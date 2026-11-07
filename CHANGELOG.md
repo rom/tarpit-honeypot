@@ -42,8 +42,12 @@ documented in `docs/`).
   SQL rollup of the handlers' plain-language read of what attackers were trying
   to do (the *why*, alongside the existing *how* = ATT&CK and *what* = CVEs).
   Backed by a new `intent` facet in `DashboardFacets` (SQLite + Postgres).
-- **Believable Postgres recon responses.** The Postgres decoy replied "SELECT 0"
-  to every query — an obvious tell. It now answers common reconnaissance queries
+- **Believable MySQL + Postgres recon responses.** The MySQL decoy now answers
+  common recon queries (`@@version`, `user()`, `SHOW DATABASES`, `SELECT 1`, …)
+  with a real result set, correctly honouring the client's
+  `CLIENT_DEPRECATE_EOF` capability (EOF packets vs. OK terminator). The Postgres
+  decoy, which replied "SELECT 0" to every query — an obvious tell — now answers
+  common reconnaissance queries
   (`version()`, `current_user`, `current_database()`, `SHOW data_directory`,
   `SELECT 1`, …) with a real single-row result (RowDescription + DataRow +
   CommandComplete), so an attacker's tooling keeps going and reveals more

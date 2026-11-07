@@ -102,8 +102,9 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 		capFlags := binary.LittleEndian.Uint32(respBody[0:4])
 		res.Meta["client_caps"] = capFlags
 		const (
-			clientSSL        = 0x00000800
-			clientPluginAuth = 0x00080000
+			clientSSL          = 0x00000800
+			clientPluginAuth   = 0x00080000
+			clientDeprecateEOF = 0x01000000
 		)
 		if capFlags&clientSSL != 0 {
 			// The client asked to switch to TLS (which we don't terminate);
@@ -177,7 +178,7 @@ func (m *mysql) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (R
 				res.Meta["auth_accepted"] = true
 				flagAnomaly(&res, "mysql-honeytoken-auth")
 				res.Meta["intent"] = "MySQL login with the planted .env DB credential — attacker reused harvested webapp loot"
-				m.runQuerySession(conn, &res)
+				m.runQuerySession(conn, &res, capFlags&clientDeprecateEOF != 0)
 				return res, nil
 			}
 		}
@@ -261,7 +262,7 @@ func mysqlOKPacket(seq byte) []byte {
 // it runs (high-value intel — what the attacker does once "inside"). Each query
 // is answered with a believable empty result / OK. Only entered when the reply
 // policy permits full interaction; otherwise we accept the login and stop.
-func (m *mysql) runQuerySession(conn net.Conn, res *Result) {
+func (m *mysql) runQuerySession(conn net.Conn, res *Result, deprecateEOF bool) {
 	if !FullInteractionAllowed() {
 		return
 	}
@@ -299,7 +300,14 @@ func (m *mysql) runQuerySession(conn net.Conn, res *Result) {
 			}
 			classifyMySQLQuery(res, q)
 			dbReplyDelaySleep()
-			_, _ = conn.Write(mysqlOKPacket(1)) // empty result / OK
+			// Answer common recon queries with a believable result set so the
+			// attacker's client keeps the session going and reveals more TTPs;
+			// everything else gets an empty OK. Nothing is executed.
+			if cols, row, ok := mysqlReconAnswer(q, m.mysqlVersion()); ok {
+				_, _ = conn.Write(mysqlTextResultSet(cols, row, deprecateEOF))
+			} else {
+				_, _ = conn.Write(mysqlOKPacket(1))
+			}
 		default:
 			dbReplyDelaySleep()
 			_, _ = conn.Write(mysqlOKPacket(1))
@@ -343,6 +351,130 @@ func classifyMySQLQuery(res *Result, q string) {
 		flagAnomaly(res, "mysql-sqli-probe")
 		setIfEmpty(res.Meta, "intent", "MySQL SQL-injection probe")
 	}
+}
+
+// mysqlVersion returns the server version string this decoy presents (kept in
+// sync with the handshake greeting).
+func (m *mysql) mysqlVersion() string {
+	if m.arch != nil && m.arch.MySQLVersion() != "" {
+		return m.arch.MySQLVersion()
+	}
+	if m.id != nil {
+		return m.id.MySQLVersion()
+	}
+	return "5.7.42-log"
+}
+
+// mysqlLenEnc encodes a MySQL length-encoded integer (small values only, which
+// is all a believable recon result needs).
+func mysqlLenEnc(n int) []byte {
+	switch {
+	case n < 251:
+		return []byte{byte(n)}
+	case n < 1<<16:
+		return []byte{0xfc, byte(n), byte(n >> 8)}
+	default:
+		return []byte{0xfd, byte(n), byte(n >> 8), byte(n >> 16)}
+	}
+}
+
+// mysqlLenEncStr encodes a length-encoded string.
+func mysqlLenEncStr(s string) []byte {
+	return append(mysqlLenEnc(len(s)), []byte(s)...)
+}
+
+// mysqlPacket frames a packet body with its 3-byte length + sequence id.
+func mysqlPacket(seq byte, body []byte) []byte {
+	pkt := make([]byte, 4+len(body))
+	pkt[0] = byte(len(body))
+	pkt[1] = byte(len(body) >> 8)
+	pkt[2] = byte(len(body) >> 16)
+	pkt[3] = seq
+	copy(pkt[4:], body)
+	return pkt
+}
+
+// mysqlColumnDef builds a Protocol::ColumnDefinition41 for a VAR_STRING column.
+func mysqlColumnDef(name string) []byte {
+	var b []byte
+	b = append(b, mysqlLenEncStr("def")...) // catalog
+	b = append(b, mysqlLenEncStr("")...)    // schema
+	b = append(b, mysqlLenEncStr("")...)    // table
+	b = append(b, mysqlLenEncStr("")...)    // org_table
+	b = append(b, mysqlLenEncStr(name)...)  // name
+	b = append(b, mysqlLenEncStr("")...)    // org_name
+	b = append(b, 0x0c)                     // length of the fixed-length fields
+	b = append(b, 0x21, 0x00)               // charset utf8_general_ci
+	b = append(b, 0x00, 0x04, 0x00, 0x00)   // column length (1024)
+	b = append(b, 0xfd)                     // type = MYSQL_TYPE_VAR_STRING
+	b = append(b, 0x00, 0x00)               // flags
+	b = append(b, 0x00)                     // decimals
+	b = append(b, 0x00, 0x00)               // filler
+	return b
+}
+
+// mysqlTextResultSet builds a complete COM_QUERY text result set. It honours the
+// client's CLIENT_DEPRECATE_EOF capability: with it, the intermediate EOF is
+// omitted and the set is terminated by an OK packet (0xFE header); without it,
+// the classic EOF packets frame the column list and the rows.
+func mysqlTextResultSet(cols []string, rows [][]string, deprecateEOF bool) []byte {
+	var out []byte
+	seq := byte(1)
+	emit := func(body []byte) {
+		out = append(out, mysqlPacket(seq, body)...)
+		seq++
+	}
+	emit(mysqlLenEnc(len(cols))) // column count
+	for _, c := range cols {
+		emit(mysqlColumnDef(c))
+	}
+	eof := []byte{0xfe, 0x00, 0x00, 0x02, 0x00} // header, warnings(2), status(2)=AUTOCOMMIT
+	if !deprecateEOF {
+		emit(eof)
+	}
+	for _, row := range rows {
+		var rb []byte
+		for _, f := range row {
+			if f == "\x00NULL" { // sentinel for a SQL NULL field
+				rb = append(rb, 0xfb)
+				continue
+			}
+			rb = append(rb, mysqlLenEncStr(f)...)
+		}
+		emit(rb)
+	}
+	if deprecateEOF {
+		// OK packet with EOF header terminates the set.
+		emit([]byte{0xfe, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00})
+	} else {
+		emit(eof)
+	}
+	return out
+}
+
+// mysqlReconAnswer maps a recognised reconnaissance query to a believable
+// result set (column names + rows). ok is false for anything else.
+func mysqlReconAnswer(q, ver string) (cols []string, rows [][]string, ok bool) {
+	l := strings.ToLower(strings.TrimSpace(strings.TrimRight(q, ";")))
+	switch {
+	case strings.Contains(l, "@@version_comment"):
+		return []string{"@@version_comment"}, [][]string{{"MySQL Community Server (GPL)"}}, true
+	case strings.Contains(l, "@@version") || l == "select version()" || strings.Contains(l, " version()"):
+		return []string{"version()"}, [][]string{{ver}}, true
+	case strings.Contains(l, "current_user") || l == "select user()" || strings.Contains(l, " user()"):
+		return []string{"user()"}, [][]string{{"root@localhost"}}, true
+	case strings.Contains(l, "database()") || strings.Contains(l, "schema()"):
+		return []string{"database()"}, [][]string{{"\x00NULL"}}, true
+	case strings.Contains(l, "@@datadir"):
+		return []string{"@@datadir"}, [][]string{{"/var/lib/mysql/"}}, true
+	case strings.Contains(l, "@@hostname"):
+		return []string{"@@hostname"}, [][]string{{"db01"}}, true
+	case l == "show databases":
+		return []string{"Database"}, [][]string{{"information_schema"}, {"mysql"}, {"performance_schema"}, {"sys"}}, true
+	case l == "select 1" || l == "select 1 as col":
+		return []string{"1"}, [][]string{{"1"}}, true
+	}
+	return nil, nil, false
 }
 
 // sqlLooksInjection reports whether a (lowercased) query looks like an SQLi
