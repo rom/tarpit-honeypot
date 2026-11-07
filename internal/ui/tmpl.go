@@ -409,14 +409,33 @@ input.tablefilter { margin: .3rem 0; padding: .15rem .35rem; font: inherit; widt
 .nojs-note { color: var(--warning-text); font-size: 0.857rem; }
 html.js .nojs-note { display: none; }
 .canvas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: .5rem; margin: .5rem 0 1rem; }
-.pcard { background: var(--bg-surface); border: 1px solid var(--border-medium); border-left: 4px solid var(--bar-default); border-radius: 4px; padding: .4rem .55rem; }
+.pcard { background: var(--bg-surface); border: 1px solid var(--border-medium); border-left: 4px solid var(--bar-default); border-radius: 4px; padding: .4rem .55rem; transition: background-color .5s ease, box-shadow .3s ease, transform .12s ease; }
 a.pcard-link { text-decoration: none; color: inherit; display: block; }
-a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03); }
+a.pcard-link:hover .pcard { border-color: var(--link); filter: brightness(1.03); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.18); }
 .pcard.mode-tarpit { border-left-color: var(--pcard-mode-tarpit); }
 .pcard.mode-drop { border-left-color: var(--pcard-mode-drop); }
 .pcard.mode-banner { border-left-color: var(--pcard-mode-banner); }
 .pcard.hit { background: rgba(213,154,58,0.16); box-shadow: inset 0 0 0 1px rgba(213,154,58,0.5); }
 .pcard-hits { background: #d59a3a; color: #1a1205; font-weight: 700; font-size: 0.7rem; border-radius: 3px; padding: 0 .3rem; }
+/* Live summary cues (JS adds .svc-flash / .svc-new on a refresh that changed a
+   service's counter). Translucent colors so they read on light + dark themes.
+   flash uses box-shadow, newly-active uses background — different properties so
+   a 0->active service can show both at once. Both are temporary (fill-mode none
+   reverts to the stylesheet value) and JS removes the class on animationend. */
+:root { --pulse-flash: rgba(96,165,250,0.95); --pulse-new: rgba(74,194,107,0.55); }
+.legend-new { color: #2e9e4f; font-weight: 600; }
+html:not(.js) .js-only { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .pcard.svc-flash { animation: svcFlash 0.42s steps(1, end) 3; }
+  .pcard.svc-new { animation: svcNew 6s ease-out 1; }
+  @keyframes svcFlash { 0%, 49% { box-shadow: 0 0 0 2px var(--pulse-flash), 0 0 10px 1px var(--pulse-flash); } 50%, 100% { box-shadow: none; } }
+  @keyframes svcNew { 0% { background-color: var(--pulse-new); } 100% { } }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No flashing for motion-sensitive users: one gentle, brief highlight. */
+  .pcard.svc-flash, .pcard.svc-new { animation: svcSoft 1.2s ease-out 1; }
+  @keyframes svcSoft { 0% { background-color: var(--pulse-new); } 100% { } }
+}
 .copybtn { margin-top: .3rem; font: inherit; font-size: 0.8rem; cursor: pointer; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); border-radius: 4px; padding: .1rem .5rem; }
 .copybtn:hover { border-color: var(--link); }
 .copybtn.copied { background: var(--ok-bg, #1f3a24); border-color: #5ee090; color: #5ee090; }
@@ -872,10 +891,10 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ else }}<p class="note">L2 packet counters appear here when the AF_PACKET sniffer is enabled (<code>sniffer.enabled</code>, needs CAP_NET_RAW).</p>{{ end }}
 
 {{ if .Canvas.Listeners }}<h2>services <span class="meta">({{ .Canvas.ListenerCount }} listener{{ if ne .Canvas.ListenerCount 1 }}s{{ end }} · {{ .Canvas.TCPCount }} tcp / {{ .Canvas.UDPCount }} udp)</span></h2>
-<p class="note">Click a port to see the source addresses that hit that service. <span class="pcard-hits">Highlighted</span> services saw access or attempts in this window.</p>
+<p class="note">Click a port to see the source addresses that hit that service. <span class="pcard-hits">Highlighted</span> services saw access or attempts in this window. <span class="js-only">On live refresh, a service that just went active glows <span class="legend-new">green</span>, and any service whose counter rose pulses as the new count appears.</span></p>
 <div class="canvas-grid">
   {{ range .Canvas.Listeners }}{{ if gt .Port 0 }}<a class="pcard-link" href="/events?port={{ .Port }}{{ if $.RangeQuery }}&amp;range={{ $.RangeQuery }}{{ end }}" title="{{ if .Hit }}{{ .Hits }} event(s) hit{{ else }}events that hit{{ end }} port {{ .Port }}">{{ end }}
-  <div class="pcard mode-{{ .Mode }}{{ if .Hit }} hit{{ end }}">
+  <div class="pcard mode-{{ .Mode }}{{ if .Hit }} hit{{ end }}" data-svc="{{ .Proto }}/{{ .PortLabel }}" data-hits="{{ .Hits }}">
     <div class="pcard-top"><span class="proto proto-{{ .Proto }}">{{ .Proto }}</span><span class="pcard-port">{{ .PortLabel }}</span>{{ if .Category }}<span class="ctag cat-{{ .Category }}" title="{{ .Category }} protocol">{{ .Category }}</span>{{ end }}{{ if .Hit }}<span class="pcard-hits" title="access/attempts in this window">{{ .Hits }}</span>{{ end }}</div>
     <div class="pcard-svc">{{ if .Service }}{{ .Service }}{{ else }}{{ .Handler }}{{ end }}</div>
     <div class="pcard-meta">{{ .Handler }} · {{ .Mode }}</div>

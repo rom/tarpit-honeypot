@@ -10,6 +10,15 @@ documented in `docs/`).
 
 ### Added
 
+- **Live summary board cues + polish.** On the summary screen each service card
+  now carries stable `data-svc`/`data-hits` hooks; on a live refresh the JS diffs
+  each counter against the previous snapshot (per page, in `sessionStorage`) and:
+  a service whose counter rose **pulses (flashes ×3)** as the new count appears,
+  and one that went **from 0 to active glows green** temporarily. Cards gained
+  smooth transitions + a subtle hover lift, a legend explains the cues, and
+  `prefers-reduced-motion` is honoured (one gentle highlight, no flashing). Works
+  with the JS in-place refresh and the no-JS `<meta refresh>` fallback alike.
+
 - **Unified `AI` label across the agentic honeypot surface.** A new
   `internal/aiclass` package classifies agent / LLM / MCP handlers; the enricher
   stamps `ai` / `ai_class` + a `meta:ai` umbrella label (handler- or

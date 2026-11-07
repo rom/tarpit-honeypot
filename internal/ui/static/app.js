@@ -567,7 +567,53 @@
   // Enhancers that inject controls into / operate on the page CONTENT. Re-run
   // after each in-place refresh swap (the once-only ones — refresh + the
   // document-level external-link guard — are not in this list).
-  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons];
+  // ---- live service pulse (summary board) --------------------------------
+  // On each refresh, diff every service card's packet counter against the
+  // previous snapshot (per page, in sessionStorage). A counter that rose pulses
+  // (flash x3 via .svc-flash); a service that went from 0 to active glows green
+  // (.svc-new). The first snapshot of a session is a silent baseline, so a fresh
+  // page load doesn't light up everything. Works for both the JS in-place swap
+  // (this re-runs after it) and the no-JS <meta refresh> (full reload; the
+  // sessionStorage snapshot persists).
+  function setupServicePulse() {
+    var cards = document.querySelectorAll(".pcard[data-svc]");
+    if (!cards.length) return;
+    var key = "thsvc:" + location.pathname;
+    var prev = null;
+    try {
+      var raw = sessionStorage.getItem(key);
+      if (raw) prev = JSON.parse(raw);
+    } catch (e) { /* storage blocked: degrade to no-pulse */ }
+    var cur = {};
+    Array.prototype.forEach.call(cards, function (card) {
+      var svc = card.getAttribute("data-svc");
+      var hits = parseInt(card.getAttribute("data-hits") || "0", 10) || 0;
+      cur[svc] = hits;
+      if (!prev) return; // baseline snapshot only
+      var old = prev[svc] || 0;
+      if (hits > old) {
+        pulse(card, "svc-flash");             // counter rose → flash x3
+        if (old === 0) pulse(card, "svc-new"); // 0 → active → temporary green
+      }
+    });
+    try { sessionStorage.setItem(key, JSON.stringify(cur)); } catch (e) { /* ignore */ }
+  }
+
+  // pulse (re)starts a one-shot animation class and removes it when the
+  // animation ends, so the same card can pulse again on the next change.
+  function pulse(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth; // force reflow so re-adding restarts the animation
+    el.classList.add(cls);
+    el.addEventListener("animationend", function h(ev) {
+      if (ev.target === el) {
+        el.classList.remove(cls);
+        el.removeEventListener("animationend", h);
+      }
+    });
+  }
+
+  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons, setupServicePulse];
   function runContentEnhancers() {
     contentEnhancers.forEach(function (fn) { try { fn(); } catch (e) { /* never break the page */ } });
   }
