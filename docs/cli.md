@@ -173,6 +173,62 @@ Print the effective post-defaults config as YAML. Secrets stay as env var names 
 tarpit-honeypot show-config -c /etc/tarpit-honeypot/config.yaml
 ```
 
+---
+
+## `schema`
+
+Emit a JSON Schema for the config, reflected from the Go config type so it never drifts from the code. Point an editor's YAML language server at it for structural validation + autocomplete — authoring mistakes (a `port:` outside `bind`, a missing listener `id`, an unknown handler) show up as you type instead of as a crash-loop at deploy.
+
+```
+tarpit-honeypot schema -o tarpit-honeypot.schema.json
+# then, in VS Code settings.json:
+#   "yaml.schemas": { "./tarpit-honeypot.schema.json": "tarpit-honeypot*.yaml" }
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-o <path>` | stdout | Write the schema to a file instead of stdout. |
+
+---
+
+## `doctor`
+
+Preflight / liveness self-check. Loads the effective config and reports whether what a running sensor depends on is actually in place: the data dir is writable, the event store exists, configured enrichment files are present, and — run against a live instance — each configured TCP listener is actually accepting. It closes the gap between "validate-config passed" and "the service is really serving".
+
+```
+tarpit-honeypot doctor -c /etc/tarpit-honeypot/config.yaml   # offline checks + probe localhost listeners
+tarpit-honeypot doctor --no-probe                            # skip the listener connection probes
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config to check. |
+| `--no-probe` | off | Do not try to connect to the configured listeners. |
+| `--timeout <dur>` | `1s` | Per-listener connect timeout. |
+
+Exit status is non-zero when a hard problem is found (e.g. data dir not writable); warnings (missing enrichment files, listeners not yet accepting) do not fail.
+
+---
+
+## `firewall-rules`
+
+Print host-firewall rules that open exactly the ports the configured listeners (and honeynet host services) bind — so you never hand-transcribe them. firewalld is the default (RHEL/AlmaLinux/Fedora); `--format` selects nftables, ufw or iptables.
+
+```
+tarpit-honeypot firewall-rules -c /etc/tarpit-honeypot/config.yaml            # firewalld
+tarpit-honeypot firewall-rules -c cfg.yaml --format nftables --iface eth0
+tarpit-honeypot firewall-rules -c cfg.yaml --format ufw
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config whose listener ports to open. |
+| `--format` | `firewalld` | `firewalld` \| `nftables` \| `ufw` \| `iptables`. |
+| `--zone <z>` | active/default | firewalld zone to add the ports to. |
+| `--iface <if>` | — | Restrict the rules to this ingress interface (nftables/iptables). |
+
+The output is a comment block listing each port + what runs there, followed by copy-pasteable commands. Opening these ports to the internet is intentional for a honeypot — just make sure nothing real listens behind them.
+
 | Flag | Default | Meaning |
 |---|---|---|
 | `-c <path>` | `/etc/tarpit-honeypot/config.yaml` | Config file. |

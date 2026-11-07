@@ -10,6 +10,26 @@ documented in `docs/`).
 
 ### Added
 
+- **Persistent per-attacker shell filesystem (SSH/Telnet interactive).** The
+  interactive shell gained a mutation-overlay VFS: files an attacker creates
+  (`touch`/`mkdir`/`echo >`), payloads they fetch (`wget`/`curl`) and things
+  they `rm` now persist per source IP under `<data_dir>/shell-fs/` and are still
+  there on reconnect — `ls`/`cat`/`cd`/`pwd` reflect the overlay and the prompt
+  tracks the cwd, while untouched base paths still fall through to the canned
+  image. A fetched payload records the dropper filename + URL across sessions
+  (`shell_downloads` + a `shell-payload-download` marker). Bounded by node/byte
+  caps and a per-dir file ceiling. (The asciinema session-replay player in the
+  web UI already existed — `/replay`, linked from loot + event detail.)
+- **`schema` subcommand** — emits a JSON Schema for the config (reflected from
+  the Go type, so it never drifts), for editor autocomplete/validation that
+  catches authoring mistakes (port-outside-bind, missing id) at edit time.
+- **`firewall-rules` subcommand** — prints host-firewall rules opening exactly
+  the ports the configured listeners + honeynet services bind (firewalld default;
+  nftables/ufw/iptables via `--format`).
+- **`doctor` subcommand** — preflight/liveness self-check: data-dir writable,
+  event store present, configured enrichment files present, and (against a
+  running instance) each TCP listener actually accepting — closing the gap
+  between "validate-config passed" and "the service is really serving".
 - **Unified `OT` label across ICS/SCADA, building automation and medtech.** A new
   `internal/otclass` package is the single source of truth for which handlers are
   operational technology; the enricher stamps `meta.ot` / `meta.ot_class`

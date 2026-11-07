@@ -106,6 +106,7 @@ func (c *Config) Paths(configFiles ...string) []PathRef {
 		add("state", "correlate_state", filepath.Join(d, "correlate-state.json"), true)
 		add("state", "payloads_dir", filepath.Join(d, "payloads"), true)
 		add("state", "sessions_dir", filepath.Join(d, "sessions"), true)
+		add("state", "shell_fs_dir", filepath.Join(d, "shell-fs"), true)
 		add("state", "captures_dir", filepath.Join(d, "captures"), true)
 	}
 	return out

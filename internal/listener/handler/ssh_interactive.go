@@ -51,11 +51,12 @@ import (
 //     in the shell package. We add a hard SessionTimeout on top so
 //     a stalled crypto/ssh dial can't pin a worker.
 type sshInteractive struct {
-	id   *identity.Identity
-	jit  *jitter.Jitterer
-	arch *archetype.Profile
-	dir  string
-	rec  *sessionrec.Store
+	id      *identity.Identity
+	jit     *jitter.Jitterer
+	arch    *archetype.Profile
+	dir     string // TLS/host-key dir (<data_dir>/tls)
+	dataDir string // sensor data dir root (for the persistent shell overlay)
+	rec     *sessionrec.Store
 	// vuln enables vulnerability *emulation*: when set, the handler accepts the
 	// SSH auth-bypass signatures (Alpine blank-root CVE-2019-5021, the *sshole
 	// 257–1024 byte musl password bypass) on the first matching attempt so the
@@ -411,7 +412,22 @@ func (s *sshInteractive) runSession(ctx context.Context, ch xssh.Channel, reqs <
 			res.Meta["session_cast"] = name
 		}
 	}
-	captured := shell.Run(ctx, inR, outW, s.arch)
+	// Persistent per-attacker overlay filesystem: load what this source changed
+	// in earlier sessions, run the shell against it, and save it back — so a
+	// dropped payload / created file is still there on reconnect and the dropper
+	// URL is preserved across sessions. Keyed by source IP under <data_dir>.
+	vfs := shell.LoadFS(s.dataDir, peer, "/root")
+	captured := shell.RunWithFS(ctx, inR, outW, s.arch, vfs)
+	if err := shell.SaveFS(s.dataDir, peer, vfs); err != nil {
+		slog.Debug("ssh_interactive: persist shell fs", "err", err)
+	}
+	if n := len(vfs.Nodes); n > 0 {
+		res.Meta["shell_fs_files"] = n
+	}
+	if len(vfs.Downloads) > 0 {
+		res.Meta["shell_downloads"] = vfs.Downloads
+		flagAnomaly(res, "shell-payload-download")
+	}
 	if len(captured.Commands) > 0 {
 		res.Meta["shell_commands"] = captured.Commands
 	}
