@@ -58,6 +58,7 @@ type DashboardFacets struct {
 	Cities  map[string]int
 	ASNOrgs map[string]int
 	Tools   map[string]int
+	Intents map[string]int
 	ASNs    []ASNFacet
 	Ports   map[int]int
 }
@@ -130,6 +131,11 @@ LIMIT ?`, sinceNS, limit)
 		return f, err
 	}
 	if f.ASNOrgs, err = s.metaScalarCounts(ctx, "$.asn_org", sinceNS, FacetTopN); err != nil {
+		return f, err
+	}
+	// Attacker intent (the handler's plain-language read of what each exchange
+	// was trying to do) — a single-valued meta scalar, rolled up like the rest.
+	if f.Intents, err = s.metaScalarCounts(ctx, "$.intent", sinceNS, FacetTopN); err != nil {
 		return f, err
 	}
 

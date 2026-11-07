@@ -351,6 +351,7 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .killchain { display: flex; flex-wrap: wrap; gap: 2px; margin: .1rem 0 .5rem; }
 .kc-stage { flex: 1 1 auto; min-width: 48px; text-align: center; font-size: .72rem; padding: .18rem .25rem; border-radius: 3px; background: var(--tag-bg); border: 1px solid var(--border-medium); color: var(--text-muted); white-space: nowrap; }
 .kc-on { background: var(--bar-high, #c0506a); border-color: var(--bar-high, #c0506a); color: #fff; font-weight: 600; }
+.intent-cell { max-width: 22rem; font-size: 0.857rem; }
 .host { border-left: 3px solid var(--host-border); padding: .15rem 0 .15rem .6rem; margin: .35rem 0; }
 .host .hostline { font-weight: 600; }
 .host .os { color: var(--text-faint); font-weight: 400; }
@@ -927,6 +928,9 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <h2>top vulnerabilities</h2>
 {{ if .CVEs }}{{ template "bars" .CVEs }}<p class="note">Most-probed CVEs (the <em>what</em>) — click a CVE to search its events; see all under <a href="/search?has_cve=1">CVE events</a>.</p>{{ else }}<p class="note">none detected</p>{{ end }}
 
+<h2 data-help="The handlers' plain-language read of what attackers were trying to do, aggregated across the window. Click a row to list every event with that intent.">top attacker intents</h2>
+{{ if .Intents }}{{ template "bars" .Intents }}<p class="note">What they were actually <em>trying to do</em> (the <em>why</em>) — click an intent to list its events.</p>{{ else }}<p class="note">none inferred</p>{{ end }}
+
 <h2>top sources</h2>
 {{ if .Sources }}{{ template "bars" .Sources }}{{ else }}<p class="note">none</p>{{ end }}
 <p class="note">Source IPs link to their <a href="/profiles">attacker profile</a>.</p>
@@ -1367,6 +1371,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <th><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
     <th data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
     <th><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
+    <th data-help="The handler's read of what the attacker was trying to do on this exchange, summarized from the protocol + flagged anomalies. Click to list every event with the same intent.">intent</th>
     <th></th>
   </tr>
   {{ range .Events }}
@@ -1377,6 +1382,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
     <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
     <td>{{ handlerLink .Handler }}</td>
+    <td class="intent-cell">{{ with index .Meta "intent" }}{{ intentLink (printf "%v" .) }}{{ end }}</td>
     <td><a href="/events/{{ .ID }}">details</a></td>
   </tr>
   {{ end }}

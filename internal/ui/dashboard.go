@@ -85,6 +85,10 @@ type dashboard struct {
 	// them would hide both axes.
 	Attacks []barRow
 	CVEs    []barRow
+	// Intents ranks the most common attacker-intent strings the handlers
+	// inferred — the plain-language "what they were trying to do" across the
+	// window, each pivoting to its filtered event list.
+	Intents []barRow
 	// TargetIPs ranks the host's own server IPs (destinations) that were hit —
 	// the multi-IP breakdown ("which of my addresses are getting attacked").
 	// Only meaningful when the host serves more than one IP.
@@ -240,8 +244,12 @@ func enrichDashboard(d *dashboard, evs []*event.Event) {
 	tech, cve := map[string]int{}, map[string]int{}
 	target := map[string]int{}
 	city, org := map[string]int{}, map[string]int{}
+	intent := map[string]int{}
 	for _, ev := range evs {
 		tag := eventTag(ev)
+		if it, _ := ev.Meta["intent"].(string); it != "" {
+			intent[it]++
+		}
 		for _, t := range tag.Tactics {
 			tac[t]++
 		}
@@ -444,6 +452,7 @@ func enrichDashboardFacets(d *dashboard, f store.DashboardFacets) []chSlice {
 	d.Cities = topBars(f.Cities, 10, "/events?geo_city=")
 	d.ASNOrgs = topBars(f.ASNOrgs, 10, "/events?asn_org=")
 	d.Tools = topBars(f.Tools, 10, "/events?tool=")
+	d.Intents = topBars(f.Intents, 12, "/events?intent=")
 	return slicesFromMap(svc)
 }
 

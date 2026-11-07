@@ -30,6 +30,12 @@ documented in `docs/`).
 
 ### Added
 
+- **Attacker intent surfaced across the UI.** The main `/events` list gained an
+  **intent column** (each a clickable `/events?intent=` filter), and the summary
+  dashboard gained a **"top attacker intents"** analysis panel — a full-window
+  SQL rollup of the handlers' plain-language read of what attackers were trying
+  to do (the *why*, alongside the existing *how* = ATT&CK and *what* = CVEs).
+  Backed by a new `intent` facet in `DashboardFacets` (SQLite + Postgres).
 - **Believable Postgres recon responses.** The Postgres decoy replied "SELECT 0"
   to every query — an obvious tell. It now answers common reconnaissance queries
   (`version()`, `current_user`, `current_database()`, `SHOW data_directory`,
