@@ -326,6 +326,62 @@ window.TarpitCharts = (function () {
     return root;
   };
 
+  // shared: bipartite "shared-infrastructure" graph. The left column is the
+  // source IPs; the right column is the pivot entities (fingerprints, ASNs,
+  // tools, creds, domains, …) they have IN COMMON. Only shared hubs are sent,
+  // so every edge is correlation evidence rather than noise, and a barycentre
+  // ordering keeps the crossings down so clusters read at a glance.
+  //   { sources:[{id,label,sev,count}], hubs:[{id,label,kind,count}],
+  //     edges:[{from,to}] }
+  var SHARED_KINDS = ["fp", "pubkey", "asn", "tool", "cred", "domain", "ua", "malware"];
+  function kindColor(k) { var i = SHARED_KINDS.indexOf(k); return color(i < 0 ? 7 : i); }
+  charts.shared = function (d) {
+    var sources = (d.sources || []).slice(), hubs = (d.hubs || []).slice(), edges = d.edges || [];
+    if (!sources.length || !hubs.length) return svgRoot(720, 60, "tc-shared");
+    var si = {}, hi = {};
+    sources.forEach(function (s, i) { si[s.id] = i; });
+    hubs.forEach(function (h, i) { hi[h.id] = i; });
+    var adjS = sources.map(function () { return []; }), adjH = hubs.map(function () { return []; });
+    edges.forEach(function (e) { var a = si[e.from], b = hi[e.to]; if (a != null && b != null) { adjS[a].push(b); adjH[b].push(a); } });
+    function mean(a) { if (!a.length) return 1e9; var s = 0; a.forEach(function (v) { s += v; }); return s / a.length; }
+    // Barycentre passes: order each side by the mean position of its neighbours
+    // on the other side. Two rounds is plenty for the bounded node count.
+    var sOrd = sources.map(function (_, i) { return i; }), hOrd = hubs.map(function (_, i) { return i; });
+    for (var pass = 0; pass < 2; pass++) {
+      var sRank = {}; sOrd.forEach(function (idx, r) { sRank[idx] = r; });
+      hOrd.sort(function (a, b) { return mean(adjH[a].map(function (x) { return sRank[x]; })) - mean(adjH[b].map(function (x) { return sRank[x]; })); });
+      var hRank = {}; hOrd.forEach(function (idx, r) { hRank[idx] = r; });
+      sOrd.sort(function (a, b) { return mean(adjS[a].map(function (x) { return hRank[x]; })) - mean(adjS[b].map(function (x) { return hRank[x]; })); });
+    }
+    var W = 760, P = { t: 28, b: 16 }, rowH = 30;
+    var rows = Math.max(sOrd.length, hOrd.length), H = P.t + P.b + Math.max(1, rows) * rowH;
+    var lx = 140, rx = W - 150, sy = {}, hy = {};
+    sOrd.forEach(function (idx, r) { sy[idx] = P.t + (r + 0.5) * ((H - P.t - P.b) / sOrd.length); });
+    hOrd.forEach(function (idx, r) { hy[idx] = P.t + (r + 0.5) * ((H - P.t - P.b) / hOrd.length); });
+    var root = svgRoot(W, H, "tc-shared");
+    root.appendChild(text(lx, 16, "source IPs", "tc-grouphdr", { "text-anchor": "end" }));
+    root.appendChild(text(rx, 16, "shared infrastructure", "tc-grouphdr", { "text-anchor": "start" }));
+    edges.forEach(function (e) {
+      var a = si[e.from], b = hi[e.to]; if (a == null || b == null) return;
+      var x1 = lx, y1 = sy[a], x2 = rx, y2 = hy[b], mx = (x1 + x2) / 2;
+      root.appendChild(el("path", { d: "M" + x1 + "," + y1 + " C" + mx + "," + y1 + " " + mx + "," + y2 + " " + x2 + "," + y2, fill: "none", class: "tc-edge", stroke: kindColor(hubs[b].kind), "stroke-opacity": 0.35 }));
+    });
+    sources.forEach(function (s, i) {
+      var y = sy[i]; if (y == null) return;
+      root.appendChild(title(el("circle", { cx: lx, cy: y, r: 5, class: "tc-node", fill: SEV[s.sev] || PALETTE[7] }), (s.label || s.id) + (s.count ? " · " + fmt(s.count) + " events" : "")));
+      root.appendChild(text(lx - 9, y + 4, s.label || s.id, "tc-nlabel", { "text-anchor": "end" }));
+    });
+    hubs.forEach(function (h, i) {
+      var y = hy[i]; if (y == null) return;
+      var r = Math.max(4, Math.min(13, 3 + (num(h.count) || 1) * 1.5));
+      root.appendChild(title(el("circle", { cx: rx, cy: y, r: r, class: "tc-node", fill: kindColor(h.kind) }), (h.label || h.id) + " · shared by " + fmt(h.count) + " IPs"));
+      root.appendChild(text(rx + r + 5, y + 4, h.label || h.id, "tc-nlabel", { "text-anchor": "start" }));
+    });
+    var kinds = []; hubs.forEach(function (h) { if (kinds.indexOf(h.kind) < 0) kinds.push(h.kind); });
+    root._legend = kinds.map(function (k) { return { label: k, color: kindColor(k) }; });
+    return root;
+  };
+
   // force: force-directed node-link clustering. Same data as `network`
   // ({ nodes:[{id,label,group?,kind?}], edges:[{from,to}] }) but laid out by a
   // small Fruchterman-Reingold simulation so nodes sharing edges (e.g. source

@@ -8,6 +8,26 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Redesigned the correlation + campaign graphs.** The old views drew a circular
+  / column hairball of every entity — unreadable. Both now share one legible
+  **bipartite "shared-infrastructure" graph**: source IPs on the left, and on the
+  right only the entities two or more of them have IN COMMON (a TLS/SSH
+  fingerprint, reused SSH pubkey, identical credential, C2/ingress domain or
+  malware artifact), so every edge is correlation evidence rather than noise. A
+  barycentre ordering keeps the crossings down; left nodes are coloured by peak
+  severity, right nodes by kind and sized by how many IPs share them.
+  - **Correlation** now also surfaces **correlated clusters**: connected
+    components of IPs joined by shared infrastructure (union-find), each
+    summarised with its members and the pivots that bind them — "these N IPs are
+    one operator" stated outright. Broad/spoofable pivots (ASN, User-Agent,
+    generic tool name) are excluded from linking so unrelated hosts aren't merged.
+  - **Campaign** replaces the abstract tactic→tactic sankey with a **kill-chain
+    funnel** (how many distinct sources reached each ATT&CK stage, recon→impact —
+    where attackers get stuck) and gives every campaign a compact **kill-chain
+    rail** showing the canonical stages with the ones it reached lit.
+
 ### Added
 
 - **Configurable shell logins (`accept_creds` for the interactive shells).** The

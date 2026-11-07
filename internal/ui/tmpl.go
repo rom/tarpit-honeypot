@@ -348,6 +348,9 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .net { background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 4px; padding: .6rem .8rem; margin: .6rem 0; }
 .net h3 { margin: 0 0 .35rem; font-size: 1rem; }
 .net .meta { color: var(--text-muted); font-size: 0.857rem; margin-bottom: .4rem; }
+.killchain { display: flex; flex-wrap: wrap; gap: 2px; margin: .1rem 0 .5rem; }
+.kc-stage { flex: 1 1 auto; min-width: 48px; text-align: center; font-size: .72rem; padding: .18rem .25rem; border-radius: 3px; background: var(--tag-bg); border: 1px solid var(--border-medium); color: var(--text-muted); white-space: nowrap; }
+.kc-on { background: var(--bar-high, #c0506a); border-color: var(--bar-high, #c0506a); color: #fff; font-weight: 600; }
 .host { border-left: 3px solid var(--host-border); padding: .15rem 0 .15rem .6rem; margin: .35rem 0; }
 .host .hostline { font-weight: 600; }
 .host .os { color: var(--text-faint); font-weight: 400; }
@@ -1075,8 +1078,21 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ define "correlation" }}{{ template "head" . }}
 <h1>correlation — {{ .RangeLabel }}</h1>
 {{ template "rangesel" .RangeLinks }}
-<p class="note">Per-source pivot chains: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view.</p>
-{{ if .GraphB64 }}<div id="corrgraph" data-graph-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the interactive pivot graph</p></div>{{ end }}
+<p class="note">Which source IPs are the <strong>same operator</strong>? Sources are linked when they share high-signal infrastructure — a TLS/SSH fingerprint, a reused SSH public key, an identical credential, a C2/ingress domain, or a malware artifact. {{ .SharedCount }} shared pivot{{ if ne .SharedCount 1 }}s{{ end }} found across {{ len .Sources }} shown sources.</p>
+{{ if .GraphB64 }}<figure data-chart="shared" data-chart-title="Shared infrastructure — source IPs (left) ↔ what they have in common (right)" data-chart-b64="{{ .GraphB64 }}" data-help="Only entities shared by two or more source IPs are drawn, so every line is evidence that two hosts belong together. Node size on the right = how many IPs share that entity; left-node colour = peak severity."><p class="note">enable JavaScript to render the shared-infrastructure graph</p></figure>{{ else }}<p class="note">no shared infrastructure across sources in this window — nothing correlates yet.</p>{{ end }}
+
+{{ if .Clusters }}<h2>correlated clusters <span class="meta">({{ len .Clusters }})</span></h2>
+<p class="note">Each cluster is a set of IPs tied together by shared infrastructure — treat them as one actor/operation.</p>
+{{ range .Clusters }}<div class="net">
+  <h3 class="sev-{{ .MaxSev }}"><span class="tag bad">cluster</span> {{ .ID }} <span class="meta">{{ len .Members }} IPs · {{ .Events }} events</span></h3>
+  <table>
+    <tr><th>members</th><td>{{ range .Members }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a>{{ ipv6Tag . }} {{ end }}</td></tr>
+    <tr><th>shared</th><td>{{ range .Shared }}{{ if .Href }}<a class="tag warn" href="{{ .Href }}" title="{{ .Kind }} · shared by {{ .IPs }} IPs">{{ .Kind }}:{{ .Label }} ×{{ .IPs }}</a>{{ else }}<span class="tag warn" title="{{ .Kind }} · shared by {{ .IPs }} IPs">{{ .Kind }}:{{ .Label }} ×{{ .IPs }}</span>{{ end }} {{ end }}</td></tr>
+  </table>
+</div>{{ end }}{{ end }}
+
+<h2>per-source detail</h2>
+<p class="note">Pivot chains for the busiest sources: IP → fingerprints → User-Agents → ASN/country → domains → tools → credentials → malware → sessions. Chips link to the relevant view.</p>
 {{ if .Sources }}{{ range .Sources }}
 <div class="net">
   <h3 class="sev-{{ .MaxSev }}"><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }} <span class="meta">{{ .Count }} events</span></h3>
@@ -1096,16 +1112,16 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 
 {{ define "campaign" }}{{ template "head" . }}
 <h1>campaigns &amp; attacker journey — last 24 hours</h1>
-<p class="note">Two lenses on the same window. <strong>Journey</strong>: the kill-chain transitions every source moved through, aggregated across all attackers. <strong>Campaigns</strong>: source IPs linked into one operation by a shared network fingerprint (JA3/JA4/JA4H/JA3S/HASSH) — strong evidence of one toolset behind multiple hosts. Recomputed live from {{ .Total }} events · {{ .Sources }} sources · {{ .Linked }} linked into multi-host campaigns. JSON at <a href="/api/campaign">/api/campaign</a>.</p>
-{{ if .JourneyB64 }}<figure data-chart="sankey" data-chart-title="Kill-chain journey — tactic→tactic transitions" data-chart-b64="{{ .JourneyB64 }}"><p class="note">enable JavaScript to render the journey graph</p></figure>{{ else }}<p class="note">no multi-stage tactic progressions in the window yet</p>{{ end }}
-{{ if .GraphB64 }}<figure data-chart="network" data-chart-title="Campaign linkage — campaign ↔ fingerprint ↔ handler" data-chart-b64="{{ .GraphB64 }}"><p class="note">enable JavaScript to render the linkage graph</p></figure>{{ end }}
+<p class="note">Two lenses on the same window. <strong>Kill-chain funnel</strong>: how many distinct sources reached each ATT&CK stage, reconnaissance→impact — where attackers get stuck and how far they push. <strong>Campaigns</strong>: source IPs linked into one operation by a shared network fingerprint (JA3/JA4/JA4H/JA3S/HASSH) — strong evidence of one toolset behind multiple hosts. Recomputed live from {{ .Total }} events · {{ .Sources }} sources · {{ .Linked }} linked into multi-host campaigns. JSON at <a href="/api/campaign">/api/campaign</a>.</p>
+{{ if .Funnel }}<div class="net"><h3>kill-chain funnel <span class="meta">(distinct sources per ATT&CK stage, recon→impact)</span></h3>{{ template "bars" .Funnel }}</div>{{ else }}<p class="note">no ATT&CK-tagged activity in the window yet</p>{{ end }}
+{{ if .GraphB64 }}<figure data-chart="shared" data-chart-title="Campaign linkage — multi-host campaigns (left) ↔ the fingerprints that bind them (right)" data-chart-b64="{{ .GraphB64 }}" data-help="Each left node is a cross-host campaign; each right node is a network fingerprint shared by its hosts. A fingerprint linked to several campaigns is one toolset running multiple operations."><p class="note">enable JavaScript to render the linkage graph</p></figure>{{ end }}
 {{ if .Clusters }}{{ range .Clusters }}
 <div class="net">
   <h3 class="sev-{{ .MaxSev }}">{{ if .Multi }}<span class="tag bad">campaign</span> {{ end }}{{ .ID }} <span class="meta">{{ len .Sources }} source{{ if gt (len .Sources) 1 }}s{{ end }} · {{ .Events }} events · {{ fmtTime .First }} → {{ fmtTime .Last }}{{ if .Creds }} · {{ .Creds }} cred attempts{{ end }}</span></h3>
+  {{ if .Stages }}<div class="killchain">{{ range .Stages }}<span class="kc-stage{{ if .On }} kc-on{{ end }}" title="{{ .Tactic }}">{{ .Short }}</span>{{ end }}</div>{{ end }}
   <table>
     <tr><th>sources</th><td>{{ range .Sources }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a>{{ ipv6Tag . }} {{ end }}</td></tr>
     {{ if .Links }}<tr><th>{{ if .Multi }}shared fingerprints{{ else }}fingerprints{{ end }}</th><td>{{ range .Links }}<a class="tag" href="/fingerprints/{{ .Kind }}/{{ .Value }}">{{ .Kind }}:{{ .Value }}</a> {{ end }}</td></tr>{{ end }}
-    {{ if .Tactics }}<tr><th>journey</th><td>{{ range $i, $t := .Tactics }}{{ if $i }} <span class="meta">→</span> {{ end }}<span class="tag">{{ $t }}</span>{{ end }}</td></tr>{{ end }}
     {{ if .ASNs }}<tr><th>asn</th><td>{{ range .ASNs }}<span class="tag">{{ . }}</span> {{ end }}{{ if .Countries }} · {{ range .Countries }}<span class="tag">{{ countryFlag . }} {{ . }}</span> {{ end }}{{ end }}</td></tr>{{ end }}
   </table>
   <div class="cols2">

@@ -12,18 +12,8 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/mitre"
 )
-
-// encodeB64JSON marshals v and base64-encodes it for embedding in a chart
-// data attribute (keeping the JSON clear of HTML-special characters). Returns
-// "" on marshal failure so callers can treat it as "no graph".
-func encodeB64JSON(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return ""
-	}
-	return base64.StdEncoding.EncodeToString(b)
-}
 
 // Campaign / attacker-journey view. Two complementary lenses on the same
 // window of events:
@@ -55,13 +45,21 @@ const campaignMaxClusters = 40
 var linkFPKinds = []string{"ja4", "ja3", "ja4h", "ja3s", "hassh", "hassh_server"}
 
 type campaignView struct {
-	Since      time.Time
-	Total      int // events scanned
-	Sources    int // distinct source IPs
-	Clusters   []campaignCluster
-	Linked     int    // sources that fell into a multi-IP campaign
-	JourneyB64 string // sankey: tactic→tactic transitions (the journey graph)
-	GraphB64   string // network: campaign ↔ fingerprint ↔ handler linkage
+	Since    time.Time
+	Total    int // events scanned
+	Sources  int // distinct source IPs
+	Clusters []campaignCluster
+	Linked   int      // sources that fell into a multi-IP campaign
+	Funnel   []barRow // kill-chain funnel: # distinct sources that reached each tactic
+	GraphB64 string   // bipartite: multi-IP campaign ↔ its linking fingerprints
+}
+
+// stageCell is one cell of a campaign's kill-chain rail: a canonical ATT&CK
+// tactic, lit when the campaign reached that stage.
+type stageCell struct {
+	Tactic string
+	Short  string
+	On     bool
 }
 
 type campaignCluster struct {
@@ -73,7 +71,8 @@ type campaignCluster struct {
 	First      time.Time
 	Last       time.Time
 	MaxSev     string
-	Tactics    []string // kill-chain ordered (the journey this campaign reached)
+	Tactics    []string    // kill-chain ordered (the journey this campaign reached)
+	Stages     []stageCell // the full canonical rail, reached stages lit
 	Techniques []barRow
 	Handlers   []barRow
 	ASNs       []string
@@ -275,6 +274,7 @@ func buildCampaignView(since time.Time, evs []*event.Event) campaignView {
 			c.Links = c.Links[:8]
 		}
 		c.Tactics = orderTactics(tacSet)
+		c.Stages = killChainRail(tacSet)
 		c.Techniques = topBars(techCount, 10, "/attack/technique?id=")
 		c.Handlers = topBars(handlerCount, 10, "")
 		c.ASNs = sortedKeys(asnSet, 6)
@@ -306,106 +306,130 @@ func buildCampaignView(since time.Time, evs []*event.Event) campaignView {
 		v.Clusters = v.Clusters[:campaignMaxClusters]
 	}
 
-	v.JourneyB64 = buildJourneySankey(by, order)
-	v.GraphB64 = buildCampaignGraph(v.Clusters)
+	v.Funnel = buildKillChainFunnel(by, order)
+	v.GraphB64 = buildCampaignSharedGraph(v.Clusters)
 	return v
 }
 
-// buildJourneySankey tallies tactic→tactic transitions across every source's
-// chronological tactic sequence and emits a sankey {nodes,links} the packaged
-// charts.js renders. This is the aggregate attacker journey through the kill
-// chain.
-func buildJourneySankey(by map[string]*srcAgg, order []string) string {
-	type tkey struct{ from, to string }
-	trans := map[tkey]int{}
-	nodeSet := map[string]bool{}
-	for _, ip := range order {
-		seq := by[ip].seq
-		for i := 0; i+1 < len(seq); i++ {
-			if seq[i] == seq[i+1] {
-				continue
-			}
-			trans[tkey{seq[i], seq[i+1]}]++
-			nodeSet[seq[i]] = true
-			nodeSet[seq[i+1]] = true
-		}
-	}
-	if len(trans) == 0 {
-		return ""
-	}
-	type snode struct {
-		ID    string `json:"id"`
-		Label string `json:"label"`
-		// Layer pins the node to its kill-chain stage column. Without it the
-		// renderer infers columns from link direction, which collapses into an
-		// unreadable overlap once an attacker's path loops back (recon→exec→
-		// recon), so we assign the canonical order here.
-		Layer int `json:"layer"`
-	}
-	type slink struct {
-		Source string `json:"source"`
-		Target string `json:"target"`
-		Value  int    `json:"value"`
-	}
-	var nodes []snode
-	// Emit nodes in kill-chain order so the sankey reads left→right, one column
-	// per stage, with the column index pinned in Layer.
-	for i, t := range orderTactics(nodeSet) {
-		nodes = append(nodes, snode{ID: t, Label: t, Layer: i})
-	}
-	var links []slink
-	for k, n := range trans {
-		links = append(links, slink{Source: k.from, Target: k.to, Value: n})
-	}
-	sort.Slice(links, func(i, j int) bool { return links[i].Value > links[j].Value })
-	return encodeB64JSON(struct {
-		Nodes []snode `json:"nodes"`
-		Links []slink `json:"links"`
-	}{nodes, links})
+// tacticShort maps the canonical ATT&CK tactic ids to compact rail labels.
+var tacticShort = map[string]string{
+	"reconnaissance":       "recon",
+	"resource-development": "resource",
+	"initial-access":       "access",
+	"execution":            "exec",
+	"persistence":          "persist",
+	"privilege-escalation": "privesc",
+	"defense-evasion":      "evasion",
+	"credential-access":    "creds",
+	"discovery":            "discovery",
+	"lateral-movement":     "lateral",
+	"collection":           "collect",
+	"command-and-control":  "c2",
+	"exfiltration":         "exfil",
+	"impact":               "impact",
 }
 
-// buildCampaignGraph renders the multi-IP campaigns as a node-link graph:
-// campaign ↔ its linking fingerprints ↔ the handlers it touched. Single-IP
-// campaigns are omitted to keep the graph about cross-host linkage.
-func buildCampaignGraph(clusters []campaignCluster) string {
-	var nodes []graphNode
-	var edges []graphEdge
-	seen := map[string]bool{}
-	add := func(id, label, group string) {
-		if id == "" || seen[id] {
-			return
+// killChainRail returns the full canonical tactic order with the stages this
+// campaign reached lit — a compact left→right progress rail, far more legible
+// than an aggregate sankey.
+func killChainRail(reached map[string]bool) []stageCell {
+	var out []stageCell
+	for _, t := range mitre.Tactics() {
+		short := tacticShort[t]
+		if short == "" {
+			short = t
 		}
-		seen[id] = true
-		nodes = append(nodes, graphNode{ID: id, Label: label, Group: group})
+		out = append(out, stageCell{Tactic: t, Short: short, On: reached[t]})
 	}
+	return out
+}
+
+// buildKillChainFunnel counts how many distinct sources reached each ATT&CK
+// tactic, in kill-chain order — the aggregate "how far attackers got" view that
+// replaces the hard-to-read tactic→tactic sankey.
+func buildKillChainFunnel(by map[string]*srcAgg, order []string) []barRow {
+	count := map[string]int{}
+	for _, ip := range order {
+		for t := range by[ip].tactics {
+			count[t]++
+		}
+	}
+	max := 0
+	for _, n := range count {
+		if n > max {
+			max = n
+		}
+	}
+	if max == 0 {
+		return nil
+	}
+	var rows []barRow
+	for _, t := range mitre.Tactics() {
+		n := count[t]
+		if n == 0 {
+			continue
+		}
+		short := tacticShort[t]
+		if short == "" {
+			short = t
+		}
+		rows = append(rows, barRow{
+			Label: short,
+			Count: n,
+			Pct:   n * 100 / max,
+			Href:  "/events?tactic=" + t,
+		})
+	}
+	return rows
+}
+
+// buildCampaignSharedGraph renders the multi-IP campaigns as a bipartite
+// shared-infrastructure graph: each campaign (left) linked to the fingerprints
+// (right) that bind its hosts. Single-IP "campaigns" are omitted.
+func buildCampaignSharedGraph(clusters []campaignCluster) string {
+	var gsrc, ghub []sharedNode
+	var edges []graphEdge
+	hubSeen := map[string]int{} // fp id -> # campaigns using it
+	type pend struct{ from, to string }
+	var pending []pend
 	n := 0
 	for _, c := range clusters {
 		if !c.Multi {
 			continue
 		}
-		if n++; n > 12 {
+		if n++; n > 16 {
 			break
 		}
 		cid := "camp:" + c.ID
-		add(cid, "campaign "+c.ID+" ("+itoa(len(c.Sources))+" hosts)", "campaign")
+		gsrc = append(gsrc, sharedNode{ID: cid, Label: c.ID + " (" + itoa(len(c.Sources)) + " hosts)", Sev: c.MaxSev, Count: c.Events})
 		for _, fp := range c.Links {
 			id := "fp:" + fp.Kind + ":" + fp.Value
-			add(id, fp.Kind+":"+short(fp.Value), "fp")
-			edges = append(edges, graphEdge{From: cid, To: id})
-		}
-		for _, h := range c.Handlers {
-			id := "h:" + h.Label
-			add(id, h.Label, "handler")
-			edges = append(edges, graphEdge{From: cid, To: id})
+			hubSeen[id]++
+			pending = append(pending, pend{cid, id})
+			if hubSeen[id] == 1 {
+				ghub = append(ghub, sharedNode{ID: id, Label: fp.Kind + ":" + short(fp.Value), Kind: "fp"})
+			}
 		}
 	}
-	if len(nodes) == 0 {
+	if len(gsrc) == 0 || len(ghub) == 0 {
 		return ""
 	}
-	return encodeB64JSON(struct {
-		Nodes []graphNode `json:"nodes"`
-		Edges []graphEdge `json:"edges"`
-	}{nodes, edges})
+	// Fill hub counts (# campaigns sharing each fingerprint).
+	for i := range ghub {
+		ghub[i].Count = hubSeen[ghub[i].ID]
+	}
+	for _, p := range pending {
+		edges = append(edges, graphEdge{From: p.from, To: p.to})
+	}
+	b, err := json.Marshal(struct {
+		Sources []sharedNode `json:"sources"`
+		Hubs    []sharedNode `json:"hubs"`
+		Edges   []graphEdge  `json:"edges"`
+	}{gsrc, ghub, edges})
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 // clusterID is a short stable id for a campaign, derived from its sorted

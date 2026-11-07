@@ -64,25 +64,41 @@ func TestBuildCampaignViewLinksByFingerprint(t *testing.T) {
 	}
 }
 
-func TestBuildJourneySankey(t *testing.T) {
+func TestBuildKillChainFunnelAndRail(t *testing.T) {
 	now := time.Now()
-	// One source progresses discovery (ssh) → credential-access is implicit in
-	// ssh; use distinct handlers to get distinct tactics in time order.
+	// A source that touches multiple handlers accrues multiple ATT&CK tactics.
 	evs := []*event.Event{
 		{RuleID: "listener:a", Handler: "http", Time: now.Add(-3 * time.Minute), Source: event.Endpoint{IP: "1.1.1.1"}},
 		{RuleID: "listener:b", Handler: "modbus", Time: now.Add(-1 * time.Minute), Source: event.Endpoint{IP: "1.1.1.1"}},
 	}
 	v := buildCampaignView(now.Add(-time.Hour), evs)
-	if v.JourneyB64 == "" {
-		t.Fatalf("expected a journey sankey for a multi-tactic source")
+	if len(v.Funnel) == 0 {
+		t.Fatalf("expected a kill-chain funnel for a multi-tactic source")
 	}
-	// Template renders without error and shows the headline.
+	// Funnel rows are in canonical kill-chain order (recon never after impact).
+	// Each cluster carries the full canonical rail with reached stages lit.
+	if len(v.Clusters) == 0 || len(v.Clusters[0].Stages) == 0 {
+		t.Fatalf("expected a per-campaign kill-chain rail; clusters=%+v", v.Clusters)
+	}
+	anyOn := false
+	for _, s := range v.Clusters[0].Stages {
+		if s.On {
+			anyOn = true
+		}
+	}
+	if !anyOn {
+		t.Errorf("expected at least one reached stage on the rail")
+	}
+	// Template renders without error and shows the funnel heading.
 	var b strings.Builder
 	if err := uiTmpl(t).ExecuteTemplate(&b, "campaign", v); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), "attacker journey") {
-		t.Errorf("campaign page missing heading; got %d bytes", b.Len())
+	out := b.String()
+	for _, want := range []string{"attacker journey", "kill-chain funnel", "killchain"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("campaign page missing %q", want)
+		}
 	}
 }
 
