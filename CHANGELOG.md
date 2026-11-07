@@ -30,6 +30,18 @@ documented in `docs/`).
 
 ### Added
 
+- **Believable Postgres recon responses.** The Postgres decoy replied "SELECT 0"
+  to every query — an obvious tell. It now answers common reconnaissance queries
+  (`version()`, `current_user`, `current_database()`, `SHOW data_directory`,
+  `SELECT 1`, …) with a real single-row result (RowDescription + DataRow +
+  CommandComplete), so an attacker's tooling keeps going and reveals more
+  post-auth TTPs; exploit queries still get the empty result + their existing
+  classification.
+- **SMTP message mining.** A captured DATA body is now parsed for its
+  `Subject` / `From` headers (surfaced as `mail_subject` / `mail_header_from`
+  meta) and classified: a base64 attachment → `smtp-attachment` (malware
+  delivery), a credential-lure link → `smtp-phishing-content`, other links →
+  spam/lure — each with a matching intent.
 - **Stateful Redis decoy — full drop-chain capture.** The Redis handler now keeps
   a small bounded per-connection keyspace: a value `SET` is returned by a later
   `GET` (so attack tooling keeps going instead of bailing on an empty reply), and
