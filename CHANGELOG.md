@@ -30,6 +30,12 @@ documented in `docs/`).
 
 ### Added
 
+- **Richer event-detail page.** The structured content handlers capture no
+  longer dumps as raw `map[...]` / `[...]` blobs in the generic meta table — the
+  event-detail page now has dedicated, readable sections: **attacker commands &
+  queries** (shell input, SQL/Redis/Mongo commands, in order), **harvested
+  secrets** (kind + shape-preserving redaction + decoded hint), and **captured
+  content** (staged payload bodies, SMTP message bodies, deobfuscated droppers).
 - **Attacker intent surfaced across the UI.** The main `/events` list gained an
   **intent column** (each a clickable `/events?intent=` filter), and the summary
   dashboard gained a **"top attacker intents"** analysis panel — a full-window

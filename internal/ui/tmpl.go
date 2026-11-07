@@ -352,6 +352,9 @@ input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; bac
 .kc-stage { flex: 1 1 auto; min-width: 48px; text-align: center; font-size: .72rem; padding: .18rem .25rem; border-radius: 3px; background: var(--tag-bg); border: 1px solid var(--border-medium); color: var(--text-muted); white-space: nowrap; }
 .kc-on { background: var(--bar-high, #c0506a); border-color: var(--bar-high, #c0506a); color: #fff; font-weight: 600; }
 .intent-cell { max-width: 22rem; font-size: 0.857rem; }
+.cmdlist { margin: .3rem 0; padding-left: 1.6rem; }
+.cmdlist li { margin: .15rem 0; }
+.cmdlist code { white-space: pre-wrap; word-break: break-all; }
 .host { border-left: 3px solid var(--host-border); padding: .15rem 0 .15rem .6rem; margin: .35rem 0; }
 .host .hostline { font-weight: 600; }
 .host .os { color: var(--text-faint); font-weight: 400; }
@@ -1427,6 +1430,14 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 <table><tr><th>type</th><th>username / principal</th><th>password / secret</th><th>service</th></tr>
 {{ range . }}<tr><td><span class="tag bad">{{ if .Kind }}{{ .Kind }}{{ else }}password{{ end }}</span></td><td>{{ if .User }}{{ .User }}{{ else }}—{{ end }}</td><td><code>{{ .Pass }}</code></td><td>{{ if .Service }}<span class="tag">{{ .Service }}</span>{{ else }}—{{ end }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ with eventCommands .Event }}<h2 data-help="Every command line / query the attacker actually ran on this exchange — interactive-shell input, SQL queries, Redis/Mongo commands — in order. Nothing was executed; these are recorded verbatim.">attacker commands &amp; queries <span class="meta">({{ len . }})</span></h2>
+<ol class="cmdlist">{{ range . }}<li><code>{{ . }}</code></li>{{ end }}</ol>{{ end }}
+{{ with eventSecrets .Event }}<h2 data-help="The attacker's OWN secrets harvested from what they sent — API keys, tokens, JWTs, cookies, private keys, DB URIs. Shown shape-preserving-redacted here; the full value is in the capture store / export-creds.">harvested secrets <span class="meta">({{ len . }})</span></h2>
+<table><tr><th>kind</th><th>value (redacted)</th><th>decoded</th></tr>
+{{ range . }}<tr><td><span class="tag bad">{{ .Kind }}</span></td><td><code>{{ .Redacted }}</code></td><td>{{ if .Hint }}<code>{{ .Hint }}</code>{{ else }}—{{ end }}</td></tr>{{ end }}
+</table>{{ end }}
+{{ with eventBodies .Event }}<h2 data-help="Larger free-text content the attacker transferred: staged payload bodies, mail message bodies, deobfuscated droppers. Captured, never executed.">captured content</h2>
+{{ range . }}<h3>{{ .Label }}</h3><div class="kv">{{ .Text }}</div>{{ end }}{{ end }}
 {{ if index .Meta "http_method" }}<h2>HTTP request</h2><table>
   <tr><th>method</th><td><code>{{ index .Meta "http_method" }}</code></td></tr>
   {{ if index .Meta "http_uri" }}<tr><th>full URI</th><td><code>{{ index .Meta "http_uri" }}</code></td></tr>{{ end }}
