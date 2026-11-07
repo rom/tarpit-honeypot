@@ -8,6 +8,8 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-07
+
 ### Added
 
 - **Persistent per-attacker shell filesystem (SSH/Telnet interactive).** The
