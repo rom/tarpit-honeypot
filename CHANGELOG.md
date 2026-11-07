@@ -10,6 +10,29 @@ documented in `docs/`).
 
 ### Added
 
+- **Unified `OT` label across ICS/SCADA, building automation and medtech.** A new
+  `internal/otclass` package is the single source of truth for which handlers are
+  operational technology; the enricher stamps `meta.ot` / `meta.ot_class`
+  (`ics`|`bas`|`medtech`) + a `meta:ot` umbrella label and an `ics-ot` /
+  `healthcare` targeting value on every OT event — crucially **before** the
+  GeoIP/reputation path that early-returns on private sources, so OT probes from
+  RFC1918 (the norm on OT VLANs) are finally marked. `/events?label=ot` filters
+  the whole OT surface.
+- **Much broader `ot-recon` coverage.** Targeting is now classified by handler
+  (the full OT set), not a short keyword list, so `ot-recon` fires for every
+  ICS/BAS handler; and its recon context widened beyond hidden/rented infra to
+  include scanner/automation fingerprints, reputation hits and novel ASNs. Added
+  a parallel `meta:medtech-recon` for probed clinical targets.
+- **New BAS/BMS protocol handlers** — Tridium Niagara platform daemon
+  (`niagara_platform`, 3011), oBIX building web-services (`obix`), and EnOcean
+  ESP3 serial-over-IP gateway (`enocean`).
+- **New medtech protocol handlers** — ASTM E1381/1394 lab-instrument/LIS
+  (`astm`), POCT1-A point-of-care (`poct1`), and HL7 FHIR REST + TLS
+  (`fhir`/`fhirs`). All flag PHI access and record tampering.
+- **`ja4Signatures` seeded from the FoxIO JA4 database** — real TLS JA4
+  fingerprints for Cobalt Strike, IcedID, SoftEther, and the Python/Go/WinINET
+  client stacks now attribute a tool live (the continuously-updated full DB still
+  loads via `fingerprint_db:` / `scripts/fetch-enrichment.sh`).
 - **Standalone STIX 2.1 / TAXII 2.1 server (`taxii:`)** — a single honeypot can
   now be polled for the IOCs it observes without running the full fleet-
   aggregator ingest endpoint. Serves the same read-only TAXII `fleet-iocs`
@@ -37,7 +60,7 @@ documented in `docs/`).
   PJLink, BACnet/SC-TLS, Dixell/Carel/Trane/Resideo/Danfoss web panels), IoT
   (CoAP, MQTT-SN/MQTTS, LwM2M, Matter, SSDP/UPnP/WS-Discovery, Tuya, Kasa, miIO,
   Yeelight, WiZ, Hikvision/Dahua, Ubiquiti, Aruba PAPI, MNDP, sACN/Art-Net, ADB),
-  IIoT (TR-069/TR-369, OCPP) and IoMT (HL7, DICOM) decoys — 99 listeners.
+  IIoT (TR-069/TR-369, OCPP) and IoMT (HL7, DICOM) decoys — 106 listeners.
 
 ## [1.4.0] - 2026-11-06
 

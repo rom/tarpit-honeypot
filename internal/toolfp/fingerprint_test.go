@@ -37,19 +37,25 @@ func TestJA4Automation(t *testing.T) {
 	}
 }
 
-func TestIdentifyJA4AndHASSHExtensible(t *testing.T) {
-	// Empty by default (operator/corpus-extensible) — must not panic or match.
-	if IdentifyJA4("whatever") != "" {
-		t.Error("unseeded JA4 should not match")
+func TestIdentifyJA4SeededFromJA4DB(t *testing.T) {
+	// Real FoxIO JA4DB entries seeded into the built-in map resolve (trimmed).
+	cases := map[string]string{
+		"t12i190700_d83cc789557e_16bbda4055b2":     "cobaltstrike",
+		"  t13d201100_2b729b4bf6f3_9e7b989ebec8  ": "icedid",
+		"t13d181000_85036bcba153_d41ae481755e":     "python",
+		"t13d191000_9dc949149365_e7c285222651":     "golang",
+	}
+	for fp, want := range cases {
+		if got := IdentifyJA4(fp); got != want {
+			t.Errorf("IdentifyJA4(%q) = %q, want %q", fp, got, want)
+		}
+	}
+	// Unknown JA4 and all HASSH (no JA4DB HASSH column) resolve to nothing.
+	if IdentifyJA4("t13d9999h9_deadbeef0000_0000deadbeef") != "" {
+		t.Error("unknown JA4 should not match")
 	}
 	if IdentifyHASSH("deadbeef") != "" {
 		t.Error("unseeded HASSH should not match")
-	}
-	// A seeded entry resolves (prove the lookup path works).
-	ja4Signatures["t13d000000_x_y"] = "unit-test-tool"
-	defer delete(ja4Signatures, "t13d000000_x_y")
-	if IdentifyJA4("  t13d000000_x_y  ") != "unit-test-tool" {
-		t.Error("seeded JA4 (trimmed) should resolve")
 	}
 }
 

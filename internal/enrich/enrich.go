@@ -551,6 +551,9 @@ func (e *Enricher) Decorate(ev *event.Event) {
 	// Fingerprint → tool attribution (ja3/ja4/ja4h/hassh) is client-crypto
 	// based, so like the MAC vendor it runs independent of the source IP class.
 	decorateFingerprintTools(ev)
+	// OT classification (ICS/BAS/medtech) is handler-based and must run for
+	// RFC1918 sources too — OT segments are private — so it precedes the IP gate.
+	decorateOTClass(ev)
 	if ev.Source.IP == "" {
 		return
 	}

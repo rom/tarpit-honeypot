@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/otclass"
 )
 
 // decorateAttributes adds derived, no-external-data attributes: a subnet
@@ -168,6 +169,12 @@ func metaASNKey(m map[string]any) string {
 
 // targeting maps the rule/handler to a coarse "what are they hunting" label.
 func targeting(ev *event.Event) string {
+	// OT handlers (ICS/BAS/medtech) are classified authoritatively by handler
+	// name, so the whole set maps — not only the few the keyword list below
+	// happens to mention.
+	if t := otclass.Targeting(ev.Handler); t != "" {
+		return t
+	}
 	hay := strings.ToLower(ev.RuleID + " " + ev.Handler)
 	switch {
 	case containsAny(hay, "wordpress", "wp-", "wp_", "joomla", "drupal", "phpmyadmin", "php2shell", "webapp", "cms"):
