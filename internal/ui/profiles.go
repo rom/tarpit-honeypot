@@ -1183,6 +1183,29 @@ func extractCreds(ev *event.Event) []credPair {
 		out = append(out, credPair{Kind: "kerberos-ticket", User: get("principal"), Pass: t, Service: s})
 	}
 
+	// 3b) Attacker-leaked secrets harvested from request headers / bodies /
+	// shell input / payloads by internal/secretscan (the attacker's OWN
+	// credentials — API keys, bearer/OAuth tokens, JWTs, session cookies,
+	// private keys, certificates, DB URIs). Each is surfaced as its own row so
+	// it lands in the captures page and export-creds. basic-auth carries a
+	// decoded user:pass in hint.
+	for _, sc := range metaMapList(meta, "secrets") {
+		seen["secrets"] = true
+		kind, _ := sc["kind"].(string)
+		val, _ := sc["value"].(string)
+		if kind == "" || val == "" {
+			continue
+		}
+		hint, _ := sc["hint"].(string)
+		if kind == "basic-auth" && strings.Contains(hint, ":") {
+			u, p, _ := strings.Cut(hint, ":")
+			out = append(out, credPair{Kind: "password", User: u, Pass: p, Service: svc})
+			continue
+		}
+		out = append(out, credPair{Kind: kind, Pass: val, Service: svc})
+	}
+	seen["secret_kinds"] = true
+
 	// 4) Everything else: classify each remaining string-valued meta key by its
 	// name and emit it. This catches tokens, JWTs, hashes, challenges,
 	// communities, cookies, API keys, session keys, and every vendor "*_auth"

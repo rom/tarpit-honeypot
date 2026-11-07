@@ -10,6 +10,24 @@ documented in `docs/`).
 
 ### Added
 
+- **Attacker-secret harvesting (`internal/secretscan`).** A new detector library
+  reaps the *attacker's own* credentials and secrets out of everything they send
+  the honeypot — request headers + bodies, interactive-shell input and captured
+  payloads. ~25 ordered detectors cover vendor API keys & tokens (AWS, GitHub,
+  GitLab, Slack, Google, Stripe, Anthropic, OpenAI, npm, PyPI, HuggingFace,
+  SendGrid, Twilio, Telegram), transport-carried credentials (Basic — decoded to
+  `user:pass` — Bearer/OAuth, JWTs, `X-API-Key`, session cookies), full PEM
+  **private keys** & **certificates**, DB connection URIs with embedded creds, and
+  a generic `secret=` catch-all. Wired into the sensor: a find stamps a
+  `secret:<kind>` anomaly, folds the value into `ev.Meta["secrets"]` (so it lands
+  on the captures page and in `export-creds`), and escalates high-value finds
+  (keys/tokens/JWTs/private-keys/DB-URIs) to **≥ High** — routine `password=` /
+  cookie shapes are recorded but don't inflate severity. Detection only; nothing
+  captured is ever used.
+- **RDP `mstshash` → username.** The RDP handler now strips the `mstshash=`
+  prefix from the connection cookie and stamps the bare `username` in meta, so the
+  targeted account flows into the credential store / `export-creds` /
+  cred-reuse correlation (previously it was only recorded as the raw `cookie`).
 - **Live summary board cues + polish.** On the summary screen each service card
   now carries stable `data-svc`/`data-hits` hooks; on a live refresh the JS diffs
   each counter against the previous snapshot (per page, in `sessionStorage`) and:

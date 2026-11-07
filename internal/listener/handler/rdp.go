@@ -97,9 +97,18 @@ func (r *rdp) Handle(ctx context.Context, conn net.Conn, cfg config.Listener) (R
 				setIfEmpty(res.Meta, "intent", "RDP load-balancer routing token (msts=) — backend routing recon")
 			} else {
 				// mstshash carries the username the client is targeting —
-				// credential reconnaissance even before any auth.
+				// credential reconnaissance even before any auth. Strip the
+				// "mstshash=" prefix so the bare username flows into the
+				// credential store / export-creds / cred-reuse correlation.
 				flagAnomaly(&res, "rdp-username-harvest")
 				res.Meta["intent"] = "RDP username harvest via mstshash cookie (" + cookie + ")"
+				user := cookie
+				if eq := strings.IndexByte(cookie, '='); eq >= 0 {
+					user = cookie[eq+1:]
+				}
+				if user = strings.TrimSpace(user); user != "" {
+					res.Meta["username"] = user
+				}
 			}
 		}
 		if negReq := findNegReq(variable); negReq != nil {

@@ -50,6 +50,11 @@ func TestRDPHarvestAndDowngrade(t *testing.T) {
 	if c, _ := res.Meta["cookie"].(string); c == "" || !hasAnom(res, "rdp-username-harvest") {
 		t.Errorf("mstshash harvest not flagged: %v", res.Meta)
 	}
+	// The mstshash= prefix must be stripped so the bare username flows into
+	// the credential store / export-creds.
+	if u, _ := res.Meta["username"].(string); u != "administrator" {
+		t.Errorf("mstshash username = %q; want administrator (meta=%v)", u, res.Meta)
+	}
 	if !hasAnom(res, "rdp-nla-downgrade") {
 		t.Errorf("NLA downgrade (proto 0) not flagged: %v", res.Meta["anomalies"])
 	}
