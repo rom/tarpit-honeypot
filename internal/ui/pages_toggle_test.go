@@ -61,4 +61,11 @@ func TestNavRespectsPageToggle(t *testing.T) {
 	if !strings.Contains(out, `href="/credentials"`) {
 		t.Error("credentials should appear when enabled")
 	}
+	// playbooks is a first-class, togglable nav entry — present when enabled.
+	if !strings.Contains(out, `href="/playbooks"`) {
+		t.Error("playbooks should appear in the nav when enabled")
+	}
+	if out2 := render(func(slug string) bool { return slug != "playbooks" }, func(string) bool { return false }); strings.Contains(out2, `href="/playbooks"`) {
+		t.Error("disabled playbooks page must not appear in the nav")
+	}
 }

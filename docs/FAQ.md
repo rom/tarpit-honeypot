@@ -879,7 +879,7 @@ single exception is the opt-in, token-gated device delete/whitelist
 Yes. Set `ui.pages` with the page slug → `false` to hide a **secondary** page
 (it disappears from the nav and its route returns 404), e.g. `ui.pages: { docs:
 false, topology: false }`. The togglable slugs are `attack`, `correlation`,
-`campaigns`, `map`, `captures`, `credentials`, `dns`, `web`, `databases`,
+`playbooks`, `campaigns`, `map`, `captures`, `credentials`, `dns`, `web`, `databases`,
 `fleet`, `iocs`, `tunnels`, `fingerprints`, `devices`, `topology`, `charts`,
 `alerting`, `errors`, `docs`. The **core** pages (summary / events / search /
 timeline / profiles / health / config) can't be disabled, and the `dns` / `web` /
