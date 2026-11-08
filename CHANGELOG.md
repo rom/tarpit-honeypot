@@ -47,6 +47,22 @@ documented in `docs/`).
 
 ### Added
 
+- **Malware detonation / intel loop (`internal/detonate`).** Closes the
+  capture→intelligence loop: when a handler captures a binary/dropper, the sensor
+  hands its sha256 to a new Detonator that looks the hash up on VirusTotal and —
+  only when the operator opts into uploading samples — detonates unknown samples
+  in a CAPE sandbox. The resulting verdict (AV detection ratio, malware family)
+  and the network IOCs it reveals (contacted domains / IPs / URLs, dropped-file
+  hashes) are re-injected as a `malware:detonation` event, which flows through the
+  normal IOC pipeline into the IOC store and the TAXII/MISP exporters — so a
+  caught sample turns into "here's its family and C2 infrastructure," published.
+  Enabled via the new `detonation:` config section. Safe by design: outbound goes
+  through the egress policy (fails closed), API keys are read from env-var names
+  (never inline), sample **uploading is off by default** (hash-lookup only, so a
+  captured sample isn't made public or used to tip off the attacker), and the
+  work is async and bounded (worker pool + bounded queue + per-hash TTL cache +
+  rate limiter). A detonation verdict also counts as a malware milestone in the
+  storyline correlator.
 - **+333 CVEs across four new batches (catalog now 1541).** Three are generated
   by `tools/nuclei2cve` from real Nuclei templates, so every record carries the
   actual exploit path as its detection signature: **cve_nuclei_batch3.go** (98

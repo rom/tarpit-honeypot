@@ -24,6 +24,7 @@ import (
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/correlate"
 	"github.com/rom/tarpit-honeypot/internal/detect"
+	"github.com/rom/tarpit-honeypot/internal/detonate"
 	"github.com/rom/tarpit-honeypot/internal/devices"
 	"github.com/rom/tarpit-honeypot/internal/dnscanary"
 	"github.com/rom/tarpit-honeypot/internal/egress"
@@ -86,7 +87,8 @@ type Sensor struct {
 	archetype  *archetype.Profile
 	honeynet   *honeynet.Topology
 	enrich     *enrich.Enricher
-	detectEng  *detect.Engine // operator detection-rule engine (guarded by stateMu)
+	detonator  *detonate.Detonator // malware hash-lookup / sandbox detonation (nil = off)
+	detectEng  *detect.Engine      // operator detection-rule engine (guarded by stateMu)
 	devices    *devices.Registry
 	scanTrack  *scananalysis.Tracker
 	fuzzTrack  *fuzzdos.Tracker
@@ -702,6 +704,19 @@ func New(cfg *config.Config) (*Sensor, error) {
 		listeners:     map[string]*listenerHandle{},
 		metrics:       newSensorMetrics(),
 	}
+	// Malware detonation / intel loop: looks up captured sample hashes on
+	// VirusTotal (and optionally detonates in CAPE) and re-injects the verdict +
+	// network IOCs as malware:detonation events. New returns nil when disabled.
+	if det, derr := detonate.New(detonateConfigFor(cfg), func(ev *event.Event) {
+		select {
+		case s.bus <- ev:
+		default: // bus full / shutting down — drop (best-effort intel)
+		}
+	}); derr != nil {
+		slog.Warn("malware detonation disabled", "err", derr)
+	} else {
+		s.detonator = det
+	}
 	// The IOC writer runs only when IOC tracking is enabled; its queue decouples
 	// the per-event indicator writes from the bus loop (see runIOCWriter).
 	if iocEmit != nil {
@@ -856,6 +871,37 @@ type iocJob struct {
 	proto    string
 	sev      event.Severity
 	t        time.Time
+}
+
+// maybeDetonate hands any captured sample hashes on this event to the malware
+// detonator. The payload_artifacts meta carries "<kind>:<sha256>[ -> path]"
+// descriptors; Submit is non-blocking and dedup'd, so re-seeing a hash is cheap.
+func (s *Sensor) maybeDetonate(ev *event.Event) {
+	if s.detonator == nil || ev == nil {
+		return
+	}
+	if ev.Meta == nil {
+		return
+	}
+	for _, desc := range metaStringSlice(ev.Meta["payload_artifacts"]) {
+		hash, path := artifactHashPath(desc)
+		if hash != "" {
+			s.detonator.Submit(hash, path, ev.Source, ev.Proto)
+		}
+	}
+}
+
+// artifactHashPath splits a "<kind>:<sha256>[ -> path]" artifact descriptor into
+// the sha256 and the stored sample path (empty when absent).
+func artifactHashPath(desc string) (hash, path string) {
+	if i := strings.Index(desc, " -> "); i >= 0 {
+		path = strings.TrimSpace(desc[i+4:])
+		desc = desc[:i]
+	}
+	if _, h, ok := strings.Cut(desc, ":"); ok {
+		hash = strings.TrimSpace(h)
+	}
+	return hash, path
 }
 
 // enqueueIOCs extracts an event's indicators on the bus loop (cheap, in-memory)
@@ -1947,6 +1993,37 @@ func (s *Sensor) observeDevice(ev *event.Event) *event.Event {
 	}
 }
 
+// detonateConfigFor maps the sensor config to the detonator config. Returns a
+// disabled config (Enabled=false) when detonation isn't turned on.
+func detonateConfigFor(cfg *config.Config) detonate.Config {
+	d := cfg.Detonation
+	if !d.On() {
+		return detonate.Config{}
+	}
+	dc := detonate.Config{
+		Enabled:        true,
+		VTAPIKeyEnv:    d.VTAPIKeyEnv,
+		SubmitSamples:  d.SubmitSamples,
+		Workers:        d.Workers,
+		QueueSize:      d.QueueSize,
+		RequestsPerMin: d.RequestsPerMin,
+		Timeout:        d.Timeout,
+		CacheTTL:       d.CacheTTL,
+	}
+	if d.MaxSampleMB > 0 {
+		dc.MaxSampleBytes = int64(d.MaxSampleMB) << 20
+	}
+	if d.CAPEURL != "" {
+		dc.CAPE = detonate.CAPEConfig{
+			URL:       d.CAPEURL,
+			TokenEnv:  d.CAPETokenEnv,
+			PollEvery: d.CAPEPollEvery,
+			MaxWait:   d.CAPEMaxWait,
+		}
+	}
+	return dc
+}
+
 // enrichConfigFor builds the enricher input from the sensor config. Shared
 // by New and ReloadEnrichment so a SIGHUP re-reads the same set of files.
 func enrichConfigFor(cfg *config.Config) enrich.Config {
@@ -2938,6 +3015,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 				// emits the ioc:<type> first-sighting events. Non-blocking, so
 				// a slow/locked store can never stall event processing.
 				s.enqueueIOCs(ev)
+				// Malware detonation: hand any captured sample hashes to the
+				// detonator (async, dedup'd, egress-governed). Non-blocking.
+				s.maybeDetonate(ev)
 			}()
 		}
 	}()
@@ -3293,6 +3373,9 @@ func (s *Sensor) Run(ctx context.Context) error {
 	// panic on send-to-closed-channel. They instead see their ctx cancelled.
 	close(busDone)
 	wg.Wait()
+	// Bus loop has stopped, so no more detonation submits; drain in-flight
+	// lookups (their result emits drop harmlessly now the bus is closed).
+	_ = s.detonator.Close()
 	s.curRouter().Stop()
 	for _, sk := range s.curSinks() {
 		_ = sk.Close()

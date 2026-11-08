@@ -71,6 +71,11 @@ type Config struct {
 	// URLs, domains, CVEs, credentials, …) into a de-duplicated IOC store and
 	// emits ioc:<type> events for the high-value first sightings. See internal/ioc.
 	IOC IOCConfig `yaml:"ioc"`
+	// Detonation closes the capture→intel loop: captured malware hashes are
+	// looked up on VirusTotal (and optionally detonated in a CAPE sandbox) and
+	// the resulting verdict + network IOCs re-enter the pipeline. See
+	// internal/detonate.
+	Detonation DetonationConfig `yaml:"detonation"`
 	// SeverityOverrides re-map the reported severity of matching rule_ids
 	// (an operator's local risk judgement). Applied in the router; the event
 	// is marked as an override. See severity.go.
@@ -311,6 +316,42 @@ func (c IOCConfig) On(hasStore bool) bool {
 		return *c.Enabled && hasStore
 	}
 	return hasStore
+}
+
+// DetonationConfig configures malware hash-lookup / sandbox detonation. All
+// outbound goes through the egress policy; API keys are read from env-var names
+// (never inline). Uploading samples (submit_samples) is OFF by default — a
+// captured sample can become public and tip off the attacker, so hash-lookup is
+// the safe default.
+type DetonationConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// VTAPIKeyEnv names the env var holding the VirusTotal API key (empty
+	// disables the VT lookup).
+	VTAPIKeyEnv string `yaml:"vt_api_key_env"`
+	// SubmitSamples permits UPLOADING unknown samples to the CAPE sandbox for
+	// dynamic detonation. Default false (hash-lookup only).
+	SubmitSamples bool `yaml:"submit_samples"`
+	// CAPEURL / CAPETokenEnv configure the optional CAPE sandbox backend.
+	CAPEURL      string `yaml:"cape_url"`
+	CAPETokenEnv string `yaml:"cape_token_env"`
+
+	Workers        int           `yaml:"workers"`
+	QueueSize      int           `yaml:"queue_size"`
+	RequestsPerMin int           `yaml:"requests_per_min"` // outbound cap (VT free tier = 4)
+	Timeout        time.Duration `yaml:"timeout"`
+	CacheTTL       time.Duration `yaml:"cache_ttl"`
+	MaxSampleMB    int           `yaml:"max_sample_mb"`
+	CAPEPollEvery  time.Duration `yaml:"cape_poll_every"`
+	CAPEMaxWait    time.Duration `yaml:"cape_max_wait"`
+}
+
+// On reports whether detonation should run: enabled and at least one backend
+// (a VirusTotal key env, or a CAPE URL when uploading is permitted).
+func (c DetonationConfig) On() bool {
+	if !c.Enabled {
+		return false
+	}
+	return c.VTAPIKeyEnv != "" || (c.SubmitSamples && c.CAPEURL != "")
 }
 
 // MISPConfig pushes the fleet's observed indicators (the intel store) to a MISP

@@ -1018,6 +1018,25 @@ kev:
   # header: "Name: value"      # optional request header (e.g. a proxy token)
   # file: /etc/tarpit-honeypot/kev/known_exploited_vulnerabilities.json
 
+# Malware detonation / intel loop: captured sample hashes are looked up on
+# VirusTotal (and, only when you opt into uploading, detonated in a CAPE
+# sandbox); the verdict (AV ratio, family) and the network IOCs it yields
+# (contacted domains/IPs/URLs, dropped-file hashes) re-enter the pipeline as
+# `malware:detonation` events and flow into the IOC store + TAXII/MISP export.
+# Outbound goes through the egress policy; keys are read from env-var NAMES.
+detonation:
+  enabled: false
+  vt_api_key_env: VT_API_KEY   # env var holding the VirusTotal API key
+  requests_per_min: 4          # VirusTotal free-tier cap
+  # cache_ttl: 24h
+  # workers: 2
+  # submit_samples: false      # UPLOAD unknown samples to CAPE (can go public — off by default)
+  # cape_url: "https://cape.internal"
+  # cape_token_env: CAPE_TOKEN
+  # cape_poll_every: 10s
+  # cape_max_wait: 3m
+  # max_sample_mb: 32
+
 correlate:
   port_scan:   { enabled: true, distinct_ports: 5, window: 30s, severity: high }
   brute_force: { enabled: true, attempts: 10, window: 60s, severity: high }
