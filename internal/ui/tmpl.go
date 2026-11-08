@@ -344,6 +344,11 @@ form { display: inline-block; }
 input[type=text], input[type=number] { font: inherit; padding: .15rem .3rem; background: var(--bg-surface); color: var(--text); border: 1px solid var(--border-medium); }
 .kv { background: var(--bg-surface); padding: .75rem; border: 1px solid var(--border); white-space: pre-wrap; word-break: break-all; color: var(--text); }
 .note { color: var(--text-muted); font-size: 0.857rem; margin-top: .5rem; }
+.colmenu { margin: .4rem 0; }
+.colmenu > summary { cursor: pointer; display: inline-block; }
+.colmenu .colopts { display: flex; flex-wrap: wrap; gap: .25rem .9rem; margin-top: .4rem; }
+.colmenu .colopt { font-size: 0.857rem; white-space: nowrap; }
+html:not(.js) .colmenu { display: none; }
 .err-banner { color: var(--sev-high); background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: 4px; padding: .4rem .6rem; font-size: 0.93rem; }
 .net { background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 4px; padding: .6rem .8rem; margin: .6rem 0; }
 .net h3 { margin: 0 0 .35rem; font-size: 1rem; }
@@ -1404,27 +1409,28 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;what=pcap">pcaps</a> ·
   <a href="/download?source={{ .SourceStr }}&amp;rule={{ .RuleStr }}&amp;since={{ .SinceStr }}{{ if .Regex }}&amp;re=1{{ end }}&amp;what=session">sessions</a>
 </p>
-<table data-rows-server>
+<details class="colmenu" data-col-menu><summary class="note" data-help="Show or hide columns in the table below. Your choice is remembered in this browser; it does not change the data or the server.">columns ▾</summary><div class="colopts"></div></details>
+<table data-rows-server data-col-table>
   <tr>
-    <th><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
-    <th data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
-    <th><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
-    <th><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
-    <th data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
-    <th><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
-    <th data-help="The handler's read of what the attacker was trying to do on this exchange, summarized from the protocol + flagged anomalies. Click to list every event with the same intent.">intent</th>
-    <th></th>
+    <th data-col="time"><a href="{{ .Headers.time.Href }}">time (utc){{ .Headers.time.Arrow }}</a></th>
+    <th data-col="severity" data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
+    <th data-col="rule"><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
+    <th data-col="source"><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
+    <th data-col="dest" data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
+    <th data-col="handler"><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
+    <th data-col="intent" data-help="The handler's read of what the attacker was trying to do on this exchange, summarized from the protocol + flagged anomalies. Click to list every event with the same intent.">intent</th>
+    <th data-col="details"></th>
   </tr>
   {{ range .Events }}
   <tr>
-    <td>{{ fmtTime .Time }}</td>
-    <td class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
-    <td>{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
-    <td>{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
-    <td>{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
-    <td>{{ handlerLink .Handler }}</td>
-    <td class="intent-cell">{{ with index .Meta "intent" }}{{ intentLink (printf "%v" .) }}{{ end }}</td>
-    <td><a href="/events/{{ .ID }}">details</a></td>
+    <td data-col="time">{{ fmtTime .Time }}</td>
+    <td data-col="severity" class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
+    <td data-col="rule">{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
+    <td data-col="source">{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
+    <td data-col="dest">{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
+    <td data-col="handler">{{ handlerLink .Handler }}</td>
+    <td data-col="intent" class="intent-cell">{{ with index .Meta "intent" }}{{ intentLink (printf "%v" .) }}{{ end }}</td>
+    <td data-col="details"><a href="/events/{{ .ID }}">details</a></td>
   </tr>
   {{ end }}
 </table>
@@ -1488,6 +1494,9 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ with strMap (index .Meta "http_cookies") }}{{ if . }}<h3>cookies <span class="tag bad">captured</span></h3><table>{{ range $k, $v := . }}<tr><th>{{ $k }}</th><td><code>{{ $v }}</code></td></tr>{{ end }}</table>{{ end }}{{ end }}
 {{ with index .Meta "http_javascript" }}<h3>captured JavaScript <span class="tag bad">not executed</span></h3>{{ range . }}<div class="kv">{{ . }}</div>{{ end }}{{ end }}
 {{ end }}
+{{ with protocolFields .Event }}{{ range . }}<h2 data-help="The protocol-level request fields the handler decoded from what the attacker sent — the non-HTTP counterpart of the HTTP request section.">{{ .Title }}</h2><table>
+  {{ range .Fields }}<tr><th>{{ .Label }}</th><td><code>{{ .Value }}</code></td></tr>{{ end }}
+</table>{{ end }}{{ end }}
 {{ if .PayloadBase64 }}<h2 data-help="The raw bytes the attacker sent on this connection (the packet payload we received), shown as hex + ASCII and base64.">request payload received ({{ .PayloadLen }} bytes)</h2>
 {{ $hex := hexdump .PayloadBase64 }}{{ if $hex }}<div class="kv">{{ $hex }}</div>{{ else }}<div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy to clipboard">⧉ copy</button>{{ end }}
 <details><summary class="note">base64</summary><div class="kv">{{ .PayloadBase64 }}</div><button type="button" class="copybtn" title="copy the base64 to the clipboard">⧉ copy base64</button></details>{{ end }}

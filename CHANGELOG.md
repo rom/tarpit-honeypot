@@ -39,6 +39,23 @@ documented in `docs/`).
   code-download-integrity & cert-validation, and FOX61x path traversal. The
   telnet handler now raises CVE-2007-0882 / CVE-2016-10401 on those login
   patterns. Catalog total: 1008 → 1048.
+- **Event detail: per-protocol request-field sections.** The detail page already
+  broke out the full HTTP request (method, URI, headers, cookies, query params);
+  now the non-HTTP protocols get the same treatment. A decoded, labeled section
+  renders the salient captured fields for DNS (query name/type, AXFR served), SSH
+  (client banner, OpenSSH version, HASSH, negotiated KEX/ciphers/MACs, accepted
+  login), SMTP (HELO, MAIL FROM/RCPT TO, subject, VRFY/EXPN), SNMP (version,
+  community, PDU, requested OIDs, SET), NTP (mode-6/7 request & opcode), RDP
+  (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
+  them in the raw catch-all meta table (those keys are now excluded from it so
+  nothing shows twice).
+- **Events table: per-column show/hide.** A "columns ▾" control above the events
+  table lets you turn any column (time, severity, rule, source, dest, handler,
+  intent, details) on or off. It's pure progressive enhancement — each cell
+  carries a `data-col` attribute and hidden columns are enforced by a single
+  managed stylesheet rule, so the choice survives the live flicker-free refresh
+  and is remembered per-browser (localStorage); it never changes the data or
+  touches the server, and the table renders in full with JS disabled.
 - **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
   event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
   dedicated per-handler view: attempt / attack / successful-engagement counts,

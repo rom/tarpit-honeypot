@@ -669,7 +669,69 @@
     });
   }
 
-  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons, setupServicePulse];
+  // ---- per-viewer column show/hide (events table) -----------------------
+  // Attribute-driven: each th/td carries data-col="<name>". Hidden columns are
+  // enforced by a single managed <style> in <head> (one display:none rule per
+  // hidden column), so refresh-morphed rows obey it automatically without a
+  // re-apply. The choice is per-browser (localStorage), never sent to the
+  // server. Rebuilt on every content-enhancer pass so the panel survives a
+  // live refresh.
+  function setupColumnToggle() {
+    var menu = document.querySelector("[data-col-menu]");
+    var table = document.querySelector("table[data-col-table]");
+    if (!menu || !table) return;
+    var opts = menu.querySelector(".colopts");
+    if (!opts) return;
+    var ths = table.querySelectorAll("tr:first-child > th[data-col]");
+    if (!ths.length) return;
+    var key = "eventsHiddenCols";
+    var hidden = {};
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw) JSON.parse(raw).forEach(function (c) { hidden[c] = true; });
+    } catch (e) { /* ignore */ }
+
+    var style = document.getElementById("colHideStyle");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "colHideStyle";
+      document.head.appendChild(style);
+    }
+    function applyStyle() {
+      var rules = [];
+      Object.keys(hidden).forEach(function (c) {
+        if (hidden[c]) rules.push('table[data-col-table] [data-col="' + c + '"]{display:none}');
+      });
+      style.textContent = rules.join("\n");
+    }
+    function save() {
+      try {
+        localStorage.setItem(key, JSON.stringify(Object.keys(hidden).filter(function (c) { return hidden[c]; })));
+      } catch (e) { /* ignore */ }
+    }
+    opts.textContent = "";
+    ths.forEach(function (th) {
+      var col = th.getAttribute("data-col");
+      var label = (th.textContent || "").replace(/[▲▼]/g, "").trim() || col;
+      var wrap = document.createElement("label");
+      wrap.className = "colopt";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !hidden[col];
+      cb.setAttribute("data-col-check", col);
+      cb.addEventListener("change", function () {
+        if (cb.checked) delete hidden[col]; else hidden[col] = true;
+        applyStyle();
+        save();
+      });
+      wrap.appendChild(cb);
+      wrap.appendChild(document.createTextNode(" " + label));
+      opts.appendChild(wrap);
+    });
+    applyStyle();
+  }
+
+  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons, setupServicePulse, setupColumnToggle];
   function runContentEnhancers() {
     contentEnhancers.forEach(function (fn) { try { fn(); } catch (e) { /* never break the page */ } });
   }
