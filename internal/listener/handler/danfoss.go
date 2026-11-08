@@ -180,6 +180,12 @@ func (d *danfoss) handleGetAuth(body string, res *Result) string {
 	flagAnomaly(res, "danfoss-aksm-login-attempt")
 	user := danfossXMLField(body, "username")
 	pass := danfossXMLField(body, "password")
+	if user == "" && pass == "" {
+		// Url-encoded login (e.g. from the served HTML login form, or a tool
+		// that posts form fields rather than the device's getauth XML).
+		user = danfossFormField(body, "username")
+		pass = danfossFormField(body, "password")
+	}
 	if user != "" || pass != "" {
 		res.Meta["login_user"] = safe.SanitizeForLog(user)
 		res.Meta["login_pass"] = safe.SanitizeForLog(pass)

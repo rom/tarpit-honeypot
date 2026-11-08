@@ -62,11 +62,36 @@ func TestDanfossEmbeddedAssets(t *testing.T) {
 	if !strings.HasPrefix(danfossLogo, "\x89PNG\r\n\x1a\n") {
 		t.Error("logo.png is missing the PNG signature")
 	}
-	if got := len(danfossIndexHTML); got != 825 {
-		t.Errorf("index.html = %d bytes; want 825", got)
-	}
+	// The landing page keeps the device fingerprint (title + favicon/logo refs)
+	// but is a self-contained static login — it must NOT reference the Angular
+	// bundles (which a honeypot can't serve, leaving the real shell blank).
 	if !strings.Contains(danfossIndexHTML, "<title>Danfoss StoreView</title>") {
-		t.Error("index.html missing the StoreView title")
+		t.Error("landing page missing the StoreView title")
+	}
+	if !strings.Contains(danfossIndexHTML, `href="favicon.ico"`) ||
+		!strings.Contains(danfossIndexHTML, `src="assets/images/logo.png"`) {
+		t.Error("landing page missing favicon/logo references")
+	}
+	if !strings.Contains(danfossIndexHTML, `action="xml.cgi?action=getauth"`) {
+		t.Error("landing page missing the getauth login form")
+	}
+	for _, bundle := range []string{"<app-root", "main.49c617", "styles.5d1276", "runtime.a4d6ab", ".js\""} {
+		if strings.Contains(danfossIndexHTML, bundle) {
+			t.Errorf("landing page still references the Angular SPA bundle %q (renders blank)", bundle)
+		}
+	}
+}
+
+func TestDanfossFormLoginCaptured(t *testing.T) {
+	// A url-encoded login (what the served HTML form posts) must be captured,
+	// not just the device's getauth XML.
+	body := "username=operator&password=Winter2026"
+	res, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", body))
+	if res.Meta["login_user"] != "operator" || res.Meta["login_pass"] != "Winter2026" {
+		t.Errorf("form login not captured: user=%v pass=%v", res.Meta["login_user"], res.Meta["login_pass"])
+	}
+	if containsStr(danfossAnoms(res), "danfoss-aksm-auth-bypass") {
+		t.Errorf("plain form login wrongly flagged as bypass: %v", danfossAnoms(res))
 	}
 }
 
@@ -79,11 +104,17 @@ func TestDanfossRealHeadersAndAssets(t *testing.T) {
 		"Access-Control-Allow-Origin: *",
 		"Cache-Control: no-store, no-cache",
 		"Content-Type: text/html\r\n",
-		"<app-root></app-root>",
+		"<title>Danfoss StoreView</title>",
+		`href="favicon.ico"`,
 	} {
 		if !strings.Contains(reply, want) {
 			t.Errorf("landing reply missing %q", want)
 		}
+	}
+	// The blank-rendering Angular shell must be gone (checked near the response
+	// start, so unaffected by the test's single-read window).
+	if strings.Contains(reply, "<app-root") {
+		t.Error("landing reply still serves the Angular SPA shell (renders blank)")
 	}
 	// The fabricated X-Danfoss-Device/X-Firmware tells must be gone.
 	if strings.Contains(reply, "X-Danfoss-Device") || strings.Contains(reply, "X-Firmware") {

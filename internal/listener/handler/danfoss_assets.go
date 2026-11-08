@@ -2,36 +2,69 @@ package handler
 
 import "encoding/base64"
 
-// Verbatim web assets captured from a live, internet-facing Danfoss AK-SM
-// "StoreView Web" refrigeration system manager (the Angular single-page app it
-// serves over nginx). Baking the real landing HTML, favicon and logo in — plus
-// the device's exact response-header set below — makes the honeypot's web
-// fingerprint (title, favicon hash, Server banner, CORS/caching headers) match
-// a genuine AK-SM, so Shodan/Censys-style scanners and favicon-hash pivots see
-// the real article. The referenced hashed JS/CSS bundles are the Angular app's
-// runtime; they are intentionally not embedded (multi-MB, and the SPA never
-// loads for a honeypot). Nothing here is executed — it is static response data.
+// Web assets modelled on a live, internet-facing Danfoss AK-SM "StoreView Web"
+// refrigeration system manager. The favicon, logo and response headers below are
+// captured verbatim from the real device; the landing page is a self-contained
+// static login styled to match it.
+//
+// Why not the device's real index.html? StoreView is an Angular single-page app:
+// its real landing document is an empty <app-root> plus hashed JS/CSS bundles
+// that code-split into further lazy chunks and an i18n fetch, and only render
+// once the live xml.cgi backend answers. Served by a honeypot — which has none
+// of that — the genuine shell renders a blank page ("Loading chunk failed").
+// So we keep the exact fingerprint head (title, favicon/logo refs) and the exact
+// nginx header set, but give the body a real, deterministic login form (posting
+// to xml.cgi?action=getauth, which the handler recognizes and captures). Nothing
+// here is executed — it is static response data.
 
-// danfossIndexHTML is the byte-exact landing document served at "/", reproduced
-// with the device's CRLF line endings so a body hash matches the original.
-const danfossIndexHTML = "<!doctype html>\r\n" +
-	"<html lang=\"en\">\r\n" +
-	"<head>\r\n" +
-	"  <meta charset=\"utf-8\">\r\n" +
-	"  <title>Danfoss StoreView</title>\r\n" +
-	"  <base href=\"\">\r\n" +
-	"\r\n" +
-	"  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\r\n" +
-	"  <link rel=\"icon\" type=\"image/x-icon\" href=\"favicon.ico\">\r\n" +
-	"  <link rel=\"shortcut icon\" sizes=\"196x196\" href=\"assets/images/logo.png\">\r\n" +
-	"<link rel=\"stylesheet\" href=\"styles.5d1276b925260728e7f0.css\"></head>\r\n" +
-	"<body class=\"simple-page menubar-top menubar-light theme-primary\">\r\n" +
-	"\t<app-root></app-root>\r\n" +
-	"<script type=\"text/javascript\" src=\"runtime.a4d6ab2e0e382d00dbeb.js\"></script>" +
-	"<script type=\"text/javascript\" src=\"polyfills.4d3638838c6cb4396c29.js\"></script>" +
-	"<script type=\"text/javascript\" src=\"scripts.8f3362931e2e0053087d.js\"></script>" +
-	"<script type=\"text/javascript\" src=\"main.49c617cf74b9e405eb1a.js\"></script></body>\r\n" +
-	"</html>\r\n"
+// danfossIndexHTML is the landing page served at "/": a self-contained StoreView
+// login (no external bundles, so it always renders), using the device's real
+// logo and the StoreView admin theme's look (Roboto, #188ae2 primary accent).
+const danfossIndexHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Danfoss StoreView</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="shortcut icon" sizes="196x196" href="assets/images/logo.png">
+  <style>
+    html,body{height:100%;margin:0}
+    body{font-family:Roboto,"Segoe UI",GeezaPro,"DejaVu Serif",sans-serif;background:#f5f5f5;
+      color:#3b3e47;display:flex;align-items:center;justify-content:center}
+    .card{background:#fff;width:360px;max-width:92vw;border-radius:3px;padding:30px 28px 24px;
+      box-shadow:0 1px 3px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.24);text-align:center}
+    .brand img{width:64px;height:64px}
+    h1{font-size:20px;font-weight:400;margin:10px 0 2px}
+    .sub{font-size:12px;color:#98a6ad;margin-bottom:22px}
+    form{text-align:left}
+    label{display:block;font-size:12px;color:#98a6ad;margin:0 0 4px}
+    input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:9px 10px;
+      margin-bottom:16px;border:1px solid #e0e0e0;border-radius:2px;font-size:14px;color:#3b3e47}
+    input:focus{outline:none;border-color:#188ae2}
+    button{width:100%;padding:10px;background:#188ae2;color:#fff;border:0;border-radius:2px;
+      font-size:14px;cursor:pointer;letter-spacing:.3px}
+    button:hover{background:#1278c9}
+    .foot{margin-top:20px;font-size:11px;color:#bdbdbd}
+  </style>
+</head>
+<body class="simple-page menubar-light theme-primary">
+  <div class="card">
+    <div class="brand"><img src="assets/images/logo.png" alt="Danfoss"></div>
+    <h1>StoreView</h1>
+    <div class="sub">AK-SM 800A System Manager</div>
+    <form action="xml.cgi?action=getauth" method="post">
+      <label for="u">User name</label>
+      <input id="u" type="text" name="username" autocomplete="username" autofocus>
+      <label for="p">Password</label>
+      <input id="p" type="password" name="password" autocomplete="current-password">
+      <button type="submit">Log on</button>
+    </form>
+    <div class="foot">Danfoss &copy; StoreView Web</div>
+  </div>
+</body>
+</html>
+`
 
 // danfossRespHeaders is the extra header block the live device emits on every
 // response (an nginx config applied globally): the Server banner, the StoreView
