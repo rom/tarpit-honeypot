@@ -40,6 +40,28 @@ documented in `docs/`).
   protocol and local-privesc CVEs that can't be reliably matched from network
   payloads were left advisory-only to keep the false-positive rate near zero;
   the live CISA-KEV auto-sync feed continues to advertise more.)
+- **176 more exploit-detectable CVEs, auto-derived from CISA-KEV × Nuclei
+  (`internal/cve/cve_kev_auto.go`).** This is the "convert the KEV export (with
+  exploit URIs) into signatures" pass. The CISA Known-Exploited-Vulnerabilities
+  catalog says *which* CVEs are worth detecting (confirmed exploited in the
+  wild) but ships no request details; the community Nuclei templates supply
+  *what the request looks like*. Intersecting the two — KEV CVEs not already in
+  the catalog, paired with the static, high-signal portion of their Nuclei
+  exploit path — yields 176 net-new HTTP detections wired into `MatchPayload`
+  with ATT&CK tagging (`T1190` initial-access for RCE/auth-bypass/SSRF/upload,
+  `T1083` discovery for traversal/file-read). Heavily weighted to the live
+  threat: 46 from 2026 and 32 from 2025 (ServiceNow, SharePoint ToolShell-class,
+  Ivanti EPM/EPMM/Sentry, FreePBX, GoAnywhere, SysAid, Langflow, SolarWinds WHD,
+  WSUS, Gladinet, Mitel, Fortinet EMS, …), down through a long tail of KEV
+  classics (WebLogic, ColdFusion, Zimbra, DrayTek/Netgear/D-Link, QNAP, Nagios
+  XI, ThinkPHP). Over-generic paths (`/login`, `/api`, `/setup.php`, bare
+  `/v1/chat/completions`, …) are dropped and a record with no distinctive path
+  left is omitted entirely, keeping `MatchPayload`'s false-positive rate near
+  zero. Names and descriptions are CISA's own wording. The 2026 cohort is now
+  mixed: the original forward-looking *placeholders* stay advisory-only, while
+  these real KEV-confirmed 2026 CVEs are legitimately detectable (the
+  year-coverage test was updated to enforce exactly that split). Catalog total:
+  832 → 1008 records.
 - **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
   `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
   reports the same uptime on every poll is a honeypot tell. They now advance from
