@@ -223,3 +223,21 @@ func TestNucleiBatch2(t *testing.T) {
 		}
 	}
 }
+
+// TestPaloAltoBatch: the Palo Alto batch is well-formed, carries explicit CWEs,
+// and broadens PAN coverage.
+func TestPaloAltoBatch(t *testing.T) {
+	if len(cvePaloAlto) < 10 {
+		t.Fatalf("Palo Alto batch has %d; want >=10", len(cvePaloAlto))
+	}
+	for _, r := range cvePaloAlto {
+		if r.Service == "" || r.Technique == "" || r.Tactic == "" || len(r.CWE) == 0 || r.Description == "" {
+			t.Errorf("%s: malformed PAN record", r.ID)
+		}
+	}
+	for _, id := range []string{"CVE-2019-1579", "CVE-2020-2021", "CVE-2022-0028"} {
+		if _, ok := Lookup(id); !ok {
+			t.Errorf("%s not in catalog", id)
+		}
+	}
+}

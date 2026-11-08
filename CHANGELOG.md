@@ -49,6 +49,17 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **10 Palo Alto Networks CVEs (`cve_paloalto.go`).** Across PAN-OS GlobalProtect
+  SSL-VPN (format-string + heap pre-auth RCE), the management interface (SAML auth
+  bypass, Captive-Portal buffer overflows), the DNS Security DoS, the
+  reflected-amplification DoS, Expedition cleartext credentials, and the
+  GlobalProtect client — CISA-KEV wording where applicable, advisory-only for
+  banner/patch-level emulation.
+- **CVE.md now also maps EPSS (exploit probability).** The generated reference
+  gained a "Highest EPSS" overview (top records by the FIRST.org Exploit
+  Prediction Scoring System estimate) and an **EPSS** column on the full table,
+  alongside the existing CVSS severity and CWE mappings. Catalog total 1198 →
+  1208.
 - **~115 more CVEs: a second Nuclei batch, FTP, RDP and a full Fortinet set.**
   `cve_nuclei_batch2.go` adds 42 more recent (2024–2026) critical CVEs extracted
   with `tools/nuclei2cve` (GitHub Enterprise, JetBrains TeamCity, GitLab, Cisco
