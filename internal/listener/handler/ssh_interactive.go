@@ -62,7 +62,8 @@ type sshInteractive struct {
 	// When a login matches the policy it succeeds on the FIRST attempt (the
 	// decoy behaves like a real box with those creds) instead of waiting for the
 	// acceptAuthAfter attempt-count fallback.
-	acceptCreds string
+	acceptCreds    string
+	acceptCredList []string // operator accept-list ("user:pass", "*" wildcards)
 	// vuln enables vulnerability *emulation*: when set, the handler accepts the
 	// SSH auth-bypass signatures (Alpine blank-root CVE-2019-5021, the *sshole
 	// 257–1024 byte musl password bypass) on the first matching attempt so the
@@ -136,7 +137,7 @@ func (s *sshInteractive) Handle(ctx context.Context, conn net.Conn, cfg config.L
 			// "work" (accept_creds: defaults|any), a matching login succeeds on
 			// the first try, so the decoy behaves like a real box with those
 			// (weak) credentials rather than mysteriously failing a few times.
-			if creds.Accepts(s.acceptCreds, c.User(), string(pass)) {
+			if creds.AcceptsWith(s.acceptCreds, s.acceptCredList, c.User(), string(pass)) {
 				acceptedUser = c.User()
 				res.Meta["accept_policy"] = s.acceptCreds
 				return &xssh.Permissions{}, nil

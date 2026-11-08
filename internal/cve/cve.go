@@ -2980,6 +2980,9 @@ var cveExtra = map[string]struct {
 }
 
 func init() {
+	// Fold in the supplementary batches (kept in their own files for
+	// reviewability) before the signatures are lowercased + indexed below.
+	catalog = append(catalog, cveBatchKEV2026...)
 	for i := range catalog {
 		for j, s := range catalog[i].Signatures {
 			catalog[i].Signatures[j] = strings.ToLower(s)

@@ -32,6 +32,56 @@
   // entirely when nothing changed, and (2) when it did change, fetch the page
   // and swap only #pgcontent in place — no navigation, no flash, scroll kept —
   // then re-run the content enhancers + re-render any new charts.
+  // morph updates `from` to match `to` in place, recursing node-by-node so that
+  // only the parts that actually changed are rewritten. Unchanged subtrees keep
+  // their exact DOM nodes (no repaint); an already-rendered chart whose data is
+  // unchanged is skipped entirely (no re-render flash); the input the operator
+  // is editing is never clobbered.
+  function morphAttrs(from, to) {
+    var ta = to.attributes, i, a;
+    for (i = 0; i < ta.length; i++) {
+      a = ta[i];
+      if (from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+    }
+    var fa = from.attributes;
+    for (i = fa.length - 1; i >= 0; i--) {
+      if (!to.hasAttribute(fa[i].name)) from.removeAttribute(fa[i].name);
+    }
+  }
+  function morph(from, to) {
+    if (from.nodeType !== to.nodeType || from.nodeName !== to.nodeName) {
+      from.parentNode.replaceChild(to.cloneNode(true), from);
+      return;
+    }
+    // Text / comment: update the value only when it differs.
+    if (from.nodeType === 3 || from.nodeType === 8) {
+      if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue;
+      return;
+    }
+    if (from.nodeType !== 1) return;
+    // Rendered chart: if the payload is unchanged, leave the live SVG untouched;
+    // only replace (for re-render) when the data actually changed.
+    if (from.getAttribute("data-chart") != null) {
+      if (from.getAttribute("data-chart-b64") === to.getAttribute("data-chart-b64")) return;
+      from.parentNode.replaceChild(to.cloneNode(true), from);
+      return;
+    }
+    // Don't overwrite a field the operator is currently editing.
+    if (from === document.activeElement &&
+      (from.tagName === "INPUT" || from.tagName === "TEXTAREA" || from.tagName === "SELECT")) {
+      return;
+    }
+    morphAttrs(from, to);
+    // Children: snapshot both lists, morph the common prefix, then append new /
+    // drop surplus — so inserting one row touches one row, not the whole table.
+    var fc = Array.prototype.slice.call(from.childNodes);
+    var tc = Array.prototype.slice.call(to.childNodes);
+    var n = Math.min(fc.length, tc.length), i;
+    for (i = 0; i < n; i++) morph(fc[i], tc[i]);
+    for (i = n; i < tc.length; i++) from.appendChild(tc[i].cloneNode(true));
+    for (i = fc.length - 1; i >= n; i--) from.removeChild(fc[i]);
+  }
+
   var lastToken = null;
   function smartRefresh(done) {
     fetch("/api/heartbeat", { headers: { "Accept": "application/json" } })
@@ -46,7 +96,13 @@
             var fresh = doc.getElementById("pgcontent");
             var cur = document.getElementById("pgcontent");
             if (fresh && cur) {
-              cur.innerHTML = fresh.innerHTML;
+              // Diff the new content into the live DOM, touching only the nodes
+              // that actually changed — unchanged tables, rows and (crucially)
+              // already-rendered chart SVGs are left in place, so there is no
+              // whole-page repaint "blink". Falls back to a plain swap if the
+              // morph ever throws.
+              try { morph(cur, fresh); }
+              catch (e) { cur.innerHTML = fresh.innerHTML; }
               runContentEnhancers();
               if (window.TarpitCharts && window.TarpitCharts.auto) {
                 try { window.TarpitCharts.auto(cur); } catch (e) { /* ignore */ }

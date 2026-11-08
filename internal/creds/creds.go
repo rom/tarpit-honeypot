@@ -124,5 +124,32 @@ func Accepts(policy, user, pass string) bool {
 	return false
 }
 
+// AcceptsCustom reports whether (user, pass) matches an entry in an
+// operator-supplied accept-list. Each entry is "user:pass"; a "*" in either
+// field matches anything, and an entry with no ":" matches any password for
+// that user. Username matching is case-insensitive; password is exact (unless
+// "*"). This lets a deployment pin exactly which weak credentials "work" (e.g.
+// make the decoy behave like a real box whose password is root:hunter2), beyond
+// the built-in default corpus.
+func AcceptsCustom(list []string, user, pass string) bool {
+	for _, e := range list {
+		u, p, hasColon := strings.Cut(strings.TrimSpace(e), ":")
+		if !hasColon {
+			p = "*"
+		}
+		if (u == "*" || strings.EqualFold(u, user)) && (p == "*" || p == pass) {
+			return true
+		}
+	}
+	return false
+}
+
+// AcceptsWith combines the built-in policy with an operator accept-list: a login
+// succeeds if either the policy (none|defaults|any) or the custom list accepts
+// it. Handlers call this so `credential_list` works regardless of `accept_creds`.
+func AcceptsWith(policy string, list []string, user, pass string) bool {
+	return Accepts(policy, user, pass) || AcceptsCustom(list, user, pass)
+}
+
 // All returns the full default corpus (used by docs / tests).
 func All() []Cred { return defaults }

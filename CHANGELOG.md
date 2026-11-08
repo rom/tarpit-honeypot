@@ -8,8 +8,72 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Added
+
+- **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
+  event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
+  dedicated per-handler view: attempt / attack / successful-engagement counts,
+  first & last attempt and first & last *attack* times, the full set of attacker
+  intents, interpretations (interaction phase), severities, ATT&CK tactics +
+  techniques, D3FEND countermeasures, tools and protocol anomalies seen on it,
+  and every attacker IP (split IPv4 / IPv6, with reverse DNS + peak severity).
+- **New detection-rule pack: `configs/rules/harvested-secrets.yml`.** Fourteen
+  tunable, severity-raising detection-as-code rules that turn this cycle's new
+  high-signal markers into first-class detections with ATT&CK tags: the
+  attacker's own leaked secrets (`secret:*` → operator-secret-leak, plus
+  dedicated private-key / cloud-key / DB-URI rules), completed Redis
+  webshell/cron/SSH-key drop chains, SMTP phishing + malware-attachment content,
+  RDP username harvesting, oversized-SSH-password / *sshole probes, a
+  decoy-login-accepted rule (the deception worked), and cleartext-credential
+  capture. Validated by the existing bundled-pack compile test + a new
+  behavioural test.
+- **90 more exploit-detectable CVEs (`internal/cve/cve_batch2026.go`).** A new
+  batch of widely-exploited / CISA-KEV / mass-scanner CVEs, each with a canonical
+  high-signal exploit signature (distinctive URL path or payload substring) wired
+  into `MatchPayload` + ATT&CK tagging — VPN/firewall appliances (PAN-OS, Ivanti,
+  Citrix, Fortinet, F5), Exchange/SharePoint, dev tooling (TeamCity, Jenkins,
+  GitLab), Java frameworks (OFBiz, GeoServer, WebLogic, Struts2), Mirai-class
+  IoT/router/DVR/camera cgi paths, file-transfer (MOVEit, Cleo, Zimbra), and
+  recent AI-infra (Ollama, MLflow, Ray). The catalog already held 742; this is
+  net-new after de-duplication. (I deliberately stopped at the accurate,
+  substring-detectable set rather than padding to an arbitrary count — binary-
+  protocol and local-privesc CVEs that can't be reliably matched from network
+  payloads were left advisory-only to keep the false-positive rate near zero;
+  the live CISA-KEV auto-sync feed continues to advertise more.)
+- **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
+  `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
+  reports the same uptime on every poll is a honeypot tell. They now advance from
+  a stable multi-day boot baseline (overridden live at response time for GET /
+  GETNEXT / GETBULK), so the decoy reads as an established, long-running box. (The
+  rest of the SNMP MIB — full system group, ifTable, ARP table, host resources —
+  and the NTP `ntpq -c rv` system-variable output were already realistic.)
+- **`credential_list` — operator-pinned accepted credentials.** A new per-listener
+  `credential_list: ["root:hunter2", "admin:*", "svc"]` is honored in addition to
+  `accept_creds`, so you can pin exactly which weak credentials log an attacker
+  into the `ssh_interactive` / `telnet` / `ftp_files` decoys (beyond the built-in
+  default corpus). Each entry is `user:pass`; `*` matches anything in either
+  field, and a bare `user` matches any password for that user.
+
+### Fixed
+
+- **Docs + example configs: `ssh` vs `ssh_interactive` credential capture.**
+  Clarified (and corrected a misleading line) that the plain `ssh` handler closes
+  right after KEXINIT, *before* the auth phase, so it captures **no** passwords
+  and cannot detect password attacks (brute force, the `>256`-byte
+  oversized-password / *sshole signature, CVE-2019-5021, CVE-2016-6210) — only
+  `ssh_interactive` can. The exposed-server example configs now use
+  `ssh_interactive` on port 22.
+
 ### Changed
 
+- **Flicker-free live refresh via DOM diffing.** The auto-refresh already swapped
+  only `#pgcontent` (no full navigation), but it replaced the whole content's
+  `innerHTML` on every tick — repainting everything and destroying + rebuilding
+  each chart SVG (the visible "blink"). It now **diffs** the new content into the
+  live DOM node-by-node, so unchanged tables, rows and already-rendered charts
+  keep their exact nodes (no repaint), only changed text/attributes are rewritten,
+  a new table row touches just that row, and the field the operator is editing is
+  never clobbered. Verified headlessly (node identity preserved, chart SVG kept).
 - **Redesigned the correlation + campaign graphs.** The old views drew a circular
   / column hairball of every entity — unreadable. Both now share one legible
   **bipartite "shared-infrastructure" graph**: source IPs on the left, and on the

@@ -577,16 +577,18 @@ func intentLink(s string) template.HTML {
 		`" title="show every source with this intent">` + esc + `</a>`)
 }
 
-// handlerLink renders a protocol-handler name as a link to the events list
-// filtered to that handler, so an operator can pivot from any handler mention
-// straight to its traffic. Empty/"-" names render as a plain dash.
+// handlerLink renders a protocol-handler name as a link to that handler's
+// focused dossier view (attempts vs. attacks vs. successful engagements, the
+// intents/tools/ATT&CK/D3FEND seen on it, and every attacker IP), so an operator
+// can pivot from any handler mention straight to its full picture. Empty/"-"
+// names render as a plain dash.
 func handlerLink(name string) template.HTML {
 	n := strings.TrimSpace(name)
 	if n == "" || n == "-" {
 		return template.HTML("—")
 	}
 	esc := template.HTMLEscapeString(n)
-	return template.HTML(`<a href="/events?handler=` + url.QueryEscape(n) + `" title="show ` + esc + ` events">` + esc + `</a>`)
+	return template.HTML(`<a href="/handler?name=` + url.QueryEscape(n) + `" title="` + esc + ` handler dossier">` + esc + `</a>`)
 }
 
 // protoTag renders a transport label (tcp/udp/icmp) as the styled badge, made
@@ -929,6 +931,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/events/", s.handleEvent)
+	mux.HandleFunc("/handler", s.handleHandlerView)
 	mux.HandleFunc("/profiles", s.handleProfiles)
 	mux.HandleFunc("/profiles/", s.handleProfile)
 	mux.HandleFunc("/asns", s.handleASNs)

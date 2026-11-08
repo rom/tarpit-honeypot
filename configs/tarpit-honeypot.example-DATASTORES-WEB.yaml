@@ -63,7 +63,7 @@ listeners:
   - { id: postgres,      proto: tcp, bind: 0.0.0.0:5432,  mode: banner, handler: postgres,      severity: high }
 
   # --- SSH + catch-all ---
-  - { id: ssh,  proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh,  severity: high }
+  - { id: ssh,  proto: tcp, bind: 0.0.0.0:22,   mode: banner, handler: ssh_interactive,  severity: high }
   - { id: auto, proto: tcp, bind: 0.0.0.0:9000, mode: banner, handler: auto, severity: medium, read_bytes: 2048 }
 
 # URL canary: a planted "backup" path no legitimate scan should know.

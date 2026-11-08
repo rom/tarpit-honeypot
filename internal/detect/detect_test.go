@@ -228,3 +228,31 @@ func TestAgenticRulesFire(t *testing.T) {
 	fires("agent", []string{"agent:ap2", "agent:payment-target"}, "agentic-payment-fraud")
 	fires("agent", []string{"agent:a2a"}, "agentic-protocol-probe")
 }
+
+// The harvested-secrets pack fires on the secretscan / drop-chain / mail markers.
+func TestHarvestedSecretsRulesFire(t *testing.T) {
+	eng, errs := Load("../../configs/rules")
+	if len(errs) != 0 {
+		t.Fatalf("load: %v", errs)
+	}
+	fires := func(handler string, anoms []string, meta map[string]any, wantID string) {
+		t.Helper()
+		ev := &event.Event{Handler: handler, Severity: event.SeverityLow, Anomalies: anoms, Meta: meta}
+		if m := eng.Apply(ev); !has(m, wantID) {
+			t.Errorf("handler=%s anomalies=%v meta=%v: matched %v; want %q", handler, anoms, meta, m, wantID)
+		}
+	}
+	fires("http", []string{"secret:bearer-token"}, nil, "harvest-operator-secret")
+	fires("http", []string{"secret:private-key"}, nil, "harvest-private-key")
+	fires("ssh_interactive", []string{"secret:aws-access-key"}, nil, "harvest-cloud-key")
+	fires("redis", []string{"redis-drop-chain-complete"}, nil, "redis-drop-chain-complete")
+	fires("smtp_recv", []string{"smtp-phishing-content"}, nil, "smtp-phishing-content")
+	fires("rdp", []string{"rdp-username-harvest"}, nil, "rdp-username-harvest")
+	fires("ssh_interactive", nil, map[string]any{"accepted_user": "root"}, "decoy-login-accepted")
+
+	// A benign http event with no secret marker must not trip the secret rule.
+	ev := &event.Event{Handler: "http", Anomalies: []string{"uri-wordpress-probe"}}
+	if has(eng.Apply(ev), "harvest-operator-secret") {
+		t.Error("a benign probe wrongly matched the operator-secret rule")
+	}
+}

@@ -83,6 +83,7 @@ func Build(l config.Listener, args BuildArgs) (Listener, error) {
 		TLSRotate:      args.TLSRotate,
 		Archetype:      arch,
 		AcceptCreds:    l.AcceptCreds,
+		AcceptCredList: l.AcceptCredList,
 		HoneynetView:   args.HoneynetSnapshot,
 		VulnEmulation:  vuln,
 		Script:         l.Script,
