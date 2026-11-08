@@ -123,3 +123,37 @@ func TestNucleiExtraDetects(t *testing.T) {
 		}
 	}
 }
+
+// TestInferredCWEPromotion: the catalog promotes an inferred weakness class onto
+// records that lack an explicit CWE, so coverage is near-total and the inference
+// is correctly flagged.
+func TestInferredCWEPromotion(t *testing.T) {
+	if id, ok := inferCWE("Acme SQL Injection Vulnerability", ""); !ok || id != "CWE-89" {
+		t.Errorf("SQLi inference = %q ok=%v", id, ok)
+	}
+	if id, ok := inferCWE("Foo Directory Traversal", ""); !ok || id != "CWE-22" {
+		t.Errorf("traversal inference = %q ok=%v", id, ok)
+	}
+	if _, ok := inferCWE("completely unclassifiable text", ""); ok {
+		t.Error("unclassifiable should not infer a CWE")
+	}
+	var withCWE, inferred int
+	for _, r := range All() {
+		if len(r.CWE) > 0 {
+			withCWE++
+		}
+		if CWEInferred(r.ID) {
+			inferred++
+			if len(r.CWE) == 0 {
+				t.Errorf("%s is marked inferred but has no CWE on the record", r.ID)
+			}
+		}
+	}
+	// Promotion should take coverage well past the explicitly-authored set.
+	if withCWE < len(All())*95/100 {
+		t.Errorf("CWE coverage only %d/%d; expected >=95%% after promotion", withCWE, len(All()))
+	}
+	if inferred == 0 {
+		t.Error("expected some records to carry an inferred CWE")
+	}
+}

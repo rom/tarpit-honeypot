@@ -2997,6 +2997,16 @@ func init() {
 			catalog[i].CPE = e.CPE
 			catalog[i].EPSS = e.EPSS
 		}
+		// Promote an inferred weakness class onto any record that still has no
+		// explicit CWE (the big auto-extracted http/KEV/Nuclei batches), so the
+		// whole catalog — All(), the exports, the attribution UI — carries a CWE.
+		// The inference is marked so it can be distinguished from a curated CWE.
+		if len(catalog[i].CWE) == 0 {
+			if id, ok := inferCWE(catalog[i].Name, catalog[i].Description); ok {
+				catalog[i].CWE = []string{id}
+				inferredCWEIDs[catalog[i].ID] = true
+			}
+		}
 	}
 	// Build the lookup indexes once (the catalog never changes at runtime), so
 	// the per-request MatchPayload / per-event Lookup / list paths don't rescan

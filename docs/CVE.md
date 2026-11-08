@@ -98,15 +98,15 @@ vulnerability class in the name/description.
 
 | Rank | CWE | Weakness | CVEs |
 |-----|------|------|------|
-| 1 | [CWE-78](https://cwe.mitre.org/data/definitions/78.html) | Improper Neutralization of Special Elements in an OS Command (OS Command Injection) | 157 |
+| 1 | [CWE-78](https://cwe.mitre.org/data/definitions/78.html) | OS Command Injection | 157 |
 | 2 | [CWE-94](https://cwe.mitre.org/data/definitions/94.html) | Code Injection | 117 |
-| 3 | [CWE-22](https://cwe.mitre.org/data/definitions/22.html) | Improper Limitation of a Pathname to a Restricted Directory (Path Traversal) | 98 |
+| 3 | [CWE-22](https://cwe.mitre.org/data/definitions/22.html) | Path Traversal | 98 |
 | 4 | [CWE-287](https://cwe.mitre.org/data/definitions/287.html) | Improper Authentication | 88 |
 | 5 | [CWE-502](https://cwe.mitre.org/data/definitions/502.html) | Deserialization of Untrusted Data | 69 |
 | 6 | [CWE-787](https://cwe.mitre.org/data/definitions/787.html) | Out-of-bounds Write | 65 |
 | 7 | [CWE-306](https://cwe.mitre.org/data/definitions/306.html) | Missing Authentication for Critical Function | 59 |
 | 8 | [CWE-400](https://cwe.mitre.org/data/definitions/400.html) | Uncontrolled Resource Consumption | 36 |
-| 9 | [CWE-89](https://cwe.mitre.org/data/definitions/89.html) | Improper Neutralization of Special Elements in an SQL Command (SQL Injection) | 35 |
+| 9 | [CWE-89](https://cwe.mitre.org/data/definitions/89.html) | SQL Injection | 35 |
 | 10 | [CWE-918](https://cwe.mitre.org/data/definitions/918.html) | Server-Side Request Forgery (SSRF) | 29 |
 | 11 | [CWE-20](https://cwe.mitre.org/data/definitions/20.html) | Improper Input Validation | 25 |
 | 12 | [CWE-200](https://cwe.mitre.org/data/definitions/200.html) | Exposure of Sensitive Information | 24 |

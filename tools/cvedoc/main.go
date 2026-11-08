@@ -79,58 +79,20 @@ func severityBand(v float64) string {
 	}
 }
 
-// cweForName infers a weakness class (CWE) from a CVE name / description when the
-// record carries no explicit CWE. Ordered most-specific first.
-var cweInference = []struct {
-	needles  []string
-	id, name string
-}{
-	{[]string{"sql injection", "sqli", "nosql injection"}, "CWE-89", "Improper Neutralization of Special Elements in an SQL Command (SQL Injection)"},
-	{[]string{"command injection", "os command", "command inject"}, "CWE-78", "Improper Neutralization of Special Elements in an OS Command (OS Command Injection)"},
-	{[]string{"deserialization", "deserialisation", "object injection"}, "CWE-502", "Deserialization of Untrusted Data"},
-	{[]string{"server-side template injection", "ssti", "template injection"}, "CWE-1336", "Improper Neutralization of Special Elements Used in a Template Engine"},
-	{[]string{"server-side request forgery", "ssrf"}, "CWE-918", "Server-Side Request Forgery (SSRF)"},
-	{[]string{"xml external entity", "xxe"}, "CWE-611", "Improper Restriction of XML External Entity Reference"},
-	{[]string{"cross-site scripting", "xss"}, "CWE-79", "Improper Neutralization of Input During Web Page Generation (Cross-site Scripting)"},
-	{[]string{"cross-site request forgery", "csrf"}, "CWE-352", "Cross-Site Request Forgery (CSRF)"},
-	{[]string{"jndi"}, "CWE-917", "Improper Neutralization of Special Elements Used in an Expression Language Statement"},
-	{[]string{"path traversal", "directory traversal", "traversal", "path-based"}, "CWE-22", "Improper Limitation of a Pathname to a Restricted Directory (Path Traversal)"},
-	{[]string{"file inclusion", "local file inclusion", "lfi", "remote file inclusion"}, "CWE-98", "Improper Control of Filename for Include/Require Statement in PHP Program"},
-	{[]string{"file upload", "unrestricted upload", "arbitrary file write", "arbitrary plugin upload"}, "CWE-434", "Unrestricted Upload of File with Dangerous Type"},
-	{[]string{"file read", "file disclosure", "arbitrary file read", "file-read"}, "CWE-22", "Improper Limitation of a Pathname to a Restricted Directory (Path Traversal)"},
-	{[]string{"missing authentication", "missing authorization", "unauthenticated"}, "CWE-306", "Missing Authentication for Critical Function"},
-	{[]string{"authentication bypass", "auth bypass", "improper authentication", "authorization bypass"}, "CWE-287", "Improper Authentication"},
-	{[]string{"broken access control", "access control", "improper access", "incorrect authorization"}, "CWE-284", "Improper Access Control"},
-	{[]string{"privilege escalation", "elevation of privilege"}, "CWE-269", "Improper Privilege Management"},
-	{[]string{"hardcoded", "hard-coded", "default credential", "default login", "default password"}, "CWE-798", "Use of Hard-coded Credentials"},
-	{[]string{"information disclosure", "info disclosure", "sensitive information", "exposure", "token exposure", "disclosure"}, "CWE-200", "Exposure of Sensitive Information to an Unauthorized Actor"},
-	{[]string{"buffer overflow", "out-of-bounds", "stack overflow", "heap overflow"}, "CWE-787", "Out-of-bounds Write"},
-	{[]string{"open redirect"}, "CWE-601", "URL Redirection to Untrusted Site (Open Redirect)"},
-	{[]string{"code execution", "code injection", "remote code execution", "rce", "arbitrary code"}, "CWE-94", "Improper Control of Generation of Code (Code Injection)"},
-	{[]string{"denial of service", "resource exhaustion", "dos"}, "CWE-400", "Uncontrolled Resource Consumption"},
-	{[]string{"cache poisoning", "spoofing", "impersonation"}, "CWE-345", "Insufficient Verification of Data Authenticity"},
-}
-
-// cweFor returns a CVE's weakness class: the explicit catalog CWE when present,
-// otherwise one inferred from the name/description (marked inferred=true), or
-// empty when nothing matches.
+// cweFor returns a CVE's weakness class from the catalog record. The catalog
+// promotes an inferred CWE onto every record that lacks an explicit one (see
+// internal/cve), so this just reads Record.CWE and asks the package whether that
+// CWE was inferred (so the doc can mark it best-effort) rather than re-deriving.
 func cweFor(r cve.Record) (id, name string, inferred bool) {
-	if len(r.CWE) > 0 && r.CWE[0] != "" {
-		id = r.CWE[0]
-		if n := cve.CWEName(id); n != "" {
-			return id, n, false
-		}
-		return id, id, false
+	if len(r.CWE) == 0 || r.CWE[0] == "" {
+		return "", "", false
 	}
-	hay := strings.ToLower(r.Name + " " + r.Description)
-	for _, rule := range cweInference {
-		for _, n := range rule.needles {
-			if strings.Contains(hay, n) {
-				return rule.id, rule.name, true
-			}
-		}
+	id = r.CWE[0]
+	name = cve.CWEName(id)
+	if name == "" {
+		name = id
 	}
-	return "", "", false
+	return id, name, cve.CWEInferred(r.ID)
 }
 
 func yearOf(id string) string {
