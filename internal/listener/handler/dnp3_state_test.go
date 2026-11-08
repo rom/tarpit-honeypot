@@ -63,6 +63,36 @@ func TestDNP3AnalogOperateThenRead(t *testing.T) {
 	}
 }
 
+// A 32-bit analog output operate (AOB g41v1) must round-trip losslessly via a
+// 32-bit (g40v1) read — regression for the previous 16-bit truncation.
+func TestDNP3Analog32OperateThenRead(t *testing.T) {
+	mem := newDNP3Mem()
+	aob := []byte{0x78, 0x56, 0x34, 0x12, 0x00} // value 0x12345678 LE + status0
+	operate := append([]byte{0x29, 0x01, 0x17, 0x01, 0x03}, aob...)
+	dnp3ControlResponse(operate, mem, 0, true)
+
+	// 32-bit read (g40v1) returns the full value.
+	resp := dnp3ReadResponse([]byte{0x28, 0x01, 0x00, 0x00, 0x07}, mem, 0)
+	obj := resp[4:]
+	if obj[0] != 0x28 || obj[1] != 0x01 {
+		t.Fatalf("expected a group-40 var-1 object: % x", obj[:2])
+	}
+	// header(5) then per point: flag(1)+value(4). point 3 value at 5 + 3*5 + 1.
+	base := 5 + 3*5
+	if got := binary.LittleEndian.Uint32(obj[base+1 : base+5]); got != 0x12345678 {
+		t.Errorf("analog output 3 (32-bit) = 0x%08X; want 0x12345678", got)
+	}
+
+	// A 16-bit read (g40v2) of the same point returns the low word (what a
+	// 16-bit master asked for), not a truncated/garbage value.
+	resp16 := dnp3ReadResponse([]byte{0x28, 0x02, 0x00, 0x00, 0x07}, mem, 0)
+	o16 := resp16[4:]
+	b16 := 5 + 3*3
+	if got := binary.LittleEndian.Uint16(o16[b16+1 : b16+3]); got != 0x5678 {
+		t.Errorf("analog output 3 (16-bit view) = 0x%04X; want 0x5678", got)
+	}
+}
+
 // A class-0 READ returns the full static image (groups 1, 10, 30, 40).
 func TestDNP3ReadClass0Groups(t *testing.T) {
 	resp := dnp3ReadResponse([]byte{0x3C, 0x01, 0x06}, newDNP3Mem(), 0)

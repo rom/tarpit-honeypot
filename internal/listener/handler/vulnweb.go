@@ -664,8 +664,56 @@ func serveWebappVariant(reqLine string, body []byte, server string, id *identity
 		flagAnomaly(res, "webapp:tomcat-manager-probe")
 		return webappResponse(server, 401, "Unauthorized", "text/html", "", []string{`WWW-Authenticate: Basic realm="Tomcat Manager Application"`})
 
-	case path == "/phpinfo.php" || path == "/info.php":
+	case path == "/phpinfo.php" || path == "/info.php" || path == "/php_info.php" || path == "/i.php" || path == "/test.php":
 		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappPhpinfo(id), nil)
+
+	// --- Additional PHP recon surfaces probed by scanners such as Qphpscanner
+	// (github.com/rom/Qphpscanner): PHP opcode/accelerator dashboards, Adminer,
+	// Laravel Horizon, the Symfony dev front controller, and CMS version-
+	// disclosure files. Each returns believable loot and flags the probe.
+	case path == "/adminer.php" || path == "/adminer" || path == "/adminer.php/":
+		flagAnomaly(res, "webapp:adminer-exposed")
+		body := "<!DOCTYPE html><html><head><title>Login - Adminer</title><link rel=\"stylesheet\" href=\"?file=default.css\"></head><body><form action=\"\" method=\"post\"><h1><a href=\"https://www.adminer.org/\">Adminer</a> <span>4.8.1</span></h1><table><tr><th>System<td><select name=\"auth[driver]\"><option value=\"server\">MySQL</option></select><tr><th>Server<td><input name=\"auth[server]\" value=\"localhost\"><tr><th>Username<td><input name=\"auth[username]\"><tr><th>Password<td><input type=\"password\" name=\"auth[password]\"></table><p><input type=\"submit\" value=\"Login\"></form></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", body, nil)
+	case path == "/opcache.php" || path == "/opcache-gui.php" || path == "/apc.php" || path == "/apcu.php":
+		flagAnomaly(res, "webapp:php-opcache-dashboard-exposed")
+		body := "<html><head><title>PHP " + "OPcache" + " Status</title></head><body><h1>OPcache</h1><table><tr><td>Opcode Caching</td><td>Up and Running</td></tr><tr><td>Cached scripts</td><td>1183</td></tr><tr><td>Memory usage</td><td>94.2 MB / 128 MB</td></tr><tr><td>PHP Version</td><td>8.1.2</td></tr></table></body></html>"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", body, nil)
+	case strings.HasPrefix(path, "/horizon"):
+		flagAnomaly(res, "webapp:laravel-horizon-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", webappShell(brand, "Horizon", "<div class=\"nw-card\"><h2>Laravel Horizon</h2><p>Dashboard · Monitoring · Metrics · Failed Jobs</p></div>"), nil)
+	case path == "/app_dev.php" || path == "/web/app_dev.php" || strings.HasPrefix(path, "/app_dev.php/"):
+		// Symfony dev front controller reachable in production = debug mode on.
+		flagAnomaly(res, "webapp:symfony-dev-mode-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>Welcome! - Symfony</title></head><body><h1>Welcome to Symfony "+"5.4.21"+"</h1><p>Your application is running in the <strong>dev</strong> environment.</p></body></html>", nil)
+	case path == "/administrator/manifests/files/joomla.xml":
+		flagAnomaly(res, "webapp:joomla-version-disclosure")
+		res.Meta["product_version"] = "Joomla 4.2.7"
+		return webappResponse(server, 200, "OK", "text/xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<extension type=\"file\" method=\"upgrade\">\n  <name>files_joomla</name>\n  <version>4.2.7</version>\n  <creationDate>2023-01</creationDate>\n  <author>Joomla! Project</author>\n</extension>\n", nil)
+	case path == "/magento_version":
+		flagAnomaly(res, "webapp:magento-version-disclosure")
+		res.Meta["product_version"] = "Magento/2.4"
+		return webappResponse(server, 200, "OK", "text/plain", "Magento/2.4 (Community)\n", nil)
+	case path == "/wp-json" || path == "/wp-json/" || path == "/?rest_route=/":
+		flagAnomaly(res, "webapp:wordpress-rest-api")
+		body := "{\"name\":\"" + brand.Name + "\",\"description\":\"Just another WordPress site\",\"url\":\"https://" + dom + "\",\"namespaces\":[\"oembed/1.0\",\"wp/v2\"],\"authentication\":{},\"gmt_offset\":0}"
+		return webappResponse(server, 200, "OK", "application/json", body, nil)
+	case path == "/vendor/autoload.php" || path == "/vendor/composer/autoload_real.php":
+		// The composer autoloader being web-reachable = vendor/ served (exposure).
+		recordProbedFile(res, path)
+		flagAnomaly(res, "webapp:composer-vendor-exposed")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "", nil)
+	case path == "/core/CHANGELOG.txt" || path == "/CHANGELOG.txt":
+		flagAnomaly(res, "webapp:drupal-version-disclosure")
+		res.Meta["product_version"] = "Drupal 9.5.2"
+		return webappResponse(server, 200, "OK", "text/plain", "\nDrupal 9.5.2, 2023-01-05\n-----------------------\n- Fixed security issues (see SA-CORE-2023-001).\n\nDrupal 9.5.0, 2022-12-07\n", nil)
+	case path == "/readme.html":
+		flagAnomaly(res, "webapp:wordpress-version-disclosure")
+		res.Meta["product_version"] = "WordPress 6.4.2"
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>WordPress &rsaquo; ReadMe</title></head><body><h1>WordPress</h1><p>Version 6.4.2</p></body></html>", nil)
+	case path == "/user/login" || path == "/?q=user/login":
+		flagAnomaly(res, "webapp:drupal-login-probe")
+		return webappResponse(server, 200, "OK", "text/html; charset=UTF-8", "<html><head><title>Log in | "+brand.Name+"</title><meta name=\"Generator\" content=\"Drupal 9 (https://www.drupal.org)\"></head><body><form action=\"/user/login\" method=\"post\" id=\"user-login-form\"><input name=\"name\" placeholder=\"Username\"><input type=\"password\" name=\"pass\"><input type=\"submit\" name=\"op\" value=\"Log in\"></form></body></html>", nil)
 
 	case strings.Contains(path, "/phpunit/") && strings.HasSuffix(path, "eval-stdin.php"),
 		strings.HasSuffix(path, "/eval-stdin.php"):

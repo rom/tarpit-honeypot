@@ -41,6 +41,16 @@ type snmpWalkState struct {
 	count       int
 }
 
+// Caps on the per-source walk-rate map. The soft cap triggers an
+// elapsed-window GC; the hard cap force-sheds entries so a spoofed-source UDP
+// flood (every window fresh, nothing to GC) can never grow the map without
+// bound. UDP listeners have no per-source admission control, so this map must
+// be self-bounding.
+const (
+	snmpWalkSoftCap = 4096
+	snmpWalkHardCap = 8192
+)
+
 // snmpBulkCap bounds GetBulk max-repetitions so a single request can't make
 // us emit an unbounded response (and feeds the rate limiter honestly).
 const snmpBulkCap = 60
@@ -84,10 +94,24 @@ func (s *snmp) allowWalk(srcIP string, cfg config.SNMPListener, now time.Time, s
 	if s.walks == nil {
 		s.walks = map[string]*snmpWalkState{}
 	}
-	// Opportunistic GC so the map can't grow without bound.
-	if len(s.walks) > 4096 {
+	// Bound the per-source map. First an opportunistic GC of windows that have
+	// fully elapsed. Then a hard cap: under a spoofed-source UDP flood every
+	// entry is fresh (sub-minute), so the elapsed-window GC frees nothing and
+	// the map would grow without bound → OOM. When still over the hard cap,
+	// shed arbitrary entries down to half of it. Losing rate-limit state for
+	// some sources during a flood is acceptable; unbounded memory growth (which
+	// would kill the whole sensor) is not.
+	if len(s.walks) > snmpWalkSoftCap {
 		for ip, st := range s.walks {
 			if now.Sub(st.windowStart) >= time.Minute {
+				delete(s.walks, ip)
+			}
+		}
+		if len(s.walks) >= snmpWalkHardCap {
+			for ip := range s.walks {
+				if len(s.walks) <= snmpWalkHardCap/2 {
+					break
+				}
 				delete(s.walks, ip)
 			}
 		}

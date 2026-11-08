@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/archetype"
@@ -188,21 +187,30 @@ func (t *tlsIntercept) forward(ctx context.Context, client net.Conn, cfg config.
 	}
 
 	// Capture client->backend bytes via a tee; copy backend->client straight.
+	// When EITHER direction finishes, tear down both conns so the other copy
+	// goroutine can't block forever: a backend that stays open-and-silent after
+	// the client half-closes would otherwise park the backend->client copy — and
+	// its goroutine + the backend fd + the client fd — indefinitely, leaking a
+	// little on every such session until the process runs out of fds/memory.
+	// The client conn carries an absolute read deadline (set in Handle), so the
+	// client->backend copy always returns, which guarantees teardown.
 	cap := &captureWriter{limit: 64 << 10}
-	var wg sync.WaitGroup
-	wg.Add(2)
+	done := make(chan struct{}, 2)
 	go func() {
-		defer wg.Done()
 		_, _ = io.Copy(backend, io.TeeReader(client, cap))
 		if cw, ok := backend.(interface{ CloseWrite() error }); ok {
 			_ = cw.CloseWrite()
 		}
+		done <- struct{}{}
 	}()
 	go func() {
-		defer wg.Done()
 		_, _ = io.Copy(client, backend)
+		done <- struct{}{}
 	}()
-	wg.Wait()
+	<-done // first direction closed
+	_ = backend.Close()
+	_ = client.Close()
+	<-done // second direction unblocks now that both conns are closed
 	return cap.buf, nil
 }
 

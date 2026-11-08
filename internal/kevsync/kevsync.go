@@ -201,7 +201,11 @@ func GapScan(entries []Entry, have []string) []Entry {
 // optional "Name: value" header. The caller supplies an egress-governed client.
 func Fetch(ctx context.Context, client *http.Client, url, header string) ([]Entry, string, error) {
 	if client == nil {
-		client = http.DefaultClient
+		// Defense-in-depth: never fall back to http.DefaultClient (no timeout) —
+		// a stalled connection would hang the puller goroutine indefinitely and
+		// stop all further refreshes. Production always passes an egress-governed
+		// client with a timeout; this only guards misuse/tests.
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
