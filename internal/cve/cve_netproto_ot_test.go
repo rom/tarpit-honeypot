@@ -93,3 +93,33 @@ func TestSNMPDNSNTPBatchWellFormed(t *testing.T) {
 		}
 	}
 }
+
+// TestNucleiExtraDetects: the curated recent-CVE Nuclei batch must be well-formed
+// and a representative spread must fire through MatchPayload on its exploit path.
+func TestNucleiExtraDetects(t *testing.T) {
+	if len(cveNucleiExtra2026) < 15 {
+		t.Fatalf("expected the curated batch to add 15+ CVEs, got %d", len(cveNucleiExtra2026))
+	}
+	for _, r := range cveNucleiExtra2026 {
+		if r.Service != "http" || len(r.Signatures) == 0 || r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s: malformed nuclei-extra record (%+v)", r.ID, r)
+		}
+	}
+	cases := []struct{ id, payload string }{
+		{"CVE-2025-30220", "GET /geoserver/wfs?service=wfs&request=getcapabilities HTTP/1.1"},
+		{"CVE-2025-41243", "GET /actuator/gateway/routes/ HTTP/1.1"},
+		{"CVE-2026-41042", "POST /api/metalakes HTTP/1.1"},
+		{"CVE-2026-2699", "GET /configservice/admin.aspx HTTP/1.1"},
+		{"CVE-2025-32966", "POST /de2api/datasource/validate HTTP/1.1"},
+		{"CVE-2026-86207", "GET /dms;/services/serverui HTTP/1.1"},
+	}
+	for _, c := range cases {
+		if _, ok := Lookup(c.id); !ok {
+			t.Errorf("%s not in catalog", c.id)
+			continue
+		}
+		if hits := MatchPayload("http", c.payload); !containsID(hits, c.id) {
+			t.Errorf("%s: MatchPayload did not flag it; got %v", c.id, ids(hits))
+		}
+	}
+}

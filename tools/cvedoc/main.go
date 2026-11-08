@@ -42,7 +42,8 @@ func main() {
 // row is the flattened, display-ready view of one catalog record.
 type row struct {
 	ID, Name, Protocol, Vendor, Product, Technique, Tactic string
-	Year                                                   string
+	Year, CWE, CWEName, Severity                           string
+	CWEInferred                                            bool
 	CVSS                                                   float64
 	Detectable                                             bool
 }
@@ -51,13 +52,85 @@ func toRows(recs []cve.Record) []row {
 	out := make([]row, 0, len(recs))
 	for _, r := range recs {
 		v, p := vendorProduct(r)
+		cweID, cweName, inferred := cweFor(r)
 		out = append(out, row{
 			ID: r.ID, Name: r.Name, Protocol: r.Service,
 			Vendor: v, Product: p, Technique: r.Technique, Tactic: r.Tactic,
 			Year: yearOf(r.ID), CVSS: r.CVSS, Detectable: len(r.Signatures) > 0,
+			CWE: cweID, CWEName: cweName, CWEInferred: inferred, Severity: severityBand(r.CVSS),
 		})
 	}
 	return out
+}
+
+// severityBand maps a CVSS base score to its qualitative severity label.
+func severityBand(v float64) string {
+	switch {
+	case v >= 9.0:
+		return "Critical"
+	case v >= 7.0:
+		return "High"
+	case v >= 4.0:
+		return "Medium"
+	case v > 0:
+		return "Low"
+	default:
+		return "None"
+	}
+}
+
+// cweForName infers a weakness class (CWE) from a CVE name / description when the
+// record carries no explicit CWE. Ordered most-specific first.
+var cweInference = []struct {
+	needles  []string
+	id, name string
+}{
+	{[]string{"sql injection", "sqli", "nosql injection"}, "CWE-89", "Improper Neutralization of Special Elements in an SQL Command (SQL Injection)"},
+	{[]string{"command injection", "os command", "command inject"}, "CWE-78", "Improper Neutralization of Special Elements in an OS Command (OS Command Injection)"},
+	{[]string{"deserialization", "deserialisation", "object injection"}, "CWE-502", "Deserialization of Untrusted Data"},
+	{[]string{"server-side template injection", "ssti", "template injection"}, "CWE-1336", "Improper Neutralization of Special Elements Used in a Template Engine"},
+	{[]string{"server-side request forgery", "ssrf"}, "CWE-918", "Server-Side Request Forgery (SSRF)"},
+	{[]string{"xml external entity", "xxe"}, "CWE-611", "Improper Restriction of XML External Entity Reference"},
+	{[]string{"cross-site scripting", "xss"}, "CWE-79", "Improper Neutralization of Input During Web Page Generation (Cross-site Scripting)"},
+	{[]string{"cross-site request forgery", "csrf"}, "CWE-352", "Cross-Site Request Forgery (CSRF)"},
+	{[]string{"jndi"}, "CWE-917", "Improper Neutralization of Special Elements Used in an Expression Language Statement"},
+	{[]string{"path traversal", "directory traversal", "traversal", "path-based"}, "CWE-22", "Improper Limitation of a Pathname to a Restricted Directory (Path Traversal)"},
+	{[]string{"file inclusion", "local file inclusion", "lfi", "remote file inclusion"}, "CWE-98", "Improper Control of Filename for Include/Require Statement in PHP Program"},
+	{[]string{"file upload", "unrestricted upload", "arbitrary file write", "arbitrary plugin upload"}, "CWE-434", "Unrestricted Upload of File with Dangerous Type"},
+	{[]string{"file read", "file disclosure", "arbitrary file read", "file-read"}, "CWE-22", "Improper Limitation of a Pathname to a Restricted Directory (Path Traversal)"},
+	{[]string{"missing authentication", "missing authorization", "unauthenticated"}, "CWE-306", "Missing Authentication for Critical Function"},
+	{[]string{"authentication bypass", "auth bypass", "improper authentication", "authorization bypass"}, "CWE-287", "Improper Authentication"},
+	{[]string{"broken access control", "access control", "improper access", "incorrect authorization"}, "CWE-284", "Improper Access Control"},
+	{[]string{"privilege escalation", "elevation of privilege"}, "CWE-269", "Improper Privilege Management"},
+	{[]string{"hardcoded", "hard-coded", "default credential", "default login", "default password"}, "CWE-798", "Use of Hard-coded Credentials"},
+	{[]string{"information disclosure", "info disclosure", "sensitive information", "exposure", "token exposure", "disclosure"}, "CWE-200", "Exposure of Sensitive Information to an Unauthorized Actor"},
+	{[]string{"buffer overflow", "out-of-bounds", "stack overflow", "heap overflow"}, "CWE-787", "Out-of-bounds Write"},
+	{[]string{"open redirect"}, "CWE-601", "URL Redirection to Untrusted Site (Open Redirect)"},
+	{[]string{"code execution", "code injection", "remote code execution", "rce", "arbitrary code"}, "CWE-94", "Improper Control of Generation of Code (Code Injection)"},
+	{[]string{"denial of service", "resource exhaustion", "dos"}, "CWE-400", "Uncontrolled Resource Consumption"},
+	{[]string{"cache poisoning", "spoofing", "impersonation"}, "CWE-345", "Insufficient Verification of Data Authenticity"},
+}
+
+// cweFor returns a CVE's weakness class: the explicit catalog CWE when present,
+// otherwise one inferred from the name/description (marked inferred=true), or
+// empty when nothing matches.
+func cweFor(r cve.Record) (id, name string, inferred bool) {
+	if len(r.CWE) > 0 && r.CWE[0] != "" {
+		id = r.CWE[0]
+		if n := cve.CWEName(id); n != "" {
+			return id, n, false
+		}
+		return id, id, false
+	}
+	hay := strings.ToLower(r.Name + " " + r.Description)
+	for _, rule := range cweInference {
+		for _, n := range rule.needles {
+			if strings.Contains(hay, n) {
+				return rule.id, rule.name, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 func yearOf(id string) string {
@@ -257,6 +330,34 @@ func Render(recs []cve.Record) string {
 	writeTop(&b, "Top 10 protocols / services by CVE count", "Protocol / service", topN(countBy(rows, func(r row) string { return r.Protocol }), 10))
 	writeTop(&b, "Top 10 years by CVE count", "Year", topN(countBy(rows, func(r row) string { return r.Year }), 10))
 
+	// CVSS severity distribution (ordered band table, not a top-N).
+	b.WriteString("### CVSS severity distribution\n\n")
+	b.WriteString("| Severity | CVSS band | CVEs |\n|-----|------|------|\n")
+	sevCounts := countBy(rows, func(r row) string { return r.Severity })
+	for _, band := range []struct{ label, rng string }{
+		{"Critical", "9.0–10.0"}, {"High", "7.0–8.9"}, {"Medium", "4.0–6.9"},
+		{"Low", "0.1–3.9"}, {"None", "0.0 / unscored"},
+	} {
+		fmt.Fprintf(&b, "| %s | %s | %d |\n", band.label, band.rng, sevCounts[band.label])
+	}
+	b.WriteString("\n")
+
+	// Top weakness classes (CWE), explicit + inferred from the vuln class.
+	b.WriteString("### Top 15 weakness classes (CWE)\n\n")
+	b.WriteString("CWE is taken from the catalog record where present, else inferred from the\n")
+	b.WriteString("vulnerability class in the name/description.\n\n")
+	b.WriteString("| Rank | CWE | Weakness | CVEs |\n|-----|------|------|------|\n")
+	cweName := map[string]string{}
+	for _, r := range rows {
+		if r.CWE != "" {
+			cweName[r.CWE] = r.CWEName
+		}
+	}
+	for i, e := range topN(countBy(rows, func(r row) string { return r.CWE }), 15) {
+		fmt.Fprintf(&b, "| %d | %s | %s | %d |\n", i+1, cweLink(e.Key), esc(cweName[e.Key]), e.Count)
+	}
+	b.WriteString("\n")
+
 	// ---- By protocol ----
 	b.WriteString("## By protocol / service\n\n")
 	b.WriteString("Every protocol/service the honeypot answers on, with its catalogued CVEs. A\n")
@@ -271,12 +372,15 @@ func Render(recs []cve.Record) string {
 
 	// ---- Full list ----
 	b.WriteString("## All CVEs\n\n")
-	b.WriteString("| CVE | Name | Protocol | CVSS | Detect | ATT&CK |\n")
-	b.WriteString("|-----|------|----------|------|--------|--------|\n")
+	b.WriteString("CWE is the catalog's explicit weakness class, or (marked *) one inferred from\n")
+	b.WriteString("the vulnerability class. Severity is the CVSS band.\n\n")
+	b.WriteString("| CVE | Name | Protocol | CVSS | Severity | CWE | Detect | ATT&CK |\n")
+	b.WriteString("|-----|------|----------|------|----------|-----|--------|--------|\n")
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 	for _, r := range rows {
-		fmt.Fprintf(&b, "| %s | %s | `%s` | %s | %s | %s |\n",
-			nvdLink(r.ID), esc(r.Name), r.Protocol, cvss(r.CVSS), detectMark(r.Detectable), attack(r))
+		fmt.Fprintf(&b, "| %s | %s | `%s` | %s | %s | %s | %s | %s |\n",
+			nvdLink(r.ID), esc(r.Name), r.Protocol, cvss(r.CVSS), r.Severity,
+			cweCell(r), detectMark(r.Detectable), attack(r))
 	}
 	b.WriteString("\n")
 
@@ -339,6 +443,28 @@ func writeGrouped(b *strings.Builder, rows []row, key func(row) string, noun str
 
 func nvdLink(id string) string {
 	return fmt.Sprintf("[%s](https://nvd.nist.gov/vuln/detail/%s)", id, id)
+}
+
+// cweLink renders a CWE id as a link to its MITRE definition.
+func cweLink(id string) string {
+	if id == "" {
+		return "—"
+	}
+	num := strings.TrimPrefix(id, "CWE-")
+	return fmt.Sprintf("[%s](https://cwe.mitre.org/data/definitions/%s.html)", id, num)
+}
+
+// cweCell renders the All-CVEs table CWE cell: the linked id, with a trailing *
+// when it was inferred rather than carried explicitly by the record.
+func cweCell(r row) string {
+	if r.CWE == "" {
+		return "—"
+	}
+	s := cweLink(r.CWE)
+	if r.CWEInferred {
+		s += " \\*"
+	}
+	return s
 }
 
 func detectMark(d bool) string {

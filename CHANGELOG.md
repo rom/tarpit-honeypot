@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **The CVE catalog reference is now browsable in the web UI** under
+  **docs → CVE catalog** (`/docs/CVE`), alongside the existing guides — `CVE.md`
+  is embedded in the binary like every other doc. Expanded the FAQ with a
+  CVE-catalog section (detectable vs advisory-only, how to add CVEs with
+  `nuclei2cve`, reflection/amplification and OT-vendor coverage) and web-UI
+  entries for the events-table column toggle, the per-protocol detail fields, and
+  the per-handler dossier; corrected the stale catalog count.
 - **`docs/CVE.md` — a generated reference for the whole CVE catalog**, built by
   the new `tools/cvedoc` generator (`make cvedoc`). It reads `internal/cve`
   directly so it never drifts: an overview with the top-10 products, vendors,
@@ -29,6 +36,21 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **33 more recent CVEs from the Nuclei templates (`cve_nuclei_extra.go`).** A
+  curated, mostly-critical 2024–2026 batch extracted with `tools/nuclei2cve`,
+  each with a distinctive real exploit path flagged live by MatchPayload —
+  internet-facing enterprise / infrastructure / appliance / AI-stack targets
+  that are actively mass-scanned: Palo Alto Expedition, SysAid, GeoServer XXE,
+  Spring Cloud Gateway, Adobe AEM Forms, Fortinet FortiClient EMS, Gitea, UniFi
+  Access/Network, OpenAM, Apache Gravitino, MLflow, Langflow, Dell Unity, Mitel,
+  Progress ShareFile, N-able N-central, Barracuda ESG, and several
+  router/NAS/camera command-injection chains (D-Link, Netis, NUUO, LB-LINK).
+- **CVE.md now maps every CVE to its CWE and CVSS severity.** The generated
+  reference gained a CVSS severity distribution and a top-15 weakness-class (CWE)
+  overview, and the full table gained **Severity** and **CWE** columns (linked to
+  MITRE). CWE is the catalog's explicit weakness class where present, otherwise
+  inferred from the vulnerability class in the name/description and marked with
+  `*`, so all 1114 entries carry a weakness mapping.
 - **32 more SNMP, DNS & NTP vulnerability simulations
   (`cve_snmp_dns_ntp.go`).** A focused deepening of the three UDP infrastructure
   services attackers most often reflect, crash or poison, from the authoritative

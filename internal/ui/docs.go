@@ -36,6 +36,7 @@ var docCatalog = []docLink{
 	{"database-backend", "Database backend", "The storage architecture: embedded SQLite at the edge, the EventStore seam, and the optional PostgreSQL backend for fleet aggregators."},
 	{"archetypes", "OS / device archetypes", "The host personalities the sensor can present."},
 	{"attribution", "ATT&CK / D3FEND / CVE", "How interactions map to ATT&CK, D3FEND, and the CVE/CWE/CPE/EPSS catalog."},
+	{"CVE", "CVE catalog", "The full CVE reference (auto-generated from internal/cve): top-10s by product, vendor, protocol and year; CVSS severity and CWE weakness-class mappings; and the protocol- and product-focused cross-references."},
 	{"ot", "ICS / OT decoys", "The industrial-protocol decoy suite: supported protocols, emulated commands, attacker-intent + ATT&CK-for-ICS mapping, the deception model, and limitations."},
 	{"AGENTIC", "Agentic attacks", "Detecting and turning the tables on autonomous LLM agents: the agent handler, protocol/Web-Bot-Auth/crawler recognition, confidence scoring, multi-turn correlation, the extract/provoke/disrupt bait ladder, counter-exfil, the agent provocateur, prompt analysis, decoys/lures/tokens, and the shipped rules."},
 	{"attack-tools", "Attack-tool fingerprinting", "The scanners and attack tools the sensor recognizes: how identification works, the categories, and what's covered."},
