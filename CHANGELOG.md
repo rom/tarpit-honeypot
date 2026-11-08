@@ -10,6 +10,13 @@ documented in `docs/`).
 
 ### Added
 
+- **The CVE catalog reference is now browsable in the web UI** under
+  **docs → CVE catalog** (`/docs/CVE`), alongside the existing guides — `CVE.md`
+  is embedded in the binary like every other doc. Expanded the FAQ with a
+  CVE-catalog section (detectable vs advisory-only, how to add CVEs with
+  `nuclei2cve`, reflection/amplification and OT-vendor coverage) and web-UI
+  entries for the events-table column toggle, the per-protocol detail fields, and
+  the per-handler dossier; corrected the stale catalog count.
 - **`docs/CVE.md` — a generated reference for the whole CVE catalog**, built by
   the new `tools/cvedoc` generator (`make cvedoc`). It reads `internal/cve`
   directly so it never drifts: an overview with the top-10 products, vendors,

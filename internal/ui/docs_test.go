@@ -2,6 +2,7 @@ package ui
 
 import (
 	"html/template"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -74,6 +75,40 @@ func TestNewDocsInCatalog(t *testing.T) {
 	for name, found := range want {
 		if !found {
 			t.Errorf("doc %q missing from docCatalog", name)
+		}
+	}
+}
+
+// The generated CVE catalog must be reachable from the GUI docs page: listed in
+// the library (from docCatalog, since CVE.md is embedded) and renderable at
+// /docs/CVE with its content.
+func TestCVEDocInLibraryAndRenders(t *testing.T) {
+	var found bool
+	for _, d := range docLibrary() {
+		if d.Name == "CVE" {
+			found = true
+			if d.Title == "" {
+				t.Error("CVE doc has no title")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("CVE doc not listed in docLibrary()")
+	}
+	if !availableDocs()["CVE"] {
+		t.Error("CVE.md not embedded in docs.FS")
+	}
+
+	s := &Server{tmpl: docsTmpl(t)}
+	w := httptest.NewRecorder()
+	s.handleDoc(w, httptest.NewRequest("GET", "/docs/CVE", nil))
+	if w.Code != 200 {
+		t.Fatalf("/docs/CVE status %d", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"CVE catalog", "severity distribution", "nvd.nist.gov"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/docs/CVE missing %q", want)
 		}
 	}
 }

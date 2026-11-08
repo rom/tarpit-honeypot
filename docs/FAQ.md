@@ -385,11 +385,50 @@ have their own per-`(source, rule)` window so one hammering source doesn't flood
 channel. The local store still records the full picture.
 
 **What CVEs does it know about?**
-A curated catalog of 743 entries (run `tarpit-honeypot list-cves`), each with
-CVSS, CWE, CPE, EPSS, and the ATT&CK technique. Vuln-emulation (advertise an
-unpatched version + recognize the matching exploit) is per-listener
-(`sensor.vuln_emulation`); exploit-attempt detection (`cve:<id>` events) runs
-regardless.
+A curated catalog of 1100+ entries (run `tarpit-honeypot list-cves`), each with
+CVSS, CWE, CPE, EPSS, and the ATT&CK technique. The full, browsable reference —
+with top-10s by product / vendor / protocol / year, a CVSS severity breakdown, a
+CWE weakness-class mapping, and protocol- and product-focused cross-references —
+is [`docs/CVE.md`](CVE.md), also served in the web UI under **docs → CVE
+catalog**. Vuln-emulation (advertise an unpatched version + recognize the
+matching exploit) is per-listener (`sensor.vuln_emulation`); exploit-attempt
+detection (`cve:<id>` events) runs regardless.
+
+**Detectable vs advisory-only — what's the difference?**
+A **detectable** CVE carries a high-signal exploit *signature* (a distinctive
+URL path / payload substring), so `internal/cve.MatchPayload` flags a live
+attempt as `cve:<id>`. An **advisory-only** CVE has no reliable network-text
+signature — binary protocols, off-path spoofing, authenticated-config and
+credential bugs (most of the NTP/DNS/SNMP catalog) — so it drives the
+fake-vulnerable banner / patch-level advertising instead, and the protocol
+handler raises the live `cve:<id>` itself when it decodes the specific exploit
+(e.g. the NTP handler flags monlist as CVE-2013-5211). `docs/CVE.md` marks which
+is which.
+
+**How do I add more CVEs to the catalog?**
+For web CVEs, point the bundled `tools/nuclei2cve` converter at a checkout of the
+community Nuclei templates: it extracts the static, high-signal portion of each
+template's exploit path, maps severity→CVSS and tags→ATT&CK, and emits ready-to-
+compile Go `Record` literals (`-format go`) or JSON. `-kev <feed.json>` restricts
+it to CISA-KEV ("actually exploited") CVEs, and `-have <ids.txt>` skips ones you
+already catalogue. Protocol/binary CVEs (NTP/DNS/SNMP/OT) are hand-authored as
+advisory records in their `internal/cve/cve_*.go` batch file. Regenerate the
+reference afterwards with `make cvedoc`.
+
+**Does it cover reflection / amplification (DRDoS) vectors?**
+Yes — the catalog carries the weaponizable UDP reflectors (NTP monlist
+CVE-2013-5211, memcached "Memcrashed" CVE-2018-1000115, SLP CVE-2023-29552,
+rpcbind, Jenkins multicast, DNS NXNSAttack CVE-2020-8616), and the reflection-
+safe handlers rate-limit / suppress amplifying replies so the decoy can't be
+abused as a flood source. That's distinct from the **backscatter** signal below,
+which spots when some *other* host is the flood target.
+
+**What about OT / ICS vendor CVEs?**
+Alongside the protocol-level ICS coverage (see [ICS / OT](#ics--ot)), the catalog
+carries named-vendor device CVEs — e.g. ABB Cylon Aspect building-controller
+command injection (path-signatured, flagged live), ABB Totalflow, and Hitachi
+Energy MicroSCADA SYS600 / RTU500 / FOX61x — sourced from the vendor PSIRT and
+CISA ICS advisories.
 
 **What's a tarpit, and what are canary tokens?**
 Two deception features with their own sections below — see [Tarpits](#tarpits)
@@ -848,6 +887,29 @@ timeline / profiles / health / config) can't be disabled, and the `dns` / `web` 
 presentation only — events still land in the store and every export. The summary
 service-board highlight is `ui.service_activity` (default on).
 
+**Can I show/hide columns in the events table?**
+Yes — a **columns ▾** control above the events table toggles any column (time,
+severity, rule, source, dest, handler, intent, details) on or off. It's a
+per-browser preference (remembered in `localStorage`), applied client-side, so it
+survives the live refresh and never changes the data or touches the server; with
+JavaScript off the table simply renders in full.
+
+**Does the event-detail page show protocol request fields?**
+Yes. Besides the full HTTP request (method, URI, every header, cookies, query
+params), the detail page decodes a labeled request-field section for the other
+protocols — DNS (query name/type, AXFR served), SSH (client banner, OpenSSH
+version, HASSH, negotiated KEX/ciphers/MACs, accepted login), SMTP envelope,
+SNMP (version/community/PDU/OIDs), NTP mode-6/7 request, RDP (mstshash/NTLM), FTP
+and Telnet — instead of leaving them in the raw meta table.
+
+**Is there a per-handler view?**
+Yes — click a handler anywhere (events list, event detail, campaign/correlation
+cards) to open `/handler?name=<h>`: a dossier with attempt/attack/successful-
+engagement counts, first & last attempt vs first & last *attack* times, the full
+set of intents, interpretations, severities, ATT&CK tactics/techniques, D3FEND
+countermeasures, tools and anomalies seen on it, and every attacker IP (split
+IPv4 / IPv6 with reverse DNS and peak severity).
+
 **Is there a JSON API?**
 Yes, read-only: `/api/events`, `/api/summary`, `/api/fleet`, `/api/iocs`,
 `/api/profiles`, `/api/fingerprints`, `/api/topology`, `/api/devices`,
@@ -861,7 +923,9 @@ auth-free liveness check.
 
 **Can I read the docs without leaving the console?**
 Yes — the **docs** tab lists a documentation library and renders each guide at
-`/docs/<name>` (the same Markdown shipped under `docs/`).
+`/docs/<name>` (the same Markdown shipped under `docs/`), including the generated
+**CVE catalog** ([`CVE.md`](CVE.md)) and the live handler / ATT&CK / CWE
+reference tables built from the running sensor.
 
 **Can I query the database directly?**
 Yes — `<data_dir>/events.db` is plain SQLite (WAL mode); open it read-only with
