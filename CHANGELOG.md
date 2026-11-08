@@ -10,6 +10,17 @@ documented in `docs/`).
 
 ### Added
 
+- **`tools/nuclei2cve` — a reusable Nuclei-template → CVE-record conversion
+  tool.** The scratch script that produced the KEV×Nuclei batch is now a proper,
+  tested Go CLI so future catalog expansions are a repeatable data step. It walks
+  a Nuclei templates tree, extracts the static high-signal portion of each CVE's
+  exploit path (template vars stripped, generic endpoints dropped), maps
+  severity→CVSS and tags→ATT&CK, and emits ready-to-compile Go `Record` literals
+  (`-format go`) or JSON (`-format json`). Optional `-kev <feed.json>` restricts
+  output to CISA-KEV CVEs and prefers CISA's wording; `-have <ids.txt>` skips
+  CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
+  `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
+  templates as untrusted data — nothing is executed, only parsed.
 - **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
   event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
   dedicated per-handler view: attempt / attack / successful-engagement counts,
