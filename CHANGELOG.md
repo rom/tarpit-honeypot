@@ -143,6 +143,8 @@ documented in `docs/`).
   doing, the ATT&CK tactics it spans, exactly what made it fire, and recommended
   operator next steps. The descriptions live in `internal/correlate` next to the
   correlator, with a test enforcing every recognized playbook has an entry.
+  **playbooks** is a first-class nav entry (togglable via `ui.pages`), between
+  correlation and campaigns.
 - **Captures page: a "harvested URLs" section.** The attacker-referenced URLs
   pulled from shell sessions (wget/curl dropper targets, second-stage payload
   hosts, C2 check-ins) now have their own table on the captures/loot page, with
