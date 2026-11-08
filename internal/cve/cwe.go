@@ -46,6 +46,7 @@ var cweNames = map[string]string{
 	"CWE-389":  "Error Conditions, Return Values, Status Codes",
 	"CWE-354":  "Improper Validation of Integrity Check Value",
 	"CWE-364":  "Signal Handler Race Condition",
+	"CWE-399":  "Resource Management Errors",
 	"CWE-400":  "Uncontrolled Resource Consumption",
 	"CWE-406":  "Insufficient Control of Network Message Volume (Network Amplification)",
 	"CWE-404":  "Improper Resource Shutdown or Release",

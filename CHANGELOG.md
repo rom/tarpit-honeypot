@@ -29,6 +29,19 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **32 more SNMP, DNS & NTP vulnerability simulations
+  (`cve_snmp_dns_ntp.go`).** A focused deepening of the three UDP infrastructure
+  services attackers most often reflect, crash or poison, from the authoritative
+  ISC / net-snmp / Network Time Foundation and CISA advisories. SNMP (9):
+  net-snmp SNMPv3 HMAC auth bypass, snmptrapd / AgentX / VACM-MIB crashes, the
+  2022 nsVacmAccessTable NULL-deref set, and the Cisco IOS/IOS XE SNMP DoS. DNS
+  (10): the glibc getaddrinfo client RCE, recent BIND DoS (SIG(0), stale-cache
+  assertion, many-RR exhaustion, control-channel stack exhaustion, serve-stale,
+  lame-cache), the dnsmasq IPv6-RA / DHCPv6 overflows, and the Unbound ipsecmod
+  command-injection RCE. NTP (13): the 2015–2019 ntpd/ntpq batch — Kiss-o'-Death
+  DoS, the Skeleton-Key trusted-key impersonation, crypto-NAK demobilization,
+  ntpq reslist/decodearr overflows, oversized-UDP and mode-6 crashes. Service
+  SNMP 10→19, DNS 23→33, NTP 24→37; catalog total 1048 → 1080. (CWE-399 named.)
 - **40 more protocol & OT vulnerability simulations (NTP, DNS, Telnet, SSH,
   amplification, ABB & Hitachi Energy).** Two new catalog files broaden the
   services the honeypot answers on. `cve_netproto_batch.go` adds twelve more

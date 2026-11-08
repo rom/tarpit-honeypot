@@ -63,3 +63,33 @@ func TestABBAspectDetects(t *testing.T) {
 		}
 	}
 }
+
+// TestSNMPDNSNTPBatchWellFormed: the SNMP/DNS/NTP deepening batch must be
+// well-formed and must actually broaden those three services' coverage.
+func TestSNMPDNSNTPBatchWellFormed(t *testing.T) {
+	if len(cveSNMPDNSNTP) == 0 {
+		t.Fatal("cveSNMPDNSNTP is empty")
+	}
+	for _, r := range cveSNMPDNSNTP {
+		if !strings.HasPrefix(r.ID, "CVE-") {
+			t.Errorf("%q is not a CVE id", r.ID)
+		}
+		switch r.Service {
+		case "snmp", "dns", "ntp":
+		default:
+			t.Errorf("%s: unexpected service %q (want snmp/dns/ntp)", r.ID, r.Service)
+		}
+		if r.Technique == "" || r.Tactic == "" || r.Name == "" || r.Description == "" {
+			t.Errorf("%s: missing technique/tactic/name/description", r.ID)
+		}
+		if r.CVSS < 0 || r.CVSS > 10 {
+			t.Errorf("%s: CVSS %v out of range", r.ID, r.CVSS)
+		}
+	}
+	// Coverage grew for each targeted service (there were already some records).
+	for svc, min := range map[string]int{"snmp": 15, "dns": 30, "ntp": 35} {
+		if n := len(ForService(svc)); n < min {
+			t.Errorf("service %q has %d records; expected the batch to push it past %d", svc, n, min)
+		}
+	}
+}
