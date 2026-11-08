@@ -21,13 +21,13 @@ import "encoding/binary"
 // AOB operates). Inputs (groups 1/30) are read-only synthetic. Bounded.
 type dnp3Mem struct {
 	binOut map[int]bool
-	anaOut map[int]uint16
+	anaOut map[int]uint32 // 32-bit so g41v1 (32-bit) writes are stored losslessly
 }
 
 const dnp3MemCap = 1024
 
 func newDNP3Mem() *dnp3Mem {
-	return &dnp3Mem{binOut: make(map[int]bool), anaOut: make(map[int]uint16)}
+	return &dnp3Mem{binOut: make(map[int]bool), anaOut: make(map[int]uint32)}
 }
 
 func (m *dnp3Mem) binOutGet(i int) bool { return m.binOut[i] } // default de-energized
@@ -37,8 +37,8 @@ func (m *dnp3Mem) binOutSet(i int, on bool) {
 	}
 	m.binOut[i] = on
 }
-func (m *dnp3Mem) anaOutGet(i int) uint16 { return m.anaOut[i] } // default 0 setpoint
-func (m *dnp3Mem) anaOutSet(i int, v uint16) {
+func (m *dnp3Mem) anaOutGet(i int) uint32 { return m.anaOut[i] } // default 0 setpoint
+func (m *dnp3Mem) anaOutSet(i int, v uint32) {
 	if _, ok := m.anaOut[i]; !ok && len(m.anaOut) >= dnp3MemCap {
 		return
 	}
@@ -79,6 +79,7 @@ func dnp3ReadResponse(objs []byte, mem *dnp3Mem, seq byte) []byte {
 
 type dnp3ReadGroup struct {
 	group       byte
+	variation   byte // requested object variation (e.g. g40v1=32-bit, v2=16-bit)
 	start, stop int
 	all         bool
 }
@@ -89,9 +90,9 @@ func dnp3ParseReadRequest(objs []byte) []dnp3ReadGroup {
 	var out []dnp3ReadGroup
 	i := 0
 	for i+3 <= len(objs) && len(out) < 16 {
-		g, q := objs[i], objs[i+2]
+		g, variation, q := objs[i], objs[i+1], objs[i+2]
 		i += 3
-		rg := dnp3ReadGroup{group: g}
+		rg := dnp3ReadGroup{group: g, variation: variation}
 		switch q {
 		case 0x06: // all points
 			rg.all = true
@@ -145,13 +146,19 @@ func dnp3EncodeGroup(r dnp3ReadGroup, mem *dnp3Mem) []byte {
 		return dnp3EncAnalog16(0x1E, s, e, dnp3SynthAnaIn)
 	case 40: // Analog Output Status (overlay)
 		s, e := dnp3Clamp(r, dnp3MaxAna)
-		return dnp3EncAnalog16(0x28, s, e, mem.anaOutGet)
+		// Honor the requested variation: v1 = 32-bit, v2 (or unspecified) =
+		// 16-bit (the low word), so a 32-bit g41v1 write round-trips losslessly
+		// via a g40v1 read while 16-bit masters keep seeing 16-bit values.
+		if r.variation == 0x01 {
+			return dnp3EncAnalog32(0x28, s, e, mem.anaOutGet)
+		}
+		return dnp3EncAnalog16(0x28, s, e, dnp3Ana16Getter(mem.anaOutGet))
 	case 60: // class data -> the full static image
 		var out []byte
 		out = append(out, dnp3EncBinary(0x01, 0, dnp3MaxBin-1, dnp3SynthBinIn)...)
 		out = append(out, dnp3EncBinary(0x0A, 0, dnp3MaxBin-1, mem.binOutGet)...)
 		out = append(out, dnp3EncAnalog16(0x1E, 0, dnp3MaxAna-1, dnp3SynthAnaIn)...)
-		out = append(out, dnp3EncAnalog16(0x28, 0, dnp3MaxAna-1, mem.anaOutGet)...)
+		out = append(out, dnp3EncAnalog16(0x28, 0, dnp3MaxAna-1, dnp3Ana16Getter(mem.anaOutGet))...)
 		return out
 	}
 	return nil
@@ -203,6 +210,27 @@ func dnp3EncAnalog16(group byte, start, stop int, get func(int) uint16) []byte {
 		data = binary.LittleEndian.AppendUint16(data, get(i))
 	}
 	return dnp3Object(group, 0x02, byte(start), byte(stop), data)
+}
+
+// dnp3EncAnalog32 encodes group var 1 (32-bit analog, with flag): flag(1) +
+// value(4) per point. Used for a g40v1 read so a 32-bit analog-output write
+// (g41v1) reflects its full value on read-back.
+func dnp3EncAnalog32(group byte, start, stop int, get func(int) uint32) []byte {
+	if stop < start {
+		return nil
+	}
+	data := make([]byte, 0, (stop-start+1)*5)
+	for i := start; i <= stop; i++ {
+		data = append(data, 0x01) // ONLINE
+		data = binary.LittleEndian.AppendUint32(data, get(i))
+	}
+	return dnp3Object(group, 0x01, byte(start), byte(stop), data)
+}
+
+// dnp3Ana16Getter adapts a 32-bit analog getter to the 16-bit encoder by
+// returning the low word (what a 16-bit master requested).
+func dnp3Ana16Getter(get func(int) uint32) func(int) uint16 {
+	return func(i int) uint16 { return uint16(get(i)) }
 }
 
 // dnp3Object frames an object header (group, variation, qualifier 0x00 with an
@@ -295,8 +323,10 @@ func dnp3ApplyControl(group, variation byte, idx int, pt []byte, mem *dnp3Mem) {
 			on = false
 		}
 		mem.binOutSet(idx, on)
-	case group == 0x29 && (variation == 0x01 || variation == 0x02): // AOB
-		mem.anaOutSet(idx, binary.LittleEndian.Uint16(pt[0:2]))
+	case group == 0x29 && variation == 0x01: // AOB, 32-bit value (g41v1)
+		mem.anaOutSet(idx, binary.LittleEndian.Uint32(pt[0:4]))
+	case group == 0x29 && variation == 0x02: // AOB, 16-bit value (g41v2)
+		mem.anaOutSet(idx, uint32(binary.LittleEndian.Uint16(pt[0:2])))
 	}
 }
 
