@@ -10,6 +10,14 @@ documented in `docs/`).
 
 ### Added
 
+- **`docs/CVE.md` — a generated reference for the whole CVE catalog**, built by
+  the new `tools/cvedoc` generator (`make cvedoc`). It reads `internal/cve`
+  directly so it never drifts: an overview with the top-10 products, vendors,
+  protocols/services and years by CVE count; the full 1049-CVE list (NVD-linked,
+  with protocol, CVSS, detectable-vs-advisory, and ATT&CK); and protocol-focused
+  and product-focused cross-references so you can see every CVE a given protocol
+  or product maps to. Vendor/product come from each record's CPE where present
+  and are parsed from the name otherwise. Linked from the docs index.
 - **`tools/nuclei2cve` — a reusable Nuclei-template → CVE-record conversion
   tool.** The scratch script that produced the KEV×Nuclei batch is now a proper,
   tested Go CLI so future catalog expansions are a repeatable data step. It walks
