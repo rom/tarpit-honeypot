@@ -731,7 +731,34 @@
     applyStyle();
   }
 
-  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons, setupServicePulse, setupColumnToggle];
+  // ---- malware-URL click gate (captures page) ---------------------------
+  // Harvested attacker URLs are rendered defanged with the real value in
+  // data-url and href="#", so with JS off they never navigate. Here we bind a
+  // confirmation gate: clicking prompts a clear malware warning and only then
+  // opens the real URL in a new, isolated tab. The sensor itself never fetches
+  // these — this is the operator choosing to, in their own sandbox.
+  function setupMalwareLinks() {
+    document.querySelectorAll("[data-malware-link]").forEach(function (a) {
+      if (a.__mwbound) return;
+      a.__mwbound = true;
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        var url = a.getAttribute("data-url") || "";
+        if (!url) return;
+        var ok = window.confirm(
+          "⚠ MALWARE WARNING\n\n" +
+          "This is an attacker-supplied URL that may host LIVE MALWARE:\n\n" +
+          url + "\n\n" +
+          "The sensor has NOT fetched it. Only open it inside an isolated " +
+          "malware-analysis environment (a disposable VM / sandbox), never on " +
+          "your workstation or a trusted network.\n\nOpen it now in a new tab?"
+        );
+        if (ok) window.open(url, "_blank", "noopener,noreferrer");
+      });
+    });
+  }
+
+  var contentEnhancers = [setupSort, setupFilter, setupRowsPerPage, setupGraphs, setupWidgets, setupHelp, setupTimelineOrder, setupConfigSearch, setupRangePersist, setupCopyButtons, setupServicePulse, setupColumnToggle, setupMalwareLinks];
   function runContentEnhancers() {
     contentEnhancers.forEach(function (fn) { try { fn(); } catch (e) { /* never break the page */ } });
   }

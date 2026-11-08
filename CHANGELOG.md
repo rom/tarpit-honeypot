@@ -132,6 +132,14 @@ documented in `docs/`).
   (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
   them in the raw catch-all meta table (those keys are now excluded from it so
   nothing shows twice).
+- **Captures page: a "harvested URLs" section.** The attacker-referenced URLs
+  pulled from shell sessions (wget/curl dropper targets, second-stage payload
+  hosts, C2 check-ins) now have their own table on the captures/loot page, with
+  source, the handler they came through, and the URL shown **defanged**
+  (`hxxp[://]…[.]…`). The sensor never fetches them; the link carries the real
+  value in `data-url` with `href="#"`, so clicking prompts a clear malware
+  warning and only then opens the URL in a new tab for analysis in your sandbox —
+  and with JavaScript disabled the links don't navigate at all.
 - **Events table: labels moved to their own toggleable column.** The source
   reputation / enrichment / recognition badges (blacklist, Tor, scanner, cloud,
   threat-intel, c2, agent, backscatter, …) used to be crammed into the source

@@ -44,6 +44,7 @@ type capturesView struct {
 	Sessions  []lootFile
 	Artifacts []lootFile
 	Creds     []credRow
+	URLs      []harvestedURL // attacker-harvested URLs (dropper / C2), newest first
 	Since     time.Time
 	Scanned   int
 	// Credential-capture summary counters (clickable filters), computed over
@@ -63,6 +64,30 @@ type credRow struct {
 	KindLabel string // Kind, defaulting to "password" when empty (display + filter key)
 	User      string
 	Pass      string
+}
+
+// harvestedURL is one attacker-referenced URL (a wget/curl dropper target,
+// second-stage payload host, or C2) pulled from a shell session. URL is the raw
+// value (used only by the click-through warning gate); Display is defanged so it
+// can't be clicked or auto-linked by accident. The sensor never fetches these.
+type harvestedURL struct {
+	Time    time.Time
+	Source  string
+	Handler string
+	URL     string // raw, for the gated open
+	Display string // defanged (hxxp://…[.]…) for on-screen rendering
+}
+
+// defangURL renders a hostile URL unclickable/inert for display: http(s)→hxxp(s)
+// and the scheme separator and dots neutralized. Keeps it readable without being
+// a live link if the warning gate (JS) is bypassed.
+func defangURL(u string) string {
+	d := u
+	d = strings.ReplaceAll(d, "https://", "hxxps[://]")
+	d = strings.ReplaceAll(d, "http://", "hxxp[://]")
+	d = strings.ReplaceAll(d, "ftp://", "fxp[://]")
+	d = strings.ReplaceAll(d, ".", "[.]")
+	return d
 }
 
 // lootDir maps the UI "kind" to its subdirectory under data_dir.
@@ -160,6 +185,30 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event, filt
 				Kind: c.Kind, KindLabel: kindLabel, User: c.User, Pass: c.Pass,
 			})
 		}
+	}
+	// Attacker-harvested URLs (wget/curl droppers, C2) from the shell handlers.
+	// Deduped across sources so a hammering botnet doesn't flood the table.
+	urlSeen := map[string]struct{}{}
+	for _, ev := range evs {
+		for _, u := range metaStrings(ev.Meta, "harvested_urls") {
+			u = strings.TrimSpace(u)
+			if u == "" {
+				continue
+			}
+			key := ev.Source.IP + "\x00" + u
+			if _, dup := urlSeen[key]; dup {
+				continue
+			}
+			urlSeen[key] = struct{}{}
+			v.URLs = append(v.URLs, harvestedURL{
+				Time: ev.Time, Source: ev.Source.IP, Handler: ev.Handler,
+				URL: u, Display: defangURL(u),
+			})
+		}
+	}
+	sort.Slice(v.URLs, func(i, j int) bool { return v.URLs[i].Time.After(v.URLs[j].Time) })
+	if len(v.URLs) > 500 {
+		v.URLs = v.URLs[:500]
 	}
 	v.TotalCreds = len(all)
 	v.KindCounts = capturesCounters(kindCounts, "kind", filterKind)

@@ -40,7 +40,7 @@ func TestAppJSShipsServicePulse(t *testing.T) {
 		t.Fatal(err)
 	}
 	js := string(b)
-	for _, want := range []string{"function setupServicePulse", "svc-flash", "svc-new", "setupServicePulse, setupColumnToggle]", "function morph", "data-chart-b64"} {
+	for _, want := range []string{"function setupServicePulse", "svc-flash", "svc-new", "setupServicePulse, setupColumnToggle, setupMalwareLinks]", "function morph", "data-chart-b64"} {
 		if !strings.Contains(js, want) {
 			t.Errorf("app.js missing %q", want)
 		}

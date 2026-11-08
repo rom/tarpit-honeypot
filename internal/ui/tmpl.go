@@ -1045,6 +1045,18 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
 {{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
 
+<h2 data-help="URLs the attacker's own commands referenced — wget/curl second-stage dropper targets, payload hosts, C2 check-ins — pulled from interactive-shell sessions. Shown DEFANGED. The sensor never fetches them; clicking one prompts a malware warning and opens it in a new tab for analysis in your sandbox.">harvested URLs <span class="tag bad">attacker-supplied</span> <span class="meta">({{ len .URLs }})</span></h2>
+{{ if .URLs }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>via</th><th>URL (defanged)</th></tr>
+{{ range .URLs }}<tr>
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ else }}—{{ end }}</td>
+  <td>{{ if .Handler }}{{ handlerLink .Handler }}{{ else }}—{{ end }}</td>
+  <td><a class="malware-url" data-malware-link data-url="{{ .URL }}" href="#" rel="noreferrer noopener nofollow"><code>{{ .Display }}</code></a></td>
+</tr>{{ end }}
+</table>
+<p class="note">⚠ These are attacker-supplied URLs that may host live malware. The sensor has <strong>not</strong> fetched them. A link is shown defanged and, when clicked, prompts a confirmation before opening in a new tab — only proceed inside an isolated malware-analysis environment (a disposable VM / sandbox), never on your workstation. With JavaScript disabled the links do not navigate at all.</p>
+{{ else }}<p class="note">none harvested (the ssh_interactive / telnet shells capture URLs from <code>wget</code>/<code>curl</code> dropper commands)</p>{{ end }}
+
 <h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }}{{ if or .FilterKind .FilterService }} of {{ .TotalCreds }}{{ end }})</span></h2>
 {{ if .KindCounts }}<div class="counters">{{ range .KindCounts }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ end }}</div>{{ end }}
 {{ if .ServiceCounts }}<div class="counters"><span class="counter-cat">by service</span>{{ range .ServiceCounts }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ end }}</div>{{ end }}
