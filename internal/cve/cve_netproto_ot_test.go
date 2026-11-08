@@ -157,3 +157,69 @@ func TestInferredCWEPromotion(t *testing.T) {
 		t.Error("expected some records to carry an inferred CWE")
 	}
 }
+
+// TestFTPRDPFortinetBatches: the hand-authored FTP/RDP and Fortinet batches are
+// well-formed, carry explicit CWEs, broaden their services, and the
+// path-signatured Fortinet web exploits fire through MatchPayload.
+func TestFTPRDPFortinetBatches(t *testing.T) {
+	for name, recs := range map[string][]Record{"ftp-rdp": cveFTPRDP, "fortinet": cveFortinet} {
+		for _, r := range recs {
+			if r.Service == "" || r.Technique == "" || r.Tactic == "" || r.Name == "" || r.Description == "" {
+				t.Errorf("%s/%s: missing field", name, r.ID)
+			}
+			if len(r.CWE) == 0 {
+				t.Errorf("%s/%s: hand-authored record should carry an explicit CWE", name, r.ID)
+			}
+		}
+	}
+	if len(cveFortinet) < 25 {
+		t.Errorf("Fortinet batch has %d records; want >=25", len(cveFortinet))
+	}
+	// Fortinet web exploits with a URL path signature fire.
+	for _, c := range []struct{ id, payload string }{
+		{"CVE-2022-39952", "POST /configWizard/keyUpload.jsp HTTP/1.1"},
+		{"CVE-2018-13380", "GET /remote/error?errmsg=<script>alert(1)</script> HTTP/1.1"},
+	} {
+		svc := "http"
+		if c.id == "CVE-2018-13380" {
+			svc = "fortinet"
+		}
+		if hits := MatchPayload(svc, c.payload); !containsID(hits, c.id) {
+			t.Errorf("%s: MatchPayload(%s) did not flag it; got %v", c.id, svc, ids(hits))
+		}
+	}
+	// Coverage grew for the targeted services.
+	if len(ForService("ftp")) < 14 {
+		t.Errorf("ftp coverage only %d", len(ForService("ftp")))
+	}
+	if len(ForService("rdp")) < 16 {
+		t.Errorf("rdp coverage only %d", len(ForService("rdp")))
+	}
+}
+
+// TestNucleiBatch2: the second curated Nuclei batch is well-formed, adds 40+,
+// and a representative spread fires through MatchPayload.
+func TestNucleiBatch2(t *testing.T) {
+	if len(cveNucleiBatch2) < 40 {
+		t.Fatalf("batch2 has %d records; want >=40", len(cveNucleiBatch2))
+	}
+	for _, r := range cveNucleiBatch2 {
+		if r.Service != "http" || len(r.Signatures) == 0 || r.Technique == "" || r.Tactic == "" {
+			t.Errorf("%s: malformed batch2 record", r.ID)
+		}
+	}
+	for _, c := range []struct{ id, payload string }{
+		{"CVE-2024-0200", "POST /api/v3/user/orgs HTTP/1.1"},
+		{"CVE-2024-23917", "GET /app/rest/users/id:1/tokens/ HTTP/1.1"},
+		{"CVE-2026-19478", "GET /api/v4/projects?visibility=public&per_page=1 HTTP/1.1"},
+		{"CVE-2026-41179", "POST /operations/fsinfo HTTP/1.1"},
+	} {
+		if _, ok := Lookup(c.id); !ok {
+			t.Errorf("%s not in catalog", c.id)
+			continue
+		}
+		if hits := MatchPayload("http", c.payload); !containsID(hits, c.id) {
+			t.Errorf("%s: MatchPayload did not flag it; got %v", c.id, ids(hits))
+		}
+	}
+}
