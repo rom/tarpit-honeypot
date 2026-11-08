@@ -268,6 +268,32 @@ func storyPlaybook(st *storylineState) string {
 		anom("mssql-ole-automation") || anom("postgres-untrusted-plang") || anom("mssql-clr-assembly")):
 		// Authenticated-then-RCE through a database's command/exec primitive.
 		return "database-to-rce"
+	case hasHandler("hl7", "dicom") && (anomPrefix("hl7-") || anomPrefix("dicom-")):
+		// Medical-device / clinical-data-system interaction (HL7 v2 / DICOM):
+		// PHI queries, DICOM image pull, or order/master-file tampering.
+		return "medical-device-compromise"
+	case hasHandler("bacnet", "knx") && (anom("bacnet-write-attempt") || anom("bacnet-write-multiple") ||
+		anom("bacnet-priority-override") || anom("bacnet-reinitialize-device") || anom("bacnet-device-comm-control") ||
+		anom("bacnet-file-write-attempt") || anom("knx-bus-write") || anom("knx-memory-write") ||
+		anom("knx-programming") || anom("knx-device-restart") || anom("knx-routing-injection")):
+		// Building-automation (BMS/BAS) manipulation: writing BACnet objects /
+		// overriding priorities / reinitialising, or KNX bus/memory writes.
+		return "building-automation-tampering"
+	case hasHandler("s7", "codesys", "modbus", "melsec", "profinet", "ethernetip", "fins", "mms") &&
+		(anom("ics-plc-write") || anom("ics-process-data-access") || anom("ics-field-device-probe")):
+		// Direct PLC/field-device logic & process-data manipulation (the
+		// write/program stage of an ICS intrusion).
+		return "plc-logic-tampering"
+	case hasHandler("mqtt", "coap", "opcua", "ocpp") && (anom("mqtt-sparkplug") || anom("ics-sparkplug-command") ||
+		anom("ics-sparkplug-birth") || anomPrefix("ocpp-") || anom("mqtt-wildcard-subscribe") ||
+		anom("coap-write-attempt") || anom("mqtt-acl-pattern-bypass")):
+		// Industrial-IoT messaging abuse: MQTT/Sparkplug B command injection or
+		// topic harvesting, CoAP resource writes, or OCPP EV-charger actuation.
+		return "iiot-messaging-abuse"
+	case hasHandler("sip") && anomPrefix("sip-"):
+		// Telco/VoIP signaling abuse: SIP scanning, registration brute force, or
+		// INVITE spraying (toll fraud / subscriber enumeration).
+		return "telco-signaling-fraud"
 	case icsHandler && (anomPrefix("ics-") || anomPrefix("modbus-") || anomPrefix("fins-") ||
 		anomPrefix("pcom-") || st.stageSeen["impact"]):
 		return "ot-kill-chain"
@@ -289,6 +315,11 @@ func storyPlaybook(st *storylineState) string {
 		return "web-exploit-to-shell"
 	case len(st.cveHits) > 0 && hasHandler("fortinet", "pulse", "citrix_gateway"):
 		return "edge-appliance-exploitation"
+	case st.malware && hasHandler("tr069", "upnp", "coap", "mqtt", "ocpp"):
+		// Default-cred / exploit foothold on a consumer-IoT / CPE / router
+		// surface followed by a second-stage dropper — Mirai-style botnet
+		// recruitment of embedded devices.
+		return "iot-botnet-recruitment"
 	case st.malware:
 		return "malware-delivery"
 	case st.webAttack && !st.stageSeen["execution"] && len(st.cveHits) == 0:

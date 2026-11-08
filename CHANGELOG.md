@@ -23,6 +23,38 @@ documented in `docs/`).
 
 ### Added
 
+- **+333 CVEs across four new batches (catalog now 1541).** Three are generated
+  by `tools/nuclei2cve` from real Nuclei templates, so every record carries the
+  actual exploit path as its detection signature: **cve_nuclei_batch3.go** (98
+  critical web CVEs), **cve_metasploit.go** (98 CVEs that ship a public
+  Metasploit Framework exploit module — i.e. weaponised in-the-wild bugs,
+  selected by cross-referencing the Metasploit module metadata against the Nuclei
+  corpus), and **cve_php_apps.go** (64 critical PHP-application CVEs: WordPress,
+  Joomla, Drupal, Magento, ThinkPHP, phpMyAdmin, Laravel, …). A fourth,
+  **cve_php_qphp.go**, covers the PHP-core CVEs that
+  [Qphpscanner](https://github.com/rom/Qphpscanner) checks for (titles sourced
+  from its curated vulndb) so a Qphpscanner run against this honeypot's advertised
+  PHP version correlates the same findings. **cve_ftp_rdp2.go** adds the IIS-FTP
+  memory-corruption classics, more ProFTPD/Pure-FTPd/FileZilla daemon bugs and the
+  recent Windows RD Licensing / RDS / RD Gateway / RD client RCE wave (2019-2025).
+  Detection + ATT&CK tagging only; nothing is executed.
+- **PHP recon emulation extended to what Qphpscanner probes.** The web-deception
+  layer now answers the remaining Qphpscanner probe paths with believable loot
+  and flags each probe: Adminer, the PHP OPcache/APC dashboards, Laravel Horizon,
+  the Symfony dev front controller (`app_dev.php`), the Joomla version manifest,
+  `magento_version`, the WordPress REST root (`/wp-json/`), `vendor/autoload.php`,
+  the Drupal `CHANGELOG.txt` / login page, the WordPress `readme.html`, and the
+  `phpinfo` aliases (`php_info.php`, `i.php`, `test.php`).
+- **Six new attack playbooks** the storyline correlator recognizes, each with a
+  full reference entry and a nav link: **PLC logic / process-data tampering**
+  (S7/CODESYS/Modbus/MELSEC/PROFINET/EtherNet-IP/FINS/MMS writes), **Building-
+  automation (BMS/BAS) manipulation** (BACnet/KNX writes, priority overrides,
+  reinitialise/restart), **Medical-device / clinical-data compromise**
+  (HL7/DICOM PHI access + tampering), **Industrial-IoT messaging abuse**
+  (MQTT/Sparkplug, CoAP, OCPP EV-charger actuation), **Telco / VoIP signaling
+  abuse** (SIP scanning / registration brute force / INVITE spraying), and
+  **IoT botnet recruitment** (Mirai-style default-cred/exploit foothold on a
+  CPE/IoT surface plus a second-stage dropper).
 - **The Danfoss AK-SM decoy now mirrors a live device's web fingerprint.** The
   `danfoss_aksm` `favicon.ico`, `logo.png` and the exact nginx response-header
   set are baked in verbatim from a real, internet-facing AK-SM, so a scanner sees

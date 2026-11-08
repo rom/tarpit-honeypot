@@ -13,6 +13,9 @@ func TestPlaybookRegistryCoversStoryPlaybook(t *testing.T) {
 		"ransomware-style-destruction", "dns-tunneling", "data-exfiltration",
 		"dos-amplification", "web-exploit-to-shell", "edge-appliance-exploitation",
 		"malware-delivery", "web-vuln-fuzzing", "credential-harvest",
+		// OT/BMS/medtech/IoT/IIoT/telco playbooks
+		"plc-logic-tampering", "building-automation-tampering", "medical-device-compromise",
+		"iiot-messaging-abuse", "telco-signaling-fraud", "iot-botnet-recruitment",
 	}
 	for _, n := range names {
 		p, ok := PlaybookInfo(n)
