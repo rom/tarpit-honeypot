@@ -1142,6 +1142,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <h1>correlation — {{ .RangeLabel }}</h1>
 {{ template "rangesel" .RangeLinks }}
 <p class="note">Which source IPs are the <strong>same operator</strong>? Sources are linked when they share high-signal infrastructure — a TLS/SSH fingerprint, a reused SSH public key, an identical credential, a C2/ingress domain, or a malware artifact. {{ .SharedCount }} shared pivot{{ if ne .SharedCount 1 }}s{{ end }} found across {{ len .Sources }} shown sources.</p>
+<p class="note">The storyline correlator also labels each source's kill chain with a recognized <a href="/playbooks">attack playbook</a> — see the reference for what each pattern means.</p>
 {{ if .GraphB64 }}<figure data-chart="shared" data-chart-title="Shared infrastructure — source IPs (left) ↔ what they have in common (right)" data-chart-b64="{{ .GraphB64 }}" data-help="Only entities shared by two or more source IPs are drawn, so every line is evidence that two hosts belong together. Node size on the right = how many IPs share that entity; left-node colour = peak severity."><p class="note">enable JavaScript to render the shared-infrastructure graph</p></figure>{{ else }}<p class="note">no shared infrastructure across sources in this window — nothing correlates yet.</p>{{ end }}
 
 {{ if .Clusters }}<h2>correlated clusters <span class="meta">({{ len .Clusters }})</span></h2>
