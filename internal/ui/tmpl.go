@@ -991,8 +991,9 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ if .TopTech }}{{ template "bars" .TopTech }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>recent kill-chain progressions</h2>
+<p class="note">The <b>playbook</b> column names the attack pattern a storyline matched — see the <a href="/playbooks">playbook reference</a> for what each one means.</p>
 {{ if .Chains }}<table><tr><th>time</th><th>source</th><th>playbook</th><th>chain</th></tr>
-{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Playbook }}<a class="tag bad" href="/playbooks#{{ .Playbook }}" title="what this attack pattern means">{{ .Playbook }}</a>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
 {{ template "foot" . }}{{ end }}
@@ -1044,6 +1045,18 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 </table>
 <p class="note">⚠ These are real, hostile samples. Treat them as live malware — analyze only in an isolated environment.</p>
 {{ else }}<p class="note">none captured (enable <code>sensor.payloads</code> to harvest dropped/uploaded artifacts)</p>{{ end }}
+
+<h2 data-help="URLs the attacker's own commands referenced — wget/curl second-stage dropper targets, payload hosts, C2 check-ins — pulled from interactive-shell sessions. Shown DEFANGED. The sensor never fetches them; clicking one prompts a malware warning and opens it in a new tab for analysis in your sandbox.">harvested URLs <span class="tag bad">attacker-supplied</span> <span class="meta">({{ len .URLs }})</span></h2>
+{{ if .URLs }}<table data-filter><tr><th>time (utc)</th><th>source</th><th>via</th><th>URL (defanged)</th></tr>
+{{ range .URLs }}<tr>
+  <td style="white-space:nowrap">{{ fmtTime .Time }}</td>
+  <td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ else }}—{{ end }}</td>
+  <td>{{ if .Handler }}{{ handlerLink .Handler }}{{ else }}—{{ end }}</td>
+  <td><a class="malware-url" data-malware-link data-url="{{ .URL }}" href="#" rel="noreferrer noopener nofollow"><code>{{ .Display }}</code></a></td>
+</tr>{{ end }}
+</table>
+<p class="note">⚠ These are attacker-supplied URLs that may host live malware. The sensor has <strong>not</strong> fetched them. A link is shown defanged and, when clicked, prompts a confirmation before opening in a new tab — only proceed inside an isolated malware-analysis environment (a disposable VM / sandbox), never on your workstation. With JavaScript disabled the links do not navigate at all.</p>
+{{ else }}<p class="note">none harvested (the ssh_interactive / telnet shells capture URLs from <code>wget</code>/<code>curl</code> dropper commands)</p>{{ end }}
 
 <h2>captured credentials &amp; secrets <span class="meta">({{ len .Creds }}{{ if or .FilterKind .FilterService }} of {{ .TotalCreds }}{{ end }})</span></h2>
 {{ if .KindCounts }}<div class="counters">{{ range .KindCounts }}<a class="counter {{ .Class }}" href="{{ .Href }}"><b>{{ .Value }}</b><span>{{ .Label }}</span></a>{{ end }}</div>{{ end }}
@@ -1158,6 +1171,24 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
     {{ if .Sessions }}<tr><th>sessions</th><td>{{ .Sessions }} recorded · <a href="/events?source={{ .IP }}">events</a></td></tr>{{ end }}
   </table>
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "playbooks" }}{{ template "head" . }}
+<h1>attack playbooks</h1>
+<p class="note">The named attack patterns the storyline correlator recognizes when it stitches a source's events into a kill chain. When a storyline matches one, the events carry a <code>playbook</code> label; the tags on the <a href="/attack">att&amp;ck</a> and <a href="/correlation">correlation</a> views and attacker <a href="/profiles">profiles</a> link here. Each entry explains what the attacker is doing, what made it fire, and what to do about it.</p>
+<p class="note">Jump to: {{ range .Playbooks }}<a class="tag" href="#{{ .Name }}">{{ .Name }}</a> {{ end }}</p>
+{{ range .Playbooks }}
+<div class="net" id="{{ .Name }}">
+  <h2 class="sev-high">{{ .Title }} <span class="tag bad">{{ .Name }}</span>{{ if eq $.Focus .Name }} <span class="tag">← selected</span>{{ end }}</h2>
+  <p>{{ .Long }}</p>
+  <table>
+    <tr><th>summary</th><td>{{ .Short }}</td></tr>
+    <tr><th>ATT&amp;CK tactics</th><td>{{ range .Tactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>
+    <tr><th>what triggers it</th><td>{{ range .Triggers }}<code>{{ . }}</code> {{ end }}</td></tr>
+    <tr><th>operator next steps</th><td>{{ .NextSteps }}</td></tr>
+  </table>
+</div>
+{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "campaign" }}{{ template "head" . }}
@@ -1416,6 +1447,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <th data-col="severity" data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
     <th data-col="rule"><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
     <th data-col="source"><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
+    <th data-col="labels" data-help="Reputation / enrichment / recognition badges for the source (blacklist, Tor, scanner, cloud, threat-intel, c2, agent, backscatter, …). Hide this column with the ‘columns’ control if you don't need it.">labels</th>
     <th data-col="dest" data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
     <th data-col="handler"><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
     <th data-col="intent" data-help="The handler's read of what the attacker was trying to do on this exchange, summarized from the protocol + flagged anomalies. Click to list every event with the same intent.">intent</th>
@@ -1426,7 +1458,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td data-col="time">{{ fmtTime .Time }}</td>
     <td data-col="severity" class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td data-col="rule">{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
-    <td data-col="source">{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
+    <td data-col="source">{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
+    <td data-col="labels">{{ sourceBadges .Meta }}</td>
     <td data-col="dest">{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
     <td data-col="handler">{{ handlerLink .Handler }}</td>
     <td data-col="intent" class="intent-cell">{{ with index .Meta "intent" }}{{ intentLink (printf "%v" .) }}{{ end }}</td>
@@ -1542,7 +1575,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <p class="note">{{ .Summary }}</p>{{ end }}
 {{ if .Intents }}<div class="depl" data-help="What this source was doing, aggregated across every one of its events — the per-event 'intent' label set by the handler or derived at the listener."><b>intent:</b> {{ range .Intents }}{{ intentLink . }} {{ end }}</div>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
-{{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<span class="tag bad">{{ . }}</span> {{ end }}<span class="note">recognized attack patterns from the storyline correlator</span></div>{{ end }}
+{{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<a class="tag bad" href="/playbooks#{{ . }}" title="what this attack pattern means">{{ . }}</a> {{ end }}<span class="note">recognized attack patterns from the storyline correlator — <a href="/playbooks">what these mean</a></span></div>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·

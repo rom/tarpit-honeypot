@@ -49,6 +49,17 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **10 Palo Alto Networks CVEs (`cve_paloalto.go`).** Across PAN-OS GlobalProtect
+  SSL-VPN (format-string + heap pre-auth RCE), the management interface (SAML auth
+  bypass, Captive-Portal buffer overflows), the DNS Security DoS, the
+  reflected-amplification DoS, Expedition cleartext credentials, and the
+  GlobalProtect client — CISA-KEV wording where applicable, advisory-only for
+  banner/patch-level emulation.
+- **CVE.md now also maps EPSS (exploit probability).** The generated reference
+  gained a "Highest EPSS" overview (top records by the FIRST.org Exploit
+  Prediction Scoring System estimate) and an **EPSS** column on the full table,
+  alongside the existing CVSS severity and CWE mappings. Catalog total 1198 →
+  1208.
 - **~115 more CVEs: a second Nuclei batch, FTP, RDP and a full Fortinet set.**
   `cve_nuclei_batch2.go` adds 42 more recent (2024–2026) critical CVEs extracted
   with `tools/nuclei2cve` (GitHub Enterprise, JetBrains TeamCity, GitLab, Cisco
@@ -121,6 +132,31 @@ documented in `docs/`).
   (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
   them in the raw catch-all meta table (those keys are now excluded from it so
   nothing shows twice).
+- **Clickable attack playbooks + a `/playbooks` reference page.** The storyline
+  correlator's playbook labels (credential-replay, AD coerced-auth relay,
+  PsExec lateral movement, redis rogue-replica RCE, SMB wormable exploit,
+  database-to-RCE, OT kill chain, cloud credential takeover, ransomware-style
+  destruction, DNS tunneling, data exfiltration, DoS/amplification, web-exploit-
+  to-shell, edge-appliance exploitation, malware delivery, web-vuln fuzzing,
+  credential harvest) are now links. Each opens a new **/playbooks** reference
+  page — anchored per playbook — with a full description of what the attacker is
+  doing, the ATT&CK tactics it spans, exactly what made it fire, and recommended
+  operator next steps. The descriptions live in `internal/correlate` next to the
+  correlator, with a test enforcing every recognized playbook has an entry.
+- **Captures page: a "harvested URLs" section.** The attacker-referenced URLs
+  pulled from shell sessions (wget/curl dropper targets, second-stage payload
+  hosts, C2 check-ins) now have their own table on the captures/loot page, with
+  source, the handler they came through, and the URL shown **defanged**
+  (`hxxp[://]…[.]…`). The sensor never fetches them; the link carries the real
+  value in `data-url` with `href="#"`, so clicking prompts a clear malware
+  warning and only then opens the URL in a new tab for analysis in your sandbox —
+  and with JavaScript disabled the links don't navigate at all.
+- **Events table: labels moved to their own toggleable column.** The source
+  reputation / enrichment / recognition badges (blacklist, Tor, scanner, cloud,
+  threat-intel, c2, agent, backscatter, …) used to be crammed into the source
+  cell; they now have a dedicated **labels** column that the "columns" control can
+  enable/disable like any other, so the source column stays clean when you don't
+  need them.
 - **Events table: per-column show/hide.** A "columns ▾" control above the events
   table lets you turn any column (time, severity, rule, source, dest, handler,
   intent, details) on or off. It's pure progressive enhancement — each cell

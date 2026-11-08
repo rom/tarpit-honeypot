@@ -2991,6 +2991,7 @@ func init() {
 	catalog = append(catalog, cveFTPRDP...)
 	catalog = append(catalog, cveFortinet...)
 	catalog = append(catalog, cveNucleiBatch2...)
+	catalog = append(catalog, cvePaloAlto...)
 	for i := range catalog {
 		for j, s := range catalog[i].Signatures {
 			catalog[i].Signatures[j] = strings.ToLower(s)

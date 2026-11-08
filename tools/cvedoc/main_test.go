@@ -67,6 +67,7 @@ func TestRenderFromLiveCatalog(t *testing.T) {
 		"Top 10 vendors by CVE count", "Top 10 protocols / services by CVE count",
 		"Top 10 years by CVE count", "CVSS severity distribution",
 		"Top 15 weakness classes (CWE)", "cwe.mitre.org/data/definitions/",
+		"Highest EPSS (exploit probability)", "first.org/epss",
 		"## By protocol / service", "## By product / tool",
 		"## All CVEs", "nvd.nist.gov/vuln/detail/CVE-",
 	} {

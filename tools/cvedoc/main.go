@@ -44,7 +44,7 @@ type row struct {
 	ID, Name, Protocol, Vendor, Product, Technique, Tactic string
 	Year, CWE, CWEName, Severity                           string
 	CWEInferred                                            bool
-	CVSS                                                   float64
+	CVSS, EPSS                                             float64
 	Detectable                                             bool
 }
 
@@ -56,7 +56,7 @@ func toRows(recs []cve.Record) []row {
 		out = append(out, row{
 			ID: r.ID, Name: r.Name, Protocol: r.Service,
 			Vendor: v, Product: p, Technique: r.Technique, Tactic: r.Tactic,
-			Year: yearOf(r.ID), CVSS: r.CVSS, Detectable: len(r.Signatures) > 0,
+			Year: yearOf(r.ID), CVSS: r.CVSS, EPSS: r.EPSS, Detectable: len(r.Signatures) > 0,
 			CWE: cweID, CWEName: cweName, CWEInferred: inferred, Severity: severityBand(r.CVSS),
 		})
 	}
@@ -320,6 +320,37 @@ func Render(recs []cve.Record) string {
 	}
 	b.WriteString("\n")
 
+	// Highest EPSS (exploit-prediction) records — the model's probability a CVE is
+	// exploited in the next 30 days. Only records carrying a stored EPSS appear.
+	b.WriteString("### Highest EPSS (exploit probability)\n\n")
+	b.WriteString("EPSS is the [Exploit Prediction Scoring System](https://www.first.org/epss/) ")
+	b.WriteString("estimate (0–1) that a CVE will be exploited in the wild in the next 30 days — a\n")
+	b.WriteString("different axis from CVSS severity. Only catalog records with a stored EPSS are listed.\n\n")
+	var epssRows []row
+	for _, r := range rows {
+		if r.EPSS > 0 {
+			epssRows = append(epssRows, r)
+		}
+	}
+	sort.Slice(epssRows, func(i, j int) bool {
+		if epssRows[i].EPSS != epssRows[j].EPSS {
+			return epssRows[i].EPSS > epssRows[j].EPSS
+		}
+		return epssRows[i].ID < epssRows[j].ID
+	})
+	if len(epssRows) == 0 {
+		b.WriteString("_No records carry a stored EPSS yet._\n\n")
+	} else {
+		b.WriteString("| Rank | CVE | Name | EPSS | CVSS |\n|-----|------|------|------|------|\n")
+		for i, r := range epssRows {
+			if i >= 20 {
+				break
+			}
+			fmt.Fprintf(&b, "| %d | %s | %s | %s | %s |\n", i+1, nvdLink(r.ID), esc(r.Name), epss(r.EPSS), cvss(r.CVSS))
+		}
+		b.WriteString("\n")
+	}
+
 	// ---- By protocol ----
 	b.WriteString("## By protocol / service\n\n")
 	b.WriteString("Every protocol/service the honeypot answers on, with its catalogued CVEs. A\n")
@@ -335,13 +366,14 @@ func Render(recs []cve.Record) string {
 	// ---- Full list ----
 	b.WriteString("## All CVEs\n\n")
 	b.WriteString("CWE is the catalog's explicit weakness class, or (marked *) one inferred from\n")
-	b.WriteString("the vulnerability class. Severity is the CVSS band.\n\n")
-	b.WriteString("| CVE | Name | Protocol | CVSS | Severity | CWE | Detect | ATT&CK |\n")
-	b.WriteString("|-----|------|----------|------|----------|-----|--------|--------|\n")
+	b.WriteString("the vulnerability class. Severity is the CVSS band; EPSS is the exploit-probability\n")
+	b.WriteString("score (blank when none is stored).\n\n")
+	b.WriteString("| CVE | Name | Protocol | CVSS | Severity | EPSS | CWE | Detect | ATT&CK |\n")
+	b.WriteString("|-----|------|----------|------|----------|------|-----|--------|--------|\n")
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 	for _, r := range rows {
-		fmt.Fprintf(&b, "| %s | %s | `%s` | %s | %s | %s | %s | %s |\n",
-			nvdLink(r.ID), esc(r.Name), r.Protocol, cvss(r.CVSS), r.Severity,
+		fmt.Fprintf(&b, "| %s | %s | `%s` | %s | %s | %s | %s | %s | %s |\n",
+			nvdLink(r.ID), esc(r.Name), r.Protocol, cvss(r.CVSS), r.Severity, epss(r.EPSS),
 			cweCell(r), detectMark(r.Detectable), attack(r))
 	}
 	b.WriteString("\n")
@@ -441,6 +473,14 @@ func cvss(v float64) string {
 		return "—"
 	}
 	return fmt.Sprintf("%.1f", v)
+}
+
+// epss renders a stored EPSS score as a percentage, or "—" when none is set.
+func epss(v float64) string {
+	if v <= 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f%%", v*100)
 }
 
 func attack(r row) string {

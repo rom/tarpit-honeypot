@@ -247,7 +247,7 @@ func TestProtocolSectionAndColumnMenuRender(t *testing.T) {
 		t.Fatalf("events status %d", w.Code)
 	}
 	list := w.Body.String()
-	for _, want := range []string{"data-col-menu", "data-col-table", `data-col="handler"`, `data-col="intent"`, "columns ▾"} {
+	for _, want := range []string{"data-col-menu", "data-col-table", `data-col="handler"`, `data-col="labels"`, "columns ▾"} {
 		if !strings.Contains(list, want) {
 			t.Errorf("events list missing %q", want)
 		}
