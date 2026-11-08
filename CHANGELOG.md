@@ -23,20 +23,30 @@ documented in `docs/`).
 
 ### Added
 
-- **The Danfoss AK-SM decoy now serves web assets captured verbatim from a live
-  device.** The `danfoss_aksm` landing page (the genuine "StoreView" Angular
-  shell), its `favicon.ico` and `logo.png`, and the exact nginx response-header
-  set are baked in from a real, internet-facing AK-SM, so a scanner's web
-  fingerprint — page title, favicon hash, `Server: nginx`, the StoreView CORS
+- **The Danfoss AK-SM decoy now mirrors a live device's web fingerprint.** The
+  `danfoss_aksm` `favicon.ico`, `logo.png` and the exact nginx response-header
+  set are baked in verbatim from a real, internet-facing AK-SM, so a scanner sees
+  the genuine page title, favicon hash, `Server: nginx`, the StoreView CORS
   policy with its device-specific `aksm-auth` request header, and
-  `Cache-Control: no-store, no-cache` — matches the genuine article instead of a
-  hand-written stub. `/favicon.ico` and `/assets/images/logo.png` serve the real
-  image bytes; the fabricated `X-Danfoss-Device`/`X-Firmware` tells are gone (the
-  emulated firmware build is now recorded in event metadata, not advertised in a
-  header no real device sends). CVE recognition (code-of-the-day bypass, 0x1be1
-  command injection, nginx-headers injection, xml.cgi traversal, engineering-
-  interface access) is unchanged. The assets live in
-  `internal/listener/handler/danfoss_assets.go` with a byte-exactness test.
+  `Cache-Control: no-store, no-cache` instead of a hand-written stub.
+  `/favicon.ico`, `/assets/images/logo.png` and the red `Danfoss-logo.png`
+  wordmark serve the real image bytes. The landing page is a **self-contained
+  login that visually replicates the live "System Manager 800A" sign-in** — the
+  real red Danfoss wordmark, the red title, the `Version SVB501.0.156` line, the
+  placeholder Username/Password fields and the dark Sign In button on a `#f0f0f0`
+  background, with colors and sizes measured from the real page's computed
+  styles. This replaces the device's actual Angular single-page-app shell: that
+  shell is an empty `<app-root>` plus hashed JS/CSS bundles that code-split into
+  further lazy chunks and only render against the live `xml.cgi` backend, so
+  served by a honeypot it renders a blank page — the static login always renders
+  and still posts to `xml.cgi?action=getauth`, which the handler recognizes and
+  captures (url-encoded `user`/`pwd` form logins are now captured too, not just
+  the device's getauth XML). The fabricated
+  `X-Danfoss-Device`/`X-Firmware` tells are gone (the emulated firmware build is
+  recorded in event metadata, not advertised in a header no real device sends).
+  CVE recognition (code-of-the-day bypass, 0x1be1 command injection, nginx-
+  headers injection, xml.cgi traversal, engineering-interface access) is
+  unchanged. Assets live in `internal/listener/handler/danfoss_assets.go`.
 - **The CVE catalog reference is now browsable in the web UI** under
   **docs → CVE catalog** (`/docs/CVE`), alongside the existing guides — `CVE.md`
   is embedded in the binary like every other doc. Expanded the FAQ with a

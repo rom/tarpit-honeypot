@@ -62,11 +62,50 @@ func TestDanfossEmbeddedAssets(t *testing.T) {
 	if !strings.HasPrefix(danfossLogo, "\x89PNG\r\n\x1a\n") {
 		t.Error("logo.png is missing the PNG signature")
 	}
-	if got := len(danfossIndexHTML); got != 825 {
-		t.Errorf("index.html = %d bytes; want 825", got)
+	if got := len(danfossWordmark); got != 66561 {
+		t.Errorf("Danfoss-logo.png = %d bytes; want 66561", got)
 	}
-	if !strings.Contains(danfossIndexHTML, "<title>Danfoss StoreView</title>") {
-		t.Error("index.html missing the StoreView title")
+	if !strings.HasPrefix(danfossWordmark, "\x89PNG\r\n\x1a\n") {
+		t.Error("Danfoss-logo.png is missing the PNG signature")
+	}
+	// The landing page visually replicates the real "System Manager 800A" login
+	// and keeps the device fingerprint (title, favicon/logo refs) — but it must
+	// NOT reference the Angular bundles (which a honeypot can't serve, leaving
+	// the real shell blank).
+	for _, want := range []string{
+		"<title>Danfoss StoreView</title>",
+		`href="favicon.ico"`,
+		`src="assets/images/Danfoss-logo.png"`,
+		"System Manager 800A",
+		"SVB501.0.156",
+		`value="Sign In"`,
+		`action="xml.cgi?action=getauth"`,
+	} {
+		if !strings.Contains(danfossIndexHTML, want) {
+			t.Errorf("landing page missing %q", want)
+		}
+	}
+	for _, bundle := range []string{"<app-root", "main.49c617", "styles.5d1276", "runtime.a4d6ab", ".js\""} {
+		if strings.Contains(danfossIndexHTML, bundle) {
+			t.Errorf("landing page still references the Angular SPA bundle %q (renders blank)", bundle)
+		}
+	}
+}
+
+func TestDanfossFormLoginCaptured(t *testing.T) {
+	// The served HTML login form posts url-encoded user/pwd fields; those must be
+	// captured, not just the device's getauth XML.
+	res, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", "user=operator&pwd=Winter2026"))
+	if res.Meta["login_user"] != "operator" || res.Meta["login_pass"] != "Winter2026" {
+		t.Errorf("user/pwd form login not captured: user=%v pass=%v", res.Meta["login_user"], res.Meta["login_pass"])
+	}
+	if containsStr(danfossAnoms(res), "danfoss-aksm-auth-bypass") {
+		t.Errorf("plain form login wrongly flagged as bypass: %v", danfossAnoms(res))
+	}
+	// The username/password aliases must also work (other tools / the XML path).
+	res2, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", "username=svc&password=hunter2"))
+	if res2.Meta["login_user"] != "svc" || res2.Meta["login_pass"] != "hunter2" {
+		t.Errorf("username/password form login not captured: user=%v pass=%v", res2.Meta["login_user"], res2.Meta["login_pass"])
 	}
 }
 
@@ -79,11 +118,17 @@ func TestDanfossRealHeadersAndAssets(t *testing.T) {
 		"Access-Control-Allow-Origin: *",
 		"Cache-Control: no-store, no-cache",
 		"Content-Type: text/html\r\n",
-		"<app-root></app-root>",
+		"<title>Danfoss StoreView</title>",
+		`href="favicon.ico"`,
 	} {
 		if !strings.Contains(reply, want) {
 			t.Errorf("landing reply missing %q", want)
 		}
+	}
+	// The blank-rendering Angular shell must be gone (checked near the response
+	// start, so unaffected by the test's single-read window).
+	if strings.Contains(reply, "<app-root") {
+		t.Error("landing reply still serves the Angular SPA shell (renders blank)")
 	}
 	// The fabricated X-Danfoss-Device/X-Firmware tells must be gone.
 	if strings.Contains(reply, "X-Danfoss-Device") || strings.Contains(reply, "X-Firmware") {
