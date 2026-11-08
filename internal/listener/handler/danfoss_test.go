@@ -62,18 +62,28 @@ func TestDanfossEmbeddedAssets(t *testing.T) {
 	if !strings.HasPrefix(danfossLogo, "\x89PNG\r\n\x1a\n") {
 		t.Error("logo.png is missing the PNG signature")
 	}
-	// The landing page keeps the device fingerprint (title + favicon/logo refs)
-	// but is a self-contained static login — it must NOT reference the Angular
-	// bundles (which a honeypot can't serve, leaving the real shell blank).
-	if !strings.Contains(danfossIndexHTML, "<title>Danfoss StoreView</title>") {
-		t.Error("landing page missing the StoreView title")
+	if got := len(danfossWordmark); got != 66561 {
+		t.Errorf("Danfoss-logo.png = %d bytes; want 66561", got)
 	}
-	if !strings.Contains(danfossIndexHTML, `href="favicon.ico"`) ||
-		!strings.Contains(danfossIndexHTML, `src="assets/images/logo.png"`) {
-		t.Error("landing page missing favicon/logo references")
+	if !strings.HasPrefix(danfossWordmark, "\x89PNG\r\n\x1a\n") {
+		t.Error("Danfoss-logo.png is missing the PNG signature")
 	}
-	if !strings.Contains(danfossIndexHTML, `action="xml.cgi?action=getauth"`) {
-		t.Error("landing page missing the getauth login form")
+	// The landing page visually replicates the real "System Manager 800A" login
+	// and keeps the device fingerprint (title, favicon/logo refs) — but it must
+	// NOT reference the Angular bundles (which a honeypot can't serve, leaving
+	// the real shell blank).
+	for _, want := range []string{
+		"<title>Danfoss StoreView</title>",
+		`href="favicon.ico"`,
+		`src="assets/images/Danfoss-logo.png"`,
+		"System Manager 800A",
+		"SVB501.0.156",
+		`value="Sign In"`,
+		`action="xml.cgi?action=getauth"`,
+	} {
+		if !strings.Contains(danfossIndexHTML, want) {
+			t.Errorf("landing page missing %q", want)
+		}
 	}
 	for _, bundle := range []string{"<app-root", "main.49c617", "styles.5d1276", "runtime.a4d6ab", ".js\""} {
 		if strings.Contains(danfossIndexHTML, bundle) {
@@ -83,15 +93,19 @@ func TestDanfossEmbeddedAssets(t *testing.T) {
 }
 
 func TestDanfossFormLoginCaptured(t *testing.T) {
-	// A url-encoded login (what the served HTML form posts) must be captured,
-	// not just the device's getauth XML.
-	body := "username=operator&password=Winter2026"
-	res, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", body))
+	// The served HTML login form posts url-encoded user/pwd fields; those must be
+	// captured, not just the device's getauth XML.
+	res, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", "user=operator&pwd=Winter2026"))
 	if res.Meta["login_user"] != "operator" || res.Meta["login_pass"] != "Winter2026" {
-		t.Errorf("form login not captured: user=%v pass=%v", res.Meta["login_user"], res.Meta["login_pass"])
+		t.Errorf("user/pwd form login not captured: user=%v pass=%v", res.Meta["login_user"], res.Meta["login_pass"])
 	}
 	if containsStr(danfossAnoms(res), "danfoss-aksm-auth-bypass") {
 		t.Errorf("plain form login wrongly flagged as bypass: %v", danfossAnoms(res))
+	}
+	// The username/password aliases must also work (other tools / the XML path).
+	res2, _ := runDanfoss(t, httpPost("/xml.cgi?action=getauth", "application/x-www-form-urlencoded", "username=svc&password=hunter2"))
+	if res2.Meta["login_user"] != "svc" || res2.Meta["login_pass"] != "hunter2" {
+		t.Errorf("username/password form login not captured: user=%v pass=%v", res2.Meta["login_user"], res2.Meta["login_pass"])
 	}
 }
 

@@ -561,16 +561,19 @@ CVE/CWE attribution still applies where it is observable:
   it is squarely OT: the controller family behind the October 2026 French
   supermarket "FROMAGEGATE" incident, where attackers forced defrost cycles and
   spoiled food in hundreds of stores. The `favicon.ico`, `logo.png` and nginx
-  response headers are captured **verbatim from a live, internet-facing AK-SM**,
-  so the web fingerprint a scanner sees — page title, favicon hash,
-  `Server: nginx`, the StoreView CORS policy with its device-specific `aksm-auth`
-  request header, and `Cache-Control: no-store, no-cache` — matches the genuine
-  article. The landing page is a **self-contained StoreView login** using the
-  real logo (the device's actual UI is an Angular single-page app whose shell
-  renders a blank page without its live `xml.cgi` backend, so serving a static
-  login is both robust and believable); it still posts to
-  `xml.cgi?action=getauth`, which the handler captures (XML or url-encoded). The
-  handler fingerprints the device and
+  response headers (plus the red `Danfoss-logo.png` wordmark) are captured
+  **verbatim from a live, internet-facing AK-SM**, so the web fingerprint a
+  scanner sees — page title, favicon hash, `Server: nginx`, the StoreView CORS
+  policy with its device-specific `aksm-auth` request header, and
+  `Cache-Control: no-store, no-cache` — matches the genuine article. The landing
+  page **visually replicates the live "System Manager 800A" sign-in** (real
+  wordmark, red title, `Version SVB501.0.156` line, dark Sign In button, colors
+  and sizes measured from the real page) as a self-contained static login — the
+  device's actual UI is an Angular single-page app whose shell renders a blank
+  page without its live `xml.cgi` backend, so a pixel-matched static login is
+  both robust and believable; it still posts to `xml.cgi?action=getauth`, which
+  the handler captures (XML or url-encoded `user`/`pwd`). The handler
+  fingerprints the device and
   **recognizes — detection only** — the Claroty Team82 / Danfoss-advisory flaws:
   the date-derived **code-of-the-day authentication bypass** (CVE-2025-41450,
   DSA-2025-03-01), the **alarm-to-mail OS command injection** via SMTP config

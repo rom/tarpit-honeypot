@@ -29,15 +29,19 @@ documented in `docs/`).
   the genuine page title, favicon hash, `Server: nginx`, the StoreView CORS
   policy with its device-specific `aksm-auth` request header, and
   `Cache-Control: no-store, no-cache` instead of a hand-written stub.
-  `/favicon.ico` and `/assets/images/logo.png` serve the real image bytes. The
-  landing page is a **self-contained StoreView login** (the real device's logo +
-  the StoreView admin theme's look) rather than the device's actual Angular
-  single-page-app shell: that shell is an empty `<app-root>` plus hashed
-  JS/CSS bundles that code-split into further lazy chunks and only render against
-  the live `xml.cgi` backend, so served by a honeypot it renders a blank page —
-  the static login always renders and still posts to `xml.cgi?action=getauth`,
-  which the handler recognizes and captures (url-encoded form logins are now
-  captured too, not just the device's getauth XML). The fabricated
+  `/favicon.ico`, `/assets/images/logo.png` and the red `Danfoss-logo.png`
+  wordmark serve the real image bytes. The landing page is a **self-contained
+  login that visually replicates the live "System Manager 800A" sign-in** — the
+  real red Danfoss wordmark, the red title, the `Version SVB501.0.156` line, the
+  placeholder Username/Password fields and the dark Sign In button on a `#f0f0f0`
+  background, with colors and sizes measured from the real page's computed
+  styles. This replaces the device's actual Angular single-page-app shell: that
+  shell is an empty `<app-root>` plus hashed JS/CSS bundles that code-split into
+  further lazy chunks and only render against the live `xml.cgi` backend, so
+  served by a honeypot it renders a blank page — the static login always renders
+  and still posts to `xml.cgi?action=getauth`, which the handler recognizes and
+  captures (url-encoded `user`/`pwd` form logins are now captured too, not just
+  the device's getauth XML). The fabricated
   `X-Danfoss-Device`/`X-Firmware` tells are gone (the emulated firmware build is
   recorded in event metadata, not advertised in a header no real device sends).
   CVE recognition (code-of-the-day bypass, 0x1be1 command injection, nginx-

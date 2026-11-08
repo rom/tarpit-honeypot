@@ -136,6 +136,11 @@ func (d *danfoss) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 		res.Meta["asset_served"] = "favicon.ico"
 		status, ctype, respBody = "200 OK", "image/x-icon", danfossFavicon
 
+	case strings.HasSuffix(lowPath, "/danfoss-logo.png"):
+		// The red Danfoss wordmark shown on the login page, served verbatim.
+		res.Meta["asset_served"] = "Danfoss-logo.png"
+		status, ctype, respBody = "200 OK", "image/png", danfossWordmark
+
 	case lowPath == "/assets/images/logo.png" || strings.HasSuffix(lowPath, "/logo.png"):
 		// Real StoreView logo bitmap, served verbatim.
 		res.Meta["asset_served"] = "logo.png"
@@ -181,10 +186,15 @@ func (d *danfoss) handleGetAuth(body string, res *Result) string {
 	user := danfossXMLField(body, "username")
 	pass := danfossXMLField(body, "password")
 	if user == "" && pass == "" {
-		// Url-encoded login (e.g. from the served HTML login form, or a tool
-		// that posts form fields rather than the device's getauth XML).
-		user = danfossFormField(body, "username")
-		pass = danfossFormField(body, "password")
+		// Url-encoded login (e.g. from the served HTML login form, whose fields
+		// are user/pwd, or a tool that posts form fields rather than the
+		// device's getauth XML).
+		if user = danfossFormField(body, "username"); user == "" {
+			user = danfossFormField(body, "user")
+		}
+		if pass = danfossFormField(body, "password"); pass == "" {
+			pass = danfossFormField(body, "pwd")
+		}
 	}
 	if user != "" || pass != "" {
 		res.Meta["login_user"] = safe.SanitizeForLog(user)
