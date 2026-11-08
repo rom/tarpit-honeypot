@@ -991,8 +991,9 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ if .TopTech }}{{ template "bars" .TopTech }}{{ else }}<p class="note">none</p>{{ end }}
 
 <h2>recent kill-chain progressions</h2>
+<p class="note">The <b>playbook</b> column names the attack pattern a storyline matched — see the <a href="/playbooks">playbook reference</a> for what each one means.</p>
 {{ if .Chains }}<table><tr><th>time</th><th>source</th><th>playbook</th><th>chain</th></tr>
-{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Playbook }}<span class="tag bad">{{ .Playbook }}</span>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
+{{ range .Chains }}<tr><td>{{ fmtTime .Time }}</td><td>{{ if .Source }}<a href="/profiles/{{ .Source }}">{{ .Source }}</a>{{ ipv6Tag .Source }}{{ end }}</td><td>{{ if .Playbook }}<a class="tag bad" href="/playbooks#{{ .Playbook }}" title="what this attack pattern means">{{ .Playbook }}</a>{{ else }}—{{ end }}</td><td>{{ .Chain }}</td></tr>{{ end }}
 </table>{{ else }}<p class="note">no multi-stage storylines yet (storyline:multi_stage fires when one source touches 3+ tactics in 30m)</p>{{ end }}
 <p class="note">JSON at <a href="/api/attack">/api/attack</a>. Click a technique to see what it means and which sources triggered it.</p>
 {{ template "foot" . }}{{ end }}
@@ -1170,6 +1171,24 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
     {{ if .Sessions }}<tr><th>sessions</th><td>{{ .Sessions }} recorded · <a href="/events?source={{ .IP }}">events</a></td></tr>{{ end }}
   </table>
 </div>{{ end }}{{ else }}<p class="note">no events in the window yet</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "playbooks" }}{{ template "head" . }}
+<h1>attack playbooks</h1>
+<p class="note">The named attack patterns the storyline correlator recognizes when it stitches a source's events into a kill chain. When a storyline matches one, the events carry a <code>playbook</code> label; the tags on the <a href="/attack">att&amp;ck</a> and <a href="/correlation">correlation</a> views and attacker <a href="/profiles">profiles</a> link here. Each entry explains what the attacker is doing, what made it fire, and what to do about it.</p>
+<p class="note">Jump to: {{ range .Playbooks }}<a class="tag" href="#{{ .Name }}">{{ .Name }}</a> {{ end }}</p>
+{{ range .Playbooks }}
+<div class="net" id="{{ .Name }}">
+  <h2 class="sev-high">{{ .Title }} <span class="tag bad">{{ .Name }}</span>{{ if eq $.Focus .Name }} <span class="tag">← selected</span>{{ end }}</h2>
+  <p>{{ .Long }}</p>
+  <table>
+    <tr><th>summary</th><td>{{ .Short }}</td></tr>
+    <tr><th>ATT&amp;CK tactics</th><td>{{ range .Tactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>
+    <tr><th>what triggers it</th><td>{{ range .Triggers }}<code>{{ . }}</code> {{ end }}</td></tr>
+    <tr><th>operator next steps</th><td>{{ .NextSteps }}</td></tr>
+  </table>
+</div>
+{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "campaign" }}{{ template "head" . }}
@@ -1556,7 +1575,7 @@ as the source keeps interacting. Ranked by a severity-weighted threat score. JSO
 <p class="note">{{ .Summary }}</p>{{ end }}
 {{ if .Intents }}<div class="depl" data-help="What this source was doing, aggregated across every one of its events — the per-event 'intent' label set by the handler or derived at the listener."><b>intent:</b> {{ range .Intents }}{{ intentLink . }} {{ end }}</div>{{ end }}
 {{ if .TokenReuse }}<div class="depl"><span class="tag bad">confirmed compromise</span> this source replayed a honeytoken / decoy credential the sensor had previously served — see the <code>canary:token_used</code> event below.</div>{{ end }}
-{{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<span class="tag bad">{{ . }}</span> {{ end }}<span class="note">recognized attack patterns from the storyline correlator</span></div>{{ end }}
+{{ if .Playbooks }}<div class="depl"><b>playbooks:</b> {{ range .Playbooks }}<a class="tag bad" href="/playbooks#{{ . }}" title="what this attack pattern means">{{ . }}</a> {{ end }}<span class="note">recognized attack patterns from the storyline correlator — <a href="/playbooks">what these mean</a></span></div>{{ end }}
 <div class="depl">
   threat: <span class="threat-{{ .ThreatLevel }}">{{ .ThreatLevel }} ({{ .ThreatScore }})</span> ·
   max severity: <span class="sev-{{ .MaxSeverity }}">{{ .MaxSeverity }}</span> ·

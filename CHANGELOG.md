@@ -132,6 +132,17 @@ documented in `docs/`).
   (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
   them in the raw catch-all meta table (those keys are now excluded from it so
   nothing shows twice).
+- **Clickable attack playbooks + a `/playbooks` reference page.** The storyline
+  correlator's playbook labels (credential-replay, AD coerced-auth relay,
+  PsExec lateral movement, redis rogue-replica RCE, SMB wormable exploit,
+  database-to-RCE, OT kill chain, cloud credential takeover, ransomware-style
+  destruction, DNS tunneling, data exfiltration, DoS/amplification, web-exploit-
+  to-shell, edge-appliance exploitation, malware delivery, web-vuln fuzzing,
+  credential harvest) are now links. Each opens a new **/playbooks** reference
+  page — anchored per playbook — with a full description of what the attacker is
+  doing, the ATT&CK tactics it spans, exactly what made it fire, and recommended
+  operator next steps. The descriptions live in `internal/correlate` next to the
+  correlator, with a test enforcing every recognized playbook has an entry.
 - **Captures page: a "harvested URLs" section.** The attacker-referenced URLs
   pulled from shell sessions (wget/curl dropper targets, second-stage payload
   hosts, C2 check-ins) now have their own table on the captures/loot page, with
