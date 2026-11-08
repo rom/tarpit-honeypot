@@ -23,6 +23,20 @@ documented in `docs/`).
 
 ### Added
 
+- **The Danfoss AK-SM decoy now serves web assets captured verbatim from a live
+  device.** The `danfoss_aksm` landing page (the genuine "StoreView" Angular
+  shell), its `favicon.ico` and `logo.png`, and the exact nginx response-header
+  set are baked in from a real, internet-facing AK-SM, so a scanner's web
+  fingerprint — page title, favicon hash, `Server: nginx`, the StoreView CORS
+  policy with its device-specific `aksm-auth` request header, and
+  `Cache-Control: no-store, no-cache` — matches the genuine article instead of a
+  hand-written stub. `/favicon.ico` and `/assets/images/logo.png` serve the real
+  image bytes; the fabricated `X-Danfoss-Device`/`X-Firmware` tells are gone (the
+  emulated firmware build is now recorded in event metadata, not advertised in a
+  header no real device sends). CVE recognition (code-of-the-day bypass, 0x1be1
+  command injection, nginx-headers injection, xml.cgi traversal, engineering-
+  interface access) is unchanged. The assets live in
+  `internal/listener/handler/danfoss_assets.go` with a byte-exactness test.
 - **The CVE catalog reference is now browsable in the web UI** under
   **docs → CVE catalog** (`/docs/CVE`), alongside the existing guides — `CVE.md`
   is embedded in the binary like every other doc. Expanded the FAQ with a
@@ -144,7 +158,9 @@ documented in `docs/`).
   operator next steps. The descriptions live in `internal/correlate` next to the
   correlator, with a test enforcing every recognized playbook has an entry.
   **playbooks** is a first-class nav entry (togglable via `ui.pages`), between
-  correlation and campaigns.
+  correlation and campaigns. The **correlation page** now carries a note linking
+  to the playbook reference, so the connection between a source's kill-chain
+  label and its full write-up is one click away from where the labels appear.
 - **Captures page: a "harvested URLs" section.** The attacker-referenced URLs
   pulled from shell sessions (wget/curl dropper targets, second-stage payload
   hosts, C2 check-ins) now have their own table on the captures/loot page, with

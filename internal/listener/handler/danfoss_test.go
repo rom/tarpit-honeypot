@@ -51,6 +51,60 @@ func TestDanfossLandingFingerprint(t *testing.T) {
 	}
 }
 
+func TestDanfossEmbeddedAssets(t *testing.T) {
+	// Byte-exact captures from the live AK-SM StoreView device.
+	if got := len(danfossFavicon); got != 1150 {
+		t.Errorf("favicon.ico = %d bytes; want 1150", got)
+	}
+	if got := len(danfossLogo); got != 6655 {
+		t.Errorf("logo.png = %d bytes; want 6655", got)
+	}
+	if !strings.HasPrefix(danfossLogo, "\x89PNG\r\n\x1a\n") {
+		t.Error("logo.png is missing the PNG signature")
+	}
+	if got := len(danfossIndexHTML); got != 825 {
+		t.Errorf("index.html = %d bytes; want 825", got)
+	}
+	if !strings.Contains(danfossIndexHTML, "<title>Danfoss StoreView</title>") {
+		t.Error("index.html missing the StoreView title")
+	}
+}
+
+func TestDanfossRealHeadersAndAssets(t *testing.T) {
+	// Landing serves the genuine Angular shell under the device's header set.
+	_, reply := runDanfoss(t, "GET / HTTP/1.1\r\nHost: sm\r\n\r\n")
+	for _, want := range []string{
+		"Server: nginx",
+		"Access-Control-Allow-Headers: aksm-auth,",
+		"Access-Control-Allow-Origin: *",
+		"Cache-Control: no-store, no-cache",
+		"Content-Type: text/html\r\n",
+		"<app-root></app-root>",
+	} {
+		if !strings.Contains(reply, want) {
+			t.Errorf("landing reply missing %q", want)
+		}
+	}
+	// The fabricated X-Danfoss-Device/X-Firmware tells must be gone.
+	if strings.Contains(reply, "X-Danfoss-Device") || strings.Contains(reply, "X-Firmware") {
+		t.Error("landing reply still emits fabricated X-Danfoss-* headers")
+	}
+
+	// favicon.ico / logo.png route to the embedded bytes (assert on the response
+	// headers, which fit the test's read window).
+	res, fav := runDanfoss(t, "GET /favicon.ico HTTP/1.1\r\nHost: sm\r\n\r\n")
+	if !strings.Contains(fav, "Content-Type: image/x-icon") || !strings.Contains(fav, "Content-Length: 1150") {
+		t.Errorf("favicon reply headers wrong: %.120q", fav)
+	}
+	if res.Meta["asset_served"] != "favicon.ico" {
+		t.Errorf("asset_served = %v; want favicon.ico", res.Meta["asset_served"])
+	}
+	_, logo := runDanfoss(t, "GET /assets/images/logo.png HTTP/1.1\r\nHost: sm\r\n\r\n")
+	if !strings.Contains(logo, "Content-Type: image/png") || !strings.Contains(logo, "Content-Length: 6655") {
+		t.Errorf("logo reply headers wrong: %.120q", logo)
+	}
+}
+
 func TestDanfossAuthBypassExtraAttr(t *testing.T) {
 	// A getauth request carrying an attribute beyond username/password is the
 	// documented code-of-the-day bypass shape (CVE-2025-41450).

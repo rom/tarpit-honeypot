@@ -20,9 +20,12 @@ import (
 // management API that technicians administer remotely — which is why
 // thousands end up internet-facing (Claroty Team82 counted ~2,765 exposed).
 //
-// The handler fingerprints the device (StoreView banner, Server: nginx,
-// firmware version), captures credentials, and *recognizes* — never executes —
-// the documented exploit request shapes:
+// The handler fingerprints the device with assets captured verbatim from a
+// live, internet-facing AK-SM — the "StoreView" Angular landing page, its
+// favicon.ico and logo.png, and the exact nginx response-header set (Server
+// banner, StoreView CORS policy, no-store caching); see danfoss_assets.go. It
+// captures credentials and *recognizes* — never executes — the documented
+// exploit request shapes:
 //
 //   - CVE-2025-41450 (DSA-2025-03-01): the hidden date-derived "code-of-the-day"
 //     authentication bypass on xml.cgi?action=getauth. The real generation
@@ -128,9 +131,22 @@ func (d *danfoss) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 		setIfEmpty(res.Meta, "intent", "Danfoss debug/engineering/service interface access — improper-access-control surface (DSA-2026-08-01)")
 		respBody = "<html><head><title>Service</title></head><body>Service interface</body></html>"
 
+	case lowPath == "/favicon.ico":
+		// Real device favicon — served verbatim so favicon-hash fingerprints match.
+		res.Meta["asset_served"] = "favicon.ico"
+		status, ctype, respBody = "200 OK", "image/x-icon", danfossFavicon
+
+	case lowPath == "/assets/images/logo.png" || strings.HasSuffix(lowPath, "/logo.png"):
+		// Real StoreView logo bitmap, served verbatim.
+		res.Meta["asset_served"] = "logo.png"
+		status, ctype, respBody = "200 OK", "image/png", danfossLogo
+
 	default:
-		// Landing / login page — fingerprint the device.
-		respBody = d.landingPage()
+		// Landing page — the genuine StoreView Angular shell, which fingerprints
+		// the device (title, favicon/logo refs, Server banner). Record which
+		// unpatched/patched firmware build the honeypot is emulating.
+		setIfEmpty(res.Meta, "emulated_firmware", d.firmware())
+		status, ctype, respBody = "200 OK", "text/html", d.landingPage()
 	}
 
 	// Always run the path-traversal check (covers non-xml.cgi traversal too).
@@ -147,7 +163,9 @@ func (d *danfoss) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 		flagAnomaly(&res, "cve:"+rec.ID)
 	}
 
-	extra := "Server: nginx\r\nX-Danfoss-Device: AK-SM 800A\r\nX-Firmware: " + safe.SanitizeHeader(d.firmware()) + "\r\n"
+	// Exact response-header set the live AK-SM nginx emits on every path
+	// (Server banner + StoreView CORS policy + no-store caching).
+	extra := danfossRespHeaders
 	if _, err := conn.Write([]byte(svcHTTPResp(status, extra, ctype, respBody))); err != nil {
 		res.Meta["write_err"] = err.Error()
 	}
@@ -250,13 +268,11 @@ func (d *danfoss) checkXMLTraversal(path, query string, res *Result) {
 	}
 }
 
+// landingPage returns the byte-exact "StoreView Web" landing document captured
+// from a live AK-SM (see danfoss_assets.go). The login itself happens over
+// xml.cgi?action=getauth, which the handler recognizes and captures.
 func (d *danfoss) landingPage() string {
-	return "<!DOCTYPE html><html><head><title>StoreView Web</title></head><body>" +
-		"<h1>Danfoss StoreView</h1><p>AK-SM 800A System Manager</p>" +
-		"<p>Firmware " + d.firmware() + "</p>" +
-		"<form action=\"/xml.cgi?action=getauth\" method=\"post\">" +
-		"<input name=\"username\"><input type=\"password\" name=\"password\">" +
-		"<input type=\"submit\" value=\"Log On\"></form></body></html>"
+	return danfossIndexHTML
 }
 
 // --- parsing helpers (bounded, never error) ------------------------------
