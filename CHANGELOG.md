@@ -10,6 +10,30 @@ documented in `docs/`).
 
 ### Fixed
 
+- **SNMP per-source walk-rate map could grow without bound under a spoofed-
+  source UDP flood (memory-exhaustion DoS).** The map only evicted windows that
+  had fully elapsed (≥1 min), so a sub-minute burst of datagrams from random
+  spoofed source IPs — UDP listeners have no per-source admission control — kept
+  every entry fresh and grew the map until OOM, which would kill the whole
+  sensor. Added a hard cap (`snmpWalkHardCap`) that force-sheds entries once the
+  elapsed-window GC can't keep up, with a regression test. (Found in the
+  self-security review.)
+- **`tls_intercept` decrypt-and-forward leaked a goroutine + the backend/client
+  fds when the backend stayed open-and-silent.** The backend→client copy had no
+  read deadline and nothing tore it down when the client half-closed, so a
+  forward backend that never EOFs parked the copy goroutine (and its fds)
+  forever — a slow leak over weeks on a forwarding listener. Now the first copy
+  direction to finish closes both conns, so the other returns promptly (bounded
+  by the client's existing read deadline). (Found in the robustness review.)
+- **`/config` and `/api/config` rendered an inline `abuse_ch_auth_key`
+  unredacted.** Almost every secret in the config is referenced by env-var name
+  (safe), but that one field can hold a plaintext key; it is now masked in the
+  rendered YAML. Env-var-name indirections are left intact. (Found in the
+  self-security review.)
+- **`kevsync.Fetch` fell back to `http.DefaultClient` (no timeout) when passed a
+  nil client**, which could hang the puller goroutine indefinitely; the fallback
+  now carries a 30s timeout. (Defense-in-depth; production always passes an
+  egress-governed client. Found in the robustness review.)
 - **LDAPS / Global-Catalog-over-TLS ports were served by the plain HTTPS
   handler.** The Active Directory archetype, the `adserver`/`ldapserver`
   archeservice roles, and the AD-ENTERPRISE example config bound 636 (LDAPS) and

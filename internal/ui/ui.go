@@ -2210,7 +2210,36 @@ func (s *Server) configYAML() string {
 	if err != nil {
 		return "# config render error: " + err.Error() + "\n"
 	}
-	return string(b)
+	return redactConfigSecrets(string(b))
+}
+
+// configRedactedKeys are config YAML keys whose value is an inline plaintext
+// secret (not an env-var *name*). Almost every credential in the config is
+// referenced by env-var name, which is safe to show; these few hold the secret
+// directly, so /config and /api/config must mask them.
+var configRedactedKeys = []string{"abuse_ch_auth_key"}
+
+// redactConfigSecrets masks inline secret values in rendered config YAML so the
+// /config page and /api/config never disclose them. Env-indirected secrets
+// (…_env keys, which hold a variable name) are left intact.
+func redactConfigSecrets(y string) string {
+	lines := strings.Split(y, "\n")
+	for i, ln := range lines {
+		trim := strings.TrimLeft(ln, " \t")
+		indent := ln[:len(ln)-len(trim)]
+		for _, key := range configRedactedKeys {
+			if !strings.HasPrefix(trim, key+":") {
+				continue
+			}
+			val := strings.TrimSpace(trim[len(key)+1:])
+			if val == "" || val == `""` || val == "''" {
+				break // nothing inline to hide
+			}
+			lines[i] = indent + key + ": \"***REDACTED***\""
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 type configPage struct {
