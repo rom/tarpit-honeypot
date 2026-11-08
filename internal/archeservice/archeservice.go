@@ -52,7 +52,7 @@ var roles = map[string][]Service{
 	},
 	"ldapserver": {
 		{389, "tcp", "ldap", "LDAP"},
-		{636, "tcp", "https", "LDAPS (TLS)"},
+		{636, "tcp", "ldaps", "LDAPS (TLS)"},
 	},
 	"adserver": {
 		{53, "udp", "dns", "AD-integrated DNS"},
@@ -61,9 +61,9 @@ var roles = map[string][]Service{
 		{139, "tcp", "raw", "NetBIOS session"},
 		{389, "tcp", "ldap", "LDAP"},
 		{445, "tcp", "smb", "SMB / AD replication"},
-		{636, "tcp", "https", "LDAPS"},
+		{636, "tcp", "ldaps", "LDAPS"},
 		{3268, "tcp", "ldap", "Global Catalog"},
-		{3269, "tcp", "https", "Global Catalog over SSL"},
+		{3269, "tcp", "ldaps", "Global Catalog over SSL"},
 		{3389, "tcp", "rdp", "Remote Desktop"},
 		{5985, "tcp", "winrm", "WinRM / PowerShell Remoting"},
 	},

@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **LDAPS / Global-Catalog-over-TLS ports were served by the plain HTTPS
+  handler.** The Active Directory archetype, the `adserver`/`ldapserver`
+  archeservice roles, and the AD-ENTERPRISE example config bound 636 (LDAPS) and
+  3269 (GC over TLS) to `handler: https` — so an attacker's LDAP-over-TLS probe
+  got an HTTP response, an obvious honeypot tell. They now use the `ldaps`
+  handler (TLS-wrapped LDAP). Added a config regression test that loads every
+  realistic example config and asserts well-known TLS/protocol ports (636, 3269,
+  993, 995, 465, 990, 389, 3268, 3389, 1433, 3306, 5432, 6379, 11211) are served
+  by the right handler; all shipped example configs otherwise use correct real
+  ports.
+
 ### Added
 
 - **The CVE catalog reference is now browsable in the web UI** under

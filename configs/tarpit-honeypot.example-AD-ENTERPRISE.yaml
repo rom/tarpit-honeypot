@@ -42,7 +42,7 @@ listeners:
   # --- Core AD / Windows ---
   - { id: kerberos, proto: tcp, bind: 0.0.0.0:88,   mode: banner, handler: kerberos, severity: critical, capture: true }
   - { id: ldap,     proto: tcp, bind: 0.0.0.0:389,  mode: banner, handler: ldap,     severity: critical, capture: true }
-  - { id: ldaps,    proto: tcp, bind: 0.0.0.0:636,  mode: banner, handler: https,    severity: high }
+  - { id: ldaps,    proto: tcp, bind: 0.0.0.0:636,  mode: banner, handler: ldaps,    severity: high }
   - { id: gc,       proto: tcp, bind: 0.0.0.0:3268, mode: banner, handler: ldap,     severity: high }
   - { id: smb,      proto: tcp, bind: 0.0.0.0:445,  mode: banner, handler: smb,      severity: critical, capture: true }
   - { id: dcerpc,   proto: tcp, bind: 0.0.0.0:135,  mode: banner, handler: dcerpc,   severity: critical, capture: true }
