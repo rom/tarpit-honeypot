@@ -132,6 +132,12 @@ documented in `docs/`).
   (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
   them in the raw catch-all meta table (those keys are now excluded from it so
   nothing shows twice).
+- **Events table: labels moved to their own toggleable column.** The source
+  reputation / enrichment / recognition badges (blacklist, Tor, scanner, cloud,
+  threat-intel, c2, agent, backscatter, …) used to be crammed into the source
+  cell; they now have a dedicated **labels** column that the "columns" control can
+  enable/disable like any other, so the source column stays clean when you don't
+  need them.
 - **Events table: per-column show/hide.** A "columns ▾" control above the events
   table lets you turn any column (time, severity, rule, source, dest, handler,
   intent, details) on or off. It's pure progressive enhancement — each cell

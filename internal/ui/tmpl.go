@@ -1416,6 +1416,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <th data-col="severity" data-help="Reported severity. An ⌾ override badge means a local severity_overrides rule pinned this level; the event detail shows the default and the rule."><a href="{{ .Headers.severity.Href }}">severity{{ .Headers.severity.Arrow }}</a></th>
     <th data-col="rule"><a href="{{ .Headers.rule.Href }}">rule{{ .Headers.rule.Arrow }}</a></th>
     <th data-col="source"><a href="{{ .Headers.source.Href }}">source{{ .Headers.source.Arrow }}</a></th>
+    <th data-col="labels" data-help="Reputation / enrichment / recognition badges for the source (blacklist, Tor, scanner, cloud, threat-intel, c2, agent, backscatter, …). Hide this column with the ‘columns’ control if you don't need it.">labels</th>
     <th data-col="dest" data-help="Destination the attacker reached: IP:port, the service name, and a transport tag (tcp / udp / icmp / l2).">dest</th>
     <th data-col="handler"><a href="{{ .Headers.handler.Href }}">handler{{ .Headers.handler.Arrow }}</a></th>
     <th data-col="intent" data-help="The handler's read of what the attacker was trying to do on this exchange, summarized from the protocol + flagged anomalies. Click to list every event with the same intent.">intent</th>
@@ -1426,7 +1427,8 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
     <td data-col="time">{{ fmtTime .Time }}</td>
     <td data-col="severity" class="sev-{{ .Severity }}">{{ .Severity }}{{ if .SeverityOverridden }} <span class="ovr" title="local override — default severity {{ index .Meta "default_severity" }} (rule {{ index .Meta "severity_override_rule" }})">⌾ override</span>{{ end }}</td>
     <td data-col="rule">{{ if .RuleID }}<a href="/events?rule={{ .RuleID }}">{{ .RuleID }}</a>{{ end }}</td>
-    <td data-col="source">{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }} {{ sourceBadges .Meta }}</td>
+    <td data-col="source">{{ if .Source.IP }}<a href="/profiles/{{ .Source.IP }}">{{ .Source.IP }}</a>{{ ipv6Tag .Source.IP }}{{ end }}{{ if .Source.Port }}:{{ .Source.Port }}{{ end }}</td>
+    <td data-col="labels">{{ sourceBadges .Meta }}</td>
     <td data-col="dest">{{ .Dest.IP }}{{ if .Dest.Port }}:{{ .Dest.Port }}{{ if svcName .Dest.Port }} {{ svcLink .Dest.Port }}{{ end }}{{ end }}{{ if .Proto }} {{ protoTag .Proto }}{{ end }}</td>
     <td data-col="handler">{{ handlerLink .Handler }}</td>
     <td data-col="intent" class="intent-cell">{{ with index .Meta "intent" }}{{ intentLink (printf "%v" .) }}{{ end }}</td>
