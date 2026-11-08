@@ -65,7 +65,9 @@ func TestRenderFromLiveCatalog(t *testing.T) {
 	for _, want := range []string{
 		"# CVE catalog", "## Overview — top 10s", "Top 10 products by CVE count",
 		"Top 10 vendors by CVE count", "Top 10 protocols / services by CVE count",
-		"Top 10 years by CVE count", "## By protocol / service", "## By product / tool",
+		"Top 10 years by CVE count", "CVSS severity distribution",
+		"Top 15 weakness classes (CWE)", "cwe.mitre.org/data/definitions/",
+		"## By protocol / service", "## By product / tool",
 		"## All CVEs", "nvd.nist.gov/vuln/detail/CVE-",
 	} {
 		if !strings.Contains(doc, want) {
@@ -75,5 +77,31 @@ func TestRenderFromLiveCatalog(t *testing.T) {
 	// Spot-check a known protocol subsection and a known CVE row.
 	if !strings.Contains(doc, "CVE-2013-5211") {
 		t.Error("expected the NTP monlist CVE in the doc")
+	}
+}
+
+func TestCWEInferenceAndSeverity(t *testing.T) {
+	// Explicit CWE from the record wins.
+	id, _, inf := cweFor(cve.Record{ID: "x", CWE: []string{"CWE-78"}})
+	if id != "CWE-78" || inf {
+		t.Errorf("explicit CWE: got %s inferred=%v", id, inf)
+	}
+	// Inference from the name when no explicit CWE.
+	id, _, inf = cweFor(cve.Record{ID: "x", Name: "Acme SQL Injection Vulnerability"})
+	if id != "CWE-89" || !inf {
+		t.Errorf("SQLi inference: got %s inferred=%v", id, inf)
+	}
+	id, _, _ = cweFor(cve.Record{Name: "Foo Path Traversal"})
+	if id != "CWE-22" {
+		t.Errorf("traversal inference: %s", id)
+	}
+	id, _, _ = cweFor(cve.Record{Name: "Nothing classifiable here"})
+	if id != "" {
+		t.Errorf("unclassifiable should be empty, got %s", id)
+	}
+	for v, want := range map[float64]string{9.8: "Critical", 8.1: "High", 6.1: "Medium", 3.0: "Low", 0: "None"} {
+		if got := severityBand(v); got != want {
+			t.Errorf("severityBand(%v)=%s want %s", v, got, want)
+		}
 	}
 }

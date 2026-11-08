@@ -17,12 +17,19 @@ import (
 // not "no 2026 record detects" but "only the real KEV-backed 2026 records do;
 // the speculative placeholders remain advisory-only."
 func TestRecent2025And2026Coverage(t *testing.T) {
-	kevAuto := make(map[string]bool, len(cveKEVAuto2026))
-	for _, r := range cveKEVAuto2026 {
-		kevAuto[r.ID] = true
+	// The "real" 2026 batches carry genuine exploit signatures (sourced from KEV,
+	// Nuclei, vendor/CISA advisories). The hand-seeded forward-looking
+	// placeholders in cve.go must stay advisory-only so a guessed pattern can
+	// never mis-tag live traffic. So a detectable 2026 record is allowed iff it
+	// belongs to one of the real batches.
+	realBatch := map[string]bool{}
+	for _, b := range [][]Record{cveKEVAuto2026, cveNucleiExtra2026, cveNetProtoBatch, cveOTABBHitachi, cveSNMPDNSNTP, cveBatchKEV2026} {
+		for _, r := range b {
+			realBatch[r.ID] = true
+		}
 	}
 
-	var n2025, n2026, detectableKEV2026 int
+	var n2025, n2026, detectableReal2026 int
 	for _, r := range All() {
 		switch {
 		case strings.HasPrefix(r.ID, "CVE-2025-"):
@@ -30,11 +37,11 @@ func TestRecent2025And2026Coverage(t *testing.T) {
 		case strings.HasPrefix(r.ID, "CVE-2026-"):
 			n2026++
 			if r.Detectable() {
-				if !kevAuto[r.ID] {
+				if !realBatch[r.ID] {
 					// A speculative placeholder must never carry a signature.
 					t.Errorf("forward-looking 2026 placeholder %s is detectable; placeholders must be advisory-only", r.ID)
 				} else {
-					detectableKEV2026++
+					detectableReal2026++
 				}
 			}
 		}
@@ -45,8 +52,8 @@ func TestRecent2025And2026Coverage(t *testing.T) {
 	if n2026 < 30 {
 		t.Errorf("want >=30 CVE-2026 records, have %d", n2026)
 	}
-	if detectableKEV2026 == 0 {
-		t.Error("expected the real KEV-backed 2026 records to be detectable, found none")
+	if detectableReal2026 == 0 {
+		t.Error("expected the real advisory-backed 2026 records to be detectable, found none")
 	}
 
 	// A few 2025 detections must fire on their signatures.
