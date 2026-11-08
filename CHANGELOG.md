@@ -21,6 +21,24 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **40 more protocol & OT vulnerability simulations (NTP, DNS, Telnet, SSH,
+  amplification, ABB & Hitachi Energy).** Two new catalog files broaden the
+  services the honeypot answers on. `cve_netproto_batch.go` adds twelve more
+  ntpd issues (reference-clock overflow, mode-6 trap/ctl_getitem DoS, zero-origin
+  time-shifting, the 4.2.8p15 parser overflow), nine more DNS issues (BIND
+  NXNSAttack amplification, TSIG / buffer.c / cache-cleaning DoS, forwarder cache
+  poisoning, the dnsmasq heap-overflow RCE, PowerDNS CPU abuse), the Solaris
+  in.telnetd `-f` auth-bypass and ZyXEL su backdoor for Telnet, the Juniper
+  ScreenOS SSH/telnet backdoor + Dropbear format-string RCE and user-enumeration
+  for SSH, and the big UDP reflection/amplification weapons (memcached Memcrashed,
+  rpcbind, Jenkins multicast). `cve_ot_abb_hitachi.go` adds the ABB Cylon Aspect
+  building-controller command-injection endpoints (servicesUpdate / deployStart /
+  networkDiagAjax — path-signatured so MatchPayload flags them live), the ABB
+  ASPECT auth-bypass/missing-auth/file-disclosure set, ABB Totalflow path
+  traversal, and Hitachi Energy MicroSCADA SYS600 code injection, RTU500
+  code-download-integrity & cert-validation, and FOX61x path traversal. The
+  telnet handler now raises CVE-2007-0882 / CVE-2016-10401 on those login
+  patterns. Catalog total: 1008 → 1048.
 - **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
   event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
   dedicated per-handler view: attempt / attack / successful-engagement counts,
