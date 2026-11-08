@@ -160,3 +160,96 @@ func TestRenderEventDetailSections(t *testing.T) {
 		t.Errorf("e2 missing previous link to e1")
 	}
 }
+
+func TestProtocolFields(t *testing.T) {
+	// DNS event: curated fields surface; absent ones are skipped.
+	dns := &event.Event{Handler: "dns", Meta: map[string]any{
+		"qname": "example.com", "qtype_name": "ANY", "zone_transfer_served": true,
+		"read_err": "ignored-scalar", // not in the DNS spec → stays in meta table
+	}}
+	groups := protocolFields(dns)
+	if len(groups) != 1 || groups[0].Title != "DNS query" {
+		t.Fatalf("DNS groups = %+v", groups)
+	}
+	var labels []string
+	for _, f := range groups[0].Fields {
+		labels = append(labels, f.Label+"="+f.Value)
+	}
+	joined := strings.Join(labels, "|")
+	if !strings.Contains(joined, "query name=example.com") || !strings.Contains(joined, "AXFR zone transfer served=yes") {
+		t.Errorf("DNS fields wrong: %s", joined)
+	}
+
+	// dns_tcp folds onto the dns spec.
+	if g := protocolFields(&event.Event{Handler: "dns_tcp", Meta: map[string]any{"qname": "x"}}); len(g) != 1 {
+		t.Errorf("dns_tcp did not normalize to dns spec: %+v", g)
+	}
+	// ssh_interactive folds onto ssh.
+	if g := protocolFields(&event.Event{Handler: "ssh_interactive", Meta: map[string]any{"client_id": "SSH-2.0-libssh"}}); len(g) != 1 || g[0].Title != "SSH handshake & client" {
+		t.Errorf("ssh_interactive normalization: %+v", g)
+	}
+	// A handler with no spec yields nothing (its fields stay in the meta table).
+	if g := protocolFields(&event.Event{Handler: "modbus", Meta: map[string]any{"x": "y"}}); g != nil {
+		t.Errorf("modbus should have no protocol group: %+v", g)
+	}
+	// Every surfaced key must be excluded from the generic meta table.
+	for _, spec := range protoSpecs {
+		for _, f := range spec.fields {
+			if !protocolDetailKeys[f.key] {
+				t.Errorf("key %q not in protocolDetailKeys exclusion set", f.key)
+			}
+		}
+	}
+	if metaScalar(dns.Meta)["qname"] != nil {
+		t.Error("qname should be excluded from the generic meta table")
+	}
+}
+
+// TestProtocolSectionAndColumnMenuRender renders a real DNS event's detail page
+// (per-protocol request fields) and the events list (column show/hide menu),
+// asserting the new UI surfaces reach the HTML.
+func TestProtocolSectionAndColumnMenuRender(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	ctx := t.Context()
+	ev := &event.Event{
+		ID: "d1", Time: time.Now().Add(-time.Minute), Sensor: "t", RuleID: "dns:axfr",
+		Severity: event.SeverityHigh, Source: event.Endpoint{IP: "10.0.0.5", Port: 5353},
+		Dest: event.Endpoint{IP: "192.0.2.9", Port: 53}, Proto: "udp", Handler: "dns",
+		Meta: map[string]any{"qname": "corp.example.com", "qtype_name": "AXFR", "zone_transfer_served": true},
+	}
+	if err := st.Insert(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{store: st, dataDir: dir, tmpl: uiTmpl(t)}
+
+	// Detail page: the DNS protocol section renders the decoded fields.
+	w := httptest.NewRecorder()
+	s.handleEvent(w, httptest.NewRequest("GET", "/events/d1", nil))
+	if w.Code != 200 {
+		t.Fatalf("detail status %d", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"DNS query", "corp.example.com", "query type", "AXFR"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("DNS detail page missing %q", want)
+		}
+	}
+
+	// Events list: the column menu + per-column data attributes render.
+	w = httptest.NewRecorder()
+	s.handleEvents(w, httptest.NewRequest("GET", "/events", nil))
+	if w.Code != 200 {
+		t.Fatalf("events status %d", w.Code)
+	}
+	list := w.Body.String()
+	for _, want := range []string{"data-col-menu", "data-col-table", `data-col="handler"`, `data-col="intent"`, "columns ▾"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("events list missing %q", want)
+		}
+	}
+}

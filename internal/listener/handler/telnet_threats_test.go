@@ -35,3 +35,22 @@ func TestTelnetMiraiAndBusybox(t *testing.T) {
 		t.Error("busybox/enable probe not recognized")
 	}
 }
+
+func TestTelnetSolarisFBypassAndZyxelBackdoor(t *testing.T) {
+	for _, u := range []string{"-froot", "-f bin", "-l -froot", "-l-fbin"} {
+		if !telnetSolarisFBypass(u) {
+			t.Errorf("Solaris -f bypass not recognized for %q", u)
+		}
+	}
+	for _, u := range []string{"root", "admin", "-rf", "file-f"} {
+		if telnetSolarisFBypass(u) {
+			t.Errorf("ordinary login %q wrongly flagged as -f bypass", u)
+		}
+	}
+	if !telnetZyxelSuBackdoor("zyad5001") || !telnetZyxelSuBackdoor("su zyad5001") {
+		t.Error("ZyXEL su backdoor password not recognized")
+	}
+	if telnetZyxelSuBackdoor("s3cret") {
+		t.Error("ordinary password wrongly flagged as ZyXEL backdoor")
+	}
+}

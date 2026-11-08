@@ -324,9 +324,10 @@ func tmplFuncs(refresh func() int, cveSource, mapTiles string, attackLinks bool,
 		// attacker content (typed commands + queries, staged payload/message
 		// bodies, harvested secrets) for the event-detail page so it renders as
 		// readable sections instead of ugly map/array blobs in the meta table.
-		"eventCommands": eventCommands,
-		"eventBodies":   eventBodies,
-		"eventSecrets":  eventSecrets,
+		"eventCommands":  eventCommands,
+		"eventBodies":    eventBodies,
+		"protocolFields": protocolFields,
+		"eventSecrets":   eventSecrets,
 		"attackLinkURL": func(id string) string {
 			if !attackLinks {
 				return ""
@@ -794,7 +795,7 @@ func metaScalar(m map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		if httpDetailKeys[k] || eventMetaPromoted[k] {
+		if httpDetailKeys[k] || eventMetaPromoted[k] || protocolDetailKeys[k] {
 			continue
 		}
 		out[k] = v

@@ -16,7 +16,7 @@ CMD          := ./cmd/$(BIN)
 # When v0.3 adds libpcap on the pcap-capture path, we'll flip this per-target.
 export CGO_ENABLED := 0
 
-.PHONY: all build test vet fmt clean cross install-dev deb rpm sbom checksums release-artifacts govulncheck
+.PHONY: all build test vet fmt clean cvedoc cross install-dev deb rpm sbom checksums release-artifacts govulncheck
 
 all: build
 
@@ -53,6 +53,10 @@ fmt:
 
 clean:
 	rm -rf bin dist
+
+# Regenerate docs/CVE.md from the live internal/cve catalog.
+cvedoc:
+	$(GO) run ./tools/cvedoc
 
 # Cross-compile for Linux (full matrix) + macOS + Windows. The macOS and
 # Windows builds carry every feature except the raw-L2 layers: ARP/ICMP/

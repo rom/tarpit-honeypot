@@ -10,6 +10,73 @@ documented in `docs/`).
 
 ### Added
 
+- **`docs/CVE.md` — a generated reference for the whole CVE catalog**, built by
+  the new `tools/cvedoc` generator (`make cvedoc`). It reads `internal/cve`
+  directly so it never drifts: an overview with the top-10 products, vendors,
+  protocols/services and years by CVE count; the full 1049-CVE list (NVD-linked,
+  with protocol, CVSS, detectable-vs-advisory, and ATT&CK); and protocol-focused
+  and product-focused cross-references so you can see every CVE a given protocol
+  or product maps to. Vendor/product come from each record's CPE where present
+  and are parsed from the name otherwise. Linked from the docs index.
+- **`tools/nuclei2cve` — a reusable Nuclei-template → CVE-record conversion
+  tool.** The scratch script that produced the KEV×Nuclei batch is now a proper,
+  tested Go CLI so future catalog expansions are a repeatable data step. It walks
+  a Nuclei templates tree, extracts the static high-signal portion of each CVE's
+  exploit path (template vars stripped, generic endpoints dropped), maps
+  severity→CVSS and tags→ATT&CK, and emits ready-to-compile Go `Record` literals
+  (`-format go`) or JSON (`-format json`). Optional `-kev <feed.json>` restricts
+  output to CISA-KEV CVEs and prefers CISA's wording; `-have <ids.txt>` skips
+  CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
+  `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
+  templates as untrusted data — nothing is executed, only parsed.
+- **32 more SNMP, DNS & NTP vulnerability simulations
+  (`cve_snmp_dns_ntp.go`).** A focused deepening of the three UDP infrastructure
+  services attackers most often reflect, crash or poison, from the authoritative
+  ISC / net-snmp / Network Time Foundation and CISA advisories. SNMP (9):
+  net-snmp SNMPv3 HMAC auth bypass, snmptrapd / AgentX / VACM-MIB crashes, the
+  2022 nsVacmAccessTable NULL-deref set, and the Cisco IOS/IOS XE SNMP DoS. DNS
+  (10): the glibc getaddrinfo client RCE, recent BIND DoS (SIG(0), stale-cache
+  assertion, many-RR exhaustion, control-channel stack exhaustion, serve-stale,
+  lame-cache), the dnsmasq IPv6-RA / DHCPv6 overflows, and the Unbound ipsecmod
+  command-injection RCE. NTP (13): the 2015–2019 ntpd/ntpq batch — Kiss-o'-Death
+  DoS, the Skeleton-Key trusted-key impersonation, crypto-NAK demobilization,
+  ntpq reslist/decodearr overflows, oversized-UDP and mode-6 crashes. Service
+  SNMP 10→19, DNS 23→33, NTP 24→37; catalog total 1048 → 1080. (CWE-399 named.)
+- **40 more protocol & OT vulnerability simulations (NTP, DNS, Telnet, SSH,
+  amplification, ABB & Hitachi Energy).** Two new catalog files broaden the
+  services the honeypot answers on. `cve_netproto_batch.go` adds twelve more
+  ntpd issues (reference-clock overflow, mode-6 trap/ctl_getitem DoS, zero-origin
+  time-shifting, the 4.2.8p15 parser overflow), nine more DNS issues (BIND
+  NXNSAttack amplification, TSIG / buffer.c / cache-cleaning DoS, forwarder cache
+  poisoning, the dnsmasq heap-overflow RCE, PowerDNS CPU abuse), the Solaris
+  in.telnetd `-f` auth-bypass and ZyXEL su backdoor for Telnet, the Juniper
+  ScreenOS SSH/telnet backdoor + Dropbear format-string RCE and user-enumeration
+  for SSH, and the big UDP reflection/amplification weapons (memcached Memcrashed,
+  rpcbind, Jenkins multicast). `cve_ot_abb_hitachi.go` adds the ABB Cylon Aspect
+  building-controller command-injection endpoints (servicesUpdate / deployStart /
+  networkDiagAjax — path-signatured so MatchPayload flags them live), the ABB
+  ASPECT auth-bypass/missing-auth/file-disclosure set, ABB Totalflow path
+  traversal, and Hitachi Energy MicroSCADA SYS600 code injection, RTU500
+  code-download-integrity & cert-validation, and FOX61x path traversal. The
+  telnet handler now raises CVE-2007-0882 / CVE-2016-10401 on those login
+  patterns. Catalog total: 1008 → 1048.
+- **Event detail: per-protocol request-field sections.** The detail page already
+  broke out the full HTTP request (method, URI, headers, cookies, query params);
+  now the non-HTTP protocols get the same treatment. A decoded, labeled section
+  renders the salient captured fields for DNS (query name/type, AXFR served), SSH
+  (client banner, OpenSSH version, HASSH, negotiated KEX/ciphers/MACs, accepted
+  login), SMTP (HELO, MAIL FROM/RCPT TO, subject, VRFY/EXPN), SNMP (version,
+  community, PDU, requested OIDs, SET), NTP (mode-6/7 request & opcode), RDP
+  (mstshash cookie, NTLM user/domain, NLA), FTP and Telnet — instead of leaving
+  them in the raw catch-all meta table (those keys are now excluded from it so
+  nothing shows twice).
+- **Events table: per-column show/hide.** A "columns ▾" control above the events
+  table lets you turn any column (time, severity, rule, source, dest, handler,
+  intent, details) on or off. It's pure progressive enhancement — each cell
+  carries a `data-col` attribute and hidden columns are enforced by a single
+  managed stylesheet rule, so the choice survives the live flicker-free refresh
+  and is remembered per-browser (localStorage); it never changes the data or
+  touches the server, and the table renders in full with JS disabled.
 - **Handler-focused dossier view.** Clicking a handler anywhere (the events list,
   event detail, campaign/correlation cards) now opens `/handler?name=<h>` — a
   dedicated per-handler view: attempt / attack / successful-engagement counts,
@@ -40,6 +107,28 @@ documented in `docs/`).
   protocol and local-privesc CVEs that can't be reliably matched from network
   payloads were left advisory-only to keep the false-positive rate near zero;
   the live CISA-KEV auto-sync feed continues to advertise more.)
+- **176 more exploit-detectable CVEs, auto-derived from CISA-KEV × Nuclei
+  (`internal/cve/cve_kev_auto.go`).** This is the "convert the KEV export (with
+  exploit URIs) into signatures" pass. The CISA Known-Exploited-Vulnerabilities
+  catalog says *which* CVEs are worth detecting (confirmed exploited in the
+  wild) but ships no request details; the community Nuclei templates supply
+  *what the request looks like*. Intersecting the two — KEV CVEs not already in
+  the catalog, paired with the static, high-signal portion of their Nuclei
+  exploit path — yields 176 net-new HTTP detections wired into `MatchPayload`
+  with ATT&CK tagging (`T1190` initial-access for RCE/auth-bypass/SSRF/upload,
+  `T1083` discovery for traversal/file-read). Heavily weighted to the live
+  threat: 46 from 2026 and 32 from 2025 (ServiceNow, SharePoint ToolShell-class,
+  Ivanti EPM/EPMM/Sentry, FreePBX, GoAnywhere, SysAid, Langflow, SolarWinds WHD,
+  WSUS, Gladinet, Mitel, Fortinet EMS, …), down through a long tail of KEV
+  classics (WebLogic, ColdFusion, Zimbra, DrayTek/Netgear/D-Link, QNAP, Nagios
+  XI, ThinkPHP). Over-generic paths (`/login`, `/api`, `/setup.php`, bare
+  `/v1/chat/completions`, …) are dropped and a record with no distinctive path
+  left is omitted entirely, keeping `MatchPayload`'s false-positive rate near
+  zero. Names and descriptions are CISA's own wording. The 2026 cohort is now
+  mixed: the original forward-looking *placeholders* stay advisory-only, while
+  these real KEV-confirmed 2026 CVEs are legitimately detectable (the
+  year-coverage test was updated to enforce exactly that split). Catalog total:
+  832 → 1008 records.
 - **SNMP reports a live, advancing uptime.** `sysUpTime` (and a new
   `hrSystemUptime`) were frozen at exactly 1h in the cached MIB — a device that
   reports the same uptime on every poll is a honeypot tell. They now advance from

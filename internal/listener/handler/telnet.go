@@ -125,6 +125,21 @@ func (t *telnet) Handle(ctx context.Context, conn net.Conn, cfg config.Listener)
 	if hasNonPrintable(user) || hasNonPrintable(pass) {
 		flagAnomaly(&res, "telnet-credential-non-printable")
 	}
+	// Solaris in.telnetd passes a login name beginning with '-f' straight to
+	// login(1) as the -f (force, no-auth) flag — `telnet -l "-froot"` logs in as
+	// root with no password (CVE-2007-0882, worm-exploited).
+	if telnetSolarisFBypass(user) {
+		flagAnomaly(&res, "telnet-solaris-f-bypass")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2007-0882")
+		setIfEmpty(res.Meta, "intent", "Solaris in.telnetd '-f' argument injection — pre-auth root login (CVE-2007-0882)")
+	}
+	// ZyXEL devices ship a hardcoded su password; seeing it in the login/password
+	// field (or the post-login su) is the CVE-2016-10401 root-escalation backdoor.
+	if telnetZyxelSuBackdoor(user) || telnetZyxelSuBackdoor(pass) {
+		flagAnomaly(&res, "telnet-zyxel-su-backdoor")
+		res.CVEHits = appendUnique(res.CVEHits, "CVE-2016-10401")
+		setIfEmpty(res.Meta, "intent", "ZyXEL hardcoded su backdoor password (CVE-2016-10401)")
+	}
 
 	// Configurable accept-policy: when the deployment pins which creds "work"
 	// (accept_creds: defaults|any) and the FIRST attempt matches, the login
@@ -579,4 +594,19 @@ func telnetDeviceBackdoor(user, pass string) bool {
 // command-injection metacharacters (device "command without auth" backdoors).
 func telnetLoginCmdInjection(s string) bool {
 	return strings.ContainsAny(s, ";|&") && strings.ContainsAny(s, "`$(/")
+}
+
+// telnetSolarisFBypass recognizes the CVE-2007-0882 pattern: a login name that
+// begins with the login(1) "-f" force/no-auth flag (e.g. "-froot", or the
+// "-l -f<user>" form), which Solaris in.telnetd forwarded verbatim, granting a
+// passwordless shell as the named account.
+func telnetSolarisFBypass(user string) bool {
+	u := strings.TrimSpace(user)
+	return strings.HasPrefix(u, "-f") || strings.HasPrefix(u, "-l -f") || strings.HasPrefix(u, "-l-f")
+}
+
+// telnetZyxelSuBackdoor recognizes the CVE-2016-10401 hardcoded ZyXEL su
+// password in a captured login/password field or post-login su command.
+func telnetZyxelSuBackdoor(s string) bool {
+	return strings.Contains(s, "zyad5001")
 }

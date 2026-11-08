@@ -1,10 +1,171 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
 )
+
+// protoField is one labeled request field for the event-detail protocol section.
+type protoField struct {
+	Label string
+	Value string
+}
+
+// protoGroup is a titled set of protocol request fields (e.g. "DNS query",
+// "SSH handshake"), the non-HTTP counterpart of the detail page's HTTP-request
+// section.
+type protoGroup struct {
+	Title  string
+	Fields []protoField
+}
+
+// protoFieldSpec maps a captured meta key to the human label shown for it.
+type protoFieldSpec struct {
+	key, label string
+}
+
+// protoSpecs defines, per (normalized) handler, the title and the ordered
+// request fields to surface on the detail page. The HTTP handler keeps its own
+// bespoke section in the template; these cover the other protocols the honeypot
+// speaks so their captured fields read as a labeled table instead of a raw meta
+// blob. Keys that aren't present on a given event are simply skipped.
+var protoSpecs = map[string]struct {
+	title  string
+	fields []protoFieldSpec
+}{
+	"dns": {"DNS query", []protoFieldSpec{
+		{"qname", "query name"}, {"qtype_name", "query type"}, {"qtype", "type code"},
+		{"dns_queries", "all queries"}, {"zone_transfer_served", "AXFR zone transfer served"},
+		{"malformed_dns", "malformed packet"},
+	}},
+	"ssh": {"SSH handshake & client", []protoFieldSpec{
+		{"client_id", "client banner"}, {"ssh_client_openssh_version", "OpenSSH version"},
+		{"hassh", "HASSH"}, {"ssh_kex_negotiated", "negotiated KEX"},
+		{"ssh_kex_ciphers_c2s", "ciphers (c→s)"}, {"ssh_kex_macs_c2s", "MACs (c→s)"},
+		{"ssh_kex_hostkeys", "host-key algs"}, {"ssh_subsystem", "subsystem"},
+		{"max_password_len", "max password length"}, {"accepted_user", "accepted login"},
+	}},
+	"smtp": {"SMTP envelope", []protoFieldSpec{
+		{"helo", "HELO/EHLO"}, {"mail_from", "MAIL FROM"}, {"rcpt_to", "RCPT TO"},
+		{"mail_header_from", "header From"}, {"mail_subject", "subject"},
+		{"vrfy_user", "VRFY user"}, {"expn_list", "EXPN list"}, {"starttls", "STARTTLS"},
+	}},
+	"snmp": {"SNMP request", []protoFieldSpec{
+		{"snmp_version", "version"}, {"community", "community"}, {"snmp_pdu", "PDU type"},
+		{"varbind_oids", "requested OIDs"}, {"snmp_set", "SET write"},
+		{"snmp_v3_user", "v3 user"}, {"trap_type", "trap type"},
+		{"snmp_default_community", "default community"},
+	}},
+	"ntp": {"NTP request", []protoFieldSpec{
+		{"ntp_request", "request"}, {"ntp_impl", "mode-7 implementation"},
+		{"ntp_request_code", "mode-7 request code"}, {"ntp_control", "mode-6 control"},
+		{"ntp_control_opcode", "mode-6 opcode"}, {"ntp_authenticated", "authenticated"},
+	}},
+	"rdp": {"RDP client", []protoFieldSpec{
+		{"cookie", "mstshash cookie"}, {"username", "username"}, {"ntlm_user", "NTLM user"},
+		{"ntlm_domain", "NTLM domain"}, {"nla", "NLA/CredSSP"}, {"tls_version", "TLS version"},
+	}},
+	"ftp": {"FTP session", []protoFieldSpec{
+		{"user", "username"}, {"pass", "password"}, {"ftp_upload_name", "uploaded file"},
+		{"ftp_upload_size", "upload size"}, {"ftp_upload_sha256", "upload sha256"},
+		{"ftp_bounce_target", "FXP/bounce target"}, {"retrieved", "retrieved file"},
+		{"authed", "authenticated"},
+	}},
+	"telnet": {"Telnet session", []protoFieldSpec{
+		{"user_attempt", "username"}, {"pass_attempt", "password"},
+		{"terminal_type", "terminal type"}, {"terminal_speed", "terminal speed"},
+		{"window_size", "window size"}, {"accepted_user", "accepted login"},
+	}},
+}
+
+// normalizeHandlerForProto folds TLS / variant handler names onto the base
+// protocol whose field spec applies.
+func normalizeHandlerForProto(h string) string {
+	switch h {
+	case "dns_tcp":
+		return "dns"
+	case "ssh_interactive":
+		return "ssh"
+	case "smtp_recv", "smtps", "submission":
+		return "smtp"
+	case "ftps":
+		return "ftp"
+	}
+	return h
+}
+
+// protocolDetailKeys is every meta key surfaced by protocolFields, so the
+// catch-all meta table drops them (they already show in a labeled section).
+var protocolDetailKeys = func() map[string]bool {
+	m := map[string]bool{}
+	for _, spec := range protoSpecs {
+		for _, f := range spec.fields {
+			m[f.key] = true
+		}
+	}
+	return m
+}()
+
+// protocolFields returns the labeled request-field groups for a non-HTTP event,
+// the counterpart of the detail page's HTTP-request section. It is empty for
+// handlers without a spec (their fields stay in the generic meta table) and for
+// any field not captured on this event.
+func protocolFields(ev *event.Event) []protoGroup {
+	if ev == nil || ev.Meta == nil {
+		return nil
+	}
+	spec, ok := protoSpecs[normalizeHandlerForProto(ev.Handler)]
+	if !ok {
+		return nil
+	}
+	var fields []protoField
+	for _, f := range spec.fields {
+		if v := metaDisplay(ev.Meta, f.key); v != "" {
+			fields = append(fields, protoField{Label: f.label, Value: v})
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return []protoGroup{{Title: spec.title, Fields: fields}}
+}
+
+// metaDisplay renders one meta value as a single display string: scalars via
+// %v, string/any slices joined, "" when absent or empty. Long values are clipped
+// so a stray large field can't blow out the table.
+func metaDisplay(meta map[string]any, key string) string {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return ""
+	}
+	var s string
+	switch t := v.(type) {
+	case string:
+		s = t
+	case []string:
+		s = strings.Join(t, ", ")
+	case []any:
+		parts := make([]string, 0, len(t))
+		for _, e := range t {
+			parts = append(parts, fmt.Sprintf("%v", e))
+		}
+		s = strings.Join(parts, ", ")
+	case bool:
+		if !t {
+			return ""
+		}
+		s = "yes"
+	default:
+		s = fmt.Sprintf("%v", t)
+	}
+	s = strings.TrimSpace(s)
+	if len(s) > 2048 {
+		s = s[:2048] + "…"
+	}
+	return s
+}
 
 // eventCommands gathers every command / query the attacker typed on an event —
 // interactive-shell lines, SQL queries (mysql/postgres/mssql), Redis command
