@@ -121,6 +121,7 @@ var cweNames = map[string]string{
 	// Memory-safety, crypto, auth, concurrency and logging classes common in
 	// IoT/embedded/OT firmware and appliances.
 	"CWE-117":  "Improper Output Neutralization for Logs",
+	"CWE-124":  "Buffer Underwrite (Buffer Underflow)",
 	"CWE-125":  "Out-of-bounds Read",
 	"CWE-129":  "Improper Validation of Array Index",
 	"CWE-131":  "Incorrect Calculation of Buffer Size",

@@ -23,7 +23,7 @@ func TestRecent2025And2026Coverage(t *testing.T) {
 	// never mis-tag live traffic. So a detectable 2026 record is allowed iff it
 	// belongs to one of the real batches.
 	realBatch := map[string]bool{}
-	for _, b := range [][]Record{cveKEVAuto2026, cveNucleiExtra2026, cveNetProtoBatch, cveOTABBHitachi, cveSNMPDNSNTP, cveBatchKEV2026} {
+	for _, b := range [][]Record{cveKEVAuto2026, cveNucleiExtra2026, cveNucleiBatch2, cveNetProtoBatch, cveOTABBHitachi, cveSNMPDNSNTP, cveFTPRDP, cveFortinet, cveBatchKEV2026} {
 		for _, r := range b {
 			realBatch[r.ID] = true
 		}

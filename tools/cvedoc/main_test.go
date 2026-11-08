@@ -80,24 +80,28 @@ func TestRenderFromLiveCatalog(t *testing.T) {
 	}
 }
 
-func TestCWEInferenceAndSeverity(t *testing.T) {
-	// Explicit CWE from the record wins.
-	id, _, inf := cweFor(cve.Record{ID: "x", CWE: []string{"CWE-78"}})
-	if id != "CWE-78" || inf {
-		t.Errorf("explicit CWE: got %s inferred=%v", id, inf)
+func TestCWEAndSeverity(t *testing.T) {
+	// cweFor reads the record's (now catalog-promoted) CWE; a record not in the
+	// catalog's inferred set reports inferred=false.
+	id, name, inf := cweFor(cve.Record{ID: "not-in-catalog", CWE: []string{"CWE-78"}})
+	if id != "CWE-78" || inf || name == "" {
+		t.Errorf("explicit CWE: got %s / %s inferred=%v", id, name, inf)
 	}
-	// Inference from the name when no explicit CWE.
-	id, _, inf = cweFor(cve.Record{ID: "x", Name: "Acme SQL Injection Vulnerability"})
-	if id != "CWE-89" || !inf {
-		t.Errorf("SQLi inference: got %s inferred=%v", id, inf)
+	if id, _, _ := cweFor(cve.Record{ID: "x"}); id != "" {
+		t.Errorf("no CWE on record should yield empty, got %s", id)
 	}
-	id, _, _ = cweFor(cve.Record{Name: "Foo Path Traversal"})
-	if id != "CWE-22" {
-		t.Errorf("traversal inference: %s", id)
+	// A real catalog record whose CWE the package inferred must be marked.
+	var sawInferred bool
+	for _, r := range cve.All() {
+		if _, _, inferred := cweFor(r); inferred {
+			sawInferred = true
+			if !cve.CWEInferred(r.ID) {
+				t.Errorf("%s marked inferred by cweFor but not by the package", r.ID)
+			}
+		}
 	}
-	id, _, _ = cweFor(cve.Record{Name: "Nothing classifiable here"})
-	if id != "" {
-		t.Errorf("unclassifiable should be empty, got %s", id)
+	if !sawInferred {
+		t.Error("expected some catalog records to carry an inferred CWE")
 	}
 	for v, want := range map[float64]string{9.8: "Critical", 8.1: "High", 6.1: "Medium", 3.0: "Low", 0: "None"} {
 		if got := severityBand(v); got != want {

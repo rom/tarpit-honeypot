@@ -2988,6 +2988,9 @@ func init() {
 	catalog = append(catalog, cveOTABBHitachi...)
 	catalog = append(catalog, cveSNMPDNSNTP...)
 	catalog = append(catalog, cveNucleiExtra2026...)
+	catalog = append(catalog, cveFTPRDP...)
+	catalog = append(catalog, cveFortinet...)
+	catalog = append(catalog, cveNucleiBatch2...)
 	for i := range catalog {
 		for j, s := range catalog[i].Signatures {
 			catalog[i].Signatures[j] = strings.ToLower(s)
@@ -2996,6 +2999,16 @@ func init() {
 			catalog[i].CWE = e.CWE
 			catalog[i].CPE = e.CPE
 			catalog[i].EPSS = e.EPSS
+		}
+		// Promote an inferred weakness class onto any record that still has no
+		// explicit CWE (the big auto-extracted http/KEV/Nuclei batches), so the
+		// whole catalog — All(), the exports, the attribution UI — carries a CWE.
+		// The inference is marked so it can be distinguished from a curated CWE.
+		if len(catalog[i].CWE) == 0 {
+			if id, ok := inferCWE(catalog[i].Name, catalog[i].Description); ok {
+				catalog[i].CWE = []string{id}
+				inferredCWEIDs[catalog[i].ID] = true
+			}
 		}
 	}
 	// Build the lookup indexes once (the catalog never changes at runtime), so

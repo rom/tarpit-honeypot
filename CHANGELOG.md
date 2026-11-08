@@ -8,6 +8,19 @@ documented in `docs/`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **LDAPS / Global-Catalog-over-TLS ports were served by the plain HTTPS
+  handler.** The Active Directory archetype, the `adserver`/`ldapserver`
+  archeservice roles, and the AD-ENTERPRISE example config bound 636 (LDAPS) and
+  3269 (GC over TLS) to `handler: https` — so an attacker's LDAP-over-TLS probe
+  got an HTTP response, an obvious honeypot tell. They now use the `ldaps`
+  handler (TLS-wrapped LDAP). Added a config regression test that loads every
+  realistic example config and asserts well-known TLS/protocol ports (636, 3269,
+  993, 995, 465, 990, 389, 3268, 3389, 1433, 3306, 5432, 6379, 11211) are served
+  by the right handler; all shipped example configs otherwise use correct real
+  ports.
+
 ### Added
 
 - **The CVE catalog reference is now browsable in the web UI** under
@@ -36,6 +49,22 @@ documented in `docs/`).
   CVEs already catalogued; `-service`, `-max-sigs`, `-min-cvss`, and
   `-keep-generic` tune the run. Dependency-light (reuses `yaml.v3`) and treats
   templates as untrusted data — nothing is executed, only parsed.
+- **~115 more CVEs: a second Nuclei batch, FTP, RDP and a full Fortinet set.**
+  `cve_nuclei_batch2.go` adds 42 more recent (2024–2026) critical CVEs extracted
+  with `tools/nuclei2cve` (GitHub Enterprise, JetBrains TeamCity, GitLab, Cisco
+  SSM, IBM ODM, Progress Kemp, ArgoCD, Teleport, vBulletin, GLPI, XWiki, n8n,
+  Flowise, MLflow, Gotenberg, RClone, Qwik and router/device chains).
+  `cve_ftp_rdp.go` adds 7 FTP-daemon (ProFTPD / vsftpd / Pure-FTPd use-after-
+  free, infinite-loop DoS, mod_sql SQLi, chroot/ACL bypass) and 10 Windows
+  Remote Desktop CVEs (MS12-020, EsteemAudit, RD Services/Licensing RCE, the
+  2024 RD Licensing + RDP-server RCEs, NLA session hijack, client-side RCEs).
+  `cve_fortinet.go` adds 25 across the whole Fortinet family — FortiOS/FortiGate
+  SSL-VPN (2FA bypass, buffer underwrite, captive-portal OOB write, the
+  EGREGIOUSBLUNDER cookie overflow, hard-coded config key, CLI traversal),
+  FortiWeb (SQLi, OS command injection), FortiNAC (keyUpload RCE — path-
+  signatured, Java deserialization), FortiSIEM, FortiManager/FortiAnalyzer fgfmsd
+  UAF, FortiMail and FortiSandbox — with CISA-KEV wording where applicable.
+  Catalog total: 1114 → 1198.
 - **33 more recent CVEs from the Nuclei templates (`cve_nuclei_extra.go`).** A
   curated, mostly-critical 2024–2026 batch extracted with `tools/nuclei2cve`,
   each with a distinctive real exploit path flagged live by MatchPayload —
