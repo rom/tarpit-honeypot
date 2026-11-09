@@ -459,7 +459,7 @@ func (s *Server) handleCampaign(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-campaignWindow)
-	evs, err := s.windowEvents(ctx, campaignWindow, campaignScanMax)
+	evs, err := s.windowEvents(ctx, campaignWindow, s.scanCap(campaignScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -478,7 +478,7 @@ func (s *Server) handleAPICampaign(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-campaignWindow)
-	evs, err := s.windowEvents(ctx, campaignWindow, campaignScanMax)
+	evs, err := s.windowEvents(ctx, campaignWindow, s.scanCap(campaignScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

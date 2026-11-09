@@ -39,13 +39,14 @@ type lootFile struct {
 	// Malware-detonation verdict (payload artifacts only; Verdict=false when the
 	// sample hasn't been looked up / detonated). Joined from malware:detonation
 	// events by sha256 — see internal/detonate.
-	Verdict   bool
-	MalFamily string // malware family (VT popular_threat_name / sandbox label)
-	AVLabel   string // suggested threat label (fallback when family is empty)
-	AVHits    int    // AV engines flagging the sample
-	AVTotal   int    // AV engines that scored it
-	DetSource string // "virustotal" | "cape"
-	IOCCount  int    // contacted domains+IPs+URLs the detonation revealed
+	Verdict      bool
+	MalFamily    string // malware family (VT popular_threat_name / sandbox label)
+	AVLabel      string // suggested threat label (fallback when family is empty)
+	AVHits       int    // AV engines flagging the sample
+	AVTotal      int    // AV engines that scored it
+	DetSource    string // "virustotal" | "cape"
+	IOCCount     int    // contacted domains+IPs+URLs the detonation revealed
+	VerdictEvent string // event ID of the malware:detonation event (for click-through)
 }
 
 // artifactSHA256 extracts the sha256 from a payload artifact filename of the
@@ -70,12 +71,13 @@ func detonationVerdicts(evs []*event.Event) map[string]lootFile {
 			continue
 		}
 		vd := lootFile{
-			Verdict:   true,
-			MalFamily: metaString(ev.Meta, "malware_family"),
-			AVLabel:   metaString(ev.Meta, "av_label"),
-			AVHits:    metaInt(ev.Meta, "av_positives"),
-			AVTotal:   metaInt(ev.Meta, "av_total"),
-			DetSource: metaString(ev.Meta, "detonation_source"),
+			Verdict:      true,
+			MalFamily:    metaString(ev.Meta, "malware_family"),
+			AVLabel:      metaString(ev.Meta, "av_label"),
+			AVHits:       metaInt(ev.Meta, "av_positives"),
+			AVTotal:      metaInt(ev.Meta, "av_total"),
+			DetSource:    metaString(ev.Meta, "detonation_source"),
+			VerdictEvent: ev.ID,
 			IOCCount: len(metaStrings(ev.Meta, "contacted_domains")) +
 				len(metaStrings(ev.Meta, "contacted_ips")) +
 				len(metaStrings(ev.Meta, "contacted_urls")),
@@ -216,6 +218,7 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event, filt
 				a := &v.Artifacts[i]
 				a.Verdict, a.MalFamily, a.AVLabel = vd.Verdict, vd.MalFamily, vd.AVLabel
 				a.AVHits, a.AVTotal, a.DetSource, a.IOCCount = vd.AVHits, vd.AVTotal, vd.DetSource, vd.IOCCount
+				a.VerdictEvent = vd.VerdictEvent
 			}
 		}
 	}
@@ -337,7 +340,7 @@ func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
 	// NoPayload: the credential summary reads event meta (extractCreds), never
 	// the raw payload blob, so skip the payload column + per-row banner subquery
 	// — the heavy part of the scan that made this page 500 at 100k+ events.
-	if e, err := s.windowEvents(ctx, capturesWindow, capturesScanMax); err == nil {
+	if e, err := s.windowEvents(ctx, capturesWindow, s.scanCap(capturesScanMax)); err == nil {
 		evs = e
 	}
 	kind := r.URL.Query().Get("kind")

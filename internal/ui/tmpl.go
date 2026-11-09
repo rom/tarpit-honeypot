@@ -1040,7 +1040,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
   <td><code>{{ .Name }}</code></td>
   <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
-  <td>{{ if .Verdict }}{{ if .MalFamily }}<span class="tag bad">{{ .MalFamily }}</span>{{ else if .AVLabel }}<span class="tag bad">{{ .AVLabel }}</span>{{ end }}{{ if .AVTotal }} <span class="tag">AV {{ .AVHits }}/{{ .AVTotal }}</span>{{ end }}{{ if .IOCCount }} <span class="tag">{{ .IOCCount }} IOC{{ if ne .IOCCount 1 }}s{{ end }}</span>{{ end }}{{ if .DetSource }} <span class="meta">{{ .DetSource }}</span>{{ end }}{{ else }}<span class="meta">—</span>{{ end }}</td>
+  <td>{{ if .Verdict }}{{ if .MalFamily }}<span class="tag bad">{{ .MalFamily }}</span>{{ else if .AVLabel }}<span class="tag bad">{{ .AVLabel }}</span>{{ end }}{{ if .AVTotal }} <span class="tag">AV {{ .AVHits }}/{{ .AVTotal }}</span>{{ end }}{{ if .IOCCount }} {{ if .VerdictEvent }}<a class="tag" href="/events/{{ .VerdictEvent }}" title="open the detonation event with the contacted domains/IPs/URLs">{{ .IOCCount }} IOC{{ if ne .IOCCount 1 }}s{{ end }} →</a>{{ else }}<span class="tag">{{ .IOCCount }} IOC{{ if ne .IOCCount 1 }}s{{ end }}</span>{{ end }}{{ end }}{{ if .DetSource }} <span class="meta">{{ .DetSource }}</span>{{ end }}{{ else }}<span class="meta">—</span>{{ end }}</td>
   <td><a href="/loot/?kind=payload&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>

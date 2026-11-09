@@ -52,7 +52,7 @@ func (s *Server) handleInteractions(w http.ResponseWriter, r *http.Request) {
 	// 20k newest so the per-event decode stays within the page's time budget at
 	// high event volume. Shared, cached full-window snapshot (windowEvents) so
 	// concurrent auto-refreshes don't each re-scan.
-	evs, err := s.windowEvents(ctx, dur, 20000)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(20000))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

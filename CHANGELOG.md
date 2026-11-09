@@ -10,6 +10,14 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Detail pages silently capped each render at 20,000 events, so 7d/14d views
+  looked no bigger than 24h on a busy sensor.** The per-page scan cap was
+  hard-coded; it is now raised by `ui.tuning.ui_scan_limit` (each page keeps its
+  own value as a floor), so operators can render more history per page. This is a
+  per-render scan bound for responsiveness, not a data limit — the SQLite store
+  keeps everything subject only to `sensor.disk.sqlite_mb` (size-cap eviction,
+  off unless set) and `sensor.disk.retention_days` (time retention, off unless
+  set). The `ui_scan_limit` doc now spells this out.
 - **SNMP per-source walk-rate map could grow without bound under a spoofed-
   source UDP flood (memory-exhaustion DoS).** The map only evicted windows that
   had fully elapsed (≥1 min), so a sub-minute burst of datagrams from random

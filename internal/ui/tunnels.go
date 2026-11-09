@@ -164,7 +164,7 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/tunnels")
 	since := time.Now().Add(-dur)
-	evs, err := s.windowEvents(ctx, dur, tunnelScanMax)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(tunnelScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

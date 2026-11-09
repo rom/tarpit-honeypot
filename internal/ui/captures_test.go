@@ -118,7 +118,7 @@ func TestCapturesArtifactVerdict(t *testing.T) {
 
 	now := time.Now()
 	evs := []*event.Event{
-		{Time: now, RuleID: "malware:detonation", Source: event.Endpoint{IP: "1.2.3.4"},
+		{ID: "evt123", Time: now, RuleID: "malware:detonation", Source: event.Endpoint{IP: "1.2.3.4"},
 			Meta: map[string]any{
 				"file_sha256":       h,
 				"malware_family":    "mirai",
@@ -140,8 +140,27 @@ func TestCapturesArtifactVerdict(t *testing.T) {
 	if a.IOCCount != 2 {
 		t.Errorf("IOCCount = %d; want 2", a.IOCCount)
 	}
+	if a.VerdictEvent != "evt123" {
+		t.Errorf("VerdictEvent = %q; want evt123 (for click-through)", a.VerdictEvent)
+	}
 	// Sanity: artifactSHA256 strips the extension.
 	if got := artifactSHA256(h + ".elf"); got != h {
 		t.Errorf("artifactSHA256 = %q", got)
+	}
+}
+
+// TestScanCapRaisedByTuning: the per-page scan cap is the page default unless
+// ui_scan_limit raises it (so operators can render more history per page).
+func TestScanCapRaisedByTuning(t *testing.T) {
+	s := &Server{scanLimit: 20000}
+	if got := s.scanCap(20000); got != 20000 {
+		t.Errorf("default scanCap = %d; want 20000", got)
+	}
+	if got := s.scanCap(50000); got != 50000 {
+		t.Errorf("higher page default should win: got %d; want 50000", got)
+	}
+	s.scanLimit = 200000
+	if got := s.scanCap(20000); got != 200000 {
+		t.Errorf("raised ui_scan_limit should win: got %d; want 200000", got)
 	}
 }

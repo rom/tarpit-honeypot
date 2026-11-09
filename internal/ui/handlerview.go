@@ -243,7 +243,7 @@ func (s *Server) handleHandlerView(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/handler")
-	evs, err := s.windowEvents(ctx, dur, handlerViewScanMax)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(handlerViewScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

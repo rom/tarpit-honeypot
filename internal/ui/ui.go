@@ -1310,6 +1310,19 @@ func (s *Server) windowEvents(ctx context.Context, window time.Duration, limit i
 	})
 }
 
+// scanCap returns the per-render event scan cap for a detail page: the page's
+// own default, raised to ui.tuning.ui_scan_limit when the operator set a higher
+// value. Detail pages scan only the newest capped set of events within the
+// selected window (for responsiveness), so this is the single knob that lets a
+// busy deployment render more history per page. The data itself is never capped
+// in the store — only how many rows a single page scans.
+func (s *Server) scanCap(def int) int {
+	if s.scanLimit > def {
+		return s.scanLimit
+	}
+	return def
+}
+
 // cachedEvents is the single-flight, short-TTL event-snapshot cache behind
 // windowEvents and the per-category service-page scan. For a given key it
 // returns the cached snapshot when fresh; otherwise exactly one caller runs
