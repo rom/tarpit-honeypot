@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"net"
+	"strings"
 
 	"github.com/rom/tarpit-honeypot/internal/config"
 	"github.com/rom/tarpit-honeypot/internal/identity"
@@ -47,6 +48,7 @@ func (h *historian) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		res.Payload = got
 		res.Meta["request_len"] = len(got)
 		classifyHistorianFraming(&res, got)
+		classifyHistorianOp(&res, got, h.label)
 		if toks := amsPrintableStrings(got); len(toks) > 0 {
 			res.Meta["ascii_tokens"] = toks
 		}
@@ -111,5 +113,70 @@ func classifyHistorianFraming(res *Result, b []byte) {
 		res.Meta["frame_len"] = le
 	default:
 		res.Meta["framing"] = "binary-stream"
+	}
+}
+
+// historianOps maps, most-specific-first, a historian client operation to the
+// cleartext verb tokens these proprietary SDKs (PI API/SDK, GE ihSDK, AspenTech
+// SQLplus/ADSA, Canary) routinely leak in their opening handshakes. This is an
+// honest classification of observed cleartext — NOT a decode of the closed
+// record formats and NOT fabricated: a token has to actually be present on the
+// wire for the operation to be named.
+var historianOps = []struct {
+	op   string
+	toks []string
+}{
+	{"write data", []string{"putsnapshot", "putarc", "putarchive", "updatevalue", "insertvalue", "writevalue", "pointupdate", "updatepoint"}},
+	{"read archive data", []string{"getarchive", "getarcvalues", "recorded", "interpolated", "piplot", "plotvalues", "summaries", "getpointdata", "readraw", "trenddata", "archivevalues"}},
+	{"tag/point lookup", []string{"findpoint", "getpoint", "pointlist", "pisearch", "findtag", "gettag", "taglist", "listpoints", "searchtag", "browsetags", "getpoints"}},
+	{"subscribe / sign-up", []string{"signup", "subscribe", "piupdate", "datapipe"}},
+	{"authentication", []string{"pitrust", "pimapping", "kerberos", "sspi", "ntlm", "login", "username", "password", "credential"}},
+	{"protocol negotiation", []string{"version", "hello", "negotiate", "protocol", "handshake"}},
+}
+
+// historianOperation classifies the operation a historian client's opening
+// message represents from its leaked cleartext tokens, returning the operation
+// name and the token that matched (both "" when there is no data). A connection
+// that leaks no verb is reported as a plain connection/handshake.
+func historianOperation(got []byte) (op, token string) {
+	if len(got) == 0 {
+		return "", ""
+	}
+	low := strings.ToLower(asciiOnly(got))
+	for _, r := range historianOps {
+		for _, t := range r.toks {
+			if strings.Contains(low, t) {
+				return r.op, t
+			}
+		}
+	}
+	return "connection / handshake", ""
+}
+
+// classifyHistorianOp records the decoded operation (historian_operation) and,
+// for the control-relevant ones, raises the matching marker and a precise
+// intent. product is the human product name used in the intent line. Shared by
+// the generic historian responder and the OSIsoft PI responder.
+func classifyHistorianOp(res *Result, got []byte, product string) {
+	op, tok := historianOperation(got)
+	if op == "" {
+		return
+	}
+	res.Meta["historian_operation"] = op
+	if tok != "" {
+		res.Meta["historian_op_token"] = tok
+	}
+	switch op {
+	case "write data":
+		flagAnomaly(res, "ics-historian-write")
+		res.Meta["intent"] = product + " — writing historian data (process-record tampering)"
+	case "read archive data":
+		flagAnomaly(res, "ics-process-data-access")
+		res.Meta["intent"] = product + " — reading archived process data (historian exfiltration)"
+	case "tag/point lookup":
+		res.Meta["intent"] = product + " — enumerating historian tags/points"
+	case "authentication":
+		flagAnomaly(res, "ics-historian-auth")
+		res.Meta["intent"] = product + " — authenticating to the historian"
 	}
 }

@@ -89,6 +89,38 @@ func TestHistorianBareConnect(t *testing.T) {
 	}
 }
 
+// TestHistorianOperationClassification: the operation is classified from the
+// cleartext verbs these SDKs leak, and the control-relevant ones raise a marker.
+func TestHistorianOperationClassification(t *testing.T) {
+	for _, c := range []struct{ name, data, wantOp string }{
+		{"read", "piar getarchive tag=SINUSOID", "read archive data"},
+		{"write", "PutSnapshot point=FIC101 value=42", "write data"},
+		{"lookup", "FindPoint mask=*", "tag/point lookup"},
+		{"auth", "PITrust login=svc", "authentication"},
+		{"plain", "ProficyClient\x00operator\x00", "connection / handshake"},
+		{"empty", "", ""},
+	} {
+		if op, _ := historianOperation([]byte(c.data)); op != c.wantOp {
+			t.Errorf("%s: historianOperation = %q; want %q", c.name, op, c.wantOp)
+		}
+	}
+
+	// End-to-end: a leaked read verb drives historian_operation + the marker
+	// through the handler.
+	h := &historian{proto: "aspen_ip21", label: "AspenTech InfoPlus.21", version: "V14", marker: []byte{'I', 'P', '2', '1'}}
+	body := []byte("SQLplus select getarchive from ip_analogdef\x00")
+	msg := make([]byte, 4)
+	binary.BigEndian.PutUint32(msg, uint32(len(body)))
+	msg = append(msg, body...)
+	res, _ := driveHistorian(t, h, msg)
+	if res.Meta["historian_operation"] != "read archive data" {
+		t.Errorf("historian_operation = %v; want read archive data", res.Meta["historian_operation"])
+	}
+	if !hasAnom(res, "ics-process-data-access") {
+		t.Errorf("read not flagged as process-data access: %v", res.Meta["anomalies"])
+	}
+}
+
 func containsSub(b []byte, sub string) bool {
 	return len(sub) == 0 || indexOf(b, sub) >= 0
 }

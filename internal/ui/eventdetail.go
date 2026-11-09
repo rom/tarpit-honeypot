@@ -251,6 +251,24 @@ var protoSpecs = map[string]struct {
 	"fhir": {"FHIR request", []protoFieldSpec{
 		{"fhir_resource", "resource"},
 	}},
+
+	// --- Process historians (fingerprint + cleartext operation classification) --
+	"osisoft_pi": {"OSIsoft PI request", []protoFieldSpec{
+		{"historian_operation", "operation"}, {"historian_op_token", "matched token"},
+		{"pi_server", "server"}, {"pi_version", "version"}, {"pi_request_len", "request bytes"},
+	}},
+	"proficy_historian": {"GE Proficy Historian request", historianFields},
+	"canary_historian":  {"Canary Historian request", historianFields},
+	"aspen_ip21":        {"AspenTech IP.21 request", historianFields},
+}
+
+// historianFields is the shared labeled-field set for the generic process-
+// historian responders (GE Proficy, Canary, AspenTech IP.21), which share the
+// historian_* meta keys.
+var historianFields = []protoFieldSpec{
+	{"historian_operation", "operation"}, {"historian_op_token", "matched token"},
+	{"historian_server", "server"}, {"historian_version", "version"},
+	{"framing", "framing"}, {"ascii_tokens", "leaked strings"},
 }
 
 // normalizeHandlerForProto folds TLS / variant handler names onto the base
@@ -385,6 +403,11 @@ var otCommandSpec = map[string]struct{ proto, key, alt string }{
 	"mbus":          {"M-Bus", "mbus_function", ""},
 	"codesys":       {"CODESYS", "codesys_command", "codesys_component"},
 	"dlms":          {"DLMS/COSEM", "dlms_apdu", ""},
+	// Process historians (operation classified from leaked cleartext).
+	"osisoft_pi":        {"OSIsoft PI", "historian_operation", ""},
+	"proficy_historian": {"GE Proficy Historian", "historian_operation", ""},
+	"canary_historian":  {"Canary Historian", "historian_operation", ""},
+	"aspen_ip21":        {"AspenTech IP.21", "historian_operation", ""},
 	// Building automation (BAS/BMS).
 	"danfoss_aksm": {"Danfoss AK-SM", "xml_action", "method"},
 	// Medical / clinical (MedTech).

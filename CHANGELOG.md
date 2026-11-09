@@ -92,7 +92,8 @@ documented in `docs/`).
     POWERLINK, GE SRTP / EGD, Emerson ROC+, Unitronics PCOM, MMS (IEC 61850),
     TriStation, PCWorx, ProConOS, FANUC FOCAS, Niagara Fox, Red Lion Crimson,
     VxWorks WDB, Veeder-Root ATG, IEEE C37.118 synchrophasor, SECS/GEM, CODESYS,
-    DLMS/COSEM.
+    DLMS/COSEM, and the process historians (OSIsoft/AVEVA PI, GE Proficy,
+    Canary, AspenTech IP.21).
   - **BAS/BMS:** BACnet, BACnet/SC, KNXnet/IP, LonTalk, OSDP, M-Bus, Danfoss AK-SM.
   - **IoT messaging:** MQTT, CoAP.
   - **MedTech:** HL7, DICOM, ASTM, POCT1, FHIR.
@@ -108,6 +109,15 @@ documented in `docs/`).
   COSEM object (class id + OBIS code + attribute/method), so a remote-disconnect
   ACTION or a register write is named explicitly (e.g. `ACTION-Request
   0-0:96.3.10.255 method 1`) rather than recorded as just "association".
+- **Process-historian operation classification.** The PI / GE Proficy / Canary /
+  AspenTech IP.21 historian responders stay fingerprint-grade (these wire formats
+  are closed and are never fabricated), but now classify the operation from the
+  cleartext verbs the client SDKs leak in their handshake — `read archive data`,
+  `write data`, `tag/point lookup`, `authentication`, `subscribe`, or a plain
+  `connection / handshake` — recording it as `historian_operation` and raising a
+  precise marker (e.g. a leaked `getarchive` → process-data access /
+  exfiltration; a `putsnapshot` → historian write / record tampering). A token
+  must actually be present on the wire for the operation to be named.
 - **`/config` event-store retention panel.** The config page now shows the
   SQLite size cap (`sensor.disk.sqlite_mb`), current logical usage and
   percent-of-cap, an "at cap — evicting oldest events" tag when usage reaches the
