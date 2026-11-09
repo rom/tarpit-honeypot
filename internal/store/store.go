@@ -340,6 +340,11 @@ func OpenTuned(dataDir string, capMB, maxOpenConns int) (*Store, error) {
 	// one-time VACUUM here (before the sink starts writing) returns the slack to
 	// the OS. No-op unless a cap is set and the file is badly over it.
 	st.reclaimBloat(context.Background())
+	// Make the active size cap and current footprint visible at startup. The
+	// sensor opens with capMB>0 (default 500 MB); the CLI tools open with 0 and
+	// stay quiet. This is the line that would have made the silent size-cap
+	// eviction obvious instead of a mystery.
+	st.logFootprint(context.Background())
 	// Fill the materialized country column for rows ingested before it existed,
 	// off the startup path (chunked, best-effort). New rows already get it at
 	// insert; this converges the index + rollup over history without blocking
@@ -756,6 +761,31 @@ func (s *Store) logicalUsedBytes(ctx context.Context) (int64, bool) {
 		used = 0
 	}
 	return used, true
+}
+
+// logFootprint logs the size cap and current usage once, at Open, so an
+// operator can see at a glance how close the event DB is to its eviction
+// threshold (and that a threshold exists at all — the 500 MB default is easy to
+// miss). No-op when no cap is set (capMB<=0), i.e. for the CLI tools, which must
+// not spew a line every time they open the DB.
+func (s *Store) logFootprint(ctx context.Context) {
+	if s.capMB <= 0 {
+		return
+	}
+	var fileMB int64
+	if info, err := os.Stat(s.path); err == nil {
+		fileMB = info.Size() / (1024 * 1024)
+	}
+	used, _ := s.logicalUsedBytes(ctx)
+	usedMB := used / (1024 * 1024)
+	pct := int64(0)
+	if capBytes := int64(s.capMB) * 1024 * 1024; capBytes > 0 {
+		pct = used * 100 / capBytes
+	}
+	slog.Info("store: event database opened",
+		"path", s.path, "file_mb", fileMB, "used_mb", usedMB,
+		"cap_mb", s.capMB, "used_pct", pct,
+		"note", "oldest events are evicted once used_mb reaches cap_mb; raise sensor.disk.sqlite_mb for more history")
 }
 
 // reclaimBloat performs a one-time VACUUM at Open for a database whose physical

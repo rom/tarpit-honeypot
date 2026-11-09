@@ -30,7 +30,9 @@ documented in `docs/`).
   restart, so existing deployments self-heal without a manual `prune-db` /
   `rotate-db`. Regression tests cover both. Operators already bitten can reclaim
   the space immediately with `tarpit-honeypot prune-db --vacuum` (or just
-  restart on this build).
+  restart on this build). The sensor now also logs the active cap and current
+  footprint at startup (`store: event database opened … cap_mb=… used_mb=…
+  used_pct=…`), so size-cap eviction is visible instead of a silent surprise.
 - **Detail pages silently capped each render at 20,000 events, so 7d/14d views
   looked no bigger than 24h on a busy sensor.** The per-page scan cap was
   hard-coded; it is now raised by `ui.tuning.ui_scan_limit` (each page keeps its
