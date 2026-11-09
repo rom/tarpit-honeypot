@@ -336,6 +336,10 @@ func OpenTuned(dataDir string, capMB, maxOpenConns int) (*Store, error) {
 			"hint", "lower sensor.disk.sqlite_mb below the partition's free space, or grow the partition")
 	}
 	st := &Store{db: db, path: path, capMB: capMB}
+	// Self-heal a database left bloated by the old file-size-keyed prune: a
+	// one-time VACUUM here (before the sink starts writing) returns the slack to
+	// the OS. No-op unless a cap is set and the file is badly over it.
+	st.reclaimBloat(context.Background())
 	// Fill the materialized country column for rows ingested before it existed,
 	// off the startup path (chunked, best-effort). New rows already get it at
 	// insert; this converges the index + rollup over history without blocking
@@ -674,15 +678,27 @@ func (s *Store) maybePrune(ctx context.Context) {
 	if s.capMB <= 0 {
 		return
 	}
-	// Only check periodically — os.Stat per insert is wasted syscalls under load.
+	// Only check periodically — the size pragmas are cheap but not free, so we
+	// amortize the check over prunePeriod writes rather than running it per insert.
 	if s.pruneTick.Add(1)%prunePeriod != 0 {
 		return
 	}
-	info, err := os.Stat(s.path)
-	if err != nil {
+	// Measure the *logical* size — the bytes SQLite is actually using for live
+	// data — NOT the physical file size from os.Stat. The on-disk file is a
+	// one-way ratchet: a DELETE returns its pages to SQLite's internal freelist
+	// for reuse but never shrinks the file (only VACUUM does). Keying the cap off
+	// the physical size is therefore self-defeating: once the file grows past the
+	// cap for any reason (a burst of large captures, a since-pruned backlog), the
+	// physical size stays above the cap *forever*, so every prunePeriod tick sees
+	// overCap=true and deletes the oldest 10% again — permanently — pinning the
+	// table to a tiny sliver of the newest events no matter how much retention the
+	// operator wanted. Logical used-bytes DO fall after a DELETE, so the prune
+	// settles at the configured cap instead of running away.
+	used, ok := s.logicalUsedBytes(ctx)
+	if !ok {
 		return
 	}
-	overCap := info.Size() >= int64(s.capMB)*1024*1024
+	overCap := used >= int64(s.capMB)*1024*1024
 	// Safety net: prune even when under the configured cap if the filesystem is
 	// running low. A sqlite_mb cap larger than the partition's free space would
 	// otherwise let the DB grow until the disk fills and SQLite can no longer
@@ -711,10 +727,92 @@ DELETE FROM events WHERE id IN (
 	}
 	// Return the freed WAL space to the filesystem: a TRUNCATE checkpoint shrinks
 	// the -wal file back (best-effort). The main DB file itself doesn't shrink —
-	// SQLite reuses the freed pages for new rows — but this keeps the WAL from
-	// holding space on a tight disk.
+	// SQLite reuses the freed pages for new rows, which is exactly why the cap
+	// check above measures logical bytes, not the file size. reclaimBloat (run
+	// once at Open) returns the slack to the OS for already-bloated databases.
 	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		slog.Debug("store: wal checkpoint after prune failed", "err", err)
+	}
+}
+
+// logicalUsedBytes reports the bytes SQLite is using for live data:
+// (page_count - freelist_count) * page_size. This is what the size cap is
+// enforced against — unlike the physical file size, it drops when rows are
+// deleted, so the cap is actually reversible. Returns false if any pragma fails
+// (a transient lock, a closing DB) so the caller can skip this round safely.
+func (s *Store) logicalUsedBytes(ctx context.Context) (int64, bool) {
+	var pageCount, freelist, pageSize int64
+	if err := s.db.QueryRowContext(ctx, `PRAGMA page_count`).Scan(&pageCount); err != nil {
+		return 0, false
+	}
+	if err := s.db.QueryRowContext(ctx, `PRAGMA freelist_count`).Scan(&freelist); err != nil {
+		return 0, false
+	}
+	if err := s.db.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&pageSize); err != nil {
+		return 0, false
+	}
+	used := (pageCount - freelist) * pageSize
+	if used < 0 { // defensive: freelist can momentarily exceed page_count mid-checkpoint
+		used = 0
+	}
+	return used, true
+}
+
+// reclaimBloat performs a one-time VACUUM at Open for a database whose physical
+// file has ratcheted far past its cap while its live data fits comfortably under
+// it — the exact fingerprint left by the old file-size-keyed prune, which pinned
+// the table to a sliver of recent events yet never returned the freed pages to
+// the OS (hence a multi-GB events.db holding only a couple of hours of data).
+// VACUUM rewrites the DB compactly so the operator doesn't have to know to run
+// `prune-db`/`rotate-db` by hand. It is gated hard: only with a size cap set,
+// only on severe bloat with a small live set, and only with enough free disk for
+// VACUUM's temporary copy. It runs synchronously in Open, before the sink starts
+// writing, so there is no concurrent writer for VACUUM's exclusive lock to fight.
+func (s *Store) reclaimBloat(ctx context.Context) {
+	if s.capMB <= 0 {
+		return
+	}
+	capBytes := int64(s.capMB) * 1024 * 1024
+	info, err := os.Stat(s.path)
+	if err != nil {
+		return
+	}
+	physical := info.Size()
+	used, ok := s.logicalUsedBytes(ctx)
+	// Heal only clear bloat: the file is >= 2x the cap AND the live data is
+	// actually small (< cap). A legitimately large DB sitting near its cap
+	// (used ~ cap) is left alone — maybePrune handles it in the normal course.
+	if !ok || physical < 2*capBytes || used >= capBytes {
+		return
+	}
+	// VACUUM writes a fresh copy of the DB alongside the original before swapping
+	// it in, so it needs roughly the live size in free space. Require more than
+	// the current file as a conservative floor — never risk wedging the sensor at
+	// startup on a tight disk; the next prune still keeps the logical size bounded.
+	if free, ok := freeDiskBytes(filepath.Dir(s.path)); ok && free < physical {
+		slog.Warn("store: event DB is bloated but free disk is too low to reclaim it safely; skipping startup VACUUM",
+			"path", s.path, "file_mb", physical/(1024*1024), "used_mb", used/(1024*1024),
+			"hint", "free space and restart, or run `tarpit-honeypot prune-db` / `rotate-db`")
+		return
+	}
+	slog.Warn("store: reclaiming bloated event DB with a one-time VACUUM (file is far larger than its live data); sensor start is paused until it finishes",
+		"path", s.path, "file_mb", physical/(1024*1024), "used_mb", used/(1024*1024), "cap_mb", s.capMB)
+	start := time.Now()
+	if _, err := s.db.ExecContext(ctx, `VACUUM`); err != nil {
+		slog.Warn("store: startup VACUUM failed; DB left as-is (still writable)", "err", err, "path", s.path)
+		return
+	}
+	// In WAL mode VACUUM rewrites the DB through the write-ahead log; the main
+	// file is not truncated to its new (smaller) size until the WAL is
+	// checkpointed back. Force that so the reclaimed space actually returns to the
+	// filesystem now, not whenever the next automatic checkpoint happens to run.
+	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		slog.Debug("store: checkpoint after reclaim VACUUM failed", "err", err, "path", s.path)
+	}
+	if info, err := os.Stat(s.path); err == nil {
+		slog.Info("store: event DB reclaimed",
+			"path", s.path, "file_mb", info.Size()/(1024*1024),
+			"took", time.Since(start).Round(time.Millisecond).String())
 	}
 }
 

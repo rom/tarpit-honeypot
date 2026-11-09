@@ -1194,10 +1194,16 @@ type StoreConfig struct {
 }
 
 type Disk struct {
-	JSONLogMB     int `yaml:"json_log_mb"`
-	SQLiteMB      int `yaml:"sqlite_mb"`
-	PcapMB        int `yaml:"pcap_mb"`        // total cap for the captures directory
-	CaptureKB     int `yaml:"capture_kb"`     // per-session cap before truncation
+	JSONLogMB int `yaml:"json_log_mb"` // JSON event-log rotation cap; omitted => 500 MB default
+	// SQLiteMB is the soft cap on events.db; when the DB's *logical* size exceeds
+	// it the oldest ~10% of events are evicted (see store.maybePrune). NOTE: this
+	// is NOT off by default — an omitted/zero value is defaulted to 500 MB in
+	// config load, so every sensor has a size cap whether or not it declares a
+	// `sensor.disk` block. Raise it (e.g. 4096) for more history; on a busy sensor
+	// that captures large payloads, 500 MB can be only a few days.
+	SQLiteMB      int `yaml:"sqlite_mb"`      // omitted => 500 MB default (size-cap eviction, not off)
+	PcapMB        int `yaml:"pcap_mb"`        // total cap for the captures directory; omitted => 1024 MB
+	CaptureKB     int `yaml:"capture_kb"`     // per-session cap before truncation; omitted => 64 KB
 	RetentionDays int `yaml:"retention_days"` // 0 = no time-based retention; otherwise events/files older than this are pruned
 }
 

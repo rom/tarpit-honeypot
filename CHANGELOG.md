@@ -10,14 +10,36 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Runaway size-cap eviction pinned the event DB to a sliver of the newest
+  events — a multi-GB `events.db` that held only a couple of hours of data, so
+  7d/14d views showed no more than 24h even though the store was never meant to
+  be that small.** The SQLite size-cap prune (`maybePrune`) compared the cap to
+  the *physical file size* from `os.Stat`. But an SQLite `DELETE` never shrinks
+  the file — it returns pages to an internal freelist for reuse (only `VACUUM`
+  shrinks the file). So once `events.db` grew past `sensor.disk.sqlite_mb` for
+  any reason (a burst of large captures, a since-pruned backlog), the physical
+  size stayed above the cap *forever*: every 256 writes the pruner deleted the
+  oldest 10% again, holding the table at roughly `9×256` rows regardless of how
+  much retention the operator wanted. This hit even operators who never set a
+  cap, because `sensor.disk.sqlite_mb` **defaults to 500 MB** (see below). The
+  prune now measures the **logical** used bytes
+  (`(page_count − freelist_count) × page_size`), which *do* fall after a delete,
+  so the cap settles at its configured size instead of running away. A one-time
+  startup `VACUUM` (`reclaimBloat`, gated on severe bloat + ample free disk)
+  returns the slack of an already-bloated DB to the filesystem on the next
+  restart, so existing deployments self-heal without a manual `prune-db` /
+  `rotate-db`. Regression tests cover both. Operators already bitten can reclaim
+  the space immediately with `tarpit-honeypot prune-db --vacuum` (or just
+  restart on this build).
 - **Detail pages silently capped each render at 20,000 events, so 7d/14d views
   looked no bigger than 24h on a busy sensor.** The per-page scan cap was
   hard-coded; it is now raised by `ui.tuning.ui_scan_limit` (each page keeps its
   own value as a floor), so operators can render more history per page. This is a
   per-render scan bound for responsiveness, not a data limit — the SQLite store
   keeps everything subject only to `sensor.disk.sqlite_mb` (size-cap eviction,
-  off unless set) and `sensor.disk.retention_days` (time retention, off unless
-  set). The `ui_scan_limit` doc now spells this out.
+  **which defaults to 500 MB** — see the runaway-prune fix above; set it to `0`
+  to disable) and `sensor.disk.retention_days` (time retention, off unless set).
+  The `ui_scan_limit` doc now spells this out.
 - **SNMP per-source walk-rate map could grow without bound under a spoofed-
   source UDP flood (memory-exhaustion DoS).** The map only evicted windows that
   had fully elapsed (≥1 min), so a sub-minute burst of datagrams from random
