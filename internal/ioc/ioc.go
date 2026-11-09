@@ -107,6 +107,21 @@ func Extract(ev *event.Event) []Indicator {
 	for _, u := range metaStrings(ev, "harvested_urls") {
 		add("url", u)
 	}
+	// Network IOCs from malware detonation (internal/detonate): the contacted
+	// infrastructure and dropped-file hashes a captured sample revealed, so they
+	// persist and export through the same pipeline as live-captured indicators.
+	for _, dmn := range metaStrings(ev, "contacted_domains") {
+		add("domain", dmn)
+	}
+	for _, ip := range metaStrings(ev, "contacted_ips") {
+		add("ip", ip)
+	}
+	for _, u := range metaStrings(ev, "contacted_urls") {
+		add("url", u)
+	}
+	for _, h := range metaStrings(ev, "dropped_sha256") {
+		add("sha256", h)
+	}
 	user := metaStr(ev, "username")
 	if user == "" {
 		user = metaStr(ev, "user")

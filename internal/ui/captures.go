@@ -36,6 +36,60 @@ type lootFile struct {
 	// capture is of and which port they hit. Empty for the legacy <id>.pcap form.
 	SrcIP   string
 	DstPort string
+	// Malware-detonation verdict (payload artifacts only; Verdict=false when the
+	// sample hasn't been looked up / detonated). Joined from malware:detonation
+	// events by sha256 — see internal/detonate.
+	Verdict      bool
+	MalFamily    string // malware family (VT popular_threat_name / sandbox label)
+	AVLabel      string // suggested threat label (fallback when family is empty)
+	AVHits       int    // AV engines flagging the sample
+	AVTotal      int    // AV engines that scored it
+	DetSource    string // "virustotal" | "cape"
+	IOCCount     int    // contacted domains+IPs+URLs the detonation revealed
+	VerdictEvent string // event ID of the malware:detonation event (for click-through)
+}
+
+// artifactSHA256 extracts the sha256 from a payload artifact filename of the
+// form "<sha256>.<ext>" (or a bare "<sha256>").
+func artifactSHA256(name string) string {
+	if i := strings.IndexByte(name, '.'); i >= 0 {
+		name = name[:i]
+	}
+	return strings.ToLower(name)
+}
+
+// detonationVerdicts indexes the latest/richest malware:detonation verdict per
+// sha256 across the scanned events, for joining onto captured artifacts.
+func detonationVerdicts(evs []*event.Event) map[string]lootFile {
+	out := map[string]lootFile{}
+	for _, ev := range evs {
+		if ev.RuleID != "malware:detonation" || ev.Meta == nil {
+			continue
+		}
+		h := strings.ToLower(metaString(ev.Meta, "file_sha256"))
+		if len(h) != 64 {
+			continue
+		}
+		vd := lootFile{
+			Verdict:      true,
+			MalFamily:    metaString(ev.Meta, "malware_family"),
+			AVLabel:      metaString(ev.Meta, "av_label"),
+			AVHits:       metaInt(ev.Meta, "av_positives"),
+			AVTotal:      metaInt(ev.Meta, "av_total"),
+			DetSource:    metaString(ev.Meta, "detonation_source"),
+			VerdictEvent: ev.ID,
+			IOCCount: len(metaStrings(ev.Meta, "contacted_domains")) +
+				len(metaStrings(ev.Meta, "contacted_ips")) +
+				len(metaStrings(ev.Meta, "contacted_urls")),
+		}
+		// Keep the richest verdict if the same hash was detonated more than once
+		// (e.g. a VT hit plus a sandbox run): prefer more AV hits + more IOCs.
+		if prev, ok := out[h]; ok && prev.AVHits+prev.IOCCount >= vd.AVHits+vd.IOCCount {
+			continue
+		}
+		out[h] = vd
+	}
+	return out
 }
 
 type capturesView struct {
@@ -155,6 +209,19 @@ func buildCapturesView(dataDir string, since time.Time, evs []*event.Event, filt
 		v.Sessions = listLoot(dataDir, "session", 500)
 		v.Artifacts = listLoot(dataDir, "payload", 500)
 	}
+	// Join malware-detonation verdicts (VirusTotal / sandbox) onto the captured
+	// artifacts by sha256, so the captures page shows the family + AV ratio.
+	if len(v.Artifacts) > 0 {
+		verdicts := detonationVerdicts(evs)
+		for i := range v.Artifacts {
+			if vd, ok := verdicts[artifactSHA256(v.Artifacts[i].Name)]; ok {
+				a := &v.Artifacts[i]
+				a.Verdict, a.MalFamily, a.AVLabel = vd.Verdict, vd.MalFamily, vd.AVLabel
+				a.AVHits, a.AVTotal, a.DetSource, a.IOCCount = vd.AVHits, vd.AVTotal, vd.DetSource, vd.IOCCount
+				a.VerdictEvent = vd.VerdictEvent
+			}
+		}
+	}
 	// Captured credentials from the event store (newest first, deduped). Counts
 	// per type/service are tallied over the whole deduped set so the counters
 	// stay stable while you click through filters.
@@ -273,7 +340,7 @@ func (s *Server) handleCaptures(w http.ResponseWriter, r *http.Request) {
 	// NoPayload: the credential summary reads event meta (extractCreds), never
 	// the raw payload blob, so skip the payload column + per-row banner subquery
 	// — the heavy part of the scan that made this page 500 at 100k+ events.
-	if e, err := s.windowEvents(ctx, capturesWindow, capturesScanMax); err == nil {
+	if e, err := s.windowEvents(ctx, capturesWindow, s.scanCap(capturesScanMax)); err == nil {
 		evs = e
 	}
 	kind := r.URL.Query().Get("kind")

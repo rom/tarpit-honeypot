@@ -128,7 +128,7 @@ func buildASNsView(evs []*event.Event) asnsPage {
 func (s *Server) handleASNs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.windowEvents(ctx, asnsWindow, asnsScanMax)
+	evs, err := s.windowEvents(ctx, asnsWindow, s.scanCap(asnsScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -142,7 +142,7 @@ func (s *Server) handleASNs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPIASNs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.windowEvents(ctx, asnsWindow, asnsScanMax)
+	evs, err := s.windowEvents(ctx, asnsWindow, s.scanCap(asnsScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

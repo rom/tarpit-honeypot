@@ -107,3 +107,60 @@ func TestHandleCapturesRenders(t *testing.T) {
 		}
 	}
 }
+
+// TestCapturesArtifactVerdict: a malware:detonation event for a captured
+// sample's sha256 surfaces as the artifact's family / AV ratio / IOC count.
+func TestCapturesArtifactVerdict(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "payloads"), 0o755)
+	const h = "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
+	_ = os.WriteFile(filepath.Join(dir, "payloads", h+".elf"), []byte("MZ"), 0o644)
+
+	now := time.Now()
+	evs := []*event.Event{
+		{ID: "evt123", Time: now, RuleID: "malware:detonation", Source: event.Endpoint{IP: "1.2.3.4"},
+			Meta: map[string]any{
+				"file_sha256":       h,
+				"malware_family":    "mirai",
+				"av_positives":      42,
+				"av_total":          60,
+				"detonation_source": "virustotal",
+				"contacted_domains": []string{"c2.evil.example"},
+				"contacted_ips":     []string{"203.0.113.9"},
+			}},
+	}
+	v := buildCapturesView(dir, now.Add(-time.Hour), evs, "", "")
+	if len(v.Artifacts) != 1 {
+		t.Fatalf("artifacts = %+v", v.Artifacts)
+	}
+	a := v.Artifacts[0]
+	if !a.Verdict || a.MalFamily != "mirai" || a.AVHits != 42 || a.AVTotal != 60 || a.DetSource != "virustotal" {
+		t.Errorf("verdict not joined: %+v", a)
+	}
+	if a.IOCCount != 2 {
+		t.Errorf("IOCCount = %d; want 2", a.IOCCount)
+	}
+	if a.VerdictEvent != "evt123" {
+		t.Errorf("VerdictEvent = %q; want evt123 (for click-through)", a.VerdictEvent)
+	}
+	// Sanity: artifactSHA256 strips the extension.
+	if got := artifactSHA256(h + ".elf"); got != h {
+		t.Errorf("artifactSHA256 = %q", got)
+	}
+}
+
+// TestScanCapRaisedByTuning: the per-page scan cap is the page default unless
+// ui_scan_limit raises it (so operators can render more history per page).
+func TestScanCapRaisedByTuning(t *testing.T) {
+	s := &Server{scanLimit: 20000}
+	if got := s.scanCap(20000); got != 20000 {
+		t.Errorf("default scanCap = %d; want 20000", got)
+	}
+	if got := s.scanCap(50000); got != 50000 {
+		t.Errorf("higher page default should win: got %d; want 50000", got)
+	}
+	s.scanLimit = 200000
+	if got := s.scanCap(20000); got != 200000 {
+		t.Errorf("raised ui_scan_limit should win: got %d; want 200000", got)
+	}
+}

@@ -32,11 +32,18 @@ type Tuning struct {
 	UIAggCacheTTL    time.Duration `yaml:"ui_agg_cache_ttl"`
 	UIWindowCacheTTL time.Duration `yaml:"ui_window_cache_ttl"`
 
-	// UIScanLimit caps the dashboard's enrichment rollup. The summary now
-	// aggregates the tactic / geo / ASN / tool charts with SQL GROUP BY passes
-	// (store.DashboardFacets) instead of pulling raw event rows, so this bounds
-	// the number of distinct attack *signatures* returned (count-ordered); the
-	// /charts gallery still uses it as its per-event scan cap. Default 20000.
+	// UIScanLimit caps how many of the newest events a single detail-page render
+	// scans within the selected time window (events / attack / correlation /
+	// captures / map / timeline / campaign / handler / tunnels / charts). The
+	// store is NOT capped — this only bounds the per-render scan for
+	// responsiveness. On a busy sensor the default means 7d/14d views show the
+	// same newest N as 24h once a day already exceeds N; raise this to render
+	// more history per page (at the cost of a slower page build). It also bounds
+	// the dashboard's enrichment rollup — the summary aggregates the tactic / geo
+	// / ASN / tool charts with SQL GROUP BY passes (store.DashboardFacets), so
+	// there it bounds the distinct attack *signatures* returned (count-ordered).
+	// Each page keeps its own default as a floor; this only raises them.
+	// Default 20000.
 	UIScanLimit int `yaml:"ui_scan_limit"`
 }
 

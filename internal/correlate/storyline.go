@@ -112,7 +112,9 @@ func (c *Correlator) observeStoryline(ev *event.Event, now time.Time) *event.Eve
 	if strings.HasPrefix(ev.RuleID, "cve:") {
 		st.cveHits[strings.TrimPrefix(ev.RuleID, "cve:")] = true
 	}
-	if ev.RuleID == "malware:capture" {
+	if ev.RuleID == "malware:capture" || ev.RuleID == "malware:detonation" {
+		// A detonation verdict (AV hit / sandbox family) is strong confirmation
+		// that captured loot is live malware.
 		st.malware = true
 	}
 	// A replayed honeytoken/decoy credential is the strongest possible

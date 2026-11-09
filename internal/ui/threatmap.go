@@ -151,7 +151,7 @@ func (s *Server) handleThreatMap(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/map")
 	since := time.Now().Add(-dur)
-	evs, err := s.windowEvents(ctx, dur, mapScanMax)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(mapScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -168,7 +168,7 @@ func (s *Server) handleAPIThreatMap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-mapWindow)
-	evs, err := s.windowEvents(ctx, mapWindow, mapScanMax)
+	evs, err := s.windowEvents(ctx, mapWindow, s.scanCap(mapScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

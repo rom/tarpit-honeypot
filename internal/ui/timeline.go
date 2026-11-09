@@ -148,7 +148,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-timelineWindow)
-	evs, err := s.windowEvents(ctx, timelineWindow, timelineScanMax)
+	evs, err := s.windowEvents(ctx, timelineWindow, s.scanCap(timelineScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

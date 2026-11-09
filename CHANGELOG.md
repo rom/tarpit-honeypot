@@ -10,6 +10,38 @@ documented in `docs/`).
 
 ### Fixed
 
+- **Runaway size-cap eviction pinned the event DB to a sliver of the newest
+  events — a multi-GB `events.db` that held only a couple of hours of data, so
+  7d/14d views showed no more than 24h even though the store was never meant to
+  be that small.** The SQLite size-cap prune (`maybePrune`) compared the cap to
+  the *physical file size* from `os.Stat`. But an SQLite `DELETE` never shrinks
+  the file — it returns pages to an internal freelist for reuse (only `VACUUM`
+  shrinks the file). So once `events.db` grew past `sensor.disk.sqlite_mb` for
+  any reason (a burst of large captures, a since-pruned backlog), the physical
+  size stayed above the cap *forever*: every 256 writes the pruner deleted the
+  oldest 10% again, holding the table at roughly `9×256` rows regardless of how
+  much retention the operator wanted. This hit even operators who never set a
+  cap, because `sensor.disk.sqlite_mb` **defaults to 500 MB** (see below). The
+  prune now measures the **logical** used bytes
+  (`(page_count − freelist_count) × page_size`), which *do* fall after a delete,
+  so the cap settles at its configured size instead of running away. A one-time
+  startup `VACUUM` (`reclaimBloat`, gated on severe bloat + ample free disk)
+  returns the slack of an already-bloated DB to the filesystem on the next
+  restart, so existing deployments self-heal without a manual `prune-db` /
+  `rotate-db`. Regression tests cover both. Operators already bitten can reclaim
+  the space immediately with `tarpit-honeypot prune-db --vacuum` (or just
+  restart on this build). The sensor now also logs the active cap and current
+  footprint at startup (`store: event database opened … cap_mb=… used_mb=…
+  used_pct=…`), so size-cap eviction is visible instead of a silent surprise.
+- **Detail pages silently capped each render at 20,000 events, so 7d/14d views
+  looked no bigger than 24h on a busy sensor.** The per-page scan cap was
+  hard-coded; it is now raised by `ui.tuning.ui_scan_limit` (each page keeps its
+  own value as a floor), so operators can render more history per page. This is a
+  per-render scan bound for responsiveness, not a data limit — the SQLite store
+  keeps everything subject only to `sensor.disk.sqlite_mb` (size-cap eviction,
+  **which defaults to 500 MB** — see the runaway-prune fix above; set it to `0`
+  to disable) and `sensor.disk.retention_days` (time retention, off unless set).
+  The `ui_scan_limit` doc now spells this out.
 - **SNMP per-source walk-rate map could grow without bound under a spoofed-
   source UDP flood (memory-exhaustion DoS).** The map only evicted windows that
   had fully elapsed (≥1 min), so a sub-minute burst of datagrams from random
@@ -47,6 +79,25 @@ documented in `docs/`).
 
 ### Added
 
+- **Malware detonation / intel loop (`internal/detonate`).** Closes the
+  capture→intelligence loop: when a handler captures a binary/dropper, the sensor
+  hands its sha256 to a new Detonator that looks the hash up on VirusTotal and —
+  only when the operator opts into uploading samples — detonates unknown samples
+  in a CAPE sandbox. The resulting verdict (AV detection ratio, malware family)
+  and the network IOCs it reveals (contacted domains / IPs / URLs, dropped-file
+  hashes) are re-injected as a `malware:detonation` event, which flows through the
+  normal IOC pipeline into the IOC store and the TAXII/MISP exporters — so a
+  caught sample turns into "here's its family and C2 infrastructure," published.
+  Enabled via the new `detonation:` config section. Safe by design: outbound goes
+  through the egress policy (fails closed), API keys are read from env-var names
+  (never inline), sample **uploading is off by default** (hash-lookup only, so a
+  captured sample isn't made public or used to tip off the attacker), and the
+  work is async and bounded (worker pool + bounded queue + per-hash TTL cache +
+  rate limiter). A detonation verdict also counts as a malware milestone in the
+  storyline correlator. The **captures page** now shows each captured artifact's
+  detonation verdict inline — a new "verdict" column with the malware family, the
+  AV detection ratio (`AV 42/60`), the count of C2/contacted IOCs revealed, and
+  the source (virustotal / cape) — joined onto the on-disk samples by sha256.
 - **+333 CVEs across four new batches (catalog now 1541).** Three are generated
   by `tools/nuclei2cve` from real Nuclei templates, so every record carries the
   actual exploit path as its detection signature: **cve_nuclei_batch3.go** (98

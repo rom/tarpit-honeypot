@@ -97,3 +97,28 @@ func TestExtractForwardedIOCValidation(t *testing.T) {
 		t.Errorf("empty value yielded indicators: %v", inds)
 	}
 }
+
+// TestExtractDetonationIOCs: a malware:detonation event's contacted-* and
+// dropped-hash meta become domain/ip/url/sha256 indicators.
+func TestExtractDetonationIOCs(t *testing.T) {
+	ev := &event.Event{
+		RuleID: "malware:detonation",
+		Source: event.Endpoint{IP: "198.51.100.5"},
+		Meta: map[string]any{
+			"file_sha256":       "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899",
+			"contacted_domains": []string{"c2.evil.example"},
+			"contacted_ips":     []string{"203.0.113.9"},
+			"contacted_urls":    []string{"http://c2.evil.example/gate"},
+			"dropped_sha256":    []string{" bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899aabb"},
+		},
+	}
+	got := map[string]int{}
+	for _, ind := range Extract(ev) {
+		got[ind.Type]++
+	}
+	for _, typ := range []string{"domain", "ip", "url", "sha256"} {
+		if got[typ] == 0 {
+			t.Errorf("missing %s indicator; got %v", typ, got)
+		}
+	}
+}

@@ -436,7 +436,7 @@ func (s *Server) handleCorrelation(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/correlation")
 	since := time.Now().Add(-dur)
-	evs, err := s.windowEvents(ctx, dur, corrScanMax)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(corrScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return

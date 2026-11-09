@@ -1035,11 +1035,12 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ if not .Enabled }}<p class="note">No <code>data_dir</code> is wired into the UI, so on-disk captures aren't browsable here. Credentials below still come from the event store.</p>{{ end }}
 
 <h2>captured malware / payload artifacts <span class="meta">({{ len .Artifacts }})</span></h2>
-{{ if .Artifacts }}<table data-filter><tr><th>artifact (sha256.ext)</th><th>size</th><th>captured</th><th></th></tr>
+{{ if .Artifacts }}<table data-filter><tr><th>artifact (sha256.ext)</th><th>size</th><th>captured</th><th data-help="Malware-detonation verdict: a VirusTotal hash lookup (and, when enabled, a CAPE sandbox run) of the captured sample — family, AV detection ratio, and the count of C2/contacted IOCs it revealed. Needs the detonation: config section enabled.">verdict</th><th></th></tr>
 {{ range .Artifacts }}<tr>
   <td><code>{{ .Name }}</code></td>
   <td>{{ fmtBytes .Size }}</td>
   <td style="white-space:nowrap">{{ fmtTime .MTime }}</td>
+  <td>{{ if .Verdict }}{{ if .MalFamily }}<span class="tag bad">{{ .MalFamily }}</span>{{ else if .AVLabel }}<span class="tag bad">{{ .AVLabel }}</span>{{ end }}{{ if .AVTotal }} <span class="tag">AV {{ .AVHits }}/{{ .AVTotal }}</span>{{ end }}{{ if .IOCCount }} {{ if .VerdictEvent }}<a class="tag" href="/events/{{ .VerdictEvent }}" title="open the detonation event with the contacted domains/IPs/URLs">{{ .IOCCount }} IOC{{ if ne .IOCCount 1 }}s{{ end }} →</a>{{ else }}<span class="tag">{{ .IOCCount }} IOC{{ if ne .IOCCount 1 }}s{{ end }}</span>{{ end }}{{ end }}{{ if .DetSource }} <span class="meta">{{ .DetSource }}</span>{{ end }}{{ else }}<span class="meta">—</span>{{ end }}</td>
   <td><a href="/loot/?kind=payload&amp;name={{ .Name }}">download</a></td>
 </tr>{{ end }}
 </table>

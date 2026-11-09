@@ -229,7 +229,7 @@ func (s *Server) handleAttack(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	dur, rkey, rlabel, rlinks := pageRange(r, "/attack")
 	since := time.Now().Add(-dur)
-	evs, err := s.windowEvents(ctx, dur, attackScanMax)
+	evs, err := s.windowEvents(ctx, dur, s.scanCap(attackScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -334,7 +334,7 @@ func (s *Server) handleAttackTechnique(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
+	evs, err := s.windowEvents(ctx, attackWindow, s.scanCap(attackScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -349,7 +349,7 @@ func (s *Server) handleAPIAttack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	since := time.Now().Add(-attackWindow)
-	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
+	evs, err := s.windowEvents(ctx, attackWindow, s.scanCap(attackScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
@@ -368,7 +368,7 @@ func (s *Server) handleNavigator(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	evs, err := s.windowEvents(ctx, attackWindow, attackScanMax)
+	evs, err := s.windowEvents(ctx, attackWindow, s.scanCap(attackScanMax))
 	if err != nil {
 		serverError(w, r.URL.Path, err)
 		return
