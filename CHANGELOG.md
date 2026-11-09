@@ -79,6 +79,14 @@ documented in `docs/`).
 
 ### Added
 
+- **Event detail page names the specific OT command.** For ICS/BMS/medtech
+  protocols the detail page now shows a prominent "OT command" line — the decoded
+  operation and a short protocol label (e.g. `Modbus` *Read Holding Registers*,
+  `HART-IP` *read*, `S7comm` *Read Var*, `DNP3` *READ*) — plus a labeled
+  per-protocol command section (Modbus / S7 / S7comm-Plus / DNP3 /
+  HART-IP / IEC-104 / BACnet / BACnet-SC / EtherNet-IP / FINS / MELSEC / KNX /
+  OPC UA / CoAP / MQTT) instead of leaving the function code buried in the raw meta
+  blob. Modbus now also carries the symbolic `function_name` at the top level.
 - **`/config` event-store retention panel.** The config page now shows the
   SQLite size cap (`sensor.disk.sqlite_mb`), current logical usage and
   percent-of-cap, an "at cap — evicting oldest events" tag when usage reaches the

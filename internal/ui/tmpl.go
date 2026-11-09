@@ -1485,8 +1485,9 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
   <tr><th>handler</th><td>{{ handlerLink .Handler }}</td></tr>
 </table>
 
-{{ if or .Phase (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
+{{ if or .Phase .OTCommand (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the specific OT command for ICS/BMS protocols, the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
   {{ if .Phase }}<tr><th>interaction</th><td><span class="tag">{{ .Phase }}</span></td></tr>{{ end }}
+  {{ if .OTCommand }}<tr><th>OT command</th><td><span class="tag bad">{{ .OTProto }}</span> <b>{{ .OTCommand }}</b> <span class="meta">(decoded industrial-protocol operation)</span></td></tr>{{ end }}
   {{ with index .Meta "intent" }}<tr><th>what happened</th><td>{{ . }}</td></tr>{{ end }}
   {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}

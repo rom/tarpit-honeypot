@@ -34,6 +34,69 @@ func TestClassifyInteraction(t *testing.T) {
 	}
 }
 
+// TestOTCommandDecoded: the specific OT command/function is pulled from the
+// right meta key per protocol (with a numeric fallback), and non-OT events
+// produce nothing.
+func TestOTCommandDecoded(t *testing.T) {
+	cases := []struct {
+		name            string
+		handler         string
+		meta            map[string]any
+		wantCmd, wantPr string
+	}{
+		{"modbus-name", "modbus", map[string]any{"function_name": "Read Holding Registers", "function_code": byte(3)}, "Read Holding Registers", "Modbus"},
+		{"modbus-fallback-code", "modbus", map[string]any{"function_code": byte(6)}, "6", "Modbus"},
+		{"modbus-tls-variant", "modbuss", map[string]any{"function_name": "Write Single Coil"}, "Write Single Coil", "Modbus"},
+		{"hartip", "hartip", map[string]any{"hartip_msg_id": "Read Unique Identifier"}, "Read Unique Identifier", "HART-IP"},
+		{"s7", "s7", map[string]any{"s7_function": "Read Var"}, "Read Var", "S7comm"},
+		{"dnp3", "dnp3", map[string]any{"dnp3_app_function": "READ"}, "READ", "DNP3"},
+		{"bacnet", "bacnet", map[string]any{"apdu_service": "WriteProperty"}, "WriteProperty", "BACnet"},
+		{"not-ot", "ssh", map[string]any{"client_id": "x"}, "", ""},
+		{"ot-no-command", "modbus", map[string]any{"unit_id": byte(1)}, "", ""},
+	}
+	for _, c := range cases {
+		cmd, pr := otCommand(&event.Event{Handler: c.handler, Meta: c.meta})
+		if cmd != c.wantCmd || pr != c.wantPr {
+			t.Errorf("%s: otCommand=(%q,%q) want (%q,%q)", c.name, cmd, pr, c.wantCmd, c.wantPr)
+		}
+	}
+}
+
+// TestProtocolFieldsOT: OT handlers get a labeled request section with the
+// decoded command as the first field.
+func TestProtocolFieldsOT(t *testing.T) {
+	ev := &event.Event{Handler: "modbus", Meta: map[string]any{
+		"function_name": "Write Multiple Registers", "function_code": byte(16), "unit_id": byte(1),
+	}}
+	groups := protocolFields(ev)
+	if len(groups) != 1 || groups[0].Title != "Modbus command" {
+		t.Fatalf("groups = %+v", groups)
+	}
+	if groups[0].Fields[0].Label != "function" || groups[0].Fields[0].Value != "Write Multiple Registers" {
+		t.Errorf("first field = %+v; want function=Write Multiple Registers", groups[0].Fields[0])
+	}
+}
+
+// TestEventDetailShowsOTCommand: the detail page renders the prominent "OT
+// command" row for an OT event.
+func TestEventDetailShowsOTCommand(t *testing.T) {
+	ev := &event.Event{
+		ID: "e1", Time: time.Now(), RuleID: "listener:modbus", Severity: event.SeverityHigh,
+		Handler: "modbus", Source: event.Endpoint{IP: "1.2.3.4"},
+		Meta: map[string]any{"function_name": "Read Holding Registers", "function_code": byte(3), "unit_id": byte(1)},
+	}
+	var b strings.Builder
+	if err := uiTmpl(t).ExecuteTemplate(&b, "event", newEventDetail(ev)); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{"OT command", "Modbus", "Read Holding Registers", "Modbus command"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("event detail missing %q", want)
+		}
+	}
+}
+
 // The pcap 404 fix: an event whose capture file is named off a different
 // connection id (so the <id>_*.pcap glob misses it) must still resolve + serve
 // via its capture_path; an event with no capture must 404, not link to nothing.

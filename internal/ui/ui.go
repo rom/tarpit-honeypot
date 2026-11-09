@@ -1894,16 +1894,20 @@ func isOperationalEvent(rule string) bool {
 // downloadable pcap exists for it.
 type eventDetail struct {
 	*event.Event
-	Nav      store.EventNeighbors
-	Phase    string   // inferred interaction kind (auth / discovery / control / …)
-	Anoms    []string // protocol-misuse markers (ev.Anomalies + meta.anomalies)
-	HasPcap  bool
-	PcapName string
+	Nav       store.EventNeighbors
+	Phase     string   // inferred interaction kind (auth / discovery / control / …)
+	Anoms     []string // protocol-misuse markers (ev.Anomalies + meta.anomalies)
+	OTCommand string   // decoded OT command/function, e.g. "Read Holding Registers"
+	OTProto   string   // short OT protocol label for that command, e.g. "Modbus"
+	HasPcap   bool
+	PcapName  string
 }
 
 // newEventDetail builds the page model's pure (no store / filesystem) parts.
 func newEventDetail(ev *event.Event) eventDetail {
-	return eventDetail{Event: ev, Phase: classifyInteraction(ev), Anoms: eventAnoms(ev)}
+	cmd, proto := otCommand(ev)
+	return eventDetail{Event: ev, Phase: classifyInteraction(ev), Anoms: eventAnoms(ev),
+		OTCommand: cmd, OTProto: proto}
 }
 
 // eventAnoms is the union of the event's structured anomaly markers and any in

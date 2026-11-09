@@ -78,6 +78,74 @@ var protoSpecs = map[string]struct {
 		{"terminal_type", "terminal type"}, {"terminal_speed", "terminal speed"},
 		{"window_size", "window size"}, {"accepted_user", "accepted login"},
 	}},
+
+	// --- OT / ICS / BMS protocols: the decoded command/function first, so the
+	// specific operation (Modbus "Read Holding Registers", HART-IP command, S7
+	// "Read Var", DNP3 application function, …) reads at the top of the section.
+	"modbus": {"Modbus command", []protoFieldSpec{
+		{"function_name", "function"}, {"function_code", "function code"},
+		{"unit_id", "unit id"}, {"umas_function_code", "UMAS function code"},
+		{"modbus_fcs_seen", "function codes seen"}, {"modbus_units_seen", "unit ids swept"},
+		{"transaction_id", "transaction id"},
+	}},
+	"s7": {"S7comm command", []protoFieldSpec{
+		{"s7_function", "function"}, {"s7_write_area", "write area"},
+		{"s7_write_db", "write DB"}, {"s7_write_byte", "write byte offset"},
+		{"s7_szl_id", "SZL id (fingerprint)"}, {"cotp_type", "COTP PDU"},
+	}},
+	"s7comm_plus": {"S7comm-Plus command", []protoFieldSpec{
+		{"s7plus_function", "function"}, {"s7plus_opcode", "opcode"},
+		{"s7plus_family", "family"}, {"s7plus_version", "protocol version"},
+		{"cotp_type", "COTP PDU"},
+	}},
+	"dnp3": {"DNP3 command", []protoFieldSpec{
+		{"dnp3_app_function", "application function"}, {"dnp3_function", "link function"},
+		{"dnp3_src", "source address"}, {"dnp3_dest", "destination address"},
+	}},
+	"hartip": {"HART-IP command", []protoFieldSpec{
+		{"hartip_msg_id", "command"}, {"hartip_msg_type", "message type"},
+		{"hartip_version", "version"},
+	}},
+	"iec104": {"IEC 60870-5-104 command", []protoFieldSpec{
+		{"control_type", "frame / command"}, {"frames", "frame count"},
+	}},
+	"bacnet": {"BACnet command", []protoFieldSpec{
+		{"apdu_service", "APDU service"}, {"bvlc_func", "BVLC function"},
+		{"bacnet_write_priority", "write priority"},
+	}},
+	"bacnet_sc": {"BACnet/SC command", []protoFieldSpec{
+		{"service", "service"}, {"bvlc_sc_functions", "BVLC-SC functions"},
+		{"bacnet_sc_role", "role"}, {"device_uuid", "device UUID"},
+	}},
+	"ethernetip": {"EtherNet/IP command", []protoFieldSpec{
+		{"command", "command"}, {"cip_service", "CIP service"}, {"cip_tag", "CIP tag"},
+		{"command_code", "command code"}, {"session_handle", "session handle"},
+	}},
+	"fins": {"OMRON FINS command", []protoFieldSpec{
+		{"command", "command"}, {"mem_area_name", "memory area"},
+		{"mem_addr", "memory address"}, {"mem_count", "item count"},
+		{"mrc", "main request code"},
+	}},
+	"melsec": {"MELSEC/SLMP command", []protoFieldSpec{
+		{"command_name", "command"}, {"command", "command code"},
+		{"subcommand", "subcommand"},
+	}},
+	"knx": {"KNXnet/IP command", []protoFieldSpec{
+		{"service", "service"}, {"op", "operation"}, {"knx_apci", "APCI"},
+		{"cemi_msg_code", "cEMI message code"}, {"knx_dst", "destination group"},
+		{"knx_src", "source address"},
+	}},
+	"opcua": {"OPC UA command", []protoFieldSpec{
+		{"opcua_service", "service"}, {"message_type", "message type"},
+		{"opcua_message", "message"}, {"endpoint_url", "endpoint URL"},
+		{"opcua_security_policy", "security policy"},
+	}},
+	"coap": {"CoAP request", []protoFieldSpec{
+		{"code", "method / code"}, {"uri_path", "URI path"}, {"type", "message type"},
+	}},
+	"mqtt": {"MQTT control packet", []protoFieldSpec{
+		{"packet_type", "packet type"},
+	}},
 }
 
 // normalizeHandlerForProto folds TLS / variant handler names onto the base
@@ -92,6 +160,25 @@ func normalizeHandlerForProto(h string) string {
 		return "smtp"
 	case "ftps":
 		return "ftp"
+	// OT/ICS/BMS UDP + TLS variants and aliases fold onto their base spec.
+	case "modbus_security", "modbuss", "modbus_udp", "modbus_deep":
+		return "modbus"
+	case "s7comm":
+		return "s7"
+	case "dnp3_udp", "dnp3_state":
+		return "dnp3"
+	case "hartip_udp":
+		return "hartip"
+	case "enip_udp":
+		return "ethernetip"
+	case "fins_tcp":
+		return "fins"
+	case "bacnet_scs":
+		return "bacnet_sc"
+	case "mqtts":
+		return "mqtt"
+	case "opcua_session", "opcua_state":
+		return "opcua"
 	}
 	return h
 }
@@ -130,6 +217,51 @@ func protocolFields(ev *event.Event) []protoGroup {
 		return nil
 	}
 	return []protoGroup{{Title: spec.title, Fields: fields}}
+}
+
+// otCommandSpec names, per base OT handler, a short protocol label and the
+// primary meta key holding the decoded command/function (with a fallback key).
+// It drives the single prominent "OT command" line on the detail page; the full
+// per-protocol field table comes from protoSpecs above.
+var otCommandSpec = map[string]struct{ proto, key, alt string }{
+	"modbus":      {"Modbus", "function_name", "function_code"},
+	"s7":          {"S7comm", "s7_function", ""},
+	"s7comm_plus": {"S7comm-Plus", "s7plus_function", "s7plus_opcode"},
+	"dnp3":        {"DNP3", "dnp3_app_function", "dnp3_function"},
+	"hartip":      {"HART-IP", "hartip_msg_id", ""},
+	"iec104":      {"IEC-104", "control_type", ""},
+	"bacnet":      {"BACnet", "apdu_service", "bvlc_func"},
+	"bacnet_sc":   {"BACnet/SC", "service", ""},
+	"ethernetip":  {"EtherNet/IP", "command", "cip_service"},
+	"fins":        {"OMRON FINS", "command", "mem_area_name"},
+	"melsec":      {"MELSEC/SLMP", "command_name", "command"},
+	"knx":         {"KNXnet/IP", "service", "op"},
+	"opcua":       {"OPC UA", "opcua_service", "message_type"},
+	"coap":        {"CoAP", "code", "uri_path"},
+	"mqtt":        {"MQTT", "packet_type", ""},
+}
+
+// otCommand returns the specific decoded command/function for an OT event plus a
+// short protocol label — e.g. ("Read Holding Registers", "Modbus") or ("read",
+// "HART-IP"). It returns empty strings for non-OT events (and OT events with no
+// decoded command), so the detail page shows the "OT command" line only when
+// there is a real operation to name.
+func otCommand(ev *event.Event) (cmd, proto string) {
+	if ev == nil || ev.Meta == nil {
+		return "", ""
+	}
+	spec, ok := otCommandSpec[normalizeHandlerForProto(ev.Handler)]
+	if !ok {
+		return "", ""
+	}
+	v := metaDisplay(ev.Meta, spec.key)
+	if v == "" && spec.alt != "" {
+		v = metaDisplay(ev.Meta, spec.alt)
+	}
+	if v == "" {
+		return "", ""
+	}
+	return v, spec.proto
 }
 
 // metaDisplay renders one meta value as a single display string: scalars via
