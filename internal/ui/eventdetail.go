@@ -146,6 +146,111 @@ var protoSpecs = map[string]struct {
 	"mqtt": {"MQTT control packet", []protoFieldSpec{
 		{"packet_type", "packet type"},
 	}},
+
+	// --- More ICS / IIoT fieldbus & PLC protocols ------------------------
+	"ads": {"Beckhoff ADS/AMS command", []protoFieldSpec{
+		{"ads_command", "command"}, {"ams_udp_service", "AMS UDP service"},
+	}},
+	"slmp": {"MELSEC SLMP command", []protoFieldSpec{
+		{"slmp_command", "command"},
+	}},
+	"powerlink": {"Ethernet POWERLINK", []protoFieldSpec{
+		{"epl_message_type", "message type"},
+	}},
+	"profinet": {"PROFINET command", []protoFieldSpec{
+		{"profinet_operation", "operation"}, {"profinet_opnum", "opnum"},
+	}},
+	"secs_gem": {"SECS/GEM message", []protoFieldSpec{
+		{"secs_stream", "stream"}, {"secs_function", "function"},
+	}},
+	"wdbrpc": {"VxWorks WDB RPC", []protoFieldSpec{
+		{"wdb_op", "operation"},
+	}},
+	"crimson": {"Red Lion Crimson", []protoFieldSpec{
+		{"crimson_request", "request"},
+	}},
+	"ge_egd": {"GE EGD command", []protoFieldSpec{
+		{"egd_request_id", "request id"},
+	}},
+	"ge_srtp": {"GE SRTP command", []protoFieldSpec{
+		{"srtp_request_type", "request type"},
+	}},
+	"roc_plus": {"Emerson ROC+ command", []protoFieldSpec{
+		{"roc_opcode", "opcode"},
+	}},
+	"tristation": {"TriStation command", []protoFieldSpec{
+		{"ts_msg_type", "message type"}, {"ts_msg", "message"},
+	}},
+	"pcom": {"Unitronics PCOM command", []protoFieldSpec{
+		{"pcom_request", "request"},
+	}},
+	"mms": {"MMS (IEC 61850) command", []protoFieldSpec{
+		{"mms_service", "service"},
+	}},
+	"atg": {"Veeder-Root ATG command", []protoFieldSpec{
+		{"atg_command", "command"},
+	}},
+	"ethercat": {"EtherCAT command", []protoFieldSpec{
+		{"ethercat_cmd", "command"},
+	}},
+	"focas": {"FANUC FOCAS command", []protoFieldSpec{
+		{"focas_opcode", "opcode"},
+	}},
+	"fox": {"Niagara Fox command", []protoFieldSpec{
+		{"fox_request", "request"},
+	}},
+	"pcworx": {"Phoenix PCWorx command", []protoFieldSpec{
+		{"pcworx_opcode", "opcode"},
+	}},
+	"proconos": {"ProConOS command", []protoFieldSpec{
+		{"proconos_opcode", "opcode"},
+	}},
+	"c37118": {"IEEE C37.118 command", []protoFieldSpec{
+		{"c37118_command", "command"},
+	}},
+	"synchrophasor": {"IEEE C37.118 synchrophasor", []protoFieldSpec{
+		{"c37118_frame_type", "frame type"}, {"c37118_id_code", "ID code"},
+	}},
+	"lontalk": {"LonTalk command", []protoFieldSpec{
+		{"lon_packet_type", "packet type"},
+	}},
+	"osdp": {"OSDP command", []protoFieldSpec{
+		{"osdp_command", "command"},
+	}},
+	"mbus": {"M-Bus command", []protoFieldSpec{
+		{"mbus_function", "function"},
+	}},
+	"codesys": {"CODESYS command", []protoFieldSpec{
+		{"codesys_command", "command"}, {"codesys_component", "component"},
+		{"codesys_magic", "block-driver magic"},
+	}},
+	"dlms": {"DLMS/COSEM command", []protoFieldSpec{
+		{"dlms_apdu", "APDU / command"}, {"dlms_obis", "OBIS object"},
+		{"dlms_class_id", "COSEM class id"}, {"dlms_attribute", "attribute id"},
+		{"dlms_method", "method id"}, {"dlms_commands", "commands seen"},
+	}},
+
+	// --- Building automation (BAS/BMS) -----------------------------------
+	"danfoss_aksm": {"Danfoss AK-SM command", []protoFieldSpec{
+		{"xml_action", "StoreView action"}, {"method", "HTTP method"},
+	}},
+
+	// --- Medical / clinical (MedTech) ------------------------------------
+	"hl7": {"HL7 message", []protoFieldSpec{
+		{"hl7_message_type", "message type"},
+	}},
+	"dicom": {"DICOM command", []protoFieldSpec{
+		{"dicom_dimse_command", "DIMSE command"},
+	}},
+	"astm": {"ASTM record", []protoFieldSpec{
+		{"astm_record", "record type"}, {"astm_phase", "phase"},
+	}},
+	"poct1": {"POCT1 message", []protoFieldSpec{
+		{"poct1_msg", "message"},
+	}},
+	"fhir": {"FHIR request", []protoFieldSpec{
+		{"fhir_resource", "resource"},
+	}},
 }
 
 // normalizeHandlerForProto folds TLS / variant handler names onto the base
@@ -179,6 +284,20 @@ func normalizeHandlerForProto(h string) string {
 		return "mqtt"
 	case "opcua_session", "opcua_state":
 		return "opcua"
+	case "ads_discovery":
+		return "ads"
+	case "gesrtp":
+		return "ge_srtp"
+	case "pcom_udp":
+		return "pcom"
+	case "danfoss_aksms":
+		return "danfoss_aksm"
+	case "hl7s":
+		return "hl7"
+	case "dicoms":
+		return "dicom"
+	case "fhirs":
+		return "fhir"
 	}
 	return h
 }
@@ -239,6 +358,41 @@ var otCommandSpec = map[string]struct{ proto, key, alt string }{
 	"opcua":       {"OPC UA", "opcua_service", "message_type"},
 	"coap":        {"CoAP", "code", "uri_path"},
 	"mqtt":        {"MQTT", "packet_type", ""},
+	// More ICS / IIoT fieldbus & PLC protocols.
+	"ads":           {"Beckhoff ADS", "ads_command", "ams_udp_service"},
+	"slmp":          {"MELSEC SLMP", "slmp_command", ""},
+	"powerlink":     {"POWERLINK", "epl_message_type", ""},
+	"profinet":      {"PROFINET", "profinet_operation", "profinet_opnum"},
+	"secs_gem":      {"SECS/GEM", "secs_function", "secs_stream"},
+	"wdbrpc":        {"VxWorks WDB", "wdb_op", ""},
+	"crimson":       {"Red Lion Crimson", "crimson_request", ""},
+	"ge_egd":        {"GE EGD", "egd_request_id", ""},
+	"ge_srtp":       {"GE SRTP", "srtp_request_type", ""},
+	"roc_plus":      {"Emerson ROC+", "roc_opcode", ""},
+	"tristation":    {"TriStation", "ts_msg_type", "ts_msg"},
+	"pcom":          {"Unitronics PCOM", "pcom_request", ""},
+	"mms":           {"MMS", "mms_service", ""},
+	"atg":           {"Veeder-Root ATG", "atg_command", ""},
+	"ethercat":      {"EtherCAT", "ethercat_cmd", ""},
+	"focas":         {"FANUC FOCAS", "focas_opcode", ""},
+	"fox":           {"Niagara Fox", "fox_request", ""},
+	"pcworx":        {"Phoenix PCWorx", "pcworx_opcode", ""},
+	"proconos":      {"ProConOS", "proconos_opcode", ""},
+	"c37118":        {"IEEE C37.118", "c37118_command", ""},
+	"synchrophasor": {"IEEE C37.118", "c37118_frame_type", ""},
+	"lontalk":       {"LonTalk", "lon_packet_type", ""},
+	"osdp":          {"OSDP", "osdp_command", ""},
+	"mbus":          {"M-Bus", "mbus_function", ""},
+	"codesys":       {"CODESYS", "codesys_command", "codesys_component"},
+	"dlms":          {"DLMS/COSEM", "dlms_apdu", ""},
+	// Building automation (BAS/BMS).
+	"danfoss_aksm": {"Danfoss AK-SM", "xml_action", "method"},
+	// Medical / clinical (MedTech).
+	"hl7":   {"HL7", "hl7_message_type", ""},
+	"dicom": {"DICOM", "dicom_dimse_command", ""},
+	"astm":  {"ASTM", "astm_record", "astm_phase"},
+	"poct1": {"POCT1", "poct1_msg", ""},
+	"fhir":  {"FHIR", "fhir_resource", ""},
 }
 
 // otCommand returns the specific decoded command/function for an OT event plus a

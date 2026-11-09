@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rom/tarpit-honeypot/internal/event"
+	"github.com/rom/tarpit-honeypot/internal/otclass"
 	"github.com/rom/tarpit-honeypot/internal/store"
 )
 
@@ -51,6 +52,16 @@ func TestOTCommandDecoded(t *testing.T) {
 		{"s7", "s7", map[string]any{"s7_function": "Read Var"}, "Read Var", "S7comm"},
 		{"dnp3", "dnp3", map[string]any{"dnp3_app_function": "READ"}, "READ", "DNP3"},
 		{"bacnet", "bacnet", map[string]any{"apdu_service": "WriteProperty"}, "WriteProperty", "BACnet"},
+		// Extended OT/IIoT/BAS/MedTech coverage.
+		{"hl7", "hl7", map[string]any{"hl7_message_type": "ADT^A01"}, "ADT^A01", "HL7"},
+		{"dicom-numeric", "dicom", map[string]any{"dicom_dimse_command": 1}, "1", "DICOM"},
+		{"astm", "astm", map[string]any{"astm_record": "result"}, "result", "ASTM"},
+		{"osdp", "osdp", map[string]any{"osdp_command": "osdp_POLL"}, "osdp_POLL", "OSDP"},
+		{"mbus", "mbus", map[string]any{"mbus_function": "REQ_UD2"}, "REQ_UD2", "M-Bus"},
+		{"profinet", "profinet", map[string]any{"profinet_operation": "Read"}, "Read", "PROFINET"},
+		{"c37118", "c37118", map[string]any{"c37118_command": "Turn on transmission"}, "Turn on transmission", "IEEE C37.118"},
+		{"danfoss-bas", "danfoss_aksm", map[string]any{"xml_action": "ReadValue"}, "ReadValue", "Danfoss AK-SM"},
+		{"ads-alias-fallback", "ads_discovery", map[string]any{"ams_udp_service": "GetHostByName"}, "GetHostByName", "Beckhoff ADS"},
 		{"not-ot", "ssh", map[string]any{"client_id": "x"}, "", ""},
 		{"ot-no-command", "modbus", map[string]any{"unit_id": byte(1)}, "", ""},
 	}
@@ -58,6 +69,22 @@ func TestOTCommandDecoded(t *testing.T) {
 		cmd, pr := otCommand(&event.Event{Handler: c.handler, Meta: c.meta})
 		if cmd != c.wantCmd || pr != c.wantPr {
 			t.Errorf("%s: otCommand=(%q,%q) want (%q,%q)", c.name, cmd, pr, c.wantCmd, c.wantPr)
+		}
+	}
+}
+
+// TestOTCommandSpecConsistency: every handler with an "OT command" mapping also
+// has a labeled protoSpecs section, and is either an OT handler (per otclass) or
+// one of the IoT-messaging protocols we also decode — so a typo or a drift
+// between the two maps fails the build instead of silently showing nothing.
+func TestOTCommandSpecConsistency(t *testing.T) {
+	iotMessaging := map[string]bool{"coap": true, "mqtt": true} // IoT, not ICS/BAS/MedTech
+	for h := range otCommandSpec {
+		if _, ok := protoSpecs[h]; !ok {
+			t.Errorf("otCommandSpec[%q] has no protoSpecs section", h)
+		}
+		if otclass.Of(h) == otclass.None && !iotMessaging[h] {
+			t.Errorf("otCommandSpec[%q] is neither OT (otclass) nor known IoT messaging", h)
 		}
 	}
 }

@@ -79,14 +79,35 @@ documented in `docs/`).
 
 ### Added
 
-- **Event detail page names the specific OT command.** For ICS/BMS/medtech
-  protocols the detail page now shows a prominent "OT command" line — the decoded
-  operation and a short protocol label (e.g. `Modbus` *Read Holding Registers*,
-  `HART-IP` *read*, `S7comm` *Read Var*, `DNP3` *READ*) — plus a labeled
-  per-protocol command section (Modbus / S7 / S7comm-Plus / DNP3 /
-  HART-IP / IEC-104 / BACnet / BACnet-SC / EtherNet-IP / FINS / MELSEC / KNX /
-  OPC UA / CoAP / MQTT) instead of leaving the function code buried in the raw meta
-  blob. Modbus now also carries the symbolic `function_name` at the top level.
+- **Event detail page names the specific OT/IIoT/BAS/MedTech command.** For
+  industrial, building-automation and clinical protocols the detail page now
+  shows a prominent "OT command" line — the decoded operation and a short
+  protocol label (e.g. `Modbus` *Read Holding Registers*, `HART-IP` *read*,
+  `S7comm` *Read Var*, `DNP3` *READ*, `BACnet` *WriteProperty*, `OSDP` *poll*,
+  `HL7` *ADT^A01*) — plus a labeled per-protocol command section, instead of
+  leaving the function code buried in the raw meta blob. Coverage spans ~45
+  handlers across the categories:
+  - **ICS/SCADA:** Modbus, S7comm, S7comm-Plus, DNP3, IEC-104, EtherNet/IP, OPC
+    UA, MELSEC/SLMP, OMRON FINS, HART-IP, PROFINET, Beckhoff ADS, EtherCAT,
+    POWERLINK, GE SRTP / EGD, Emerson ROC+, Unitronics PCOM, MMS (IEC 61850),
+    TriStation, PCWorx, ProConOS, FANUC FOCAS, Niagara Fox, Red Lion Crimson,
+    VxWorks WDB, Veeder-Root ATG, IEEE C37.118 synchrophasor, SECS/GEM, CODESYS,
+    DLMS/COSEM.
+  - **BAS/BMS:** BACnet, BACnet/SC, KNXnet/IP, LonTalk, OSDP, M-Bus, Danfoss AK-SM.
+  - **IoT messaging:** MQTT, CoAP.
+  - **MedTech:** HL7, DICOM, ASTM, POCT1, FHIR.
+
+  UDP/TLS/alias handler names fold onto their base spec, a test keeps the command
+  map and the labeled sections in sync (and OT-classified), and Modbus now also
+  carries the symbolic `function_name` at the top level.
+- **Deeper CODESYS and DLMS/COSEM command decoding.** The CODESYS V3 handler now
+  emits a structured `codesys_command` (Login / File transfer / Program download
+  / Online change / PLC Stop·Start·Reset / Device info / Trace read). The
+  DLMS/COSEM smart-meter handler now reads past the association and decodes the
+  xDLMS service APDUs — GET / SET / ACTION requests — extracting the targeted
+  COSEM object (class id + OBIS code + attribute/method), so a remote-disconnect
+  ACTION or a register write is named explicitly (e.g. `ACTION-Request
+  0-0:96.3.10.255 method 1`) rather than recorded as just "association".
 - **`/config` event-store retention panel.** The config page now shows the
   SQLite size cap (`sensor.disk.sqlite_mb`), current logical usage and
   percent-of-cap, an "at cap — evicting oldest events" tag when usage reaches the

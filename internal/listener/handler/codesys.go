@@ -58,41 +58,65 @@ func (c *codesys) Handle(_ context.Context, conn net.Conn, cfg config.Listener) 
 }
 
 // codesysComponents maps a CODESYS component-token (carried in the clear in the
-// service request) to a (service-name, marker, intent) classification.
+// service request) to a (service-name, short-command, marker, intent)
+// classification. cmd is the concise decoded command surfaced as codesys_command.
 var codesysComponents = []struct {
-	token, name, marker, intent string
+	token, name, cmd, marker, intent string
 }{
-	{"cmpusermgr", "CmpUserMgr (login)", "ics-codesys-login", "CODESYS V3 login — runtime authentication attempt"},
-	{"cmpfiletransfer", "CmpFileTransfer", "ics-plc-program-access", "CODESYS V3 file transfer — uploading/downloading PLC files"},
-	{"cmpapp", "CmpApp", "ics-plc-program-access", "CODESYS V3 application service — program download / online change"},
-	{"cmpappbp", "CmpAppBP (breakpoints)", "ics-plc-program-access", "CODESYS V3 application debug — breakpoint/online manipulation"},
-	{"cmpdevice", "CmpDevice", "ics-field-device-probe", "CODESYS V3 device info — runtime/CPU fingerprinting"},
-	{"cmpopcua", "CmpOPCUAServer", "ics-field-device-probe", "CODESYS V3 OPC-UA component access"},
-	{"cmpcodemeter", "CmpCodeMeter (licensing)", "ics-codesys-probe", "CODESYS V3 licensing component access"},
-	{"cmptraceMgr", "CmpTraceMgr", "ics-process-data-access", "CODESYS V3 trace — reading live process variables"},
+	{"cmpusermgr", "CmpUserMgr (login)", "Login", "ics-codesys-login", "CODESYS V3 login — runtime authentication attempt"},
+	{"cmpfiletransfer", "CmpFileTransfer", "File transfer", "ics-plc-program-access", "CODESYS V3 file transfer — uploading/downloading PLC files"},
+	{"cmpapp", "CmpApp", "Application service", "ics-plc-program-access", "CODESYS V3 application service — program download / online change"},
+	{"cmpappbp", "CmpAppBP (breakpoints)", "Debug / breakpoints", "ics-plc-program-access", "CODESYS V3 application debug — breakpoint/online manipulation"},
+	{"cmpdevice", "CmpDevice", "Device info", "ics-field-device-probe", "CODESYS V3 device info — runtime/CPU fingerprinting"},
+	{"cmpopcua", "CmpOPCUAServer", "OPC UA access", "ics-field-device-probe", "CODESYS V3 OPC-UA component access"},
+	{"cmpcodemeter", "CmpCodeMeter (licensing)", "Licensing", "ics-codesys-probe", "CODESYS V3 licensing component access"},
+	{"cmptraceMgr", "CmpTraceMgr", "Trace read", "ics-process-data-access", "CODESYS V3 trace — reading live process variables"},
 }
 
 // classify inspects the request for CODESYS component tokens and PLC-control
-// verbs, raising the matching markers + CVE attribution.
+// verbs, raising the matching markers + CVE attribution and recording the
+// decoded component (codesys_component) and concise command (codesys_command).
 func (c *codesys) classify(got []byte, res *Result) {
 	low := strings.ToLower(asciiOnly(got))
 	matched := false
+	var cmd string
 	for _, comp := range codesysComponents {
 		if strings.Contains(low, comp.token) {
 			matched = true
 			flagAnomaly(res, comp.marker)
 			res.Meta["codesys_component"] = comp.name
 			res.Meta["intent"] = comp.intent
+			if cmd == "" {
+				cmd = comp.cmd // first matched component is the primary command
+			}
 		}
 	}
-	// PLC run-state control verbs (start/stop/reset) seen in the app service.
+	// PLC run-state control verbs (start/stop/reset) and program-access verbs seen
+	// in the app service — the most specific action wins the codesys_command.
 	switch {
-	case strings.Contains(low, "stopapp") || strings.Contains(low, "resetapp") || strings.Contains(low, "startapp"):
+	case strings.Contains(low, "stopapp"):
 		flagAnomaly(res, "ics-plc-mode-change")
-		res.Meta["intent"] = "CODESYS V3 PLC run-state change (start/stop/reset)"
-	case strings.Contains(low, "download") || strings.Contains(low, "onlinechange"):
+		cmd = "PLC Stop"
+		res.Meta["intent"] = "CODESYS V3 PLC STOP — halting the controller (denial of control)"
+	case strings.Contains(low, "startapp"):
+		flagAnomaly(res, "ics-plc-mode-change")
+		cmd = "PLC Start"
+		res.Meta["intent"] = "CODESYS V3 PLC START — starting the controller"
+	case strings.Contains(low, "resetapp"):
+		flagAnomaly(res, "ics-plc-mode-change")
+		cmd = "PLC Reset"
+		res.Meta["intent"] = "CODESYS V3 PLC RESET — resetting the controller"
+	case strings.Contains(low, "download"):
 		flagAnomaly(res, "ics-plc-program-access")
-		res.Meta["intent"] = "CODESYS V3 program download / online change"
+		cmd = "Program download"
+		res.Meta["intent"] = "CODESYS V3 program download — writing PLC logic"
+	case strings.Contains(low, "onlinechange"):
+		flagAnomaly(res, "ics-plc-program-access")
+		cmd = "Online change"
+		res.Meta["intent"] = "CODESYS V3 online change — patching running PLC logic"
+	}
+	if cmd != "" {
+		res.Meta["codesys_command"] = cmd
 	}
 
 	// CODESYS Control runtimes ship without password protection by default and

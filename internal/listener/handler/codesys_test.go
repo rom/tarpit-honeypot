@@ -26,6 +26,9 @@ func TestCodesysFileTransfer(t *testing.T) {
 	if !hasAnom(r, "cve:CVE-2022-31806") {
 		t.Errorf("CODESYS no-auth CVE not attributed: %v", r.Meta["anomalies"])
 	}
+	if r.Meta["codesys_command"] != "Program download" {
+		t.Errorf("codesys_command = %v; want Program download", r.Meta["codesys_command"])
+	}
 }
 
 func TestCodesysLogin(t *testing.T) {
@@ -37,6 +40,9 @@ func TestCodesysLogin(t *testing.T) {
 	if !hasAnom(r, "cve:CVE-2022-31802") {
 		t.Errorf("gateway auth-bypass CVE not attributed: %v", r.Meta["anomalies"])
 	}
+	if r.Meta["codesys_command"] != "Login" {
+		t.Errorf("codesys_command = %v; want Login", r.Meta["codesys_command"])
+	}
 }
 
 func TestCodesysStopApp(t *testing.T) {
@@ -44,5 +50,8 @@ func TestCodesysStopApp(t *testing.T) {
 	r := driveCodesys(t, req)
 	if !hasAnom(r, "ics-plc-mode-change") {
 		t.Errorf("stop-app not flagged as mode change: %v", r.Meta["anomalies"])
+	}
+	if r.Meta["codesys_command"] != "PLC Stop" {
+		t.Errorf("codesys_command = %v; want PLC Stop", r.Meta["codesys_command"])
 	}
 }
