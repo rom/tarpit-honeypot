@@ -59,6 +59,31 @@ func TestConfigTemplateRenders(t *testing.T) {
 	}
 }
 
+// TestConfigStoragePanelRenders: the /config page surfaces the event-store size
+// cap, current usage, percent-of-cap, and (when over cap) an "evicting" tag, so
+// operators can see retention limits without reading logs.
+func TestConfigStoragePanelRenders(t *testing.T) {
+	page := configPage{
+		YAML:         "sensor: {}\n",
+		DBStatsKnown: true,
+		DBBackend:    "sqlite",
+		DBCapMB:      500,
+		DBFileMB:     599,
+		DBUsedMB:     599,
+		DBUsedPct:    119,
+	}
+	var b strings.Builder
+	if err := uiTmpl(t).ExecuteTemplate(&b, "config", page); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	for _, want := range []string{"event store retention", "size cap", "500 MB", "599 MB", "119%", "evicting", "sqlite_mb"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("storage panel missing %q", want)
+		}
+	}
+}
+
 func TestConfigFilesPanelRenders(t *testing.T) {
 	page := configPage{
 		YAML: "sensor: {}\n",

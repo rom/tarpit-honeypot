@@ -1816,6 +1816,17 @@ device tracking: {{ if .Deployment.DevicesOn }}on{{ else }}off{{ end }} · ui bi
 uptime: <b>{{ .Uptime }}</b>{{ if .OldestEvent }} · oldest event in database: <b>{{ .OldestEvent }}</b> ({{ .RetentionSpan }} ago){{ else }} · database empty{{ end }}
 </p>
 
+{{ if .DBStatsKnown }}
+<h2 data-help="How much event history is retained before the oldest events are evicted. The limit is the database's logical size, not a row count — large captured payloads use it up faster, so raise the cap (sensor.disk.sqlite_mb) or trim capture sizes to keep more events.">event store retention</h2>
+<table class="kv">
+<tr><th>backend</th><td><code>{{ .DBBackend }}</code></td></tr>
+<tr><th{{ if ge .DBUsedPct 100 }} class="sev-high"{{ end }}>size cap</th><td>
+{{ if .DBCapMB }}<b>{{ .DBUsedMB }} MB</b> used of <b>{{ .DBCapMB }} MB</b> cap ({{ .DBUsedPct }}%){{ if ge .DBUsedPct 100 }} <span class="tag bad">at cap — evicting oldest events</span>{{ else if ge .DBUsedPct 80 }} <span class="tag">near cap</span>{{ end }}<br><span class="meta"><code>sensor.disk.sqlite_mb</code> — the DB is bounded by logical size, not event count; oldest events are evicted once usage reaches the cap. Raise it (you have room on disk) to keep more history.</span>{{ else }}<b>uncapped</b> <span class="meta">(<code>sensor.disk.sqlite_mb: 0</code>)</span>{{ end }}
+</td></tr>
+<tr><th>on disk</th><td>{{ .DBFileMB }} MB file{{ if gt .DBBloatMB 0 }} · <b>{{ .DBBloatMB }} MB</b> reclaimable <span class="meta">(free pages — restart to VACUUM, or run <code>prune-db</code> / <code>rotate-db</code>)</span>{{ else }} <span class="meta">(no reclaimable slack)</span>{{ end }}</td></tr>
+</table>
+{{ end }}
+
 <h2 data-help="The names and modes that shape how this sensor presents itself and how far it talks back.">identity &amp; modes</h2>
 <table class="kv">
 <tr><th>deployment domain</th><td><code>{{ .Deployment.Domain }}</code> <span class="meta">(SMTP banner host, DNS hostname.bind/id.server, telnet \h, …)</span></td></tr>

@@ -79,6 +79,11 @@ documented in `docs/`).
 
 ### Added
 
+- **`/config` event-store retention panel.** The config page now shows the
+  SQLite size cap (`sensor.disk.sqlite_mb`), current logical usage and
+  percent-of-cap, an "at cap — evicting oldest events" tag when usage reaches the
+  cap, and any reclaimable on-disk slack — so operators can see retention limits
+  (and whether eviction is active) without reading logs or running `sqlite3`.
 - **Malware detonation / intel loop (`internal/detonate`).** Closes the
   capture→intelligence loop: when a handler captures a binary/dropper, the sensor
   hands its sha256 to a new Detonator that looks the hash up on VirusTotal and —
