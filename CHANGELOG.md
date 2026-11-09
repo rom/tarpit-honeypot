@@ -91,7 +91,8 @@ documented in `docs/`).
     UA, MELSEC/SLMP, OMRON FINS, HART-IP, PROFINET, Beckhoff ADS, EtherCAT,
     POWERLINK, GE SRTP / EGD, Emerson ROC+, Unitronics PCOM, MMS (IEC 61850),
     TriStation, PCWorx, ProConOS, FANUC FOCAS, Niagara Fox, Red Lion Crimson,
-    VxWorks WDB, Veeder-Root ATG, IEEE C37.118 synchrophasor, SECS/GEM.
+    VxWorks WDB, Veeder-Root ATG, IEEE C37.118 synchrophasor, SECS/GEM, CODESYS,
+    DLMS/COSEM.
   - **BAS/BMS:** BACnet, BACnet/SC, KNXnet/IP, LonTalk, OSDP, M-Bus, Danfoss AK-SM.
   - **IoT messaging:** MQTT, CoAP.
   - **MedTech:** HL7, DICOM, ASTM, POCT1, FHIR.
@@ -99,6 +100,14 @@ documented in `docs/`).
   UDP/TLS/alias handler names fold onto their base spec, a test keeps the command
   map and the labeled sections in sync (and OT-classified), and Modbus now also
   carries the symbolic `function_name` at the top level.
+- **Deeper CODESYS and DLMS/COSEM command decoding.** The CODESYS V3 handler now
+  emits a structured `codesys_command` (Login / File transfer / Program download
+  / Online change / PLC Stop·Start·Reset / Device info / Trace read). The
+  DLMS/COSEM smart-meter handler now reads past the association and decodes the
+  xDLMS service APDUs — GET / SET / ACTION requests — extracting the targeted
+  COSEM object (class id + OBIS code + attribute/method), so a remote-disconnect
+  ACTION or a register write is named explicitly (e.g. `ACTION-Request
+  0-0:96.3.10.255 method 1`) rather than recorded as just "association".
 - **`/config` event-store retention panel.** The config page now shows the
   SQLite size cap (`sensor.disk.sqlite_mb`), current logical usage and
   percent-of-cap, an "at cap — evicting oldest events" tag when usage reaches the

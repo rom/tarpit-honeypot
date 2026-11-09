@@ -220,6 +220,15 @@ var protoSpecs = map[string]struct {
 	"mbus": {"M-Bus command", []protoFieldSpec{
 		{"mbus_function", "function"},
 	}},
+	"codesys": {"CODESYS command", []protoFieldSpec{
+		{"codesys_command", "command"}, {"codesys_component", "component"},
+		{"codesys_magic", "block-driver magic"},
+	}},
+	"dlms": {"DLMS/COSEM command", []protoFieldSpec{
+		{"dlms_apdu", "APDU / command"}, {"dlms_obis", "OBIS object"},
+		{"dlms_class_id", "COSEM class id"}, {"dlms_attribute", "attribute id"},
+		{"dlms_method", "method id"}, {"dlms_commands", "commands seen"},
+	}},
 
 	// --- Building automation (BAS/BMS) -----------------------------------
 	"danfoss_aksm": {"Danfoss AK-SM command", []protoFieldSpec{
@@ -374,6 +383,8 @@ var otCommandSpec = map[string]struct{ proto, key, alt string }{
 	"lontalk":       {"LonTalk", "lon_packet_type", ""},
 	"osdp":          {"OSDP", "osdp_command", ""},
 	"mbus":          {"M-Bus", "mbus_function", ""},
+	"codesys":       {"CODESYS", "codesys_command", "codesys_component"},
+	"dlms":          {"DLMS/COSEM", "dlms_apdu", ""},
 	// Building automation (BAS/BMS).
 	"danfoss_aksm": {"Danfoss AK-SM", "xml_action", "method"},
 	// Medical / clinical (MedTech).
