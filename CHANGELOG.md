@@ -62,7 +62,10 @@ documented in `docs/`).
   captured sample isn't made public or used to tip off the attacker), and the
   work is async and bounded (worker pool + bounded queue + per-hash TTL cache +
   rate limiter). A detonation verdict also counts as a malware milestone in the
-  storyline correlator.
+  storyline correlator. The **captures page** now shows each captured artifact's
+  detonation verdict inline — a new "verdict" column with the malware family, the
+  AV detection ratio (`AV 42/60`), the count of C2/contacted IOCs revealed, and
+  the source (virustotal / cape) — joined onto the on-disk samples by sha256.
 - **+333 CVEs across four new batches (catalog now 1541).** Three are generated
   by `tools/nuclei2cve` from real Nuclei templates, so every record carries the
   actual exploit path as its detection signature: **cve_nuclei_batch3.go** (98
