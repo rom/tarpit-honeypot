@@ -763,6 +763,19 @@ func (s *Store) logicalUsedBytes(ctx context.Context) (int64, bool) {
 	return used, true
 }
 
+// StorageStats reports the SQLite event DB's on-disk footprint for the /config
+// storage panel: the physical file size (what `ls` shows) and the logical used
+// bytes (what the sensor.disk.sqlite_mb cap is actually enforced against). A
+// large gap between the two means reclaimable free pages (run prune-db/rotate-db
+// or restart to VACUUM). Best-effort: a missing file or failed pragma yields 0.
+func (s *Store) StorageStats(ctx context.Context) (fileBytes, logicalBytes int64) {
+	if info, err := os.Stat(s.path); err == nil {
+		fileBytes = info.Size()
+	}
+	logicalBytes, _ = s.logicalUsedBytes(ctx)
+	return fileBytes, logicalBytes
+}
+
 // logFootprint logs the size cap and current usage once, at Open, so an
 // operator can see at a glance how close the event DB is to its eviction
 // threshold (and that a threshold exists at all — the 500 MB default is easy to

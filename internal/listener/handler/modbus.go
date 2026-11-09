@@ -112,6 +112,10 @@ func (m *modbus) Handle(_ context.Context, conn net.Conn, cfg config.Listener) (
 		// matched on these in v1.x.
 		if first, ok := pdus[0]["function_code"].(byte); ok {
 			res.Meta["function_code"] = first
+			// Flat, human-readable command name at the top level so the event
+			// detail page can show "Read Holding Registers" rather than just the
+			// numeric code buried in the per-PDU array.
+			res.Meta["function_name"] = modbusFCName(first)
 		}
 		if first, ok := pdus[0]["unit_id"].(byte); ok {
 			res.Meta["unit_id"] = first

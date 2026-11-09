@@ -1894,16 +1894,20 @@ func isOperationalEvent(rule string) bool {
 // downloadable pcap exists for it.
 type eventDetail struct {
 	*event.Event
-	Nav      store.EventNeighbors
-	Phase    string   // inferred interaction kind (auth / discovery / control / …)
-	Anoms    []string // protocol-misuse markers (ev.Anomalies + meta.anomalies)
-	HasPcap  bool
-	PcapName string
+	Nav       store.EventNeighbors
+	Phase     string   // inferred interaction kind (auth / discovery / control / …)
+	Anoms     []string // protocol-misuse markers (ev.Anomalies + meta.anomalies)
+	OTCommand string   // decoded OT command/function, e.g. "Read Holding Registers"
+	OTProto   string   // short OT protocol label for that command, e.g. "Modbus"
+	HasPcap   bool
+	PcapName  string
 }
 
 // newEventDetail builds the page model's pure (no store / filesystem) parts.
 func newEventDetail(ev *event.Event) eventDetail {
-	return eventDetail{Event: ev, Phase: classifyInteraction(ev), Anoms: eventAnoms(ev)}
+	cmd, proto := otCommand(ev)
+	return eventDetail{Event: ev, Phase: classifyInteraction(ev), Anoms: eventAnoms(ev),
+		OTCommand: cmd, OTProto: proto}
 }
 
 // eventAnoms is the union of the event's structured anomaly markers and any in
@@ -2094,6 +2098,31 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		page.OldestEvent = t.Format(time.RFC3339)
 		page.RetentionSpan = fmtDuration(time.Since(t))
 	}
+	// Event-store size cap panel. The cap applies to the embedded SQLite backend;
+	// StorageStats is engine-specific, so we type-assert for it (the Postgres
+	// backend doesn't provide it, and there is no sqlite_mb cap there).
+	if s.fullConfig != nil {
+		page.DBBackend = s.fullConfig.Sensor.Store.Backend
+		if page.DBBackend == "" {
+			page.DBBackend = "sqlite"
+		}
+		page.DBCapMB = s.fullConfig.Sensor.Disk.SQLiteMB
+	}
+	if ss, ok := s.store.(interface {
+		StorageStats(context.Context) (int64, int64)
+	}); ok {
+		fileB, usedB := ss.StorageStats(ctx)
+		const mb = 1024 * 1024
+		page.DBStatsKnown = true
+		page.DBFileMB = fileB / mb
+		page.DBUsedMB = usedB / mb
+		if b := (fileB - usedB) / mb; b > 0 {
+			page.DBBloatMB = b
+		}
+		if page.DBCapMB > 0 {
+			page.DBUsedPct = int(usedB * 100 / (int64(page.DBCapMB) * mb))
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "config", page); err != nil {
 		slog.Warn("ui: render config", "err", err)
@@ -2269,9 +2298,19 @@ type configPage struct {
 	Uptime        string         // sensor running time, e.g. "2d 3h 12m"
 	OldestEvent   string         // RFC3339 timestamp of the earliest event in the DB
 	RetentionSpan string         // how far back that is, e.g. "29d 4h"
-	Version       string         // software version (version.Version)
-	Commit        string         // build commit (version.Commit)
-	BuildDate     string         // release / build date (version.BuildDate)
+
+	// Event-store size cap panel (SQLite backend only).
+	DBStatsKnown bool   // true when the store reports an on-disk footprint
+	DBBackend    string // "sqlite" | "postgres"
+	DBCapMB      int    // sensor.disk.sqlite_mb (post-defaults; 0 = uncapped)
+	DBFileMB     int64  // physical events.db size (MB)
+	DBUsedMB     int64  // logical used bytes the cap is enforced against (MB)
+	DBUsedPct    int    // DBUsedMB as a percent of the cap (>=100 means evicting)
+	DBBloatMB    int64  // reclaimable slack = file - used (MB); >0 ⇒ VACUUM would shrink
+
+	Version   string // software version (version.Version)
+	Commit    string // build commit (version.Commit)
+	BuildDate string // release / build date (version.BuildDate)
 }
 
 // fileRow is one config/enrichment/database/state path the sensor uses,
