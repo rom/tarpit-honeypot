@@ -1018,6 +1018,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/timeline", s.handleTimeline)
 	s.pageRoute(mux, "/playbooks", "playbooks", s.handlePlaybooks)
 	s.pageRoute(mux, "/correlation", "correlation", s.handleCorrelation)
+	s.pageRoute(mux, "/analytics", "analytics", s.handleAnalytics)
 	s.pageRoute(mux, "/campaign", "campaigns", s.handleCampaign)
 	s.pageRoute(mux, "/map", "map", s.handleThreatMap)
 	s.pageRoute(mux, "/fleet", "fleet", s.handleFleet)

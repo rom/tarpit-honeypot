@@ -79,6 +79,27 @@ documented in `docs/`).
 
 ### Added
 
+- **New `/analytics` page — deterministic (non-ML) relational & statistical
+  analytics** over the selected window, in a new `internal/analytics` package:
+  - **Association-rule / co-occurrence mining (Apriori):** each source becomes an
+    itemset of its services, ports, CVEs, tools, country, tactics, recognition
+    labels and ASN; rules `A → B` are surfaced with support, confidence and
+    **lift** (e.g. "sources hitting Modbus also probe S7, lift 2.4×"), plus a
+    symmetric top-co-occurrence table with Jaccard overlap.
+  - **Infrastructure pivot graph + centrality:** a graph of strong identity
+    entities (TLS/SSH fingerprints, reused SSH keys, credentials, domains,
+    malware hashes) and the source IPs exhibiting them, pruned (kind-aware) to the
+    connective core — entities shared by ≥2 sources. **Degree and betweenness
+    centrality** (Brandes) rank the pivotal shared infrastructure; the force graph
+    sizes nodes by betweenness, so an entity bridging otherwise-separate actor
+    clusters stands out.
+  - **Actor targeting diversity:** per-source **Shannon/Pielou evenness**,
+    **Gini-Simpson** and **Gini** of the services each source hit, classifying a
+    surgical operator vs. a spray-and-pray scanner.
+
+  The page is toggleable (`ui.pages.analytics`) and defaults on. All algorithms
+  are pure and unit-tested (known-value betweenness on path/star graphs, rule
+  lift/confidence, diversity indices).
 - **Event-detail labels are now clickable pivots.** On the event detail page the
   interaction phase (e.g. *Service discovery / enumeration*), the "what happened"
   attacker intent, the OT command and protocol badges (e.g. *OMRON FINS* /

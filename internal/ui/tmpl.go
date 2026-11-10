@@ -621,7 +621,7 @@ figure.widget-hidden svg, figure.widget-hidden .tc-legend, figure.widget-hidden 
 <script src="/static/charts.js" defer></script>
 </head><body>
 <header class="brand"><a href="/" class="brand-link"><img src="/static/logo.svg" alt="tarpit-honeypot" height="32" class="brand-logo"></a></header>
-<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "playbooks" }} · <a href="/playbooks">playbooks</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if hasPage "coverage" }}{{ if pageEnabled "coverage" }} · <a href="/coverage">coverage</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a> · <a href="/asns">networks</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
+<nav><a href="/">summary</a> · <a href="/events">events</a> · <a href="/search">search</a> · <a href="/timeline">timeline</a>{{ if pageEnabled "attack" }} · <a href="/attack">att&amp;ck</a>{{ end }}{{ if pageEnabled "correlation" }} · <a href="/correlation">correlation</a>{{ end }}{{ if pageEnabled "analytics" }} · <a href="/analytics">analytics</a>{{ end }}{{ if pageEnabled "playbooks" }} · <a href="/playbooks">playbooks</a>{{ end }}{{ if pageEnabled "campaigns" }} · <a href="/campaign">campaigns</a>{{ end }}{{ if pageEnabled "map" }} · <a href="/map">map</a>{{ end }}{{ if pageEnabled "captures" }} · <a href="/captures">captures</a>{{ end }}{{ if pageEnabled "credentials" }} · <a href="/credentials">credentials</a>{{ end }}{{ if pageEnabled "interactions" }} · <a href="/interactions">interactions</a>{{ end }}{{ if hasPage "dns" }}{{ if pageEnabled "dns" }} · <a href="/dns">dns</a>{{ end }}{{ end }}{{ if hasPage "web" }}{{ if pageEnabled "web" }} · <a href="/web">web</a>{{ end }}{{ end }}{{ if hasPage "database" }}{{ if pageEnabled "databases" }} · <a href="/databases">databases</a>{{ end }}{{ end }}{{ if hasPage "remote" }}{{ if pageEnabled "remote" }} · <a href="/remote">remote</a>{{ end }}{{ end }}{{ if hasPage "mail" }}{{ if pageEnabled "mail" }} · <a href="/mail">mail</a>{{ end }}{{ end }}{{ if hasPage "ntp" }}{{ if pageEnabled "ntp" }} · <a href="/ntp">ntp</a>{{ end }}{{ end }}{{ if hasPage "rules" }}{{ if pageEnabled "rules" }} · <a href="/rules">rules</a>{{ end }}{{ end }}{{ if hasPage "coverage" }}{{ if pageEnabled "coverage" }} · <a href="/coverage">coverage</a>{{ end }}{{ end }}{{ if pageEnabled "fleet" }} · <a href="/fleet">fleet</a>{{ end }}{{ if pageEnabled "iocs" }} · <a href="/iocs">iocs</a>{{ end }}{{ if pageEnabled "tunnels" }} · <a href="/tunnels">tunnels</a>{{ end }} · <a href="/profiles">profiles</a> · <a href="/asns">networks</a>{{ if pageEnabled "fingerprints" }} · <a href="/fingerprints">fingerprints</a>{{ end }}{{ if pageEnabled "devices" }} · <a href="/devices">devices</a>{{ end }}{{ if pageEnabled "topology" }} · <a href="/topology">topology</a>{{ end }}{{ if pageEnabled "charts" }} · <a href="/charts">charts</a>{{ end }}{{ if pageEnabled "statistics" }} · <a href="/stats">statistics</a>{{ end }} · <a href="/health">health</a>{{ if pageEnabled "alerting" }} · <a href="/alerting">alerting</a>{{ end }}{{ if pageEnabled "errors" }} · <a href="/errors">errors</a>{{ end }} · <a href="/config">config</a>{{ if pageEnabled "docs" }} · <a href="/docs">docs</a>{{ end }}</nav>
 <main id="pgcontent">
 {{ end }}
 
@@ -1137,6 +1137,42 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 {{ range .IPv6 }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td><td>{{ if .RDNS }}<code>{{ .RDNS }}</code>{{ else }}<span class="meta">—</span>{{ end }}</td><td>{{ .Count }}</td><td class="sev-{{ .Sev }}">{{ .Sev }}</td></tr>{{ end }}
 </table>{{ end }}
 {{ if and (not .IPv4) (not .IPv6) }}<p class="note">no events on this handler in the window.</p>{{ end }}
+{{ template "foot" . }}{{ end }}
+
+{{ define "analytics" }}{{ template "head" . }}
+<h1>analytics — {{ .RangeLabel }}</h1>
+{{ template "rangesel" .RangeLinks }}
+<p class="note">Deterministic (non-ML) relational &amp; statistical analytics over this window: which attacker features co-occur, which infrastructure bridges otherwise-separate clusters, and how focused each actor's targeting is. <b>{{ .Sources }}</b> source(s), <b>{{ .Transactions }}</b> mined.</p>
+{{ if .Note }}<p class="note">{{ .Note }}</p>{{ end }}
+
+<h2 data-help="Association-rule mining (Apriori). Each source becomes an itemset of its services, ports, CVEs, tools, country, tactics, recognition labels and ASN; a rule A → B means a source showing A also shows B. Lift &gt; 1 is positive association (1 = independent); confidence is P(B|A). Only rules holding on several sources with lift &gt; 1.1 are shown.">association rules</h2>
+{{ if .Rules }}<table class="kv">
+<tr><th>if the source shows…</th><th>…it also shows</th><th>lift</th><th>confidence</th><th>support</th><th>sources</th></tr>
+{{ range .Rules }}<tr><td>{{ .Antecedent }}</td><td><b>{{ .Consequent }}</b></td><td>{{ printf "%.2f" .Lift }}×</td><td>{{ printf "%.0f%%" .ConfPct }}</td><td>{{ printf "%.1f%%" .SupportPct }}</td><td>{{ .Count }}</td></tr>{{ end }}
+</table>{{ else }}<p class="note">No association rules meet the support / lift thresholds in this window.</p>{{ end }}
+
+{{ if .Pairs }}<h2 data-help="Symmetric item co-occurrence: how often two features appear on the same source, with lift and Jaccard overlap (intersection ÷ union of the sources exhibiting each).">top co-occurring features</h2>
+<table class="kv">
+<tr><th>feature A</th><th>feature B</th><th>sources</th><th>lift</th><th>jaccard</th></tr>
+{{ range .Pairs }}<tr><td>{{ .A }}</td><td>{{ .B }}</td><td>{{ .Count }}</td><td>{{ printf "%.2f" .Lift }}×</td><td>{{ printf "%.2f" .Jaccard }}</td></tr>{{ end }}
+</table>{{ end }}
+
+<h2 data-help="A pivot graph of strong identity entities (TLS/SSH fingerprints, reused SSH keys, credentials, domains, malware hashes) and the source IPs that exhibit them, pruned to the connective core (entities shared by ≥2 sources). Node size = betweenness centrality: a high-betweenness entity lies on the shortest paths between many sources, so it bridges otherwise-separate actor clusters — the pivotal shared infrastructure.">infrastructure pivot graph</h2>
+{{ if .GraphB64 }}<figure data-chart="force" data-chart-title="Pivot graph — source IPs ↔ shared identity entities (node size = betweenness centrality)" data-chart-b64="{{ .GraphB64 }}" data-help="Only entities shared by ≥2 sources are kept. Larger nodes bridge more of the graph."><p class="note">enable JavaScript to render the pivot graph</p></figure>
+<p class="note">{{ .GraphNodes }} nodes · {{ .GraphEdges }} edges drawn{{ if not .GraphBetween }} · betweenness skipped (graph too large) — ranked by degree instead{{ end }}.</p>
+{{ else }}<p class="note">No shared infrastructure across sources in this window — nothing to pivot on yet.</p>{{ end }}
+
+{{ if .TopNodes }}<h3>most central shared infrastructure</h3>
+<table class="kv">
+<tr><th>entity</th><th>type</th><th>betweenness</th><th>degree</th></tr>
+{{ range .TopNodes }}<tr><td>{{ .Label }}</td><td><span class="tag">{{ .Kind }}</span></td><td>{{ printf "%.1f" .Betweenness }}</td><td>{{ .Degree }}</td></tr>{{ end }}
+</table>{{ end }}
+
+<h2 data-help="Per-actor targeting diversity. Pielou evenness (0 = fixated on one service, 1 = spread evenly across services) and the Gini concentration of the services each source hit — distinguishing a surgical operator from a spray-and-pray scanner.">actor targeting diversity</h2>
+{{ if .Actors }}<table class="kv">
+<tr><th>source</th><th>events</th><th>services</th><th>evenness</th><th>gini</th><th>focus</th><th>top service</th></tr>
+{{ range .Actors }}<tr><td><a href="/profiles/{{ .IP }}">{{ .IP }}</a>{{ ipv6Tag .IP }}</td><td>{{ .Events }}</td><td>{{ .Services }}</td><td>{{ printf "%.2f" .Evenness }}</td><td>{{ printf "%.2f" .Gini }}</td><td><span class="tag{{ if eq .Focus "focused" }} bad{{ else if eq .Focus "spray" }} warn{{ end }}">{{ .Focus }}</span></td><td><a class="tag" href="/events?handler={{ .TopService }}">{{ .TopService }}</a></td></tr>{{ end }}
+</table>{{ else }}<p class="note">No actor targeting to summarize yet.</p>{{ end }}
 {{ template "foot" . }}{{ end }}
 
 {{ define "correlation" }}{{ template "head" . }}
@@ -2136,6 +2172,7 @@ and the sensor never becomes a reflection/amplification primitive.</p>
 <li><a href="/">summary</a> — 24h rollup by severity, rule, and source.</li>
 <li><a href="/events">events</a> — filterable event log (source, rule, severity, time).</li>
 <li><a href="/profiles">profiles</a> — per-source-IP attacker dossiers (synthesized assessment + threat score, tools/scanners with identification confidence, fingerprints, credentials tried, ATT&amp;CK, targeted services), compiled over time.</li>
+<li><a href="/analytics">analytics</a> — deterministic (non-ML) relational &amp; statistical analytics: association-rule / co-occurrence mining (which attacker features imply each other, by lift), an infrastructure pivot graph ranked by degree &amp; betweenness centrality (the shared fingerprints / creds / domains that bridge actor clusters), and per-actor targeting diversity (focused operator vs. spray scanner).</li>
 <li><a href="/fingerprints">fingerprints</a> — JA3 / JA4 / JA4H / JA3S / HASSH reputation: pivot from a client TLS/SSH stack to every source IP, ASN, country, protocol, port, attack type, captured malware, and <em>which sensors in the fleet</em> observed it (cross-sensor correlation).</li>
 <li><a href="/devices">devices</a> — learned / seen / whitelisted devices (IPv4 / IPv6 / MAC) with the services/ports they touched + learned attributes; optional delete/whitelist actions (<code>ui.allow_device_actions</code> + auth token).</li>
 <li><a href="/topology">topology</a> — the virtual networks / hosts / services the sensor presents.</li>

@@ -427,6 +427,7 @@ window.TarpitCharts = (function () {
     links.forEach(function (l) { var a = nodes[l.s], b = nodes[l.t]; root.appendChild(el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: "tc-edge" })); });
     nodes.forEach(function (nd) {
       var hubN = nd.kind && nd.kind !== "source", r = hubN ? 9 : 5;
+      if (nd.size && nd.size > 0) { r = Math.max(3, Math.min(22, nd.size)); } // explicit size (e.g. centrality)
       root.appendChild(title(el("circle", { cx: nd.x, cy: nd.y, r: r, class: "tc-node", fill: color(groups.indexOf(nd.group) < 0 ? 0 : groups.indexOf(nd.group)) }), (nd.label || nd.id) + (nd.kind ? " [" + nd.kind + "]" : "")));
       if (hubN) root.appendChild(text(nd.x, nd.y - r - 3, nd.label || nd.id, "tc-nlabel", { "text-anchor": "middle" }));
     });
