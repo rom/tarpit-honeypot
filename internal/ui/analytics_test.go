@@ -19,17 +19,21 @@ func TestAnalyticsTemplateRenders(t *testing.T) {
 		Transactions: 5,
 		Rules:        []ruleRow{{Antecedent: "svc:modbus", Consequent: "svc:s7", Count: 3, SupportPct: 60, ConfPct: 100, Lift: 1.67}},
 		Pairs:        []pairRow{{A: "svc:modbus", B: "svc:s7", Count: 3, Lift: 1.67, Jaccard: 0.6}},
+		ChordB64:     "e30=", // {}
 		GraphB64:     "e30=", // {}
 		GraphNodes:   4, GraphEdges: 3, GraphBetween: true,
 		TopNodes: []centRow{{Label: "ja4:t13d", Kind: "fp", Degree: 3, Betweenness: 3}},
-		Actors:   []actorDiv{{IP: "1.2.3.4", Events: 10, Services: 2, Evenness: 0.9, Gini: 0.1, Focus: "spray", TopService: "modbus"}},
+		Clusters: []pivotCluster{{ID: 1, Members: []string{"1.1.1.1", "2.2.2.2"}, Events: 12,
+			KeyInfra: "ja4:t13d", KeyKind: "fp", Entities: []clusterEntity{{Kind: "fp", Label: "ja4:t13d", Links: 2}}}},
+		Actors: []actorDiv{{IP: "1.2.3.4", Events: 10, Services: 2, Evenness: 0.9, Gini: 0.1, Focus: "spray", TopService: "modbus"}},
 	}
 	var b strings.Builder
 	if err := uiTmpl(t).ExecuteTemplate(&b, "analytics", v); err != nil {
 		t.Fatal(err)
 	}
 	html := b.String()
-	for _, want := range []string{"association rules", "infrastructure pivot graph", "actor targeting diversity", "svc:modbus", "ja4:t13d", "1.2.3.4", `data-chart="force"`} {
+	for _, want := range []string{"association rules", "infrastructure pivot graph", "actor targeting diversity",
+		"svc:modbus", "ja4:t13d", "1.2.3.4", `data-chart="force"`, `data-chart="chord"`, "campaign clusters", "campaign 1", "1.1.1.1"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("analytics page missing %q", want)
 		}
@@ -77,5 +81,18 @@ func TestHandleAnalyticsEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(body, "infrastructure pivot graph") || !strings.Contains(body, `data-chart="force"`) {
 		t.Error("expected the pivot graph figure")
+	}
+	// The three JA4-sharing sources form one campaign cluster.
+	if !strings.Contains(body, "campaign clusters") || !strings.Contains(body, "campaign 1") {
+		t.Error("expected a campaign cluster from the shared-JA4 sources")
+	}
+	for _, ip := range []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"} {
+		if !strings.Contains(body, ip) {
+			t.Errorf("campaign cluster missing member %s", ip)
+		}
+	}
+	// Co-occurrence chord present (modbus/s7/port features co-occur).
+	if !strings.Contains(body, `data-chart="chord"`) {
+		t.Error("expected the co-occurrence chord figure")
 	}
 }

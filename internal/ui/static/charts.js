@@ -434,6 +434,55 @@ window.TarpitCharts = (function () {
     return root;
   };
 
+  // chord: co-occurrence between categories around a circle.
+  //   { names:[...], matrix:[[...]] }  (symmetric NxN, diagonal ignored)
+  // Ribbon width between i and j is proportional to matrix[i][j]; each group's
+  // outer arc is the sum of its co-occurrences.
+  charts.chord = function (d) {
+    var names = d.names || [], m = d.matrix || [], n = names.length;
+    if (!n) { var e = el("div", { class: "tc-empty" }); e.textContent = "no data"; return e; }
+    var W = 640, H = 640, cx = W / 2, cy = H / 2, R = 248, rib = R - 14;
+    var rowSum = [], total = 0;
+    for (var i = 0; i < n; i++) { var s = 0; for (var j = 0; j < n; j++) s += (m[i] && m[i][j]) || 0; rowSum[i] = s; total += s; }
+    if (total <= 0) { var e2 = el("div", { class: "tc-empty" }); e2.textContent = "no co-occurrence"; return e2; }
+    var pad = 0.04, avail = 2 * Math.PI - n * pad, ang = 0, groups = [];
+    for (i = 0; i < n; i++) {
+      var sub = [], a = ang;
+      for (j = 0; j < n; j++) { var w = m[i] && m[i][j] ? m[i][j] / total * avail : 0; sub[j] = { s: a, e: a + w }; a += w; }
+      var gEnd = ang + rowSum[i] / total * avail;
+      groups.push({ s: ang, e: gEnd, mid: (ang + gEnd) / 2, sub: sub });
+      ang = gEnd + pad;
+    }
+    function pt(r, aa) { return [cx + r * Math.cos(aa - Math.PI / 2), cy + r * Math.sin(aa - Math.PI / 2)]; }
+    var root = svgRoot(W, H, "tc-chord");
+    // Ribbons (each unordered pair once).
+    for (i = 0; i < n; i++) {
+      for (j = i + 1; j < n; j++) {
+        if (!(m[i] && m[i][j])) continue;
+        var si = groups[i].sub[j], sj = groups[j].sub[i];
+        var a0 = pt(rib, si.s), a1 = pt(rib, si.e), b0 = pt(rib, sj.s), b1 = pt(rib, sj.e);
+        var path = "M" + a0[0] + "," + a0[1] +
+          " A" + rib + "," + rib + " 0 0 1 " + a1[0] + "," + a1[1] +
+          " Q" + cx + "," + cy + " " + b0[0] + "," + b0[1] +
+          " A" + rib + "," + rib + " 0 0 1 " + b1[0] + "," + b1[1] +
+          " Q" + cx + "," + cy + " " + a0[0] + "," + a0[1] + " Z";
+        root.appendChild(title(el("path", { d: path, fill: color(i), "fill-opacity": 0.45, stroke: color(i), "stroke-opacity": 0.5 }),
+          names[i] + " ↔ " + names[j] + " (" + m[i][j] + ")"));
+      }
+    }
+    // Group arcs + labels.
+    for (i = 0; i < n; i++) {
+      var p0 = pt(R, groups[i].s), p1 = pt(R, groups[i].e), large = (groups[i].e - groups[i].s) > Math.PI ? 1 : 0;
+      root.appendChild(title(el("path", {
+        d: "M" + p0[0] + "," + p0[1] + " A" + R + "," + R + " 0 " + large + " 1 " + p1[0] + "," + p1[1],
+        fill: "none", stroke: color(i), "stroke-width": 11, "stroke-linecap": "butt"
+      }), names[i] + " (" + rowSum[i] + ")"));
+      var lp = pt(R + 14, groups[i].mid);
+      root.appendChild(text(lp[0], lp[1], names[i], "tc-nlabel", { "text-anchor": Math.cos(groups[i].mid - Math.PI / 2) < 0 ? "end" : "start", "dominant-baseline": "middle" }));
+    }
+    return root;
+  };
+
   // sankey / flow: { nodes:[{id,label}], links:[{source,target,value}] }
   charts.sankey = function (d) {
     var nodes = d.nodes || [], links = d.links || [], W = 760, P = { t: 20, b: 20 };

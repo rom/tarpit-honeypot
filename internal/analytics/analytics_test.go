@@ -225,6 +225,40 @@ func TestPruneFuncKindAware(t *testing.T) {
 	}
 }
 
+func TestComponents(t *testing.T) {
+	// Two disjoint stars => two components; add a bridge => one component.
+	g := NewGraph()
+	g.AddEdge("a", "h1")
+	g.AddEdge("b", "h1")
+	g.AddEdge("c", "h2")
+	g.AddEdge("d", "h2")
+	g.Compute(0)
+	comps := g.Components()
+	if len(comps) != 2 {
+		t.Fatalf("expected 2 components, got %d", len(comps))
+	}
+	// Each component has 3 nodes (hub + 2 leaves).
+	for _, c := range comps {
+		if len(c) != 3 {
+			t.Errorf("component size = %d; want 3", len(c))
+		}
+	}
+
+	g.AddEdge("h1", "h2") // bridge the two hubs
+	g.Compute(0)
+	comps = g.Components()
+	if len(comps) != 1 {
+		t.Fatalf("after bridge: expected 1 component, got %d", len(comps))
+	}
+	if len(comps[0]) != 6 {
+		t.Errorf("merged component size = %d; want 6", len(comps[0]))
+	}
+	// The most central node (a hub on the bridge) sorts first.
+	if comps[0][0].ID != "h1" && comps[0][0].ID != "h2" {
+		t.Errorf("most central node = %s; want a bridging hub", comps[0][0].ID)
+	}
+}
+
 func TestGraphBetweennessSkippedWhenTooBig(t *testing.T) {
 	g := NewGraph()
 	g.AddEdge("a", "b")

@@ -554,6 +554,52 @@ func (g *Graph) Nodes(limit int) []Node {
 	return out
 }
 
+// Components returns the connected components of the (undirected) graph, each as
+// a node slice sorted by betweenness then degree then id (so the most central
+// node of a component comes first), with the components themselves sorted by
+// size descending. On the pivot graph a component with ≥2 source IPs is a
+// campaign cluster: sources tied together by shared infrastructure.
+func (g *Graph) Components() [][]Node {
+	visited := make(map[string]bool, len(g.order))
+	var comps [][]Node
+	for _, start := range g.order {
+		if visited[start] {
+			continue
+		}
+		visited[start] = true
+		queue := []string{start}
+		var comp []Node
+		for len(queue) > 0 {
+			id := queue[0]
+			queue = queue[1:]
+			comp = append(comp, *g.nodes[id])
+			for nb := range g.adj[id] {
+				if !visited[nb] {
+					visited[nb] = true
+					queue = append(queue, nb)
+				}
+			}
+		}
+		sort.Slice(comp, func(i, j int) bool {
+			if comp[i].Betweenness != comp[j].Betweenness {
+				return comp[i].Betweenness > comp[j].Betweenness
+			}
+			if comp[i].Degree != comp[j].Degree {
+				return comp[i].Degree > comp[j].Degree
+			}
+			return comp[i].ID < comp[j].ID
+		})
+		comps = append(comps, comp)
+	}
+	sort.Slice(comps, func(i, j int) bool {
+		if len(comps[i]) != len(comps[j]) {
+			return len(comps[i]) > len(comps[j])
+		}
+		return comps[i][0].ID < comps[j][0].ID
+	})
+	return comps
+}
+
 // Edges returns a copy of all undirected edges (each pair once), sorted.
 func (g *Graph) Edges() []Edge {
 	seen := map[[2]string]bool{}

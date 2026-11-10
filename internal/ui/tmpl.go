@@ -1156,6 +1156,7 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <tr><th>feature A</th><th>feature B</th><th>sources</th><th>lift</th><th>jaccard</th></tr>
 {{ range .Pairs }}<tr><td>{{ .A }}</td><td>{{ .B }}</td><td>{{ .Count }}</td><td>{{ printf "%.2f" .Lift }}×</td><td>{{ printf "%.2f" .Jaccard }}</td></tr>{{ end }}
 </table>{{ end }}
+{{ if .ChordB64 }}<figure data-chart="chord" data-chart-title="Feature co-occurrence — ribbon width = sources sharing both features" data-chart-b64="{{ .ChordB64 }}" data-help="Each arc is a feature; a ribbon between two features is sized by how many sources exhibit both. Thick ribbons are the attacker-behaviour pairs that travel together."><p class="note">enable JavaScript to render the co-occurrence chord</p></figure>{{ end }}
 
 <h2 data-help="A pivot graph of strong identity entities (TLS/SSH fingerprints, reused SSH keys, credentials, domains, malware hashes) and the source IPs that exhibit them, pruned to the connective core (entities shared by ≥2 sources). Node size = betweenness centrality: a high-betweenness entity lies on the shortest paths between many sources, so it bridges otherwise-separate actor clusters — the pivotal shared infrastructure.">infrastructure pivot graph</h2>
 {{ if .GraphB64 }}<figure data-chart="force" data-chart-title="Pivot graph — source IPs ↔ shared identity entities (node size = betweenness centrality)" data-chart-b64="{{ .GraphB64 }}" data-help="Only entities shared by ≥2 sources are kept. Larger nodes bridge more of the graph."><p class="note">enable JavaScript to render the pivot graph</p></figure>
@@ -1167,6 +1168,16 @@ filter graphs: <select name="mode"><option value="only">only</option><option val
 <tr><th>entity</th><th>type</th><th>betweenness</th><th>degree</th></tr>
 {{ range .TopNodes }}<tr><td>{{ .Label }}</td><td><span class="tag">{{ .Kind }}</span></td><td>{{ printf "%.1f" .Betweenness }}</td><td>{{ .Degree }}</td></tr>{{ end }}
 </table>{{ end }}
+
+{{ if .Clusters }}<h2 data-help="Connected components of the pivot graph: sets of source IPs transitively tied together by shared infrastructure (A shares a fingerprint with B, B shares a credential with C → one campaign). Each is treated as one operator/operation; the key infrastructure is the highest-betweenness entity binding it.">campaign clusters</h2>
+<p class="note"><b>{{ len .Clusters }}</b> multi-source cluster(s) — source IPs transitively linked by shared fingerprints / credentials / domains / malware. Treat each as one actor.</p>
+{{ range .Clusters }}<div class="net">
+  <h3><span class="tag bad">campaign {{ .ID }}</span> <span class="meta">{{ len .Members }} sources · {{ .Events }} events{{ if .KeyInfra }} · key infra: <span class="tag">{{ .KeyKind }}</span> {{ .KeyInfra }}{{ end }}</span></h3>
+  <table>
+    <tr><th>sources</th><td>{{ range .Members }}<a class="tag" href="/profiles/{{ . }}">{{ . }}</a>{{ ipv6Tag . }} {{ end }}</td></tr>
+    {{ if .Entities }}<tr><th>shared</th><td>{{ range .Entities }}<span class="tag warn" title="linked to {{ .Links }} nodes">{{ .Kind }}:{{ .Label }}</span> {{ end }}</td></tr>{{ end }}
+  </table>
+</div>{{ end }}{{ end }}
 
 <h2 data-help="Per-actor targeting diversity. Pielou evenness (0 = fixated on one service, 1 = spread evenly across services) and the Gini concentration of the services each source hit — distinguishing a surgical operator from a spray-and-pray scanner.">actor targeting diversity</h2>
 {{ if .Actors }}<table class="kv">

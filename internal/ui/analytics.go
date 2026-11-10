@@ -29,6 +29,10 @@ const (
 	anGraphDrawNodes    = 140  // nodes drawn in the force figure
 	anTopCentrality     = 25   // rows in the centrality table
 	anTopActors         = 25   // rows in the diversity table
+	anChordNodes        = 14   // features in the co-occurrence chord
+	anMaxClusters       = 20   // campaign clusters shown
+	anClusterMembers    = 40   // member IPs listed per cluster
+	anClusterEntities   = 14   // shared-entity chips per cluster
 )
 
 type ruleRow struct {
@@ -64,11 +68,27 @@ type actorDiv struct {
 	TopService string
 }
 
+type clusterEntity struct {
+	Kind, Label string
+	Links       int
+}
+
+type pivotCluster struct {
+	ID       int
+	Members  []string // source IPs
+	Entities []clusterEntity
+	Events   int
+	KeyInfra string
+	KeyKind  string
+}
+
 type analyticsView struct {
 	Sources      int
 	Transactions int
 	Rules        []ruleRow
 	Pairs        []pairRow
+	ChordB64     string
+	Clusters     []pivotCluster
 	GraphB64     string
 	GraphNodes   int
 	GraphEdges   int
@@ -129,9 +149,14 @@ func buildAnalyticsView(evs []*event.Event) analyticsView {
 			break
 		}
 	}
-	for _, p := range analytics.CoOccurrence(txns, anMinRuleCount, anMaxPairs) {
+	allPairs := analytics.CoOccurrence(txns, anMinRuleCount, 600)
+	for i, p := range allPairs {
+		if i >= anMaxPairs {
+			break
+		}
 		v.Pairs = append(v.Pairs, pairRow{A: p.A, B: p.B, Count: p.Count, Lift: p.Lift, Jaccard: p.Jaccard})
 	}
+	v.ChordB64 = encodeChord(allPairs, anChordNodes)
 
 	// --- Infrastructure pivot graph + centrality ---------------------------
 	// Keep the connective core: an entity must be shared by ≥2 sources (degree
@@ -155,6 +180,47 @@ func buildAnalyticsView(evs []*event.Event) analyticsView {
 		v.TopNodes = append(v.TopNodes, centRow{Label: n.Label, Kind: n.Kind, Degree: n.Degree, Betweenness: n.Betweenness})
 	}
 	v.GraphB64, v.GraphEdges = encodePivotGraph(graph, v.GraphBetween)
+
+	// --- Campaign clusters (connected components of the pivot graph) -------
+	ipEvents := make(map[string]int, len(actors))
+	for _, a := range actors {
+		ipEvents[a.ip] = a.events
+	}
+	for _, comp := range graph.Components() {
+		var members []string
+		var ents []clusterEntity
+		keyBw, keyLabel, keyKind := -1.0, "", ""
+		for _, nd := range comp {
+			if nd.Kind == "source" {
+				members = append(members, nd.ID)
+				continue
+			}
+			if len(ents) < anClusterEntities {
+				ents = append(ents, clusterEntity{Kind: nd.Kind, Label: nd.Label, Links: nd.Degree})
+			}
+			if nd.Betweenness > keyBw {
+				keyBw, keyLabel, keyKind = nd.Betweenness, nd.Label, nd.Kind
+			}
+		}
+		if len(members) < 2 { // a campaign needs ≥2 transitively-linked sources
+			continue
+		}
+		sort.Strings(members)
+		ev := 0
+		for _, ip := range members {
+			ev += ipEvents[ip]
+		}
+		if len(members) > anClusterMembers {
+			members = members[:anClusterMembers]
+		}
+		v.Clusters = append(v.Clusters, pivotCluster{
+			ID: len(v.Clusters) + 1, Members: members, Entities: ents,
+			Events: ev, KeyInfra: keyLabel, KeyKind: keyKind,
+		})
+		if len(v.Clusters) >= anMaxClusters {
+			break
+		}
+	}
 
 	// --- Per-actor targeting diversity -------------------------------------
 	sort.Slice(actors, func(i, j int) bool {
@@ -377,4 +443,62 @@ func encodePivotGraph(g *analytics.Graph, haveBetween bool) (string, int) {
 		return "", 0
 	}
 	return base64.StdEncoding.EncodeToString(b), len(edges)
+}
+
+// encodeChord builds the co-occurrence chord input (base64 JSON {names, matrix})
+// from the top maxNodes features by total co-occurrence, with the symmetric
+// pairwise counts among them. Empty when fewer than two features qualify.
+func encodeChord(pairs []analytics.Pair, maxNodes int) string {
+	if len(pairs) == 0 {
+		return ""
+	}
+	weight := map[string]int{}
+	for _, p := range pairs {
+		weight[p.A] += p.Count
+		weight[p.B] += p.Count
+	}
+	type nw struct {
+		name string
+		w    int
+	}
+	ranked := make([]nw, 0, len(weight))
+	for k, wgt := range weight {
+		ranked = append(ranked, nw{k, wgt})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].w != ranked[j].w {
+			return ranked[i].w > ranked[j].w
+		}
+		return ranked[i].name < ranked[j].name
+	})
+	if maxNodes > 0 && len(ranked) > maxNodes {
+		ranked = ranked[:maxNodes]
+	}
+	if len(ranked) < 2 {
+		return ""
+	}
+	idx := make(map[string]int, len(ranked))
+	names := make([]string, len(ranked))
+	for i, x := range ranked {
+		idx[x.name] = i
+		names[i] = x.name
+	}
+	n := len(names)
+	matrix := make([][]int, n)
+	for i := range matrix {
+		matrix[i] = make([]int, n)
+	}
+	for _, p := range pairs {
+		ai, aok := idx[p.A]
+		bi, bok := idx[p.B]
+		if aok && bok {
+			matrix[ai][bi] = p.Count
+			matrix[bi][ai] = p.Count
+		}
+	}
+	b, err := json.Marshal(map[string]any{"names": names, "matrix": matrix})
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }

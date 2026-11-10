@@ -96,6 +96,14 @@ documented in `docs/`).
   - **Actor targeting diversity:** per-source **Shannon/Pielou evenness**,
     **Gini-Simpson** and **Gini** of the services each source hit, classifying a
     surgical operator vs. a spray-and-pray scanner.
+  - **Co-occurrence chord diagram:** the top features arranged on a circle with
+    ribbons sized by how many sources share each pair — the attacker-behaviour
+    pairs that travel together, at a glance (new `charts.chord` renderer).
+  - **Campaign clustering (connected components):** the pivot graph's connected
+    components group source IPs transitively linked by shared infrastructure
+    (A shares a fingerprint with B, B a credential with C → one campaign), each
+    annotated with its member IPs, shared entities and the highest-betweenness
+    "key infrastructure" binding it.
 
   The page is toggleable (`ui.pages.analytics`) and defaults on. All algorithms
   are pure and unit-tested (known-value betweenness on path/star graphs, rule
