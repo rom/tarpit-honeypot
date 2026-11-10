@@ -79,15 +79,45 @@ documented in `docs/`).
 
 ### Added
 
+- **New `/analytics` page — deterministic (non-ML) relational & statistical
+  analytics** over the selected window, in a new `internal/analytics` package:
+  - **Association-rule / co-occurrence mining (Apriori):** each source becomes an
+    itemset of its services, ports, CVEs, tools, country, tactics, recognition
+    labels and ASN; rules `A → B` are surfaced with support, confidence and
+    **lift** (e.g. "sources hitting Modbus also probe S7, lift 2.4×"), plus a
+    symmetric top-co-occurrence table with Jaccard overlap.
+  - **Infrastructure pivot graph + centrality:** a graph of strong identity
+    entities (TLS/SSH fingerprints, reused SSH keys, credentials, domains,
+    malware hashes) and the source IPs exhibiting them, pruned (kind-aware) to the
+    connective core — entities shared by ≥2 sources. **Degree and betweenness
+    centrality** (Brandes) rank the pivotal shared infrastructure; the force graph
+    sizes nodes by betweenness, so an entity bridging otherwise-separate actor
+    clusters stands out.
+  - **Actor targeting diversity:** per-source **Shannon/Pielou evenness**,
+    **Gini-Simpson** and **Gini** of the services each source hit, classifying a
+    surgical operator vs. a spray-and-pray scanner.
+  - **Co-occurrence chord diagram:** the top features arranged on a circle with
+    ribbons sized by how many sources share each pair — the attacker-behaviour
+    pairs that travel together, at a glance (new `charts.chord` renderer).
+  - **Campaign clustering (connected components):** the pivot graph's connected
+    components group source IPs transitively linked by shared infrastructure
+    (A shares a fingerprint with B, B a credential with C → one campaign), each
+    annotated with its member IPs, shared entities and the highest-betweenness
+    "key infrastructure" binding it.
+
+  The page is toggleable (`ui.pages.analytics`) and defaults on. All algorithms
+  are pure and unit-tested (known-value betweenness on path/star graphs, rule
+  lift/confidence, diversity indices).
 - **Event-detail labels are now clickable pivots.** On the event detail page the
-  interaction phase (e.g. *Service discovery / enumeration*), the OT command and
-  protocol badges (e.g. *OMRON FINS* / *Read Holding Registers*), each protocol
-  anomaly (e.g. `ics-field-device-probe`) and each ATT&CK tactic (e.g. *impact*)
-  link to `/events?phase=…` / `?otproto=…` / `?otcmd=…` / `?anomaly=…` /
-  `?tactic=…`, listing every event that matches — so an analyst can pivot from one
-  event straight to all similar activity. The phase, anomaly and OT pivots are
-  recomputed per event with the same classifiers the detail page uses (no new
-  stored columns); the tactic pivot reuses the existing filter.
+  interaction phase (e.g. *Service discovery / enumeration*), the "what happened"
+  attacker intent, the OT command and protocol badges (e.g. *OMRON FINS* /
+  *Read Holding Registers*), each protocol anomaly (e.g. `ics-field-device-probe`)
+  and each ATT&CK tactic (e.g. *impact*) link to `/events?phase=…` / `?intent=…` /
+  `?otproto=…` / `?otcmd=…` / `?anomaly=…` / `?tactic=…`, listing every event that
+  matches — so an analyst can pivot from one event straight to all similar
+  activity. The phase, anomaly and OT pivots are recomputed per event with the
+  same classifiers the detail page uses (no new stored columns); the intent and
+  tactic pivots reuse the existing filters.
 - **Event detail page names the specific OT/IIoT/BAS/MedTech command.** For
   industrial, building-automation and clinical protocols the detail page now
   shows a prominent "OT command" line — the decoded operation and a short

@@ -86,6 +86,7 @@ func TestDetailLabelsClickable(t *testing.T) {
 	for _, want := range []string{
 		`href="/events?phase=`, `href="/events?otproto=`, `href="/events?otcmd=`,
 		`href="/events?anomaly=ics-field-device-probe"`, `href="/events?tactic=impact"`,
+		`href="/events?intent=`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("detail page missing clickable link %q", want)

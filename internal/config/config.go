@@ -713,7 +713,7 @@ type UI struct {
 // TogglablePages is the set of secondary pages an operator may hide via
 // ui.pages. Core pages are intentionally absent (always shown).
 var TogglablePages = map[string]bool{
-	"attack": true, "correlation": true, "playbooks": true, "campaigns": true, "map": true,
+	"attack": true, "correlation": true, "analytics": true, "playbooks": true, "campaigns": true, "map": true,
 	"captures": true, "credentials": true, "interactions": true, "dns": true, "web": true,
 	"databases": true, "remote": true, "mail": true, "ntp": true, "rules": true,
 	"coverage": true, "fleet": true, "iocs": true, "tunnels": true,
