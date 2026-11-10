@@ -725,6 +725,61 @@ func eventHasIntent(ev *event.Event, intent string) bool {
 	return intent != "" && strings.EqualFold(metaString(ev.Meta, "intent"), intent)
 }
 
+// keepEvents returns the events satisfying pred, reusing the backing array.
+func keepEvents(evs []*event.Event, pred func(*event.Event) bool) []*event.Event {
+	kept := evs[:0]
+	for _, ev := range evs {
+		if pred(ev) {
+			kept = append(kept, ev)
+		}
+	}
+	return kept
+}
+
+// eventHasPhase reports whether an event's inferred interaction phase matches —
+// the mirror of the detail page's clickable "interaction" badge, recomputed with
+// the same classifier so the pivot shows every event classified the same way.
+func eventHasPhase(ev *event.Event, phase string) bool {
+	phase = strings.TrimSpace(phase)
+	return phase != "" && strings.EqualFold(classifyInteraction(ev), phase)
+}
+
+// eventHasAnomaly reports whether an event carries the named protocol-anomaly
+// marker (structured Anomalies or meta.anomalies) — the clickable anomaly pivot.
+func eventHasAnomaly(ev *event.Event, a string) bool {
+	a = strings.TrimSpace(a)
+	if a == "" {
+		return false
+	}
+	for _, x := range eventAnoms(ev) {
+		if strings.EqualFold(x, a) {
+			return true
+		}
+	}
+	return false
+}
+
+// eventHasOTProto / eventHasOTCommand mirror the detail page's clickable OT
+// command badges, recomputing the decoded operation with otCommand so the pivot
+// finds every event of the same industrial protocol / command.
+func eventHasOTProto(ev *event.Event, proto string) bool {
+	proto = strings.TrimSpace(proto)
+	if proto == "" {
+		return false
+	}
+	_, p := otCommand(ev)
+	return strings.EqualFold(p, proto)
+}
+
+func eventHasOTCommand(ev *event.Event, cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return false
+	}
+	c, _ := otCommand(ev)
+	return strings.EqualFold(c, cmd)
+}
+
 // eventHasScanner reports whether an event is attributed to the named scanner —
 // either by IP-level enrichment (meta.known_scanner) or by a self-identifying UA
 // tool (meta.tools). The scanner reputation badge links here so it works for
@@ -1636,9 +1691,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// meta:* recognition labels, c2 framework, and agent protocol. Like the
 	// others these are meta/computed (no SQL column), so post-filtered below.
 	intent, label, c2, agent := q.Get("intent"), q.Get("label"), q.Get("c2"), q.Get("agent")
+	// Detail-page pivots: the inferred interaction phase, a protocol-anomaly
+	// marker, and the decoded OT command / protocol — all computed per event (no
+	// SQL column), so post-filtered below like the others.
+	phase, anomaly, otproto, otcmd := q.Get("phase"), q.Get("anomaly"), q.Get("otproto"), q.Get("otcmd")
 	displayLimit := f.Limit
 	if tool != "" || tactic != "" || flag != "" || scanner != "" || cloud != "" ||
-		intent != "" || label != "" || c2 != "" || agent != "" {
+		intent != "" || label != "" || c2 != "" || agent != "" ||
+		phase != "" || anomaly != "" || otproto != "" || otcmd != "" {
 		f.Limit = searchScanMax
 	}
 	// A malformed regex (regex mode) is operator input, not a server fault — show
@@ -1724,6 +1784,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		evs = kept
+	}
+	if phase != "" {
+		evs = keepEvents(evs, func(ev *event.Event) bool { return eventHasPhase(ev, phase) })
+	}
+	if anomaly != "" {
+		evs = keepEvents(evs, func(ev *event.Event) bool { return eventHasAnomaly(ev, anomaly) })
+	}
+	if otproto != "" {
+		evs = keepEvents(evs, func(ev *event.Event) bool { return eventHasOTProto(ev, otproto) })
+	}
+	if otcmd != "" {
+		evs = keepEvents(evs, func(ev *event.Event) bool { return eventHasOTCommand(ev, otcmd) })
 	}
 	if displayLimit > 0 && len(evs) > displayLimit {
 		evs = evs[:displayLimit]

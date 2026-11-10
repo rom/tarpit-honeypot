@@ -79,6 +79,15 @@ documented in `docs/`).
 
 ### Added
 
+- **Event-detail labels are now clickable pivots.** On the event detail page the
+  interaction phase (e.g. *Service discovery / enumeration*), the OT command and
+  protocol badges (e.g. *OMRON FINS* / *Read Holding Registers*), each protocol
+  anomaly (e.g. `ics-field-device-probe`) and each ATT&CK tactic (e.g. *impact*)
+  link to `/events?phase=…` / `?otproto=…` / `?otcmd=…` / `?anomaly=…` /
+  `?tactic=…`, listing every event that matches — so an analyst can pivot from one
+  event straight to all similar activity. The phase, anomaly and OT pivots are
+  recomputed per event with the same classifiers the detail page uses (no new
+  stored columns); the tactic pivot reuses the existing filter.
 - **Event detail page names the specific OT/IIoT/BAS/MedTech command.** For
   industrial, building-automation and clinical protocols the detail page now
   shows a prominent "OT command" line — the decoded operation and a short
