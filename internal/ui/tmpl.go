@@ -1486,15 +1486,15 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 </table>
 
 {{ if or .Phase .OTCommand (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the specific OT command for ICS/BMS protocols, the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
-  {{ if .Phase }}<tr><th>interaction</th><td><span class="tag">{{ .Phase }}</span></td></tr>{{ end }}
-  {{ if .OTCommand }}<tr><th>OT command</th><td><span class="tag bad">{{ .OTProto }}</span> <b>{{ .OTCommand }}</b> <span class="meta">(decoded industrial-protocol operation)</span></td></tr>{{ end }}
+  {{ if .Phase }}<tr><th>interaction</th><td><a class="tag" href="/events?phase={{ .Phase }}" title="show all events classified as this interaction">{{ .Phase }}</a></td></tr>{{ end }}
+  {{ if .OTCommand }}<tr><th>OT command</th><td><a class="tag bad" href="/events?otproto={{ .OTProto }}" title="show all {{ .OTProto }} events">{{ .OTProto }}</a> <a href="/events?otcmd={{ .OTCommand }}" title="show all events with this OT command"><b>{{ .OTCommand }}</b></a> <span class="meta">(decoded industrial-protocol operation)</span></td></tr>{{ end }}
   {{ with index .Meta "intent" }}<tr><th>what happened</th><td>{{ . }}</td></tr>{{ end }}
-  {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<span class="tag bad">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<a class="tag bad" href="/events?anomaly={{ . }}" title="show all events with this protocol anomaly">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
 {{ if .MitreTechniques }}<h2>ATT&amp;CK / D3FEND</h2><table>
   <tr><th>techniques</th><td>{{ range .MitreTechniques }}{{ $u := attackLinkURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ attackType . }} · {{ techDesc . }}">{{ . }}</a>{{ else }}<a class="tag" href="/attack/technique?id={{ . }}" title="{{ techDesc . }}">{{ . }}</a>{{ end }} {{ end }}</td></tr>
-  {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<span class="tag">{{ . }}</span> {{ end }}</td></tr>{{ end }}
+  {{ if .MitreTactics }}<tr><th>tactics</th><td>{{ range .MitreTactics }}<a class="tag" href="/events?tactic={{ . }}" title="show all events with this ATT&amp;CK tactic">{{ . }}</a> {{ end }}</td></tr>{{ end }}
   {{ if .MitreDefenses }}<tr><th>D3FEND</th><td>{{ range .MitreDefenses }}{{ $u := defenseURL . }}{{ if $u }}<a class="tag" href="{{ $u }}" target="_blank" rel="noreferrer noopener" title="{{ defenseName . }} — MITRE D3FEND">{{ . }}</a>{{ else }}<span class="tag" title="{{ defenseName . }}">{{ . }}</span>{{ end }} {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 

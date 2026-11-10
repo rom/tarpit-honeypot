@@ -42,6 +42,7 @@ func (p *osisoftPI) Handle(_ context.Context, conn net.Conn, cfg config.Listener
 		req := buf[:n]
 		res.Payload = append([]byte(nil), req...)
 		res.Meta["pi_request_len"] = n
+		classifyHistorianOp(&res, req, "OSIsoft/AVEVA PI Data Archive")
 	}
 	flagAnomaly(&res, "ics-historian-access")
 	flagAnomaly(&res, "ics-field-device-probe")

@@ -62,6 +62,9 @@ func TestOTCommandDecoded(t *testing.T) {
 		{"c37118", "c37118", map[string]any{"c37118_command": "Turn on transmission"}, "Turn on transmission", "IEEE C37.118"},
 		{"danfoss-bas", "danfoss_aksm", map[string]any{"xml_action": "ReadValue"}, "ReadValue", "Danfoss AK-SM"},
 		{"ads-alias-fallback", "ads_discovery", map[string]any{"ams_udp_service": "GetHostByName"}, "GetHostByName", "Beckhoff ADS"},
+		{"historian-pi", "osisoft_pi", map[string]any{"historian_operation": "read archive data"}, "read archive data", "OSIsoft PI"},
+		{"codesys", "codesys", map[string]any{"codesys_command": "PLC Stop"}, "PLC Stop", "CODESYS"},
+		{"dlms", "dlms", map[string]any{"dlms_apdu": "ACTION-Request 0-0:96.3.10.255 method 1"}, "ACTION-Request 0-0:96.3.10.255 method 1", "DLMS/COSEM"},
 		{"not-ot", "ssh", map[string]any{"client_id": "x"}, "", ""},
 		{"ot-no-command", "modbus", map[string]any{"unit_id": byte(1)}, "", ""},
 	}
