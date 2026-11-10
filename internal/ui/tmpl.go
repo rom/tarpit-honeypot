@@ -1488,7 +1488,7 @@ also logged as <code>ioc:&lt;type&gt;</code> events (stored + forwarded). JSON a
 {{ if or .Phase .OTCommand (index .Meta "intent") .Anoms }}<h2 data-help="What this exchange actually was — the kind of application-level interaction the decoy decoded (authentication, command/control, service discovery, session establishment, …), the specific OT command for ICS/BMS protocols, the handler's read of the attacker's intent, and any protocol-misuse markers.">interpretation</h2><table>
   {{ if .Phase }}<tr><th>interaction</th><td><a class="tag" href="/events?phase={{ .Phase }}" title="show all events classified as this interaction">{{ .Phase }}</a></td></tr>{{ end }}
   {{ if .OTCommand }}<tr><th>OT command</th><td><a class="tag bad" href="/events?otproto={{ .OTProto }}" title="show all {{ .OTProto }} events">{{ .OTProto }}</a> <a href="/events?otcmd={{ .OTCommand }}" title="show all events with this OT command"><b>{{ .OTCommand }}</b></a> <span class="meta">(decoded industrial-protocol operation)</span></td></tr>{{ end }}
-  {{ with index .Meta "intent" }}<tr><th>what happened</th><td>{{ . }}</td></tr>{{ end }}
+  {{ with index .Meta "intent" }}<tr><th>what happened</th><td><a href="/events?intent={{ . }}" title="show all events with this attacker intent">{{ . }}</a></td></tr>{{ end }}
   {{ if .Anoms }}<tr><th>protocol anomalies</th><td>{{ range .Anoms }}<a class="tag bad" href="/events?anomaly={{ . }}" title="show all events with this protocol anomaly">{{ . }}</a> {{ end }}</td></tr>{{ end }}
 </table>{{ end }}
 
